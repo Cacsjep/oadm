@@ -257,7 +257,7 @@ function Invoke-Build {
     switch ($script:Target) {
         'all' { Build-Project $Solution }
         'server' { Build-Project $ServerProject; Build-Plugins }
-        'client' { Build-Project $ClientProject }
+        'client' { Build-Project $ClientProject; Build-Plugins }
         'plugins' { Build-Plugins }
     }
 }
@@ -275,7 +275,7 @@ function Invoke-Run {
             exit $LASTEXITCODE
         }
         'client' {
-            Build-Project $ClientProject
+            Build-Project $ClientProject; Build-Plugins
             $clientArgs = @()
             if ($script:OptFake) { $clientArgs += '--fake' }
             if ($script:OptServer) { $clientArgs += '--server', $script:OptServer }

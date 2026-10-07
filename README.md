@@ -45,7 +45,7 @@ texts from [`scripts/manage-help.txt`](scripts/manage-help.txt).
 |---|---|
 | `manage build [all\|server\|client\|plugins] [--release]` | Build the solution (default), the server plus bundled plugins, the client, or only the plugins |
 | `manage run server [--port N] [--data DIR] [--release]` | Build and run the server in the foreground (default `http://0.0.0.0:5080`) |
-| `manage run client [--fake] [--server URL] [--data DIR] [--release]` | Build and run the client; `--fake` runs on sample data without a server |
+| `manage run client [--fake] [--server URL] [--data DIR] [--release]` | Build the client and all plugins, then run the client; `--fake` runs on sample data without a server |
 | `manage run dev [--port N] [--data DIR] [--release]` | Server in the background (log in `artifacts/logs/server-dev.log`), then the client; closing the client stops the server |
 | `manage test [unit\|hardware\|all] [--filter EXPR] [--release]` | Unit tests (default, what CI runs), read-only hardware tests against `dev-cameras.yaml`, or both |
 | `manage publish [all\|server\|client] [--rid RID]` | Self-contained single-file apps in `artifacts/publish/<app>/<rid>`, plugins next to the server exe |

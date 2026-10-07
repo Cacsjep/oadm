@@ -44,7 +44,7 @@ Usage: manage build [all|server|client|plugins] [--release] [-- dotnet build arg
 Targets:
   all       Whole solution: server, client, plugins, tests, tools (default)
   server    Server and the bundled plugins
-  client    Avalonia client
+  client    Avalonia client plus all plugins (their dialogs and pages run in the client)
   plugins   Bundled plugins only (plugins/*/*.csproj, deployed to artifacts/plugins/<id>)
 
 Options:
@@ -60,7 +60,7 @@ Usage: manage run <server|client|dev> [options] [-- app args]
 
 Targets:
   server   Build server and plugins, run the server in the foreground (Ctrl+C stops it)
-  client   Build and run the Avalonia client
+  client   Build the Avalonia client and all plugins, then run the client
   dev      Build everything, start the server in the background (log in
            artifacts/logs/server-dev.log), wait until it listens, then run the client.
            Closing the client stops the server. App args after -- go to the client

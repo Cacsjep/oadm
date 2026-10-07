@@ -241,7 +241,7 @@ cmd_build() {
   case "$TARGET" in
     all) build_project "$SOLUTION" ;;
     server) build_project "$SERVER_PROJECT"; build_plugins ;;
-    client) build_project "$CLIENT_PROJECT" ;;
+    client) build_project "$CLIENT_PROJECT"; build_plugins ;;
     plugins) build_plugins ;;
   esac
 }
@@ -258,7 +258,7 @@ cmd_run() {
       exec "$DOTNET" exec "$(app_dll Oadm.Server)" ${SERVER_ARGS[@]+"${SERVER_ARGS[@]}"} ${app_args[@]+"${app_args[@]}"}
       ;;
     client)
-      build_project "$CLIENT_PROJECT"
+      build_project "$CLIENT_PROJECT"; build_plugins
       local client_args=()
       if [ $OPT_FAKE -eq 1 ]; then client_args+=(--fake); fi
       if [ -n "$OPT_SERVER" ]; then client_args+=(--server "$OPT_SERVER"); fi
