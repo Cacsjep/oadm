@@ -60,7 +60,7 @@ cp "$REPO_ROOT/packaging/icons/oadm.png" "$ROOT/usr/share/icons/hicolor/512x512/
   echo " Bundled third-party components (FFmpeg LGPL-2.1, .NET, Avalonia, ...): see"
   echo " /usr/share/doc/oadm/THIRD-PARTY-NOTICES.md."
   echo " ."
-  sed -e 's/^$/./' -e 's/^/ /' "$REPO_ROOT/LICENSE"
+  tr -d '\r' < "$REPO_ROOT/LICENSE" | sed -e 's/^$/./' -e 's/^/ /'
 } > "$ROOT/usr/share/doc/oadm/copyright"
 cp "$REPO_ROOT/THIRD-PARTY-NOTICES.md" "$ROOT/usr/share/doc/oadm/THIRD-PARTY-NOTICES.md"
 
