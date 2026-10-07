@@ -117,6 +117,8 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(t => t.ScheduledUtc).HasConversion(NullableUtcConverter);
             e.HasIndex(t => t.CreatedUtc);
             e.HasIndex(t => t.BatchId);
+            // Active tasks (Queued, Running) are read on startup and by every Watch snapshot.
+            e.HasIndex(t => t.Status);
             e.HasMany(t => t.Results).WithOne().HasForeignKey(r => r.TaskId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(t => t.Steps).WithOne().HasForeignKey(s => s.TaskId).OnDelete(DeleteBehavior.Cascade);
         });

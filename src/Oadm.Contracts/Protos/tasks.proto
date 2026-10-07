@@ -4,14 +4,19 @@ option csharp_namespace = "Oadm.Contracts.V1";
 import "Protos/common.proto";
 import "google/protobuf/timestamp.proto";
 
+// ListTaskPluginsRequest, ListTasksRequest and WatchTasksRequest replaced Empty; they are wire compatible
+// with it (a request without fields keeps the former behavior).
 service TaskService {
-  rpc ListTaskPlugins (Empty) returns (TaskPluginList);
-  rpc Run (RunTaskRequest) returns (RunTaskReply);
-  rpc List (Empty) returns (TaskList);
-  rpc Watch (Empty) returns (stream TaskChanged);   // starts with a snapshot
+  rpc ListTaskPlugins (ListTaskPluginsRequest) returns (TaskPluginList);
+  rpc Run (RunTaskRequest) returns (RunTaskReply);   // one transaction for all tasks of the Run
+  // Newest first. limit 0 = every task (legacy; with 50,000 tasks that is one huge message).
+  rpc List (ListTasksRequest) returns (TaskList);
+  // Starts with a snapshot (every active task plus the newest snapshot_limit finished ones, 0 = all),
+  // then SNAPSHOT_END when asked for, then live changes (coalesced per task for a slow reader).
+  rpc Watch (WatchTasksRequest) returns (stream TaskChanged);
   rpc Cancel (TaskIdRequest) returns (Empty);
   rpc Delete (TaskIdRequest) returns (Empty);
-  rpc DeleteAll (Empty) returns (DeleteAllReply);   // cancels running tasks first
+  rpc DeleteAll (Empty) returns (DeleteAllReply);   // cancels running tasks first, then one bulk delete
   rpc GetLog (TaskIdRequest) returns (TaskLog);     // per-task log, oldest first
   // Read-only plugin query for task dialogs (ITaskPluginQuery), 30 s timeout. Errors: NOT_FOUND,
   // UNIMPLEMENTED (plugin has no queries), FAILED_PRECONDITION (incompatible device, certificate
@@ -27,8 +32,28 @@ message TaskPluginInfo {
   bool show_in_toolbar = 4;
   bool requires_dialog = 5;
   string owner_core_plugin_id = 6;          // set when contributed by a core plugin
-  repeated string runnable_device_ids = 7;  // devices for which CanRun is true
+  repeated string runnable_device_ids = 7;  // devices for which CanRun is true (empty when runnable_on_all_except)
   string group = 8;                         // context menu submenu (TaskGroups), never empty
+  // Compact form, only for ListTaskPluginsRequest.compact: CanRun is true for every device except
+  // not_runnable_device_ids. 5,000 devices x 10 plugins are otherwise 50,000 ids per call.
+  bool runnable_on_all_except = 9;
+  repeated string not_runnable_device_ids = 10;
+}
+
+message ListTaskPluginsRequest {
+  // Per plugin the shorter of runnable_device_ids or runnable_on_all_except + not_runnable_device_ids.
+  // Without it runnable_device_ids is always filled (former behavior).
+  bool compact = 1;
+}
+
+message ListTasksRequest {
+  int32 limit = 1;    // page size, 0 = all tasks
+  int32 offset = 2;   // tasks to skip, newest first
+}
+
+message WatchTasksRequest {
+  int32 snapshot_limit = 1;       // finished tasks in the snapshot (newest first), 0 = all; active tasks always
+  bool snapshot_end_marker = 2;   // send a TaskChanged with kind SNAPSHOT_END (no task) after the snapshot
 }
 message TaskPluginList { repeated TaskPluginInfo plugins = 1; }
 
@@ -100,7 +125,10 @@ message TaskInfo {
   repeated TaskStep steps = 13;             // in order; empty when the plugin reports no steps
   int32 current_step_index = 14;            // running step, else the last started/ended one; -1 none
 }
-message TaskList { repeated TaskInfo tasks = 1; }
+message TaskList {
+  repeated TaskInfo tasks = 1;
+  int32 total_count = 2;   // tasks in the history (for paging)
+}
 
 enum TaskLogLevel {
   TASK_LOG_LEVEL_UNSPECIFIED = 0;
@@ -126,7 +154,8 @@ message TaskQueryRequest {
 message TaskQueryReply { string payload_json = 1; }
 
 message TaskChanged {
-  enum Kind { KIND_UNSPECIFIED = 0; ADDED = 1; UPDATED = 2; REMOVED = 3; }
+  // SNAPSHOT_END only when WatchTasksRequest.snapshot_end_marker is set; it carries no task.
+  enum Kind { KIND_UNSPECIFIED = 0; ADDED = 1; UPDATED = 2; REMOVED = 3; SNAPSHOT_END = 4; }
   Kind kind = 1;
   TaskInfo task = 2;
 }

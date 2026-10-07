@@ -48,7 +48,7 @@ public sealed class DeviceServiceTests
         var existing = await AddDeviceAsync(host, "10.9.0.1", 1);
 
         using var cts = new CancellationTokenSource(TestHelpers.DefaultTimeout);
-        using var call = host.Devices.Watch(new Proto.Empty(), cancellationToken: cts.Token);
+        using var call = host.Devices.Watch(new Proto.WatchDevicesRequest(), cancellationToken: cts.Token);
         var stream = call.ResponseStream;
 
         Assert.True(await stream.MoveNext(cts.Token));

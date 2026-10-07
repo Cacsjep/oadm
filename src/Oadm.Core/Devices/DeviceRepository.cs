@@ -15,7 +15,7 @@ public sealed class DuplicateDeviceException(string serial)
 /// <summary>
 /// Device table access. Every returned <see cref="Device"/> is a detached copy; mutate it and call
 /// <see cref="UpdateAsync(Device, CancellationToken)"/>, or use <see cref="UpdateAsync(Guid, Action{Device}, CancellationToken)"/>.
-/// All writes publish to <see cref="IDeviceChangeFeed"/>.
+/// All writes publish to <see cref="IDeviceChangeFeed"/>, except a write that only moves LastSeenUtc.
 /// </summary>
 public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory, IDeviceChangeFeed changeFeed)
     : IDeviceRepository
@@ -124,6 +124,16 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
         entity.Id = id;
         entity.Serial = DeviceSerial.Normalize(entity.Serial);
 
+        // Scale: a status poll of 5,000 devices every minute usually changes nothing but LastSeenUtc.
+        // Unchanged rows are not written; a LastSeenUtc-only change is written but not published, so
+        // watchers (every client) do not receive 5,000 identical devices per poll interval.
+        db.ChangeTracker.DetectChanges();
+        var modified = db.Entry(entity).Properties.Where(p => p.IsModified).Select(p => p.Metadata.Name).ToList();
+        if (modified.Count == 0)
+        {
+            return entity.Clone();
+        }
+
         try
         {
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
@@ -133,8 +143,61 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
             throw new DuplicateDeviceException(entity.Serial);
         }
 
-        changeFeed.Publish(new DeviceChange(DeviceChangeKind.Updated, id, entity.Clone()));
+        if (modified is not [nameof(Device.LastSeenUtc)])
+        {
+            changeFeed.Publish(new DeviceChange(DeviceChangeKind.Updated, id, entity.Clone()));
+        }
+
         return entity.Clone();
+    }
+
+    /// <summary>Ids of all devices, without loading the rows (cheap for 5,000 devices).</summary>
+    public async Task<IReadOnlyList<Guid>> ListDeviceIdsAsync(CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        return await db.Devices.AsNoTracking().OrderBy(d => d.Serial).Select(d => d.Id).ToListAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Removes many devices (and by cascade their credentials) in one transaction, then publishes one
+    /// Removed per device. Returns the ids that existed.
+    /// </summary>
+    public async Task<IReadOnlyList<Guid>> RemoveManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        var removed = new List<Guid>(ids.Count);
+        await using (var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false))
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
+
+            // Chunked: SQLite allows a limited number of parameters per statement.
+            foreach (var chunk in ids.Distinct().Chunk(500))
+            {
+                var existing = await db.Devices.Where(d => chunk.Contains(d.Id)).Select(d => d.Id).ToListAsync(ct).ConfigureAwait(false);
+                if (existing.Count == 0)
+                {
+                    continue;
+                }
+
+                await db.DeviceCredentials.Where(c => existing.Contains(c.DeviceId)).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+                await db.Devices.Where(d => existing.Contains(d.Id)).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+                removed.AddRange(existing);
+            }
+
+            await transaction.CommitAsync(ct).ConfigureAwait(false);
+        }
+
+        foreach (var id in removed)
+        {
+            changeFeed.Publish(new DeviceChange(DeviceChangeKind.Removed, id, null));
+        }
+
+        return removed;
     }
 
     /// <summary>Removes a device and (by cascade) its credentials. Returns false if it did not exist.</summary>

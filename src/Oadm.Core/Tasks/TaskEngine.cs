@@ -106,13 +106,71 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
 
         var batchId = Guid.NewGuid();
         var name = TaskNameFor(registration, payloadJson);
-        var ids = new List<Guid>(distinct.Length);
-        foreach (var deviceId in distinct)
+        if (distinct.Length == 1)
         {
-            ids.Add(await StartTaskAsync(registration, batchId, deviceId, payloadJson, owner, name, ct).ConfigureAwait(false));
+            return [await StartTaskAsync(registration, batchId, distinct[0], payloadJson, owner, name, ct).ConfigureAwait(false)];
         }
 
-        return ids;
+        return await StartBatchAsync(registration, batchId, distinct, payloadJson, owner, name, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Scale: a Run on 5,000 devices publishes 5,000 Added changes and writes all tasks in one store
+    /// transaction (<see cref="ITaskStore.AddRangeAsync"/>) before any of them starts; the tasks then
+    /// wait in Queued for a slot of their plugin.
+    /// </summary>
+    private async Task<IReadOnlyList<Guid>> StartBatchAsync(RegisteredTaskPlugin registration, Guid batchId, Guid[] deviceIds, string? payloadJson, string owner, string name, CancellationToken ct)
+    {
+        var created = _time.GetUtcNow();
+        var tasks = new List<RunningTask>(deviceIds.Length);
+        var snapshots = new List<TaskRecord>(deviceIds.Length);
+        foreach (var deviceId in deviceIds)
+        {
+            var task = new RunningTask(
+                Guid.NewGuid(),
+                registration,
+                [deviceId],
+                payloadJson,
+                owner ?? string.Empty,
+                created,
+                _shutdown.Token,
+                _options.MaxLogEntriesPerTask,
+                batchId,
+                name);
+            tasks.Add(task);
+            _active[task.Id] = task;
+            lock (task.PublishLock)
+            {
+                // Publish Added before the store write so no later Updated can overtake it.
+                var snapshot = task.Snapshot();
+                snapshots.Add(snapshot);
+                _feed.Publish(new TaskChange(TaskChangeKind.Added, snapshot));
+            }
+        }
+
+        try
+        {
+            await _store.AddRangeAsync(snapshots, ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            foreach (var task in tasks)
+            {
+                _active.TryRemove(task.Id, out _);
+                _feed.Publish(new TaskChange(TaskChangeKind.Removed, task.Snapshot()));
+                task.Dispose();
+            }
+
+            throw;
+        }
+
+        LogBatchQueued(batchId, registration.Id, tasks.Count, owner ?? string.Empty);
+        foreach (var task in tasks)
+        {
+            _ = Task.Run(() => ExecuteTaskAsync(task), CancellationToken.None);
+        }
+
+        return [.. tasks.Select(t => t.Id)];
     }
 
     /// <summary>
@@ -261,15 +319,127 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
 
         // Tasks already published but not yet written to the store must be part of a snapshot,
         // otherwise a watcher subscribing in that window misses their Added event.
-        foreach (var live in _active.Values)
+        // (Collected first: inserting each at index 0 is O(n) per task, O(n^2) for a 5,000-task Run.)
+        return PrependUnstored(result, seen);
+    }
+
+    /// <summary>Live tasks not yet in <paramref name="seen"/>, newest first, followed by <paramref name="stored"/>.</summary>
+    private List<TaskRecord> PrependUnstored(List<TaskRecord> stored, HashSet<Guid> seen)
+    {
+        var unstored = _active.Values.Where(t => seen.Add(t.Id)).Select(t => t.Snapshot()).OrderByDescending(t => t.CreatedUtc).ToList();
+        if (unstored.Count == 0)
         {
-            if (seen.Add(live.Id))
+            return stored;
+        }
+
+        unstored.AddRange(stored);
+        return unstored;
+    }
+
+    /// <summary>
+    /// One page of the history, newest first, with the total count (store paging; active tasks show
+    /// their live progress). For the Tasks pane and the gRPC List with a limit.
+    /// </summary>
+    public async Task<TaskPage> ListPageAsync(int offset, int limit, CancellationToken ct)
+    {
+        var page = await _store.ListPageAsync(offset, limit, ct).ConfigureAwait(false);
+        return page with { Tasks = [.. page.Tasks.Select(r => _active.TryGetValue(r.Id, out var live) ? live.Snapshot() : r)] };
+    }
+
+    /// <summary>
+    /// Snapshot for a watcher: every active task (also those not stored yet) plus the newest
+    /// <paramref name="limit"/> tasks of the history (null = all, the former behavior), newest first.
+    /// With 50,000 tasks in the history a client asks for a few thousand instead of all.
+    /// </summary>
+    public async Task<IReadOnlyList<TaskRecord>> SnapshotAsync(int? limit, CancellationToken ct)
+    {
+        if (limit is null)
+        {
+            return await ListAsync(ct).ConfigureAwait(false);
+        }
+
+        var recent = await _store.ListPageAsync(0, limit.Value, ct).ConfigureAwait(false);
+        var active = await _store.ListActiveAsync(ct).ConfigureAwait(false);
+        var seen = new HashSet<Guid>();
+        var result = new List<TaskRecord>(recent.Tasks.Count + active.Count);
+        foreach (var record in active.Concat(recent.Tasks).OrderByDescending(r => r.CreatedUtc))
+        {
+            if (seen.Add(record.Id))
             {
-                result.Insert(0, live.Snapshot());
+                result.Add(_active.TryGetValue(record.Id, out var live) ? live.Snapshot() : record);
             }
         }
 
-        return result;
+        return PrependUnstored(result, seen);
+    }
+
+    /// <summary>
+    /// Subscribes to the change feed, then takes <see cref="SnapshotAsync"/>: nothing that happens in
+    /// between is lost (it may be delivered twice). The caller disposes the subscription.
+    /// </summary>
+    public async Task<(IReadOnlyList<TaskRecord> Snapshot, TaskChangeSubscription Subscription)> SubscribeWithSnapshotAsync(int? limit, CancellationToken ct)
+    {
+        var subscription = _feed.Subscribe();
+        try
+        {
+            return (await SnapshotAsync(limit, ct).ConfigureAwait(false), subscription);
+        }
+        catch
+        {
+            subscription.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Clears the history: cancels every active task, waits for them to stop, then deletes all tasks in
+    /// one store transaction and publishes one Removed per task. Returns the number deleted.
+    /// </summary>
+    public async Task<int> DeleteAllAsync(CancellationToken ct)
+    {
+        var active = _active.Values.ToList();
+        foreach (var task in active)
+        {
+            task.Cancel();
+        }
+
+        await Task.WhenAll(active.Select(t => t.Completion.Task)).WaitAsync(ct).ConfigureAwait(false);
+        var ids = await _store.ListIdsAsync(ct).ConfigureAwait(false);
+        return await DeleteManyAsync(ids, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Task history retention: deletes finished tasks older than <paramref name="maxAge"/> and finished
+    /// tasks beyond the newest <paramref name="maxTasks"/> (null disables a rule). Active tasks are never
+    /// deleted. Returns the number deleted.
+    /// </summary>
+    public async Task<int> PruneHistoryAsync(TimeSpan? maxAge, int? maxTasks, CancellationToken ct)
+    {
+        DateTimeOffset? before = maxAge is { } age ? _time.GetUtcNow() - age : null;
+        var expired = await _store.ListExpiredAsync(before, maxTasks, ct).ConfigureAwait(false);
+        var deleted = await DeleteManyAsync([.. expired.Where(id => !_active.ContainsKey(id))], ct).ConfigureAwait(false);
+        if (deleted > 0)
+        {
+            LogPruned(deleted, maxAge?.TotalDays, maxTasks);
+        }
+
+        return deleted;
+    }
+
+    private async Task<int> DeleteManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct)
+    {
+        if (ids.Count == 0)
+        {
+            return 0;
+        }
+
+        var deleted = await _store.DeleteManyAsync(ids, ct).ConfigureAwait(false);
+        foreach (var record in deleted)
+        {
+            _feed.Publish(new TaskChange(TaskChangeKind.Removed, record));
+        }
+
+        return deleted.Count;
     }
 
     /// <summary>Deletes a task from history. An active task is cancelled first and deleted once it stopped.</summary>
@@ -321,7 +491,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     {
         const string Message = "Server stopped while the task was running.";
         var now = _time.GetUtcNow();
-        foreach (var record in await _store.ListAsync(ct).ConfigureAwait(false))
+        foreach (var record in await _store.ListActiveAsync(ct).ConfigureAwait(false))
         {
             if (record.State.IsTerminal() || _active.ContainsKey(record.Id))
             {
@@ -386,7 +556,9 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             if (entered)
             {
                 task.MarkStarted(_time.GetUtcNow());
-                await PublishAsync(task, persist: true).ConfigureAwait(false);
+                // Published now, persisted by the device start right after (one store write less per task:
+                // a Run on 5,000 devices saves 5,000 transactions).
+                await PublishAsync(task, persist: false).ConfigureAwait(false);
             }
 
             foreach (var deviceId in task.DeviceIds)
@@ -701,6 +873,12 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Task {TaskId} queued: plugin {PluginId}, device {DeviceId}, owner {Owner}")]
     private partial void LogTaskQueued(Guid taskId, string pluginId, Guid deviceId, string owner);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Batch {BatchId}: {Count} tasks queued: plugin {PluginId}, owner {Owner}")]
+    private partial void LogBatchQueued(Guid batchId, string pluginId, int count, string owner);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Task history retention deleted {Count} finished task(s) (max age {Days} days, max tasks {MaxTasks})")]
+    private partial void LogPruned(int count, double? days, int? maxTasks);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Task {TaskId} ({PluginId}) finished: {State}")]
     private partial void LogTaskFinished(Guid taskId, string pluginId, TaskState state);

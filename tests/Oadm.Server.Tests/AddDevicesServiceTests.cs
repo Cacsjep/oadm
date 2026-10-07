@@ -86,7 +86,7 @@ public sealed class AddDevicesServiceTests
             async () => (await host.Devices.ListAsync(new Proto.Empty())).Devices
                 .Where(d => d.Address is "10.9.0.1" or "10.9.0.3").All(d => d.HasDhcpEnabled),
             "first full refresh after add");
-        Assert.Empty((await host.Tasks.ListAsync(new Proto.Empty())).Tasks);
+        Assert.Empty((await host.Tasks.ListAsync(new Proto.ListTasksRequest())).Tasks);
 
         var list = (await host.Devices.ListAsync(new Proto.Empty())).Devices.ToDictionary(d => d.Address);
         Assert.Equal(3, list.Count);

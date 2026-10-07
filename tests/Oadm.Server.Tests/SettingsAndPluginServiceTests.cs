@@ -97,7 +97,7 @@ public sealed class SettingsAndPluginServiceTests
         Assert.Equal("{\"a\":1}", reply.PayloadJson);
 
         // Contributed task shows up with its owner.
-        var task = Assert.Single((await host.Tasks.ListTaskPluginsAsync(new Proto.Empty())).Plugins, p => p.Id == "test.echo.task");
+        var task = Assert.Single((await host.Tasks.ListTaskPluginsAsync(new Proto.ListTaskPluginsRequest())).Plugins, p => p.Id == "test.echo.task");
         Assert.Equal("test.echo", task.OwnerCorePluginId);
 
         // Core plugin settings go to the database under Plugin:<id>:<key>.

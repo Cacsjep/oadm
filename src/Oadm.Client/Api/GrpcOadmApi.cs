@@ -63,7 +63,7 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         (await C.Devices.ListAsync(new Empty(), cancellationToken: ct)).Devices;
 
     public IAsyncEnumerable<DeviceChanged> WatchDevicesAsync(CancellationToken ct) =>
-        ReadAll(C.Devices.Watch(new Empty(), cancellationToken: ct), ct);
+        ReadAll(C.Devices.Watch(new WatchDevicesRequest { SnapshotEndMarker = true }, cancellationToken: ct), ct);
 
     public async Task RemoveDevicesAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct) =>
         await C.Devices.RemoveAsync(ToIds(deviceIds), cancellationToken: ct);
@@ -106,7 +106,7 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         await C.AddDevices.RetryAuthAsync(request, cancellationToken: ct);
 
     public async Task<IReadOnlyList<TaskPluginInfo>> ListTaskPluginsAsync(CancellationToken ct) =>
-        (await C.Tasks.ListTaskPluginsAsync(new Empty(), cancellationToken: ct)).Plugins;
+        (await C.Tasks.ListTaskPluginsAsync(new ListTaskPluginsRequest { Compact = true }, cancellationToken: ct)).Plugins;
 
     public async Task<IReadOnlyList<string>> RunTaskAsync(string pluginId, IReadOnlyCollection<string> deviceIds, string? payloadJson, string owner, CancellationToken ct)
     {
@@ -119,10 +119,10 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     }
 
     public async Task<IReadOnlyList<TaskInfo>> ListTasksAsync(CancellationToken ct) =>
-        (await C.Tasks.ListAsync(new Empty(), cancellationToken: ct)).Tasks;
+        (await C.Tasks.ListAsync(new ListTasksRequest { Limit = Oadm.Client.Tasks.TaskStore.MaxTasks }, cancellationToken: ct)).Tasks;
 
     public IAsyncEnumerable<TaskChanged> WatchTasksAsync(CancellationToken ct) =>
-        ReadAll(C.Tasks.Watch(new Empty(), cancellationToken: ct), ct);
+        ReadAll(C.Tasks.Watch(new WatchTasksRequest { SnapshotLimit = Oadm.Client.Tasks.TaskStore.MaxTasks, SnapshotEndMarker = true }, cancellationToken: ct), ct);
 
     public async Task CancelTaskAsync(string taskId, CancellationToken ct) =>
         await C.Tasks.CancelAsync(new TaskIdRequest { TaskId = taskId }, cancellationToken: ct);

@@ -4,11 +4,15 @@ option csharp_namespace = "Oadm.Contracts.V1";
 import "Protos/common.proto";
 
 service DeviceService {
+  // One message with every device. With 5,000 devices and their API lists this message is tens of MB:
+  // clients use Watch with snapshot_end_marker instead (streamed, one message per device).
   rpc List (Empty) returns (DeviceList);
-  rpc Watch (Empty) returns (stream DeviceChanged);   // starts with a snapshot, one ADDED per device
-  rpc Remove (DeviceIds) returns (Empty);
+  // Starts with a snapshot, one ADDED per device; with snapshot_end_marker a SNAPSHOT_END follows it.
+  // WatchDevicesRequest is wire compatible with the former Empty request (no fields = old behavior).
+  rpc Watch (WatchDevicesRequest) returns (stream DeviceChanged);
+  rpc Remove (DeviceIds) returns (Empty);              // one transaction for all ids
   rpc Refresh (DeviceIds) returns (Empty);
-  rpc SetCredentials (SetCredentialsRequest) returns (Empty);
+  rpc SetCredentials (SetCredentialsRequest) returns (Empty);   // one transaction for all ids
   rpc GetWebUiUrl (DeviceId) returns (UrlReply);
 }
 
@@ -17,6 +21,12 @@ message DeviceIds { repeated string ids = 1; }
 message DeviceList { repeated Device devices = 1; }
 message UrlReply { string url = 1; }
 
+message WatchDevicesRequest {
+  // Send one DeviceChanged with kind SNAPSHOT_END (and no device) after the snapshot, so the client can
+  // replace its mirror in one step and remove devices that are gone.
+  bool snapshot_end_marker = 1;
+}
+
 message SetCredentialsRequest {
   repeated string device_ids = 1;
   string user_name = 2;
@@ -24,7 +34,8 @@ message SetCredentialsRequest {
 }
 
 message DeviceChanged {
-  enum Kind { KIND_UNSPECIFIED = 0; ADDED = 1; UPDATED = 2; REMOVED = 3; }
+  // SNAPSHOT_END only when WatchDevicesRequest.snapshot_end_marker is set.
+  enum Kind { KIND_UNSPECIFIED = 0; ADDED = 1; UPDATED = 2; REMOVED = 3; SNAPSHOT_END = 4; }
   Kind kind = 1;
-  Device device = 2;   // for REMOVED only id is set
+  Device device = 2;   // for REMOVED only id is set; unset for SNAPSHOT_END
 }

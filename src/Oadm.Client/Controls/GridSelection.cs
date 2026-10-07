@@ -3,6 +3,8 @@ using System.Collections;
 using Avalonia;
 using Avalonia.Controls;
 
+using Oadm.Client.Infrastructure;
+
 namespace Oadm.Client.Controls;
 
 /// <summary>
@@ -50,6 +52,15 @@ public static class GridSelection
     {
         if (sender is not DataGrid grid || GetSelectedItems(grid) is not { } target)
         {
+            return;
+        }
+
+        // Scale: select all on 5,000 rows is one SelectionChanged with 5,000 added items. Item by item that
+        // is 5,000 Contains scans and 5,000 change events (each rebuilding the context menu and the toolbar
+        // state); a resettable target takes the grid's selection in one step instead.
+        if (target is IResettableList resettable && e.AddedItems.Count + e.RemovedItems.Count > 1)
+        {
+            resettable.ResetTo(grid.SelectedItems);
             return;
         }
 
