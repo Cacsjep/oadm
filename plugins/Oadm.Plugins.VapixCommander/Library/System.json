@@ -1,0 +1,608 @@
+{
+  "formatVersion": 1,
+  "category": "System",
+  "commands": [
+    {
+      "id": "system.temperature.get",
+      "version": 1,
+      "name": "Get temperatures",
+      "category": "System",
+      "description": "All temperature sensors in Celsius and Fahrenheit.",
+      "docs": "https://developer.axis.com/vapix/network-video/temperature-control/",
+      "requires": [
+        {
+          "api": "temperaturecontrol",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/temperaturecontrol.cgi",
+        "query": {
+          "action": "statusall"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "Sensor 0",
+            "param": "Sensor.S0.Name"
+          },
+          {
+            "label": "Sensor 0 °C",
+            "param": "Sensor.S0.Celsius"
+          }
+        ]
+      }
+    },
+    {
+      "id": "system.power.status",
+      "version": 1,
+      "name": "Get power consumption",
+      "category": "System",
+      "description": "Current, average and maximum power consumption.",
+      "docs": "https://developer.axis.com/vapix/network-video/power-settings/",
+      "requires": [
+        {
+          "api": "power-settings",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/power-settings.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getPowerStatus"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Current power (W)",
+            "path": "data.usage.currentPower"
+          },
+          {
+            "label": "Average power (W)",
+            "path": "data.usage.averagePower"
+          },
+          {
+            "label": "Max power (W)",
+            "path": "data.usage.maxPower"
+          }
+        ]
+      }
+    },
+    {
+      "id": "system.power.dynamic.get",
+      "version": 1,
+      "name": "Get dynamic power mode",
+      "category": "System",
+      "description": "Whether dynamic power mode is enabled.",
+      "docs": "https://developer.axis.com/vapix/network-video/power-settings/",
+      "requires": [
+        {
+          "api": "power-settings",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/power-settings.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getDynamicPowerMode"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Dynamic power mode",
+            "path": "data.dynamicPowerMode"
+          }
+        ]
+      }
+    },
+    {
+      "id": "system.power.dynamic.set",
+      "version": 1,
+      "name": "Set dynamic power mode",
+      "category": "System",
+      "description": "Enables or disables dynamic power mode.",
+      "docs": "https://developer.axis.com/vapix/network-video/power-settings/",
+      "requires": [
+        {
+          "api": "power-settings",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "enabled",
+          "label": "Dynamic power mode",
+          "type": "boolean",
+          "default": true
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/power-settings.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setDynamicPowerMode",
+          "params": {
+            "dynamicPowerMode": "{{enabled}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "system.remotesyslog.get",
+      "version": 1,
+      "name": "Get remote syslog",
+      "category": "System",
+      "description": "Whether remote syslog is enabled and the configured servers.",
+      "docs": "https://developer.axis.com/vapix/network-video/remote-syslog/",
+      "requires": [
+        {
+          "api": "remote-syslog",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/remotesyslog.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "status"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Enabled",
+            "path": "data.enabled"
+          },
+          {
+            "label": "Servers",
+            "path": "data.servers"
+          }
+        ]
+      }
+    },
+    {
+      "id": "system.remotesyslog.setup",
+      "version": 1,
+      "name": "Set remote syslog server",
+      "category": "System",
+      "description": "Configures one remote syslog server (replaces the server list). Enable it with \"Enable remote syslog\".",
+      "docs": "https://developer.axis.com/vapix/network-video/remote-syslog/",
+      "requires": [
+        {
+          "api": "remote-syslog",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "address",
+          "label": "Server address",
+          "type": "string",
+          "default": "",
+          "pattern": "^\\S+$"
+        },
+        {
+          "name": "port",
+          "label": "Port",
+          "type": "integer",
+          "default": 6514,
+          "min": 1,
+          "max": 65535
+        },
+        {
+          "name": "protocol",
+          "label": "Protocol",
+          "type": "enum",
+          "default": "TLS",
+          "options": [
+            {
+              "value": "UDP",
+              "label": "UDP"
+            },
+            {
+              "value": "TCP",
+              "label": "TCP"
+            },
+            {
+              "value": "TLS",
+              "label": "TLS"
+            }
+          ]
+        },
+        {
+          "name": "format",
+          "label": "Syslog format",
+          "type": "enum",
+          "default": "RFC5424",
+          "options": [
+            {
+              "value": "RFC5424",
+              "label": "RFC 5424"
+            },
+            {
+              "value": "RFC3164",
+              "label": "RFC 3164"
+            },
+            {
+              "value": "AXIS",
+              "label": "AXIS"
+            }
+          ]
+        },
+        {
+          "name": "severity",
+          "label": "Minimum severity",
+          "type": "enum",
+          "default": "Warning",
+          "options": [
+            {
+              "value": "Emergency",
+              "label": "Emergency"
+            },
+            {
+              "value": "Alert",
+              "label": "Alert"
+            },
+            {
+              "value": "Critical",
+              "label": "Critical"
+            },
+            {
+              "value": "Error",
+              "label": "Error"
+            },
+            {
+              "value": "Warning",
+              "label": "Warning"
+            },
+            {
+              "value": "Notice",
+              "label": "Notice"
+            },
+            {
+              "value": "Informational",
+              "label": "Informational"
+            },
+            {
+              "value": "Debug",
+              "label": "Debug"
+            }
+          ]
+        },
+        {
+          "name": "type",
+          "label": "Log type",
+          "type": "enum",
+          "default": "All",
+          "options": [
+            {
+              "value": "All",
+              "label": "All logs"
+            },
+            {
+              "value": "Audit",
+              "label": "Audit log only"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/remotesyslog.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setup",
+          "params": {
+            "servers": [
+              {
+                "address": "{{address}}",
+                "port": "{{port}}",
+                "protocol": "{{protocol}}",
+                "syslogFormat": "{{format}}",
+                "severity": "{{severity}}",
+                "type": "{{type}}"
+              }
+            ]
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "system.remotesyslog.enable",
+      "version": 1,
+      "name": "Enable remote syslog",
+      "category": "System",
+      "description": "Starts sending logs to the configured remote syslog servers.",
+      "docs": "https://developer.axis.com/vapix/network-video/remote-syslog/",
+      "requires": [
+        {
+          "api": "remote-syslog",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/remotesyslog.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "enable"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "system.remotesyslog.disable",
+      "version": 1,
+      "name": "Disable remote syslog",
+      "category": "System",
+      "description": "Stops sending logs to remote syslog servers.",
+      "docs": "https://developer.axis.com/vapix/network-video/remote-syslog/",
+      "requires": [
+        {
+          "api": "remote-syslog",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/remotesyslog.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "disable"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "system.geolocation.get",
+      "version": 1,
+      "name": "Get geolocation",
+      "category": "System",
+      "description": "Latitude, longitude, heading and text stored on the device.",
+      "docs": "https://developer.axis.com/vapix/network-video/geolocation-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/geolocation/get.cgi",
+        "query": {},
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "xml"
+      }
+    },
+    {
+      "id": "system.geolocation.set",
+      "version": 1,
+      "name": "Set geolocation",
+      "category": "System",
+      "description": "Stores the device position (WGS-84 decimal degrees) and heading.",
+      "docs": "https://developer.axis.com/vapix/network-video/geolocation-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "lat",
+          "label": "Latitude",
+          "type": "number",
+          "default": 0,
+          "min": -90,
+          "max": 90,
+          "unit": "°"
+        },
+        {
+          "name": "lng",
+          "label": "Longitude",
+          "type": "number",
+          "default": 0,
+          "min": -180,
+          "max": 180,
+          "unit": "°"
+        },
+        {
+          "name": "heading",
+          "label": "Heading",
+          "type": "number",
+          "default": 0,
+          "min": 0,
+          "max": 360,
+          "unit": "°",
+          "description": "0 = north"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/geolocation/set.cgi",
+        "query": {
+          "lat": "{{lat}}",
+          "lng": "{{lng}}",
+          "heading": "{{heading}}"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "xml"
+      }
+    },
+    {
+      "id": "system.webserver.get",
+      "version": 1,
+      "name": "Get web server settings",
+      "category": "System",
+      "description": "HTTP/HTTPS ports, keep-alive timeout, web interface state and access log.",
+      "docs": "https://developer.axis.com/vapix/network-video/parameter-management/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "list",
+          "group": "System"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "HTTP port",
+            "param": "System.BoaPort"
+          },
+          {
+            "label": "Web interface disabled",
+            "param": "System.WebInterfaceDisabled"
+          },
+          {
+            "label": "Access log",
+            "param": "System.AccessLog"
+          }
+        ]
+      }
+    },
+    {
+      "id": "system.webinterface.set",
+      "version": 1,
+      "name": "Disable web interface",
+      "category": "System",
+      "description": "Disables (or re-enables) the built-in web interface. VAPIX keeps working.",
+      "docs": "https://developer.axis.com/vapix/network-video/parameter-management/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "fields": [
+        {
+          "name": "disabled",
+          "label": "Web interface disabled",
+          "type": "boolean",
+          "default": true
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "System.WebInterfaceDisabled": "{{disabled}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    }
+  ]
+}

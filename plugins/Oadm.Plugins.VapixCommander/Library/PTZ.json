@@ -1,0 +1,506 @@
+{
+  "formatVersion": 1,
+  "category": "PTZ",
+  "commands": [
+    {
+      "id": "ptz.position.get",
+      "version": 1,
+      "name": "Get PTZ position",
+      "category": "PTZ",
+      "description": "Current pan, tilt, zoom and focus (empty when PTZ is off).",
+      "docs": "https://developer.axis.com/vapix/network-video/pantiltzoom-api/",
+      "requires": [
+        {
+          "api": "ptz-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "camera",
+          "label": "Camera",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 8,
+          "description": "VAPIX camera number (1-based)."
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/com/ptz.cgi",
+        "query": {
+          "query": "position",
+          "camera": "{{camera}}"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    },
+    {
+      "id": "ptz.limits.get",
+      "version": 1,
+      "name": "Get PTZ limits",
+      "category": "PTZ",
+      "description": "Pan, tilt, zoom and focus limits.",
+      "docs": "https://developer.axis.com/vapix/network-video/pantiltzoom-api/",
+      "requires": [
+        {
+          "api": "ptz-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "camera",
+          "label": "Camera",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 8,
+          "description": "VAPIX camera number (1-based)."
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/com/ptz.cgi",
+        "query": {
+          "query": "limits",
+          "camera": "{{camera}}"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "Min pan",
+            "param": "MinPan"
+          },
+          {
+            "label": "Max pan",
+            "param": "MaxPan"
+          },
+          {
+            "label": "Min tilt",
+            "param": "MinTilt"
+          },
+          {
+            "label": "Max tilt",
+            "param": "MaxTilt"
+          },
+          {
+            "label": "Max zoom",
+            "param": "MaxZoom"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ptz.presets.list",
+      "version": 1,
+      "name": "List PTZ presets",
+      "category": "PTZ",
+      "description": "Preset positions of a camera.",
+      "docs": "https://developer.axis.com/vapix/network-video/pantiltzoom-api/",
+      "requires": [
+        {
+          "api": "ptz-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "camera",
+          "label": "Camera",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 8,
+          "description": "VAPIX camera number (1-based)."
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/com/ptz.cgi",
+        "query": {
+          "query": "presetposcam",
+          "camera": "{{camera}}"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    },
+    {
+      "id": "ptz.preset.goto",
+      "version": 1,
+      "name": "Go to preset",
+      "category": "PTZ",
+      "description": "Moves to a preset by name.",
+      "docs": "https://developer.axis.com/vapix/network-video/pantiltzoom-api/",
+      "requires": [
+        {
+          "api": "ptz-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "camera",
+          "label": "Camera",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 8,
+          "description": "VAPIX camera number (1-based)."
+        },
+        {
+          "name": "preset",
+          "label": "Preset name",
+          "type": "string",
+          "default": "Home",
+          "pattern": "^.{1,31}$"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/com/ptz.cgi",
+        "query": {
+          "gotoserverpresetname": "{{preset}}",
+          "camera": "{{camera}}"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    },
+    {
+      "id": "ptz.home",
+      "version": 1,
+      "name": "Go to home position",
+      "category": "PTZ",
+      "description": "Moves to the home position.",
+      "docs": "https://developer.axis.com/vapix/network-video/pantiltzoom-api/",
+      "requires": [
+        {
+          "api": "ptz-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "camera",
+          "label": "Camera",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 8,
+          "description": "VAPIX camera number (1-based)."
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/com/ptz.cgi",
+        "query": {
+          "move": "home",
+          "camera": "{{camera}}"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    },
+    {
+      "id": "ptz.move.absolute",
+      "version": 1,
+      "name": "Move to position",
+      "category": "PTZ",
+      "description": "Absolute pan, tilt and zoom.",
+      "docs": "https://developer.axis.com/vapix/network-video/pantiltzoom-api/",
+      "requires": [
+        {
+          "api": "ptz-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "camera",
+          "label": "Camera",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 8,
+          "description": "VAPIX camera number (1-based)."
+        },
+        {
+          "name": "pan",
+          "label": "Pan",
+          "type": "number",
+          "default": 0,
+          "min": -180,
+          "max": 180,
+          "unit": "°"
+        },
+        {
+          "name": "tilt",
+          "label": "Tilt",
+          "type": "number",
+          "default": 0,
+          "min": -180,
+          "max": 180,
+          "unit": "°"
+        },
+        {
+          "name": "zoom",
+          "label": "Zoom",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 19999
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/com/ptz.cgi",
+        "query": {
+          "pan": "{{pan}}",
+          "tilt": "{{tilt}}",
+          "zoom": "{{zoom}}",
+          "camera": "{{camera}}"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    },
+    {
+      "id": "ptz.preset.save",
+      "version": 1,
+      "name": "Save current position as preset",
+      "category": "PTZ",
+      "description": "Stores the current position under a name.",
+      "docs": "https://developer.axis.com/vapix/network-video/pantiltzoom-api/",
+      "requires": [
+        {
+          "api": "ptz-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "camera",
+          "label": "Camera",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 8,
+          "description": "VAPIX camera number (1-based)."
+        },
+        {
+          "name": "preset",
+          "label": "Preset name",
+          "type": "string",
+          "default": "",
+          "pattern": "^.{1,31}$"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/com/ptzconfig.cgi",
+        "query": {
+          "setserverpresetname": "{{preset}}",
+          "camera": "{{camera}}"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    },
+    {
+      "id": "ptz.preset.remove",
+      "version": 1,
+      "name": "Remove preset",
+      "category": "PTZ",
+      "description": "Deletes a preset by name.",
+      "docs": "https://developer.axis.com/vapix/network-video/pantiltzoom-api/",
+      "requires": [
+        {
+          "api": "ptz-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "camera",
+          "label": "Camera",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 8,
+          "description": "VAPIX camera number (1-based)."
+        },
+        {
+          "name": "preset",
+          "label": "Preset name",
+          "type": "string",
+          "default": "",
+          "pattern": "^.{1,31}$"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/com/ptzconfig.cgi",
+        "query": {
+          "removeserverpresetname": "{{preset}}",
+          "camera": "{{camera}}"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    },
+    {
+      "id": "ptz.home.set",
+      "version": 1,
+      "name": "Set current position as home",
+      "category": "PTZ",
+      "description": "Makes the current position the home position.",
+      "docs": "https://developer.axis.com/vapix/network-video/pantiltzoom-api/",
+      "requires": [
+        {
+          "api": "ptz-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "camera",
+          "label": "Camera",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 8,
+          "description": "VAPIX camera number (1-based)."
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/com/ptzconfig.cgi",
+        "query": {
+          "home": "yes",
+          "camera": "{{camera}}"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    },
+    {
+      "id": "ptz.digital.set",
+      "version": 1,
+      "name": "Enable digital PTZ",
+      "category": "PTZ",
+      "description": "Turns digital PTZ on or off for an image source.",
+      "docs": "https://developer.axis.com/vapix/network-video/pantiltzoom-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        },
+        {
+          "name": "enabled",
+          "label": "Digital PTZ",
+          "type": "boolean",
+          "default": true,
+          "trueValue": "true",
+          "falseValue": "false"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "PTZ.ImageSource.I{{source}}.PTZEnabled": "{{enabled}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    }
+  ]
+}

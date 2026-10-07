@@ -1,0 +1,14 @@
+root.Storage.S0.AutoRepair=yes
+root.Storage.S0.CleanupLevel=90
+root.Storage.S0.CleanupMaxAge=7
+root.Storage.S0.CleanupPolicyActive=fifo
+root.Storage.S0.DeviceNode=/dev/sd_disk2
+root.Storage.S0.DiskID=SD_DISK
+root.Storage.S0.Enabled=yes
+root.Storage.S0.ExtraMountOptions=
+root.Storage.S0.FileSystem=ext4
+root.Storage.S0.FriendlyName=
+root.Storage.S0.Locked=no
+root.Storage.S0.MountOnBoot=yes
+root.Storage.S0.MountPointPermissions=0770
+root.Storage.S0.RequiredFileSystem=none

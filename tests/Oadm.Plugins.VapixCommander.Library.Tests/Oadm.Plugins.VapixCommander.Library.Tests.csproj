@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Validates the battery-included VAPIX Commander command library (plugins/Oadm.Plugins.VapixCommander/Library)
+    against docs/vapix-commander/command.schema.json and the format rules in command-format.md.
+    Deliberately has no reference to the commander plugin projects: the library is pure data.
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- test method names use underscores -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1861</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <!-- 8.0.5 is the last MIT-licensed JsonSchema.Net; 9.x switched to the OSMF EULA. -->
+    <PackageReference Include="JsonSchema.Net" Version="8.0.5" />
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\plugins\Oadm.Plugins.VapixCommander\Library\*.json" Link="Library\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\docs\vapix-commander\command.schema.json" Link="Schema\command.schema.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,500 @@
+{
+  "formatVersion": 1,
+  "category": "Events",
+  "commands": [
+    {
+      "id": "events.mqtt.client.get",
+      "version": 1,
+      "name": "Get MQTT client status",
+      "category": "Events",
+      "description": "MQTT broker settings and connection state.",
+      "docs": "https://developer.axis.com/vapix/network-video/mqtt-client-api/",
+      "requires": [
+        {
+          "api": "mqtt-client",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/mqtt/client.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getClientStatus"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "State",
+            "path": "data.status.state"
+          },
+          {
+            "label": "Connection",
+            "path": "data.status.connectionStatus"
+          },
+          {
+            "label": "Broker",
+            "path": "data.config.server.host"
+          },
+          {
+            "label": "Port",
+            "path": "data.config.server.port"
+          },
+          {
+            "label": "Protocol",
+            "path": "data.config.server.protocol"
+          },
+          {
+            "label": "Client id",
+            "path": "data.config.clientId"
+          }
+        ]
+      }
+    },
+    {
+      "id": "events.mqtt.client.configure",
+      "version": 1,
+      "name": "Configure MQTT client",
+      "category": "Events",
+      "description": "Broker address and credentials.",
+      "docs": "https://developer.axis.com/vapix/network-video/mqtt-client-api/",
+      "requires": [
+        {
+          "api": "mqtt-client",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "protocol",
+          "label": "Protocol",
+          "type": "enum",
+          "default": "tcp",
+          "options": [
+            {
+              "value": "tcp",
+              "label": "TCP"
+            },
+            {
+              "value": "ssl",
+              "label": "SSL/TLS"
+            },
+            {
+              "value": "ws",
+              "label": "WebSocket"
+            },
+            {
+              "value": "wss",
+              "label": "WebSocket secure"
+            }
+          ]
+        },
+        {
+          "name": "host",
+          "label": "Broker host",
+          "type": "string",
+          "default": "",
+          "pattern": "^\\S+$"
+        },
+        {
+          "name": "port",
+          "label": "Port",
+          "type": "integer",
+          "default": 1883,
+          "min": 1,
+          "max": 65535
+        },
+        {
+          "name": "user",
+          "label": "User name",
+          "type": "string",
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "password",
+          "label": "Password",
+          "type": "password"
+        },
+        {
+          "name": "clientId",
+          "label": "Client id",
+          "type": "string",
+          "default": "",
+          "pattern": "^\\S{1,128}$"
+        },
+        {
+          "name": "validate",
+          "label": "Validate server certificate",
+          "type": "boolean",
+          "default": true
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/mqtt/client.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "configureClient",
+          "params": {
+            "server": {
+              "protocol": "{{protocol}}",
+              "host": "{{host}}",
+              "port": "{{port}}"
+            },
+            "username": "{{user}}",
+            "password": "{{password}}",
+            "clientId": "{{clientId}}",
+            "cleanSession": true,
+            "autoReconnect": true,
+            "ssl": {
+              "validateServerCert": "{{validate}}"
+            }
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "events.mqtt.client.activate",
+      "version": 1,
+      "name": "Connect MQTT client",
+      "category": "Events",
+      "description": "Activates the MQTT client.",
+      "docs": "https://developer.axis.com/vapix/network-video/mqtt-client-api/",
+      "requires": [
+        {
+          "api": "mqtt-client",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/mqtt/client.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "activateClient"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "events.mqtt.client.deactivate",
+      "version": 1,
+      "name": "Disconnect MQTT client",
+      "category": "Events",
+      "description": "Deactivates the MQTT client.",
+      "docs": "https://developer.axis.com/vapix/network-video/mqtt-client-api/",
+      "requires": [
+        {
+          "api": "mqtt-client",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/mqtt/client.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "deactivateClient"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "events.mqtt.publication.get",
+      "version": 1,
+      "name": "Get MQTT event publication",
+      "category": "Events",
+      "description": "Which events are published to MQTT and with which topic prefix.",
+      "docs": "https://developer.axis.com/vapix/network-video/mqtt-event-bridge/",
+      "requires": [
+        {
+          "api": "event-mqtt-bridge",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/mqtt/event.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getEventPublicationConfig"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Topic prefix",
+            "path": "data.eventPublicationConfig.topicPrefix"
+          },
+          {
+            "label": "Custom prefix",
+            "path": "data.eventPublicationConfig.customTopicPrefix"
+          },
+          {
+            "label": "Filters",
+            "path": "data.eventPublicationConfig.eventFilterList"
+          }
+        ]
+      }
+    },
+    {
+      "id": "events.mqtt.publication.set",
+      "version": 1,
+      "name": "Publish events to MQTT",
+      "category": "Events",
+      "description": "Publishes events matching one topic filter (e.g. onvif:Device/axis:IO/Port or # for all).",
+      "docs": "https://developer.axis.com/vapix/network-video/mqtt-event-bridge/",
+      "requires": [
+        {
+          "api": "event-mqtt-bridge",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "filter",
+          "label": "Topic filter",
+          "type": "string",
+          "default": "#"
+        },
+        {
+          "name": "qos",
+          "label": "QoS",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 2,
+          "description": "0 = at most once, 1 = at least once, 2 = exactly once"
+        },
+        {
+          "name": "retain",
+          "label": "Retain",
+          "type": "enum",
+          "default": "none",
+          "options": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "property",
+              "label": "Property events"
+            },
+            {
+              "value": "all",
+              "label": "All"
+            }
+          ]
+        },
+        {
+          "name": "serial",
+          "label": "Include serial number",
+          "type": "boolean",
+          "default": true
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/mqtt/event.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "configureEventPublication",
+          "params": {
+            "topicPrefix": "default",
+            "customTopicPrefix": "",
+            "appendEventTopic": true,
+            "includeTopicNamespaces": true,
+            "includeSerialNumberInPayload": "{{serial}}",
+            "eventFilterList": [
+              {
+                "topicFilter": "{{filter}}",
+                "qos": "{{qos}}",
+                "retain": "{{retain}}"
+              }
+            ]
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "events.tampering.get",
+      "version": 1,
+      "name": "Get tampering detection",
+      "category": "Events",
+      "description": "Tampering event sensitivity and dark detection.",
+      "docs": "https://developer.axis.com/vapix/network-video/parameter-management/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "list",
+          "group": "Tampering"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "Min duration (s)",
+            "param": "Tampering.T0.MinDuration"
+          },
+          {
+            "label": "Sensitivity",
+            "param": "Tampering.T0.Sensitivity"
+          },
+          {
+            "label": "Dark detection",
+            "param": "Tampering.T0.DarkDetectionEnabled"
+          }
+        ]
+      }
+    },
+    {
+      "id": "events.tampering.set",
+      "version": 1,
+      "name": "Set tampering detection",
+      "category": "Events",
+      "description": "How long the view must be blocked and whether dark images trigger tampering.",
+      "docs": "https://developer.axis.com/vapix/network-video/parameter-management/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "duration",
+          "label": "Minimum duration",
+          "type": "integer",
+          "default": 20,
+          "min": 10,
+          "max": 3600,
+          "unit": "s"
+        },
+        {
+          "name": "dark",
+          "label": "Alarm for dark images",
+          "type": "boolean",
+          "default": true
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "Tampering.T0.MinDuration": "{{duration}}",
+          "Tampering.T0.DarkDetectionEnabled": "{{dark}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "events.actionrules.list",
+      "version": 1,
+      "name": "List action rules",
+      "category": "Events",
+      "description": "All event action rules (SOAP action service).",
+      "docs": "https://developer.axis.com/vapix/network-video/event-and-action-services/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/vapix/services",
+        "bodyType": "xml",
+        "body": "<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:m=\"http://www.axis.com/vapix/ws/action1\"><soap:Body><m:GetActionRules/></soap:Body></soap:Envelope>",
+        "headers": {
+          "Content-Type": "application/soap+xml; charset=utf-8"
+        },
+        "query": {},
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "xml"
+      }
+    }
+  ]
+}

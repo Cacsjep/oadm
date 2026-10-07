@@ -1,0 +1,368 @@
+{
+  "formatVersion": 1,
+  "category": "Time",
+  "commands": [
+    {
+      "id": "time.get",
+      "version": 1,
+      "name": "Get date and time",
+      "category": "Time",
+      "description": "Device UTC and local time, time zone and DST.",
+      "docs": "https://developer.axis.com/vapix/network-video/time-api/",
+      "requires": [
+        {
+          "api": "time-service",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/time.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getDateTimeInfo"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "UTC time",
+            "path": "data.dateTime"
+          },
+          {
+            "label": "Local time",
+            "path": "data.localDateTime"
+          },
+          {
+            "label": "POSIX time zone",
+            "path": "data.posixTimeZone"
+          },
+          {
+            "label": "DST",
+            "path": "data.dstEnabled"
+          }
+        ]
+      }
+    },
+    {
+      "id": "time.timezone.set",
+      "version": 1,
+      "name": "Set time zone",
+      "category": "Time",
+      "description": "IANA time zone, e.g. Europe/Vienna or America/New_York (DST is handled automatically).",
+      "docs": "https://developer.axis.com/vapix/network-video/time-api/",
+      "requires": [
+        {
+          "api": "time-service",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "timeZone",
+          "label": "Time zone (IANA)",
+          "type": "string",
+          "default": "Europe/Vienna",
+          "pattern": "^[A-Za-z_]+(/[A-Za-z0-9_+-]+){0,2}$"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/time.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setTimeZone",
+          "params": {
+            "timeZone": "{{timeZone}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "time.posixtimezone.set",
+      "version": 1,
+      "name": "Set POSIX time zone",
+      "category": "Time",
+      "description": "POSIX TZ string for sites that need a custom zone.",
+      "docs": "https://developer.axis.com/vapix/network-video/time-api/",
+      "requires": [
+        {
+          "api": "time-service",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "tz",
+          "label": "POSIX time zone",
+          "type": "string",
+          "default": "CET-1CEST,M3.5.0,M10.5.0/3"
+        },
+        {
+          "name": "dst",
+          "label": "Use DST",
+          "type": "boolean",
+          "default": true
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/time.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setPosixTimeZone",
+          "params": {
+            "posixTimeZone": "{{tz}}",
+            "enableDst": "{{dst}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "time.datetime.set",
+      "version": 1,
+      "name": "Set date and time (UTC)",
+      "category": "Time",
+      "description": "Sets the clock manually. NTP overrides it at the next sync when NTP is enabled.",
+      "docs": "https://developer.axis.com/vapix/network-video/time-api/",
+      "requires": [
+        {
+          "api": "time-service",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "dateTime",
+          "label": "UTC date and time",
+          "type": "string",
+          "default": "2026-01-01T00:00:00Z",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/time.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setDateTime",
+          "params": {
+            "dateTime": "{{dateTime}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "time.ntp.get",
+      "version": 1,
+      "name": "Get NTP status",
+      "category": "Time",
+      "description": "NTP client state, servers, sync state and offset.",
+      "docs": "https://developer.axis.com/vapix/network-video/ntp-api/",
+      "requires": [
+        {
+          "api": "ntp",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/ntp.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getNTPInfo",
+          "params": {}
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Enabled",
+            "path": "data.client.enabled"
+          },
+          {
+            "label": "Server source",
+            "path": "data.client.serversSource"
+          },
+          {
+            "label": "Static servers",
+            "path": "data.client.staticServers"
+          },
+          {
+            "label": "Synced",
+            "path": "data.client.synced"
+          },
+          {
+            "label": "Offset (s)",
+            "path": "data.client.timeOffset"
+          }
+        ]
+      }
+    },
+    {
+      "id": "time.ntp.static.set",
+      "version": 1,
+      "name": "Set NTP server",
+      "category": "Time",
+      "description": "Uses one static NTP server.",
+      "docs": "https://developer.axis.com/vapix/network-video/ntp-api/",
+      "requires": [
+        {
+          "api": "ntp",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "server",
+          "label": "NTP server",
+          "type": "string",
+          "default": "pool.ntp.org",
+          "pattern": "^\\S+$"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/ntp.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setNTPClientConfiguration",
+          "params": {
+            "enabled": true,
+            "NTSEnabled": false,
+            "serversSource": "static",
+            "staticServers": [
+              "{{server}}"
+            ]
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "time.ntp.dhcp.set",
+      "version": 1,
+      "name": "Use NTP servers from DHCP",
+      "category": "Time",
+      "description": "Takes the NTP servers from DHCP option 42.",
+      "docs": "https://developer.axis.com/vapix/network-video/ntp-api/",
+      "requires": [
+        {
+          "api": "ntp",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/ntp.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setNTPClientConfiguration",
+          "params": {
+            "enabled": true,
+            "NTSEnabled": false,
+            "serversSource": "DHCP"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "time.ntp.disable",
+      "version": 1,
+      "name": "Disable NTP",
+      "category": "Time",
+      "description": "Turns the NTP client off.",
+      "docs": "https://developer.axis.com/vapix/network-video/ntp-api/",
+      "requires": [
+        {
+          "api": "ntp",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/ntp.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setNTPClientConfiguration",
+          "params": {
+            "enabled": false,
+            "NTSEnabled": false,
+            "serversSource": "DHCP"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    }
+  ]
+}

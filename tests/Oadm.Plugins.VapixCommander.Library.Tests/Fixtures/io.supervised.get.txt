@@ -1,0 +1,1 @@
+{"apiVersion": "2.0", "context": "oadm", "method": "getSupervised", "data": {"items": [{"port": 0, "supervised": false, "supervisable": true, "state": "short", "level": 0}]}}

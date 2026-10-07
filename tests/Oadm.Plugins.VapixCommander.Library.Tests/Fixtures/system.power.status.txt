@@ -1,0 +1,1 @@
+{"apiVersion": "1.7", "context": "oadm", "method": "getPowerStatus", "data": {"usage": {"currentPower": 2.9315238290804375, "averagePower": 2.773698740715889, "maxPower": 3.7267806491373876}, "psePoeClass": -1, "lldpPoeClass": -1, "powerRequested": -1.0, "powerState": -1}}

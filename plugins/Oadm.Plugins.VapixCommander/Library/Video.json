@@ -1,0 +1,1508 @@
+{
+  "formatVersion": 1,
+  "category": "Video",
+  "commands": [
+    {
+      "id": "video.streamprofiles.list",
+      "version": 1,
+      "name": "List stream profiles",
+      "category": "Video",
+      "description": "All stream profiles with their parameters.",
+      "docs": "https://developer.axis.com/vapix/network-video/stream-profiles/",
+      "requires": [
+        {
+          "api": "stream-profiles",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/streamprofile.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "list",
+          "params": {
+            "streamProfileName": []
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Profiles",
+            "path": "data.streamProfile"
+          }
+        ]
+      }
+    },
+    {
+      "id": "video.streamprofile.create",
+      "version": 1,
+      "name": "Create stream profile",
+      "category": "Video",
+      "description": "Adds a stream profile, e.g. parameters videocodec=h264&resolution=1920x1080&fps=25.",
+      "docs": "https://developer.axis.com/vapix/network-video/stream-profiles/",
+      "requires": [
+        {
+          "api": "stream-profiles",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "name",
+          "label": "Name",
+          "type": "string",
+          "default": "",
+          "pattern": "^.{1,64}$"
+        },
+        {
+          "name": "description",
+          "label": "Description",
+          "type": "string",
+          "default": "",
+          "required": false
+        },
+        {
+          "name": "parameters",
+          "label": "Stream parameters",
+          "type": "string",
+          "default": "videocodec=h264&resolution=1920x1080&fps=25"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/streamprofile.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "create",
+          "params": {
+            "streamProfile": [
+              {
+                "name": "{{name}}",
+                "description": "{{description}}",
+                "parameters": "{{parameters}}"
+              }
+            ]
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "video.streamprofile.remove",
+      "version": 1,
+      "name": "Remove stream profile",
+      "category": "Video",
+      "description": "Deletes a stream profile by name.",
+      "docs": "https://developer.axis.com/vapix/network-video/stream-profiles/",
+      "requires": [
+        {
+          "api": "stream-profiles",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "name",
+          "label": "Name",
+          "type": "string",
+          "default": "",
+          "pattern": "^.{1,64}$"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/streamprofile.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "remove",
+          "params": {
+            "streamProfileName": [
+              {
+                "name": "{{name}}"
+              }
+            ]
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "video.stream.get",
+      "version": 1,
+      "name": "Get video stream settings",
+      "category": "Video",
+      "description": "Resolution, compression, frame rate, rotation, rate control and Zipstream of one channel.",
+      "docs": "https://developer.axis.com/vapix/network-video/parameter-management/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "channel",
+          "label": "Video channel",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "Image.I# index, 0 = first view area / channel."
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "list",
+          "group": "Image.I{{channel}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "Resolution",
+            "param": "Image.I{{channel}}.Appearance.Resolution"
+          },
+          {
+            "label": "Compression",
+            "param": "Image.I{{channel}}.Appearance.Compression"
+          },
+          {
+            "label": "FPS",
+            "param": "Image.I{{channel}}.Stream.FPS"
+          },
+          {
+            "label": "Rotation",
+            "param": "Image.I{{channel}}.Appearance.Rotation"
+          },
+          {
+            "label": "Bitrate mode",
+            "param": "Image.I{{channel}}.RateControl.Mode"
+          },
+          {
+            "label": "Zipstream strength",
+            "param": "Image.I{{channel}}.MPEG.ZStrength"
+          },
+          {
+            "label": "GOP length (P count)",
+            "param": "Image.I{{channel}}.MPEG.PCount"
+          }
+        ]
+      }
+    },
+    {
+      "id": "video.resolution.set",
+      "version": 1,
+      "name": "Set default resolution",
+      "category": "Video",
+      "description": "Default resolution of a video channel.",
+      "docs": "https://developer.axis.com/vapix/network-video/parameter-management/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "channel",
+          "label": "Video channel",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "Image.I# index, 0 = first view area / channel."
+        },
+        {
+          "name": "resolution",
+          "label": "Resolution",
+          "type": "string",
+          "default": "1920x1080",
+          "pattern": "^[0-9]+x[0-9]+$"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "Image.I{{channel}}.Appearance.Resolution": "{{resolution}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "video.compression.set",
+      "version": 1,
+      "name": "Set default compression",
+      "category": "Video",
+      "description": "Default compression (0 = best quality).",
+      "docs": "https://developer.axis.com/vapix/network-video/parameter-management/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "channel",
+          "label": "Video channel",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "Image.I# index, 0 = first view area / channel."
+        },
+        {
+          "name": "compression",
+          "label": "Compression",
+          "type": "integer",
+          "default": 30,
+          "min": 0,
+          "max": 100
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "Image.I{{channel}}.Appearance.Compression": "{{compression}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "video.fps.set",
+      "version": 1,
+      "name": "Set default frame rate",
+      "category": "Video",
+      "description": "Maximum frame rate (0 = unlimited).",
+      "docs": "https://developer.axis.com/vapix/network-video/parameter-management/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "channel",
+          "label": "Video channel",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "Image.I# index, 0 = first view area / channel."
+        },
+        {
+          "name": "fps",
+          "label": "Frame rate",
+          "type": "integer",
+          "default": 25,
+          "min": 0,
+          "max": 60,
+          "unit": "fps"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "Image.I{{channel}}.Stream.FPS": "{{fps}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "video.gop.set",
+      "version": 1,
+      "name": "Set GOP length",
+      "category": "Video",
+      "description": "Distance between I-frames (GOP length = P count + 1).",
+      "docs": "https://developer.axis.com/vapix/network-video/parameter-management/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "channel",
+          "label": "Video channel",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "Image.I# index, 0 = first view area / channel."
+        },
+        {
+          "name": "pcount",
+          "label": "P-frames between I-frames",
+          "type": "integer",
+          "default": 61,
+          "min": 0,
+          "max": 1022
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "Image.I{{channel}}.MPEG.PCount": "{{pcount}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "video.rotation.set",
+      "version": 1,
+      "name": "Set image rotation",
+      "category": "Video",
+      "description": "Rotates the image of a sensor (streams restart).",
+      "docs": "https://developer.axis.com/vapix/network-video/image-source-rotation/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        },
+        {
+          "name": "rotation",
+          "label": "Rotation",
+          "type": "enum",
+          "default": "0",
+          "options": [
+            {
+              "value": "0",
+              "label": "0°"
+            },
+            {
+              "value": "90",
+              "label": "90°"
+            },
+            {
+              "value": "180",
+              "label": "180°"
+            },
+            {
+              "value": "270",
+              "label": "270°"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "ImageSource.I{{source}}.Rotation": "{{rotation}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "video.bitrate.vbr.set",
+      "version": 1,
+      "name": "Set bitrate mode VBR",
+      "category": "Video",
+      "description": "Variable bitrate (no bitrate limit).",
+      "docs": "https://developer.axis.com/vapix/network-video/rate-control/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "channel",
+          "label": "Video channel",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "Image.I# index, 0 = first view area / channel."
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "Image.I{{channel}}.RateControl.Mode": "vbr"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "video.bitrate.mbr.set",
+      "version": 1,
+      "name": "Set bitrate mode MBR",
+      "category": "Video",
+      "description": "Maximum bitrate with priority.",
+      "docs": "https://developer.axis.com/vapix/network-video/rate-control/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "channel",
+          "label": "Video channel",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "Image.I# index, 0 = first view area / channel."
+        },
+        {
+          "name": "max",
+          "label": "Maximum bitrate",
+          "type": "integer",
+          "default": 4000,
+          "min": 0,
+          "max": 100000,
+          "unit": "kbit/s"
+        },
+        {
+          "name": "priority",
+          "label": "Priority",
+          "type": "enum",
+          "default": "framerate",
+          "options": [
+            {
+              "value": "framerate",
+              "label": "Frame rate"
+            },
+            {
+              "value": "quality",
+              "label": "Quality"
+            },
+            {
+              "value": "fullframerate",
+              "label": "Full frame rate"
+            },
+            {
+              "value": "none",
+              "label": "None"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "Image.I{{channel}}.RateControl.Mode": "mbr",
+          "Image.I{{channel}}.RateControl.MaxBitrate": "{{max}}",
+          "Image.I{{channel}}.RateControl.Priority": "{{priority}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "video.bitrate.abr.set",
+      "version": 1,
+      "name": "Set bitrate mode ABR",
+      "category": "Video",
+      "description": "Average bitrate over a retention time.",
+      "docs": "https://developer.axis.com/vapix/network-video/rate-control/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "channel",
+          "label": "Video channel",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "Image.I# index, 0 = first view area / channel."
+        },
+        {
+          "name": "target",
+          "label": "Target bitrate",
+          "type": "integer",
+          "default": 1000,
+          "min": 0,
+          "max": 100000,
+          "unit": "kbit/s"
+        },
+        {
+          "name": "max",
+          "label": "Maximum bitrate",
+          "type": "integer",
+          "default": 4000,
+          "min": 0,
+          "max": 100000,
+          "unit": "kbit/s"
+        },
+        {
+          "name": "days",
+          "label": "Retention time",
+          "type": "integer",
+          "default": 7,
+          "min": 1,
+          "max": 3652,
+          "unit": "days"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "Image.I{{channel}}.RateControl.Mode": "abr",
+          "Image.I{{channel}}.RateControl.ABR.TargetBitrate": "{{target}}",
+          "Image.I{{channel}}.RateControl.ABR.MaxBitrate": "{{max}}",
+          "Image.I{{channel}}.RateControl.ABR.RetentionTime": "{{days}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "video.zipstream.get",
+      "version": 1,
+      "name": "Get Zipstream status",
+      "category": "Video",
+      "description": "Zipstream strength, GOP and FPS mode of a camera.",
+      "docs": "https://developer.axis.com/vapix/network-video/zipstream-technology/",
+      "requires": [
+        {
+          "api": "zipstream",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "camera",
+          "label": "Camera",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 8,
+          "description": "VAPIX camera number (1-based)."
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/zipstream/getstatus.cgi",
+        "query": {
+          "schemaversion": "1",
+          "camera": "{{camera}}"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "xml"
+      }
+    },
+    {
+      "id": "video.zipstream.strength.set",
+      "version": 1,
+      "name": "Set Zipstream strength",
+      "category": "Video",
+      "description": "Bitrate reduction strength.",
+      "docs": "https://developer.axis.com/vapix/network-video/zipstream-technology/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "channel",
+          "label": "Video channel",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "Image.I# index, 0 = first view area / channel."
+        },
+        {
+          "name": "strength",
+          "label": "Strength",
+          "type": "enum",
+          "default": "10",
+          "options": [
+            {
+              "value": "off",
+              "label": "Off"
+            },
+            {
+              "value": "10",
+              "label": "Low (10)"
+            },
+            {
+              "value": "20",
+              "label": "Medium (20)"
+            },
+            {
+              "value": "30",
+              "label": "High (30)"
+            },
+            {
+              "value": "40",
+              "label": "Higher (40)"
+            },
+            {
+              "value": "50",
+              "label": "Extreme (50)"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "Image.I{{channel}}.MPEG.ZStrength": "{{strength}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "video.zipstream.gop.set",
+      "version": 1,
+      "name": "Set Zipstream dynamic GOP",
+      "category": "Video",
+      "description": "Fixed or dynamic GOP with maximum length.",
+      "docs": "https://developer.axis.com/vapix/network-video/zipstream-technology/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "channel",
+          "label": "Video channel",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "Image.I# index, 0 = first view area / channel."
+        },
+        {
+          "name": "mode",
+          "label": "GOP mode",
+          "type": "enum",
+          "default": "fixed",
+          "options": [
+            {
+              "value": "fixed",
+              "label": "Fixed"
+            },
+            {
+              "value": "dynamic",
+              "label": "Dynamic"
+            }
+          ]
+        },
+        {
+          "name": "max",
+          "label": "Max GOP length",
+          "type": "integer",
+          "default": 300,
+          "min": 1,
+          "max": 1023,
+          "unit": "frames"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "Image.I{{channel}}.MPEG.ZGopMode": "{{mode}}",
+          "Image.I{{channel}}.MPEG.ZMaxGopLength": "{{max}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "video.signed.set",
+      "version": 1,
+      "name": "Set signed video",
+      "category": "Video",
+      "description": "Adds a cryptographic signature to the video stream.",
+      "docs": "https://developer.axis.com/vapix/network-video/signed-video/",
+      "requires": [
+        {
+          "api": "signed-video",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "channel",
+          "label": "Video channel",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "Image.I# index, 0 = first view area / channel."
+        },
+        {
+          "name": "enabled",
+          "label": "Signed video",
+          "type": "boolean",
+          "default": true
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "Image.I{{channel}}.MPEG.SignedVideo.Enabled": "{{enabled}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "video.capturemode.get",
+      "version": 1,
+      "name": "Get capture modes",
+      "category": "Video",
+      "description": "Available sensor capture modes and the active one.",
+      "docs": "https://developer.axis.com/vapix/network-video/capture-mode/",
+      "requires": [
+        {
+          "api": "capture-mode",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/capturemode.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getCaptureModes"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Capture modes",
+            "path": "data.0.captureMode"
+          }
+        ]
+      }
+    },
+    {
+      "id": "video.capturemode.set",
+      "version": 1,
+      "name": "Set capture mode",
+      "category": "Video",
+      "description": "Selects a sensor capture mode. The device restarts and some settings are reset.",
+      "docs": "https://developer.axis.com/vapix/network-video/capture-mode/",
+      "requires": [
+        {
+          "api": "capture-mode",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "channel",
+          "label": "Channel",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7
+        },
+        {
+          "name": "mode",
+          "label": "Capture mode id",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 31
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/capturemode.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setCaptureMode",
+          "channel": "{{channel}}",
+          "captureModeId": "{{mode}}"
+        },
+        "timeoutSeconds": 60,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "video.powerlinefrequency.set",
+      "version": 1,
+      "name": "Set power line frequency",
+      "category": "Video",
+      "description": "Capture frequency 50 Hz or 60 Hz to avoid flicker.",
+      "docs": "https://developer.axis.com/vapix/network-video/imaging-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        },
+        {
+          "name": "frequency",
+          "label": "Frequency",
+          "type": "enum",
+          "default": "50Hz",
+          "options": [
+            {
+              "value": "50Hz",
+              "label": "50 Hz"
+            },
+            {
+              "value": "60Hz",
+              "label": "60 Hz"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "ImageSource.I{{source}}.CaptureFrequency": "{{frequency}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "video.streams.status",
+      "version": 1,
+      "name": "Get active streams",
+      "category": "Video",
+      "description": "All active RTSP streams with client address.",
+      "docs": "https://developer.axis.com/vapix/network-video/stream-status-api/",
+      "requires": [
+        {
+          "api": "streamstatus",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/streamstatus.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getAllStreams"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Streams",
+            "path": "data.streams"
+          }
+        ]
+      }
+    },
+    {
+      "id": "video.overlays.list",
+      "version": 1,
+      "name": "List overlays",
+      "category": "Video",
+      "description": "Text and image overlays of all cameras.",
+      "docs": "https://developer.axis.com/vapix/network-video/overlay-api/",
+      "requires": [
+        {
+          "api": "dynamicoverlay",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/dynamicoverlay/dynamicoverlay.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "list",
+          "params": {}
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Text overlays",
+            "path": "data.textOverlays"
+          },
+          {
+            "label": "Image overlays",
+            "path": "data.imageOverlays"
+          }
+        ]
+      }
+    },
+    {
+      "id": "video.overlay.text.add",
+      "version": 1,
+      "name": "Add text overlay",
+      "category": "Video",
+      "description": "Adds a text overlay. Modifiers: %F date, %T time, #n host name, #i IP address.",
+      "docs": "https://developer.axis.com/vapix/network-video/overlay-api/",
+      "requires": [
+        {
+          "api": "dynamicoverlay",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "camera",
+          "label": "Camera",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 8,
+          "description": "VAPIX camera number (1-based)."
+        },
+        {
+          "name": "text",
+          "label": "Text",
+          "type": "string",
+          "default": "%F %T #n",
+          "pattern": "^.{1,512}$"
+        },
+        {
+          "name": "position",
+          "label": "Position",
+          "type": "enum",
+          "default": "topLeft",
+          "options": [
+            {
+              "value": "topLeft",
+              "label": "Top left"
+            },
+            {
+              "value": "top",
+              "label": "Top"
+            },
+            {
+              "value": "topRight",
+              "label": "Top right"
+            },
+            {
+              "value": "bottomLeft",
+              "label": "Bottom left"
+            },
+            {
+              "value": "bottom",
+              "label": "Bottom"
+            },
+            {
+              "value": "bottomRight",
+              "label": "Bottom right"
+            }
+          ]
+        },
+        {
+          "name": "fontSize",
+          "label": "Font size",
+          "type": "integer",
+          "default": 32,
+          "min": 16,
+          "max": 200,
+          "unit": "px"
+        },
+        {
+          "name": "color",
+          "label": "Text color",
+          "type": "enum",
+          "default": "white",
+          "options": [
+            {
+              "value": "white",
+              "label": "White"
+            },
+            {
+              "value": "black",
+              "label": "Black"
+            },
+            {
+              "value": "red",
+              "label": "Red"
+            },
+            {
+              "value": "transparent",
+              "label": "Transparent"
+            },
+            {
+              "value": "semiTransparent",
+              "label": "Semi-transparent"
+            }
+          ]
+        },
+        {
+          "name": "background",
+          "label": "Background",
+          "type": "enum",
+          "default": "transparent",
+          "options": [
+            {
+              "value": "white",
+              "label": "White"
+            },
+            {
+              "value": "black",
+              "label": "Black"
+            },
+            {
+              "value": "red",
+              "label": "Red"
+            },
+            {
+              "value": "transparent",
+              "label": "Transparent"
+            },
+            {
+              "value": "semiTransparent",
+              "label": "Semi-transparent"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/dynamicoverlay/dynamicoverlay.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "addText",
+          "params": {
+            "camera": "{{camera}}",
+            "text": "{{text}}",
+            "position": "{{position}}",
+            "fontSize": "{{fontSize}}",
+            "textColor": "{{color}}",
+            "textBGColor": "{{background}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "video.overlay.text.set",
+      "version": 1,
+      "name": "Change text overlay text",
+      "category": "Video",
+      "description": "Changes the text of an existing text overlay.",
+      "docs": "https://developer.axis.com/vapix/network-video/overlay-api/",
+      "requires": [
+        {
+          "api": "dynamicoverlay",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "identity",
+          "label": "Overlay identity",
+          "type": "integer",
+          "default": 1,
+          "min": 0,
+          "max": 1000,
+          "description": "From \"List overlays\"."
+        },
+        {
+          "name": "text",
+          "label": "Text",
+          "type": "string",
+          "default": "%F %T",
+          "pattern": "^.{0,512}$"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/dynamicoverlay/dynamicoverlay.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setText",
+          "params": {
+            "identity": "{{identity}}",
+            "text": "{{text}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "video.overlay.remove",
+      "version": 1,
+      "name": "Remove overlay",
+      "category": "Video",
+      "description": "Removes a text or image overlay.",
+      "docs": "https://developer.axis.com/vapix/network-video/overlay-api/",
+      "requires": [
+        {
+          "api": "dynamicoverlay",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "identity",
+          "label": "Overlay identity",
+          "type": "integer",
+          "default": 1,
+          "min": 0,
+          "max": 1000,
+          "description": "From \"List overlays\"."
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/dynamicoverlay/dynamicoverlay.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "remove",
+          "params": {
+            "identity": "{{identity}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "video.streamingindicator.get",
+      "version": 1,
+      "name": "Get video streaming indicator",
+      "category": "Video",
+      "description": "Settings of the overlay indicator shown while video is streamed.",
+      "docs": "https://developer.axis.com/vapix/network-video/video-streaming-indicator/",
+      "requires": [
+        {
+          "api": "video-streaming-indicator",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/videostreamingindicator.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "get"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Position",
+            "path": "data.position"
+          },
+          {
+            "label": "Size",
+            "path": "data.indicatorSize"
+          },
+          {
+            "label": "Color",
+            "path": "data.color"
+          },
+          {
+            "label": "Active",
+            "path": "data.isActive"
+          }
+        ]
+      }
+    },
+    {
+      "id": "video.privacymasks.list",
+      "version": 1,
+      "name": "List privacy masks",
+      "category": "Video",
+      "description": "All privacy masks with position (pixels).",
+      "docs": "https://developer.axis.com/vapix/network-video/overlay-api/",
+      "requires": [
+        {
+          "api": "privacy-mask",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/privacymask.cgi",
+        "query": {
+          "query": "listpxjson"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Masks",
+            "path": "listpx"
+          }
+        ]
+      }
+    }
+  ]
+}

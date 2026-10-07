@@ -1,0 +1,1426 @@
+{
+  "formatVersion": 1,
+  "category": "Image",
+  "commands": [
+    {
+      "id": "image.settings.get",
+      "version": 1,
+      "name": "Get image settings",
+      "category": "Image",
+      "description": "Brightness, contrast, saturation, sharpness, WDR, white balance and exposure of a sensor.",
+      "docs": "https://developer.axis.com/vapix/network-video/imaging-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "list",
+          "group": "ImageSource.I{{source}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "Brightness",
+            "param": "ImageSource.I{{source}}.Sensor.Brightness"
+          },
+          {
+            "label": "Contrast",
+            "param": "ImageSource.I{{source}}.Sensor.Contrast"
+          },
+          {
+            "label": "Saturation",
+            "param": "ImageSource.I{{source}}.Sensor.ColorLevel"
+          },
+          {
+            "label": "Sharpness",
+            "param": "ImageSource.I{{source}}.Sensor.Sharpness"
+          },
+          {
+            "label": "WDR",
+            "param": "ImageSource.I{{source}}.Sensor.WDR"
+          },
+          {
+            "label": "White balance",
+            "param": "ImageSource.I{{source}}.Sensor.WhiteBalance"
+          },
+          {
+            "label": "Exposure",
+            "param": "ImageSource.I{{source}}.Sensor.Exposure"
+          },
+          {
+            "label": "Max gain",
+            "param": "ImageSource.I{{source}}.Sensor.MaxGain"
+          },
+          {
+            "label": "IR cut filter",
+            "param": "ImageSource.I{{source}}.DayNight.IrCutFilter"
+          },
+          {
+            "label": "Day/night shift level",
+            "param": "ImageSource.I{{source}}.DayNight.ShiftLevel"
+          }
+        ]
+      }
+    },
+    {
+      "id": "image.brightness.set",
+      "version": 1,
+      "name": "Set brightness",
+      "category": "Image",
+      "description": "Image brightness (default 50).",
+      "docs": "https://developer.axis.com/vapix/network-video/imaging-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        },
+        {
+          "name": "value",
+          "label": "Brightness",
+          "type": "integer",
+          "default": 50,
+          "min": 0,
+          "max": 100
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "ImageSource.I{{source}}.Sensor.Brightness": "{{value}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "image.contrast.set",
+      "version": 1,
+      "name": "Set contrast",
+      "category": "Image",
+      "description": "Image contrast (default 50).",
+      "docs": "https://developer.axis.com/vapix/network-video/imaging-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        },
+        {
+          "name": "value",
+          "label": "Contrast",
+          "type": "integer",
+          "default": 50,
+          "min": 0,
+          "max": 100
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "ImageSource.I{{source}}.Sensor.Contrast": "{{value}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "image.saturation.set",
+      "version": 1,
+      "name": "Set saturation",
+      "category": "Image",
+      "description": "Color level / saturation (default 50).",
+      "docs": "https://developer.axis.com/vapix/network-video/imaging-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        },
+        {
+          "name": "value",
+          "label": "Saturation",
+          "type": "integer",
+          "default": 50,
+          "min": 0,
+          "max": 100
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "ImageSource.I{{source}}.Sensor.ColorLevel": "{{value}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "image.sharpness.set",
+      "version": 1,
+      "name": "Set sharpness",
+      "category": "Image",
+      "description": "Image sharpness (default 50).",
+      "docs": "https://developer.axis.com/vapix/network-video/imaging-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        },
+        {
+          "name": "value",
+          "label": "Sharpness",
+          "type": "integer",
+          "default": 50,
+          "min": 0,
+          "max": 100
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "ImageSource.I{{source}}.Sensor.Sharpness": "{{value}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "image.maxgain.set",
+      "version": 1,
+      "name": "Set maximum gain",
+      "category": "Image",
+      "description": "Limits the gain to reduce noise in low light.",
+      "docs": "https://developer.axis.com/vapix/network-video/imaging-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        },
+        {
+          "name": "value",
+          "label": "Max gain",
+          "type": "integer",
+          "default": 100,
+          "min": 0,
+          "max": 100
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "ImageSource.I{{source}}.Sensor.MaxGain": "{{value}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "image.exposure.priority.set",
+      "version": 1,
+      "name": "Set exposure priority",
+      "category": "Image",
+      "description": "Blur-noise trade-off: 0 = low motion blur, 100 = low noise.",
+      "docs": "https://developer.axis.com/vapix/network-video/imaging-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        },
+        {
+          "name": "value",
+          "label": "Priority",
+          "type": "integer",
+          "default": 50,
+          "min": 0,
+          "max": 100
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "ImageSource.I{{source}}.Sensor.ExposurePriorityNormal": "{{value}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "image.wdr.set",
+      "version": 1,
+      "name": "Set WDR",
+      "category": "Image",
+      "description": "Wide dynamic range on or off.",
+      "docs": "https://developer.axis.com/vapix/network-video/imaging-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        },
+        {
+          "name": "wdr",
+          "label": "WDR",
+          "type": "enum",
+          "default": "on",
+          "options": [
+            {
+              "value": "on",
+              "label": "On"
+            },
+            {
+              "value": "off",
+              "label": "Off"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "ImageSource.I{{source}}.Sensor.WDR": "{{wdr}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "image.whitebalance.set",
+      "version": 1,
+      "name": "Set white balance",
+      "category": "Image",
+      "description": "White balance mode.",
+      "docs": "https://developer.axis.com/vapix/network-video/imaging-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        },
+        {
+          "name": "mode",
+          "label": "White balance",
+          "type": "enum",
+          "default": "auto",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatic"
+            },
+            {
+              "value": "auto_outdoor",
+              "label": "Automatic outdoor"
+            },
+            {
+              "value": "hold",
+              "label": "Hold current"
+            },
+            {
+              "value": "fixed_outdoor1",
+              "label": "Fixed outdoor 1"
+            },
+            {
+              "value": "fixed_outdoor2",
+              "label": "Fixed outdoor 2"
+            },
+            {
+              "value": "fixed_indoor",
+              "label": "Fixed indoor"
+            },
+            {
+              "value": "fixed_fluor1",
+              "label": "Fixed fluorescent 1"
+            },
+            {
+              "value": "fixed_fluor2",
+              "label": "Fixed fluorescent 2"
+            },
+            {
+              "value": "manual",
+              "label": "Manual"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "ImageSource.I{{source}}.Sensor.WhiteBalance": "{{mode}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "image.exposure.mode.set",
+      "version": 1,
+      "name": "Set exposure mode",
+      "category": "Image",
+      "description": "Automatic, hold or flicker-free exposure.",
+      "docs": "https://developer.axis.com/vapix/network-video/imaging-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        },
+        {
+          "name": "mode",
+          "label": "Exposure",
+          "type": "enum",
+          "default": "auto",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatic"
+            },
+            {
+              "value": "hold",
+              "label": "Hold current"
+            },
+            {
+              "value": "flickerfree50",
+              "label": "Flicker-free 50 Hz"
+            },
+            {
+              "value": "flickerfree60",
+              "label": "Flicker-free 60 Hz"
+            },
+            {
+              "value": "flickerreduced50",
+              "label": "Flicker-reduced 50 Hz"
+            },
+            {
+              "value": "flickerreduced60",
+              "label": "Flicker-reduced 60 Hz"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "ImageSource.I{{source}}.Sensor.Exposure": "{{mode}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "image.exposure.zone.set",
+      "version": 1,
+      "name": "Set exposure zone",
+      "category": "Image",
+      "description": "Area of the image used for exposure.",
+      "docs": "https://developer.axis.com/vapix/network-video/imaging-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        },
+        {
+          "name": "zone",
+          "label": "Exposure zone",
+          "type": "enum",
+          "default": "auto",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatic"
+            },
+            {
+              "value": "center",
+              "label": "Center"
+            },
+            {
+              "value": "spot",
+              "label": "Spot"
+            },
+            {
+              "value": "custom",
+              "label": "Custom"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "ImageSource.I{{source}}.Sensor.ExposureWindow": "{{zone}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "image.defog.set",
+      "version": 1,
+      "name": "Set defog",
+      "category": "Image",
+      "description": "Defog on or off and its effect level.",
+      "docs": "https://developer.axis.com/vapix/network-video/imaging-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        },
+        {
+          "name": "defog",
+          "label": "Defog",
+          "type": "enum",
+          "default": "off",
+          "options": [
+            {
+              "value": "off",
+              "label": "Off"
+            },
+            {
+              "value": "on",
+              "label": "On"
+            }
+          ]
+        },
+        {
+          "name": "effect",
+          "label": "Defog effect",
+          "type": "integer",
+          "default": 50,
+          "min": 0,
+          "max": 100
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "ImageSource.I{{source}}.Sensor.Defog": "{{defog}}",
+          "ImageSource.I{{source}}.Sensor.DefogEffect": "{{effect}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "image.daynight.shiftlevel.set",
+      "version": 1,
+      "name": "Set day/night shift level",
+      "category": "Image",
+      "description": "Light level at which the camera switches between day and night mode (IR cut filter on auto).",
+      "docs": "https://developer.axis.com/vapix/network-video/imaging-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        },
+        {
+          "name": "level",
+          "label": "Shift level",
+          "type": "integer",
+          "default": 50,
+          "min": 0,
+          "max": 100,
+          "unit": "%"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "ImageSource.I{{source}}.DayNight.ShiftLevel": "{{level}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "image.ircut.set",
+      "version": 1,
+      "name": "Set IR cut filter",
+      "category": "Image",
+      "description": "Day mode (on), night mode (off) or automatic.",
+      "docs": "https://developer.axis.com/vapix/network-video/imaging-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        },
+        {
+          "name": "mode",
+          "label": "IR cut filter",
+          "type": "enum",
+          "default": "auto",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatic"
+            },
+            {
+              "value": "yes",
+              "label": "On (day mode)"
+            },
+            {
+              "value": "no",
+              "label": "Off (night mode)"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "ImageSource.I{{source}}.DayNight.IrCutFilter": "{{mode}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "image.daynight.get",
+      "version": 1,
+      "name": "Get day/night configuration",
+      "category": "Image",
+      "description": "Shift level and dwell times of a channel.",
+      "docs": "https://developer.axis.com/vapix/network-video/daynight-api/",
+      "requires": [
+        {
+          "api": "daynight",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/daynight.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getConfiguration",
+          "params": {
+            "channel": "{{source}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Day to night level",
+            "path": "data.0.DayNightShiftLevel"
+          },
+          {
+            "label": "Day to night dwell (s)",
+            "path": "data.0.DayNightDwellTime"
+          },
+          {
+            "label": "Night to day dwell (s)",
+            "path": "data.0.NightDayDwellTime"
+          }
+        ]
+      }
+    },
+    {
+      "id": "image.daynight.dwell.set",
+      "version": 1,
+      "name": "Set day/night dwell times",
+      "category": "Image",
+      "description": "Seconds the light level must stay past the shift level before switching.",
+      "docs": "https://developer.axis.com/vapix/network-video/daynight-api/",
+      "requires": [
+        {
+          "api": "daynight",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "source",
+          "label": "Image source",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "ImageSource.I# index, 0 = first sensor."
+        },
+        {
+          "name": "dayToNight",
+          "label": "Day to night",
+          "type": "number",
+          "default": 5,
+          "min": 1,
+          "max": 600,
+          "unit": "s"
+        },
+        {
+          "name": "nightToDay",
+          "label": "Night to day",
+          "type": "number",
+          "default": 5,
+          "min": 1,
+          "max": 600,
+          "unit": "s"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/daynight.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setConfiguration",
+          "params": {
+            "channel": "{{source}}",
+            "DayNightDwellTime": "{{dayToNight}}",
+            "NightDayDwellTime": "{{nightToDay}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "image.optics.get",
+      "version": 1,
+      "name": "Get focus and zoom",
+      "category": "Image",
+      "description": "Focus position, zoom (magnification) and IR cut filter state.",
+      "docs": "https://developer.axis.com/vapix/network-video/optics-control/",
+      "requires": [
+        {
+          "api": "optics-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/opticscontrol.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getOptics"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Focus position",
+            "path": "data.optics.0.focusPosition"
+          },
+          {
+            "label": "Magnification",
+            "path": "data.optics.0.magnification"
+          },
+          {
+            "label": "IR cut filter",
+            "path": "data.optics.0.irCutFilterState"
+          }
+        ]
+      }
+    },
+    {
+      "id": "image.optics.autofocus",
+      "version": 1,
+      "name": "Run autofocus",
+      "category": "Image",
+      "description": "Starts autofocus on the optics.",
+      "docs": "https://developer.axis.com/vapix/network-video/optics-control/",
+      "requires": [
+        {
+          "api": "optics-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "optics",
+          "label": "Optics id",
+          "type": "string",
+          "default": "0",
+          "pattern": "^[0-9]+$"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/opticscontrol.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "performAutofocus",
+          "params": {
+            "optics": [
+              {
+                "opticsId": "{{optics}}"
+              }
+            ]
+          }
+        },
+        "timeoutSeconds": 60,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "image.optics.zoom.set",
+      "version": 1,
+      "name": "Set zoom (magnification)",
+      "category": "Image",
+      "description": "Absolute zoom, 1 = widest.",
+      "docs": "https://developer.axis.com/vapix/network-video/optics-control/",
+      "requires": [
+        {
+          "api": "optics-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "optics",
+          "label": "Optics id",
+          "type": "string",
+          "default": "0",
+          "pattern": "^[0-9]+$"
+        },
+        {
+          "name": "magnification",
+          "label": "Magnification",
+          "type": "number",
+          "default": 1,
+          "min": 1,
+          "max": 100,
+          "unit": "x"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/opticscontrol.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setMagnification",
+          "params": {
+            "optics": [
+              {
+                "opticsId": "{{optics}}",
+                "magnification": "{{magnification}}"
+              }
+            ]
+          }
+        },
+        "timeoutSeconds": 60,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "image.optics.focus.set",
+      "version": 1,
+      "name": "Set focus position",
+      "category": "Image",
+      "description": "Absolute focus position 0 (near) to 1 (far).",
+      "docs": "https://developer.axis.com/vapix/network-video/optics-control/",
+      "requires": [
+        {
+          "api": "optics-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "optics",
+          "label": "Optics id",
+          "type": "string",
+          "default": "0",
+          "pattern": "^[0-9]+$"
+        },
+        {
+          "name": "position",
+          "label": "Focus position",
+          "type": "number",
+          "default": 0.5,
+          "min": 0,
+          "max": 1
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/opticscontrol.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setFocus",
+          "params": {
+            "optics": [
+              {
+                "opticsId": "{{optics}}",
+                "position": "{{position}}"
+              }
+            ]
+          }
+        },
+        "timeoutSeconds": 60,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "image.light.capabilities",
+      "version": 1,
+      "name": "Get light (IR) capabilities",
+      "category": "Image",
+      "description": "What the IR / white light supports.",
+      "docs": "https://developer.axis.com/vapix/network-video/light-control/",
+      "requires": [
+        {
+          "api": "light-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/lightcontrol.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getServiceCapabilities"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Manual intensity",
+            "path": "data.manualIntensitySupport"
+          },
+          {
+            "label": "Automatic intensity",
+            "path": "data.automaticIntensitySupport"
+          }
+        ]
+      }
+    },
+    {
+      "id": "image.light.info",
+      "version": 1,
+      "name": "Get light (IR) information",
+      "category": "Image",
+      "description": "Lights of the device with state and type.",
+      "docs": "https://developer.axis.com/vapix/network-video/light-control/",
+      "requires": [
+        {
+          "api": "light-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/lightcontrol.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getLightInformation"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Lights",
+            "path": "data.items"
+          }
+        ]
+      }
+    },
+    {
+      "id": "image.light.enable",
+      "version": 1,
+      "name": "Enable light (IR)",
+      "category": "Image",
+      "description": "Enables the IR / white light (follows day/night).",
+      "docs": "https://developer.axis.com/vapix/network-video/light-control/",
+      "requires": [
+        {
+          "api": "light-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "light",
+          "label": "Light id",
+          "type": "string",
+          "default": "led0",
+          "pattern": "^\\S+$"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/lightcontrol.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "enableLight",
+          "params": {
+            "lightID": "{{light}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "image.light.disable",
+      "version": 1,
+      "name": "Disable light (IR)",
+      "category": "Image",
+      "description": "Disables the IR / white light.",
+      "docs": "https://developer.axis.com/vapix/network-video/light-control/",
+      "requires": [
+        {
+          "api": "light-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "light",
+          "label": "Light id",
+          "type": "string",
+          "default": "led0",
+          "pattern": "^\\S+$"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/lightcontrol.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "disableLight",
+          "params": {
+            "lightID": "{{light}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "image.light.intensity.set",
+      "version": 1,
+      "name": "Set light (IR) intensity",
+      "category": "Image",
+      "description": "Manual intensity of the IR / white light.",
+      "docs": "https://developer.axis.com/vapix/network-video/light-control/",
+      "requires": [
+        {
+          "api": "light-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "light",
+          "label": "Light id",
+          "type": "string",
+          "default": "led0",
+          "pattern": "^\\S+$"
+        },
+        {
+          "name": "intensity",
+          "label": "Intensity",
+          "type": "integer",
+          "default": 100,
+          "min": 0,
+          "max": 100
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/lightcontrol.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setManualIntensity",
+          "params": {
+            "lightID": "{{light}}",
+            "intensity": "{{intensity}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+    "apiVersion": "1.2",
+    "context": "oadm",
+    "method": "getConfiguration",
+    "data": [
+        {
+            "DayNightDwellTime": 5.0,
+            "DayNightShiftLevel": 100,
+            "NightDayDwellTime": 5.0,
+            "channel": 0
+        }
+    ]
+}

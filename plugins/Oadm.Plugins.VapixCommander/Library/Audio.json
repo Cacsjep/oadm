@@ -1,0 +1,484 @@
+{
+  "formatVersion": 1,
+  "category": "Audio",
+  "commands": [
+    {
+      "id": "audio.settings.get",
+      "version": 1,
+      "name": "Get audio settings",
+      "category": "Audio",
+      "description": "Encoding, sample rate, bitrate, input type and gain of an audio source.",
+      "docs": "https://developer.axis.com/vapix/audio-systems/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [
+        {
+          "name": "input",
+          "label": "Audio input",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "list",
+          "group": "AudioSource.A{{input}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "Encoding",
+            "param": "AudioSource.A{{input}}.AudioEncoding"
+          },
+          {
+            "label": "Sample rate",
+            "param": "AudioSource.A{{input}}.SampleRate"
+          },
+          {
+            "label": "Bitrate",
+            "param": "AudioSource.A{{input}}.BitRate"
+          },
+          {
+            "label": "Input type",
+            "param": "AudioSource.A{{input}}.InputType"
+          },
+          {
+            "label": "Input gain",
+            "param": "AudioSource.A{{input}}.InputGain"
+          },
+          {
+            "label": "Output gain",
+            "param": "AudioSource.A{{input}}.OutputGain"
+          }
+        ]
+      }
+    },
+    {
+      "id": "audio.encoding.set",
+      "version": 1,
+      "name": "Set audio encoding",
+      "category": "Audio",
+      "description": "Codec, sample rate and bitrate of an audio source.",
+      "docs": "https://developer.axis.com/vapix/audio-systems/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "input",
+          "label": "Audio input",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7
+        },
+        {
+          "name": "codec",
+          "label": "Encoding",
+          "type": "enum",
+          "default": "aac",
+          "options": [
+            {
+              "value": "aac",
+              "label": "AAC"
+            },
+            {
+              "value": "opus",
+              "label": "Opus"
+            },
+            {
+              "value": "g711",
+              "label": "G.711 µ-law"
+            },
+            {
+              "value": "g726",
+              "label": "G.726"
+            },
+            {
+              "value": "lpcm",
+              "label": "LPCM"
+            }
+          ]
+        },
+        {
+          "name": "rate",
+          "label": "Sample rate",
+          "type": "enum",
+          "default": "16000",
+          "options": [
+            {
+              "value": "8000",
+              "label": "8 kHz"
+            },
+            {
+              "value": "16000",
+              "label": "16 kHz"
+            },
+            {
+              "value": "32000",
+              "label": "32 kHz"
+            },
+            {
+              "value": "44100",
+              "label": "44.1 kHz"
+            },
+            {
+              "value": "48000",
+              "label": "48 kHz"
+            }
+          ]
+        },
+        {
+          "name": "bitrate",
+          "label": "Bitrate",
+          "type": "enum",
+          "default": "32000",
+          "options": [
+            {
+              "value": "16000",
+              "label": "16 kbit/s"
+            },
+            {
+              "value": "24000",
+              "label": "24 kbit/s"
+            },
+            {
+              "value": "32000",
+              "label": "32 kbit/s"
+            },
+            {
+              "value": "48000",
+              "label": "48 kbit/s"
+            },
+            {
+              "value": "64000",
+              "label": "64 kbit/s"
+            },
+            {
+              "value": "128000",
+              "label": "128 kbit/s"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "AudioSource.A{{input}}.AudioEncoding": "{{codec}}",
+          "AudioSource.A{{input}}.SampleRate": "{{rate}}",
+          "AudioSource.A{{input}}.BitRate": "{{bitrate}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "audio.input.set",
+      "version": 1,
+      "name": "Set audio input",
+      "category": "Audio",
+      "description": "Input type and gain (mute, agc or a dB value).",
+      "docs": "https://developer.axis.com/vapix/audio-systems/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "input",
+          "label": "Audio input",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7
+        },
+        {
+          "name": "type",
+          "label": "Input type",
+          "type": "enum",
+          "default": "mic",
+          "options": [
+            {
+              "value": "mic",
+              "label": "Microphone"
+            },
+            {
+              "value": "line",
+              "label": "Line"
+            },
+            {
+              "value": "digital",
+              "label": "Digital"
+            }
+          ]
+        },
+        {
+          "name": "gain",
+          "label": "Input gain",
+          "type": "string",
+          "default": "0",
+          "pattern": "^(mute|agc|-?[0-9]{1,2})$",
+          "description": "mute, agc or dB"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "AudioSource.A{{input}}.InputType": "{{type}}",
+          "AudioSource.A{{input}}.InputGain": "{{gain}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "audio.output.set",
+      "version": 1,
+      "name": "Set audio output gain",
+      "category": "Audio",
+      "description": "Output gain (mute or a dB value).",
+      "docs": "https://developer.axis.com/vapix/audio-systems/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "input",
+          "label": "Audio input",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7
+        },
+        {
+          "name": "gain",
+          "label": "Output gain",
+          "type": "string",
+          "default": "0",
+          "pattern": "^(mute|-?[0-9]{1,2})$",
+          "description": "mute or dB"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "AudioSource.A{{input}}.OutputGain": "{{gain}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "audio.devices.get",
+      "version": 1,
+      "name": "Get audio device settings",
+      "category": "Audio",
+      "description": "Inputs and outputs with connection type and gain.",
+      "docs": "https://developer.axis.com/vapix/audio-systems/audio-device-control/",
+      "requires": [
+        {
+          "api": "audio-device-control",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/audiodevicecontrol.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getDevicesSettings"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Device",
+            "path": "data.devices.0.name"
+          },
+          {
+            "label": "Inputs",
+            "path": "data.devices.0.inputs"
+          },
+          {
+            "label": "Outputs",
+            "path": "data.devices.0.outputs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "audio.clips.list",
+      "version": 1,
+      "name": "List audio clips",
+      "category": "Audio",
+      "description": "Stored media clips.",
+      "docs": "https://developer.axis.com/vapix/audio-systems/media-clip-api/",
+      "requires": [
+        {
+          "api": "mediaclip",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "list",
+          "group": "MediaClip"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "Max clips",
+            "param": "MediaClip.MaxGroups"
+          }
+        ]
+      }
+    },
+    {
+      "id": "audio.clip.play",
+      "version": 1,
+      "name": "Play audio clip",
+      "category": "Audio",
+      "description": "Plays a stored audio clip (e.g. to test a speaker).",
+      "docs": "https://developer.axis.com/vapix/audio-systems/media-clip-api/",
+      "requires": [
+        {
+          "api": "mediaclip",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "clip",
+          "label": "Clip number",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 99
+        },
+        {
+          "name": "volume",
+          "label": "Volume",
+          "type": "integer",
+          "default": 100,
+          "min": 0,
+          "max": 1000
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/mediaclip.cgi",
+        "query": {
+          "action": "play",
+          "clip": "{{clip}}",
+          "volume": "{{volume}}"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    },
+    {
+      "id": "audio.clip.stop",
+      "version": 1,
+      "name": "Stop audio clip",
+      "category": "Audio",
+      "description": "Stops the playing audio clip.",
+      "docs": "https://developer.axis.com/vapix/audio-systems/media-clip-api/",
+      "requires": [
+        {
+          "api": "mediaclip",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/mediaclip.cgi",
+        "query": {
+          "action": "stop"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    }
+  ]
+}

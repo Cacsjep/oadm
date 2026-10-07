@@ -1,0 +1,502 @@
+{
+  "formatVersion": 1,
+  "category": "I/O",
+  "commands": [
+    {
+      "id": "io.ports.get",
+      "version": 1,
+      "name": "Get I/O ports",
+      "category": "I/O",
+      "description": "All I/O ports with direction, name, state and normal state.",
+      "docs": "https://developer.axis.com/vapix/network-video/io-port-management/",
+      "requires": [
+        {
+          "api": "io-port-management",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/io/portmanagement.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getPorts"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Ports",
+            "path": "data.numberOfPorts"
+          },
+          {
+            "label": "Port 0 name",
+            "path": "data.items.0.name"
+          },
+          {
+            "label": "Port 0 state",
+            "path": "data.items.0.state"
+          },
+          {
+            "label": "Items",
+            "path": "data.items"
+          }
+        ]
+      }
+    },
+    {
+      "id": "io.port.name.set",
+      "version": 1,
+      "name": "Rename I/O port",
+      "category": "I/O",
+      "description": "Sets the name of an I/O port.",
+      "docs": "https://developer.axis.com/vapix/network-video/io-port-management/",
+      "requires": [
+        {
+          "api": "io-port-management",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "port",
+          "label": "Port",
+          "type": "string",
+          "default": "0",
+          "pattern": "^[0-9]+$"
+        },
+        {
+          "name": "name",
+          "label": "Name",
+          "type": "string",
+          "default": "",
+          "pattern": "^.{1,64}$"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/io/portmanagement.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setPorts",
+          "params": {
+            "ports": [
+              {
+                "port": "{{port}}",
+                "name": "{{name}}"
+              }
+            ]
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "io.output.set",
+      "version": 1,
+      "name": "Set output state",
+      "category": "I/O",
+      "description": "Sets an output port to open or closed.",
+      "docs": "https://developer.axis.com/vapix/network-video/io-port-management/",
+      "requires": [
+        {
+          "api": "io-port-management",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "port",
+          "label": "Output port",
+          "type": "string",
+          "default": "1",
+          "pattern": "^[0-9]+$"
+        },
+        {
+          "name": "state",
+          "label": "State",
+          "type": "enum",
+          "default": "closed",
+          "options": [
+            {
+              "value": "closed",
+              "label": "Closed"
+            },
+            {
+              "value": "open",
+              "label": "Open"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/io/portmanagement.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setPorts",
+          "params": {
+            "ports": [
+              {
+                "port": "{{port}}",
+                "state": "{{state}}"
+              }
+            ]
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "io.output.pulse",
+      "version": 1,
+      "name": "Pulse output",
+      "category": "I/O",
+      "description": "Activates an output for a time, then deactivates it.",
+      "docs": "https://developer.axis.com/vapix/network-video/input-and-outputs/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "port",
+          "label": "Port (1-based)",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 64
+        },
+        {
+          "name": "duration",
+          "label": "Duration",
+          "type": "integer",
+          "default": 1000,
+          "min": 1,
+          "max": 600000,
+          "unit": "ms"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/io/port.cgi",
+        "query": {
+          "action": "{{port}}:/{{duration}}\\"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    },
+    {
+      "id": "io.ports.active",
+      "version": 1,
+      "name": "Check I/O ports active",
+      "category": "I/O",
+      "description": "Whether ports 1 and 2 are active.",
+      "docs": "https://developer.axis.com/vapix/network-video/input-and-outputs/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [
+        {
+          "name": "ports",
+          "label": "Ports (1-based, comma separated)",
+          "type": "string",
+          "default": "1",
+          "pattern": "^[0-9]+(,[0-9]+)*$"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/io/port.cgi",
+        "query": {
+          "checkactive": "{{ports}}"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "Port 1",
+            "param": "port1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "io.supervised.count",
+      "version": 1,
+      "name": "Get supervised I/O ports",
+      "category": "I/O",
+      "description": "Number of supervisable inputs and outputs.",
+      "docs": "https://developer.axis.com/vapix/network-video/supervised-io/",
+      "requires": [
+        {
+          "api": "supervised-io",
+          "minVersion": "2.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/supervisedio.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "2.0",
+          "context": "oadm",
+          "method": "getNumberOfPorts"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Inputs",
+            "path": "data.inputs"
+          },
+          {
+            "label": "Outputs",
+            "path": "data.outputs"
+          }
+        ]
+      }
+    },
+    {
+      "id": "io.supervised.get",
+      "version": 1,
+      "name": "Get supervised input state",
+      "category": "I/O",
+      "description": "Supervision state and level of a port.",
+      "docs": "https://developer.axis.com/vapix/network-video/supervised-io/",
+      "requires": [
+        {
+          "api": "supervised-io",
+          "minVersion": "2.0"
+        }
+      ],
+      "writes": false,
+      "fields": [
+        {
+          "name": "port",
+          "label": "Port",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 63
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/supervisedio.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "2.0",
+          "context": "oadm",
+          "method": "getSupervised",
+          "params": [
+            {
+              "port": "{{port}}"
+            }
+          ]
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Supervised",
+            "path": "data.items.0.supervised"
+          },
+          {
+            "label": "State",
+            "path": "data.items.0.state"
+          },
+          {
+            "label": "Level",
+            "path": "data.items.0.level"
+          }
+        ]
+      }
+    },
+    {
+      "id": "io.supervised.set",
+      "version": 1,
+      "name": "Set input supervision",
+      "category": "I/O",
+      "description": "Enables or disables supervision of an input.",
+      "docs": "https://developer.axis.com/vapix/network-video/supervised-io/",
+      "requires": [
+        {
+          "api": "supervised-io",
+          "minVersion": "2.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "port",
+          "label": "Port",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 63
+        },
+        {
+          "name": "enabled",
+          "label": "Supervised",
+          "type": "boolean",
+          "default": true
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/supervisedio.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "2.0",
+          "context": "oadm",
+          "method": "setSupervised",
+          "params": [
+            {
+              "port": "{{port}}",
+              "supervised": "{{enabled}}"
+            }
+          ]
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "io.virtualinput.activate",
+      "version": 1,
+      "name": "Activate virtual input",
+      "category": "I/O",
+      "description": "Activates a virtual input to test event rules.",
+      "docs": "https://developer.axis.com/vapix/network-video/input-and-outputs/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "port",
+          "label": "Virtual input",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 32
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/virtualinput/activate.cgi",
+        "query": {
+          "schemaversion": "1",
+          "port": "{{port}}"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "xml"
+      }
+    },
+    {
+      "id": "io.virtualinput.deactivate",
+      "version": 1,
+      "name": "Deactivate virtual input",
+      "category": "I/O",
+      "description": "Deactivates a virtual input.",
+      "docs": "https://developer.axis.com/vapix/network-video/input-and-outputs/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "port",
+          "label": "Virtual input",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 32
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/virtualinput/deactivate.cgi",
+        "query": {
+          "schemaversion": "1",
+          "port": "{{port}}"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "xml"
+      }
+    }
+  ]
+}

@@ -1,0 +1,794 @@
+{
+  "formatVersion": 1,
+  "category": "Network",
+  "commands": [
+    {
+      "id": "network.info.get",
+      "version": 1,
+      "name": "Get network settings",
+      "category": "Network",
+      "description": "Host name, DNS, IPv4 address, default router and link of the first network interface.",
+      "docs": "https://developer.axis.com/vapix/network-video/network-settings-api/",
+      "requires": [
+        {
+          "api": "network-settings",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/network_settings.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getNetworkInfo"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Host name",
+            "path": "data.system.hostname.hostname"
+          },
+          {
+            "label": "DNS servers",
+            "path": "data.system.resolver.nameServers"
+          },
+          {
+            "label": "Interface",
+            "path": "data.devices.0.name"
+          },
+          {
+            "label": "MAC address",
+            "path": "data.devices.0.macAddress"
+          },
+          {
+            "label": "IPv4 mode",
+            "path": "data.devices.0.IPv4.configurationMode"
+          },
+          {
+            "label": "IPv4 address",
+            "path": "data.devices.0.IPv4.addresses.0.address"
+          },
+          {
+            "label": "Prefix length",
+            "path": "data.devices.0.IPv4.addresses.0.prefixLength"
+          },
+          {
+            "label": "Default router",
+            "path": "data.devices.0.IPv4.defaultRouter"
+          },
+          {
+            "label": "Link mode",
+            "path": "data.devices.0.wired.linkMode"
+          }
+        ]
+      }
+    },
+    {
+      "id": "network.hostname.set",
+      "version": 1,
+      "name": "Set host name",
+      "category": "Network",
+      "description": "Static host name, or use the host name provided by DHCP.",
+      "docs": "https://developer.axis.com/vapix/network-video/network-settings-api/",
+      "requires": [
+        {
+          "api": "network-settings",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "fields": [
+        {
+          "name": "useDhcp",
+          "label": "Use DHCP host name",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "hostname",
+          "label": "Host name",
+          "type": "string",
+          "default": "",
+          "pattern": "^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/network_settings.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setHostnameConfiguration",
+          "params": {
+            "useDhcpHostname": "{{useDhcp}}",
+            "staticHostname": "{{hostname}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "network.dns.set",
+      "version": 1,
+      "name": "Set DNS server",
+      "category": "Network",
+      "description": "One static DNS server, or DNS from DHCP.",
+      "docs": "https://developer.axis.com/vapix/network-video/network-settings-api/",
+      "requires": [
+        {
+          "api": "network-settings",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "fields": [
+        {
+          "name": "useDhcp",
+          "label": "Use DNS from DHCP",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "dns1",
+          "label": "DNS server",
+          "type": "string",
+          "default": "",
+          "pattern": "^[0-9A-Fa-f:.]+$"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/network_settings.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setResolverConfiguration",
+          "params": {
+            "useDhcpResolverInfo": "{{useDhcp}}",
+            "staticNameServers": [
+              "{{dns1}}"
+            ]
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "network.ipv6.set",
+      "version": 1,
+      "name": "Enable or disable IPv6",
+      "category": "Network",
+      "description": "Turns IPv6 on or off on an interface.",
+      "docs": "https://developer.axis.com/vapix/network-video/network-settings-api/",
+      "requires": [
+        {
+          "api": "network-settings",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "fields": [
+        {
+          "name": "interface",
+          "label": "Interface",
+          "type": "string",
+          "default": "eth0",
+          "pattern": "^[a-z0-9.]+$"
+        },
+        {
+          "name": "enabled",
+          "label": "IPv6",
+          "type": "boolean",
+          "default": true
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/network_settings.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setIPv6AddressConfiguration",
+          "params": {
+            "deviceName": "{{interface}}",
+            "enabled": "{{enabled}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "network.bonjour.get",
+      "version": 1,
+      "name": "Get Bonjour (mDNS)",
+      "category": "Network",
+      "description": "Whether Bonjour/mDNS is enabled and the announced friendly name.",
+      "docs": "https://developer.axis.com/vapix/network-video/mdns-sd-api/",
+      "requires": [
+        {
+          "api": "mdnssd",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/mdnssd.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getMdnssdInfo"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Enabled",
+            "path": "data.enabled"
+          },
+          {
+            "label": "Friendly name",
+            "path": "data.friendlyName"
+          }
+        ]
+      }
+    },
+    {
+      "id": "network.bonjour.set",
+      "version": 1,
+      "name": "Set Bonjour (mDNS)",
+      "category": "Network",
+      "description": "Enables Bonjour/mDNS and sets its friendly name (max 48 bytes).",
+      "docs": "https://developer.axis.com/vapix/network-video/mdns-sd-api/",
+      "requires": [
+        {
+          "api": "mdnssd",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "enabled",
+          "label": "Bonjour",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "name": "name",
+          "label": "Friendly name",
+          "type": "string",
+          "default": "",
+          "pattern": "^.{1,48}$"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/mdnssd.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setMdnssdConfiguration",
+          "params": {
+            "enabled": "{{enabled}}",
+            "friendlyName": "{{name}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "network.discovery.get",
+      "version": 1,
+      "name": "Get discovery protocols",
+      "category": "Network",
+      "description": "UPnP, Bonjour, zero-conf and WS-Discovery settings.",
+      "docs": "https://developer.axis.com/vapix/network-video/network-settings/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "list",
+          "group": "Network.UPnP,Network.Bonjour,Network.ZeroConf,WebService.DiscoveryMode"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "UPnP",
+            "param": "Network.UPnP.Enabled"
+          },
+          {
+            "label": "UPnP name",
+            "param": "Network.UPnP.FriendlyName"
+          },
+          {
+            "label": "Bonjour",
+            "param": "Network.Bonjour.Enabled"
+          },
+          {
+            "label": "Zero-conf",
+            "param": "Network.ZeroConf.Enabled"
+          },
+          {
+            "label": "WS-Discovery",
+            "param": "WebService.DiscoveryMode.Discoverable"
+          }
+        ]
+      }
+    },
+    {
+      "id": "network.upnp.set",
+      "version": 1,
+      "name": "Set UPnP",
+      "category": "Network",
+      "description": "Enables or disables UPnP discovery and sets the UPnP friendly name.",
+      "docs": "https://developer.axis.com/vapix/network-video/network-settings/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "enabled",
+          "label": "UPnP",
+          "type": "boolean",
+          "default": false
+        },
+        {
+          "name": "name",
+          "label": "Friendly name",
+          "type": "string",
+          "default": "",
+          "pattern": "^.{1,63}$"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "Network.UPnP.Enabled": "{{enabled}}",
+          "Network.UPnP.FriendlyName": "{{name}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "network.rtsp.get",
+      "version": 1,
+      "name": "Get RTSP settings",
+      "category": "Network",
+      "description": "RTSP and RTSPS server state, ports and timeouts.",
+      "docs": "https://developer.axis.com/vapix/network-video/network-settings/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "list",
+          "group": "Network.RTSP,Network.RTSPS"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "RTSP enabled",
+            "param": "Network.RTSP.Enabled"
+          },
+          {
+            "label": "RTSP port",
+            "param": "Network.RTSP.Port"
+          },
+          {
+            "label": "RTSPS enabled",
+            "param": "Network.RTSPS.Enabled"
+          },
+          {
+            "label": "RTSPS port",
+            "param": "Network.RTSPS.Port"
+          }
+        ]
+      }
+    },
+    {
+      "id": "network.rtsp.set",
+      "version": 1,
+      "name": "Set RTSP server",
+      "category": "Network",
+      "description": "Enables the RTSP server and sets its port.",
+      "docs": "https://developer.axis.com/vapix/network-video/network-settings/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "fields": [
+        {
+          "name": "enabled",
+          "label": "RTSP server",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "name": "port",
+          "label": "RTSP port",
+          "type": "integer",
+          "default": 554,
+          "min": 1,
+          "max": 65535
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "Network.RTSP.Enabled": "{{enabled}}",
+          "Network.RTSP.Port": "{{port}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "network.qos.get",
+      "version": 1,
+      "name": "Get QoS (DSCP)",
+      "category": "Network",
+      "description": "DSCP values of the live video, audio, management, remote service and metadata classes.",
+      "docs": "https://developer.axis.com/vapix/network-video/network-settings/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "list",
+          "group": "Network.QoS"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "Live video",
+            "param": "Network.QoS.Class1.DSCP"
+          },
+          {
+            "label": "Live audio",
+            "param": "Network.QoS.Class2.DSCP"
+          },
+          {
+            "label": "Management",
+            "param": "Network.QoS.Class3.DSCP"
+          },
+          {
+            "label": "Metadata",
+            "param": "Network.QoS.Class5.DSCP"
+          }
+        ]
+      }
+    },
+    {
+      "id": "network.qos.set",
+      "version": 1,
+      "name": "Set QoS (DSCP)",
+      "category": "Network",
+      "description": "DSCP values for live video, live audio and management traffic.",
+      "docs": "https://developer.axis.com/vapix/network-video/network-settings/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "video",
+          "label": "Live video DSCP",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 63
+        },
+        {
+          "name": "audio",
+          "label": "Live audio DSCP",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 63
+        },
+        {
+          "name": "management",
+          "label": "Management DSCP",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 63
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "Network.QoS.Class1.DSCP": "{{video}}",
+          "Network.QoS.Class2.DSCP": "{{audio}}",
+          "Network.QoS.Class3.DSCP": "{{management}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "network.snmp.get",
+      "version": 1,
+      "name": "Get SNMP settings",
+      "category": "Network",
+      "description": "SNMP state, versions, communities and traps.",
+      "docs": "https://developer.axis.com/vapix/device-configuration/snmp-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "list",
+          "group": "SNMP"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "Enabled",
+            "param": "SNMP.Enabled"
+          },
+          {
+            "label": "SNMP v1",
+            "param": "SNMP.V1"
+          },
+          {
+            "label": "SNMP v2c",
+            "param": "SNMP.V2c"
+          },
+          {
+            "label": "SNMP v3",
+            "param": "SNMP.V3"
+          },
+          {
+            "label": "Read community",
+            "param": "SNMP.V1ReadCommunity"
+          },
+          {
+            "label": "Traps",
+            "param": "SNMP.Trap.Enabled"
+          }
+        ]
+      }
+    },
+    {
+      "id": "network.snmp.v2c.set",
+      "version": 1,
+      "name": "Set SNMP v1/v2c",
+      "category": "Network",
+      "description": "Enables SNMP v1/v2c with a read community.",
+      "docs": "https://developer.axis.com/vapix/device-configuration/snmp-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "enabled",
+          "label": "SNMP v1/v2c",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "name": "community",
+          "label": "Read community",
+          "type": "string",
+          "default": "public",
+          "pattern": "^\\S{1,64}$"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "SNMP.Enabled": "{{enabled}}",
+          "SNMP.V1": "{{enabled}}",
+          "SNMP.V2c": "{{enabled}}",
+          "SNMP.V1ReadCommunity": "{{community}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "network.snmp.trap.set",
+      "version": 1,
+      "name": "Set SNMP trap receiver",
+      "category": "Network",
+      "description": "Trap receiver address, community and which traps are sent.",
+      "docs": "https://developer.axis.com/vapix/device-configuration/snmp-api/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "enabled",
+          "label": "Traps",
+          "type": "boolean",
+          "default": true
+        },
+        {
+          "name": "address",
+          "label": "Trap receiver",
+          "type": "string",
+          "default": "",
+          "pattern": "^[0-9A-Fa-f:.]+$"
+        },
+        {
+          "name": "community",
+          "label": "Trap community",
+          "type": "string",
+          "default": "public",
+          "pattern": "^\\S{1,64}$"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "SNMP.Trap.Enabled": "{{enabled}}",
+          "SNMP.Trap.T0.Address": "{{address}}",
+          "SNMP.Trap.T0.Community": "{{community}}",
+          "SNMP.Trap.T0.ColdStart.Enabled": "{{enabled}}",
+          "SNMP.Trap.T0.WarmStart.Enabled": "{{enabled}}",
+          "SNMP.Trap.T0.LinkUp.Enabled": "{{enabled}}",
+          "SNMP.Trap.T0.AuthFail.Enabled": "{{enabled}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    }
+  ]
+}

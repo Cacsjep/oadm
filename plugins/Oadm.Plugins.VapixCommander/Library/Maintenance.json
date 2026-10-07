@@ -1,0 +1,255 @@
+{
+  "formatVersion": 1,
+  "category": "Maintenance",
+  "commands": [
+    {
+      "id": "maintenance.restart",
+      "version": 1,
+      "name": "Restart device",
+      "category": "Maintenance",
+      "description": "Restarts the device (about 1-2 minutes offline).",
+      "docs": "https://developer.axis.com/vapix/network-video/firmware-management-api/",
+      "requires": [
+        {
+          "api": "fwmgr",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/firmwaremanagement.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "reboot"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "maintenance.factorydefault",
+      "version": 1,
+      "name": "Factory default",
+      "category": "Maintenance",
+      "description": "Resets all settings. Soft keeps the IP address settings, hard resets everything incl. IP and certificates. The device restarts.",
+      "docs": "https://developer.axis.com/vapix/network-video/firmware-management-api/",
+      "requires": [
+        {
+          "api": "fwmgr",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "fields": [
+        {
+          "name": "mode",
+          "label": "Mode",
+          "type": "enum",
+          "default": "soft",
+          "options": [
+            {
+              "value": "soft",
+              "label": "Soft (keep network settings)"
+            },
+            {
+              "value": "hard",
+              "label": "Hard (reset everything)"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/firmwaremanagement.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "factoryDefault",
+          "params": {
+            "factoryDefaultMode": "{{mode}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "maintenance.firmware.commit",
+      "version": 1,
+      "name": "Commit firmware",
+      "category": "Maintenance",
+      "description": "Commits a newly installed AXIS OS so it is not rolled back automatically.",
+      "docs": "https://developer.axis.com/vapix/network-video/firmware-management-api/",
+      "requires": [
+        {
+          "api": "fwmgr",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/firmwaremanagement.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "commit"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "maintenance.firmware.rollback",
+      "version": 1,
+      "name": "Roll back firmware",
+      "category": "Maintenance",
+      "description": "Returns to the previously installed AXIS OS. The device restarts.",
+      "docs": "https://developer.axis.com/vapix/network-video/firmware-management-api/",
+      "requires": [
+        {
+          "api": "fwmgr",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/firmwaremanagement.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "rollback"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "maintenance.systemlog.get",
+      "version": 1,
+      "name": "Get system log",
+      "category": "Maintenance",
+      "description": "The device system log.",
+      "docs": "https://developer.axis.com/vapix/network-video/system-settings/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/systemlog.cgi",
+        "query": {},
+        "timeoutSeconds": 60,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "text"
+      }
+    },
+    {
+      "id": "maintenance.auditlog.get",
+      "version": 1,
+      "name": "Get audit log",
+      "category": "Maintenance",
+      "description": "Latest audit log entries (logins, changes).",
+      "docs": "https://developer.axis.com/vapix/network-video/audit-log/",
+      "requires": [
+        {
+          "api": "audit-log",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [
+        {
+          "name": "lines",
+          "label": "Entries",
+          "type": "integer",
+          "default": 100,
+          "min": 1,
+          "max": 10000
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/auditlog.cgi",
+        "query": {
+          "tail": "{{lines}}"
+        },
+        "timeoutSeconds": 60,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "text"
+      }
+    },
+    {
+      "id": "maintenance.serverreport.get",
+      "version": 1,
+      "name": "Get server report",
+      "category": "Maintenance",
+      "description": "Text server report for support cases (system info, logs, parameters).",
+      "docs": "https://developer.axis.com/vapix/network-video/system-settings/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/serverreport.cgi",
+        "query": {
+          "mode": "text"
+        },
+        "timeoutSeconds": 180,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "text",
+        "success": "Server Report Start"
+      }
+    }
+  ]
+}

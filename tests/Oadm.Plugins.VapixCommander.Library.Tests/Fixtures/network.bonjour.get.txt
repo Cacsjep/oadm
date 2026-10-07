@@ -1,0 +1,9 @@
+{
+  "apiVersion": "1.2",
+  "context": "oadm",
+  "method": "getMdnssdInfo",
+  "data": {
+    "enabled": true,
+    "friendlyName": "AXIS P3265-V"
+  }
+}

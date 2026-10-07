@@ -1,0 +1,7 @@
+HTTPS.Enabled=yes
+HTTPS.Port=443
+root.System.BoaGroupPolicy.admin=both
+root.System.BoaGroupPolicy.operator=both
+root.System.BoaGroupPolicy.viewer=both
+root.Network.HTTP.AuthenticationPolicy=recommended
+root.Network.HTTP.AuthenticationWithQop=no

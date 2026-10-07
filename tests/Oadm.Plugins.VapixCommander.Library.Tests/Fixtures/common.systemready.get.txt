@@ -1,0 +1,1 @@
+{"apiVersion": "1.5", "context": "oadm", "method": "systemready", "data": {"systemready": "yes", "needsetup": "no", "uptime": "12282", "bootid": "a537b0cb-558a-4efd-bdce-e4be6bd22c9a", "passphrasepolicy": "none"}}
