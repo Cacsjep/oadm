@@ -48,7 +48,24 @@ public sealed class TaskServiceTests
         var device = await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.1", 1);
 
         using var cts = new CancellationTokenSource(TestHelpers.DefaultTimeout);
+
+        // A first restart, run to completion, guarantees the watch snapshot is not empty. Waiting
+        // for that snapshot proves the stream is live before the restart under test starts;
+        // otherwise, under load, the stream may connect only after it finished and (correctly)
+        // deliver just the final state.
+        var warmUp = await host.Tasks.RunAsync(new Proto.RunTaskRequest
+        {
+            PluginId = RestartTaskPlugin.PluginId,
+            DeviceIds = { device.Id.ToString() },
+        });
+        await TestHelpers.WaitUntilAsync(
+            async () => (await host.Tasks.ListAsync(new Proto.Empty())).Tasks
+                .Any(t => t.Id == warmUp.TaskId && t.State == Proto.TaskState.Done),
+            "warm-up restart");
+
         using var watch = host.Tasks.Watch(new Proto.Empty(), cancellationToken: cts.Token);
+        Assert.True(await watch.ResponseStream.MoveNext(cts.Token), "watch stream ended before its snapshot");
+
         var run = await host.Tasks.RunAsync(new Proto.RunTaskRequest
         {
             PluginId = RestartTaskPlugin.PluginId,
@@ -78,7 +95,7 @@ public sealed class TaskServiceTests
         Assert.Equal("Restart", final.Name);
         Assert.Equal(Proto.TaskChanged.Types.Kind.Added, seen[0].Kind);
         Assert.Contains(seen, c => c.Task.State == Proto.TaskState.Running && c.Task.Progress is > 0 and < 100);
-        Assert.Equal(1, camera.RestartCalls);
+        Assert.Equal(2, camera.RestartCalls);
 
         // The finished task triggers a full refresh of its device.
         await TestHelpers.WaitUntilAsync(
@@ -86,10 +103,12 @@ public sealed class TaskServiceTests
             "refresh after task");
 
         // Persisted, and deletable.
-        var listed = Assert.Single((await host.Tasks.ListAsync(new Proto.Empty())).Tasks);
+        var listed = Assert.Single((await host.Tasks.ListAsync(new Proto.Empty())).Tasks, t => t.Id == run.TaskId);
         Assert.Equal(Proto.TaskState.Done, listed.State);
         await host.Tasks.DeleteAsync(new Proto.TaskIdRequest { TaskId = run.TaskId });
-        Assert.Empty((await host.Tasks.ListAsync(new Proto.Empty())).Tasks);
+        var remaining = (await host.Tasks.ListAsync(new Proto.Empty())).Tasks;
+        Assert.DoesNotContain(remaining, t => t.Id == run.TaskId);
+        Assert.Contains(remaining, t => t.Id == warmUp.TaskId);
     }
 
     [Fact]
