@@ -20,6 +20,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Oadm.Core\Oadm.Core.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Restart\Oadm.Plugins.Restart.csproj" />
+    <!-- Built (and deployed to artifacts/test-plugins) but loaded at runtime by the PluginLoader tests. -->
+    <ProjectReference Include="..\TestPlugins\Oadm.TestPlugins.Sample\Oadm.TestPlugins.Sample.csproj" ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
 </Project>

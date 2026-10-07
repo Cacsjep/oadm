@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Test-only plugin package: a core plugin that contributes a task plugin, plus a standalone
+       task plugin. Built into artifacts/test-plugins/oadm.sample/ for the PluginLoader tests. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Oadm.TestPlugins.Sample.Server</AssemblyName>
+    <RootNamespace>Oadm.TestPlugins.Sample</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <IsPackable>false</IsPackable>
+    <OadmPluginId>oadm.sample</OadmPluginId>
+    <OadmPluginOutputDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', '..', 'artifacts', 'test-plugins', '$(OadmPluginId)'))</OadmPluginOutputDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="OadmDeployPlugin" AfterTargets="Build">
+    <ItemGroup>
+      <_OadmPluginFiles Include="$(OutDir)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_OadmPluginFiles)" DestinationFiles="@(_OadmPluginFiles->'$(OadmPluginOutputDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>
