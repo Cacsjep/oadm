@@ -27,6 +27,7 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        ApplyCrispTextToAllWindows();
         Services = ServiceRegistration.Build(Options, LogStore);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
@@ -37,5 +38,20 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// Crisp text in every window (main window, dialogs, plugin windows): subpixel anti-aliasing
+    /// (ClearType-like), strong hinting and baselines on whole device pixels. Avalonia 12 exposes these
+    /// only as methods, so they are applied when each window is created.
+    /// </summary>
+    public static void ApplyCrispTextToAllWindows() =>
+        Avalonia.Controls.Window.WindowOpenedEvent.AddClassHandler<Avalonia.Controls.Window>((window, _) => ApplyCrispText(window));
+
+    public static void ApplyCrispText(Avalonia.Visual visual)
+    {
+        Avalonia.Media.TextOptions.SetTextRenderingMode(visual, Avalonia.Media.TextRenderingMode.SubpixelAntialias);
+        Avalonia.Media.TextOptions.SetTextHintingMode(visual, Avalonia.Media.TextHintingMode.Strong);
+        Avalonia.Media.TextOptions.SetBaselinePixelAlignment(visual, Avalonia.Media.BaselinePixelAlignment.Aligned);
     }
 }

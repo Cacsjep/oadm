@@ -133,11 +133,11 @@
       <Thickness x:Key="Oadm.NavMargin">8,4,8,16</Thickness>
       <x:Double x:Key="Oadm.TitleBarHeight">32</x:Double>
       <x:Double x:Key="Oadm.IconSize">16</x:Double>
-      <x:Double x:Key="Oadm.FontSizeBody">11.7</x:Double>
-      <x:Double x:Key="Oadm.FontSizeSmall">9.9</x:Double>
+      <x:Double x:Key="Oadm.FontSizeBody">12</x:Double>
+      <x:Double x:Key="Oadm.FontSizeSmall">10</x:Double>
       <x:Double x:Key="Oadm.FontSizeCardTitle">18</x:Double>
-      <x:Double x:Key="Oadm.FontSizePageTitle">21.6</x:Double>
-      <x:Double x:Key="Oadm.FontSizeAppName">14.4</x:Double>
+      <x:Double x:Key="Oadm.FontSizePageTitle">22</x:Double>
+      <x:Double x:Key="Oadm.FontSizeAppName">14</x:Double>
       <x:Double x:Key="Oadm.GridRowHeight">34</x:Double>
       <x:Double x:Key="Oadm.GridHeaderHeight">36</x:Double>
       <x:Double x:Key="Oadm.ControlHeight">32</x:Double>
@@ -167,7 +167,7 @@
       <FontFamily x:Key="Oadm.FontFamily">fonts:Inter#Inter</FontFamily>
       <FontFamily x:Key="Oadm.FontFamilyMono">Cascadia Mono,Consolas,Menlo,DejaVu Sans Mono,monospace</FontFamily>
       <FontFamily x:Key="ContentControlThemeFontFamily">fonts:Inter#Inter</FontFamily>
-      <x:Double x:Key="ControlContentThemeFontSize">11.7</x:Double>
+      <x:Double x:Key="ControlContentThemeFontSize">12</x:Double>
 
       <!-- Fluent DataGrid resources mapped onto the OADM palette -->
       <SolidColorBrush x:Key="DataGridColumnHeaderForegroundBrush" Color="{StaticResource Oadm.TextSecondaryColor}" />
@@ -234,16 +234,25 @@
     <Setter Property="FontWeight" Value="SemiBold" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
   </Style>
+  <!-- Crisp text: whole-pixel font sizes (above); subpixel anti-aliasing, strong hinting and pixel-aligned
+       baselines are applied to every window in code (App.ApplyCrispText), Avalonia 12 has no XAML property for them. -->
   <Style Selector="TextBlock.pageTitle">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizePageTitle}" />
     <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <!-- Side subheader next to a page title: small, grey, bottom aligned (margin = measured baseline offset). -->
+  <Style Selector="TextBlock.pageSubtitle">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <Setter Property="Margin" Value="0,0,0,2" />
   </Style>
   <Style Selector="TextBlock.cardTitle">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeCardTitle}" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
   <Style Selector="TextBlock.sectionTitle">
-    <Setter Property="FontSize" Value="13.5" />
+    <Setter Property="FontSize" Value="14" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
   <Style Selector="TextBlock.secondary">
@@ -738,7 +747,7 @@
 
   <!-- Live view -->
   <Style Selector="ui|IconLabel.sectionTitle TextBlock">
-    <Setter Property="FontSize" Value="13.5" />
+    <Setter Property="FontSize" Value="14" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
   <Style Selector="Border.liveViewSurface">

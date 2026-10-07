@@ -7,9 +7,10 @@
   <Grid RowDefinitions="Auto,*" RowSpacing="16">
     <!-- Page header: title, optional subtitle and trailing content from the plugin page (ui:PageHeader). -->
     <Grid ColumnDefinitions="*,Auto">
-      <StackPanel Spacing="4" VerticalAlignment="Center">
-        <TextBlock Classes="pageTitle" Text="{Binding Title}" />
-        <TextBlock Classes="secondary" Text="{Binding Subtitle}" IsVisible="{Binding HasSubtitle}" TextWrapping="Wrap" />
+      <!-- Classic side subheader: smaller grey subtitle right of the title, bottom aligned with it. -->
+      <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+        <TextBlock Classes="pageTitle" Text="{Binding Title}" VerticalAlignment="Bottom" />
+        <TextBlock Classes="pageSubtitle" Text="{Binding Subtitle}" IsVisible="{Binding HasSubtitle}" VerticalAlignment="Bottom" />
       </StackPanel>
       <ContentControl Grid.Column="1" Content="{Binding HeaderTrailing}" VerticalAlignment="Center" />
     </Grid>

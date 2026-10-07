@@ -370,7 +370,7 @@ Dark only, calm and spacious, no gradients inside the app.
 - Accent violet `#6C5CE7` (hover `#7D6EF0`), used for selection, progress bars, primary
   buttons and status pills. Secondary accent teal `#7FC8D0`.
 - Text: primary `#F2F2F2`, secondary `#9A9A9A` (labels like "Source", column headers).
-  Font Inter (Avalonia.Fonts.Inter), 11.7 px body, 9.9 px small, 18 px card titles, 21.6 px page titles, semibold titles.
+  Font Inter (Avalonia.Fonts.Inter), whole-pixel sizes only (fractional sizes blur): 12 px body, 10 px small, 18 px card titles, 22 px page titles, semibold titles; every window renders text with subpixel anti-aliasing, strong hinting and pixel-aligned baselines (App.ApplyCrispText). Page subtitles sit right of the page title, small, grey, baseline aligned.
 - Status is never a chip: everywhere a status or result is shown (device certificate columns,
   tasks, task steps, logs, add page, plugin dialogs) use `ui:StatusChip` = a small icon colored
   by the status (check ok green, warning amber, error red, running violet and spinning, neutral
