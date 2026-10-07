@@ -336,6 +336,7 @@ public sealed class HeadlessPageTests
                 ConfirmText = "Enable anyway",
                 CancelText = "Cancel",
             };
+            Oadm.Client.App.ApplyCrispText(confirm);
             confirm.Show(window);
             Pump();
             Capture(confirm, outDir, "dhcp-server-other-server-confirm.png");
@@ -347,6 +348,7 @@ public sealed class HeadlessPageTests
             dialogVm.Name = "Entrance";
             var dialog = new StaticLeaseWindow();
             dialog.Attach(dialogVm);
+            Oadm.Client.App.ApplyCrispText(dialog);
             dialog.Show(window);
             Pump();
             Capture(dialog, outDir, "dhcp-server-static-lease-dialog.png");
@@ -369,7 +371,9 @@ public sealed class HeadlessPageTests
         {
             DataContext = new Oadm.Client.Shell.CorePluginPageViewModel(DhcpServerPluginInfo.PluginId, DhcpServerPluginInfo.DisplayName, view),
         };
-        return new Window { Width = 1280, Height = 860, Content = new Border { Padding = new Thickness(16), Child = page } };
+        var window = new Window { Width = 1280, Height = 860, Content = new Border { Padding = new Thickness(16), Child = page } };
+        Oadm.Client.App.ApplyCrispText(window); // same text rendering as the real app windows
+        return window;
     }
 
     private static void Pump()
