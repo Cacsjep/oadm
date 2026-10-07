@@ -53,7 +53,7 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
     [Fact]
     public async Task SetServerSettingsWritesAll()
     {
-        var wanted = new ServerSettings(30, 8, 3000, "oadm-lab", "http://127.0.0.1:6000");
+        var wanted = new ServerSettings(30, 8, 3000, "oadm-lab", "http://127.0.0.1:6000", 20, UseHostName: true);
 
         await _store.SetServerSettingsAsync(wanted, CancellationToken.None);
 
@@ -66,10 +66,22 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
     [InlineData(SettingKeys.ScanTimeoutMs, "1.5")]
     [InlineData(SettingKeys.ServerName, "\"\"")]
     [InlineData(SettingKeys.ListenUrl, "\"not a url\"")]
+    [InlineData(SettingKeys.DevicesUseHostName, "1")]
     [InlineData("Any.Key", "{not json")]
     public async Task InvalidValuesAreRejected(string key, string json)
     {
         await Assert.ThrowsAsync<ArgumentException>(() => _store.SetJsonAsync(key, json, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task UseHostNameDefaultsToFalse()
+    {
+        Assert.False((await _store.GetServerSettingsAsync(CancellationToken.None)).UseHostName);
+        Assert.False(await _store.GetAsync<bool>(SettingKeys.DevicesUseHostName, CancellationToken.None));
+
+        await _store.SetAsync(SettingKeys.DevicesUseHostName, true, CancellationToken.None);
+
+        Assert.True((await _store.GetServerSettingsAsync(CancellationToken.None)).UseHostName);
     }
 
     [Fact]

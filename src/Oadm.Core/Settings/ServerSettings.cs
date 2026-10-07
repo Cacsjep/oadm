@@ -10,6 +10,9 @@ public static class SettingKeys
     public const string ServerName = "Server.Name";
     public const string ListenUrl = "Server.ListenUrl";
 
+    /// <summary>Add devices by host name when one is known, otherwise by IP address. Bool, default false.</summary>
+    public const string DevicesUseHostName = "Devices.UseHostName";
+
     /// <summary>Prefix of plugin settings: <c>Plugin:&lt;pluginId&gt;:&lt;key&gt;</c>.</summary>
     public const string PluginPrefix = "Plugin:";
 
@@ -57,7 +60,8 @@ public sealed record ServerSettings(
     int ScanTimeoutMs,
     string ServerName,
     string ListenUrl,
-    int FullRefreshMinutes = ServerSettings.DefaultFullRefreshMinutes)
+    int FullRefreshMinutes = ServerSettings.DefaultFullRefreshMinutes,
+    bool UseHostName = ServerSettings.DefaultUseHostName)
 {
     public const int DefaultPollingIntervalSeconds = 60;
     public const int DefaultFullRefreshMinutes = 10;
@@ -66,6 +70,7 @@ public sealed record ServerSettings(
     public const int DefaultScanParallelism = 32;
     public const int DefaultScanTimeoutMs = 1500;
     public const string DefaultListenUrl = "http://0.0.0.0:5080";
+    public const bool DefaultUseHostName = false;
 
     public static ServerSettings Defaults => new(
         DefaultPollingIntervalSeconds,
@@ -73,7 +78,8 @@ public sealed record ServerSettings(
         DefaultScanTimeoutMs,
         DefaultServerName(),
         DefaultListenUrl,
-        DefaultFullRefreshMinutes);
+        DefaultFullRefreshMinutes,
+        DefaultUseHostName);
 
     /// <summary>The machine host name (DNS host name, falling back to the NetBIOS/machine name).</summary>
     public static string DefaultServerName()

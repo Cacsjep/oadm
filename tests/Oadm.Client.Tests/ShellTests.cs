@@ -41,6 +41,26 @@ public sealed class ShellNavigationTests
     }
 
     [Fact]
+    public async Task Settings_page_loads_and_saves_use_host_name()
+    {
+        var api = new Oadm.Client.Api.FakeOadmApi(TimeSpan.FromMilliseconds(5)); // disposed by the fixture
+        using var f = new DevicesFixture(api);
+        using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
+        var settings = new SettingsViewModel(f.Api, f.Settings, connection, NullLogger<SettingsViewModel>.Instance);
+
+        await settings.LoadAsync();
+        Assert.False(settings.UseHostName);
+
+        settings.UseHostName = true;
+        await settings.SaveCommand.ExecuteAsync(null);
+
+        Assert.True((await f.Api.GetSettingsAsync(CancellationToken.None)).UseHostName);
+        settings.UseHostName = false;
+        await settings.LoadAsync();
+        Assert.True(settings.UseHostName);
+    }
+
+    [Fact]
     public void Core_plugin_pages_go_below_devices()
     {
         using var f = new DevicesFixture();

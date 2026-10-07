@@ -63,14 +63,11 @@ public sealed class AddDevicesWizardTests : IDisposable
         Assert.True(wizard.CanGoNext);
         await wizard.NextCommand.ExecuteAsync(null);
 
-        Assert.Equal(WizardStep.HostName, wizard.CurrentStep);
-        Assert.False(wizard.UseHostName);
+        // no host name step: select devices goes straight to set password
+        Assert.Equal(WizardStep.Password, wizard.CurrentStep);
+        Assert.False(wizard.UseHostName); // server setting Devices.UseHostName defaults to false
         Assert.Equal(2, wizard.PasswordDevices.Count);
         Assert.Equal(3, wizard.CredentialDevices.Count);
-        wizard.UseHostName = true;
-        await wizard.NextCommand.ExecuteAsync(null);
-
-        Assert.Equal(WizardStep.Password, wizard.CurrentStep);
         Assert.False(wizard.CanGoNext);
         wizard.SkipCommand.Execute(null);
 
@@ -86,11 +83,11 @@ public sealed class AddDevicesWizardTests : IDisposable
         Assert.Equal(5, wizard.ReviewRows.Count);
         Assert.Equal(2, wizard.ReviewRows.Count(r => r.Action == "Add without password (factory default)"));
         Assert.Equal(3, wizard.ReviewRows.Count(r => r.Action == "Add with credentials for root"));
-        Assert.All(wizard.ReviewRows, r => Assert.EndsWith(".local", r.Address, StringComparison.Ordinal)); // host names
+        Assert.All(wizard.ReviewRows, r => Assert.StartsWith("10.", r.Address, StringComparison.Ordinal)); // IP addresses
 
         CommitRequest request = wizard.BuildCommitRequest();
         Assert.Equal("", request.InitialRootPassword);
-        Assert.True(request.UseHostName);
+        Assert.False(request.UseHostName); // unused field, never set by the client
         DeviceCredentials forAll = Assert.Single(request.Credentials);
         Assert.Equal("", forAll.DiscoveredId);
         Assert.Equal("root", forAll.UserName);
@@ -107,11 +104,43 @@ public sealed class AddDevicesWizardTests : IDisposable
     }
 
     [Fact]
+    public void Steps_are_select_password_credentials_review_without_host_name()
+    {
+        AddDevicesWizardViewModel zeroConf = Create(AddDevicesMode.ZeroConf);
+        Assert.Equal([WizardStep.Select, WizardStep.Password, WizardStep.Credentials, WizardStep.Review], zeroConf.Steps.Select(s => s.Step));
+        Assert.Equal(["Select devices", "Set password", "Credentials", "Review"], zeroConf.Steps.Select(s => s.Title));
+        Assert.Equal([1, 2, 3, 4], zeroConf.Steps.Select(s => s.Number));
+
+        AddDevicesWizardViewModel range = Create(AddDevicesMode.IpRange);
+        Assert.Equal([1, 2, 3, 4, 5], range.Steps.Select(s => s.Number));
+        Assert.Equal(WizardStep.IpRange, range.Steps[0].Step);
+    }
+
+    [Fact]
+    public async Task Review_uses_host_names_when_the_server_setting_is_on()
+    {
+        ServerSettings settings = await _api.GetSettingsAsync(CancellationToken.None);
+        settings.UseHostName = true;
+        await _api.SetSettingsAsync(settings, CancellationToken.None);
+        await using AddDevicesWizardViewModel wizard = await OpenZeroConfAsync();
+        wizard.Discovered.First(d => d.Serial == "ACCC8E5F6071").IsSelected = true;
+
+        await wizard.NextCommand.ExecuteAsync(null); // credentials
+        wizard.Password = "secret";
+        await wizard.NextCommand.ExecuteAsync(null); // review
+
+        Assert.True(wizard.UseHostName);
+        Assert.EndsWith(".local", Assert.Single(wizard.ReviewRows).Address, StringComparison.Ordinal);
+        await wizard.NextCommand.ExecuteAsync(null);
+        Device added = (await _api.ListDevicesAsync(CancellationToken.None)).Single(d => d.Serial == "ACCC8E5F6071");
+        Assert.True(added.UseHostName);
+    }
+
+    [Fact]
     public async Task Password_step_requires_matching_valid_password()
     {
         await using AddDevicesWizardViewModel wizard = await OpenZeroConfAsync();
         wizard.Discovered.First(d => d.Serial == "B8A44F7788AA").IsSelected = true;
-        await wizard.NextCommand.ExecuteAsync(null);
         await wizard.NextCommand.ExecuteAsync(null);
         Assert.Equal(WizardStep.Password, wizard.CurrentStep);
 
@@ -142,7 +171,6 @@ public sealed class AddDevicesWizardTests : IDisposable
         }
 
         await wizard.NextCommand.ExecuteAsync(null);
-        await wizard.NextCommand.ExecuteAsync(null);
         Assert.Equal(WizardStep.Credentials, wizard.CurrentStep);
 
         wizard.UseForAll = false;
@@ -165,12 +193,10 @@ public sealed class AddDevicesWizardTests : IDisposable
     {
         await using AddDevicesWizardViewModel wizard = await OpenZeroConfAsync();
         wizard.Discovered.First(d => d.Serial == "ACCC8E5F6071").IsSelected = true;
-        await wizard.NextCommand.ExecuteAsync(null); // host name
         await wizard.NextCommand.ExecuteAsync(null); // credentials (password step not needed)
         Assert.Equal(WizardStep.Credentials, wizard.CurrentStep);
+        Assert.True(wizard.Steps.Single(s => s.Step == WizardStep.Password).IsSkipped);
 
-        wizard.BackCommand.Execute(null);
-        Assert.Equal(WizardStep.HostName, wizard.CurrentStep);
         wizard.BackCommand.Execute(null);
         Assert.Equal(WizardStep.Select, wizard.CurrentStep);
         Assert.True(wizard.Discovered.First(d => d.Serial == "ACCC8E5F6071").IsSelected);

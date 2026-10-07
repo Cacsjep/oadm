@@ -1,13 +1,31 @@
 using System.Collections.ObjectModel;
 
+using Oadm.Client.Devices;
 using Oadm.Contracts.V1;
 
 namespace Oadm.Client.Tasks;
 
-/// <summary>In-memory mirror of the server's task table, newest first. Must be used from the UI thread.</summary>
+/// <summary>
+/// In-memory mirror of the server's task table, newest first. Must be used from the UI thread.
+/// Task rows name their devices through the <see cref="DeviceStore"/> and follow its changes.
+/// </summary>
 public sealed class TaskStore
 {
     private readonly Dictionary<string, TaskRowViewModel> _byId = new(StringComparer.Ordinal);
+    private readonly DeviceStore _devices;
+
+    public TaskStore(DeviceStore devices)
+    {
+        ArgumentNullException.ThrowIfNull(devices);
+        _devices = devices;
+        devices.Changed += (_, _) =>
+        {
+            foreach (TaskRowViewModel row in Tasks)
+            {
+                row.ResolveDevices();
+            }
+        };
+    }
 
     public ObservableCollection<TaskRowViewModel> Tasks { get; } = [];
 
@@ -68,7 +86,7 @@ public sealed class TaskStore
         }
         else
         {
-            row = new TaskRowViewModel(task);
+            row = new TaskRowViewModel(task, _devices);
             _byId[task.Id] = row;
             Tasks.Insert(0, row);
         }

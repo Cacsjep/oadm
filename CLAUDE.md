@@ -175,17 +175,23 @@ Toolbar buttons: **Add devices** (zero-conf) and **Add devices from IP range**.
 
 1. **Select devices**: grid of discovered devices with columns Address, Serial (MAC), Model,
    Status. Multi-select, select all, search box. Devices already managed are greyed out.
-2. **Host name**: checkbox "Use host name when available, otherwise IP address" (default off).
-3. **Set password**: list of selected devices that are factory default (`PasswordNotSet`).
+2. **Set password**: list of selected devices that are factory default (`PasswordNotSet`).
    Fields: new password, confirm. Button **Skip** leaves them without a password.
    Password rules shown inline: 1-64 printable ASCII chars, plus the stricter device
    passphrase policy from systemready when present (length: min 15 chars, complex: min 12
    with mixed character types).
-4. **Credentials**: for devices that already have a password: user name, password, checkbox
+3. **Credentials**: for devices that already have a password: user name, password, checkbox
    "Use these credentials for all selected devices", per-device override possible.
    Wrong credentials do not block adding; the device gets status `CredentialsRequired`.
-5. **Review**: table of what will happen per device. **Finish** commits: devices stored,
-   credentials encrypted, first full refresh queued as task "Add devices".
+4. **Review**: table of what will happen per device. **Finish** commits: devices stored,
+   credentials encrypted, first full refresh queued in the background (not a task).
+
+The IP range variant puts an **IP range** step before Select devices (steps numbered 1-5).
+Steps that do not apply (no factory-default device, no device needing credentials) are shown
+skipped; Back and Next jump over them. There is no host name step: whether a device is
+addressed by host name or IP is the server setting `Devices.UseHostName` (see Settings),
+applied by `AddDevicesService.Commit`; `CommitRequest.use_host_name` is unused. The review
+shows the address the setting will produce.
 
 Everything in the wizard is driven by the server (`AddDevicesService`); the client only
 renders the steps.
@@ -233,8 +239,14 @@ Layout, top to bottom:
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
    client, horizontal scroll, multi-select, right-click context menu with core actions and
    all Task plugins whose `CanRun` is true for the whole selection.
-5. Resizable, collapsible bottom pane **Tasks** (no tabs). Columns: Name, Status, Start
-   time, Owner, Progress (bar). Buttons: details, cancel, delete, **delete all** (with
+5. Resizable, collapsible bottom pane **Tasks** (no tabs). Columns: Name, Devices, Status,
+   Start time, Owner, Progress (bar). **Devices** lists the task's devices by their device grid
+   address (IP or host name, resolved through the client device store and updated live):
+   "10.0.0.48", "10.0.0.48, 10.0.0.200", or "10.0.0.48, 10.0.0.200 +3" for more; a device
+   removed since shows as "removed device 1a2b3c4d" (id shortened). Tooltip: one line per
+   device with its state and message ("10.0.0.200: Failed - Connection refused"). Sortable by
+   the text. The task details window lists the same addresses (plus MAC address, model,
+   status, message). Buttons: details, cancel, delete, **delete all** (with
    confirmation; running tasks are cancelled first).
 
 **Logs page** (rail, bottom): live client log with level filter and search. Server log
@@ -412,7 +424,10 @@ reporting progress. No client assembly needed.
 
 Server-side in `Setting`. Goal 1 keys: `Polling.IntervalSeconds` (60, 5..86400),
 `Polling.FullRefreshMinutes` (10, 1..1440), `Scan.Parallelism` (32), `Scan.TimeoutMs` (1500), `Server.Name` (hostname),
-`Server.ListenUrl`. Settings page in the client exposes them. Client-side (local JSON in
+`Server.ListenUrl`, `Devices.UseHostName` (bool, false: add devices by host name when one is
+known, otherwise by IP address; proto `optional bool use_host_name = 7` so a partial `Set`
+keeps it). Settings page in the client exposes them; `Devices.UseHostName` is the checkbox
+"Use host name when available, otherwise IP address". Client-side (local JSON in
 LocalApplicationData): server address, grid column layout, bottom pane state.
 
 # Security
