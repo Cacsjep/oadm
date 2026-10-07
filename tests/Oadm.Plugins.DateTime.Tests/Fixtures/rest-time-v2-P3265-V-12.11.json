@@ -1,0 +1,25 @@
+{
+  "status": "success",
+  "data": {
+    "time": {
+      "dateTime": "2026-10-07T16:24:23Z",
+      "localDateTime": "2026-10-07T18:24:23+02:00",
+      "maxSupportedYear": 2069
+    },
+    "timeZone": {
+      "activeTimeZone": "<UTC1>-1<UTC2>-2,M3.5.0/2:00:00,M10.5.0/3:00:00",
+      "dhcp": {
+        "enabled": false,
+        "timeZone": null
+      },
+      "iana": {
+        "posixTimeZone": null,
+        "timeZone": null
+      },
+      "posix": {
+        "dstEnabled": true,
+        "timeZone": "<UTC1>-1<UTC2>-2,M3.5.0/2:00:00,M10.5.0/3:00:00"
+      }
+    }
+  }
+}

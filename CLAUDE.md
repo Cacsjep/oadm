@@ -652,7 +652,7 @@ characters and never ends with "..." (dialog tasks too). The server registry (`R
 / `.Group`) strips trailing "..." / "…" and shortens longer names to 31 characters + "…", logging a
 warning for either; empty groups become `General`, groups are shortened the same way. The task name in
 the tasks pane, `TaskPluginInfo` and the client menu and toolbar use the normalized name. Bundled plugins:
-Restart and Upgrade firmware (Maintenance), Applications (ACAP) (Applications), Users (Users), Network
+Restart, Upgrade firmware and Date and time (Maintenance), Applications (ACAP) (Applications), Users (Users), Network
 settings and Assign IP address (Network); `TaskPluginNamesTests` checks every plugin deployed to
 `artifacts/plugins`.
 
@@ -804,6 +804,9 @@ Steps of the other task plugins (details in each plugin README):
 - Firmware: Check compatibility, Read device info, Validate file, Read firmware status, Upload firmware
   (byte progress), Install firmware (until offline), Wait for device to come back, Verify version, Read
   commit state, Commit firmware (retries add "Wait before retrying the commit" and "(attempt n)" steps).
+- Date and time: Check compatibility, Read current time settings, Read NTP settings, Validate settings, Set time zone,
+  Set NTP configuration / Turn off NTP, Set date and time, Verify time settings, Verify NTP settings (only the changed
+  sections are planned; values the device already has are Skipped "Already ...").
 - ACAP install: Check compatibility, Read package, Read device info, Read embedded development version,
   Read unsigned application setting, Read installed applications, Check compatibility of package, Upload
   package (byte progress), Verify installation (+ Start application, Verify application state); remove,
@@ -995,6 +998,32 @@ JSON schema: `docs/vapix-commander/command-format.md` + `command.schema.json` (t
   `tests/Oadm.Server.Tests/VapixCommanderServerTests` (PluginService routing, hidden task) and the
   read-only hardware test `VapixCommanderHardwareTests` (param.cgi list Brand and basicdeviceinfo, Try
   and a rollout on 10.0.0.48 through the in-process server). Not in fake mode (`--fake`) yet.
+
+## Date and time plugin
+
+`plugins/Oadm.Plugins.DateTime` (+ `.Client`), id `oadm.datetime`, context menu (group Maintenance, icon `clock`)
+**Date and time**: a clone of the ADM / AXIS Camera Station "Set date and time" dialog (the ADM manual has no date and
+time chapter; wording from the ACS 5 manual, sources in the plugin `README.md`), for any number of devices.
+- Dialog "Set date and time": **Device time** card for the first selected device (read-only query `getTimeSettings`:
+  device time and offset, time zone, time mode with sync state, server time and difference); **Time zone** card: the 313
+  IANA zones of AXIS OS 12.11 (bundled list, offsets from the OS time zone database) in a DataGrid (UTC offset, City,
+  Time zone, DST) with `ui:SearchBox`, "Automatically adjust for daylight saving time changes", Keep unchanged;
+  **Time mode** card: Keep unchanged, Synchronize with server computer time (NTP off, the OADM server's UTC sent once per
+  device at execution time, the devices get the server's time zone), Synchronize with NTP server (Obtain from DHCP / Use
+  servers, up to 5, one per line; Use NTS with NTS KE servers on ntp 1.5+), Set manually (date + time in the device's
+  zone, NTP off). OK. Field errors via INotifyDataErrorInfo under the inputs; device notes are O(n) summaries of the
+  cached API lists ("500 of the selected devices have no Time API ...").
+- APIs: time-service 1.x (`getDateTimeInfo`, `setTimeZone`, `setPosixTimeZone` for DST off, `setDateTime`), ntp 1.x
+  (`getNTPInfo`, `setNTPClientConfiguration`; NTS from 1.5), param.cgi `Time.*` for older firmware (time zone as POSIX,
+  one NTP server; no date and time without the Time API; date.cgi is not used). Decision table and what 10.0.0.48
+  reports: plugin `README.md`. Only changed sections are written; values the device already has are skipped; every
+  write is verified by reading again (Warning on a mismatch or a clock more than 3 s off).
+- Task names (`GetTaskName(payloadJson)` on the plugin class): "Set time zone Europe/Vienna", "Set NTP servers 10.0.0.17,
+  pool.ntp.org", "Set NTP servers from DHCP", "Sync with server time", "Set date and time 2026-10-07 18:00", "Change
+  date and time" (zone and time mode).
+- Tests: `tests/Oadm.Plugins.DateTime.Tests` (request bodies per API version, recorded 10.0.0.48 fixtures, validation,
+  time zones and POSIX conversion, step sequences against a stateful fake device, view model with 5000 devices, headless
+  screenshots `datetime-dialog-single.png`, `-multi-errors.png`, `-server-time.png`, `-nts-error.png`).
 
 ## Applications (ACAP) plugin
 

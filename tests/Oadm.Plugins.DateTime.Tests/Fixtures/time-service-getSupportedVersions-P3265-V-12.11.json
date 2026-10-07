@@ -1,0 +1,9 @@
+{
+  "apiVersion": "1.1",
+  "method": "getSupportedVersions",
+  "data": {
+    "apiVersions": [
+      "1.1"
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "apiVersion": "1.1",
+  "context": "oadm",
+  "method": "getDateTimeInfo",
+  "error": {
+    "code": 4001,
+    "message": "The specified version is not supported"
+  }
+}

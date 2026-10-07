@@ -1,0 +1,9 @@
+{
+  "apiVersion": "1.1",
+  "context": "oadm",
+  "method": "getOadmUnknown",
+  "error": {
+    "code": 4000,
+    "message": "Method does not exist"
+  }
+}
