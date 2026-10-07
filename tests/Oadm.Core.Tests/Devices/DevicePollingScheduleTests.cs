@@ -102,8 +102,11 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
         }
 
         await WaitUntilAsync(async () => (await Devices.GetAsync(device.Id, CancellationToken.None))!.DhcpEnabled is not null);
-        var first = Assert.Single(_camera.FullRefreshTimes.ToArray());
-        Assert.InRange(first - start, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(12));
+        // Under load the loop may advance the clock once more while the refresh runs, so assert the
+        // schedule rather than an exact count: first refresh after ~10 min, no duplicate inside the period.
+        var times = _camera.FullRefreshTimes.ToArray().Order().ToArray();
+        Assert.InRange(times[0] - start, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(12));
+        Assert.All(times.Skip(1), t => Assert.True(t - times[0] >= TimeSpan.FromMinutes(10), $"duplicate full refresh at {t - times[0]} after the first"));
         Assert.True(_camera.StatusPolls > 0, "the light poll keeps running alongside");
 
         await cts.CancelAsync();
