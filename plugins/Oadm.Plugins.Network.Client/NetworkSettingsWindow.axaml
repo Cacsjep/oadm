@@ -1,0 +1,166 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:chrome="using:Avalonia.Controls.Chrome"
+        xmlns:vm="using:Oadm.Plugins.Network.Client"
+        x:Class="Oadm.Plugins.Network.Client.NetworkSettingsWindow"
+        x:DataType="vm:NetworkSettingsViewModel"
+        Title="{Binding Title}"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+  <!-- Plain controls only: fonts, colors, paddings and spacing come from the host theme (OadmTheme.axaml). -->
+  <Grid RowDefinitions="Auto,*,Auto" Grid.IsSharedSizeScope="True">
+    <!-- Same title bar as the host dialogs (MessageWindow, TaskDetailsWindow). -->
+    <Border Height="{DynamicResource Oadm.TitleBarHeight}" Padding="24,0" chrome:WindowDecorationProperties.ElementRole="TitleBar">
+      <TextBlock Classes="appName" Text="{Binding Title}" VerticalAlignment="Center" />
+    </Border>
+
+    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="{DynamicResource Oadm.CardPadding}" Spacing="{DynamicResource Oadm.Gap}">
+        <StackPanel>
+          <TextBlock Classes="secondary" Text="{Binding DeviceSummary}" TextWrapping="Wrap" />
+          <TextBlock Classes="secondary small" Text="{Binding PrefillStatus}" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <!-- IPv4 -->
+        <Border Classes="card">
+          <StackPanel Spacing="{DynamicResource Oadm.Gap}">
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Classes="sectionTitle" Text="IPv4" VerticalAlignment="Center" />
+              <ComboBox Grid.Column="1" HorizontalAlignment="Right" ItemsSource="{Binding Ipv4Choices}" SelectedItem="{Binding SelectedIpv4}" />
+            </Grid>
+            <TextBlock Classes="secondary" Text="{Binding CurrentIpv4Text}" TextWrapping="Wrap" />
+            <Grid IsVisible="{Binding IsIpv4Static}" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource Oadm.Gap}" ColumnSpacing="{DynamicResource Oadm.Gap}">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" SharedSizeGroup="Label" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <TextBlock Classes="fieldLabel" Text="{Binding Ipv4AddressLabel}" />
+              <TextBox Grid.Column="1" Text="{Binding Ipv4Address}" PlaceholderText="192.168.0.90" />
+              <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Subnet mask" />
+              <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Ipv4Mask}" PlaceholderText="255.255.255.0 or 24" />
+              <TextBlock Grid.Row="2" Classes="fieldLabel" Text="Default gateway" />
+              <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Ipv4Gateway}" PlaceholderText="192.168.0.1" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- IPv6 -->
+        <Border Classes="card">
+          <StackPanel Spacing="{DynamicResource Oadm.Gap}">
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Classes="sectionTitle" Text="IPv6" VerticalAlignment="Center" />
+              <ComboBox Grid.Column="1" HorizontalAlignment="Right" ItemsSource="{Binding Ipv6Choices}" SelectedItem="{Binding SelectedIpv6}" />
+            </Grid>
+            <TextBlock Classes="secondary" Text="{Binding CurrentIpv6Text}" TextWrapping="Wrap" />
+            <Grid IsVisible="{Binding IsIpv6Static}" RowDefinitions="Auto,Auto,Auto" RowSpacing="{DynamicResource Oadm.Gap}" ColumnSpacing="{DynamicResource Oadm.Gap}">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" SharedSizeGroup="Label" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <TextBlock Classes="fieldLabel" Text="IP address" />
+              <TextBox Grid.Column="1" Text="{Binding Ipv6Address}" PlaceholderText="2001:db8::10" />
+              <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Prefix length" />
+              <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Ipv6Prefix}" PlaceholderText="64" />
+              <TextBlock Grid.Row="2" Classes="fieldLabel" Text="Default gateway" />
+              <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Ipv6Gateway}" PlaceholderText="fe80::1 (optional)" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- DNS -->
+        <Border Classes="card">
+          <StackPanel Spacing="{DynamicResource Oadm.Gap}">
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Classes="sectionTitle" Text="DNS" VerticalAlignment="Center" />
+              <ComboBox Grid.Column="1" HorizontalAlignment="Right" ItemsSource="{Binding DnsChoices}" SelectedItem="{Binding SelectedDns}" />
+            </Grid>
+            <TextBlock Classes="secondary" Text="{Binding CurrentDnsText}" TextWrapping="Wrap" />
+            <Grid IsVisible="{Binding IsDnsStatic}" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="{DynamicResource Oadm.Gap}" ColumnSpacing="{DynamicResource Oadm.Gap}">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" SharedSizeGroup="Label" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <TextBlock Classes="fieldLabel" Text="Primary DNS server" />
+              <TextBox Grid.Column="1" Text="{Binding DnsPrimary}" PlaceholderText="192.168.0.1" />
+              <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Secondary DNS server" />
+              <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding DnsSecondary}" PlaceholderText="optional" />
+              <TextBlock Grid.Row="2" Classes="fieldLabel" Text="Domain name" />
+              <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding DnsDomain}" PlaceholderText="example.com (optional)" />
+              <TextBlock Grid.Row="3" Classes="fieldLabel" Text="Search domains" />
+              <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding DnsSearch}" PlaceholderText="comma separated (optional)" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Host name -->
+        <Border Classes="card">
+          <StackPanel Spacing="{DynamicResource Oadm.Gap}">
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Classes="sectionTitle" Text="Host name" VerticalAlignment="Center" />
+              <ComboBox Grid.Column="1" HorizontalAlignment="Right" ItemsSource="{Binding HostNameChoices}" SelectedItem="{Binding SelectedHostName}" />
+            </Grid>
+            <TextBlock Classes="secondary" Text="{Binding CurrentHostNameText}" TextWrapping="Wrap" />
+            <Grid IsVisible="{Binding IsHostNameStatic}" RowDefinitions="Auto,Auto" RowSpacing="{DynamicResource Oadm.Gap}" ColumnSpacing="{DynamicResource Oadm.Gap}">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" SharedSizeGroup="Label" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <TextBlock Classes="fieldLabel" Text="{Binding HostNameLabel}" />
+              <TextBox Grid.Column="1" Text="{Binding HostNameText}" PlaceholderText="axis-camera" />
+              <TextBlock Grid.Row="1" Grid.Column="1" Classes="secondary small" Text="{Binding HostNameHint}" TextWrapping="Wrap" IsVisible="{Binding IsMultiDevice}" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Per-device preview (address range, host name template) -->
+        <Border Classes="card" IsVisible="{Binding ShowPreview}">
+          <StackPanel Spacing="{DynamicResource Oadm.Gap}">
+            <TextBlock Classes="sectionTitle" Text="Preview" />
+            <Grid ColumnDefinitions="2*,*,*,*">
+              <TextBlock Classes="secondary" Text="Device" />
+              <TextBlock Grid.Column="1" Classes="secondary" Text="Current address" />
+              <TextBlock Grid.Column="2" Classes="secondary" Text="New address" />
+              <TextBlock Grid.Column="3" Classes="secondary" Text="New host name" />
+            </Grid>
+            <ItemsControl ItemsSource="{Binding Preview}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:PreviewRow">
+                  <Grid ColumnDefinitions="2*,*,*,*">
+                    <TextBlock Text="{Binding Device}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="1" Text="{Binding CurrentAddress}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="2" Text="{Binding NewAddress}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="3" Text="{Binding NewHostName}" TextTrimming="CharacterEllipsis" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <!-- Reachability warning: must be acknowledged before Apply -->
+        <Border Classes="card" IsVisible="{Binding HasWarning}">
+          <StackPanel Spacing="{DynamicResource Oadm.Gap}">
+            <TextBlock Classes="sectionTitle warning" Text="The devices may become unreachable" />
+            <TextBlock Classes="warning" Text="{Binding ReachabilityWarning}" TextWrapping="Wrap" />
+            <CheckBox IsChecked="{Binding WarningAcknowledged}" Content="I understand that OADM may lose contact with these devices" />
+          </StackPanel>
+        </Border>
+
+        <ItemsControl ItemsSource="{Binding Errors}" IsVisible="{Binding HasErrors}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <TextBlock Classes="error" Text="{Binding}" TextWrapping="Wrap" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </ScrollViewer>
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="{DynamicResource Oadm.Gap}" HorizontalAlignment="Right" Margin="{DynamicResource Oadm.CardPadding}">
+      <Button Classes="secondary" Content="Cancel" Command="{Binding CancelCommand}" IsCancel="True" />
+      <Button Classes="primary" Content="Apply" Command="{Binding ApplyCommand}" IsEnabled="{Binding CanApply}" IsDefault="True" />
+    </StackPanel>
+  </Grid>
+</Window>

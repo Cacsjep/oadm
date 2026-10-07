@@ -1,0 +1,9 @@
+{
+  "apiVersion": "1.38",
+  "context": "oadm",
+  "method": "getNetworkInfo",
+  "error": {
+    "code": 4001,
+    "message": "The specified version is not supported"
+  }
+}

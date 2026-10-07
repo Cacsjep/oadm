@@ -1,0 +1,9 @@
+{
+  "apiVersion": "1.38",
+  "method": "getSupportedVersions",
+  "data": {
+    "apiVersions": [
+      "1.38"
+    ]
+  }
+}
