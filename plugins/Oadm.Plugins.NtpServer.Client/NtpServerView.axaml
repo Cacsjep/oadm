@@ -4,16 +4,17 @@
              xmlns:ntp="using:Oadm.Plugins.NtpServer"
              xmlns:vm="using:Oadm.Plugins.NtpServer.Client"
              x:Class="Oadm.Plugins.NtpServer.Client.NtpServerView"
-             x:DataType="vm:NtpServerViewModel">
+             x:DataType="vm:NtpServerViewModel"
+             ui:PageHeader.Subtitle="Answers the time requests of the cameras (NTP, UDP port 123).">
+  <!-- Description and status live in the host page header (ui:PageHeader); the card starts with the form. -->
+  <ui:PageHeader.Trailing>
+    <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"
+                   IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}"
+                   ToolTip.Tip="{Binding StatusDetail}" x:DataType="vm:NtpServerViewModel" />
+  </ui:PageHeader.Trailing>
   <!-- One card (the host's page card): header with the status line, settings form, last requests. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,Auto,*">
-    <ui:CardHeader Grid.Row="0" Description="Answers the time requests of the cameras (NTP, UDP port 123).">
-      <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"
-                     IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}"
-                     ToolTip.Tip="{Binding StatusDetail}" />
-    </ui:CardHeader>
-
-    <StackPanel Grid.Row="1" Classes="form" Margin="{DynamicResource Oadm.GapTop}">
+    <StackPanel Grid.Row="1" Classes="form">
       <CheckBox Content="Enable NTP server" IsChecked="{Binding IsEnabled}" />
 
       <Grid ColumnDefinitions="150,420">

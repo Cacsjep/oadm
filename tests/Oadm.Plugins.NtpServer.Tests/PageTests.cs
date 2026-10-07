@@ -262,15 +262,12 @@ public sealed class HeadlessPageTests
 
     private static Window Host(Control view)
     {
-        var title = new TextBlock { Text = "NTP server", Margin = new Thickness(4, 0, 0, 16) };
-        title.Classes.Add("pageTitle");
-        var card = new Border { Child = view };
-        card.Classes.Add("card");
-        Grid.SetRow(card, 1);
-        var layout = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
-        layout.Children.Add(title);
-        layout.Children.Add(card);
-        return new Window { Width = 1280, Height = 860, Content = new Border { Padding = new Thickness(16), Child = layout } };
+        // The real host page (title, ui:PageHeader subtitle and status, card), like in the client.
+        var page = new Oadm.Client.Shell.CorePluginPageView
+        {
+            DataContext = new Oadm.Client.Shell.CorePluginPageViewModel("oadm.ntp-server", "NTP server", view),
+        };
+        return new Window { Width = 1280, Height = 860, Content = new Border { Padding = new Thickness(16), Child = page } };
     }
 
     private static void Pump()

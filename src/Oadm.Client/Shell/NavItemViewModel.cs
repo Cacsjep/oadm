@@ -44,6 +44,26 @@ public sealed class CorePluginPageViewModel(string pluginId, string title, objec
     /// <summary>The view for pages that bring their own cards, or null.</summary>
     public object? OwnCardsView => HasOwnCards ? View : null;
 
+    /// <summary>Secondary line under the page title (<c>ui:PageHeader.Subtitle</c> on the page's root control).</summary>
+    public string? Subtitle { get; } = view is Avalonia.Controls.Control c ? Oadm.Sdk.Client.Controls.PageHeader.GetSubtitle(c) : null;
+
+    public bool HasSubtitle => !string.IsNullOrEmpty(Subtitle);
+
+    /// <summary>Control right of the page title (<c>ui:PageHeader.Trailing</c>), bound to the page's DataContext.</summary>
+    public Avalonia.Controls.Control? HeaderTrailing { get; } = AttachTrailing(view);
+
+    private static Avalonia.Controls.Control? AttachTrailing(object? view)
+    {
+        if (view is not Avalonia.Controls.Control page || Oadm.Sdk.Client.Controls.PageHeader.GetTrailing(page) is not { } trailing)
+        {
+            return null;
+        }
+
+        // The trailing control is shown by the host, outside the page; keep the page's bindings working.
+        trailing.Bind(Avalonia.StyledElement.DataContextProperty, Avalonia.AvaloniaObjectExtensions.GetObservable(page, Avalonia.StyledElement.DataContextProperty));
+        return trailing;
+    }
+
     /// <summary>The shared tasks pane below the page (ICorePluginPage.ShowTasksPane), or null.</summary>
     public Oadm.Client.Tasks.TasksViewModel? Tasks { get; } = tasks;
 

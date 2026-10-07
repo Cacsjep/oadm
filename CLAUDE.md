@@ -1263,6 +1263,9 @@ LocalApplicationData): server address, grid column layout, bottom pane state.
   or summarized ("4,812 compatible, 188 missing API"), and images/snapshots load only for visible
   tiles. Every feature with a device list has a test with at least 5000 fake devices that keeps
   filtering/selection/summary fast.
+- Core plugin pages never repeat the page title in a card heading: description and status go into
+  the host page header via `ui:PageHeader.Subtitle` / `ui:PageHeader.Trailing`; the card starts with
+  the form. User-facing texts use plain language (no protocol jargon such as stratum, DISCOVER/OFFER).
 - **HARD RULE, no style differences.** Same kind of element, same look, everywhere: one
   style per element type in `Themes/OadmTheme.axaml`, no local overrides of font size,
   weight, color, padding or alignment in views. No special cases such as a bold selected rail
