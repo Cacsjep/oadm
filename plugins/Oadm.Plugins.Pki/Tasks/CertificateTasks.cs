@@ -337,8 +337,12 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
         var payload = PkiJson.Deserialize<InstallPayload>(payloadJson);
-        var file = payload.Files.FirstOrDefault(f => f.DeviceId == device.Id);
         var purpose = payload.Purpose;
+
+        // HTTPS / 802.1X: the one file matched to this device. CA only: every file for this device or for all (Guid.Empty).
+        var files = purpose == InstallPurpose.CaOnly
+            ? payload.Files.Where(f => f.DeviceId == device.Id || f.DeviceId == Guid.Empty).ToList()
+            : payload.Files.Where(f => f.DeviceId == device.Id).Take(1).ToList();
         string[] purposeSteps = purpose switch
         {
             InstallPurpose.Https => [PkiSteps.ReadWebServer, PkiSteps.InstallCertificate, PkiSteps.SwitchWebServer, PkiSteps.VerifyHttps],
@@ -347,7 +351,7 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
             _ => throw new ArgumentException("Unknown purpose: " + purpose, nameof(payloadJson)),
         };
         ctx.PlanSteps([PkiSteps.CheckCompatibility, PkiSteps.ReadFile, .. purposeSteps]);
-        if (file is null)
+        if (files.Count == 0)
         {
             ctx.SkipStep(PkiSteps.CheckCompatibility, "No certificate file matches this device");
             ctx.ReportWarning("No certificate file matches this device. Nothing was changed.");
@@ -374,40 +378,50 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
             return (list, info);
         }).ConfigureAwait(false);
 
-        var (bytes, contents) = await ctx.StepAsync(PkiSteps.ReadFile, async step =>
+        var read = await ctx.StepAsync(PkiSteps.ReadFile, async step =>
         {
-            var found = await ctx.Files.FindAsync(file.FileId, ct).ConfigureAwait(false)
-                ?? throw new InvalidOperationException($"The uploaded file {file.FileName} is no longer on the server. Nothing was changed.");
-            if (found.Size > CertificateFiles.MaxBytes)
+            var result = new List<(InstallFile File, byte[] Data, Pkcs12Contents Contents)>();
+            foreach (var file in files)
             {
-                throw new InvalidOperationException("The file is larger than 1 MB. Nothing was changed.");
+                var found = await ctx.Files.FindAsync(file.FileId, ct).ConfigureAwait(false)
+                    ?? throw new InvalidOperationException($"The uploaded file {file.FileName} is no longer on the server. Nothing was changed.");
+                if (found.Size > CertificateFiles.MaxBytes)
+                {
+                    throw new InvalidOperationException($"{file.FileName}: The file is larger than 1 MB. Nothing was changed.");
+                }
+
+                await using var stream = await ctx.Files.OpenReadAsync(file.FileId, ct).ConfigureAwait(false);
+                using var memory = new MemoryStream();
+                await stream.CopyToAsync(memory, ct).ConfigureAwait(false);
+                var data = memory.ToArray();
+                var contents = CertificateFiles.Read(data, payload.Password, Time.GetUtcNow().UtcDateTime);
+                var needsLeaf = purpose != InstallPurpose.CaOnly;
+                if (contents.Error is not null || (needsLeaf && !contents.HasLeaf) || contents.CertificatePems.Count == 0)
+                {
+                    var reason = contents.Error ?? (needsLeaf ? "The file contains no certificate with a private key." : "The file contains no certificate.");
+                    throw new InvalidOperationException($"{file.FileName}: {reason} Nothing was changed.");
+                }
+
+                result.Add((file, data, contents));
             }
 
-            await using var stream = await ctx.Files.OpenReadAsync(file.FileId, ct).ConfigureAwait(false);
-            using var memory = new MemoryStream();
-            await stream.CopyToAsync(memory, ct).ConfigureAwait(false);
-            var data = memory.ToArray();
-            var read = CertificateFiles.Read(data, payload.Password, Time.GetUtcNow().UtcDateTime);
-            var needsLeaf = purpose != InstallPurpose.CaOnly;
-            if (read.Error is not null || (needsLeaf && !read.HasLeaf) || read.CertificatePems.Count == 0)
-            {
-                var reason = read.Error ?? (needsLeaf ? "The file contains no certificate with a private key." : "The file contains no certificate.");
-                throw new InvalidOperationException($"{file.FileName}: {reason} Nothing was changed.");
-            }
-
-            step.Complete(needsLeaf ? $"{file.FileName} · {read.LeafSubject}, valid until {read.LeafNotAfterUtc:yyyy-MM-dd}" : $"{file.FileName} · {read.CertificatePems.Count} certificates");
-            return (data, read);
+            var first = result[0];
+            step.Complete(purpose != InstallPurpose.CaOnly
+                ? $"{first.File.FileName} · {first.Contents.LeafSubject}, valid until {first.Contents.LeafNotAfterUtc:yyyy-MM-dd}"
+                : $"{string.Join(", ", result.Select(r => r.File.FileName))} · {result.Sum(r => r.Contents.CertificatePems.Count)} certificates");
+            return result;
         }).ConfigureAwait(false);
+        var (file, bytes, contents) = read[0];
 
         var service = Service;
         switch (purpose)
         {
             case InstallPurpose.CaOnly:
-                await CertificateDeployment.InstallCaCertificatesAsync(ctx, PkiSteps.InstallCas, [.. contents.CertificatePems.Select(pem =>
+                await CertificateDeployment.InstallCaCertificatesAsync(ctx, PkiSteps.InstallCas, [.. read.SelectMany(r => r.Contents.CertificatePems).Select(pem =>
                 {
                     var fingerprint = CertificateDeployment.Fingerprint(pem);
                     return (CertificateDeployment.CaAlias(CertificateDeployment.CaAliasPrefix, fingerprint), pem, fingerprint);
-                })], ct).ConfigureAwait(false);
+                }).DistinctBy(c => c.fingerprint, StringComparer.OrdinalIgnoreCase)], ct).ConfigureAwait(false);
                 break;
 
             case InstallPurpose.Https:
