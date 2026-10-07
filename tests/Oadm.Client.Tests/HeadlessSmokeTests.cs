@@ -23,6 +23,25 @@ public static class HeadlessEntry
 }
 
 /// <summary>
+/// The one headless Avalonia session of the test run (AppBuilder.Setup may only run once per
+/// process). Runs the real App against the fake server.
+/// </summary>
+public static class HeadlessSession
+{
+    private static readonly string Folder = Path.Combine(Path.GetTempPath(), "oadm-headless-" + Guid.NewGuid().ToString("N"));
+
+    public static string DataFolder => Folder;
+
+    private static readonly Lazy<HeadlessUnitTestSession> Session = new(() =>
+    {
+        App.Options = new AppOptions { UseFake = true, DataFolder = Folder };
+        return HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+    });
+
+    public static HeadlessUnitTestSession Shared => Session.Value;
+}
+
+/// <summary>
 /// Loads the real views against the fake server, so XAML, bindings and theme resources are exercised.
 /// Set OADM_SCREENSHOT_DIR to also write PNGs of the rendered windows.
 /// </summary>
@@ -31,10 +50,9 @@ public sealed class HeadlessSmokeTests
     [Fact]
     public async Task Main_window_pages_and_wizard_render_with_fake_server()
     {
-        string dataFolder = Path.Combine(Path.GetTempPath(), "oadm-headless-" + Guid.NewGuid().ToString("N"));
-        App.Options = new AppOptions { UseFake = true, DataFolder = dataFolder };
+        string dataFolder = HeadlessSession.DataFolder;
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
-        using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        HeadlessUnitTestSession session = HeadlessSession.Shared;
 
         int deviceCount = await session.Dispatch(async () =>
         {
@@ -53,6 +71,32 @@ public sealed class HeadlessSmokeTests
                 .GetVisualDescendants().OfType<DataGrid>().Single();
             Assert.Equal(["Name", "Devices", "Status", "Start time", "Owner", "Progress"], tasksGrid.Columns.Select(c => c.Header as string ?? "").ToArray());
             Capture(window, outDir, "client-tasks-pane.png");
+
+            // Live view of the first camera: the fake server replays recorded H.265, decoded by FFmpeg.
+            LiveView.LiveViewViewModel live = vm.Devices.LiveView;
+            Devices.DeviceRowViewModel camera = vm.Devices.FilteredDevices.First(LiveView.LiveViewSupport.IsSupported);
+            live.ToggleCommand.Execute(camera);
+            if (LiveView.FfmpegRuntime.Status.IsAvailable)
+            {
+                await PumpUntilAsync(() => live.Image is not null && live.State == LiveView.LiveViewState.Live
+                    && live.DetailText.Contains("fps", StringComparison.Ordinal) && live.HasSourceChoice);
+                Assert.StartsWith("H.265", live.DetailText, StringComparison.Ordinal);
+                Capture(window, outDir, "client-liveview.png");
+
+                // The P3265-V has two view areas (like 10.0.0.48): switch to the second one.
+                live.SelectSourceCommand.Execute(live.Sources[1]);
+                await PumpUntilAsync(() => live.Camera == 2 && live.Image is not null && live.State == LiveView.LiveViewState.Live);
+                Capture(window, outDir, "client-liveview-source2.png");
+            }
+            else
+            {
+                await PumpUntilAsync(() => live.State == LiveView.LiveViewState.Error);
+                Capture(window, outDir, "client-liveview.png");
+            }
+
+            live.ToggleCommand.Execute(camera);
+            Assert.False(live.IsOpen);
+            await PumpUntilAsync(() => true);
 
             foreach (NavItemViewModel item in vm.NavItems.Concat(vm.BottomNavItems).ToList())
             {

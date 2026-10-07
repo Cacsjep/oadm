@@ -533,6 +533,90 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
     public Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) =>
         throw new RpcException(new Status(StatusCode.Unimplemented, "no core plugins in fake mode"));
 
+    // ---------------------------------------------------------------- live view
+
+    /// <summary>
+    /// Sources like the real devices report them: the P3265-V has two enabled view areas (as
+    /// 10.0.0.48), the P3727-PLE four sensors plus a quad view, everything else one camera.
+    /// </summary>
+    public Task<IReadOnlyList<LiveViewSource>> ListLiveViewSourcesAsync(string deviceId, CancellationToken ct)
+    {
+        string model;
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            model = _devices.Find(d => d.Id == deviceId)?.Model
+                ?? throw new RpcException(new Status(StatusCode.NotFound, "device not found"));
+        }
+
+        static LiveViewSource Source(int camera, string name, int sensor, int w, int h) =>
+            new() { Camera = camera, Name = name, Sensor = sensor, MaxWidth = w, MaxHeight = h };
+
+        IReadOnlyList<LiveViewSource> sources = model switch
+        {
+            _ when model.Contains("P3265", StringComparison.Ordinal) => [Source(1, "View Area 1", 0, 1920, 1080), Source(2, "View Area 2", 0, 1920, 1080)],
+            _ when model.Contains("P3727", StringComparison.Ordinal) =>
+                [Source(1, "Camera 1", 0, 2592, 1944), Source(2, "Camera 2", 1, 2592, 1944), Source(3, "Camera 3", 2, 2592, 1944), Source(4, "Camera 4", 3, 2592, 1944), Source(5, "Quad view", 0, 3840, 2880)],
+            _ => [Source(1, "Camera", 0, 1920, 1080)],
+        };
+        return Task.FromResult(sources);
+    }
+
+    /// <summary>
+    /// Replays 1.5 s of real camera video (recorded from an AXIS P3265-V at 640x360, 10 fps) in a
+    /// loop: H.265 when the viewer accepts it, else H.264. Each loop starts with a keyframe.
+    /// </summary>
+    public async IAsyncEnumerable<LiveViewFrame> WatchLiveViewAsync(LiveViewRequest request, [EnumeratorCancellation] CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            if (_devices.All(d => d.Id != request.DeviceId))
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, "device not found"));
+            }
+        }
+
+        var sources = await ListLiveViewSourcesAsync(request.DeviceId, ct).ConfigureAwait(false);
+        var camera = request.Camera == 0 ? sources[0].Camera : request.Camera;
+        if (sources.All(s => s.Camera != camera))
+        {
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, $"The device has no video source {camera}."));
+        }
+
+        var codec = request.AcceptedCodecs.Contains(VideoCodec.H265) ? VideoCodec.H265 : VideoCodec.H264;
+        var units = FakeLiveVideo.Load(codec);
+        var fps = request.Fps > 0 ? Math.Min(request.Fps, 30) : 10;
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1.0 / fps));
+        long timestamp = 0;
+        for (var i = 0; ; i = (i + 1) % units.Count)
+        {
+            var (keyframe, data) = units[i];
+            yield return new LiveViewFrame
+            {
+                Codec = codec,
+                Keyframe = keyframe,
+                Data = Google.Protobuf.ByteString.CopyFrom(data),
+                RtpTimestamp = timestamp,
+                Width = 640,
+                Height = 360,
+                Captured = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow),
+                Camera = camera,
+            };
+            timestamp += 90000 / fps;
+            if (!await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
+            {
+                yield break;
+            }
+
+            lock (_gate)
+            {
+                ThrowIfOffline();
+            }
+        }
+    }
+
     // ---------------------------------------------------------------- simulation
 
     private static string OwnerName => $"{Environment.UserName}@{Environment.MachineName}";

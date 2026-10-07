@@ -33,6 +33,7 @@ internal sealed class TestServerHost : IAsyncDisposable
         Plugins = new Proto.PluginService.PluginServiceClient(channel);
         Discovery = new Proto.DiscoveryService.DiscoveryServiceClient(channel);
         AddDevices = new Proto.AddDevicesService.AddDevicesServiceClient(channel);
+        LiveView = new Proto.LiveViewService.LiveViewServiceClient(channel);
     }
 
     public WebApplication App { get; }
@@ -57,13 +58,16 @@ internal sealed class TestServerHost : IAsyncDisposable
 
     public Proto.AddDevicesService.AddDevicesServiceClient AddDevices { get; }
 
+    public Proto.LiveViewService.LiveViewServiceClient LiveView { get; }
+
     public T Get<T>() where T : notnull => App.Services.GetRequiredService<T>();
 
     public static string NewDataDirectory() => Path.Combine(Path.GetTempPath(), "oadm-server-tests", Guid.NewGuid().ToString("N"));
 
     /// <param name="network">Fake devices; null for an empty network.</param>
     /// <param name="useRealNetwork">Keep the real VAPIX connector and probes (hardware tests).</param>
-    public static async Task<TestServerHost> StartAsync(FakeAxisNetwork? network = null, bool useRealNetwork = false)
+    /// <param name="configureServices">Extra replacements after the defaults (e.g. a fake live video source).</param>
+    public static async Task<TestServerHost> StartAsync(FakeAxisNetwork? network = null, bool useRealNetwork = false, Action<IServiceCollection>? configureServices = null)
     {
         network ??= new FakeAxisNetwork();
         var dataDirectory = NewDataDirectory();
@@ -86,6 +90,8 @@ internal sealed class TestServerHost : IAsyncDisposable
                     services.RemoveAll<VapixDeviceProbe>();
                     services.AddSingleton(_ => new VapixDeviceProbe(network.CreateHandler(), TimeSpan.FromSeconds(2)));
                 }
+
+                configureServices?.Invoke(services);
             },
         });
 

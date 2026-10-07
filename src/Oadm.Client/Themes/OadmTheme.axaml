@@ -54,6 +54,7 @@
       <Color x:Key="Oadm.ChipNeutralColor">#5F5F5F</Color>
       <Color x:Key="Oadm.ChipTextColor">#FFFFFF</Color>
       <Color x:Key="Oadm.OverlayColor">#99000000</Color>
+      <Color x:Key="Oadm.VideoBackgroundColor">#0C0C0C</Color>
       <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="{StaticResource Oadm.WindowBackgroundColor}" />
       <!-- Drawn caption buttons (Fluent WindowDrawnDecorations): hover is the Background, pressed the BorderBrush.
            Minimize/maximize use these neutral greys instead of the accent; close keeps its red from the theme. -->
@@ -101,6 +102,7 @@
       <SolidColorBrush x:Key="Oadm.ChipNeutralBrush" Color="{StaticResource Oadm.ChipNeutralColor}" />
       <SolidColorBrush x:Key="Oadm.ChipTextBrush" Color="{StaticResource Oadm.ChipTextColor}" />
       <SolidColorBrush x:Key="Oadm.OverlayBrush" Color="{StaticResource Oadm.OverlayColor}" />
+      <SolidColorBrush x:Key="Oadm.VideoBackgroundBrush" Color="{StaticResource Oadm.VideoBackgroundColor}" />
       <SolidColorBrush x:Key="Oadm.TransparentBrush" Color="Transparent" />
 
       <!-- Sizes -->
@@ -121,6 +123,9 @@
       <x:Double x:Key="Oadm.SearchWidth">260</x:Double>
       <x:Double x:Key="Oadm.SplitterHeight">16</x:Double>
       <x:Double x:Key="Oadm.DevicesCardMinHeight">220</x:Double>
+      <!-- Device card keeps its toolbar on one line next to the live view; the live view never gets narrower than this -->
+      <x:Double x:Key="Oadm.DevicesCardMinWidth">900</x:Double>
+      <x:Double x:Key="Oadm.LiveViewMinWidth">320</x:Double>
       <x:Double x:Key="Oadm.ProgressHeight">6</x:Double>
       <x:Double x:Key="Oadm.Gap">16</x:Double>
       <CornerRadius x:Key="Oadm.CardCornerRadius">16</CornerRadius>
@@ -588,6 +593,77 @@
   </Style>
   <Style Selector="GridSplitter.paneSplitter:pointerover /template/ Border#grip">
     <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+
+  <!-- Same splitter between the device card and the live view panel (side by side) -->
+  <Style Selector="GridSplitter.paneSplitter.vertical">
+    <Setter Property="Height" Value="NaN" />
+    <Setter Property="Width" Value="{StaticResource Oadm.SplitterHeight}" />
+    <Setter Property="ResizeDirection" Value="Columns" />
+    <Setter Property="Cursor" Value="SizeWestEast" />
+  </Style>
+  <Style Selector="GridSplitter.paneSplitter.vertical /template/ Border#grip">
+    <Setter Property="Width" Value="4" />
+    <Setter Property="Height" Value="40" />
+  </Style>
+
+  <!-- Live view -->
+  <Style Selector="c|IconLabel.sectionTitle TextBlock">
+    <Setter Property="FontSize" Value="13.5" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Border.liveViewSurface">
+    <Setter Property="Background" Value="{StaticResource Oadm.VideoBackgroundBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="ClipToBounds" Value="True" />
+    <Setter Property="MinHeight" Value="120" />
+  </Style>
+  <!-- Segmented switch (live view source: view area / sensor / channel) -->
+  <Style Selector="Border.segmented">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="2" />
+  </Style>
+  <Style Selector="Button.segment">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="MinWidth" Value="28" />
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <Style Selector="Button.segment:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.segment.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+  </Style>
+
+  <!-- Device icon cell: opens the live view of video devices -->
+  <Style Selector="Button.liveViewIcon">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="4" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.liveViewIcon:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+  </Style>
+  <Style Selector="Button.liveViewIcon:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+  </Style>
+  <Style Selector="Button.liveViewIcon:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="Button.liveViewIcon:disabled">
+    <Setter Property="Cursor" Value="Arrow" />
   </Style>
 
   <!-- Menus and flyouts -->

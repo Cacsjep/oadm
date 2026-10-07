@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Oadm.Core.Devices;
 using Oadm.Core.Discovery;
 using Oadm.Core.Discovery.Mdns;
+using Oadm.Core.LiveView;
 using Oadm.Core.Persistence;
 using Oadm.Core.Plugins;
 using Oadm.Core.Settings;
@@ -15,6 +16,7 @@ using Oadm.Core.Vapix;
 using Oadm.Server.AddDevices;
 using Oadm.Server.Devices;
 using Oadm.Server.Discovery;
+using Oadm.Server.LiveView;
 using Oadm.Server.Plugins;
 using Oadm.Server.Settings;
 using Oadm.Server.Tasks;
@@ -99,6 +101,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<PluginGrpcService>();
         app.MapGrpcService<DiscoveryGrpcService>();
         app.MapGrpcService<AddDevicesGrpcService>();
+        app.MapGrpcService<LiveViewGrpcService>();
         if (app.Environment.IsDevelopment())
         {
             app.MapGrpcReflectionService();
@@ -125,6 +128,11 @@ public static partial class OadmServerHost
         services.AddSingleton<VapixClientFactory>();
         services.AddSingleton<Sdk.Vapix.IVapixClientFactory>(sp => sp.GetRequiredService<VapixClientFactory>());
         services.AddSingleton(_ => new VapixProbe(TimeSpan.FromSeconds(3)));
+
+        // Live view: RTSP upstreams shared between viewers
+        services.AddSingleton<ILiveVideoSourceFactory, AxisLiveVideoSourceFactory>();
+        services.AddSingleton(new LiveViewHubOptions());
+        services.AddSingleton<LiveViewHub>();
 
         // Plugins and tasks
         services.AddSingleton<PluginRegistry>();
@@ -223,6 +231,7 @@ public static partial class OadmServerHost
         await sp.GetRequiredService<CorePluginHost>().StopAllAsync(ct).ConfigureAwait(false);
         await sp.GetRequiredService<TaskEngine>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<CoreDiscoveryService>().DisposeAsync().ConfigureAwait(false);
+        await sp.GetRequiredService<LiveViewHub>().DisposeAsync().ConfigureAwait(false);
     }
 
     /// <summary>Start, wait for Ctrl+C / SIGTERM, stop.</summary>

@@ -255,6 +255,13 @@ public sealed class VapixClient : IVapixClient, IDisposable
         _ = await SendForStringAsync(request, ct).ConfigureAwait(false);
     }
 
+    /// <summary>Image formats, resolutions and video sources (view areas, sensors, channels) via param.cgi groups Properties.Image and Image.</summary>
+    public async Task<ImageCapabilities> GetImageCapabilitiesAsync(CancellationToken ct)
+    {
+        var parameters = await ListParametersAsync(["Properties.Image", "Image"], ct).ConfigureAwait(false);
+        return VapixParsers.ParseImageCapabilities(parameters);
+    }
+
     /// <inheritdoc />
     /// <remarks>
     /// Relative URIs resolve against <see cref="BaseAddress"/>. The response is returned as-is
