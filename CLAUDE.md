@@ -258,15 +258,15 @@ Device grid columns, default order:
 
 Polling: server refreshes status (basicdeviceinfo) for every device every **60 s** by
 default (`Polling.IntervalSeconds`). Full refresh (basicdeviceinfo + network parameters +
-certificate info + server name) on add, after a task finishes on that device, on manual
-Refresh, every **10 minutes** per device (`Polling.FullRefreshMinutes`, checked every 30 s),
+certificate info + server name) on add, after a task finishes on that device,
+every **10 minutes** per device (`Polling.FullRefreshMinutes`, checked every 30 s),
 and immediately when a status poll sees a device go from any non-Ok status back to Ok. All
 full refreshes go through one deduplicating queue with bounded parallelism.
 
 # Tasks
 
 - A task targets one or more devices and starts immediately. States: Queued, Running, Done,
-  Failed, Cancelled. Per-device result and progress. Persisted, visible in the Tasks tab,
+  Failed, Cancelled. Per-device result and progress. Persisted, visible in the tasks pane,
   history kept until the user deletes it.
 - Task engine: bounded parallelism per task (default 8 devices at once), cancellation via
   `CancellationToken`, exceptions become `Failed` with message, never crash the server.
