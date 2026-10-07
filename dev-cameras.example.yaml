@@ -1,0 +1,9 @@
+# Copy to dev-cameras.yaml (git-ignored) and list the Axis devices on your network.
+# Used by integration tests (category "Hardware") and by the dev seeding tool.
+# Never commit dev-cameras.yaml: it contains passwords.
+cameras:
+  - address: 192.168.0.90      # IP or host name
+    user: root
+    password: change-me
+    scheme: https              # optional: https (default) or http
+    note: "AXIS P3265-V lab"   # optional, free text

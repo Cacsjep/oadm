@@ -1,0 +1,17 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+
+service SettingsService {
+  rpc Get (Empty) returns (ServerSettings);
+  rpc Set (ServerSettings) returns (ServerSettings);
+}
+
+message ServerSettings {
+  int32 polling_interval_seconds = 1;   // default 60
+  int32 scan_parallelism = 2;           // default 32
+  int32 scan_timeout_ms = 3;            // default 1500
+  string server_name = 4;
+  string listen_url = 5;
+}

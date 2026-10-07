@@ -1,0 +1,14 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+
+service PluginService {
+  rpc ListCorePlugins (Empty) returns (CorePluginList);
+  rpc Invoke (InvokeRequest) returns (InvokeReply);
+}
+
+message CorePluginInfo { string id = 1; string display_name = 2; string icon_key = 3; }
+message CorePluginList { repeated CorePluginInfo plugins = 1; }
+message InvokeRequest { string plugin_id = 1; string method = 2; string payload_json = 3; }
+message InvokeReply { string payload_json = 1; }

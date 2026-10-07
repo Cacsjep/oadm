@@ -1,0 +1,30 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+
+service DiscoveryService {
+  rpc StartZeroConf (Empty) returns (DiscoverySession);
+  rpc StartRangeScan (RangeScanRequest) returns (DiscoverySession);
+  rpc WatchDiscovered (DiscoverySession) returns (stream DiscoveredDevice);
+  rpc Stop (DiscoverySession) returns (Empty);
+}
+
+message DiscoverySession { string session_id = 1; }
+message RangeScanRequest { string from = 1; string to = 2; }
+
+enum DiscoverySource { DISCOVERY_SOURCE_UNSPECIFIED = 0; MDNS = 1; RANGE_SCAN = 2; }
+
+message DiscoveredDevice {
+  string discovered_id = 1;   // stable within the session
+  string serial = 2;
+  string address = 3;
+  string host_name = 4;
+  string model = 5;           // empty until known
+  DeviceStatus status = 6;    // PASSWORD_NOT_SET, CREDENTIALS_REQUIRED, OK or UNREACHABLE
+  bool already_managed = 7;
+  DiscoverySource source = 8;
+  string scheme = 9;
+  bool scan_finished = 10;    // true on the final message of a range scan; other fields empty
+  int32 progress_percent = 11;
+}

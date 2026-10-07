@@ -1,0 +1,70 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+import "google/protobuf/timestamp.proto";
+
+service TaskService {
+  rpc ListTaskPlugins (Empty) returns (TaskPluginList);
+  rpc Run (RunTaskRequest) returns (RunTaskReply);
+  rpc List (Empty) returns (TaskList);
+  rpc Watch (Empty) returns (stream TaskChanged);   // starts with a snapshot
+  rpc Cancel (TaskIdRequest) returns (Empty);
+  rpc Delete (TaskIdRequest) returns (Empty);
+}
+
+message TaskPluginInfo {
+  string id = 1;
+  string display_name = 2;
+  string icon_key = 3;
+  bool show_in_toolbar = 4;
+  bool requires_dialog = 5;
+  string owner_core_plugin_id = 6;          // set when contributed by a core plugin
+  repeated string runnable_device_ids = 7;  // devices for which CanRun is true
+}
+message TaskPluginList { repeated TaskPluginInfo plugins = 1; }
+
+message RunTaskRequest {
+  string plugin_id = 1;
+  repeated string device_ids = 2;
+  string payload_json = 3;
+  string owner = 4;
+}
+message RunTaskReply { string task_id = 1; }
+message TaskIdRequest { string task_id = 1; }
+
+enum TaskState {
+  TASK_STATE_UNSPECIFIED = 0;
+  QUEUED = 1;
+  RUNNING = 2;
+  DONE = 3;
+  FAILED = 4;
+  CANCELLED = 5;
+}
+
+message TaskDeviceResult {
+  string device_id = 1;
+  TaskState state = 2;
+  string message = 3;
+  int32 progress = 4;
+}
+
+message TaskInfo {
+  string id = 1;
+  string plugin_id = 2;
+  string name = 3;
+  TaskState state = 4;
+  string owner = 5;
+  google.protobuf.Timestamp created = 6;
+  google.protobuf.Timestamp started = 7;
+  google.protobuf.Timestamp finished = 8;
+  int32 progress = 9;
+  repeated TaskDeviceResult devices = 10;
+}
+message TaskList { repeated TaskInfo tasks = 1; }
+
+message TaskChanged {
+  enum Kind { KIND_UNSPECIFIED = 0; ADDED = 1; UPDATED = 2; REMOVED = 3; }
+  Kind kind = 1;
+  TaskInfo task = 2;
+}

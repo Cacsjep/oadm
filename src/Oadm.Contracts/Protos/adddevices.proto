@@ -1,0 +1,45 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+
+// Mirrors the ADM add wizard: select, host name, set password, credentials, review, finish.
+service AddDevicesService {
+  rpc Prepare (PrepareRequest) returns (AddPlan);
+  rpc Commit (CommitRequest) returns (CommitReply);
+}
+
+message PrepareRequest {
+  string session_id = 1;
+  repeated string discovered_ids = 2;
+}
+
+message AddPlanItem {
+  string discovered_id = 1;
+  string serial = 2;
+  string address = 3;
+  string host_name = 4;
+  string model = 5;
+  bool needs_initial_password = 6;   // factory default
+  bool needs_credentials = 7;        // password already set
+}
+
+message AddPlan { repeated AddPlanItem items = 1; }
+
+message DeviceCredentials {
+  string discovered_id = 1;          // empty = applies to all devices needing credentials
+  string user_name = 2;
+  string password = 3;
+}
+
+message CommitRequest {
+  string session_id = 1;
+  repeated string discovered_ids = 2;
+  bool use_host_name = 3;
+  string initial_root_password = 4;  // empty = Skip
+  repeated DeviceCredentials credentials = 5;
+}
+
+message CommitReply {
+  string task_id = 1;                // the "Add devices" task
+  repeated string device_ids = 2;
+}

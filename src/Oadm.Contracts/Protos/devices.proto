@@ -1,0 +1,30 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+
+service DeviceService {
+  rpc List (Empty) returns (DeviceList);
+  rpc Watch (Empty) returns (stream DeviceChanged);   // starts with a snapshot, one ADDED per device
+  rpc Remove (DeviceIds) returns (Empty);
+  rpc Refresh (DeviceIds) returns (Empty);
+  rpc SetCredentials (SetCredentialsRequest) returns (Empty);
+  rpc GetWebUiUrl (DeviceId) returns (UrlReply);
+}
+
+message DeviceId { string id = 1; }
+message DeviceIds { repeated string ids = 1; }
+message DeviceList { repeated Device devices = 1; }
+message UrlReply { string url = 1; }
+
+message SetCredentialsRequest {
+  repeated string device_ids = 1;
+  string user_name = 2;
+  string password = 3;
+}
+
+message DeviceChanged {
+  enum Kind { KIND_UNSPECIFIED = 0; ADDED = 1; UPDATED = 2; REMOVED = 3; }
+  Kind kind = 1;
+  Device device = 2;   // for REMOVED only id is set
+}

@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.4" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Oadm.Sdk\Oadm.Sdk.csproj" />
+  </ItemGroup>
+</Project>

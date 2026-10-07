@@ -1,0 +1,37 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "google/protobuf/timestamp.proto";
+
+message Empty {}
+
+enum DeviceStatus {
+  DEVICE_STATUS_UNKNOWN = 0;
+  DEVICE_STATUS_OK = 1;
+  DEVICE_STATUS_UNREACHABLE = 2;
+  DEVICE_STATUS_CREDENTIALS_REQUIRED = 3;
+  DEVICE_STATUS_PASSWORD_NOT_SET = 4;
+  DEVICE_STATUS_CERTIFICATE_CHANGED = 5;
+}
+
+message Device {
+  string id = 1;                 // Guid
+  string serial = 2;             // MAC, upper hex, no separators
+  string address = 3;
+  bool use_host_name = 4;
+  string host_name = 5;
+  string model = 6;
+  string firmware_version = 7;
+  optional bool dhcp_enabled = 8;
+  optional bool https_enabled = 9;
+  optional bool dot1x_enabled = 10;
+  string upnp_friendly_name = 11;
+  string server_name = 12;
+  DeviceStatus status = 13;
+  string scheme = 14;            // http or https
+  google.protobuf.Timestamp last_seen = 15;
+  bool has_credentials = 16;
+  string warranty_expiry = 17;   // later goal
+  string replacement_model = 18; // later goal
+  repeated string tags = 19;
+}
