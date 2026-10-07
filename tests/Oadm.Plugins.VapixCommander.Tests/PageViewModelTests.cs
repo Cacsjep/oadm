@@ -156,6 +156,9 @@ public sealed class PageViewModelTests
         Assert.True(speaker.IsCompatibilityError);
         Assert.True(vm.Targets.Single(t => t.Address == "10.0.0.48").AllCompatible);
         Assert.Equal("Compatible", vm.Targets.Single(t => t.Address == "10.0.0.48").CompatibilityText);
+        // Only incompatible devices show a line; compatible ones stay quiet (thousands of green lines are noise).
+        Assert.False(vm.Targets.Single(t => t.Address == "10.0.0.48").ShowCompatibility);
+        Assert.True(speaker.ShowCompatibility);
         Assert.Equal("1 compatible · 1 not compatible", vm.CompatibilitySummary);
 
         vm.SelectCompatibleTargetsCommand.Execute(null);

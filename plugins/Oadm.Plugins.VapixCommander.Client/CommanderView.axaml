@@ -348,7 +348,7 @@
                   <StackPanel Margin="28,0,0,0" Spacing="2">
                     <ui:StatusChip IsWarning="True" Text="{Binding StatusText}" IsVisible="{Binding !IsReachable}" />
                     <ui:StatusChip Text="{Binding CompatibilityText}" IsOk="{Binding AllCompatible}" IsWarning="{Binding IsCompatibilityWarning}" IsError="{Binding IsCompatibilityError}"
-                                   ToolTip.Tip="{Binding CompatibilityTooltip}" IsVisible="{Binding HasCompatibility}" />
+                                   ToolTip.Tip="{Binding CompatibilityTooltip}" IsVisible="{Binding ShowCompatibility}" />
                   </StackPanel>
                 </StackPanel>
               </DataTemplate>

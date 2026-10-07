@@ -162,6 +162,12 @@ public sealed partial class TargetDeviceViewModel : ObservableObject
 
     public bool HasCompatibility => Compatibility.Count > 0;
 
+    /// <summary>
+    /// The per-device line is shown only when something is not compatible; compatible devices stay
+    /// quiet (thousands of green lines are noise). The summary above the list still counts them.
+    /// </summary>
+    public bool ShowCompatibility => HasCompatibility && !AllCompatible;
+
     /// <summary>One chip per device: "Compatible", else the first problem ("Missing API x (+1 more)").</summary>
     public string? CompatibilityText { get; private set; }
 
