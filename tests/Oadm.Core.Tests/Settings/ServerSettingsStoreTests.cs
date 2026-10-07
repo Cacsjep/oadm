@@ -1,3 +1,4 @@
+using Oadm.Core.Plugins;
 using Oadm.Core.Settings;
 using Oadm.Core.Tests.Persistence;
 using Oadm.Sdk.Plugins;
@@ -83,9 +84,9 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
     [Fact]
     public async Task PluginSettingsAreNamespacedPerPlugin()
     {
-        var factory = _db.Get<IPluginSettingsFactory>();
-        IPluginSettings ntp = factory.Create("oadm.ntp");
-        IPluginSettings dhcp = factory.Create("oadm.dhcp");
+        var factory = _db.Get<IPluginSettingsProvider>();
+        IPluginSettings ntp = factory.GetSettings("oadm.ntp");
+        IPluginSettings dhcp = factory.GetSettings("oadm.dhcp");
 
         await ntp.SetAsync("Server", "\"pool.ntp.org\"", CancellationToken.None);
 
@@ -98,13 +99,13 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
         Assert.Null(await ntp.GetAsync("Server", CancellationToken.None));
 
         await Assert.ThrowsAsync<ArgumentException>(() => ntp.SetAsync("Bad", "{", CancellationToken.None));
-        Assert.Throws<ArgumentException>(() => factory.Create("evil:id"));
+        Assert.Throws<ArgumentException>(() => factory.GetSettings("evil:id"));
     }
 
     [Fact]
     public async Task PluginKeysDoNotLeakIntoServerSettings()
     {
-        await _db.Get<IPluginSettingsFactory>().Create("x").SetAsync(SettingKeys.PollingIntervalSeconds, "1", CancellationToken.None);
+        await _db.Get<IPluginSettingsProvider>().GetSettings("x").SetAsync(SettingKeys.PollingIntervalSeconds, "1", CancellationToken.None);
 
         Assert.Equal(60, (await _store.GetServerSettingsAsync(CancellationToken.None)).PollingIntervalSeconds);
     }

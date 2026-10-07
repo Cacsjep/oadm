@@ -12,8 +12,8 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
 {
     public DbSet<Device> Devices => Set<Device>();
     public DbSet<DeviceCredential> DeviceCredentials => Set<DeviceCredential>();
-    public DbSet<TaskRecord> Tasks => Set<TaskRecord>();
-    public DbSet<TaskDeviceResult> TaskDeviceResults => Set<TaskDeviceResult>();
+    public DbSet<TaskEntity> Tasks => Set<TaskEntity>();
+    public DbSet<TaskDeviceResultEntity> TaskDeviceResults => Set<TaskDeviceResultEntity>();
     public DbSet<Setting> Settings => Set<Setting>();
 
     private static readonly ValueConverter<DateTime, DateTime> UtcConverter =
@@ -68,7 +68,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.HasOne<Device>().WithOne().HasForeignKey<DeviceCredential>(c => c.DeviceId).OnDelete(DeleteBehavior.Cascade);
         });
 
-        modelBuilder.Entity<TaskRecord>(e =>
+        modelBuilder.Entity<TaskEntity>(e =>
         {
             e.ToTable("Tasks");
             e.HasKey(t => t.Id);
@@ -84,7 +84,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.HasMany(t => t.Results).WithOne().HasForeignKey(r => r.TaskId).OnDelete(DeleteBehavior.Cascade);
         });
 
-        modelBuilder.Entity<TaskDeviceResult>(e =>
+        modelBuilder.Entity<TaskDeviceResultEntity>(e =>
         {
             e.ToTable("TaskDeviceResults");
             e.HasKey(r => new { r.TaskId, r.DeviceId });

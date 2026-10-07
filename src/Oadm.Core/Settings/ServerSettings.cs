@@ -11,6 +11,42 @@ public static class SettingKeys
 
     /// <summary>Prefix of plugin settings: <c>Plugin:&lt;pluginId&gt;:&lt;key&gt;</c>.</summary>
     public const string PluginPrefix = "Plugin:";
+
+    /// <summary>Storage key of a plugin setting: <c>Plugin:&lt;pluginId&gt;:&lt;key&gt;</c>. Used by every plugin settings store.</summary>
+    public static string PluginKey(string pluginId, string key)
+    {
+        ValidatePluginId(pluginId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        return PluginPrefix + pluginId + ":" + key;
+    }
+
+    /// <summary>Plugin ids must be non-empty and must not contain ':' (the key separator).</summary>
+    public static void ValidatePluginId(string pluginId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
+        if (pluginId.Contains(':', StringComparison.Ordinal))
+        {
+            throw new ArgumentException("Plugin id must not contain ':'.", nameof(pluginId));
+        }
+    }
+
+    /// <summary>Throws <see cref="ArgumentException"/> when a non-null value is not valid JSON.</summary>
+    public static void ValidateJson(string key, string? valueJson)
+    {
+        if (valueJson is null)
+        {
+            return;
+        }
+
+        try
+        {
+            using var _ = System.Text.Json.JsonDocument.Parse(valueJson);
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            throw new ArgumentException($"Value of '{key}' is not valid JSON.", nameof(valueJson), ex);
+        }
+    }
 }
 
 /// <summary>Typed snapshot of all Goal 1 server settings (defaults applied).</summary>
