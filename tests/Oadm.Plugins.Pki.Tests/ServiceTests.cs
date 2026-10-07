@@ -359,6 +359,28 @@ public sealed class ServiceTests
         Assert.InRange(pki.Service.DeviceCertificateValidity().TotalDays, 360, 367);
     }
 
+    [Fact]
+    public void Issued_counts_for_5000_devices_are_one_pass()
+    {
+        var now = DateTime.UtcNow;
+        var issued = Enumerable.Range(0, 5000).SelectMany(i => new[]
+        {
+            new IssuedCertificate { SerialNumber = "a" + i, DeviceId = new Guid(i, 0, 0, new byte[8]), Purpose = CertificatePurpose.Https, CaId = i % 10 == 0 ? "OLD" : "NEW", IssuedUtc = now.AddDays(-1), NotAfterUtc = now.AddDays(i % 100 == 0 ? 5 : 300) },
+            new IssuedCertificate { SerialNumber = "b" + i, DeviceId = new Guid(i, 0, 0, new byte[8]), Purpose = CertificatePurpose.Dot1x, CaId = "NEW", IssuedUtc = now.AddDays(-1), NotAfterUtc = now.AddDays(300) },
+        }).ToList();
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var counts = IssuedCounts.From(issued, "NEW", now, 30);
+        watch.Stop();
+
+        Assert.Equal(5000, counts.Devices);
+        Assert.Equal(5000, counts.WithCurrentCa);
+        Assert.Equal(500, counts.WithPreviousCa);
+        Assert.Equal(50, counts.ExpiringSoon);
+        Assert.Equal(500, counts.DevicesPerCa["OLD"]);
+        Assert.True(watch.ElapsedMilliseconds < 500, $"took {watch.ElapsedMilliseconds} ms");
+    }
+
     private static byte[] LeafWithConstraints(X509Certificate2 issuer)
     {
         using var key = System.Security.Cryptography.RSA.Create(2048);
