@@ -202,7 +202,7 @@ density, styled as described in Visual Style.
 
 Layout, top to bottom:
 1. Title "Devices". Left navigation rail as described in Visual Style.
-2. Toolbar: Add devices, Add from IP range, Remove, Refresh, then Task plugin actions that
+2. Toolbar: Add devices, Add from IP range, Remove, then Task plugin actions that
    declare `ShowInToolbar`, search box right-aligned.
 3. Status line: "N devices, M selected".
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
@@ -230,7 +230,7 @@ Device grid columns, default order:
 | IEEE 802.1X | dot1x.Enabled -> Enabled/Disabled |
 
 Polling: server refreshes status (basicdeviceinfo) for every device every **60 s** by
-default, user-configurable in Settings. Full parameter refresh on add, on manual Refresh, and
+default, user-configurable in Settings. Full parameter refresh on add and
 after a task finishes on that device.
 
 # Tasks

@@ -33,12 +33,6 @@
                 <TextBlock Text="Remove" />
               </StackPanel>
             </Button>
-            <Button Classes="toolbar" Command="{Binding RefreshCommand}" ToolTip.Tip="Refresh the selected devices (all when nothing is selected)">
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <c:OadmIcon Data="{StaticResource Icon.refresh}" />
-                <TextBlock Text="Refresh" />
-              </StackPanel>
-            </Button>
             <Border Classes="vseparator" IsVisible="{Binding !!ToolbarActions.Count}" />
             <ItemsControl ItemsSource="{Binding ToolbarActions}">
               <ItemsControl.ItemsPanel>

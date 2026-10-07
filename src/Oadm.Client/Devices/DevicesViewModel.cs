@@ -146,28 +146,6 @@ public sealed partial class DevicesViewModel : ObservableObject
         }
     }
 
-    /// <summary>Refreshes the selected devices, or all devices when nothing is selected.</summary>
-    [RelayCommand]
-    private async Task RefreshAsync()
-    {
-        List<string> ids = (SelectedDevices.Count > 0 ? SelectedDevices : _store.Devices).Select(d => d.Id).ToList();
-        if (ids.Count == 0)
-        {
-            return;
-        }
-
-        try
-        {
-            await _api.RefreshDevicesAsync(ids, CancellationToken.None).ConfigureAwait(true);
-            LogRefreshed(_logger, ids.Count);
-        }
-        catch (Exception ex)
-        {
-            LogActionFailed(_logger, ex, "refresh");
-            await _dialogs.ShowMessageAsync("Refresh", "The devices could not be refreshed: " + ex.Message).ConfigureAwait(true);
-        }
-    }
-
     [RelayCommand]
     private async Task OpenWebUiAsync(DeviceRowViewModel? device)
     {
@@ -308,7 +286,6 @@ public sealed partial class DevicesViewModel : ObservableObject
             Command = OpenWebUiCommand,
             IsEnabled = count == 1,
         });
-        ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Refresh", IconKey = "refresh", Command = RefreshCommand });
         ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Remove", IconKey = "remove", Command = RemoveCommand });
 
         var runnable = TaskPluginCatalog.RunnableFor(_catalog.Plugins, SelectedIds()).ToList();
@@ -330,9 +307,6 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Removed {Count} device(s)")]
     private static partial void LogRemoved(ILogger logger, int count);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "Refresh requested for {Count} device(s)")]
-    private static partial void LogRefreshed(ILogger logger, int count);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not {Action} devices")]
     private static partial void LogActionFailed(ILogger logger, Exception ex, string action);

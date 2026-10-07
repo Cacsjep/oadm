@@ -117,7 +117,7 @@ public sealed class DevicesViewModelTests
         f.Select("1", "2");
 
         string[] headers = f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray();
-        Assert.Equal(["Open web interface", "Refresh", "Remove", "-", "Restart", "Change password..."], headers);
+        Assert.Equal(["Open web interface", "Remove", "-", "Restart", "Change password..."], headers);
         Assert.False(f.Devices.ContextMenuEntries[0].IsEnabled); // web UI needs exactly one device
     }
 
@@ -129,7 +129,7 @@ public sealed class DevicesViewModelTests
 
         f.Select("4");
 
-        Assert.Equal(["Open web interface", "Refresh", "Remove"], f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray());
+        Assert.Equal(["Open web interface", "Remove"], f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray());
         Assert.True(f.Devices.ContextMenuEntries[0].IsEnabled);
     }
 
@@ -192,16 +192,6 @@ public sealed class DevicesViewModelTests
         f.Dialogs.ConfirmAsync(default!, default!, default!).ReturnsForAnyArgs(true);
         await f.Devices.RemoveCommand.ExecuteAsync(null);
         await f.Api.Received(1).RemoveDevicesAsync(Arg.Is<IReadOnlyCollection<string>>(ids => ids.Single() == "1"), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task Refresh_without_selection_refreshes_all()
-    {
-        using DevicesFixture f = CreateWithDevices();
-
-        await f.Devices.RefreshCommand.ExecuteAsync(null);
-
-        await f.Api.Received(1).RefreshDevicesAsync(Arg.Is<IReadOnlyCollection<string>>(ids => ids.Count == 4), Arg.Any<CancellationToken>());
     }
 
     [Fact]
