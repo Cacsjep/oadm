@@ -23,7 +23,7 @@
   </ItemGroup>
 
   <!-- Development deployment, same as Oadm.Plugins.Restart: copy the output to artifacts/plugins/oadm.users/. -->
-  <Target Name="OadmDeployPlugin" AfterTargets="Build">
+  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
     <ItemGroup>
       <_OadmPluginFiles Include="$(OutDir)**\*" />
     </ItemGroup>

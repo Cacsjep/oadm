@@ -28,7 +28,7 @@
 
   <!-- Development deployment: copy the output to artifacts/plugins/oadm.snapshot-report/.
        The client part (Oadm.Plugins.SnapshotReport.Client) deploys into the same folder. -->
-  <Target Name="OadmDeployPlugin" AfterTargets="Build">
+  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
     <ItemGroup>
       <_OadmPluginFiles Include="$(OutDir)**\*" />
     </ItemGroup>

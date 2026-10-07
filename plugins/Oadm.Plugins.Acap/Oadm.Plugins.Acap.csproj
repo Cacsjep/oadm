@@ -25,7 +25,7 @@
 
   <!-- Development deployment, same as the Restart plugin: copy the output to artifacts/plugins/oadm.acap/.
        The client part (Oadm.Plugins.Acap.Client) deploys into the same folder. -->
-  <Target Name="OadmDeployPlugin" AfterTargets="Build">
+  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
     <ItemGroup>
       <_OadmPluginFiles Include="$(OutDir)**\*" />
     </ItemGroup>

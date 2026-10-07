@@ -32,7 +32,7 @@
     <InternalsVisibleTo Include="Oadm.Plugins.VapixCommander.Tests" />
   </ItemGroup>
 
-  <Target Name="OadmDeployPlugin" AfterTargets="Build">
+  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
     <ItemGroup>
       <_OadmPluginFiles Include="$(OutDir)**\*" />
     </ItemGroup>

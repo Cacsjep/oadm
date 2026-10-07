@@ -27,7 +27,7 @@
   <!-- Development deployment: copy the plugin output to artifacts/plugins/oadm.restart/ so the
        server finds it (PluginPaths.Development). Unchanged files are skipped; the loader reads the
        plugin assemblies into memory, so a running server does not lock them. -->
-  <Target Name="OadmDeployPlugin" AfterTargets="Build">
+  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
     <ItemGroup>
       <_OadmPluginFiles Include="$(OutDir)**\*" />
     </ItemGroup>

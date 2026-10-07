@@ -29,7 +29,7 @@
   </ItemGroup>
 
   <!-- Development deployment: copy the plugin output to artifacts/plugins/oadm.network/ (same as Restart). -->
-  <Target Name="OadmDeployPlugin" AfterTargets="Build">
+  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
     <ItemGroup>
       <_OadmPluginFiles Include="$(OutDir)**\*" />
     </ItemGroup>

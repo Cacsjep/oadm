@@ -32,7 +32,7 @@
   </ItemGroup>
 
   <!-- Development deployment next to the server part in artifacts/plugins/oadm.acap/. -->
-  <Target Name="OadmDeployPlugin" AfterTargets="Build">
+  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
     <ItemGroup>
       <_OadmPluginFiles Include="$(OutDir)**\*" />
     </ItemGroup>

@@ -7,7 +7,7 @@
              x:DataType="c:CommanderViewModel">
   <!-- VAPIX Commander page: library | rollout set or raw request (+ result) | target devices, Run bar below.
        Shared controls and theme classes only (CLAUDE.md "reuse UI components", "no style differences"). -->
-  <Grid RowDefinitions="*,Auto" ColumnDefinitions="330,*,340" RowSpacing="{DynamicResource Oadm.Gap}" ColumnSpacing="{DynamicResource Oadm.Gap}">
+  <Grid RowDefinitions="*,Auto" ColumnDefinitions="430,*,340" RowSpacing="{DynamicResource Oadm.Gap}" ColumnSpacing="{DynamicResource Oadm.Gap}">
 
     <!-- ============================== Library ============================== -->
     <Border Grid.Column="0" Classes="card">

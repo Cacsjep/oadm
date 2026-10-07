@@ -186,8 +186,16 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
             state.CurrentAccount is null ? "Could not determine the account OADM uses; changing or removing users will be refused." : null,
             state.CurrentAccount,
             state.Policy,
-            state.Users));
+            VisibleUsers(state.Users)));
     }
+
+    /// <summary>
+    /// The users the dialog shows: only accounts in the admin (root), operator or viewer group.
+    /// Accounts in none of them (e.g. SSH-only or service accounts listed in digusers) are hidden;
+    /// the safety checks still run against the full list.
+    /// </summary>
+    internal static IReadOnlyList<DeviceUser> VisibleUsers(IEnumerable<DeviceUser> users) =>
+        users.Where(u => u.Role != UserRole.None).ToList();
 
     internal static (HttpRequestMessage Request, string Verb) BuildWrite(UsersPayload payload, UserChangePlan plan) => payload.Mode switch
     {

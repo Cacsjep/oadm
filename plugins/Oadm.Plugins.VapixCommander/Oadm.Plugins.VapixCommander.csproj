@@ -27,7 +27,7 @@
   </ItemGroup>
 
   <!-- Development deployment: copy the output to artifacts/plugins/oadm.vapix-commander/. -->
-  <Target Name="OadmDeployPlugin" AfterTargets="Build">
+  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
     <ItemGroup>
       <_OadmPluginFiles Include="$(OutDir)**\*" />
     </ItemGroup>
