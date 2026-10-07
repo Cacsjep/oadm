@@ -508,7 +508,7 @@ password over HTTP, mDNS TXT keys. Still open:
 # Later Goals (not now)
 
 Client authentication and users, SSDP/WS-Discovery, scheduling/retry, Core plugins (NTP,
-DHCP, IDP) with their UI pages, firmware upgrade task, backup/restore, certificates, warranty
+DHCP, IDP) with their UI pages, backup/restore, certificates, warranty
 and replacement data from Axis online services, installers/packaging, localization.
 
 # Resources
