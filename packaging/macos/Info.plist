@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- OADM.app (client). @VERSION@ is replaced by build-pkg.sh. -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>OADM</string>
+    <key>CFBundleDisplayName</key>
+    <string>OADM</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.oadm.client</string>
+    <key>CFBundleExecutable</key>
+    <string>Oadm.Client</string>
+    <key>CFBundleIconFile</key>
+    <string>OADM.icns</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleVersion</key>
+    <string>@VERSION@</string>
+    <key>CFBundleShortVersionString</key>
+    <string>@VERSION@</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>OADM contributors, Apache-2.0</string>
+</dict>
+</plist>

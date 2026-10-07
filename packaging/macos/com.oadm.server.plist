@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- OADM server LaunchDaemon (root: NTP UDP 123 and DHCP UDP 67 need it). Installed by the OADM .pkg. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.oadm.server</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Library/Application Support/OADM/server/Oadm.Server</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Library/Application Support/OADM/server</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>OADM_DATA_DIR</key>
+        <string>/Library/Application Support/OADM</string>
+        <key>DOTNET_BUNDLE_EXTRACT_BASE_DIR</key>
+        <string>/Library/Application Support/OADM/runtime</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>ExitTimeOut</key>
+    <integer>45</integer>
+    <!-- The server writes its own rolling log to /Library/Application Support/OADM/logs. -->
+    <key>StandardOutPath</key>
+    <string>/dev/null</string>
+    <key>StandardErrorPath</key>
+    <string>/Library/Logs/OADM/oadm-server.err.log</string>
+</dict>
+</plist>
