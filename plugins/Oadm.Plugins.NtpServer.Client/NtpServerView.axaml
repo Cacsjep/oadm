@@ -7,7 +7,7 @@
              x:DataType="vm:NtpServerViewModel">
   <!-- One card (the host's page card): header with the status line, settings form, last requests. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,Auto,*">
-    <ui:CardHeader Grid.Row="0" Title="NTP server" Description="Answers the time requests of the cameras (NTP, UDP port 123).">
+    <ui:CardHeader Grid.Row="0" Description="Answers the time requests of the cameras (NTP, UDP port 123).">
       <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"
                      IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}"
                      ToolTip.Tip="{Binding StatusDetail}" />

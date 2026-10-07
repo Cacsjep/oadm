@@ -66,6 +66,8 @@ public sealed class CardHeader : Grid
     private void Update()
     {
         _title.Text = Title;
+        // No title on a page's only card: the host page title already names it (no double titles).
+        _title.IsVisible = !string.IsNullOrEmpty(Title);
         _description.Text = Description;
         _description.IsVisible = !string.IsNullOrEmpty(Description);
     }

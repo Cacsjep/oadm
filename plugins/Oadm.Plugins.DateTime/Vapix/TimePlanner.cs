@@ -99,6 +99,12 @@ public static class TimePlanner
         // Time zone (always, like ADM): the chosen one, or the server's in server time mode.
         var zone = payload.Mode == TimeMode.ServerTime ? serverTimeZone : payload.TimeZone;
         var dst = payload.Mode == TimeMode.ServerTime || payload.DaylightSaving;
+        if (payload.TimeZoneUnchanged && payload.Mode != TimeMode.ServerTime)
+        {
+            // Callers that change only the time source (e.g. "Use OADM as NTP server") keep the device's zone.
+            sections.Add(new(SectionKind.TimeZone, StepSetTimeZone, "Time zone", [], "Time zone unchanged"));
+        }
+        else
         {
             if (zone is null || !TimeZoneCatalog.IsKnown(zone))
             {

@@ -432,10 +432,10 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
 
     private static string DescribeUpstream(UpstreamInfo upstream, int stratum) => upstream.Reachable switch
     {
-        true => string.Create(CultureInfo.InvariantCulture,
-            $"Serving stratum {stratum} from {upstream.Host} (stratum {upstream.Stratum}, offset {RequestLog.FormatOffset(upstream.OffsetMilliseconds)})"),
-        false => $"Serving the server clock (stratum {stratum}); {upstream.Host}: {upstream.Message}",
-        null => $"Serving the server clock (stratum {stratum}) until {upstream.Host} answers",
+        // Plain language for technicians; stratum details stay in the server log.
+        true => $"Synchronized with {upstream.Host}",
+        false => $"{upstream.Host} does not answer, the cameras get this computer's time",
+        null => $"Checking {upstream.Host}, the cameras get this computer's time meanwhile",
     };
 
     /// <summary>gRPC errors carry the user message in Status.Detail; read it without a Grpc reference.</summary>

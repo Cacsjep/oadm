@@ -100,7 +100,8 @@ public sealed class UseOadmNtpServerTask : ITaskPlugin
         ctx.Log(TaskLogLevel.Info, "Current: " + Describe(current) + ".");
 
         var address = server!.ToString();
-        var payload = new DateTimePayload(Mode: TimeMode.Ntp, Ntp: new NtpSettings(NtpSource.Static, [address]));
+        // Only the NTP server changes; the device keeps its time zone.
+        var payload = new DateTimePayload(TimeZone: null, Mode: TimeMode.Ntp, Ntp: new NtpSettings(NtpSource.Static, [address]), TimeZoneUnchanged: true);
         var plan = TimePlanner.Build(payload, apis, current, null, _time.GetUtcNow().Year);
         var section = plan.Find(SectionKind.Ntp)!;
         if (section.SkipReason is not null)

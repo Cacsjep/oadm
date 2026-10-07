@@ -39,7 +39,7 @@ public static class PayloadValidator
         }
 
         // Like ADM the time zone is always written; server time mode uses the OADM server's zone instead.
-        if (payload.Mode != TimeMode.ServerTime && ValidateTimeZone(payload.TimeZone) is { } tz)
+        if (payload.Mode != TimeMode.ServerTime && !payload.TimeZoneUnchanged && ValidateTimeZone(payload.TimeZone) is { } tz)
         {
             errors.Add(new(FieldTimeZone, tz));
         }

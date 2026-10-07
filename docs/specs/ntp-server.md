@@ -28,8 +28,9 @@ NTP server                                   [● Running on 10.0.0.17:123]   <-
   `Running on <addr>:123` (ok), `Stopped` (neutral), `Port 123 is in use by another program` (error;
   on Windows mention the Windows Time service when it holds the port), `Insufficient permission to use
   port 123` (error; Linux: run as root or grant CAP_NET_BIND_SERVICE, exact command in the tooltip/docs;
-  macOS: run with sudo), `Interface <name> is not available` (error), `Upstream <host> not reachable,
-  serving the server clock` (warning).
+  macOS: run with sudo), `Interface <name> is not available` (error), `Upstream <host> does not answer,
+  using this computer's time` (warning). User-facing texts never mention stratum or other protocol
+  terms; technical details go to the server log.
 - Request log: last 40 entries in memory (ring buffer), pushed live to the page; device column resolves
   the client IP against managed devices. No database table.
 
@@ -45,7 +46,7 @@ NTP server                                   [● Running on 10.0.0.17:123]   <-
   "LOCL", reference timestamp = now, small root dispersion. Clients (Axis cameras) accept and sync.
   There is NO "server clock not synchronized" status and the server never answers as unsynchronized
   (LI 3 / stratum 16) in this mode. If an upstream is configured but unreachable, it falls back to this
-  local mode and the status says "Upstream <host> not reachable, serving the server clock" (warning).
+  local mode and the status says "Upstream <host> does not answer, using this computer's time" (warning).
 
 ## Protocol (RFC 5905 server mode, SNTPv4 compatible, RFC 4330)
 

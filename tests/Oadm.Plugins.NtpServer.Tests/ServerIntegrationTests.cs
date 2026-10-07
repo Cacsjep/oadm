@@ -198,7 +198,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
         upstream.Behavior = UpstreamBehavior.NoAnswer;
         await Wait.UntilAsync(() => Service.GetState(false).Status.Kind == NtpStatusInfo.Warning, TimeSpan.FromSeconds(10));
         var state = Service.GetState(false);
-        Assert.Equal($"Upstream {upstream.HostText} not reachable, serving the server clock", state.Status.Text);
+        Assert.Equal($"Upstream {upstream.HostText} does not answer, using this computer's time", state.Status.Text);
         Assert.Equal(10, state.Stratum);
         (answer, _, _, _) = await NtpProbe.QueryAsync(Endpoint, TimeSpan.FromSeconds(1));
         Assert.Equal(10, answer!.Value.Stratum);

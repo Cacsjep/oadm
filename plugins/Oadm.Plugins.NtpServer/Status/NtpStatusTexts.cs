@@ -48,8 +48,8 @@ public static class NtpStatusTexts
             string.Create(CultureInfo.InvariantCulture, $"More than {perSecond:N0} requests per second arrive; requests above the limit are dropped."));
 
     public static NtpStatusInfo UpstreamNotReachable(string host, string? error) =>
-        new(NtpStatusInfo.Warning, $"Upstream {host} not reachable, serving the server clock",
-            (error is null ? string.Empty : error + ". ") + "The cameras get the server clock (stratum 10) until the upstream answers again.");
+        new(NtpStatusInfo.Warning, $"Upstream {host} does not answer, using this computer's time",
+            (error is null ? string.Empty : error + ". ") + "The cameras get this computer's time until the upstream answers again.");
 
     public static NtpStatusInfo ClockDiffers(double offsetSeconds) =>
         new(NtpStatusInfo.Warning,

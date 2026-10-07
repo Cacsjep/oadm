@@ -210,7 +210,7 @@ public sealed class StatusMappingTests
         Assert.Equal("Running on 10.0.0.17:123", NtpStatusTexts.Running([new IPEndPoint(IPAddress.Parse("10.0.0.17"), 123)], false).Text);
         Assert.Equal("Running on all interfaces, port 123", NtpStatusTexts.Running([new IPEndPoint(IPAddress.Any, 123), new IPEndPoint(IPAddress.IPv6Any, 123)], true).Text);
         Assert.Equal(new NtpStatusInfo(NtpStatusInfo.Neutral, "Stopped"), NtpStatusTexts.Stopped);
-        Assert.Equal("Upstream pool.ntp.org not reachable, serving the server clock", NtpStatusTexts.UpstreamNotReachable("pool.ntp.org", "No answer within 2 s").Text);
+        Assert.Equal("Upstream pool.ntp.org does not answer, using this computer's time", NtpStatusTexts.UpstreamNotReachable("pool.ntp.org", "No answer within 2 s").Text);
         Assert.Equal("Server clock differs from upstream by 3.2 s", NtpStatusTexts.ClockDiffers(-3.2).Text);
         Assert.Equal("Too many requests, dropping", NtpStatusTexts.TooManyRequests(2000).Text);
         Assert.Equal(NtpStatusInfo.Warning, NtpStatusTexts.ClockDiffers(2).Kind);

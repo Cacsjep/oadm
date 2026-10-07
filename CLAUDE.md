@@ -1103,7 +1103,7 @@ decisions: `docs/specs/ntp-server.md`. Own RFC 5905 server-mode implementation (
   ports, so AccessDenied there also means in use), `Insufficient permission to use port 123` (error; Linux tooltip: run
   as root or `sudo setcap 'cap_net_bind_service=+ep' <server exe>`; macOS: run with sudo or choose All interfaces),
   `Interface <name> is not available` (error; AddressNotAvailable or the interface is gone), then warnings in this
-  order: `Too many requests, dropping`, `Upstream <host> not reachable, serving the server clock`, `Server clock differs
+  order: `Too many requests, dropping`, `Upstream <host> does not answer, using this computer's time`, `Server clock differs
   from upstream by 3.2 s` (> 1 s). Mapping in `NtpStatusTexts.ForBindError` (SocketError x OS).
 - Request log: last 40 in memory (`RequestLog` ring buffer of value entries, no table): time, client, offset (client
   transmit minus server receive; "-" beyond one day, e.g. clients that randomize the transmit timestamp), result Answered
