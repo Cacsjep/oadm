@@ -1064,6 +1064,14 @@ LocalApplicationData): server address, grid column layout, bottom pane state.
 - Plugin projects copy their output to `artifacts/plugins/<id>/` after every build. A running
   client or server keeps those files open; build or test with `-p:OadmSkipPluginDeploy=true` (e.g.
   together with `--artifacts-path`) to skip the copy while the apps run.
+- **HARD RULE, scale to thousands of devices.** A site can have 1000+ cameras. Every list of
+  devices, discovered devices, tasks, sources or tiles is virtualized (DataGrid, virtualizing
+  ListBox/ItemsRepeater; never an ItemsControl/StackPanel creating one control per item), search,
+  filter, sort and select-all are O(n) without per-item UI work, server calls are batched (one call
+  for many devices, bounded parallelism on the server), per-device work is lazy for visible rows
+  or summarized ("4,812 compatible, 188 missing API"), and images/snapshots load only for visible
+  tiles. Every feature with a device list has a test with at least 5000 fake devices that keeps
+  filtering/selection/summary fast.
 - **HARD RULE, no style differences.** Same kind of element, same look, everywhere: one
   style per element type in `Themes/OadmTheme.axaml`, no local overrides of font size,
   weight, color, padding or alignment in views. No special cases such as a bold selected rail
