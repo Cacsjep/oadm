@@ -96,7 +96,8 @@ jobs:
             try { $c = New-Object Net.Sockets.TcpClient('127.0.0.1', 5080); $c.Close(); $ok = $true } catch { Start-Sleep 1 }
           }
           if (-not $ok) { Get-ChildItem C:\ProgramData\OADM\logs -ErrorAction SilentlyContinue | Get-Content -Tail 50; throw 'port 5080 not open' }
-          $headers = curl.exe -s --http2-prior-knowledge -X POST -H 'content-type: application/grpc' -H 'te: trailers' -D - -o NUL http://127.0.0.1:5080/oadm.Smoke/Test
+          # The curl.exe of Windows has no HTTP/2; Git for Windows ships one with nghttp2.
+          $headers = & 'C:\Program Files\Git\mingw64\bin\curl.exe' -s --http2-prior-knowledge -X POST -H 'content-type: application/grpc' -H 'te: trailers' -D - -o NUL http://127.0.0.1:5080/oadm.Smoke/Test
           $headers
           if (-not ($headers -match 'grpc-status')) { throw 'no gRPC answer' }
           foreach ($f in 'oadm.db', 'master.key') { if (-not (Test-Path "C:\ProgramData\OADM\$f")) { throw "$f missing" } }
