@@ -25,6 +25,8 @@ find_dotnet() {
 }
 
 DOTNET="$(find_dotnet)"
+# Let app launchers (Oadm.Client.exe, Oadm.Server.exe) find the same runtime.
+export DOTNET_ROOT="$(dirname "$DOTNET")"
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=1
 

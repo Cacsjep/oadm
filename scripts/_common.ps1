@@ -28,6 +28,8 @@ function Find-Dotnet {
 }
 
 $Dotnet = Find-Dotnet
+# Let app launchers (Oadm.Client.exe, Oadm.Server.exe) find the same runtime.
+$env:DOTNET_ROOT = Split-Path -Parent $Dotnet
 
 function Get-DefaultRid {
     $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'x64' }

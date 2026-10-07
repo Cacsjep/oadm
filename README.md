@@ -7,6 +7,12 @@ The full specification lives in [CLAUDE.md](CLAUDE.md).
 
 - .NET 10 SDK (see `global.json`)
 
+If .NET 10 is installed per user, for example with `dotnet-install` into
+`%LOCALAPPDATA%\Microsoft\dotnet`, set `DOTNET_ROOT` to that folder. Without it,
+`Oadm.Client.exe` and `Oadm.Server.exe` only look in `C:\Program Files\dotnet` and show a
+"You must install .NET" dialog. The scripts set `DOTNET_ROOT` automatically, and the
+`publish-*` scripts produce self-contained builds that need no runtime at all.
+
 ## Build and run
 
 ```sh
