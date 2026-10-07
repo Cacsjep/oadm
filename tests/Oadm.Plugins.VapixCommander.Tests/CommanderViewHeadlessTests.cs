@@ -5,11 +5,13 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 using Oadm.Client;
 using Oadm.Client.Infrastructure;
 using Oadm.Client.Shell;
 using Oadm.Plugins.VapixCommander.Client;
+using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.VapixCommander.Tests;
 
@@ -78,6 +80,85 @@ public sealed class CommanderViewHeadlessTests
         finally
         {
             // The awaited dispatch may continue on the session's UI thread; Dispose waits for that thread, so dispose elsewhere.
+            await Task.Run(session.Dispose);
+        }
+
+        try
+        {
+            Directory.Delete(dataFolder, recursive: true);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // nothing was written
+        }
+    }
+
+    [Fact]
+    public async Task Try_result_bodies_are_highlighted_json_xml_and_param_cgi()
+    {
+        var dataFolder = Path.Combine(Path.GetTempPath(), "oadm-commander-headless-" + Guid.NewGuid().ToString("N"));
+        App.Options = new AppOptions { UseFake = true, DataFolder = dataFolder };
+        var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        try
+        {
+            var page = await session.Dispatch(PageFixture.CreateAsync, CancellationToken.None);
+            await session.Dispatch(async () =>
+            {
+                var vm = page.Vm;
+                var vapix = page.Server.VapixFactory.For(page.Camera.Id);
+                var view = new CommanderView { DataContext = vm };
+                var host = new CorePluginPageView { DataContext = new CorePluginPageViewModel(VapixCommanderPlugin.PluginId, "VAPIX Commander", view, hasOwnCards: true) };
+                var window = new Window { Width = 1600, Height = 940, Content = new Border { Padding = new Thickness(16), Child = host } };
+                window.Show();
+
+                // JSON (minified on the wire): pretty-printed and highlighted.
+                vm.Add(page.Item("common.basicdeviceinfo.read"));
+                vapix.Handler = _ => FakeVapix.Json(
+                    "{\"apiVersion\":\"1.3\",\"context\":\"oadm\",\"data\":{\"propertyList\":{\"Brand\":\"AXIS\",\"ProdNbr\":\"P3265-V\",\"ProdFullName\":\"AXIS P3265-V Dome Camera\",\"Version\":\"12.0.68\",\"SerialNumber\":\"B8A44F631348\",\"Architecture\":\"aarch64\",\"Soc\":\"Axis Artpec-8\",\"BuildDate\":\"Jun 10 2025 09:12\"},\"restricted\":false,\"retries\":3,\"temperature\":41.5,\"location\":null}}");
+                await vm.TryCommand.ExecuteAsync(null);
+                Dispatcher.UIThread.RunJobs();
+                var body = view.GetVisualDescendants().OfType<CodeView>().First(c => c.IsEffectivelyVisible);
+                Assert.Equal(CodeLanguage.Json, body.Document.Language);
+                Assert.True(body.Document.IsHighlighted);
+                Capture(window, outDir, "plugin-vapix-commander-try-json.png");
+
+                vm.TryResult!.ShowRawCommand.Execute(null);
+                Dispatcher.UIThread.RunJobs();
+                Assert.StartsWith("{\"apiVersion\"", body.DisplayedText, StringComparison.Ordinal);
+                Capture(window, outDir, "plugin-vapix-commander-try-json-raw.png");
+
+                // param.cgi key=value with an error line.
+                vm.Add(page.Item("common.brand.read"));
+                vapix.Handler = _ => FakeVapix.Text(
+                    "root.Brand.Brand=AXIS\r\nroot.Brand.ProdFullName=AXIS P3265-V Dome Camera\r\nroot.Brand.ProdNbr=P3265-V\r\nroot.Brand.ProdShortName=AXIS P3265-V\r\nroot.Brand.ProdType=Dome Camera\r\nroot.Brand.ProdVariant=\r\nroot.Brand.WebURL=http://www.axis.com\r\nroot.ImageSource.I0.DayNight.ShiftLevel=50\r\nroot.Network.DNSUpdate.Enabled=yes\r\n# Error: Error -1 getting param in group 'root.Brand.Missing'\r\n");
+                await vm.TryCommand.ExecuteAsync(null);
+                Dispatcher.UIThread.RunJobs();
+                body = view.GetVisualDescendants().OfType<CodeView>().First(c => c.IsEffectivelyVisible);
+                Assert.Equal(CodeLanguage.KeyValue, body.Document.Language);
+                Capture(window, outDir, "plugin-vapix-commander-try-paramcgi.png");
+
+                // XML from the raw request editor.
+                vm.ShowRawCommand.Execute(null);
+                vm.Raw.Path = "/axis-cgi/disks/list.cgi";
+                vm.Raw.QueryRows.Clear();
+                vm.Raw.QueryRows.Add(new KeyValueRowViewModel { Key = "diskid", Value = "all" });
+                vm.Raw.ResponseKind = ResponseKinds.Xml;
+                vapix.Handler = _ => FakeVapix.Text(
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\"?><root xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" version=\"1.0\"><!-- edge storage --><disks numberofdisks=\"1\"><disk diskid=\"SD_DISK\" name=\"\" totalsize=\"30535680\" freesize=\"29967360\" cleanuplevel=\"90\" cleanupmaxage=\"7\" group=\"S0\" status=\"OK\" filesystem=\"vfat\" fullaction=\"overwrite\" readonly=\"no\" /><note><![CDATA[Card <A> & more]]></note></disks></root>",
+                    HttpStatusCode.OK,
+                    "text/xml");
+                await vm.TryCommand.ExecuteAsync(null);
+                Dispatcher.UIThread.RunJobs();
+                body = view.GetVisualDescendants().OfType<CodeView>().First(c => c.IsEffectivelyVisible);
+                Assert.Equal(CodeLanguage.Xml, body.Document.Language);
+                Assert.True(body.Document.IsHighlighted);
+                Capture(window, outDir, "plugin-vapix-commander-try-xml.png");
+                window.Close();
+            }, CancellationToken.None);
+        }
+        finally
+        {
             await Task.Run(session.Dispose);
         }
 

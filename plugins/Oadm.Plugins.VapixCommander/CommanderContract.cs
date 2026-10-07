@@ -165,6 +165,9 @@ public sealed class TryOutcome
 
     public bool BodyTruncated { get; set; }
 
+    /// <summary>The body exactly as the device sent it; null when it equals <see cref="Body"/>.</summary>
+    public string? RawBody { get; set; }
+
     public string? RequestLine { get; set; }
 
     public string? RequestBody { get; set; }
@@ -185,6 +188,7 @@ public sealed class TryOutcome
             ContentType = outcome.ContentType,
             Body = outcome.Body,
             BodyTruncated = outcome.BodyTruncated,
+            RawBody = outcome.RawBody,
             RequestLine = outcome.RequestLine,
             RequestBody = outcome.RequestBody,
         };

@@ -32,6 +32,9 @@ public sealed class CommandOutcome
 
     public bool BodyTruncated { get; init; }
 
+    /// <summary>The body exactly as the device sent it (UTF-8, cut like <see cref="Body"/>); null when it equals <see cref="Body"/> or is binary.</summary>
+    public string? RawBody { get; init; }
+
     /// <summary>"GET /axis-cgi/param.cgi?..." with password values masked.</summary>
     public string? RequestLine { get; init; }
 
@@ -86,6 +89,7 @@ public static class CommandExecutor
             var spec = request.Response ?? command.Response;
             Interpretation interpretation;
             string pretty;
+            string? raw = null;
             if (ResponseInterpreter.IsBinary(contentType, bytes))
             {
                 var described = ResponseInterpreter.DescribeBinary(contentType, bytes.LongLength);
@@ -104,6 +108,7 @@ public static class CommandExecutor
 
                 interpretation = ResponseInterpreter.Interpret(spec, (int)response.StatusCode, response.ReasonPhrase, contentType, body);
                 pretty = ResponseInterpreter.Pretty(body, contentType);
+                raw = body == pretty ? null : body.Length > MaxBodyChars ? body[..MaxBodyChars] : body;
             }
 
             var headers = response.Headers.Concat(response.Content?.Headers ?? Enumerable.Empty<KeyValuePair<string, IEnumerable<string>>>())
@@ -122,6 +127,7 @@ public static class CommandExecutor
                 ContentType = contentType,
                 Body = pretty.Length > MaxBodyChars ? pretty[..MaxBodyChars] : pretty,
                 BodyTruncated = pretty.Length > MaxBodyChars,
+                RawBody = raw,
                 RequestLine = request.Describe(),
                 RequestBody = request.DescribeBody(),
             };

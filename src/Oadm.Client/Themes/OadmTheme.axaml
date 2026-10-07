@@ -55,6 +55,16 @@
       <Color x:Key="Oadm.ChipTextColor">#FFFFFF</Color>
       <Color x:Key="Oadm.OverlayColor">#99000000</Color>
       <Color x:Key="Oadm.VideoBackgroundColor">#0C0C0C</Color>
+      <!-- Code highlighting (ui:CodeView): readable on the input background #232323 -->
+      <Color x:Key="Oadm.Code.KeyColor">#7FC8D0</Color>
+      <Color x:Key="Oadm.Code.StringColor">#E2B88E</Color>
+      <Color x:Key="Oadm.Code.NumberColor">#B5D99C</Color>
+      <Color x:Key="Oadm.Code.LiteralColor">#B4A9F7</Color>
+      <Color x:Key="Oadm.Code.PunctuationColor">#8C8C8C</Color>
+      <Color x:Key="Oadm.Code.TagColor">#8DB6F2</Color>
+      <Color x:Key="Oadm.Code.AttributeColor">#7FC8D0</Color>
+      <Color x:Key="Oadm.Code.CommentColor">#7E957F</Color>
+      <Color x:Key="Oadm.Code.ErrorColor">#F0776F</Color>
       <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="{StaticResource Oadm.WindowBackgroundColor}" />
       <!-- Drawn caption buttons (Fluent WindowDrawnDecorations): hover is the Background, pressed the BorderBrush.
            Minimize/maximize use these neutral greys instead of the accent; close keeps its red from the theme. -->
@@ -104,6 +114,15 @@
       <SolidColorBrush x:Key="Oadm.OverlayBrush" Color="{StaticResource Oadm.OverlayColor}" />
       <SolidColorBrush x:Key="Oadm.VideoBackgroundBrush" Color="{StaticResource Oadm.VideoBackgroundColor}" />
       <SolidColorBrush x:Key="Oadm.TransparentBrush" Color="Transparent" />
+      <SolidColorBrush x:Key="Oadm.Code.KeyBrush" Color="{StaticResource Oadm.Code.KeyColor}" />
+      <SolidColorBrush x:Key="Oadm.Code.StringBrush" Color="{StaticResource Oadm.Code.StringColor}" />
+      <SolidColorBrush x:Key="Oadm.Code.NumberBrush" Color="{StaticResource Oadm.Code.NumberColor}" />
+      <SolidColorBrush x:Key="Oadm.Code.LiteralBrush" Color="{StaticResource Oadm.Code.LiteralColor}" />
+      <SolidColorBrush x:Key="Oadm.Code.PunctuationBrush" Color="{StaticResource Oadm.Code.PunctuationColor}" />
+      <SolidColorBrush x:Key="Oadm.Code.TagBrush" Color="{StaticResource Oadm.Code.TagColor}" />
+      <SolidColorBrush x:Key="Oadm.Code.AttributeBrush" Color="{StaticResource Oadm.Code.AttributeColor}" />
+      <SolidColorBrush x:Key="Oadm.Code.CommentBrush" Color="{StaticResource Oadm.Code.CommentColor}" />
+      <SolidColorBrush x:Key="Oadm.Code.ErrorBrush" Color="{StaticResource Oadm.Code.ErrorColor}" />
 
       <!-- Sizes -->
       <!-- Rail: total ~56 px collapsed / ~220 px expanded including its 8 px side margins -->
@@ -142,6 +161,7 @@
       <Thickness x:Key="Oadm.NavItemPadding">12,9</Thickness>
       <Thickness x:Key="Oadm.ToolbarButtonPadding">10,6</Thickness>
       <FontFamily x:Key="Oadm.FontFamily">fonts:Inter#Inter</FontFamily>
+      <FontFamily x:Key="Oadm.FontFamilyMono">Cascadia Mono,Consolas,Menlo,DejaVu Sans Mono,monospace</FontFamily>
       <FontFamily x:Key="ContentControlThemeFontFamily">fonts:Inter#Inter</FontFamily>
       <x:Double x:Key="ControlContentThemeFontSize">11.7</x:Double>
 
@@ -781,11 +801,27 @@
 
   <!-- Multi-line code fields: request and response bodies, headers (VAPIX Commander) -->
   <Style Selector="TextBox.code">
-    <Setter Property="FontFamily" Value="Cascadia Mono,Consolas,Menlo,DejaVu Sans Mono,monospace" />
+    <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamilyMono}" />
     <Setter Property="VerticalContentAlignment" Value="Top" />
     <Setter Property="Padding" Value="10,8" />
     <Setter Property="AcceptsReturn" Value="True" />
     <Setter Property="TextWrapping" Value="NoWrap" />
+  </Style>
+
+  <!-- The one read-only code display (ui:CodeView): response bodies and headers, highlighted -->
+  <Style Selector="ui|CodeView">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="ui|CodeView SelectableTextBlock.code">
+    <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamilyMono}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="SelectionBrush" Value="{StaticResource Oadm.SelectionBrush}" />
+    <Setter Property="Margin" Value="10,8" />
   </Style>
 
   <!-- Trees (command library) -->

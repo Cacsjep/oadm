@@ -257,6 +257,50 @@ public sealed class PageViewModelTests
     }
 
     [Fact]
+    public async Task Try_result_highlights_the_body_by_its_content_type_and_offers_the_raw_text()
+    {
+        var page = await PageFixture.CreateAsync();
+        var vm = page.Vm;
+        var vapix = page.Server.VapixFactory.For(page.Camera.Id);
+        vm.Add(page.Item("common.basicdeviceinfo.read"));
+
+        // Minified JSON: pretty by default, raw shows the exact device text.
+        const string json = "{\"apiVersion\":\"1.3\",\"data\":{\"propertyList\":{\"ProdNbr\":\"P3265-V\",\"Version\":\"12.0.68\"}}}";
+        vapix.Handler = _ => FakeVapix.Json(json);
+        await vm.TryCommand.ExecuteAsync(null);
+        var result = vm.TryResult!;
+        Assert.Equal(Oadm.Sdk.Client.Controls.CodeLanguage.Json, result.BodyLanguage);
+        Assert.True(result.CanShowRaw);
+        Assert.True(result.IsPretty);
+        Assert.StartsWith("{\n  \"apiVersion\": \"1.3\",", result.DisplayBody.ReplaceLineEndings("\n"), StringComparison.Ordinal);
+        result.ShowRawCommand.Execute(null);
+        Assert.True(result.IsRaw);
+        Assert.Equal(json, result.DisplayBody);
+        result.ShowPrettyCommand.Execute(null);
+        Assert.NotEqual(json, result.DisplayBody);
+
+        // SOAP / XML by content type, even when the text alone would not say so.
+        vapix.Handler = _ => FakeVapix.Text("<?xml version=\"1.0\"?><root><a>1</a></root>", HttpStatusCode.OK, "application/soap+xml");
+        await vm.TryCommand.ExecuteAsync(null);
+        Assert.Equal(Oadm.Sdk.Client.Controls.CodeLanguage.Xml, vm.TryResult!.BodyLanguage);
+        Assert.Contains("  <a>1</a>", vm.TryResult.DisplayBody, StringComparison.Ordinal);
+        Assert.Equal("<?xml version=\"1.0\"?><root><a>1</a></root>", vm.TryResult.RawBody);
+
+        // param.cgi text: key=value, nothing to re-indent.
+        vm.Add(page.Item("common.brand.read"));
+        vapix.Handler = _ => FakeVapix.Text("root.Brand.Brand=AXIS\nroot.Brand.ProdNbr=P3265-V\n");
+        await vm.TryCommand.ExecuteAsync(null);
+        Assert.Equal(Oadm.Sdk.Client.Controls.CodeLanguage.KeyValue, vm.TryResult!.BodyLanguage);
+        Assert.False(vm.TryResult.CanShowRaw);
+        Assert.Equal(vm.TryResult.Body, vm.TryResult.RawBody);
+
+        // HTML error pages stay plain.
+        vapix.Handler = _ => FakeVapix.Text("<html><head><title>500</title></head></html>", HttpStatusCode.InternalServerError, "text/html");
+        await vm.TryCommand.ExecuteAsync(null);
+        Assert.Equal(Oadm.Sdk.Client.Controls.CodeLanguage.Plain, vm.TryResult!.BodyLanguage);
+    }
+
+    [Fact]
     public async Task Try_write_command_asks_first()
     {
         var page = await PageFixture.CreateAsync();

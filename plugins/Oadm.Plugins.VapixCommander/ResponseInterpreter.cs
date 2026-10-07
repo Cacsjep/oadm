@@ -29,7 +29,7 @@ public static partial class ResponseInterpreter
 {
     public const int ExcerptLength = 300;
 
-    private static readonly JsonSerializerOptions IndentedJson = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions IndentedJson = new() { WriteIndented = true, IndentSize = 2, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     [GeneratedRegex("<title[^>]*>(.*?)</title>", RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant, 1000)]
     private static partial Regex HtmlTitle();

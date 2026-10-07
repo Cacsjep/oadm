@@ -185,6 +185,11 @@ public sealed partial class RolloutCommandViewModel : ObservableObject
     /// <summary>"Read", "Write" or "Write · dangerous".</summary>
     public string KindText => Command.Dangerous ? "Write · dangerous" : Command.Writes ? "Write" : "Read";
 
+    /// <summary>Header text of the selected command: kind of a changing command, then the description.</summary>
+    public string? Detail => Command.Writes || Command.Dangerous
+        ? string.IsNullOrEmpty(Command.Description) ? KindText : KindText + " · " + Command.Description
+        : Command.Description;
+
     public bool Writes => Command.Writes;
 
     public bool Dangerous => Command.Dangerous;

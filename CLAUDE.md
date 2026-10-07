@@ -963,8 +963,10 @@ JSON schema: `docs/vapix-commander/command-format.md` + `command.schema.json` (t
   API, Version too old, API list not read yet, Needs a video device), `rollout`. User-level problems come
   back as `error` in the reply, not as gRPC errors.
 - Page (`HasOwnCards`: three cards and a Run bar, shared controls only): **Library** card (SearchBox,
-  TreeView Built-in / Saved by category with count badges, Write (warn) / Dangerous (error) status chips,
-  double-click or "Add to rollout", Delete / Export saved, Export all, Import); middle card with a
+  TreeView Built-in / Saved by category with count badges, no write / dangerous badges in the tree: the
+  tooltip, the Kind column of the rollout set, the header of the selected command ("Write · dangerous ·
+  <description>") and the run confirmation say it; double-click or "Add to rollout", Delete / Export
+  saved, Export all, Import); middle card with a
   segmented switch **Rollout set** (DataGrid #, Command, Category, Kind, Source; Up, Down, Remove,
   Clear, "Save with values..." = saved copy in Custom; field form of the selected command checked like
   the server while typing; `ui:PasswordBox` for passwords) / **Raw request** (method, path, query and
@@ -973,7 +975,11 @@ JSON schema: `docs/vapix-commander/command-format.md` + `command.schema.json` (t
   prefilled from the path (param.cgi -> param-cgi 1.0, `/config/rest/<api>/v<n>` -> `<api> n.0`, known
   CGIs), changes-the-device (prefilled from method/action) and dangerous); "Send to <device>" + **Send**
   shows the result card (status chip, "HTTP 200 OK · 84 ms · address", interpreted result, request
-  line, pretty body and headers). **Target devices** card (Devices page selection preselected; buttons
+  line, body and headers in `ui:CodeView`s). The body language comes from the response content type
+  (else from the text: param.cgi key=value); JSON and XML are always shown pretty-printed (2 spaces,
+  also when the device sends them minified) with a **Pretty / Raw** switch (default Pretty; Raw = the
+  exact device text from `TryOutcome.RawBody`, which the server sends only when it differs from the
+  pretty body), content type and "Cut at 256 KB." next to it. **Target devices** card (Devices page selection preselected; buttons
   Devices page selection, All, Compatible, None; SearchBox; per device a check box and one status chip
   per rollout command). Run bar: status chip of the last action (+ "Show tasks" opens the Devices page),
   summary "3 commands × 2 devices · 1 write", **Stop on first error** (default on), **Run on N
@@ -983,7 +989,9 @@ JSON schema: `docs/vapix-commander/command-format.md` + `command.schema.json` (t
   per kind, validation, every response kind incl. error texts and transport mapping with a fake device,
   stop on first error through the real task engine and core plugin host, saved CRUD / encryption /
   export / import, compatibility, page view models against the in-process plugin, bundled library,
-  headless screenshots `plugin-vapix-commander-rollout.png`, `-try-error.png`, `-raw.png`);
+  headless screenshots `plugin-vapix-commander-rollout.png`, `-try-error.png`, `-raw.png`, `-try-json.png`,
+  `-try-json-raw.png`, `-try-xml.png`, `-try-paramcgi.png`); `tests/Oadm.Client.Tests/CodeViewTests`
+  (detection, pretty-printing, tokens, fallbacks, size limits, rendering and copy);
   `tests/Oadm.Server.Tests/VapixCommanderServerTests` (PluginService routing, hidden task) and the
   read-only hardware test `VapixCommanderHardwareTests` (param.cgi list Brand and basicdeviceinfo, Try
   and a rollout on 10.0.0.48 through the in-process server). Not in fake mode (`--fake`) yet.
@@ -1045,7 +1053,12 @@ LocalApplicationData): server address, grid column layout, bottom pane state.
   dialogs `DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip` (status chip),
   `FileRow` (chosen file + "Choose file..."), `ProgressRow` (progress bar + status text),
   `PasswordBox` (every password field: TextBox with bullet mask and eye button "Show password" /
-  "Hide password", icons `Icon.eye` / `Icon.eyeOff`; never a `TextBox` with `PasswordChar`). Before
+  "Hide password", icons `Icon.eye` / `Icon.eyeOff`; never a `TextBox` with `PasswordChar`), `CodeView`
+  (every read-only code / response display: JSON and XML pretty-printed with 2 spaces and highlighted,
+  param.cgi `key=value` highlighted with `# Error` lines red, `Language` Auto/Json/Xml/KeyValue/Plain with
+  Auto from the content type then the text, `IsFormatted` false = exact text; unparsable text plain, above
+  512 K characters plain; monospace `Oadm.FontFamilyMono`, no wrapping, selectable and copyable; colors
+  `Oadm.Code.*Brush`; logic in `CodeText` without UI; editable bodies stay `TextBox.code`). Before
   writing new XAML, check both `Controls/` folders and reuse; if a second place needs something
   that exists only inline, extract it into a control first.
 - Plugin projects copy their output to `artifacts/plugins/<id>/` after every build. A running

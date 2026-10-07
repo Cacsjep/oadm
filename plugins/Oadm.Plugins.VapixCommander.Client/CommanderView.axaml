@@ -26,8 +26,6 @@
                 <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="8,0,4,0">
                   <Border Classes="badge" IsVisible="{Binding IsGroup}"><TextBlock Text="{Binding CountText}" /></Border>
-                  <ui:StatusChip IsWarning="True" Text="Write" IsVisible="{Binding IsWrite}" />
-                  <ui:StatusChip IsError="True" Text="Dangerous" IsVisible="{Binding IsDangerous}" />
                 </StackPanel>
               </Grid>
             </TreeDataTemplate>
@@ -111,7 +109,7 @@
               </Border>
 
               <StackPanel Classes="form" DataContext="{Binding SelectedRolloutItem}" IsVisible="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).HasSelectedRolloutItem}" x:DataType="c:RolloutCommandViewModel">
-                <ui:CardHeader Classes="flush" Title="{Binding Name}" Description="{Binding Command.Description}" />
+                <ui:CardHeader Classes="flush" Title="{Binding Name}" Description="{Binding Detail}" />
                 <TextBlock Classes="secondary" Text="No values needed." IsVisible="{Binding !HasFields}" />
                 <ItemsControl ItemsSource="{Binding Fields}">
                   <ItemsControl.ItemsPanel>
@@ -249,8 +247,8 @@
         </ScrollViewer>
 
         <!-- Result of Send (Try) -->
-        <Border Grid.Row="2" Classes="inlineEditor" IsVisible="{Binding HasTryResult}" MaxHeight="360">
-          <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="8" DataContext="{Binding TryResult}" x:DataType="c:TryResultViewModel">
+        <Border Grid.Row="2" Classes="inlineEditor" IsVisible="{Binding HasTryResult}" MaxHeight="420">
+          <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" RowSpacing="8" DataContext="{Binding TryResult}" x:DataType="c:TryResultViewModel">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
               <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding Success}" IsError="{Binding IsError}" />
               <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding ExchangeLine}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -260,9 +258,22 @@
             </Grid>
             <SelectableTextBlock Grid.Row="1" Text="{Binding Summary}" TextWrapping="Wrap" />
             <SelectableTextBlock Grid.Row="2" Classes="secondary small" Text="{Binding RequestLine}" TextWrapping="Wrap" />
-            <Grid Grid.Row="3" ColumnDefinitions="*,*" ColumnSpacing="8" IsVisible="{Binding HasBody}">
-              <TextBox Classes="code" Text="{Binding Body}" IsReadOnly="True" />
-              <TextBox Grid.Column="1" Classes="code" Text="{Binding HeadersText}" IsReadOnly="True" />
+            <Grid Grid.Row="3" ColumnDefinitions="2*,*" ColumnSpacing="8" IsVisible="{Binding HasBody}">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Border Classes="segmented" IsVisible="{Binding CanShowRaw}">
+                  <StackPanel Orientation="Horizontal">
+                    <Button Classes="segment" Classes.selected="{Binding IsPretty}" Content="Pretty" Command="{Binding ShowPrettyCommand}" ToolTip.Tip="Indented and highlighted" />
+                    <Button Classes="segment" Classes.selected="{Binding IsRaw}" Content="Raw" Command="{Binding ShowRawCommand}" ToolTip.Tip="Exactly as the device sent it" />
+                  </StackPanel>
+                </Border>
+                <TextBlock Classes="secondary small" Text="{Binding ContentType}" VerticalAlignment="Center" />
+                <TextBlock Classes="warning small" Text="Cut at 256 KB." VerticalAlignment="Center" IsVisible="{Binding IsBodyTruncated}" />
+              </StackPanel>
+              <TextBlock Grid.Column="1" Classes="secondary small" Text="Headers" VerticalAlignment="Center" />
+            </Grid>
+            <Grid Grid.Row="4" ColumnDefinitions="2*,*" ColumnSpacing="8" MinHeight="200" IsVisible="{Binding HasBody}">
+              <ui:CodeView Text="{Binding DisplayBody}" Language="{Binding BodyLanguage}" IsFormatted="{Binding IsPretty}" />
+              <ui:CodeView Grid.Column="1" Text="{Binding HeadersText}" Language="Plain" />
             </Grid>
           </Grid>
         </Border>

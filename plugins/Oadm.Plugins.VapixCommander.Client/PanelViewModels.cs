@@ -2,14 +2,16 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.VapixCommander.Client;
 
 /// <summary>
-/// A node of the library tree: a group ("Built-in", "Saved"), a category ("Video · 12") or a command (with its write /
-/// dangerous badges).
+/// A node of the library tree: a group ("Built-in", "Saved"), a category ("Video · 12") or a command. Write and dangerous
+/// are not shown as badges in the tree; the tooltip, the rollout set (Kind) and the run confirmation say it.
 /// </summary>
 public sealed partial class LibraryNodeViewModel : ObservableObject
 {
@@ -36,7 +38,11 @@ public sealed partial class LibraryNodeViewModel : ObservableObject
 
     public bool IsSaved => Item?.Source == CommandSources.Saved;
 
-    public string? Tooltip => Item?.Command.Description;
+    /// <summary>"Write · dangerous" (kind of a changing command) and the description.</summary>
+    public string? Tooltip => Item is null ? null
+        : Item.Command.Writes || Item.Command.Dangerous
+            ? (Item.Command.Dangerous ? "Write · dangerous" : "Write") + (string.IsNullOrEmpty(Item.Command.Description) ? string.Empty : Environment.NewLine + Item.Command.Description)
+            : Item.Command.Description;
 
     /// <summary>Commands below this node (for group titles).</summary>
     public int CommandCount => IsCommand ? 1 : Children.Sum(c => c.CommandCount);
@@ -181,7 +187,7 @@ public sealed partial class TargetDeviceViewModel : ObservableObject
 }
 
 /// <summary>The Postman-like result of "Try on one device": status, duration, interpreted result, headers and body.</summary>
-public sealed class TryResultViewModel
+public sealed partial class TryResultViewModel : ObservableObject
 {
     public TryResultViewModel(string commandName, string deviceAddress, TryOutcome? outcome, string? error)
     {
@@ -238,7 +244,36 @@ public sealed class TryResultViewModel
 
     public bool HasHeaders => Outcome?.Headers.Count > 0;
 
-    public string Body => Outcome?.Body is null ? string.Empty : Outcome.Body + (Outcome.BodyTruncated ? Environment.NewLine + "… (cut at 256 KB)" : string.Empty);
+    /// <summary>The body as the server prepared it (JSON and XML indented).</summary>
+    public string Body => Outcome?.Body ?? string.Empty;
+
+    /// <summary>The body exactly as the device sent it.</summary>
+    public string RawBody => Outcome?.RawBody ?? Body;
 
     public bool HasBody => !string.IsNullOrEmpty(Outcome?.Body);
+
+    public string? ContentType => Outcome?.ContentType;
+
+    /// <summary>Highlighting of the body, from the response content type and else from the text (param.cgi key=value).</summary>
+    public CodeLanguage BodyLanguage => HasBody ? CodeText.Detect(RawBody, ContentType) : CodeLanguage.Plain;
+
+    /// <summary>JSON and XML can be shown pretty-printed (default) or exactly as sent.</summary>
+    public bool CanShowRaw => BodyLanguage is CodeLanguage.Json or CodeLanguage.Xml;
+
+    /// <summary>True (default): pretty-printed; false: the exact device text.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRaw), nameof(DisplayBody))]
+    public partial bool IsPretty { get; set; } = true;
+
+    public bool IsRaw => !IsPretty;
+
+    public string DisplayBody => IsPretty ? Body : RawBody;
+
+    public bool IsBodyTruncated => Outcome?.BodyTruncated == true;
+
+    [RelayCommand]
+    private void ShowPretty() => IsPretty = true;
+
+    [RelayCommand]
+    private void ShowRaw() => IsPretty = false;
 }
