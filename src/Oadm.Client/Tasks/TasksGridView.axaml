@@ -1,0 +1,36 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:tasks="using:Oadm.Client.Tasks"
+             x:Class="Oadm.Client.Tasks.TasksGridView"
+             x:DataType="tasks:TasksViewModel">
+  <DataGrid ItemsSource="{Binding Tasks}" SelectedItem="{Binding SelectedTask}" SelectionMode="Single" IsReadOnly="True"
+            CanUserReorderColumns="False">
+    <DataGrid.Columns>
+      <DataGridTextColumn Header="Name" Width="2*" MinWidth="160" Binding="{Binding Name}" x:DataType="tasks:TaskRowViewModel" />
+      <DataGridTemplateColumn Header="Status" Width="130" SortMemberPath="StateText">
+        <DataGridTemplateColumn.CellTemplate>
+          <DataTemplate x:DataType="tasks:TaskRowViewModel">
+            <Border Classes="pill" Margin="10,0" Classes.ok="{Binding IsStateOk}" Classes.error="{Binding IsStateError}" Classes.accent="{Binding IsStateAccent}">
+              <StackPanel Orientation="Horizontal">
+                <Ellipse />
+                <TextBlock Text="{Binding StateText}" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </DataGridTemplateColumn.CellTemplate>
+      </DataGridTemplateColumn>
+      <DataGridTextColumn Header="Start time" Width="170" Binding="{Binding StartTimeText}" x:DataType="tasks:TaskRowViewModel" />
+      <DataGridTextColumn Header="Owner" Width="180" Binding="{Binding Owner}" x:DataType="tasks:TaskRowViewModel" />
+      <DataGridTemplateColumn Header="Progress" Width="3*" MinWidth="200" SortMemberPath="Progress">
+        <DataGridTemplateColumn.CellTemplate>
+          <DataTemplate x:DataType="tasks:TaskRowViewModel">
+            <Grid ColumnDefinitions="*,52" Margin="10,0,12,0" VerticalAlignment="Center">
+              <ProgressBar Value="{Binding Progress}" Minimum="0" Maximum="100" />
+              <TextBlock Grid.Column="1" Classes="secondary" Margin="10,0,0,0" Text="{Binding ProgressText}" HorizontalAlignment="Right" />
+            </Grid>
+          </DataTemplate>
+        </DataGridTemplateColumn.CellTemplate>
+      </DataGridTemplateColumn>
+    </DataGrid.Columns>
+  </DataGrid>
+</UserControl>

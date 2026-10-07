@@ -1,0 +1,21 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:shell="using:Oadm.Client.Shell"
+             x:Class="Oadm.Client.Shell.AboutView"
+             x:DataType="shell:AboutViewModel">
+  <StackPanel Spacing="16">
+    <TextBlock Classes="pageTitle" Text="About" />
+    <Border Classes="card" HorizontalAlignment="Left" MinWidth="560">
+      <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
+        <TextBlock Grid.Row="0" Grid.ColumnSpan="2" Classes="cardTitle" Text="OADM" />
+        <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="secondary" TextWrapping="Wrap" Text="{x:Static shell:AboutViewModel.Description}" />
+        <TextBlock Grid.Row="2" Classes="fieldLabel" Text="Version" />
+        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Version}" />
+        <TextBlock Grid.Row="3" Classes="fieldLabel" Text="Plugin SDK" />
+        <TextBlock Grid.Row="3" Grid.Column="1" Text="{x:Static shell:AboutViewModel.SdkVersion}" />
+        <TextBlock Grid.Row="4" Classes="fieldLabel" Text="License" />
+        <TextBlock Grid.Row="4" Grid.Column="1" Text="{x:Static shell:AboutViewModel.License}" />
+      </Grid>
+    </Border>
+  </StackPanel>
+</UserControl>

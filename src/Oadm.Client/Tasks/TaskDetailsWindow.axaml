@@ -1,0 +1,37 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:chrome="using:Avalonia.Controls.Chrome"
+        xmlns:tasks="using:Oadm.Client.Tasks"
+        x:Class="Oadm.Client.Tasks.TaskDetailsWindow"
+        x:DataType="tasks:TaskDetailsViewModel"
+        Title="{Binding Title}"
+        Width="820" Height="460" MinWidth="600" MinHeight="320"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="{StaticResource Oadm.TitleBarHeight}">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="0,0,0,16">
+    <Border Height="{StaticResource Oadm.TitleBarHeight}" chrome:WindowDecorationProperties.ElementRole="TitleBar" Padding="24,0">
+      <TextBlock Classes="appName" Text="{Binding Title}" VerticalAlignment="Center" />
+    </Border>
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Device" Width="2*" Binding="{Binding Device}" x:DataType="tasks:TaskDeviceRow" />
+          <DataGridTextColumn Header="Model" Width="*" Binding="{Binding Model}" x:DataType="tasks:TaskDeviceRow" />
+          <DataGridTemplateColumn Header="Status" Width="120">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="tasks:TaskDeviceRow">
+                <Border Classes="pill" Margin="10,0" Classes.ok="{Binding IsStateOk}" Classes.error="{Binding IsStateError}" Classes.accent="{Binding IsStateAccent}">
+                  <TextBlock Text="{Binding StateText}" />
+                </Border>
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTextColumn Header="Message" Width="2*" Binding="{Binding Message}" x:DataType="tasks:TaskDeviceRow" />
+        </DataGrid.Columns>
+      </DataGrid>
+    </Border>
+    <Button Grid.Row="2" Classes="secondary" Content="Close" HorizontalAlignment="Right" Margin="0,16,16,0" Click="OnClose" IsCancel="True" IsDefault="True" />
+  </Grid>
+</Window>

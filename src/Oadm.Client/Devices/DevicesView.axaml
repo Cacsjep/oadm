@@ -1,0 +1,182 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="using:Oadm.Client.Controls"
+             xmlns:dev="using:Oadm.Client.Devices"
+             xmlns:tasks="using:Oadm.Client.Tasks"
+             xmlns:v1="using:Oadm.Contracts.V1"
+             x:Class="Oadm.Client.Devices.DevicesView"
+             x:DataType="dev:DevicesViewModel">
+  <Grid RowDefinitions="Auto,*,Auto">
+    <TextBlock Grid.Row="0" Classes="pageTitle" Text="Manage devices" Margin="4,0,0,16" />
+
+    <!-- Device card: toolbar, status line, grid -->
+    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}">
+      <Grid RowDefinitions="Auto,Auto,*">
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+            <Button Classes="primary" Command="{Binding AddDevicesCommand}" ToolTip.Tip="Search the network with zero-configuration (Bonjour)" Margin="0,0,6,0">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <c:OadmIcon Data="{StaticResource Icon.add}" />
+                <TextBlock Text="Add devices" />
+              </StackPanel>
+            </Button>
+            <Button Classes="toolbar" Command="{Binding AddFromRangeCommand}" ToolTip.Tip="Scan an IP address range">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <c:OadmIcon Data="{StaticResource Icon.range}" />
+                <TextBlock Text="Add from IP range" />
+              </StackPanel>
+            </Button>
+            <Button Classes="toolbar" Command="{Binding RemoveCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <c:OadmIcon Data="{StaticResource Icon.remove}" />
+                <TextBlock Text="Remove" />
+              </StackPanel>
+            </Button>
+            <Button Classes="toolbar" Command="{Binding RefreshCommand}" ToolTip.Tip="Refresh the selected devices (all when nothing is selected)">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <c:OadmIcon Data="{StaticResource Icon.refresh}" />
+                <TextBlock Text="Refresh" />
+              </StackPanel>
+            </Button>
+            <Border Classes="vseparator" IsVisible="{Binding !!ToolbarActions.Count}" />
+            <ItemsControl ItemsSource="{Binding ToolbarActions}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="4" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="v1:TaskPluginInfo">
+                  <Button Classes="toolbar"
+                          Command="{Binding $parent[UserControl].((dev:DevicesViewModel)DataContext).RunPluginCommand}"
+                          CommandParameter="{Binding}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <c:OadmIcon Data="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" />
+                      <TextBlock Text="{Binding DisplayName}" />
+                    </StackPanel>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+            <Button Classes="toolbar" ToolTip.Tip="Choose columns">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <c:OadmIcon Data="{StaticResource Icon.columns}" />
+                <TextBlock Text="Columns" />
+              </StackPanel>
+              <Button.Flyout>
+                <Flyout Placement="BottomEdgeAlignedRight">
+                  <StackPanel Spacing="4" MinWidth="220">
+                    <TextBlock Classes="secondary" Text="Visible columns" Margin="0,0,0,6" />
+                    <ItemsControl ItemsSource="{Binding Columns.Choosable}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="dev:ColumnOptionViewModel">
+                          <CheckBox Content="{Binding Header}" IsChecked="{Binding IsVisible}" />
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Flyout>
+              </Button.Flyout>
+            </Button>
+            <TextBox Width="{StaticResource Oadm.SearchWidth}" PlaceholderText="Search" Text="{Binding SearchText}" VerticalContentAlignment="Center">
+              <TextBox.InnerLeftContent>
+                <c:OadmIcon Data="{StaticResource Icon.search}" Margin="10,0,0,0" Foreground="{StaticResource Oadm.TextSecondaryBrush}" />
+              </TextBox.InnerLeftContent>
+              <TextBox.InnerRightContent>
+                <Button Classes="toolbar iconOnly" Padding="4" Margin="0,0,4,0" Command="{Binding ClearSearchCommand}" IsVisible="{Binding HasSearch}">
+                  <c:OadmIcon Data="{StaticResource Icon.close}" Width="12" Height="12" />
+                </Button>
+              </TextBox.InnerRightContent>
+            </TextBox>
+          </StackPanel>
+        </Grid>
+
+        <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding StatusLine}" Margin="2,14,0,8" />
+
+        <Panel Grid.Row="2">
+          <DataGrid x:Name="DeviceGrid"
+                    ItemsSource="{Binding FilteredDevices}"
+                    c:GridSelection.SelectedItems="{Binding SelectedDevices}"
+                    SelectionMode="Extended"
+                    IsReadOnly="True">
+            <DataGrid.ContextMenu>
+              <ContextMenu ItemsSource="{Binding ContextMenuEntries}">
+                <ContextMenu.Styles>
+                  <Style Selector="MenuItem" x:DataType="dev:MenuEntryViewModel">
+                    <Setter Property="Header" Value="{Binding Header}" />
+                    <Setter Property="Command" Value="{Binding Command}" />
+                    <Setter Property="CommandParameter" Value="{Binding CommandParameter}" />
+                    <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
+                    <Setter Property="Icon">
+                      <Template>
+                        <c:OadmIcon Data="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" />
+                      </Template>
+                    </Setter>
+                  </Style>
+                </ContextMenu.Styles>
+              </ContextMenu>
+            </DataGrid.ContextMenu>
+            <DataGrid.Columns>
+              <DataGridTemplateColumn Tag="icon" Width="44" CanUserResize="False" CanUserSort="False" CanUserReorder="False">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="dev:DeviceRowViewModel">
+                    <Panel Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
+                      <c:OadmIcon Data="{StaticResource Icon.devices}" Width="18" Height="18" HorizontalAlignment="Left" VerticalAlignment="Top" />
+                      <Ellipse Classes="statusDot" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                               Classes.ok="{Binding IsStatusOk}" Classes.warn="{Binding IsStatusWarning}" Classes.error="{Binding IsStatusError}" />
+                    </Panel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Tag="mac" Header="MAC address" Width="140" Binding="{Binding Serial}" x:DataType="dev:DeviceRowViewModel" />
+              <DataGridTemplateColumn Tag="status" Header="Status" Width="160" SortMemberPath="StatusText">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="dev:DeviceRowViewModel">
+                    <Border Classes="pill" Margin="10,0" Classes.ok="{Binding IsStatusOk}" Classes.warn="{Binding IsStatusWarning}" Classes.error="{Binding IsStatusError}">
+                      <StackPanel Orientation="Horizontal">
+                        <Ellipse />
+                        <TextBlock Text="{Binding StatusText}" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTemplateColumn Tag="address" Header="Address" Width="120" SortMemberPath="DisplayAddress">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="dev:DeviceRowViewModel">
+                    <Button Classes="link" Margin="10,0" HorizontalAlignment="Left" ToolTip.Tip="Open the web interface of the device"
+                            Command="{Binding $parent[UserControl].((dev:DevicesViewModel)DataContext).OpenWebUiCommand}"
+                            CommandParameter="{Binding}">
+                      <TextBlock Text="{Binding DisplayAddress}" />
+                    </Button>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Tag="model" Header="Model" Width="160" Binding="{Binding Model}" x:DataType="dev:DeviceRowViewModel" />
+              <DataGridTextColumn Tag="firmware" Header="Firmware" Width="100" Binding="{Binding FirmwareVersion}" x:DataType="dev:DeviceRowViewModel" />
+              <DataGridTextColumn Tag="dhcp" Header="DHCP" Width="86" Binding="{Binding DhcpText}" x:DataType="dev:DeviceRowViewModel" />
+              <DataGridTextColumn Tag="https" Header="HTTPS" Width="96" Binding="{Binding HttpsText}" x:DataType="dev:DeviceRowViewModel" />
+              <DataGridTextColumn Tag="server" Header="Server" Width="100" Binding="{Binding ServerName}" x:DataType="dev:DeviceRowViewModel" />
+              <DataGridTextColumn Tag="dot1x" Header="IEEE 802.1X" Width="124" Binding="{Binding Dot1xText}" x:DataType="dev:DeviceRowViewModel" />
+              <DataGridTextColumn Tag="upnp" Header="UPnP friendly name" Width="250" Binding="{Binding UpnpFriendlyName}" x:DataType="dev:DeviceRowViewModel" />
+              <DataGridTextColumn Tag="warranty" Header="Warranty expiry" Width="140" Binding="{Binding WarrantyText}" x:DataType="dev:DeviceRowViewModel" />
+              <DataGridTextColumn Tag="replacement" Header="Device replacement" Width="150" Binding="{Binding ReplacementText}" x:DataType="dev:DeviceRowViewModel" />
+            </DataGrid.Columns>
+          </DataGrid>
+
+          <StackPanel IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+            <c:OadmIcon Data="{StaticResource Icon.devices}" Width="32" Height="32" HorizontalAlignment="Center" />
+            <TextBlock Classes="sectionTitle" Text="No devices yet" HorizontalAlignment="Center" />
+            <TextBlock Classes="secondary" Text="Click Add devices to search the network, or Add from IP range." HorizontalAlignment="Center" />
+          </StackPanel>
+        </Panel>
+      </Grid>
+    </Border>
+
+    <!-- Tasks / Log pane -->
+    <tasks:TasksPaneView Grid.Row="2" DataContext="{Binding Tasks}" Margin="{StaticResource Oadm.GapTop}" />
+  </Grid>
+</UserControl>

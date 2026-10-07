@@ -1,0 +1,104 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Media.Imaging;
+using Avalonia.Threading;
+
+using Microsoft.Extensions.DependencyInjection;
+
+using Oadm.Client.Discovery;
+using Oadm.Client.Infrastructure;
+using Oadm.Client.Shell;
+
+namespace Oadm.Client.Tests;
+
+/// <summary>Entry point for the headless Avalonia session: the real App with Skia rendering.</summary>
+public static class HeadlessEntry
+{
+    public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>()
+        .UseSkia()
+        .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
+        .WithInterFont();
+}
+
+/// <summary>
+/// Loads the real views against the fake server, so XAML, bindings and theme resources are exercised.
+/// Set OADM_SCREENSHOT_DIR to also write PNGs of the rendered windows.
+/// </summary>
+public sealed class HeadlessSmokeTests
+{
+    [Fact]
+    public async Task Main_window_pages_and_wizard_render_with_fake_server()
+    {
+        string dataFolder = Path.Combine(Path.GetTempPath(), "oadm-headless-" + Guid.NewGuid().ToString("N"));
+        App.Options = new AppOptions { UseFake = true, DataFolder = dataFolder };
+        string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        using HeadlessUnitTestSession session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+
+        int deviceCount = await session.Dispatch(async () =>
+        {
+            var app = (App)Application.Current!;
+            MainWindowViewModel vm = app.Services!.GetRequiredService<MainWindowViewModel>();
+            var window = new MainWindow { DataContext = vm, Width = 1440, Height = 900 };
+            window.Show();
+            vm.Start();
+            await PumpUntilAsync(() => vm.Devices.FilteredDevices.Count == 12 && vm.Tasks.Tasks.Count > 0);
+            Capture(window, outDir, "client-fake-headless.png");
+
+            foreach (NavItemViewModel item in vm.NavItems.Concat(vm.BottomNavItems).ToList())
+            {
+                vm.NavigateCommand.Execute(item);
+                await PumpUntilAsync(() => true);
+                Capture(window, outDir, $"client-page-{item.Key}.png");
+            }
+
+            var factory = app.Services!.GetRequiredService<Func<AddDevicesMode, AddDevicesWizardViewModel>>();
+            AddDevicesWizardViewModel wizardVm = factory(AddDevicesMode.ZeroConf);
+            var wizard = new AddDevicesWizardWindow { DataContext = wizardVm };
+            wizard.Show();
+            await PumpUntilAsync(() => wizardVm.Discovered.Count >= 8);
+            wizardVm.SelectAllCommand.Execute(null);
+            await PumpUntilAsync(() => true);
+            Capture(wizard, outDir, "client-wizard.png");
+            await wizardVm.DisposeAsync();
+            wizard.Close();
+            window.Close();
+            return vm.Devices.FilteredDevices.Count;
+        }, CancellationToken.None);
+
+        Assert.Equal(12, deviceCount);
+        try
+        {
+            Directory.Delete(dataFolder, recursive: true);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // nothing was written
+        }
+    }
+
+    private static async Task PumpUntilAsync(Func<bool> condition, int timeoutMs = 10000)
+    {
+        DateTime end = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        do
+        {
+            Dispatcher.UIThread.RunJobs();
+            await Task.Delay(30);
+            Dispatcher.UIThread.RunJobs();
+        }
+        while (!condition() && DateTime.UtcNow < end);
+
+        Assert.True(condition(), "UI condition not met in time");
+    }
+
+    private static void Capture(Window window, string? outDir, string name)
+    {
+        WriteableBitmap? frame = window.CaptureRenderedFrame();
+        Assert.NotNull(frame);
+        if (!string.IsNullOrEmpty(outDir))
+        {
+            Directory.CreateDirectory(outDir);
+            frame.Save(Path.Combine(outDir, name));
+        }
+    }
+}
