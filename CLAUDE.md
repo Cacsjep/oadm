@@ -670,8 +670,11 @@ public interface ITaskExecutionContext
     Task UpdateCredentialsAsync(string userName, string password, CancellationToken ct); // store new ones; Vapix is swapped
     Task<IVapixClient> CreateClientForAsync(string address, CancellationToken ct);       // DIM: device at another address (same credentials, scheme, pin); caller disposes
     Task<bool> UpdateDeviceAddressAsync(string newAddress, CancellationToken ct);         // DIM: server verifies the serial, moves the record, Vapix is swapped; false = host name kept
+    Task UpdateDeviceTlsAsync(string scheme, string? expectedFingerprintSha256, CancellationToken ct); // DIM: after a web server change: "https" + the
+                                       // new certificate's SHA-256 (null = pin what is presented) or "http"; server connects that way, verifies serial
+                                       // and certificate, stores scheme, pin and certificate details (no CertificateChanged), Vapix is swapped
 }
-// DIM defaults throw NotSupportedException. UpdateDeviceAddressAsync throws DeviceIdentityException (Oadm.Sdk.Plugins)
+// DIM defaults throw NotSupportedException. UpdateDeviceAddressAsync and UpdateDeviceTlsAsync throw DeviceIdentityException (Oadm.Sdk.Plugins)
 // when the device at the new address has another serial or does not answer; the record stays unchanged.
 // ITaskQueryContext has IDeviceRepository? Devices (DIM null): all managed devices, read-only.
 
@@ -711,7 +714,7 @@ pane shows `GetTaskName` (see Tasks). The server registry (`RegisteredTaskPlugin
 warning for either; empty groups become `General`, groups are shortened the same way. The task name in
 the tasks pane, `TaskPluginInfo` and the client menu and toolbar use the normalized name. Bundled plugins:
 Restart, Upgrade firmware and Date and time (Maintenance), Applications (ACAP) (Applications), Users (Users), Network
-settings and Assign IP address (Network); `TaskPluginNamesTests` checks every plugin deployed to
+settings and Assign IP address (Network), the eight PKI tasks (Security, contributed by `oadm.pki`); `TaskPluginNamesTests` checks every plugin deployed to
 `artifacts/plugins`.
 
 ## Client SDK (Oadm.Sdk.Client)
@@ -1258,13 +1261,13 @@ Own RFC 2131 / 2132 implementation, IPv4 only, one interface, no relay agents (r
 ## PKI plugin (core plugin)
 
 `plugins/Oadm.Plugins.Pki` (+ `.Client`), id `oadm.pki`, rail page **PKI** (icon `key`). Spec and decisions:
-`docs/specs/pki.md`, device API research `docs/specs/pki-research/`. Part 1 (built): the CA, its page and the server's
-trust; part 2 (the contributed Security tasks HTTPS / 802.1X Enable, Disable, View, Delete, Install manually, Renew) is
-not built yet and is the only writer of the `issued` registry.
+`docs/specs/pki.md`, device API research `docs/specs/pki-research/`. Part 1: the CA, its page and the server's trust;
+part 2: the contributed Security tasks (below), the only writers of the `issued` registry.
 - CA store (plugin settings): `ca` (id = SHA-256 of the certificate, source generated/imported, certificate and chain PEM,
   key as PKCS#8 PEM encrypted with `ICorePluginContext.Secrets`, purpose `pki:ca:<id>`), `previousCas` (public parts, at
   most 10, newest first, expired ones dropped), `issued` (`{serialNumber, deviceId, purpose https|dot1x, caId, notAfterUtc,
-  issuedUtc}`, read only here; per device and purpose the newest counts), `config`. Without `Secrets` the plugin keeps no CA
+  issuedUtc, alias}`; per device and purpose the newest counts; `IssuedRegistry` keeps changes in memory and writes at
+  most every 2 s and on stop, entries ended more than 30 days ago are dropped), `config`. Without `Secrets` the plugin keeps no CA
   ("CA cannot be stored on this server"); a key that cannot be decrypted (other master key) is the error state "CA key
   cannot be read" with Generate / Import only, nothing is overwritten.
 - First start: the default CA "OADM Root CA <machine name>" in the background (status "Creating the certificate
@@ -1323,6 +1326,78 @@ not built yet and is the only writer of the `issued` registry.
   `pki-page-imported-intermediate.png`, `pki-generate-dialog.png`, `pki-import-dialog-errors.png`, `pki-backup-dialog.png`);
   `tests/Oadm.Core.Tests/Vapix/TrustAnchorTests.cs` (anchored leaf / intermediate Trusted, self-signed stays, registry,
   lazy re-rating in `CertificatePinning`, host context).
+
+### PKI Security tasks (part 2, contributed by `oadm.pki`)
+
+Context menu group **Security** (icon key), no toolbar, `CanRun` on cached data only: AXIS OS >= 11.11 from the firmware
+version (+ network-settings 1.x in `Apis` for 802.1X). Device APIs (`Device/`): REST `cert` v1 (`CertApi`: `config/discover`
+must list `cert.v1` released, read fresh before the first write, cached 10 min for queries; else "Needs AXIS OS 11.11 or
+later. Nothing was changed."), SOAP web server TLS (`WebServerTls`: `aweb:Get/SetWebServerTlsConfiguration` at
+`/vapix/services`, ciphers sent back as read), network_settings.cgi (`NetworkInfoApi`: getNetworkInfo, setWired8021X
+Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fallback).
+- Issuing (`CertificateDeployment.IssueAsync`, `DeviceCertificateIssuer`): key on the device (`create_certificate` RSA-2048 in
+  the default keystore) -> `get_csr` -> OADM signs (its own subject `CN=<OADM address>`, SAN IP addresses, host name, FQDN,
+  `axis-<serial>.local`; never the CSR's; CSR key RSA >= 2048 or EC; EKU serverAuth / clientAuth; KeyUsage digitalSignature +
+  keyEncipherment; AKI = CA SKI; 16 random serial bytes; validity `deviceCertValidityDays` from now - 5 min, capped at the
+  CA) -> `PATCH certificates/<alias>`; the entry goes into `issued`. A failure after the key was created deletes the
+  unfinished key again. Aliases `OADM HTTPS|802.1X <yyyyMMdd-HHmmss>`, CA `OADM CA <8 hex>`, RADIUS CA `OADM RADIUS CA <8
+  hex>`, manual installs `OADM import <ts>`, percent-encoded in URLs. CA certificates are matched by fingerprint (an
+  existing alias is reused). "Remove previous OADM certificate" deletes older OADM certificates of the purpose that
+  nothing uses (alias prefix + registry serial or the CA as issuer), never others.
+- **HTTPS: Enable/Update** (`oadm.pki.https-enable`, no dialog, name "Enable HTTPS"): Check compatibility, Read web server
+  settings, Read network settings (Skipped without network-settings), Install CA certificate (Skipped "Already
+  installed"), Create key on the device, Get certificate request, Sign certificate, Install certificate, Switch web server
+  to the new certificate (policy kept; HTTP only becomes HTTP and HTTPS), Verify HTTPS (`ctx.UpdateDeviceTlsAsync("https",
+  fingerprint)`, retried up to 60 s while the web server restarts: OADM pins the new certificate, scheme https), Remove
+  previous OADM certificate.
+- **HTTPS: Disable** (`oadm.pki.https-disable`, confirmation "Video systems that use HTTPS lose the connection to these
+  devices.", name "Disable HTTPS"): Check compatibility (fails when `Network.HTTP.AuthenticationPolicy=basic`: OADM sends no
+  Basic over HTTP), Read web server settings, Set HTTP only (policy `Http`, certificates stay; Skipped "Already HTTP only"),
+  Verify (`UpdateDeviceTlsAsync("http")`).
+- **IEEE 802.1X: Enable/Update** (`oadm.pki.dot1x-enable`, confirmation "Devices on ports that enforce 802.1X become
+  unreachable if authentication fails.", name "Enable IEEE 802.1X"): Check compatibility (CA chain must end in a root, the
+  RADIUS CA of the page, cert v1, network-settings with `wired.8021X`, identity 1..128), Check device clock (> 5 min off:
+  "The device clock is 12 min off. Set the date and time first. Nothing was changed."), Install CA certificates (RADIUS
+  server CA + the OADM CA chain), Create key / Get request / Sign / Install certificate, Set 802.1X configuration (enabled,
+  EAP-TLS, identity MAC = serial / host name / custom with `{serial}` `{hostName}`, EAPoLv<n>, certClient, certsCA = RADIUS
+  CA aliases), Verify 802.1X settings (read back, mismatch = Warning), Remove previous OADM certificate.
+- **IEEE 802.1X: Disable** (`oadm.pki.dot1x-disable`, name "Disable IEEE 802.1X"): Check compatibility, Set 802.1X off
+  (Skipped "Already off"), Verify; certificates stay.
+- **Renew certificates now** (`oadm.pki.renew`, name "Renew certificates"): Check compatibility, Read certificates, Read web
+  server settings, Read network settings, then per purpose whose current certificate is OADM's the enable flow with
+  prefixed steps ("HTTPS: Create key on the device", "IEEE 802.1X: ..."; 802.1X adds Check device clock and runs only
+  while 802.1X is on); otherwise one Skipped step "Renew HTTPS certificate" / "Renew IEEE 802.1X certificate" with the
+  reason ("No OADM HTTPS certificate on this device").
+- **View installed certificates** (`oadm.pki.view`, dialog only, never a task) and **Delete certificates**
+  (`oadm.pki.delete`): `CertificatesWindow` (virtualized DataGrid grouped Client / Server / CA / devices that could not be
+  read; MAC address, Address, Name, Issued by, Issued to, Valid to, In use (HTTPS, 802.1X), Source OADM / Other;
+  SearchBox; Refresh), read through the query `listCertificates` (read-only, at most 4 devices at a time, progress row,
+  rows appear progressively, list replaced as a whole at most every 300 ms). Delete mode: check boxes; in use and Axis
+  factory (802.1AR) certificates greyed with a tooltip; Select all / none (O(n)); confirmation popup; payload = aliases per
+  device. Task steps: Check compatibility, Read certificates (validates every choice before the first delete: exists, not
+  in use, not factory), Delete certificate <alias> (one each), Verify. Names "Delete certificate <alias>" / "Delete N
+  certificates" (distinct aliases).
+- **Install certificates manually** (`oadm.pki.install`): `InstallCertificatesWindow`: Use for (HTTPS / IEEE 802.1X / CA
+  certificates only), .pfx / .p12 files (one password for all, `CertificateFiles`: wrong password under the field), table
+  File, Certificate, Device, Status chip; a file must match exactly one selected device by MAC (serial in any notation, also
+  `axis-<serial>`), IP or host name / FQDN in CN or SAN, one file per device; problems block Install. Install confirms,
+  uploads (`UploadAsync`) and sends `{purpose, password, files[{deviceId, fileId, fileName}]}` (CA only: deviceId empty =
+  every device). Steps: Check compatibility, Read certificate file, then HTTPS: Read web server settings, Install
+  certificate (`install_from_pkcs12`), Switch web server, Verify HTTPS; 802.1X: Check device clock, Install CA
+  certificates, Install certificate, Set 802.1X configuration, Verify 802.1X settings; CA only: Install CA certificates.
+  A device without a file ends Done with warnings, nothing sent. Name "Install certificate <file>" / "Install N
+  certificates".
+- Not done: the device grid's "Trusted (OADM CA)" / "Issued by a previous CA" texts and `expiryWarningDays` in the
+  Certificate expires column (OADM certificates already rate **Trusted** through the trust anchors). Task names do not
+  distinguish Enable from Update or one renewed purpose (the name is fixed per run, before the device is read).
+- Tests (`tests/Oadm.Plugins.Pki.Tests`): parsers and request bodies against the recorded 10.0.0.48 answers (linked from
+  `docs/specs/pki-research`), every task against `FakeCamera` (stateful REST cert v1 with real keys and CSRs, SOAP web
+  server, network_settings.cgi, time.cgi) incl. compatibility failures with no writes, clock, chain, cleanup, renew,
+  delete refusals, manual install; registry batching; dialog view models (5,000 devices: unit check plus a Perf test with
+  190,000 certificates); headless screenshots `pki-view-certificates.png`, `pki-delete-certificates.png`,
+  `pki-install-manual.png`, `pki-dot1x-confirm.png`; `tests/Oadm.Client.Tests/SecurityMenuTests` (`pki-security-menu.png`);
+  `tests/Oadm.Server.Tests/DeviceTlsTests` (UpdateDeviceTlsAsync with the fake network presenting real certificates).
+  `HardwareWriteTests` is an opt-in skeleton (`OADM_PKI_HARDWARE_WRITE=1`, `Category=HardwareWrite`), not written yet.
 
 ## Date and time plugin
 
@@ -1524,7 +1599,7 @@ password over HTTP, mDNS TXT keys. Still open:
 # Later Goals (not now)
 
 Client authentication and users, SSDP/WS-Discovery, scheduling/retry, Core plugins (NTP,
-DHCP, IDP) with their UI pages, backup/restore, certificate deployment (PKI part 2), warranty
+DHCP, IDP) with their UI pages, backup/restore, warranty
 and replacement data from Axis online services, installers/packaging, localization.
 
 # Resources
