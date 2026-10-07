@@ -138,7 +138,9 @@ public static partial class OadmServerHost
         services.AddSingleton(options);
 
         // VAPIX
-        services.AddSingleton<IVapixConnector, VapixConnector>();
+        // Extra trust anchors of core plugins (PKI CA): device certificates chaining to them are rated Trusted.
+        services.AddSingleton<TrustAnchorRegistry>();
+        services.AddSingleton<IVapixConnector>(sp => new VapixConnector(sp.GetRequiredService<TrustAnchorRegistry>()));
         services.AddSingleton<VapixClientFactory>();
         services.AddSingleton<Sdk.Vapix.IVapixClientFactory>(sp => sp.GetRequiredService<VapixClientFactory>());
         services.AddSingleton(_ => new VapixProbe(TimeSpan.FromSeconds(3)));
@@ -203,7 +205,8 @@ public static partial class OadmServerHost
             sp.GetRequiredService<Sdk.Tasks.ITaskRunner>(),
             sp.GetRequiredService<IPluginSettingsProvider>(),
             sp.GetRequiredService<ILoggerFactory>(),
-            new Core.Security.PluginSecretProtector(sp.GetRequiredService<Core.Security.CredentialProtector>())));
+            new Core.Security.PluginSecretProtector(sp.GetRequiredService<Core.Security.CredentialProtector>()),
+            trustAnchors: sp.GetRequiredService<TrustAnchorRegistry>()));
 
         // Polling
         services.AddSingleton<DevicePollingService>();

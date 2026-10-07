@@ -59,11 +59,13 @@ public static class CertificateTrustEvaluator
     /// <param name="intermediates">Other certificates the device sent (from the handshake chain), may be null.</param>
     /// <param name="host">Host name or IP address we connected to, for <see cref="CertificateInfo.NameMatches"/>.</param>
     /// <param name="customRoots">Roots to trust instead of the system store (tests); null uses the OS store.</param>
+    /// <param name="trustAnchors">Extra anchors (<see cref="TrustAnchorRegistry"/>) trusted besides the system store.</param>
     public static CertificateInfo Describe(
         X509Certificate2 certificate,
         IEnumerable<X509Certificate2>? intermediates = null,
         string? host = null,
-        X509Certificate2Collection? customRoots = null)
+        X509Certificate2Collection? customRoots = null,
+        X509Certificate2Collection? trustAnchors = null)
     {
         ArgumentNullException.ThrowIfNull(certificate);
         return new CertificateInfo(
@@ -72,20 +74,49 @@ public static class CertificateTrustEvaluator
             certificate.Issuer,
             certificate.NotBefore.ToUniversalTime(),
             certificate.NotAfter.ToUniversalTime(),
-            EvaluateChain(certificate, intermediates, customRoots),
+            EvaluateChain(certificate, intermediates, customRoots, trustAnchors),
             MatchesHost(certificate, host));
     }
 
     /// <summary>
     /// Chain trust ignoring validity dates and host name: Trusted, SelfSigned or Untrusted.
     /// Expiry is applied later with <see cref="CertificateInfo.TrustAt"/>.
+    /// With <paramref name="trustAnchors"/>: when the chain fails only because its root is not trusted (or the chain is
+    /// incomplete) and a chain over the anchors builds, the result is Trusted. Self-signed certificates stay SelfSigned.
     /// </summary>
     public static CertificateTrust EvaluateChain(
         X509Certificate2 certificate,
         IEnumerable<X509Certificate2>? intermediates = null,
-        X509Certificate2Collection? customRoots = null)
+        X509Certificate2Collection? customRoots = null,
+        X509Certificate2Collection? trustAnchors = null)
     {
         ArgumentNullException.ThrowIfNull(certificate);
+        var result = BuildChain(certificate, intermediates, customRoots, out var remaining);
+        if (result != CertificateTrust.Untrusted || trustAnchors is not { Count: > 0 } || IsSelfIssued(certificate))
+        {
+            return result;
+        }
+
+        const X509ChainStatusFlags anchorable = X509ChainStatusFlags.UntrustedRoot | X509ChainStatusFlags.PartialChain;
+        if ((remaining & ~anchorable) != X509ChainStatusFlags.NoError)
+        {
+            return result; // a real problem (signature, usage, ...): anchors do not help
+        }
+
+        // Anchors also go into the extra store, so an anchored intermediate links the leaf to an anchored root.
+        var extras = (intermediates ?? []).Concat(trustAnchors.Cast<X509Certificate2>());
+        return BuildChain(certificate, extras, trustAnchors, out _) == CertificateTrust.Trusted
+            ? CertificateTrust.Trusted
+            : result;
+    }
+
+    private static CertificateTrust BuildChain(
+        X509Certificate2 certificate,
+        IEnumerable<X509Certificate2>? intermediates,
+        X509Certificate2Collection? customRoots,
+        out X509ChainStatusFlags remaining)
+    {
+        remaining = X509ChainStatusFlags.NoError;
         using var chain = new X509Chain();
         chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
         chain.ChainPolicy.DisableCertificateDownloads = true;
@@ -118,7 +149,7 @@ public static class CertificateTrustEvaluator
             const X509ChainStatusFlags ignored = X509ChainStatusFlags.NoError
                 | X509ChainStatusFlags.NotTimeValid
                 | X509ChainStatusFlags.CtlNotTimeValid;
-            var remaining = flags & ~ignored;
+            remaining = flags & ~ignored;
             return IsSelfIssued(certificate) && remaining == X509ChainStatusFlags.UntrustedRoot
                 ? CertificateTrust.SelfSigned
                 : CertificateTrust.Untrusted;
