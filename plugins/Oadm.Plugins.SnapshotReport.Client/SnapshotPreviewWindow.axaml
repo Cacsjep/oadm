@@ -1,0 +1,56 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.SnapshotReport.Client"
+        x:Class="Oadm.Plugins.SnapshotReport.Client.SnapshotPreviewWindow"
+        x:DataType="vm:SnapshotPreviewViewModel"
+        Title="{Binding Title}"
+        Width="1180" Height="820" MinWidth="720" MinHeight="520"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+  <!-- Title bar, one card (picture + facts), footer. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <Grid ColumnDefinitions="*,300" ColumnSpacing="20">
+        <Border Grid.Column="0" Classes="liveViewSurface">
+          <Panel>
+            <Image Source="{Binding Image}" Stretch="Uniform" IsVisible="{Binding HasImage}" />
+            <ui:OadmIcon Data="{DynamicResource Icon.snapshot}" Width="32" Height="32" HorizontalAlignment="Center" VerticalAlignment="Center"
+                         IsVisible="{Binding !HasImage}" />
+          </Panel>
+        </Border>
+
+        <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*">
+          <ui:CardHeader Grid.Row="0" Title="Device" Description="{Binding Tile.Facts}" />
+          <ItemsControl Grid.Row="1" ItemsSource="{Binding Facts}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Classes="form" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:FactRow">
+                <Grid ColumnDefinitions="100,*">
+                  <TextBlock Classes="fieldLabel" Text="{Binding Label}" />
+                  <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <StackPanel Grid.Row="2" Margin="{DynamicResource Oadm.GapTop}" Spacing="8">
+            <ui:StatusChip Text="{Binding Tile.StatusText}" IsAccent="{Binding Tile.IsLoading}" IsError="{Binding Tile.IsError}"
+                           IsVisible="{Binding Tile.ShowStatus}" />
+          </StackPanel>
+        </Grid>
+      </Grid>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelText="Close" CancelCommand="{Binding CloseCommand}">
+      <ui:ToolbarButton IconKey="refresh" Text="Take new snapshot" IsPrimary="True" Command="{Binding RefreshCommand}" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

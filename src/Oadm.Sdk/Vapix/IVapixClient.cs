@@ -13,6 +13,14 @@ public interface IVapixClient
 
     /// <summary>Raw escape hatch for plugins: sends a request relative to the device base address.</summary>
     Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct);
+
+    /// <summary>
+    /// Enabled video sources (view areas, sensors, encoder channels) in camera order, never empty for a video
+    /// device; the same list the live view offers (param.cgi <c>Properties.Image</c> and <c>Image</c>).
+    /// Read-only. Hosts without it throw <see cref="NotSupportedException"/>.
+    /// </summary>
+    Task<IReadOnlyList<VideoSource>> GetVideoSourcesAsync(CancellationToken ct) =>
+        throw new NotSupportedException("This client cannot list video sources.");
 }
 
 public interface IVapixClientFactory

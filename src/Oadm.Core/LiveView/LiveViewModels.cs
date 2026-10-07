@@ -112,15 +112,8 @@ public static class LiveViewNegotiation
             return new ImageSize(maxWidth, maxHeight);
         }
 
-        var largest = supported.MaxBy(s => (long)s.Width * s.Height);
-        var sameAspect = supported.Where(s => Math.Abs(s.Aspect - largest.Aspect) < 0.02).ToList();
-        var fitting = sameAspect.Where(s => s.Width <= maxWidth && s.Height <= maxHeight).ToList();
-        if (fitting.Count > 0)
-        {
-            return fitting.MaxBy(s => (long)s.Width * s.Height);
-        }
-
-        return sameAspect.MinBy(s => (long)s.Width * s.Height);
+        var chosen = Sdk.Vapix.VideoResolutions.Choose([.. supported.Select(s => new Sdk.Vapix.VideoResolution(s.Width, s.Height))], maxWidth, maxHeight);
+        return new ImageSize(chosen.Width, chosen.Height);
     }
 
     public static int ClampFps(int fps) => fps <= 0 ? DefaultFps : Math.Min(fps, MaxFps);

@@ -647,6 +647,39 @@
     <Setter Property="ClipToBounds" Value="True" />
     <Setter Property="MinHeight" Value="120" />
   </Style>
+  <!-- Picture tile (snapshot report grid): raised surface, accent outline when selected.
+       The picture inside sits on a Border.liveViewSurface. -->
+  <Style Selector="Border.tile">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="10" />
+    <Setter Property="Margin" Value="0,0,12,12" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="Border.tile:pointerover">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
+  </Style>
+  <Style Selector="Border.tile.selected">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <!-- Clickable picture (tile picture opens the large preview): no button chrome -->
+  <Style Selector="Button.picture">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Stretch" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.picture:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="Button.picture:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
   <!-- Segmented switch (live view source: view area / sensor / channel) -->
   <Style Selector="Border.segmented">
     <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />

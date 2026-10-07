@@ -42,6 +42,10 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
         {
             throw GrpcGuard.FailedPrecondition(ex.Message);
         }
+        catch (ArgumentException ex)
+        {
+            throw GrpcGuard.InvalidArgument(ex.Message);
+        }
         catch (Exception ex) when (ex is not OperationCanceledException and not RpcException)
         {
             throw new RpcException(new Status(StatusCode.Internal, $"Plugin {request.PluginId} failed: {ex.Message}"));

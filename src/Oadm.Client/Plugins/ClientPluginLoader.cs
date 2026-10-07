@@ -32,6 +32,10 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
     private readonly List<ITaskPluginDialog> _dialogs = [];
     private readonly List<ICorePluginPage> _pages = [];
     private readonly List<IToolbarPlugin> _toolbar = [];
+
+    // Kept alive on purpose: a collectible load context whose object is collected starts unloading, and a plugin
+    // that loads one of its own assemblies later (e.g. its shared server models on first use) then fails.
+    private readonly List<AssemblyLoadContext> _contexts = [];
     private readonly ILogger<ClientPluginLoader> _logger;
 
     public ClientPluginLoader(AppOptions options, ILogger<ClientPluginLoader> logger)
@@ -106,6 +110,7 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
             try
             {
                 var context = new PluginLoadContext(dll);
+                _contexts.Add(context);
                 Assembly assembly = context.LoadFromAssemblyPath(Path.GetFullPath(dll));
                 foreach (Type type in assembly.GetExportedTypes().Where(t => t is { IsClass: true, IsAbstract: false }))
                 {

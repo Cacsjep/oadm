@@ -1,6 +1,7 @@
 # OADM plugins
 
-How to build a task plugin with a server part and an optional client (dialog) part. The
+How to build a task plugin with a server part and an optional client (dialog) part, and a core plugin
+with its own page in the navigation rail (see "Core plugins"). The
 contracts are in `src/Oadm.Sdk` (server) and `src/Oadm.Sdk.Client` (client); the spec and the
 device safety HARD RULE are in `CLAUDE.md` ("Plugin System").
 
@@ -117,7 +118,9 @@ Build dialogs from the host look (HARD RULE: reuse controls, no style difference
 
 - Styles and classes from the host theme (`Themes/OadmTheme.axaml`), e.g. `Border.card`,
   `TextBlock.secondary`, `TextBlock.fieldLabel`, `TextBlock.warning`, `TextBlock.error`,
-  `Button.primary`, `Button.secondary`, `Button.toolbar`, `Border.vseparator`. Form fields are
+  `Button.primary`, `Button.secondary`, `Button.toolbar`, `Border.vseparator`, `Border.tile` (+ class
+  `selected`: a picture tile), `Border.liveViewSurface` (dark picture surface), `Button.picture` (a
+  clickable picture without button chrome). Form fields are
   label left, input right like the add page editors: `Grid ColumnDefinitions="150,280"` with a
   `TextBlock.fieldLabel`; stack rows in `StackPanel Classes="form"` (or `Grid Classes="form"`),
   which sets the row spacing. Tables are `DataGrid`s (the theme styles them). No local colors,
@@ -132,6 +135,7 @@ Build dialogs from the host look (HARD RULE: reuse controls, no style difference
   `Icon.server`, `Icon.externalLink`, `Icon.key`, `Icon.eye`, `Icon.eyeOff`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
   `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.network`, `Icon.firmware`, `Icon.users`,
   `Icon.user`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
+  `Icon.snapshot`, `Icon.export`,
   `Icon.device.camera`, `Icon.device.encoder`,
   `Icon.device.speaker`, `Icon.device.audio`, `Icon.device.intercom`, `Icon.device.radar`,
   `Icon.device.io`, `Icon.device.door`, `Icon.device.generic`.
@@ -201,3 +205,35 @@ public sealed class SampleToolbarPlugin : IToolbarPlugin
     }
 }
 ```
+
+## Core plugins
+
+A core plugin runs inside the server for the server's lifetime and may have a page in the client's
+navigation rail. Sample: the Snapshot report plugin (`plugins/Oadm.Plugins.SnapshotReport` + `.Client`,
+id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
+
+- Server part: a public class implementing `ICorePlugin` (`Id`, `DisplayName`, `IconKey` = rail icon,
+  `TaskPlugins` it contributes, `StartAsync(ctx)`, `StopAsync`, `InvokeAsync(method, payloadJson, ct)`).
+  `StartAsync` gets `ICorePluginContext`: `Devices` (all managed devices as `IDeviceInfo`, incl.
+  `CertNotAfterUtc` / `CertTrustName`), `Vapix.CreateAsync(deviceId)` (authenticated client with the
+  stored credentials; never dispose it), `Tasks`, `Settings` (namespaced key/value), `Logger`.
+  A plugin that throws on start is Faulted; the others keep running.
+- `InvokeAsync` is the page backend (gRPC `PluginService.Invoke`): route by method name, JSON in and out.
+  Throw `ArgumentException` for bad input (INVALID_ARGUMENT), `KeyNotFoundException` for an unknown object
+  (NOT_FOUND), `InvalidOperationException` for a wrong state (FAILED_PRECONDITION); the message reaches
+  the page. Keep replies below the client's 32 MB message limit: hand out large results in chunks (see
+  `readReport`) and run long work as a background job the page polls (see `generateReport` /
+  `reportStatus`).
+- Video sources: `IVapixClient.GetVideoSourcesAsync()` returns the same sources the live view offers
+  (`VideoSource` with camera number, name, sensor and resolutions); `VideoResolutions.Choose` picks the
+  largest resolution that fits a box with the sensor aspect.
+- Client part: a public class implementing `ICorePluginPage` (`PluginId` = the server id, `Title`,
+  `CreateView(ctx)`) in the plugin's `*.Client.dll`. The host lists the running core plugins
+  (`PluginService.ListCorePlugins`), adds one rail entry per plugin below Devices and shows the view
+  inside the page card under the title; `ctx.InvokeAsync(method, payload, ct)` calls the server part.
+  Without the client part the page says that it is not installed on this client.
+- Build pages like dialogs: shared controls (`ui:ToolbarButton`, `ui:SearchBox`, `ui:ProgressRow`,
+  `ui:StatusChip`, ...), theme classes only, view models without Avalonia platform calls (decode images
+  and open windows through a small interface the view implements, so the view model is testable).
+- Fake mode: add the plugin's backend to `FakeOadmApi` (`FakeCorePlugins`, `InvokeCorePluginAsync`) so
+  `--fake` shows the page.
