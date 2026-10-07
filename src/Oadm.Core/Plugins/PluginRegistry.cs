@@ -23,6 +23,12 @@ public sealed record PluginOrigin(string PackageId, string Version, string? Dire
 public sealed record RegisteredTaskPlugin(ITaskPlugin Plugin, ICorePlugin? Owner, PluginOrigin Origin)
 {
     public string Id => Plugin.Id;
+
+    /// <summary>The name the host shows: no trailing ellipsis, at most <see cref="TaskPluginNames.MaxDisplayNameLength"/> characters.</summary>
+    public string DisplayName { get; init; } = TaskPluginNames.Normalize(Plugin.DisplayName);
+
+    /// <summary>Context menu group (<see cref="ITaskPlugin.Group"/>), never empty.</summary>
+    public string Group { get; init; } = TaskPluginNames.NormalizeGroup(Plugin.Group);
 }
 
 public sealed record RegisteredCorePlugin(ICorePlugin Plugin, PluginOrigin Origin)
@@ -170,9 +176,13 @@ public sealed partial class PluginRegistry
         ArgumentNullException.ThrowIfNull(origin);
 
         string id;
+        string rawName;
+        string? rawGroup;
         try
         {
             id = plugin.Id;
+            rawName = plugin.DisplayName ?? string.Empty;
+            rawGroup = plugin.Group;
         }
 #pragma warning disable CA1031 // Plugin code is untrusted; isolate its failures.
         catch (Exception ex)
@@ -180,6 +190,18 @@ public sealed partial class PluginRegistry
         {
             AddError(new PluginLoadError(origin.PackageId, $"Task plugin {plugin.GetType().FullName} could not be inspected: {ex.Message}", ex));
             return false;
+        }
+
+        var displayName = TaskPluginNames.Normalize(rawName);
+        var stripped = TaskPluginNames.StripEllipsis(rawName);
+        if (stripped.Length != rawName.Trim().Length)
+        {
+            LogTrailingEllipsis(id, rawName);
+        }
+
+        if (stripped.Length > TaskPluginNames.MaxDisplayNameLength)
+        {
+            LogNameTooLong(id, stripped, TaskPluginNames.MaxDisplayNameLength, displayName);
         }
 
         lock (_sync)
@@ -190,7 +212,11 @@ public sealed partial class PluginRegistry
                 return false;
             }
 
-            _tasks.Add(new RegisteredTaskPlugin(plugin, owner, origin));
+            _tasks.Add(new RegisteredTaskPlugin(plugin, owner, origin)
+            {
+                DisplayName = displayName,
+                Group = TaskPluginNames.NormalizeGroup(rawGroup),
+            });
         }
 
         LogRegisteredTask(id, owner?.Id ?? "-", origin.PackageId);
@@ -215,6 +241,12 @@ public sealed partial class PluginRegistry
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Registered task plugin {PluginId} (owner {Owner}) from {Package}")]
     private partial void LogRegisteredTask(string pluginId, string owner, string package);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Task plugin {PluginId}: display name '{Name}' ends with an ellipsis; the host shows it without")]
+    private partial void LogTrailingEllipsis(string pluginId, string name);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Task plugin {PluginId}: display name '{Name}' is longer than {Max} characters; shown as '{Shown}'")]
+    private partial void LogNameTooLong(string pluginId, string name, int max, string shown);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Plugin error in {Source}: {Message}")]
     private partial void LogPluginError(Exception? ex, string source, string message);

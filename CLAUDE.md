@@ -60,7 +60,7 @@ src/
   Oadm.Sdk.Client/     client-side plugin SDK: dialog/page/toolbar interfaces, ITaskDialogContext,
                        IToolbarContext, shared controls (Controls/: IconLabel, SearchBox, OadmIcon,
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, FileRow, ProgressRow,
-                       ToolbarButton, ToolbarSeparator)
+                       ToolbarButton, ToolbarSeparator, PasswordBox)
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)
   Oadm.Server/         host: gRPC services, plugin loader, polling, Serilog setup
   Oadm.Client/         Avalonia app: views, view models, gRPC client, plugin loader
@@ -98,16 +98,22 @@ Two processes, like ADM:
   address), `WatchDiscovered` (stream; every device with its automatic login result
   `auth_state = 14` (PENDING, AUTHENTICATED, PASSWORD_NOT_SET, LOGIN_FAILED, UNREACHABLE,
   ALREADY_ADDED), `auth_user_name = 15`, `credential_id = 16` ("list:<id>", "device:<id>",
-  "entered"), `auth_detail = 17`, `passphrase_policy = 18`, `entered_address = 19`; range scans and
-  address probes end after scan_finished once every login finished), `Stop`.
+  "entered"), `auth_detail = 17`, `passphrase_policy = 18`, `entered_address = 19`; every scan
+  (zero-conf after `Discovery.ZeroConfSeconds`, range scans, address probes, or `StopScan`) ends with
+  scan_finished and the stream ends once every login of the session finished; watching a finished
+  session again replays its devices with their current login result, then streams the logins still
+  running), `StopScan` (ends the scan early, the session and its devices stay; unknown ids ignored),
+  `Stop` (forgets the session; the add page calls it on close).
 - `AddDevicesService`: `RetryAuth(session_id, discovered_id, user_name, password,
-  save_to_credential_list)` (returns the updated DiscoveredDevice, also pushed to the stream;
-  NOT_FOUND, FAILED_PRECONDITION factory default / already added, INVALID_ARGUMENT),
+  save_to_credential_list, related_session_ids = 6)` (returns the updated DiscoveredDevice, also pushed
+  to the stream; on success the credential is tried on the failed devices of the session and of the
+  related sessions, see "Add Devices Page"; NOT_FOUND, FAILED_PRECONDITION factory default / already
+  added, INVALID_ARGUMENT),
   `Commit(session_id, discovered_ids, initial_passwords map = 6, initial_root_password)` (reply:
   `device_ids`, `results = 3` with discovered_id, device_id, status), `Prepare` (legacy, unused).
   See "Add Devices Page".
 - `TaskService`: `ListTaskPlugins` (context-menu entries incl. those contributed by Core
-  plugins), `Run(pluginId, deviceIds, payloadJson)` (one task per device, reply `task_ids`;
+  plugins; `TaskPluginInfo.display_name` normalized by the server, `group = 8` never empty), `Run(pluginId, deviceIds, payloadJson)` (one task per device, reply `task_ids`;
   `task_id` is deprecated = first id), `List`, `Watch` (stream), `Cancel`, `Delete`,
   `DeleteAll`, `GetLog(taskId)` (per-task log, oldest first, live while running); `TaskInfo` carries
   `repeated TaskStep steps = 13` (index, name, `TaskStepState`, detail, progress, started, finished) and
@@ -122,9 +128,10 @@ Two processes, like ADM:
   after `Uploads.RetentionHours` (checked every 15 min) and reach tasks through `IUploadedFiles`.
 - `PluginService`: `ListCorePlugins` (navigation pages), per-plugin generic
   `Invoke(pluginId, method, payloadJson)` for Core plugin UI pages (later goal).
-- `SettingsService`: `Get`, `Set`, `ListCredentials`, `AddCredential(user_name, password)`
+- `SettingsService`: `Get`, `Set` (`ServerSettings.zero_conf_seconds = 8`, 0 keeps the stored value),
+  `ListCredentials`, `AddCredential(user_name, password)`
   (INVALID_ARGUMENT, RESOURCE_EXHAUSTED over 20 entries; an identical pair returns the existing
-  entry), `RemoveCredential(id)` (NOT_FOUND). Credential entries carry id, user name and created
+  entry; a new entry is tried on the failed devices of every open add session), `RemoveCredential(id)` (NOT_FOUND). Credential entries carry id, user name and created
   time, never a password.
 - `LiveViewService`: `Watch(device_id, max_width, max_height, fps, accepted_codecs, camera)`
   (stream of encoded access units), `ListSources(device_id)` (view areas / sensors / channels).
@@ -194,8 +201,11 @@ Browse `_axis-video._tcp.local`. Verified on AXIS OS 12.11: the TXT record has e
 key `macaddress=<SERIAL>`, the instance name is `<Bonjour.FriendlyName> - <SERIAL>`, SRV
 points to port 80 at `axis-<serial lowercase>.local`, A/AAAA gives the address. Ignore
 169.254.x.x link-local addresses when a routable one is announced.
-Must work on all three OS and on multiple NICs (bind one socket per interface). Runs
-continuously while the add page is open in scan mode and once at server start. SSDP and WS-Discovery
+Must work on all three OS and on multiple NICs (bind one socket per interface). A scan of the add
+page runs at most `Discovery.ZeroConfSeconds` (default 30, 5..300; `DiscoveryService.StartZeroConf(duration)`,
+timer from the server's TimeProvider) or until `StopScan`: browsing stops, the probes already started
+finish, watchers get scan_finished, the devices stay in the session until `Stop`. Without a duration
+(server start, periodic re-find) it runs until stopped. SSDP and WS-Discovery
 are explicitly out of scope for Goal 1.
 
 ## Following moved devices
@@ -261,27 +271,41 @@ logs in to every device it finds with the credentials the technician already has
 Toolbar (toolbar plugins, see "Toolbar plugins"): **Scan** (primary), **Scan IP range**, **Add
 manually** open the same dialog window (`Discovery/AddDevicesWindow`, shared dialog controls: title
 bar, one card, footer) in three modes:
-- **Scan**: zero-conf (mDNS) discovery starts immediately; devices appear live while it is open.
+- **Scan**: zero-conf (mDNS) discovery starts immediately; devices appear live. The scan ends after
+  `Discovery.ZeroConfSeconds` (Settings page, default 30 s, 5..300).
 - **Scan IP range**: From / To inputs on top; Enter or the Scan button starts (several ranges add to
   the same list).
+- Scan progress row (`ui:ProgressRow`, indeterminate for zero-conf, percent for ranges) with a
+  **Stop** button (icon stop) while a zero-conf or range scan runs (`StopScan` for every running
+  session; the devices found stay) and **Scan again** (icon refresh) after it finished or was stopped
+  (zero-conf: a new session; range: the same range again; found devices stay, deduplicated by serial; a
+  "Checking" of the new search never hides the result or selection of an earlier one). The text then
+  says "Scan finished, N devices found" or "Scan stopped, N devices found" ("1 device found").
+  Add manually has neither button.
 - **Add manually**: Address input (IP or host name, optional port and scheme,
   `https://camera.example.com:8443`); Enter or Find probes that address (`ProbeAddress`); every
   address adds a row; "No Axis device answered at X." when nothing answers. The entered address
   (host[:port]) becomes the device address on add, regardless of `Devices.UseHostName`.
 
-List: checkbox, category icon, Address, MAC address, Model, Login (status), Action. Above it
+List: checkbox (40 px), category icon (36 px), Address (140), MAC address (150), Model (160), Login
+(status, star: takes the rest so status and detail sit right after Model), Action (auto, min 160, at
+the right edge); checked headless at 1040 px window width. Above it
 "Select all authenticated", a summary ("10 found · 3 ready to add · 1 need a login · 2 need a
 password · 3 selected"), search box and the scan progress row. Login status per device
 (`ui:StatusChip`): Checking... (accent), Authenticated (user) (ok), Password not set (warning),
 Login failed (error, reason as tooltip), Unreachable (error), Already added / Added (neutral / ok,
 row greyed). Only addable devices can be checked: authenticated ones, and factory-default ones
 once a first password is entered. **Add** (footer, "Add 3 devices") commits the checked devices
-in one click and closes; "Keep open after adding" keeps the page open and marks them Added.
+in one click and the page always closes (user decision: no "Keep open" option).
+Every password field (login editor, first password + confirm) is `ui:PasswordBox` with the eye button.
 
 - **Login failed**: a click on the row or the "Log in" link opens the inline editor below the list
   (user name, password, "Save to credential list" checked by default, Retry, Cancel). Retry calls
-  `RetryAuth` right away and updates the row; success checks the row and closes the editor, a wrong
-  password shows "The user name or password is wrong.".
+  `RetryAuth` right away (with every other session of the page as `related_session_ids`) and updates
+  the row; success checks the row and closes the editor, a wrong password shows "The user name or
+  password is wrong.". After a successful Retry the server tries the same credential on every other
+  device of the page whose login failed; the page watches the sessions whose stream already ended
+  again to receive those results.
 - **Factory default**: "Set password" opens the inline password editor (new + confirm, user root,
   hint with the systemready passphrase policy: none = 1-64 printable ASCII, length = at least 15,
   complex = at least 12 with upper, lower, digit and special character; checked client side, the
@@ -303,6 +327,18 @@ the credential that worked (server memory); `Commit` stores that credential for 
 stored; RetryAuth credentials travel only client -> server and are kept in server memory (or the
 credential list when asked). Adding devices is not a task; the first full refresh is queued in the
 background as before.
+
+Follow-up logins: per (session, serial) the authenticator keeps the device as last observed, the
+number of rejected automatic attempts and which credentials (SHA-256 of user + password) the device
+rejected. When a new credential becomes known it is tried on every LOGIN_FAILED device that has
+attempts left and has not rejected it: (a) a successful `RetryAuth` adds it ("entered", or the list
+entry when saved) to the session and its `related_session_ids` and starts those logins before the reply
+returns (the devices show PENDING); (b) a credential added to the credential list (Settings page or
+"Save to credential list") reloads the candidates of every session. The follow-up uses the normal login
+loop: one login at a time per device, at most 8 devices at once, at most 10 rejected credentials per
+device in total (typed credentials of `RetryAuth` are remembered as rejected but not counted), entered
+credentials first, then list, then managed-device credentials; credentials added while it runs are
+tried in the same run. Unreachable attempts count neither as attempt nor as rejected.
 
 # Visual Style
 
@@ -353,8 +389,14 @@ Layout, top to bottom:
    declare `ShowInToolbar` | plugin entries), Columns button and search box right-aligned (host parts).
 3. Status line: "N devices, M selected".
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
-   client, horizontal scroll, multi-select, right-click context menu with core actions and
-   all Task plugins whose `CanRun` is true for the whole selection.
+   client, horizontal scroll, multi-select, right-click context menu: the core actions (Open web
+   interface, Remove), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
+   by name, with a group icon: Applications app, Maintenance settings, Network network, Security key,
+   Users users, Video video, others plugin; a group is a submenu even with one entry, user decision)
+   holding its Task plugins whose `CanRun` is true for the whole selection, sorted by name, with their
+   icons. Entries never end with "..." (the host appends none and strips "..." / "…" defensively,
+   `TaskPluginNames.Normalize`). Menus and submenus are at least `Oadm.MenuMinWidth` (240) wide (theme).
+   The toolbar task buttons are unchanged (no groups).
 5. Resizable, collapsible bottom pane **Tasks** (no tabs), one row per task (= per device).
    Columns: Name, Device, Status, Current step, Start time, Owner, Progress (bar). **Current step** is
    "Step 3/6 · Upload firmware" plus " · 45 %" while the running step reports progress (tooltip: the text
@@ -507,7 +549,7 @@ Two kinds of plugins, one packaging format, one loader.
 public interface IPlugin
 {
     string Id { get; }                 // "oadm.restart", "oadm.ntp"
-    string DisplayName { get; }
+    string DisplayName { get; }            // task plugins: max 32 chars (TaskPluginNames.MaxDisplayNameLength), no trailing "..."
     string? IconKey { get; }
 }
 
@@ -528,6 +570,8 @@ public interface IDeviceInfo          // read-only device view for plugins
 
 public interface ITaskPlugin : IPlugin
 {
+    string Group => TaskGroups.General; // context menu submenu; TaskGroups.Applications, General, Maintenance,
+                                       // Network, Security, Users, Video, or any new name
     bool ShowInToolbar { get; }
     bool RequiresDialog { get; }       // client opens the matching ITaskPluginDialog first
     bool CanRun(IDeviceInfo device);
@@ -594,6 +638,15 @@ public interface ICorePluginContext
 }
 ```
 
+Task plugin names and groups: `DisplayName` is at most `TaskPluginNames.MaxDisplayNameLength` (32)
+characters and never ends with "..." (dialog tasks too). The server registry (`RegisteredTaskPlugin.DisplayName`
+/ `.Group`) strips trailing "..." / "…" and shortens longer names to 31 characters + "…", logging a
+warning for either; empty groups become `General`, groups are shortened the same way. The task name in
+the tasks pane, `TaskPluginInfo` and the client menu and toolbar use the normalized name. Bundled plugins:
+Restart and Upgrade firmware (Maintenance), Applications (ACAP) (Applications), Users (Users), Network
+settings and Assign IP address (Network); `TaskPluginNamesTests` checks every plugin deployed to
+`artifacts/plugins`.
+
 ## Client SDK (Oadm.Sdk.Client)
 
 ```csharp
@@ -655,7 +708,7 @@ show something and moves the same controls into a new page view. Buttons are `ui
 API guide: `plugins/README.md`.
 
 Dialogs and pages are real Avalonia views with view models, styled by the host theme. They use
-the shared controls from `Oadm.Sdk.Client.Controls` (`IconLabel`, `SearchBox`, `OadmIcon`,
+the shared controls from `Oadm.Sdk.Client.Controls` (`IconLabel`, `SearchBox`, `PasswordBox`, `OadmIcon`,
 `DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip`, `FileRow`, `ProgressRow`,
 `ToolbarButton`, `ToolbarSeparator`; usage in `plugins/README.md`) and
 the theme resources (styles, colors, `Icon.*` geometries) of the host application; the icon keys
@@ -734,7 +787,7 @@ Steps of the other task plugins (details in each plugin README):
 
 ## Network settings plugin
 
-`plugins/Oadm.Plugins.Network` (+ `.Client`), id `oadm.network`, context menu "Network settings...",
+`plugins/Oadm.Plugins.Network` (+ `.Client`), id `oadm.network`, context menu (group Network) "Network settings",
 dialog with IPv4 / IPv6 / DNS / Host name sections (each "Keep unchanged" by default), IP range
 assignment in the shared address table for several devices, acknowledged warning before any change that
 can cut OADM off. Uses network-settings 1.x (`getNetworkInfo`, `setIPv4AddressConfiguration`,
@@ -749,7 +802,7 @@ periodic re-find moves it. Decision table and verified device behavior: plugin `
 
 ## Assign IP address plugin
 
-Same package, id `oadm.network.assign-ip`, context menu and toolbar **Assign IP address...**, a clone of
+Same package, id `oadm.network.assign-ip`, context menu (group Network) and toolbar **Assign IP address**, a clone of
 ADM's "Assign IP address to selected devices" (research and sources in the Network plugin `README.md`):
 - Page 1: "Obtain IP addresses automatically (DHCP)" (Finish here) or "Assign the following IP address
   range" with **IP range**, **Subnet mask**, **Default router** (prefilled from the first device), optional
@@ -765,11 +818,11 @@ ADM's "Assign IP address to selected devices" (research and sources in the Netwo
   used by a managed device, in use) are red chips and block Finish; the warning must be acknowledged.
 - Payload: `NetworkPayload` with `ipv4` (+ `dns` with `keepDomains`) only; one task per device with the
   Network plugin's steps for DNS and IPv4 and the follow-the-device steps.
-- "Network settings..." shares range parsing, suggestion, conflicts, validation, warnings and the table.
+- "Network settings" shares range parsing, suggestion, conflicts, validation, warnings and the table.
 
 ## Applications (ACAP) plugin
 
-`plugins/Oadm.Plugins.Acap` (+ `.Client`), id `oadm.acap`, context menu "Applications (ACAP)...",
+`plugins/Oadm.Plugins.Acap` (+ `.Client`), id `oadm.acap`, context menu (group Applications) "Applications (ACAP)",
 dialog. Lists installed applications (query `listApplications`), start/stop/remove (remove asks for
 confirmation) and install/upgrade of an uploaded `.eap` on all selected devices. Uses the classic
 Application API (`application 1.x`: list/upload/control/config.cgi). Before uploading it reads the
@@ -780,7 +833,9 @@ without the explicit option. Decision table and research in `plugins/Oadm.Plugin
 # Settings
 
 Server-side in `Setting`. Goal 1 keys: `Polling.IntervalSeconds` (60, 5..86400),
-`Polling.FullRefreshMinutes` (10, 1..1440), `Scan.Parallelism` (32), `Scan.TimeoutMs` (1500), `Server.Name` (hostname),
+`Polling.FullRefreshMinutes` (10, 1..1440), `Scan.Parallelism` (32), `Scan.TimeoutMs` (1500),
+`Discovery.ZeroConfSeconds` (30, 5..300: a zero-conf scan of the add page ends after this time; Settings
+page "Zero-conf scan duration (s)"), `Server.Name` (hostname),
 `Server.ListenUrl`, `Uploads.MaxMegabytes` (2048, 1..65536), `Uploads.RetentionHours` (24,
 1..8760; both server-only, not on the settings page yet), `Devices.UseHostName` (bool, false: add devices by host name when one is
 known, otherwise by IP address; proto `optional bool use_host_name = 7` so a partial `Set`
@@ -820,7 +875,9 @@ LocalApplicationData): server address, grid column layout, bottom pane state.
   rail, dialogs), `ToolbarButton` (every toolbar button) and `ToolbarSeparator`, `SearchBox`
   (every search field), `OadmIcon`, and for
   dialogs `DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip` (status chip),
-  `FileRow` (chosen file + "Choose file..."), `ProgressRow` (progress bar + status text). Before
+  `FileRow` (chosen file + "Choose file..."), `ProgressRow` (progress bar + status text),
+  `PasswordBox` (every password field: TextBox with bullet mask and eye button "Show password" /
+  "Hide password", icons `Icon.eye` / `Icon.eyeOff`; never a `TextBox` with `PasswordChar`). Before
   writing new XAML, check both `Controls/` folders and reuse; if a second place needs something
   that exists only inline, extract it into a control first.
 - **HARD RULE, no style differences.** Same kind of element, same look, everywhere: one

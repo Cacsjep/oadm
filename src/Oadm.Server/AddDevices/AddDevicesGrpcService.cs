@@ -92,7 +92,7 @@ public sealed partial class AddDevicesGrpcService(
 
         try
         {
-            var result = await authenticator.RetryAsync(request.SessionId, found, request.UserName, request.Password, request.SaveToCredentialList, ct).ConfigureAwait(false);
+            var result = await authenticator.RetryAsync(request.SessionId, found, request.UserName, request.Password, request.SaveToCredentialList, request.RelatedSessionIds, ct).ConfigureAwait(false);
             return Mappers.ToProto(found, false, 100, result);
         }
         catch (InvalidOperationException ex)

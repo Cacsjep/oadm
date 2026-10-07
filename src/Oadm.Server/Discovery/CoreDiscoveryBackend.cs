@@ -19,7 +19,14 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
 
     private readonly ConcurrentDictionary<string, DiscoveredDevice> _recent = new(StringComparer.OrdinalIgnoreCase);
 
-    public DiscoverySession StartZeroConf() => discovery.StartZeroConf();
+    public async Task<DiscoverySession> StartZeroConfAsync(CancellationToken ct)
+    {
+        var current = await settings.GetServerSettingsAsync(ct).ConfigureAwait(false);
+        var seconds = Math.Clamp(current.ZeroConfSeconds, ServerSettings.MinZeroConfSeconds, ServerSettings.MaxZeroConfSeconds);
+        return discovery.StartZeroConf(duration: TimeSpan.FromSeconds(seconds));
+    }
+
+    public void StopScan(string sessionId) => discovery.StopScan(sessionId);
 
     public async Task<DiscoverySession> StartRangeScanAsync(string fromAddress, string toAddress, CancellationToken ct)
     {

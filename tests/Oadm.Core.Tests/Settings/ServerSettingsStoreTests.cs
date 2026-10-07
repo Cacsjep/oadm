@@ -26,6 +26,7 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
         Assert.Equal(60, settings.PollingIntervalSeconds);
         Assert.Equal(32, settings.ScanParallelism);
         Assert.Equal(1500, settings.ScanTimeoutMs);
+        Assert.Equal(30, settings.ZeroConfSeconds);
         Assert.Equal("http://0.0.0.0:5080", settings.ListenUrl);
         Assert.Equal(ServerSettings.DefaultServerName(), settings.ServerName);
         Assert.False(string.IsNullOrWhiteSpace(settings.ServerName));
@@ -53,7 +54,7 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
     [Fact]
     public async Task SetServerSettingsWritesAll()
     {
-        var wanted = new ServerSettings(30, 8, 3000, "oadm-lab", "http://127.0.0.1:6000", 20, UseHostName: true);
+        var wanted = new ServerSettings(30, 8, 3000, "oadm-lab", "http://127.0.0.1:6000", 20, UseHostName: true, ZeroConfSeconds: 120);
 
         await _store.SetServerSettingsAsync(wanted, CancellationToken.None);
 
@@ -67,6 +68,8 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
     [InlineData(SettingKeys.ServerName, "\"\"")]
     [InlineData(SettingKeys.ListenUrl, "\"not a url\"")]
     [InlineData(SettingKeys.DevicesUseHostName, "1")]
+    [InlineData(SettingKeys.DiscoveryZeroConfSeconds, "4")]
+    [InlineData(SettingKeys.DiscoveryZeroConfSeconds, "301")]
     [InlineData("Any.Key", "{not json")]
     public async Task InvalidValuesAreRejected(string key, string json)
     {

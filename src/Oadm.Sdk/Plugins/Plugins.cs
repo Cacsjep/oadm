@@ -9,12 +9,25 @@ public interface IPlugin
 {
     /// <summary>Stable id, e.g. "oadm.restart".</summary>
     string Id { get; }
+
+    /// <summary>
+    /// Name shown in menus, the toolbar and the tasks pane, e.g. "Restart" or "Upgrade firmware".
+    /// Task plugins: at most <see cref="TaskPluginNames.MaxDisplayNameLength"/> characters and no
+    /// trailing "..." (the host never appends one and strips it defensively); the loader logs a
+    /// warning and shortens longer names with an ellipsis.
+    /// </summary>
     string DisplayName { get; }
     string? IconKey { get; }
 }
 
 public interface ITaskPlugin : IPlugin
 {
+    /// <summary>
+    /// Submenu of the device context menu this task appears in. Reuse a <see cref="TaskGroups"/>
+    /// constant when one fits; a new name creates a new submenu. Default <see cref="TaskGroups.General"/>.
+    /// </summary>
+    string Group => TaskGroups.General;
+
     bool ShowInToolbar { get; }
     /// <summary>When true the client opens the matching ITaskPluginDialog before running.</summary>
     bool RequiresDialog { get; }
@@ -170,6 +183,73 @@ public interface IPluginSettings
 
 /// <summary>Content of plugin.json next to the plugin assemblies.</summary>
 public sealed record PluginManifest(string Id, string Version, string MinSdkVersion, string? DisplayName = null);
+
+/// <summary>
+/// Well-known context menu groups (<see cref="ITaskPlugin.Group"/>). Plugins reuse these so related
+/// tasks of different plugins share one submenu; any other non-empty name creates its own submenu.
+/// </summary>
+public static class TaskGroups
+{
+    public const string Applications = "Applications";
+    public const string General = "General";
+    public const string Maintenance = "Maintenance";
+    public const string Network = "Network";
+    public const string Security = "Security";
+    public const string Users = "Users";
+    public const string Video = "Video";
+
+    /// <summary>Longest group name; longer ones are shortened like display names.</summary>
+    public const int MaxLength = 32;
+}
+
+/// <summary>Display name rules for task plugins, applied by the server loader and the client menu.</summary>
+public static class TaskPluginNames
+{
+    /// <summary>Longest task plugin display name (menu entries and toolbar buttons stay readable).</summary>
+    public const int MaxDisplayNameLength = 32;
+
+    /// <summary>The ellipsis used when a name is shortened.</summary>
+    public const string Ellipsis = "…";
+
+    /// <summary>Trims the name and removes trailing "..." / "…" (the host never shows dialog dots).</summary>
+    public static string StripEllipsis(string? name)
+    {
+        var text = (name ?? string.Empty).Trim();
+        while (true)
+        {
+            if (text.EndsWith("...", StringComparison.Ordinal))
+            {
+                text = text[..^3].TrimEnd();
+            }
+            else if (text.EndsWith(Ellipsis, StringComparison.Ordinal))
+            {
+                text = text[..^1].TrimEnd();
+            }
+            else
+            {
+                return text;
+            }
+        }
+    }
+
+    /// <summary>
+    /// <see cref="StripEllipsis"/>, then shortens names over <paramref name="maxLength"/> characters to
+    /// <paramref name="maxLength"/> - 1 characters plus "…".
+    /// </summary>
+    public static string Normalize(string? name, int maxLength = MaxDisplayNameLength)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxLength, 2);
+        var text = StripEllipsis(name);
+        return text.Length <= maxLength ? text : text[..(maxLength - 1)].TrimEnd() + Ellipsis;
+    }
+
+    /// <summary>The group name to show: trimmed and shortened, <see cref="TaskGroups.General"/> when empty.</summary>
+    public static string NormalizeGroup(string? group)
+    {
+        var text = Normalize(group, TaskGroups.MaxLength);
+        return text.Length == 0 ? TaskGroups.General : text;
+    }
+}
 
 public static class SdkInfo
 {

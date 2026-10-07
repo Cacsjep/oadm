@@ -38,7 +38,9 @@ public sealed class NetworkSettingsTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
     public string Id => PluginId;
 
-    public string DisplayName => "Network settings...";
+    public string DisplayName => "Network settings";
+
+    public string Group => TaskGroups.Network;
 
     public string? IconKey => "network";
 

@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.Globalization;
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
 
 using Oadm.Core.Discovery;
 using Oadm.Core.Security;
@@ -137,7 +140,8 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
                     DiscoveredDeviceStatus.Unreachable => new DeviceAuthResult(DeviceAuthState.Unreachable, Detail: "The device did not answer on HTTPS or HTTP."),
                     _ => DeviceAuthResult.Pending,
                 };
-            session.Set(device.Serial, new AuthEntry(key, version, initial, null));
+            // Rejected credentials stay counted for the serial (lockout protection survives a new address).
+            session.Set(device.Serial, new AuthEntry(key, version, initial, null, device, entry?.Attempts ?? 0, entry?.Tried ?? []));
         }
 
         session.Notify(device.Serial);
@@ -162,9 +166,29 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     /// for the add (and stored in the credential list when <paramref name="saveToList"/>).
     /// </summary>
     /// <exception cref="InvalidOperationException">The device is factory default (nothing to log in to).</exception>
-    public async Task<DeviceAuthResult> RetryAsync(string sessionId, DiscoveredDevice device, string userName, string password, bool saveToList, CancellationToken ct)
+    public Task<DeviceAuthResult> RetryAsync(string sessionId, DiscoveredDevice device, string userName, string password, bool saveToList, CancellationToken ct) =>
+        RetryAsync(sessionId, device, userName, password, saveToList, [], ct);
+
+    /// <summary>
+    /// Logs in with credentials the technician typed, right away. On success the credential is kept
+    /// for the add (and stored in the credential list when <paramref name="saveToList"/>), and it is
+    /// tried on every device of this session and of <paramref name="relatedSessionIds"/> (the other
+    /// sessions of the same add page) whose login failed: at most <see cref="MaxAttemptsPerDevice"/>
+    /// rejected credentials per device, one login at a time per device. Those devices show Pending
+    /// before this method returns; their results reach the session watchers.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The device is factory default (nothing to log in to).</exception>
+    public async Task<DeviceAuthResult> RetryAsync(
+        string sessionId,
+        DiscoveredDevice device,
+        string userName,
+        string password,
+        bool saveToList,
+        IEnumerable<string> relatedSessionIds,
+        CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(relatedSessionIds);
         ArgumentException.ThrowIfNullOrWhiteSpace(userName);
         ArgumentException.ThrowIfNullOrEmpty(password);
         if (device.Status == DiscoveredDeviceStatus.PasswordNotSet)
@@ -175,16 +199,19 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         var session = Session(sessionId);
         int version;
         var key = string.Join('|', device.ConnectAddress, device.Scheme, device.Status, false);
+        AuthEntry? before;
         lock (session.Gate)
         {
+            before = session.Get(device.Serial);
             version = session.NextVersion();
-            session.Set(device.Serial, new AuthEntry(key, version, DeviceAuthResult.Pending, null));
+            session.Set(device.Serial, new AuthEntry(key, version, DeviceAuthResult.Pending, null, device, before?.Attempts ?? 0, before?.Tried ?? []));
         }
 
         session.Notify(device.Serial);
         var user = userName.Trim();
+        var credentials = new DeviceCredentials(user, password);
         var outcome = await TryOneAsync(device, user, password, ct).ConfigureAwait(false);
-        AuthEntry result;
+        DeviceAuthResult result;
         if (outcome.Kind == AttemptKind.Ok)
         {
             var credentialId = EnteredCredentialId;
@@ -201,19 +228,102 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
                 }
             }
 
-            result = new AuthEntry(key, version, new DeviceAuthResult(DeviceAuthState.Authenticated, user, credentialId), new DeviceCredentials(user, password));
+            result = new DeviceAuthResult(DeviceAuthState.Authenticated, user, credentialId);
+            Apply(session, device.Serial, version, result, credentials);
         }
         else
         {
-            result = new AuthEntry(key, version, outcome.Kind == AttemptKind.Rejected
+            result = outcome.Kind == AttemptKind.Rejected
                 ? new DeviceAuthResult(DeviceAuthState.LoginFailed, Detail: "The user name or password is wrong.")
-                : new DeviceAuthResult(DeviceAuthState.Unreachable, Detail: outcome.Detail), null);
+                : new DeviceAuthResult(DeviceAuthState.Unreachable, Detail: outcome.Detail);
+            if (outcome.Kind == AttemptKind.Rejected)
+            {
+                // Typed by the technician: not counted against the automatic attempts, but never tried again automatically.
+                RecordRejected(session, device.Serial, version, credentials, countAttempt: false);
+            }
+
+            Apply(session, device.Serial, version, result, null);
         }
 
-        Apply(session, device.Serial, result);
-        LogRetry(device.Serial, result.Result.State);
-        return result.Result;
+        LogRetry(device.Serial, result.State);
+        if (result.State == DeviceAuthState.Authenticated)
+        {
+            // A working credential: the other devices of the add page whose login failed get it too.
+            var candidate = new Candidate(result.CredentialId ?? EnteredCredentialId, credentials);
+            var targets = new List<AuthSession> { session };
+            foreach (var related in relatedSessionIds.Where(id => !string.IsNullOrWhiteSpace(id) && id != sessionId).Distinct(StringComparer.Ordinal))
+            {
+                if (_sessions.TryGetValue(related, out var other))
+                {
+                    targets.Add(other);
+                }
+            }
+
+            foreach (var target in targets)
+            {
+                target.AddEntered(candidate);
+                await StartFollowUpsAsync(target).ConfigureAwait(false);
+            }
+        }
+
+        return result;
     }
+
+    /// <summary>
+    /// Starts a login with the credentials not tried yet (credential list, entered ones) on every device
+    /// of the session whose login failed and that has attempts left. Claimed devices show Pending.
+    /// </summary>
+    private async Task StartFollowUpsAsync(AuthSession session)
+    {
+        IReadOnlyList<Candidate> candidates;
+        try
+        {
+            candidates = await AllCandidatesAsync(session).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+        {
+            return; // server stopping
+        }
+
+        var claimed = new List<(DiscoveredDevice Device, int Version)>();
+        lock (session.Gate)
+        {
+            foreach (var (serial, entry) in session.Entries())
+            {
+                if (entry.Result.State != DeviceAuthState.LoginFailed || entry.Device is null
+                    || entry.Attempts >= MaxAttemptsPerDevice || !candidates.Any(c => !entry.Tried.Contains(KeyOf(c.Credentials))))
+                {
+                    continue;
+                }
+
+                var version = session.NextVersion();
+                session.Set(serial, entry with { Version = version, Result = DeviceAuthResult.Pending, Credentials = null });
+                claimed.Add((entry.Device, version));
+            }
+        }
+
+        foreach (var (device, version) in claimed)
+        {
+            session.Notify(device.Serial);
+            session.Track(Task.Run(() => TryKnownCredentialsAsync(session, device, version, _stopping.Token)));
+        }
+
+        if (claimed.Count > 0)
+        {
+            LogFollowUp(claimed.Count);
+        }
+    }
+
+    /// <summary>Entered credentials first (they just worked on a device of the page), then the known ones.</summary>
+    private async Task<IReadOnlyList<Candidate>> AllCandidatesAsync(AuthSession session)
+    {
+        var known = await session.CandidatesAsync(LoadCandidatesAsync).ConfigureAwait(false);
+        return [.. session.Entered(), .. known];
+    }
+
+    /// <summary>Identity of a credential for "already tried" checks; the password itself is not kept twice.</summary>
+    private static string KeyOf(DeviceCredentials credentials) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(credentials.UserName + "\n" + credentials.Password)));
 
     /// <summary>Marks serials as added (after Commit), so open pages grey them out.</summary>
     public void MarkAdded(string sessionId, IEnumerable<string> serials)
@@ -280,14 +390,22 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         return session;
     }
 
+    /// <summary>A credential was added to (or removed from) the list: reload it and try new ones on failed devices.</summary>
     private void OnCredentialListChanged(object? sender, EventArgs e)
     {
         foreach (var session in _sessions.Values)
         {
             session.ResetCandidates();
+            session.Track(Task.Run(() => StartFollowUpsAsync(session)));
         }
     }
 
+    /// <summary>
+    /// Tries the credentials the device has not rejected yet, in order (entered ones, credential list,
+    /// credentials of managed devices), until one works, the device does not answer or it rejected
+    /// <see cref="MaxAttemptsPerDevice"/> of them. Candidates are read again before every attempt, so a
+    /// credential added meanwhile is tried in the same run.
+    /// </summary>
     private async Task TryKnownCredentialsAsync(AuthSession session, DiscoveredDevice device, int version, CancellationToken ct)
     {
         try
@@ -295,16 +413,31 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
             await _parallel.WaitAsync(ct).ConfigureAwait(false);
             try
             {
-                var candidates = await session.CandidatesAsync(LoadCandidatesAsync).ConfigureAwait(false);
-                var tried = 0;
-                foreach (var candidate in candidates.Take(MaxAttemptsPerDevice))
+                while (true)
                 {
-                    if (!session.IsCurrent(device.Serial, version))
+                    var entry = session.Get(device.Serial);
+                    if (entry is null || entry.Version != version)
                     {
                         return; // superseded by a retry or a new observation
                     }
 
-                    tried++;
+                    var candidates = await AllCandidatesAsync(session).ConfigureAwait(false);
+                    var candidate = entry.Attempts >= MaxAttemptsPerDevice
+                        ? null
+                        : candidates.FirstOrDefault(c => !entry.Tried.Contains(KeyOf(c.Credentials)));
+                    if (candidate is null)
+                    {
+                        var detail = entry.Attempts switch
+                        {
+                            0 => "No known credentials. Log in once, or add credentials on the Settings page.",
+                            1 => "The known credential did not work.",
+                            _ => string.Create(CultureInfo.InvariantCulture, $"None of the {entry.Attempts} known credentials worked."),
+                        };
+                        Apply(session, device.Serial, version, new DeviceAuthResult(DeviceAuthState.LoginFailed, Detail: detail), null);
+                        LogLoginFailed(device.Serial, entry.Attempts);
+                        return;
+                    }
+
                     var outcome = await TryOneAsync(device, candidate.Credentials.UserName, candidate.Credentials.Password, ct).ConfigureAwait(false);
                     if (outcome.Kind == AttemptKind.Ok)
                     {
@@ -318,16 +451,9 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
                         Apply(session, device.Serial, version, new DeviceAuthResult(DeviceAuthState.Unreachable, Detail: outcome.Detail), null);
                         return;
                     }
-                }
 
-                var detail = tried switch
-                {
-                    0 => "No known credentials. Log in once, or add credentials on the Settings page.",
-                    1 => "The known credential did not work.",
-                    _ => string.Create(CultureInfo.InvariantCulture, $"None of the {tried} known credentials worked."),
-                };
-                Apply(session, device.Serial, version, new DeviceAuthResult(DeviceAuthState.LoginFailed, Detail: detail), null);
-                LogLoginFailed(device.Serial, tried);
+                    RecordRejected(session, device.Serial, version, candidate.Credentials, countAttempt: true);
+                }
             }
             finally
             {
@@ -455,14 +581,27 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         }
     }
 
-    private static void Apply(AuthSession session, string serial, AuthEntry entry) =>
-        Apply(session, serial, entry.Version, entry.Result, entry.Credentials);
+    /// <summary>Remembers a rejected credential for the serial (and counts it as an automatic attempt).</summary>
+    private static void RecordRejected(AuthSession session, string serial, int version, DeviceCredentials credentials, bool countAttempt)
+    {
+        lock (session.Gate)
+        {
+            var entry = session.Get(serial);
+            if (entry is not null && entry.Version == version)
+            {
+                session.Set(serial, entry with { Attempts = entry.Attempts + (countAttempt ? 1 : 0), TriedKeys = entry.Tried.Add(KeyOf(credentials)) });
+            }
+        }
+    }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Discovered device {Serial}: logged in as {UserName} ({CredentialId})")]
     private partial void LogAuthenticated(string serial, string userName, string credentialId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Discovered device {Serial}: none of {Tried} known credential(s) worked")]
     private partial void LogLoginFailed(string serial, int tried);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Trying new credentials on {Count} discovered device(s) whose login failed")]
+    private partial void LogFollowUp(int count);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Discovered device {Serial}: login with entered credentials: {State}")]
     private partial void LogRetry(string serial, DeviceAuthState state);
@@ -487,13 +626,27 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
 
     private sealed record Candidate(string Id, DeviceCredentials Credentials);
 
-    private sealed record AuthEntry(string Key, int Version, DeviceAuthResult Result, DeviceCredentials? Credentials);
+    /// <param name="Device">The device as last observed (for logins started later).</param>
+    /// <param name="Attempts">Credentials the device rejected in automatic logins.</param>
+    /// <param name="TriedKeys">Credentials (<see cref="KeyOf"/>) the device rejected, automatic or typed.</param>
+    private sealed record AuthEntry(
+        string Key,
+        int Version,
+        DeviceAuthResult Result,
+        DeviceCredentials? Credentials,
+        DiscoveredDevice? Device = null,
+        int Attempts = 0,
+        ImmutableHashSet<string>? TriedKeys = null)
+    {
+        public ImmutableHashSet<string> Tried => TriedKeys ?? [];
+    }
 
     private sealed class AuthSession
     {
         private readonly Dictionary<string, AuthEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<Task> _running = [];
         private Task<IReadOnlyList<Candidate>>? _candidates;
+        private readonly List<Candidate> _entered = [];
         private int _version;
 
         public Lock Gate { get; } = new();
@@ -511,6 +664,29 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         }
 
         public void Set(string serial, AuthEntry entry) => _entries[serial] = entry;
+
+        /// <summary>Snapshot of all entries; call under <see cref="Gate"/>.</summary>
+        public List<KeyValuePair<string, AuthEntry>> Entries() => [.. _entries];
+
+        /// <summary>Credentials typed on the add page that worked on a device (kept for follow-up logins).</summary>
+        public void AddEntered(Candidate candidate)
+        {
+            lock (Gate)
+            {
+                if (!_entered.Exists(c => KeyOf(c.Credentials) == KeyOf(candidate.Credentials)))
+                {
+                    _entered.Add(candidate);
+                }
+            }
+        }
+
+        public Candidate[] Entered()
+        {
+            lock (Gate)
+            {
+                return [.. _entered];
+            }
+        }
 
         public int NextVersion() => ++_version;
 

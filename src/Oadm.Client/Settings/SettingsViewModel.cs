@@ -47,6 +47,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] public partial decimal? FullRefreshMinutes { get; set; } = 10;
     [ObservableProperty] public partial decimal? ScanParallelism { get; set; } = 32;
     [ObservableProperty] public partial decimal? ScanTimeoutMs { get; set; } = 1500;
+
+    /// <summary>Discovery.ZeroConfSeconds: a zero-conf scan of the add page ends after this many seconds (5..300).</summary>
+    [ObservableProperty] public partial decimal? ZeroConfSeconds { get; set; } = 30;
     [ObservableProperty] public partial string ServerName { get; set; } = "";
     [ObservableProperty] public partial string ListenUrl { get; set; } = "";
 
@@ -107,6 +110,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             FullRefreshMinutes = (int)(FullRefreshMinutes ?? 10),
             ScanParallelism = (int)(ScanParallelism ?? 32),
             ScanTimeoutMs = (int)(ScanTimeoutMs ?? 1500),
+            ZeroConfSeconds = (int)(ZeroConfSeconds ?? 30),
             ServerName = ServerName.Trim(),
             ListenUrl = ListenUrl.Trim(),
             UseHostName = UseHostName,
@@ -213,6 +217,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         FullRefreshMinutes = settings.FullRefreshMinutes;
         ScanParallelism = settings.ScanParallelism;
         ScanTimeoutMs = settings.ScanTimeoutMs;
+        ZeroConfSeconds = settings.ZeroConfSeconds > 0 ? settings.ZeroConfSeconds : 30; // 0 = older server without the setting
         ServerName = settings.ServerName;
         ListenUrl = settings.ListenUrl;
         UseHostName = settings.UseHostName;

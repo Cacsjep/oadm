@@ -53,13 +53,40 @@ public sealed class DiscoveryService : IAsyncDisposable
     public IReadOnlyCollection<DiscoverySession> Sessions => _sessions.Values.Select(s => s.Handle).ToList();
 
     /// <summary>
-    /// Starts continuous mDNS browsing. Runs until <see cref="StopAsync"/> is called for the session.
+    /// Starts mDNS browsing. Without <paramref name="duration"/> it runs until <see cref="StopScan"/> or
+    /// <see cref="StopAsync"/>; with one it ends on its own after that time. When browsing ends (time up or
+    /// <see cref="StopScan"/>) the probes already started finish, then watchers get a final event with
+    /// <see cref="DiscoveryEvent.Finished"/> = true and the devices stay until <see cref="StopAsync"/>.
     /// </summary>
-    public DiscoverySession StartZeroConf(MdnsBrowseOptions? options = null)
+    public DiscoverySession StartZeroConf(MdnsBrowseOptions? options = null, TimeSpan? duration = null)
     {
+        if (duration is { } d && d <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(duration), "The duration must be positive.");
+        }
+
         var session = CreateSession(DiscoverySessionKind.ZeroConf);
-        session.Run = Task.Run(() => RunZeroConfAsync(session, options, session.Stop.Token), CancellationToken.None);
+        if (duration is { } limit)
+        {
+            session.LimitScan(limit, _time);
+        }
+
+        session.Run = Task.Run(() => RunZeroConfAsync(session, options, session.Scan.Token, session.Stop.Token), CancellationToken.None);
         return session.Handle;
+    }
+
+    /// <summary>
+    /// Ends the scan of a session early (the add page's Stop button): a zero-conf session stops browsing,
+    /// a range scan stops probing new addresses. Watchers get the final event with
+    /// <see cref="DiscoveryEvent.Finished"/> = true; the devices found stay until <see cref="StopAsync"/>.
+    /// Unknown or already finished sessions are ignored.
+    /// </summary>
+    public void StopScan(string sessionId)
+    {
+        if (_sessions.TryGetValue(sessionId, out var session))
+        {
+            session.CancelScan();
+        }
     }
 
     /// <summary>
@@ -75,7 +102,7 @@ public sealed class DiscoveryService : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(range);
         var session = CreateSession(DiscoverySessionKind.RangeScan);
-        session.Run = Task.Run(() => RunRangeScanAsync(session, range, options, session.Stop.Token), CancellationToken.None);
+        session.Run = Task.Run(() => RunRangeScanAsync(session, range, options, session.Scan.Token, session.Stop.Token), CancellationToken.None);
         return session.Handle;
     }
 
@@ -91,7 +118,7 @@ public sealed class DiscoveryService : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(enteredAddress);
         ArgumentNullException.ThrowIfNull(probe);
         var session = CreateSession(DiscoverySessionKind.Manual);
-        session.Run = Task.Run(() => RunAddressProbeAsync(session, enteredAddress, probe, session.Stop.Token), CancellationToken.None);
+        session.Run = Task.Run(() => RunAddressProbeAsync(session, enteredAddress, probe, session.Scan.Token, session.Stop.Token), CancellationToken.None);
         return session.Handle;
     }
 
@@ -133,6 +160,7 @@ public sealed class DiscoveryService : IAsyncDisposable
         }
 
         await session.Stop.CancelAsync().ConfigureAwait(false);
+        session.CancelScan();
         try
         {
             await session.Run.ConfigureAwait(false);
@@ -142,7 +170,7 @@ public sealed class DiscoveryService : IAsyncDisposable
         }
 
         session.Complete(finishedEvent: null);
-        session.Stop.Dispose();
+        session.Dispose();
     }
 
     public async ValueTask DisposeAsync()
@@ -164,14 +192,16 @@ public sealed class DiscoveryService : IAsyncDisposable
     private Session GetSession(string sessionId)
         => _sessions.TryGetValue(sessionId, out var s) ? s : throw new KeyNotFoundException($"Unknown discovery session '{sessionId}'.");
 
-    private async Task RunZeroConfAsync(Session session, MdnsBrowseOptions? options, CancellationToken ct)
+    /// <param name="scan">Ends browsing (time limit, <see cref="StopScan"/> or <see cref="StopAsync"/>).</param>
+    /// <param name="ct">Ends everything (<see cref="StopAsync"/>); probes already started finish otherwise.</param>
+    private async Task RunZeroConfAsync(Session session, MdnsBrowseOptions? options, CancellationToken scan, CancellationToken ct)
     {
         using var enrichLimit = new SemaphoreSlim(8);
         var enrichments = new List<Task>();
         var probed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            await foreach (var instance in _browser.BrowseAsync(options, ct).ConfigureAwait(false))
+            await foreach (var instance in _browser.BrowseAsync(options, scan).ConfigureAwait(false))
             {
                 var address = instance.Addresses.Count > 0 ? instance.Addresses[0] : null;
                 if (address is null)
@@ -193,7 +223,7 @@ public sealed class DiscoveryService : IAsyncDisposable
                 }
             }
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (scan.IsCancellationRequested)
         {
         }
         catch (Exception ex)
@@ -203,6 +233,14 @@ public sealed class DiscoveryService : IAsyncDisposable
         finally
         {
             await Task.WhenAll(enrichments).ConfigureAwait(false);
+        }
+
+        if (!ct.IsCancellationRequested)
+        {
+            // Time limit or StopScan: the probes finished, the devices stay for the add page.
+            var found = session.Snapshot().Devices.Count;
+            DiscoveryLog.SessionFinished(_logger, session.Handle.Id, found);
+            session.Complete(new DiscoveryEvent(null, 100, true));
         }
     }
 
@@ -241,7 +279,7 @@ public sealed class DiscoveryService : IAsyncDisposable
         }
     }
 
-    private async Task RunRangeScanAsync(Session session, Ipv4Range range, RangeScanOptions? options, CancellationToken ct)
+    private async Task RunRangeScanAsync(Session session, Ipv4Range range, RangeScanOptions? options, CancellationToken scan, CancellationToken ct)
     {
         var progress = new SyncProgress(p =>
         {
@@ -253,7 +291,7 @@ public sealed class DiscoveryService : IAsyncDisposable
         });
         try
         {
-            await foreach (var result in _scanner.ScanAsync(range, options, progress, ct).ConfigureAwait(false))
+            await foreach (var result in _scanner.ScanAsync(range, options, progress, scan).ConfigureAwait(false))
             {
                 Publish(session, DeviceObservation.FromProbe(result, DiscoverySources.RangeScan));
             }
@@ -265,6 +303,13 @@ public sealed class DiscoveryService : IAsyncDisposable
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
         }
+        catch (OperationCanceledException) when (scan.IsCancellationRequested)
+        {
+            // StopScan: the addresses probed so far count, the session ends like a finished scan.
+            var found = session.Snapshot().Devices.Count;
+            DiscoveryLog.SessionFinished(_logger, session.Handle.Id, found);
+            session.Complete(new DiscoveryEvent(null, session.Progress, true));
+        }
         catch (Exception ex)
         {
             DiscoveryLog.SessionFailed(_logger, ex, session.Handle.Id);
@@ -272,11 +317,11 @@ public sealed class DiscoveryService : IAsyncDisposable
         }
     }
 
-    private async Task RunAddressProbeAsync(Session session, string enteredAddress, Func<CancellationToken, Task<DeviceProbeResult?>> probe, CancellationToken ct)
+    private async Task RunAddressProbeAsync(Session session, string enteredAddress, Func<CancellationToken, Task<DeviceProbeResult?>> probe, CancellationToken scan, CancellationToken ct)
     {
         try
         {
-            var result = await probe(ct).ConfigureAwait(false);
+            var result = await probe(scan).ConfigureAwait(false);
             session.Progress = 100;
             if (result is not null)
             {
@@ -288,6 +333,10 @@ public sealed class DiscoveryService : IAsyncDisposable
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+        }
+        catch (OperationCanceledException) when (scan.IsCancellationRequested)
+        {
+            session.Complete(new DiscoveryEvent(null, 100, true));
         }
         catch (Exception ex)
         {
@@ -351,7 +400,7 @@ public sealed class DiscoveryService : IAsyncDisposable
         return merged == existing ? null : merged with { LastSeenUtc = now };
     }
 
-    private sealed class Session(DiscoverySession handle)
+    private sealed class Session(DiscoverySession handle) : IDisposable
     {
         private readonly Lock _lock = new();
         private readonly Dictionary<string, DiscoveredDevice> _devices = new(StringComparer.OrdinalIgnoreCase);
@@ -361,9 +410,40 @@ public sealed class DiscoveryService : IAsyncDisposable
 
         public DiscoverySession Handle { get; } = handle;
 
+        private CancellationTokenSource? _limit;
+
         public CancellationTokenSource Stop { get; } = new();
 
+        /// <summary>Ends the scan only (time limit, StopScan); also cancelled by StopAsync.</summary>
+        public CancellationTokenSource Scan { get; } = new();
+
         public Task Run { get; set; } = Task.CompletedTask;
+
+        /// <summary>Called once before the run starts.</summary>
+        public void LimitScan(TimeSpan duration, TimeProvider time)
+        {
+            _limit = new CancellationTokenSource(duration, time);
+            _limit.Token.Register(CancelScan);
+        }
+
+        public void CancelScan()
+        {
+            try
+            {
+                Scan.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // session already stopped
+            }
+        }
+
+        public void Dispose()
+        {
+            _limit?.Dispose();
+            Scan.Dispose();
+            Stop.Dispose();
+        }
 
         public int Progress { get; set; }
 

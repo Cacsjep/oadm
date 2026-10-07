@@ -18,6 +18,9 @@ public static class SettingKeys
     /// <summary>Add devices by host name when one is known, otherwise by IP address. Bool, default false.</summary>
     public const string DevicesUseHostName = "Devices.UseHostName";
 
+    /// <summary>A zero-conf scan of the add page ends after this many seconds. Int, default 30, 5..300.</summary>
+    public const string DiscoveryZeroConfSeconds = "Discovery.ZeroConfSeconds";
+
     /// <summary>Prefix of plugin settings: <c>Plugin:&lt;pluginId&gt;:&lt;key&gt;</c>.</summary>
     public const string PluginPrefix = "Plugin:";
 
@@ -66,7 +69,8 @@ public sealed record ServerSettings(
     string ServerName,
     string ListenUrl,
     int FullRefreshMinutes = ServerSettings.DefaultFullRefreshMinutes,
-    bool UseHostName = ServerSettings.DefaultUseHostName)
+    bool UseHostName = ServerSettings.DefaultUseHostName,
+    int ZeroConfSeconds = ServerSettings.DefaultZeroConfSeconds)
 {
     public const int DefaultPollingIntervalSeconds = 60;
     public const int DefaultFullRefreshMinutes = 10;
@@ -80,6 +84,9 @@ public sealed record ServerSettings(
     public const int DefaultUploadsRetentionHours = 24;
     public const int MaxUploadsRetentionHours = 8760;
     public const bool DefaultUseHostName = false;
+    public const int DefaultZeroConfSeconds = 30;
+    public const int MinZeroConfSeconds = 5;
+    public const int MaxZeroConfSeconds = 300;
 
     public static ServerSettings Defaults => new(
         DefaultPollingIntervalSeconds,
@@ -88,7 +95,8 @@ public sealed record ServerSettings(
         DefaultServerName(),
         DefaultListenUrl,
         DefaultFullRefreshMinutes,
-        DefaultUseHostName);
+        DefaultUseHostName,
+        DefaultZeroConfSeconds);
 
     /// <summary>The machine host name (DNS host name, falling back to the NetBIOS/machine name).</summary>
     public static string DefaultServerName()

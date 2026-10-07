@@ -35,7 +35,9 @@ public sealed class AssignIpTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
     public string Id => PluginId;
 
-    public string DisplayName => "Assign IP address...";
+    public string DisplayName => "Assign IP address";
+
+    public string Group => TaskGroups.Network;
 
     public string? IconKey => "network";
 

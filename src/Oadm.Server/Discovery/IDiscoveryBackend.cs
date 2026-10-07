@@ -8,8 +8,15 @@ namespace Oadm.Server.Discovery;
 /// </summary>
 public interface IDiscoveryBackend
 {
-    /// <summary>Starts continuous mDNS browsing; runs until <see cref="StopAsync"/>.</summary>
-    DiscoverySession StartZeroConf();
+    /// <summary>
+    /// Starts mDNS browsing for the add page. It ends on its own after the server setting
+    /// Discovery.ZeroConfSeconds (or on <see cref="StopScan"/>) with a finished event; the devices stay
+    /// until <see cref="StopAsync"/>.
+    /// </summary>
+    Task<DiscoverySession> StartZeroConfAsync(CancellationToken ct);
+
+    /// <summary>Ends the scan of a session early; watchers get the finished event, the devices stay. Unknown ids are ignored.</summary>
+    void StopScan(string sessionId);
 
     /// <summary>Starts an IP range scan with parallelism and timeout from the server settings.</summary>
     /// <exception cref="ArgumentException">Invalid, reversed or oversized range.</exception>

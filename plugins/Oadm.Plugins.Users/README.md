@@ -1,6 +1,6 @@
 # Oadm.Plugins.Users
 
-Task plugin `oadm.users`: **Users...** in the device context menu (no toolbar button). One dialog
+Task plugin `oadm.users`: **Users** in the device context menu, group Users (no toolbar button). One dialog
 to **Add** a user, **Change** a password and/or role, or **Remove** a user, applied to every
 selected device.
 

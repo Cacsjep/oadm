@@ -58,6 +58,7 @@
                     <Setter Property="Command" Value="{Binding Command}" />
                     <Setter Property="CommandParameter" Value="{Binding CommandParameter}" />
                     <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
+                    <Setter Property="ItemsSource" Value="{Binding Items}" />
                     <Setter Property="Icon">
                       <Template>
                         <ui:OadmIcon Data="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" />

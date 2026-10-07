@@ -31,6 +31,9 @@ public interface IOadmApi
     IAsyncEnumerable<DiscoveredDevice> WatchDiscoveredAsync(string sessionId, CancellationToken ct);
     Task StopDiscoveryAsync(string sessionId, CancellationToken ct);
 
+    /// <summary>Ends the scan of a session early (Stop button); the devices found and the session stay.</summary>
+    Task StopScanAsync(string sessionId, CancellationToken ct);
+
     // AddDevicesService
     Task<CommitReply> CommitAddAsync(CommitRequest request, CancellationToken ct);
 

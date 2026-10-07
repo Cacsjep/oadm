@@ -16,6 +16,7 @@ using Oadm.Client.Plugins;
 using Oadm.Client.Tasks;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Client.Devices;
 
@@ -27,6 +28,10 @@ public sealed class MenuEntryViewModel
     public System.Windows.Input.ICommand? Command { get; init; }
     public object? CommandParameter { get; init; }
     public bool IsEnabled { get; init; } = true;
+
+    /// <summary>Submenu entries (task groups); null for a plain entry.</summary>
+    public IReadOnlyList<MenuEntryViewModel>? Items { get; init; }
+
     public bool IsSeparator => Header == "-";
 
     public static MenuEntryViewModel Separator() => new() { Header = "-" };
@@ -305,18 +310,49 @@ public sealed partial class DevicesViewModel : ObservableObject
         if (runnable.Count > 0)
         {
             ContextMenuEntries.Add(MenuEntryViewModel.Separator());
-            foreach (TaskPluginInfo plugin in runnable)
+            foreach (MenuEntryViewModel group in TaskMenuGroups(runnable, RunPluginCommand))
             {
-                ContextMenuEntries.Add(new MenuEntryViewModel
-                {
-                    Header = plugin.RequiresDialog ? plugin.DisplayName + "..." : plugin.DisplayName,
-                    IconKey = string.IsNullOrEmpty(plugin.IconKey) ? "plugin" : plugin.IconKey,
-                    Command = RunPluginCommand,
-                    CommandParameter = plugin,
-                });
+                ContextMenuEntries.Add(group);
             }
         }
     }
+
+    /// <summary>
+    /// One submenu per task group (sorted by name), even with a single entry (user decision); inside, the
+    /// tasks sorted by name with their icons. Names never end with "..." (stripped defensively) and are
+    /// shortened to <see cref="TaskPluginNames.MaxDisplayNameLength"/> characters.
+    /// </summary>
+    internal static IEnumerable<MenuEntryViewModel> TaskMenuGroups(IEnumerable<TaskPluginInfo> plugins, System.Windows.Input.ICommand run) =>
+        plugins
+            .GroupBy(p => TaskPluginNames.NormalizeGroup(p.Group), StringComparer.OrdinalIgnoreCase)
+            .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase)
+            .Select(g => new MenuEntryViewModel
+            {
+                Header = g.Key,
+                IconKey = GroupIconKey(g.Key),
+                Items = g
+                    .Select(p => new MenuEntryViewModel
+                    {
+                        Header = TaskPluginNames.Normalize(p.DisplayName),
+                        IconKey = string.IsNullOrEmpty(p.IconKey) ? "plugin" : p.IconKey,
+                        Command = run,
+                        CommandParameter = p,
+                    })
+                    .OrderBy(e => e.Header, StringComparer.CurrentCultureIgnoreCase)
+                    .ToList(),
+            });
+
+    /// <summary>Icon of a well-known group; other groups show the plugin icon.</summary>
+    internal static string GroupIconKey(string group) => group switch
+    {
+        TaskGroups.Applications => "app",
+        TaskGroups.Maintenance => "settings",
+        TaskGroups.Network => "network",
+        TaskGroups.Security => "key",
+        TaskGroups.Users => "users",
+        TaskGroups.Video => "video",
+        _ => "plugin",
+    };
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Removed {Count} device(s)")]
     private static partial void LogRemoved(ILogger logger, int count);

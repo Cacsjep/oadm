@@ -53,6 +53,8 @@ public sealed class RestartTaskPlugin : ITaskPlugin
 
     public string DisplayName => "Restart";
 
+    public string Group => TaskGroups.Maintenance;
+
     public string? IconKey => "restart";
 
     public bool ShowInToolbar => true;

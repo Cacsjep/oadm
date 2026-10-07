@@ -33,7 +33,8 @@ public sealed class AssignIpTests
     {
         var plugin = new AssignIpTaskPlugin();
         Assert.Equal("oadm.network.assign-ip", plugin.Id);
-        Assert.Equal("Assign IP address...", plugin.DisplayName);
+        Assert.Equal("Assign IP address", plugin.DisplayName);
+        Assert.Equal(TaskGroups.Network, ((ITaskPlugin)plugin).Group);
         Assert.True(plugin.ShowInToolbar);
         Assert.True(plugin.RequiresDialog);
         Assert.True(plugin.CanRun(new FakeDevice(Guid.NewGuid())));

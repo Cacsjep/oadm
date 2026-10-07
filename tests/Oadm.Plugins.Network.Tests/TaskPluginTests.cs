@@ -36,7 +36,8 @@ public sealed class TaskPluginTests
     {
         var plugin = new NetworkSettingsTaskPlugin();
         Assert.Equal("oadm.network", plugin.Id);
-        Assert.Equal("Network settings...", plugin.DisplayName);
+        Assert.Equal("Network settings", plugin.DisplayName);
+        Assert.Equal(TaskGroups.Network, ((ITaskPlugin)plugin).Group);
         Assert.True(plugin.RequiresDialog);
         Assert.False(plugin.ShowInToolbar);
         Assert.IsAssignableFrom<ITaskPluginQuery>(plugin);

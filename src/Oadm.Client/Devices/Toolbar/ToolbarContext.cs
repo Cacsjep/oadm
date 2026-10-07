@@ -67,7 +67,7 @@ public sealed class ToolbarContext : IToolbarContext
     public event EventHandler? DevicesChanged;
 
     public IReadOnlyList<ToolbarTaskPlugin> TaskPlugins =>
-        _catalog.Plugins.Select(p => new ToolbarTaskPlugin(p.Id, p.DisplayName, string.IsNullOrEmpty(p.IconKey) ? null : p.IconKey, p.ShowInToolbar, p.RequiresDialog)).ToList();
+        _catalog.Plugins.Select(p => new ToolbarTaskPlugin(p.Id, Oadm.Sdk.Plugins.TaskPluginNames.Normalize(p.DisplayName), string.IsNullOrEmpty(p.IconKey) ? null : p.IconKey, p.ShowInToolbar, p.RequiresDialog)).ToList();
 
     public event EventHandler? TaskPluginsChanged;
 

@@ -109,6 +109,8 @@
       <!-- Rail: total ~56 px collapsed / ~220 px expanded including its 8 px side margins -->
       <x:Double x:Key="Oadm.NavWidthCollapsed">40</x:Double>
       <x:Double x:Key="Oadm.NavWidthExpanded">204</x:Double>
+      <!-- Context menus and submenus: wide enough for task names (TaskPluginNames.MaxDisplayNameLength) -->
+      <x:Double x:Key="Oadm.MenuMinWidth">240</x:Double>
       <Thickness x:Key="Oadm.NavMargin">8,4,8,16</Thickness>
       <x:Double x:Key="Oadm.TitleBarHeight">32</x:Double>
       <x:Double x:Key="Oadm.IconSize">16</x:Double>
@@ -696,6 +698,7 @@
   <!-- Menus and flyouts -->
   <Style Selector="MenuFlyoutPresenter, ContextMenu">
     <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="MinWidth" Value="{StaticResource Oadm.MenuMinWidth}" />
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
   </Style>
@@ -706,6 +709,10 @@
   </Style>
   <Style Selector="MenuItem">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <!-- Submenu popups have no presenter of their own: their entries carry the minimum width -->
+  <Style Selector="ContextMenu MenuItem, MenuFlyoutPresenter MenuItem">
+    <Setter Property="MinWidth" Value="{StaticResource Oadm.MenuMinWidth}" />
   </Style>
   <!-- Same alignment as ui:IconLabel: icon centered, header text with the Inter correction -->
   <Style Selector="MenuItem /template/ ContentPresenter#PART_IconPresenter">

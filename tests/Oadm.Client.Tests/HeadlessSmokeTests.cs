@@ -124,17 +124,49 @@ public sealed class HeadlessSmokeTests
             // The add page in its three modes, with mixed automatic login results.
             var factory = app.Services!.GetRequiredService<Func<AddDevicesMode, AddDevicesViewModel>>();
             AddDevicesViewModel scanVm = factory(AddDevicesMode.Scan);
-            var scanWindow = new AddDevicesWindow { DataContext = scanVm };
+            var scanWindow = new AddDevicesWindow { DataContext = scanVm, Width = 1040 };
             scanWindow.Show();
-            await PumpUntilAsync(() => scanVm.Rows.Count == 10 && scanVm.Rows.All(r => r.AuthState != AuthState.Pending));
+            await PumpUntilAsync(() => scanVm.Rows.Count == 11 && scanVm.Rows.All(r => r.AuthState != AuthState.Pending));
             scanVm.SelectAllAuthenticatedCommand.Execute(null);
             await PumpUntilAsync(() => true);
             Capture(scanWindow, outDir, "client-add-scan.png");
-            scanVm.FocusedRow = scanVm.Rows.Single(r => r.ShowLogIn);
+
+            // Compact columns at 1040 px: Login (star) starts right after Model, Action is auto-sized after it.
+            DataGrid list = scanWindow.GetVisualDescendants().OfType<DataGrid>().Single();
+            Assert.Equal([40, 36, 140, 150, 160], list.Columns.Take(5).Select(c => c.ActualWidth).ToArray());
+            Assert.True(list.Columns[6].ActualWidth < 200, "Action column is auto-sized");
+            Button stop = scanWindow.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "StopScanButton");
+            Assert.True(stop.IsEffectivelyVisible);
+
+            scanVm.FocusedRow = scanVm.Rows.First(r => r.ShowLogIn);
             scanVm.EditorPassword = "secret";
             await PumpUntilAsync(() => scanVm.IsLoginEditorOpen);
             Capture(scanWindow, outDir, "client-add-login.png");
+            Oadm.Sdk.Client.Controls.PasswordBox loginPassword = scanWindow.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.PasswordBox>().First(p => p.IsEffectivelyVisible);
+            Assert.True(loginPassword.RevealButton.IsEffectivelyVisible);
+            loginPassword.RevealButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            await PumpUntilAsync(() => loginPassword.RevealPassword);
+            Capture(scanWindow, outDir, "client-add-login-revealed.png");
             scanVm.CancelEditorCommand.Execute(null);
+
+            // Stop, then a scan that ends on its own (short fake time limit): "Scan finished" with Scan again.
+            await scanVm.StopScanCommand.ExecuteAsync(null);
+            await PumpUntilAsync(() => !scanVm.IsScanning);
+            Assert.Equal("Scan stopped, 11 devices found", scanVm.ScanStatusText);
+            Capture(scanWindow, outDir, "client-add-scan-stopped.png");
+            if (app.Services!.GetRequiredService<IOadmApi>() is FakeOadmApi fakeApi)
+            {
+                fakeApi.ZeroConfDuration = TimeSpan.FromMilliseconds(500);
+                await scanVm.ScanAgainCommand.ExecuteAsync(null);
+                await PumpUntilAsync(() => !scanVm.IsScanning);
+                fakeApi.ZeroConfDuration = null;
+                Assert.Equal("Scan finished, 11 devices found", scanVm.ScanStatusText);
+                Button again = scanWindow.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "ScanAgainButton");
+                Assert.True(again.IsEffectivelyVisible);
+                Assert.False(stop.IsEffectivelyVisible);
+                Capture(scanWindow, outDir, "client-add-scan-finished.png");
+            }
+
             scanVm.OpenEditorCommand.Execute(scanVm.Rows.First(r => r.PassphrasePolicy == "complex"));
             scanVm.NewPassword = "short";
             scanVm.ConfirmPassword = "short";
@@ -150,7 +182,7 @@ public sealed class HeadlessSmokeTests
             rangeVm.RangeFrom = "10.0.1.1";
             rangeVm.RangeTo = "10.0.1.254";
             await rangeVm.StartRangeCommand.ExecuteAsync(null);
-            await PumpUntilAsync(() => !rangeVm.IsScanning && rangeVm.Rows.Count == 6 && rangeVm.Rows.All(r => r.AuthState != AuthState.Pending));
+            await PumpUntilAsync(() => !rangeVm.IsScanning && rangeVm.Rows.Count == 7 && rangeVm.Rows.All(r => r.AuthState != AuthState.Pending));
             Capture(rangeWindow, outDir, "client-add-range.png");
             await rangeVm.DisposeAsync();
             rangeWindow.Close();

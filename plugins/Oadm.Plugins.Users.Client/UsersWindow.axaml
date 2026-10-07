@@ -44,9 +44,9 @@
 
               <Grid Classes="form" ColumnDefinitions="150,280" RowDefinitions="Auto,Auto,Auto" IsVisible="{Binding ShowPassword}">
                 <TextBlock Classes="fieldLabel" Text="Password" />
-                <TextBox Grid.Column="1" Text="{Binding Password}" PasswordChar="&#x2022;" />
+                <ui:PasswordBox Grid.Column="1" Text="{Binding Password}" />
                 <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Confirm password" />
-                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ConfirmPassword}" PasswordChar="&#x2022;" />
+                <ui:PasswordBox Grid.Row="1" Grid.Column="1" Text="{Binding ConfirmPassword}" />
                 <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Classes="secondary small" Text="{Binding PolicyHint}" TextWrapping="Wrap" />
               </Grid>
 

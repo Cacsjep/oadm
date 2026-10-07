@@ -1,6 +1,6 @@
 # Oadm.Plugins.Firmware
 
-Task plugin `oadm.firmware`, **Upgrade firmware...** (toolbar and context menu, dialog first).
+Task plugin `oadm.firmware`, **Upgrade firmware** (toolbar and context menu group Maintenance, dialog first).
 Installs an AXIS OS image on the selected devices through the VAPIX firmware management API
 (`fwmgr`), waits for the restart, verifies the new version and commits it.
 

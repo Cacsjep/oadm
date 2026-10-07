@@ -30,7 +30,8 @@ public sealed class AcapTaskPluginTests
     public void Declares_a_dialog_task_in_the_context_menu()
     {
         Assert.Equal("oadm.acap", Plugin.Id);
-        Assert.Equal("Applications (ACAP)...", Plugin.DisplayName);
+        Assert.Equal("Applications (ACAP)", Plugin.DisplayName);
+        Assert.Equal(TaskGroups.Applications, ((ITaskPlugin)Plugin).Group);
         Assert.True(Plugin.RequiresDialog);
         Assert.False(Plugin.ShowInToolbar);
     }

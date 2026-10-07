@@ -96,6 +96,9 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task StopDiscoveryAsync(string sessionId, CancellationToken ct) =>
         await C.Discovery.StopAsync(new DiscoverySession { SessionId = sessionId }, cancellationToken: ct);
 
+    public async Task StopScanAsync(string sessionId, CancellationToken ct) =>
+        await C.Discovery.StopScanAsync(new DiscoverySession { SessionId = sessionId }, cancellationToken: ct);
+
     public async Task<CommitReply> CommitAddAsync(CommitRequest request, CancellationToken ct) =>
         await C.AddDevices.CommitAsync(request, cancellationToken: ct);
 
