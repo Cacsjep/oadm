@@ -27,22 +27,22 @@
           <TextBlock Classes="secondary" Text="{Binding NoCaText}" IsVisible="{Binding HasNoCa}" TextWrapping="Wrap" />
 
           <StackPanel Classes="form" IsVisible="{Binding HasCa}">
-            <ui:FormField LabelWidth="240" Label="Name" Classes="wide">
+            <ui:FormField Label="Name" Classes="wide">
               <TextBlock Text="{Binding CaName}" TextTrimming="CharacterEllipsis" />
             </ui:FormField>
-            <ui:FormField LabelWidth="240" Label="Valid" Classes="wide">
+            <ui:FormField Label="Valid" Classes="wide">
               <TextBlock Text="{Binding ValidText}" />
             </ui:FormField>
-            <ui:FormField LabelWidth="240" Label="Key" Classes="wide">
+            <ui:FormField Label="Key" Classes="wide">
               <TextBlock Text="{Binding KeyText}" />
             </ui:FormField>
-            <ui:FormField LabelWidth="240" Label="Fingerprint" Classes="wide" Hint="SHA-256">
+            <ui:FormField Label="Fingerprint" Classes="wide" Hint="SHA-256">
               <SelectableTextBlock Text="{Binding Fingerprint}" TextWrapping="Wrap" />
             </ui:FormField>
-            <ui:FormField LabelWidth="240" Label="Chain" Classes="wide" IsVisible="{Binding HasChain}">
+            <ui:FormField Label="Chain" Classes="wide" IsVisible="{Binding HasChain}">
               <TextBlock Text="{Binding ChainText}" TextWrapping="Wrap" />
             </ui:FormField>
-            <ui:FormField LabelWidth="240" Label="Trusted root store" Classes="wide">
+            <ui:FormField Label="Trusted root store" Classes="wide">
               <StackPanel Orientation="Horizontal" Spacing="24" ToolTip.Tip="{x:Static vm:PkiViewModel.TrustTooltip}">
                 <ui:StatusChip Text="{Binding ServerTrustText}" IsOk="{Binding IsServerTrustOk}" IsError="{Binding IsServerTrustError}"
                                IsAccent="{Binding IsServerTrustAccent}" ToolTip.Tip="{Binding ServerTrustTip}" />
@@ -79,14 +79,18 @@
       <Border Classes="card">
         <StackPanel Classes="form">
           <ui:CardHeader Title="Device certificates" />
-          <ui:FormField LabelWidth="240" Label="Device certificate validity (days)">
+          <ui:FormField Label="Certificate validity (days)" InputWidth="460">
             <TextBox Text="{Binding DeviceCertValidityDays}" />
           </ui:FormField>
-          <ui:FormField LabelWidth="240" Label="Warn before expiry (days)">
+          <ui:FormField Label="Warn before expiry (days)" InputWidth="460">
             <TextBox Text="{Binding ExpiryWarningDays}" />
           </ui:FormField>
-          <ui:FormField LabelWidth="240" Classes="wide">
+          <ui:FormField Classes="wide">
             <TextBlock Classes="secondary" Text="{Binding IssuedSummary}" TextWrapping="Wrap" />
+          </ui:FormField>
+          <ui:FormField InputWidth="460">
+            <Button Classes="primary" HorizontalAlignment="Right" Content="Save" Command="{Binding SaveCommand}"
+                    ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
           </ui:FormField>
         </StackPanel>
       </Border>
@@ -95,7 +99,7 @@
       <Border Classes="card">
         <StackPanel Classes="form">
           <ui:CardHeader Title="IEEE 802.1X" />
-          <ui:FormField LabelWidth="240" Label="EAPOL version">
+          <ui:FormField Label="EAPOL version" InputWidth="460">
             <ComboBox ItemsSource="{Binding EapolChoices}" SelectedItem="{Binding EapolVersion}">
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:Choice">
@@ -104,7 +108,7 @@
               </ComboBox.ItemTemplate>
             </ComboBox>
           </ui:FormField>
-          <ui:FormField LabelWidth="240" Label="EAP identity">
+          <ui:FormField Label="EAP identity" InputWidth="460">
             <ComboBox ItemsSource="{Binding IdentityChoices}" SelectedItem="{Binding Identity}">
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:Choice">
@@ -113,10 +117,10 @@
               </ComboBox.ItemTemplate>
             </ComboBox>
           </ui:FormField>
-          <ui:FormField LabelWidth="240" Label="Custom identity" IsVisible="{Binding IsCustomIdentity}" Hint="{}{serial} and {hostName} are replaced">
+          <ui:FormField Label="Custom identity" InputWidth="460" IsVisible="{Binding IsCustomIdentity}" Hint="{}{serial} and {hostName} are replaced">
             <TextBox Text="{Binding CustomIdentity}" PlaceholderText="e.g. axis-{serial}" />
           </ui:FormField>
-          <ui:FormField LabelWidth="240" Label="RADIUS server CA" InputWidth="520">
+          <ui:FormField Label="RADIUS server CA" InputWidth="460">
             <StackPanel Classes="inputRow">
               <ComboBox ItemsSource="{Binding RadiusChoices}" SelectedItem="{Binding RadiusCa}" Width="280">
                 <ComboBox.ItemTemplate>
@@ -130,10 +134,10 @@
               <Button Classes="secondary" Content="View" Command="{Binding ViewRadiusCaCommand}" IsVisible="{Binding IsRadiusImported}" />
             </StackPanel>
           </ui:FormField>
-          <ui:FormField LabelWidth="240" Classes="wide" IsVisible="{Binding IsRadiusImported}">
+          <ui:FormField Classes="wide" IsVisible="{Binding IsRadiusImported}">
             <TextBlock Classes="secondary" Text="{Binding RadiusCaLine}" TextWrapping="Wrap" />
           </ui:FormField>
-          <ui:FormField LabelWidth="240" InputWidth="460">
+          <ui:FormField InputWidth="460">
             <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
               <ui:StatusChip Text="{Binding SaveResult}" IsOk="True" IsVisible="{Binding SaveResult, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
               <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}"
