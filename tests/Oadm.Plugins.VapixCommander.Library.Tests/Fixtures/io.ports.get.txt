@@ -1,0 +1,28 @@
+{
+  "apiVersion": "1.1",
+  "context": "oadm",
+  "method": "getPorts",
+  "data": {
+    "numberOfPorts": 2,
+    "items": [
+      {
+        "port": "0",
+        "configurable": false,
+        "usage": "",
+        "name": "Port 1",
+        "direction": "input",
+        "state": "open",
+        "normalState": "open"
+      },
+      {
+        "port": "1",
+        "configurable": false,
+        "usage": "",
+        "name": "Port 2",
+        "direction": "output",
+        "state": "open",
+        "normalState": "open"
+      }
+    ]
+  }
+}

@@ -1,0 +1,301 @@
+{
+  "formatVersion": 1,
+  "category": "Users",
+  "commands": [
+    {
+      "id": "users.list",
+      "version": 1,
+      "name": "List users",
+      "category": "Users",
+      "description": "All users and their groups (admin, operator, viewer, ptz).",
+      "docs": "https://developer.axis.com/vapix/network-video/system-settings/",
+      "requires": [
+        {
+          "api": "user-management",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/pwdgrp.cgi",
+        "query": {
+          "action": "get"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "Administrators",
+            "param": "admin"
+          },
+          {
+            "label": "Operators",
+            "param": "operator"
+          },
+          {
+            "label": "Viewers",
+            "param": "viewer"
+          },
+          {
+            "label": "PTZ",
+            "param": "ptz"
+          }
+        ]
+      }
+    },
+    {
+      "id": "users.add",
+      "version": 1,
+      "name": "Add user",
+      "category": "Users",
+      "description": "Creates a user with a role. The password travels in the POST body only.",
+      "docs": "https://developer.axis.com/vapix/network-video/system-settings/",
+      "requires": [
+        {
+          "api": "user-management",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "fields": [
+        {
+          "name": "user",
+          "label": "User name",
+          "type": "string",
+          "default": "",
+          "pattern": "^[A-Za-z0-9]{1,14}$"
+        },
+        {
+          "name": "password",
+          "label": "Password",
+          "type": "password"
+        },
+        {
+          "name": "role",
+          "label": "Role",
+          "type": "enum",
+          "default": "viewer",
+          "options": [
+            {
+              "value": "viewer",
+              "label": "Viewer"
+            },
+            {
+              "value": "viewer:ptz",
+              "label": "Viewer + PTZ"
+            },
+            {
+              "value": "operator:viewer",
+              "label": "Operator"
+            },
+            {
+              "value": "operator:viewer:ptz",
+              "label": "Operator + PTZ"
+            },
+            {
+              "value": "admin:operator:viewer",
+              "label": "Administrator"
+            },
+            {
+              "value": "admin:operator:viewer:ptz",
+              "label": "Administrator + PTZ"
+            }
+          ]
+        },
+        {
+          "name": "comment",
+          "label": "Comment",
+          "type": "string",
+          "default": "",
+          "required": false
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/pwdgrp.cgi",
+        "bodyType": "form",
+        "body": {
+          "action": "add",
+          "user": "{{user}}",
+          "pwd": "{{password}}",
+          "grp": "users",
+          "sgrp": "{{role}}",
+          "comment": "{{comment}}"
+        },
+        "query": {},
+        "headers": {},
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    },
+    {
+      "id": "users.password.set",
+      "version": 1,
+      "name": "Change user password",
+      "category": "Users",
+      "description": "Sets a new password for an existing user.",
+      "docs": "https://developer.axis.com/vapix/network-video/system-settings/",
+      "requires": [
+        {
+          "api": "user-management",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "fields": [
+        {
+          "name": "user",
+          "label": "User name",
+          "type": "string",
+          "default": "root",
+          "pattern": "^[A-Za-z0-9]{1,14}$"
+        },
+        {
+          "name": "password",
+          "label": "New password",
+          "type": "password"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/pwdgrp.cgi",
+        "bodyType": "form",
+        "body": {
+          "action": "update",
+          "user": "{{user}}",
+          "pwd": "{{password}}"
+        },
+        "query": {},
+        "headers": {},
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    },
+    {
+      "id": "users.role.set",
+      "version": 1,
+      "name": "Change user role",
+      "category": "Users",
+      "description": "Changes the role of an existing user.",
+      "docs": "https://developer.axis.com/vapix/network-video/system-settings/",
+      "requires": [
+        {
+          "api": "user-management",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "fields": [
+        {
+          "name": "user",
+          "label": "User name",
+          "type": "string",
+          "default": "",
+          "pattern": "^[A-Za-z0-9]{1,14}$"
+        },
+        {
+          "name": "role",
+          "label": "Role",
+          "type": "enum",
+          "default": "viewer",
+          "options": [
+            {
+              "value": "viewer",
+              "label": "Viewer"
+            },
+            {
+              "value": "viewer:ptz",
+              "label": "Viewer + PTZ"
+            },
+            {
+              "value": "operator:viewer",
+              "label": "Operator"
+            },
+            {
+              "value": "operator:viewer:ptz",
+              "label": "Operator + PTZ"
+            },
+            {
+              "value": "admin:operator:viewer",
+              "label": "Administrator"
+            },
+            {
+              "value": "admin:operator:viewer:ptz",
+              "label": "Administrator + PTZ"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/pwdgrp.cgi",
+        "bodyType": "form",
+        "body": {
+          "action": "update",
+          "user": "{{user}}",
+          "sgrp": "{{role}}"
+        },
+        "query": {},
+        "headers": {},
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    },
+    {
+      "id": "users.remove",
+      "version": 1,
+      "name": "Remove user",
+      "category": "Users",
+      "description": "Deletes a user. The initial administrator cannot be removed.",
+      "docs": "https://developer.axis.com/vapix/network-video/system-settings/",
+      "requires": [
+        {
+          "api": "user-management",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "fields": [
+        {
+          "name": "user",
+          "label": "User name",
+          "type": "string",
+          "default": "",
+          "pattern": "^[A-Za-z0-9]{1,14}$"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/pwdgrp.cgi",
+        "bodyType": "form",
+        "body": {
+          "action": "remove",
+          "user": "{{user}}"
+        },
+        "query": {},
+        "headers": {},
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    }
+  ]
+}

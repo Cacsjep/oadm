@@ -1,0 +1,470 @@
+{
+  "formatVersion": 1,
+  "category": "Security",
+  "commands": [
+    {
+      "id": "security.https.get",
+      "version": 1,
+      "name": "Get HTTPS settings",
+      "category": "Security",
+      "description": "HTTPS state and port and the allowed connection type per user group.",
+      "docs": "https://developer.axis.com/vapix/network-video/system-settings/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "list",
+          "group": "HTTPS.Enabled,HTTPS.Port,System.BoaGroupPolicy,Network.HTTP"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "HTTPS",
+            "param": "HTTPS.Enabled"
+          },
+          {
+            "label": "HTTPS port",
+            "param": "HTTPS.Port"
+          },
+          {
+            "label": "Admin policy",
+            "param": "System.BoaGroupPolicy.admin"
+          },
+          {
+            "label": "Operator policy",
+            "param": "System.BoaGroupPolicy.operator"
+          },
+          {
+            "label": "Viewer policy",
+            "param": "System.BoaGroupPolicy.viewer"
+          },
+          {
+            "label": "Authentication policy",
+            "param": "Network.HTTP.AuthenticationPolicy"
+          }
+        ]
+      }
+    },
+    {
+      "id": "security.https.policy.set",
+      "version": 1,
+      "name": "Set HTTPS connection policy",
+      "category": "Security",
+      "description": "Allowed connection type (HTTP, HTTPS or both) per user group. HTTPS only blocks plain HTTP access.",
+      "docs": "https://developer.axis.com/vapix/network-video/system-settings/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "fields": [
+        {
+          "name": "admin",
+          "label": "Administrator",
+          "type": "enum",
+          "default": "https",
+          "options": [
+            {
+              "value": "both",
+              "label": "HTTP and HTTPS"
+            },
+            {
+              "value": "https",
+              "label": "HTTPS only"
+            },
+            {
+              "value": "http",
+              "label": "HTTP only"
+            }
+          ]
+        },
+        {
+          "name": "operator",
+          "label": "Operator",
+          "type": "enum",
+          "default": "https",
+          "options": [
+            {
+              "value": "both",
+              "label": "HTTP and HTTPS"
+            },
+            {
+              "value": "https",
+              "label": "HTTPS only"
+            },
+            {
+              "value": "http",
+              "label": "HTTP only"
+            }
+          ]
+        },
+        {
+          "name": "viewer",
+          "label": "Viewer",
+          "type": "enum",
+          "default": "both",
+          "options": [
+            {
+              "value": "both",
+              "label": "HTTP and HTTPS"
+            },
+            {
+              "value": "https",
+              "label": "HTTPS only"
+            },
+            {
+              "value": "http",
+              "label": "HTTP only"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "System.BoaGroupPolicy.admin": "{{admin}}",
+          "System.BoaGroupPolicy.operator": "{{operator}}",
+          "System.BoaGroupPolicy.viewer": "{{viewer}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "security.httpauth.set",
+      "version": 1,
+      "name": "Set HTTP authentication policy",
+      "category": "Security",
+      "description": "Which HTTP authentication schemes the device accepts.",
+      "docs": "https://developer.axis.com/vapix/network-video/system-settings/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "fields": [
+        {
+          "name": "policy",
+          "label": "Authentication",
+          "type": "enum",
+          "default": "recommended",
+          "options": [
+            {
+              "value": "recommended",
+              "label": "Recommended"
+            },
+            {
+              "value": "digest",
+              "label": "Digest"
+            },
+            {
+              "value": "basic_digest",
+              "label": "Basic and digest"
+            },
+            {
+              "value": "basic",
+              "label": "Basic"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "Network.HTTP.AuthenticationPolicy": "{{policy}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "security.anonymousviewer.set",
+      "version": 1,
+      "name": "Set anonymous viewer access",
+      "category": "Security",
+      "description": "Allows or forbids anonymous HTTP and RTSP viewers.",
+      "docs": "https://developer.axis.com/vapix/network-video/system-settings/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "fields": [
+        {
+          "name": "anonymous",
+          "label": "Allow anonymous viewers",
+          "type": "boolean",
+          "default": false,
+          "trueValue": "anonymous",
+          "falseValue": "password"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "System.BoaProtViewer": "{{anonymous}}",
+          "Network.RTSP.ProtViewer": "{{anonymous}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "security.ssh.get",
+      "version": 1,
+      "name": "Get SSH state",
+      "category": "Security",
+      "description": "Whether the SSH server is enabled.",
+      "docs": "https://developer.axis.com/vapix/network-video/ssh/",
+      "requires": [
+        {
+          "api": "ssh",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/ssh.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getSshInfo"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "SSH enabled",
+            "path": "data.enabled"
+          }
+        ]
+      }
+    },
+    {
+      "id": "security.ssh.set",
+      "version": 1,
+      "name": "Enable or disable SSH",
+      "category": "Security",
+      "description": "Turns the SSH server on or off.",
+      "docs": "https://developer.axis.com/vapix/network-video/ssh/",
+      "requires": [
+        {
+          "api": "ssh",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "enabled",
+          "label": "SSH",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/ssh.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "setSshConfiguration",
+          "params": {
+            "enabled": "{{enabled}}"
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc"
+      }
+    },
+    {
+      "id": "security.httpheaders.get",
+      "version": 1,
+      "name": "Get custom HTTP headers",
+      "category": "Security",
+      "description": "Security headers the web server adds to every response.",
+      "docs": "https://developer.axis.com/vapix/network-video/custom-http-header-api/",
+      "requires": [
+        {
+          "api": "customhttpheader",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/customhttpheader.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "list"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Headers",
+            "path": "data"
+          }
+        ]
+      }
+    },
+    {
+      "id": "security.bruteforce.get",
+      "version": 1,
+      "name": "Get brute-force protection",
+      "category": "Security",
+      "description": "Password throttling and DoS blocking settings.",
+      "docs": "https://developer.axis.com/vapix/network-video/system-settings/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "list",
+          "group": "System.PreventDoSAttack"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "Password throttling",
+            "param": "System.PreventDoSAttack.ActivatePasswordThrottling"
+          },
+          {
+            "label": "Blocking period (s)",
+            "param": "System.PreventDoSAttack.DoSBlockingPeriod"
+          }
+        ]
+      }
+    },
+    {
+      "id": "security.bruteforce.set",
+      "version": 1,
+      "name": "Set brute-force protection",
+      "category": "Security",
+      "description": "Password throttling and how long a misbehaving client is blocked.",
+      "docs": "https://developer.axis.com/vapix/network-video/system-settings/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "throttling",
+          "label": "Password throttling",
+          "type": "boolean",
+          "default": true,
+          "trueValue": "On",
+          "falseValue": "Off"
+        },
+        {
+          "name": "blocking",
+          "label": "Blocking period",
+          "type": "integer",
+          "default": 30,
+          "min": 0,
+          "max": 1000,
+          "unit": "s"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "System.PreventDoSAttack.ActivatePasswordThrottling": "{{throttling}}",
+          "System.PreventDoSAttack.DoSBlockingPeriod": "{{blocking}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    }
+  ]
+}

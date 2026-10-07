@@ -1,0 +1,12 @@
+Sensor.S0.Name=Main
+Sensor.S0.Celsius=38.40
+Sensor.S0.Fahrenheit=101.12
+Sensor.S1.Name=CPU
+Sensor.S1.Celsius=39.00
+Sensor.S1.Fahrenheit=102.20
+Sensor.S2.Name=Optics
+Sensor.S2.Celsius=36.53
+Sensor.S2.Fahrenheit=97.76
+Sensor.S3.Name=ImageSensor
+Sensor.S3.Celsius=38.45
+Sensor.S3.Fahrenheit=101.22

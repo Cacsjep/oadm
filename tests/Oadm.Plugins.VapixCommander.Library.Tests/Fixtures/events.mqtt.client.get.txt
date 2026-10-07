@@ -1,0 +1,27 @@
+{
+  "apiVersion": "1.6",
+  "context": "oadm",
+  "method": "getClientStatus",
+  "data": {
+    "status": {
+      "state": "inactive",
+      "connectionStatus": "disconnected"
+    },
+    "config": {
+      "server": {
+        "protocol": "tcp",
+        "host": "192.168.0.1",
+        "port": 1883
+      },
+      "clientId": "client_B8A44F631339",
+      "keepAliveInterval": 60,
+      "connectTimeout": 60,
+      "cleanSession": false,
+      "autoReconnect": true,
+      "deviceTopicPrefix": "axis/B8A44F631339",
+      "ssl": {
+        "validateServerCert": false
+      }
+    }
+  }
+}

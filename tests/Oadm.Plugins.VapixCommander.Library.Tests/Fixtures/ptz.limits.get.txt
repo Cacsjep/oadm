@@ -1,0 +1,14 @@
+MinPan=-165
+MaxPan=165
+MinTilt=-165
+MaxTilt=165
+MinZoom=1
+MaxZoom=9999
+MinIris=1
+MaxIris=9999
+MinFocus=1
+MaxFocus=9999
+MinFieldAngle=1
+MaxFieldAngle=100
+MinBrightness=1
+MaxBrightness=9999

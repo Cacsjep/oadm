@@ -1,0 +1,359 @@
+{
+  "formatVersion": 1,
+  "category": "Storage",
+  "commands": [
+    {
+      "id": "storage.disks.list",
+      "version": 1,
+      "name": "List storage disks",
+      "category": "Storage",
+      "description": "SD card and network share with size, free space and state.",
+      "docs": "https://developer.axis.com/vapix/network-video/edge-storage-api/",
+      "requires": [
+        {
+          "api": "disk-management",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/disks/list.cgi",
+        "query": {
+          "diskid": "all"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "xml"
+      }
+    },
+    {
+      "id": "storage.sd.get",
+      "version": 1,
+      "name": "Get SD card settings",
+      "category": "Storage",
+      "description": "Cleanup level, maximum age and mount settings of the SD card.",
+      "docs": "https://developer.axis.com/vapix/network-video/edge-storage-api/",
+      "requires": [
+        {
+          "api": "disk-management",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "list",
+          "group": "Storage.S0"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "Disk",
+            "param": "Storage.S0.DiskID"
+          },
+          {
+            "label": "Cleanup max age (days)",
+            "param": "Storage.S0.CleanupMaxAge"
+          },
+          {
+            "label": "Cleanup level (%)",
+            "param": "Storage.S0.CleanupLevel"
+          },
+          {
+            "label": "File system",
+            "param": "Storage.S0.FileSystem"
+          }
+        ]
+      }
+    },
+    {
+      "id": "storage.cleanup.set",
+      "version": 1,
+      "name": "Set storage cleanup",
+      "category": "Storage",
+      "description": "Deletes recordings older than the maximum age (0 = keep) when the policy is FIFO.",
+      "docs": "https://developer.axis.com/vapix/network-video/edge-storage-api/",
+      "requires": [
+        {
+          "api": "disk-management",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "group",
+          "label": "Storage group (S#)",
+          "type": "integer",
+          "default": 0,
+          "min": 0,
+          "max": 7,
+          "description": "0 = SD card on most devices"
+        },
+        {
+          "name": "days",
+          "label": "Max age",
+          "type": "integer",
+          "default": 7,
+          "min": 0,
+          "max": 7000,
+          "unit": "days"
+        },
+        {
+          "name": "policy",
+          "label": "Cleanup",
+          "type": "enum",
+          "default": "fifo",
+          "options": [
+            {
+              "value": "fifo",
+              "label": "Remove oldest (FIFO)"
+            },
+            {
+              "value": "none",
+              "label": "None"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "Storage.S{{group}}.CleanupMaxAge": "{{days}}",
+          "Storage.S{{group}}.CleanupPolicyActive": "{{policy}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "storage.mount",
+      "version": 1,
+      "name": "Mount disk",
+      "category": "Storage",
+      "description": "Mounts a disk (e.g. after inserting an SD card).",
+      "docs": "https://developer.axis.com/vapix/network-video/edge-storage-api/",
+      "requires": [
+        {
+          "api": "disk-management",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "disk",
+          "label": "Disk id",
+          "type": "string",
+          "default": "SD_DISK",
+          "pattern": "^\\S+$"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/disks/mount.cgi",
+        "query": {
+          "action": "mount",
+          "diskid": "{{disk}}"
+        },
+        "timeoutSeconds": 60,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "xml"
+      }
+    },
+    {
+      "id": "storage.unmount",
+      "version": 1,
+      "name": "Unmount disk",
+      "category": "Storage",
+      "description": "Safely unmounts a disk before removing it.",
+      "docs": "https://developer.axis.com/vapix/network-video/edge-storage-api/",
+      "requires": [
+        {
+          "api": "disk-management",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "disk",
+          "label": "Disk id",
+          "type": "string",
+          "default": "SD_DISK",
+          "pattern": "^\\S+$"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/disks/mount.cgi",
+        "query": {
+          "action": "unmount",
+          "diskid": "{{disk}}"
+        },
+        "timeoutSeconds": 60,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "xml"
+      }
+    },
+    {
+      "id": "storage.format",
+      "version": 1,
+      "name": "Format disk",
+      "category": "Storage",
+      "description": "Formats a disk. ALL RECORDINGS ON IT ARE DELETED.",
+      "docs": "https://developer.axis.com/vapix/network-video/edge-storage-api/",
+      "requires": [
+        {
+          "api": "disk-management",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "fields": [
+        {
+          "name": "disk",
+          "label": "Disk id",
+          "type": "string",
+          "default": "SD_DISK",
+          "pattern": "^\\S+$"
+        },
+        {
+          "name": "fs",
+          "label": "File system",
+          "type": "enum",
+          "default": "ext4",
+          "options": [
+            {
+              "value": "ext4",
+              "label": "ext4"
+            },
+            {
+              "value": "vfat",
+              "label": "vFAT"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/disks/format.cgi",
+        "query": {
+          "diskid": "{{disk}}",
+          "filesystem": "{{fs}}"
+        },
+        "timeoutSeconds": 120,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "xml"
+      }
+    },
+    {
+      "id": "storage.networkshares.list",
+      "version": 1,
+      "name": "List network shares",
+      "category": "Storage",
+      "description": "Configured network shares (NAS).",
+      "docs": "https://developer.axis.com/vapix/network-video/edge-storage-api/",
+      "requires": [
+        {
+          "api": "disk-network-share",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/disks/networkshare/list.cgi",
+        "query": {
+          "schemaversion": "1",
+          "shareid": "all"
+        },
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "xml"
+      }
+    },
+    {
+      "id": "storage.recordings.list",
+      "version": 1,
+      "name": "List recordings",
+      "category": "Storage",
+      "description": "Most recent recordings on all disks.",
+      "docs": "https://developer.axis.com/vapix/network-video/edge-storage-api/",
+      "requires": [
+        {
+          "api": "recording",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [
+        {
+          "name": "max",
+          "label": "Max recordings",
+          "type": "integer",
+          "default": 20,
+          "min": 1,
+          "max": 1000
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/record/list.cgi",
+        "query": {
+          "schemaversion": "1",
+          "recordingid": "all",
+          "maxnumberofrecordings": "{{max}}"
+        },
+        "timeoutSeconds": 30,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "xml"
+      }
+    }
+  ]
+}

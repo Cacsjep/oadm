@@ -1,0 +1,10 @@
+{
+  "apiVersion": "1.10",
+  "method": "status",
+  "context": "oadm",
+  "data": {
+    "activeFirmwareVersion": "12.11.77",
+    "activeFirmwarePart": "7454651131",
+    "resetSource": "crash"
+  }
+}

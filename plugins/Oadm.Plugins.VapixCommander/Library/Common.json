@@ -1,0 +1,345 @@
+{
+  "formatVersion": 1,
+  "category": "Common",
+  "commands": [
+    {
+      "id": "common.device.info",
+      "version": 1,
+      "name": "Get device information",
+      "category": "Common",
+      "description": "Model, serial number, AXIS OS version and hardware ID from Basic Device Information.",
+      "docs": "https://developer.axis.com/vapix/network-video/basic-device-information/",
+      "requires": [
+        {
+          "api": "basic-device-info",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/basicdeviceinfo.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "getAllProperties"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Product",
+            "path": "data.propertyList.ProdFullName"
+          },
+          {
+            "label": "Serial number",
+            "path": "data.propertyList.SerialNumber"
+          },
+          {
+            "label": "AXIS OS",
+            "path": "data.propertyList.Version"
+          },
+          {
+            "label": "Hardware ID",
+            "path": "data.propertyList.HardwareID"
+          },
+          {
+            "label": "SoC",
+            "path": "data.propertyList.Soc"
+          },
+          {
+            "label": "Architecture",
+            "path": "data.propertyList.Architecture"
+          }
+        ]
+      }
+    },
+    {
+      "id": "common.systemready.get",
+      "version": 1,
+      "name": "Get system ready status",
+      "category": "Common",
+      "description": "Whether the device has finished booting, needs initial setup, its uptime and passphrase policy.",
+      "docs": "https://developer.axis.com/vapix/network-video/systemready-api/",
+      "requires": [
+        {
+          "api": "systemready",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/systemready.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "systemready",
+          "params": {
+            "timeout": 10
+          }
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "System ready",
+            "path": "data.systemready"
+          },
+          {
+            "label": "Needs setup",
+            "path": "data.needsetup"
+          },
+          {
+            "label": "Uptime",
+            "path": "data.uptime"
+          },
+          {
+            "label": "Passphrase policy",
+            "path": "data.passphrasepolicy"
+          }
+        ]
+      }
+    },
+    {
+      "id": "common.firmware.status",
+      "version": 1,
+      "name": "Get firmware status",
+      "category": "Common",
+      "description": "Active AXIS OS version and firmware part number.",
+      "docs": "https://developer.axis.com/vapix/network-video/firmware-management-api/",
+      "requires": [
+        {
+          "api": "fwmgr",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/firmwaremanagement.cgi",
+        "bodyType": "json",
+        "body": {
+          "apiVersion": "1.0",
+          "context": "oadm",
+          "method": "status"
+        },
+        "timeoutSeconds": 15,
+        "query": {},
+        "headers": {}
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          {
+            "label": "Active firmware",
+            "path": "data.activeFirmwareVersion"
+          },
+          {
+            "label": "Firmware part",
+            "path": "data.activeFirmwarePart"
+          }
+        ]
+      }
+    },
+    {
+      "id": "common.identify.get",
+      "version": 1,
+      "name": "Get status LED setting",
+      "category": "Common",
+      "description": "Current status LED usage (on, off, flash) and flash interval.",
+      "docs": "https://developer.axis.com/vapix/network-video/parameter-management/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "list",
+          "group": "StatusLed"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [
+          {
+            "label": "Usage",
+            "param": "StatusLed.Usage"
+          },
+          {
+            "label": "Flash interval",
+            "param": "StatusLed.FlashInterval"
+          }
+        ]
+      }
+    },
+    {
+      "id": "common.identify.flash",
+      "version": 1,
+      "name": "Identify device (flash status LED)",
+      "category": "Common",
+      "description": "Makes the status LED flash so the device can be found on site. Run \"Set status LED\" with On to stop.",
+      "docs": "https://developer.axis.com/vapix/network-video/parameter-management/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "interval",
+          "label": "Flash interval",
+          "type": "integer",
+          "default": 4,
+          "min": 1,
+          "max": 30,
+          "unit": "s"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "StatusLed.Usage": "flash",
+          "StatusLed.FlashInterval": "{{interval}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "common.statusled.set",
+      "version": 1,
+      "name": "Set status LED",
+      "category": "Common",
+      "description": "Turns the status LED on, off or flashing (e.g. off for covert installations).",
+      "docs": "https://developer.axis.com/vapix/network-video/parameter-management/",
+      "requires": [
+        {
+          "api": "param-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "usage",
+          "label": "Status LED",
+          "type": "enum",
+          "default": "on",
+          "options": [
+            {
+              "value": "on",
+              "label": "On"
+            },
+            {
+              "value": "off",
+              "label": "Off"
+            },
+            {
+              "value": "flash",
+              "label": "Flash"
+            }
+          ]
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": {
+          "action": "update",
+          "StatusLed.Usage": "{{usage}}"
+        },
+        "headers": {},
+        "bodyType": "none",
+        "body": null,
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "success": "OK"
+      }
+    },
+    {
+      "id": "common.snapshot.check",
+      "version": 1,
+      "name": "Check snapshot",
+      "category": "Common",
+      "description": "Requests one JPEG snapshot to prove that the video pipeline delivers images.",
+      "docs": "https://developer.axis.com/vapix/network-video/video-streaming/",
+      "requires": [
+        {
+          "api": "media-cgi",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "hasVideoOnly": true,
+      "fields": [
+        {
+          "name": "camera",
+          "label": "Camera",
+          "type": "integer",
+          "default": 1,
+          "min": 1,
+          "max": 8,
+          "description": "VAPIX camera number (1-based)."
+        },
+        {
+          "name": "resolution",
+          "label": "Resolution",
+          "type": "string",
+          "default": "640x360",
+          "pattern": "^[0-9]+x[0-9]+$"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/jpg/image.cgi",
+        "query": {
+          "camera": "{{camera}}",
+          "resolution": "{{resolution}}"
+        },
+        "timeoutSeconds": 30,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "raw"
+      }
+    }
+  ]
+}

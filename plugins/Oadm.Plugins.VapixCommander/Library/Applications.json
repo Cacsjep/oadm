@@ -1,0 +1,155 @@
+{
+  "formatVersion": 1,
+  "category": "Applications",
+  "commands": [
+    {
+      "id": "apps.list",
+      "version": 1,
+      "name": "List applications",
+      "category": "Applications",
+      "description": "Installed ACAP applications with version, state and license.",
+      "docs": "https://developer.axis.com/vapix/applications/application-api/",
+      "requires": [
+        {
+          "api": "packagemanager",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/applications/list.cgi",
+        "query": {},
+        "timeoutSeconds": 15,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "xml"
+      }
+    },
+    {
+      "id": "apps.start",
+      "version": 1,
+      "name": "Start application",
+      "category": "Applications",
+      "description": "Starts an installed application.",
+      "docs": "https://developer.axis.com/vapix/applications/application-api/",
+      "requires": [
+        {
+          "api": "packagemanager",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "package",
+          "label": "Application (package name)",
+          "type": "string",
+          "default": "",
+          "pattern": "^[A-Za-z0-9_.-]+$",
+          "description": "The Name attribute from \"List applications\", e.g. vmd."
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/applications/control.cgi",
+        "query": {
+          "action": "start",
+          "package": "{{package}}"
+        },
+        "timeoutSeconds": 60,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    },
+    {
+      "id": "apps.stop",
+      "version": 1,
+      "name": "Stop application",
+      "category": "Applications",
+      "description": "Stops a running application.",
+      "docs": "https://developer.axis.com/vapix/applications/application-api/",
+      "requires": [
+        {
+          "api": "packagemanager",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "fields": [
+        {
+          "name": "package",
+          "label": "Application (package name)",
+          "type": "string",
+          "default": "",
+          "pattern": "^[A-Za-z0-9_.-]+$",
+          "description": "The Name attribute from \"List applications\", e.g. vmd."
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/applications/control.cgi",
+        "query": {
+          "action": "stop",
+          "package": "{{package}}"
+        },
+        "timeoutSeconds": 60,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    },
+    {
+      "id": "apps.remove",
+      "version": 1,
+      "name": "Remove application",
+      "category": "Applications",
+      "description": "Uninstalls an application and its settings.",
+      "docs": "https://developer.axis.com/vapix/applications/application-api/",
+      "requires": [
+        {
+          "api": "packagemanager",
+          "minVersion": "1.0"
+        }
+      ],
+      "writes": true,
+      "dangerous": true,
+      "fields": [
+        {
+          "name": "package",
+          "label": "Application (package name)",
+          "type": "string",
+          "default": "",
+          "pattern": "^[A-Za-z0-9_.-]+$",
+          "description": "The Name attribute from \"List applications\", e.g. vmd."
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/applications/control.cgi",
+        "query": {
+          "action": "remove",
+          "package": "{{package}}"
+        },
+        "timeoutSeconds": 60,
+        "headers": {},
+        "bodyType": "none",
+        "body": null
+      },
+      "response": {
+        "kind": "param-cgi"
+      }
+    }
+  ]
+}
