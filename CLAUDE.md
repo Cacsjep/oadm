@@ -187,10 +187,10 @@ Dark only, calm and spacious, no gradients inside the app.
   buttons and status pills. Secondary accent teal `#7FC8D0`.
 - Text: primary `#F2F2F2`, secondary `#9A9A9A` (labels like "Source", column headers).
   Font Inter (Avalonia.Fonts.Inter), 13 px body, 20 px card titles, semibold titles.
-- Status shown as small rounded chips, not plain text: solid fill in the status color with
-  white, regular-weight (not bold) text and no dot. Fills are slightly darkened so white stays
-  readable: OK green `#2B8A5E`, warning amber `#A86F0E`, error red `#C73B34`, running violet
-  `#6253DB`, neutral grey `#5F5F5F`. Count badges use the same chip style (violet).
+- Status shown as small rounded chips, not plain text: transparent background, 1 px border in
+  the status color (OK green, warning amber, error red, running violet, neutral grey), normal
+  text color, regular weight (not bold), no dot. No status dot on the device icon either.
+  Count badges stay a small solid violet pill.
 - Icons: one outline icon set (Fluent System Icons / Lucide geometry), monochrome
   `#CFCFCF`, 16 px. Toolbar uses icon + text buttons, not ADM's icon-only bar.
 - All colors and sizes as resources in `Themes/OadmTheme.axaml`; no hard-coded colors in views.
@@ -371,6 +371,9 @@ LocalApplicationData): server address, grid column layout, bottom pane state.
 - Dependency injection everywhere (Microsoft.Extensions.DependencyInjection), also in the
   client.
 - Organize by feature (`Devices/`, `Discovery/`, `Tasks/`, `Plugins/`), not by layer.
+- UI is verified only with Avalonia headless tests rendering offscreen (screenshots via
+  `OADM_SCREENSHOT_DIR`). Never automate the real desktop: no simulated clicks or drags, no
+  capturing real windows on a developer machine.
 - Tests accompany every non-trivial class. VAPIX parsing tested from recorded fixtures.
   Discovery and task engine tested with fakes, no network in unit tests.
 - Commits: conventional commits (`feat:`, `fix:`, `chore:`), small and focused.
