@@ -11,6 +11,13 @@ public static class PluginPaths
     }
 
     /// <summary>
+    /// <c>&lt;app folder&gt;/plugins</c>: plugins shipped next to a published server, including
+    /// single-file builds. Uses AppContext.BaseDirectory, never Assembly.Location.
+    /// </summary>
+    public static string Bundled(string? appDirectory = null) =>
+        Path.Combine(appDirectory ?? AppContext.BaseDirectory, "plugins");
+
+    /// <summary>
     /// <c>&lt;repo&gt;/artifacts/plugins</c>: where plugin projects in this repository copy their
     /// build output (see plugins/*/README). Found by walking up from <paramref name="startDirectory"/>
     /// (default: the app base directory) to the folder containing Oadm.sln. Null outside a checkout.

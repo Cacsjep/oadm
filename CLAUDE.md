@@ -25,6 +25,16 @@ Cross-platform is a day-one requirement: Windows, Linux, macOS. No Windows-only 
 `Environment.SpecialFolder.LocalApplicationData/Oadm`. Every PR must build on all three
 (CI matrix) and the server must run as a plain console process on all three.
 
+# Packaging
+
+Server and client publish as one self-contained single-file exe per platform
+(`PublishSingleFile`, `IncludeNativeLibrariesForSelfExtract`, `PublishReadyToRun`), see
+`scripts/publish-*`. Plugins ship next to the exe in `plugins/<name>/`.
+Native AOT and trimming are deliberately NOT used for the host apps: AOT cannot load managed
+plugin assemblies at runtime and trimming removes framework APIs plugins rely on. Small
+helper tools without plugin loading may use Native AOT.
+Code must never use `Assembly.Location` (empty in single-file); use `AppContext.BaseDirectory`.
+
 # Solution Layout
 
 ```

@@ -4,7 +4,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_common.sh"
 
 OUT="$REPO_ROOT/artifacts/publish/server/$RID"
-"$DOTNET" publish "$SERVER_PROJECT" -c Release -r "$RID" --self-contained -o "$OUT" "$@"
+"$DOTNET" publish "$SERVER_PROJECT" -c Release -r "$RID" --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishReadyToRun=true -p:DebugType=embedded -o "$OUT" "$@"
 mkdir -p "$OUT/plugins"
 for p in "$REPO_ROOT"/plugins/*/*.csproj; do
   name="$(basename "$(dirname "$p")")"

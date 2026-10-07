@@ -239,7 +239,7 @@ public static partial class OadmServerHost
     public static IReadOnlyList<string> DefaultPluginRoots(OadmPaths paths)
     {
         ArgumentNullException.ThrowIfNull(paths);
-        var roots = new List<string> { PluginPaths.Installed(paths.DataDirectory) };
+        var roots = new List<string> { PluginPaths.Bundled(), PluginPaths.Installed(paths.DataDirectory) };
         if (PluginPaths.Development() is { } development)
         {
             roots.Add(development);

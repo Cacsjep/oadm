@@ -2,5 +2,5 @@
 . (Join-Path $PSScriptRoot '_common.ps1')
 
 $out = Join-Path $RepoRoot "artifacts/publish/client/$Rid"
-Invoke-Dotnet publish $ClientProject -c Release -r $Rid --self-contained -o $out @args
+Invoke-Dotnet publish $ClientProject -c Release -r $Rid --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishReadyToRun=true -p:DebugType=embedded -o $out @args
 Write-Host "client published to $out"
