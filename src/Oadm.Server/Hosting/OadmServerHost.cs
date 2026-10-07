@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Oadm.Core.Devices;
 using Oadm.Core.Discovery;
 using Oadm.Core.Discovery.Mdns;
+using Oadm.Core.LiveView;
 using Oadm.Core.Persistence;
 using Oadm.Core.Plugins;
 using Oadm.Core.Settings;
@@ -16,6 +17,7 @@ using Oadm.Server.AddDevices;
 using Oadm.Server.Devices;
 using Oadm.Server.Discovery;
 using Oadm.Server.Files;
+using Oadm.Server.LiveView;
 using Oadm.Server.Plugins;
 using Oadm.Server.Settings;
 using Oadm.Server.Tasks;
@@ -101,6 +103,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<DiscoveryGrpcService>();
         app.MapGrpcService<AddDevicesGrpcService>();
         app.MapGrpcService<FileGrpcService>();
+        app.MapGrpcService<LiveViewGrpcService>();
         if (app.Environment.IsDevelopment())
         {
             app.MapGrpcReflectionService();
@@ -136,6 +139,10 @@ public static partial class OadmServerHost
             sp.GetRequiredService<ILogger<Core.Uploads.UploadStore>>()));
         services.AddSingleton<Sdk.Plugins.IUploadedFiles>(sp => sp.GetRequiredService<Core.Uploads.UploadStore>());
         services.AddHostedService<UploadCleanupHostedService>();
+        // Live view: RTSP upstreams shared between viewers
+        services.AddSingleton<ILiveVideoSourceFactory, AxisLiveVideoSourceFactory>();
+        services.AddSingleton(new LiveViewHubOptions());
+        services.AddSingleton<LiveViewHub>();
 
         // Plugins and tasks
         services.AddSingleton<PluginRegistry>();
@@ -242,6 +249,7 @@ public static partial class OadmServerHost
         await sp.GetRequiredService<CorePluginHost>().StopAllAsync(ct).ConfigureAwait(false);
         await sp.GetRequiredService<TaskEngine>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<CoreDiscoveryService>().DisposeAsync().ConfigureAwait(false);
+        await sp.GetRequiredService<LiveViewHub>().DisposeAsync().ConfigureAwait(false);
     }
 
     /// <summary>Start, wait for Ctrl+C / SIGTERM, stop.</summary>

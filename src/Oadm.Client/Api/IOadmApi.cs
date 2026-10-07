@@ -58,6 +58,13 @@ public interface IOadmApi
     Task<ServerSettings> GetSettingsAsync(CancellationToken ct);
     Task<ServerSettings> SetSettingsAsync(ServerSettings settings, CancellationToken ct);
 
+    // LiveViewService
+    /// <summary>Encoded access units of a device's camera, relayed by the server.</summary>
+    IAsyncEnumerable<LiveViewFrame> WatchLiveViewAsync(LiveViewRequest request, CancellationToken ct);
+
+    /// <summary>Video sources (view areas, sensors, encoder channels) of a device.</summary>
+    Task<IReadOnlyList<LiveViewSource>> ListLiveViewSourcesAsync(string deviceId, CancellationToken ct);
+
     // PluginService
     Task<IReadOnlyList<CorePluginInfo>> ListCorePluginsAsync(CancellationToken ct);
     Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct);

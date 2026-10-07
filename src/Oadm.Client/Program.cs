@@ -14,6 +14,11 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        if (args.Contains(LiveView.DecoderSelfCheck.Argument, StringComparer.OrdinalIgnoreCase))
+        {
+            return LiveView.DecoderSelfCheck.Run(Console.Out);
+        }
+
         AppOptions options = AppOptions.Parse(args);
         var logStore = new LogStore(new AvaloniaUiDispatcher());
         Log.Logger = new LoggerConfiguration()

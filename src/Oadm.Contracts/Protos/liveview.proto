@@ -1,0 +1,57 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "google/protobuf/timestamp.proto";
+
+// Live video of one device, relayed by the server. The server pulls RTSP from the camera with the
+// stored credentials (they never reach the client) and shares one upstream connection per
+// (device, codec, resolution, fps) between all viewers. The client decodes with FFmpeg.
+// Slow viewers lose frames instead of buffering: the server skips ahead to the next keyframe.
+service LiveViewService {
+  rpc Watch (LiveViewRequest) returns (stream LiveViewFrame);
+  rpc ListSources (LiveViewSourcesRequest) returns (LiveViewSources); // read-only: param.cgi Properties.Image + Image
+}
+
+// A streamable video source of a device: a view area, a sensor of a multisensor camera or a
+// channel of a video encoder (VAPIX Image.I<camera-1>).
+message LiveViewSource {
+  int32 camera = 1;        // 1-based VAPIX camera number, media.amp camera=<n>
+  string name = 2;         // Image.I<n>.Name, e.g. "View Area 1", "Camera 2"
+  int32 sensor = 3;        // 0-based image source (Image.I<n>.Source)
+  int32 max_width = 4;     // largest resolution of this source
+  int32 max_height = 5;
+}
+
+message LiveViewSourcesRequest { string device_id = 1; }
+message LiveViewSources { repeated LiveViewSource sources = 1; }
+
+enum VideoCodec {
+  VIDEO_CODEC_UNSPECIFIED = 0;
+  VIDEO_CODEC_H264 = 2;    // Annex B access units
+  VIDEO_CODEC_H265 = 3;    // Annex B access units
+}
+
+message LiveViewRequest {
+  string device_id = 1;
+  int32 max_width = 2;     // 0 = server default (640)
+  int32 max_height = 3;    // 0 = server default (360)
+  int32 fps = 4;           // 0 = server default (10)
+  // Codecs the client can decode. Empty = H.264 only. The server picks H.265 > H.264 among those
+  // the camera also offers and falls back down that list when a stream fails to open.
+  repeated VideoCodec accepted_codecs = 5;
+  int32 camera = 6;        // 1-based source (see ListSources); 0 = the first enabled source
+}
+
+message LiveViewFrame {
+  VideoCodec codec = 1;
+  // Parameter sets as Annex B (H.264 SPS/PPS, H.265 VPS/SPS/PPS). Set on keyframes; keyframe
+  // access units also carry them in-band, so data alone is decodable.
+  bytes codec_config = 2;
+  bool keyframe = 3;
+  int64 rtp_timestamp = 4; // 90 kHz media clock of the camera
+  bytes data = 5;          // one access unit, Annex B
+  int32 width = 6;         // stream resolution requested from the camera
+  int32 height = 7;
+  google.protobuf.Timestamp captured = 8; // when the server received the access unit
+  int32 camera = 9;        // source being streamed (resolves camera = 0 of the request)
+}

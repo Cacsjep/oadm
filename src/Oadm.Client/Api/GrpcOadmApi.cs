@@ -20,7 +20,7 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public GrpcOadmApi(string address)
     {
         ServerAddress = Normalize(address);
-        _channel = GrpcChannel.ForAddress(ServerAddress);
+        _channel = CreateChannel(ServerAddress);
         _clients = new Clients(_channel);
     }
 
@@ -39,7 +39,7 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
 
             old = _channel;
             ServerAddress = normalized;
-            _channel = GrpcChannel.ForAddress(normalized);
+            _channel = CreateChannel(normalized);
             _clients = new Clients(_channel);
         }
 
@@ -174,6 +174,12 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<ServerSettings> SetSettingsAsync(ServerSettings settings, CancellationToken ct) =>
         await C.Settings.SetAsync(settings, cancellationToken: ct);
 
+    public IAsyncEnumerable<LiveViewFrame> WatchLiveViewAsync(LiveViewRequest request, CancellationToken ct) =>
+        ReadAll(C.LiveView.Watch(request, cancellationToken: ct), ct);
+
+    public async Task<IReadOnlyList<LiveViewSource>> ListLiveViewSourcesAsync(string deviceId, CancellationToken ct) =>
+        (await C.LiveView.ListSourcesAsync(new LiveViewSourcesRequest { DeviceId = deviceId }, cancellationToken: ct)).Sources;
+
     public async Task<IReadOnlyList<CorePluginInfo>> ListCorePluginsAsync(CancellationToken ct) =>
         (await C.Plugins.ListCorePluginsAsync(new Empty(), cancellationToken: ct)).Plugins;
 
@@ -203,6 +209,10 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         }
     }
 
+    /// <summary>Keyframes of high resolution video can exceed the 4 MB default message limit.</summary>
+    private static GrpcChannel CreateChannel(string address) =>
+        GrpcChannel.ForAddress(address, new GrpcChannelOptions { MaxReceiveMessageSize = 32 * 1024 * 1024 });
+
     internal static string Normalize(string address)
     {
         string trimmed = (address ?? "").Trim();
@@ -228,5 +238,6 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public SettingsService.SettingsServiceClient Settings { get; } = new(channel);
         public PluginService.PluginServiceClient Plugins { get; } = new(channel);
         public FileService.FileServiceClient Files { get; } = new(channel);
+        public LiveViewService.LiveViewServiceClient LiveView { get; } = new(channel);
     }
 }

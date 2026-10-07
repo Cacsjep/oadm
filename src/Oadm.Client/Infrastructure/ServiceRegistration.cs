@@ -5,6 +5,7 @@ using Oadm.Client.Api;
 using Oadm.Client.Devices;
 using Oadm.Client.Dialogs;
 using Oadm.Client.Discovery;
+using Oadm.Client.LiveView;
 using Oadm.Client.Logging;
 using Oadm.Client.Plugins;
 using Oadm.Client.Settings;
@@ -58,6 +59,8 @@ public static class ServiceRegistration
             sp.GetRequiredService<IUiDispatcher>(),
             sp.GetRequiredService<ILogger<AddDevicesWizardViewModel>>(),
             mode));
+        services.AddSingleton<IVideoDecoderFactory, FfmpegVideoDecoderFactory>();
+        services.AddSingleton<LiveViewViewModel>();
         services.AddSingleton<DevicesViewModel>();
         services.AddSingleton<MainWindowViewModel>();
         return services.BuildServiceProvider();

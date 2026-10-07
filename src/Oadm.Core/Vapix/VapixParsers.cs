@@ -137,6 +137,71 @@ public static partial class VapixParsers
             UpnpFriendlyName: Get(parameters, "Network.UPnP.FriendlyName"));
     }
 
+    /// <summary>
+    /// Builds <see cref="ImageCapabilities"/> from param.cgi groups <c>Properties.Image</c> and <c>Image</c>:
+    /// formats from <c>Properties.Image.Format</c> ("jpeg,mjpeg,h264,h265"), resolutions from
+    /// <c>Properties.Image.Resolution</c>, and one source per <c>Image.I&lt;n&gt;</c> that is not disabled
+    /// (view areas on single-sensor cameras, sensors on multisensor cameras, channels on encoders).
+    /// Without any <c>Image.I&lt;n&gt;</c> the device has one source, camera 1.
+    /// </summary>
+    public static ImageCapabilities ParseImageCapabilities(IReadOnlyDictionary<string, string> parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        var formats = (Get(parameters, "Properties.Image.Format") ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(f => f.ToLowerInvariant())
+            .Distinct()
+            .ToList();
+        var resolutions = ParseResolutions(Get(parameters, "Properties.Image.Resolution"));
+
+        var indices = new SortedSet<int>();
+        foreach (var key in parameters.Keys)
+        {
+            var match = ImageIndexRegex().Match(key);
+            if (match.Success)
+            {
+                indices.Add(int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture));
+            }
+        }
+
+        var sources = new List<VideoSourceInfo>();
+        foreach (var n in indices)
+        {
+            if (ParseBool(Get(parameters, $"Image.I{n}.Enabled")) == false)
+            {
+                continue;
+            }
+
+            var sensor = int.TryParse(Get(parameters, $"Image.I{n}.Source"), NumberStyles.None, CultureInfo.InvariantCulture, out var s) ? s : 0;
+            var own = ParseResolutions(Get(parameters, $"Properties.Image.I{n}.Resolution"));
+            sources.Add(new VideoSourceInfo(n + 1, Get(parameters, $"Image.I{n}.Name") ?? $"Camera {n + 1}", sensor, own.Count > 0 ? own : resolutions));
+        }
+
+        if (sources.Count == 0)
+        {
+            sources.Add(new VideoSourceInfo(1, "Camera", 0, resolutions));
+        }
+
+        return new ImageCapabilities(formats, resolutions, sources);
+    }
+
+    private static List<ImageSize> ParseResolutions(string? list)
+    {
+        var result = new List<ImageSize>();
+        foreach (var item in (list ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (ImageSize.TryParse(item, out var size) && !result.Contains(size))
+            {
+                result.Add(size);
+            }
+        }
+
+        return result;
+    }
+
+    [GeneratedRegex(@"^Image\.I(\d+)\.(Enabled|Name|Source)$", RegexOptions.CultureInvariant)]
+    private static partial Regex ImageIndexRegex();
+
     /// <summary>Parses a systemready.cgi response.</summary>
     public static SystemReadyInfo ParseSystemReady(string json)
     {

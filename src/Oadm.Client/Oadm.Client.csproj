@@ -5,6 +5,8 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <AssemblyName>Oadm.Client</AssemblyName>
     <RootNamespace>Oadm.Client</RootNamespace>
+    <!-- FFmpeg interop (LiveView/FfmpegVideoDecoder.cs) -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,7 +25,36 @@
     <PackageReference Include="Serilog" Version="4.4.0" />
     <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    <!-- Live view decoding: MIT bindings + LGPL-2.1 FFmpeg 9 native build per RID (see THIRD-PARTY-NOTICES.md). -->
+    <PackageReference Include="FFmpeg.AutoGen" Version="9.0.1.1" />
+    <PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.$(OadmFfmpegRid)" Version="9.0.2" Condition="'$(OadmFfmpegRid)' != ''" />
   </ItemGroup>
+
+  <!--
+    FFmpeg natives: one runtime package per RID. Publish (-r RID) uses that RID; a plain build uses
+    the host platform so `dotnet run` and the tests decode too. Only the decoder libraries are kept
+    (avcodec, avutil, swscale and swresample which avcodec links against); ffmpeg/ffprobe
+    executables, avformat, avfilter and avdevice are dropped. With PublishSingleFile and
+    IncludeNativeLibrariesForSelfExtract they end up inside the exe.
+  -->
+  <PropertyGroup>
+    <OadmFfmpegRid>$(RuntimeIdentifier)</OadmFfmpegRid>
+    <_OadmArch>$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant())</_OadmArch>
+    <OadmFfmpegRid Condition="'$(OadmFfmpegRid)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">win-$(_OadmArch)</OadmFfmpegRid>
+    <OadmFfmpegRid Condition="'$(OadmFfmpegRid)' == '' and $([MSBuild]::IsOSPlatform('Linux'))">linux-$(_OadmArch)</OadmFfmpegRid>
+    <OadmFfmpegRid Condition="'$(OadmFfmpegRid)' == '' and $([MSBuild]::IsOSPlatform('OSX'))">osx-$(_OadmArch)</OadmFfmpegRid>
+  </PropertyGroup>
+  <Target Name="OadmTrimFfmpegNatives" AfterTargets="ResolvePackageAssets">
+    <PropertyGroup>
+      <_OadmFfmpegKeep>^(lib)?(avcodec|avutil|swscale|swresample)([-.].*)?$</_OadmFfmpegKeep>
+    </PropertyGroup>
+    <ItemGroup>
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)"
+                            Condition="$([System.String]::Copy('%(NativeCopyLocalItems.NuGetPackageId)').StartsWith('DevEnvy.FFmpeg')) and !$([System.Text.RegularExpressions.Regex]::IsMatch('%(Filename)%(Extension)', '$(_OadmFfmpegKeep)'))" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)"
+                                    Condition="$([System.String]::Copy('%(RuntimeTargetsCopyLocalItems.NuGetPackageId)').StartsWith('DevEnvy.FFmpeg')) and !$([System.Text.RegularExpressions.Regex]::IsMatch('%(Filename)%(Extension)', '$(_OadmFfmpegKeep)'))" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <ProjectReference Include="..\Oadm.Contracts\Oadm.Contracts.csproj" />
@@ -32,5 +63,10 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Oadm.Client.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Recorded camera video replayed by the fake server (fake mode). -->
+    <EmbeddedResource Include="Api\FakeLiveView.*.au" LogicalName="Oadm.Client.Api.%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

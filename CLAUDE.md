@@ -19,6 +19,7 @@ must feel at home: same workflows, same information, but our own modern dark Flu
 | Logging | Serilog (console + rolling file) behind Microsoft.Extensions.Logging |
 | Tests | xUnit, NSubstitute for mocks |
 | Device API | VAPIX only (HTTP/HTTPS, digest auth). No ONVIF |
+| Live video | RTSP (server, own client) relayed as encoded H.265/H.264 over gRPC, decoded in the client with FFmpeg (LGPL, bundled) |
 
 Cross-platform is a day-one requirement: Windows, Linux, macOS. No Windows-only APIs
 (no DPAPI, no registry, no WMI). Paths via `Path.Combine`, data folder via
@@ -34,6 +35,15 @@ Native AOT and trimming are deliberately NOT used for the host apps: AOT cannot 
 plugin assemblies at runtime and trimming removes framework APIs plugins rely on. Small
 helper tools without plugin loading may use Native AOT.
 Code must never use `Assembly.Location` (empty in single-file); use `AppContext.BaseDirectory`.
+
+The client bundles the FFmpeg decoder libraries (avcodec, avutil, swscale, swresample; FFmpeg 9,
+LGPL-2.1 build from the `DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.<rid>` package, bindings
+`FFmpeg.AutoGen`). They are native shared libraries embedded in the single-file exe and extracted
+by the .NET host at startup (`DOTNET_BUNDLE_EXTRACT_BASE_DIR`); the publish folder contains only
+the exe. They add about 57 MB to the win-x64 exe. `OADM_FFMPEG_DIR` loads a user-supplied build
+instead (LGPL replaceability), `Oadm.Client --check-decoder` verifies the decoder without a
+window. Licenses and source offer: `THIRD-PARTY-NOTICES.md`. Never add GPL or nonfree FFmpeg
+builds.
 
 # Solution Layout
 
@@ -95,6 +105,9 @@ Two processes, like ADM:
 - `PluginService`: `ListCorePlugins` (navigation pages), per-plugin generic
   `Invoke(pluginId, method, payloadJson)` for Core plugin UI pages (later goal).
 - `SettingsService`: `Get`, `Set`.
+- `LiveViewService`: `Watch(device_id, max_width, max_height, fps, accepted_codecs, camera)`
+  (stream of encoded access units), `ListSources(device_id)` (view areas / sensors / channels).
+  See "Live view".
 
 # Data Model (EF Core, SQLite)
 
@@ -189,6 +202,10 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
     we send it over HTTPS when available and always with arguments in the POST body, never
     in the URL. Since AXIS OS 11.5 the first user does not have to be named root.
   - `restart.cgi` -> Restart task plugin
+  - `param.cgi?action=list&group=Properties.Image,Image` -> live view codecs
+    (`Properties.Image.Format`, e.g. `jpeg,mjpeg,h264,h265`), resolutions and video sources
+  - RTSP `rtsp://<host>/axis-media/media.amp?videocodec=h264|h265&camera=<n>&resolution=WxH&fps=N&videokeyframeinterval=N&audio=0`
+    on port 554 -> live view (see "Live view")
 - All VAPIX access lives in `Oadm.Core.Vapix.VapixClient`, one method per endpoint,
   unit-tested against recorded responses in `tests/.../Fixtures`.
 
@@ -276,6 +293,58 @@ Layout, top to bottom:
 
 **Logs page** (rail, bottom): live client log with level filter and search. Server log
 streaming comes later.
+
+## Live view
+
+Clicking the device icon (first grid column) of a video device opens the live video in a panel
+on the right of the device card, inside the main window, so nobody has to log in to the camera
+web UI. Reference screenshot: headless `client-liveview.png`.
+
+- Panel: reusable `Controls/LiveViewPanel` in a card next to the device card (about 60 : 40,
+  resizable with the vertical `paneSplitter`; the device card keeps at least 900 px so its toolbar
+  stays on one line, the panel at least 320 px). Slides in from the right (250 ms, cubic ease-out).
+  Header: `IconLabel` with video icon and model, subtitle address, serial and (with several
+  sources) the source name, source switch, close button. Below: state chip (Connecting, Live,
+  Reconnecting, Error) and detail text (codec, resolution, fps, or the reason). Picture
+  `Stretch=Uniform` on a dark rounded surface.
+- Open/close: the icon of the shown device or the close button or Escape closes the panel and
+  stops the stream; another device's icon switches. Removing the shown device closes it. The icon
+  cell has a hover state and the tooltip "Live view"; devices without video are disabled
+  (`LiveViewSupport.IsSupported`, a model heuristic until the device category from the server is
+  available: C audio, A1/A9 door and I/O controllers, D3 sensors and T accessories have no video).
+- Sources: `ListSources` returns every `Image.I<n>` that is not disabled as camera `n+1` with its
+  `Image.I<n>.Name` (view areas on single-sensor cameras, sensors and quad view on multisensor
+  cameras, inputs on encoders). With more than one source the header shows a segmented switch
+  ("1 2 ...", tooltip = name); switching restarts the stream with `camera=<n>`; the choice is
+  remembered per device for the client session. 10.0.0.48 reports one sensor
+  (`ImageSource.NbrOfSources=1`), 8 view areas, of which "View Area 1" (full frame) and
+  "View Area 2" (cropped) are enabled.
+- Transport: the server opens RTSP/1.0 over TCP to port 554 with RTP interleaved on the same
+  connection, Digest authentication with the stored credentials (Basic is refused on plain RTSP;
+  credentials never reach the client), `Blocksize: 64000`, a keyframe every second
+  (`videokeyframeinterval=fps`). Own RTSP client and depacketizers (H.264 RFC 6184, H.265 RFC 7798)
+  in `Oadm.Core/LiveView`. Video itself is not encrypted on the camera link (RTSP over HTTPS is a
+  later option). Devices with status `CertificateChanged` are refused.
+- Negotiation: H.265 > H.264 among the codecs the camera lists in `Properties.Image.Format` and
+  the client can decode; when opening a codec fails the next is tried. No MJPEG. Resolution: the
+  largest of the source's resolutions with the sensor aspect that fits the requested box (default
+  640x360), 10 fps.
+- Sharing: one upstream camera connection per (device, camera, codec, resolution, fps) shared by
+  all viewers, opened on the first and closed when the last viewer leaves. A joining viewer gets
+  the cached GOP first (picture within one frame time). Slow viewers never buffer: a full queue
+  (60 frames) is dropped and the viewer resumes at the next keyframe. Packet loss drops access
+  units until the next keyframe.
+- gRPC: each `LiveViewFrame` carries one Annex B access unit, the keyframe flag, parameter sets
+  on keyframes, RTP timestamp, resolution and camera. Client channel max message size 32 MB.
+- Client: FFmpeg decode on a background thread (low delay, slice threads), swscale to BGRA into a
+  new `WriteableBitmap`, swapped on the UI thread, old bitmaps disposed. Reconnect with backoff
+  1, 2, 4, 8, 10 s; permanent errors (unknown device, credentials, no common codec, certificate
+  changed) stop with the server's message. If FFmpeg cannot be loaded the panel shows
+  "Video decoder not available on this platform" (no fallback).
+- Fake mode replays recorded 10.0.0.48 video (H.265 or H.264) and reports two view areas for the
+  P3265-V and four sensors plus quad view for the P3727-PLE.
+- Measured on 10.0.0.48 at 640x360, 10 fps: first frame 0.3-0.6 s after the request through the
+  server; about 160-250 kbit/s for both H.264 and H.265 (scene dependent, keyframe every second).
 
 Device grid columns, default order:
 
@@ -495,6 +564,16 @@ param.cgi `Network.*` for the IPv6 address mode and for devices without network-
 address family OADM connects with last, then reports re-addressing with `ReportWarning`; it does not
 update the OADM device record. Decision table and verified device behavior: plugin `README.md`.
 
+## Applications (ACAP) plugin
+
+`plugins/Oadm.Plugins.Acap` (+ `.Client`), id `oadm.acap`, context menu "Applications (ACAP)...",
+dialog. Lists installed applications (query `listApplications`), start/stop/remove (remove asks for
+confirmation) and install/upgrade of an uploaded `.eap` on all selected devices. Uses the classic
+Application API (`application 1.x`: list/upload/control/config.cgi). Before uploading it reads the
+package manifest and refuses (nothing changed) on architecture mismatch, AXIS OS outside the
+package's range or below its manifest schema minimum, root apps on AXIS OS 12+, and downgrades
+without the explicit option. Decision table and research in `plugins/Oadm.Plugins.Acap/README.md`.
+
 # Settings
 
 Server-side in `Setting`. Goal 1 keys: `Polling.IntervalSeconds` (60, 5..86400),
@@ -541,7 +620,9 @@ LocalApplicationData): server address, grid column layout, bottom pane state.
 - UI is verified only with Avalonia headless tests rendering offscreen (screenshots via
   `OADM_SCREENSHOT_DIR`). Never automate the real desktop: no simulated clicks or drags, no
   capturing real windows on a developer machine.
-- Tests accompany every non-trivial class. VAPIX parsing tested from recorded fixtures.
+- Tests accompany every non-trivial class. VAPIX parsing tested from recorded fixtures; RTP
+  depacketizers from recorded RTP (`tests/Oadm.Core.Tests/Fixtures/LiveView`, re-record with
+  `RtpRecorderTests` and `OADM_RECORD_RTP_DIR`).
   Discovery and task engine tested with fakes, no network in unit tests.
 - Commits: conventional commits (`feat:`, `fix:`, `chore:`), small and focused.
 - This file is the single source of truth for the spec. When a decision changes, change it

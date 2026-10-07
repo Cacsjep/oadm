@@ -4,6 +4,7 @@
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:dev="using:Oadm.Client.Devices"
              xmlns:tasks="using:Oadm.Client.Tasks"
+             xmlns:lv="using:Oadm.Client.LiveView"
              xmlns:v1="using:Oadm.Contracts.V1"
              x:Class="Oadm.Client.Devices.DevicesView"
              x:DataType="dev:DevicesViewModel">
@@ -11,8 +12,10 @@
   <Grid x:Name="LayoutRoot" RowDefinitions="Auto,*,Auto,Auto">
     <TextBlock Grid.Row="0" Classes="pageTitle" Text="Devices" Margin="4,0,0,16" />
 
+    <!-- Device card, and the live view panel on its right while open (DevicesView.axaml.cs sizes the columns) -->
+    <Grid x:Name="DeviceRow" Grid.Row="1" ColumnDefinitions="*,Auto,0">
     <!-- Device card: toolbar, status line, grid -->
-    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" MinHeight="{StaticResource Oadm.DevicesCardMinHeight}">
+    <Border Grid.Column="0" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" MinHeight="{StaticResource Oadm.DevicesCardMinHeight}">
       <Grid RowDefinitions="Auto,Auto,*">
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
@@ -95,11 +98,17 @@
               <DataGridTemplateColumn Tag="icon" Width="44" CanUserResize="False" CanUserSort="False" CanUserReorder="False">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:DeviceRowViewModel">
+                    <!-- Click: live view (video devices only) -->
+                    <Button Classes="liveViewIcon" ToolTip.Tip="Live view"
+                            IsEnabled="{Binding Converter={x:Static lv:LiveViewSupport.IsSupportedConverter}}"
+                            Command="{Binding $parent[UserControl].((dev:DevicesViewModel)DataContext).LiveView.ToggleCommand}"
+                            CommandParameter="{Binding}">
                     <Panel Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Background="Transparent" ToolTip.Tip="{Binding CategoryTooltip}">
                       <ui:OadmIcon Data="{Binding CategoryIconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Width="18" Height="18" HorizontalAlignment="Left" VerticalAlignment="Top" />
                       <Ellipse Classes="statusDot" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                Classes.ok="{Binding IsStatusOk}" Classes.warn="{Binding IsStatusWarning}" Classes.error="{Binding IsStatusError}" />
                     </Panel>
+                    </Button>
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
@@ -162,6 +171,21 @@
         </Panel>
       </Grid>
     </Border>
+
+    <GridSplitter x:Name="LiveSplitter" Grid.Column="1" Classes="paneSplitter vertical" IsVisible="{Binding LiveView.IsOpen}" />
+    <c:LiveViewPanel x:Name="LivePanel" Grid.Column="2"
+                     IsOpen="{Binding LiveView.IsOpen}"
+                     Title="{Binding LiveView.Title}"
+                     Subtitle="{Binding LiveView.Subtitle}"
+                     StateText="{Binding LiveView.StateText}"
+                     StateKind="{Binding LiveView.StateKind}"
+                     DetailText="{Binding LiveView.DetailText}"
+                     Source="{Binding LiveView.Image}"
+                     CloseCommand="{Binding LiveView.CloseCommand}"
+                     Sources="{Binding LiveView.Sources}"
+                     HasSourceChoice="{Binding LiveView.HasSourceChoice}"
+                     SelectSourceCommand="{Binding LiveView.SelectSourceCommand}" />
+    </Grid>
 
     <!-- Drag to resize the tasks pane; hidden while the pane is collapsed (then a plain gap) -->
     <GridSplitter x:Name="PaneSplitter" Grid.Row="2" Classes="paneSplitter"
