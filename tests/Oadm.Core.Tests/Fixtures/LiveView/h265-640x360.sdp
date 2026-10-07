@@ -1,0 +1,23 @@
+v=0
+o=- 13295860384175017783 1 IN IP4 camera.invalid
+s=Session streamed with GStreamer
+i=rtsp-server
+t=0 0
+a=tool:GStreamer
+a=type:broadcast
+a=range:npt=now-
+a=control:rtsp://camera.invalid/axis-media/media.amp?videocodec=h265&resolution=640x360&fps=10&videokeyframeinterval=10&audio=0
+m=video 0 RTP/AVP 96
+c=IN IP4 0.0.0.0
+b=AS:20000
+a=rtpmap:96 H265/90000
+a=framerate:10
+a=fmtp:96 sprop-vps=QAEMAf//IUAAAAMAgAAAAwAAAwB7PAk=;sprop-sps=QgEBIUAAAAMAgAAAAwAAAwB7oAUCAXHy577kSk8qubgICAggBSZcADN/mAE=;sprop-pps=RAHAJTwEbJA=;profile-id=1;tier-flag=1;level-id=123
+a=ts-refclk:local
+a=mediaclk:sender
+a=ssrc:2141150915 cname:user1938632722@host-45877925
+a=x-onvif-track:VIDEO000
+a=recvonly
+a=control:rtsp://camera.invalid/axis-media/media.amp/stream=0?videocodec=h265&resolution=640x360&fps=10&videokeyframeinterval=10&audio=0
+a=transform:1.000000,0.000000,0.000000;0.000000,1.000000,0.000000;0.000000,0.000000,1.000000
+a=x-sensor-transform:-1.000000,0.000000,0.000000;0.000000,-1.000000,0.000000;0.000000,0.000000,1.000000

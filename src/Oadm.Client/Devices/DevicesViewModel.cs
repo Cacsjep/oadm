@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Oadm.Client.Api;
 using Oadm.Client.Dialogs;
 using Oadm.Client.Discovery;
+using Oadm.Client.LiveView;
 using Oadm.Client.Plugins;
 using Oadm.Client.Tasks;
 using Oadm.Contracts.V1;
@@ -51,6 +52,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         Func<AddDevicesMode, AddDevicesWizardViewModel> wizardFactory,
         ColumnLayoutViewModel columns,
         TasksViewModel tasks,
+        LiveViewViewModel liveView,
         ILogger<DevicesViewModel> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -65,6 +67,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         _logger = logger;
         Columns = columns;
         Tasks = tasks;
+        LiveView = liveView;
 
         store.Devices.CollectionChanged += OnDevicesChanged;
         store.Changed += (_, _) => catalog.RequestRefresh();
@@ -80,6 +83,9 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     public ColumnLayoutViewModel Columns { get; }
     public TasksViewModel Tasks { get; }
+
+    /// <summary>Live view side panel, opened from the device icon.</summary>
+    public LiveViewViewModel LiveView { get; }
 
     /// <summary>Rows shown in the grid (search applied). Sorting is done by the grid.</summary>
     public ObservableCollection<DeviceRowViewModel> FilteredDevices { get; } = [];
@@ -223,6 +229,10 @@ public sealed partial class DevicesViewModel : ObservableObject
                 {
                     FilteredDevices.Remove(row);
                     SelectedDevices.Remove(row);
+                    if (LiveView.Device?.Id == row.Id)
+                    {
+                        LiveView.CloseCommand.Execute(null);
+                    }
                 }
 
                 break;

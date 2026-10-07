@@ -7,6 +7,7 @@ using Oadm.Client.Devices;
 using Oadm.Client.Dialogs;
 using Oadm.Client.Discovery;
 using Oadm.Client.Infrastructure;
+using Oadm.Client.LiveView;
 using Oadm.Client.Plugins;
 using Oadm.Client.Tasks;
 using Oadm.Contracts.V1;
@@ -77,9 +78,10 @@ internal sealed class DevicesFixture : IDisposable
         Catalog = new TaskPluginCatalog(Api, Ui, NullLogger<TaskPluginCatalog>.Instance) { DebounceDelay = TimeSpan.FromHours(1) };
         Runner = new TaskPluginRunner(Api, Registry, Dialogs, NullLogger<TaskPluginRunner>.Instance);
         TasksVm = new TasksViewModel(Tasks, Store, Api, Dialogs, Settings, NullLogger<TasksViewModel>.Instance);
+        LiveView = new LiveViewViewModel(Api, Substitute.For<IVideoDecoderFactory>(), Ui, NullLogger<LiveViewViewModel>.Instance);
         Devices = new DevicesViewModel(Store, Catalog, Runner, Api, Dialogs, Launcher,
             mode => new AddDevicesWizardViewModel(Api, Ui, NullLogger<AddDevicesWizardViewModel>.Instance, mode),
-            new ColumnLayoutViewModel(Settings), TasksVm, NullLogger<DevicesViewModel>.Instance);
+            new ColumnLayoutViewModel(Settings), TasksVm, LiveView, NullLogger<DevicesViewModel>.Instance);
     }
 
     public IOadmApi Api { get; }
@@ -93,6 +95,7 @@ internal sealed class DevicesFixture : IDisposable
     public TaskPluginCatalog Catalog { get; }
     public TaskPluginRunner Runner { get; }
     public TasksViewModel TasksVm { get; }
+    public LiveViewViewModel LiveView { get; }
     public DevicesViewModel Devices { get; }
 
     public void SeedDevices(params Device[] devices) => Store.Reset(devices);
