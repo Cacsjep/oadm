@@ -8,7 +8,11 @@ namespace Oadm.Plugins.Network.Tests;
 
 public sealed class TaskPluginTests
 {
-    private static readonly ReachabilityOptions Fast = new(TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(60), TimeSpan.FromSeconds(1));
+    private static readonly ReachabilityOptions Fast =
+        new(TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(60), TimeSpan.FromSeconds(1))
+        {
+            NewAddressTimeout = TimeSpan.FromMilliseconds(60), // never wait the real 90 s for a fake device
+        };
 
     private static NetworkSettingsTaskPlugin Plugin(IAddressProbe? probe = null) => new(Fast, TimeProvider.System, probe ?? new FakeAddressProbe());
 

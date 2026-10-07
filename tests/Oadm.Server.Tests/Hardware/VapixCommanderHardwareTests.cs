@@ -78,7 +78,7 @@ public sealed class VapixCommanderHardwareTests
             Assert.Null(rollout.Error);
             var task = await TestHelpers.WaitForTaskAsync(host, Assert.Single(rollout.TaskIds).ToString(), TimeSpan.FromSeconds(60));
             Assert.Equal(Proto.TaskState.Done, task.State);
-            Assert.Equal(["Check compatibility", "Read brand parameters", "Read basic device information"], task.Steps.Select(s => s.Name));
+            Assert.Equal(["Check compatibility", "Read brand parameters", "Read basic device information", "Completed"], task.Steps.Select(s => s.Name));
             Assert.All(task.Steps, s => Assert.Equal(Proto.TaskStepState.Done, s.State));
             Assert.StartsWith("Product: ", task.Steps[1].Detail, StringComparison.Ordinal);
         }
