@@ -18,6 +18,37 @@ dotnet test Oadm.sln                   # unit tests, no network needed
 
 The server has no authentication yet. Run it on a trusted LAN only.
 
+## Scripts
+
+Every script exists as `scripts/<name>.sh` (Linux, macOS, Git Bash) and `scripts/<name>.ps1`
+(Windows PowerShell). They find a .NET 10 SDK on PATH, in `DOTNET_ROOT`, or in the per-user
+install folder, and pass extra arguments through.
+
+| Script | What it does |
+|---|---|
+| `build` | Build the whole solution |
+| `build-server` | Build the server and bundled plugins |
+| `build-client` | Build the client |
+| `run-server` | Build and run the server on `http://0.0.0.0:5080` |
+| `run-client` | Run the client. `run-client --fake` runs on sample data without a server |
+| `run-dev` | Start the server in the background, then the client; closing the client stops the server |
+| `test` | Unit tests, no camera needed (what CI runs) |
+| `test-hardware` | Hardware tests against the cameras in `dev-cameras.yaml` |
+| `publish-server` | Self-contained server plus plugins in `artifacts/publish/server/<rid>` |
+| `publish-client` | Self-contained client in `artifacts/publish/client/<rid>` |
+| `clean` | Remove `bin`, `obj` and `artifacts` |
+
+Set `CONFIGURATION=Release` for release builds and `RID=linux-x64`, `osx-arm64`, `win-x64`
+to publish for another platform.
+
+```sh
+./scripts/run-dev.sh                 # Linux / macOS / Git Bash
+```
+
+```powershell
+.\scripts\run-dev.ps1                # Windows PowerShell
+```
+
 ## Developer cameras (`dev-cameras.yaml`)
 
 Integration tests and local tooling read the Axis devices available to you from
