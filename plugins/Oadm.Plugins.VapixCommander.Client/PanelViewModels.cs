@@ -10,8 +10,8 @@ using Oadm.Sdk.Devices;
 namespace Oadm.Plugins.VapixCommander.Client;
 
 /// <summary>
-/// A node of the library tree: a group ("Built-in", "Saved"), a category ("Video · 12") or a command. Write and dangerous
-/// are not shown as badges in the tree; the tooltip, the rollout set (Kind) and the run confirmation say it.
+/// A node of the library tree: a group ("Built-in", "Saved"), a category ("Video") or a command. No badges in the tree
+/// (no counts, no write / dangerous): the tooltip, the rollout set (Kind) and the run confirmation say it.
 /// </summary>
 public sealed partial class LibraryNodeViewModel : ObservableObject
 {
@@ -44,10 +44,8 @@ public sealed partial class LibraryNodeViewModel : ObservableObject
             ? (Item.Command.Dangerous ? "Write · dangerous" : "Write") + (string.IsNullOrEmpty(Item.Command.Description) ? string.Empty : Environment.NewLine + Item.Command.Description)
             : Item.Command.Description;
 
-    /// <summary>Commands below this node (for group titles).</summary>
+    /// <summary>Commands below this node.</summary>
     public int CommandCount => IsCommand ? 1 : Children.Sum(c => c.CommandCount);
-
-    public string CountText => CommandCount.ToString(CultureInfo.InvariantCulture);
 
     [ObservableProperty]
     public partial bool IsExpanded { get; set; }
@@ -157,9 +155,22 @@ public sealed partial class TargetDeviceViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
 
-    public ObservableCollection<CompatibilityChip> Compatibility { get; } = [];
+    /// <summary>Compatibility of every rollout command, in rollout order (empty without commands).</summary>
+    public IReadOnlyList<CompatibilityChip> Compatibility { get; private set; } = [];
 
-    public bool AllCompatible => Compatibility.Count > 0 && Compatibility.All(c => c.IsOk);
+    public bool AllCompatible { get; private set; }
+
+    public bool HasCompatibility => Compatibility.Count > 0;
+
+    /// <summary>One chip per device: "Compatible", else the first problem ("Missing API x (+1 more)").</summary>
+    public string? CompatibilityText { get; private set; }
+
+    /// <summary>Every command with its compatibility, one per line (tooltip of the chip).</summary>
+    public string? CompatibilityTooltip => HasCompatibility ? string.Join(Environment.NewLine, Compatibility.Select(c => c.Line)) : null;
+
+    public bool IsCompatibilityError { get; private set; }
+
+    public bool IsCompatibilityWarning => HasCompatibility && !AllCompatible && !IsCompatibilityError;
 
     public void Update(IDeviceInfo device)
     {
@@ -167,23 +178,45 @@ public sealed partial class TargetDeviceViewModel : ObservableObject
         OnPropertyChanged(string.Empty);
     }
 
-    public void SetCompatibility(IEnumerable<CompatibilityChip> chips)
+    /// <summary>Sets the compatibility of the rollout commands (computed by the page from the cached API list).</summary>
+    public void SetCompatibility(IReadOnlyList<CompatibilityChip> chips)
     {
-        Compatibility.Clear();
-        foreach (var chip in chips)
+        ArgumentNullException.ThrowIfNull(chips);
+        if (chips.Count == 0 && Compatibility.Count == 0)
         {
-            Compatibility.Add(chip);
+            return;
         }
 
-        OnPropertyChanged(nameof(AllCompatible));
+        Compatibility = chips;
+        CompatibilityChip? firstProblem = null;
+        var problems = 0;
+        var errors = false;
+        foreach (var chip in chips)
+        {
+            if (!chip.IsOk)
+            {
+                firstProblem ??= chip;
+                problems++;
+                errors |= chip.IsError;
+            }
+        }
+
+        AllCompatible = chips.Count > 0 && problems == 0;
+        IsCompatibilityError = errors;
+        CompatibilityText = chips.Count == 0 ? null
+            : firstProblem is null ? "Compatible"
+            : problems == 1 ? firstProblem.Line
+            : string.Create(CultureInfo.InvariantCulture, $"{firstProblem.Line} (+{problems - 1} more)");
+        OnPropertyChanged(string.Empty);
     }
 
-    public bool Matches(string? search) =>
-        string.IsNullOrWhiteSpace(search)
-        || Device.Address.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)
-        || (Device.Model?.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase) ?? false)
-        || Device.Serial.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase)
-        || (Device.HostName?.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase) ?? false);
+    /// <summary>Address, model, serial or host name contains <paramref name="search"/> (trimmed by the caller; empty matches all).</summary>
+    public bool Matches(string search) =>
+        search.Length == 0
+        || Device.Address.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || (Device.Model?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)
+        || Device.Serial.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || (Device.HostName?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false);
 }
 
 /// <summary>The Postman-like result of "Try on one device": status, duration, interpreted result, headers and body.</summary>

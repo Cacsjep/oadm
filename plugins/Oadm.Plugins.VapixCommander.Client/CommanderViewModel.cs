@@ -1,5 +1,8 @@
+using System.Buffers.Binary;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -14,15 +17,15 @@ namespace Oadm.Plugins.VapixCommander.Client;
 /// The VAPIX Commander page: library tree (left), rollout set or raw editor with the Try result (middle), target
 /// devices with compatibility per command (right) and the Run bar (bottom). Everything runs on the server.
 /// </summary>
-#pragma warning disable CA1001 // The token source only cancels superseded compatibility checks; the page lives as long as the client.
 public sealed partial class CommanderViewModel : ObservableObject
-#pragma warning restore CA1001
 {
     private readonly ICommanderBackend _backend;
     private readonly ICorePluginClientContext _host;
     private List<CommandListItem> _library = [];
     private List<CommandListItem> _saved = [];
-    private CancellationTokenSource? _compatibilityCts;
+    private Dictionary<Guid, TargetDeviceViewModel> _targetsById = [];
+    private int _selectedCount;
+    private bool _bulkSelection;
 
     public CommanderViewModel(ICommanderBackend backend, ICorePluginClientContext host)
     {
@@ -34,13 +37,7 @@ public sealed partial class CommanderViewModel : ObservableObject
         RolloutItems.CollectionChanged += (_, _) => OnRolloutChanged();
         host.DevicesChanged += (_, _) => SyncDevices();
         SyncDevices();
-        foreach (var device in host.SelectedDevices)
-        {
-            if (Targets.FirstOrDefault(t => t.Id == device.Id) is { } target)
-            {
-                target.IsSelected = true;
-            }
-        }
+        UseDevicesSelection();
     }
 
     /// <summary>Set by the view: export/import file pickers.</summary>
@@ -54,7 +51,7 @@ public sealed partial class CommanderViewModel : ObservableObject
     public partial string? LibrarySearch { get; set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(AddCommandCommand), nameof(DeleteSavedCommand), nameof(ExportSelectedCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteSavedCommand), nameof(ExportSavedCommand))]
     public partial LibraryNodeViewModel? SelectedNode { get; set; }
 
     [ObservableProperty]
@@ -99,16 +96,32 @@ public sealed partial class CommanderViewModel : ObservableObject
 
     // ---------------------------------------------------------------- targets
 
-    public ObservableCollection<TargetDeviceViewModel> Targets { get; } = [];
+    // A site can have thousands of devices: the lists are replaced as a whole (one reset, no per-item events), the
+    // selection is counted incrementally and bulk changes notify once; the view virtualizes the rows.
 
-    public ObservableCollection<TargetDeviceViewModel> VisibleTargets { get; } = [];
+    /// <summary>Every managed device, sorted by address.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<TargetDeviceViewModel> Targets { get; private set; } = [];
+
+    /// <summary>The devices matching <see cref="TargetSearch"/>, in address order.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<TargetDeviceViewModel> VisibleTargets { get; private set; } = [];
 
     [ObservableProperty]
     public partial string? TargetSearch { get; set; }
 
-    public string TargetSummary => string.Create(CultureInfo.InvariantCulture, $"{SelectedTargets.Count} of {Targets.Count} selected");
+    public string TargetSummary => string.Create(CultureInfo.InvariantCulture, $"{_selectedCount:N0} of {Targets.Count:N0} selected");
 
     public IReadOnlyList<TargetDeviceViewModel> SelectedTargets => [.. Targets.Where(t => t.IsSelected)];
+
+    public int SelectedTargetCount => _selectedCount;
+
+    /// <summary>"4,812 compatible · 188 not compatible · 0 API list not read" over all devices; null without commands.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCompatibilitySummary))]
+    public partial string? CompatibilitySummary { get; private set; }
+
+    public bool HasCompatibilitySummary => CompatibilitySummary is not null;
 
     /// <summary>Device for "Send" (Try); defaults to the first selected target.</summary>
     [ObservableProperty]
@@ -137,8 +150,8 @@ public sealed partial class CommanderViewModel : ObservableObject
         get
         {
             var commands = RolloutItems.Count;
-            var devices = SelectedTargets.Count;
-            var text = string.Create(CultureInfo.InvariantCulture, $"{commands} {(commands == 1 ? "command" : "commands")} × {devices} {(devices == 1 ? "device" : "devices")}");
+            var devices = _selectedCount;
+            var text = string.Create(CultureInfo.InvariantCulture, $"{commands} {(commands == 1 ? "command" : "commands")} × {devices:N0} {(devices == 1 ? "device" : "devices")}");
             var writes = RolloutItems.Count(i => i.Writes);
             var dangerous = RolloutItems.Count(i => i.Dangerous);
             if (writes > 0)
@@ -155,7 +168,7 @@ public sealed partial class CommanderViewModel : ObservableObject
         }
     }
 
-    public string RunText => string.Create(CultureInfo.InvariantCulture, $"Run on {SelectedTargets.Count} {(SelectedTargets.Count == 1 ? "device" : "devices")}");
+    public string RunText => string.Create(CultureInfo.InvariantCulture, $"Run on {_selectedCount:N0} {(_selectedCount == 1 ? "device" : "devices")}");
 
     /// <summary>Result of the last action (run started, saved, error); <see cref="IsStatusError"/> colors the chip.</summary>
     [ObservableProperty]
@@ -215,16 +228,28 @@ public sealed partial class CommanderViewModel : ObservableObject
 
     // ================================================================ library commands
 
-    [RelayCommand(CanExecute = nameof(CanAddCommand))]
-    private void AddCommand()
+    /// <summary>
+    /// A click on a library node: a command is added to the rollout set at once, a group only expands or collapses.
+    /// Null means the selected node (Enter in the tree).
+    /// </summary>
+    [RelayCommand]
+    private void Activate(LibraryNodeViewModel? node)
     {
-        if (SelectedNode?.Item is { } item)
+        node ??= SelectedNode;
+        if (node is null)
+        {
+            return;
+        }
+
+        if (node.Item is { } item)
         {
             Add(item);
         }
+        else
+        {
+            node.IsExpanded = !node.IsExpanded;
+        }
     }
-
-    private bool CanAddCommand() => SelectedNode?.IsCommand == true;
 
     /// <summary>Adds a library or saved command to the rollout set and selects it.</summary>
     public RolloutCommandViewModel Add(CommandListItem item)
@@ -236,10 +261,11 @@ public sealed partial class CommanderViewModel : ObservableObject
         return vm;
     }
 
+    /// <summary>Deletes a saved command (the given node, else the selected one) for all clients, after a confirmation.</summary>
     [RelayCommand(CanExecute = nameof(CanDeleteSaved))]
-    private async Task DeleteSavedAsync()
+    private async Task DeleteSavedAsync(LibraryNodeViewModel? node)
     {
-        if (SelectedNode?.Item is not { Source: CommandSources.Saved } item)
+        if ((node ?? SelectedNode)?.Item is not { Source: CommandSources.Saved } item)
         {
             return;
         }
@@ -254,13 +280,12 @@ public sealed partial class CommanderViewModel : ObservableObject
         await ReloadSavedAsync().ConfigureAwait(true);
     }
 
-    private bool CanDeleteSaved() => SelectedNode?.IsSaved == true;
+    private bool CanDeleteSaved(LibraryNodeViewModel? node) => (node ?? SelectedNode)?.IsSaved == true;
 
+    /// <summary>Exports one saved command (the given node, else the selected one) as a library file.</summary>
     [RelayCommand(CanExecute = nameof(CanDeleteSaved))]
-    private Task ExportSelectedAsync() => ExportAsync([SelectedNode!.Item!.Command.Id]);
-
-    [RelayCommand]
-    private Task ExportAllAsync() => ExportAsync([]);
+    private Task ExportSavedAsync(LibraryNodeViewModel? node) =>
+        (node ?? SelectedNode)?.Item is { Source: CommandSources.Saved } item ? ExportAsync([item.Command.Id]) : Task.CompletedTask;
 
     private async Task ExportAsync(IReadOnlyList<string> ids)
     {
@@ -324,34 +349,58 @@ public sealed partial class CommanderViewModel : ObservableObject
 
     // ================================================================ rollout set
 
-    [RelayCommand(CanExecute = nameof(CanMoveUp))]
-    private void MoveUp() => Move(-1);
+    // Per-row icon buttons pass their row; the keyboard (Delete, Ctrl+Up, Ctrl+Down) passes null = the selected row.
 
-    private bool CanMoveUp() => SelectedRolloutItem is { } item && RolloutItems.IndexOf(item) > 0;
+    [RelayCommand(CanExecute = nameof(CanMoveUp))]
+    private void MoveUp(RolloutCommandViewModel? item) => Move(item ?? SelectedRolloutItem, -1);
+
+    private bool CanMoveUp(RolloutCommandViewModel? item) => (item ?? SelectedRolloutItem) is { } row && RolloutItems.IndexOf(row) > 0;
 
     [RelayCommand(CanExecute = nameof(CanMoveDown))]
-    private void MoveDown() => Move(1);
+    private void MoveDown(RolloutCommandViewModel? item) => Move(item ?? SelectedRolloutItem, 1);
 
-    private bool CanMoveDown() => SelectedRolloutItem is { } item && RolloutItems.IndexOf(item) < RolloutItems.Count - 1;
-
-    [RelayCommand(CanExecute = nameof(HasSelectedRolloutItem))]
-    private void Remove()
+    private bool CanMoveDown(RolloutCommandViewModel? item)
     {
-        if (SelectedRolloutItem is not { } item)
+        var index = (item ?? SelectedRolloutItem) is { } row ? RolloutItems.IndexOf(row) : -1;
+        return index >= 0 && index < RolloutItems.Count - 1;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanUseRow))]
+    private void Remove(RolloutCommandViewModel? item)
+    {
+        if ((item ?? SelectedRolloutItem) is not { } row)
         {
             return;
         }
 
-        var index = RolloutItems.IndexOf(item);
-        RolloutItems.Remove(item);
-        SelectedRolloutItem = RolloutItems.Count == 0 ? null : RolloutItems[Math.Min(index, RolloutItems.Count - 1)];
+        var index = RolloutItems.IndexOf(row);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var wasSelected = row == SelectedRolloutItem;
+        var selected = SelectedRolloutItem;
+        RolloutItems.Remove(row);
+        if (wasSelected)
+        {
+            IsPresetOpen = false;
+            SelectedRolloutItem = RolloutItems.Count == 0 ? null : RolloutItems[Math.Min(index, RolloutItems.Count - 1)];
+        }
+        else
+        {
+            SelectedRolloutItem = selected;
+        }
     }
 
-    [RelayCommand]
+    private bool CanUseRow(RolloutCommandViewModel? item) => (item ?? SelectedRolloutItem) is not null;
+
+    [RelayCommand(CanExecute = nameof(HasRolloutItems))]
     private void Clear()
     {
         RolloutItems.Clear();
         SelectedRolloutItem = null;
+        IsPresetOpen = false;
     }
 
     [RelayCommand]
@@ -360,10 +409,17 @@ public sealed partial class CommanderViewModel : ObservableObject
     [RelayCommand]
     private void ShowRaw() => IsRawTab = true;
 
-    [RelayCommand(CanExecute = nameof(HasSelectedRolloutItem))]
-    private void SavePreset()
+    /// <summary>Opens "Save with values" for the row (selects it, so its field form shows the values being saved).</summary>
+    [RelayCommand(CanExecute = nameof(CanUseRow))]
+    private void SavePreset(RolloutCommandViewModel? item)
     {
-        PresetName = SelectedRolloutItem!.Name;
+        if ((item ?? SelectedRolloutItem) is not { } row)
+        {
+            return;
+        }
+
+        SelectedRolloutItem = row;
+        PresetName = row.Name;
         IsPresetOpen = true;
     }
 
@@ -437,22 +493,24 @@ public sealed partial class CommanderViewModel : ObservableObject
         }
     }
 
-    private void Move(int delta)
+    private void Move(RolloutCommandViewModel? item, int delta)
     {
-        if (SelectedRolloutItem is not { } item)
+        if (item is null)
         {
             return;
         }
 
         var index = RolloutItems.IndexOf(item);
         var target = index + delta;
-        if (target < 0 || target >= RolloutItems.Count)
+        if (index < 0 || target < 0 || target >= RolloutItems.Count)
         {
             return;
         }
 
+        // The grid may drop its selection when rows move; keep the selected row selected.
+        var selected = SelectedRolloutItem;
         RolloutItems.Move(index, target);
-        SelectedRolloutItem = item;
+        SelectedRolloutItem = selected;
     }
 
     private void OnRolloutChanged()
@@ -466,24 +524,28 @@ public sealed partial class CommanderViewModel : ObservableObject
         RunSummaryChanged();
         MoveUpCommand.NotifyCanExecuteChanged();
         MoveDownCommand.NotifyCanExecuteChanged();
-        _ = RefreshCompatibilityAsync();
+        ClearCommand.NotifyCanExecuteChanged();
+        RefreshCompatibility();
     }
 
     // ================================================================ targets
 
+    /// <summary>Mirrors the host's device list: existing rows are kept (selection, compatibility), one list reset.</summary>
     private void SyncDevices()
     {
         var devices = _host.Devices;
-        foreach (var stale in Targets.Where(t => devices.All(d => d.Id != t.Id)).ToList())
-        {
-            Targets.Remove(stale);
-        }
-
+        var byId = new Dictionary<Guid, TargetDeviceViewModel>(devices.Count);
         foreach (var device in devices)
         {
-            if (Targets.FirstOrDefault(t => t.Id == device.Id) is { } existing)
+            if (byId.ContainsKey(device.Id))
+            {
+                continue;
+            }
+
+            if (_targetsById.TryGetValue(device.Id, out var existing))
             {
                 existing.Update(device);
+                byId[device.Id] = existing;
             }
             else
             {
@@ -492,121 +554,155 @@ public sealed partial class CommanderViewModel : ObservableObject
                 {
                     if (e.PropertyName == nameof(TargetDeviceViewModel.IsSelected))
                     {
-                        OnTargetSelectionChanged();
+                        OnTargetSelected(target);
                     }
                 };
-                Targets.Add(target);
+                byId[device.Id] = target;
             }
         }
 
+        _targetsById = byId;
+        // IPv4 addresses in numeric order (10.0.0.9 before 10.0.0.10), host names after them.
+        List<TargetDeviceViewModel> targets =
+        [
+            .. byId.Values
+                .Select(t => (Target: t, Ip: IPAddress.TryParse(t.Address, out var ip) && ip.AddressFamily == AddressFamily.InterNetwork
+                    ? BinaryPrimitives.ReadUInt32BigEndian(ip.GetAddressBytes())
+                    : (uint?)null))
+                .OrderBy(x => x.Ip is null)
+                .ThenBy(x => x.Ip)
+                .ThenBy(x => x.Target.Address, StringComparer.OrdinalIgnoreCase)
+                .Select(x => x.Target),
+        ];
+        Targets = targets;
+        _selectedCount = targets.Count(t => t.IsSelected);
         RefreshVisibleTargets();
         OnTargetSelectionChanged();
-        _ = RefreshCompatibilityAsync();
+        RefreshCompatibility();
     }
 
     private void RefreshVisibleTargets()
     {
-        VisibleTargets.Clear();
-        foreach (var target in Targets.Where(t => t.Matches(TargetSearch)).OrderBy(t => t.Address, StringComparer.OrdinalIgnoreCase))
+        var search = TargetSearch?.Trim() ?? string.Empty;
+        VisibleTargets = search.Length == 0 ? Targets : [.. Targets.Where(t => t.Matches(search))];
+    }
+
+    private void OnTargetSelected(TargetDeviceViewModel target)
+    {
+        if (_bulkSelection)
         {
-            VisibleTargets.Add(target);
+            return;
         }
+
+        _selectedCount += target.IsSelected ? 1 : -1;
+        OnTargetSelectionChanged();
+    }
+
+    /// <summary>Sets the selection of many devices with one notification at the end (O(n), no per-device page work).</summary>
+    private void SelectTargets(IEnumerable<TargetDeviceViewModel> targets, Func<TargetDeviceViewModel, bool> selected)
+    {
+        _bulkSelection = true;
+        try
+        {
+            foreach (var target in targets)
+            {
+                target.IsSelected = selected(target);
+            }
+        }
+        finally
+        {
+            _bulkSelection = false;
+        }
+
+        _selectedCount = Targets.Count(t => t.IsSelected);
+        OnTargetSelectionChanged();
     }
 
     private void OnTargetSelectionChanged()
     {
-        if (TryDevice is null || !Targets.Contains(TryDevice))
+        if (TryDevice is null || !_targetsById.ContainsKey(TryDevice.Id))
         {
-            var selected = SelectedTargets;
-            TryDevice = selected.Count > 0 ? selected[0] : Targets.FirstOrDefault();
+            TryDevice = Targets.FirstOrDefault(t => t.IsSelected) ?? (Targets.Count > 0 ? Targets[0] : null);
         }
 
         OnPropertyChanged(nameof(TargetSummary));
-        OnPropertyChanged(nameof(SelectedTargets));
+        OnPropertyChanged(nameof(SelectedTargetCount));
         RunSummaryChanged();
     }
 
+    /// <summary>Selects every device matching the search.</summary>
     [RelayCommand]
-    private void SelectAllTargets()
-    {
-        foreach (var target in VisibleTargets)
-        {
-            target.IsSelected = true;
-        }
-    }
+    private void SelectAllTargets() => SelectTargets(VisibleTargets, _ => true);
 
     [RelayCommand]
-    private void ClearTargets()
-    {
-        foreach (var target in Targets)
-        {
-            target.IsSelected = false;
-        }
-    }
+    private void ClearTargets() => SelectTargets(Targets, _ => false);
 
     /// <summary>Selects exactly the devices selected on the Devices page.</summary>
     [RelayCommand]
     private void UseDevicesSelection()
     {
         var selected = _host.SelectedDevices.Select(d => d.Id).ToHashSet();
-        foreach (var target in Targets)
-        {
-            target.IsSelected = selected.Contains(target.Id);
-        }
+        SelectTargets(Targets, t => selected.Contains(t.Id));
     }
 
     [RelayCommand]
-    private void SelectCompatibleTargets()
-    {
-        foreach (var target in Targets)
-        {
-            target.IsSelected = target.AllCompatible;
-        }
-    }
+    private void SelectCompatibleTargets() => SelectTargets(Targets, t => t.AllCompatible);
 
-    /// <summary>Asks the server for the compatibility of every rollout command on every device (cached API lists).</summary>
-    public async Task RefreshCompatibilityAsync()
+    /// <summary>
+    /// Compatibility of every rollout command on every device, computed here from the cached API list of each device
+    /// (no request per device; the server checks a fresh list again before a write). Also builds the summary.
+    /// </summary>
+    public void RefreshCompatibility()
     {
-        _compatibilityCts?.Cancel();
-        _compatibilityCts?.Dispose();
-        var cts = _compatibilityCts = new CancellationTokenSource();
-        var items = RolloutItems.ToList();
-        if (items.Count == 0 || Targets.Count == 0)
+        var commands = RolloutItems.Select(i => (i.Name, i.Command)).ToList();
+        if (commands.Count == 0)
         {
             foreach (var target in Targets)
             {
                 target.SetCompatibility([]);
             }
 
+            CompatibilitySummary = null;
             return;
         }
 
-        try
+        int compatible = 0, notCompatible = 0, unknown = 0;
+        foreach (var target in Targets)
         {
-            var reply = await _backend.CheckCompatibilityAsync(
-                new CompatibilityRequest { DeviceIds = [.. Targets.Select(t => t.Id)], Commands = [.. items.Select(i => i.Ref)] },
-                cts.Token).ConfigureAwait(true);
-            if (cts.IsCancellationRequested)
+            var chips = new CompatibilityChip[commands.Count];
+            for (var i = 0; i < commands.Count; i++)
             {
-                return;
+                var result = Compatibility.Check(commands[i].Command, target.Device.Apis, target.Device.HasVideo);
+                chips[i] = new CompatibilityChip(commands[i].Name, result.State, result.Text);
             }
 
-            foreach (var device in reply.Devices)
+            target.SetCompatibility(chips);
+            if (target.AllCompatible)
             {
-                if (Targets.FirstOrDefault(t => t.Id == device.DeviceId) is { } target)
-                {
-                    target.SetCompatibility(device.Commands.Select((c, i) => new CompatibilityChip(i < items.Count ? items[i].Name : "?", c.State, c.Text)));
-                }
+                compatible++;
+            }
+            else if (target.IsCompatibilityError)
+            {
+                notCompatible++;
+            }
+            else
+            {
+                unknown++;
             }
         }
-        catch (OperationCanceledException)
+
+        var parts = new List<string> { string.Create(CultureInfo.InvariantCulture, $"{compatible:N0} compatible") };
+        if (notCompatible > 0)
         {
-            // superseded
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{notCompatible:N0} not compatible"));
         }
-        catch (Exception ex)
+
+        if (unknown > 0)
         {
-            SetStatus("Could not check compatibility: " + ex.Message, error: true);
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{unknown:N0} not checked"));
         }
+
+        CompatibilitySummary = string.Join(" · ", parts);
     }
 
     // ================================================================ try
