@@ -1,0 +1,24 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:chrome="using:Avalonia.Controls.Chrome"
+        xmlns:dlg="using:Oadm.Client.Dialogs"
+        x:Class="Oadm.Client.Dialogs.MessageWindow"
+        x:DataType="dlg:MessageDialogModel"
+        Title="{Binding Title}"
+        Width="480" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="{StaticResource Oadm.TitleBarHeight}">
+  <StackPanel>
+    <Border Height="{StaticResource Oadm.TitleBarHeight}" Padding="24,0" chrome:WindowDecorationProperties.ElementRole="TitleBar">
+      <TextBlock Classes="appName" Text="{Binding Title}" VerticalAlignment="Center" />
+    </Border>
+    <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Margin="24,4,24,24" />
+    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="24,0,24,20">
+      <Button Classes="secondary" Content="{Binding CancelText}" IsVisible="{Binding ShowCancel}" Click="OnCancel" IsCancel="True" />
+      <Button Classes="primary" Content="{Binding ConfirmText}" Click="OnConfirm" IsDefault="True" />
+    </StackPanel>
+  </StackPanel>
+</Window>

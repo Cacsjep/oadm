@@ -1,0 +1,61 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="using:Oadm.Client.Controls"
+             xmlns:tasks="using:Oadm.Client.Tasks"
+             x:Class="Oadm.Client.Tasks.TasksPaneView"
+             x:DataType="tasks:TasksViewModel">
+  <!-- Collapsible bottom card with Tasks and Log tabs -->
+  <Border Classes="card" Padding="16,12,16,12">
+    <Grid RowDefinitions="Auto,Auto">
+      <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+          <RadioButton Classes="tab" GroupName="bottomPane" IsChecked="{Binding IsTasksTab}" Command="{Binding ShowTasksCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="Tasks" VerticalAlignment="Center" />
+              <Border Classes="badge" IsVisible="{Binding HasActive}">
+                <TextBlock Text="{Binding ActiveCountText}" />
+              </Border>
+            </StackPanel>
+          </RadioButton>
+          <RadioButton Classes="tab" GroupName="bottomPane" IsChecked="{Binding IsLogTab}" Command="{Binding ShowLogCommand}">
+            <TextBlock Text="Log" VerticalAlignment="Center" />
+          </RadioButton>
+        </StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2">
+          <StackPanel Orientation="Horizontal" Spacing="2" IsVisible="{Binding IsTasksTab}">
+            <Button Classes="toolbar" Command="{Binding DetailsCommand}" ToolTip.Tip="Show the result per device">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <c:OadmIcon Data="{StaticResource Icon.details}" />
+                <TextBlock Text="Details" />
+              </StackPanel>
+            </Button>
+            <Button Classes="toolbar" Command="{Binding CancelCommand}" ToolTip.Tip="Cancel the running task">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <c:OadmIcon Data="{StaticResource Icon.cancel}" />
+                <TextBlock Text="Cancel" />
+              </StackPanel>
+            </Button>
+            <Button Classes="toolbar" Command="{Binding DeleteCommand}" ToolTip.Tip="Delete the finished task from the history">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <c:OadmIcon Data="{StaticResource Icon.remove}" />
+                <TextBlock Text="Delete" />
+              </StackPanel>
+            </Button>
+            <Border Classes="vseparator" />
+          </StackPanel>
+          <Button Classes="toolbar iconOnly" Command="{Binding ToggleExpandedCommand}" ToolTip.Tip="Show or hide the pane">
+            <Panel>
+              <c:OadmIcon Data="{StaticResource Icon.chevronDown}" IsVisible="{Binding IsExpanded}" />
+              <c:OadmIcon Data="{StaticResource Icon.chevronUp}" IsVisible="{Binding !IsExpanded}" />
+            </Panel>
+          </Button>
+        </StackPanel>
+      </Grid>
+
+      <Panel Grid.Row="1" Height="{StaticResource Oadm.BottomPaneHeight}" Margin="0,8,0,0" IsVisible="{Binding IsExpanded}">
+        <tasks:TasksGridView IsVisible="{Binding IsTasksTab}" />
+        <tasks:LogListView IsVisible="{Binding IsLogTab}" />
+      </Panel>
+    </Grid>
+  </Border>
+</UserControl>

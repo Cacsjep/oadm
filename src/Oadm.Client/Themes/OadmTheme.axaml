@@ -1,0 +1,597 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:chrome="using:Avalonia.Controls.Chrome"
+        xmlns:c="using:Oadm.Client.Controls">
+  <!--
+    OADM visual style (see CLAUDE.md "Visual Style"). Dark only, MultiDrive look.
+    Every color and size used by the views is defined here; views reference these keys only.
+  -->
+  <Styles.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://Oadm.Client/Themes/Icons.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+
+      <!-- Colors -->
+      <Color x:Key="Oadm.WindowBackgroundColor">#141414</Color>
+      <Color x:Key="Oadm.CardBackgroundColor">#1E1E1E</Color>
+      <Color x:Key="Oadm.SurfaceRaisedColor">#2A2A2A</Color>
+      <Color x:Key="Oadm.SurfaceHoverColor">#252525</Color>
+      <Color x:Key="Oadm.InputBackgroundColor">#232323</Color>
+      <Color x:Key="Oadm.BorderColor">#2C2C2C</Color>
+      <Color x:Key="Oadm.InputBorderColor">#383838</Color>
+      <Color x:Key="Oadm.AccentColor">#6C5CE7</Color>
+      <Color x:Key="Oadm.AccentHoverColor">#7D6EF0</Color>
+      <Color x:Key="Oadm.AccentPressedColor">#5B4BD6</Color>
+      <Color x:Key="Oadm.AccentMutedColor">#3A3480</Color>
+      <Color x:Key="Oadm.SelectionColor">#476C5CE7</Color>
+      <Color x:Key="Oadm.SelectionHoverColor">#5C6C5CE7</Color>
+      <Color x:Key="Oadm.TealColor">#7FC8D0</Color>
+      <Color x:Key="Oadm.TextPrimaryColor">#F2F2F2</Color>
+      <Color x:Key="Oadm.TextSecondaryColor">#9A9A9A</Color>
+      <Color x:Key="Oadm.TextDisabledColor">#5E5E5E</Color>
+      <Color x:Key="Oadm.TextOnAccentColor">#FFFFFF</Color>
+      <Color x:Key="Oadm.IconColor">#CFCFCF</Color>
+      <Color x:Key="Oadm.StatusOkColor">#3FB27F</Color>
+      <Color x:Key="Oadm.StatusWarningColor">#E0A43A</Color>
+      <Color x:Key="Oadm.StatusErrorColor">#E5534B</Color>
+      <Color x:Key="Oadm.StatusNeutralColor">#8A8A8A</Color>
+      <Color x:Key="Oadm.StatusOkBackgroundColor">#263FB27F</Color>
+      <Color x:Key="Oadm.StatusWarningBackgroundColor">#26E0A43A</Color>
+      <Color x:Key="Oadm.StatusErrorBackgroundColor">#26E5534B</Color>
+      <Color x:Key="Oadm.StatusNeutralBackgroundColor">#268A8A8A</Color>
+      <Color x:Key="Oadm.StatusAccentBackgroundColor">#336C5CE7</Color>
+      <Color x:Key="Oadm.OverlayColor">#99000000</Color>
+      <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="{StaticResource Oadm.WindowBackgroundColor}" />
+
+      <!-- Brushes -->
+      <SolidColorBrush x:Key="Oadm.WindowBackgroundBrush" Color="{StaticResource Oadm.WindowBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.CardBackgroundBrush" Color="{StaticResource Oadm.CardBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.SurfaceRaisedBrush" Color="{StaticResource Oadm.SurfaceRaisedColor}" />
+      <SolidColorBrush x:Key="Oadm.SurfaceHoverBrush" Color="{StaticResource Oadm.SurfaceHoverColor}" />
+      <SolidColorBrush x:Key="Oadm.InputBackgroundBrush" Color="{StaticResource Oadm.InputBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.BorderBrush" Color="{StaticResource Oadm.BorderColor}" />
+      <SolidColorBrush x:Key="Oadm.InputBorderBrush" Color="{StaticResource Oadm.InputBorderColor}" />
+      <SolidColorBrush x:Key="Oadm.AccentBrush" Color="{StaticResource Oadm.AccentColor}" />
+      <SolidColorBrush x:Key="Oadm.AccentHoverBrush" Color="{StaticResource Oadm.AccentHoverColor}" />
+      <SolidColorBrush x:Key="Oadm.AccentPressedBrush" Color="{StaticResource Oadm.AccentPressedColor}" />
+      <SolidColorBrush x:Key="Oadm.AccentMutedBrush" Color="{StaticResource Oadm.AccentMutedColor}" />
+      <SolidColorBrush x:Key="Oadm.SelectionBrush" Color="{StaticResource Oadm.SelectionColor}" />
+      <SolidColorBrush x:Key="Oadm.SelectionHoverBrush" Color="{StaticResource Oadm.SelectionHoverColor}" />
+      <SolidColorBrush x:Key="Oadm.TealBrush" Color="{StaticResource Oadm.TealColor}" />
+      <SolidColorBrush x:Key="Oadm.TextPrimaryBrush" Color="{StaticResource Oadm.TextPrimaryColor}" />
+      <SolidColorBrush x:Key="Oadm.TextSecondaryBrush" Color="{StaticResource Oadm.TextSecondaryColor}" />
+      <SolidColorBrush x:Key="Oadm.TextDisabledBrush" Color="{StaticResource Oadm.TextDisabledColor}" />
+      <SolidColorBrush x:Key="Oadm.TextOnAccentBrush" Color="{StaticResource Oadm.TextOnAccentColor}" />
+      <SolidColorBrush x:Key="Oadm.IconBrush" Color="{StaticResource Oadm.IconColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusOkBrush" Color="{StaticResource Oadm.StatusOkColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusWarningBrush" Color="{StaticResource Oadm.StatusWarningColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusErrorBrush" Color="{StaticResource Oadm.StatusErrorColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusNeutralBrush" Color="{StaticResource Oadm.StatusNeutralColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusOkBackgroundBrush" Color="{StaticResource Oadm.StatusOkBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusWarningBackgroundBrush" Color="{StaticResource Oadm.StatusWarningBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusErrorBackgroundBrush" Color="{StaticResource Oadm.StatusErrorBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusNeutralBackgroundBrush" Color="{StaticResource Oadm.StatusNeutralBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusAccentBackgroundBrush" Color="{StaticResource Oadm.StatusAccentBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.OverlayBrush" Color="{StaticResource Oadm.OverlayColor}" />
+      <SolidColorBrush x:Key="Oadm.TransparentBrush" Color="Transparent" />
+
+      <!-- Sizes -->
+      <x:Double x:Key="Oadm.NavWidth">220</x:Double>
+      <x:Double x:Key="Oadm.TitleBarHeight">48</x:Double>
+      <x:Double x:Key="Oadm.IconSize">16</x:Double>
+      <x:Double x:Key="Oadm.FontSizeBody">13</x:Double>
+      <x:Double x:Key="Oadm.FontSizeSmall">11</x:Double>
+      <x:Double x:Key="Oadm.FontSizeCardTitle">20</x:Double>
+      <x:Double x:Key="Oadm.FontSizePageTitle">24</x:Double>
+      <x:Double x:Key="Oadm.FontSizeAppName">16</x:Double>
+      <x:Double x:Key="Oadm.GridRowHeight">34</x:Double>
+      <x:Double x:Key="Oadm.GridHeaderHeight">36</x:Double>
+      <x:Double x:Key="Oadm.ControlHeight">32</x:Double>
+      <x:Double x:Key="Oadm.SearchWidth">260</x:Double>
+      <x:Double x:Key="Oadm.BottomPaneHeight">200</x:Double>
+      <x:Double x:Key="Oadm.ProgressHeight">6</x:Double>
+      <x:Double x:Key="Oadm.Gap">16</x:Double>
+      <CornerRadius x:Key="Oadm.CardCornerRadius">16</CornerRadius>
+      <CornerRadius x:Key="Oadm.ControlCornerRadius">8</CornerRadius>
+      <CornerRadius x:Key="Oadm.PillCornerRadius">10</CornerRadius>
+      <CornerRadius x:Key="Oadm.ProgressCornerRadius">3</CornerRadius>
+      <Thickness x:Key="Oadm.CardPadding">20</Thickness>
+      <Thickness x:Key="Oadm.GridCardPadding">20,18,20,12</Thickness>
+      <Thickness x:Key="Oadm.PagePadding">0,0,16,16</Thickness>
+      <Thickness x:Key="Oadm.GapTop">0,16,0,0</Thickness>
+      <Thickness x:Key="Oadm.PillPadding">9,2</Thickness>
+      <Thickness x:Key="Oadm.NavItemPadding">12,9</Thickness>
+      <Thickness x:Key="Oadm.ToolbarButtonPadding">10,6</Thickness>
+      <FontFamily x:Key="Oadm.FontFamily">fonts:Inter#Inter</FontFamily>
+      <FontFamily x:Key="ContentControlThemeFontFamily">fonts:Inter#Inter</FontFamily>
+      <x:Double x:Key="ControlContentThemeFontSize">13</x:Double>
+
+      <!-- Fluent DataGrid resources mapped onto the OADM palette -->
+      <SolidColorBrush x:Key="DataGridColumnHeaderForegroundBrush" Color="{StaticResource Oadm.TextSecondaryColor}" />
+      <SolidColorBrush x:Key="DataGridColumnHeaderBackgroundBrush" Color="{StaticResource Oadm.CardBackgroundColor}" />
+      <SolidColorBrush x:Key="DataGridColumnHeaderHoveredBackgroundBrush" Color="{StaticResource Oadm.SurfaceHoverColor}" />
+      <SolidColorBrush x:Key="DataGridColumnHeaderPressedBackgroundBrush" Color="{StaticResource Oadm.SurfaceRaisedColor}" />
+      <SolidColorBrush x:Key="DataGridColumnHeaderDraggedBackgroundBrush" Color="{StaticResource Oadm.SurfaceRaisedColor}" />
+      <SolidColorBrush x:Key="DataGridRowHoveredBackgroundColor" Color="{StaticResource Oadm.SurfaceHoverColor}" />
+      <SolidColorBrush x:Key="DataGridRowSelectedBackgroundBrush" Color="{StaticResource Oadm.SelectionColor}" />
+      <SolidColorBrush x:Key="DataGridRowSelectedHoveredBackgroundBrush" Color="{StaticResource Oadm.SelectionHoverColor}" />
+      <SolidColorBrush x:Key="DataGridRowSelectedUnfocusedBackgroundBrush" Color="{StaticResource Oadm.SelectionColor}" />
+      <SolidColorBrush x:Key="DataGridRowSelectedHoveredUnfocusedBackgroundBrush" Color="{StaticResource Oadm.SelectionHoverColor}" />
+      <SolidColorBrush x:Key="DataGridGridLinesBrush" Color="{StaticResource Oadm.BorderColor}" />
+      <SolidColorBrush x:Key="DataGridCellFocusVisualPrimaryBrush" Color="Transparent" />
+      <SolidColorBrush x:Key="DataGridCellFocusVisualSecondaryBrush" Color="Transparent" />
+      <x:Double x:Key="DataGridRowSelectedBackgroundOpacity">1</x:Double>
+      <x:Double x:Key="DataGridRowSelectedHoveredBackgroundOpacity">1</x:Double>
+      <x:Double x:Key="DataGridRowSelectedUnfocusedBackgroundOpacity">1</x:Double>
+      <x:Double x:Key="DataGridRowSelectedHoveredUnfocusedBackgroundOpacity">1</x:Double>
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <FluentTheme>
+    <FluentTheme.Palettes>
+      <ColorPaletteResources x:Key="Dark"
+                             Accent="#6C5CE7"
+                             RegionColor="#141414"
+                             AltHigh="#1E1E1E"
+                             BaseHigh="#F2F2F2"
+                             BaseMedium="#9A9A9A"
+                             ErrorText="#E5534B" />
+    </FluentTheme.Palettes>
+  </FluentTheme>
+  <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
+
+  <!-- Base -->
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{StaticResource Oadm.WindowBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamily}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <Style Selector="TextBlock">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <!-- Our title bars draw their own title; hide the title text of Avalonia's drawn decorations -->
+  <Style Selector="chrome|WindowDrawnDecorations /template/ Panel#PART_TitleTextPanel TextBlock">
+    <Setter Property="Opacity" Value="0" />
+  </Style>
+  <Style Selector="chrome|WindowDrawnDecorations /template/ Button#PART_FullScreenButton">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+
+  <Style Selector="c|OadmIcon">
+    <Setter Property="Width" Value="{StaticResource Oadm.IconSize}" />
+    <Setter Property="Height" Value="{StaticResource Oadm.IconSize}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.IconBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!-- Typography -->
+  <Style Selector="TextBlock.appName">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeAppName}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.pageTitle">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizePageTitle}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.cardTitle">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeCardTitle}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.sectionTitle">
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.secondary">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.small">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+  </Style>
+  <Style Selector="TextBlock.error">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="TextBlock.warning">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusWarningBrush}" />
+  </Style>
+
+  <!-- Cards -->
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{StaticResource Oadm.CardBackgroundBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.CardCornerRadius}" />
+    <Setter Property="Padding" Value="{StaticResource Oadm.CardPadding}" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="Border.separator">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Background" Value="{StaticResource Oadm.BorderBrush}" />
+  </Style>
+  <Style Selector="Border.vseparator">
+    <Setter Property="Width" Value="1" />
+    <Setter Property="Background" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="Margin" Value="6,6" />
+  </Style>
+
+  <!-- Pills -->
+  <Style Selector="Border.pill">
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.PillCornerRadius}" />
+    <Setter Property="Padding" Value="{StaticResource Oadm.PillPadding}" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Background" Value="{StaticResource Oadm.StatusNeutralBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.pill TextBlock">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusNeutralBrush}" />
+  </Style>
+  <Style Selector="Border.pill Ellipse">
+    <Setter Property="Width" Value="6" />
+    <Setter Property="Height" Value="6" />
+    <Setter Property="Margin" Value="0,0,6,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Fill" Value="{StaticResource Oadm.StatusNeutralBrush}" />
+  </Style>
+  <Style Selector="Border.pill.ok">
+    <Setter Property="Background" Value="{StaticResource Oadm.StatusOkBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.pill.ok TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusOkBrush}" />
+  </Style>
+  <Style Selector="Border.pill.ok Ellipse">
+    <Setter Property="Fill" Value="{StaticResource Oadm.StatusOkBrush}" />
+  </Style>
+  <Style Selector="Border.pill.warn">
+    <Setter Property="Background" Value="{StaticResource Oadm.StatusWarningBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.pill.warn TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusWarningBrush}" />
+  </Style>
+  <Style Selector="Border.pill.warn Ellipse">
+    <Setter Property="Fill" Value="{StaticResource Oadm.StatusWarningBrush}" />
+  </Style>
+  <Style Selector="Border.pill.error">
+    <Setter Property="Background" Value="{StaticResource Oadm.StatusErrorBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.pill.error TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="Border.pill.error Ellipse">
+    <Setter Property="Fill" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="Border.pill.accent">
+    <Setter Property="Background" Value="{StaticResource Oadm.StatusAccentBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.pill.accent TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentHoverBrush}" />
+  </Style>
+  <Style Selector="Border.pill.accent Ellipse">
+    <Setter Property="Fill" Value="{StaticResource Oadm.AccentHoverBrush}" />
+  </Style>
+
+  <!-- Status dot overlay on the device icon and the connection indicator -->
+  <Style Selector="Ellipse.statusDot">
+    <Setter Property="Width" Value="8" />
+    <Setter Property="Height" Value="8" />
+    <Setter Property="Fill" Value="{StaticResource Oadm.StatusNeutralBrush}" />
+    <Setter Property="Stroke" Value="{StaticResource Oadm.CardBackgroundBrush}" />
+    <Setter Property="StrokeThickness" Value="1.5" />
+  </Style>
+  <Style Selector="Ellipse.statusDot.ok">
+    <Setter Property="Fill" Value="{StaticResource Oadm.StatusOkBrush}" />
+  </Style>
+  <Style Selector="Ellipse.statusDot.warn">
+    <Setter Property="Fill" Value="{StaticResource Oadm.StatusWarningBrush}" />
+  </Style>
+  <Style Selector="Ellipse.statusDot.error">
+    <Setter Property="Fill" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="Ellipse.statusDot.titleBar">
+    <Setter Property="Stroke" Value="{StaticResource Oadm.WindowBackgroundBrush}" />
+  </Style>
+
+  <!-- Count badge (navigation, tabs) -->
+  <Style Selector="Border.badge">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentMutedBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.PillCornerRadius}" />
+    <Setter Property="MinWidth" Value="20" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="Padding" Value="6,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.badge TextBlock">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!-- Navigation rail -->
+  <Style Selector="Button.nav">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Padding" Value="{StaticResource Oadm.NavItemPadding}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.nav:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+  </Style>
+  <Style Selector="Button.nav.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+  </Style>
+  <Style Selector="Button.nav.selected TextBlock.navLabel">
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <!-- Toolbar buttons: icon + text -->
+  <Style Selector="Button.toolbar">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="{StaticResource Oadm.ToolbarButtonPadding}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.toolbar:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.toolbar:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+  </Style>
+  <Style Selector="Button.toolbar:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  </Style>
+  <Style Selector="Button.toolbar:disabled c|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  </Style>
+  <Style Selector="Button.iconOnly">
+    <Setter Property="Padding" Value="7" />
+  </Style>
+
+  <!-- Primary (accent) button -->
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="14,7" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.primary c|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+  </Style>
+  <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentHoverBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+  </Style>
+  <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentPressedBrush}" />
+  </Style>
+  <Style Selector="Button.primary:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  </Style>
+  <Style Selector="Button.primary:disabled c|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  </Style>
+
+  <!-- Secondary button (dialogs) -->
+  <Style Selector="Button.secondary">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="14,7" />
+  </Style>
+  <Style Selector="Button.secondary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBorderBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+
+  <!-- Hyperlink-style button (device address) -->
+  <Style Selector="Button.link">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TealBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.link:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TealBrush}" />
+  </Style>
+  <Style Selector="Button.link:pointerover TextBlock">
+    <Setter Property="TextDecorations" Value="Underline" />
+  </Style>
+  <Style Selector="Button.link:pressed">
+    <Setter Property="RenderTransform" Value="none" />
+  </Style>
+
+  <!-- Inputs -->
+  <Style Selector="TextBox">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  </Style>
+  <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="NumericUpDown">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+  </Style>
+  <Style Selector="TextBlock.fieldLabel">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="CheckBox">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+
+  <!-- Progress -->
+  <Style Selector="ProgressBar">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ProgressHeight}" />
+    <Setter Property="Height" Value="{StaticResource Oadm.ProgressHeight}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ProgressCornerRadius}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!-- Data grids -->
+  <Style Selector="DataGrid">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="GridLinesVisibility" Value="Horizontal" />
+    <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="RowHeight" Value="{StaticResource Oadm.GridRowHeight}" />
+    <Setter Property="ColumnHeaderHeight" Value="{StaticResource Oadm.GridHeaderHeight}" />
+    <Setter Property="HeadersVisibility" Value="Column" />
+    <Setter Property="CanUserReorderColumns" Value="True" />
+    <Setter Property="CanUserResizeColumns" Value="True" />
+    <Setter Property="CanUserSortColumns" Value="True" />
+  </Style>
+  <Style Selector="DataGridColumnHeader">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="Padding" Value="10,0,0,0" />
+    <Setter Property="SeparatorBrush" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="DataGridCell">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.GridRowHeight}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="DataGridCell TextBlock">
+    <Setter Property="Margin" Value="10,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="DataGridCell Border.pill TextBlock">
+    <Setter Property="Margin" Value="0" />
+  </Style>
+  <Style Selector="DataGridCell Button.link TextBlock">
+    <Setter Property="Margin" Value="0" />
+  </Style>
+  <Style Selector="DataGridRow.muted">
+    <Setter Property="Opacity" Value="0.45" />
+  </Style>
+
+  <!-- Tabs in the bottom pane -->
+  <Style Selector="RadioButton.tab">
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="tabBorder" Background="{StaticResource Oadm.TransparentBrush}" CornerRadius="{StaticResource Oadm.ControlCornerRadius}" Padding="12,6">
+          <ContentPresenter Content="{TemplateBinding Content}" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="RadioButton.tab:pointerover /template/ Border#tabBorder">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+  </Style>
+  <Style Selector="RadioButton.tab:checked">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="RadioButton.tab:checked /template/ Border#tabBorder">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+  </Style>
+
+  <!-- Menus and flyouts -->
+  <Style Selector="MenuFlyoutPresenter, ContextMenu">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+  </Style>
+  <Style Selector="FlyoutPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+  </Style>
+  <Style Selector="MenuItem">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+
+  <!-- Wizard step indicator -->
+  <Style Selector="Border.stepDot">
+    <Setter Property="Width" Value="24" />
+    <Setter Property="Height" Value="24" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+  </Style>
+  <Style Selector="Border.stepDot TextBlock">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.stepDot.current">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="Border.stepDot.current TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+  </Style>
+  <Style Selector="Border.stepDot.done">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentMutedBrush}" />
+  </Style>
+  <Style Selector="Border.stepDot.done TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.stepLabel">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBlock.stepLabel.current">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.stepLabel.skipped">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  </Style>
+
+  <!-- Connection banner -->
+  <Style Selector="Border.banner">
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="Background" Value="{StaticResource Oadm.StatusErrorBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.banner TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="Border.banner.connecting">
+    <Setter Property="Background" Value="{StaticResource Oadm.StatusWarningBackgroundBrush}" />
+  </Style>
+  <Style Selector="Border.banner.connecting TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusWarningBrush}" />
+  </Style>
+</Styles>
