@@ -474,6 +474,10 @@
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
     <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <!-- Selected item vertically centered. It is a plain TextBlock, so it needs the measured
+         Inter correction (top padding 3 moves the centered line 1.5 px down), unlike text boxes. -->
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Padding" Value="10,3,8,0" />
   </Style>
   <Style Selector="ComboBox:pointerover /template/ Border#Background">
     <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />

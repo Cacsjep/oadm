@@ -277,7 +277,8 @@ Dark only, calm and spacious, no gradients inside the app.
   show no progress bar. Count badges stay a small solid violet pill.
 - Window chrome: title bar and caption buttons are 32 px high (caption buttons 46x32), exactly
   like the Windows default. Main window minimum size 1280x720.
-- Text fields and number fields: text vertically centered (measured, no extra offset).
+- Text fields, number fields and select fields: text vertically centered (measured; select
+  fields need the Inter correction, text boxes do not).
 - Icons: one outline icon set (Fluent System Icons / Lucide geometry), monochrome
   `#CFCFCF`, 16 px. Toolbar uses icon + text buttons, not ADM's icon-only bar.
 - All colors and sizes as resources in `Themes/OadmTheme.axaml`; no hard-coded colors in views.
