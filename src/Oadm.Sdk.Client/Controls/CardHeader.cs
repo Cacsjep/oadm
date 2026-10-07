@@ -66,9 +66,16 @@ public sealed class CardHeader : Grid
     private void Update()
     {
         _title.Text = Title;
-        // No title on a page's only card: the host page title already names it (no double titles).
-        _title.IsVisible = !string.IsNullOrEmpty(Title);
         _description.Text = Description;
         _description.IsVisible = !string.IsNullOrEmpty(Description);
+
+        // No title (a page's only card: the host page title already names it, no double titles): the
+        // description moves up into the first row, level with the trailing controls, so no empty row remains.
+        var hasTitle = !string.IsNullOrEmpty(Title);
+        _title.IsVisible = hasTitle;
+        SetRow(_description, hasTitle ? 1 : 0);
+        SetColumnSpan(_description, hasTitle ? 2 : 1);
+        _description.Margin = hasTitle ? new Thickness(0, 6, 0, 0) : new Thickness(0);
+        _description.VerticalAlignment = hasTitle ? VerticalAlignment.Top : VerticalAlignment.Center;
     }
 }

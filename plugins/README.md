@@ -339,3 +339,20 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
   and open windows through a small interface the view implements, so the view model is testable).
 - Fake mode: add the plugin's backend to `FakeOadmApi` (`FakeCorePlugins`, `InvokeCorePluginAsync`) so
   `--fake` shows the page.
+
+### Page header (`ui:PageHeader`)
+
+A core plugin page does not repeat its title in a card heading. Put the page description and the
+status into the host's page header with attached properties on the page's root control:
+
+```xml
+<UserControl ... ui:PageHeader.Subtitle="Answers the time requests of the cameras (NTP, UDP port 123).">
+  <ui:PageHeader.Trailing>
+    <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" ... />
+  </ui:PageHeader.Trailing>
+  <!-- the card content starts directly with the form -->
+</UserControl>
+```
+
+The host shows the subtitle under the page title and the trailing control right of it; the trailing
+control keeps the page's DataContext.
