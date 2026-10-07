@@ -12,6 +12,10 @@ namespace Oadm.Core.Tests.Plugins;
 
 public sealed class RestartTaskPluginTests
 {
+    [Fact]
+    public void TheTaskNameSaysWhatHappens() =>
+        Assert.Equal("Restart device", ((Oadm.Sdk.Plugins.ITaskPlugin)new Oadm.Plugins.Restart.RestartTaskPlugin()).GetTaskName(null));
+
     private static readonly TimeSpan Poll = TimeSpan.FromMilliseconds(5);
 
     [Fact]
@@ -45,6 +49,7 @@ public sealed class RestartTaskPluginTests
                 "Wait for the device to go offline: Done",
                 "Wait for the device to come back: Done",
                 "Verify device: Warning", // the fake reports a serial other than the fake device's
+                "Completed: Done",
             ],
             StepRun.Lines(ctx.Steps));
         Assert.Equal("M3106, AXIS OS 11.0.0", StepRun.Detail(ctx.Steps, "Check device"));
@@ -61,7 +66,7 @@ public sealed class RestartTaskPluginTests
 
         await StepRun.RunAsync(ctx.Steps, () => plugin.ExecuteAsync(ctx, new SerialDevice("ACCC8E000001"), null, CancellationToken.None));
 
-        Assert.Equal("Verify device: Done", StepRun.Lines(ctx.Steps)[^1]);
+        Assert.Equal(["Verify device: Done", "Completed: Done"], StepRun.Lines(ctx.Steps)[^2..]);
         Assert.Equal("M3106, AXIS OS 11.0.0", StepRun.Detail(ctx.Steps, "Verify device"));
         Assert.Empty(ctx.Warnings);
     }

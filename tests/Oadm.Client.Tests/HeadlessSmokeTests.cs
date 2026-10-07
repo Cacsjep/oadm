@@ -77,6 +77,16 @@ public sealed class HeadlessSmokeTests
             await PumpUntilAsync(() => vm.Devices.Tasks.Tasks.Any(t => t.CurrentStepText.Contains("Upload firmware", StringComparison.Ordinal)));
             Capture(window, outDir, "client-tasks-pane.png");
 
+            // Exact task names (ITaskPlugin.GetTaskName) and the final "Completed" step of finished tasks.
+            string[] names = ["Add user joe", "Remove users guest, temp", "Set static IP 10.0.0.60", "Upgrade AXIS Object Analytics to 1.4.2", "Read brand parameters +2 more"];
+            await PumpUntilAsync(() => names.All(n => vm.Devices.Tasks.Tasks.Any(t => t.Name == n)));
+            Assert.All(names, n => Assert.EndsWith("Completed", vm.Devices.Tasks.Tasks.First(t => t.Name == n).CurrentStepText, StringComparison.Ordinal));
+            var namedWindow = new Window { Width = 1440, Height = 900, Content = new Oadm.Client.Tasks.TasksGridView { DataContext = vm.Devices.Tasks } };
+            namedWindow.Show();
+            Dispatcher.UIThread.RunJobs();
+            Capture(namedWindow, outDir, "client-tasks-pane-names.png");
+            namedWindow.Close();
+
             // Live view of the first camera: the fake server replays recorded H.265, decoded by FFmpeg.
             LiveView.LiveViewViewModel live = vm.Devices.LiveView;
             Devices.DeviceRowViewModel camera = vm.Devices.FilteredDevices.First(LiveView.LiveViewSupport.IsSupported);

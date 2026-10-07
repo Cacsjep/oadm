@@ -11,6 +11,7 @@ using Oadm.Sdk.Client;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 
+using ClientDirection = fwclient::Oadm.Plugins.Firmware.FirmwareDirection;
 using ClientMode = fwclient::Oadm.Plugins.Firmware.FactoryDefaultMode;
 using ClientPayload = fwclient::Oadm.Plugins.Firmware.FirmwarePayload;
 using ClientStatus = fwclient::Oadm.Plugins.Firmware.FirmwareStatusInfo;
@@ -76,16 +77,14 @@ internal sealed class FakeFileSource(long size = 87 * 1024 * 1024) : FileSource
 
     public Task<string?> PickAsync() => Task.FromResult(Picked);
 
-    public Task<(long Size, byte[] Header)> ReadHeaderAsync(string path, CancellationToken ct)
+    public Task<long> GetSizeAsync(string path, CancellationToken ct)
     {
         if (path.Contains("missing", StringComparison.Ordinal))
         {
             throw new FileNotFoundException("not found", path);
         }
 
-        var header = new byte[512];
-        new Random(3).NextBytes(header);
-        return Task.FromResult((size, header));
+        return Task.FromResult(size);
     }
 }
 
@@ -133,6 +132,7 @@ public sealed class FirmwareDialogViewModelTests
         Assert.True(vm.Devices[2].IsError);
         Assert.Equal(ClientVerdict.DowngradeBlocked, vm.Devices[3].Check!.Verdict);
         Assert.Equal("1 of 4 device(s) will be updated, 1 already up to date, 2 not possible.", vm.Summary);
+        Assert.Equal(ClientDirection.Upgrade, vm.Direction());
         Assert.True(vm.StartCommand.CanExecute(null));
     }
 
@@ -160,7 +160,7 @@ public sealed class FirmwareDialogViewModelTests
     {
         using var vm = Create(files: new FakeFileSource(size: 1000));
         await vm.SelectFileAsync("P3265-V_12_11_77.bin", CancellationToken.None);
-        Assert.Contains("too small", vm.FileError, StringComparison.Ordinal);
+        Assert.Contains("smaller than 1 MB", vm.FileError, StringComparison.Ordinal);
         Assert.False(vm.StartCommand.CanExecute(null));
 
         await vm.SelectFileAsync("C:\\missing\\a.bin", CancellationToken.None);
@@ -206,6 +206,10 @@ public sealed class FirmwareDialogViewModelTests
         // The server part parses the same JSON.
         var server = Oadm.Plugins.Firmware.FirmwarePayload.Parse(vm.Result);
         Assert.Equal(Oadm.Plugins.Firmware.FactoryDefaultMode.Soft, server.FactoryDefaultMode);
+
+        // One device upgrades, another downgrades: the task name does not claim either.
+        Assert.Equal(ClientDirection.Unknown, payload.Direction);
+        Assert.Equal("Install firmware 12.11.77 (factory default)", server.TaskName());
     }
 
     [Fact]

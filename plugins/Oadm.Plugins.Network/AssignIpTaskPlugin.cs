@@ -10,7 +10,7 @@ namespace Oadm.Plugins.Network;
 /// IP range, subnet mask and default router (optionally DNS servers) for the selected devices, multi-device first.
 /// The dialog resolves the range into one address per device; the payload is a <see cref="NetworkPayload"/> with only
 /// the IPv4 (and DNS) section. Runs the same per-device task as "Network settings..." with only the steps that apply:
-/// Check compatibility, Read current settings, Validate settings, Set DNS, Set IPv4, Wait for the settings to apply,
+/// Check compatibility, Read current settings, Validate settings, Check address is free, Set DNS, Set IPv4, Wait for the settings to apply,
 /// Check reachability, Wait for the device at the new address, Verify device identity, Update OADM device address.
 /// </summary>
 public sealed class AssignIpTaskPlugin : ITaskPlugin, ITaskPluginQuery
@@ -20,17 +20,23 @@ public sealed class AssignIpTaskPlugin : ITaskPlugin, ITaskPluginQuery
     private static readonly StepKind[] Sections = [StepKind.Dns, StepKind.Ipv4];
 
     private readonly NetworkTaskRunner _runner;
+    private readonly IAddressProbe _probe;
 
     public AssignIpTaskPlugin()
-        : this(ReachabilityOptions.Default, TimeProvider.System)
+        : this(ReachabilityOptions.Default, TimeProvider.System, NetworkAddressProbe.Instance)
     {
     }
 
-    public AssignIpTaskPlugin(ReachabilityOptions options, TimeProvider timeProvider)
+    /// <param name="options">Timing of the reachability checks.</param>
+    /// <param name="timeProvider">Clock for the waits.</param>
+    /// <param name="probe">Is an address taken (ping, TCP 80/443)? Tests pass a fake: no network in unit tests.</param>
+    public AssignIpTaskPlugin(ReachabilityOptions options, TimeProvider timeProvider, IAddressProbe probe)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(timeProvider);
-        _runner = new NetworkTaskRunner(options, timeProvider);
+        ArgumentNullException.ThrowIfNull(probe);
+        _probe = probe;
+        _runner = new NetworkTaskRunner(options, timeProvider, probe);
     }
 
     public string Id => PluginId;
@@ -80,5 +86,8 @@ public sealed class AssignIpTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
     /// <summary>Read-only: "getNetworkInfo" (prefill of mask, router and DNS) and "checkAddresses" (assignment table).</summary>
     public Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
-        NetworkSettingsTaskPlugin.RunQueryAsync(ctx, device, method, payloadJson, ct);
+        NetworkSettingsTaskPlugin.RunQueryAsync(ctx, device, method, payloadJson, _probe, ct);
+
+    /// <summary>"Assign IP 10.0.0.60" (one device), "Assign IP addresses" (several), "Assign IP via DHCP".</summary>
+    public string GetTaskName(string? payloadJson) => NetworkTaskNames.ForAssignIp(payloadJson) ?? DisplayName;
 }

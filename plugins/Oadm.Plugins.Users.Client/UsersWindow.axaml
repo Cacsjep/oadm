@@ -30,7 +30,7 @@
                 </StackPanel>
               </Grid>
 
-              <Grid ColumnDefinitions="150,280">
+              <Grid ColumnDefinitions="150,280" IsVisible="{Binding ShowUserName}">
                 <TextBlock Classes="fieldLabel" Text="User name" />
                 <TextBox Grid.Column="1" Text="{Binding UserName}" PlaceholderText="1-14 characters: a-z, A-Z, 0-9" />
               </Grid>
@@ -67,8 +67,17 @@
       <Border Grid.Column="1" Classes="card">
         <Grid RowDefinitions="Auto,*">
           <ui:CardHeader Title="Existing users" Description="{Binding UsersDescription}" />
-          <DataGrid Grid.Row="1" ItemsSource="{Binding ExistingUsers}" SelectedItem="{Binding SelectedExistingUser}" SelectionMode="Single"
+          <!-- Selection is forwarded by the code-behind (SetSelectedUsers); Remove mode selects several rows. -->
+          <DataGrid Grid.Row="1" Name="UsersGrid" ItemsSource="{Binding ExistingUsers}" SelectionMode="Single"
                     IsReadOnly="True" CanUserReorderColumns="False">
+            <DataGrid.Styles>
+              <!-- Protected accounts cannot be selected in Remove mode (greyed by the host's disabled row style). -->
+              <Style Selector="DataGridRow" x:DataType="u:ExistingUserRow">
+                <Setter Property="IsEnabled" Value="{Binding IsSelectable}" />
+                <Setter Property="ToolTip.Tip" Value="{Binding Tooltip}" />
+                <Setter Property="ToolTip.ShowOnDisabled" Value="True" />
+              </Style>
+            </DataGrid.Styles>
             <DataGrid.Columns>
               <DataGridTextColumn Header="User name" Width="*" Binding="{Binding Name}" x:DataType="u:ExistingUserRow" />
               <DataGridTextColumn Header="Role" Width="2*" Binding="{Binding RoleText}" x:DataType="u:ExistingUserRow" />

@@ -58,11 +58,11 @@ public sealed class TaskEngineStepsTests : IAsyncLifetime
         var record = await RunAsync("t.steps", device);
 
         Assert.Equal(TaskState.Done, record.State);
-        Assert.Equal("Check device:Done, Send restart:Done, Verify device:Skipped", Shape(record));
+        Assert.Equal("Check device:Done, Send restart:Done, Verify device:Skipped, Completed:Done", Shape(record));
+        Assert.Equal(3, record.CurrentStepIndex);
         Assert.Equal("Accepted", record.Steps[1].Detail);
         Assert.Equal("Not run.", record.Steps[2].Detail);
         Assert.Equal(TimeSpan.FromSeconds(1), record.Steps[0].FinishedUtc - record.Steps[0].StartedUtc);
-        Assert.Equal(1, record.CurrentStepIndex);
         Assert.Equal(100, record.Devices[0].Progress);
     }
 
@@ -172,7 +172,7 @@ public sealed class TaskEngineStepsTests : IAsyncLifetime
         var record = await RunAsync("t.warnstep", device);
 
         Assert.Equal(TaskState.DoneWithWarnings, record.State);
-        Assert.Equal("Verify version:Warning, Commit:Done", Shape(record));
+        Assert.Equal("Verify version:Warning, Commit:Done, Completed:Done", Shape(record));
         Assert.Equal("Device reports 12.10, expected 12.11", record.Devices[0].Message);
         var entry = Assert.Single(await _store.GetLogAsync(record.Id, CancellationToken.None));
         Assert.Equal(TaskLogLevel.Warning, entry.Level);
@@ -197,7 +197,8 @@ public sealed class TaskEngineStepsTests : IAsyncLifetime
 
         var record = await RunAsync("t.feed", device);
 
-        Assert.Equal(20, record.Steps.Count);
+        Assert.Equal(21, record.Steps.Count);
+        Assert.Equal(TaskStepList.CompletedStepName, record.Steps[^1].Name);
         Assert.All(record.Steps, s => Assert.Equal(TaskStepState.Done, s.State));
         // Every step change reaches the feed ...
         Assert.True(changes.Count(c => c.Task.Id == record.Id) > 40);
@@ -239,6 +240,91 @@ public sealed class TaskEngineStepsTests : IAsyncLifetime
         Assert.Equal(TaskState.Failed, record.State);
         Assert.Empty(record.Steps);
         Assert.Equal(-1, record.CurrentStepIndex);
+    }
+
+    [Fact]
+    public async Task ASuccessfulTaskEndsWithTheCompletedStepEvenWithoutOwnSteps()
+    {
+        var device = _devices.Add();
+        Register("t.nosteps", (_, _, _) => Task.CompletedTask);
+
+        var record = await RunAsync("t.nosteps", device);
+
+        Assert.Equal("Completed:Done", Shape(record));
+        Assert.Equal(0, record.CurrentStepIndex);
+        Assert.NotNull(record.Steps[0].StartedUtc);
+        Assert.Equal(100, record.Steps[0].Progress);
+    }
+
+    [Fact]
+    public async Task AFailingTaskGetsNoCompletedStepAndKeepsTheFailedStepCurrent()
+    {
+        var device = _devices.Add();
+        Register("t.fails", (ctx, _, _) =>
+        {
+            ctx.BeginStep("Read").Complete();
+            using (ctx.BeginStep("Write"))
+            {
+                throw new InvalidOperationException("Refused");
+            }
+        });
+
+        var record = await RunAsync("t.fails", device);
+
+        Assert.Equal("Read:Done, Write:Failed", Shape(record));
+        Assert.Equal(1, record.CurrentStepIndex);
+    }
+
+    [Fact]
+    public async Task TheTaskNameComesFromGetTaskNameWithThePayload()
+    {
+        var device = _devices.Add();
+        string? seen = null;
+        Assert.True(_registry.RegisterTaskPlugin(
+            new DelegateTaskPlugin("t.named", (_, _, _) => Task.CompletedTask) { TaskName = p => { seen = p; return "Add user joe"; } },
+            new PluginOrigin("test", "1.0.0", null)));
+
+        var ids = await Engine.RunAsync("t.named", [device, _devices.Add()], """{"user":"joe"}""", "tester", CancellationToken.None);
+
+        Assert.Equal("""{"user":"joe"}""", seen);
+        foreach (var id in ids)
+        {
+            await Engine.WaitForCompletionAsync(id, CancellationToken.None).WaitAsync(Timeout);
+            var record = (await _store.GetAsync(id, CancellationToken.None))!;
+            Assert.Equal("Add user joe", record.Name);
+            Assert.Equal("Add user joe", _store.Updates.First(u => u.Id == id).Name); // persisted from the start
+        }
+    }
+
+    [Theory]
+    [InlineData("Upgrade firmware to 12.11.77...", "Upgrade firmware to 12.11.77")]
+    [InlineData("   ", "Test t.name")]
+    [InlineData("Remove users alpha, bravo, charlie, delta, echo, foxtrot", "Remove users alpha, bravo, charlie, delta, echo…")]
+    public async Task TaskNamesAreNormalizedAndShortenedToFortyEightCharacters(string raw, string expected)
+    {
+        var device = _devices.Add();
+        Assert.True(_registry.RegisterTaskPlugin(
+            new DelegateTaskPlugin("t.name", (_, _, _) => Task.CompletedTask) { TaskName = _ => raw },
+            new PluginOrigin("test", "1.0.0", null)));
+
+        var record = await RunAsync("t.name", device);
+
+        Assert.Equal(expected, record.Name);
+        Assert.True(record.Name.Length <= TaskPluginNames.MaxTaskNameLength);
+    }
+
+    [Fact]
+    public async Task AThrowingGetTaskNameFallsBackToTheDisplayName()
+    {
+        var device = _devices.Add();
+        Assert.True(_registry.RegisterTaskPlugin(
+            new DelegateTaskPlugin("t.badname", (_, _, _) => Task.CompletedTask) { TaskName = _ => throw new InvalidOperationException("boom") },
+            new PluginOrigin("test", "1.0.0", null)));
+
+        var record = await RunAsync("t.badname", device);
+
+        Assert.Equal("Test t.badname", record.Name);
+        Assert.Equal(TaskState.Done, record.State);
     }
 
     private async Task<TaskRecord> RunAsync(string pluginId, Guid device)

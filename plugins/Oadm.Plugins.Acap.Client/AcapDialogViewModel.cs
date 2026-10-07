@@ -66,6 +66,9 @@ public sealed partial class DeviceCompatibilityRow(DeviceChoice device) : Observ
     [ObservableProperty]
     public partial bool IsOk { get; set; }
 
+    /// <summary>Install, upgrade, reinstall or downgrade on a compatible device; null otherwise.</summary>
+    public InstallKind? Kind { get; set; }
+
     /// <summary>Installable, but with warnings or as a downgrade.</summary>
     [ObservableProperty]
     public partial bool IsWarning { get; set; }
@@ -307,10 +310,10 @@ public sealed partial class AcapDialogViewModel : ObservableObject
     private bool CanActOnSelection() => SelectedApplication is not null && !IsBusy;
 
     [RelayCommand(CanExecute = nameof(CanActOnSelection))]
-    private void Start() => Complete(new AcapPayload { Action = AcapAction.Start, Application = SelectedApplication!.PackageName });
+    private void Start() => Complete(new AcapPayload { Action = AcapAction.Start, Application = SelectedApplication!.PackageName, AppDisplayName = SelectedApplication.Name });
 
     [RelayCommand(CanExecute = nameof(CanActOnSelection))]
-    private void Stop() => Complete(new AcapPayload { Action = AcapAction.Stop, Application = SelectedApplication!.PackageName });
+    private void Stop() => Complete(new AcapPayload { Action = AcapAction.Stop, Application = SelectedApplication!.PackageName, AppDisplayName = SelectedApplication.Name });
 
     /// <summary>Asks for confirmation first; <see cref="ConfirmRemoveCommand"/> completes the dialog.</summary>
     [RelayCommand(CanExecute = nameof(CanActOnSelection))]
@@ -329,7 +332,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject
     {
         if (SelectedApplication is { } app && !app.App.Bundled)
         {
-            Complete(new AcapPayload { Action = AcapAction.Remove, Application = app.PackageName });
+            Complete(new AcapPayload { Action = AcapAction.Remove, Application = app.PackageName, AppDisplayName = app.Name });
         }
         else
         {
@@ -404,6 +407,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject
                 var installed = state.Applications.FirstOrDefault(a => string.Equals(a.Name, package.AppName, StringComparison.Ordinal));
                 var report = AcapCompatibility.Check(package, state.Device, installed, AllowDowngrade);
                 row.IsOk = report.IsCompatible;
+                row.Kind = report.IsCompatible ? report.Kind : null;
                 row.IsWarning = report.IsCompatible && (report.Warnings.Count > 0 || report.Kind == InstallKind.Downgrade);
                 row.IsError = !report.IsCompatible;
                 row.Result = report.Summary;
@@ -428,6 +432,13 @@ public sealed partial class AcapDialogViewModel : ObservableObject
 
         CompatibleCount = rows.Count(r => r.IsOk);
         OnPropertyChanged(nameof(CompatibilitySummary));
+    }
+
+    /// <summary>The install kind shared by every compatible device, null when they differ (names the task only).</summary>
+    public InstallKind? InstallKindOfAll()
+    {
+        var kinds = Compatibility.Where(r => r.IsOk && r.Kind is not null).Select(r => r.Kind!.Value).Distinct().ToList();
+        return kinds.Count == 1 ? kinds[0] : null;
     }
 
     private bool CanInstall() => Package is not null && CompatibleCount > 0 && !IsBusy;
@@ -456,6 +467,8 @@ public sealed partial class AcapDialogViewModel : ObservableObject
                 Version = package.Version,
                 AllowDowngrade = AllowDowngrade,
                 StartAfterInstall = StartAfterInstall,
+                AppDisplayName = package.DisplayName,
+                Kind = InstallKindOfAll(),
             });
         }
         catch (OperationCanceledException)

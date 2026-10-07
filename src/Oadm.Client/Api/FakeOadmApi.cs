@@ -572,7 +572,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 ?? throw new RpcException(new Status(StatusCode.NotFound, $"task plugin {pluginId} not found"));
             Action<TaskInfo, int>? onProgress = pluginId == RestartPluginId ? SimulateRestart : null;
             var ids = new List<string>();
-            foreach (TaskInfo task in AddBatch(pluginId, plugin.DisplayName, owner, TaskState.Queued, 0, deviceIds.Distinct()))
+            foreach (TaskInfo task in AddBatch(pluginId, FakeTaskName(pluginId, plugin.DisplayName), owner, TaskState.Queued, 0, deviceIds.Distinct()))
             {
                 _jobs[task.Id] = new FakeJob(task, pluginId == RestartPluginId ? 4 : 25, onProgress, StepsOf(pluginId));
                 ids.Add(task.Id);
@@ -1282,14 +1282,14 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         DateTime now = DateTime.UtcNow;
 
         // One run on several devices (one task per device), including one that was removed since.
-        foreach (TaskInfo done in AddBatch(RestartPluginId, "Restart", OwnerName, TaskState.Done, 100,
+        foreach (TaskInfo done in AddBatch(RestartPluginId, "Restart device", OwnerName, TaskState.Done, 100,
             [_devices[0].Id, _devices[9].Id, "5f3c9a1e-7b2d-4c8e-9a6f-0d1e2f3a4b5c"]))
         {
             done.Started = Timestamp.FromDateTime(now.AddHours(-2));
             SetSteps(done, RestartSteps, 100);
         }
 
-        TaskInfo failed = AddTask(RestartPluginId, "Restart", "admin@SECURITY-PC", TaskState.Failed, 100, _devices[4].Id);
+        TaskInfo failed = AddTask(RestartPluginId, "Restart device", "admin@SECURITY-PC", TaskState.Failed, 100, _devices[4].Id);
         failed.Started = Timestamp.FromDateTime(now.AddMinutes(-40));
         failed.Devices[0].Message = "Device did not come back within 3 minutes";
         SetSteps(failed, RestartSteps, 70);
@@ -1297,7 +1297,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         AddLog(failed, failed.DeviceId, TaskLogLevel.Info, "Restart requested, waiting for the device to go offline", now.AddMinutes(-40));
         AddLog(failed, failed.DeviceId, TaskLogLevel.Error, "Device did not come back within 3 minutes", now.AddMinutes(-37));
 
-        List<TaskInfo> identifyRun = AddBatch(IdentifyPluginId, "Identify (flash LED)", OwnerName, TaskState.Done, 100, [_devices[2].Id, _devices[3].Id]);
+        List<TaskInfo> identifyRun = AddBatch(IdentifyPluginId, "Identify device (flash LED)", OwnerName, TaskState.Done, 100, [_devices[2].Id, _devices[3].Id]);
         TaskInfo flashed = identifyRun[0];
         TaskInfo warned = identifyRun[1];
         foreach (TaskInfo t in identifyRun)
@@ -1319,30 +1319,47 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         AddLog(warned, warned.DeviceId, TaskLogLevel.Warning, "LED not available, used the status indicator instead", now.AddMinutes(-32).AddSeconds(5));
         AddLog(warned, warned.DeviceId, TaskLogLevel.Info, "Status indicator flashed", now.AddMinutes(-31));
 
-        TaskInfo cancelled = AddTask(RestartPluginId, "Restart", OwnerName, TaskState.Cancelled, 30, _devices[7].Id);
+        TaskInfo cancelled = AddTask(RestartPluginId, "Restart device", OwnerName, TaskState.Cancelled, 30, _devices[7].Id);
         cancelled.Started = Timestamp.FromDateTime(now.AddMinutes(-25));
         SetSteps(cancelled, RestartSteps, 30);
         EndSteps(cancelled, "Cancelled.", "Not run: the task was cancelled.");
 
-        foreach (TaskInfo running in AddBatch(RestartPluginId, "Restart", OwnerName, TaskState.Running, 36, [_devices[1].Id, _devices[5].Id]))
+        foreach (TaskInfo running in AddBatch(RestartPluginId, "Restart device", OwnerName, TaskState.Running, 36, [_devices[1].Id, _devices[5].Id]))
         {
             running.Started = Timestamp.FromDateTime(now.AddSeconds(-50));
             SetSteps(running, RestartSteps, running.Progress);
             _jobs[running.Id] = new FakeJob(running, 1, null, RestartSteps);
         }
 
-        TaskInfo identify = AddTask(IdentifyPluginId, "Identify (flash LED)", "admin@SECURITY-PC", TaskState.Running, 64, p3265.Id);
+        TaskInfo identify = AddTask(IdentifyPluginId, "Identify device (flash LED)", "admin@SECURITY-PC", TaskState.Running, 64, p3265.Id);
         identify.Started = Timestamp.FromDateTime(now.AddSeconds(-20));
         SetSteps(identify, IdentifySteps, identify.Progress);
         _jobs[identify.Id] = new FakeJob(identify, 1, null, IdentifySteps);
 
         // A firmware upgrade in the middle of its upload: many small steps, byte progress on the running one.
-        TaskInfo firmware = AddTask(FirmwarePluginId, "Upgrade AXIS OS", OwnerName, TaskState.Running, 42, _devices[2].Id);
+        TaskInfo firmware = AddTask(FirmwarePluginId, "Upgrade firmware to 12.11.77", OwnerName, TaskState.Running, 42, _devices[2].Id);
         firmware.Started = Timestamp.FromDateTime(now.AddSeconds(-95));
         SetSteps(firmware, FirmwareSteps, firmware.Progress);
         AddLog(firmware, firmware.DeviceId, TaskLogLevel.Info, "Compatible: fwmgr 1.4, AXIS OS 12.6.94 can be upgraded to 12.11.77", now.AddSeconds(-94));
         AddLog(firmware, firmware.DeviceId, TaskLogLevel.Info, "Uploading AXIS_OS_Q6135-LE_12_11_77.bin (82 MB, SHA-256 verified)", now.AddSeconds(-74));
         _jobs[firmware.Id] = new FakeJob(firmware, 1, null, FirmwareSteps) { TicksPerStep = 8 };
+
+        // Finished tasks of other plugins: the task name says exactly what the task did (ITaskPlugin.GetTaskName).
+        (string PluginId, string Name, int Device, int MinutesAgo)[] history =
+        [
+            ("oadm.users", "Add user joe", 0, 95),
+            ("oadm.users", "Remove users guest, temp", 9, 90),
+            ("oadm.network", "Set static IP 10.0.0.60", 3, 80),
+            ("oadm.acap", "Upgrade AXIS Object Analytics to 1.4.2", 2, 70),
+            ("oadm.vapix-commander.run", "Read brand parameters +2 more", 5, 60),
+        ];
+        foreach ((string pluginId, string name, int index, int minutesAgo) in history)
+        {
+            TaskInfo task = AddTask(pluginId, name, OwnerName, TaskState.Done, 100, _devices[index].Id);
+            task.Started = Timestamp.FromDateTime(now.AddMinutes(-minutesAgo));
+            task.Finished = Timestamp.FromDateTime(now.AddMinutes(-minutesAgo).AddSeconds(30));
+            SetSteps(task, GenericSteps, 100);
+        }
     }
 
     private Device CreateDevice(string serial, string address, string model, string firmware, DeviceStatus status) => WithSampleApis(new Device
@@ -1453,6 +1470,14 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
 
     private static readonly string[] GenericSteps = ["Check compatibility", "Read current settings", "Apply change", "Verify device"];
 
+    /// <summary>The task name the server would give (ITaskPlugin.GetTaskName) for the fake plugins.</summary>
+    private static string FakeTaskName(string pluginId, string displayName) => pluginId switch
+    {
+        RestartPluginId => "Restart device",
+        IdentifyPluginId => "Identify device (flash LED)",
+        _ => displayName,
+    };
+
     private static string[] StepsOf(string pluginId) => pluginId switch
     {
         RestartPluginId => RestartSteps,
@@ -1499,7 +1524,14 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
             task.Steps.Add(step);
         }
 
-        task.CurrentStepIndex = finished ? names.Count - 1 : current;
+        if (finished)
+        {
+            // Like the server: a successful task ends with the step "Completed".
+            Timestamp end = Timestamp.FromDateTime(start.AddSeconds(names.Count * 7));
+            task.Steps.Add(new TaskStep { Index = names.Count, Name = "Completed", State = TaskStepState.Done, Progress = 100, Started = end, Finished = end });
+        }
+
+        task.CurrentStepIndex = finished ? task.Steps.Count - 1 : current;
         foreach (TaskDeviceResult result in task.Devices.Where(r => r.State == TaskState.Running))
         {
             TaskStep running = task.Steps[task.CurrentStepIndex];
@@ -1510,6 +1542,12 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
     /// <summary>Like the server when a task fails or is cancelled: the running step fails, pending ones are skipped.</summary>
     private static void EndSteps(TaskInfo task, string failure, string skipReason)
     {
+        if (task.Steps.Count > 0 && task.Steps[^1].Name == "Completed")
+        {
+            task.Steps.RemoveAt(task.Steps.Count - 1);
+            task.CurrentStepIndex = task.Steps.Count - 1;
+        }
+
         foreach (TaskStep step in task.Steps)
         {
             if (step.State == TaskStepState.Running)

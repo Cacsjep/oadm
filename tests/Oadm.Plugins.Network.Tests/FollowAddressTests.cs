@@ -13,10 +13,10 @@ public sealed class FollowAddressTests
             NewAddressTimeout = TimeSpan.FromMilliseconds(60),
         };
 
-    private const string Head = "Check compatibility: Done|Read current settings: Done|Read IPv6 address mode: Done|Validate settings: Done|Set host name: Skipped|Set DNS: Done|Set IPv6: Skipped|Set IPv4: Done|Wait for the settings to apply: Done";
+    private const string Head = "Check compatibility: Done|Read current settings: Done|Read IPv6 address mode: Done|Validate settings: Done|Check address is free: Done|Set host name: Skipped|Set DNS: Done|Set IPv6: Skipped|Set IPv4: Done|Wait for the settings to apply: Done";
 
     private static Task RunAsync(RecordingContext ctx, FakeDevice device, string payload) =>
-        StepRun.RunAsync(ctx.Steps, () => new NetworkSettingsTaskPlugin(Fast, TimeProvider.System).ExecuteAsync(ctx, device, payload, CancellationToken.None));
+        StepRun.RunAsync(ctx.Steps, () => new NetworkSettingsTaskPlugin(Fast, TimeProvider.System, new FakeAddressProbe()).ExecuteAsync(ctx, device, payload, CancellationToken.None));
 
     private static string StaticPayload(Guid id, string address) => new NetworkPayload
     {
@@ -25,7 +25,8 @@ public sealed class FollowAddressTests
         Devices = new Dictionary<Guid, DeviceAssignment> { [id] = new(address) },
     }.ToJson();
 
-    private static string[] Expect(params string[] tail) => [.. Head.Split('|'), .. tail];
+    /// <summary>Every case here succeeds, so the engine appends "Completed".</summary>
+    private static string[] Expect(params string[] tail) => [.. Head.Split('|'), .. tail, "Completed: Done"];
 
     [Fact]
     public async Task Static_address_moves_the_oadm_device_record()
@@ -109,7 +110,7 @@ public sealed class FollowAddressTests
 
         await RunAsync(ctx, device, StaticPayload(device.Id, "10.0.0.60"));
 
-        Assert.Equal("Update OADM device address: Warning", StepRun.Lines(ctx.Steps)[^1]);
+        Assert.Equal("Update OADM device address: Warning", StepRun.Lines(ctx.Steps)[^2]);
         Assert.Contains("record is unchanged", Assert.Single(ctx.Warnings), StringComparison.Ordinal);
     }
 
@@ -122,9 +123,9 @@ public sealed class FollowAddressTests
 
         await RunAsync(ctx, device, StaticPayload(device.Id, "10.0.0.60"));
 
-        Assert.Equal("Update OADM device address: Skipped", StepRun.Lines(ctx.Steps)[^1]);
+        Assert.Equal("Update OADM device address: Skipped", StepRun.Lines(ctx.Steps)[^2]);
         Assert.Equal("OADM reaches the device by host name axis-accc8e000001.example.com; the host name is kept.", StepRun.Detail(ctx.Steps, "Update OADM device address"));
-        Assert.Equal("Verify device identity: Done", StepRun.Lines(ctx.Steps)[^2]);
+        Assert.Equal("Verify device identity: Done", StepRun.Lines(ctx.Steps)[^3]);
         Assert.Empty(ctx.AddressUpdates);
     }
 
@@ -161,9 +162,9 @@ public sealed class FollowAddressTests
         await RunAsync(ctx, device, payload);
 
         Assert.Equal(
-            ["Check compatibility: Done", "Read current settings: Done", "Read IPv6 address mode: Done", "Validate settings: Done", "Set host name: Skipped", "Set DNS: Skipped",
+            ["Check compatibility: Done", "Read current settings: Done", "Read IPv6 address mode: Done", "Validate settings: Done", "Check address is free: Skipped", "Set host name: Skipped", "Set DNS: Skipped",
              "Set IPv6: Skipped", "Set IPv4: Done", "Wait for the settings to apply: Done", "Check reachability: Warning",
-             "Wait for the device at the new address: Skipped", "Verify device identity: Skipped", "Update OADM device address: Skipped"],
+             "Wait for the device at the new address: Skipped", "Verify device identity: Skipped", "Update OADM device address: Skipped", "Completed: Done"],
             StepRun.Lines(ctx.Steps));
         Assert.Equal(
             "DHCP: address assigned by the network, the device will be found again by the next scan",

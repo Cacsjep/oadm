@@ -149,14 +149,25 @@ public sealed class PayloadValidatorTests
     }
 
     [Fact]
-    public void Static_ipv6_only_for_one_device()
+    public void Static_ipv6_for_several_devices_needs_one_distinct_address_per_device()
     {
-        var payload = new NetworkPayload
+        var shared = new NetworkPayload
         {
             Ipv6 = new Ipv6Change(Ipv6Mode.Static, "2001:db8::10", 64),
             Devices = new Dictionary<Guid, DeviceAssignment> { [A] = new(), [B] = new() },
         };
-        Assert.Contains(PayloadValidator.Validate(payload), e => e.Contains("one device at a time", StringComparison.Ordinal));
+        Assert.Contains(PayloadValidator.Validate(shared), e => e.Contains("assigned to more than one device", StringComparison.Ordinal));
+
+        var missing = new NetworkPayload
+        {
+            Ipv6 = new Ipv6Change(Ipv6Mode.Static, null, 64),
+            Devices = new Dictionary<Guid, DeviceAssignment> { [A] = new(Ipv6Address: "2001:db8::10"), [B] = new() },
+        };
+        Assert.Contains(PayloadValidator.Validate(missing), e => e.Contains("one device has no IPv6 address", StringComparison.Ordinal));
+
+        var ok = missing with { Devices = new Dictionary<Guid, DeviceAssignment> { [A] = new(Ipv6Address: "2001:db8::10"), [B] = new(Ipv6Address: "2001:db8::11") } };
+        Assert.Empty(PayloadValidator.Validate(ok));
+        Assert.Equal("2001:db8::11", ok.Ipv6!.AddressFor(ok.Devices[B]));
     }
 
     [Theory]

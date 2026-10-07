@@ -87,7 +87,7 @@ public sealed class FirmwareTaskPluginTests
         Assert.Empty(ctx.Warnings);
         Assert.Empty(ctx.Reports); // progress is derived from the steps
         Assert.Equal(
-            Then("Upload firmware: Done", "Install firmware: Done", "Wait for device to come back: Done", "Verify version: Done", "Read commit state: Done", "Commit firmware: Done"),
+            Then("Upload firmware: Done", "Install firmware: Done", "Wait for device to come back: Done", "Verify version: Done", "Read commit state: Done", "Commit firmware: Done", "Completed: Done"),
             StepRun.Lines(ctx.Steps));
         Assert.Equal("fwmgr 1.10", StepRun.Detail(ctx.Steps, "Check compatibility"));
         Assert.Equal("AXIS P3265-V, AXIS OS 11.11.160", StepRun.Detail(ctx.Steps, "Read device info"));
@@ -114,7 +114,7 @@ public sealed class FirmwareTaskPluginTests
         Assert.Contains("Already up to date", ctx.Warnings[0], StringComparison.Ordinal);
         Assert.Equal(
             ["Check compatibility: Done", "Read device info: Done", "Validate file: Warning", "Read firmware status: Skipped", "Upload firmware: Skipped",
-             "Install firmware: Skipped", "Wait for device to come back: Skipped", "Verify version: Skipped", "Read commit state: Skipped", "Commit firmware: Skipped"],
+             "Install firmware: Skipped", "Wait for device to come back: Skipped", "Verify version: Skipped", "Read commit state: Skipped", "Commit firmware: Skipped", "Completed: Done"],
             StepRun.Lines(ctx.Steps));
         Assert.Equal("Already up to date.", StepRun.Detail(ctx.Steps, "Upload firmware"));
     }
@@ -173,7 +173,7 @@ public sealed class FirmwareTaskPluginTests
         Assert.Equal(0, device.Commits);
         Assert.Contains(ctx.Warnings, w => w.Contains("Hard factory default", StringComparison.Ordinal));
         Assert.Equal(
-            Then("Upload firmware: Done", "Install firmware: Done", "Wait for device to come back: Done", "Verify version: Done", "Read commit state: Skipped", "Commit firmware: Skipped"),
+            Then("Upload firmware: Done", "Install firmware: Done", "Wait for device to come back: Done", "Verify version: Done", "Read commit state: Skipped", "Commit firmware: Skipped", "Completed: Done"),
             StepRun.Lines(ctx.Steps));
         Assert.Equal("The device commits a factory default upgrade by itself.", StepRun.Detail(ctx.Steps, "Commit firmware"));
         Assert.Equal("10.12.236", device.Version);
@@ -191,20 +191,38 @@ public sealed class FirmwareTaskPluginTests
     }
 
     [Fact]
-    public async Task Invalid_file_is_refused_before_upload()
+    public async Task Too_small_file_is_refused_before_upload()
     {
         var device = new FakeAxisDevice();
         var files = new FakeFiles();
-        var zip = Fixture.Image();
-        "PK\u0003\u0004"u8.CopyTo(zip);
-        var file = files.Add("P3265-V_12_11_77.bin", zip);
+        var file = files.Add("P3265-V_12_11_77.bin", Fixture.Image(1000));
         var ctx = new RecordingContext(device, files);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             Run(ctx, new FirmwarePayload { FileId = file.Id }.ToJson(), new FakeDevice(), Plugin(), CancellationToken.None));
 
-        Assert.Contains("ZIP", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("smaller than 1 MB", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Nothing was changed", ex.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("upgrade", device.Methods);
+    }
+
+    [Fact]
+    public async Task Image_starting_with_gzip_bytes_is_uploaded_the_device_decides()
+    {
+        // Older AXIS OS images (e.g. M3206-LVE_10_12_338.bin) start with gzip/tar-like bytes; the content is never judged.
+        var device = new FakeAxisDevice();
+        var files = new FakeFiles();
+        var image = Fixture.Image();
+        image[0] = 0x1F;
+        image[1] = 0x8B;
+        image[2] = 0x08;
+        var file = files.Add("P3265-V_12_11_77.bin", image);
+        var ctx = new RecordingContext(device, files);
+
+        await Run(ctx, new FirmwarePayload { FileId = file.Id, FileName = "P3265-V_12_11_77.bin" }.ToJson(), new FakeDevice(), Plugin(), CancellationToken.None);
+
+        Assert.Equal(image, device.UploadedBytes);
+        Assert.Equal("12.11.77", device.Version);
     }
 
     [Theory]
@@ -309,7 +327,7 @@ public sealed class FirmwareTaskPluginTests
         Assert.Equal(1, device.Commits);
         Assert.Contains(ctx.Logs, l => l.Level == TaskLogLevel.Warning && l.Message.Contains("answer was lost", StringComparison.Ordinal));
         Assert.Contains("answer was lost", StepRun.Detail(ctx.Steps, "Upload firmware"), StringComparison.Ordinal);
-        Assert.Equal("Commit firmware: Done", StepRun.Lines(ctx.Steps)[^1]);
+        Assert.Equal(["Commit firmware: Done", "Completed: Done"], StepRun.Lines(ctx.Steps)[^2..]);
     }
 
     [Fact]
@@ -396,8 +414,8 @@ public sealed class FirmwareTaskPluginTests
         Assert.Equal(2, device.Commits);
         Assert.True(device.Committed);
         Assert.Equal(
-            ["Read commit state: Done", "Commit firmware: Failed", "Wait before retrying the commit: Done", "Read commit state (attempt 2): Done", "Commit firmware (attempt 2): Done"],
-            StepRun.Lines(ctx.Steps)[^5..]);
+            ["Read commit state: Done", "Commit firmware: Failed", "Wait before retrying the commit: Done", "Read commit state (attempt 2): Done", "Commit firmware (attempt 2): Done", "Completed: Done"],
+            StepRun.Lines(ctx.Steps)[^6..]);
     }
 
     [Fact]

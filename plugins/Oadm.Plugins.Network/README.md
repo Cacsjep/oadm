@@ -12,8 +12,8 @@ follows a device to its new static address.
 
 | Part | Assembly | Content |
 |---|---|---|
-| `plugins/Oadm.Plugins.Network` | `Oadm.Plugins.Network.Server.dll` | `NetworkSettingsTaskPlugin`, `AssignIpTaskPlugin` (`ITaskPlugin` + `ITaskPluginQuery`), `NetworkTaskRunner`, `AddressCheck` (query), payload model, validation, IP range syntax (`IpRangeExpression`), address suggestion and conflicts (`AddressAssigner`, `AddressConflicts`), VAPIX requests |
-| `plugins/Oadm.Plugins.Network.Client` | `Oadm.Plugins.Network.Client.dll` | `NetworkSettingsDialog`/`ViewModel`/`Window`, `AssignIpDialog`/`ViewModel`/`Window`, the shared address table `AddressAssignmentGrid` + `AddressAssignmentViewModel` + `AddressRowViewModel`, `NetworkWarnings` |
+| `plugins/Oadm.Plugins.Network` | `Oadm.Plugins.Network.Server.dll` | `NetworkSettingsTaskPlugin`, `AssignIpTaskPlugin` (`ITaskPlugin` + `ITaskPluginQuery`), `NetworkTaskRunner`, `AddressCheck` (query), `IAddressProbe` / `NetworkAddressProbe` (ping + TCP 80/443), `NetworkTaskNames`, payload model, validation, IP range syntax (`IpRangeExpression`), address suggestion and conflicts (`AddressAssigner`, `AddressConflicts`), VAPIX requests |
+| `plugins/Oadm.Plugins.Network.Client` | `Oadm.Plugins.Network.Client.dll` | `NetworkSettingsDialog`/`ViewModel`/`Window`, `AssignIpDialog`/`ViewModel`/`Window`, the shared address table `AddressAssignmentGrid` + `AddressAssignmentViewModel` + `AddressRowViewModel`, `NetworkWarnings`, `FieldErrors` (INotifyDataErrorInfo) |
 | `tests/Oadm.Plugins.Network.Tests` | | unit, fixture, view model and headless dialog tests |
 
 The client part references the server assembly for the shared payload model, validator, range parser and
@@ -51,31 +51,44 @@ How OADM clones it:
 | Next: current and new IP addresses, Edit IP per device, Finish | Page 2 "New IP addresses": MAC address, Model, Current IP address, New IP address (edited in the cell instead of an Edit IP dialog), Status chip; Back, Finish |
 | Suggests addresses from the range | In grid order (the order the host passes the selection), the first free addresses of the range. Skipped: network and broadcast address, loopback/multicast/link-local, the default router, addresses of other managed devices, addresses found in use, duplicates. A device keeps its own address when the range reaches it |
 | (undocumented) too few addresses | "Not enough addresses: the IP range has N free addresses for M devices. Extend the range." and rows without an address; Finish stays disabled until every row has a valid address |
-| (undocumented) addresses in use | Page 2 runs the read-only query `checkAddresses` (also the **Check addresses** button): all managed device addresses plus a TCP connect to port 80 and 443 of each candidate from the server (no ICMP, no ARP request of our own, no HTTP; a refused connection also means "in use"); taken addresses are skipped and suggested again around them (3 rounds); remaining ones are flagged |
+| (undocumented) addresses in use | Page 2 runs the read-only query `checkAddresses` (also the **Check addresses** button): all managed device addresses plus, from the server, an ICMP echo (`System.Net.NetworkInformation.Ping`, 2 tries, 1 s each; cross-platform, on Linux .NET falls back to the `ping` utility without root) and a TCP connect to port 80 and 443 of each candidate (no ARP request of our own, no HTTP; a refused connection also means "in use"). Anything that answers and is not the device's own current address is in use; taken addresses are skipped and suggested again around them (3 rounds); remaining ones are flagged "In use (answers ping)" / "In use (answers on port 80/443)". The task checks again before writing (step **Check address is free**) |
 | Invalid devices are skipped | Each device is its own task; one failing device never affects the others |
 
 Conflicts per row (status chip, Finish disabled): "No address", "Not a valid IPv4 address", network/broadcast/
 loopback/multicast/link-local, "Same as the default router", "Outside the subnet of the default router",
-"Assigned to more than one device", "Used by <model serial>", "In use: another host answers at this address".
-A strong warning (checkbox "I understand that OADM may lose contact with these devices") must be acknowledged
-before Finish, on the page where the user finishes.
+"Assigned to more than one device", "Used by <model serial>", "In use (answers ping)", "In use (answers on port
+80/443)". Errors are shown once: a row's problem only in its Status column; errors of a field (IP range, subnet
+mask, default router, DNS servers) directly below that field (`INotifyDataErrorInfo`); "Not enough addresses"
+below the table. No error list, no info line with the current values (they are in the fields and the table).
+Next / Finish stay disabled while any error exists; their tooltip says why. **Finish** opens the host's shared
+confirmation window (`ui:MessageWindow`) with the reachability warning ("The devices get new IP addresses" /
+"The devices get their addresses from DHCP"; buttons Cancel / Finish); there is no inline acknowledgement.
 
 ## Network settings dialog
 
 - Sections **IPv4**, **IPv6**, **DNS**, **Host name**, each starting at **Keep unchanged**. Only
   touched sections go into the payload and only those are written.
-- Prefill: the read-only query `getNetworkInfo` reads the first selected device ("Current: ..." line
-  per section, fields prefilled). A failed query never blocks the dialog.
-- IPv4 static: subnet mask as `255.255.255.0`, `24` or `/24`, default gateway required. With several
-  devices the address field is an **IP range** with the Assign IP address syntax (a single address is the
-  start address), suggested and checked exactly like there, in the same table (`AddressAssignmentGrid`,
-  with the extra column **New host name**); every new address can be edited. A new range discards edits; a
-  new mask or gateway suggests again around them.
-- IPv6: Disabled, Automatic (router advertisement), DHCPv6, Static (static only for one device).
+- Prefill: the read-only query `getNetworkInfo` reads the first selected device and prefills the fields (no
+  "Current: ..." info lines). A failed query never blocks the dialog (one line in the Devices card).
+- IPv4 static: subnet mask as `255.255.255.0`, `24` or `/24`, default gateway required (shared fields). One
+  device: field **IP address**. Several devices: **no IP range field**; the column **New IP address** of the
+  Devices table (`AddressAssignmentGrid`) is the only place to set addresses. It is suggested from the first
+  device's current address and subnet (like Assign IP address with that address as start; without a known
+  address every row is typed by hand), every row editable; a new mask or gateway suggests again around edits.
+- IPv6: Disabled, Automatic (router advertisement), DHCPv6, Static. Static, one device: field **IP address**;
+  several devices: column **New IPv6 address** in the table (shown only for static IPv6, validated per row:
+  missing, invalid, loopback/multicast/IPv4-mapped, duplicate, managed device, in use), prefix length and
+  gateway shared. The address check probes IPv6 addresses too.
 - DNS: from DHCP, or static primary/secondary server, domain name, search domains.
 - Host name: from DHCP, or static. Several devices use a template with `{n}` (position) or `{serial}`.
-- Strong warning (must be acknowledged before **Apply**) for every IPv4 change, naming how many
-  devices get a new address, and for IPv6 changes on devices OADM reaches over IPv6.
+- Errors: a field's error directly below the field (`INotifyDataErrorInfo` through `FieldErrors`; mask,
+  gateway, IP/IPv6 address of one device, prefix length, DNS server, domain name, search domains, host name),
+  per-device problems only in the table's Status column ("IPv6: ..." for the IPv6 column). No error list. Apply
+  stays disabled while any error exists; its tooltip says why.
+- **Apply** on a risky change (an IPv4 change: new address, subnet, gateway or switch to DHCP; an IPv6 change on
+  a device OADM reaches over IPv6) opens the host's shared confirmation window (`ui:MessageWindow`, title "The
+  devices may become unreachable", the warning naming how many devices get a new address, buttons Cancel /
+  Apply). No inline warning section or checkbox.
 - Validation is the same `PayloadValidator` the server runs: address/mask/gateway in one subnet, no
   network or broadcast address, no loopback/multicast/link-local, no duplicates in the batch (address
   equal to the gateway included), IPv6 syntax and prefix, DNS servers, domain and host name syntax,
@@ -92,29 +105,46 @@ refused before the first request).
   "ipv6": { "mode": "auto" },
   "dns": { "useDhcp": false, "servers": ["10.0.0.2"], "domainName": "example.com", "searchDomains": [], "keepDomains": false },
   "hostName": { "useDhcp": false },
-  "devices": { "<device id>": { "ipv4Address": "10.0.0.100", "hostName": "cam-1" } }
+  "devices": { "<device id>": { "ipv4Address": "10.0.0.100", "hostName": "cam-1", "ipv6Address": "2001:db8::100" } }
 }
 ```
 
-Query `checkAddresses` (both plugins, read-only): request `{"addresses":["10.0.0.100"],"probe":true}` (at most
-256), answer `{"managed":[{"address","deviceId","device"}],"probed":[{"address","inUse"}]}`.
+Static IPv6 (`"ipv6": {"mode":"static","prefixLength":64,"gateway":null}`) takes each device's `ipv6Address`
+(`Ipv6Change.AddressFor`; `ipv6.address` is the fallback for a device without one).
+
+Query `checkAddresses` (both plugins, read-only): request `{"addresses":["10.0.0.100","2001:db8::100"],"probe":true}`
+(IPv4 and IPv6, at most 256), answer `{"managed":[{"address","deviceId","device"}],"probed":[{"address","inUse","answersPing"}]}`.
+
+Task names (`GetTaskName`, once per run from the shared payload): Network settings "Set static IP 10.0.0.60"
+(one device) / "Set static IP addresses" (several), "Switch to DHCP", "Set DNS servers" / "Use DNS from DHCP",
+"Set host name cam-1" / "Set host names" / "Use host name from DHCP", "Change IPv6 settings" when only that
+section changes, else "Change network settings"; Assign IP address "Assign IP 10.0.0.60" (one device) / "Assign IP
+addresses" (several) / "Assign IP via DHCP". An unreadable payload gives the display name.
 
 ## Task (per device)
 
 Steps of **Network settings**: **Check compatibility** ("network-settings 1.37" or "param.cgi"), **Read
 current settings** (getNetworkInfo, or the param.cgi Network group on legacy devices), **Read IPv6 address mode**
 (param.cgi; Skipped when it is already part of the first read or param.cgi is missing), **Validate settings**
-(the plan below), **Set host name**, **Set DNS**, **Set IPv6** (+ **Enable IPv6** when the interface is switched
+(the plan below), **Check address is free**, **Set host name**, **Set DNS**, **Set IPv6** (+ **Enable IPv6** when the interface is switched
 on with a second request), **Set IPv4** (IPv4 before IPv6 for a device reached over IPv6), **Wait for the
 settings to apply**, **Check reachability**, **Wait for the device at the new address**, **Verify device
 identity**, **Update OADM device address**.
 
-Steps of **Assign IP address**: Check compatibility, Read current settings, Validate settings, Set DNS,
+Steps of **Assign IP address**: Check compatibility, Read current settings, Validate settings, Check address is
+free, Set DNS,
 Set IPv4, Wait for the settings to apply, Check reachability, Wait for the device at the new address, Verify
 device identity, Update OADM device address (no IPv6 mode read, no host name or IPv6 step).
 
 Every device request is its own step; sections the user kept unchanged are Skipped ("Keep unchanged"). A
-failing write is Failed and the later steps Skipped.
+failing write is Failed and the later steps Skipped. A successful task ends with the engine's step **Completed**.
+
+**Check address is free** runs right before the first write: every new static address the task writes (IPv4,
+and IPv6 static) is probed with `IAddressProbe` (ping 2 x 1 s plus TCP 80/443, `NetworkAddressProbe`; tests use a
+fake). The device's own current address (OADM's address, its current IPv4 and IPv6 addresses) is never probed
+("10.0.0.48 is the device's own address"). When anything answers, the step fails with "10.0.0.60 is already in use
+(answers ping). Nothing was changed." (or "(answers on port 80/443)") and no request is sent, not even DNS.
+Skipped "DHCP: no static address is set" / "No static address is set".
 
 1. Parse and validate the payload for the whole batch. Invalid: fails with "... Nothing was changed."
 2. Fresh `GetApiListAsync`; read the current settings (getNetworkInfo, or param.cgi on legacy devices).

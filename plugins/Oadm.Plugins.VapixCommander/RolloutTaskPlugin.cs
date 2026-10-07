@@ -44,6 +44,48 @@ public sealed class RolloutTaskPlugin : ITaskPlugin
 
     public bool ShowInMenus => false;
 
+    /// <summary>The single command name, or "&lt;first command&gt; +N more" for several commands.</summary>
+    public string GetTaskName(string? payloadJson)
+    {
+        RolloutPayload? payload;
+        try
+        {
+            payload = JsonSerializer.Deserialize<RolloutPayload>(payloadJson ?? "{}", CommandJson.Api);
+        }
+        catch (JsonException)
+        {
+            return DisplayName;
+        }
+
+        return TaskName(payload?.Commands.Select(c => c.Command.Name).ToList() ?? []) ?? DisplayName;
+    }
+
+    /// <summary>See <see cref="GetTaskName"/>; null without commands.</summary>
+    public static string? TaskName(IReadOnlyList<string> commandNames)
+    {
+        ArgumentNullException.ThrowIfNull(commandNames);
+        if (commandNames.Count == 0 || string.IsNullOrWhiteSpace(commandNames[0]))
+        {
+            return null;
+        }
+
+        var first = commandNames[0].Trim();
+        if (commandNames.Count == 1)
+        {
+            return first;
+        }
+
+        // Keep the "+N more" visible within the 48 characters of a task name.
+        var more = string.Create(CultureInfo.InvariantCulture, $" +{commandNames.Count - 1} more");
+        var room = TaskPluginNames.MaxTaskNameLength - more.Length;
+        if (first.Length > room)
+        {
+            first = first[..(room - 1)].TrimEnd() + TaskPluginNames.Ellipsis;
+        }
+
+        return first + more;
+    }
+
     public bool CanRun(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);

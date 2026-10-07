@@ -1,6 +1,10 @@
 # Oadm.Plugins.Firmware
 
 Task plugin `oadm.firmware`, **Upgrade firmware** (toolbar and context menu group Maintenance, dialog first).
+Task names (`GetTaskName`, from the payload): "Upgrade firmware to 12.11.77", "Downgrade firmware to
+10.12.236" (every installing device downgrades, payload `direction` from the dialog preview), "Install
+firmware 12.11.77" (mixed), "Install firmware" (version not in the file name), plus " (factory default)"
+for a soft or hard factory default.
 Installs an AXIS OS image on the selected devices through the VAPIX firmware management API
 (`fwmgr`), waits for the restart, verifies the new version and commits it.
 
@@ -51,11 +55,14 @@ returned before installation, so the device still runs its old firmware (the plu
 - Downgrade restriction: since AXIS OS 11.6 / 10.12 LTS (CVE-2023-21414) ARTPEC-8 products only
   accept a downgrade to the latest supported 10.12 LTS release; anything older is refused by the
   device. Downgrades also require a factory default (409).
-- The signed image format is not publicly documented. OADM therefore reads product and version
-  from the official download name (`P3265-V_12_11_77.bin`, dots also accepted, optional `AXIS_`
-  prefix) and uses the header bytes only to reject files that are clearly not an image (ZIP,
-  gzip/ACAP, PDF, PE/ELF executables, text, all zeros), wrong extension, < 1 MB or > 2 GB. The device
-  is the final authority for product and signature (421/422/415) and refuses before installing.
+- The signed image format is not publicly documented, and real images start with very different
+  bytes (older AXIS OS images such as `M3206-LVE_10_12_338.bin`, AXIS OS 10.12, start with gzip/tar-like
+  bytes). OADM therefore **never judges the content** (no magic-byte or header checks; an earlier version
+  wrongly refused such images as "compressed archive"). It only makes non-destructive checks of the file:
+  `.bin` extension, size between 1 MB and 2 GB, and product and version read from the official download
+  name when it follows the pattern (`P3265-V_12_11_77.bin`, dots also accepted, optional `AXIS_` prefix).
+  The device is the final authority for product and signature (421/422/415) and refuses before
+  installing; the task checks product and version against the device before the upload.
 
 ## Decision table
 
@@ -64,7 +71,7 @@ Evaluated per device in the dialog (preview) and again on the server right befor
 
 | File / device | Factory default | Allow downgrade | Result |
 |---|---|---|---|
-| Not an image (archive, executable, too small, ...) | any | any | **Refused**, nothing changed |
+| Not a `.bin` file, smaller than 1 MB or larger than 2 GB (the content is never inspected) | any | any | **Refused**, nothing changed |
 | Product from file name != device ProdNbr | any | any | **Refused** "wrong product" |
 | Same version | any | any | **Done with warning** "Already up to date", nothing uploaded |
 | Newer version | none | any | **Upgrade**, settings kept, OADM commits after verifying |
@@ -99,7 +106,7 @@ front, so the user sees them as Pending); the task progress is derived from the 
 |---|---|
 | Check compatibility | status OK, fresh `getApiList` + `Require("fwmgr", "1.0")`; detail "fwmgr 1.10" |
 | Read device info | `basicdeviceinfo`; detail "AXIS P3265-V, AXIS OS 11.11.160" |
-| Validate file | uploaded file present, header/name inspection, decision table; already up to date -> Warning and all later steps Skipped ("Already up to date.") |
+| Validate file | uploaded file present, name/size inspection (never the content), decision table; already up to date -> Warning and all later steps Skipped ("Already up to date.") |
 | Read firmware status | fwmgr `status`: no uncommitted previous upgrade |
 | Upload firmware | `ctx.Files.OpenReadAsync` streamed in 80 KB chunks (`FirmwareStreamContent`), Content-Length set, never buffered; reopened if the HTTP stack resends after a Digest challenge; `Expect: 100-continue` so the 401 comes before the body. Step progress in bytes ("12 of 80 MB"). Request timeout 20 min via `VapixRequestOptions.Timeout`. Params: settings kept: `autoCommit=never`, `autoRollback=30` (minutes, longer than the 15 min wait) so the device reverts by itself if OADM never verifies. Factory default: `autoCommit=started`, `autoRollback=never`, because the reset removes OADM's credentials |
 | Install firmware | poll anonymous `basicdeviceinfo getAllUnrestrictedProperties` every 5 s (works after a factory default) until the device goes offline (or already answers with another version) |

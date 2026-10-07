@@ -5,10 +5,11 @@ namespace Oadm.Plugins.Firmware;
 /// <summary>
 /// What OADM could learn about a firmware file before sending it to a device. Axis does not publish
 /// the layout of the signed AXIS OS image, so product and version come from the official download
-/// name (<c>P3265-V_12_11_77.bin</c>); the header bytes are only used to reject files that are
-/// clearly not an AXIS OS image (archives, ACAP packages, executables, ...). The device itself is the
-/// final authority: it verifies the signature and the product before it installs anything
-/// (fwmgr errors 415, 421, 422).
+/// name (<c>P3265-V_12_11_77.bin</c>) when it follows that pattern. The content is never judged:
+/// real images start with very different bytes (older AXIS OS images look like gzip or tar data), so
+/// only non-destructive checks of the name and the size are made here. The device is the final
+/// authority: it verifies the signature and the product before it installs anything (fwmgr errors
+/// 415, 421, 422), and the upgrade task checks product and version against the device.
 /// </summary>
 public sealed record FirmwareImageInfo(
     string FileName,
@@ -31,16 +32,13 @@ public static partial class FirmwareImageInspector
     /// <summary>Largest accepted image (the biggest current images are around 250 MB).</summary>
     public const long MaximumSize = 2L * 1024 * 1024 * 1024;
 
-    /// <summary>Bytes from the start of the file that <see cref="Inspect"/> looks at.</summary>
-    public const int HeaderLength = 512;
-
-    /// <summary>Inspects a file name, its size and the first bytes (<see cref="HeaderLength"/> are enough).</summary>
-    public static FirmwareImageInfo Inspect(string fileName, long size, ReadOnlySpan<byte> header)
+    /// <summary>Inspects a file by its name and size only; the content is never judged (see <see cref="FirmwareImageInfo"/>).</summary>
+    public static FirmwareImageInfo Inspect(string fileName, long size)
     {
         ArgumentNullException.ThrowIfNull(fileName);
         var name = Path.GetFileName(fileName);
         var (product, version) = ParseFileName(name);
-        return new FirmwareImageInfo(name, size, product, version, CheckContent(name, size, header));
+        return new FirmwareImageInfo(name, size, product, version, CheckFile(name, size));
     }
 
     /// <summary>
@@ -64,7 +62,7 @@ public static partial class FirmwareImageInspector
         return (match.Groups["prod"].Value.ToUpperInvariant(), AxisOsVersion.TryParse(match.Groups["ver"].Value));
     }
 
-    private static string? CheckContent(string name, long size, ReadOnlySpan<byte> header)
+    private static string? CheckFile(string name, long size)
     {
         if (!name.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
         {
@@ -73,38 +71,12 @@ public static partial class FirmwareImageInspector
 
         if (size < MinimumSize)
         {
-            return "Not an AXIS OS image: the file is too small.";
+            return "Not an AXIS OS image: the file is smaller than 1 MB.";
         }
 
         if (size > MaximumSize)
         {
-            return "Not an AXIS OS image: the file is too large.";
-        }
-
-        if (header.Length < 4)
-        {
-            return "Not an AXIS OS image: the file header could not be read.";
-        }
-
-        if (header.StartsWith("PK\u0003\u0004"u8))
-        {
-            return "This is a ZIP archive. Extract the .bin firmware file first.";
-        }
-
-        if (header[0] == 0x1F && header[1] == 0x8B)
-        {
-            return "This is a compressed archive (for example an ACAP .eap package), not an AXIS OS image.";
-        }
-
-        if (header.StartsWith("%PDF"u8) || header.StartsWith("MZ"u8) || header.StartsWith("\u007FELF"u8)
-            || header.StartsWith("<"u8) || header.StartsWith("{"u8))
-        {
-            return "Not an AXIS OS image (document, program or text file).";
-        }
-
-        if (header.IndexOfAnyExcept((byte)0) < 0)
-        {
-            return "Not an AXIS OS image: the file starts with empty data.";
+            return "Not an AXIS OS image: the file is larger than 2 GB.";
         }
 
         return null;

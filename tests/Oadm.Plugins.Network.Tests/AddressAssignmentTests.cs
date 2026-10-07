@@ -160,7 +160,7 @@ public sealed class AddressAssignmentTests
         var conflicts = AddressConflicts.Find(rows, 24, "10.0.0.1", known);
 
         Assert.Equal(
-            ["Assigned to more than one device", null, "Used by P3265-V ACCC8E0000AA", "In use: another host answers at this address",
+            ["Assigned to more than one device", null, "Used by P3265-V ACCC8E0000AA", "In use (answers on port 80/443)",
              "Outside the subnet of the default router", "Same as the default router", "Assigned to more than one device", "Broadcast address of its subnet"],
             conflicts);
         Assert.Equal(["No address", "Not a valid IPv4 address"], AddressConflicts.Find([new(devices[0], ""), new(devices[1], "10.0.0")], 24, "10.0.0.1"));

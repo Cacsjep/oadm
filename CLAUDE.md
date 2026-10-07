@@ -60,7 +60,7 @@ src/
   Oadm.Sdk.Client/     client-side plugin SDK: dialog/page/toolbar interfaces, ITaskDialogContext,
                        IToolbarContext, shared controls (Controls/: IconLabel, SearchBox, OadmIcon,
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, FileRow, ProgressRow,
-                       ToolbarButton, ToolbarSeparator, PasswordBox)
+                       ToolbarButton, ToolbarSeparator, PasswordBox, MessageWindow)
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)
   Oadm.Server/         host: gRPC services, plugin loader, polling, Serilog setup
   Oadm.Client/         Avalonia app: views, view models, gRPC client, plugin loader
@@ -514,11 +514,19 @@ full refreshes go through one deduplicating queue with bounded parallelism.
   throws, the running step (or the one its `using` just ended) ends Failed with the exception message and
   pending ones Skipped ("Not run: an earlier step failed." / "... the task was cancelled."; a cancelled
   running step is Failed "Cancelled."). The running step is also the device message ("Upload firmware -
-  12 of 80 MB"). Overall progress = steps with equal weights, the running one with its own progress,
+  12 of 80 MB"). When the task succeeds (Done or Done with warnings) the engine appends a final step
+  **Completed** (Done, `TaskStepList.CompletedStepName`, also for plugins without own steps), so the
+  tasks pane reads "Step 8/8 · Completed"; Failed and Cancelled tasks get none (the failed step stays
+  current). Overall progress = steps with equal weights, the running one with its own progress,
   unless the plugin calls `ReportProgress` (then that value wins). Step changes go to the change feed
   immediately and are persisted with the throttled writes (max 1/s per device) plus every state
   transition. Recovery after a server restart marks a Running step Failed ("Server stopped while the
   task was running.") and Pending ones Skipped.
+- **Task names: the task list says exactly what a task does** ("Add user joe", "Set static IP
+  10.0.0.60", "Upgrade firmware to 12.11.77 (factory default)"), never the plugin's menu name: the engine
+  names each task with `ITaskPlugin.GetTaskName(payloadJson)` once per Run (trimmed, trailing "..."
+  stripped, at most `TaskPluginNames.MaxTaskNameLength` = 48 characters, longer names shortened with
+  "…" and a warning logged; empty or throwing = `DisplayName`). Names never contain secrets.
 - Task engine: at most 8 running tasks per plugin (`TaskEngineOptions.MaxParallelTasksPerPlugin`,
   overridden by `ITaskPlugin.MaxParallelDevices`, e.g. firmware 2); further tasks wait in Queued
   and a cancel while queued ends them as Cancelled ("Cancelled before start."). Cancellation via
@@ -583,6 +591,7 @@ public interface ITaskPlugin : IPlugin
     bool CanRun(IDeviceInfo device);
     int? MaxParallelDevices => null;   // concurrent tasks of this plugin; null = 8
     bool ShowInMenus => true;          // false: not in context menu/toolbar (ListTaskPlugins skips it); started by its core plugin
+    string GetTaskName(string? payloadJson) => DisplayName;  // task list name: exactly what this task does, max 48, no secrets
     Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct);
 }
 
@@ -648,10 +657,11 @@ public interface ICorePluginContext
 ```
 
 Task plugin names and groups: `DisplayName` is at most `TaskPluginNames.MaxDisplayNameLength` (32)
-characters and never ends with "..." (dialog tasks too). The server registry (`RegisteredTaskPlugin.DisplayName`
+characters and never ends with "..." (dialog tasks too); it is the menu and toolbar name only, the tasks
+pane shows `GetTaskName` (see Tasks). The server registry (`RegisteredTaskPlugin.DisplayName`
 / `.Group`) strips trailing "..." / "…" and shortens longer names to 31 characters + "…", logging a
 warning for either; empty groups become `General`, groups are shortened the same way. The task name in
-the tasks pane, `TaskPluginInfo` and the client menu and toolbar use the normalized name. Bundled plugins:
+`TaskPluginInfo` and the client menu and toolbar use the normalized name. Bundled plugins:
 Restart and Upgrade firmware (Maintenance), Applications (ACAP) (Applications), Users (Users), Network
 settings and Assign IP address (Network); `TaskPluginNamesTests` checks every plugin deployed to
 `artifacts/plugins`.
@@ -734,7 +744,9 @@ API guide: `plugins/README.md`.
 Dialogs and pages are real Avalonia views with view models, styled by the host theme. They use
 the shared controls from `Oadm.Sdk.Client.Controls` (`IconLabel`, `SearchBox`, `PasswordBox`, `OadmIcon`,
 `DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip`, `FileRow`, `ProgressRow`,
-`ToolbarButton`, `ToolbarSeparator`; usage in `plugins/README.md`) and
+`ToolbarButton`, `ToolbarSeparator`, `MessageWindow` (every message and confirmation popup:
+`MessageWindow.ConfirmAsync` / `ShowMessageAsync`, used by the host dialog service and plugin dialogs);
+usage in `plugins/README.md`) and
 the theme resources (styles, colors, `Icon.*` geometries) of the host application; the icon keys
 are listed in `plugins/README.md`. Plugins never talk to devices from the client; payloads go to
 the server. gRPC errors reach the dialog as `RpcException` (Status.Detail is the message).
@@ -792,29 +804,54 @@ the device to go offline, Wait for the device to come back, Verify device (seria
 one is a Warning). No client assembly needed.
 
 Steps of the other task plugins (details in each plugin README):
+- Every successful task ends with the engine's step Completed (not listed below).
 - Users: Check compatibility, Read password policy, Identify OADM account, Read users, Validate change,
-  Add/Update/Remove user <name> (one per write), Verify users.
-- Network: Check compatibility, Read current settings, Read IPv6 address mode, Validate settings, Set
-  host name, Set DNS, Set IPv6 (+ Enable IPv6), Set IPv4 (order as written), Wait for the settings to
-  apply, Check reachability, Wait for the device at the new address, Verify device identity, Update OADM
-  device address; unchanged sections Skipped "Keep unchanged".
-- Assign IP address: Check compatibility, Read current settings, Validate settings, Set DNS, Set IPv4, Wait
-  for the settings to apply, Check reachability, Wait for the device at the new address, Verify device
-  identity, Update OADM device address.
+  Add/Update/Remove user <name> (one per write; Remove of several users: one "Remove user <name>" each,
+  all validated before the first one), Verify users. Names: "Add user joe", "Change password joe",
+  "Change role joe", "Change user joe", "Remove user joe", "Remove users joe, ann". Dialog: Remove picks
+  the users in the Existing users list (multi-select, no user name field; the OADM account and the last
+  administrator are greyed with a tooltip and cannot be selected), no general lock-out warning text.
+- Network: Check compatibility, Read current settings, Read IPv6 address mode, Validate settings, Check
+  address is free, Set host name, Set DNS, Set IPv6 (+ Enable IPv6), Set IPv4 (order as written), Wait for the
+  settings to apply, Check reachability, Wait for the device at the new address, Verify device identity, Update
+  OADM device address; unchanged sections Skipped "Keep unchanged". Names: "Set static IP 10.0.0.60" / "Set
+  static IP addresses", "Switch to DHCP", "Set DNS servers", "Set host name <name>", "Change IPv6 settings"
+  when only that section changes, else "Change network settings".
+- Assign IP address: Check compatibility, Read current settings, Validate settings, Check address is free, Set
+  DNS, Set IPv4, Wait for the settings to apply, Check reachability, Wait for the device at the new address,
+  Verify device identity, Update OADM device address. Names: "Assign IP 10.0.0.60" / "Assign IP addresses",
+  "Assign IP via DHCP".
+- Check address is free (both): before the first write every new static address (IPv4, IPv6) is probed with
+  `IAddressProbe` (ICMP echo via `System.Net.NetworkInformation.Ping`, 2 tries x 1 s, plus a TCP connect to
+  80/443; the device's own current addresses are not probed). An answer fails the step "10.0.0.60 is already in
+  use (answers ping). Nothing was changed." and nothing is sent; Skipped for DHCP. The dialogs' query
+  `checkAddresses` uses the same probe.
 - Firmware: Check compatibility, Read device info, Validate file, Read firmware status, Upload firmware
   (byte progress), Install firmware (until offline), Wait for device to come back, Verify version, Read
   commit state, Commit firmware (retries add "Wait before retrying the commit" and "(attempt n)" steps).
+  File checks never look at the content (real images start with gzip/tar-like bytes, e.g. AXIS OS 10.12
+  `M3206-LVE_10_12_338.bin`): only `.bin`, 1 MB..2 GB and product/version from the download name when it
+  follows the pattern; the device verifies product and signature itself. Names: "Upgrade firmware to
+  12.11.77", "Downgrade firmware to 10.12.236", "Install firmware 12.11.77" (mixed), "Install firmware"
+  (version unknown), + " (factory default)".
 - ACAP install: Check compatibility, Read package, Read device info, Read embedded development version,
   Read unsigned application setting, Read installed applications, Check compatibility of package, Upload
   package (byte progress), Verify installation (+ Start application, Verify application state); remove,
   start, stop: Check compatibility, Read installed applications, <action> application, Verify ....
+  Names: "Install <app> <version>", "Upgrade <app> to <version>", "Remove|Start|Stop <app>".
+- Restart: name "Restart device". VAPIX Commander rollout: the command name or "<first> +N more".
 
 ## Network settings plugin
 
 `plugins/Oadm.Plugins.Network` (+ `.Client`), id `oadm.network`, context menu (group Network) "Network settings",
-dialog with IPv4 / IPv6 / DNS / Host name sections (each "Keep unchanged" by default), IP range
-assignment in the shared address table for several devices, acknowledged warning before any change that
-can cut OADM off. Uses network-settings 1.x (`getNetworkInfo`, `setIPv4AddressConfiguration`,
+dialog with IPv4 / IPv6 / DNS / Host name sections (each "Keep unchanged" by default). One device: IP address
+fields; several devices: no IP range field, the new IPv4 address and (static IPv6 only) the new IPv6 address are
+set per row in the shared address table (columns "New IP address", "New IPv6 address"; IPv4 suggested from the
+first device's current address and subnet), subnet mask, gateway and prefix length stay shared fields. Errors are
+shown once: below their field (`INotifyDataErrorInfo`) or in the row's Status column, never as a list; Apply is
+disabled with a tooltip saying why. No "Current: ..." info lines (the fields are prefilled). Apply on a risky
+change (address, subnet, gateway, DHCP switch, IPv6 change over IPv6) asks in the host's shared confirmation
+window `ui:MessageWindow` ("The devices may become unreachable", Cancel / Apply); no inline acknowledgement. Uses network-settings 1.x (`getNetworkInfo`, `setIPv4AddressConfiguration`,
 `setResolverConfiguration`, `setHostnameConfiguration`, `setIPv6AddressConfiguration` >= 1.6) and
 param.cgi `Network.*` for the IPv6 address mode and for devices without network-settings. Writes the
 address family OADM connects with last. After a new static address (IPv4, or IPv6 when OADM connects over
@@ -837,9 +874,12 @@ ADM's "Assign IP address to selected devices" (research and sources in the Netwo
 - Page 2 "New IP addresses": the shared `AddressAssignmentGrid` (MAC address, Model, Current IP address, New IP
   address editable in the cell, Status chip), devices in the grid order the host passes. Suggestions skip
   network/broadcast addresses, the router, other managed devices' addresses and addresses in use (query
-  `checkAddresses`: managed devices plus a TCP connect to 80/443 from the server; also a **Check addresses**
-  button). "Not enough addresses: ..." when the range is too small; conflicts (duplicate, outside the subnet,
-  used by a managed device, in use) are red chips and block Finish; the warning must be acknowledged.
+  `checkAddresses`: managed devices plus ping and a TCP connect to 80/443 from the server, rows "In use (answers
+  ping)"; also a **Check addresses** button). "Not enough addresses: ..." below the table when the range is too
+  small; conflicts (duplicate, outside the subnet, used by a managed device, in use) are red chips only in the
+  Status column and block Finish. Field errors (IP range, subnet mask, default router, DNS) below their field; no
+  error list, no current-values info line. Finish asks in the shared `ui:MessageWindow` with the reachability
+  warning (Cancel / Finish); no inline acknowledgement.
 - Payload: `NetworkPayload` with `ipv4` (+ `dns` with `keepDomains`) only; one task per device with the
   Network plugin's steps for DNS and IPv4 and the follow-the-device steps.
 - "Network settings" shares range parsing, suggestion, conflicts, validation, warnings and the table.
@@ -1052,7 +1092,8 @@ LocalApplicationData): server address, grid column layout, bottom pane state.
   (every search field), `OadmIcon`, and for
   dialogs `DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip` (status chip),
   `FileRow` (chosen file + "Choose file..."), `ProgressRow` (progress bar + status text),
-  `PasswordBox` (every password field: TextBox with bullet mask and eye button "Show password" /
+  `MessageWindow` (every message box and confirmation popup, host and plugins; dialogs never show
+  inline "I understand" risk sections), `PasswordBox` (every password field: TextBox with bullet mask and eye button "Show password" /
   "Hide password", icons `Icon.eye` / `Icon.eyeOff`; never a `TextBox` with `PasswordChar`), `CodeView`
   (every read-only code / response display: JSON and XML pretty-printed with 2 spaces and highlighted,
   param.cgi `key=value` highlighted with `# Error` lines red, `Language` Auto/Json/Xml/KeyValue/Plain with

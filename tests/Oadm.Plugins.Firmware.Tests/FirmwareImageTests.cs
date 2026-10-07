@@ -36,46 +36,60 @@ public sealed class FirmwareImageTests
     [Fact]
     public void Plausible_image_is_accepted()
     {
-        var image = Fixture.Image();
-
-        var info = FirmwareImageInspector.Inspect("P3265-V_12_11_77.bin", image.Length, image.AsSpan(0, FirmwareImageInspector.HeaderLength));
+        var info = FirmwareImageInspector.Inspect("P3265-V_12_11_77.bin", 87L * 1024 * 1024);
 
         Assert.False(info.IsRejected);
         Assert.True(info.IsIdentified);
         Assert.Equal("P3265-V", info.Product);
     }
 
-    public static TheoryData<string, byte[], long, string> Rejected => new()
+    [Fact]
+    public void Real_axis_os_10_image_is_accepted()
     {
-        { "firmware.zip.bin", Header("PK\u0003\u0004"u8), 50_000_000, "ZIP" },
-        { "app.bin", Header([0x1F, 0x8B, 0x08, 0x00]), 50_000_000, "compressed archive" },
-        { "x.bin", Header("\u007FELF"u8), 50_000_000, "program" },
-        { "x.bin", Header("MZ\u0090\u0000"u8), 50_000_000, "program" },
-        { "x.bin", Header("%PDF-1.7"u8), 50_000_000, "document" },
-        { "x.bin", Header("<html>"u8), 50_000_000, "text" },
-        { "x.bin", new byte[512], 50_000_000, "empty" },
-        { "x.bin", Header([0xA5, 0x5A, 1, 2]), 1000, "too small" },
-        { "x.bin", Header([0xA5, 0x5A, 1, 2]), 3L * 1024 * 1024 * 1024, "too large" },
-        { "x.bin", [1, 2], 50_000_000, "header could not be read" },
-        { "P3265-V_12_11_77.eap", Header([0xA5, 0x5A, 1, 2]), 50_000_000, ".bin" },
+        // M3206-LVE_10_12_338.bin (76 MB) starts with gzip bytes (1F 8B); OADM never rejects by content.
+        var info = FirmwareImageInspector.Inspect("M3206-LVE_10_12_338.bin", 76L * 1024 * 1024);
+
+        Assert.False(info.IsRejected);
+        Assert.Equal("M3206-LVE", info.Product);
+        Assert.Equal("10.12.338", info.Version!.Text);
+    }
+
+    [Fact]
+    public void Inspection_has_no_content_input()
+    {
+        // The API itself makes a magic-byte rejection impossible: only name and size are inspected.
+        var method = typeof(FirmwareImageInspector).GetMethod(nameof(FirmwareImageInspector.Inspect))!;
+
+        Assert.Equal([typeof(string), typeof(long)], method.GetParameters().Select(p => p.ParameterType));
+    }
+
+    [Theory]
+    [InlineData("firmware.bin")]
+    [InlineData("unknown_name.bin")]
+    public void Unrecognized_name_is_accepted_and_the_device_validates(string name)
+    {
+        var info = FirmwareImageInspector.Inspect(name, 50_000_000);
+
+        Assert.False(info.IsRejected);
+        Assert.False(info.IsIdentified);
+    }
+
+    public static TheoryData<string, long, string> Rejected => new()
+    {
+        { "x.bin", 1000, "smaller than 1 MB" },
+        { "x.bin", 3L * 1024 * 1024 * 1024, "larger than 2 GB" },
+        { "P3265-V_12_11_77.eap", 50_000_000, ".bin" },
+        { "P3265-V_12_11_77.zip", 50_000_000, ".bin" },
     };
 
     [Theory]
     [MemberData(nameof(Rejected))]
-    public void Files_that_are_not_axis_os_images_are_rejected(string name, byte[] header, long size, string reason)
+    public void Wrong_extension_or_implausible_size_is_rejected(string name, long size, string reason)
     {
-        var info = FirmwareImageInspector.Inspect(name, size, header);
+        var info = FirmwareImageInspector.Inspect(name, size);
 
         Assert.True(info.IsRejected);
         Assert.Contains(reason, info.RejectReason!, StringComparison.Ordinal);
-    }
-
-    private static byte[] Header(ReadOnlySpan<byte> magic)
-    {
-        var header = new byte[FirmwareImageInspector.HeaderLength];
-        new Random(1).NextBytes(header);
-        magic.CopyTo(header);
-        return header;
     }
 }
 
@@ -182,6 +196,25 @@ public sealed class FirmwarePayloadTests
         Assert.Equal(FactoryDefaultMode.Hard, back.FactoryDefaultMode);
         Assert.True(back.AllowDowngrade);
     }
+
+    [Theory]
+    [InlineData("P3265-V_12_11_77.bin", FactoryDefaultMode.None, false, FirmwareDirection.Upgrade, "Upgrade firmware to 12.11.77")]
+    [InlineData("P3265-V_12_11_77.bin", FactoryDefaultMode.None, false, FirmwareDirection.Unknown, "Upgrade firmware to 12.11.77")]
+    [InlineData("P3265-V_10_12_236.bin", FactoryDefaultMode.Soft, true, FirmwareDirection.Downgrade, "Downgrade firmware to 10.12.236 (factory default)")]
+    [InlineData("P3265-V_11_11_160.bin", FactoryDefaultMode.Hard, true, FirmwareDirection.Unknown, "Install firmware 11.11.160 (factory default)")]
+    [InlineData("firmware.bin", FactoryDefaultMode.None, false, FirmwareDirection.Unknown, "Install firmware")]
+    [InlineData("M3206-LVE_10_12_338.bin", FactoryDefaultMode.Hard, false, FirmwareDirection.Upgrade, "Upgrade firmware to 10.12.338 (factory default)")]
+    public void Task_name_says_exactly_what_is_installed(string file, FactoryDefaultMode mode, bool allowDowngrade, FirmwareDirection direction, string expected)
+    {
+        var json = new FirmwarePayload { FileId = "f", FileName = file, FactoryDefaultMode = mode, AllowDowngrade = allowDowngrade, Direction = direction }.ToJson();
+
+        Assert.Equal(expected, ((Oadm.Sdk.Plugins.ITaskPlugin)new FirmwareTaskPlugin()).GetTaskName(json));
+        Assert.Equal(direction, FirmwarePayload.Parse(json).Direction);
+    }
+
+    [Fact]
+    public void Task_name_without_a_valid_payload_is_the_display_name() =>
+        Assert.Equal("Upgrade firmware", new FirmwareTaskPlugin().GetTaskName("{}"));
 
     [Fact]
     public void Defaults_are_safe()

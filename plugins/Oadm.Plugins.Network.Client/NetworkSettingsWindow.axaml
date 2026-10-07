@@ -11,13 +11,14 @@
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
   <!-- Layout of the add devices wizard: title bar, cards, button row. Shared controls and theme classes only.
-       Every section card: title, current value, "Configuration" choice, then the fields of a static setting. -->
+       Every section card: title, "Configuration" choice, then the fields of a static setting. Field errors appear
+       below their input (INotifyDataErrorInfo), row errors in the Devices table; risky changes are confirmed on Apply. -->
   <Grid RowDefinitions="Auto,*,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
 
     <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
       <StackPanel Margin="16,0" Spacing="{DynamicResource Oadm.Gap}">
-        <!-- Devices: what is changed, per-device preview (address range, host name template) -->
+        <!-- Devices: per-device new IPv4 / IPv6 addresses and host names (several devices) -->
         <Border Classes="card">
           <StackPanel>
             <ui:CardHeader Classes="flush" Title="Devices" Description="{Binding DevicesDescription}" />
@@ -30,19 +31,21 @@
         <!-- IPv4 -->
         <Border Classes="card">
           <StackPanel>
-            <ui:CardHeader Title="IPv4" Description="{Binding CurrentIpv4Text}" />
+            <ui:CardHeader Title="IPv4" />
             <StackPanel Classes="form">
               <Grid ColumnDefinitions="150,280">
                 <TextBlock Classes="fieldLabel" Text="Configuration" />
                 <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding Ipv4Choices}" SelectedItem="{Binding SelectedIpv4}" />
               </Grid>
-              <Grid Classes="form" ColumnDefinitions="150,280" RowDefinitions="Auto,Auto,Auto" IsVisible="{Binding IsIpv4Static}">
-                <TextBlock Classes="fieldLabel" Text="{Binding Ipv4AddressLabel}" />
-                <TextBox Grid.Column="1" Text="{Binding Ipv4Address}" PlaceholderText="{Binding Ipv4AddressPlaceholder}" />
-                <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Subnet mask" />
-                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Ipv4Mask}" PlaceholderText="255.255.255.0 or 24" />
-                <TextBlock Grid.Row="2" Classes="fieldLabel" Text="Default gateway" />
-                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Ipv4Gateway}" PlaceholderText="192.168.0.1" />
+              <Grid ColumnDefinitions="150,280" IsVisible="{Binding ShowIpv4Address}">
+                <TextBlock Classes="fieldLabel" Text="IP address" />
+                <TextBox Grid.Column="1" Text="{Binding Ipv4Address}" PlaceholderText="192.168.0.90" />
+              </Grid>
+              <Grid Classes="form" ColumnDefinitions="150,280" RowDefinitions="Auto,Auto" IsVisible="{Binding IsIpv4Static}">
+                <TextBlock Classes="fieldLabel" Text="Subnet mask" />
+                <TextBox Grid.Column="1" Text="{Binding Ipv4Mask}" PlaceholderText="255.255.255.0 or 24" />
+                <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Default gateway" />
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Ipv4Gateway}" PlaceholderText="192.168.0.1" />
               </Grid>
             </StackPanel>
           </StackPanel>
@@ -51,19 +54,21 @@
         <!-- IPv6 -->
         <Border Classes="card">
           <StackPanel>
-            <ui:CardHeader Title="IPv6" Description="{Binding CurrentIpv6Text}" />
+            <ui:CardHeader Title="IPv6" />
             <StackPanel Classes="form">
               <Grid ColumnDefinitions="150,280">
                 <TextBlock Classes="fieldLabel" Text="Configuration" />
                 <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding Ipv6Choices}" SelectedItem="{Binding SelectedIpv6}" />
               </Grid>
-              <Grid Classes="form" ColumnDefinitions="150,280" RowDefinitions="Auto,Auto,Auto" IsVisible="{Binding IsIpv6Static}">
+              <Grid ColumnDefinitions="150,280" IsVisible="{Binding ShowIpv6Address}">
                 <TextBlock Classes="fieldLabel" Text="IP address" />
                 <TextBox Grid.Column="1" Text="{Binding Ipv6Address}" PlaceholderText="2001:db8::10" />
-                <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Prefix length" />
-                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Ipv6Prefix}" PlaceholderText="64" />
-                <TextBlock Grid.Row="2" Classes="fieldLabel" Text="Default gateway" />
-                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Ipv6Gateway}" PlaceholderText="fe80::1 (optional)" />
+              </Grid>
+              <Grid Classes="form" ColumnDefinitions="150,280" RowDefinitions="Auto,Auto" IsVisible="{Binding IsIpv6Static}">
+                <TextBlock Classes="fieldLabel" Text="Prefix length" />
+                <TextBox Grid.Column="1" Text="{Binding Ipv6Prefix}" PlaceholderText="64" />
+                <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Default gateway" />
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Ipv6Gateway}" PlaceholderText="fe80::1 (optional)" />
               </Grid>
             </StackPanel>
           </StackPanel>
@@ -72,7 +77,7 @@
         <!-- DNS -->
         <Border Classes="card">
           <StackPanel>
-            <ui:CardHeader Title="DNS" Description="{Binding CurrentDnsText}" />
+            <ui:CardHeader Title="DNS" />
             <StackPanel Classes="form">
               <Grid ColumnDefinitions="150,280">
                 <TextBlock Classes="fieldLabel" Text="Configuration" />
@@ -95,7 +100,7 @@
         <!-- Host name -->
         <Border Classes="card">
           <StackPanel>
-            <ui:CardHeader Title="Host name" Description="{Binding CurrentHostNameText}" />
+            <ui:CardHeader Title="Host name" />
             <StackPanel Classes="form">
               <Grid ColumnDefinitions="150,280">
                 <TextBlock Classes="fieldLabel" Text="Configuration" />
@@ -117,29 +122,12 @@
           </StackPanel>
         </Border>
 
-        <!-- Reachability warning: must be acknowledged before Apply -->
-        <Border Classes="card" IsVisible="{Binding HasWarning}">
-          <StackPanel>
-            <ui:CardHeader Title="The devices may become unreachable" />
-            <StackPanel Classes="form">
-              <TextBlock Classes="warning" Text="{Binding ReachabilityWarning}" TextWrapping="Wrap" />
-              <CheckBox IsChecked="{Binding WarningAcknowledged}" Content="I understand that OADM may lose contact with these devices" />
-            </StackPanel>
-          </StackPanel>
-        </Border>
-
-        <ItemsControl ItemsSource="{Binding Errors}" IsVisible="{Binding HasErrors}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="x:String">
-              <TextBlock Classes="error" Text="{Binding}" TextWrapping="Wrap" />
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
       </StackPanel>
     </ScrollViewer>
 
     <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
-      <Button Classes="primary" Content="Apply" Command="{Binding ApplyCommand}" IsEnabled="{Binding CanApply}" IsDefault="True" />
+      <Button Classes="primary" Content="Apply" Command="{Binding ApplyCommand}" IsEnabled="{Binding CanApply}" IsDefault="True"
+              ToolTip.Tip="{Binding ApplyBlockedReason}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>
   </Grid>
 </Window>

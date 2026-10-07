@@ -15,8 +15,8 @@ public interface IFirmwareFileSource
     /// <summary>Lets the user choose a .bin file; null when cancelled.</summary>
     Task<string?> PickAsync();
 
-    /// <summary>Size and the first <see cref="FirmwareImageInspector.HeaderLength"/> bytes of the file.</summary>
-    Task<(long Size, byte[] Header)> ReadHeaderAsync(string path, CancellationToken ct);
+    /// <summary>Size of the file in bytes. The content is never inspected (see <see cref="FirmwareImageInspector"/>).</summary>
+    Task<long> GetSizeAsync(string path, CancellationToken ct);
 }
 
 public sealed record FactoryDefaultModeOption(FactoryDefaultMode Mode, string Label)
@@ -214,8 +214,8 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         Error = null;
         try
         {
-            var (size, header) = await _files.ReadHeaderAsync(path, ct).ConfigureAwait(true);
-            _image = FirmwareImageInspector.Inspect(path, size, header);
+            var size = await _files.GetSizeAsync(path, ct).ConfigureAwait(true);
+            _image = FirmwareImageInspector.Inspect(path, size);
             FilePath = path;
             FileName = _image.FileName;
             FileError = _image.RejectReason;
@@ -291,6 +291,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
                 FileName = _image.FileName,
                 FactoryDefaultMode = SelectedMode.Mode,
                 AllowDowngrade = AllowDowngrade,
+                Direction = Direction(),
             }.ToJson();
             finished = true;
             UploadProgress = 100;
@@ -314,6 +315,18 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             _uploadCts = null;
             uploadCts.Dispose();
         }
+    }
+
+    /// <summary>Upgrade or Downgrade when every device that will install agrees (names the task), else Unknown.</summary>
+    public FirmwareDirection Direction()
+    {
+        var verdicts = Devices.Where(d => d.WillInstall).Select(d => d.Check!.Verdict).Distinct().ToList();
+        return verdicts.Count != 1 ? FirmwareDirection.Unknown : verdicts[0] switch
+        {
+            FirmwareVerdict.Upgrade => FirmwareDirection.Upgrade,
+            FirmwareVerdict.Downgrade => FirmwareDirection.Downgrade,
+            _ => FirmwareDirection.Unknown,
+        };
     }
 
     public bool CanStart() => !IsUploading && _image is { IsRejected: false } && FilePath is not null && Devices.Any(d => d.WillInstall);

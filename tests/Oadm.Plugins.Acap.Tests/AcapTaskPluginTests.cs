@@ -98,7 +98,7 @@ public sealed class AcapTaskPluginTests
         Assert.Equal("hello_1_2_0_aarch64.eap", device.UploadedFileName);
         Assert.True(device.Apps["hello"].IsRunning);
         Assert.Empty(ctx.Progress); // progress is derived from the steps
-        Assert.Equal([.. Prepared, "Upload package: Done", "Verify installation: Done", "Start application: Done", "Verify application state: Done"], StepRun.Lines(ctx.Steps));
+        Assert.Equal([.. Prepared, "Upload package: Done", "Verify installation: Done", "Start application: Done", "Verify application state: Done", "Completed: Done"], StepRun.Lines(ctx.Steps));
         Assert.Equal("hello 1.2.0, aarch64", StepRun.Detail(ctx.Steps, "Read package"));
         Assert.Equal("AXIS OS 12.11.77, aarch64", StepRun.Detail(ctx.Steps, "Read device info"));
         Assert.Equal("Installed Hello World 1.2.0 (Stopped)", StepRun.Detail(ctx.Steps, "Verify installation"));
@@ -120,7 +120,7 @@ public sealed class AcapTaskPluginTests
         Assert.Equal("1.2.0", device.Apps["hello"].Version);
         Assert.Contains(ctx.Logs, l => l.Message.StartsWith("Upgrade from 1.0.0", StringComparison.Ordinal));
         Assert.StartsWith("Upgraded", StepRun.Detail(ctx.Steps, "Verify installation"), StringComparison.Ordinal);
-        Assert.Equal([.. Prepared, "Upload package: Done", "Verify installation: Done", "Start application: Skipped", "Verify application state: Skipped"], StepRun.Lines(ctx.Steps));
+        Assert.Equal([.. Prepared, "Upload package: Done", "Verify installation: Done", "Start application: Skipped", "Verify application state: Skipped", "Completed: Done"], StepRun.Lines(ctx.Steps));
     }
 
     [Fact]
@@ -153,7 +153,7 @@ public sealed class AcapTaskPluginTests
 
         Assert.Equal("1.2.0", device.Apps["hello"].Version);
         Assert.StartsWith("Downgraded", StepRun.Detail(ctx.Steps, "Verify installation"), StringComparison.Ordinal);
-        Assert.Equal([.. Prepared, "Upload package: Done", "Verify installation: Done"], StepRun.Lines(ctx.Steps));
+        Assert.Equal([.. Prepared, "Upload package: Done", "Verify installation: Done", "Completed: Done"], StepRun.Lines(ctx.Steps));
     }
 
     [Fact]
@@ -236,7 +236,7 @@ public sealed class AcapTaskPluginTests
         await Run(ctx, InstallPayload(file));
 
         Assert.Contains(ctx.Warnings, w => w.Contains("not confirmed in time", StringComparison.Ordinal));
-        Assert.Equal([.. Prepared, "Upload package: Done", "Verify installation: Warning"], StepRun.Lines(ctx.Steps));
+        Assert.Equal([.. Prepared, "Upload package: Done", "Verify installation: Warning", "Completed: Done"], StepRun.Lines(ctx.Steps));
     }
 
     [Fact]
@@ -249,7 +249,7 @@ public sealed class AcapTaskPluginTests
         await Run(ctx, InstallPayload(file, start: true));
 
         Assert.Contains(ctx.Warnings, w => w.Contains("after the start command", StringComparison.Ordinal));
-        Assert.Equal([.. Prepared, "Upload package: Done", "Verify installation: Done", "Start application: Done", "Verify application state: Warning"], StepRun.Lines(ctx.Steps));
+        Assert.Equal([.. Prepared, "Upload package: Done", "Verify installation: Done", "Start application: Done", "Verify application state: Warning", "Completed: Done"], StepRun.Lines(ctx.Steps));
     }
 
     [Fact]
@@ -262,7 +262,7 @@ public sealed class AcapTaskPluginTests
 
         Assert.Equal(["remove hello"], device.Writes);
         Assert.False(device.Apps.ContainsKey("hello"));
-        Assert.Equal(["Check compatibility: Done", "Read installed applications: Done", "Remove application: Done", "Verify removal: Done"], StepRun.Lines(ctx.Steps));
+        Assert.Equal(["Check compatibility: Done", "Read installed applications: Done", "Remove application: Done", "Verify removal: Done", "Completed: Done"], StepRun.Lines(ctx.Steps));
     }
 
     [Fact]
@@ -274,7 +274,7 @@ public sealed class AcapTaskPluginTests
 
         Assert.Empty(device.Writes);
         Assert.Contains(ctx.Warnings, w => w.Contains("not installed", StringComparison.Ordinal));
-        Assert.Equal(["Check compatibility: Done", "Read installed applications: Warning", "Remove application: Skipped", "Verify removal: Skipped"], StepRun.Lines(ctx.Steps));
+        Assert.Equal(["Check compatibility: Done", "Read installed applications: Warning", "Remove application: Skipped", "Verify removal: Skipped", "Completed: Done"], StepRun.Lines(ctx.Steps));
         Assert.Equal("Not installed.", StepRun.Detail(ctx.Steps, "Remove application"));
     }
 
@@ -303,7 +303,7 @@ public sealed class AcapTaskPluginTests
 
         await Run(ctx, new AcapPayload { Action = AcapAction.Stop, Application = "hello" }.ToJson());
         Assert.False(device.Apps["hello"].IsRunning);
-        Assert.Equal(["Check compatibility: Done", "Read installed applications: Done", "Stop application: Done", "Verify application state: Done"], StepRun.Lines(ctx.Steps));
+        Assert.Equal(["Check compatibility: Done", "Read installed applications: Done", "Stop application: Done", "Verify application state: Done", "Completed: Done"], StepRun.Lines(ctx.Steps));
         Assert.Equal("hello nice is Stopped", StepRun.Detail(ctx.Steps, "Verify application state"));
 
         Assert.Equal(["start hello", "stop hello"], device.Writes);
@@ -318,7 +318,7 @@ public sealed class AcapTaskPluginTests
         await Run(ctx, new AcapPayload { Action = AcapAction.Start, Application = "hello" }.ToJson());
 
         Assert.Empty(device.Writes);
-        Assert.Equal(["Check compatibility: Done", "Read installed applications: Done", "Start application: Skipped", "Verify application state: Skipped"], StepRun.Lines(ctx.Steps));
+        Assert.Equal(["Check compatibility: Done", "Read installed applications: Done", "Start application: Skipped", "Verify application state: Skipped", "Completed: Done"], StepRun.Lines(ctx.Steps));
         Assert.Contains("already running", StepRun.Detail(ctx.Steps, "Start application"), StringComparison.Ordinal);
     }
 
@@ -344,7 +344,7 @@ public sealed class AcapTaskPluginTests
 
         Assert.Empty(device.Writes);
         Assert.Single(ctx.Warnings);
-        Assert.Equal(["Check compatibility: Done", "Read installed applications: Warning", "Stop application: Skipped", "Verify application state: Skipped"], StepRun.Lines(ctx.Steps));
+        Assert.Equal(["Check compatibility: Done", "Read installed applications: Warning", "Stop application: Skipped", "Verify application state: Skipped", "Completed: Done"], StepRun.Lines(ctx.Steps));
     }
 
     [Fact]

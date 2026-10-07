@@ -622,6 +622,10 @@
   <Style Selector="DataGridRow.muted">
     <Setter Property="Opacity" Value="0.45" />
   </Style>
+  <!-- Rows that cannot be selected (e.g. protected accounts in the Users dialog): greyed like muted rows -->
+  <Style Selector="DataGridRow:disabled">
+    <Setter Property="Opacity" Value="0.45" />
+  </Style>
 
   <!-- Splitter between the device card and the tasks card -->
   <Style Selector="GridSplitter.paneSplitter">

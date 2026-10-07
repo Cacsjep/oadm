@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+using System.Collections;
 using System.ComponentModel;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -16,15 +16,18 @@ namespace Oadm.Plugins.Network.Client;
 /// subnet mask, default router (plus optional DNS servers); page 2 lists the devices in grid order with current and
 /// new IP address, every new address editable, conflicts flagged. DHCP finishes on page 1.
 /// The payload is a <see cref="NetworkPayload"/> with the IPv4 section (and DNS servers when entered).
+/// Errors appear once: below their field (<see cref="INotifyDataErrorInfo"/>) or in the row of the table. Finish asks
+/// for confirmation (<see cref="Confirm"/>, the host's shared message window) with the reachability warning.
 /// </summary>
-public sealed partial class AssignIpViewModel : ObservableObject, IDisposable
+public sealed partial class AssignIpViewModel : ObservableObject, IDisposable, INotifyDataErrorInfo
 {
     private static readonly HashSet<string> Inputs =
     [
-        nameof(UseDhcp), nameof(IpRange), nameof(SubnetMask), nameof(DefaultRouter), nameof(DnsPrimary), nameof(DnsSecondary), nameof(WarningAcknowledged),
+        nameof(UseDhcp), nameof(IpRange), nameof(SubnetMask), nameof(DefaultRouter), nameof(DnsPrimary), nameof(DnsSecondary),
     ];
 
     private readonly IReadOnlyList<IDeviceInfo> _devices;
+    private readonly FieldErrors _fieldErrors;
     private readonly bool _initialized;
     private ITaskDialogContext? _context;
     private NetworkPayload? _payload;
@@ -40,6 +43,7 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable
         }
 
         _devices = devices;
+        _fieldErrors = new FieldErrors(name => ErrorsChanged?.Invoke(this, new DataErrorsChangedEventArgs(name)));
         Assignment = new AddressAssignmentViewModel(devices);
         Assignment.Changed += (_, _) => Recompute();
         Assignment.PropertyChanged += (_, e) =>
@@ -56,6 +60,13 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable
     /// <summary>Raised when the dialog should close: true = finish (see <see cref="ResultJson"/>), false = cancel.</summary>
     public event EventHandler<bool>? CloseRequested;
 
+    public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged;
+
+    /// <summary>Confirmation of Finish with the reachability warning (shared message window). Null: no confirmation.</summary>
+    public ConfirmChange? Confirm { get; set; }
+
+    /// <summary>Title of the confirmation on Finish.</summary>
+    public string ConfirmTitle => UseDhcp ? "The devices get their addresses from DHCP" : "The devices get new IP addresses";
     public AddressAssignmentViewModel Assignment { get; }
 
     public bool IsMultiDevice => _devices.Count > 1;
@@ -104,7 +115,7 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable
 
     /// <summary>1 = settings, 2 = review of the new addresses.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsSettingsPage), nameof(IsReviewPage), nameof(PrimaryText), nameof(PageDescription), nameof(ShowWarning))]
+    [NotifyPropertyChangedFor(nameof(IsSettingsPage), nameof(IsReviewPage), nameof(PrimaryText), nameof(PageDescription))]
     public partial int Page { get; set; } = 1;
 
     public bool IsSettingsPage => Page == 1;
@@ -120,28 +131,32 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable
             ? (IsMultiDevice ? $"{_devices.Count} devices selected. The devices get their addresses from a DHCP server." : "1 device selected. The device gets its address from a DHCP server.")
             : (IsMultiDevice ? $"Step 1 of 2. {_devices.Count} devices selected, addresses are suggested in the order of the device list." : "Step 1 of 2.");
 
+    /// <summary>Only set when the current settings could not be read (the values themselves are prefilled).</summary>
     [ObservableProperty]
-    public partial string CurrentText { get; set; } = string.Empty;
+    public partial string PrefillStatus { get; set; } = string.Empty;
 
+    /// <summary>The reachability warning, shown in the confirmation on Finish.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasWarning), nameof(ShowWarning))]
+    [NotifyPropertyChangedFor(nameof(HasWarning))]
     public partial string? Warning { get; set; }
 
     public bool HasWarning => !string.IsNullOrEmpty(Warning);
-
-    /// <summary>The warning shows where the user finishes: page 1 for DHCP, page 2 for a range.</summary>
-    public bool ShowWarning => HasWarning && (UseDhcp ? IsSettingsPage : IsReviewPage);
-
-    [ObservableProperty]
-    public partial bool WarningAcknowledged { get; set; }
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(PrimaryCommand))]
     public partial bool CanContinue { get; set; }
 
-    public ObservableCollection<string> Errors { get; } = [];
+    /// <summary>Why Next / Finish is disabled (its tooltip), null when it is enabled.</summary>
+    [ObservableProperty]
+    public partial string? BlockedReason { get; set; }
 
-    public bool HasErrors => Errors.Count > 0;
+    /// <summary>A field has an error (shown below that field).</summary>
+    public bool HasErrors => _fieldErrors.HasErrors;
+
+    public IEnumerable GetErrors(string? propertyName) => _fieldErrors.GetErrors(propertyName);
+
+    /// <summary>The error of one field (tests).</summary>
+    public string? ErrorOf(string propertyName) => _fieldErrors[propertyName];
 
     /// <summary>Payload JSON after Finish; null before.</summary>
     public string? ResultJson { get; private set; }
@@ -162,40 +177,32 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable
         ArgumentNullException.ThrowIfNull(ctx);
         _context = ctx;
         Assignment.Attach(ctx, _devices[0].Id);
-        CurrentText = $"Reading the current settings of {Label(_devices[0])}...";
         try
         {
             var json = await ctx.QueryAsync(_devices[0].Id, NetworkSettingsTaskPlugin.QueryGetNetworkInfo, null, ct).ConfigureAwait(true);
-            if (string.IsNullOrEmpty(json))
+            if (!string.IsNullOrEmpty(json))
             {
-                CurrentText = string.Empty;
-                return;
+                ApplyCurrent(CurrentNetworkSettings.FromJson(json));
             }
-
-            ApplyCurrent(CurrentNetworkSettings.FromJson(json));
         }
         catch (OperationCanceledException)
         {
-            CurrentText = string.Empty;
+            // dialog closed
         }
 #pragma warning disable CA1031 // A failed prefill never blocks the dialog.
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            CurrentText = "The current settings could not be read: " + ex.Message;
+            PrefillStatus = "The current settings could not be read: " + ex.Message;
         }
     }
 
-    /// <summary>Shows the first device's current IPv4 settings and prefills subnet mask and default router when empty.</summary>
+    /// <summary>Prefills subnet mask and default router from the first device when empty.</summary>
     public void ApplyCurrent(CurrentNetworkSettings current)
     {
         ArgumentNullException.ThrowIfNull(current);
         var v4 = current.Ipv4;
-        var mode = string.Equals(v4.Mode, "dhcp", StringComparison.OrdinalIgnoreCase) ? "DHCP" : "static";
         var mask = v4.StaticPrefixLength ?? v4.PrefixLength;
-        CurrentText = v4.Supported
-            ? $"Current IP address{(IsMultiDevice ? $" of {Label(_devices[0])}" : string.Empty)}: {v4.Address ?? "none"} ({mode}), subnet mask {(mask is { } m ? Ipv4.MaskText(m) : "unknown")}, default router {v4.Gateway ?? v4.StaticGateway ?? "none"}."
-            : "The device's network interface has no IPv4.";
         if (string.IsNullOrWhiteSpace(SubnetMask) && mask is { } prefix)
         {
             SubnetMask = Ipv4.MaskText(prefix);
@@ -207,8 +214,9 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Next (page 1 of a range) or Finish: confirms the change with the reachability warning first.</summary>
     [RelayCommand(CanExecute = nameof(CanContinue))]
-    private void Primary()
+    private async Task PrimaryAsync()
     {
         if (IsSettingsPage && !UseDhcp)
         {
@@ -222,7 +230,13 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable
             return;
         }
 
-        ResultJson = _payload.ToJson();
+        var payload = _payload;
+        if (HasWarning && Confirm is { } confirm && !await confirm(ConfirmTitle, Warning!, "Finish").ConfigureAwait(true))
+        {
+            return;
+        }
+
+        ResultJson = payload.ToJson();
         CloseRequested?.Invoke(this, true);
     }
 
@@ -230,7 +244,6 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable
     public void GoToReview()
     {
         Page = 2;
-        WarningAcknowledged = false;
         Recompute(newRange: true);
         if (_context is not null)
         {
@@ -287,7 +300,8 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable
 
     private void RecomputeCore(bool newRange)
     {
-        var errors = new List<string>();
+        var fields = new Dictionary<string, string?>();
+        string? tableError = null;
         int? prefix = Ipv4.TryParsePrefix(SubnetMask, out var p) ? p : null;
         var router = DefaultRouter.Trim();
         var servers = new[] { DnsPrimary, DnsSecondary }.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).ToList();
@@ -295,14 +309,29 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable
 
         if (!UseDhcp)
         {
-            // Page 1: the fields shared by all devices, with the same rules the server applies.
+            // Page 1: the fields shared by all devices, with the same rules the server applies, each below its field.
             if (!IpRangeExpression.TryParse(IpRange, out var range, out var rangeError))
             {
-                errors.Add(rangeError!);
+                fields[nameof(IpRange)] = Strip(rangeError!);
             }
 
-            errors.AddRange(Strip(PayloadValidator.ValidateIpv4Network(prefix, router)));
-            errors.AddRange(Strip(PayloadValidator.ValidateDnsServers(servers)));
+            foreach (var error in PayloadValidator.ValidateIpv4Network(prefix, router))
+            {
+                fields.TryAdd(error.Contains("subnet mask", StringComparison.Ordinal) ? nameof(SubnetMask) : nameof(DefaultRouter), Strip(error));
+            }
+
+            foreach (var server in new[] { (nameof(DnsPrimary), DnsPrimary), (nameof(DnsSecondary), DnsSecondary) })
+            {
+                if (!string.IsNullOrWhiteSpace(server.Item2) && PayloadValidator.ValidateDnsServers([server.Item2.Trim()]) is [var dnsError, ..])
+                {
+                    fields[server.Item1] = Strip(dnsError);
+                }
+            }
+
+            if (!fields.ContainsKey(nameof(DnsPrimary)) && !fields.ContainsKey(nameof(DnsSecondary)) && PayloadValidator.ValidateDnsServers(servers) is [var both, ..])
+            {
+                fields[nameof(DnsSecondary)] = Strip(both); // e.g. the same server twice
+            }
 
             if (range is not null && IsReviewPage)
             {
@@ -312,14 +341,12 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable
                     Assignment.Assign(range, prefix, router, resetEdits: true);
                 }
 
-                if (Assignment.Error is { } error)
-                {
-                    errors.Add(error);
-                }
-
+                tableError = Assignment.Error;
                 addresses = [.. Assignment.Addresses];
             }
         }
+
+        _fieldErrors.SetAll(fields);
 
         var devices = new Dictionary<Guid, DeviceAssignment>();
         for (var i = 0; i < _devices.Count; i++)
@@ -335,42 +362,40 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable
         };
 
         // Page 2 (and DHCP): the whole payload, exactly as the server validates it before the first write.
-        if (errors.Count == 0 && (UseDhcp || IsReviewPage))
-        {
-            errors.AddRange(Strip(PayloadValidator.Validate(payload)));
-        }
-
-        if (IsReviewPage && !UseDhcp && Assignment.HasConflicts && errors.Count == 0)
-        {
-            errors.Add("Resolve the conflicts shown in the table, or edit the new IP addresses.");
-        }
-
-        Errors.Clear();
-        foreach (var error in errors.Distinct())
-        {
-            Errors.Add(error);
-        }
+        var remaining = !_fieldErrors.HasErrors && tableError is null && (UseDhcp || IsReviewPage)
+            ? PayloadValidator.Validate(payload).Select(Strip).ToList()
+            : [];
+        var rowProblems = IsReviewPage && !UseDhcp && Assignment.HasConflicts;
+        var blocked = _fieldErrors.First
+            ?? tableError
+            ?? (rowProblems ? "Resolve the problems shown in the table, or edit the new IP addresses." : null)
+            ?? remaining.FirstOrDefault();
 
         Warning = UseDhcp
             ? NetworkWarnings.Dhcp
             : string.Join(" ", NetworkWarnings.Static(_devices, addresses ?? []));
-        _payload = errors.Count == 0 && (UseDhcp || IsReviewPage) ? payload : null;
+        _payload = blocked is null && (UseDhcp || IsReviewPage) ? payload : null;
+        if (blocked is null && !IsSettingsPage && Assignment.IsChecking)
+        {
+            blocked = "Checking the addresses...";
+        }
+
+        BlockedReason = blocked;
         CanContinue = IsSettingsPage && !UseDhcp
-            ? errors.Count == 0
-            : _payload is not null && !Assignment.IsChecking && WarningAcknowledged;
+            ? blocked is null
+            : _payload is not null && !Assignment.IsChecking;
         OnPropertyChanged(nameof(HasErrors));
         OnPropertyChanged(nameof(Payload));
-        OnPropertyChanged(nameof(ShowWarning));
+        OnPropertyChanged(nameof(ConfirmTitle));
     }
 
     /// <summary>The dialog speaks ADM's words: "IPv4: ... gateway" becomes "... default router".</summary>
-    private static IEnumerable<string> Strip(IEnumerable<string> errors) => errors.Select(e =>
+    private static string Strip(string error)
     {
-        var text = e.StartsWith("IPv4: ", StringComparison.Ordinal) ? e[6..] : e;
-        text = text.Replace("default gateway", "default router", StringComparison.Ordinal).Replace("gateway", "default router", StringComparison.Ordinal);
+        var text = FieldErrors.Clean(error)
+            .Replace("default gateway", "default router", StringComparison.Ordinal)
+            .Replace("gateway", "default router", StringComparison.Ordinal)
+            .Replace("Gateway", "Default router", StringComparison.Ordinal);
         return char.ToUpperInvariant(text[0]) + text[1..];
-    });
-
-    private static string Label(IDeviceInfo device) =>
-        string.IsNullOrEmpty(device.Model) ? device.Address : $"{device.Model} at {device.Address}";
+    }
 }

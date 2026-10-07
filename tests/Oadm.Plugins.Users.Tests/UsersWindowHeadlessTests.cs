@@ -46,10 +46,24 @@ public sealed class UsersWindowHeadlessTests
             Assert.True(window.Bounds.Height > 0);
             Capture(window, outDir, "plugin-users-add.png");
 
+            // Remove mode: no user name field; several rows selected in the grid, the protected root row is refused.
             vm.IsRemove = true;
-            vm.UserName = "root";
             Dispatcher.UIThread.RunJobs();
+            var grid = window.FindControl<DataGrid>("UsersGrid")!;
+            Assert.Equal(DataGridSelectionMode.Extended, grid.SelectionMode);
+            grid.SelectedItems.Add(vm.ExistingUsers[0]);
+            grid.SelectedItems.Add(vm.ExistingUsers[1]);
+            grid.SelectedItems.Add(vm.ExistingUsers[3]);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(["fakeroot", "acs"], vm.UsersToRemove);
+            Assert.DoesNotContain(vm.ExistingUsers[0], grid.SelectedItems.Cast<object>());
+            Assert.True(vm.CanApply);
             Capture(window, outDir, "plugin-users-remove.png");
+
+            vm.IsChange = true;
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(DataGridSelectionMode.Single, grid.SelectionMode);
+            Assert.True(grid.SelectedItems.Count <= 1);
 
             vm.IsChange = true;
             vm.UserName = "acs";

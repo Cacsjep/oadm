@@ -66,6 +66,18 @@ public sealed class TaskStepsViewTests
         Assert.Equal("Step 2/3 · Read firmware status", row.CurrentStepText);
         Assert.Equal("Step 2/3 \u00B7 Read firmware status\nAccess denied", row.CurrentStepTooltip);
 
+        // A successful task ends with the server's "Completed" step, which becomes the current step.
+        var done = Firmware(
+            3,
+            Step(0, "Check compatibility", TaskStepState.Done, startedSec: 0, finishedSec: 1),
+            Step(1, "Upload firmware", TaskStepState.Done, startedSec: 1, finishedSec: 60),
+            Step(2, "Commit firmware", TaskStepState.Done, "AXIS OS 12.11.77", 100, 60, 61),
+            Step(3, "Completed", TaskStepState.Done, progress: 100, startedSec: 61, finishedSec: 61));
+        done.State = TaskState.Done;
+        row.Update(done);
+        Assert.Equal("Step 4/4 · Completed", row.CurrentStepText);
+        Assert.Equal(3, row.CurrentStepIndex);
+
         // Plugins without steps (and older servers) leave the column empty.
         row.Update(new TaskInfo { Id = "t1", Name = "x", State = TaskState.Done });
         Assert.Equal("", row.CurrentStepText);
@@ -153,10 +165,13 @@ public sealed class TaskStepsViewTests
         }
 
         Assert.NotNull(done);
+        Assert.Equal("Restart device", done.Name);
         Assert.Equal(
-            ["Check device", "Send restart", "Wait for the device to go offline", "Wait for the device to come back", "Verify device"],
+            ["Check device", "Send restart", "Wait for the device to go offline", "Wait for the device to come back", "Verify device", "Completed"],
             done.Steps.Select(s => s.Name).ToArray());
         Assert.All(done.Steps, s => Assert.Equal(TaskStepState.Done, s.State));
+        Assert.Equal(done.Steps.Count - 1, done.CurrentStepIndex);
+        Assert.Equal("Step 6/6 · Completed", TaskRowViewModel.FormatCurrentStep(done.Steps[done.CurrentStepIndex], done.Steps.Count));
     }
 
     private sealed class FixedTime(DateTime utc) : TimeProvider

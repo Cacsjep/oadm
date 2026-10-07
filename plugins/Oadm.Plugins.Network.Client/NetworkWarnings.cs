@@ -2,7 +2,7 @@ using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Network.Client;
 
-/// <summary>The reachability warnings both network dialogs show before an IPv4 change (must be acknowledged).</summary>
+/// <summary>The reachability warnings both network dialogs show in the confirmation before a risky change.</summary>
 public static class NetworkWarnings
 {
     public const string Dhcp =

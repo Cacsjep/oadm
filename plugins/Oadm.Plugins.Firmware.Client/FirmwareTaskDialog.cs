@@ -39,7 +39,7 @@ public sealed class FirmwareTaskDialog : ITaskPluginDialog
     }
 }
 
-/// <summary>File picker and header reader backed by the window's storage provider and the local file system.</summary>
+/// <summary>File picker and size reader backed by the window's storage provider and the local file system.</summary>
 public sealed class StorageFirmwareFileSource(TopLevel topLevel) : IFirmwareFileSource
 {
     public async Task<string?> PickAsync()
@@ -57,14 +57,15 @@ public sealed class StorageFirmwareFileSource(TopLevel topLevel) : IFirmwareFile
         return files.Count == 0 ? null : files[0].TryGetLocalPath();
     }
 
-    public async Task<(long Size, byte[] Header)> ReadHeaderAsync(string path, CancellationToken ct)
+    public Task<long> GetSizeAsync(string path, CancellationToken ct)
     {
-        var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);
-        await using (stream.ConfigureAwait(false))
+        ct.ThrowIfCancellationRequested();
+        var info = new FileInfo(path);
+        if (!info.Exists)
         {
-            var buffer = new byte[FirmwareImageInspector.HeaderLength];
-            var read = await stream.ReadAtLeastAsync(buffer, buffer.Length, throwOnEndOfStream: false, ct).ConfigureAwait(false);
-            return (stream.Length, buffer[..read]);
+            throw new FileNotFoundException("The file does not exist.", path);
         }
+
+        return Task.FromResult(info.Length);
     }
 }

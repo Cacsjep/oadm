@@ -72,7 +72,7 @@ public static class NetworkPlanner
             steps.Add(DnsStep(dns, ns, apis, current));
         }
 
-        PlannedStep? ipv6 = payload.Ipv6 is { } v6 ? Ipv6Step(v6, ns, apis, current) : null;
+        PlannedStep? ipv6 = payload.Ipv6 is { } v6 ? Ipv6Step(v6, entry, ns, apis, current) : null;
         PlannedStep? ipv4 = payload.Ipv4 is { } v4 ? Ipv4Step(v4, entry, ns, apis, current) : null;
         var connectsWithIpv6 = IPAddress.TryParse(connectionAddress, out var ip) && ip.AddressFamily == AddressFamily.InterNetworkV6;
         if (connectsWithIpv6)
@@ -87,7 +87,7 @@ public static class NetworkPlanner
         }
 
         var impact = connectsWithIpv6
-            ? Ipv6Impact(payload.Ipv6, current, connectionAddress)
+            ? Ipv6Impact(payload.Ipv6, entry, current, connectionAddress)
             : Ipv4Impact(payload.Ipv4, entry, current, connectionAddress);
         return new NetworkPlan(steps, impact);
     }
@@ -176,7 +176,7 @@ public static class NetworkPlanner
         return new PlannedStep(StepKind.Dns, description, [request]);
     }
 
-    private static PlannedStep Ipv6Step(Ipv6Change v6, DeviceApi? ns, IReadOnlyList<DeviceApi> apis, CurrentNetworkSettings current)
+    private static PlannedStep Ipv6Step(Ipv6Change v6, DeviceAssignment entry, DeviceApi? ns, IReadOnlyList<DeviceApi> apis, CurrentNetworkSettings current)
     {
         if (!current.Ipv6.Supported)
         {
@@ -217,7 +217,7 @@ public static class NetworkPlanner
                 description = "IPv6 from DHCPv6";
                 break;
             default:
-                var address = string.Create(CultureInfo.InvariantCulture, $"{v6.Address!.Trim()}/{v6.PrefixLength}");
+                var address = string.Create(CultureInfo.InvariantCulture, $"{v6.AddressFor(entry)}/{v6.PrefixLength}");
                 values.Add(("Network.IPv6.AcceptRA", "no"));
                 values.Add(("Network.IPv6.DHCPv6", "off"));
                 values.Add(("Network.IPv6.IPAddress", address));
@@ -323,17 +323,18 @@ public static class NetworkPlanner
         return new ConnectionImpact(true, !wasDhcp, connectionAddress, wasDhcp ? connectedIp : null);
     }
 
-    private static ConnectionImpact Ipv6Impact(Ipv6Change? v6, CurrentNetworkSettings current, string connectionAddress)
+    private static ConnectionImpact Ipv6Impact(Ipv6Change? v6, DeviceAssignment entry, CurrentNetworkSettings current, string connectionAddress)
     {
         if (v6 is null)
         {
             return ConnectionImpact.None(connectionAddress);
         }
 
+        var target = v6.AddressFor(entry);
         return v6.Mode switch
         {
             Ipv6Mode.Disabled => new ConnectionImpact(true, true, connectionAddress, null),
-            Ipv6Mode.Static => new ConnectionImpact(true, !IPAddress.Parse(v6.Address!.Trim()).Equals(IPAddress.Parse(connectionAddress)), connectionAddress, v6.Address.Trim()),
+            Ipv6Mode.Static => new ConnectionImpact(true, !IPAddress.Parse(target!).Equals(IPAddress.Parse(connectionAddress)), connectionAddress, target),
             _ => new ConnectionImpact(true, !string.Equals(current.Ipv6.Mode, v6.Mode == Ipv6Mode.Auto ? "auto" : "dhcp", StringComparison.OrdinalIgnoreCase), connectionAddress, null),
         };
     }

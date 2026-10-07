@@ -14,8 +14,9 @@ namespace Oadm.Plugins.Network.Client;
 /// The address assignment table shared by "Assign IP address..." and "Network settings...": the selected devices in
 /// grid order with current and new address. New addresses are suggested from an <see cref="IpRangeExpression"/>
 /// (<see cref="AddressAssigner"/>), every row can be edited, conflicts are flagged per row
-/// (<see cref="AddressConflicts"/>). <see cref="CheckAsync"/> asks the server (query "checkAddresses") which
-/// addresses other managed devices have and which answer on TCP 80/443, then suggests again around them.
+/// (<see cref="AddressConflicts"/>). With static IPv6 every row also gets its own IPv6 address
+/// (<see cref="ShowIpv6"/>). <see cref="CheckAsync"/> asks the server (query "checkAddresses") which addresses other
+/// managed devices have and which answer ping or TCP 80/443, then suggests again around them.
 /// </summary>
 public sealed partial class AddressAssignmentViewModel : ObservableObject
 {
@@ -47,6 +48,10 @@ public sealed partial class AddressAssignmentViewModel : ObservableObject
     [ObservableProperty]
     public partial bool ShowHostName { get; set; }
 
+    /// <summary>Static IPv6: the "New IPv6 address" column is shown and every row needs an IPv6 address.</summary>
+    [ObservableProperty]
+    public partial bool ShowIpv6 { get; set; }
+
     /// <summary>"Not enough addresses" when the range is too small, else null.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
@@ -64,10 +69,13 @@ public sealed partial class AddressAssignmentViewModel : ObservableObject
 
     public bool HasConflicts => Rows.Any(r => r.HasConflict);
 
-    public bool CanCheck => _context is not null && !IsChecking && Rows.Any(r => r.IsEditable);
+    public bool CanCheck => _context is not null && !IsChecking && Rows.Any(r => r.IsEditable || r.IsIpv6Editable);
 
     /// <summary>New addresses in row order (empty strings while unassigned).</summary>
     public IReadOnlyList<string> Addresses => [.. Rows.Select(r => r.NewAddress.Trim())];
+
+    /// <summary>New IPv6 addresses in row order (static IPv6).</summary>
+    public IReadOnlyList<string> Ipv6Addresses => [.. Rows.Select(r => r.NewIpv6Address.Trim())];
 
     /// <summary>Server access for <see cref="CheckAsync"/>; <paramref name="queryDeviceId"/> is the device the query runs for.</summary>
     public void Attach(ITaskDialogContext context, Guid queryDeviceId)
@@ -121,6 +129,49 @@ public sealed partial class AddressAssignmentViewModel : ObservableObject
         });
     }
 
+    /// <summary>
+    /// No suggestion is possible (no start address known): the rows become editable with what they have, the user
+    /// types every address.
+    /// </summary>
+    public void EditManually(int? prefixLength, string? gateway)
+    {
+        _range = null;
+        _prefix = prefixLength;
+        _gateway = gateway;
+        Update(() =>
+        {
+            foreach (var row in Rows)
+            {
+                if (!row.IsEditable)
+                {
+                    row.Suggest(string.Empty);
+                }
+
+                row.IsEditable = true;
+            }
+
+            Error = null;
+        });
+    }
+
+    /// <summary>Static IPv6 on (every row gets an editable IPv6 address) or off.</summary>
+    public void SetIpv6(bool enabled)
+    {
+        if (ShowIpv6 == enabled && Rows.All(r => r.IsIpv6Editable == enabled))
+        {
+            return;
+        }
+
+        ShowIpv6 = enabled;
+        Update(() =>
+        {
+            foreach (var row in Rows)
+            {
+                row.IsIpv6Editable = enabled;
+            }
+        });
+    }
+
     /// <summary>Subnet mask or default router changed: only the conflicts are re-evaluated.</summary>
     public void UpdateNetwork(int? prefixLength, string? gateway)
     {
@@ -144,7 +195,7 @@ public sealed partial class AddressAssignmentViewModel : ObservableObject
     /// </summary>
     public async Task CheckAsync(CancellationToken ct)
     {
-        if (_context is null || IsChecking || !Rows.Any(r => r.IsEditable))
+        if (_context is null || IsChecking || !Rows.Any(r => r.IsEditable || r.IsIpv6Editable))
         {
             return;
         }
@@ -158,6 +209,9 @@ public sealed partial class AddressAssignmentViewModel : ObservableObject
                 var candidates = Rows
                     .Where(r => r.IsEditable && Ipv4.TryParse(r.NewAddress, out _) && !string.Equals(r.NewAddress.Trim(), r.CurrentAddress, StringComparison.Ordinal))
                     .Select(r => r.NewAddress.Trim())
+                    .Concat(Rows
+                        .Where(r => r.IsIpv6Editable && PayloadValidator.TryParseIpv6(r.NewIpv6Address, out _) && !AddressCheck.IsOwnAddress(r.NewIpv6Address, [r.CurrentAddress]))
+                        .Select(r => r.NewIpv6Address.Trim()))
                     .Where(probed.Add)
                     .Take(AddressCheckRequest.MaxProbes)
                     .ToList();
@@ -255,9 +309,11 @@ public sealed partial class AddressAssignmentViewModel : ObservableObject
             }
 
             var conflicts = AddressConflicts.Find([.. Rows.Select(r => r.ToAssignmentRow())], _prefix, _gateway, _known);
+            var ipv6 = AddressConflicts.FindIpv6([.. Rows.Select(r => r.ToIpv6Row())], _known);
             for (var i = 0; i < Rows.Count; i++)
             {
                 Rows[i].Conflict = Rows[i].IsEditable ? conflicts[i] : null;
+                Rows[i].Ipv6Conflict = Rows[i].IsIpv6Editable ? ipv6[i] : null;
             }
         }
         finally
@@ -267,13 +323,14 @@ public sealed partial class AddressAssignmentViewModel : ObservableObject
 
         OnPropertyChanged(nameof(HasConflicts));
         OnPropertyChanged(nameof(Addresses));
+        OnPropertyChanged(nameof(Ipv6Addresses));
         CheckCommand.NotifyCanExecuteChanged();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnRowChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (!_updating && e.PropertyName == nameof(AddressRowViewModel.NewAddress))
+        if (!_updating && e.PropertyName is nameof(AddressRowViewModel.NewAddress) or nameof(AddressRowViewModel.NewIpv6Address))
         {
             Update(() => { });
         }

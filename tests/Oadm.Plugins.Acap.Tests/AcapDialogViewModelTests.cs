@@ -140,6 +140,27 @@ public sealed class AcapDialogViewModelTests : IDisposable
         Assert.Equal("hello", payload.Application);
         Assert.Equal(closed, vm.Result);
         Assert.Equal(AcapAction.Start, AcapPayload.Parse(closed).Action);
+        Assert.Equal("Start " + vm.Applications[0].Name, new AcapTaskPlugin().GetTaskName(closed));
+    }
+
+    [Theory]
+    [InlineData(AcapAction.Install, null, "4.5.2", "Install AXIS Video Motion Detection 4.5.2")]
+    [InlineData(AcapAction.Install, InstallKind.Install, "4.5.2", "Install AXIS Video Motion Detection 4.5.2")]
+    [InlineData(AcapAction.Install, InstallKind.Upgrade, "4.5.2", "Upgrade AXIS Video Motion Detection to 4.5.2")]
+    [InlineData(AcapAction.Remove, null, null, "Remove AXIS Video Motion Detection")]
+    [InlineData(AcapAction.Start, null, null, "Start AXIS Video Motion Detection")]
+    [InlineData(AcapAction.Stop, null, null, "Stop AXIS Video Motion Detection")]
+    public void Task_name_says_exactly_what_happens(AcapAction action, InstallKind? kind, string? version, string expected)
+    {
+        var json = new AcapPayload { Action = action, Application = "vmd", AppDisplayName = "AXIS Video Motion Detection", FileId = "f", Version = version, Kind = kind }.ToJson();
+        Assert.Equal(expected, new AcapTaskPlugin().GetTaskName(json));
+    }
+
+    [Fact]
+    public void Task_name_falls_back_to_the_package_name_and_the_display_name()
+    {
+        Assert.Equal("Remove vmd", new AcapTaskPlugin().GetTaskName(new AcapPayload { Action = AcapAction.Remove, Application = "vmd" }.ToJson()));
+        Assert.Equal("Applications (ACAP)", new AcapTaskPlugin().GetTaskName(null));
     }
 
     [Fact]
@@ -240,6 +261,8 @@ public sealed class AcapDialogViewModelTests : IDisposable
         Assert.Equal("1.2.0", payload.Version);
         Assert.True(payload.StartAfterInstall);
         Assert.False(payload.AllowDowngrade);
+        Assert.Equal(InstallKind.Upgrade, payload.Kind);
+        Assert.Equal("Upgrade " + payload.AppDisplayName + " to 1.2.0", new AcapTaskPlugin().GetTaskName(closed));
     }
 
     [Fact]

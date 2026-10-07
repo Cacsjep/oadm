@@ -11,7 +11,8 @@ public interface IPlugin
     string Id { get; }
 
     /// <summary>
-    /// Name shown in menus, the toolbar and the tasks pane, e.g. "Restart" or "Upgrade firmware".
+    /// Name shown in menus and the toolbar, e.g. "Restart" or "Upgrade firmware" (the tasks pane shows
+    /// <see cref="ITaskPlugin.GetTaskName"/> of task plugins).
     /// Task plugins: at most <see cref="TaskPluginNames.MaxDisplayNameLength"/> characters and no
     /// trailing "..." (the host never appends one and strips it defensively); the loader logs a
     /// warning and shortens longer names with an ellipsis.
@@ -51,6 +52,16 @@ public interface ITaskPlugin : IPlugin
     /// VAPIX Commander rollout. Default true.
     /// </summary>
     bool ShowInMenus => true;
+
+    /// <summary>
+    /// The name of one task in the tasks pane: exactly what this task does with this payload, e.g.
+    /// "Add user joe", "Set static IP 10.0.0.60", "Upgrade firmware to 12.11.77", not the menu name.
+    /// At most <see cref="TaskPluginNames.MaxTaskNameLength"/> characters (the host shortens longer names
+    /// with an ellipsis and logs a warning). Never include secrets such as passwords: the name is persisted
+    /// and shown to every user. Called once per Run (all devices of a run share the name); return
+    /// <see cref="IPlugin.DisplayName"/> when the payload cannot be read. Default: the display name.
+    /// </summary>
+    string GetTaskName(string? payloadJson) => DisplayName;
 
     /// <summary>
     /// Runs once per device. Return normally for Done, call <see cref="ITaskExecutionContext.ReportWarning"/>
@@ -236,6 +247,9 @@ public static class TaskPluginNames
 {
     /// <summary>Longest task plugin display name (menu entries and toolbar buttons stay readable).</summary>
     public const int MaxDisplayNameLength = 32;
+
+    /// <summary>Longest task name (<see cref="ITaskPlugin.GetTaskName"/>) shown in the tasks pane.</summary>
+    public const int MaxTaskNameLength = 48;
 
     /// <summary>The ellipsis used when a name is shortened.</summary>
     public const string Ellipsis = "…";

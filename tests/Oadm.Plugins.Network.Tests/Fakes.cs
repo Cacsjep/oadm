@@ -213,3 +213,21 @@ internal sealed class RecordingContext : ITaskExecutionContext, ITaskQueryContex
         return Task.FromResult(UpdateAddress?.Invoke(newAddress) ?? true);
     }
 }
+
+/// <summary>Address probe without network: addresses answer as configured (default: nothing answers).</summary>
+internal sealed class FakeAddressProbe : IAddressProbe
+{
+    public Dictionary<string, AddressProbeResult> Answers { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public List<string> Probed { get; } = [];
+
+    public Task<AddressProbeResult> ProbeAsync(string address, CancellationToken ct)
+    {
+        lock (Probed)
+        {
+            Probed.Add(address);
+        }
+
+        return Task.FromResult(Answers.GetValueOrDefault(address) ?? AddressProbeResult.Silent);
+    }
+}

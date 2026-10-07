@@ -65,11 +65,20 @@ public enum Ipv6Mode
     /// <summary>Stateful DHCPv6.</summary>
     Dhcp = 2,
 
-    /// <summary>Manual address; only for a single device.</summary>
+    /// <summary>Manual address: <see cref="DeviceAssignment.Ipv6Address"/> per device (or <see cref="Ipv6Change.Address"/> for all).</summary>
     Static = 3,
 }
 
-public sealed record Ipv6Change(Ipv6Mode Mode, string? Address = null, int? PrefixLength = null, string? Gateway = null);
+/// <summary>
+/// IPv6 change. For <see cref="Ipv6Mode.Static"/> the address comes per device from <see cref="DeviceAssignment.Ipv6Address"/>;
+/// <see cref="Address"/> is the fallback for a device without one (one device). Prefix length and gateway are shared.
+/// </summary>
+public sealed record Ipv6Change(Ipv6Mode Mode, string? Address = null, int? PrefixLength = null, string? Gateway = null)
+{
+    /// <summary>The static IPv6 address of one device: its own entry, else the shared <see cref="Address"/>.</summary>
+    public string? AddressFor(DeviceAssignment? entry) =>
+        string.IsNullOrWhiteSpace(entry?.Ipv6Address) ? Address?.Trim() : entry.Ipv6Address.Trim();
+}
 
 /// <summary>
 /// DNS resolver change. When <see cref="UseDhcp"/> is true the static fields are not written. With
@@ -86,7 +95,7 @@ public sealed record DnsChange(
 /// <summary>Host name change. When <see cref="UseDhcp"/> is false the name comes per device from <see cref="DeviceAssignment.HostName"/>.</summary>
 public sealed record HostNameChange(bool UseDhcp);
 
-public sealed record DeviceAssignment(string? Ipv4Address = null, string? HostName = null);
+public sealed record DeviceAssignment(string? Ipv4Address = null, string? HostName = null, string? Ipv6Address = null);
 
 /// <summary>Input is invalid. Thrown before anything is written, so the message says so.</summary>
 public sealed class NetworkValidationException : Exception

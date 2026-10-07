@@ -30,7 +30,8 @@ internal sealed class RunningTask : IDisposable
         DateTimeOffset created,
         CancellationToken shutdown,
         int maxLogEntries = 1000,
-        Guid batchId = default)
+        Guid batchId = default,
+        string? name = null)
     {
         BatchId = batchId == Guid.Empty ? id : batchId;
         ArgumentOutOfRangeException.ThrowIfLessThan(maxLogEntries, 1);
@@ -40,7 +41,7 @@ internal sealed class RunningTask : IDisposable
         PayloadJson = payloadJson;
         Owner = owner;
         Created = created;
-        Name = registration.DisplayName;
+        Name = string.IsNullOrWhiteSpace(name) ? registration.DisplayName : name;
         _deviceOrder = deviceIds;
         _devices = deviceIds.ToDictionary(d => d, _ => new DeviceSlot());
         _cts = CancellationTokenSource.CreateLinkedTokenSource(shutdown);
@@ -54,6 +55,7 @@ internal sealed class RunningTask : IDisposable
 
     public RegisteredTaskPlugin Registration { get; }
 
+    /// <summary>What the task does ("Add user joe"): <see cref="ITaskPlugin.GetTaskName"/>, normalized by the engine.</summary>
     public string Name { get; }
 
     /// <summary>Handed to the plugin only; never part of a <see cref="Snapshot"/> (may carry secrets).</summary>
