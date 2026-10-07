@@ -63,7 +63,8 @@ public static partial class OadmServerHost
     public static WebApplication Build(string[] args, OadmServerHostOptions? options = null)
     {
         options ??= new OadmServerHostOptions();
-        var builder = WebApplication.CreateBuilder(args);
+        var builder = WebApplication.CreateBuilder(ServiceHosting.CreateBuilderOptions(args, ServiceHosting.IsRunningAsService()));
+        ServiceHosting.AddServiceLifetimes(builder.Services);
 
         builder.WebHost.ConfigureKestrel(k => k.ConfigureEndpointDefaults(l => l.Protocols = HttpProtocols.Http2));
         builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(30));
