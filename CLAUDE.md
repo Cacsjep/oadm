@@ -408,6 +408,16 @@ state through `ITaskDialogContext.QueryAsync`), `IUploadedFiles` (dialog uploads
 `restart.cgi`, then polls basicdeviceinfo until the device answers again (timeout 3 min),
 reporting progress. No client assembly needed.
 
+## Applications (ACAP) plugin
+
+`plugins/Oadm.Plugins.Acap` (+ `.Client`), id `oadm.acap`, context menu "Applications (ACAP)...",
+dialog. Lists installed applications (query `listApplications`), start/stop/remove (remove asks for
+confirmation) and install/upgrade of an uploaded `.eap` on all selected devices. Uses the classic
+Application API (`application 1.x`: list/upload/control/config.cgi). Before uploading it reads the
+package manifest and refuses (nothing changed) on architecture mismatch, AXIS OS outside the
+package's range or below its manifest schema minimum, root apps on AXIS OS 12+, and downgrades
+without the explicit option. Decision table and research in `plugins/Oadm.Plugins.Acap/README.md`.
+
 # Settings
 
 Server-side in `Setting`. Goal 1 keys: `Polling.IntervalSeconds` (60, 5..86400),
