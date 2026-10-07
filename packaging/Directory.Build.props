@@ -1,0 +1,3 @@
+<Project>
+  <!-- Installer projects do not inherit the .NET settings of the repository root (TargetFramework, analyzers). -->
+</Project>

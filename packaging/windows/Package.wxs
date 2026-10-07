@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  OADM for Windows: per-machine MSI.
+  - Program Files\OADM\Server: Oadm.Server.exe + plugins\, Windows service "OADM Server" (OadmServer), automatic
+    start, LocalSystem (NTP UDP 123 and DHCP UDP 67 need it), data folder %ProgramData%\OADM passed as the
+    Oadm:DataDir argument. The single-file host extracts its native libraries to %ProgramData%\OADM\runtime (service
+    environment) instead of C:\Windows\Temp, which every user can write to.
+  - Program Files\OADM\Client: Oadm.Client.exe + plugins\, Start menu shortcut "OADM".
+  - Firewall rules for Oadm.Server.exe: TCP 5080 (gRPC), UDP 123 (NTP server plugin), UDP 67 (DHCP server plugin).
+  - %ProgramData%\OADM is created with access for SYSTEM and Administrators only and is never removed (database,
+    master key, logs survive uninstall and upgrades).
+  - Every file below the published folders is harvested at build time (Files), so plugins added later are
+    picked up without editing this file.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <Package Name="OADM"
+           Manufacturer="OADM contributors"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="{7F3C2B4E-9A61-4C8D-B5E2-0D4A6C1F8E37}"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <SummaryInformation Description="OADM - Open AXIS Device Management (server and client)" />
+
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of OADM is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="OadmIcon.ico" SourceFile="$(var.IconsDir)\oadm.ico" />
+    <Property Id="ARPPRODUCTICON" Value="OadmIcon.ico" />
+    <Property Id="ARPCOMMENTS" Value="Open AXIS Device Management. The data folder %ProgramData%\OADM is kept on uninstall." />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="OADM">
+        <Directory Id="ServerFolder" Name="Server" />
+        <Directory Id="ClientFolder" Name="Client" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DataFolder" Name="OADM" />
+    </StandardDirectory>
+
+    <!-- Server: the exe with service and firewall rules, everything else harvested. -->
+    <ComponentGroup Id="Server" Directory="ServerFolder">
+      <Component Id="ServerExe">
+        <File Id="ServerExe" Source="$(var.ServerDir)\Oadm.Server.exe" KeyPath="yes">
+          <fw:FirewallException Id="FwGrpc" Name="OADM Server (gRPC, TCP 5080)" Port="5080" Protocol="tcp" Scope="any" Profile="all" />
+          <fw:FirewallException Id="FwNtp" Name="OADM Server (NTP, UDP 123)" Port="123" Protocol="udp" Scope="any" Profile="all" />
+          <fw:FirewallException Id="FwDhcp" Name="OADM Server (DHCP, UDP 67)" Port="67" Protocol="udp" Scope="any" Profile="all" />
+        </File>
+        <ServiceInstall Id="OadmServer"
+                        Name="OadmServer"
+                        DisplayName="OADM Server"
+                        Description="OADM - Open AXIS Device Management server (gRPC on TCP 5080)."
+                        Type="ownProcess"
+                        Start="auto"
+                        ErrorControl="normal"
+                        Account="LocalSystem"
+                        Vital="yes"
+                        Arguments="--Oadm:DataDir=&quot;[CommonAppDataFolder]OADM&quot;">
+          <util:ServiceConfig FirstFailureActionType="restart"
+                              SecondFailureActionType="restart"
+                              ThirdFailureActionType="restart"
+                              RestartServiceDelayInSeconds="10"
+                              ResetPeriodInDays="1" />
+        </ServiceInstall>
+        <ServiceControl Id="OadmServer" Name="OadmServer" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
+        <!-- Service environment (read by the SCM when the service starts). -->
+        <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\OadmServer" Name="Environment" Type="multiString">
+          <MultiStringValue Value="DOTNET_BUNDLE_EXTRACT_BASE_DIR=[CommonAppDataFolder]OADM\runtime" />
+        </RegistryValue>
+      </Component>
+      <Files Include="$(var.ServerDir)\**">
+        <Exclude Files="$(var.ServerDir)\Oadm.Server.exe" />
+      </Files>
+    </ComponentGroup>
+
+    <!-- Client: the exe with the Start menu shortcut, everything else (plugins) harvested. -->
+    <ComponentGroup Id="Client" Directory="ClientFolder">
+      <Component Id="ClientExe">
+        <File Id="ClientExe" Source="$(var.ClientDir)\Oadm.Client.exe" KeyPath="yes">
+          <Shortcut Id="ClientStartMenu" Directory="ProgramMenuFolder" Name="OADM"
+                    Description="OADM - Open AXIS Device Management" WorkingDirectory="ClientFolder"
+                    Icon="OadmIcon.ico" Advertise="yes" />
+        </File>
+      </Component>
+      <Files Include="$(var.ClientDir)\**">
+        <Exclude Files="$(var.ClientDir)\Oadm.Client.exe" />
+      </Files>
+    </ComponentGroup>
+
+    <!-- Data folder: SYSTEM and Administrators only (master key, database); permanent, never removed. -->
+    <Component Id="DataFolder" Directory="DataFolder" Guid="{2B9E5D71-3C4A-4F86-9E0B-6A7D1C2F5B48}" Permanent="yes" KeyPath="yes">
+      <CreateFolder>
+        <PermissionEx Sddl="O:SYG:SYD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" />
+      </CreateFolder>
+    </Component>
+
+    <Feature Id="Main" Title="OADM" Level="1">
+      <ComponentGroupRef Id="Server" />
+      <ComponentGroupRef Id="Client" />
+      <ComponentRef Id="DataFolder" />
+    </Feature>
+  </Package>
+</Wix>

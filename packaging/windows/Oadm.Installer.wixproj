@@ -1,0 +1,38 @@
+<Project Sdk="WixToolset.Sdk/6.0.2">
+  <!--
+    OADM MSI (WiX Toolset 6, restored from NuGet; not part of Oadm.sln). Built by "manage package windows",
+    which publishes server and client first and passes:
+      OadmVersion     1.2.0 or 1.2.0-rc.1 (the MSI ProductVersion is the numeric part)
+      OadmRid         win-x64 or win-arm64
+      OadmServerDir   published server folder (Oadm.Server.exe, plugins/)
+      OadmClientDir   published client folder (Oadm.Client.exe, plugins/)
+      OadmPackageDir  output folder (artifacts/packages)
+    WiX 7 is not used: it requires accepting the Open Source Maintenance Fee EULA.
+  -->
+  <PropertyGroup>
+    <OadmVersion Condition="'$(OadmVersion)' == ''">0.1.0-dev</OadmVersion>
+    <OadmRid Condition="'$(OadmRid)' == ''">win-x64</OadmRid>
+    <OadmMsiVersion>$([System.Text.RegularExpressions.Regex]::Match('$(OadmVersion)', '^[0-9]+\.[0-9]+\.[0-9]+').Value)</OadmMsiVersion>
+    <InstallerPlatform Condition="'$(OadmRid)' == 'win-x64'">x64</InstallerPlatform>
+    <InstallerPlatform Condition="'$(OadmRid)' == 'win-arm64'">arm64</InstallerPlatform>
+    <OutputType>Package</OutputType>
+    <OutputName>OADM-$(OadmVersion)-$(OadmRid)</OutputName>
+    <OutputPath Condition="'$(OadmPackageDir)' != ''">$([MSBuild]::EnsureTrailingSlash('$(OadmPackageDir)'))</OutputPath>
+    <DefineConstants>ProductVersion=$(OadmMsiVersion);ServerDir=$(OadmServerDir);ClientDir=$(OadmClientDir);IconsDir=$(MSBuildThisFileDirectory)..\icons</DefineConstants>
+    <!-- Same version reinstall (development builds) is allowed on purpose. -->
+    <SuppressIces>ICE61</SuppressIces>
+    <SuppressPdbOutput>true</SuppressPdbOutput>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Firewall.wixext" Version="6.0.2" />
+    <PackageReference Include="WixToolset.Util.wixext" Version="6.0.2" />
+  </ItemGroup>
+
+  <Target Name="OadmCheckInputs" BeforeTargets="Build">
+    <Error Condition="'$(OadmMsiVersion)' == ''" Text="OadmVersion '$(OadmVersion)' does not start with major.minor.patch." />
+    <Error Condition="'$(InstallerPlatform)' == ''" Text="OadmRid must be win-x64 or win-arm64, not '$(OadmRid)'." />
+    <Error Condition="!Exists('$(OadmServerDir)\Oadm.Server.exe')" Text="Oadm.Server.exe not found in OadmServerDir '$(OadmServerDir)'. Run manage package windows." />
+    <Error Condition="!Exists('$(OadmClientDir)\Oadm.Client.exe')" Text="Oadm.Client.exe not found in OadmClientDir '$(OadmClientDir)'. Run manage package windows." />
+  </Target>
+</Project>
