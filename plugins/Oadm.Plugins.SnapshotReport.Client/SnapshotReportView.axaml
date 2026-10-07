@@ -1,0 +1,94 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.SnapshotReport.Client"
+             x:Class="Oadm.Plugins.SnapshotReport.Client.SnapshotReportView"
+             x:DataType="vm:SnapshotReportViewModel">
+  <!-- Inside the host's page card: toolbar, status line, progress, tile grid. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,Auto,Auto,*">
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+      <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+        <ui:ToolbarButton IconKey="refresh" Text="Refresh all" Command="{Binding RefreshAllCommand}"
+                          ToolTip.Tip="Read the video sources again and take new snapshots" />
+        <ui:ToolbarSeparator />
+        <CheckBox Content="Select all" IsChecked="{Binding IsAllSelected}" VerticalAlignment="Center" Margin="8,0"
+                  ToolTip.Tip="Select or clear every shown picture for the report" />
+        <ui:ToolbarSeparator />
+        <ui:ToolbarButton IconKey="export" Text="Export PDF..." IsPrimary="True" Command="{Binding ExportPdfCommand}"
+                          ToolTip.Tip="Create the maintenance report of the selected pictures" />
+      </StackPanel>
+
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12">
+        <ui:OadmIcon Data="{DynamicResource Icon.snapshot}" VerticalAlignment="Center" ToolTip.Tip="Picture size" />
+        <Slider Width="160" VerticalAlignment="Center" ToolTip.Tip="Picture size"
+                Minimum="{x:Static vm:SnapshotReportViewModel.MinTileWidth}" Maximum="{x:Static vm:SnapshotReportViewModel.MaxTileWidth}"
+                Value="{Binding TileWidth}" />
+        <ui:SearchBox Text="{Binding SearchText}" />
+      </StackPanel>
+    </Grid>
+
+    <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding StatusLine}" Margin="2,14,0,8" />
+
+    <ui:ProgressRow Grid.Row="2" Value="{Binding Progress}" Text="{Binding ProgressText}" IsActive="{Binding IsLoading}"
+                    IsVisible="{Binding IsProgressVisible}" Margin="0,0,0,12" />
+
+    <Panel Grid.Row="3">
+      <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <ItemsControl ItemsSource="{Binding FilteredTiles}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:SnapshotTileViewModel">
+              <Border Classes="tile" Classes.selected="{Binding IsSelected}"
+                      Width="{Binding $parent[UserControl].((vm:SnapshotReportViewModel)DataContext).TileWidth}">
+                <Grid RowDefinitions="Auto,Auto,Auto,Auto">
+                  <!-- Picture: click opens the large preview -->
+                  <Button Grid.Row="0" Classes="picture" Command="{Binding PreviewCommand}" ToolTip.Tip="Show large">
+                    <Border Classes="liveViewSurface"
+                            Height="{Binding $parent[UserControl].((vm:SnapshotReportViewModel)DataContext).PictureHeight}">
+                      <Panel>
+                        <Image Source="{Binding Image}" Stretch="Uniform" IsVisible="{Binding HasImage}" />
+                        <ui:OadmIcon Data="{DynamicResource Icon.snapshot}" Width="28" Height="28"
+                                     HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasImage}" />
+                      </Panel>
+                    </Border>
+                  </Button>
+
+                  <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,8,0,0">
+                    <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected}" VerticalAlignment="Center"
+                              ToolTip.Tip="Include in the report" />
+                    <TextBlock Grid.Column="1" Text="{Binding Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                               ToolTip.Tip="{Binding Title}" />
+                    <Button Grid.Column="2" Classes="toolbar iconOnly" Command="{Binding RefreshCommand}" ToolTip.Tip="Take a new snapshot">
+                      <ui:OadmIcon Data="{DynamicResource Icon.refresh}" />
+                    </Button>
+                  </Grid>
+
+                  <TextBlock Grid.Row="2" Classes="secondary small" Text="{Binding Facts}" TextTrimming="CharacterEllipsis"
+                             ToolTip.Tip="{Binding Facts}" />
+
+                  <Panel Grid.Row="3" Margin="0,6,0,0">
+                    <ui:StatusChip Text="{Binding StatusText}" IsAccent="{Binding IsLoading}" IsError="{Binding IsError}"
+                                   IsVisible="{Binding ShowStatus}" ToolTip.Tip="{Binding StatusText}" />
+                    <TextBlock Classes="secondary small" Text="{Binding CaptureText}" IsVisible="{Binding !ShowStatus}" />
+                  </Panel>
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+
+      <TextBlock Classes="error" Text="{Binding ErrorMessage}" TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center"
+                 IsVisible="{Binding HasError}" />
+      <StackPanel IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+        <ui:OadmIcon Data="{DynamicResource Icon.snapshot}" Width="32" Height="32" HorizontalAlignment="Center" />
+        <TextBlock Classes="sectionTitle" Text="No video devices" HorizontalAlignment="Center" />
+        <TextBlock Classes="secondary" Text="Add cameras on the Devices page; their snapshots appear here." HorizontalAlignment="Center" />
+      </StackPanel>
+    </Panel>
+  </Grid>
+</UserControl>

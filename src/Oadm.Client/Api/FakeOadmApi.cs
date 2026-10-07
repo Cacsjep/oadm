@@ -15,7 +15,7 @@ namespace Oadm.Client.Api;
 /// In-process stand-in for the server: realistic sample devices and tasks, simulated discovery,
 /// automatic login results of the add page, credential list and the Restart task. Start the client with <c>--fake</c> to use it.
 /// </summary>
-public sealed class FakeOadmApi : IOadmApi, IDisposable
+public sealed partial class FakeOadmApi : IOadmApi, IDisposable
 {
     public const string RestartPluginId = "oadm.restart";
     public const string IdentifyPluginId = "oadm.identify";
@@ -692,12 +692,20 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         lock (_gate)
         {
             ThrowIfOffline();
-            return Task.FromResult<IReadOnlyList<CorePluginInfo>>([]);
+            return Task.FromResult<IReadOnlyList<CorePluginInfo>>([.. FakeCorePlugins]);
         }
     }
 
+    /// <summary>Core plugins simulated in fake mode (FakeOadmApi.SnapshotReport.cs).</summary>
+    private static IEnumerable<CorePluginInfo> FakeCorePlugins =>
+    [
+        new CorePluginInfo { Id = SnapshotReportPluginId, DisplayName = "Snapshot report", IconKey = "snapshot" },
+    ];
+
     public Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) =>
-        throw new RpcException(new Status(StatusCode.Unimplemented, "no core plugins in fake mode"));
+        pluginId == SnapshotReportPluginId
+            ? InvokeSnapshotReportAsync(method, payloadJson, ct)
+            : throw new RpcException(new Status(StatusCode.NotFound, $"Unknown core plugin '{pluginId}'."));
 
     // ---------------------------------------------------------------- live view
 

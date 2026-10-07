@@ -66,6 +66,9 @@ public sealed class Device : IDeviceInfo
     /// <summary>Chain trust of the HTTPS certificate (chain only, host name ignored). Unknown for HTTP-only.</summary>
     public CertificateTrust CertTrust { get; set; } = CertificateTrust.Unknown;
 
+    /// <inheritdoc />
+    string? IDeviceInfo.CertTrustName => CertTrust == CertificateTrust.Unknown ? null : CertTrust.ToString();
+
     /// <summary>Subject distinguished name of the HTTPS certificate.</summary>
     public string? CertSubject { get; set; }
 

@@ -26,6 +26,15 @@ public interface IDeviceInfo
     /// Filled by the server for task execution, queries and <c>CanRun</c>.
     /// </summary>
     string? CredentialUserName => null;
+
+    /// <summary>End of validity (UTC) of the device HTTPS certificate; null for HTTP-only devices or when not checked yet.</summary>
+    DateTime? CertNotAfterUtc => null;
+
+    /// <summary>
+    /// Chain trust of the HTTPS certificate as shown in the device grid: "Trusted", "SelfSigned", "Untrusted" or
+    /// "Expired"; null when unknown or HTTP only. Filled by the server.
+    /// </summary>
+    string? CertTrustName => null;
 }
 
 /// <summary>Kind of Axis device. Mapped from basicdeviceinfo ProdType ("Dome Camera", "Network Speaker", ...).</summary>

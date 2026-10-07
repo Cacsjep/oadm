@@ -270,6 +270,17 @@ public sealed class VapixClient : IVapixClient, IDisposable
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<Sdk.Vapix.VideoSource>> GetVideoSourcesAsync(CancellationToken ct)
+    {
+        var image = await GetImageCapabilitiesAsync(ct).ConfigureAwait(false);
+        return [.. image.Sources.Select(s => new Sdk.Vapix.VideoSource(
+            s.Camera,
+            s.Name,
+            s.Sensor,
+            [.. s.Resolutions.Select(r => new Sdk.Vapix.VideoResolution(r.Width, r.Height))]))];
+    }
+
+    /// <inheritdoc />
     /// <remarks>
     /// Relative URIs resolve against <see cref="BaseAddress"/>. The response is returned as-is
     /// (no status check); a pinned certificate mismatch throws <see cref="CertificateChangedException"/>.

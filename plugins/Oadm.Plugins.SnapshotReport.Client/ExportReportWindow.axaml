@@ -1,0 +1,54 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.SnapshotReport.Client"
+        x:Class="Oadm.Plugins.SnapshotReport.Client.ExportReportWindow"
+        x:DataType="vm:ExportReportViewModel"
+        Title="{x:Static vm:ExportReportViewModel.Title}"
+        Width="760" Height="460" MinWidth="640" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+  <!-- Title bar, one card (form + progress), footer. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:ExportReportViewModel.Title}" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <ui:CardHeader Grid.Row="0" Title="Report" Description="{Binding Summary}" />
+
+        <StackPanel Grid.Row="1" Classes="form" IsEnabled="{Binding IsEditable}">
+          <Grid ColumnDefinitions="150,420">
+            <TextBlock Classes="fieldLabel" Text="Site / customer" />
+            <TextBox Grid.Column="1" Text="{Binding Site}" PlaceholderText="e.g. Headquarters Vienna" />
+          </Grid>
+          <Grid ColumnDefinitions="150,420">
+            <TextBlock Classes="fieldLabel" Text="Technician" />
+            <TextBox Grid.Column="1" Text="{Binding Technician}" PlaceholderText="Your name" />
+          </Grid>
+          <Grid ColumnDefinitions="150,420">
+            <TextBlock Classes="fieldLabel" Text="Date" />
+            <TextBox Grid.Column="1" Text="{Binding DateText}" PlaceholderText="yyyy-MM-dd" />
+          </Grid>
+          <Grid ColumnDefinitions="150,420">
+            <TextBlock Classes="fieldLabel" Text="File name" />
+            <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding SuggestedFileName}" TextWrapping="Wrap" VerticalAlignment="Center" />
+          </Grid>
+        </StackPanel>
+
+        <StackPanel Grid.Row="3" Spacing="10">
+          <ui:ProgressRow Value="{Binding Progress}" Text="{Binding ProgressText}" IsActive="{Binding IsBusy}" IsVisible="{Binding IsProgressVisible}" />
+          <ui:StatusChip Text="{Binding WarningMessage}" IsWarning="True" IsVisible="{Binding HasWarning}" />
+          <ui:StatusChip Text="{Binding ErrorMessage}" IsError="True" IsVisible="{Binding HasError}" />
+          <TextBlock Classes="secondary" Text="{Binding SiteError}" IsVisible="{Binding SiteError, Converter={x:Static ObjectConverters.IsNotNull}}" />
+          <TextBlock Classes="error" Text="{Binding DateError}" IsVisible="{Binding DateError, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelText="{Binding CancelText}" CancelCommand="{Binding CancelCommand}">
+      <ui:ToolbarButton IconKey="export" Text="Export PDF..." IsPrimary="True" Command="{Binding ExportCommand}" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

@@ -107,7 +107,7 @@ public sealed class HeadlessSmokeTests
             {
                 vm.NavigateCommand.Execute(item);
                 await PumpUntilAsync(() => true);
-                Capture(window, outDir, $"client-page-{item.Key}.png");
+                Capture(window, outDir, $"client-page-{item.Key.Replace(':', '-')}.png");
             }
 
             vm.ToggleNavCommand.Execute(null);
