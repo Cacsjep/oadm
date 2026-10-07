@@ -1,0 +1,6 @@
+- swap camera list to grid of snapshots to inspect fast camera stuff
+- Snapshot report
+- live view mode - an icon on the table entry for camera opens a right panel that fly in and show camera live stream via rtsp ffmpeg etc.. so we have access to video without the need to login to webui
+- Core Plugins:
+    - NTP Server - full selfwritten and tested
+    - DHCP Server - full selfwritten and tested
