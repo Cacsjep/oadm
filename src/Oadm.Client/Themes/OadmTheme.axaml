@@ -1,7 +1,7 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:chrome="using:Avalonia.Controls.Chrome"
-        xmlns:c="using:Oadm.Client.Controls">
+        xmlns:ui="using:Oadm.Sdk.Client.Controls">
   <!--
     OADM visual style (see CLAUDE.md "Visual Style"). Dark only, MultiDrive look.
     Every color and size used by the views is defined here; views reference these keys only.
@@ -190,7 +190,7 @@
     <Setter Property="IsVisible" Value="False" />
   </Style>
 
-  <Style Selector="c|OadmIcon">
+  <Style Selector="ui|OadmIcon">
     <Setter Property="Width" Value="{StaticResource Oadm.IconSize}" />
     <Setter Property="Height" Value="{StaticResource Oadm.IconSize}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.IconBrush}" />
@@ -325,11 +325,11 @@
   </Style>
 
   <!-- Icon + text rows (buttons, menu entries, rail items): center both vertically -->
-  <!-- Icon + text rows are always c:IconLabel (it owns centering and the Inter correction). -->
+  <!-- Icon + text rows are always ui:IconLabel (it owns centering and the Inter correction). -->
   <Style Selector="StackPanel[Orientation=Horizontal] > TextBlock">
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
-  <Style Selector="StackPanel[Orientation=Horizontal] > c|OadmIcon">
+  <Style Selector="StackPanel[Orientation=Horizontal] > ui|OadmIcon">
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
 
@@ -354,7 +354,7 @@
     <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
   </Style>
-  <Style Selector="Button.toolbar:disabled c|OadmIcon">
+  <Style Selector="Button.toolbar:disabled ui|OadmIcon">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
   </Style>
   <Style Selector="Button.iconOnly">
@@ -370,7 +370,7 @@
     <Setter Property="Padding" Value="14,7" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
-  <Style Selector="Button.primary c|OadmIcon">
+  <Style Selector="Button.primary ui|OadmIcon">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
   </Style>
   <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
@@ -384,7 +384,7 @@
     <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
   </Style>
-  <Style Selector="Button.primary:disabled c|OadmIcon">
+  <Style Selector="Button.primary:disabled ui|OadmIcon">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
   </Style>
 
@@ -604,7 +604,7 @@
   <Style Selector="MenuItem">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
   </Style>
-  <!-- Same alignment as c:IconLabel: icon centered, header text with the Inter correction -->
+  <!-- Same alignment as ui:IconLabel: icon centered, header text with the Inter correction -->
   <Style Selector="MenuItem /template/ ContentPresenter#PART_IconPresenter">
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
@@ -614,7 +614,7 @@
   </Style>
 
   <!-- The one search field -->
-  <Style Selector="c|SearchBox">
+  <Style Selector="ui|SearchBox">
     <Setter Property="Width" Value="{StaticResource Oadm.SearchWidth}" />
   </Style>
 

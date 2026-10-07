@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Oadm.Core.Persistence;
 
@@ -10,9 +11,11 @@ using Oadm.Core.Persistence;
 namespace Oadm.Core.Persistence.Migrations
 {
     [DbContext(typeof(OadmDbContext))]
-    partial class OadmDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261007110111_DeviceApisAndTaskLog")]
+    partial class DeviceApisAndTaskLog
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");

@@ -45,3 +45,24 @@ public sealed class TaskDeviceResultEntity
     /// <summary>0-100.</summary>
     public int Progress { get; set; }
 }
+
+/// <summary>
+/// One entry of a task's log (row of TaskLogEntries), written by the task engine. Deleted with the
+/// task. The engine caps the log per task (<see cref="Tasks.TaskEngineOptions.MaxLogEntriesPerTask"/>).
+/// </summary>
+public sealed class TaskLogEntryEntity
+{
+    /// <summary>Auto-increment; gives the insertion order.</summary>
+    public long Id { get; set; }
+
+    public Guid TaskId { get; set; }
+
+    /// <summary>Null for task-level entries.</summary>
+    public Guid? DeviceId { get; set; }
+
+    public DateTime TimeUtc { get; set; }
+
+    public Sdk.Plugins.TaskLogLevel Level { get; set; }
+
+    public string Message { get; set; } = string.Empty;
+}

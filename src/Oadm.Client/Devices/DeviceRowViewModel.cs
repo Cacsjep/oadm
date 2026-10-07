@@ -43,6 +43,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo
     [ObservableProperty] public partial string CategoryIconKey { get; private set; } = "device.generic";
     [ObservableProperty] public partial string CategoryTooltip { get; private set; } = "";
     [ObservableProperty] public partial bool HasVideo { get; private set; }
+    /// <summary>VAPIX API list from the server's last full refresh; task plugin dialogs check compatibility with it.</summary>
     public IReadOnlyList<Oadm.Sdk.Vapix.DeviceApi> Apis { get; private set; } = [];
     [ObservableProperty] public partial DateTime? CertNotAfterUtc { get; private set; }
     [ObservableProperty] public partial ChipInfo CertExpires { get; private set; } = ChipInfo.Empty;
@@ -86,6 +87,8 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo
         CategoryIconKey = DeviceCategoryInfo.ToIconKey(device.Category);
         CategoryTooltip = DeviceCategoryInfo.ToTooltip(device.Category, ProductType);
         HasVideo = device.HasVideo;
+        Apis = [.. device.Apis.Select(a => new Oadm.Sdk.Vapix.DeviceApi(
+            a.Id, a.Version, string.IsNullOrEmpty(a.Name) ? null : a.Name, string.IsNullOrEmpty(a.Status) ? null : a.Status))];
         DateTime now = DateTime.UtcNow;
         CertNotAfterUtc = device.CertNotAfter?.ToDateTime();
         CertExpires = CertificateDisplay.Expiry(CertNotAfterUtc, now);

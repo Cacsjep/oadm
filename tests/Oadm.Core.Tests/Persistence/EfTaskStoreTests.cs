@@ -2,6 +2,7 @@ using Oadm.Core.Persistence;
 using Oadm.Core.Plugins;
 using Oadm.Core.Tasks;
 using Oadm.Core.Tests.Tasks;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Core.Tests.Persistence;
 
@@ -50,7 +51,7 @@ public sealed class EfTaskStoreTests : IAsyncLifetime
         Assert.Equal(TaskState.Queued, loaded.State);
         Assert.Equal("WS01/alice", loaded.Owner);
         Assert.Equal(created, loaded.CreatedUtc);
-        Assert.Equal("{}", loaded.PayloadJson);
+        Assert.Null(loaded.PayloadJson); // payloads may carry secrets and are never persisted
         var result = Assert.Single(loaded.Devices);
         Assert.Equal(device, result.DeviceId);
 
@@ -131,5 +132,91 @@ public sealed class EfTaskStoreTests : IAsyncLifetime
         }
 
         Assert.Equal(TaskState.Failed, (await _store.GetAsync(orphan.Id, CancellationToken.None))!.State);
+    }
+
+    [Fact]
+    public async Task LogEntriesRoundTripInOrderAndAreDeletedWithTheTask()
+    {
+        var device = Guid.NewGuid();
+        var task = NewTask(DateTimeOffset.UtcNow, device);
+        await _store.AddAsync(task, CancellationToken.None);
+        var t0 = new DateTimeOffset(2026, 10, 7, 12, 0, 0, TimeSpan.Zero);
+        await _store.AppendLogAsync(task.Id, [new(t0, null, TaskLogLevel.Info, "started"), new(t0.AddSeconds(1), device, TaskLogLevel.Warning, "careful")], CancellationToken.None);
+        await _store.AppendLogAsync(task.Id, [new(t0.AddSeconds(2), device, TaskLogLevel.Error, new string('x', 5000))], CancellationToken.None);
+
+        var log = await _store.GetLogAsync(task.Id, CancellationToken.None);
+
+        Assert.Equal(3, log.Count);
+        Assert.Equal(new TaskLogEntry(t0, null, TaskLogLevel.Info, "started"), log[0]);
+        Assert.Equal(new TaskLogEntry(t0.AddSeconds(1), device, TaskLogLevel.Warning, "careful"), log[1]);
+        Assert.Equal(TaskLogLevel.Error, log[2].Level);
+        Assert.Equal(OadmDbContext.TaskLogEntryMaxLength, log[2].Message.Length); // cut, not rejected
+
+        Assert.True(await _store.DeleteAsync(task.Id, CancellationToken.None));
+        Assert.Empty(await _store.GetLogAsync(task.Id, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task APayloadWithAPasswordNeverReachesTheDatabaseFile()
+    {
+        const string Secret = "Sup3r-Secr3t-Pa55word";
+        var registry = new PluginRegistry();
+        string? seen = null;
+        registry.RegisterTaskPlugin(
+            new DelegateTaskPlugin("test.secret", (ctx, _, _) =>
+            {
+                ctx.ReportProgress(50, "setting the password");
+                return Task.CompletedTask;
+            }),
+            new PluginOrigin("tests", "1.0.0", null));
+        registry.RegisterTaskPlugin(new CapturingPlugin(p => seen = p), new PluginOrigin("tests", "1.0.0", null));
+        var devices = new FakeDeviceRepository();
+        var deviceId = devices.Add();
+        var payload = $$"""{"user":"operator1","password":"{{Secret}}"}""";
+
+        await using (var engine = new TaskEngine(_store, registry, devices, new FakeVapixClientFactory()))
+        {
+            foreach (var plugin in new[] { "test.secret", CapturingPlugin.PluginId })
+            {
+                var id = await engine.RunAsync(plugin, [deviceId], payload, "tester", CancellationToken.None);
+                await engine.WaitForCompletionAsync(id, CancellationToken.None);
+            }
+        }
+
+        Assert.Equal(payload, seen); // the plugin got it
+        await _db.CloseAsync();       // flush and release the SQLite files
+
+        var files = Directory.GetFiles(_db.Paths.DataDirectory, OadmPaths.DatabaseFileName + "*");
+        Assert.NotEmpty(files);
+        foreach (var file in files)
+        {
+            var bytes = await File.ReadAllBytesAsync(file);
+            Assert.Equal(-1, bytes.AsSpan().IndexOf(System.Text.Encoding.UTF8.GetBytes(Secret)));
+            Assert.Equal(-1, bytes.AsSpan().IndexOf(System.Text.Encoding.Unicode.GetBytes(Secret)));
+        }
+    }
+
+    private sealed class CapturingPlugin(Action<string?> onPayload) : Oadm.Sdk.Plugins.ITaskPlugin
+    {
+        public const string PluginId = "test.capture";
+
+        public string Id => PluginId;
+
+        public string DisplayName => "Capture";
+
+        public string? IconKey => null;
+
+        public bool ShowInToolbar => false;
+
+        public bool RequiresDialog => true;
+
+        public bool CanRun(Oadm.Sdk.Devices.IDeviceInfo device) => true;
+
+        public Task ExecuteAsync(Oadm.Sdk.Plugins.ITaskExecutionContext ctx, Oadm.Sdk.Devices.IDeviceInfo device, string? payloadJson, CancellationToken ct)
+        {
+            onPayload(payloadJson);
+            ctx.Log(Oadm.Sdk.Plugins.TaskLogLevel.Info, "password changed");
+            return Task.CompletedTask;
+        }
     }
 }

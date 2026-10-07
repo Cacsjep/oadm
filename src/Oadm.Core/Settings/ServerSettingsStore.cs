@@ -148,6 +148,12 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             case SettingKeys.PollingFullRefreshMinutes:
                 RequireInt(key, value, ServerSettings.MinFullRefreshMinutes, ServerSettings.MaxFullRefreshMinutes);
                 break;
+            case SettingKeys.UploadsMaxMegabytes:
+                RequireInt(key, value, 1, ServerSettings.MaxUploadsMaxMegabytes);
+                break;
+            case SettingKeys.UploadsRetentionHours:
+                RequireInt(key, value, 1, ServerSettings.MaxUploadsRetentionHours);
+                break;
             case SettingKeys.ScanParallelism:
                 RequireInt(key, value, 1, 1024);
                 break;
@@ -194,6 +200,8 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.ServerName] = JsonSerializer.Serialize(d.ServerName),
             [SettingKeys.ListenUrl] = JsonSerializer.Serialize(d.ListenUrl),
             [SettingKeys.PollingFullRefreshMinutes] = JsonSerializer.Serialize(d.FullRefreshMinutes),
+            [SettingKeys.UploadsMaxMegabytes] = JsonSerializer.Serialize(ServerSettings.DefaultUploadsMaxMegabytes),
+            [SettingKeys.UploadsRetentionHours] = JsonSerializer.Serialize(ServerSettings.DefaultUploadsRetentionHours),
         };
     }
 }

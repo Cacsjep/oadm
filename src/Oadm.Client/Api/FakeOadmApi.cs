@@ -23,6 +23,8 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
     private readonly Lock _gate = new();
     private readonly List<Device> _devices = [];
     private readonly List<TaskInfo> _tasks = [];
+    private readonly Dictionary<string, List<TaskLogEntry>> _taskLogs = [];
+    private readonly Dictionary<string, UploadedFileInfo> _uploads = [];
     private readonly Dictionary<string, FakeJob> _jobs = [];
     private readonly Dictionary<string, FakeSession> _sessions = [];
     private readonly Broadcast<DeviceChanged> _deviceEvents = new();
@@ -63,6 +65,21 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
 
     /// <summary>Task plugins as returned by ListTaskPlugins. Tests may add entries.</summary>
     public IList<TaskPluginInfo> PluginTemplates => _pluginTemplates;
+
+    /// <summary>Answers QueryTaskPlugin (pluginId, deviceId, method, payload); null: UNIMPLEMENTED like a plugin without queries.</summary>
+    public Func<string, string, string, string?, string?>? QueryHandler { get; set; }
+
+    /// <summary>Files received by UploadFileAsync, by id.</summary>
+    public IReadOnlyDictionary<string, UploadedFileInfo> Uploads
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return new Dictionary<string, UploadedFileInfo>(_uploads);
+            }
+        }
+    }
 
     public void SetServerAddress(string address)
     {
@@ -457,6 +474,7 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
             {
                 _jobs.Remove(taskId);
                 _tasks.Remove(task);
+                _taskLogs.Remove(taskId);
                 _taskEvents.Publish(new TaskChanged { Kind = TaskChanged.Types.Kind.Removed, Task = new TaskInfo { Id = taskId } });
             }
         }
@@ -479,6 +497,7 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
             _tasks.Clear();
             foreach (TaskInfo task in all)
             {
+                _taskLogs.Remove(task.Id);
                 _taskEvents.Publish(new TaskChanged { Kind = TaskChanged.Types.Kind.Removed, Task = new TaskInfo { Id = task.Id } });
             }
 
@@ -487,6 +506,70 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
     }
 
     // ---------------------------------------------------------------- settings and core plugins
+
+    public Task<IReadOnlyList<TaskLogEntry>> GetTaskLogAsync(string taskId, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            if (!_tasks.Exists(t => t.Id == taskId))
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, $"task {taskId} not found"));
+            }
+
+            return Task.FromResult<IReadOnlyList<TaskLogEntry>>(
+                _taskLogs.TryGetValue(taskId, out List<TaskLogEntry>? log) ? log.Select(e => e.Clone()).ToList() : []);
+        }
+    }
+
+    public Task<string?> QueryTaskPluginAsync(string pluginId, string deviceId, string method, string? payloadJson, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+        }
+
+        Func<string, string, string, string?, string?> handler = QueryHandler
+            ?? throw new RpcException(new Status(StatusCode.Unimplemented, $"Task plugin '{pluginId}' does not support queries."));
+        return Task.FromResult(handler(pluginId, deviceId, method, payloadJson));
+    }
+
+    public async Task<UploadedFileInfo> UploadFileAsync(string path, IProgress<double>? progress, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+        }
+
+        await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, GrpcOadmApi.UploadChunkSize, useAsync: true);
+        using var sha = System.Security.Cryptography.IncrementalHash.CreateHash(System.Security.Cryptography.HashAlgorithmName.SHA256);
+        byte[] buffer = new byte[GrpcOadmApi.UploadChunkSize];
+        long size = file.Length;
+        long read = 0;
+        int n;
+        progress?.Report(0);
+        while ((n = await file.ReadAsync(buffer, ct)) > 0)
+        {
+            sha.AppendData(buffer, 0, n);
+            read += n;
+            progress?.Report(size == 0 ? 1 : (double)read / size);
+        }
+
+        var info = new UploadedFileInfo
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Name = Path.GetFileName(path),
+            Size = read,
+            Sha256 = Convert.ToHexString(sha.GetHashAndReset()),
+        };
+        lock (_gate)
+        {
+            _uploads[info.Id] = info;
+        }
+
+        progress?.Report(1);
+        return info;
+    }
 
     public Task<ServerSettings> GetSettingsAsync(CancellationToken ct)
     {
@@ -606,12 +689,22 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
 
             if (progress is >= 12 and < 16)
             {
+                if (result.Message != "Restarting")
+                {
+                    AddLog(task, result.DeviceId, TaskLogLevel.Info, "Restart requested, waiting for the device to go offline");
+                }
+
                 result.Message = "Restarting";
                 device.Status = DeviceStatus.Unreachable;
                 PublishUpdated(device);
             }
             else if (progress is >= 80 and < 84)
             {
+                if (result.Message != "Device is back online")
+                {
+                    AddLog(task, result.DeviceId, TaskLogLevel.Info, "Device is back online");
+                }
+
                 result.Message = "Device is back online";
                 device.Status = DeviceStatus.Ok;
                 device.LastSeen = Timestamp.FromDateTime(DateTime.UtcNow);
@@ -637,9 +730,29 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
             {
                 result.Message = message;
             }
+
+            AddLog(task, result.DeviceId, state == TaskState.Failed ? TaskLogLevel.Error : TaskLogLevel.Info,
+                message ?? (state == TaskState.Done ? "Done" : state.ToString()));
         }
 
         _taskEvents.Publish(new TaskChanged { Kind = TaskChanged.Types.Kind.Updated, Task = task.Clone() });
+    }
+
+    private void AddLog(TaskInfo task, string? deviceId, TaskLogLevel level, string message, DateTime? timeUtc = null)
+    {
+        if (!_taskLogs.TryGetValue(task.Id, out List<TaskLogEntry>? log))
+        {
+            log = [];
+            _taskLogs[task.Id] = log;
+        }
+
+        log.Add(new TaskLogEntry
+        {
+            Time = Timestamp.FromDateTime(timeUtc ?? DateTime.UtcNow),
+            DeviceId = deviceId ?? "",
+            Level = level,
+            Message = message,
+        });
     }
 
     private TaskInfo AddTask(string pluginId, string name, string owner, TaskState state, int progress, IEnumerable<string> deviceIds)
@@ -785,6 +898,19 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         TaskInfo failed = AddTask(RestartPluginId, "Restart", "admin@SECURITY-PC", TaskState.Failed, 100, [_devices[4].Id]);
         failed.Started = Timestamp.FromDateTime(now.AddMinutes(-40));
         failed.Devices[0].Message = "Device did not come back within 3 minutes";
+        AddLog(failed, failed.Devices[0].DeviceId, TaskLogLevel.Info, "Restart requested, waiting for the device to go offline", now.AddMinutes(-40));
+        AddLog(failed, failed.Devices[0].DeviceId, TaskLogLevel.Error, "Device did not come back within 3 minutes", now.AddMinutes(-37));
+
+        TaskInfo warned = AddTask(IdentifyPluginId, "Identify (flash LED)", OwnerName, TaskState.DoneWithWarnings, 100, [_devices[2].Id, _devices[3].Id]);
+        warned.Started = Timestamp.FromDateTime(now.AddMinutes(-32));
+        warned.Finished = Timestamp.FromDateTime(now.AddMinutes(-31));
+        warned.Devices[0].State = TaskState.Done;
+        warned.Devices[0].Message = "LED flashed";
+        warned.Devices[1].Message = "LED not available, used the status indicator instead";
+        AddLog(warned, null, TaskLogLevel.Info, "Started on 2 devices", now.AddMinutes(-32));
+        AddLog(warned, warned.Devices[0].DeviceId, TaskLogLevel.Info, "LED flashed", now.AddMinutes(-32).AddSeconds(4));
+        AddLog(warned, warned.Devices[1].DeviceId, TaskLogLevel.Warning, "LED not available, used the status indicator instead", now.AddMinutes(-32).AddSeconds(5));
+        AddLog(warned, warned.Devices[1].DeviceId, TaskLogLevel.Info, "Status indicator flashed", now.AddMinutes(-31));
 
         TaskInfo cancelled = AddTask(RestartPluginId, "Restart", OwnerName, TaskState.Cancelled, 30, [_devices[7].Id]);
         cancelled.Started = Timestamp.FromDateTime(now.AddMinutes(-25));
@@ -798,7 +924,7 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         _jobs[identify.Id] = new FakeJob(identify, 1, null);
     }
 
-    private Device CreateDevice(string serial, string address, string model, string firmware, DeviceStatus status) => new()
+    private Device CreateDevice(string serial, string address, string model, string firmware, DeviceStatus status) => WithSampleApis(new Device
     {
         Id = Guid.NewGuid().ToString(),
         Serial = serial,
@@ -823,7 +949,19 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         CertSubject = "CN=axis-" + serial.ToLowerInvariant(),
         CertIssuer = "CN=axis-" + serial.ToLowerInvariant(),
         CertNameMatches = false,
-    };
+    });
+
+    /// <summary>A typical AXIS OS 12 API list (subset of apidiscovery getApiList) so plugin CanRun checks work in fake mode.</summary>
+    private static Device WithSampleApis(Device device)
+    {
+        device.Apis.Add(new DeviceApi { Id = "basic-device-info", Version = "1.3", Name = "Basic device information", Status = "official" });
+        device.Apis.Add(new DeviceApi { Id = "user-management", Version = "1.2", Name = "User management", Status = "official" });
+        device.Apis.Add(new DeviceApi { Id = "network-settings", Version = "1.37", Name = "Network settings", Status = "official" });
+        device.Apis.Add(new DeviceApi { Id = "fwmgr", Version = "1.10", Name = "Firmware management", Status = "official" });
+        device.Apis.Add(new DeviceApi { Id = "packagemanager", Version = "1.4", Name = "Package manager", Status = "official" });
+        device.Apis.Add(new DeviceApi { Id = "time-service", Version = "1.1", Name = "Time service", Status = "official" });
+        return device;
+    }
 
     /// <summary>ProdType like the real devices report it (AXIS P3265-V says "Dome Camera").</summary>
     internal static string SampleProductType(string model) => model switch

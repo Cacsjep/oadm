@@ -5,13 +5,18 @@ using Oadm.Sdk.Vapix;
 
 namespace Oadm.Core.Tasks;
 
-/// <summary>Per-device execution context handed to <see cref="ITaskPlugin.ExecuteAsync"/>.</summary>
-internal sealed class TaskExecutionContext(
+/// <summary>
+/// Per-device execution context handed to <see cref="ITaskPlugin.ExecuteAsync"/>. Progress, warnings
+/// and log entries go to the engine (<see cref="ITaskExecutionSink"/>), which publishes and persists them.
+/// </summary>
+internal sealed partial class TaskExecutionContext(
     Guid taskId,
+    Guid deviceId,
     IVapixClient vapix,
     ILogger logger,
     ICorePlugin? owner,
-    Action<int, string?> reportProgress) : ITaskExecutionContext
+    IUploadedFiles files,
+    ITaskExecutionSink sink) : ITaskExecutionContext
 {
     public Guid TaskId { get; } = taskId;
 
@@ -21,26 +26,37 @@ internal sealed class TaskExecutionContext(
 
     public ICorePlugin? Owner { get; } = owner;
 
-    public void ReportProgress(int percent, string? message = null) => reportProgress(percent, message);
+    public IUploadedFiles Files { get; } = files;
 
-    // Placeholders until the task log, warnings and uploads are implemented.
-#pragma warning disable CA1848, CA1873 // temporary placeholder logging
-    public IUploadedFiles Files { get; } = NoUploadedFiles.Instance;
+    public void ReportProgress(int percent, string? message = null) => sink.ReportProgress(deviceId, percent, message);
 
-    public void ReportWarning(string message) => Logger.LogWarning("Task {TaskId}: {Message}", TaskId, message);
-
-    public void Log(TaskLogLevel level, string message) =>
-        Logger.Log(level switch { TaskLogLevel.Error => LogLevel.Error, TaskLogLevel.Warning => LogLevel.Warning, _ => LogLevel.Information }, "Task {TaskId}: {Message}", TaskId, message);
-
-#pragma warning restore CA1848, CA1873
-
-    private sealed class NoUploadedFiles : IUploadedFiles
+    public void ReportWarning(string message)
     {
-        public static readonly NoUploadedFiles Instance = new();
-
-        public Task<UploadedFile?> FindAsync(string fileId, CancellationToken ct) => Task.FromResult<UploadedFile?>(null);
-
-        public Task<Stream> OpenReadAsync(string fileId, CancellationToken ct) =>
-            throw new FileNotFoundException("Uploaded files are not available yet.", fileId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        LogPluginWarning(Logger, TaskId, deviceId, message);
+        sink.ReportWarning(deviceId, message);
     }
+
+    public void Log(TaskLogLevel level, string message)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        LogPluginEntry(Logger, TaskId, deviceId, level, message);
+        sink.Log(deviceId, level, message);
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Task {TaskId}, device {DeviceId}: warning: {Message}")]
+    private static partial void LogPluginWarning(ILogger logger, Guid taskId, Guid deviceId, string message);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Task {TaskId}, device {DeviceId}: {Level}: {Message}")]
+    private static partial void LogPluginEntry(ILogger logger, Guid taskId, Guid deviceId, TaskLogLevel level, string message);
+}
+
+/// <summary>Where a <see cref="TaskExecutionContext"/> reports to (the engine, for one task).</summary>
+internal interface ITaskExecutionSink
+{
+    void ReportProgress(Guid deviceId, int percent, string? message);
+
+    void ReportWarning(Guid deviceId, string message);
+
+    void Log(Guid deviceId, TaskLogLevel level, string message);
 }

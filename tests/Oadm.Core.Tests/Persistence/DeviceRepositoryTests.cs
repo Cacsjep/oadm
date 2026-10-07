@@ -171,4 +171,18 @@ public sealed class DeviceRepositoryTests : IAsyncLifetime
         Assert.True(subscription.Reader.TryRead(out var change));
         Assert.Equal("192.168.0.90", change.Device!.Address);
     }
+
+    [Fact]
+    public async Task ApiListIsStoredAsJsonAndUpdated()
+    {
+        var added = await _repo.AddAsync(NewDevice(), CancellationToken.None);
+        Assert.Empty((await _repo.GetAsync(added.Id, CancellationToken.None))!.Apis);
+
+        await _repo.UpdateAsync(added.Id, d => d.Apis = [new("user-management", "1.2", "User Management", "official"), new("fwmgr", "1.10")], CancellationToken.None);
+        var loaded = await _repo.GetAsync(added.Id, CancellationToken.None);
+        Assert.Equal([new Oadm.Sdk.Vapix.DeviceApi("user-management", "1.2", "User Management", "official"), new("fwmgr", "1.10")], loaded!.Apis);
+
+        await _repo.UpdateAsync(added.Id, d => d.Apis = [new("fwmgr", "1.11")], CancellationToken.None);
+        Assert.Equal("1.11", Assert.Single((await _repo.GetAsync(added.Id, CancellationToken.None))!.Apis).Version);
+    }
 }

@@ -107,7 +107,9 @@ public sealed partial class TasksViewModel : ObservableObject
     {
         if (SelectedTask is { } task)
         {
-            await _dialogs.ShowTaskDetailsAsync(new TaskDetailsViewModel(task, _devices)).ConfigureAwait(true);
+            var details = new TaskDetailsViewModel(task, _devices);
+            await details.LoadLogAsync(_api, CancellationToken.None).ConfigureAwait(true);
+            await _dialogs.ShowTaskDetailsAsync(details).ConfigureAwait(true);
         }
     }
 

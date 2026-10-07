@@ -43,6 +43,16 @@ public interface IOadmApi
     /// <summary>Cancels running tasks, then deletes every task. Returns the number deleted.</summary>
     Task<int> DeleteAllTasksAsync(CancellationToken ct);
 
+    /// <summary>The task's log, oldest first.</summary>
+    Task<IReadOnlyList<TaskLogEntry>> GetTaskLogAsync(string taskId, CancellationToken ct);
+
+    /// <summary>Read-only query of a task plugin for its dialog (server-side ITaskPluginQuery). Null when the plugin returned nothing.</summary>
+    Task<string?> QueryTaskPluginAsync(string pluginId, string deviceId, string method, string? payloadJson, CancellationToken ct);
+
+    // FileService
+    /// <summary>Uploads a local file in 256 KB chunks; <paramref name="progress"/> receives 0..1.</summary>
+    Task<UploadedFileInfo> UploadFileAsync(string path, IProgress<double>? progress, CancellationToken ct);
+
     // SettingsService
     Task<ServerSettings> GetSettingsAsync(CancellationToken ct);
     Task<ServerSettings> SetSettingsAsync(ServerSettings settings, CancellationToken ct);

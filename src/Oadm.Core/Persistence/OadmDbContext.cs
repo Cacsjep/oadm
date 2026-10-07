@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Oadm.Core.Devices;
 using Oadm.Core.Security;
 using Oadm.Core.Settings;
+using Oadm.Sdk.Vapix;
 
 namespace Oadm.Core.Persistence;
 
@@ -14,6 +15,10 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
     public DbSet<DeviceCredential> DeviceCredentials => Set<DeviceCredential>();
     public DbSet<TaskEntity> Tasks => Set<TaskEntity>();
     public DbSet<TaskDeviceResultEntity> TaskDeviceResults => Set<TaskDeviceResultEntity>();
+    public DbSet<TaskLogEntryEntity> TaskLogEntries => Set<TaskLogEntryEntity>();
+
+    /// <summary>Longer task log messages are cut to this length.</summary>
+    public const int TaskLogEntryMaxLength = 2000;
     public DbSet<Setting> Settings => Set<Setting>();
 
     private static readonly ValueConverter<DateTime, DateTime> UtcConverter =
@@ -33,6 +38,15 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
         new(
             (a, b) => (a == null && b == null) || (a != null && b != null && a.SequenceEqual(b)),
             v => v.Aggregate(0, (hash, tag) => HashCode.Combine(hash, tag.GetHashCode(StringComparison.Ordinal))),
+            v => v.ToList());
+
+    private static readonly ValueConverter<IReadOnlyList<DeviceApi>, string> ApisConverter =
+        new(v => DeviceApiJson.Serialize(v), v => DeviceApiJson.Deserialize(v));
+
+    private static readonly ValueComparer<IReadOnlyList<DeviceApi>> ApisComparer =
+        new(
+            (a, b) => (a == null && b == null) || (a != null && b != null && a.SequenceEqual(b)),
+            v => v.Aggregate(0, (hash, api) => HashCode.Combine(hash, api.GetHashCode())),
             v => v.ToList());
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -64,6 +78,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(d => d.CertSubject).HasMaxLength(1024);
             e.Property(d => d.CertIssuer).HasMaxLength(1024);
             e.Property(d => d.Tags).HasConversion(TagsConverter, TagsComparer).IsRequired();
+            e.Property(d => d.Apis).HasConversion(ApisConverter, ApisComparer).IsRequired();
         });
 
         modelBuilder.Entity<DeviceCredential>(e =>
@@ -97,6 +112,18 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.HasKey(r => new { r.TaskId, r.DeviceId });
             e.Property(r => r.Status).HasConversion<string>().HasMaxLength(16);
             e.HasIndex(r => r.DeviceId);
+        });
+
+        modelBuilder.Entity<TaskLogEntryEntity>(e =>
+        {
+            e.ToTable("TaskLogEntries");
+            e.HasKey(l => l.Id);
+            e.Property(l => l.Id).ValueGeneratedOnAdd();
+            e.Property(l => l.TimeUtc).HasConversion(UtcConverter);
+            e.Property(l => l.Level).HasConversion<string>().HasMaxLength(16);
+            e.Property(l => l.Message).IsRequired().HasMaxLength(TaskLogEntryMaxLength);
+            e.HasIndex(l => l.TaskId);
+            e.HasOne<TaskEntity>().WithMany().HasForeignKey(l => l.TaskId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Setting>(e =>

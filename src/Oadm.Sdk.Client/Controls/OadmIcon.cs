@@ -3,7 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Media;
 
-namespace Oadm.Client.Controls;
+namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>
 /// Monochrome outline icon. <see cref="Data"/> is a stroke geometry on a 24x24 grid (Lucide geometry),

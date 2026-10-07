@@ -15,6 +15,7 @@ using Oadm.Core.Vapix;
 using Oadm.Server.AddDevices;
 using Oadm.Server.Devices;
 using Oadm.Server.Discovery;
+using Oadm.Server.Files;
 using Oadm.Server.Plugins;
 using Oadm.Server.Settings;
 using Oadm.Server.Tasks;
@@ -99,6 +100,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<PluginGrpcService>();
         app.MapGrpcService<DiscoveryGrpcService>();
         app.MapGrpcService<AddDevicesGrpcService>();
+        app.MapGrpcService<FileGrpcService>();
         if (app.Environment.IsDevelopment())
         {
             app.MapGrpcReflectionService();
@@ -126,6 +128,15 @@ public static partial class OadmServerHost
         services.AddSingleton<Sdk.Vapix.IVapixClientFactory>(sp => sp.GetRequiredService<VapixClientFactory>());
         services.AddSingleton(_ => new VapixProbe(TimeSpan.FromSeconds(3)));
 
+        // Uploads (task dialogs: firmware, ACAP packages)
+        services.AddSingleton(sp => new Core.Uploads.UploadStore(
+            sp.GetRequiredService<OadmPaths>(),
+            sp.GetRequiredService<ServerSettingsStore>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<Core.Uploads.UploadStore>>()));
+        services.AddSingleton<Sdk.Plugins.IUploadedFiles>(sp => sp.GetRequiredService<Core.Uploads.UploadStore>());
+        services.AddHostedService<UploadCleanupHostedService>();
+
         // Plugins and tasks
         services.AddSingleton<PluginRegistry>();
         services.AddSingleton<PluginLoader>();
@@ -137,7 +148,13 @@ public static partial class OadmServerHost
             sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
             sp.GetRequiredService<ILoggerFactory>(),
             sp.GetRequiredService<TaskEngineOptions>(),
-            sp.GetRequiredService<TimeProvider>()));
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<Sdk.Plugins.IUploadedFiles>()));
+        services.AddSingleton(sp => new TaskPluginQueries(
+            sp.GetRequiredService<PluginRegistry>(),
+            sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
+            sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
+            sp.GetRequiredService<ILoggerFactory>()));
         services.AddSingleton<Sdk.Tasks.ITaskRunner>(sp => sp.GetRequiredService<TaskEngine>());
         services.AddSingleton(sp => new CorePluginHost(
             sp.GetRequiredService<PluginRegistry>(),

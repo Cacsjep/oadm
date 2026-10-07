@@ -37,6 +37,9 @@ internal sealed class FakeAxisDevice
 
     public int RestartCalls { get; private set; }
 
+    /// <summary>Answer of apidiscovery.cgi getApiList (id, version).</summary>
+    public List<(string Id, string Version)> Apis { get; } = [("user-management", "1.2"), ("network-settings", "1.37")];
+
     public int PwdgrpCalls { get; private set; }
 
     /// <summary>Requests with a password in the URL query (must never happen).</summary>
@@ -111,6 +114,11 @@ internal sealed class FakeAxisDevice
                     + $"Network.UPnP.FriendlyName=AXIS {Model} - {Serial}\n"
                     + "Network.Interface.I0.dot1x.Enabled=no\n"
                     + "root.HTTPS.Enabled=yes\n");
+
+            case "axis-cgi/apidiscovery.cgi":
+                return authorized
+                    ? Json(Serialize(new { apiVersion = "1.1", method = "getApiList", data = new { apiList = Apis.Select(a => new { id = a.Id, version = a.Version, name = a.Id, status = "official" }) } }))
+                    : Unauthorized();
 
             case "axis-cgi/restart.cgi":
                 if (!authorized)

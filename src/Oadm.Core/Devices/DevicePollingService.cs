@@ -358,6 +358,15 @@ public sealed partial class DevicePollingService : IDisposable
                 LogNetworkInfoFailed(device.Id, ex.Message);
             }
 
+            try
+            {
+                observation.Apis = await client.GetApiListAsync(ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                LogApiListFailed(device.Id, ex.Message);
+            }
+
             if (device.Scheme == DeviceScheme.Http)
             {
                 observation.ClearCertificate = true;
@@ -474,6 +483,9 @@ public sealed partial class DevicePollingService : IDisposable
     [LoggerMessage(Level = LogLevel.Debug, Message = "Device {DeviceId}: network parameters not readable ({Reason})")]
     private partial void LogNetworkInfoFailed(Guid deviceId, string reason);
 
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Device {DeviceId}: API list not readable ({Reason})")]
+    private partial void LogApiListFailed(Guid deviceId, string reason);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Polling interval changed to {Seconds} s")]
     private partial void LogIntervalChanged(int seconds);
 
@@ -503,6 +515,9 @@ public sealed partial class DevicePollingService : IDisposable
         public string? Fingerprint { get; set; }
 
         public NetworkInfo? Network { get; set; }
+
+        /// <summary>apidiscovery list; null when not fetched (status poll) or the request failed.</summary>
+        public IReadOnlyList<Sdk.Vapix.DeviceApi>? Apis { get; set; }
 
         public string? ServerName { get; set; }
 
@@ -536,6 +551,11 @@ public sealed partial class DevicePollingService : IDisposable
                 d.HttpsEnabled = n.HttpsEnabled ?? d.HttpsEnabled;
                 d.Dot1xEnabled = n.Dot1xEnabled ?? d.Dot1xEnabled;
                 d.UpnpFriendlyName = n.UpnpFriendlyName ?? d.UpnpFriendlyName;
+            }
+
+            if (Apis is { } apis)
+            {
+                d.Apis = apis;
             }
 
             if (Certificate is { } c)

@@ -51,6 +51,9 @@ public sealed class FullRefreshHardwareTests(ITestOutputHelper output)
         Assert.False(string.IsNullOrEmpty(row.ProductType));
         Assert.Equal(row.ProductType, probe.ProductType);
         Assert.NotEqual(DeviceCategory.Unknown, row.Category);
+        Assert.NotEmpty(row.Apis); // apidiscovery list stored by the full refresh
+        Assert.NotEmpty((await devices.GetAsync(device.Id, CancellationToken.None))!.Apis);
+        output.WriteLine($"APIs: {row.Apis.Count}, e.g. {string.Join(", ", row.Apis.Take(5).Select(a => a.Id + " " + a.Version))}");
 
         if (row.Scheme == DeviceScheme.Https)
         {

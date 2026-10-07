@@ -36,6 +36,7 @@ public sealed partial class TaskRowViewModel : ObservableObject
     [ObservableProperty] public partial IReadOnlyList<TaskDeviceResult> DeviceResults { get; private set; } = [];
 
     public bool IsStateOk => StateKind == PillKind.Ok;
+    public bool IsStateWarning => StateKind == PillKind.Warning;
     public bool IsStateError => StateKind == PillKind.Error;
     public bool IsStateAccent => StateKind == PillKind.Accent;
     public bool IsStateNeutral => StateKind == PillKind.Neutral;
@@ -65,6 +66,7 @@ public sealed partial class TaskRowViewModel : ObservableObject
         TaskState.Done => "Done",
         TaskState.Failed => "Failed",
         TaskState.Cancelled => "Cancelled",
+        TaskState.DoneWithWarnings => "Done with warnings",
         _ => "Unknown",
     };
 
@@ -72,6 +74,7 @@ public sealed partial class TaskRowViewModel : ObservableObject
     {
         TaskState.Running => PillKind.Accent,
         TaskState.Done => PillKind.Ok,
+        TaskState.DoneWithWarnings => PillKind.Warning,
         TaskState.Failed => PillKind.Error,
         _ => PillKind.Neutral,
     };
@@ -79,6 +82,7 @@ public sealed partial class TaskRowViewModel : ObservableObject
     partial void OnStateKindChanged(PillKind value)
     {
         OnPropertyChanged(nameof(IsStateOk));
+        OnPropertyChanged(nameof(IsStateWarning));
         OnPropertyChanged(nameof(IsStateError));
         OnPropertyChanged(nameof(IsStateAccent));
         OnPropertyChanged(nameof(IsStateNeutral));

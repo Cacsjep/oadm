@@ -4,7 +4,7 @@ using Avalonia.Data;
 using Avalonia.Layout;
 using Avalonia.Media;
 
-namespace Oadm.Client.Controls;
+namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>
 /// The one search field used on every page and dialog: search icon left, clear button right

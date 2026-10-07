@@ -8,14 +8,21 @@ public enum TaskState
     Done = 3,
     Failed = 4,
     Cancelled = 5,
+
+    /// <summary>Finished, but the plugin reported at least one warning (<c>ReportWarning</c>).</summary>
+    DoneWithWarnings = 6,
 }
 
 public static class TaskStateExtensions
 {
-    public static bool IsTerminal(this TaskState state) => state is TaskState.Done or TaskState.Failed or TaskState.Cancelled;
+    public static bool IsTerminal(this TaskState state) => state is TaskState.Done or TaskState.DoneWithWarnings or TaskState.Failed or TaskState.Cancelled;
 }
 
-/// <summary>Immutable snapshot of a task, as persisted by <see cref="ITaskStore"/> and published on the change feed.</summary>
+/// <summary>
+/// Immutable snapshot of a task, as persisted by <see cref="ITaskStore"/> and published on the change feed.
+/// <see cref="PayloadJson"/> is always null in engine snapshots: payloads may carry secrets and live only
+/// in memory while the task runs (never persisted, never logged).
+/// </summary>
 public sealed record TaskRecord(
     Guid Id,
     string PluginId,
@@ -29,8 +36,11 @@ public sealed record TaskRecord(
     string? PayloadJson,
     IReadOnlyList<TaskDeviceRecord> Devices);
 
-/// <summary>Per-device result inside a task.</summary>
+/// <summary>Per-device result inside a task. <see cref="Message"/> is the last progress message, warning or error.</summary>
 public sealed record TaskDeviceRecord(Guid DeviceId, TaskState State, string? Message, int Progress);
+
+/// <summary>One entry of a task's log (<c>ITaskExecutionContext.Log</c>, warnings, failures). Null device: task level.</summary>
+public sealed record TaskLogEntry(DateTimeOffset TimeUtc, Guid? DeviceId, Oadm.Sdk.Plugins.TaskLogLevel Level, string Message);
 
 public enum TaskChangeKind
 {

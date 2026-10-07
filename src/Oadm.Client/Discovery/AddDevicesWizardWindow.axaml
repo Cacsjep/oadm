@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:chrome="using:Avalonia.Controls.Chrome"
         xmlns:c="using:Oadm.Client.Controls"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
         xmlns:disc="using:Oadm.Client.Discovery"
         x:Class="Oadm.Client.Discovery.AddDevicesWizardWindow"
         x:DataType="disc:AddDevicesWizardViewModel"
@@ -26,7 +27,7 @@
               <Border Classes="stepDot" Classes.current="{Binding IsCurrent}" Classes.done="{Binding IsDone}">
                 <Panel>
                   <TextBlock Text="{Binding Number}" IsVisible="{Binding !IsDone}" />
-                  <c:OadmIcon Data="{StaticResource Icon.check}" Width="12" Height="12" HorizontalAlignment="Center" IsVisible="{Binding IsDone}" />
+                  <ui:OadmIcon Data="{StaticResource Icon.check}" Width="12" Height="12" HorizontalAlignment="Center" IsVisible="{Binding IsDone}" />
                 </Panel>
               </Border>
               <TextBlock Classes="stepLabel" Classes.current="{Binding IsCurrent}" Classes.skipped="{Binding IsSkipped}" Text="{Binding Title}" />
@@ -55,14 +56,14 @@
               <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,10">
                 <StackPanel Orientation="Horizontal" Spacing="4">
                   <Button Classes="toolbar" Command="{Binding SelectAllCommand}">
-                    <c:IconLabel Icon="{StaticResource Icon.check}" Text="Select all" Spacing="8" />
+                    <ui:IconLabel Icon="{StaticResource Icon.check}" Text="Select all" Spacing="8" />
                   </Button>
                   <Button Classes="toolbar" Command="{Binding SelectNoneCommand}">
-                    <c:IconLabel Icon="{StaticResource Icon.close}" Text="Clear selection" Spacing="8" />
+                    <ui:IconLabel Icon="{StaticResource Icon.close}" Text="Clear selection" Spacing="8" />
                   </Button>
                   <TextBlock Classes="secondary" Text="{Binding SelectionText}" VerticalAlignment="Center" Margin="12,0,0,0" />
                 </StackPanel>
-                <c:SearchBox Grid.Column="2" Text="{Binding SearchText}" />
+                <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" />
               </Grid>
               <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,0,0,10" IsVisible="{Binding IsRangeMode}">
                 <ProgressBar Value="{Binding ScanProgress}" Minimum="0" Maximum="100" Classes.stream="{Binding IsScanning}" />
@@ -86,7 +87,7 @@
                     <DataGridTemplateColumn.CellTemplate>
                       <DataTemplate x:DataType="disc:DiscoveredRowViewModel">
                         <Panel Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Background="Transparent" ToolTip.Tip="{Binding CategoryTooltip}">
-                          <c:OadmIcon Data="{Binding CategoryIconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                          <ui:OadmIcon Data="{Binding CategoryIconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Panel>
                       </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>

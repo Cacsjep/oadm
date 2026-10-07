@@ -4,6 +4,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:chrome="using:Avalonia.Controls.Chrome"
         xmlns:c="using:Oadm.Client.Controls"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
         xmlns:shell="using:Oadm.Client.Shell"
         xmlns:dev="using:Oadm.Client.Devices"
         xmlns:log="using:Oadm.Client.Logging"
@@ -47,9 +48,9 @@
                 Command="{Binding ToggleNavCommand}"
                 ToolTip.Tip="{Binding NavToggleText}" ToolTip.Placement="Right">
           <Panel>
-            <c:IconLabel Icon="{StaticResource Icon.panelOpen}" Text="{Binding NavToggleText}" Spacing="12"
+            <ui:IconLabel Icon="{StaticResource Icon.panelOpen}" Text="{Binding NavToggleText}" Spacing="12"
                          IsTextVisible="False" IsVisible="{Binding !IsNavExpanded}" />
-            <c:IconLabel Icon="{StaticResource Icon.panelClose}" Text="{Binding NavToggleText}" Spacing="12"
+            <ui:IconLabel Icon="{StaticResource Icon.panelClose}" Text="{Binding NavToggleText}" Spacing="12"
                          IsVisible="{Binding IsNavExpanded}" />
           </Panel>
         </Button>
@@ -62,7 +63,7 @@
                       CommandParameter="{Binding}"
                       ToolTip.Tip="{Binding Title}" ToolTip.Placement="Right"
                       ToolTip.ServiceEnabled="{Binding !$parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}">
-                <c:IconLabel Icon="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Text="{Binding Title}" Spacing="12"
+                <ui:IconLabel Icon="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Text="{Binding Title}" Spacing="12"
                              IsTextVisible="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}" />
               </Button>
             </DataTemplate>
@@ -79,7 +80,7 @@
                         ToolTip.Tip="{Binding Title}" ToolTip.Placement="Right"
                         ToolTip.ServiceEnabled="{Binding !$parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}">
                   <Grid ColumnDefinitions="*,Auto">
-                    <c:IconLabel Grid.Column="0" Icon="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Text="{Binding Title}" Spacing="12"
+                    <ui:IconLabel Grid.Column="0" Icon="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Text="{Binding Title}" Spacing="12"
                                  IsTextVisible="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}" />
                     <Border Grid.Column="1" Classes="badge" IsVisible="{Binding HasBadge}">
                       <TextBlock Text="{Binding Badge}" />

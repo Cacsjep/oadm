@@ -12,6 +12,12 @@ service TaskService {
   rpc Cancel (TaskIdRequest) returns (Empty);
   rpc Delete (TaskIdRequest) returns (Empty);
   rpc DeleteAll (Empty) returns (DeleteAllReply);   // cancels running tasks first
+  rpc GetLog (TaskIdRequest) returns (TaskLog);     // per-task log, oldest first
+  // Read-only plugin query for task dialogs (ITaskPluginQuery), 30 s timeout. Errors: NOT_FOUND,
+  // UNIMPLEMENTED (plugin has no queries), FAILED_PRECONDITION (incompatible device, certificate
+  // changed, credentials), UNAVAILABLE, DEADLINE_EXCEEDED, INVALID_ARGUMENT; the status detail is
+  // the message for the user.
+  rpc Query (TaskQueryRequest) returns (TaskQueryReply);
 }
 
 message TaskPluginInfo {
@@ -42,6 +48,7 @@ enum TaskState {
   DONE = 3;
   FAILED = 4;
   CANCELLED = 5;
+  DONE_WITH_WARNINGS = 6;
 }
 
 message TaskDeviceResult {
@@ -64,6 +71,29 @@ message TaskInfo {
   repeated TaskDeviceResult devices = 10;
 }
 message TaskList { repeated TaskInfo tasks = 1; }
+
+enum TaskLogLevel {
+  TASK_LOG_LEVEL_UNSPECIFIED = 0;
+  TASK_LOG_LEVEL_INFO = 1;
+  TASK_LOG_LEVEL_WARNING = 2;
+  TASK_LOG_LEVEL_ERROR = 3;
+}
+
+message TaskLogEntry {
+  google.protobuf.Timestamp time = 1;
+  string device_id = 2;   // empty for task-level entries
+  TaskLogLevel level = 3;
+  string message = 4;
+}
+message TaskLog { repeated TaskLogEntry entries = 1; }
+
+message TaskQueryRequest {
+  string plugin_id = 1;
+  string device_id = 2;
+  string method = 3;
+  string payload_json = 4;
+}
+message TaskQueryReply { string payload_json = 1; }
 
 message TaskChanged {
   enum Kind { KIND_UNSPECIFIED = 0; ADDED = 1; UPDATED = 2; REMOVED = 3; }

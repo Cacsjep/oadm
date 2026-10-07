@@ -5,33 +5,64 @@
         x:Class="Oadm.Client.Tasks.TaskDetailsWindow"
         x:DataType="tasks:TaskDetailsViewModel"
         Title="{Binding Title}"
-        Width="820" Height="460" MinWidth="600" MinHeight="320"
+        Width="980" Height="680" MinWidth="640" MinHeight="420"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="{StaticResource Oadm.TitleBarHeight}">
-  <Grid RowDefinitions="Auto,*,Auto" Margin="0,0,0,16">
+  <Grid RowDefinitions="Auto,*,16,*,Auto" Margin="0,0,0,16">
     <Border Height="{StaticResource Oadm.TitleBarHeight}" chrome:WindowDecorationProperties.ElementRole="TitleBar" Padding="24,0">
       <TextBlock Classes="appName" Text="{Binding Title}" VerticalAlignment="Center" />
     </Border>
+
     <Border Grid.Row="1" Classes="card" Margin="16,0">
-      <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single">
-        <DataGrid.Columns>
-          <DataGridTextColumn Header="Device" Width="2*" Binding="{Binding Device}" x:DataType="tasks:TaskDeviceRow" />
-          <DataGridTextColumn Header="Model" Width="*" Binding="{Binding Model}" x:DataType="tasks:TaskDeviceRow" />
-          <DataGridTemplateColumn Header="Status" Width="120">
-            <DataGridTemplateColumn.CellTemplate>
-              <DataTemplate x:DataType="tasks:TaskDeviceRow">
-                <Border Classes="pill" Margin="10,0" Classes.ok="{Binding IsStateOk}" Classes.error="{Binding IsStateError}" Classes.accent="{Binding IsStateAccent}">
-                  <TextBlock Text="{Binding StateText}" />
-                </Border>
-              </DataTemplate>
-            </DataGridTemplateColumn.CellTemplate>
-          </DataGridTemplateColumn>
-          <DataGridTextColumn Header="Message" Width="2*" Binding="{Binding Message}" x:DataType="tasks:TaskDeviceRow" />
-        </DataGrid.Columns>
-      </DataGrid>
+      <Grid RowDefinitions="Auto,*">
+        <TextBlock Classes="cardTitle" Text="Devices" Margin="0,0,0,12" />
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Device" Width="2*" Binding="{Binding Device}" x:DataType="tasks:TaskDeviceRow" />
+            <DataGridTextColumn Header="Model" Width="*" Binding="{Binding Model}" x:DataType="tasks:TaskDeviceRow" />
+            <DataGridTemplateColumn Header="Status" Width="170">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="tasks:TaskDeviceRow">
+                  <Border Classes="pill" Margin="10,0" Classes.ok="{Binding IsStateOk}" Classes.warn="{Binding IsStateWarning}" Classes.error="{Binding IsStateError}" Classes.accent="{Binding IsStateAccent}">
+                    <TextBlock Text="{Binding StateText}" />
+                  </Border>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Message" Width="2*" Binding="{Binding Message}" x:DataType="tasks:TaskDeviceRow" />
+          </DataGrid.Columns>
+        </DataGrid>
+      </Grid>
     </Border>
-    <Button Grid.Row="2" Classes="secondary" Content="Close" HorizontalAlignment="Right" Margin="0,16,16,0" Click="OnClose" IsCancel="True" IsDefault="True" />
+
+    <Border Grid.Row="3" Classes="card" Margin="16,0">
+      <Grid RowDefinitions="Auto,*">
+        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+          <TextBlock Classes="cardTitle" Text="Log" />
+          <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding LogStatus}" VerticalAlignment="Center" />
+        </Grid>
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Log}" IsReadOnly="True" SelectionMode="Extended"
+                  CanUserSortColumns="False" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTemplateColumn Header="Level" Width="120">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="tasks:TaskLogRow">
+                  <Border Classes="pill" Margin="10,0" Classes.warn="{Binding IsWarning}" Classes.error="{Binding IsError}">
+                    <TextBlock Text="{Binding LevelText}" />
+                  </Border>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Time" Width="170" Binding="{Binding TimeText}" x:DataType="tasks:TaskLogRow" />
+            <DataGridTextColumn Header="Device" Width="160" Binding="{Binding Device}" x:DataType="tasks:TaskLogRow" />
+            <DataGridTextColumn Header="Message" Width="*" Binding="{Binding Message}" x:DataType="tasks:TaskLogRow" />
+          </DataGrid.Columns>
+        </DataGrid>
+      </Grid>
+    </Border>
+
+    <Button Grid.Row="4" Classes="secondary" Content="Close" HorizontalAlignment="Right" Margin="0,16,16,0" Click="OnClose" IsCancel="True" IsDefault="True" />
   </Grid>
 </Window>

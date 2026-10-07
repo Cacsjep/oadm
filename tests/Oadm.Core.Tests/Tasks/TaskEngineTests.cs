@@ -48,7 +48,7 @@ public sealed class TaskEngineTests : IAsyncLifetime
         Assert.Equal(100, stored.Progress);
         Assert.Equal("alice@pc", stored.Owner);
         Assert.Equal("Test t.ok", stored.Name);
-        Assert.Equal("{\"a\":1}", stored.PayloadJson);
+        Assert.Null(stored.PayloadJson); // payloads are never persisted
         Assert.NotNull(stored.StartedUtc);
         Assert.NotNull(stored.FinishedUtc);
         Assert.Equal(ids, stored.Devices.Select(d => d.DeviceId));
@@ -437,5 +437,9 @@ public sealed class TaskEngineTests : IAsyncLifetime
         public Task<IReadOnlyList<TaskRecord>> ListAsync(CancellationToken ct) => _inner.ListAsync(ct);
 
         public Task<bool> DeleteAsync(Guid id, CancellationToken ct) => _inner.DeleteAsync(id, ct);
+
+        public Task AppendLogAsync(Guid taskId, IReadOnlyList<TaskLogEntry> entries, CancellationToken ct) => _inner.AppendLogAsync(taskId, entries, ct);
+
+        public Task<IReadOnlyList<TaskLogEntry>> GetLogAsync(Guid taskId, CancellationToken ct) => _inner.GetLogAsync(taskId, ct);
     }
 }

@@ -74,6 +74,12 @@ public class VapixHardwareTests
             var ready = await client.GetSystemReadyAsync(CancellationToken.None);
             Assert.True(ready.SystemReady);
             Assert.False(ready.NeedSetup);
+
+            // Read-only: apidiscovery getApiList (used by task plugins for compatibility checks).
+            var apis = await client.GetApiListAsync(CancellationToken.None);
+            Assert.NotEmpty(apis);
+            Assert.Contains(apis, a => a.Id == "api-discovery");
+            Assert.All(apis, a => Assert.NotEqual(new Version(0, 0), a.ParsedVersion));
         }
     }
 

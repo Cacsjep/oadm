@@ -15,9 +15,52 @@ public sealed partial class TaskGrpcService(
     TaskEngine engine,
     PluginRegistry registry,
     DeviceRepository devices,
+    TaskPluginQueries queries,
     IHostApplicationLifetime lifetime,
     ILogger<TaskGrpcService> logger) : Proto.TaskService.TaskServiceBase
 {
+    /// <summary>The task's log, oldest first (live while the task runs).</summary>
+    public override async Task<Proto.TaskLog> GetLog(Proto.TaskIdRequest request, ServerCallContext context)
+    {
+        var id = GrpcGuard.ParseId(request.TaskId, "task id");
+        var log = await engine.GetLogAsync(id, context.CancellationToken).ConfigureAwait(false)
+            ?? throw GrpcGuard.NotFound($"Task {id} not found.");
+        var reply = new Proto.TaskLog();
+        reply.Entries.AddRange(log.Select(Mappers.ToProto));
+        return reply;
+    }
+
+    /// <summary>Read-only plugin query for a task dialog. Errors carry the message for the user.</summary>
+    public override async Task<Proto.TaskQueryReply> Query(Proto.TaskQueryRequest request, ServerCallContext context)
+    {
+        var deviceId = GrpcGuard.ParseId(request.DeviceId, "device id");
+        try
+        {
+            var result = await queries.QueryAsync(
+                request.PluginId,
+                deviceId,
+                request.Method,
+                string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson,
+                context.CancellationToken).ConfigureAwait(false);
+            return new Proto.TaskQueryReply { PayloadJson = result ?? string.Empty };
+        }
+        catch (TaskQueryException ex)
+        {
+            throw new RpcException(new Status(
+                ex.Error switch
+                {
+                    TaskQueryError.NotFound => StatusCode.NotFound,
+                    TaskQueryError.NotSupported => StatusCode.Unimplemented,
+                    TaskQueryError.InvalidArgument => StatusCode.InvalidArgument,
+                    TaskQueryError.FailedPrecondition => StatusCode.FailedPrecondition,
+                    TaskQueryError.Unavailable => StatusCode.Unavailable,
+                    TaskQueryError.Timeout => StatusCode.DeadlineExceeded,
+                    _ => StatusCode.Internal,
+                },
+                ex.Message));
+        }
+    }
+
     /// <summary>Context-menu entries incl. core-plugin contributions, with the devices each one can run on.</summary>
     public override async Task<Proto.TaskPluginList> ListTaskPlugins(Proto.Empty request, ServerCallContext context)
     {

@@ -54,7 +54,7 @@ internal static class TestHelpers
             async () =>
             {
                 task = (await host.Tasks.ListAsync(new Proto.Empty())).Tasks.FirstOrDefault(t => t.Id == taskId);
-                return task is { State: Proto.TaskState.Done or Proto.TaskState.Failed or Proto.TaskState.Cancelled };
+                return task is { State: Proto.TaskState.Done or Proto.TaskState.DoneWithWarnings or Proto.TaskState.Failed or Proto.TaskState.Cancelled };
             },
             "task " + taskId,
             timeout);

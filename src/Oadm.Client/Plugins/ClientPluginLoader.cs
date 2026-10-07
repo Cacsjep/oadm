@@ -18,7 +18,9 @@ public interface IClientPluginRegistry
 }
 
 /// <summary>
-/// Scans <c>&lt;app&gt;/plugins/*/</c> and <c>&lt;datafolder&gt;/plugins/*/</c> for <c>*.Client.dll</c>, loads each in its own
+/// Scans <c>&lt;app&gt;/plugins/*/</c>, <c>&lt;datafolder&gt;/plugins/*/</c> and, when running from a repository checkout,
+/// <c>&lt;repo&gt;/artifacts/plugins/*/</c> (same discovery as the server's <c>PluginPaths.Development</c>) for
+/// <c>*.Client.dll</c>, loads each in its own
 /// <see cref="AssemblyLoadContext"/> that shares the SDK and Avalonia with the host, and instantiates every
 /// <see cref="ITaskPluginDialog"/> and <see cref="ICorePluginPage"/>. Failures are logged and skipped.
 /// </summary>
@@ -29,15 +31,50 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
     private readonly ILogger<ClientPluginLoader> _logger;
 
     public ClientPluginLoader(AppOptions options, ILogger<ClientPluginLoader> logger)
-        : this([Path.Combine(AppContext.BaseDirectory, "plugins"), Path.Combine(options?.DataFolder ?? AppOptions.DefaultDataFolder, "plugins")], logger)
+        : this(DefaultRoots(options), logger)
     {
+    }
+
+    /// <summary>Bundled (next to the exe), installed (data folder) and, in a checkout, the repo's artifacts/plugins.</summary>
+    public static IReadOnlyList<string> DefaultRoots(AppOptions? options, string? appDirectory = null)
+    {
+        string baseDirectory = appDirectory ?? AppContext.BaseDirectory;
+        var roots = new List<string>
+        {
+            Path.Combine(baseDirectory, "plugins"),
+            Path.Combine(options?.DataFolder ?? AppOptions.DefaultDataFolder, "plugins"),
+        };
+        if (DevelopmentRoot(baseDirectory) is { } development)
+        {
+            roots.Add(development);
+        }
+
+        return roots;
+    }
+
+    /// <summary>
+    /// <c>&lt;repo&gt;/artifacts/plugins</c>, where plugin projects copy their build output; found by walking up
+    /// from <paramref name="startDirectory"/> to the folder containing Oadm.sln. Null outside a checkout.
+    /// </summary>
+    public static string? DevelopmentRoot(string startDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(startDirectory);
+        for (var dir = new DirectoryInfo(startDirectory); dir is not null; dir = dir.Parent)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "Oadm.sln")))
+            {
+                return Path.Combine(dir.FullName, "artifacts", "plugins");
+            }
+        }
+
+        return null;
     }
 
     public ClientPluginLoader(IEnumerable<string> pluginRoots, ILogger<ClientPluginLoader> logger)
     {
         ArgumentNullException.ThrowIfNull(pluginRoots);
         _logger = logger;
-        foreach (string root in pluginRoots.Distinct(StringComparer.OrdinalIgnoreCase))
+        foreach (string root in pluginRoots.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             LoadFrom(root);
         }

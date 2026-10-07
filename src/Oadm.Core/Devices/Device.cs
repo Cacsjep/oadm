@@ -48,8 +48,10 @@ public sealed class Device : IDeviceInfo
     /// <summary>Derived from <see cref="Category"/>; not stored.</summary>
     public bool HasVideo => DeviceCategories.HasVideo(Category);
 
-    /// <summary>VAPIX API list from the last full refresh. Placeholder: not persisted yet.</summary>
-    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    /// <summary>
+    /// VAPIX API list (<c>apidiscovery.cgi getApiList</c>) from the last full refresh, stored as a JSON
+    /// column. Empty until the first successful full refresh. Plugins check it in <c>CanRun</c>.
+    /// </summary>
     public IReadOnlyList<Oadm.Sdk.Vapix.DeviceApi> Apis { get; set; } = [];
 
     /// <summary>End of validity of the device HTTPS certificate (UTC), null for HTTP-only or not yet checked.</summary>
@@ -83,6 +85,7 @@ public sealed class Device : IDeviceInfo
     {
         var copy = (Device)MemberwiseClone();
         copy.Tags = [.. Tags];
+        copy.Apis = [.. Apis];
         return copy;
     }
 

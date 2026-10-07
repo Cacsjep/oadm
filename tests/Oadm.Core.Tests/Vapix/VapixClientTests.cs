@@ -33,6 +33,27 @@ public class VapixClientTests
     }
 
     [Fact]
+    public async Task GetApiListToleratesTheNonStandardUtf8Charset()
+    {
+        // AXIS OS 12.11 answers apidiscovery with "application/json; charset=utf8".
+        var handler = new FakeHttpMessageHandler((_, _) =>
+        {
+            var content = new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes(Fixtures.Read("apidiscovery-getApiList.json")));
+            content.Headers.TryAddWithoutValidation("Content-Type", "application/json; charset=utf8");
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+        });
+        using var client = Client(handler);
+
+        var apis = await client.GetApiListAsync(CancellationToken.None);
+
+        Assert.Equal(72, apis.Count);
+        var (method, uri, body) = Assert.Single(handler.Requests);
+        Assert.Equal(HttpMethod.Post, method);
+        Assert.Equal("https://10.0.0.48/axis-cgi/apidiscovery.cgi", uri.ToString());
+        Assert.Contains("\"getApiList\"", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ListParametersBuildsGroupList()
     {
         var handler = new FakeHttpMessageHandler((_, _) => Fixtures.Text(Fixtures.Read("param-list-networkinfo.txt")));

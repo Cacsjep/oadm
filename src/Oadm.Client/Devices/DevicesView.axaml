@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:c="using:Oadm.Client.Controls"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:dev="using:Oadm.Client.Devices"
              xmlns:tasks="using:Oadm.Client.Tasks"
              xmlns:v1="using:Oadm.Contracts.V1"
@@ -16,13 +17,13 @@
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
             <Button Classes="primary" Command="{Binding AddDevicesCommand}" ToolTip.Tip="Search the network with zero-configuration (Bonjour)" Margin="0,0,6,0">
-              <c:IconLabel Icon="{StaticResource Icon.add}" Text="Add devices" Spacing="8" />
+              <ui:IconLabel Icon="{StaticResource Icon.add}" Text="Add devices" Spacing="8" />
             </Button>
             <Button Classes="toolbar" Command="{Binding AddFromRangeCommand}" ToolTip.Tip="Scan an IP address range">
-              <c:IconLabel Icon="{StaticResource Icon.range}" Text="Add from IP range" Spacing="8" />
+              <ui:IconLabel Icon="{StaticResource Icon.range}" Text="Add from IP range" Spacing="8" />
             </Button>
             <Button Classes="toolbar" Command="{Binding RemoveCommand}">
-              <c:IconLabel Icon="{StaticResource Icon.remove}" Text="Remove" Spacing="8" />
+              <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Remove" Spacing="8" />
             </Button>
             <Border Classes="vseparator" IsVisible="{Binding !!ToolbarActions.Count}" />
             <ItemsControl ItemsSource="{Binding ToolbarActions}">
@@ -36,7 +37,7 @@
                   <Button Classes="toolbar"
                           Command="{Binding $parent[UserControl].((dev:DevicesViewModel)DataContext).RunPluginCommand}"
                           CommandParameter="{Binding}">
-                    <c:IconLabel Icon="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Text="{Binding DisplayName}" Spacing="8" />
+                    <ui:IconLabel Icon="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Text="{Binding DisplayName}" Spacing="8" />
                   </Button>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
@@ -45,7 +46,7 @@
 
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
             <Button Classes="toolbar" ToolTip.Tip="Choose columns">
-              <c:IconLabel Icon="{StaticResource Icon.columns}" Text="Columns" Spacing="8" />
+              <ui:IconLabel Icon="{StaticResource Icon.columns}" Text="Columns" Spacing="8" />
               <Button.Flyout>
                 <Flyout Placement="BottomEdgeAlignedRight">
                   <StackPanel Spacing="4" MinWidth="220">
@@ -61,7 +62,7 @@
                 </Flyout>
               </Button.Flyout>
             </Button>
-            <c:SearchBox Text="{Binding SearchText}" />
+            <ui:SearchBox Text="{Binding SearchText}" />
           </StackPanel>
         </Grid>
 
@@ -83,7 +84,7 @@
                     <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
                     <Setter Property="Icon">
                       <Template>
-                        <c:OadmIcon Data="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" />
+                        <ui:OadmIcon Data="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" />
                       </Template>
                     </Setter>
                   </Style>
@@ -95,7 +96,7 @@
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:DeviceRowViewModel">
                     <Panel Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Background="Transparent" ToolTip.Tip="{Binding CategoryTooltip}">
-                      <c:OadmIcon Data="{Binding CategoryIconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Width="18" Height="18" HorizontalAlignment="Left" VerticalAlignment="Top" />
+                      <ui:OadmIcon Data="{Binding CategoryIconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Width="18" Height="18" HorizontalAlignment="Left" VerticalAlignment="Top" />
                       <Ellipse Classes="statusDot" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                Classes.ok="{Binding IsStatusOk}" Classes.warn="{Binding IsStatusWarning}" Classes.error="{Binding IsStatusError}" />
                     </Panel>
@@ -154,7 +155,7 @@
           </DataGrid>
 
           <StackPanel IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-            <c:OadmIcon Data="{StaticResource Icon.devices}" Width="32" Height="32" HorizontalAlignment="Center" />
+            <ui:OadmIcon Data="{StaticResource Icon.devices}" Width="32" Height="32" HorizontalAlignment="Center" />
             <TextBlock Classes="sectionTitle" Text="No devices yet" HorizontalAlignment="Center" />
             <TextBlock Classes="secondary" Text="Click Add devices to search the network, or Add from IP range." HorizontalAlignment="Center" />
           </StackPanel>

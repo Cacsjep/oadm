@@ -179,10 +179,15 @@ public sealed class DeviceServiceTests
         await host.Devices.RefreshAsync(new Proto.DeviceIds { Ids = { device.Id.ToString() } });
 
         await TestHelpers.WaitUntilAsync(
-            async () => (await TestHelpers.GetDeviceAsync(host, device.Id.ToString())) is { Status: Proto.DeviceStatus.Ok, HasDhcpEnabled: true, UpnpFriendlyName.Length: > 0 },
+            async () => (await TestHelpers.GetDeviceAsync(host, device.Id.ToString())) is { Status: Proto.DeviceStatus.Ok, HasDhcpEnabled: true, UpnpFriendlyName.Length: > 0, Apis.Count: > 0 },
             "full refresh");
         var refreshed = await TestHelpers.GetDeviceAsync(host, device.Id.ToString());
         Assert.Equal((await host.Settings.GetAsync(new Proto.Empty())).ServerName, refreshed.ServerName);
+
+        // The API list from apidiscovery is stored and sent to the client.
+        Assert.Equal(["user-management 1.2", "network-settings 1.37"], refreshed.Apis.Select(a => $"{a.Id} {a.Version}"));
+        Assert.Equal("official", refreshed.Apis[0].Status);
+        Assert.Equal(2, (await host.Get<DeviceRepository>().GetAsync(device.Id, CancellationToken.None))!.Apis.Count);
     }
 
     [Fact]

@@ -10,6 +10,12 @@ public static class SettingKeys
     public const string ServerName = "Server.Name";
     public const string ListenUrl = "Server.ListenUrl";
 
+    /// <summary>Largest accepted upload (firmware, ACAP packages) in MB. Not on the settings page yet.</summary>
+    public const string UploadsMaxMegabytes = "Uploads.MaxMegabytes";
+
+    /// <summary>Uploads older than this are deleted by the server. Not on the settings page yet.</summary>
+    public const string UploadsRetentionHours = "Uploads.RetentionHours";
+
     /// <summary>Prefix of plugin settings: <c>Plugin:&lt;pluginId&gt;:&lt;key&gt;</c>.</summary>
     public const string PluginPrefix = "Plugin:";
 
@@ -66,6 +72,10 @@ public sealed record ServerSettings(
     public const int DefaultScanParallelism = 32;
     public const int DefaultScanTimeoutMs = 1500;
     public const string DefaultListenUrl = "http://0.0.0.0:5080";
+    public const int DefaultUploadsMaxMegabytes = 2048;
+    public const int MaxUploadsMaxMegabytes = 65_536;
+    public const int DefaultUploadsRetentionHours = 24;
+    public const int MaxUploadsRetentionHours = 8760;
 
     public static ServerSettings Defaults => new(
         DefaultPollingIntervalSeconds,

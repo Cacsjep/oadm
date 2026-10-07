@@ -2,7 +2,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 
+using Oadm.Client.Api;
 using Oadm.Client.Discovery;
+using Oadm.Client.Plugins;
 using Oadm.Client.Tasks;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Client;
@@ -10,7 +12,7 @@ using Oadm.Sdk.Devices;
 
 namespace Oadm.Client.Dialogs;
 
-public sealed class AvaloniaDialogService : IDialogService, IUrlLauncher
+public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLauncher
 {
     public async Task ShowMessageAsync(string title, string message)
     {
@@ -55,19 +57,7 @@ public sealed class AvaloniaDialogService : IDialogService, IUrlLauncher
             return null;
         }
 
-        return await dialog.ShowAsync(PendingDialogContext.Instance, devices, owner).ConfigureAwait(true);
-    }
-
-    /// <summary>Placeholder until query and upload are wired to the server.</summary>
-    private sealed class PendingDialogContext : ITaskDialogContext
-    {
-        public static readonly PendingDialogContext Instance = new();
-
-        public Task<string?> QueryAsync(Guid deviceId, string method, string? payloadJson, CancellationToken ct) =>
-            throw new NotSupportedException("Plugin queries are not available yet.");
-
-        public Task<Oadm.Sdk.Plugins.UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct) =>
-            throw new NotSupportedException("Uploads are not available yet.");
+        return await dialog.ShowAsync(new TaskDialogContext(api, dialog.PluginId), devices, owner).ConfigureAwait(true);
     }
 
     public async Task ShowTaskDetailsAsync(TaskDetailsViewModel details)

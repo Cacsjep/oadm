@@ -124,6 +124,40 @@ public sealed class MappersTests
         Assert.Equal(expected, Mappers.ToProto(status));
     }
 
+    [Theory]
+    [InlineData(TaskState.Queued, Proto.TaskState.Queued)]
+    [InlineData(TaskState.Running, Proto.TaskState.Running)]
+    [InlineData(TaskState.Done, Proto.TaskState.Done)]
+    [InlineData(TaskState.Failed, Proto.TaskState.Failed)]
+    [InlineData(TaskState.Cancelled, Proto.TaskState.Cancelled)]
+    [InlineData(TaskState.DoneWithWarnings, Proto.TaskState.DoneWithWarnings)]
+    public void TaskStateMapsOneToOne(TaskState state, Proto.TaskState expected)
+    {
+        Assert.Equal(expected, Mappers.ToProto(state));
+        Assert.Equal((int)state, (int)expected);
+    }
+
+    [Fact]
+    public void DeviceApisAndLogEntriesAreMapped()
+    {
+        var device = new Device { Serial = "ACCC8E000001", Address = "10.0.0.1", Apis = [new("user-management", "1.2", "User Management", "official"), new("fwmgr", "1.10")] };
+
+        var proto = Mappers.ToProto(device, hasCredentials: true);
+
+        Assert.Equal(2, proto.Apis.Count);
+        Assert.Equal(new Proto.DeviceApi { Id = "user-management", Version = "1.2", Name = "User Management", Status = "official" }, proto.Apis[0]);
+        Assert.Equal(new Proto.DeviceApi { Id = "fwmgr", Version = "1.10" }, proto.Apis[1]);
+
+        var time = new DateTimeOffset(2026, 10, 7, 12, 0, 0, TimeSpan.Zero);
+        var deviceId = Guid.NewGuid();
+        var entry = Mappers.ToProto(new TaskLogEntry(time, deviceId, Sdk.Plugins.TaskLogLevel.Warning, "careful"));
+        Assert.Equal(Proto.TaskLogLevel.Warning, entry.Level);
+        Assert.Equal(deviceId.ToString(), entry.DeviceId);
+        Assert.Equal(time, entry.Time.ToDateTimeOffset());
+        Assert.Equal("careful", entry.Message);
+        Assert.Equal(string.Empty, Mappers.ToProto(new TaskLogEntry(time, null, Sdk.Plugins.TaskLogLevel.Info, "x")).DeviceId);
+    }
+
     [Fact]
     public void RemovedChangeCarriesOnlyTheId()
     {

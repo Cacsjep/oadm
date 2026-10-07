@@ -7,4 +7,10 @@ public sealed class TaskEngineOptions
 
     /// <summary>Buffered changes per change-feed subscriber before the oldest are dropped.</summary>
     public int ChangeFeedCapacity { get; set; } = 4096;
+
+    /// <summary>Log entries kept per task; later entries are dropped (the last kept one says so). Default 1000.</summary>
+    public int MaxLogEntriesPerTask { get; set; } = 1000;
+
+    /// <summary>Minimum time between two persisted progress messages of one device. Default 1 s.</summary>
+    public TimeSpan ProgressPersistInterval { get; set; } = TimeSpan.FromSeconds(1);
 }

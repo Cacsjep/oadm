@@ -74,7 +74,20 @@ public static class Mappers
         }
 
         proto.Tags.AddRange(device.Tags);
+        proto.Apis.AddRange(device.Apis.Select(ToProto));
         return proto;
+    }
+
+    public static Proto.DeviceApi ToProto(Sdk.Vapix.DeviceApi api)
+    {
+        ArgumentNullException.ThrowIfNull(api);
+        return new Proto.DeviceApi
+        {
+            Id = api.Id,
+            Version = api.Version,
+            Name = api.Name ?? string.Empty,
+            Status = api.Status ?? string.Empty,
+        };
     }
 
     public static Proto.DeviceChanged ToProto(DeviceChange change, bool hasCredentials)
@@ -148,8 +161,35 @@ public static class Mappers
         TaskState.Done => Proto.TaskState.Done,
         TaskState.Failed => Proto.TaskState.Failed,
         TaskState.Cancelled => Proto.TaskState.Cancelled,
+        TaskState.DoneWithWarnings => Proto.TaskState.DoneWithWarnings,
         _ => Proto.TaskState.Unspecified,
     };
+
+    public static Proto.TaskLogLevel ToProto(Sdk.Plugins.TaskLogLevel level) => level switch
+    {
+        Sdk.Plugins.TaskLogLevel.Info => Proto.TaskLogLevel.Info,
+        Sdk.Plugins.TaskLogLevel.Warning => Proto.TaskLogLevel.Warning,
+        Sdk.Plugins.TaskLogLevel.Error => Proto.TaskLogLevel.Error,
+        _ => Proto.TaskLogLevel.Unspecified,
+    };
+
+    public static Proto.TaskLogEntry ToProto(TaskLogEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        return new Proto.TaskLogEntry
+        {
+            Time = Timestamp.FromDateTimeOffset(entry.TimeUtc),
+            DeviceId = entry.DeviceId?.ToString() ?? string.Empty,
+            Level = ToProto(entry.Level),
+            Message = entry.Message,
+        };
+    }
+
+    public static Proto.UploadedFileInfo ToProto(Sdk.Plugins.UploadedFile file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        return new Proto.UploadedFileInfo { Id = file.Id, Name = file.Name, Size = file.Size, Sha256 = file.Sha256 };
+    }
 
     public static Proto.TaskInfo ToProto(TaskRecord task)
     {

@@ -307,7 +307,32 @@ public sealed class VapixClient : IVapixClient, IDisposable
             throw new VapixException($"{path}: HTTP {(int)response.StatusCode}", response.StatusCode);
         }
 
-        return await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        return await ReadStringAsync(response.Content, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Reads a response body as text. AXIS OS answers some APIs (apidiscovery) with
+    /// <c>charset=utf8</c>, which .NET does not know; anything unknown or missing is read as UTF-8.
+    /// </summary>
+    internal static async Task<string> ReadStringAsync(HttpContent content, CancellationToken ct)
+    {
+        var bytes = await content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+        var encoding = Encoding.UTF8;
+        var charset = content.Headers.ContentType?.CharSet?.Trim('"', ' ');
+        if (!string.IsNullOrEmpty(charset) && !charset.Replace("-", string.Empty, StringComparison.Ordinal).Equals("utf8", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                encoding = Encoding.GetEncoding(charset);
+            }
+            catch (ArgumentException)
+            {
+                encoding = Encoding.UTF8;
+            }
+        }
+
+        var text = encoding.GetString(bytes);
+        return text.TrimStart((char)0xFEFF);
     }
 
     private static string FirstLine(string text)

@@ -6,6 +6,7 @@ namespace Oadm.Core.Tasks;
 public sealed class InMemoryTaskStore : ITaskStore
 {
     private readonly ConcurrentDictionary<Guid, TaskRecord> _tasks = new();
+    private readonly ConcurrentDictionary<Guid, List<TaskLogEntry>> _logs = new();
 
     public Task AddAsync(TaskRecord task, CancellationToken ct)
     {
@@ -38,6 +39,32 @@ public sealed class InMemoryTaskStore : ITaskStore
 
     public Task<bool> DeleteAsync(Guid id, CancellationToken ct)
     {
+        _logs.TryRemove(id, out _);
         return Task.FromResult(_tasks.TryRemove(id, out _));
+    }
+
+    public Task AppendLogAsync(Guid taskId, IReadOnlyList<TaskLogEntry> entries, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        var log = _logs.GetOrAdd(taskId, _ => []);
+        lock (log)
+        {
+            log.AddRange(entries);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<TaskLogEntry>> GetLogAsync(Guid taskId, CancellationToken ct)
+    {
+        if (!_logs.TryGetValue(taskId, out var log))
+        {
+            return Task.FromResult<IReadOnlyList<TaskLogEntry>>([]);
+        }
+
+        lock (log)
+        {
+            return Task.FromResult<IReadOnlyList<TaskLogEntry>>([.. log]);
+        }
     }
 }

@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:c="using:Oadm.Client.Controls"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:tasks="using:Oadm.Client.Tasks"
              x:Class="Oadm.Client.Tasks.TasksPaneView"
              x:DataType="tasks:TasksViewModel">
@@ -17,23 +17,23 @@
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2">
           <StackPanel Orientation="Horizontal" Spacing="2" IsVisible="{Binding IsExpanded}">
             <Button Classes="toolbar" Command="{Binding DetailsCommand}" ToolTip.Tip="Show the result per device">
-              <c:IconLabel Icon="{StaticResource Icon.details}" Text="Details" Spacing="8" />
+              <ui:IconLabel Icon="{StaticResource Icon.details}" Text="Details" Spacing="8" />
             </Button>
             <Button Classes="toolbar" Command="{Binding CancelCommand}" ToolTip.Tip="Cancel the running task">
-              <c:IconLabel Icon="{StaticResource Icon.cancel}" Text="Cancel" Spacing="8" />
+              <ui:IconLabel Icon="{StaticResource Icon.cancel}" Text="Cancel" Spacing="8" />
             </Button>
             <Button Classes="toolbar" Command="{Binding DeleteCommand}" ToolTip.Tip="Delete the finished task from the history">
-              <c:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete" Spacing="8" />
+              <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete" Spacing="8" />
             </Button>
             <Button Classes="toolbar" Command="{Binding DeleteAllCommand}" ToolTip.Tip="Cancel running tasks and delete the whole task history">
-              <c:IconLabel Icon="{StaticResource Icon.deleteAll}" Text="Delete all" Spacing="8" />
+              <ui:IconLabel Icon="{StaticResource Icon.deleteAll}" Text="Delete all" Spacing="8" />
             </Button>
             <Border Classes="vseparator" />
           </StackPanel>
           <Button Classes="toolbar iconOnly" Command="{Binding ToggleExpandedCommand}" ToolTip.Tip="Show or hide the tasks">
             <Panel>
-              <c:OadmIcon Data="{StaticResource Icon.chevronDown}" IsVisible="{Binding IsExpanded}" />
-              <c:OadmIcon Data="{StaticResource Icon.chevronUp}" IsVisible="{Binding !IsExpanded}" />
+              <ui:OadmIcon Data="{StaticResource Icon.chevronDown}" IsVisible="{Binding IsExpanded}" />
+              <ui:OadmIcon Data="{StaticResource Icon.chevronUp}" IsVisible="{Binding !IsExpanded}" />
             </Panel>
           </Button>
         </StackPanel>

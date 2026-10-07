@@ -1,4 +1,5 @@
 using Oadm.Core.Plugins;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Core.Tasks;
 
@@ -9,6 +10,10 @@ internal sealed class RunningTask : IDisposable
     private readonly Guid[] _deviceOrder;
     private readonly Dictionary<Guid, DeviceSlot> _devices;
     private readonly CancellationTokenSource _cts;
+    private readonly List<TaskLogEntry> _log = [];
+    private readonly List<Task> _pendingWrites = [];
+    private readonly int _maxLogEntries;
+    private int _persistedLogCount;
     private TaskState _state = TaskState.Queued;
     private DateTimeOffset? _started;
     private DateTimeOffset? _finished;
@@ -22,8 +27,11 @@ internal sealed class RunningTask : IDisposable
         string? payloadJson,
         string owner,
         DateTimeOffset created,
-        CancellationToken shutdown)
+        CancellationToken shutdown,
+        int maxLogEntries = 1000)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxLogEntries, 1);
+        _maxLogEntries = maxLogEntries;
         Id = id;
         Registration = registration;
         PayloadJson = payloadJson;
@@ -42,6 +50,7 @@ internal sealed class RunningTask : IDisposable
 
     public string Name { get; }
 
+    /// <summary>Handed to the plugin only; never part of a <see cref="Snapshot"/> (may carry secrets).</summary>
     public string? PayloadJson { get; }
 
     public string Owner { get; }
@@ -140,6 +149,112 @@ internal sealed class RunningTask : IDisposable
         }
     }
 
+    /// <summary>Marks a running device as "done with warnings" at its end and makes the warning its message.</summary>
+    public bool ReportWarning(Guid deviceId, string message)
+    {
+        lock (_sync)
+        {
+            var slot = _devices[deviceId];
+            if (slot.State != TaskState.Running)
+            {
+                return false;
+            }
+
+            slot.HasWarning = true;
+            slot.Message = message;
+            return true;
+        }
+    }
+
+    /// <summary>Done, or DoneWithWarnings when the plugin reported a warning for this device.</summary>
+    public TaskState SuccessState(Guid deviceId)
+    {
+        lock (_sync)
+        {
+            return _devices[deviceId].HasWarning ? TaskState.DoneWithWarnings : TaskState.Done;
+        }
+    }
+
+    /// <summary>
+    /// True (and the time is remembered) when the device is running and its last throttled write is
+    /// at least <paramref name="interval"/> ago.
+    /// </summary>
+    public bool TryBeginThrottledPersist(Guid deviceId, DateTimeOffset now, TimeSpan interval)
+    {
+        lock (_sync)
+        {
+            var slot = _devices[deviceId];
+            if (_disposed || slot.State != TaskState.Running || (slot.LastPersist is { } last && now - last < interval))
+            {
+                return false;
+            }
+
+            slot.LastPersist = now;
+            return true;
+        }
+    }
+
+    /// <summary>Adds a log entry unless the cap is reached; the last kept entry says that entries were dropped.</summary>
+    public bool AddLog(TaskLogEntry entry)
+    {
+        lock (_sync)
+        {
+            if (_disposed || _log.Count >= _maxLogEntries)
+            {
+                return false;
+            }
+
+            _log.Add(_log.Count == _maxLogEntries - 1
+                ? new TaskLogEntry(entry.TimeUtc, null, TaskLogLevel.Warning, $"Log limit of {_maxLogEntries} entries reached; later entries are not kept.")
+                : entry);
+            return true;
+        }
+    }
+
+    /// <summary>The whole log kept so far (persisted or not), oldest first.</summary>
+    public IReadOnlyList<TaskLogEntry> LogSnapshot()
+    {
+        lock (_sync)
+        {
+            return [.. _log];
+        }
+    }
+
+    /// <summary>Entries not handed out for persisting yet. Call under <see cref="PersistLock"/>.</summary>
+    public IReadOnlyList<TaskLogEntry> TakeUnpersistedLog()
+    {
+        lock (_sync)
+        {
+            if (_persistedLogCount >= _log.Count)
+            {
+                return [];
+            }
+
+            var pending = _log.GetRange(_persistedLogCount, _log.Count - _persistedLogCount);
+            _persistedLogCount = _log.Count;
+            return pending;
+        }
+    }
+
+    /// <summary>Remembers a background store write so the task does not finish (and dispose) before it.</summary>
+    public void TrackWrite(Task write)
+    {
+        lock (_sync)
+        {
+            _pendingWrites.RemoveAll(t => t.IsCompleted);
+            _pendingWrites.Add(write);
+        }
+    }
+
+    /// <summary>Completes when all tracked background writes have completed.</summary>
+    public Task WhenWritesDone()
+    {
+        lock (_sync)
+        {
+            return Task.WhenAll(_pendingWrites);
+        }
+    }
+
     /// <summary>Marks every device that has not finished as failed (used when the engine itself faults).</summary>
     public void FailUnfinished(string message)
     {
@@ -162,7 +277,9 @@ internal sealed class RunningTask : IDisposable
                 ? TaskState.Cancelled
                 : slots.Any(s => s.State == TaskState.Failed)
                     ? TaskState.Failed
-                    : TaskState.Done;
+                    : slots.Any(s => s.State == TaskState.DoneWithWarnings)
+                        ? TaskState.DoneWithWarnings
+                        : TaskState.Done;
             _started ??= now;
             _finished = now;
         }
@@ -194,7 +311,7 @@ internal sealed class RunningTask : IDisposable
                 _started,
                 _finished,
                 progress,
-                PayloadJson,
+                null,
                 devices);
         }
     }
@@ -222,5 +339,10 @@ internal sealed class RunningTask : IDisposable
         public string? Message { get; set; }
 
         public int Progress { get; set; }
+
+        public bool HasWarning { get; set; }
+
+        /// <summary>Last throttled (progress, log, warning) store write for this device.</summary>
+        public DateTimeOffset? LastPersist { get; set; }
     }
 }

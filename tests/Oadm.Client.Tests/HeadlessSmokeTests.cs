@@ -6,9 +6,13 @@ using Avalonia.Threading;
 
 using Microsoft.Extensions.DependencyInjection;
 
+using Oadm.Client.Api;
+using Oadm.Client.Devices;
 using Oadm.Client.Discovery;
 using Oadm.Client.Infrastructure;
 using Oadm.Client.Shell;
+using Oadm.Client.Tasks;
+using Oadm.Contracts.V1;
 
 namespace Oadm.Client.Tests;
 
@@ -67,6 +71,16 @@ public sealed class HeadlessSmokeTests
             Capture(wizard, outDir, "client-wizard.png");
             await wizardVm.DisposeAsync();
             wizard.Close();
+
+            // Task details with per-device results and the task log (fake "Done with warnings" task).
+            TaskRowViewModel warned = vm.Devices.Tasks.Tasks.First(t => t.State == TaskState.DoneWithWarnings);
+            var details = new TaskDetailsViewModel(warned, app.Services!.GetRequiredService<DeviceStore>());
+            await details.LoadLogAsync(app.Services!.GetRequiredService<IOadmApi>(), CancellationToken.None);
+            var detailsWindow = new TaskDetailsWindow { DataContext = details };
+            detailsWindow.Show();
+            await PumpUntilAsync(() => details.Log.Count == 4);
+            Capture(detailsWindow, outDir, "client-task-details.png");
+            detailsWindow.Close();
             window.Close();
             return vm.Devices.FilteredDevices.Count;
         }, CancellationToken.None);

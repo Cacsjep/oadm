@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:c="using:Oadm.Client.Controls"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:log="using:Oadm.Client.Logging"
              x:Class="Oadm.Client.Logging.LogsView"
              x:DataType="log:LogsViewModel">
@@ -14,7 +14,7 @@
             <TextBlock Classes="fieldLabel" Text="Level" />
             <ComboBox ItemsSource="{x:Static log:LogsViewModel.Levels}" SelectedItem="{Binding SelectedLevel}" MinWidth="200" />
           </StackPanel>
-          <c:SearchBox Grid.Column="2" Text="{Binding SearchText}" />
+          <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" />
         </Grid>
 
         <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding StatusLine}" Margin="2,14,0,8" />

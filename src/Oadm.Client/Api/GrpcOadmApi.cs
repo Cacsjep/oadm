@@ -10,6 +10,9 @@ namespace Oadm.Client.Api;
 /// <summary>Real <see cref="IOadmApi"/> over gRPC (h2c by default, http://localhost:5080).</summary>
 public sealed class GrpcOadmApi : IOadmApi, IDisposable
 {
+    /// <summary>Data chunk size of <see cref="UploadFileAsync"/>.</summary>
+    public const int UploadChunkSize = 256 * 1024;
+
     private readonly Lock _gate = new();
     private GrpcChannel _channel;
     private Clients _clients;
@@ -125,6 +128,43 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<int> DeleteAllTasksAsync(CancellationToken ct) =>
         (await C.Tasks.DeleteAllAsync(new Empty(), cancellationToken: ct)).Deleted;
 
+    public async Task<IReadOnlyList<TaskLogEntry>> GetTaskLogAsync(string taskId, CancellationToken ct) =>
+        (await C.Tasks.GetLogAsync(new TaskIdRequest { TaskId = taskId }, cancellationToken: ct)).Entries;
+
+    public async Task<string?> QueryTaskPluginAsync(string pluginId, string deviceId, string method, string? payloadJson, CancellationToken ct)
+    {
+        var reply = await C.Tasks.QueryAsync(
+            new TaskQueryRequest { PluginId = pluginId, DeviceId = deviceId, Method = method, PayloadJson = payloadJson ?? "" },
+            cancellationToken: ct);
+        return string.IsNullOrEmpty(reply.PayloadJson) ? null : reply.PayloadJson;
+    }
+
+    public async Task<UploadedFileInfo> UploadFileAsync(string path, IProgress<double>? progress, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, UploadChunkSize, useAsync: true);
+        long size = file.Length;
+        using AsyncClientStreamingCall<UploadChunk, UploadedFileInfo> call = C.Files.Upload(cancellationToken: ct);
+        await call.RequestStream.WriteAsync(
+            new UploadChunk { Header = new UploadHeader { Name = Path.GetFileName(path), Size = size } }, ct);
+        progress?.Report(0);
+
+        byte[] buffer = new byte[UploadChunkSize];
+        long sent = 0;
+        int read;
+        while ((read = await file.ReadAsync(buffer, ct)) > 0)
+        {
+            await call.RequestStream.WriteAsync(new UploadChunk { Data = Google.Protobuf.ByteString.CopyFrom(buffer, 0, read) }, ct);
+            sent += read;
+            progress?.Report(size == 0 ? 1 : (double)sent / size);
+        }
+
+        await call.RequestStream.CompleteAsync();
+        UploadedFileInfo info = await call.ResponseAsync;
+        progress?.Report(1);
+        return info;
+    }
+
     public async Task<ServerSettings> GetSettingsAsync(CancellationToken ct) =>
         await C.Settings.GetAsync(new Empty(), cancellationToken: ct);
 
@@ -184,5 +224,6 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public TaskService.TaskServiceClient Tasks { get; } = new(channel);
         public SettingsService.SettingsServiceClient Settings { get; } = new(channel);
         public PluginService.PluginServiceClient Plugins { get; } = new(channel);
+        public FileService.FileServiceClient Files { get; } = new(channel);
     }
 }

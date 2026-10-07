@@ -7,10 +7,10 @@
             CanUserReorderColumns="False">
     <DataGrid.Columns>
       <DataGridTextColumn Header="Name" Width="2*" MinWidth="160" Binding="{Binding Name}" x:DataType="tasks:TaskRowViewModel" />
-      <DataGridTemplateColumn Header="Status" Width="130" SortMemberPath="StateText">
+      <DataGridTemplateColumn Header="Status" Width="170" SortMemberPath="StateText">
         <DataGridTemplateColumn.CellTemplate>
           <DataTemplate x:DataType="tasks:TaskRowViewModel">
-            <Border Classes="pill" Margin="10,0" Classes.ok="{Binding IsStateOk}" Classes.error="{Binding IsStateError}" Classes.accent="{Binding IsStateAccent}">
+            <Border Classes="pill" Margin="10,0" Classes.ok="{Binding IsStateOk}" Classes.warn="{Binding IsStateWarning}" Classes.error="{Binding IsStateError}" Classes.accent="{Binding IsStateAccent}">
               <StackPanel Orientation="Horizontal">
                 <TextBlock Text="{Binding StateText}" />
               </StackPanel>

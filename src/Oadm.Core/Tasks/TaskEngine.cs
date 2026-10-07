@@ -5,7 +5,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Oadm.Core.Plugins;
+using Oadm.Core.Uploads;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Tasks;
 using Oadm.Sdk.Vapix;
 
@@ -27,6 +29,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     private readonly TaskEngineOptions _options;
     private readonly TimeProvider _time;
     private readonly TaskChangeFeed _feed;
+    private readonly IUploadedFiles _files;
     private readonly ConcurrentDictionary<Guid, RunningTask> _active = new();
     private readonly CancellationTokenSource _shutdown = new();
     private int _disposed;
@@ -38,7 +41,8 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         IVapixClientFactory vapix,
         ILoggerFactory? loggerFactory = null,
         TaskEngineOptions? options = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IUploadedFiles? uploadedFiles = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(plugins);
@@ -52,6 +56,8 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         _logger = _loggerFactory.CreateLogger<TaskEngine>();
         _options = options ?? new TaskEngineOptions();
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxParallelDevicesPerTask, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxLogEntriesPerTask, 1);
+        _files = uploadedFiles ?? NoUploadedFiles.Instance;
         _time = timeProvider ?? TimeProvider.System;
         _feed = new TaskChangeFeed(_options.ChangeFeedCapacity, _logger);
     }
@@ -95,7 +101,8 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             payloadJson,
             owner ?? string.Empty,
             _time.GetUtcNow(),
-            _shutdown.Token);
+            _shutdown.Token,
+            _options.MaxLogEntriesPerTask);
 
         _active[task.Id] = task;
         try
@@ -141,6 +148,25 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         }
 
         return await _store.GetAsync(taskId, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The task's log, oldest first: live (including entries not persisted yet) while the task is
+    /// active, else from the store. Null for an unknown task.
+    /// </summary>
+    public async Task<IReadOnlyList<TaskLogEntry>?> GetLogAsync(Guid taskId, CancellationToken ct)
+    {
+        if (_active.TryGetValue(taskId, out var task))
+        {
+            return task.LogSnapshot();
+        }
+
+        if (await _store.GetAsync(taskId, ct).ConfigureAwait(false) is null)
+        {
+            return null;
+        }
+
+        return await _store.GetLogAsync(taskId, ct).ConfigureAwait(false);
     }
 
     /// <summary>All tasks, newest first. Active tasks reflect their live progress.</summary>
@@ -275,6 +301,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         }
         finally
         {
+            await AwaitPendingWritesAsync(task).ConfigureAwait(false);
             task.Finish(_time.GetUtcNow());
             await PublishAsync(task, persist: true).ConfigureAwait(false);
             var final = task.Snapshot();
@@ -291,6 +318,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         if (ct.IsCancellationRequested)
         {
             task.SetDevice(deviceId, TaskState.Cancelled, "Cancelled before start.", null);
+            AddLog(task, deviceId, TaskLogLevel.Info, "Cancelled before start.");
             await PublishAsync(task, persist: true).ConfigureAwait(false);
             return;
         }
@@ -308,30 +336,28 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             if (precondition is not null)
             {
                 task.SetDevice(deviceId, TaskState.Failed, precondition, null);
+                AddLog(task, deviceId, TaskLogLevel.Error, precondition);
             }
             else
             {
                 var vapix = await _vapix.CreateAsync(deviceId, ct).ConfigureAwait(false);
                 var context = new TaskExecutionContext(
                     task.Id,
+                    deviceId,
                     vapix,
                     pluginLogger,
                     task.Registration.Owner,
-                    (percent, message) =>
-                    {
-                        if (task.ReportProgress(deviceId, percent, message))
-                        {
-                            PublishProgress(task);
-                        }
-                    });
+                    _files,
+                    new Sink(this, task));
 
                 await plugin.ExecuteAsync(context, device!, task.PayloadJson, ct).ConfigureAwait(false);
-                task.SetDevice(deviceId, TaskState.Done, null, 100);
+                task.SetDevice(deviceId, task.SuccessState(deviceId), null, 100);
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             task.SetDevice(deviceId, TaskState.Cancelled, "Cancelled.", null);
+            AddLog(task, deviceId, TaskLogLevel.Info, "Cancelled.");
         }
 #pragma warning disable CA1031 // Plugin failures are isolated per device.
         catch (Exception ex)
@@ -339,6 +365,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         {
             LogDeviceFailed(ex, task.Id, deviceId, plugin.Id);
             task.SetDevice(deviceId, TaskState.Failed, ex.Message, null);
+            AddLog(task, deviceId, TaskLogLevel.Error, ex.Message);
         }
 
         await PublishAsync(task, persist: true).ConfigureAwait(false);
@@ -372,15 +399,24 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     private async Task PublishAsync(RunningTask task, bool persist)
     {
         PublishProgress(task);
-        if (!persist)
+        if (persist)
         {
-            return;
+            await PersistAsync(task).ConfigureAwait(false);
         }
+    }
 
+    /// <summary>Writes the current snapshot, then the log entries not written yet, in order.</summary>
+    private async Task PersistAsync(RunningTask task)
+    {
         await task.PersistLock.WaitAsync().ConfigureAwait(false);
         try
         {
             await _store.UpdateAsync(task.Snapshot(), CancellationToken.None).ConfigureAwait(false);
+            var log = task.TakeUnpersistedLog();
+            if (log.Count > 0)
+            {
+                await _store.AppendLogAsync(task.Id, log, CancellationToken.None).ConfigureAwait(false);
+            }
         }
 #pragma warning disable CA1031 // A store failure must not stop the task; the feed still has the state.
         catch (Exception ex)
@@ -391,6 +427,67 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         finally
         {
             task.PersistLock.Release();
+        }
+    }
+
+    private void AddLog(RunningTask task, Guid? deviceId, TaskLogLevel level, string message) =>
+        task.AddLog(new TaskLogEntry(_time.GetUtcNow(), deviceId, level, message));
+
+    /// <summary>At most one store write per device and <see cref="TaskEngineOptions.ProgressPersistInterval"/>, in the background.</summary>
+    private void PersistThrottled(RunningTask task, Guid deviceId)
+    {
+        if (task.TryBeginThrottledPersist(deviceId, _time.GetUtcNow(), _options.ProgressPersistInterval))
+        {
+            task.TrackWrite(Task.Run(() => PersistAsync(task)));
+        }
+    }
+
+    private static async Task AwaitPendingWritesAsync(RunningTask task)
+    {
+        try
+        {
+            await task.WhenWritesDone().ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // PersistAsync already logs; nothing may keep the task from finishing.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+        }
+    }
+
+    /// <summary>Receives progress, warnings and log entries from the plugin contexts of one task.</summary>
+    private sealed class Sink(TaskEngine engine, RunningTask task) : ITaskExecutionSink
+    {
+        public void ReportProgress(Guid deviceId, int percent, string? message)
+        {
+            if (!task.ReportProgress(deviceId, percent, message))
+            {
+                return;
+            }
+
+            engine.PublishProgress(task);
+            if (message is not null)
+            {
+                engine.PersistThrottled(task, deviceId);
+            }
+        }
+
+        public void ReportWarning(Guid deviceId, string message)
+        {
+            if (!task.ReportWarning(deviceId, message))
+            {
+                return;
+            }
+
+            engine.AddLog(task, deviceId, TaskLogLevel.Warning, message);
+            engine.PublishProgress(task);
+            engine.PersistThrottled(task, deviceId);
+        }
+
+        public void Log(Guid deviceId, TaskLogLevel level, string message)
+        {
+            engine.AddLog(task, deviceId, level, message);
+            engine.PersistThrottled(task, deviceId);
         }
     }
 
