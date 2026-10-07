@@ -247,6 +247,7 @@ public sealed class InstallViewModelTests
 }
 
 /// <summary>The Security dialogs rendered offscreen with the host theme. OADM_SCREENSHOT_DIR writes PNGs.</summary>
+[Collection(HeadlessSessions.Name)]
 public sealed class HeadlessDialogTests
 {
     [Fact]

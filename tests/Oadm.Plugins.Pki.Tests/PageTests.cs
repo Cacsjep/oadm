@@ -394,6 +394,7 @@ public static class HeadlessEntry
 }
 
 /// <summary>Renders the page and the dialogs offscreen like the client shell. OADM_SCREENSHOT_DIR writes PNGs.</summary>
+[Collection(HeadlessSessions.Name)]
 public sealed class HeadlessPageTests
 {
     [Fact]
