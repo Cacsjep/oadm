@@ -137,7 +137,9 @@ public sealed class RolloutEngineTests : IAsyncLifetime
     public async Task Stop_on_first_error_stops_the_whole_rollout()
     {
         // Two run at a time: the failing device and a slow one; the other three wait in Queued.
-        var failing = AddDevice("10.0.0.1", r => FakeVapix.Text("# Error: Error -1 getting param in group 'Brand'"));
+        // The failure comes after 200 ms so the slow device has surely started its first command
+        // (an instant failure could cancel it while still queued, which is also correct but not this case).
+        var failing = AddDevice("10.0.0.1", r => FakeVapix.Text("# Error: Error -1 getting param in group 'Brand'"), delay: TimeSpan.FromMilliseconds(200));
         var slow = AddDevice("10.0.0.2", delay: TimeSpan.FromMilliseconds(400));
         var queued = Enumerable.Range(3, 3).Select(i => AddDevice("10.0.0." + i)).ToList();
 
