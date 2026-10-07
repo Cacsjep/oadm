@@ -14,6 +14,7 @@ using Oadm.Client.Infrastructure;
 using Oadm.Client.Shell;
 using Oadm.Client.Tasks;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Client.Tests;
 
@@ -150,8 +151,22 @@ public sealed class HeadlessSmokeTests
 
             scanVm.FocusedRow = scanVm.Rows.First(r => r.ShowLogIn);
             scanVm.EditorPassword = "secret";
-            await PumpUntilAsync(() => scanVm.IsLoginEditorOpen);
+            scanVm.EditorUserName = "";
+            await PumpUntilAsync(() => scanVm.IsLoginEditorOpen && scanVm.ErrorOf(nameof(AddDevicesViewModel.EditorUserName)) is not null);
             Capture(scanWindow, outDir, "client-add-login.png");
+
+            // The error sits below its field: the user name box grows, its label stays level with the box.
+            FormField userField = scanWindow.GetVisualDescendants().OfType<FormField>().First(f => f.Label == "User name" && f.IsEffectivelyVisible);
+            Assert.True(userField.HasError);
+            TextBox userBox = (TextBox)userField.Input!;
+            TextBlock userLabel = userField.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("fieldLabel"));
+            double labelCenter = userLabel.TranslatePoint(new Point(0, userLabel.Bounds.Height / 2), scanWindow)!.Value.Y;
+            double boxTop = userBox.TranslatePoint(default, scanWindow)!.Value.Y;
+            Assert.InRange(labelCenter - boxTop, 14, 19); // centered on the 32 px box, not on box + error
+            Button retry = scanWindow.GetVisualDescendants().OfType<Button>().First(b => b.Content as string == "Retry" && b.IsEffectivelyVisible);
+            Assert.False(retry.IsEffectivelyEnabled);
+            Assert.Equal("Enter a user name.", ToolTip.GetTip(retry));
+            scanVm.EditorUserName = "root";
             Oadm.Sdk.Client.Controls.PasswordBox loginPassword = scanWindow.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.PasswordBox>().First(p => p.IsEffectivelyVisible);
             Assert.True(loginPassword.RevealButton.IsEffectivelyVisible);
             loginPassword.RevealButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
@@ -180,8 +195,7 @@ public sealed class HeadlessSmokeTests
             scanVm.OpenEditorCommand.Execute(scanVm.Rows.First(r => r.PassphrasePolicy == "complex"));
             scanVm.NewPassword = "short";
             scanVm.ConfirmPassword = "short";
-            scanVm.ApplyPasswordCommand.Execute(null);
-            await PumpUntilAsync(() => scanVm.IsPasswordEditorOpen && scanVm.EditorError is not null);
+            await PumpUntilAsync(() => scanVm.IsPasswordEditorOpen && scanVm.ErrorOf(nameof(AddDevicesViewModel.NewPassword)) is not null);
             Capture(scanWindow, outDir, "client-add-password.png");
             await scanVm.DisposeAsync();
             scanWindow.Close();
@@ -190,6 +204,9 @@ public sealed class HeadlessSmokeTests
             var rangeWindow = new AddDevicesWindow { DataContext = rangeVm };
             rangeWindow.Show();
             rangeVm.RangeFrom = "10.0.1.1";
+            rangeVm.RangeTo = "10.0.0.254";
+            await PumpUntilAsync(() => rangeVm.ErrorOf(nameof(AddDevicesViewModel.RangeTo)) is not null);
+            Capture(rangeWindow, outDir, "client-add-range-error.png");
             rangeVm.RangeTo = "10.0.1.254";
             await rangeVm.StartRangeCommand.ExecuteAsync(null);
             await PumpUntilAsync(() => !rangeVm.IsScanning && rangeVm.Rows.Count == 7 && rangeVm.Rows.All(r => r.AuthState != AuthState.Pending));
@@ -209,8 +226,7 @@ public sealed class HeadlessSmokeTests
             await PumpUntilAsync(() => manualVm.Rows.Count == 3 && manualVm.Rows.All(r => r.AuthState != AuthState.Pending) && !manualVm.IsScanning);
             manualVm.ManualAddress = "10.0.0.199";
             await manualVm.ProbeAddressCommand.ExecuteAsync(null);
-            await PumpUntilAsync(() => manualVm.ErrorText is not null);
-            manualVm.ManualAddress = "https://10.0.0.48:8443";
+            await PumpUntilAsync(() => manualVm.ErrorOf(nameof(AddDevicesViewModel.ManualAddress)) is not null);
             manualVm.SelectAllAuthenticatedCommand.Execute(null);
             await PumpUntilAsync(() => true);
             Capture(manualWindow, outDir, "client-add-manual.png");

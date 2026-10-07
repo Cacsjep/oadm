@@ -21,43 +21,40 @@
           <StackPanel>
             <ui:CardHeader Title="User" Description="{Binding Summary}" />
             <StackPanel Classes="form">
-              <Grid ColumnDefinitions="150,280">
-                <TextBlock Classes="fieldLabel" Text="Action" />
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16">
+              <ui:FormField Label="Action">
+                <StackPanel Orientation="Horizontal" Spacing="16">
                   <RadioButton GroupName="mode" Content="Add" IsChecked="{Binding IsAdd}" />
                   <RadioButton GroupName="mode" Content="Change" IsChecked="{Binding IsChange}" />
                   <RadioButton GroupName="mode" Content="Remove" IsChecked="{Binding IsRemove}" />
                 </StackPanel>
-              </Grid>
+              </ui:FormField>
 
-              <Grid ColumnDefinitions="150,280" IsVisible="{Binding ShowUserName}">
-                <TextBlock Classes="fieldLabel" Text="User name" />
-                <TextBox Grid.Column="1" Text="{Binding UserName}" PlaceholderText="1-14 characters: a-z, A-Z, 0-9" />
-              </Grid>
+              <ui:FormField Label="User name" IsVisible="{Binding ShowUserName}">
+                <TextBox Text="{Binding UserName}" PlaceholderText="1-14 characters: a-z, A-Z, 0-9" />
+              </ui:FormField>
 
-              <Grid ColumnDefinitions="150,280" IsVisible="{Binding IsChange}">
-                <StackPanel Grid.Column="1">
+              <ui:FormField IsVisible="{Binding IsChange}" Error="{Binding ChangeSelectionError}">
+                <StackPanel>
                   <CheckBox Content="Set a new password" IsChecked="{Binding ChangePassword}" />
                   <CheckBox Content="Change role" IsChecked="{Binding ChangeRole}" />
                 </StackPanel>
-              </Grid>
+              </ui:FormField>
 
-              <Grid Classes="form" ColumnDefinitions="150,280" RowDefinitions="Auto,Auto,Auto" IsVisible="{Binding ShowPassword}">
-                <TextBlock Classes="fieldLabel" Text="Password" />
-                <ui:PasswordBox Grid.Column="1" Text="{Binding Password}" />
-                <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Confirm password" />
-                <ui:PasswordBox Grid.Row="1" Grid.Column="1" Text="{Binding ConfirmPassword}" />
-                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Classes="secondary small" Text="{Binding PolicyHint}" TextWrapping="Wrap" />
-              </Grid>
+              <ui:FormField Label="Password" Hint="{Binding PolicyHint}" IsVisible="{Binding ShowPassword}">
+                <ui:PasswordBox Text="{Binding Password}" />
+              </ui:FormField>
+              <ui:FormField Label="Confirm password" IsVisible="{Binding ShowPassword}">
+                <ui:PasswordBox Text="{Binding ConfirmPassword}" />
+              </ui:FormField>
 
-              <Grid Classes="form" ColumnDefinitions="150,280" RowDefinitions="Auto,Auto" IsVisible="{Binding ShowRole}">
-                <TextBlock Classes="fieldLabel" Text="Role" />
-                <ComboBox Grid.Column="1" ItemsSource="{Binding Roles}" SelectedItem="{Binding SelectedRole}" HorizontalAlignment="Stretch" />
-                <CheckBox Grid.Row="1" Grid.Column="1" Content="PTZ control" IsChecked="{Binding Ptz}" />
-              </Grid>
+              <ui:FormField Label="Role" IsVisible="{Binding ShowRole}">
+                <ComboBox ItemsSource="{Binding Roles}" SelectedItem="{Binding SelectedRole}" />
+              </ui:FormField>
+              <ui:FormField IsVisible="{Binding ShowRole}">
+                <CheckBox Content="PTZ control" IsChecked="{Binding Ptz}" />
+              </ui:FormField>
 
               <TextBlock Classes="warning" Text="{Binding LockOutWarning}" TextWrapping="Wrap" IsVisible="{Binding LockOutWarning, Converter={x:Static ObjectConverters.IsNotNull}}" />
-              <TextBlock Classes="error" Text="{Binding ValidationError}" TextWrapping="Wrap" IsVisible="{Binding ValidationError, Converter={x:Static ObjectConverters.IsNotNull}}" />
             </StackPanel>
           </StackPanel>
         </ScrollViewer>
@@ -88,7 +85,8 @@
     </Grid>
 
     <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
-      <Button Classes="primary" Content="{Binding ApplyText}" Command="{Binding ApplyCommand}" IsDefault="True" />
+      <Button Classes="primary" Content="{Binding ApplyText}" Command="{Binding ApplyCommand}" IsDefault="True"
+              ToolTip.Tip="{Binding ApplyBlockedReason}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>
   </Grid>
 </Window>

@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using Oadm.Client.Api;
 using Oadm.Client.Infrastructure;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Client.Validation;
 
 namespace Oadm.Client.Discovery;
 
@@ -49,7 +50,7 @@ public enum AddEditor
 /// open an inline login editor that retries right away; factory-default rows open the password
 /// editor. All device work happens on the server; passwords typed here go to the server only.
 /// </summary>
-public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDisposable
+public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDisposable
 {
     public const int MaxRangeSize = 65536;
 
@@ -74,6 +75,55 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
         _logger = logger;
         Mode = mode;
         Rows.CollectionChanged += (_, _) => UpdateSummary();
+
+        // Field errors below their field: IP range, address, login and first password editors.
+        Validation
+            .Rule(nameof(RangeFrom), () => IsRangeMode ? RangeStartError(RangeFrom) : null)
+            .Rule(nameof(RangeTo), () => IsRangeMode ? RangeEndError(RangeFrom, RangeTo) : null)
+            .Rule(nameof(ManualAddress), () => IsManualMode && ManualAddress.Trim().Length == 0 ? "Enter an IP address or host name." : null)
+            .Rule(nameof(EditorUserName), () => IsLoginEditorOpen && EditorUserName.Trim().Length == 0 ? "Enter a user name." : null)
+            .Rule(nameof(EditorPassword), () => IsLoginEditorOpen && EditorPassword.Length == 0 ? "Enter the password." : null)
+            .Rule(nameof(NewPassword), () => IsPasswordEditorOpen ? NewPasswordError() : null)
+            .Rule(nameof(ConfirmPassword), () => IsPasswordEditorOpen ? PasswordRules.ConfirmError(NewPassword, ConfirmPassword) : null);
+        Validation.Validate();
+    }
+
+    private static readonly string[] RangeFields = [nameof(RangeFrom), nameof(RangeTo)];
+    private static readonly string[] LoginFields = [nameof(EditorUserName), nameof(EditorPassword)];
+    private static readonly string[] PasswordFields = [nameof(NewPassword), nameof(ConfirmPassword)];
+    private static readonly string[] EditorFields = [.. LoginFields, .. PasswordFields];
+
+    /// <summary>Why Scan is disabled (tooltip), null when the range is valid.</summary>
+    public string? RangeBlockedReason => Validation.FirstErrorOf(RangeFields);
+
+    /// <summary>Why Find is disabled (tooltip).</summary>
+    public string? AddressBlockedReason => Validation.FirstErrorOf([nameof(ManualAddress)]);
+
+    /// <summary>Why Retry is disabled (tooltip).</summary>
+    public string? RetryBlockedReason => Validation.FirstErrorOf(LoginFields);
+
+    /// <summary>Why Apply of the password editor is disabled (tooltip).</summary>
+    public string? ApplyPasswordBlockedReason => Validation.FirstErrorOf(PasswordFields);
+
+    protected override void OnValidationChanged()
+    {
+        OnPropertyChanged(nameof(RangeBlockedReason));
+        OnPropertyChanged(nameof(AddressBlockedReason));
+        OnPropertyChanged(nameof(RetryBlockedReason));
+        OnPropertyChanged(nameof(ApplyPasswordBlockedReason));
+        StartRangeCommand.NotifyCanExecuteChanged();
+        ProbeAddressCommand.NotifyCanExecuteChanged();
+        RetryCommand.NotifyCanExecuteChanged();
+        ApplyPasswordCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>The first password must satisfy the policy of every device it is set on.</summary>
+    private string? NewPasswordError()
+    {
+        IEnumerable<string?> policies = UseForAllFactoryDefault
+            ? Rows.Where(r => r.IsFactoryDefault).Select(r => (string?)r.PassphrasePolicy).Distinct()
+            : [EditorRow?.PassphrasePolicy];
+        return policies.Select(p => PasswordRules.PasswordError(NewPassword, p)).FirstOrDefault(e => e is not null);
     }
 
     public AddDevicesMode Mode { get; }
@@ -172,7 +222,6 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
     /// <summary>Password editor: use the password for every factory-default device in the list.</summary>
     [ObservableProperty] public partial bool UseForAllFactoryDefault { get; set; }
     [ObservableProperty] public partial string PolicyHint { get; private set; } = "";
-    [ObservableProperty] public partial string? EditorError { get; private set; }
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RetryCommand))]
@@ -226,13 +275,13 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
     // ------------------------------------------------------------ commands
 
     /// <summary>Range mode: Enter or the Scan button.</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanStartRange))]
     private async Task StartRangeAsync()
     {
         ErrorText = null;
-        if (!TryParseRange(RangeFrom, RangeTo, out string? error))
+        if (!Validation.IsValidFor(RangeFields))
         {
-            ErrorText = error;
+            Validation.ShowAll(RangeFields);
             return;
         }
 
@@ -244,6 +293,8 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
         IsProgressIndeterminate = false;
         await StartSessionAsync(() => _api.StartRangeScanAsync(from, to, _cts.Token), null).ConfigureAwait(true);
     }
+
+    private bool CanStartRange() => Validation.IsValidFor(RangeFields);
 
     /// <summary>Stop button: ends the running scans on the server; the devices found stay in the list.</summary>
     [RelayCommand(CanExecute = nameof(ShowStop))]
@@ -270,14 +321,14 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
     private Task ScanAgainAsync() => IsRangeMode ? StartRangeAsync() : StartZeroConfAsync();
 
     /// <summary>Manual mode: Enter or the Find button. Every address adds to the list.</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanProbeAddress))]
     private async Task ProbeAddressAsync()
     {
         ErrorText = null;
         string address = ManualAddress.Trim();
         if (address.Length == 0)
         {
-            ErrorText = "Enter an IP address or host name.";
+            Validation.ShowAll(nameof(ManualAddress));
             return;
         }
 
@@ -286,8 +337,11 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
         if (await StartSessionAsync(() => _api.ProbeAddressAsync(address, _cts.Token), address).ConfigureAwait(true))
         {
             ManualAddress = "";
+            Validation.Reset(nameof(ManualAddress)); // ready for the next address, no "Enter an address" yet
         }
     }
+
+    private bool CanProbeAddress() => Validation.IsValidFor(nameof(ManualAddress));
 
     /// <summary>Checks every device that can be added (authenticated, or factory default with a password ready).</summary>
     [RelayCommand]
@@ -377,7 +431,6 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
             return;
         }
 
-        EditorError = null;
         if (row.ShowLogIn)
         {
             EditorRow = row;
@@ -395,6 +448,8 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
             PolicyHint = "User root. " + PasswordRules.Hint(row.PassphrasePolicy);
             Editor = AddEditor.Password;
         }
+
+        Validation.Reset(EditorFields); // a freshly opened editor shows no errors
     }
 
     [RelayCommand]
@@ -405,7 +460,7 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
         EditorPassword = "";
         NewPassword = "";
         ConfirmPassword = "";
-        EditorError = null;
+        Validation.Reset(EditorFields);
     }
 
     /// <summary>Login editor: the server logs in with the entered credentials right away.</summary>
@@ -418,13 +473,12 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
             return;
         }
 
-        if (EditorUserName.Trim().Length == 0 || EditorPassword.Length == 0)
+        if (!Validation.IsValidFor(LoginFields))
         {
-            EditorError = "Enter a user name and a password.";
+            Validation.ShowAll(LoginFields);
             return;
         }
 
-        EditorError = null;
         try
         {
             IsRetrying = true;
@@ -453,12 +507,13 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
             }
             else
             {
-                EditorError = reply.AuthDetail.Length > 0 ? reply.AuthDetail : "The login failed.";
+                // The device's answer belongs to the credentials: below the password, until it is edited.
+                Validation.SetServerError(nameof(EditorPassword), reply.AuthDetail.Length > 0 ? reply.AuthDetail : "The login failed.");
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            EditorError = Message(ex);
+            Validation.SetServerError(nameof(EditorPassword), Message(ex));
         }
         finally
         {
@@ -467,10 +522,13 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
         }
     }
 
-    private bool CanRetry() => !IsRetrying;
+    private bool CanRetry() => !IsRetrying && Validation.IsValidFor(LoginFields);
+
+    /// <summary>A login error of the server is about the pair: editing the user name clears it as well.</summary>
+    partial void OnEditorUserNameChanged(string value) => Validation.SetServerError(nameof(EditorPassword), null);
 
     /// <summary>Password editor: keeps the password for the add (and for all factory-default devices when asked).</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanApplyPassword))]
     private void ApplyPassword()
     {
         DiscoveredRowViewModel? row = EditorRow;
@@ -479,18 +537,15 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
             return;
         }
 
+        if (!Validation.IsValidFor(PasswordFields))
+        {
+            Validation.ShowAll(PasswordFields);
+            return;
+        }
+
         List<DiscoveredRowViewModel> targets = UseForAllFactoryDefault
             ? Rows.Where(r => r.IsFactoryDefault).ToList()
             : [row];
-        foreach (string? policy in targets.Select(r => r.PassphrasePolicy).Distinct())
-        {
-            string? error = PasswordRules.Validate(NewPassword, ConfirmPassword, policy);
-            if (error is not null)
-            {
-                EditorError = error.Length == 0 ? "Enter the password twice." : error;
-                return;
-            }
-        }
 
         foreach (DiscoveredRowViewModel target in targets)
         {
@@ -501,6 +556,8 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
         CancelEditor();
         UpdateSummary();
     }
+
+    private bool CanApplyPassword() => Validation.IsValidFor(PasswordFields);
 
     // ------------------------------------------------------------ discovery
 
@@ -521,7 +578,15 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            ErrorText = (manualInput is null ? "Discovery could not be started: " : "") + Message(ex);
+            if (manualInput is null)
+            {
+                ErrorText = "Discovery could not be started: " + Message(ex);
+            }
+            else
+            {
+                Validation.SetServerError(nameof(ManualAddress), Message(ex)); // e.g. an unusable address
+            }
+
             _starting--;
             ScanFinished(null);
             return false;
@@ -616,7 +681,7 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
         {
             if (_manualInputs.Remove(sessionId, out string? input) && !Rows.Any(r => r.SessionId == sessionId))
             {
-                ErrorText = $"No Axis device answered at {input}.";
+                Validation.SetServerError(nameof(ManualAddress), $"No Axis device answered at {input}.");
             }
 
             ScanFinished(sessionId);
@@ -707,6 +772,39 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
     }
 
     private static string Message(Exception ex) => ex is RpcException rpc ? rpc.Status.Detail : ex.Message;
+
+    /// <summary>Error of the start address field, null when valid.</summary>
+    public static string? RangeStartError(string from) =>
+        (from ?? "").Trim().Length == 0 ? "Enter the first address of the range."
+        : !TryParseIPv4(from, out _) ? "Enter a valid IPv4 address, e.g. 192.168.0.1." : null;
+
+    /// <summary>Error of the end address field (checked against a valid start), null when valid.</summary>
+    public static string? RangeEndError(string from, string to)
+    {
+        if ((to ?? "").Trim().Length == 0)
+        {
+            return "Enter the last address of the range.";
+        }
+
+        if (!TryParseIPv4(to, out uint last))
+        {
+            return "Enter a valid IPv4 address, e.g. 192.168.0.254.";
+        }
+
+        if (!TryParseIPv4(from, out uint first))
+        {
+            return null; // the start field says what is wrong
+        }
+
+        if (last < first)
+        {
+            return "The last address must not be lower than the first.";
+        }
+
+        return last - first + 1 > MaxRangeSize
+            ? string.Create(CultureInfo.CurrentCulture, $"The range may contain at most {MaxRangeSize} addresses.")
+            : null;
+    }
 
     public static bool TryParseRange(string from, string to, out string? error)
     {

@@ -120,10 +120,7 @@ internal sealed class DateTimeTaskRunner(TimeProvider time, Func<TimeZoneInfo> s
 
         if (!wroteNtp)
         {
-            if (payload.ChangesSync)
-            {
-                ctx.SkipStep(StepVerifyNtp, done.Count == 0 ? "Nothing was changed." : "NTP was not changed.");
-            }
+            ctx.SkipStep(StepVerifyNtp, done.Count == 0 ? "Nothing was changed." : "NTP was not changed.");
         }
         else
         {
@@ -131,19 +128,11 @@ internal sealed class DateTimeTaskRunner(TimeProvider time, Func<TimeZoneInfo> s
         }
     }
 
-    /// <summary>Steps shown as Pending from the start: only the sections the payload changes.</summary>
+    /// <summary>Steps shown as Pending from the start: like ADM the time zone and the time mode are always written.</summary>
     internal static string[] PlannedSteps(DateTimePayload payload)
     {
-        var steps = new List<string> { StepCheckCompatibility, StepReadTime, StepReadNtp, StepValidate };
-        if (payload.ChangesTimeZone || payload.Mode == TimeMode.ServerTime)
-        {
-            steps.Add(TimePlanner.StepSetTimeZone);
-        }
-
-        if (payload.ChangesSync)
-        {
-            steps.Add(payload.Mode == TimeMode.Ntp ? TimePlanner.StepSetNtp : TimePlanner.StepTurnOffNtp);
-        }
+        var steps = new List<string> { StepCheckCompatibility, StepReadTime, StepReadNtp, StepValidate, TimePlanner.StepSetTimeZone };
+        steps.Add(payload.Mode == TimeMode.Ntp ? TimePlanner.StepSetNtp : TimePlanner.StepTurnOffNtp);
 
         if (payload.Mode is TimeMode.Manual or TimeMode.ServerTime)
         {
@@ -151,11 +140,7 @@ internal sealed class DateTimeTaskRunner(TimeProvider time, Func<TimeZoneInfo> s
         }
 
         steps.Add(StepVerifyTime);
-        if (payload.ChangesSync)
-        {
-            steps.Add(StepVerifyNtp);
-        }
-
+        steps.Add(StepVerifyNtp);
         return [.. steps];
     }
 

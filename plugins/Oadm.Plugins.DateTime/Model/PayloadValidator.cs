@@ -33,12 +33,13 @@ public static class PayloadValidator
     {
         ArgumentNullException.ThrowIfNull(payload);
         var errors = new List<FieldError>();
-        if (!payload.ChangesTimeZone && !payload.ChangesSync)
+        if (!Enum.IsDefined(payload.Mode))
         {
-            errors.Add(new(FieldMode, "Choose a time zone or a time mode to change."));
+            errors.Add(new(FieldMode, "Choose a time mode."));
         }
 
-        if (payload.TimeZone is not null && ValidateTimeZone(payload.TimeZone) is { } tz)
+        // Like ADM the time zone is always written; server time mode uses the OADM server's zone instead.
+        if (payload.Mode != TimeMode.ServerTime && ValidateTimeZone(payload.TimeZone) is { } tz)
         {
             errors.Add(new(FieldTimeZone, tz));
         }

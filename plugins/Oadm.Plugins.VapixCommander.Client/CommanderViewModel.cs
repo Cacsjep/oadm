@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Validation;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.VapixCommander.Client;
@@ -17,7 +18,7 @@ namespace Oadm.Plugins.VapixCommander.Client;
 /// The VAPIX Commander page: library tree (left), rollout set or raw editor with the Try result (middle), target
 /// devices with compatibility per command (right) and the Run bar (bottom). Everything runs on the server.
 /// </summary>
-public sealed partial class CommanderViewModel : ObservableObject
+public sealed partial class CommanderViewModel : ValidatingViewModel
 {
     private readonly ICommanderBackend _backend;
     private readonly ICorePluginClientContext _host;
@@ -34,6 +35,14 @@ public sealed partial class CommanderViewModel : ObservableObject
         _backend = backend;
         _host = host;
         Raw.SaveRequested += (_, command) => _ = SaveRawAsync(command);
+        Raw.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(RawEditorViewModel.IsFormValid))
+            {
+                AddRawToRolloutCommand.NotifyCanExecuteChanged();
+            }
+        };
+        Validation.Rule(nameof(PresetName), () => IsPresetOpen ? CommandNameError(PresetName) : null);
         RolloutItems.CollectionChanged += (_, _) => OnRolloutChanged();
         host.DevicesChanged += (_, _) => SyncDevices();
         SyncDevices();
@@ -93,6 +102,19 @@ public sealed partial class CommanderViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string PresetName { get; set; } = string.Empty;
+
+    /// <summary>Why Save of "Save with values" is disabled (tooltip).</summary>
+    public string? PresetBlockedReason => Validation.ErrorOf(nameof(PresetName));
+
+    /// <summary>The name rule of saved commands (<see cref="CommandValidator"/>: 3 to 80 characters).</summary>
+    public static string? CommandNameError(string? name) =>
+        (name ?? string.Empty).Trim().Length is >= 3 and <= 80 ? null : "Enter a name of 3 to 80 characters.";
+
+    protected override void OnValidationChanged()
+    {
+        OnPropertyChanged(nameof(PresetBlockedReason));
+        ConfirmPresetCommand.NotifyCanExecuteChanged();
+    }
 
     // ---------------------------------------------------------------- targets
 
@@ -421,17 +443,24 @@ public sealed partial class CommanderViewModel : ObservableObject
         SelectedRolloutItem = row;
         PresetName = row.Name;
         IsPresetOpen = true;
+        Validation.Reset(nameof(PresetName));
     }
 
     [RelayCommand]
     private void CancelPreset() => IsPresetOpen = false;
 
     /// <summary>Saves the selected command with the entered values as a new saved command (category Custom).</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanConfirmPreset))]
     private async Task ConfirmPresetAsync()
     {
         if (SelectedRolloutItem is not { } item)
         {
+            return;
+        }
+
+        if (CommandNameError(PresetName) is not null)
+        {
+            Validation.ShowAll(nameof(PresetName));
             return;
         }
 
@@ -445,23 +474,25 @@ public sealed partial class CommanderViewModel : ObservableObject
         }
     }
 
+    private bool CanConfirmPreset() => CommandNameError(PresetName) is null;
+
     /// <summary>Adds the raw request to the rollout set as an inline command.</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanAddRaw))]
     private void AddRawToRollout()
     {
-        var (command, problems) = Raw.Build(forSave: false);
-        if (problems.Count > 0)
+        if (!Raw.ShowProblems())
         {
-            Raw.Error = string.Join(" ", problems);
-            return;
+            return; // every problem below its input
         }
 
-        Raw.Error = null;
+        var (command, _) = Raw.Build(forSave: false);
         var name = "Raw: " + command.Request.Method + " " + command.Request.Path;
         command.Name = name.Length > 80 ? name[..80] : name;
         command.Id = "raw.request";
         Add(new CommandListItem { Source = CommandSources.Inline, Command = command });
     }
+
+    private bool CanAddRaw() => Raw.IsFormValid;
 
     private async Task SaveRawAsync(CommandDefinition command)
     {
@@ -723,14 +754,12 @@ public sealed partial class CommanderViewModel : ObservableObject
         bool writes;
         if (IsRawTab)
         {
-            var (command, problems) = Raw.Build(forSave: false);
-            if (problems.Count > 0)
+            if (!Raw.ShowProblems())
             {
-                Raw.Error = string.Join(" ", problems);
-                return;
+                return; // every problem below its input
             }
 
-            Raw.Error = null;
+            var (command, _) = Raw.Build(forSave: false);
             reference = new CommandRef { Source = CommandSources.Inline, Command = command };
             values = Raw.Values();
             name = command.Request.Method + " " + command.Request.Path;
@@ -795,6 +824,11 @@ public sealed partial class CommanderViewModel : ObservableObject
 
         if (RolloutItems.FirstOrDefault(i => !i.IsValid) is { } invalid)
         {
+            foreach (var item in RolloutItems)
+            {
+                item.ShowErrors(); // each error below its input
+            }
+
             SelectedRolloutItem = invalid;
             IsRawTab = false;
             SetStatus($"Check the values of \"{invalid.Name}\".", error: true);

@@ -43,14 +43,14 @@ How OADM clones it (`DateTimeWindow`):
 | ADM / ACS | OADM |
 |---|---|
 | Device time (single device only) | **Device time** card for the first selected device (read-only query): device time with offset, time zone, time mode with sync state and NTP offset, server time and the difference ("device and server agree", "device is 3.2 s ahead"). With several devices the card says which device it shows. |
-| Time zone drop-down | **Time zone** card: the 313 IANA zones of AXIS OS 12.11 in a DataGrid (UTC offset, City, Time zone, DST) sorted by offset like the Windows list, `ui:SearchBox` (city, id or "UTC+05:30"). Single device with an IANA zone: preselected. |
+| Time zone drop-down | **Time zone** card: the 313 IANA zones of AXIS OS 12.11 in a DataGrid (UTC offset, City, Time zone, DST) sorted by offset like the Windows list, `ui:SearchBox` (city, id or "UTC+05:30"). Preselected: the first device's IANA zone, or the OADM server's zone when the device has none (POSIX zone). |
 | Automatically adjust for daylight saving time changes | Same check box. Off = the zone's standard-time POSIX rule with daylight saving off (`setPosixTimeZone enableDst=false`). |
 | Time zone only with NTP / manual | Server time mode disables the zone: the devices get the OADM server's time zone (shown). |
 | Synchronize with server computer time | NTP off, the OADM server's UTC time sent once per device when its task runs (one-shot, like ACS). |
 | Synchronize with NTP server: Obtain from DHCP / Use server | Same radio buttons; "Use servers" takes up to 5 host names or addresses, one per line; **Use NTS (Network Time Security)** when the devices support it (NTS KE servers). |
 | Set manually | Date + Time in the device's time zone, "Use this computer's time"; NTP off. |
-| (always writes everything) | Extra first choice **Keep unchanged** (time mode) and an unselected / "Keep unchanged" time zone: only what the user changes is written (multi-device safety). |
-| OK | OK (enabled when something changes and every field is valid; field errors under the inputs via INotifyDataErrorInfo). |
+| (always writes everything) | Same, **exactly like ADM** (user decision): no "Keep unchanged"; OK writes the time zone and the selected time mode to every selected device. The time mode starts at the first device's mode (NTP if enabled, otherwise Set manually). The steps skip values a device already has ("Already ..."). |
+| OK | OK (disabled with the reason as tooltip until a time zone is chosen and every field is valid; each error directly below its input, the time zone error directly below the list). |
 
 ## VAPIX research
 
@@ -95,19 +95,19 @@ How OADM clones it (`DateTimeWindow`):
 |---|---|---|---|
 | Read time | `time-service` 1.0+ | `getDateTimeInfo` (listed version) | param.cgi list `Time` |
 | Read NTP | `ntp` 1.0+ | `getNTPInfo` | param.cgi `Time` (skipped when already read) |
-| Time zone, DST on | `time-service` 1.0+ | `setTimeZone {timeZone}` | `param-cgi` 1.0: `Time.POSIXTimeZone` + `Time.DST.Enabled=yes` (POSIX from the IANA rule) |
+| Time zone (always), DST on | `time-service` 1.0+ | `setTimeZone {timeZone}` | `param-cgi` 1.0: `Time.POSIXTimeZone` + `Time.DST.Enabled=yes` (POSIX from the IANA rule) |
 | Time zone, DST off | `time-service` 1.0+ | `setPosixTimeZone {posixTimeZone, enableDst:false}` | param.cgi `Time.DST.Enabled=no` |
 | NTP servers / DHCP | `ntp` 1.0+ | `setNTPClientConfiguration {enabled, serversSource, staticServers}` | param.cgi `Time.SyncSource=NTP`, `Time.ObtainFromDHCP`, `Time.NTP.Server` (one server only, more = refused) |
 | NTS KE servers | `ntp` **1.5+** and `getNTPInfo` reports `NTSEnabled` | `... NTSEnabled:true, staticNTSKEServers` | refused, nothing changed |
 | NTS fields kept | `ntp` 1.5+ with NTS | `NTSEnabled` / `staticNTSKEServers` sent with their current values | not sent |
-| NTP off (server time, manual) | `ntp` 1.0+ | `setNTPClientConfiguration {enabled:false, ...current}` | param.cgi `Time.SyncSource=None` |
+| NTP off (server time, manual; always one of the two NTP rows) | `ntp` 1.0+ | `setNTPClientConfiguration {enabled:false, ...current}` | param.cgi `Time.SyncSource=None` |
 | Date and time (server time, manual) | `time-service` 1.0+ | `setDateTime {dateTime: UTC}` | refused (`DeviceNotCompatibleException`), nothing changed |
 | anything | only a different major (e.g. 2.x) or nothing | none | `DeviceNotCompatibleException` at Check compatibility |
 
 `CanRun` needs status Ok/Unknown and `time-service` 1.0 or `param-cgi` 1.0 in the cached list. NTS is required from
 1.5 because that is the version verified with NTS fields (no history published). All `Require(...)` calls happen in
-the Validate step, before the first write. Values the device already has are not written ("Already Europe/Vienna",
-"Already set").
+the Validate step, before the first write. Like ADM the time zone and the time mode are always planned; values the
+device already has are not written ("Already Europe/Vienna", "Already set").
 
 ## Per-device steps
 
@@ -117,14 +117,14 @@ the Validate step, before the first write. Values the device already has are not
 4. **Validate settings**: payload rules again, the device limits (max static servers, max year, one server on
    param.cgi), NTS support, the manual time converted to UTC in the target zone (a time in the spring gap is refused),
    then the plan. Any problem fails here with "Nothing was changed".
-5. **Set time zone** (planned when the zone changes or in server time mode; Warning when the server's zone is not an
-   AXIS zone).
-6. **Set NTP configuration** (NTP mode) or **Turn off NTP** (server time, manual).
+5. **Set time zone** (always; the server's zone in server time mode; Skipped "Already ..." when the device has it;
+   Warning when the server's zone is not an AXIS zone).
+6. **Set NTP configuration** (NTP mode) or **Turn off NTP** (server time, manual); Skipped "Already set" when unchanged.
 7. **Set date and time** (server time: the server's UTC at that moment; manual: the converted UTC).
 8. **Verify time settings**: reads again; zone / POSIX / DST must match and the clock must be within 3 s of the time
    set (+ elapsed); otherwise Warning "Check failed: ...". Skipped when neither zone nor time changed.
-9. **Verify NTP settings** (only when the time mode changes): enabled, source, servers, NTS must match; detail adds "the
-   device synchronizes within a few minutes" while not yet synced.
+9. **Verify NTP settings**: enabled, source, servers, NTS must match; detail adds "the device synchronizes within a few
+   minutes" while not yet synced. Skipped "NTP was not changed." when nothing was written there.
 
 A failing write fails its step with the device text ("setTimeZone failed (2002): Invalid time zone.") or the HTTP /
 transport mapping ("Forbidden - HTTP 403 (administrator rights are required)", "Connection refused", "Timeout: the
@@ -132,12 +132,14 @@ device did not answer"), plus "Nothing was changed." or "Already applied: Time z
 
 ## Payload and task names
 
-`DateTimePayload` (camelCase JSON): `timeZone` (IANA or null = keep), `daylightSaving` (default true), `mode`
-(`Keep`, `Ntp`, `ServerTime`, `Manual`), `ntp` {`source` Dhcp/Static, `servers`, `nts`}, `manualDateTime`
-("yyyy-MM-ddTHH:mm:ss", device local time). No secrets. `GetTaskName(payloadJson)` on the plugin class gives the exact
-task name: "Set time zone Europe/Vienna", "Set NTP servers 10.0.0.17, pool.ntp.org" ("a, b, c +2"), "Set NTP servers
-from DHCP", "Set NTS KE servers ...", "Sync with server time", "Set date and time 2026-10-07 18:00", or "Change date
-and time" when the zone and the time mode change. It has the signature of the optional SDK hook
+`DateTimePayload` (camelCase JSON), no optional sections: `timeZone` (IANA, required except in server time mode, where
+the OADM server's zone is used), `daylightSaving` (default true), `mode` (`Ntp`, `ServerTime`, `Manual`; required, a
+payload without it is refused), `ntp` {`source` Dhcp/Static, `servers`, `nts`}, `manualDateTime` ("yyyy-MM-ddTHH:mm:ss",
+device local time), `timeZoneUnchanged` (name hint from the dialog: one device whose zone and DST stay as they are).
+No secrets. `GetTaskName(payloadJson)` on the plugin class gives the exact task name: "Change date and time", or the
+most specific name when only the time mode differs from the device (`timeZoneUnchanged`): "Set NTP servers 10.0.0.17,
+pool.ntp.org" ("a, b, c +2"), "Set NTP servers from DHCP", "Set NTS KE servers ...", "Set date and time 2026-10-07
+18:00"; "Sync with server time" in server time mode. It has the signature of the optional SDK hook
 `ITaskPlugin.GetTaskName(string? payloadJson)` that is being added in parallel; once that hook is on the interface the
 method implements it without changes.
 

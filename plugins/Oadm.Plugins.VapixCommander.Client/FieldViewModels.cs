@@ -4,6 +4,8 @@ using System.Text.Json;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 
+using Oadm.Sdk.Client.Validation;
+
 namespace Oadm.Plugins.VapixCommander.Client;
 
 /// <summary>An enum option in a field's select box.</summary>
@@ -14,15 +16,18 @@ public sealed record FieldOptionItem(JsonElement Value, string Label)
 
 /// <summary>
 /// One input of a command: text, number, password, yes/no or a select box, checked with the same rules as the server
-/// (<see cref="FieldValues.Convert"/>) while typing.
+/// (<see cref="FieldValues.Convert"/>) while typing. The error is reported on the bound input property
+/// (<see cref="Text"/> or <see cref="SelectedOption"/>) and shows below the input once it was edited or the rollout
+/// was started (<see cref="ShowErrors"/>).
 /// </summary>
-public sealed partial class FieldViewModel : ObservableObject
+public sealed partial class FieldViewModel : ValidatingViewModel
 {
     public FieldViewModel(CommandField field, bool hasStoredSecret = false)
     {
         ArgumentNullException.ThrowIfNull(field);
         Field = field;
         HasStoredSecret = hasStoredSecret;
+        Validation.Rule(field.Type == FieldTypes.Enum ? nameof(SelectedOption) : nameof(Text), Check);
         Options = [.. (field.Options ?? []).Select(o => new FieldOptionItem(o.Value, string.IsNullOrEmpty(o.Label) ? FieldValues.TextOf(o.Value) : o.Label))];
         if (field.Default is { } value && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
         {
@@ -46,6 +51,7 @@ public sealed partial class FieldViewModel : ObservableObject
         }
 
         Validate();
+        Validation.Reset(); // defaults are not edits: errors show once the user edits the field or starts the rollout
     }
 
     public CommandField Field { get; }
@@ -106,11 +112,15 @@ public sealed partial class FieldViewModel : ObservableObject
     [ObservableProperty]
     public partial FieldOptionItem? SelectedOption { get; set; }
 
+    /// <summary>The current error (shown or not yet shown); blocks the rollout.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
     public partial string? Error { get; private set; }
 
     public bool HasError => Error is not null;
+
+    /// <summary>The rollout was started: the error shows below the input even when it was not edited.</summary>
+    public void ShowErrors() => Validation.ShowAll();
 
     /// <summary>Raised after the value changed.</summary>
     public event EventHandler? ValueChanged;
@@ -132,18 +142,23 @@ public sealed partial class FieldViewModel : ObservableObject
     /// <summary>Checks the value like the server does; sets <see cref="Error"/>.</summary>
     public bool Validate()
     {
+        Validation.Validate();
+        Error = Validation.ErrorOf(Field.Type == FieldTypes.Enum ? nameof(SelectedOption) : nameof(Text));
+        return Error is null;
+    }
+
+    private string? Check()
+    {
         var value = Value;
         if (value is null)
         {
             var hasDefault = Field.Default is { ValueKind: not (JsonValueKind.Null or JsonValueKind.Undefined) } d
                 && !(d.ValueKind == JsonValueKind.String && d.GetString()!.Length == 0) && !Field.IsSecret;
-            Error = Field.IsRequired && !hasDefault && !(IsPassword && HasStoredSecret) ? "Required." : null;
-            return Error is null;
+            return Field.IsRequired && !hasDefault && !(IsPassword && HasStoredSecret) ? "Required." : null;
         }
 
         var error = FieldValues.Convert(Field, value.Value, out _);
-        Error = error is null ? null : char.ToUpperInvariant(error[0]) + error[1..];
-        return Error is null;
+        return error is null ? null : char.ToUpperInvariant(error[0]) + error[1..];
     }
 
     private void Changed()
@@ -202,6 +217,15 @@ public sealed partial class RolloutCommandViewModel : ObservableObject
     public partial int Position { get; set; }
 
     public bool IsValid => Fields.All(f => !f.HasError);
+
+    /// <summary>The rollout was started with this command: every field error shows below its input.</summary>
+    public void ShowErrors()
+    {
+        foreach (var field in Fields)
+        {
+            field.ShowErrors();
+        }
+    }
 
     public CommandRef Ref => Item.Source == CommandSources.Inline
         ? new CommandRef { Source = CommandSources.Inline, Command = Command }

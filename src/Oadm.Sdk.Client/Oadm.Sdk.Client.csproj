@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.0.4" />
+    <!-- Shared from the host like Avalonia: ValidatingViewModel is an ObservableObject -->
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Oadm.Sdk\Oadm.Sdk.csproj" />

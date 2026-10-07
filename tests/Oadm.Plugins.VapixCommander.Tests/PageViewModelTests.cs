@@ -529,8 +529,11 @@ public sealed class PageViewModelTests
 
         await vm.TryCommand.ExecuteAsync(null);
 
-        Assert.Contains("requires", vm.Raw.Error, StringComparison.Ordinal);
+        // The required API follows the path for a plain request: the problem shows below the path.
+        Assert.Contains("requires", vm.Raw.ErrorOf(nameof(vm.Raw.Path)), StringComparison.Ordinal);
         Assert.Null(vm.TryResult);
+        Assert.False(vm.AddRawToRolloutCommand.CanExecute(null));
+        Assert.Equal(vm.Raw.ErrorOf(nameof(vm.Raw.Path)), vm.Raw.BlockedReason);
     }
 }
 

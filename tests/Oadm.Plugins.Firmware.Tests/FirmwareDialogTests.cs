@@ -162,10 +162,13 @@ public sealed class FirmwareDialogViewModelTests
         await vm.SelectFileAsync("P3265-V_12_11_77.bin", CancellationToken.None);
         Assert.Contains("smaller than 1 MB", vm.FileError, StringComparison.Ordinal);
         Assert.False(vm.StartCommand.CanExecute(null));
+        Assert.Equal(vm.FileError, vm.FileRowError); // at the file row
+        Assert.Equal(vm.FileError, vm.StartBlockedReason); // and the Upgrade tooltip says why
 
         await vm.SelectFileAsync("C:\\missing\\a.bin", CancellationToken.None);
         Assert.Contains("could not be read", vm.FileError, StringComparison.Ordinal);
         Assert.False(vm.StartCommand.CanExecute(null));
+        Assert.Equal(vm.FileError, vm.StartBlockedReason);
     }
 
     [Fact]
@@ -226,7 +229,9 @@ public sealed class FirmwareDialogViewModelTests
         Assert.False(closed);
         Assert.Null(vm.Result);
         Assert.Contains("disk full", vm.Error, StringComparison.Ordinal);
+        Assert.Equal(vm.Error, vm.FileRowError); // shown at the file row, not below the options
         Assert.True(vm.StartCommand.CanExecute(null));
+        Assert.Null(vm.StartBlockedReason);
     }
 
     [Fact]

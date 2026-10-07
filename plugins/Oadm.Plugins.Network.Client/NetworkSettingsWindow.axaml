@@ -33,20 +33,18 @@
           <StackPanel>
             <ui:CardHeader Title="IPv4" />
             <StackPanel Classes="form">
-              <Grid ColumnDefinitions="150,280">
-                <TextBlock Classes="fieldLabel" Text="Configuration" />
-                <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding Ipv4Choices}" SelectedItem="{Binding SelectedIpv4}" />
-              </Grid>
-              <Grid ColumnDefinitions="150,280" IsVisible="{Binding ShowIpv4Address}">
-                <TextBlock Classes="fieldLabel" Text="IP address" />
-                <TextBox Grid.Column="1" Text="{Binding Ipv4Address}" PlaceholderText="192.168.0.90" />
-              </Grid>
-              <Grid Classes="form" ColumnDefinitions="150,280" RowDefinitions="Auto,Auto" IsVisible="{Binding IsIpv4Static}">
-                <TextBlock Classes="fieldLabel" Text="Subnet mask" />
-                <TextBox Grid.Column="1" Text="{Binding Ipv4Mask}" PlaceholderText="255.255.255.0 or 24" />
-                <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Default gateway" />
-                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Ipv4Gateway}" PlaceholderText="192.168.0.1" />
-              </Grid>
+              <ui:FormField Label="Configuration">
+                <ComboBox ItemsSource="{Binding Ipv4Choices}" SelectedItem="{Binding SelectedIpv4}" />
+              </ui:FormField>
+              <ui:FormField Label="IP address" IsVisible="{Binding ShowIpv4Address}">
+                <TextBox Text="{Binding Ipv4Address}" PlaceholderText="192.168.0.90" />
+              </ui:FormField>
+              <ui:FormField Label="Subnet mask" IsVisible="{Binding IsIpv4Static}">
+                <TextBox Text="{Binding Ipv4Mask}" PlaceholderText="255.255.255.0 or 24" />
+              </ui:FormField>
+              <ui:FormField Label="Default gateway" IsVisible="{Binding IsIpv4Static}">
+                <TextBox Text="{Binding Ipv4Gateway}" PlaceholderText="192.168.0.1" />
+              </ui:FormField>
             </StackPanel>
           </StackPanel>
         </Border>
@@ -56,20 +54,18 @@
           <StackPanel>
             <ui:CardHeader Title="IPv6" />
             <StackPanel Classes="form">
-              <Grid ColumnDefinitions="150,280">
-                <TextBlock Classes="fieldLabel" Text="Configuration" />
-                <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding Ipv6Choices}" SelectedItem="{Binding SelectedIpv6}" />
-              </Grid>
-              <Grid ColumnDefinitions="150,280" IsVisible="{Binding ShowIpv6Address}">
-                <TextBlock Classes="fieldLabel" Text="IP address" />
-                <TextBox Grid.Column="1" Text="{Binding Ipv6Address}" PlaceholderText="2001:db8::10" />
-              </Grid>
-              <Grid Classes="form" ColumnDefinitions="150,280" RowDefinitions="Auto,Auto" IsVisible="{Binding IsIpv6Static}">
-                <TextBlock Classes="fieldLabel" Text="Prefix length" />
-                <TextBox Grid.Column="1" Text="{Binding Ipv6Prefix}" PlaceholderText="64" />
-                <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Default gateway" />
-                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Ipv6Gateway}" PlaceholderText="fe80::1 (optional)" />
-              </Grid>
+              <ui:FormField Label="Configuration">
+                <ComboBox ItemsSource="{Binding Ipv6Choices}" SelectedItem="{Binding SelectedIpv6}" />
+              </ui:FormField>
+              <ui:FormField Label="IP address" IsVisible="{Binding ShowIpv6Address}">
+                <TextBox Text="{Binding Ipv6Address}" PlaceholderText="2001:db8::10" />
+              </ui:FormField>
+              <ui:FormField Label="Prefix length" IsVisible="{Binding IsIpv6Static}">
+                <TextBox Text="{Binding Ipv6Prefix}" PlaceholderText="64" />
+              </ui:FormField>
+              <ui:FormField Label="Default gateway" IsVisible="{Binding IsIpv6Static}">
+                <TextBox Text="{Binding Ipv6Gateway}" PlaceholderText="fe80::1 (optional)" />
+              </ui:FormField>
             </StackPanel>
           </StackPanel>
         </Border>
@@ -79,20 +75,21 @@
           <StackPanel>
             <ui:CardHeader Title="DNS" />
             <StackPanel Classes="form">
-              <Grid ColumnDefinitions="150,280">
-                <TextBlock Classes="fieldLabel" Text="Configuration" />
-                <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding DnsChoices}" SelectedItem="{Binding SelectedDns}" />
-              </Grid>
-              <Grid Classes="form" ColumnDefinitions="150,280" RowDefinitions="Auto,Auto,Auto,Auto" IsVisible="{Binding IsDnsStatic}">
-                <TextBlock Classes="fieldLabel" Text="Primary DNS server" />
-                <TextBox Grid.Column="1" Text="{Binding DnsPrimary}" PlaceholderText="192.168.0.1" />
-                <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Secondary DNS server" />
-                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding DnsSecondary}" PlaceholderText="optional" />
-                <TextBlock Grid.Row="2" Classes="fieldLabel" Text="Domain name" />
-                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding DnsDomain}" PlaceholderText="example.com (optional)" />
-                <TextBlock Grid.Row="3" Classes="fieldLabel" Text="Search domains" />
-                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding DnsSearch}" PlaceholderText="comma separated (optional)" />
-              </Grid>
+              <ui:FormField Label="Configuration">
+                <ComboBox ItemsSource="{Binding DnsChoices}" SelectedItem="{Binding SelectedDns}" />
+              </ui:FormField>
+              <ui:FormField Label="Primary DNS server" IsVisible="{Binding IsDnsStatic}">
+                <TextBox Text="{Binding DnsPrimary}" PlaceholderText="192.168.0.1" />
+              </ui:FormField>
+              <ui:FormField Label="Secondary DNS server" IsVisible="{Binding IsDnsStatic}">
+                <TextBox Text="{Binding DnsSecondary}" PlaceholderText="optional" />
+              </ui:FormField>
+              <ui:FormField Label="Domain name" IsVisible="{Binding IsDnsStatic}">
+                <TextBox Text="{Binding DnsDomain}" PlaceholderText="example.com (optional)" />
+              </ui:FormField>
+              <ui:FormField Label="Search domains" IsVisible="{Binding IsDnsStatic}">
+                <TextBox Text="{Binding DnsSearch}" PlaceholderText="comma separated (optional)" />
+              </ui:FormField>
             </StackPanel>
           </StackPanel>
         </Border>
@@ -102,22 +99,12 @@
           <StackPanel>
             <ui:CardHeader Title="Host name" />
             <StackPanel Classes="form">
-              <Grid ColumnDefinitions="150,280">
-                <TextBlock Classes="fieldLabel" Text="Configuration" />
-                <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding HostNameChoices}" SelectedItem="{Binding SelectedHostName}" />
-              </Grid>
-              <Grid ColumnDefinitions="150,280" IsVisible="{Binding IsHostNameStatic}">
-                <TextBlock Classes="fieldLabel" Text="{Binding HostNameLabel}" />
-                <TextBox Grid.Column="1" Text="{Binding HostNameText}" PlaceholderText="axis-camera" />
-              </Grid>
-              <TextBlock Classes="secondary small" Text="{Binding HostNameHint}" TextWrapping="Wrap">
-                <TextBlock.IsVisible>
-                  <MultiBinding Converter="{x:Static BoolConverters.And}">
-                    <Binding Path="IsHostNameStatic" />
-                    <Binding Path="IsMultiDevice" />
-                  </MultiBinding>
-                </TextBlock.IsVisible>
-              </TextBlock>
+              <ui:FormField Label="Configuration">
+                <ComboBox ItemsSource="{Binding HostNameChoices}" SelectedItem="{Binding SelectedHostName}" />
+              </ui:FormField>
+              <ui:FormField Label="{Binding HostNameLabel}" Hint="{Binding HostNameHint}" IsVisible="{Binding IsHostNameStatic}">
+                <TextBox Text="{Binding HostNameText}" PlaceholderText="axis-camera" />
+              </ui:FormField>
             </StackPanel>
           </StackPanel>
         </Border>

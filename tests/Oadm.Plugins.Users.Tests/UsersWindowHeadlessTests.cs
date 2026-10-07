@@ -70,6 +70,18 @@ public sealed class UsersWindowHeadlessTests
             vm.ChangeRole = true;
             Dispatcher.UIThread.RunJobs();
             Capture(window, outDir, "plugin-users-change.png");
+
+            // Errors directly below their fields; Apply disabled with the reason as tooltip.
+            vm.IsAdd = true;
+            vm.UserName = "jo e";
+            vm.Password = "pw";
+            vm.ConfirmPassword = "px";
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("The user name may only contain the letters a-z, A-Z and the digits 0-9.", vm.ErrorOf(nameof(vm.UserName)));
+            Assert.Equal("The passwords do not match.", vm.ErrorOf(nameof(vm.ConfirmPassword)));
+            Assert.False(vm.CanApply);
+            Assert.Equal(vm.ErrorOf(nameof(vm.UserName)), vm.ApplyBlockedReason);
+            Capture(window, outDir, "plugin-users-errors.png");
             window.Close();
             return Task.CompletedTask;
         }, CancellationToken.None);

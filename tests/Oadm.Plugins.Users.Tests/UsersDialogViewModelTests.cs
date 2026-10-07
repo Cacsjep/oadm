@@ -20,7 +20,8 @@ public sealed class UsersDialogViewModelTests
         Assert.True(vm.IsAdd);
         Assert.Equal(UserRole.Viewer, vm.SelectedRole.Role);
         Assert.False(vm.CanApply);
-        Assert.Null(vm.ValidationError);
+        Assert.False(vm.HasErrors); // untouched form: nothing shown below the fields
+        Assert.Equal("Enter a user name.", vm.ApplyBlockedReason); // the tooltip says why
         Assert.True(vm.ShowPassword);
         Assert.True(vm.ShowRole);
     }
@@ -52,7 +53,9 @@ public sealed class UsersDialogViewModelTests
         vm.Password = "pw";
         vm.ConfirmPassword = "pX";
         Assert.False(vm.CanApply);
-        Assert.Equal("The passwords do not match.", vm.ValidationError);
+        Assert.Equal("The passwords do not match.", vm.ErrorOf(nameof(vm.ConfirmPassword))); // below the confirmation
+        Assert.Null(vm.ErrorOf(nameof(vm.Password)));
+        Assert.Null(vm.ErrorOf(nameof(vm.UserName)));
         Assert.Null(vm.BuildPayload());
     }
 
@@ -64,7 +67,7 @@ public sealed class UsersDialogViewModelTests
         vm.UserName = "joe";
         vm.Password = vm.ConfirmPassword = "short";
         Assert.False(vm.CanApply);
-        Assert.Contains("12", vm.ValidationError, StringComparison.Ordinal);
+        Assert.Contains("12", vm.ErrorOf(nameof(vm.Password)), StringComparison.Ordinal);
         Assert.Contains("Every device also checks its own policy", vm.PolicyHint, StringComparison.Ordinal);
         vm.Password = vm.ConfirmPassword = "Abcdefghij1!";
         Assert.True(vm.CanApply);
@@ -81,7 +84,8 @@ public sealed class UsersDialogViewModelTests
         Assert.False(vm.ShowPassword);
         Assert.False(vm.ShowRole);
         Assert.False(vm.CanApply);
-        Assert.Null(vm.ValidationError);
+        Assert.False(vm.HasErrors);
+        Assert.Equal("Choose the users to remove in the Existing users list.", vm.ApplyBlockedReason);
         Assert.Equal("Select the users to remove in the Existing users list.", vm.Summary);
         Assert.Equal("Remove user", vm.ApplyText);
 
@@ -158,7 +162,9 @@ public sealed class UsersDialogViewModelTests
         Assert.False(vm.ShowRole);
         vm.ChangePassword = false;
         Assert.False(vm.CanApply);
+        Assert.Equal("Choose what to change: password, role or both.", vm.ChangeSelectionError); // below the check boxes
         vm.ChangeRole = true;
+        Assert.Null(vm.ChangeSelectionError);
         Assert.True(vm.ShowRole);
         Assert.True(vm.CanApply);
         var payload = UsersJson.ParsePayload(vm.BuildPayload());

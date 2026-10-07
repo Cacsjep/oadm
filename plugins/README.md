@@ -127,6 +127,7 @@ Build dialogs from the host look (HARD RULE: reuse controls, no style difference
   | `ui:ToolbarButton Text IconKey (or Icon) IsPrimary` | every toolbar button (Devices page toolbar, button rows in dialogs): `Button.toolbar` (or `Button.primary`) with an `IconLabel` |
   | `ui:ToolbarSeparator` | vertical line between toolbar groups |
   | `ui:SearchBox Text` | every search field |
+  | `ui:FormField Label Hint Error` | **every labeled form row**: label left (level with the input, also when a message appears below it), the input as content, below the input its validation error or, without an error, the `Hint` (small, secondary). Widths from the theme (`Oadm.FormLabelWidth` 180, `Oadm.FormInputWidth` 280; a narrower row shrinks the input); class `wide` lets the input fill the row, class `inline` sizes the label to its text (fields in one line, e.g. From / To). No label = the label column stays empty, so a check box or a button row lines up with the inputs. `Error` is only for content without data validation (a group of check boxes, a text value); inputs show their own error |
   | `ui:PasswordBox Text` | **every password field** (a `TextBox` with the bullet mask and an eye button to show / hide the password, tooltip "Show password" / "Hide password"); never a `TextBox` with `PasswordChar` |
   | `MessageWindow.ConfirmAsync(owner, title, message, confirmText)` / `ShowMessageAsync` | **every confirmation or message popup** (the host uses the same window); e.g. the Network dialogs confirm risky changes on Apply / Finish instead of an inline warning with a check box |
   | `ui:StatusChip Text IsOk IsWarning IsError IsAccent` | every status value (border-only chip), in grid cells with `Margin="10,0"` |
@@ -141,10 +142,52 @@ Build dialogs from the host look (HARD RULE: reuse controls, no style difference
   input, one entry per line, e.g. NTP servers), `Border.tile` (+ class
   `selected`: a picture tile), `Border.liveViewSurface` (dark picture surface), `Button.picture` (a
   clickable picture without button chrome). Form fields are
-  label left, input right like the add page editors: `Grid ColumnDefinitions="150,280"` with a
-  `TextBlock.fieldLabel`; stack rows in `StackPanel Classes="form"` (or `Grid Classes="form"`),
-  which sets the row spacing. Tables are `DataGrid`s (the theme styles them). No local colors,
-  font sizes, font weights or paddings.
+  `ui:FormField`s (never a hand-built label / input grid); stack them in `StackPanel Classes="form"`,
+  which sets the row spacing. Several inputs in one line: `StackPanel Classes="inputRow"` (top-aligned, so
+  an error below one input moves nothing else). Tables are `DataGrid`s (the theme styles them). No local
+  colors, font sizes, font weights or paddings.
+
+### Validation (HARD RULE: errors directly below the field)
+
+Every validation error appears **directly below its input** (small red text, aligned with the input's left
+edge, red input border; no space reserved while there is no error), like Vuetify. Never an error list at the
+bottom of a dialog, never a summary line under a card. Errors of table rows stay in the row (Status column);
+an error of a whole table (e.g. "Not enough addresses") directly below that table.
+
+- View models of forms derive from `Oadm.Sdk.Client.Validation.ValidatingViewModel` (an `ObservableObject`
+  with `INotifyDataErrorInfo`) and register one rule per property in the constructor:
+
+  ```csharp
+  public sealed partial class MyDialogViewModel : ValidatingViewModel
+  {
+      public MyDialogViewModel()
+      {
+          Validation
+              .Rule(nameof(UserName), () => UserName.Trim().Length == 0 ? "Enter a user name." : null)
+              .Rule(nameof(Confirm), () => Confirm != Password ? "The passwords do not match." : null);
+          Validation.Validate();
+      }
+
+      [ObservableProperty] public partial string UserName { get; set; } = "";
+      ...
+  }
+  ```
+
+  The host theme shows the error of the bound property below a `TextBox`, `ui:PasswordBox`, `NumericUpDown`
+  or `ComboBox` (Avalonia `DataValidationErrors`); `ui:FormField` hides its hint meanwhile.
+- `Validation` is a `FormValidator`: `Rule(property, () => message or null)`, `Rules(properties, () =>
+  dictionary)` for a shared validator that checks several properties at once (e.g. the server's payload
+  validator), `ShowAll(...)` when the user tries to submit, `Reset(...)` after loading or prefilling values,
+  `SetServerError(property, message)` for an answer of the server or the device that belongs to a field
+  (shown at once, cleared when the field is edited), `IsValidFor(...)` / `FirstErrorOf(...)` for a part of a
+  form (e.g. an inline editor). A view model that cannot change its base class owns a `FormValidator` and
+  forwards `INotifyDataErrorInfo` to it.
+- An error shows once the user edited the field or tried to submit, never on an untouched form. Rules always
+  run: submit buttons stay disabled while any error exists (`IsFormValid` or the command's `CanExecute` with
+  `Validation.IsValid`) and say why in their tooltip (`FormError` or `FirstErrorOf`, with
+  `ToolTip.ShowOnDisabled="True"`). Override `OnValidationChanged` to refresh commands.
+- Rows that are their own view models (e.g. command fields in a list) derive from `ValidatingViewModel`
+  too; their errors show below their inputs in the row template.
 - Icons are application resources of the client, available to plugin windows at runtime
   (`Icon="{DynamicResource Icon.key}"`; a plugin project cannot resolve them at compile time,
   so use `DynamicResource`). Available keys:

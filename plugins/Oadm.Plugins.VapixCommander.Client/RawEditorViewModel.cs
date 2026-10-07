@@ -7,6 +7,8 @@ using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using Oadm.Sdk.Client.Validation;
+
 namespace Oadm.Plugins.VapixCommander.Client;
 
 /// <summary>A key/value row of the query or header table.</summary>
@@ -36,6 +38,13 @@ public sealed partial class RawFieldViewModel : ObservableObject
 
     public bool IsPassword => Type == FieldTypes.Password;
 
+    /// <summary>The problem of this field (label, type, default), shown in its row once the request was checked.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    public partial string? Error { get; set; }
+
+    public bool HasError => Error is not null;
+
     /// <summary>"{{name}}" as used in the request.</summary>
     public string Placeholder => "{{" + Name + "}}";
 
@@ -49,8 +58,20 @@ public sealed partial class RawFieldViewModel : ObservableObject
 /// response kind. "Make field" turns a value into a {{placeholder}}; placeholders typed by hand get a field
 /// automatically. "Save as command" builds a format-v1 command (requires prefilled from the path).
 /// </summary>
-public sealed partial class RawEditorViewModel : ObservableObject
+public sealed partial class RawEditorViewModel : ValidatingViewModel
 {
+    /// <summary>Validation keys of the query and header tables and the field rows (no single input property).</summary>
+    public const string QueryRowsKey = "QueryRows";
+    public const string HeaderRowsKey = "HeaderRows";
+    public const string FieldsKey = "Fields";
+
+    /// <summary>The inputs with errors, in the order the first error is reported (button tooltips).</summary>
+    private static readonly string[] RawFields =
+    [
+        nameof(Method), nameof(Path), QueryRowsKey, HeaderRowsKey, nameof(BodyType), nameof(BodyText), nameof(TimeoutSeconds),
+        nameof(ResponseKind), FieldsKey, nameof(SaveName), nameof(SaveCategory), nameof(RequiresApi), nameof(RequiresVersion),
+    ];
+
     private static readonly Dictionary<string, (string Api, string Version, string Kind)> KnownCgis = new(StringComparer.OrdinalIgnoreCase)
     {
         ["/axis-cgi/param.cgi"] = ("param-cgi", "1.0", ResponseKinds.ParamCgi),
@@ -83,9 +104,114 @@ public sealed partial class RawEditorViewModel : ObservableObject
     {
         QueryRows.CollectionChanged += (_, e) => RowsChanged(e.NewItems);
         HeaderRows.CollectionChanged += (_, e) => RowsChanged(e.NewItems);
+        Fields.CollectionChanged += (_, e) =>
+        {
+            foreach (RawFieldViewModel field in e.NewItems ?? Array.Empty<RawFieldViewModel>())
+            {
+                field.PropertyChanged += (_, p) =>
+                {
+                    if (p.PropertyName != nameof(RawFieldViewModel.Error) && p.PropertyName != nameof(RawFieldViewModel.HasError))
+                    {
+                        Validation.Validate();
+                    }
+                };
+            }
+        };
         QueryRows.Add(new KeyValueRowViewModel { Key = "action", Value = "list" });
         QueryRows.Add(new KeyValueRowViewModel { Key = "group", Value = "Brand" });
         ApplyPathDefaults();
+        Validation.Rules(RawFields, () => MapProblems(BuildCore(IsSaveOpen).Problems));
+        Validation.Validate();
+    }
+
+    /// <summary>Error of the query table (below it).</summary>
+    public string? QueryRowsError => ErrorOf(QueryRowsKey);
+
+    /// <summary>Error of the header table (below it).</summary>
+    public string? HeaderRowsError => ErrorOf(HeaderRowsKey);
+
+    /// <summary>Why "Add to rollout" / Save are disabled (tooltip).</summary>
+    public string? BlockedReason => FormError;
+
+    /// <summary>
+    /// Send, Add to rollout or Save was tried: every problem shows below its input (or in its table / field row).
+    /// Returns true when the request is valid.
+    /// </summary>
+    public bool ShowProblems()
+    {
+        SyncFields();
+        Validation.ShowAll();
+        return Validation.IsValid;
+    }
+
+    protected override void OnValidationChanged()
+    {
+        OnPropertyChanged(nameof(QueryRowsError));
+        OnPropertyChanged(nameof(HeaderRowsError));
+        OnPropertyChanged(nameof(BlockedReason));
+        var problems = ErrorOf(FieldsKey) is null ? [] : _fieldProblems;
+        foreach (var field in Fields)
+        {
+            field.Error = problems.GetValueOrDefault(field.Name);
+        }
+
+        SaveCommand.NotifyCanExecuteChanged();
+    }
+
+    private Dictionary<string, string> _fieldProblems = new(StringComparer.Ordinal);
+
+    /// <summary>Puts every <see cref="CommandValidator"/> problem on the input it belongs to.</summary>
+    private Dictionary<string, string?> MapProblems(IReadOnlyList<string> problems)
+    {
+        var map = new Dictionary<string, string?>(StringComparer.Ordinal);
+        var fieldProblems = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var problem in problems)
+        {
+            var key = KeyOf(problem, IsSaveOpen);
+            if (key == FieldsKey && FieldNameOf(problem) is { } name)
+            {
+                fieldProblems.TryAdd(name, problem);
+            }
+
+            map.TryAdd(key, problem);
+        }
+
+        _fieldProblems = fieldProblems;
+        return map;
+    }
+
+    /// <summary>The input a validator message is about.</summary>
+    internal static string KeyOf(string problem, bool saveOpen)
+    {
+        ArgumentNullException.ThrowIfNull(problem);
+        bool Has(string text) => problem.Contains(text, StringComparison.OrdinalIgnoreCase);
+        if (Has("required API") || Has("Minimum version"))
+        {
+            // The required API is edited in the save form; for a plain request it follows the path.
+            return !saveOpen ? nameof(Path) : Has("Minimum version") ? nameof(RequiresVersion) : nameof(RequiresApi);
+        }
+
+        return problem switch
+        {
+            _ when problem.StartsWith("Name ", StringComparison.Ordinal) => nameof(SaveName),
+            _ when Has("category") => nameof(SaveCategory),
+            _ when Has("Unknown method") => nameof(Method),
+            _ when Has("query parameter") => QueryRowsKey,
+            _ when problem.StartsWith("Header ", StringComparison.Ordinal) => HeaderRowsKey,
+            _ when problem.StartsWith("Field ", StringComparison.Ordinal) || problem.StartsWith("Default of field", StringComparison.Ordinal) => FieldsKey,
+            _ when Has("body type") => nameof(BodyType),
+            _ when Has("body") => nameof(BodyText),
+            _ when Has("timeout") => nameof(TimeoutSeconds),
+            _ when Has("response") || Has("errorPattern") || Has("Extracted value") => nameof(ResponseKind),
+            _ => nameof(Path), // the path, a placeholder without field, anything else about the request
+        };
+    }
+
+    private static string? FieldNameOf(string problem)
+    {
+        var start = problem.IndexOf('"', StringComparison.Ordinal);
+        var end = start < 0 ? -1 : problem.IndexOf('"', start + 1);
+        return end > start ? problem[(start + 1)..end] : null;
     }
 
     public static IReadOnlyList<string> Methods => HttpMethods.All;
@@ -157,12 +283,6 @@ public sealed partial class RawEditorViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool Dangerous { get; set; }
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasError))]
-    public partial string? Error { get; set; }
-
-    public bool HasError => Error is not null;
 
     /// <summary>The page saves the built command (<see cref="CommanderViewModel"/> handles it).</summary>
     public event EventHandler<CommandDefinition>? SaveRequested;
@@ -239,18 +359,19 @@ public sealed partial class RawEditorViewModel : ObservableObject
     [RelayCommand]
     private void CancelSave() => IsSaveOpen = false;
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(IsFormValid))]
     private void Save()
     {
-        var (command, problems) = Build(forSave: true);
-        if (problems.Count > 0)
+        if (!ShowProblems())
         {
-            Error = string.Join(" ", problems);
-            return;
+            return; // every problem is shown below its input
         }
 
-        Error = null;
-        SaveRequested?.Invoke(this, command);
+        var (command, problems) = Build(forSave: true);
+        if (problems.Count == 0)
+        {
+            SaveRequested?.Invoke(this, command);
+        }
     }
 
     /// <summary>Called by the page after a successful save.</summary>
@@ -283,6 +404,11 @@ public sealed partial class RawEditorViewModel : ObservableObject
     public (CommandDefinition Command, IReadOnlyList<string> Problems) Build(bool forSave)
     {
         SyncFields();
+        return BuildCore(forSave);
+    }
+
+    private (CommandDefinition Command, IReadOnlyList<string> Problems) BuildCore(bool forSave)
+    {
         var problems = new List<string>();
         JsonNode? body = null;
         switch (BodyType)
@@ -332,18 +458,17 @@ public sealed partial class RawEditorViewModel : ObservableObject
             Response = new CommandResponse { Kind = ResponseKind },
         };
 
-        if (problems.Count == 0)
+        // The id is generated by the server on save; the raw request needs no name. Checked also when the body does
+        // not parse, so every input shows its own problem at once.
+        var check = command.Clone();
+        check.Id = "custom.new";
+        if (!forSave)
         {
-            // The id is generated by the server on save; the raw request needs no name.
-            var check = command.Clone();
-            check.Id = "custom.new";
-            if (!forSave)
-            {
-                check.Name = "Raw request";
-            }
-
-            problems.AddRange(CommandValidator.Validate(check));
+            check.Name = "Raw request";
         }
+
+        var bodyBroken = problems.Count > 0;
+        problems.AddRange(CommandValidator.Validate(check).Where(p => !bodyBroken || !p.Contains("body", StringComparison.OrdinalIgnoreCase)));
 
         return (command, problems);
     }
@@ -449,6 +574,7 @@ public sealed partial class RawEditorViewModel : ObservableObject
             {
                 ApplyPathDefaults();
                 SyncFields();
+                Validation.Validate();
             };
         }
     }

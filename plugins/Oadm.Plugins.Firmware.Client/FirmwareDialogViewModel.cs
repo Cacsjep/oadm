@@ -120,6 +120,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     public partial string? FileDetails { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FileRowError))]
     public partial string? FileError { get; set; }
 
     [ObservableProperty]
@@ -139,8 +140,21 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     [ObservableProperty]
     public partial string? UploadText { get; set; }
 
+    /// <summary>Why the upload of the chosen file failed (shown at the file row, like a rejected file).</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FileRowError))]
     public partial string? Error { get; set; }
+
+    /// <summary>The error at the file row: the file is rejected, or its upload failed.</summary>
+    public string? FileRowError => FileError ?? Error;
+
+    /// <summary>Why Upgrade is disabled (its tooltip); null when it is enabled or an upload runs.</summary>
+    public string? StartBlockedReason =>
+        IsUploading ? null
+        : _image is null || FilePath is null ? FileError ?? "Choose an AXIS OS .bin file."
+        : _image.IsRejected ? FileError
+        : !Devices.Any(d => d.WillInstall) ? "None of the selected devices can install this file (see Result)."
+        : null;
 
     [ObservableProperty]
     public partial string Summary { get; set; } = "Choose an AXIS OS .bin file.";
@@ -390,7 +404,10 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         }
 
         StartCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(StartBlockedReason));
     }
+
+    partial void OnIsUploadingChanged(bool value) => OnPropertyChanged(nameof(StartBlockedReason));
 }
 
 /// <summary>Ids shared with the server part (kept here so the client does not reference the server assembly).</summary>

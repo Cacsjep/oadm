@@ -320,7 +320,9 @@ public sealed class AcapDialogViewModelTests : IDisposable
         await vm.InstallCommand.ExecuteAsync(null);
 
         Assert.Equal(0, closes);
-        Assert.Contains("Upload failed: Uploads are not available yet.", vm.UploadStatus, StringComparison.Ordinal);
+        Assert.Equal("Upload failed: Uploads are not available yet.", vm.PackageError); // at the file row
+        Assert.True(vm.InstallCommand.CanExecute(null)); // the user can retry
+        Assert.Null(vm.InstallBlockedReason);
         Assert.False(vm.IsBusy);
     }
 
