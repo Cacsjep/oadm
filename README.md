@@ -10,8 +10,8 @@ The full specification lives in [CLAUDE.md](CLAUDE.md).
 If .NET 10 is installed per user, for example with `dotnet-install` into
 `%LOCALAPPDATA%\Microsoft\dotnet`, set `DOTNET_ROOT` to that folder. Without it,
 `Oadm.Client.exe` and `Oadm.Server.exe` only look in `C:\Program Files\dotnet` and show a
-"You must install .NET" dialog. The scripts set `DOTNET_ROOT` automatically, and the
-`publish-*` scripts produce self-contained builds that need no runtime at all.
+"You must install .NET" dialog. `manage.sh` / `manage.ps1` set `DOTNET_ROOT` automatically,
+and `manage publish` produces self-contained builds that need no runtime at all.
 
 ## Build and run
 
@@ -24,36 +24,54 @@ dotnet test Oadm.sln                   # unit tests, no network needed
 
 The server has no authentication yet. Run it on a trusted LAN only.
 
-## Scripts
+## Developer commands (`manage`)
 
-Every script exists as `scripts/<name>.sh` (Linux, macOS, Git Bash) and `scripts/<name>.ps1`
-(Windows PowerShell). They find a .NET 10 SDK on PATH, in `DOTNET_ROOT`, or in the per-user
-install folder, and pass extra arguments through.
-
-| Script | What it does |
-|---|---|
-| `build` | Build the whole solution |
-| `build-server` | Build the server and bundled plugins |
-| `build-client` | Build the client |
-| `run-server` | Build and run the server on `http://0.0.0.0:5080` |
-| `run-client` | Run the client. `run-client --fake` runs on sample data without a server |
-| `run-dev` | Start the server in the background, then the client; closing the client stops the server |
-| `test` | Unit tests, no camera needed (what CI runs) |
-| `test-hardware` | Hardware tests against the cameras in `dev-cameras.yaml` |
-| `publish-server` | Self-contained server plus plugins in `artifacts/publish/server/<rid>` |
-| `publish-client` | Self-contained client in `artifacts/publish/client/<rid>` |
-| `clean` | Remove `bin`, `obj` and `artifacts` |
-
-Set `CONFIGURATION=Release` for release builds and `RID=linux-x64`, `osx-arm64`, `win-x64`
-to publish for another platform.
+One entry point per shell at the repository root, with the same verbs, options, help texts
+and exit codes:
 
 ```sh
-./scripts/run-dev.sh                 # Linux / macOS / Git Bash
+./manage.sh <verb> [target] [options] [-- extra args]     # Linux, macOS, Git Bash
 ```
 
 ```powershell
-.\scripts\run-dev.ps1                # Windows PowerShell
+.\manage.ps1 <verb> [target] [options] [-- extra args]    # Windows PowerShell 5.1, PowerShell 7
 ```
+
+Every level explains itself: `manage` or `manage help` lists the verbs, `manage <verb> help`
+(or `-h`, `--help`) shows targets, options, defaults and examples. Both shells print the help
+texts from [`scripts/manage-help.txt`](scripts/manage-help.txt).
+
+| Command | What it does |
+|---|---|
+| `manage build [all\|server\|client\|plugins] [--release]` | Build the solution (default), the server plus bundled plugins, the client, or only the plugins |
+| `manage run server [--port N] [--data DIR] [--release]` | Build and run the server in the foreground (default `http://0.0.0.0:5080`) |
+| `manage run client [--fake] [--server URL] [--data DIR] [--release]` | Build and run the client; `--fake` runs on sample data without a server |
+| `manage run dev [--port N] [--data DIR] [--release]` | Server in the background (log in `artifacts/logs/server-dev.log`), then the client; closing the client stops the server |
+| `manage test [unit\|hardware\|all] [--filter EXPR] [--release]` | Unit tests (default, what CI runs), read-only hardware tests against `dev-cameras.yaml`, or both |
+| `manage publish [all\|server\|client] [--rid RID]` | Self-contained single-file apps in `artifacts/publish/<app>/<rid>`, plugins next to the server exe |
+| `manage clean` | Remove `bin`, `obj` and `artifacts` (data folders stay) |
+| `manage info` | Show the .NET SDK, `DOTNET_ROOT`, configuration and RID in use |
+
+The scripts find a .NET 10 SDK on `PATH`, in `DOTNET_ROOT`, in `~/.dotnet` or in
+`%LOCALAPPDATA%\Microsoft\dotnet`, set `DOTNET_ROOT` for the launched apps and turn off
+telemetry. `CONFIGURATION=Release` and `RID=linux-x64` (or `osx-arm64`, `win-x64`, ...) set the
+defaults that `--release` and `--rid` override. Arguments after `--` go unchanged to dotnet
+(build, test, publish) or to the app (run). PowerShell swallows a bare `--`, so write `'--'`
+(quoted) there:
+
+```sh
+./manage.sh run dev --port 5099 --data ./tmp-data
+./manage.sh test unit --filter FullyQualifiedName~Polling -- --no-build
+```
+
+```powershell
+.\manage.ps1 publish client --rid win-x64
+.\manage.ps1 build all '--' -v detailed
+```
+
+Exit codes: `0` success, `1` environment error (no .NET 10 SDK, no `dev-cameras.yaml`, server
+did not start), `2` usage error, anything else is the exit code of dotnet or the app. If the
+execution policy blocks scripts, run `powershell -ExecutionPolicy Bypass -File .\manage.ps1 ...`.
 
 ## Developer cameras (`dev-cameras.yaml`)
 
@@ -77,8 +95,8 @@ cameras:
 Hardware tests are tagged `Category=Hardware` and skip themselves when the file is missing:
 
 ```sh
-dotnet test Oadm.sln --filter Category=Hardware
-dotnet test Oadm.sln --filter Category!=Hardware   # what CI runs
+./manage.sh test hardware     # dotnet test Oadm.sln --filter Category=Hardware
+./manage.sh test unit         # dotnet test Oadm.sln --filter Category!=Hardware (what CI runs)
 ```
 
 ## Layout

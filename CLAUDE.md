@@ -30,7 +30,12 @@ Cross-platform is a day-one requirement: Windows, Linux, macOS. No Windows-only 
 
 Server and client publish as one self-contained single-file exe per platform
 (`PublishSingleFile`, `IncludeNativeLibrariesForSelfExtract`, `PublishReadyToRun`), see
-`scripts/publish-*`. Plugins ship next to the exe in `plugins/<name>/`.
+`manage publish`. Plugins ship next to the exe in `plugins/<name>/`.
+
+Developer commands: one entry point per shell at the repo root, `./manage.sh` (bash) and
+`.\manage.ps1` (PowerShell 5.1/7), verb + target (`build`, `run`, `test`, `publish`, `clean`,
+`info`), `manage <verb> help` at every level. Both read their help texts from
+`scripts/manage-help.txt`; any new verb, target or option goes into both scripts and that file.
 Native AOT and trimming are deliberately NOT used for the host apps: AOT cannot load managed
 plugin assemblies at runtime and trimming removes framework APIs plugins rely on. Small
 helper tools without plugin loading may use Native AOT.
@@ -595,7 +600,7 @@ breaking it:
 4. **Secrets.** Payloads are kept in memory only, never persisted, never logged.
 5. **Read-only queries.** `ITaskPluginQuery` is read-only by contract.
 6. **Hardware tests** for write operations are opt-in only (`Category=HardwareWrite`, never in
-   `test-hardware`), and never run against a device without the developer explicitly asking.
+   `manage test hardware` or `manage test all`), and never run against a device without the developer explicitly asking.
 
 Shared SDK pieces for this: `DeviceApi` + `DeviceApiExtensions.Supports/Require`,
 `IVapixClient.GetApiListAsync`, `IDeviceInfo.Apis`, `ITaskPluginQuery` (dialog reads current
