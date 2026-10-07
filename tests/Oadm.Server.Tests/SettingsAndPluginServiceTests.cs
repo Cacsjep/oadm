@@ -110,8 +110,36 @@ public sealed class SettingsAndPluginServiceTests
         Assert.Equal(StatusCode.Internal, failing.StatusCode);
     }
 
+    [Fact]
+    public async Task CorePluginEventsAreStreamedToWatchers()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        host.Get<PluginRegistry>().RegisterCorePlugin(new EchoCorePlugin(), new PluginOrigin("tests", "1.0.0", null));
+        await host.Get<CorePluginHost>().StartAllAsync(CancellationToken.None);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var call = host.Plugins.Watch(new Proto.WatchPluginRequest { PluginId = "test.echo" }, cancellationToken: cts.Token);
+        var hub = host.Get<CorePluginHost>().Events;
+        for (var i = 0; i < 500 && hub.WatcherCount("test.echo") == 0; i++)
+        {
+            await Task.Delay(10);
+        }
+
+        await host.Plugins.InvokeAsync(new Proto.InvokeRequest { PluginId = "test.echo", Method = "publish", PayloadJson = "{\"n\":1}" });
+        Assert.True(await call.ResponseStream.MoveNext(cts.Token));
+        Assert.Equal("test.echo", call.ResponseStream.Current.PluginId);
+        Assert.Equal("echo", call.ResponseStream.Current.Topic);
+        Assert.Equal("{\"n\":1}", call.ResponseStream.Current.PayloadJson);
+
+        using var unknown = host.Plugins.Watch(new Proto.WatchPluginRequest { PluginId = "nope" }, cancellationToken: cts.Token);
+        var ex = await Assert.ThrowsAsync<RpcException>(() => unknown.ResponseStream.MoveNext(cts.Token));
+        Assert.Equal(StatusCode.NotFound, ex.StatusCode);
+    }
+
     private sealed class EchoCorePlugin : ICorePlugin
     {
+        private IPluginEvents? _events;
+
         public string Id => "test.echo";
 
         public string DisplayName => "Echo";
@@ -120,13 +148,24 @@ public sealed class SettingsAndPluginServiceTests
 
         public IReadOnlyList<ITaskPlugin> TaskPlugins { get; } = [new EchoTask()];
 
-        public async Task StartAsync(ICorePluginContext ctx, CancellationToken ct) =>
+        public async Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
+        {
+            _events = ctx.Events;
             await ctx.Settings.SetAsync("started", "\"v\"", ct);
+        }
 
         public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
 
-        public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
-            method == "fail" ? throw new NotSupportedException("boom") : Task.FromResult(payloadJson);
+        public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
+        {
+            if (method == "publish")
+            {
+                _events!.Publish("echo", payloadJson);
+                return Task.FromResult<string?>(null);
+            }
+
+            return method == "fail" ? throw new NotSupportedException("boom") : Task.FromResult(payloadJson);
+        }
     }
 
     private sealed class EchoTask : ITaskPlugin

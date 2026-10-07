@@ -284,7 +284,8 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
 - `InvokeAsync` is the page backend (gRPC `PluginService.Invoke`): route by method name, JSON in and out.
   Throw `ArgumentException` for bad input (INVALID_ARGUMENT), `KeyNotFoundException` for an unknown object
   (NOT_FOUND), `InvalidOperationException` for a wrong state (FAILED_PRECONDITION); the message reaches
-  the page. Keep replies below the client's 32 MB message limit: hand out large results in chunks (see
+  the page. Live updates go the other way through `ctx.Events` (see "Host support for service plugins" below).
+  Keep replies below the client's 32 MB message limit: hand out large results in chunks (see
   `readReport`) and run long work as a background job the page polls (see `generateReport` /
   `reportStatus`).
 - More context: `ctx.PluginDirectory` (the plugin folder, for data files such as the VAPIX Commander
@@ -307,6 +308,32 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
   `oadm.vapix-commander`, spec in `CLAUDE.md` "VAPIX Commander"): command library from data files, saved
   commands with encrypted secrets, a three-card page and rollouts as a hidden contributed task plugin
   with one named step per command.
+- Third sample: the NTP server (`plugins/Oadm.Plugins.NtpServer` + `.Client`, id `oadm.ntp-server`, spec in
+  `CLAUDE.md` "NTP server plugin" and `docs/specs/ntp-server.md`): a network service in a core plugin (UDP responder,
+  background upstream loop), persisted settings, live request log on the page, a contributed task that configures
+  devices. The DHCP server plugin follows the same pattern.
+
+### Host support for service plugins (NTP, DHCP, ...)
+
+- **Persisted settings**: `ctx.Settings.GetAsync/SetAsync(key, json)` (namespaced per plugin, server database). Store
+  one JSON document (the NTP server uses key `config`: enabled, interface, upstream) on Save and read it in `StartAsync`,
+  so the service comes back after a server restart. Never block `StartAsync` on the network: start background loops.
+- **Live events to the page**: `ctx.Events?.Publish(topic, payloadJson)` (SDK `IPluginEvents`, null on hosts without
+  it). Fire and forget, never blocks: every watching page has its own queue of 256 events (oldest dropped). Batch
+  high-rate sources (the NTP request log publishes the new entries at most every 500 ms) and keep payloads small (max
+  1 M characters). On the page: `await foreach (var e in ctx.WatchEventsAsync(ct))` (gRPC `PluginService.Watch`) while
+  the view is attached; the sequence ends or throws when the connection drops and is empty on older hosts and in fake
+  mode, so always: subscribe, read the full state with `InvokeAsync`, apply events (deduplicate by a sequence number),
+  and after the sequence ended wait ~2 s, re-read and watch again (this doubles as polling). Pattern:
+  `NtpServerViewModel.RunAsync`.
+- **Server network interfaces**: `Oadm.Sdk.Network.SystemNetworkInterfaces.Instance.List()` returns
+  `ServerNetworkInterface` (id, name, description, addresses IPv4 first, up, loopback; `PrimaryAddress`) on Windows,
+  Linux and macOS. Depend on `IServerNetworkInterfaces` so tests inject fixed interfaces; return the list from a page
+  method (it lives on the server, the client machine has other interfaces).
+- **Privileged ports**: make the port injectable (tests bind 0 on 127.0.0.1, never the real port) and map bind errors
+  per OS: Windows has no privileged ports (AccessDenied = another program holds the port exclusively), Linux needs root
+  or `cap_net_bind_service`, macOS root for a single address. See `NtpStatusTexts.ForBindError`.
+
 - Build pages like dialogs: shared controls (`ui:ToolbarButton`, `ui:SearchBox`, `ui:ProgressRow`,
   `ui:StatusChip`, ...), theme classes only, view models without Avalonia platform calls (decode images
   and open windows through a small interface the view implements, so the view model is testable).

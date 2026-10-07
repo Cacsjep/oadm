@@ -202,6 +202,9 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         return string.IsNullOrEmpty(reply.PayloadJson) ? null : reply.PayloadJson;
     }
 
+    public IAsyncEnumerable<PluginEvent> WatchCorePluginAsync(string pluginId, CancellationToken ct) =>
+        ReadAll(C.Plugins.Watch(new WatchPluginRequest { PluginId = pluginId }, cancellationToken: ct), ct);
+
     private static DeviceIds ToIds(IEnumerable<string> ids)
     {
         var message = new DeviceIds();

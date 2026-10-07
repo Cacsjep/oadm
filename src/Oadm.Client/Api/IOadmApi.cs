@@ -81,4 +81,7 @@ public interface IOadmApi
     // PluginService
     Task<IReadOnlyList<CorePluginInfo>> ListCorePluginsAsync(CancellationToken ct);
     Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct);
+
+    /// <summary>Live events of a core plugin (PluginService.Watch) until cancelled. Default: none (the page polls).</summary>
+    IAsyncEnumerable<PluginEvent> WatchCorePluginAsync(string pluginId, CancellationToken ct) => AsyncEnumerable.Empty<PluginEvent>();
 }
