@@ -15,9 +15,7 @@
   <!-- One card (the host's page card): settings form, then the lease list. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,*">
     <StackPanel Grid.Row="0" Classes="form">
-      <ui:FormField>
-        <CheckBox Content="Enable DHCP server" IsChecked="{Binding IsEnabled}" />
-      </ui:FormField>
+      <CheckBox Content="Enable DHCP server" IsChecked="{Binding IsEnabled}" />
 
       <ui:FormField Label="Listen on" InputWidth="460" Error="{Binding InterfaceError}">
         <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Listen.Items}" SelectedItem="{Binding Listen.Selected}"
@@ -30,14 +28,12 @@
         </ComboBox>
       </ui:FormField>
 
-      <StackPanel Classes="inputRow">
-        <ui:FormField Label="Start address" InputWidth="180">
-          <TextBox Text="{Binding RangeStart}" PlaceholderText="e.g. 10.0.0.100" />
-        </ui:FormField>
-        <ui:FormField Classes="inline" Label="End address" InputWidth="180">
-          <TextBox Text="{Binding RangeEnd}" PlaceholderText="e.g. 10.0.0.199" />
-        </ui:FormField>
-      </StackPanel>
+      <ui:FormField Label="Start address">
+        <TextBox Text="{Binding RangeStart}" PlaceholderText="e.g. 10.0.0.100" />
+      </ui:FormField>
+      <ui:FormField Label="End address">
+        <TextBox Text="{Binding RangeEnd}" PlaceholderText="e.g. 10.0.0.199" />
+      </ui:FormField>
 
       <ui:FormField Classes="wide">
         <TextBlock Classes="secondary" Text="{Binding ClientsGetText}" IsVisible="{Binding ClientsGetText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"

@@ -17,9 +17,9 @@
     <StackPanel Grid.Row="1" Classes="form">
       <CheckBox Content="Enable NTP server" IsChecked="{Binding IsEnabled}" />
 
-      <Grid ColumnDefinitions="150,420">
-        <TextBlock Classes="fieldLabel" Text="Listen on" />
-        <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding Listen.Items}" SelectedItem="{Binding Listen.Selected}"
+      <!-- Same shared form rows and widths as the DHCP server page. -->
+      <ui:FormField Label="Listen on" InputWidth="460">
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Listen.Items}" SelectedItem="{Binding Listen.Selected}"
                   ToolTip.Tip="The interface the cameras reach this server on. All interfaces listens on every address.">
           <ComboBox.ItemTemplate>
             <DataTemplate x:DataType="net:InterfaceOption">
@@ -27,27 +27,25 @@
             </DataTemplate>
           </ComboBox.ItemTemplate>
         </ComboBox>
-      </Grid>
+      </ui:FormField>
 
-      <Grid ColumnDefinitions="150,420" RowDefinitions="Auto,Auto">
-        <TextBlock Classes="fieldLabel" Text="Upstream server" />
-        <TextBox Grid.Column="1" Text="{Binding Upstream}" PlaceholderText="Optional, e.g. pool.ntp.org"
-                 ToolTip.Tip="Optional. Empty: the server clock is served (stratum 10). With an upstream the server serves its stratum + 1." />
-        <Panel Grid.Row="1" Grid.Column="1">
+      <ui:FormField Label="Upstream server" InputWidth="460">
+        <StackPanel>
+          <TextBox Text="{Binding Upstream}" PlaceholderText="Optional, e.g. pool.ntp.org"
+                   ToolTip.Tip="Optional. Empty: the cameras get this computer's time. With an upstream server, this computer follows it." />
           <ui:StatusChip Text="{Binding CheckingText}" IsAccent="True" IsVisible="{Binding IsCheckingUpstream}" Margin="0,6,0,0" />
           <ui:StatusChip Text="{Binding UpstreamResult}" IsOk="True" IsVisible="{Binding HasUpstreamResult}" Margin="0,6,0,0" />
-        </Panel>
-      </Grid>
+        </StackPanel>
+      </ui:FormField>
 
-      <Grid ColumnDefinitions="150,420">
-        <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding UpstreamInfoText}" IsVisible="{Binding HasUpstreamInfo}"
-                   TextWrapping="Wrap" VerticalAlignment="Center" />
-      </Grid>
+      <ui:FormField Classes="wide">
+        <TextBlock Classes="secondary" Text="{Binding UpstreamInfoText}" IsVisible="{Binding HasUpstreamInfo}" TextWrapping="Wrap" />
+      </ui:FormField>
 
-      <Grid ColumnDefinitions="150,420">
-        <Button Grid.Column="1" Classes="primary" HorizontalAlignment="Right" Content="Save" Command="{Binding SaveCommand}"
+      <ui:FormField InputWidth="460">
+        <Button Classes="primary" HorizontalAlignment="Right" Content="Save" Command="{Binding SaveCommand}"
                 ToolTip.Tip="Check the upstream server, store the settings and apply them" />
-      </Grid>
+      </ui:FormField>
     </StackPanel>
 
     <TextBlock Grid.Row="2" Classes="sectionTitle" Text="Last requests" Margin="{DynamicResource Oadm.GapTop}" />
