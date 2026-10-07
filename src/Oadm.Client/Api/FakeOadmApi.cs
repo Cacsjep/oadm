@@ -39,6 +39,7 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         FullRefreshMinutes = 10,
         ScanParallelism = 32,
         ScanTimeoutMs = 1500,
+        ZeroConfSeconds = 30,
         ServerName = "acs",
         ListenUrl = "http://0.0.0.0:5080",
         UseHostName = false,
@@ -52,8 +53,8 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         _tick = tick ?? TimeSpan.FromMilliseconds(250);
         _pluginTemplates =
         [
-            new TaskPluginInfo { Id = RestartPluginId, DisplayName = "Restart", IconKey = "restart", ShowInToolbar = true },
-            new TaskPluginInfo { Id = IdentifyPluginId, DisplayName = "Identify (flash LED)", IconKey = "identify" },
+            new TaskPluginInfo { Id = RestartPluginId, DisplayName = "Restart", IconKey = "restart", ShowInToolbar = true, Group = "Maintenance" },
+            new TaskPluginInfo { Id = IdentifyPluginId, DisplayName = "Identify (flash LED)", IconKey = "identify", Group = "General" },
         ];
         if (seedSampleData)
         {
@@ -110,6 +111,13 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
     {
         _cts.Cancel();
         _cts.Dispose();
+        lock (_gate)
+        {
+            foreach (FakeSession session in _sessions.Values)
+            {
+                session.Dispose();
+            }
+        }
     }
 
     // ---------------------------------------------------------------- devices
@@ -262,6 +270,24 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
                 ?? throw new RpcException(new Status(StatusCode.NotFound, "unknown discovery session"));
         }
 
+        if (session.Finished)
+        {
+            // Like the server: a finished session replays its devices (with their current login result) and ends.
+            List<DiscoveredDevice> known;
+            lock (_gate)
+            {
+                known = session.Found.Values.Select(d => d.Clone()).ToList();
+            }
+
+            foreach (DiscoveredDevice device in known)
+            {
+                yield return device;
+            }
+
+            yield return new DiscoveredDevice { ScanFinished = true, ProgressPercent = 100 };
+            yield break;
+        }
+
         List<(DiscoveredDevice Found, DiscoveredDevice Auth)> candidates = BuildDiscoveryCandidates(session);
         if (session.Kind == FakeSessionKind.Scan)
         {
@@ -277,16 +303,42 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
                 yield return Remember(session, auth);
             }
 
-            // mDNS keeps browsing while the add page is open
-            await Task.Delay(Timeout.Infinite, ct);
+            // mDNS browses until the zero-conf time limit or Stop; later login results (a retry on another
+            // device) still arrive meanwhile.
+            session.ScanEnd.CancelAfter(ZeroConfDuration ?? TimeSpan.FromSeconds(Math.Max(1, _settings.ZeroConfSeconds)));
+            using var browsing = CancellationTokenSource.CreateLinkedTokenSource(ct, session.ScanEnd.Token);
+            while (true)
+            {
+                DiscoveredDevice? update = null;
+                try
+                {
+                    update = await session.Updates.Reader.ReadAsync(browsing.Token);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    // time limit or Stop
+                }
+
+                if (update is null)
+                {
+                    break;
+                }
+
+                yield return update;
+            }
+
+            session.Finished = true;
+            yield return new DiscoveredDevice { ScanFinished = true, ProgressPercent = 100 };
         }
         else
         {
             const int steps = 10;
-            for (int step = 1; step <= steps; step++)
+            int reached = 0;
+            for (int step = 1; step <= steps && !session.ScanEnd.IsCancellationRequested; step++)
             {
                 await Task.Delay(_tick, ct);
                 int percent = step * 100 / steps;
+                reached = percent;
                 foreach ((DiscoveredDevice found, _) in candidates.Where((_, i) => (i * steps / Math.Max(1, candidates.Count)) + 1 == step))
                 {
                     found.ProgressPercent = percent;
@@ -296,14 +348,19 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
                 yield return new DiscoveredDevice { ProgressPercent = percent };
             }
 
-            yield return new DiscoveredDevice { ScanFinished = true, ProgressPercent = 100 };
-            foreach ((_, DiscoveredDevice auth) in candidates)
+            yield return new DiscoveredDevice { ScanFinished = true, ProgressPercent = reached };
+            foreach ((_, DiscoveredDevice auth) in candidates.Where(c => session.Found.ContainsKey(c.Auth.DiscoveredId)))
             {
                 await Task.Delay(_tick, ct);
                 yield return Remember(session, auth);
             }
+
+            session.Finished = true;
         }
     }
+
+    /// <summary>Zero-conf time limit of the fake; null = the Discovery.ZeroConfSeconds setting.</summary>
+    public TimeSpan? ZeroConfDuration { get; set; }
 
     public Task StopDiscoveryAsync(string sessionId, CancellationToken ct)
     {
@@ -312,6 +369,21 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
             if (_sessions.TryGetValue(sessionId, out FakeSession? session))
             {
                 session.Stopped = true;
+                session.ScanEnd.Cancel();
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task StopScanAsync(string sessionId, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            if (_sessions.TryGetValue(sessionId, out FakeSession? session))
+            {
+                session.ScanEnd.Cancel();
             }
         }
 
@@ -358,6 +430,22 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
                 {
                     CredentialEntry entry = AddCredentialLocked(user);
                     result.CredentialId = "list:" + entry.Id;
+                }
+
+                // Like the server: the working credential is tried on every other device of the page whose login failed.
+                foreach (FakeSession other in request.RelatedSessionIds.Append(request.SessionId).Distinct()
+                    .Select(id => _sessions.GetValueOrDefault(id)).OfType<FakeSession>())
+                {
+                    foreach (DiscoveredDevice failed in other.Found.Values.Where(d => d.AuthState == AuthState.LoginFailed && d.DiscoveredId != result.DiscoveredId).ToList())
+                    {
+                        DiscoveredDevice updated = failed.Clone();
+                        updated.AuthState = AuthState.Authenticated;
+                        updated.AuthUserName = user;
+                        updated.AuthDetail = "";
+                        updated.CredentialId = result.CredentialId;
+                        other.Found[updated.DiscoveredId] = updated;
+                        other.Updates.Writer.TryWrite(updated.Clone());
+                    }
                 }
             }
             else
@@ -992,6 +1080,8 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         list.Add(Discovered("B8A44F6610AB", "10.0.0.96", "AXIS M3088-V", DeviceStatus.CredentialsRequired, AuthState.Authenticated, user: "operator"));
         list.Add(Discovered("ACCC8E8192A3", "10.0.0.93", "AXIS C1310-E Mk II", DeviceStatus.CredentialsRequired, AuthState.LoginFailed,
             detail: "None of the 2 known credentials worked."));
+        list.Add(Discovered("B8A44F5A6B7C", "10.0.0.97", "AXIS P1468-LE", DeviceStatus.CredentialsRequired, AuthState.LoginFailed,
+            detail: "None of the 2 known credentials worked."));
         list.Add(Discovered("B8A44F7788AA", "10.0.0.90", "AXIS M3215-LVE", DeviceStatus.PasswordNotSet, AuthState.PasswordNotSet, policy: "none"));
         list.Add(Discovered("B8A44F99CC01", "10.0.0.91", "AXIS P3268-LV", DeviceStatus.PasswordNotSet, AuthState.PasswordNotSet, policy: "complex"));
         list.Add(Discovered("ACCC8E2B3C4D", "10.0.0.95", "", DeviceStatus.Unreachable, AuthState.Unreachable,
@@ -1435,8 +1525,19 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         Manual,
     }
 
-    private sealed class FakeSession(string id, FakeSessionKind kind, IPAddress? from, IPAddress? to, string? entered)
+    private sealed class FakeSession(string id, FakeSessionKind kind, IPAddress? from, IPAddress? to, string? entered) : IDisposable
     {
+        /// <summary>Cancelled by StopScan, Stop or the zero-conf time limit.</summary>
+        public CancellationTokenSource ScanEnd { get; } = new();
+
+        /// <summary>The scan ended; a new watch replays <see cref="Found"/>.</summary>
+        public bool Finished { get; set; }
+
+        /// <summary>Login results pushed while the zero-conf watch is open (follow-up logins after a retry).</summary>
+        public Channel<DiscoveredDevice> Updates { get; } = Channel.CreateUnbounded<DiscoveredDevice>();
+
+        public void Dispose() => ScanEnd.Dispose();
+
         public string Id { get; } = id;
         public FakeSessionKind Kind { get; } = kind;
         public IPAddress? From { get; } = from;

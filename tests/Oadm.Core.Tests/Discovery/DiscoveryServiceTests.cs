@@ -1,5 +1,7 @@
 using System.Net;
 
+using Microsoft.Extensions.Time.Testing;
+
 using Oadm.Core.Discovery;
 
 namespace Oadm.Core.Tests.Discovery;
@@ -127,6 +129,77 @@ public class DiscoveryServiceTests
         Assert.Empty(await watch.WaitAsync(TestTimeout));
         Assert.Empty(service.Sessions);
         await service.StopAsync(session.Id); // idempotent
+    }
+
+    [Fact]
+    public async Task ZeroConfWithDurationFinishesAfterTheTimeLimitAndKeepsItsDevices()
+    {
+        var browser = new FakeMdnsBrowser();
+        var probe = new FakeProbe(new Dictionary<string, DeviceProbeResult> { ["10.0.0.48"] = FakeProbe.Device("10.0.0.48", "B8A44F631339", "P3265-V") });
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        await using var service = new DiscoveryService(browser, new RangeScanner(probe), probe, timeProvider: time);
+        var session = service.StartZeroConf(duration: TimeSpan.FromSeconds(30));
+        var watch = Collect(service, session.Id);
+
+        browser.Announce("10.0.0.48", "B8A44F631339");
+        await WaitForAsync(service, session.Id, d => d.Model is not null);
+        time.Advance(TimeSpan.FromSeconds(29));
+        Assert.False(watch.IsCompleted);
+
+        time.Advance(TimeSpan.FromSeconds(1));
+        var events = await watch.WaitAsync(TestTimeout);
+
+        Assert.True(events[^1].Finished);
+        Assert.Equal(100, events[^1].ProgressPercent);
+        Assert.Single(events, e => e.Finished);
+        Assert.Contains(events, e => e.Device?.Model == "P3265-V");
+        Assert.Single(service.GetDevices(session.Id)); // the session stays until Stop
+        var replay = await Collect(service, session.Id);
+        Assert.True(replay[^1].Finished);
+
+        browser.Announce("10.0.0.49", "B8A44F631340"); // browsing has ended
+        await Task.Delay(50);
+        Assert.Single(service.GetDevices(session.Id));
+        Assert.Throws<ArgumentOutOfRangeException>(() => service.StartZeroConf(duration: TimeSpan.Zero));
+    }
+
+    [Fact]
+    public async Task StopScanEndsZeroConfWithAFinishedEvent()
+    {
+        var browser = new FakeMdnsBrowser();
+        var probe = new FakeProbe(new Dictionary<string, DeviceProbeResult> { ["10.0.0.48"] = FakeProbe.Device("10.0.0.48", "B8A44F631339") });
+        await using var service = new DiscoveryService(browser, new RangeScanner(probe), probe);
+        var session = service.StartZeroConf(); // no time limit
+        browser.Announce("10.0.0.48", "B8A44F631339");
+        await WaitForAsync(service, session.Id, d => d.Status != DiscoveredDeviceStatus.Unknown);
+        var watch = Collect(service, session.Id);
+
+        service.StopScan(session.Id);
+
+        var events = await watch.WaitAsync(TestTimeout);
+        Assert.True(events[^1].Finished);
+        Assert.Single(service.GetDevices(session.Id));
+        service.StopScan(session.Id); // finished: ignored
+        service.StopScan("unknown");
+        await service.StopAsync(session.Id);
+        Assert.Empty(service.Sessions);
+    }
+
+    [Fact]
+    public async Task StopScanEndsARangeScanWithTheAddressesProbedSoFar()
+    {
+        var probe = new FakeProbe(new Dictionary<string, DeviceProbeResult> { ["10.0.0.1"] = FakeProbe.Device("10.0.0.1", "B8A44F000001") }, delay: TimeSpan.FromMilliseconds(200));
+        await using var service = new DiscoveryService(new FakeMdnsBrowser(), new RangeScanner(probe), probe);
+        var session = service.StartRangeScan(IPAddress.Parse("10.0.0.1"), IPAddress.Parse("10.0.3.254"), new RangeScanOptions { Parallelism = 4 });
+        var watch = Collect(service, session.Id);
+        await Task.Delay(500);
+
+        service.StopScan(session.Id);
+
+        var events = await watch.WaitAsync(TestTimeout);
+        Assert.True(events[^1].Finished);
+        Assert.True(events[^1].ProgressPercent < 100);
+        Assert.Single(service.GetDevices(session.Id));
     }
 
     [Fact]

@@ -24,6 +24,9 @@ message ServerSettings {
   // Devices.UseHostName: add devices by host name when known, else by IP. Default false.
   // optional so a partial Set without it keeps the stored value.
   optional bool use_host_name = 7;
+  // Discovery.ZeroConfSeconds: a zero-conf scan of the add page ends after this many seconds. Default 30,
+  // 5..300; 0 in a Set keeps the stored value.
+  int32 zero_conf_seconds = 8;
 }
 
 message CredentialEntry {

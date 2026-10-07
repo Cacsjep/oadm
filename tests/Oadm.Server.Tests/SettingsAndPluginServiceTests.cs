@@ -33,6 +33,7 @@ public sealed class SettingsAndPluginServiceTests
         Assert.Equal(32, defaults.ScanParallelism);
         Assert.Equal(1500, defaults.ScanTimeoutMs);
         Assert.Equal("http://0.0.0.0:5080", defaults.ListenUrl);
+        Assert.Equal(30, defaults.ZeroConfSeconds);
         Assert.False(string.IsNullOrEmpty(defaults.ServerName));
 
         var saved = await host.Settings.SetAsync(new Proto.ServerSettings
@@ -42,6 +43,7 @@ public sealed class SettingsAndPluginServiceTests
             ScanTimeoutMs = 2000,
             ServerName = "oadm-lab",
             ListenUrl = "http://0.0.0.0:6000",
+            ZeroConfSeconds = 45,
         });
         Assert.Equal(30, saved.PollingIntervalSeconds);
 
@@ -55,6 +57,7 @@ public sealed class SettingsAndPluginServiceTests
         Assert.Equal(2000, reloaded.ScanTimeoutMs);
         Assert.Equal("renamed", reloaded.ServerName);
         Assert.Equal("http://0.0.0.0:6000", reloaded.ListenUrl);
+        Assert.Equal(45, reloaded.ZeroConfSeconds); // kept by the partial update
     }
 
     [Fact]
@@ -67,6 +70,13 @@ public sealed class SettingsAndPluginServiceTests
 
         ex = await Assert.ThrowsAsync<RpcException>(() => host.Settings.SetAsync(new Proto.ServerSettings { ListenUrl = "ftp://x" }).ResponseAsync);
         Assert.Equal(StatusCode.InvalidArgument, ex.StatusCode);
+
+        foreach (var seconds in new[] { 4, 301 })
+        {
+            ex = await Assert.ThrowsAsync<RpcException>(() => host.Settings.SetAsync(new Proto.ServerSettings { ZeroConfSeconds = seconds }).ResponseAsync);
+            Assert.Equal(StatusCode.InvalidArgument, ex.StatusCode);
+        }
+
         Assert.Equal(60, (await host.Settings.GetAsync(new Proto.Empty())).PollingIntervalSeconds);
     }
 

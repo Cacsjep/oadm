@@ -128,7 +128,7 @@ public sealed class TaskActionsToolbarPlugin : IToolbarPlugin
             buttons.Clear();
             foreach (ToolbarTaskPlugin plugin in ctx.TaskPlugins.Where(p => p.ShowInToolbar))
             {
-                var button = new ToolbarButton { Text = plugin.DisplayName, IconKey = plugin.IconKey ?? "plugin", Name = "task:" + plugin.Id };
+                var button = new ToolbarButton { Text = Oadm.Sdk.Plugins.TaskPluginNames.Normalize(plugin.DisplayName), IconKey = plugin.IconKey ?? "plugin", Name = "task:" + plugin.Id };
                 string id = plugin.Id;
                 button.Click += async (_, _) => await ctx.RunTaskAsync(id, CancellationToken.None).ConfigureAwait(true);
                 buttons[plugin.Id] = button;

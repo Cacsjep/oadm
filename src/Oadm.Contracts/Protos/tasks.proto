@@ -28,6 +28,7 @@ message TaskPluginInfo {
   bool requires_dialog = 5;
   string owner_core_plugin_id = 6;          // set when contributed by a core plugin
   repeated string runnable_device_ids = 7;  // devices for which CanRun is true
+  string group = 8;                         // context menu submenu (TaskGroups), never empty
 }
 message TaskPluginList { repeated TaskPluginInfo plugins = 1; }
 

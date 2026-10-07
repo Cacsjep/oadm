@@ -68,4 +68,8 @@ message RetryAuthRequest {
   string user_name = 3;
   string password = 4;
   bool save_to_credential_list = 5;  // on success the credential is added to the encrypted credential list
+  // Other discovery sessions of the same add page. On success the server also tries the credential on
+  // every device of this session and of these sessions whose login failed (max attempts per device,
+  // one login at a time per device) and pushes the results to WatchDiscovered.
+  repeated string related_session_ids = 6;
 }

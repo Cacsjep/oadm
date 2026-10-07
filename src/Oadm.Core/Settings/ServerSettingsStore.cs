@@ -71,7 +71,8 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             Read(rows, SettingKeys.ServerName, defaults.ServerName),
             Read(rows, SettingKeys.ListenUrl, defaults.ListenUrl),
             Read(rows, SettingKeys.PollingFullRefreshMinutes, defaults.FullRefreshMinutes),
-            Read(rows, SettingKeys.DevicesUseHostName, defaults.UseHostName));
+            Read(rows, SettingKeys.DevicesUseHostName, defaults.UseHostName),
+            Read(rows, SettingKeys.DiscoveryZeroConfSeconds, defaults.ZeroConfSeconds));
     }
 
     /// <summary>Validates and writes all Goal 1 settings in one transaction.</summary>
@@ -87,6 +88,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.ListenUrl] = JsonSerializer.Serialize(settings.ListenUrl),
             [SettingKeys.PollingFullRefreshMinutes] = JsonSerializer.Serialize(settings.FullRefreshMinutes),
             [SettingKeys.DevicesUseHostName] = JsonSerializer.Serialize(settings.UseHostName),
+            [SettingKeys.DiscoveryZeroConfSeconds] = JsonSerializer.Serialize(settings.ZeroConfSeconds),
         };
         foreach (var (key, json) in values)
         {
@@ -162,6 +164,9 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             case SettingKeys.ScanTimeoutMs:
                 RequireInt(key, value, 100, 60_000);
                 break;
+            case SettingKeys.DiscoveryZeroConfSeconds:
+                RequireInt(key, value, ServerSettings.MinZeroConfSeconds, ServerSettings.MaxZeroConfSeconds);
+                break;
             case SettingKeys.ServerName:
                 if (value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(value.GetString()))
                 {
@@ -212,6 +217,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.UploadsMaxMegabytes] = JsonSerializer.Serialize(ServerSettings.DefaultUploadsMaxMegabytes),
             [SettingKeys.UploadsRetentionHours] = JsonSerializer.Serialize(ServerSettings.DefaultUploadsRetentionHours),
             [SettingKeys.DevicesUseHostName] = JsonSerializer.Serialize(d.UseHostName),
+            [SettingKeys.DiscoveryZeroConfSeconds] = JsonSerializer.Serialize(d.ZeroConfSeconds),
         };
     }
 }

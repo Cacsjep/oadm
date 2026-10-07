@@ -287,7 +287,8 @@ public static class Mappers
         var proto = new Proto.TaskPluginInfo
         {
             Id = plugin.Id,
-            DisplayName = plugin.Plugin.DisplayName,
+            DisplayName = plugin.DisplayName,
+            Group = plugin.Group,
             IconKey = plugin.Plugin.IconKey ?? string.Empty,
             ShowInToolbar = plugin.Plugin.ShowInToolbar,
             RequiresDialog = plugin.Plugin.RequiresDialog,
@@ -320,6 +321,7 @@ public static class Mappers
             ListenUrl = settings.ListenUrl,
             FullRefreshMinutes = settings.FullRefreshMinutes,
             UseHostName = settings.UseHostName,
+            ZeroConfSeconds = settings.ZeroConfSeconds,
         };
     }
 
@@ -335,7 +337,8 @@ public static class Mappers
             string.IsNullOrWhiteSpace(proto.ServerName) ? current.ServerName : proto.ServerName.Trim(),
             string.IsNullOrWhiteSpace(proto.ListenUrl) ? current.ListenUrl : proto.ListenUrl.Trim(),
             proto.FullRefreshMinutes == 0 ? current.FullRefreshMinutes : proto.FullRefreshMinutes,
-            proto.HasUseHostName ? proto.UseHostName : current.UseHostName);
+            proto.HasUseHostName ? proto.UseHostName : current.UseHostName,
+            proto.ZeroConfSeconds == 0 ? current.ZeroConfSeconds : proto.ZeroConfSeconds);
     }
 
     public static Proto.DeviceStatus ToProto(DiscoveredDeviceStatus status) => status switch

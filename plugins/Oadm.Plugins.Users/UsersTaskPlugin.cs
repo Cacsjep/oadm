@@ -20,7 +20,9 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
     public string Id => PluginId;
 
-    public string DisplayName => "Users...";
+    public string DisplayName => "Users";
+
+    public string Group => TaskGroups.Users;
 
     public string? IconKey => "users";
 

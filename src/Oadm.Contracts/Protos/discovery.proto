@@ -11,6 +11,11 @@ service DiscoveryService {
   // stream ends once every login attempt of the session finished.
   rpc WatchDiscovered (DiscoverySession) returns (stream DiscoveredDevice);
   rpc Stop (DiscoverySession) returns (Empty);
+  // Ends the scan of a session early (Stop button of the add page). Watchers get scan_finished; the
+  // devices found and their login results stay, so RetryAuth, Commit and a new WatchDiscovered still
+  // work until Stop. Zero-conf scans also end on their own after Discovery.ZeroConfSeconds.
+  // Unknown or finished sessions are ignored.
+  rpc StopScan (DiscoverySession) returns (Empty);
   // Probes one address entered by the user ("Add manually"): IP or host name, optional port and
   // scheme ("https://cam.example.com:8443"). Watch the session like a range scan (one device at
   // most, then scan_finished). INVALID_ARGUMENT for an unusable or unresolvable address.

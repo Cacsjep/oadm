@@ -39,7 +39,9 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
     public string Id => AcapPlugin.Id;
 
-    public string DisplayName => "Applications (ACAP)...";
+    public string DisplayName => "Applications (ACAP)";
+
+    public string Group => TaskGroups.Applications;
 
     public string? IconKey => "plugin";
 

@@ -26,8 +26,8 @@ public sealed class DiscoveryGrpcService(
     DiscoveryAuthenticator authenticator,
     IHostApplicationLifetime lifetime) : Proto.DiscoveryService.DiscoveryServiceBase
 {
-    public override Task<Proto.DiscoverySession> StartZeroConf(Proto.Empty request, ServerCallContext context) =>
-        Task.FromResult(new Proto.DiscoverySession { SessionId = discovery.StartZeroConf().Id });
+    public override async Task<Proto.DiscoverySession> StartZeroConf(Proto.Empty request, ServerCallContext context) =>
+        new() { SessionId = (await discovery.StartZeroConfAsync(context.CancellationToken).ConfigureAwait(false)).Id };
 
     public override async Task<Proto.DiscoverySession> StartRangeScan(Proto.RangeScanRequest request, ServerCallContext context)
     {
@@ -129,6 +129,12 @@ public sealed class DiscoveryGrpcService(
         {
             await pump.ConfigureAwait(false);
         }
+    }
+
+    public override Task<Proto.Empty> StopScan(Proto.DiscoverySession request, ServerCallContext context)
+    {
+        discovery.StopScan(request.SessionId);
+        return Task.FromResult(new Proto.Empty());
     }
 
     public override async Task<Proto.Empty> Stop(Proto.DiscoverySession request, ServerCallContext context)

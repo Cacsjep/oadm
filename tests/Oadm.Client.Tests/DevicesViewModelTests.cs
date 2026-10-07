@@ -116,9 +116,58 @@ public sealed class DevicesViewModelTests
 
         f.Select("1", "2");
 
+        // Plugins without a group land in "General"; a group is always a submenu, the host appends no "...".
         string[] headers = f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray();
-        Assert.Equal(["Open web interface", "Remove", "-", "Restart", "Change password..."], headers);
+        Assert.Equal(["Open web interface", "Remove", "-", "General"], headers);
         Assert.False(f.Devices.ContextMenuEntries[0].IsEnabled); // web UI needs exactly one device
+        Assert.Equal(["Change password", "Restart"], f.Devices.ContextMenuEntries[3].Items!.Select(e => e.Header).ToArray());
+    }
+
+    [Fact]
+    public async Task Context_menu_groups_tasks_in_sorted_submenus_and_strips_ellipses()
+    {
+        using DevicesFixture f = CreateWithDevices();
+        TaskPluginInfo Grouped(string id, string name, string group, string icon)
+        {
+            TaskPluginInfo info = TestSupport.Plugin(id, name, toolbar: false, dialog: true, "1", "2");
+            info.Group = group;
+            info.IconKey = icon;
+            return info;
+        }
+
+        await f.SetPluginsAsync(
+            Grouped("oadm.restart", "Restart", "Maintenance", "restart"),
+            Grouped("oadm.firmware", "Upgrade firmware...", "Maintenance", "firmware"),
+            Grouped("oadm.network", "Network settings…", "Network", "network"),
+            Grouped("oadm.network.assign-ip", "Assign IP address", "Network", "network"),
+            Grouped("oadm.users", "Users......", "Users", "users"),
+            Grouped("oadm.acap", "Applications (ACAP)", "Applications", ""),
+            Grouped("x.custom", "A task with a far too long display name for menus", "Custom tools", "custom"),
+            Grouped("x.nogroup", "Identify", "", "identify"));
+
+        f.Select("1", "2");
+
+        IReadOnlyList<MenuEntryViewModel> entries = f.Devices.ContextMenuEntries;
+        Assert.Equal(["Open web interface", "Remove", "-", "Applications", "Custom tools", "General", "Maintenance", "Network", "Users"],
+            entries.Select(e => e.Header).ToArray());
+        Assert.All(entries.Skip(3), g => Assert.NotNull(g.Items)); // one submenu per group, even with one entry
+        Assert.Equal("network", entries.Single(e => e.Header == "Network").IconKey);
+        Assert.Equal("plugin", entries.Single(e => e.Header == "Custom tools").IconKey);
+
+        MenuEntryViewModel Group(string name) => entries.Single(e => e.Header == name);
+        Assert.Equal(["Restart", "Upgrade firmware"], Group("Maintenance").Items!.Select(e => e.Header).ToArray());
+        Assert.Equal(["Assign IP address", "Network settings"], Group("Network").Items!.Select(e => e.Header).ToArray());
+        Assert.Equal("Users", Group("Users").Items!.Single().Header);
+        Assert.Equal("Identify", Group("General").Items!.Single().Header);
+        Assert.Equal("plugin", Group("Applications").Items!.Single().IconKey); // no icon key: the plugin icon
+        string longName = Group("Custom tools").Items!.Single().Header;
+        Assert.Equal(Oadm.Sdk.Plugins.TaskPluginNames.MaxDisplayNameLength, longName.Length);
+        Assert.EndsWith("…", longName, StringComparison.Ordinal);
+        Assert.DoesNotContain(entries.SelectMany(e => e.Items ?? []), e => e.Header.EndsWith("...", StringComparison.Ordinal));
+
+        MenuEntryViewModel restart = Group("Maintenance").Items![0];
+        Assert.Same(f.Devices.RunPluginCommand, restart.Command);
+        Assert.Equal("oadm.restart", ((TaskPluginInfo)restart.CommandParameter!).Id);
     }
 
     [Fact]

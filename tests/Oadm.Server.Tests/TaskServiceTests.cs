@@ -30,6 +30,7 @@ public sealed class TaskServiceTests
 
         var restart = Assert.Single(plugins.Plugins, p => p.Id == RestartTaskPlugin.PluginId);
         Assert.Equal("Restart", restart.DisplayName);
+        Assert.Equal("Maintenance", restart.Group);
         Assert.True(restart.ShowInToolbar);
         Assert.False(restart.RequiresDialog);
         Assert.Equal(string.Empty, restart.OwnerCorePluginId);

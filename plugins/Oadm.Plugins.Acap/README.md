@@ -1,6 +1,6 @@
 # Oadm.Plugins.Acap
 
-Task plugin `oadm.acap`, context menu entry **Applications (ACAP)...** (dialog, not in the toolbar).
+Task plugin `oadm.acap`, context menu entry **Applications (ACAP)** in the group Applications (dialog, not in the toolbar).
 The dialog lists the applications installed on the first selected device (device picker when
 several are selected) and lets the user start, stop or remove one, or install/upgrade an `.eap`
 package. Every action is applied to all selected devices as one task.

@@ -17,12 +17,12 @@ public sealed class AddDevicesPageTests : IDisposable
     private AddDevicesViewModel Create(AddDevicesMode mode) =>
         new(_api, new ImmediateUiDispatcher(), NullLogger<AddDevicesViewModel>.Instance, mode);
 
-    /// <summary>Scan: 3 managed, 3 authenticated, 1 login failed, 2 factory default, 1 unreachable.</summary>
+    /// <summary>Scan: 3 managed, 3 authenticated, 2 login failed, 2 factory default, 1 unreachable.</summary>
     private async Task<AddDevicesViewModel> OpenScanAsync()
     {
         AddDevicesViewModel page = Create(AddDevicesMode.Scan);
         await page.OpenAsync();
-        await TestSupport.WaitUntilAsync(() => page.Rows.Count == 10 && page.Rows.All(r => r.AuthState != AuthState.Pending));
+        await TestSupport.WaitUntilAsync(() => page.Rows.Count == 11 && page.Rows.All(r => r.AuthState != AuthState.Pending));
         return page;
     }
 
@@ -46,7 +46,7 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.True(Row(page, "10.0.0.90").ShowSetPassword);
         Assert.Equal("Unreachable", Row(page, "10.0.0.95").ChipText);
         Assert.Equal(3, page.Rows.Count(r => r.ChipText == "Already added" && r.IsMuted));
-        Assert.Equal("10 found · 3 ready to add · 1 need a login · 2 need a password · 0 selected", page.SummaryText);
+        Assert.Equal("11 found · 3 ready to add · 2 need a login · 2 need a password · 0 selected", page.SummaryText);
         Assert.False(page.AddCommand.CanExecute(null));
     }
 
@@ -101,13 +101,16 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.Equal("Authenticated (admin)", failed.ChipText);
         Assert.True(failed.IsSelected);
         Assert.Equal(listBefore + 1, (await _api.ListCredentialsAsync(CancellationToken.None)).Count);
+
+        // The server tries the working login on the other device whose login failed; the open scan stream reports it.
+        await TestSupport.WaitUntilAsync(() => Row(page, "10.0.0.97").ChipText == "Authenticated (admin)");
+        Assert.Equal("11 found · 5 ready to add · 2 need a password · 1 selected", page.SummaryText);
     }
 
     [Fact]
     public async Task Factory_default_devices_need_a_valid_password_which_is_set_on_add()
     {
         await using AddDevicesViewModel page = await OpenScanAsync();
-        page.KeepOpen = true;
         DiscoveredRowViewModel simple = Row(page, "10.0.0.90");
         DiscoveredRowViewModel complex = Row(page, "10.0.0.91");
         Assert.False(simple.CanAdd);
@@ -134,9 +137,12 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.True(simple.ShowPasswordReady);
         Assert.Equal(2, page.SelectedCount);
 
+        bool? closed = null;
+        page.CloseRequested += (_, added) => closed = added;
         await page.AddCommand.ExecuteAsync(null);
 
-        // Keep open: the page stays and shows the added devices greyed out.
+        // The page always closes after adding; the rows are marked added meanwhile.
+        Assert.True(closed);
         Assert.Equal("Added", simple.ChipText);
         Assert.True(simple.IsMuted);
         Assert.False(simple.CanAdd);
@@ -159,10 +165,12 @@ public sealed class AddDevicesPageTests : IDisposable
         page.RangeTo = "10.0.1.40";
         await page.StartRangeCommand.ExecuteAsync(null);
         Assert.Null(page.ErrorText);
-        await TestSupport.WaitUntilAsync(() => !page.IsScanning && page.Rows.All(r => r.AuthState != AuthState.Pending) && page.Rows.Count == 6);
+        await TestSupport.WaitUntilAsync(() => !page.IsScanning && page.Rows.All(r => r.AuthState != AuthState.Pending) && page.Rows.Count == 7);
 
         Assert.Equal(100, page.ScanProgress);
-        Assert.StartsWith("Done, 6 device(s) found", page.ScanStatusText, StringComparison.Ordinal);
+        Assert.Equal("Scan finished, 7 devices found", page.ScanStatusText);
+        Assert.True(page.ShowScanAgain);
+        Assert.False(page.ShowStop);
         Assert.All(page.Rows, r => Assert.StartsWith("10.0.1.", r.Address, StringComparison.Ordinal));
         Assert.Equal(3, page.Rows.Count(r => r.CanAdd));
     }
@@ -196,6 +204,115 @@ public sealed class AddDevicesPageTests : IDisposable
         await page.AddCommand.ExecuteAsync(null);
         IReadOnlyList<Device> devices = await _api.ListDevicesAsync(CancellationToken.None);
         Assert.Contains(devices, d => d.Address == "camera7.example.com:8443" && d.Status == DeviceStatus.Ok);
+    }
+
+    [Fact]
+    public async Task Zero_conf_scan_ends_after_the_time_limit_and_can_run_again()
+    {
+        _api.ZeroConfDuration = TimeSpan.FromMilliseconds(300);
+        await using AddDevicesViewModel page = await OpenScanAsync();
+
+        await TestSupport.WaitUntilAsync(() => !page.IsScanning);
+        Assert.Equal("Scan finished, 11 devices found", page.ScanStatusText);
+        Assert.Equal(100, page.ScanProgress);
+        Assert.False(page.ShowStop);
+        Assert.True(page.ShowScanAgain);
+        Assert.True(page.ScanAgainCommand.CanExecute(null));
+
+        // Scan again: a new zero-conf session; the devices already found stay (deduplicated by serial).
+        Row(page, "10.0.0.92").IsSelected = true;
+        await page.ScanAgainCommand.ExecuteAsync(null);
+        Assert.True(page.IsScanning);
+        Assert.True(page.ShowStop);
+        Assert.False(page.ShowScanAgain);
+        Assert.Equal("Searching the network...", page.ScanStatusText);
+        Assert.Equal(11, page.Rows.Count);
+        await TestSupport.WaitUntilAsync(() => !page.IsScanning);
+        Assert.Equal("Scan finished, 11 devices found", page.ScanStatusText);
+        Assert.Equal(11, page.Rows.Count);
+        Assert.True(Row(page, "10.0.0.92").IsSelected); // the new search did not reset the known login or the selection
+        Assert.Equal("Authenticated (root)", Row(page, "10.0.0.92").ChipText);
+    }
+
+    [Fact]
+    public async Task Stop_ends_a_zero_conf_scan_and_keeps_the_devices()
+    {
+        await using AddDevicesViewModel page = await OpenScanAsync(); // fake limit: 30 s, like the server default
+        Assert.True(page.IsScanning);
+        Assert.True(page.ShowStop);
+        Assert.True(page.StopScanCommand.CanExecute(null));
+
+        await page.StopScanCommand.ExecuteAsync(null);
+
+        await TestSupport.WaitUntilAsync(() => !page.IsScanning);
+        Assert.Equal("Scan stopped, 11 devices found", page.ScanStatusText);
+        Assert.Equal(11, page.Rows.Count);
+        Assert.True(page.ShowScanAgain);
+        Assert.False(page.ShowStop);
+    }
+
+    [Fact]
+    public async Task Stop_ends_an_ip_range_scan()
+    {
+        await using AddDevicesViewModel page = Create(AddDevicesMode.IpRange);
+        await page.OpenAsync();
+        Assert.False(page.ShowScanAgain); // nothing scanned yet
+        page.RangeFrom = "10.0.1.1";
+        page.RangeTo = "10.0.1.254";
+
+        await page.StartRangeCommand.ExecuteAsync(null);
+        Assert.True(page.ShowStop);
+        await page.StopScanCommand.ExecuteAsync(null);
+
+        await TestSupport.WaitUntilAsync(() => !page.IsScanning);
+        Assert.StartsWith("Scan stopped, ", page.ScanStatusText, StringComparison.Ordinal);
+        Assert.True(page.ShowScanAgain);
+
+        // Scan again repeats the range.
+        await page.ScanAgainCommand.ExecuteAsync(null);
+        await TestSupport.WaitUntilAsync(() => !page.IsScanning && page.Rows.Count == 7);
+        Assert.Equal("Scan finished, 7 devices found", page.ScanStatusText);
+    }
+
+    [Fact]
+    public async Task A_working_login_is_tried_on_failed_devices_of_the_other_searches()
+    {
+        await using AddDevicesViewModel page = Create(AddDevicesMode.Manual);
+        await page.OpenAsync();
+        foreach (string address in new[] { "10.0.0.93", "10.0.0.97" })
+        {
+            page.ManualAddress = address;
+            await page.ProbeAddressCommand.ExecuteAsync(null);
+        }
+
+        await TestSupport.WaitUntilAsync(() => !page.IsScanning && page.Rows.Count == 2 && page.Rows.All(r => r.ChipText == "Login failed"));
+        Assert.False(page.ShowStop);
+        Assert.False(page.ShowScanAgain); // manual search: nothing to repeat
+        await Task.Delay(100); // both watch streams have ended
+
+        page.OpenEditorCommand.Execute(Row(page, "10.0.0.93"));
+        page.EditorUserName = "admin";
+        page.EditorPassword = "right-Pass1";
+        page.SaveToCredentialList = false;
+        await page.RetryCommand.ExecuteAsync(null);
+
+        Assert.Equal("Authenticated (admin)", Row(page, "10.0.0.93").ChipText);
+        await TestSupport.WaitUntilAsync(() => Row(page, "10.0.0.97").ChipText == "Authenticated (admin)");
+        Assert.Equal(2, page.Rows.Count(r => r.CanAdd));
+    }
+
+    [Fact]
+    public async Task The_page_always_closes_after_adding()
+    {
+        await using AddDevicesViewModel page = await OpenScanAsync();
+        bool? closed = null;
+        page.CloseRequested += (_, added) => closed = added;
+        Row(page, "10.0.0.92").IsSelected = true;
+
+        await page.AddCommand.ExecuteAsync(null);
+
+        Assert.True(closed);
+        Assert.Single(page.AddedDeviceIds);
     }
 
     [Theory]

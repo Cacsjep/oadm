@@ -152,6 +152,131 @@ public sealed class FastAddTests
     }
 
     [Fact]
+    public async Task AWorkingRetryIsTriedOnTheFailedDevicesOfThePage()
+    {
+        var network = new FakeAxisNetwork();
+        network.Add("10.9.1.1", FakeSerials.Make(11), "site-Pass");
+        network.Add("10.9.1.2", FakeSerials.Make(12), "site-Pass");
+        network.Add("10.9.1.3", FakeSerials.Make(13), "another-Pass");
+        network.Add("10.9.2.1", FakeSerials.Make(21), "site-Pass");   // other search of the same page
+        network.Add("10.9.3.1", FakeSerials.Make(31), "site-Pass");   // search of another page
+        await using var host = await TestServerHost.StartAsync(network);
+        var (first, page) = await TestHelpers.ScanWithLoginAsync(host, "10.9.1.1", "10.9.1.3");
+        var (second, other) = await TestHelpers.ScanWithLoginAsync(host, "10.9.2.1", "10.9.2.1");
+        var (unrelated, _) = await TestHelpers.ScanWithLoginAsync(host, "10.9.3.1", "10.9.3.1");
+        Assert.All(page.Values.Concat(other.Values), d => Assert.Equal(Proto.AuthState.LoginFailed, d.AuthState));
+
+        var retry = await host.AddDevices.RetryAuthAsync(new Proto.RetryAuthRequest
+        {
+            SessionId = first,
+            DiscoveredId = page["10.9.1.1"].DiscoveredId,
+            UserName = "root",
+            Password = "site-Pass",
+            RelatedSessionIds = { second },
+        });
+        Assert.Equal(Proto.AuthState.Authenticated, retry.AuthState);
+
+        // The finished sessions are watched again: the follow-up logins report back, then the stream ends.
+        var firstNow = (await TestHelpers.WatchToEndAsync(host, first)).Values.ToDictionary(d => d.Address);
+        var secondNow = (await TestHelpers.WatchToEndAsync(host, second)).Values.ToDictionary(d => d.Address);
+        var unrelatedNow = (await TestHelpers.WatchToEndAsync(host, unrelated)).Values.Single();
+
+        Assert.Equal(Proto.AuthState.Authenticated, firstNow["10.9.1.2"].AuthState);
+        Assert.Equal(DiscoveryAuthenticatorEntered, firstNow["10.9.1.2"].CredentialId);
+        Assert.Equal("root", firstNow["10.9.1.2"].AuthUserName);
+        Assert.Equal(Proto.AuthState.LoginFailed, firstNow["10.9.1.3"].AuthState);
+        Assert.Equal("The known credential did not work.", firstNow["10.9.1.3"].AuthDetail);
+        Assert.Equal(1, network["10.9.1.3"].RejectedLogins);
+        Assert.Equal(Proto.AuthState.Authenticated, secondNow["10.9.2.1"].AuthState);
+        Assert.Equal(Proto.AuthState.LoginFailed, unrelatedNow.AuthState); // not saved, other page: not tried
+        Assert.Equal(0, network["10.9.3.1"].RejectedLogins);
+
+        // Commit stores the credential that worked in the follow-up.
+        var reply = await host.AddDevices.CommitAsync(new Proto.CommitRequest { SessionId = second, DiscoveredIds = { secondNow["10.9.2.1"].DiscoveredId } });
+        var stored = await host.Get<CredentialStore>().GetAsync(Guid.Parse(Assert.Single(reply.DeviceIds)), CancellationToken.None);
+        Assert.Equal(("root", "site-Pass"), (stored!.UserName, stored.Password));
+    }
+
+    [Fact]
+    public async Task ACredentialAddedToTheListIsTriedOnFailedDevices()
+    {
+        var network = Network();
+        await using var host = await TestServerHost.StartAsync(network);
+        var (session, devices) = await TestHelpers.ScanWithLoginAsync(host, "10.9.0.1", "10.9.0.2");
+        Assert.All(devices.Values, d => Assert.Equal(Proto.AuthState.LoginFailed, d.AuthState));
+
+        var entry = await host.Settings.AddCredentialAsync(new Proto.AddCredentialRequest { UserName = "root", Password = Password });
+        await TestHelpers.WaitUntilAsync(
+            async () => (await TestHelpers.WatchToEndAsync(host, session)).Values.Single(d => d.Address == "10.9.0.1").AuthState == Proto.AuthState.Authenticated,
+            "follow-up login with the new list entry");
+
+        var now = (await TestHelpers.WatchToEndAsync(host, session)).Values.ToDictionary(d => d.Address);
+        Assert.Equal("list:" + Guid.Parse(entry.Id).ToString("N"), now["10.9.0.1"].CredentialId);
+        Assert.Equal(Proto.AuthState.LoginFailed, now["10.9.0.2"].AuthState);
+        Assert.Equal(1, network["10.9.0.2"].RejectedLogins);
+
+        // Removing an entry tries nothing new.
+        await host.Settings.RemoveCredentialAsync(new Proto.CredentialEntryId { Id = entry.Id });
+        await Task.Delay(200);
+        Assert.Equal(1, network["10.9.0.2"].RejectedLogins);
+    }
+
+    [Fact]
+    public async Task FollowUpLoginsRespectTheAttemptLimitPerDevice()
+    {
+        var network = Network();
+        await using var host = await TestServerHost.StartAsync(network);
+        for (var i = 0; i < 10; i++)
+        {
+            await host.Settings.AddCredentialAsync(new Proto.AddCredentialRequest { UserName = "user" + i, Password = "wrong-" + i });
+        }
+
+        var (session, devices) = await TestHelpers.ScanWithLoginAsync(host, "10.9.0.1", "10.9.0.2");
+        Assert.Equal(10, network["10.9.0.2"].RejectedLogins);
+
+        // The right password of 10.9.0.1 also goes into the list: 10.9.0.2 has no attempts left.
+        var retry = await host.AddDevices.RetryAuthAsync(new Proto.RetryAuthRequest
+        {
+            SessionId = session,
+            DiscoveredId = devices["10.9.0.1"].DiscoveredId,
+            UserName = "root",
+            Password = Password,
+            SaveToCredentialList = true,
+        });
+        Assert.Equal(Proto.AuthState.Authenticated, retry.AuthState);
+
+        var now = (await TestHelpers.WatchToEndAsync(host, session)).Values.ToDictionary(d => d.Address);
+        Assert.Equal(Proto.AuthState.LoginFailed, now["10.9.0.2"].AuthState);
+        Assert.Equal("None of the 10 known credentials worked.", now["10.9.0.2"].AuthDetail);
+        Assert.Equal(10, network["10.9.0.2"].RejectedLogins);
+    }
+
+    [Fact]
+    public async Task StopScanEndsAZeroConfScanAndKeepsTheSession()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var session = await host.Discovery.StartZeroConfAsync(new Proto.Empty());
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var call = host.Discovery.WatchDiscovered(session, cancellationToken: cts.Token);
+
+        await host.Discovery.StopScanAsync(session);
+
+        var messages = new List<Proto.DiscoveredDevice>();
+        await foreach (var message in call.ResponseStream.ReadAllAsync(cts.Token))
+        {
+            messages.Add(message);
+        }
+
+        Assert.True(Assert.Single(messages).ScanFinished);
+        var again = await TestHelpers.WatchToEndAsync(host, session.SessionId); // still known until Stop
+        Assert.Empty(again);
+        await host.Discovery.StopScanAsync(new Proto.DiscoverySession { SessionId = "unknown" }); // ignored
+        await host.Discovery.StopAsync(session);
+    }
+
+    private const string DiscoveryAuthenticatorEntered = "entered";
+
+    [Fact]
     public async Task RetryAuthOnADeviceThatWentAwayIsUnreachable()
     {
         var network = Network();

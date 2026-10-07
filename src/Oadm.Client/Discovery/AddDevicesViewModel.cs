@@ -59,7 +59,13 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
     private readonly CancellationTokenSource _cts = new();
     private readonly List<string> _sessions = [];
     private readonly Dictionary<string, string> _manualInputs = [];
-    private int _scansRunning;
+
+    // UI thread only: sessions whose scan runs, whose stop was asked for, and whose watch stream is open.
+    private readonly HashSet<string> _scanning = [];
+    private readonly HashSet<string> _stopRequested = [];
+    private readonly HashSet<string> _watching = [];
+    private int _starting;
+    private bool _anyStopped;
 
     public AddDevicesViewModel(IOadmApi api, IUiDispatcher ui, ILogger<AddDevicesViewModel> logger, AddDevicesMode mode)
     {
@@ -88,7 +94,7 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
     {
         AddDevicesMode.IpRange => "Enter the first and last IPv4 address and press Enter. Every address is probed on HTTPS (443) and HTTP (80).",
         AddDevicesMode.Manual => "Enter an IP address or host name, optionally with port or scheme (https://camera.example.com:8443), and press Enter.",
-        _ => "Found with zero-configuration (Bonjour), live while this page is open.",
+        _ => "Found with zero-configuration (Bonjour). The scan ends after the time set on the Settings page, or with Stop.",
     } + " OADM logs in with your known credentials; authenticated devices can be added right away.";
 
     public ObservableCollection<DiscoveredRowViewModel> Rows { get; } = [];
@@ -107,7 +113,23 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
     [ObservableProperty] public partial string ManualAddress { get; set; } = "";
     [ObservableProperty] public partial string SearchText { get; set; } = "";
 
-    [ObservableProperty] public partial bool IsScanning { get; private set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowStop), nameof(ShowScanAgain))]
+    [NotifyCanExecuteChangedFor(nameof(StopScanCommand), nameof(ScanAgainCommand))]
+    public partial bool IsScanning { get; private set; }
+
+    /// <summary>A scan was started on this page (Scan again needs something to repeat).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowScanAgain))]
+    [NotifyCanExecuteChangedFor(nameof(ScanAgainCommand))]
+    public partial bool HasScanned { get; private set; }
+
+    /// <summary>Stop button: zero-conf and IP range scans while they run.</summary>
+    public bool ShowStop => IsScanning && !IsManualMode;
+
+    /// <summary>"Scan again" after a zero-conf or IP range scan finished or was stopped.</summary>
+    public bool ShowScanAgain => !IsScanning && HasScanned && !IsManualMode;
+
     [ObservableProperty] public partial bool IsProgressIndeterminate { get; private set; }
     [ObservableProperty] public partial int ScanProgress { get; private set; }
     [ObservableProperty] public partial string ScanStatusText { get; private set; } = "";
@@ -123,9 +145,6 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
     public partial bool IsBusy { get; private set; }
 
     [ObservableProperty] public partial string AddButtonText { get; private set; } = "Add";
-
-    /// <summary>Stay open after adding (add more devices from the same list).</summary>
-    [ObservableProperty] public partial bool KeepOpen { get; set; }
 
     /// <summary>The row the user clicked; opens the matching inline editor.</summary>
     [ObservableProperty] public partial DiscoveredRowViewModel? FocusedRow { get; set; }
@@ -166,10 +185,19 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
     {
         if (IsScanMode)
         {
-            ScanStatusText = "Searching the network...";
-            IsProgressIndeterminate = true;
-            await StartSessionAsync(() => _api.StartZeroConfAsync(_cts.Token), null).ConfigureAwait(true);
+            await StartZeroConfAsync().ConfigureAwait(true);
         }
+    }
+
+    /// <summary>Zero-conf: runs until the server's time limit (Discovery.ZeroConfSeconds) or Stop.</summary>
+    private async Task StartZeroConfAsync()
+    {
+        ErrorText = null;
+        _anyStopped = false;
+        ScanStatusText = "Searching the network...";
+        ScanProgress = 0;
+        IsProgressIndeterminate = true;
+        await StartSessionAsync(() => _api.StartZeroConfAsync(_cts.Token), null).ConfigureAwait(true);
     }
 
     public async ValueTask DisposeAsync()
@@ -210,11 +238,36 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
 
         string from = RangeFrom.Trim();
         string to = RangeTo.Trim();
+        _anyStopped = false;
         ScanStatusText = $"Scanning {from} - {to}";
         ScanProgress = 0;
         IsProgressIndeterminate = false;
         await StartSessionAsync(() => _api.StartRangeScanAsync(from, to, _cts.Token), null).ConfigureAwait(true);
     }
+
+    /// <summary>Stop button: ends the running scans on the server; the devices found stay in the list.</summary>
+    [RelayCommand(CanExecute = nameof(ShowStop))]
+    private async Task StopScanAsync()
+    {
+        foreach (string session in _scanning.ToList())
+        {
+            _stopRequested.Add(session);
+            try
+            {
+                await _api.StopScanAsync(session, _cts.Token).ConfigureAwait(true);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // The stream still ends the scan; without it the page would keep "scanning".
+                LogStopFailed(_logger, ex.Message);
+                ScanFinished(session);
+            }
+        }
+    }
+
+    /// <summary>"Scan again": a new zero-conf scan, or the IP range again. Found devices stay in the list.</summary>
+    [RelayCommand(CanExecute = nameof(ShowScanAgain))]
+    private Task ScanAgainAsync() => IsRangeMode ? StartRangeAsync() : StartZeroConfAsync();
 
     /// <summary>Manual mode: Enter or the Find button. Every address adds to the list.</summary>
     [RelayCommand]
@@ -306,10 +359,8 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
             UpdateSummary();
         }
 
-        if (!KeepOpen)
-        {
-            CloseRequested?.Invoke(this, AddedDeviceIds.Count > 0);
-        }
+        // User decision: the page always closes after adding.
+        CloseRequested?.Invoke(this, AddedDeviceIds.Count > 0);
     }
 
     private bool CanAdd() => SelectedCount > 0 && !IsBusy;
@@ -377,19 +428,28 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
         try
         {
             IsRetrying = true;
-            DiscoveredDevice reply = await _api.RetryAuthAsync(new RetryAuthRequest
+            var request = new RetryAuthRequest
             {
                 SessionId = row.SessionId,
                 DiscoveredId = row.DiscoveredId,
                 UserName = EditorUserName.Trim(),
                 Password = EditorPassword,
                 SaveToCredentialList = SaveToCredentialList,
-            }, _cts.Token).ConfigureAwait(true);
+            };
+            request.RelatedSessionIds.AddRange(_sessions.Where(s => s != row.SessionId));
+            DiscoveredDevice reply = await _api.RetryAuthAsync(request, _cts.Token).ConfigureAwait(true);
             row.Update(reply);
             if (row.AuthState == AuthState.Authenticated)
             {
                 row.IsSelected = true;
                 CancelEditor();
+
+                // The server now tries the credential on every other device whose login failed; sessions whose
+                // stream already ended are watched again to receive those results.
+                foreach (string session in Rows.Where(r => r.ShowLogIn).Select(r => r.SessionId).Distinct().Where(s => !_watching.Contains(s)).ToList())
+                {
+                    StartWatch(session);
+                }
             }
             else
             {
@@ -450,26 +510,41 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
         string sessionId;
         try
         {
-            IsScanning = true;
-            Interlocked.Increment(ref _scansRunning);
+            _starting++;
+            UpdateScanning();
+            if (manualInput is null)
+            {
+                HasScanned = true;
+            }
+
             sessionId = await start().ConfigureAwait(true);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             ErrorText = (manualInput is null ? "Discovery could not be started: " : "") + Message(ex);
-            ScanFinished();
+            _starting--;
+            ScanFinished(null);
             return false;
         }
 
+        _starting--;
         _sessions.Add(sessionId);
+        _scanning.Add(sessionId);
         if (manualInput is not null)
         {
             _manualInputs[sessionId] = manualInput;
         }
 
+        StartWatch(sessionId);
+        return true;
+    }
+
+    /// <summary>Opens the watch stream of a session (UI thread). Used again after a retry for sessions whose stream ended.</summary>
+    private void StartWatch(string sessionId)
+    {
+        _watching.Add(sessionId);
         CancellationToken ct = _cts.Token;
         _ = Task.Run(() => WatchAsync(sessionId, ct), ct);
-        return true;
     }
 
     private async Task WatchAsync(string sessionId, CancellationToken ct)
@@ -480,6 +555,8 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
             {
                 _ui.Post(() => OnDiscovered(sessionId, found));
             }
+
+            _ui.Post(() => _watching.Remove(sessionId));
         }
         catch (OperationCanceledException)
         {
@@ -489,16 +566,26 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
         {
             _ui.Post(() =>
             {
-                ErrorText = "Discovery stopped: " + Message(ex);
-                ScanFinished();
+                _watching.Remove(sessionId);
+                if (_scanning.Contains(sessionId))
+                {
+                    ErrorText = "Discovery stopped: " + Message(ex);
+                    ScanFinished(sessionId);
+                }
+                else
+                {
+                    LogWatchFailed(_logger, ex.Message); // a watch after a retry; the rows keep their last state
+                }
             });
         }
     }
 
+    private void UpdateScanning() => IsScanning = _starting > 0 || _scanning.Count > 0;
+
     internal void OnDiscovered(string sessionId, DiscoveredDevice found)
     {
         ArgumentNullException.ThrowIfNull(found);
-        if (!IsScanMode && found.ProgressPercent > 0 && !found.ScanFinished)
+        if (!IsScanMode && _scanning.Contains(sessionId) && found.ProgressPercent > 0 && !found.ScanFinished)
         {
             ScanProgress = Math.Clamp(found.ProgressPercent, 0, 100);
         }
@@ -517,8 +604,9 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
                     FilteredRows.Add(row);
                 }
             }
-            else if (!row.IsAdded)
+            else if (!row.IsAdded && !(found.AuthState == AuthState.Pending && row.AuthState != AuthState.Pending && row.SessionId != sessionId))
             {
+                // (Scan again: "Checking" of the new search does not hide the result of the earlier one, the selection stays.)
                 row.SessionId = sessionId;
                 row.Update(found);
             }
@@ -531,24 +619,39 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
                 ErrorText = $"No Axis device answered at {input}.";
             }
 
-            ScanFinished();
+            ScanFinished(sessionId);
         }
 
         UpdateSummary();
     }
 
-    private void ScanFinished()
+    /// <summary>
+    /// A session's scan ended (scan_finished, stream error, or start failed with <paramref name="sessionId"/> null).
+    /// A replayed scan_finished of an earlier session is ignored. When the last scan ended the progress
+    /// row says "Scan finished, N devices found" (or "Scan stopped, ..." after Stop).
+    /// </summary>
+    private void ScanFinished(string? sessionId)
     {
-        if (Interlocked.Decrement(ref _scansRunning) > 0)
+        if (sessionId is not null)
         {
-            return;
+            if (!_scanning.Remove(sessionId))
+            {
+                return;
+            }
+
+            _anyStopped |= _stopRequested.Remove(sessionId);
         }
 
-        _scansRunning = 0;
-        IsScanning = false;
-        ScanProgress = 100;
-        IsProgressIndeterminate = false;
-        ScanStatusText = string.Create(CultureInfo.CurrentCulture, $"Done, {Rows.Count} device(s) found");
+        if (_starting == 0 && _scanning.Count == 0)
+        {
+            // Text first, then IsScanning: whoever reacts to IsScanning sees the final text.
+            ScanProgress = 100;
+            IsProgressIndeterminate = false;
+            string found = Rows.Count == 1 ? "1 device found" : string.Create(CultureInfo.CurrentCulture, $"{Rows.Count} devices found");
+            ScanStatusText = (_anyStopped ? "Scan stopped, " : "Scan finished, ") + found;
+        }
+
+        UpdateScanning();
     }
 
     private void OnRowPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -655,4 +758,7 @@ public sealed partial class AddDevicesViewModel : ObservableObject, IAsyncDispos
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Stopping discovery failed: {Reason}")]
     private static partial void LogStopFailed(ILogger logger, string reason);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Watching discovery results after a retry failed: {Reason}")]
+    private static partial void LogWatchFailed(ILogger logger, string reason);
 }

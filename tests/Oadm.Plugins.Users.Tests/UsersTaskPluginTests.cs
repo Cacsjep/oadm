@@ -46,6 +46,8 @@ public sealed class UsersTaskPluginTests
         Assert.Equal("oadm.users", _plugin.Id);
         Assert.True(_plugin.RequiresDialog);
         Assert.False(_plugin.ShowInToolbar);
+        Assert.Equal("Users", _plugin.DisplayName);
+        Assert.Equal(Oadm.Sdk.Plugins.TaskGroups.Users, ((Oadm.Sdk.Plugins.ITaskPlugin)_plugin).Group);
     }
 
     [Theory]

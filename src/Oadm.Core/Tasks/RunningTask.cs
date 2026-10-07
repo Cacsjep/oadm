@@ -40,7 +40,7 @@ internal sealed class RunningTask : IDisposable
         PayloadJson = payloadJson;
         Owner = owner;
         Created = created;
-        Name = registration.Plugin.DisplayName;
+        Name = registration.DisplayName;
         _deviceOrder = deviceIds;
         _devices = deviceIds.ToDictionary(d => d, _ => new DeviceSlot());
         _cts = CancellationTokenSource.CreateLinkedTokenSource(shutdown);

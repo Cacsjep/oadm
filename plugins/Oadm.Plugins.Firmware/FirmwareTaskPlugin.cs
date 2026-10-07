@@ -65,7 +65,9 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
     public string Id => PluginId;
 
-    public string DisplayName => "Upgrade firmware...";
+    public string DisplayName => "Upgrade firmware";
+
+    public string Group => TaskGroups.Maintenance;
 
     public string? IconKey => "firmware";
 

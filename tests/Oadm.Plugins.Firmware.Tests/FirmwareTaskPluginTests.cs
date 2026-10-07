@@ -45,7 +45,8 @@ public sealed class FirmwareTaskPluginTests
     {
         var plugin = new FirmwareTaskPlugin();
         Assert.Equal("oadm.firmware", plugin.Id);
-        Assert.Equal("Upgrade firmware...", plugin.DisplayName);
+        Assert.Equal("Upgrade firmware", plugin.DisplayName);
+        Assert.Equal(TaskGroups.Maintenance, ((ITaskPlugin)plugin).Group);
         Assert.True(plugin.ShowInToolbar);
         Assert.True(plugin.RequiresDialog);
     }

@@ -2,9 +2,9 @@
 
 Two task plugins in one package (`artifacts/plugins/oadm.network/`):
 
-- `oadm.network`, **"Network settings..."** (context menu, no toolbar button): IPv4, IPv6, DNS and host name
+- `oadm.network`, **"Network settings"** (context menu group Network, no toolbar button): IPv4, IPv6, DNS and host name
   for the selected devices.
-- `oadm.network.assign-ip`, **"Assign IP address..."** (context menu and toolbar, multi-device first): clone of
+- `oadm.network.assign-ip`, **"Assign IP address"** (context menu group Network and toolbar, multi-device first): clone of
   ADM's "Assign IP address to selected devices", DHCP or an IP address range.
 
 Both open a dialog, run one task per device with the same per-device task (`NetworkTaskRunner`) and OADM
@@ -44,7 +44,7 @@ How OADM clones it:
 
 | ADM | OADM |
 |---|---|
-| Menu "Assign IP address to selected devices" | Context menu and toolbar **Assign IP address...** |
+| Menu "Assign IP address to selected devices" | Context menu (Network) and toolbar **Assign IP address** |
 | Obtain IP addresses automatically (DHCP) | Same wording; Finish on page 1 (single device: "Obtain IP address automatically (DHCP)") |
 | Assign the following IP address range: IP range, subnet mask, default router | Same wording and fields, plus optional DNS servers (domain name and search domains of each device are kept: `DnsChange.KeepDomains`). Single device: "Assign the following IP address", field "IP address" |
 | Range syntax: wildcards, first-last (also shortened), range in any octet, commas | All of them (`IpRangeExpression`), plus a single address alone = start address (consecutive addresses up to the end of its subnet); at most 1,048,576 addresses per expression |
@@ -101,7 +101,7 @@ Query `checkAddresses` (both plugins, read-only): request `{"addresses":["10.0.0
 
 ## Task (per device)
 
-Steps of **Network settings...**: **Check compatibility** ("network-settings 1.37" or "param.cgi"), **Read
+Steps of **Network settings**: **Check compatibility** ("network-settings 1.37" or "param.cgi"), **Read
 current settings** (getNetworkInfo, or the param.cgi Network group on legacy devices), **Read IPv6 address mode**
 (param.cgi; Skipped when it is already part of the first read or param.cgi is missing), **Validate settings**
 (the plan below), **Set host name**, **Set DNS**, **Set IPv6** (+ **Enable IPv6** when the interface is switched
@@ -109,7 +109,7 @@ on with a second request), **Set IPv4** (IPv4 before IPv6 for a device reached o
 settings to apply**, **Check reachability**, **Wait for the device at the new address**, **Verify device
 identity**, **Update OADM device address**.
 
-Steps of **Assign IP address...**: Check compatibility, Read current settings, Validate settings, Set DNS,
+Steps of **Assign IP address**: Check compatibility, Read current settings, Validate settings, Set DNS,
 Set IPv4, Wait for the settings to apply, Check reachability, Wait for the device at the new address, Verify
 device identity, Update OADM device address (no IPv6 mode read, no host name or IPv6 step).
 

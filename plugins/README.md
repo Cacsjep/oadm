@@ -45,6 +45,13 @@ the server project for shared payload types (it then ships in the same folder).
 
 ## Server side
 
+- **Name and group.** `DisplayName` is what the context menu, the toolbar and the tasks pane show:
+  at most `TaskPluginNames.MaxDisplayNameLength` (32) characters and **no trailing "..."**, also not for
+  tasks that open a dialog (the host never appends dots and strips them defensively; the server loader
+  logs a warning and shortens longer names with an ellipsis). `Group` (default `TaskGroups.General`)
+  is the context menu submenu the task appears in: reuse a `TaskGroups` constant (`Applications`,
+  `General`, `Maintenance`, `Network`, `Security`, `Users`, `Video`) when one fits, or name a new group
+  (it gets its own submenu, sorted by name; groups always show as submenus, even with one task).
 - `CanRun(device)`: cheap, synchronous; check `device.Apis.Supports(apiId, minVersion)`.
 - `ExecuteAsync(ctx, device, payloadJson, ct)` runs once per device; every device is its own task.
   Re-check `(await ctx.Vapix.GetApiListAsync(ct)).Require(...)` before the first write.
@@ -102,6 +109,7 @@ Build dialogs from the host look (HARD RULE: reuse controls, no style difference
   | `ui:ToolbarButton Text IconKey (or Icon) IsPrimary` | every toolbar button (Devices page toolbar, button rows in dialogs): `Button.toolbar` (or `Button.primary`) with an `IconLabel` |
   | `ui:ToolbarSeparator` | vertical line between toolbar groups |
   | `ui:SearchBox Text` | every search field |
+  | `ui:PasswordBox Text` | **every password field** (a `TextBox` with the bullet mask and an eye button to show / hide the password, tooltip "Show password" / "Hide password"); never a `TextBox` with `PasswordChar` |
   | `ui:StatusChip Text IsOk IsWarning IsError IsAccent` | every status value (border-only chip), in grid cells with `Margin="10,0"` |
   | `ui:FileRow FileName Details Error Command` | a chosen local file with its "Choose file..." button; format sizes with `FileSizeText.Format` |
   | `ui:ProgressRow Value Text IsActive` | upload or scan progress (0 to 100) with its status text |
@@ -121,7 +129,7 @@ Build dialogs from the host look (HARD RULE: reuse controls, no style difference
   `Icon.devices`, `Icon.tasks`, `Icon.settings`, `Icon.plugin`, `Icon.add`, `Icon.range`,
   `Icon.remove`, `Icon.refresh`, `Icon.restart`, `Icon.identify`, `Icon.columns`, `Icon.search`,
   `Icon.details`, `Icon.cancel`, `Icon.chevronDown`, `Icon.chevronUp`, `Icon.close`, `Icon.check`,
-  `Icon.server`, `Icon.externalLink`, `Icon.key`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
+  `Icon.server`, `Icon.externalLink`, `Icon.key`, `Icon.eye`, `Icon.eyeOff`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
   `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.network`, `Icon.firmware`, `Icon.users`,
   `Icon.user`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
   `Icon.device.camera`, `Icon.device.encoder`,
