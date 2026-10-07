@@ -267,7 +267,9 @@ public sealed class HeadlessPageTests
         {
             DataContext = new Oadm.Client.Shell.CorePluginPageViewModel("oadm.ntp-server", "NTP server", view),
         };
-        return new Window { Width = 1280, Height = 860, Content = new Border { Padding = new Thickness(16), Child = page } };
+        var window = new Window { Width = 1280, Height = 860, Content = new Border { Padding = new Thickness(16), Child = page } };
+        Oadm.Client.App.ApplyCrispText(window); // same text rendering as the real app windows
+        return window;
     }
 
     private static void Pump()
