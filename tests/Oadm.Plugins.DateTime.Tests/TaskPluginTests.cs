@@ -64,7 +64,7 @@ public sealed class TaskPluginTests
         Assert.Equal(
         [
             "Check compatibility: Done", "Read current time settings: Done", "Read NTP settings: Done", "Validate settings: Done",
-            "Set time zone: Done", "Verify time settings: Done",
+            "Set time zone: Done", "Verify time settings: Done", "Completed: Done",
         ], Lines);
         Assert.Equal("setTimeZone", Assert.Single(_vapix.Writes).Method);
         Assert.Equal("time-service 1.1, ntp 1.5", Detail("Check compatibility"));
@@ -83,7 +83,7 @@ public sealed class TaskPluginTests
         Assert.Equal(
         [
             "Check compatibility: Done", "Read current time settings: Done", "Read NTP settings: Done", "Validate settings: Done",
-            "Set NTP configuration: Done", "Verify time settings: Skipped", "Verify NTP settings: Done",
+            "Set NTP configuration: Done", "Verify time settings: Skipped", "Verify NTP settings: Done", "Completed: Done",
         ], Lines);
         Assert.Equal("NTP servers 10.0.0.1, pool.ntp.org, not synchronized (the device synchronizes within a few minutes)", Detail("Verify NTP settings"));
         Assert.Equal("Time zone and time were not changed.", Detail("Verify time settings"));
@@ -108,7 +108,7 @@ public sealed class TaskPluginTests
         Assert.Equal(
         [
             "Check compatibility: Done", "Read current time settings: Done", "Read NTP settings: Done", "Validate settings: Done",
-            "Set time zone: Done", "Turn off NTP: Done", "Set date and time: Done", "Verify time settings: Done", "Verify NTP settings: Done",
+            "Set time zone: Done", "Turn off NTP: Done", "Set date and time: Done", "Verify time settings: Done", "Verify NTP settings: Done", "Completed: Done",
         ], Lines);
         Assert.Equal(["setTimeZone", "setNTPClientConfiguration", "setDateTime"], _vapix.Writes.Select(w => w.Method));
         Assert.Equal("Europe/Berlin", _vapix.Writes[0].Params!["timeZone"]!.GetValue<string>());
@@ -139,7 +139,7 @@ public sealed class TaskPluginTests
         Assert.Equal(
         [
             "Check compatibility: Done", "Read current time settings: Done", "Read NTP settings: Skipped", "Validate settings: Done",
-            "Set time zone: Done", "Set NTP configuration: Done", "Verify time settings: Done", "Verify NTP settings: Done",
+            "Set time zone: Done", "Set NTP configuration: Done", "Verify time settings: Done", "Verify NTP settings: Done", "Completed: Done",
         ], Lines);
         Assert.Equal("param.cgi", Detail("Check compatibility"));
         Assert.Equal("Read with the current time settings (param.cgi)", Detail("Read NTP settings"));
