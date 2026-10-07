@@ -101,7 +101,7 @@ namespace Oadm.Core.Persistence.Migrations
                     b.ToTable("Devices", (string)null);
                 });
 
-            modelBuilder.Entity("Oadm.Core.Persistence.TaskDeviceResult", b =>
+            modelBuilder.Entity("Oadm.Core.Persistence.TaskDeviceResultEntity", b =>
                 {
                     b.Property<Guid>("TaskId")
                         .HasColumnType("TEXT");
@@ -127,7 +127,7 @@ namespace Oadm.Core.Persistence.Migrations
                     b.ToTable("TaskDeviceResults", (string)null);
                 });
 
-            modelBuilder.Entity("Oadm.Core.Persistence.TaskRecord", b =>
+            modelBuilder.Entity("Oadm.Core.Persistence.TaskEntity", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -212,9 +212,9 @@ namespace Oadm.Core.Persistence.Migrations
                     b.ToTable("Settings", (string)null);
                 });
 
-            modelBuilder.Entity("Oadm.Core.Persistence.TaskDeviceResult", b =>
+            modelBuilder.Entity("Oadm.Core.Persistence.TaskDeviceResultEntity", b =>
                 {
-                    b.HasOne("Oadm.Core.Persistence.TaskRecord", null)
+                    b.HasOne("Oadm.Core.Persistence.TaskEntity", null)
                         .WithMany("Results")
                         .HasForeignKey("TaskId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -230,7 +230,7 @@ namespace Oadm.Core.Persistence.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Oadm.Core.Persistence.TaskRecord", b =>
+            modelBuilder.Entity("Oadm.Core.Persistence.TaskEntity", b =>
                 {
                     b.Navigation("Results");
                 });
