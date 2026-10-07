@@ -81,7 +81,7 @@ function Exit-Usage([string]$Section, [string]$Message) {
     exit 2
 }
 
-$Verbs = @('build', 'run', 'test', 'publish', 'clean', 'info', 'help')
+$Verbs = @('build', 'run', 'test', 'publish', 'package', 'clean', 'info', 'help')
 
 # ---------------------------------------------------------------- argument parsing
 
@@ -93,9 +93,10 @@ $script:OptData = ''
 $script:OptServer = ''
 $script:OptFilter = ''
 $script:OptRid = ''
+$script:OptVersion = ''
 $script:Extra = @()
 
-$ValueOptions = @('--port', '--data', '--server', '--filter', '--rid')
+$ValueOptions = @('--port', '--data', '--server', '--filter', '--rid', '--version')
 
 # Whether option $Name is valid for verb $Verb and target $Tgt.
 function Test-OptionAllowed([string]$Verb, [string]$Tgt, [string]$Name) {
@@ -105,7 +106,8 @@ function Test-OptionAllowed([string]$Verb, [string]$Tgt, [string]$Name) {
         { $_ -in 'run:client:--fake', 'run:client:--server', 'run:client:--data', 'run:client:--release' } { return $true }
         { $_ -in 'run:dev:--port', 'run:dev:--data', 'run:dev:--release' } { return $true }
         { $_ -like 'test:*:--filter' -or $_ -like 'test:*:--release' } { return $true }
-        { $_ -like 'publish:*:--rid' } { return $true }
+        { $_ -like 'publish:*:--rid' -or $_ -like 'publish:*:--version' } { return $true }
+        { $_ -like 'package:*:--rid' -or $_ -like 'package:*:--version' } { return $true }
     }
     return $false
 }
@@ -154,6 +156,10 @@ function Read-Arguments([string]$Verb, [string[]]$Arguments) {
             if (-not $script:Target) { $script:Target = 'all' }
             if ($script:Target -cnotin 'all', 'server', 'client') { Exit-Usage publish "unknown target '$($script:Target)' for publish" }
         }
+        'package' {
+            if (-not $script:Target) { Exit-Usage package 'missing target for package (windows, linux or macos)' }
+            if ($script:Target -cnotin 'windows', 'linux', 'macos') { Exit-Usage package "unknown target '$($script:Target)' for package" }
+        }
         { $_ -in 'clean', 'info' } {
             if ($script:Target) { Exit-Usage $Verb "$Verb takes no target" }
             if ($script:Extra.Count -gt 0) { Exit-Usage $Verb "$Verb takes no extra arguments" }
@@ -180,6 +186,12 @@ function Read-Arguments([string]$Verb, [string[]]$Arguments) {
             '--server' { $script:OptServer = $value }
             '--filter' { $script:OptFilter = $value }
             '--rid' { $script:OptRid = $value }
+            '--version' {
+                if ($value -notmatch '^v?[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$') {
+                    Exit-Usage $Verb '--version needs a version like 1.2.3 or 1.2.3-rc.1 (a leading v is removed)'
+                }
+                $script:OptVersion = $value -replace '^v', ''
+            }
         }
     }
     if ($script:OptRelease) { $script:Configuration = 'Release' }
@@ -244,10 +256,43 @@ function ConvertTo-ArgumentString([string[]]$Arguments) {
     ($Arguments | ForEach-Object { if ($_ -match '[\s"]' -or $_ -eq '') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ } }) -join ' '
 }
 
+# Version of published apps and packages: --version, else the development fallback.
+$DefaultVersion = '0.1.0-dev'
+function Get-Version { if ($script:OptVersion) { return $script:OptVersion } return $DefaultVersion }
+
 function Publish-App([string]$Project, [string]$Out) {
+    if (Test-Path -LiteralPath $Out) { Remove-Item -LiteralPath $Out -Recurse -Force }
     Invoke-Dotnet (@('publish', $Project, '-c', 'Release', '-r', $script:Rid, '--self-contained',
             '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true',
-            '-p:PublishReadyToRun=true', '-p:DebugType=embedded', '-o', $Out) + $script:Extra)
+            '-p:PublishReadyToRun=true', '-p:DebugType=embedded', "-p:Version=$(Get-Version)", '-o', $Out) + $script:Extra)
+    # Native symbol files of NuGet packages (SkiaSharp, HarfBuzzSharp); managed symbols are embedded.
+    Get-ChildItem -LiteralPath $Out -Filter *.pdb -File | Remove-Item -Force
+}
+
+# Plugin folder id of a plugin project (<OadmPluginId>, the folder name under artifacts/plugins), else the project name.
+function Get-PluginId([System.IO.FileInfo]$Project) {
+    $m = [regex]::Match((Get-Content -LiteralPath $Project.FullName -Raw), '<OadmPluginId>([^<]+)</OadmPluginId>')
+    if ($m.Success) { return $m.Groups[1].Value.Trim() }
+    return $Project.Directory.Name
+}
+
+# Publishes every plugin project (server and client part) into artifacts/publish/plugins/<id>/. Plugins are RID
+# independent; both apps get the whole folder, each loader picks its own *.Server.dll or *.Client.dll.
+$PluginStage = Join-Path $RepoRoot 'artifacts/publish/plugins'
+function Publish-Plugins {
+    if (Test-Path -LiteralPath $PluginStage) { Remove-Item -LiteralPath $PluginStage -Recurse -Force }
+    foreach ($p in @(Get-PluginProjects)) {
+        Invoke-Dotnet @('publish', $p.FullName, '-c', 'Release', '-p:OadmSkipPluginDeploy=true', "-p:Version=$(Get-Version)",
+            '-o', (Join-Path $PluginStage (Get-PluginId $p)))
+    }
+}
+
+function Copy-Plugins([string]$Out) {
+    $target = Join-Path $Out 'plugins'
+    New-Item -ItemType Directory -Force -Path $target | Out-Null
+    foreach ($d in @(Get-ChildItem -LiteralPath $PluginStage | Where-Object { $_.PSIsContainer })) {
+        Copy-Item -LiteralPath $d.FullName -Destination $target -Recurse -Force
+    }
 }
 
 # ---------------------------------------------------------------- verbs
@@ -340,19 +385,54 @@ function Invoke-Test {
 function Invoke-Publish {
     Initialize-Dotnet
     if ($script:OptRid) { $script:Rid = $script:OptRid }
+    Publish-Plugins
     if ($script:Target -in 'all', 'server') {
         $out = Join-Path $RepoRoot "artifacts/publish/server/$($script:Rid)"
         Publish-App $ServerProject $out
-        foreach ($p in @(Get-PluginProjects)) {
-            Invoke-Dotnet @('publish', $p.FullName, '-c', 'Release', '-o', (Join-Path $out "plugins/$($p.Directory.Name)"))
-        }
+        Copy-Plugins $out
         Write-Host "server published to $out"
     }
     if ($script:Target -in 'all', 'client') {
         $out = Join-Path $RepoRoot "artifacts/publish/client/$($script:Rid)"
         Publish-App $ClientProject $out
+        Copy-Plugins $out
         Write-Host "client published to $out"
     }
+}
+
+function Test-Command([string]$Name) { return [bool](Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue) }
+
+function Exit-Environment([string]$Message) { [Console]::Error.WriteLine("error: $Message"); exit 1 }
+
+# Installer for one platform in artifacts/packages; publishes server and client for the RID first.
+function Invoke-Package {
+    $prefix = @{ windows = 'win'; linux = 'linux'; macos = 'osx' }[$script:Target]
+    $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'x64' }
+    $script:Rid = if ($script:OptRid) { $script:OptRid } else { "$prefix-$arch" }
+    if ($script:Rid -cnotin "$prefix-x64", "$prefix-arm64") { Exit-Usage package "--rid for package $($script:Target) is $prefix-x64 or $prefix-arm64" }
+    $isWin = ($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows
+    switch ($script:Target) {
+        'windows' { if (-not $isWin) { Exit-Environment 'package windows needs Windows (WiX Toolset builds the MSI)' } }
+        'linux' { if (-not (Test-Command 'dpkg-deb')) { Exit-Environment 'package linux needs dpkg-deb (Debian, Ubuntu or a container, see packaging/README.md)' } }
+        'macos' { if (-not (Test-Command 'pkgbuild') -or -not (Test-Command 'productbuild')) { Exit-Environment 'package macos needs macOS (pkgbuild, productbuild)' } }
+    }
+
+    $script:Target = 'all'
+    Invoke-Publish
+    $version = Get-Version
+    $server = Join-Path $RepoRoot "artifacts/publish/server/$($script:Rid)"
+    $client = Join-Path $RepoRoot "artifacts/publish/client/$($script:Rid)"
+    $out = Get-AbsoluteDir (Join-Path $RepoRoot 'artifacts/packages')
+    if ($prefix -eq 'win') {
+        Invoke-Dotnet @('build', (Join-Path $RepoRoot 'packaging/windows/Oadm.Installer.wixproj'), '-c', 'Release',
+            "-p:OadmVersion=$version", "-p:OadmRid=$($script:Rid)", "-p:OadmServerDir=$server", "-p:OadmClientDir=$client",
+            "-p:OadmPackageDir=$out")
+    } else {
+        $builder = if ($prefix -eq 'linux') { 'packaging/linux/build-deb.sh' } else { 'packaging/macos/build-pkg.sh' }
+        & bash (Join-Path $RepoRoot $builder) $script:Rid $version $server $client $out
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
+    Write-Host "package written to $out"
 }
 
 # Removes bin and obj folders below $Dir without descending into them.
@@ -407,6 +487,7 @@ switch ($verb) {
     'run' { Invoke-Run }
     'test' { Invoke-Test }
     'publish' { Invoke-Publish }
+    'package' { Invoke-Package }
     'clean' { Invoke-Clean }
     'info' { Invoke-Info }
 }
