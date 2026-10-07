@@ -119,18 +119,29 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
     /// A new, uncached client for the device at another address (same credentials, scheme and pinned
     /// certificate), e.g. to verify a re-addressed device before its record moves. The caller disposes it.
     /// </summary>
-    public async Task<VapixClient> CreateForAddressAsync(Device device, string address, CancellationToken ct)
+    public Task<VapixClient> CreateForAddressAsync(Device device, string address, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return CreateUncachedAsync(device, address, device.Scheme == DeviceScheme.Http ? Uri.UriSchemeHttp : Uri.UriSchemeHttps, device.CertFingerprintSha256, ct);
+    }
+
+    /// <summary>
+    /// A new, uncached client for the device with explicit address, scheme and certificate pin (null = trust on first
+    /// use), e.g. to verify the device after a task changed its web server certificate. The caller disposes it.
+    /// </summary>
+    public async Task<VapixClient> CreateUncachedAsync(Device device, string address, string scheme, string? pinnedFingerprint, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentException.ThrowIfNullOrWhiteSpace(address);
+        ArgumentException.ThrowIfNullOrWhiteSpace(scheme);
         ObjectDisposedException.ThrowIf(_disposed, this);
         var credentials = await _credentials.GetAsync(device.Id, ct).ConfigureAwait(false);
         var client = _connector.Connect(new VapixConnectionOptions
         {
             Address = address.Trim(),
-            Scheme = device.Scheme == DeviceScheme.Http ? Uri.UriSchemeHttp : Uri.UriSchemeHttps,
+            Scheme = scheme,
             Credentials = credentials is null ? null : new NetworkCredential(credentials.UserName, credentials.Password),
-            PinnedCertificateFingerprint = device.CertFingerprintSha256,
+            PinnedCertificateFingerprint = pinnedFingerprint,
             Timeout = RequestTimeout,
         });
         LogClientCreated(device.Id, client.BaseAddress, credentials is not null);

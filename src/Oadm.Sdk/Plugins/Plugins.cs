@@ -157,6 +157,20 @@ public interface ITaskExecutionContext
     /// </summary>
     Task<bool> UpdateDeviceAddressAsync(string newAddress, CancellationToken ct) =>
         throw new NotSupportedException("This context cannot change the device address.");
+
+    /// <summary>
+    /// Updates how OADM connects to the current device after the plugin changed its web server: with
+    /// <paramref name="scheme"/> "https" the device must present the certificate with the SHA-256 fingerprint
+    /// <paramref name="expectedFingerprintSha256"/> (hex, separators ignored; null = accept and pin the presented one),
+    /// with "http" OADM connects over plain HTTP (Digest only). The server connects with the new scheme, verifies the
+    /// serial number like <see cref="UpdateDeviceAddressAsync"/>, then stores scheme, certificate pin and certificate
+    /// details (so the device never shows CertificateChanged), publishes the change and queues a full refresh;
+    /// afterwards <see cref="Vapix"/> uses the new connection. Throws <see cref="DeviceIdentityException"/> when the
+    /// device does not answer with the new scheme, has another serial number or presents another certificate; the
+    /// record is then unchanged.
+    /// </summary>
+    Task UpdateDeviceTlsAsync(string scheme, string? expectedFingerprintSha256, CancellationToken ct) =>
+        throw new NotSupportedException("This context cannot change the device connection.");
 }
 
 /// <summary>The device answering at an address is not the expected one (different or missing serial number).</summary>
