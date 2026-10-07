@@ -202,6 +202,12 @@ public interface ICorePluginContext
     /// (AES-256-GCM, like device passwords). Null when the host offers no protector: then do not store secrets.
     /// </summary>
     ISecretProtector? Secrets => null;
+
+    /// <summary>
+    /// Live events for the plugin's client page (<c>ICorePluginClientContext.WatchEventsAsync</c>). Null when the host
+    /// cannot push events: the page then polls through InvokeAsync.
+    /// </summary>
+    IPluginEvents? Events => null;
 }
 
 /// <summary>Server-side encryption for secrets a plugin persists. Values never leave the server.</summary>

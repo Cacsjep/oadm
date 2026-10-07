@@ -1,0 +1,75 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:ntp="using:Oadm.Plugins.NtpServer"
+             xmlns:vm="using:Oadm.Plugins.NtpServer.Client"
+             x:Class="Oadm.Plugins.NtpServer.Client.NtpServerView"
+             x:DataType="vm:NtpServerViewModel">
+  <!-- One card (the host's page card): header with the status line, settings form, last requests. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,Auto,Auto,*">
+    <ui:CardHeader Grid.Row="0" Title="NTP server" Description="Answers the time requests of the cameras (NTP, UDP port 123).">
+      <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"
+                     IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}"
+                     ToolTip.Tip="{Binding StatusDetail}" />
+    </ui:CardHeader>
+
+    <StackPanel Grid.Row="1" Classes="form" Margin="{DynamicResource Oadm.GapTop}">
+      <CheckBox Content="Enable NTP server" IsChecked="{Binding IsEnabled}" />
+
+      <Grid ColumnDefinitions="150,420">
+        <TextBlock Classes="fieldLabel" Text="Listen on" />
+        <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding Interfaces}" SelectedItem="{Binding SelectedInterface}"
+                  ToolTip.Tip="The interface the cameras reach this server on. All interfaces listens on every address.">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="ntp:InterfaceOption">
+              <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+      </Grid>
+
+      <Grid ColumnDefinitions="150,420" RowDefinitions="Auto,Auto">
+        <TextBlock Classes="fieldLabel" Text="Upstream server" />
+        <TextBox Grid.Column="1" Text="{Binding Upstream}" PlaceholderText="Optional, e.g. pool.ntp.org"
+                 ToolTip.Tip="Optional. Empty: the server clock is served (stratum 10). With an upstream the server serves its stratum + 1." />
+        <Panel Grid.Row="1" Grid.Column="1">
+          <ui:StatusChip Text="{Binding CheckingText}" IsAccent="True" IsVisible="{Binding IsCheckingUpstream}" Margin="0,6,0,0" />
+          <ui:StatusChip Text="{Binding UpstreamResult}" IsOk="True" IsVisible="{Binding HasUpstreamResult}" Margin="0,6,0,0" />
+        </Panel>
+      </Grid>
+
+      <Grid ColumnDefinitions="150,420">
+        <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding UpstreamInfoText}" IsVisible="{Binding HasUpstreamInfo}"
+                   TextWrapping="Wrap" VerticalAlignment="Center" />
+      </Grid>
+
+      <Grid ColumnDefinitions="150,420">
+        <Button Grid.Column="1" Classes="primary" HorizontalAlignment="Right" Content="Save" Command="{Binding SaveCommand}"
+                ToolTip.Tip="Check the upstream server, store the settings and apply them" />
+      </Grid>
+    </StackPanel>
+
+    <TextBlock Grid.Row="2" Classes="sectionTitle" Text="Last requests" Margin="{DynamicResource Oadm.GapTop}" />
+
+    <Panel Grid.Row="3" Margin="0,8,0,0">
+      <DataGrid ItemsSource="{Binding Requests}" IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False"
+                SelectionMode="Single" MinHeight="120">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Time" Width="100" Binding="{Binding Time}" x:DataType="vm:RequestRowViewModel" />
+          <DataGridTextColumn Header="Client" Width="160" Binding="{Binding Client}" x:DataType="vm:RequestRowViewModel" />
+          <DataGridTextColumn Header="Device" Width="*" Binding="{Binding Device}" x:DataType="vm:RequestRowViewModel" />
+          <DataGridTextColumn Header="Offset" Width="110" Binding="{Binding Offset}" x:DataType="vm:RequestRowViewModel" />
+          <DataGridTemplateColumn Header="Result" Width="160" x:DataType="vm:RequestRowViewModel">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="vm:RequestRowViewModel">
+                <ui:StatusChip Text="{Binding Result}" IsOk="{Binding IsAnswered}" IsWarning="{Binding IsLimited}" Margin="10,0" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+        </DataGrid.Columns>
+      </DataGrid>
+      <TextBlock Classes="secondary" Text="No requests yet." IsVisible="{Binding !HasRequests}"
+                 HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
+    </Panel>
+  </Grid>
+</UserControl>

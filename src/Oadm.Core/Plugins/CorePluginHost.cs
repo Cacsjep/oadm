@@ -46,7 +46,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         ITaskRunner tasks,
         IPluginSettingsProvider settings,
         ILoggerFactory? loggerFactory = null,
-        ISecretProtector? secrets = null)
+        ISecretProtector? secrets = null,
+        PluginEventHub? events = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(devices);
@@ -59,9 +60,13 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         _tasks = tasks;
         _settings = settings;
         _secrets = secrets;
+        Events = events ?? new PluginEventHub();
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _logger = _loggerFactory.CreateLogger<CorePluginHost>();
     }
+
+    /// <summary>Live events of the core plugins for their pages (<see cref="ICorePluginContext.Events"/>).</summary>
+    public PluginEventHub Events { get; }
 
     public IReadOnlyList<CorePluginStatus> Statuses =>
         [.. _registry.CorePlugins.Select(c => GetStatus(c.Id))];
@@ -97,7 +102,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     _settings.GetSettings(registered.Id),
                     _loggerFactory.CreateLogger("Oadm.Plugins." + registered.Id),
                     registered.Origin.Directory,
-                    _secrets);
+                    _secrets,
+                    Events.For(registered.Id));
                 try
                 {
                     await registered.Plugin.StartAsync(context, ct).ConfigureAwait(false);
@@ -236,7 +242,8 @@ internal sealed class CorePluginContext(
     IPluginSettings settings,
     ILogger logger,
     string? pluginDirectory = null,
-    ISecretProtector? secrets = null) : ICorePluginContext
+    ISecretProtector? secrets = null,
+    IPluginEvents? events = null) : ICorePluginContext
 {
     public IDeviceRepository Devices { get; } = devices;
 
@@ -251,4 +258,6 @@ internal sealed class CorePluginContext(
     public string? PluginDirectory { get; } = pluginDirectory;
 
     public ISecretProtector? Secrets { get; } = secrets;
+
+    public IPluginEvents? Events { get; } = events;
 }

@@ -59,6 +59,14 @@ public interface ICorePluginClientContext
     /// </summary>
     Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct);
 
+    /// <summary>
+    /// Live events the server part publishes (<c>ICorePluginContext.Events</c>, gRPC PluginService.Watch), from now
+    /// until <paramref name="ct"/> is cancelled; items arrive on the caller's synchronization context. The sequence ends
+    /// or throws <c>RpcException</c> when the connection drops: re-read the state with <see cref="InvokeAsync"/> and
+    /// watch again after a short delay. Default (older hosts, fake mode): an empty sequence, so the page polls.
+    /// </summary>
+    IAsyncEnumerable<Oadm.Sdk.Plugins.PluginEvent> WatchEventsAsync(CancellationToken ct) => AsyncEnumerable.Empty<Oadm.Sdk.Plugins.PluginEvent>();
+
     /// <summary>All managed devices (client mirror of the device table), see <see cref="DevicesChanged"/>.</summary>
     IReadOnlyList<IDeviceInfo> Devices => [];
 

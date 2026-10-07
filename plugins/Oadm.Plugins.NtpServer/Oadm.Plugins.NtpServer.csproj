@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>Oadm.Plugins.NtpServer.Server</AssemblyName>
+    <RootNamespace>Oadm.Plugins.NtpServer</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <!-- Folder name under artifacts/plugins/, must equal the id in plugin.json. -->
+    <OadmPluginId>oadm.ntp-server</OadmPluginId>
+    <OadmPluginOutputDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'artifacts', 'plugins', '$(OadmPluginId)'))</OadmPluginOutputDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The SDK is shared from the host: never copy it (or its dependencies) into the plugin folder. -->
+    <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <!-- The NTP configuration requests of the Date and time plugin (one source, compiled into this assembly too).
+       A project reference would copy Oadm.Plugins.DateTime.Server.dll into this plugin folder, where the server
+       loader (*.Server.dll) would register the Date and time task a second time. -->
+  <ItemGroup>
+    <Compile Include="..\Oadm.Plugins.DateTime\Model\*.cs" Link="DateTime\Model\%(Filename)%(Extension)" />
+    <Compile Include="..\Oadm.Plugins.DateTime\Vapix\*.cs" Link="DateTime\Vapix\%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\Oadm.Plugins.DateTime\Model\TimeZones.txt" LogicalName="Oadm.Plugins.DateAndTime.TimeZones.txt" Link="DateTime\Model\TimeZones.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Oadm.Plugins.NtpServer.Tests" />
+  </ItemGroup>
+
+  <!-- Development deployment: copy the output to artifacts/plugins/oadm.ntp-server/.
+       The client part (Oadm.Plugins.NtpServer.Client) deploys into the same folder. -->
+  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
+    <ItemGroup>
+      <_OadmPluginFiles Include="$(OutDir)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_OadmPluginFiles)" DestinationFiles="@(_OadmPluginFiles->'$(OadmPluginOutputDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Message Importance="normal" Text="OADM plugin $(OadmPluginId) deployed to $(OadmPluginOutputDir)" />
+  </Target>
+
+</Project>

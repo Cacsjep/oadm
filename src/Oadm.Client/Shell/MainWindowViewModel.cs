@@ -191,6 +191,14 @@ internal sealed class CorePluginClientContext(IOadmApi api, string pluginId, ITo
     public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
         api.InvokeCorePluginAsync(pluginId, method, payloadJson, ct);
 
+    public async IAsyncEnumerable<Oadm.Sdk.Plugins.PluginEvent> WatchEventsAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        await foreach (var item in api.WatchCorePluginAsync(pluginId, ct).ConfigureAwait(true))
+        {
+            yield return new Oadm.Sdk.Plugins.PluginEvent(item.Topic, string.IsNullOrEmpty(item.PayloadJson) ? null : item.PayloadJson);
+        }
+    }
+
     public Task ShowMessageAsync(string title, string message) => host.ShowMessageAsync(title, message);
 
     public Task<bool> ConfirmAsync(string title, string message, string confirmText) => host.ConfirmAsync(title, message, confirmText);

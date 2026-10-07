@@ -18,6 +18,36 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
         return Task.FromResult(reply);
     }
 
+    public override async Task Watch(Proto.WatchPluginRequest request, IServerStreamWriter<Proto.PluginEvent> responseStream, ServerCallContext context)
+    {
+        if (string.IsNullOrWhiteSpace(request.PluginId))
+        {
+            throw GrpcGuard.InvalidArgument("plugin_id is required.");
+        }
+
+        if (!registry.TryGetCorePlugin(request.PluginId, out var registered))
+        {
+            throw GrpcGuard.NotFound($"Unknown core plugin '{request.PluginId}'.");
+        }
+
+        try
+        {
+            await foreach (var item in host.Events.WatchAsync(registered.Id, context.CancellationToken).ConfigureAwait(false))
+            {
+                await responseStream.WriteAsync(new Proto.PluginEvent
+                {
+                    PluginId = registered.Id,
+                    Topic = item.Topic,
+                    PayloadJson = item.PayloadJson ?? string.Empty,
+                }).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested)
+        {
+            // The client stopped watching.
+        }
+    }
+
     public override async Task<Proto.InvokeReply> Invoke(Proto.InvokeRequest request, ServerCallContext context)
     {
         if (string.IsNullOrWhiteSpace(request.PluginId) || string.IsNullOrWhiteSpace(request.Method))
