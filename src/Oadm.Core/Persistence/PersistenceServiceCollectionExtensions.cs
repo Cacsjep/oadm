@@ -39,6 +39,7 @@ public static class PersistenceServiceCollectionExtensions
 
         services.AddSingleton(sp => CredentialProtector.FromKeyFile(sp.GetRequiredService<OadmPaths>().MasterKeyPath));
         services.AddSingleton<CredentialStore>();
+        services.AddSingleton<CredentialListStore>();
 
         services.AddSingleton<DeviceChangeFeed>();
         services.AddSingleton<IDeviceChangeFeed>(sp => sp.GetRequiredService<DeviceChangeFeed>());

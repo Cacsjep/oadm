@@ -51,6 +51,7 @@ public partial class DevicesView : UserControl
 
         if (DataContext is DevicesViewModel vm)
         {
+            vm.Toolbar.AttachTo(ToolbarPanel, vm.ToolbarContext);
             DeviceGridLayoutBinder.Attach(DeviceGrid, vm.Columns);
             _tasks = vm.Tasks;
             _tasks.PropertyChanged += OnTasksPropertyChanged;

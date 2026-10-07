@@ -1,0 +1,185 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="using:Oadm.Client.Controls"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:disc="using:Oadm.Client.Discovery"
+        x:Class="Oadm.Client.Discovery.AddDevicesWindow"
+        x:DataType="disc:AddDevicesViewModel"
+        Title="{x:Static disc:AddDevicesViewModel.Title}"
+        Width="1120" Height="740" MinWidth="900" MinHeight="580"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+  <!-- One page, no steps: input (range / address), live list with login results, inline editor, Add. Shared controls only. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static disc:AddDevicesViewModel.Title}" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
+        <ui:CardHeader Grid.Row="0" Title="{Binding HeaderTitle}" Description="{Binding HeaderDescription}" />
+
+        <!-- IP range: Enter or Scan starts -->
+        <StackPanel Grid.Row="1" Classes="inputRow" IsVisible="{Binding IsRangeMode}">
+          <TextBlock Classes="fieldLabel" Text="From" VerticalAlignment="Center" />
+          <TextBox x:Name="RangeFromBox" Width="180" Text="{Binding RangeFrom}" PlaceholderText="192.168.0.1">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding StartRangeCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+          <TextBlock Classes="fieldLabel" Text="To" VerticalAlignment="Center" />
+          <TextBox Width="180" Text="{Binding RangeTo}" PlaceholderText="192.168.0.254">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding StartRangeCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+          <ui:ToolbarButton Text="Scan" IconKey="search" Command="{Binding StartRangeCommand}" />
+        </StackPanel>
+
+        <!-- Add manually: Enter or Find probes one address -->
+        <StackPanel Grid.Row="1" Classes="inputRow" IsVisible="{Binding IsManualMode}">
+          <TextBlock Classes="fieldLabel" Text="Address" VerticalAlignment="Center" />
+          <TextBox x:Name="AddressBox" Width="380" Text="{Binding ManualAddress}" PlaceholderText="10.0.0.48, camera.example.com or https://10.0.0.48:8443">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding ProbeAddressCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+          <ui:ToolbarButton Text="Find" IconKey="search" Command="{Binding ProbeAddressCommand}" />
+        </StackPanel>
+
+        <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,10">
+          <ui:ToolbarButton Text="Select all authenticated" IconKey="check" Command="{Binding SelectAllAuthenticatedCommand}"
+                            ToolTip.Tip="Check every device OADM is logged in to (and factory-default devices with a password)" />
+          <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding SummaryText}" VerticalAlignment="Center" Margin="12,0,0,0" />
+          <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" />
+        </Grid>
+
+        <ui:ProgressRow Grid.Row="3" Margin="0,0,0,10" Value="{Binding ScanProgress}" Text="{Binding ScanStatusText}" IsActive="{Binding IsScanning}"
+                        IsVisible="{Binding ScanStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+        <DataGrid x:Name="DeviceList" Grid.Row="4" ItemsSource="{Binding FilteredRows}" SelectedItem="{Binding FocusedRow}"
+                  SelectionMode="Single" IsReadOnly="True" CanUserReorderColumns="False">
+          <DataGrid.Styles>
+            <Style Selector="DataGridRow" x:DataType="disc:DiscoveredRowViewModel">
+              <Setter Property="Opacity" Value="{Binding !IsMuted, Converter={x:Static c:Converters.MutedOpacity}}" />
+            </Style>
+          </DataGrid.Styles>
+          <DataGrid.Columns>
+            <DataGridTemplateColumn Width="48" CanUserSort="False" CanUserResize="False">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="disc:DiscoveredRowViewModel">
+                  <CheckBox IsChecked="{Binding IsSelected}" IsEnabled="{Binding CanAdd}" HorizontalAlignment="Center" MinWidth="0" Padding="0" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Width="40" CanUserSort="False" CanUserResize="False">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="disc:DiscoveredRowViewModel">
+                  <Panel Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Background="Transparent" ToolTip.Tip="{Binding CategoryTooltip}">
+                    <ui:OadmIcon Data="{Binding CategoryIconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  </Panel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Address" Width="220" Binding="{Binding Address}" x:DataType="disc:DiscoveredRowViewModel" />
+            <DataGridTextColumn Header="MAC address" Width="130" Binding="{Binding Serial}" x:DataType="disc:DiscoveredRowViewModel" />
+            <DataGridTextColumn Header="Model" Width="*" Binding="{Binding Model}" x:DataType="disc:DiscoveredRowViewModel" />
+            <DataGridTemplateColumn Header="Login" Width="230" SortMemberPath="ChipText">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="disc:DiscoveredRowViewModel">
+                  <ui:StatusChip Margin="10,0" Text="{Binding ChipText}" ToolTip.Tip="{Binding ChipTooltip}"
+                                 IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}" IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Action" Width="170" CanUserSort="False">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="disc:DiscoveredRowViewModel">
+                  <Panel Margin="10,0">
+                    <Button Classes="link" IsVisible="{Binding ShowLogIn}" ToolTip.Tip="Enter the user name and password of this device"
+                            Command="{Binding $parent[Window].((disc:AddDevicesViewModel)DataContext).OpenEditorCommand}" CommandParameter="{Binding}">
+                      <TextBlock Text="Log in" />
+                    </Button>
+                    <Button Classes="link" IsVisible="{Binding ShowSetPassword}" ToolTip.Tip="Set the first password (user root); it is applied when the device is added"
+                            Command="{Binding $parent[Window].((disc:AddDevicesViewModel)DataContext).OpenEditorCommand}" CommandParameter="{Binding}">
+                      <TextBlock Text="Set password" />
+                    </Button>
+                    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowPasswordReady}">
+                      <TextBlock Classes="secondary" Text="Password ready" />
+                      <Button Classes="link" Command="{Binding $parent[Window].((disc:AddDevicesViewModel)DataContext).OpenEditorCommand}" CommandParameter="{Binding}">
+                        <TextBlock Text="Change" />
+                      </Button>
+                    </StackPanel>
+                  </Panel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Inline editor: log in -->
+        <Border Grid.Row="5" Classes="inlineEditor" IsVisible="{Binding IsLoginEditorOpen}">
+          <StackPanel Classes="form">
+            <TextBlock Classes="sectionTitle" Text="{Binding EditorTitle}" />
+            <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding EditorRow.AuthDetail, FallbackValue=''}" />
+            <Grid ColumnDefinitions="150,280,*" RowDefinitions="Auto,Auto" Classes="form">
+              <TextBlock Classes="fieldLabel" Text="User name" />
+              <TextBox x:Name="LoginUserBox" Grid.Column="1" Text="{Binding EditorUserName}" />
+              <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Password" />
+              <TextBox x:Name="LoginPasswordBox" Grid.Row="1" Grid.Column="1" PasswordChar="&#x2022;" Text="{Binding EditorPassword}">
+                <TextBox.KeyBindings>
+                  <KeyBinding Gesture="Enter" Command="{Binding RetryCommand}" />
+                </TextBox.KeyBindings>
+              </TextBox>
+            </Grid>
+            <Grid ColumnDefinitions="150,*">
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <CheckBox Content="Save to credential list" IsChecked="{Binding SaveToCredentialList}" VerticalAlignment="Center"
+                          ToolTip.Tip="Store the credential encrypted on the server; OADM then tries it on every device it finds" />
+                <Button Classes="primary" Content="Retry" Command="{Binding RetryCommand}" />
+                <Button Classes="secondary" Content="Cancel" Command="{Binding CancelEditorCommand}" />
+              </StackPanel>
+            </Grid>
+            <TextBlock Classes="error" Text="{Binding EditorError}" TextWrapping="Wrap"
+                       IsVisible="{Binding EditorError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </StackPanel>
+        </Border>
+
+        <!-- Inline editor: first password of a factory-default device -->
+        <Border Grid.Row="5" Classes="inlineEditor" IsVisible="{Binding IsPasswordEditorOpen}">
+          <StackPanel Classes="form">
+            <TextBlock Classes="sectionTitle" Text="{Binding EditorTitle}" />
+            <Grid ColumnDefinitions="150,280,*" RowDefinitions="Auto,Auto" Classes="form">
+              <TextBlock Classes="fieldLabel" Text="New password" />
+              <TextBox x:Name="NewPasswordBox" Grid.Column="1" PasswordChar="&#x2022;" Text="{Binding NewPassword}" />
+              <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Confirm password" />
+              <TextBox Grid.Row="1" Grid.Column="1" PasswordChar="&#x2022;" Text="{Binding ConfirmPassword}">
+                <TextBox.KeyBindings>
+                  <KeyBinding Gesture="Enter" Command="{Binding ApplyPasswordCommand}" />
+                </TextBox.KeyBindings>
+              </TextBox>
+            </Grid>
+            <TextBlock Classes="secondary small" TextWrapping="Wrap" Text="{Binding PolicyHint}" />
+            <Grid ColumnDefinitions="150,*">
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <CheckBox Content="Use for all factory-default devices" IsChecked="{Binding UseForAllFactoryDefault}" VerticalAlignment="Center" />
+                <Button Classes="primary" Content="Apply" Command="{Binding ApplyPasswordCommand}" />
+                <Button Classes="secondary" Content="Cancel" Command="{Binding CancelEditorCommand}" />
+              </StackPanel>
+            </Grid>
+            <TextBlock Classes="error" Text="{Binding EditorError}" TextWrapping="Wrap"
+                       IsVisible="{Binding EditorError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </StackPanel>
+        </Border>
+
+        <TextBlock Grid.Row="6" Classes="error" Text="{Binding ErrorText}" TextWrapping="Wrap" Margin="{StaticResource Oadm.GapTop}"
+                   IsVisible="{Binding ErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      </Grid>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelText="Close" CancelCommand="{Binding CloseCommand}">
+      <CheckBox Content="Keep open after adding" IsChecked="{Binding KeepOpen}" VerticalAlignment="Center" />
+      <Button Classes="primary" Content="{Binding AddButtonText}" Command="{Binding AddCommand}" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

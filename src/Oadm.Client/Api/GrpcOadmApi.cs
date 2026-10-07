@@ -87,21 +87,20 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<string> StartRangeScanAsync(string firstAddress, string lastAddress, CancellationToken ct) =>
         (await C.Discovery.StartRangeScanAsync(new RangeScanRequest { From = firstAddress, To = lastAddress }, cancellationToken: ct)).SessionId;
 
+    public async Task<string> ProbeAddressAsync(string address, CancellationToken ct) =>
+        (await C.Discovery.ProbeAddressAsync(new ProbeAddressRequest { Address = address }, cancellationToken: ct)).SessionId;
+
     public IAsyncEnumerable<DiscoveredDevice> WatchDiscoveredAsync(string sessionId, CancellationToken ct) =>
         ReadAll(C.Discovery.WatchDiscovered(new DiscoverySession { SessionId = sessionId }, cancellationToken: ct), ct);
 
     public async Task StopDiscoveryAsync(string sessionId, CancellationToken ct) =>
         await C.Discovery.StopAsync(new DiscoverySession { SessionId = sessionId }, cancellationToken: ct);
 
-    public async Task<AddPlan> PrepareAddAsync(string sessionId, IReadOnlyCollection<string> discoveredIds, CancellationToken ct)
-    {
-        var request = new PrepareRequest { SessionId = sessionId };
-        request.DiscoveredIds.AddRange(discoveredIds);
-        return await C.AddDevices.PrepareAsync(request, cancellationToken: ct);
-    }
-
     public async Task<CommitReply> CommitAddAsync(CommitRequest request, CancellationToken ct) =>
         await C.AddDevices.CommitAsync(request, cancellationToken: ct);
+
+    public async Task<DiscoveredDevice> RetryAuthAsync(RetryAuthRequest request, CancellationToken ct) =>
+        await C.AddDevices.RetryAuthAsync(request, cancellationToken: ct);
 
     public async Task<IReadOnlyList<TaskPluginInfo>> ListTaskPluginsAsync(CancellationToken ct) =>
         (await C.Tasks.ListTaskPluginsAsync(new Empty(), cancellationToken: ct)).Plugins;
@@ -173,6 +172,15 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
 
     public async Task<ServerSettings> SetSettingsAsync(ServerSettings settings, CancellationToken ct) =>
         await C.Settings.SetAsync(settings, cancellationToken: ct);
+
+    public async Task<IReadOnlyList<CredentialEntry>> ListCredentialsAsync(CancellationToken ct) =>
+        (await C.Settings.ListCredentialsAsync(new Empty(), cancellationToken: ct)).Entries;
+
+    public async Task<CredentialEntry> AddCredentialAsync(string userName, string password, CancellationToken ct) =>
+        await C.Settings.AddCredentialAsync(new AddCredentialRequest { UserName = userName, Password = password }, cancellationToken: ct);
+
+    public async Task RemoveCredentialAsync(string id, CancellationToken ct) =>
+        await C.Settings.RemoveCredentialAsync(new CredentialEntryId { Id = id }, cancellationToken: ct);
 
     public IAsyncEnumerable<LiveViewFrame> WatchLiveViewAsync(LiveViewRequest request, CancellationToken ct) =>
         ReadAll(C.LiveView.Watch(request, cancellationToken: ct), ct);

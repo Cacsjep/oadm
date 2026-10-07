@@ -348,15 +348,40 @@ public static class Mappers
     };
 
     public static Proto.DiscoverySource ToProto(DiscoverySources sources) =>
-        sources.HasFlag(DiscoverySources.Mdns) ? Proto.DiscoverySource.Mdns
+        sources.HasFlag(DiscoverySources.Manual) ? Proto.DiscoverySource.Manual
+        : sources.HasFlag(DiscoverySources.Mdns) ? Proto.DiscoverySource.Mdns
         : sources.HasFlag(DiscoverySources.RangeScan) ? Proto.DiscoverySource.RangeScan
         : Proto.DiscoverySource.Unspecified;
+
+    public static Proto.AuthState ToProto(AddDevices.DeviceAuthState state) => state switch
+    {
+        AddDevices.DeviceAuthState.Authenticated => Proto.AuthState.Authenticated,
+        AddDevices.DeviceAuthState.PasswordNotSet => Proto.AuthState.PasswordNotSet,
+        AddDevices.DeviceAuthState.LoginFailed => Proto.AuthState.LoginFailed,
+        AddDevices.DeviceAuthState.Unreachable => Proto.AuthState.Unreachable,
+        AddDevices.DeviceAuthState.AlreadyAdded => Proto.AuthState.AlreadyAdded,
+        _ => Proto.AuthState.Pending,
+    };
+
+    /// <summary>A discovered device with the result of the automatic login (never a password).</summary>
+    public static Proto.DiscoveredDevice ToProto(DiscoveredDevice device, bool alreadyManaged, int progressPercent, AddDevices.DeviceAuthResult auth)
+    {
+        ArgumentNullException.ThrowIfNull(auth);
+        var message = ToProto(device, alreadyManaged, progressPercent);
+        message.AuthState = alreadyManaged ? Proto.AuthState.AlreadyAdded : ToProto(auth.State);
+        message.AuthUserName = auth.UserName ?? string.Empty;
+        message.CredentialId = auth.CredentialId ?? string.Empty;
+        message.AuthDetail = auth.Detail ?? string.Empty;
+        message.PassphrasePolicy = auth.PassphrasePolicy ?? string.Empty;
+        return message;
+    }
 
     public static Proto.DiscoveredDevice ToProto(DiscoveredDevice device, bool alreadyManaged, int progressPercent)
     {
         ArgumentNullException.ThrowIfNull(device);
         return new Proto.DiscoveredDevice
         {
+            EnteredAddress = device.EnteredAddress ?? string.Empty,
             DiscoveredId = device.DiscoveredId,
             Serial = device.Serial,
             Address = device.Address.ToString(),
@@ -369,6 +394,17 @@ public static class Mappers
             ProgressPercent = progressPercent,
             ProductType = device.ProductType ?? string.Empty,
             Category = ToProto(DeviceCategoryMapper.Map(device.ProductType)),
+        };
+    }
+
+    public static Proto.CredentialEntry ToProto(Core.Security.CredentialListItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        return new Proto.CredentialEntry
+        {
+            Id = item.Id.ToString(),
+            UserName = item.UserName,
+            Created = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTime(DateTime.SpecifyKind(item.CreatedUtc, DateTimeKind.Utc)),
         };
     }
 

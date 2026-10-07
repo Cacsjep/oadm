@@ -6,7 +6,6 @@ using Oadm.Client.Api;
 using Oadm.Client.Discovery;
 using Oadm.Client.Plugins;
 using Oadm.Client.Tasks;
-using Oadm.Contracts.V1;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Devices;
 
@@ -16,7 +15,7 @@ public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLa
 {
     public async Task ShowMessageAsync(string title, string message)
     {
-        if (Owner() is not { } owner)
+        if (CurrentOwner() is not { } owner)
         {
             return;
         }
@@ -27,7 +26,7 @@ public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLa
 
     public async Task<bool> ConfirmAsync(string title, string message, string confirmText)
     {
-        if (Owner() is not { } owner)
+        if (CurrentOwner() is not { } owner)
         {
             return false;
         }
@@ -36,23 +35,24 @@ public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLa
         return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
     }
 
-    public async Task<CommitReply?> ShowAddDevicesWizardAsync(AddDevicesWizardViewModel wizard)
+    public Window? Owner => CurrentOwner();
+
+    public async Task<bool> ShowAddDevicesAsync(AddDevicesViewModel page)
     {
-        ArgumentNullException.ThrowIfNull(wizard);
-        if (Owner() is not { } owner)
+        ArgumentNullException.ThrowIfNull(page);
+        if (CurrentOwner() is not { } owner)
         {
-            return null;
+            return false;
         }
 
-        var window = new AddDevicesWizardWindow { DataContext = wizard };
-        bool added = await window.ShowDialog<bool>(owner).ConfigureAwait(true);
-        return added ? wizard.Result : null;
+        var window = new AddDevicesWindow { DataContext = page };
+        return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
     }
 
     public async Task<string?> ShowTaskPluginDialogAsync(ITaskPluginDialog dialog, IReadOnlyList<IDeviceInfo> devices)
     {
         ArgumentNullException.ThrowIfNull(dialog);
-        if (Owner() is not { } owner)
+        if (CurrentOwner() is not { } owner)
         {
             return null;
         }
@@ -62,7 +62,7 @@ public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLa
 
     public async Task ShowTaskDetailsAsync(TaskDetailsViewModel details)
     {
-        if (Owner() is not { } owner)
+        if (CurrentOwner() is not { } owner)
         {
             return;
         }
@@ -73,7 +73,7 @@ public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLa
 
     public async Task<bool> OpenAsync(Uri uri)
     {
-        if (Owner() is not { } owner)
+        if (CurrentOwner() is not { } owner)
         {
             return false;
         }
@@ -82,7 +82,7 @@ public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLa
     }
 
     /// <summary>The active window (so dialogs opened from dialogs stack correctly), else the main window.</summary>
-    private static Window? Owner()
+    private static Window? CurrentOwner()
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {

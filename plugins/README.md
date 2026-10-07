@@ -78,7 +78,7 @@ the payload. Failures are `Grpc.Core.RpcException`; show `Status.Detail` to the 
 
 Build dialogs from the host look (HARD RULE: reuse controls, no style differences):
 
-- Window and layout like the add devices wizard: `Width`/`Height` explicit (e.g. 1040 x 700),
+- Window and layout like the add devices page: `Width`/`Height` explicit (e.g. 1040 x 700),
   `ExtendClientAreaToDecorationsHint="True"`,
   `ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}"`, a root grid of
   title bar, cards with `Margin="16,0"` (`16,16,16,0` for each further card) and the footer.
@@ -90,7 +90,9 @@ Build dialogs from the host look (HARD RULE: reuse controls, no style difference
   | `ui:DialogTitleBar Text="..."` | first row of every dialog window (title, draggable, caption buttons) |
   | `ui:CardHeader Title Description` | heading of every card (card title, secondary description); child controls go right of the title (e.g. a device picker). Class `flush` when the content below is optional and adds `Margin="{DynamicResource Oadm.GapTop}"` itself |
   | `ui:DialogFooter CancelCommand` | last row: Cancel left; children are the right-hand buttons (`Button.secondary` for Back, one `Button.primary`) |
-  | `ui:IconLabel Icon Text` | every icon + text row, e.g. button content; toolbar rows are `Button.toolbar` with an `IconLabel`, like the Devices page |
+  | `ui:IconLabel Icon Text` | every icon + text row, e.g. button content |
+  | `ui:ToolbarButton Text IconKey (or Icon) IsPrimary` | every toolbar button (Devices page toolbar, button rows in dialogs): `Button.toolbar` (or `Button.primary`) with an `IconLabel` |
+  | `ui:ToolbarSeparator` | vertical line between toolbar groups |
   | `ui:SearchBox Text` | every search field |
   | `ui:StatusChip Text IsOk IsWarning IsError IsAccent` | every status value (border-only chip), in grid cells with `Margin="10,0"` |
   | `ui:FileRow FileName Details Error Command` | a chosen local file with its "Choose file..." button; format sizes with `FileSizeText.Format` |
@@ -100,7 +102,7 @@ Build dialogs from the host look (HARD RULE: reuse controls, no style difference
 - Styles and classes from the host theme (`Themes/OadmTheme.axaml`), e.g. `Border.card`,
   `TextBlock.secondary`, `TextBlock.fieldLabel`, `TextBlock.warning`, `TextBlock.error`,
   `Button.primary`, `Button.secondary`, `Button.toolbar`, `Border.vseparator`. Form fields are
-  label left, input right like the wizard steps: `Grid ColumnDefinitions="150,280"` with a
+  label left, input right like the add page editors: `Grid ColumnDefinitions="150,280"` with a
   `TextBlock.fieldLabel`; stack rows in `StackPanel Classes="form"` (or `Grid Classes="form"`),
   which sets the row spacing. Tables are `DataGrid`s (the theme styles them). No local colors,
   font sizes, font weights or paddings.
@@ -121,3 +123,65 @@ Build dialogs from the host look (HARD RULE: reuse controls, no style difference
   A plugin's `IconKey` (context menu, toolbar) is the key without the `Icon.` prefix, e.g.
   `restart`. A new icon is added to `src/Oadm.Client/Themes/Icons.axaml` (24x24 Lucide stroke
   geometry) and listed here.
+
+## Toolbar plugins
+
+The buttons on top of the Devices page are toolbar plugins: Scan, Scan IP range, Add manually
+(group `Add`), Remove (`Manage`) and one generic plugin that shows a button for every task plugin
+with `ShowInToolbar` (`Tasks`) are built into the client and registered exactly like plugin ones.
+The Columns button and the search box stay host parts on the right.
+
+```csharp
+public interface IToolbarPlugin            // Oadm.Sdk.Client
+{
+    string Id { get; }                     // unique; built-in ids ("oadm.toolbar.*") are reserved
+    int Order { get; }                     // ascending within the group
+    ToolbarGroup Group { get; }            // Add, Manage, Tasks, Plugins (left to right)
+    Control CreateControl(IToolbarContext ctx);   // any Avalonia control, created once on the UI thread
+}
+
+public interface IToolbarContext           // UI thread only; events are raised on the UI thread
+{
+    IReadOnlyList<IDeviceInfo> SelectedDevices { get; }   event EventHandler? SelectionChanged;
+    IReadOnlyList<IDeviceInfo> Devices { get; }           event EventHandler? DevicesChanged;
+    IReadOnlyList<ToolbarTaskPlugin> TaskPlugins { get; } event EventHandler? TaskPluginsChanged;
+    bool CanRunTask(string pluginId);                     // CanRun for the whole selection
+    Task<IReadOnlyList<string>?> RunTaskAsync(string pluginId, CancellationToken ct); // dialog first when needed
+    Task OpenAsync(string hostPage);                      // HostPages.AddScan / AddIpRange / AddManually / Devices / Logs / Settings
+    Task RemoveDevicesAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
+    Task ShowMessageAsync(string title, string message);
+    Task<bool> ConfirmAsync(string title, string message, string confirmText);
+    Task<string?> QueryAsync(string pluginId, Guid deviceId, string method, string? payloadJson, CancellationToken ct);
+    Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct);
+    Window? Owner { get; }                                // owner for the plugin's own dialogs
+}
+```
+
+- Put the class in the plugin's `*.Client.dll` with a public parameterless constructor; the client
+  loader finds it next to `ITaskPluginDialog` and `ICorePluginPage`. A duplicate id of a built-in
+  entry is ignored, a control that fails to create is logged and left out.
+- The host orders entries by group, order and id and draws a `ToolbarSeparator` between groups
+  that show something (a hidden control does not count, so an empty group leaves no stray line).
+- Build buttons with `ui:ToolbarButton` (one `IsPrimary` button on the toolbar: Scan). Enable and
+  disable them from `SelectionChanged` / `TaskPluginsChanged`; never cache the selection.
+- Sample: `tests/TestPlugins/Oadm.TestPlugins.Sample.Client/SampleToolbarPlugin.cs` ("Sample (n)"
+  with the selection count, runs the sample task), loaded by `ToolbarPluginTests`.
+
+```csharp
+public sealed class SampleToolbarPlugin : IToolbarPlugin
+{
+    public string Id => "oadm.sample.toolbar";
+    public int Order => 0;
+    public ToolbarGroup Group => ToolbarGroup.Plugins;
+
+    public Control CreateControl(IToolbarContext ctx)
+    {
+        var button = new ToolbarButton { IconKey = "plugin" };
+        void Update() { button.Text = $"Sample ({ctx.SelectedDevices.Count})"; button.IsEnabled = ctx.SelectedDevices.Count > 0; }
+        ctx.SelectionChanged += (_, _) => Update();
+        button.Click += async (_, _) => await ctx.RunTaskAsync("oadm.sample.standalone", CancellationToken.None);
+        Update();
+        return button;
+    }
+}
+```

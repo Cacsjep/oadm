@@ -1,3 +1,6 @@
+using System.Collections.ObjectModel;
+using System.Globalization;
+
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -6,11 +9,16 @@ using Microsoft.Extensions.Logging;
 using Oadm.Client.Api;
 using Oadm.Client.Infrastructure;
 using Oadm.Client.Shell;
+using Grpc.Core;
+
 using Oadm.Contracts.V1;
 
 namespace Oadm.Client.Settings;
 
-/// <summary>Server settings (SettingsService) plus the client-side server address.</summary>
+/// <summary>One credential list entry: user name and when it was added (never a password).</summary>
+public sealed record CredentialItemViewModel(string Id, string UserName, string AddedText);
+
+/// <summary>Server settings (SettingsService), the credential list, plus the client-side server address.</summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
     private readonly IOadmApi _api;
@@ -47,6 +55,16 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] public partial string? ServerMessage { get; private set; }
     [ObservableProperty] public partial bool ServerMessageIsError { get; private set; }
 
+    /// <summary>The server's credential list, tried on every discovered device when adding devices.</summary>
+    public ObservableCollection<CredentialItemViewModel> Credentials { get; } = [];
+
+    [ObservableProperty] public partial string NewCredentialUserName { get; set; } = "root";
+    [ObservableProperty] public partial string NewCredentialPassword { get; set; } = "";
+    [ObservableProperty] public partial string? CredentialMessage { get; private set; }
+    [ObservableProperty] public partial bool CredentialMessageIsError { get; private set; }
+
+    public bool HasNoCredentials => Credentials.Count == 0;
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     public partial bool IsLoaded { get; private set; }
@@ -66,6 +84,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             Apply(await _api.GetSettingsAsync(CancellationToken.None).ConfigureAwait(true));
             IsLoaded = true;
             ServerMessage = null;
+            await LoadCredentialsAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -109,6 +128,66 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    [RelayCommand]
+    private async Task AddCredentialAsync()
+    {
+        string user = NewCredentialUserName.Trim();
+        if (user.Length == 0 || NewCredentialPassword.Length == 0)
+        {
+            CredentialMessageIsError = true;
+            CredentialMessage = "Enter a user name and a password.";
+            return;
+        }
+
+        try
+        {
+            await _api.AddCredentialAsync(user, NewCredentialPassword, CancellationToken.None).ConfigureAwait(true);
+            NewCredentialPassword = "";
+            CredentialMessageIsError = false;
+            CredentialMessage = $"Added. OADM tries {user} on every device it finds.";
+            await LoadCredentialsAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            CredentialMessageIsError = true;
+            CredentialMessage = "Adding failed: " + (ex is RpcException rpc ? rpc.Status.Detail : ex.Message);
+        }
+    }
+
+    [RelayCommand]
+    private async Task RemoveCredentialAsync(CredentialItemViewModel? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _api.RemoveCredentialAsync(item.Id, CancellationToken.None).ConfigureAwait(true);
+            CredentialMessage = null;
+            await LoadCredentialsAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            CredentialMessageIsError = true;
+            CredentialMessage = "Removing failed: " + (ex is RpcException rpc ? rpc.Status.Detail : ex.Message);
+        }
+    }
+
+    private async Task LoadCredentialsAsync()
+    {
+        IReadOnlyList<CredentialEntry> entries = await _api.ListCredentialsAsync(CancellationToken.None).ConfigureAwait(true);
+        Credentials.Clear();
+        foreach (CredentialEntry entry in entries)
+        {
+            string added = entry.Created is null ? "" : "Added " + entry.Created.ToDateTime().ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
+            Credentials.Add(new CredentialItemViewModel(entry.Id, entry.UserName, added));
+        }
+
+        OnPropertyChanged(nameof(HasNoCredentials));
     }
 
     [RelayCommand]

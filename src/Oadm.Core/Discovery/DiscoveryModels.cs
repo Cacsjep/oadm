@@ -28,6 +28,9 @@ public enum DiscoverySources
     None = 0,
     Mdns = 1,
     RangeScan = 2,
+
+    /// <summary>An address the user entered ("Add manually").</summary>
+    Manual = 4,
 }
 
 /// <summary>Result of an anonymous, read-only VAPIX probe of one address.</summary>
@@ -63,6 +66,7 @@ public sealed record DeviceProbeResult(
 /// <param name="Sources">All sources that reported this device in the session.</param>
 /// <param name="LastSeenUtc">Last time any source reported the device.</param>
 /// <param name="ProductType">ProdType, null until known.</param>
+/// <param name="EnteredAddress">Manual probe only: the address as the user entered it (host[:port]); becomes the device address on add.</param>
 public sealed record DiscoveredDevice(
     string DiscoveredId,
     string Serial,
@@ -74,13 +78,21 @@ public sealed record DiscoveredDevice(
     string? Scheme,
     DiscoverySources Sources,
     DateTimeOffset LastSeenUtc,
-    string? ProductType = null);
+    string? ProductType = null,
+    string? EnteredAddress = null)
+{
+    /// <summary>The address to connect to: the entered one (may carry a port or host name), else the IP.</summary>
+    public string ConnectAddress => EnteredAddress ?? Address.ToString();
+}
 
 /// <summary>Kind of discovery session.</summary>
 public enum DiscoverySessionKind
 {
     ZeroConf,
     RangeScan,
+
+    /// <summary>One address entered by the user; finishes like a range scan.</summary>
+    Manual,
 }
 
 /// <summary>Handle of a discovery session.</summary>

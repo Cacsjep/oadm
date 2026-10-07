@@ -16,6 +16,13 @@ public interface IDiscoveryBackend
     Task<DiscoverySession> StartRangeScanAsync(string fromAddress, string toAddress, CancellationToken ct);
 
     /// <summary>
+    /// Starts a session that probes one address the user entered (IP or host name, optional port
+    /// and scheme). Finishes like a range scan, with at most one device.
+    /// </summary>
+    /// <exception cref="ArgumentException">Unusable address or unresolvable host name (message for the user).</exception>
+    Task<DiscoverySession> StartAddressProbeAsync(string input, CancellationToken ct);
+
+    /// <summary>
     /// Replays the devices known in the session, then streams changes and range-scan progress.
     /// Ends when a range scan finished, the session is stopped or <paramref name="ct"/> is cancelled.
     /// </summary>

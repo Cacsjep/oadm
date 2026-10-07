@@ -72,6 +72,7 @@ internal sealed class DevicesFixture : IDisposable
             registry = Substitute.For<IClientPluginRegistry>();
             registry.FindDialog(Arg.Any<string>()).Returns((ITaskPluginDialog?)null);
             registry.FindPage(Arg.Any<string>()).Returns((ICorePluginPage?)null);
+            registry.ToolbarPlugins.Returns([]);
         }
 
         Registry = registry;
@@ -80,7 +81,8 @@ internal sealed class DevicesFixture : IDisposable
         TasksVm = new TasksViewModel(Tasks, Store, Api, Dialogs, Settings, NullLogger<TasksViewModel>.Instance);
         LiveView = new LiveViewViewModel(Api, Substitute.For<IVideoDecoderFactory>(), Ui, NullLogger<LiveViewViewModel>.Instance);
         Devices = new DevicesViewModel(Store, Catalog, Runner, Api, Dialogs, Launcher,
-            mode => new AddDevicesWizardViewModel(Api, Ui, NullLogger<AddDevicesWizardViewModel>.Instance, mode),
+            mode => new AddDevicesViewModel(Api, Ui, NullLogger<AddDevicesViewModel>.Instance, mode),
+            new Oadm.Client.Devices.Toolbar.DeviceToolbar(Oadm.Client.Devices.Toolbar.BuiltInToolbarPlugins.All, Registry, NullLogger<Oadm.Client.Devices.Toolbar.DeviceToolbar>.Instance),
             new ColumnLayoutViewModel(Settings), TasksVm, LiveView, NullLogger<DevicesViewModel>.Instance);
     }
 

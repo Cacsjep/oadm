@@ -1,11 +1,19 @@
 syntax = "proto3";
 package oadm.v1;
 option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+import "Protos/discovery.proto";
 
-// Mirrors the ADM add wizard: select, set password, credentials, review, finish.
+// Server side of the add devices page. Discovery streams every device with the result of the
+// automatic login (DiscoveredDevice.auth_state); RetryAuth tries credentials the technician typed;
+// Commit adds the devices with the credentials that worked, server side.
 service AddDevicesService {
-  rpc Prepare (PrepareRequest) returns (AddPlan);
+  rpc Prepare (PrepareRequest) returns (AddPlan);   // legacy (old wizard); kept for wire compatibility
   rpc Commit (CommitRequest) returns (CommitReply);
+  // Logs in to one discovered device with the given credentials right away and returns the
+  // updated device (also pushed to WatchDiscovered). NOT_FOUND unknown device, FAILED_PRECONDITION
+  // factory default or already managed, INVALID_ARGUMENT empty user name or password.
+  rpc RetryAuth (RetryAuthRequest) returns (DiscoveredDevice);
 }
 
 message PrepareRequest {
@@ -35,11 +43,29 @@ message CommitRequest {
   string session_id = 1;
   repeated string discovered_ids = 2;
   bool use_host_name = 3;            // unused, ignored: the server setting Devices.UseHostName decides
-  string initial_root_password = 4;  // empty = Skip
+  string initial_root_password = 4;  // factory-default devices without an entry in initial_passwords; empty = none
+  // Explicit credentials (legacy). Without them the server uses the credential that worked in the
+  // automatic login or RetryAuth of the session.
   repeated DeviceCredentials credentials = 5;
+  map<string, string> initial_passwords = 6;   // discovered_id -> first root password (factory default)
+}
+
+message CommitResult {
+  string discovered_id = 1;
+  string device_id = 2;              // empty when the device was not added (already managed)
+  DeviceStatus status = 3;           // status after the add
 }
 
 message CommitReply {
   string task_id = 1;                // unused, always empty: adding devices is not a task
   repeated string device_ids = 2;
+  repeated CommitResult results = 3;
+}
+
+message RetryAuthRequest {
+  string session_id = 1;
+  string discovered_id = 2;
+  string user_name = 3;
+  string password = 4;
+  bool save_to_credential_list = 5;  // on success the credential is added to the encrypted credential list
 }

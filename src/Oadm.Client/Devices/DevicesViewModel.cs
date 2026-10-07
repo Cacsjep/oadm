@@ -8,12 +8,14 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 
 using Oadm.Client.Api;
+using Oadm.Client.Devices.Toolbar;
 using Oadm.Client.Dialogs;
 using Oadm.Client.Discovery;
 using Oadm.Client.LiveView;
 using Oadm.Client.Plugins;
 using Oadm.Client.Tasks;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Client;
 
 namespace Oadm.Client.Devices;
 
@@ -30,7 +32,10 @@ public sealed class MenuEntryViewModel
     public static MenuEntryViewModel Separator() => new() { Header = "-" };
 }
 
-/// <summary>The "Manage devices" page: toolbar, search, device grid, context menu.</summary>
+/// <summary>
+/// The "Manage devices" page: toolbar (toolbar plugins, see <see cref="DeviceToolbar"/>), search,
+/// device grid, context menu. Opens the host pages the toolbar asks for (add page, navigation).
+/// </summary>
 public sealed partial class DevicesViewModel : ObservableObject
 {
     private readonly DeviceStore _store;
@@ -39,7 +44,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     private readonly IOadmApi _api;
     private readonly IDialogService _dialogs;
     private readonly IUrlLauncher _launcher;
-    private readonly Func<AddDevicesMode, AddDevicesWizardViewModel> _wizardFactory;
+    private readonly Func<AddDevicesMode, AddDevicesViewModel> _addPageFactory;
     private readonly ILogger<DevicesViewModel> _logger;
 
     public DevicesViewModel(
@@ -49,7 +54,8 @@ public sealed partial class DevicesViewModel : ObservableObject
         IOadmApi api,
         IDialogService dialogs,
         IUrlLauncher launcher,
-        Func<AddDevicesMode, AddDevicesWizardViewModel> wizardFactory,
+        Func<AddDevicesMode, AddDevicesViewModel> addPageFactory,
+        DeviceToolbar toolbar,
         ColumnLayoutViewModel columns,
         TasksViewModel tasks,
         LiveViewViewModel liveView,
@@ -63,8 +69,10 @@ public sealed partial class DevicesViewModel : ObservableObject
         _api = api;
         _dialogs = dialogs;
         _launcher = launcher;
-        _wizardFactory = wizardFactory;
+        _addPageFactory = addPageFactory;
         _logger = logger;
+        Toolbar = toolbar;
+        ToolbarContext = new ToolbarContext(store, SelectedDevices, catalog, runner, api, dialogs, OpenHostPageAsync, () => tasks.ShowTasksCommand.Execute(null));
         Columns = columns;
         Tasks = tasks;
         LiveView = liveView;
@@ -81,6 +89,15 @@ public sealed partial class DevicesViewModel : ObservableObject
         RebuildPluginActions();
     }
 
+    /// <summary>Toolbar plugins of the page; the view attaches their controls.</summary>
+    public DeviceToolbar Toolbar { get; }
+
+    /// <summary>What toolbar plugins see and can do.</summary>
+    public ToolbarContext ToolbarContext { get; }
+
+    /// <summary>A toolbar plugin asked for a navigation page (<see cref="HostPages"/> key); the shell navigates.</summary>
+    public event EventHandler<string>? NavigateRequested;
+
     public ColumnLayoutViewModel Columns { get; }
     public TasksViewModel Tasks { get; }
 
@@ -92,9 +109,6 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     /// <summary>Kept in sync with the grid selection by the view.</summary>
     public ObservableCollection<DeviceRowViewModel> SelectedDevices { get; } = [];
-
-    /// <summary>Task plugins with ShowInToolbar.</summary>
-    public ObservableCollection<TaskPluginInfo> ToolbarActions { get; } = [];
 
     /// <summary>Context menu for the current selection: core actions plus runnable task plugins.</summary>
     public ObservableCollection<MenuEntryViewModel> ContextMenuEntries { get; } = [];
@@ -117,38 +131,37 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     // ------------------------------------------------------------ commands
 
+    /// <summary>Opens the add page in a mode (the Scan, Scan IP range and Add manually toolbar plugins).</summary>
     [RelayCommand]
-    private Task AddDevicesAsync() => RunWizardAsync(AddDevicesMode.ZeroConf);
-
-    [RelayCommand]
-    private Task AddFromRangeAsync() => RunWizardAsync(AddDevicesMode.IpRange);
+    private Task OpenAddPageAsync(AddDevicesMode mode) => RunAddPageAsync(mode);
 
     private bool HasSelection => SelectedDevices.Count > 0;
 
+    /// <summary>Context menu "Remove": the same flow as the Remove toolbar plugin.</summary>
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private async Task RemoveAsync()
     {
-        List<DeviceRowViewModel> selected = SelectedDevices.ToList();
-        if (selected.Count == 0)
+        int count = SelectedDevices.Count;
+        if (await RemoveToolbarPlugin.ConfirmAndRemoveAsync(ToolbarContext).ConfigureAwait(true))
         {
-            return;
+            LogRemoved(_logger, count);
         }
+    }
 
-        string what = selected.Count == 1 ? $"the device {selected[0].DisplayAddress} ({selected[0].Serial})" : $"{selected.Count} devices";
-        if (!await _dialogs.ConfirmAsync("Remove devices", $"Remove {what} from OADM? The devices themselves are not changed.", "Remove").ConfigureAwait(true))
+    /// <summary>Host pages for <see cref="IToolbarContext.OpenAsync"/>.</summary>
+    internal Task OpenHostPageAsync(string hostPage)
+    {
+        switch (hostPage)
         {
-            return;
-        }
-
-        try
-        {
-            await _api.RemoveDevicesAsync(selected.Select(d => d.Id).ToList(), CancellationToken.None).ConfigureAwait(true);
-            LogRemoved(_logger, selected.Count);
-        }
-        catch (Exception ex)
-        {
-            LogActionFailed(_logger, ex, "remove");
-            await _dialogs.ShowMessageAsync("Remove devices", "The devices could not be removed: " + ex.Message).ConfigureAwait(true);
+            case HostPages.AddScan:
+                return RunAddPageAsync(AddDevicesMode.Scan);
+            case HostPages.AddIpRange:
+                return RunAddPageAsync(AddDevicesMode.IpRange);
+            case HostPages.AddManually:
+                return RunAddPageAsync(AddDevicesMode.Manual);
+            default:
+                NavigateRequested?.Invoke(this, hostPage);
+                return Task.CompletedTask;
         }
     }
 
@@ -198,16 +211,12 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     // ------------------------------------------------------------ internals
 
-    private async Task RunWizardAsync(AddDevicesMode mode)
+    private async Task RunAddPageAsync(AddDevicesMode mode)
     {
-        AddDevicesWizardViewModel wizard = _wizardFactory(mode);
-        await using (wizard.ConfigureAwait(true))
+        AddDevicesViewModel page = _addPageFactory(mode);
+        await using (page.ConfigureAwait(true))
         {
-            CommitReply? reply = await _dialogs.ShowAddDevicesWizardAsync(wizard).ConfigureAwait(true);
-            if (reply is not null)
-            {
-                Tasks.ShowTasksCommand.Execute(null);
-            }
+            await _dialogs.ShowAddDevicesAsync(page).ConfigureAwait(true);
         }
     }
 
@@ -269,12 +278,6 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     private void RebuildPluginActions()
     {
-        ToolbarActions.Clear();
-        foreach (TaskPluginInfo plugin in _catalog.Plugins.Where(p => p.ShowInToolbar))
-        {
-            ToolbarActions.Add(plugin);
-        }
-
         RunPluginCommand.NotifyCanExecuteChanged();
         RebuildContextMenu();
     }

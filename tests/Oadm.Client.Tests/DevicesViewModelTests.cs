@@ -145,20 +145,57 @@ public sealed class DevicesViewModelTests
     }
 
     [Fact]
-    public async Task Toolbar_shows_only_show_in_toolbar_plugins_and_enables_by_selection()
+    public async Task Toolbar_context_reports_task_plugins_and_runnability_for_the_selection()
     {
         using DevicesFixture f = CreateWithDevices();
         TaskPluginInfo restart = TestSupport.Plugin("oadm.restart", "Restart", toolbar: true, dialog: false, "1", "2");
         await f.SetPluginsAsync(restart, TestSupport.Plugin("oadm.identify", "Identify", toolbar: false, dialog: false, "1"));
+        var ctx = f.Devices.ToolbarContext;
+        int selectionEvents = 0;
+        ctx.SelectionChanged += (_, _) => selectionEvents++;
 
-        Assert.Equal(["oadm.restart"], f.Devices.ToolbarActions.Select(p => p.Id).ToArray());
+        Assert.Equal(["oadm.restart"], ctx.TaskPlugins.Where(p => p.ShowInToolbar).Select(p => p.Id).ToArray());
+        Assert.Equal(4, ctx.Devices.Count);
+        Assert.False(ctx.CanRunTask("oadm.restart"));
         Assert.False(f.Devices.RunPluginCommand.CanExecute(restart));
+
+        f.Select("1");
+        Assert.True(ctx.CanRunTask("oadm.restart"));
+        Assert.Equal("10.0.0.48", Assert.Single(ctx.SelectedDevices).Address);
+        Assert.True(selectionEvents > 0);
 
         f.Select("1");
         Assert.True(f.Devices.RunPluginCommand.CanExecute(restart));
 
         f.Select("1", "4");
         Assert.False(f.Devices.RunPluginCommand.CanExecute(restart));
+        Assert.False(ctx.CanRunTask("oadm.restart"));
+        Assert.False(ctx.CanRunTask("unknown"));
+    }
+
+    [Fact]
+    public async Task Toolbar_context_runs_tasks_on_the_selection_and_opens_host_pages()
+    {
+        using DevicesFixture f = CreateWithDevices();
+        await f.SetPluginsAsync(TestSupport.Plugin("oadm.restart", "Restart", toolbar: true, dialog: false, "1", "2"));
+        f.Api.RunTaskAsync(default!, default!, default, default!, default).ReturnsForAnyArgs((IReadOnlyList<string>)["task-1"]);
+        f.Select("2");
+        f.TasksVm.IsExpanded = false;
+
+        IReadOnlyList<string>? ids = await f.Devices.ToolbarContext.RunTaskAsync("oadm.restart", CancellationToken.None);
+
+        Assert.Equal(["task-1"], ids);
+        await f.Api.Received(1).RunTaskAsync("oadm.restart", Arg.Is<IReadOnlyCollection<string>>(x => x.Single() == "2"), Arg.Is<string?>(p => p == null), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        Assert.True(f.TasksVm.IsExpanded);
+
+        string? navigated = null;
+        f.Devices.NavigateRequested += (_, key) => navigated = key;
+        await f.Devices.ToolbarContext.OpenAsync(Oadm.Sdk.Client.HostPages.Settings);
+        Assert.Equal("settings", navigated);
+
+        f.Dialogs.ShowAddDevicesAsync(default!).ReturnsForAnyArgs(true);
+        await f.Devices.ToolbarContext.OpenAsync(Oadm.Sdk.Client.HostPages.AddManually);
+        await f.Dialogs.Received(1).ShowAddDevicesAsync(Arg.Is<Discovery.AddDevicesViewModel>(p => p.IsManualMode));
     }
 
     [Fact]
@@ -183,7 +220,9 @@ public sealed class DevicesViewModelTests
     public async Task Remove_asks_for_confirmation()
     {
         using DevicesFixture f = CreateWithDevices();
-        f.Select("1");
+        const string id = "6f1b2c3d-0000-4000-8000-000000000001";
+        f.Store.Apply(new DeviceChanged { Kind = DeviceChanged.Types.Kind.Added, Device = TestSupport.Device(id, "B8A44F000001", "10.0.0.60", "AXIS M1135") });
+        f.Select(id);
         f.Dialogs.ConfirmAsync(default!, default!, default!).ReturnsForAnyArgs(false);
 
         await f.Devices.RemoveCommand.ExecuteAsync(null);
@@ -191,7 +230,7 @@ public sealed class DevicesViewModelTests
 
         f.Dialogs.ConfirmAsync(default!, default!, default!).ReturnsForAnyArgs(true);
         await f.Devices.RemoveCommand.ExecuteAsync(null);
-        await f.Api.Received(1).RemoveDevicesAsync(Arg.Is<IReadOnlyCollection<string>>(ids => ids.Single() == "1"), Arg.Any<CancellationToken>());
+        await f.Api.Received(1).RemoveDevicesAsync(Arg.Is<IReadOnlyCollection<string>>(ids => ids.Single() == id), Arg.Any<CancellationToken>());
     }
 
     [Fact]
