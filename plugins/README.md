@@ -64,10 +64,18 @@ the server project for shared payload types (it then ships in the same folder).
 - `ctx.UpdateCredentialsAsync(user, password, ct)` after changing the password of the account
   OADM uses (re-read `ctx.Vapix` afterwards); `ctx.MarkCredentialsInvalid()` after a factory
   default. `device.CredentialUserName` is that account: never remove or demote it.
+- After re-addressing a device: `ctx.CreateClientForAsync(newAddress, ct)` (same credentials, scheme and
+  certificate pin; dispose it) to wait for the device there and compare its serial number, then
+  `ctx.UpdateDeviceAddressAsync(newAddress, ct)`: the server verifies the serial again
+  (`DeviceIdentityException` otherwise), moves the record (credentials and pin kept, change published,
+  full refresh queued) and swaps `ctx.Vapix`; returns false when OADM uses the host name. Third-party
+  hosts may throw `NotSupportedException` (SDK default).
 - `MaxParallelDevices` limits how many tasks of the plugin run at once (default 8).
 - Long requests: `request.Options.Set(VapixRequestOptions.Timeout, TimeSpan.FromMinutes(20))`
   before `ctx.Vapix.SendAsync(request, ct)`; use `StreamContent` for large bodies.
 - `ITaskPluginQuery.QueryAsync` serves the dialog (read-only, 30 s timeout on the server).
+  `ITaskQueryContext.Devices` (may be null on other hosts) lists all managed devices, e.g. to flag an
+  address another managed device has.
 
 ## Client side
 

@@ -11,10 +11,13 @@ internal sealed class FakeDialogContext(Func<Guid, string, Task<string?>> query)
 {
     public List<(Guid Device, string Method)> Queries { get; } = [];
 
+    /// <summary>Answers "checkAddresses" from its payload (method, payload JSON) when set.</summary>
+    public Func<string, string?, string?>? Answer { get; init; }
+
     public Task<string?> QueryAsync(Guid deviceId, string method, string? payloadJson, CancellationToken ct)
     {
         Queries.Add((deviceId, method));
-        return query(deviceId, method);
+        return Answer is not null && method == AddressCheck.QueryMethod ? Task.FromResult(Answer(method, payloadJson)) : query(deviceId, method);
     }
 
     public Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct) => throw new NotSupportedException();
@@ -98,10 +101,10 @@ public sealed class ViewModelTests
         vm.Ipv4Mask = "24";
         vm.Ipv4Gateway = "10.0.0.1";
 
-        Assert.Equal("Start address", vm.Ipv4AddressLabel);
+        Assert.Equal("IP range", vm.Ipv4AddressLabel);
         Assert.True(vm.ShowPreview);
-        Assert.Equal(["10.0.0.100", "10.0.0.101", "10.0.0.102"], vm.Preview.Select(r => r.NewAddress));
-        Assert.Equal(["10.0.0.48", "10.0.0.49", "10.0.0.50"], vm.Preview.Select(r => r.CurrentAddress));
+        Assert.Equal(["10.0.0.100", "10.0.0.101", "10.0.0.102"], vm.Assignment.Rows.Select(r => r.NewAddress));
+        Assert.Equal(["10.0.0.48", "10.0.0.49", "10.0.0.50"], vm.Assignment.Rows.Select(r => r.CurrentAddress));
         Assert.False(vm.HasErrors);
 
         // Re-addressing: strong warning, Apply only after acknowledging it.
@@ -128,19 +131,47 @@ public sealed class ViewModelTests
         vm.WarningAcknowledged = true;
 
         Assert.True(vm.HasErrors);
-        Assert.Contains(vm.Errors, e => e.Contains("room for 2 of 3", StringComparison.Ordinal));
+        Assert.Contains(vm.Errors, e => e.Contains("Not enough addresses: the IP range has 2 free addresses for 3 devices", StringComparison.Ordinal));
         Assert.False(vm.CanApply);
     }
 
     [Fact]
-    public void Gateway_in_the_range_is_caught_as_a_duplicate()
+    public void Gateway_in_the_range_is_skipped_and_an_edit_to_it_is_caught()
     {
         var vm = new NetworkSettingsViewModel(Devices(3));
         vm.SelectedIpv4 = vm.Ipv4Choices.Single(c => c.Value == Ipv4Choice.Static);
         vm.Ipv4Address = "10.0.0.100";
         vm.Ipv4Mask = "24";
         vm.Ipv4Gateway = "10.0.0.101";
+        Assert.Equal(["10.0.0.100", "10.0.0.102", "10.0.0.103"], vm.Assignment.Rows.Select(r => r.NewAddress));
+
+        vm.Assignment.Rows[2].NewAddress = "10.0.0.101";
+        Assert.Equal("Same as the default router", vm.Assignment.Rows[2].Conflict);
         Assert.Contains(vm.Errors, e => e.Contains("is the gateway address", StringComparison.Ordinal));
+        Assert.False(vm.CanApply);
+    }
+
+    [Fact]
+    public void Range_syntax_of_adm_is_accepted_and_edits_survive_other_changes()
+    {
+        var vm = new NetworkSettingsViewModel(Devices(3));
+        vm.SelectedIpv4 = vm.Ipv4Choices.Single(c => c.Value == Ipv4Choice.Static);
+        vm.Ipv4Mask = "24";
+        vm.Ipv4Gateway = "10.0.0.1";
+        vm.Ipv4Address = "10.0.0.10-11,10.0.0.20";
+        Assert.Equal(["10.0.0.10", "10.0.0.11", "10.0.0.20"], vm.Assignment.Rows.Select(r => r.NewAddress));
+
+        vm.Assignment.Rows[0].NewAddress = "10.0.0.30";
+        vm.Ipv4Mask = "255.255.255.0"; // same network, the edit stays
+        Assert.Equal(["10.0.0.30", "10.0.0.11", "10.0.0.20"], vm.Assignment.Rows.Select(r => r.NewAddress));
+        vm.Ipv4Gateway = "10.0.0.2"; // suggested again around the edit
+        Assert.Equal(["10.0.0.30", "10.0.0.10", "10.0.0.11"], vm.Assignment.Rows.Select(r => r.NewAddress));
+        vm.WarningAcknowledged = true;
+        Assert.True(vm.CanApply);
+        Assert.Equal("10.0.0.30", vm.Payload!.Devices[vm.Assignment.Rows[0].Device.Id].Ipv4Address);
+
+        vm.Ipv4Address = "10.0.0.50-60"; // a new range discards edits
+        Assert.Equal(["10.0.0.50", "10.0.0.51", "10.0.0.52"], vm.Assignment.Rows.Select(r => r.NewAddress));
     }
 
     [Fact]
@@ -164,8 +195,8 @@ public sealed class ViewModelTests
 
         vm.HostNameText = "cam-{n}";
         Assert.False(vm.HasErrors);
-        Assert.Equal(["cam-1", "cam-2"], vm.Preview.Select(r => r.NewHostName));
-        Assert.Equal(["unchanged", "unchanged"], vm.Preview.Select(r => r.NewAddress));
+        Assert.Equal(["cam-1", "cam-2"], vm.Assignment.Rows.Select(r => r.NewHostName));
+        Assert.Equal(["Unchanged", "Unchanged"], vm.Assignment.Rows.Select(r => r.NewAddress));
         Assert.False(vm.HasWarning);
         Assert.True(vm.CanApply);
     }

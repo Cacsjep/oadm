@@ -71,12 +71,17 @@ public enum Ipv6Mode
 
 public sealed record Ipv6Change(Ipv6Mode Mode, string? Address = null, int? PrefixLength = null, string? Gateway = null);
 
-/// <summary>DNS resolver change. When <see cref="UseDhcp"/> is true the static fields are not written.</summary>
+/// <summary>
+/// DNS resolver change. When <see cref="UseDhcp"/> is true the static fields are not written. With
+/// <see cref="KeepDomains"/> only the servers change: each device keeps its own static domain name and search
+/// domains (read in "Read current settings"), used by "Assign IP address...".
+/// </summary>
 public sealed record DnsChange(
     bool UseDhcp,
     IReadOnlyList<string>? Servers = null,
     string? DomainName = null,
-    IReadOnlyList<string>? SearchDomains = null);
+    IReadOnlyList<string>? SearchDomains = null,
+    bool KeepDomains = false);
 
 /// <summary>Host name change. When <see cref="UseDhcp"/> is false the name comes per device from <see cref="DeviceAssignment.HostName"/>.</summary>
 public sealed record HostNameChange(bool UseDhcp);

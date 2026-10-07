@@ -570,6 +570,12 @@
   <Style Selector="DataGridCell Button.link TextBlock">
     <Setter Property="Margin" Value="0" />
   </Style>
+  <!-- Editable cell (e.g. the new address in the address assignment table): fits the row height -->
+  <Style Selector="DataGridCell TextBox">
+    <Setter Property="Margin" Value="4,2" />
+    <Setter Property="MinHeight" Value="28" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
   <Style Selector="DataGridRow.muted">
     <Setter Property="Opacity" Value="0.45" />
   </Style>

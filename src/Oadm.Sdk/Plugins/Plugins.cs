@@ -106,6 +106,43 @@ public interface ITaskExecutionContext
     /// </summary>
     Task UpdateCredentialsAsync(string userName, string password, CancellationToken ct) =>
         throw new NotSupportedException("This context cannot change stored credentials.");
+
+    /// <summary>
+    /// A VAPIX client for the current device at another address (e.g. the static address the plugin just set),
+    /// with the stored credentials, the device's scheme and its pinned certificate. The caller owns the client:
+    /// dispose it when it implements <see cref="IDisposable"/>. Read requests only until the identity is verified.
+    /// </summary>
+    Task<IVapixClient> CreateClientForAsync(string address, CancellationToken ct) =>
+        throw new NotSupportedException("This context cannot create clients for other addresses.");
+
+    /// <summary>
+    /// Moves OADM's device record to <paramref name="newAddress"/> so the device stays managed after it was
+    /// re-addressed. The server first checks that the device answering there has the same serial number
+    /// (throws <see cref="DeviceIdentityException"/> otherwise, the record is unchanged), keeps credentials and
+    /// certificate pin, publishes the change and queues a full refresh; afterwards <see cref="Vapix"/> uses the
+    /// new address. Returns false when nothing was changed because OADM reaches the device by host name
+    /// (setting Devices.UseHostName) or the record already has that address.
+    /// </summary>
+    Task<bool> UpdateDeviceAddressAsync(string newAddress, CancellationToken ct) =>
+        throw new NotSupportedException("This context cannot change the device address.");
+}
+
+/// <summary>The device answering at an address is not the expected one (different or missing serial number).</summary>
+public sealed class DeviceIdentityException : Exception
+{
+    public DeviceIdentityException()
+    {
+    }
+
+    public DeviceIdentityException(string message)
+        : base(message)
+    {
+    }
+
+    public DeviceIdentityException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }
 
 public enum TaskLogLevel

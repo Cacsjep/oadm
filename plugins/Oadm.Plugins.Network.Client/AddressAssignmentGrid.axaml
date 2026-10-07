@@ -1,0 +1,40 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.Network.Client"
+             x:Class="Oadm.Plugins.Network.Client.AddressAssignmentGrid"
+             x:DataType="vm:AddressAssignmentViewModel">
+  <!-- The address assignment table of both network dialogs: devices in grid order, current and new IP address
+       (editable), optional new host name, status chip with the conflict. Theme styles only. -->
+  <StackPanel Spacing="10">
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="secondary" Text="{Binding CheckStatus}" VerticalAlignment="Center" TextWrapping="Wrap" />
+      <Button Grid.Column="1" Classes="toolbar" Command="{Binding CheckCommand}" ToolTip.Tip="Look for addresses that other managed devices have or that answer on port 80 or 443">
+        <ui:IconLabel Icon="{DynamicResource Icon.search}" Text="Check addresses" Spacing="8" />
+      </Button>
+    </Grid>
+    <DataGrid x:Name="Grid" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False" CanUserSortColumns="False" MaxHeight="420">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="MAC address" Width="1.2*" MinWidth="140" Binding="{Binding MacAddress}" x:DataType="vm:AddressRowViewModel" />
+        <DataGridTextColumn Header="Model" Width="*" Binding="{Binding Model}" x:DataType="vm:AddressRowViewModel" />
+        <DataGridTextColumn Header="Current IP address" Width="*" MinWidth="130" Binding="{Binding CurrentAddress}" x:DataType="vm:AddressRowViewModel" />
+        <DataGridTemplateColumn Header="New IP address" Width="1.1*" MinWidth="130">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate x:DataType="vm:AddressRowViewModel">
+              <TextBox Text="{Binding NewAddress}" IsReadOnly="{Binding !IsEditable}" />
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+        <DataGridTextColumn Header="New host name" Width="*" Binding="{Binding NewHostName}" x:DataType="vm:AddressRowViewModel" IsVisible="False" />
+        <DataGridTemplateColumn Header="Status" Width="1.6*">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate x:DataType="vm:AddressRowViewModel">
+              <ui:StatusChip Margin="10,0" Text="{Binding StatusText}" IsOk="{Binding IsReady}" IsError="{Binding HasConflict}" ToolTip.Tip="{Binding StatusText}" />
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+      </DataGrid.Columns>
+    </DataGrid>
+    <TextBlock Classes="error" Text="{Binding Error}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+  </StackPanel>
+</UserControl>

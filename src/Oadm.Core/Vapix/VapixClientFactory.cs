@@ -111,6 +111,28 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
         return client;
     }
 
+    /// <summary>
+    /// A new, uncached client for the device at another address (same credentials, scheme and pinned
+    /// certificate), e.g. to verify a re-addressed device before its record moves. The caller disposes it.
+    /// </summary>
+    public async Task<VapixClient> CreateForAddressAsync(Device device, string address, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentException.ThrowIfNullOrWhiteSpace(address);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var credentials = await _credentials.GetAsync(device.Id, ct).ConfigureAwait(false);
+        var client = _connector.Connect(new VapixConnectionOptions
+        {
+            Address = address.Trim(),
+            Scheme = device.Scheme == DeviceScheme.Http ? Uri.UriSchemeHttp : Uri.UriSchemeHttps,
+            Credentials = credentials is null ? null : new NetworkCredential(credentials.UserName, credentials.Password),
+            PinnedCertificateFingerprint = device.CertFingerprintSha256,
+            Timeout = RequestTimeout,
+        });
+        LogClientCreated(device.Id, client.BaseAddress, credentials is not null);
+        return client;
+    }
+
     /// <summary>Drops and disposes the cached client of a device (e.g. after its credentials changed).</summary>
     public void Invalidate(Guid deviceId)
     {

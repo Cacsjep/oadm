@@ -80,6 +80,24 @@ internal sealed partial class TaskExecutionContext : ITaskExecutionContext
         Volatile.Write(ref _vapix, client);
     }
 
+    public Task<IVapixClient> CreateClientForAsync(string address, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(address);
+        return _sink.CreateClientForAsync(_deviceId, address.Trim(), ct);
+    }
+
+    public async Task<bool> UpdateDeviceAddressAsync(string newAddress, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(newAddress);
+        var (updated, client) = await _sink.UpdateDeviceAddressAsync(_deviceId, newAddress.Trim(), ct).ConfigureAwait(false);
+        if (client is not null)
+        {
+            Volatile.Write(ref _vapix, client);
+        }
+
+        return updated;
+    }
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Task {TaskId}, device {DeviceId}: warning: {Message}")]
     private static partial void LogPluginWarning(ILogger logger, Guid taskId, Guid deviceId, string message);
 
@@ -103,4 +121,10 @@ internal interface ITaskExecutionSink
 
     /// <summary>Stores the credentials and returns a VAPIX client that uses them.</summary>
     Task<IVapixClient> UpdateCredentialsAsync(Guid deviceId, string userName, string password, CancellationToken ct);
+
+    /// <summary>A new client for the device at another address; the caller disposes it.</summary>
+    Task<IVapixClient> CreateClientForAsync(Guid deviceId, string address, CancellationToken ct);
+
+    /// <summary>Moves the device record after verifying the serial; returns whether it moved and, if so, the client for the new address.</summary>
+    Task<(bool Updated, IVapixClient? Client)> UpdateDeviceAddressAsync(Guid deviceId, string newAddress, CancellationToken ct);
 }
