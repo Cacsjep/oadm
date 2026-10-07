@@ -8,7 +8,7 @@ namespace Oadm.Server.Tests.Hardware;
 /// <summary>
 /// Runs the real server in-process (temp data folder) and adds the first dev camera through
 /// DiscoveryService + AddDevicesService. Read-only for the camera: no initial password is ever
-/// sent (the test aborts if the camera is factory default) and no task other than "Add devices" runs.
+/// sent (the test aborts if the camera is factory default) and no task runs.
 /// </summary>
 [Trait("Category", "Hardware")]
 public sealed class AddRealCameraTests
@@ -40,8 +40,12 @@ public sealed class AddRealCameraTests
         });
         var deviceId = Assert.Single(reply.DeviceIds);
 
-        var task = await TestHelpers.WaitForTaskAsync(host, reply.TaskId, TimeSpan.FromSeconds(60));
-        Assert.True(task.State == Proto.TaskState.Done, $"Add devices task: {task.State} {task.Devices.FirstOrDefault()?.Message}");
+        Assert.Equal(string.Empty, reply.TaskId); // adding devices is not a task
+        await TestHelpers.WaitUntilAsync(
+            async () => (await TestHelpers.GetDeviceAsync(host, deviceId)).HasDhcpEnabled,
+            "first full refresh after add",
+            TimeSpan.FromSeconds(60));
+        Assert.Empty((await host.Tasks.ListAsync(new Proto.Empty())).Tasks);
 
         var device = await TestHelpers.GetDeviceAsync(host, deviceId);
         Assert.Equal(Proto.DeviceStatus.Ok, device.Status);

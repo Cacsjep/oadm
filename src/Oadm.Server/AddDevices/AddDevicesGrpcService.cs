@@ -29,7 +29,8 @@ namespace Oadm.Server.AddDevices;
 /// devices when one is given (over HTTPS when the device offers it), stores credentials (initial
 /// password as root, else the per-device entry, else the entry with an empty discovered_id),
 /// verifies them with one authenticated call (wrong credentials still add the device, status
-/// CredentialsRequired) and finally starts the "Add devices" task, which runs the first full refresh.</para>
+/// CredentialsRequired) and finally queues the first full refresh. Adding devices is not a task
+/// and never shows up in the task list.</para>
 /// </summary>
 public sealed partial class AddDevicesGrpcService(
     IDiscoveryBackend discovery,
@@ -39,7 +40,7 @@ public sealed partial class AddDevicesGrpcService(
     IVapixConnector connector,
     VapixProbe probe,
     ServerSettingsStore settings,
-    TaskEngine engine,
+    DevicePollingService polling,
     ILogger<AddDevicesGrpcService> logger) : Proto.AddDevicesService.AddDevicesServiceBase
 {
     /// <summary>Devices handled at the same time during Prepare and Commit.</summary>
@@ -106,8 +107,7 @@ public sealed partial class AddDevicesGrpcService(
         reply.DeviceIds.AddRange(ids.Select(i => i.ToString()));
         if (ids.Length > 0)
         {
-            var taskId = await engine.RunAsync(AddDevicesTaskPlugin.PluginId, ids, null, GrpcGuard.Owner(context), ct).ConfigureAwait(false);
-            reply.TaskId = taskId.ToString();
+            polling.QueueRefresh(ids);
         }
 
         LogCommitted(ids.Length, selected.Count);

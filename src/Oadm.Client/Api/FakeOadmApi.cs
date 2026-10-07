@@ -354,9 +354,7 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
                 found.AlreadyManaged = true;
             }
 
-            TaskInfo task = AddTask("oadm.add-devices", "Add devices", OwnerName, TaskState.Running, 0, reply.DeviceIds);
-            _jobs[task.Id] = new FakeJob(task, 20, null);
-            reply.TaskId = task.Id;
+            // Adding devices is not a task: devices just appear and fill in.
             return Task.FromResult(reply);
         }
     }
@@ -783,9 +781,6 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         ClearCertificate(_devices[10]); // factory default: never fully refreshed
 
         DateTime now = DateTime.UtcNow;
-        TaskInfo add = AddTask("oadm.add-devices", "Add devices", OwnerName, TaskState.Done, 100, _devices.Select(d => d.Id));
-        add.Started = Timestamp.FromDateTime(now.AddHours(-2));
-        add.Finished = Timestamp.FromDateTime(now.AddHours(-2).AddMinutes(1));
 
         TaskInfo failed = AddTask(RestartPluginId, "Restart", "admin@SECURITY-PC", TaskState.Failed, 100, [_devices[4].Id]);
         failed.Started = Timestamp.FromDateTime(now.AddMinutes(-40));

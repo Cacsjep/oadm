@@ -6,7 +6,7 @@ namespace Oadm.Server.Devices;
 
 /// <summary>
 /// Runs <see cref="DevicePollingService"/> for the lifetime of the host and queues a full refresh
-/// of every device of a task once that task finished (the add-devices task refreshes by itself).
+/// of every device of a task once that task finished.
 /// </summary>
 public sealed class DevicePollingHostedService(DevicePollingService polling, TaskEngine engine) : BackgroundService
 {
@@ -28,8 +28,7 @@ public sealed class DevicePollingHostedService(DevicePollingService polling, Tas
     {
         var task = change.Task;
         if (change.Kind == TaskChangeKind.Updated
-            && task.State.IsTerminal()
-            && !string.Equals(task.PluginId, AddDevicesTaskPlugin.PluginId, StringComparison.OrdinalIgnoreCase))
+            && task.State.IsTerminal())
         {
             polling.QueueRefresh(task.Devices.Select(d => d.DeviceId));
         }

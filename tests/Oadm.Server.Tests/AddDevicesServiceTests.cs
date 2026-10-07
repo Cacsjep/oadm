@@ -75,17 +75,19 @@ public sealed class AddDevicesServiceTests
         var reply = await host.AddDevices.CommitAsync(commit);
 
         Assert.Equal(3, reply.DeviceIds.Count);
-        Assert.False(string.IsNullOrEmpty(reply.TaskId));
+        Assert.Equal(string.Empty, reply.TaskId); // adding devices is not a task
 
         // Factory-default device got its first password (in the POST body, never in a URL).
         Assert.Equal("initial-Pass1", network["10.9.0.3"].Password);
         Assert.Equal(1, network["10.9.0.3"].PwdgrpCalls);
         Assert.Equal(0, network["10.9.0.3"].PasswordInUrl);
 
-        var task = await TestHelpers.WaitForTaskAsync(host, reply.TaskId);
-        Assert.Equal("Add devices", task.Name);
-        Assert.Equal(Proto.TaskState.Failed, task.State); // one device has wrong credentials
-        Assert.Equal(3, task.Devices.Count);
+        // The first full refresh runs in the background, without a task in the task list.
+        await TestHelpers.WaitUntilAsync(
+            async () => (await host.Devices.ListAsync(new Proto.Empty())).Devices
+                .Where(d => d.Address is "10.9.0.1" or "10.9.0.3").All(d => d.HasDhcpEnabled),
+            "first full refresh after add");
+        Assert.Empty((await host.Tasks.ListAsync(new Proto.Empty())).Tasks);
 
         var list = (await host.Devices.ListAsync(new Proto.Empty())).Devices.ToDictionary(d => d.Address);
         Assert.Equal(3, list.Count);
@@ -106,7 +108,6 @@ public sealed class AddDevicesServiceTests
 
         Assert.Equal(Proto.DeviceStatus.CredentialsRequired, list["10.9.0.2"].Status);
         Assert.True(list["10.9.0.2"].HasCredentials);
-        Assert.Equal(Proto.TaskState.Failed, task.Devices.Single(d => d.DeviceId == list["10.9.0.2"].Id).State);
 
         var initial = list["10.9.0.3"];
         Assert.Equal(Proto.DeviceStatus.Ok, initial.Status);
@@ -137,7 +138,14 @@ public sealed class AddDevicesServiceTests
         Assert.Equal(2, reply.DeviceIds.Count);
         Assert.Null(network["10.9.0.3"].Password);
         Assert.Equal(0, network["10.9.0.3"].PwdgrpCalls);
-        await TestHelpers.WaitForTaskAsync(host, reply.TaskId);
+        await TestHelpers.WaitUntilAsync(
+            async () =>
+            {
+                var all = (await host.Devices.ListAsync(new Proto.Empty())).Devices;
+                return all.Any(d => d.Address == "10.9.0.3" && d.Status == Proto.DeviceStatus.PasswordNotSet)
+                    && all.Any(d => d.Address == "10.9.0.1" && d.Status == Proto.DeviceStatus.Ok);
+            },
+            "first full refresh after add");
 
         var devices = (await host.Devices.ListAsync(new Proto.Empty())).Devices.ToDictionary(d => d.Address);
         Assert.Equal(Proto.DeviceStatus.PasswordNotSet, devices["10.9.0.3"].Status);

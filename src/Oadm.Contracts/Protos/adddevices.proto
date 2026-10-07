@@ -40,6 +40,6 @@ message CommitRequest {
 }
 
 message CommitReply {
-  string task_id = 1;                // the "Add devices" task
+  string task_id = 1;                // unused, always empty: adding devices is not a task
   repeated string device_ids = 2;
 }

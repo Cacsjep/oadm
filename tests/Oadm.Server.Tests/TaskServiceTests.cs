@@ -19,7 +19,7 @@ public sealed class TaskServiceTests
     }
 
     [Fact]
-    public async Task ListTaskPluginsReportsRunnableDevicesAndHidesBuiltIns()
+    public async Task ListTaskPluginsReportsRunnableDevices()
     {
         await using var host = await TestServerHost.StartAsync();
         RegisterFastRestart(host);
@@ -28,7 +28,6 @@ public sealed class TaskServiceTests
 
         var plugins = await host.Tasks.ListTaskPluginsAsync(new Proto.Empty());
 
-        Assert.DoesNotContain(plugins.Plugins, p => p.Id == AddDevicesTaskPlugin.PluginId);
         var restart = Assert.Single(plugins.Plugins, p => p.Id == RestartTaskPlugin.PluginId);
         Assert.Equal("Restart", restart.DisplayName);
         Assert.True(restart.ShowInToolbar);
@@ -141,7 +140,7 @@ public sealed class TaskServiceTests
         Assert.Equal(StatusCode.InvalidArgument, unknownPlugin.StatusCode);
 
         var noDevices = await Assert.ThrowsAsync<RpcException>(() =>
-            host.Tasks.RunAsync(new Proto.RunTaskRequest { PluginId = AddDevicesTaskPlugin.PluginId }).ResponseAsync);
+            host.Tasks.RunAsync(new Proto.RunTaskRequest { PluginId = RestartTaskPlugin.PluginId }).ResponseAsync);
         Assert.Equal(StatusCode.InvalidArgument, noDevices.StatusCode);
 
         var cancelUnknown = await Assert.ThrowsAsync<RpcException>(() =>

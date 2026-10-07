@@ -146,7 +146,6 @@ public static partial class OadmServerHost
             sp.GetRequiredService<Sdk.Tasks.ITaskRunner>(),
             sp.GetRequiredService<IPluginSettingsProvider>(),
             sp.GetRequiredService<ILoggerFactory>()));
-        services.AddSingleton<AddDevicesTaskPlugin>();
 
         // Polling
         services.AddSingleton<DevicePollingService>();
@@ -182,7 +181,6 @@ public static partial class OadmServerHost
 
         // 2. Plugins: built-in first (their ids are reserved), then installed and development folders.
         var registry = sp.GetRequiredService<PluginRegistry>();
-        registry.RegisterTaskPlugin(sp.GetRequiredService<AddDevicesTaskPlugin>(), PluginOrigin.FromAssembly(typeof(OadmServerHost).Assembly));
         var roots = options.PluginRoots ?? DefaultPluginRoots(paths);
         sp.GetRequiredService<PluginLoader>().LoadFromRoots(roots);
         foreach (var plugin in registry.TaskPlugins)

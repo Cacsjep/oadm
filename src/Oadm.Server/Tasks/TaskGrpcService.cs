@@ -18,16 +18,12 @@ public sealed partial class TaskGrpcService(
     IHostApplicationLifetime lifetime,
     ILogger<TaskGrpcService> logger) : Proto.TaskService.TaskServiceBase
 {
-    /// <summary>Built-in tasks that are not offered in the context menu.</summary>
-    public static readonly IReadOnlySet<string> HiddenPluginIds =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { AddDevicesTaskPlugin.PluginId };
-
     /// <summary>Context-menu entries incl. core-plugin contributions, with the devices each one can run on.</summary>
     public override async Task<Proto.TaskPluginList> ListTaskPlugins(Proto.Empty request, ServerCallContext context)
     {
         var all = await devices.ListDevicesAsync(context.CancellationToken).ConfigureAwait(false);
         var reply = new Proto.TaskPluginList();
-        foreach (var plugin in registry.TaskPlugins.Where(p => !HiddenPluginIds.Contains(p.Id)))
+        foreach (var plugin in registry.TaskPlugins)
         {
             try
             {
