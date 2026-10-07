@@ -160,23 +160,32 @@ public static partial class OadmServerHost
         // Plugins and tasks
         services.AddSingleton<PluginRegistry>();
         services.AddSingleton<PluginLoader>();
-        // Oadm:MaxParallelTasksPerPlugin (configuration, default 8): a large site may raise it so a Restart on
-        // 5,000 devices does not take 5,000 / 8 x the restart time; plugins limit themselves with MaxParallelDevices.
-        services.AddSingleton(new TaskEngineOptions
+        // Tasks.MaxParallelPerPlugin (server setting, default 16, 1..256, Settings page): read live by the engine,
+        // a change applies to tasks that start afterwards. A plugin's MaxParallelDevices can only lower it
+        // (firmware: 4). The former configuration value Oadm:MaxParallelTasksPerPlugin is no longer read.
+        services.AddSingleton(sp => new TaskParallelismSetting(sp.GetRequiredService<ServerSettingsStore>()));
+        services.AddSingleton(sp =>
         {
-            MaxParallelTasksPerPlugin = Math.Clamp(configuration.GetValue("Oadm:MaxParallelTasksPerPlugin", 8), 1, 256),
+            var parallelism = sp.GetRequiredService<TaskParallelismSetting>();
+            return new TaskEngineOptions { MaxParallelTasksPerPluginSource = () => parallelism.Current };
         });
-        services.AddSingleton(sp => new TaskEngine(
-            sp.GetRequiredService<ITaskStore>(),
-            sp.GetRequiredService<PluginRegistry>(),
-            sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
-            sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
-            sp.GetRequiredService<ILoggerFactory>(),
-            sp.GetRequiredService<TaskEngineOptions>(),
-            sp.GetRequiredService<TimeProvider>(),
-            sp.GetRequiredService<Sdk.Plugins.IUploadedFiles>(),
-            sp.GetRequiredService<ITaskDeviceCredentials>(),
-            sp.GetRequiredService<ITaskDeviceAddresses>()));
+        services.AddSingleton(sp =>
+        {
+            var engine = new TaskEngine(
+                sp.GetRequiredService<ITaskStore>(),
+                sp.GetRequiredService<PluginRegistry>(),
+                sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
+                sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
+                sp.GetRequiredService<ILoggerFactory>(),
+                sp.GetRequiredService<TaskEngineOptions>(),
+                sp.GetRequiredService<TimeProvider>(),
+                sp.GetRequiredService<Sdk.Plugins.IUploadedFiles>(),
+                sp.GetRequiredService<ITaskDeviceCredentials>(),
+                sp.GetRequiredService<ITaskDeviceAddresses>());
+            // A raised limit starts queued tasks at once; a lowered one lets running tasks finish.
+            sp.GetRequiredService<TaskParallelismSetting>().Changed += (_, _) => engine.RescheduleQueued();
+            return engine;
+        });
         services.AddSingleton<ITaskDeviceCredentials, TaskDeviceCredentials>();
         services.AddSingleton<DeviceAddressService>();
         services.AddSingleton<ITaskDeviceAddresses>(sp => sp.GetRequiredService<DeviceAddressService>());
@@ -246,7 +255,8 @@ public static partial class OadmServerHost
             LogPluginError(logger, error.Source, error.Message);
         }
 
-        // 3. Tasks left running by a previous process.
+        // 3. Tasks left running by a previous process (the parallel task limit is loaded first).
+        await sp.GetRequiredService<TaskParallelismSetting>().LoadAsync(ct).ConfigureAwait(false);
         var engine = sp.GetRequiredService<TaskEngine>();
         await engine.RecoverInterruptedAsync(ct).ConfigureAwait(false);
 

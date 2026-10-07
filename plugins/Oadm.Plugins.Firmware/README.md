@@ -120,7 +120,12 @@ the hard-reset IP hint), rolled back, not committed ("rolls back to X by itself 
 booting unless committed"). If the upload answer is lost after the whole body was sent (the device
 may already reboot), the task continues and decides by the version after the restart.
 
-Bounded concurrency across devices is the task engine's job.
+Bounded concurrency across devices is the task engine's job. The plugin sets
+`MaxParallelDevices = 4`: at most 4 devices upgrade at the same time, even when the server setting
+`Tasks.MaxParallelPerPlugin` (default 16) is higher (the engine uses the smaller of the two). Every
+upgrade streams a 100-250 MB image from the server; more parallel uploads only share the server's
+uplink, so each one gets slower and runs into the 20 min upload timeout instead of finishing sooner.
+A setting below 4 lowers the firmware limit too.
 
 ## Query
 
@@ -162,7 +167,5 @@ device: numeric `autoRollback` as a JSON string (`"30"`), the exact answer timin
   the full body was sent is treated as "answer lost" and verified by version.
 - `ITaskDialogContext.UploadAsync` does not document the unit of `IProgress<double>`; the dialog
   accepts 0..1 or 0..100.
-- The engine has no per-plugin concurrency hint: firmware uploads of 8 devices at once share one
-  link; a plugin-declared limit (e.g. 2-4 parallel uploads) would help.
 - No way for a plugin to mark the device for a full refresh with a new status after a factory
   default (the device becomes PasswordNotSet); the post-task full refresh covers it partially.

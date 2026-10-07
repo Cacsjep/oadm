@@ -27,6 +27,10 @@ message ServerSettings {
   // Discovery.ZeroConfSeconds: a zero-conf scan of the add page ends after this many seconds. Default 30,
   // 5..300; 0 in a Set keeps the stored value.
   int32 zero_conf_seconds = 8;
+  // Tasks.MaxParallelPerPlugin: how many tasks (= devices) of one task plugin run at the same time.
+  // Default 16, 1..256; a plugin's MaxParallelDevices can only lower it. Applies to tasks started after
+  // the change. optional so a partial Set without it keeps the stored value.
+  optional int32 max_parallel_tasks_per_plugin = 9;
 }
 
 message CredentialEntry {

@@ -66,10 +66,11 @@ public sealed class TaskEngineTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(null, null, 8)]
+    [InlineData(null, null, 16)]
     [InlineData(3, null, 3)]
     [InlineData(null, 2, 2)]
     [InlineData(5, 1, 1)]
+    [InlineData(3, 5, 3)] // a plugin limit never raises the server limit: min(setting, plugin)
     public async Task ParallelismPerPluginIsBounded(int? configured, int? pluginLimit, int expected)
     {
         if (configured is { } max)
@@ -89,10 +90,101 @@ public sealed class TaskEngineTests : IAsyncLifetime
         { Limit = pluginLimit };
         Assert.True(_registry.RegisterTaskPlugin(plugin, new PluginOrigin("test", "1.0.0", null)));
 
-        var records = await WaitAllAsync(await Engine.RunAsync("t.slow", _devices.AddMany(20), null, "o", CancellationToken.None));
+        var records = await WaitAllAsync(await Engine.RunAsync("t.slow", _devices.AddMany(40), null, "o", CancellationToken.None));
 
         Assert.Equal(expected, peak);
         Assert.All(records, r => Assert.Equal(TaskState.Done, r.State));
+    }
+
+    [Theory]
+    [InlineData(16, null, 16)]
+    [InlineData(16, 4, 4)]
+    [InlineData(2, 4, 2)]
+    [InlineData(300, null, 256)] // clamped to the setting's range
+    [InlineData(0, null, 1)]
+    public void ParallelLimitIsTheSmallerOfSettingAndPluginLimit(int setting, int? pluginLimit, int expected)
+    {
+        _engine = new TaskEngine(_store, _registry, _devices, _vapix,
+            options: new TaskEngineOptions { MaxParallelTasksPerPluginSource = () => setting });
+        var plugin = new DelegateTaskPlugin("t.limit", (_, _, _) => Task.CompletedTask) { Limit = pluginLimit };
+        Assert.True(_registry.RegisterTaskPlugin(plugin, new PluginOrigin("test", "1.0.0", null)));
+        Assert.True(_registry.TryGetTaskPlugin("t.limit", out var registration));
+
+        Assert.Equal(expected, Engine.ParallelLimit(registration));
+    }
+
+    [Fact]
+    public async Task AChangedSettingAppliesToNewTasksWithoutARestart()
+    {
+        var limit = 2;
+        _engine = new TaskEngine(_store, _registry, _devices, _vapix,
+            options: new TaskEngineOptions { MaxParallelTasksPerPluginSource = () => Volatile.Read(ref limit) });
+        var current = 0;
+        var peak = 0;
+        Register("t.live", async (_, _, ct) =>
+        {
+            InterlockedMax(ref peak, Interlocked.Increment(ref current));
+            await Task.Delay(40, ct);
+            Interlocked.Decrement(ref current);
+        });
+
+        await WaitAllAsync(await Engine.RunAsync("t.live", _devices.AddMany(12), null, "o", CancellationToken.None));
+        Assert.Equal(2, peak);
+
+        Volatile.Write(ref limit, 5);
+        peak = 0;
+        await WaitAllAsync(await Engine.RunAsync("t.live", _devices.AddMany(20), null, "o", CancellationToken.None));
+        Assert.Equal(5, peak);
+    }
+
+    [Fact]
+    public async Task QueuedTasksPickUpAChangedLimitAndRunningTasksAreNotInterrupted()
+    {
+        var limit = 1;
+        _engine = new TaskEngine(_store, _registry, _devices, _vapix,
+            options: new TaskEngineOptions { MaxParallelTasksPerPluginSource = () => Volatile.Read(ref limit) });
+        var started = 0;
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Register("t.wait", async (_, _, ct) =>
+        {
+            Interlocked.Increment(ref started);
+            await release.Task.WaitAsync(ct);
+        });
+
+        var taskIds = await Engine.RunAsync("t.wait", _devices.AddMany(6), null, "o", CancellationToken.None);
+        await WaitUntilAsync(() => Volatile.Read(ref started) == 1);
+        await Task.Delay(50);
+        Assert.Equal(1, Volatile.Read(ref started));
+
+        // Raised: queued tasks start at once (the server host calls RescheduleQueued on a setting change).
+        Volatile.Write(ref limit, 4);
+        Engine.RescheduleQueued();
+        await WaitUntilAsync(() => Volatile.Read(ref started) == 4);
+        Assert.Equal(4, Engine.RunningCount("t.wait"));
+
+        // Lowered: the running ones go on, nothing new starts.
+        Volatile.Write(ref limit, 1);
+        Engine.RescheduleQueued();
+        await Task.Delay(50);
+        Assert.Equal(4, Engine.RunningCount("t.wait"));
+        var live = await Task.WhenAll(taskIds.Select(id => Engine.GetAsync(id, CancellationToken.None)));
+        Assert.Equal(4, live.Count(t => t!.State == TaskState.Running));
+        Assert.Equal(2, live.Count(t => t!.State == TaskState.Queued));
+
+        release.SetResult();
+        Assert.All(await WaitAllAsync(taskIds), r => Assert.Equal(TaskState.Done, r.State));
+        Assert.Equal(6, started);
+        Assert.Equal(0, Engine.RunningCount("t.wait"));
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + Timeout;
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, "Condition not met in time.");
+            await Task.Delay(10);
+        }
     }
 
     [Fact]
@@ -145,7 +237,11 @@ public sealed class TaskEngineTests : IAsyncLifetime
         var taskIds = await Engine.RunAsync("t.forever", _devices.AddMany(10), null, "o", CancellationToken.None);
         await twoStarted.Task.WaitAsync(Timeout);
 
-        Assert.All(taskIds, id => Assert.True(Engine.Cancel(id)));
+        // Queued ones first: cancelling a running one first frees its slot, and a queued task not cancelled
+        // yet could start in between (a race of the test, not of the engine).
+        var live = await Task.WhenAll(taskIds.Select(id => Engine.GetAsync(id, CancellationToken.None)));
+        var queuedFirst = live.OrderBy(t => t!.State == TaskState.Queued ? 0 : 1).Select(t => t!.Id).ToList();
+        Assert.All(queuedFirst, id => Assert.True(Engine.Cancel(id)));
         var records = await WaitAllAsync(taskIds);
 
         Assert.All(records, r => Assert.Equal(TaskState.Cancelled, r.State));

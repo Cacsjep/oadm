@@ -40,6 +40,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         ScanParallelism = 32,
         ScanTimeoutMs = 1500,
         ZeroConfSeconds = 30,
+        MaxParallelTasksPerPlugin = 16,
         ServerName = "acs",
         ListenUrl = "http://0.0.0.0:5080",
         UseHostName = false,
@@ -772,9 +773,16 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 throw new RpcException(new Status(StatusCode.InvalidArgument, "Full refresh interval must be between 1 and 1440 minutes"));
             }
 
+            if (settings.HasMaxParallelTasksPerPlugin && settings.MaxParallelTasksPerPlugin is < 1 or > 256)
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "'Tasks.MaxParallelPerPlugin' must be an integer between 1 and 256."));
+            }
+
             bool useHostName = settings.HasUseHostName ? settings.UseHostName : _settings.UseHostName; // unset keeps it, like the server
+            int maxParallel = settings.HasMaxParallelTasksPerPlugin ? settings.MaxParallelTasksPerPlugin : _settings.MaxParallelTasksPerPlugin;
             _settings = settings.Clone();
             _settings.UseHostName = useHostName;
+            _settings.MaxParallelTasksPerPlugin = maxParallel;
             return Task.FromResult(_settings.Clone());
         }
     }

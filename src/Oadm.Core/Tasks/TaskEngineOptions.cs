@@ -3,10 +3,21 @@ namespace Oadm.Core.Tasks;
 public sealed class TaskEngineOptions
 {
     /// <summary>
-    /// How many tasks (= devices) of one plugin run at the same time unless the plugin sets
-    /// <c>ITaskPlugin.MaxParallelDevices</c>; further tasks wait in Queued. Default 8.
+    /// How many tasks (= devices) of one plugin run at the same time when no
+    /// <see cref="MaxParallelTasksPerPluginSource"/> is set; further tasks wait in Queued. A plugin's
+    /// <c>ITaskPlugin.MaxParallelDevices</c> can only lower it. Default 16 (the default of the server setting
+    /// <c>Tasks.MaxParallelPerPlugin</c>).
     /// </summary>
-    public int MaxParallelTasksPerPlugin { get; set; } = 8;
+    public int MaxParallelTasksPerPlugin { get; set; } = 16;
+
+    /// <summary>
+    /// Live source of the per-plugin limit (the server setting <c>Tasks.MaxParallelPerPlugin</c>); null uses
+    /// <see cref="MaxParallelTasksPerPlugin"/>. Read whenever a queued task is scheduled, so a change applies
+    /// to tasks that start afterwards; running tasks are never interrupted. Values are clamped to 1..256.
+    /// After a change call <see cref="TaskEngine.RescheduleQueued"/> so a raised limit starts waiting tasks
+    /// at once.
+    /// </summary>
+    public Func<int>? MaxParallelTasksPerPluginSource { get; set; }
 
     /// <summary>Unused since change-feed subscriptions coalesce per task instead of dropping changes; kept for compatibility.</summary>
     public int ChangeFeedCapacity { get; set; } = 4096;

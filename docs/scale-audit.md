@@ -49,7 +49,7 @@ algorithms on the same machine and data.
 | Device writes | `DeviceRepository.UpdateAsync` | Unchanged rows were saved and published; LastSeen-only changes published | No write without a change, no publish for LastSeen-only (measured: 0 messages for the second poll of 5,000 devices) |
 | Remove, SetCredentials on 5,000 | gRPC | One transaction per device | `RemoveManyAsync` (0.2 s for 5,000), `SetManyAsync` (2.5 s for 5,000 incl. encryption) |
 | Device Watch | snapshot, per-change cost | Credential lookup (one query) per change and watcher | Batches of changes share one credential-set query; snapshot end marker; snapshot of 5,000 devices with 100 APIs: 1.5 s |
-| Task engine | Run on 5,000, queueing, persistence | Sequential store inserts; a redundant write per task at start; `ListAsync` inserted unstored tasks at index 0; default 8 parallel tasks per plugin means a 5,000-device Restart (~90 s each) takes ~16 h | `AddRangeAsync`, start state persisted with the device start, `PrependUnstored`; `Oadm:MaxParallelTasksPerPlugin` configuration (1..256) for large sites. Measured: Run reply 1.9 s (engine) / 0.84 s (gRPC), 5,000 trivial tasks executed and persisted in 41-45 s (about 9 ms per task in SQLite; real tasks take seconds), memory store 0.18 s |
+| Task engine | Run on 5,000, queueing, persistence | Sequential store inserts; a redundant write per task at start; `ListAsync` inserted unstored tasks at index 0; default 8 parallel tasks per plugin means a 5,000-device Restart (~90 s each) takes ~16 h | `AddRangeAsync`, start state persisted with the device start, `PrependUnstored`; server setting `Tasks.MaxParallelPerPlugin` (default 16, 1..256, Settings page, read live; see "Task parallelism decision"). Measured: Run reply 1.9 s (engine) / 0.84 s (gRPC), 5,000 trivial tasks executed and persisted in 41-45 s (about 9 ms per task in SQLite; real tasks take seconds), memory store 0.18 s |
 | Task history | queries, indexes, size | No paging, no Status index, no retention, `RecoverInterruptedAsync` loaded all tasks | `ListPageAsync` (first page 9 ms, page at offset 49,900: 143 ms), `ListActiveAsync` with the new Status index (2 ms), `ListExpiredAsync` + `DeleteManyAsync`, `Tasks.RetentionDays` (90) and `Tasks.MaxHistory` (50,000), hourly `TaskRetentionHostedService`; seeding 50,000 tasks with steps in one transaction: 28 s |
 | Task log table | size | At most 1,000 entries per task (existing), deleted with the task; `TaskId` index | retention also removes logs |
 | ListTaskPlugins | CanRun 5,000 x N, size, frequency | See finding 7 | `TaskPluginRunnableCache` (one computation per device-table version, logs a throwing CanRun once per plugin instead of 5,000 times), compact form |
@@ -117,7 +117,13 @@ the 5,000-task Runs).
 - Engine overhead per task (about 9 ms in SQLite: one read and one write per state transition) is far
   below the duration of a real task (seconds); batching state writes across tasks would complicate the
   "every state transition is persisted" rule for no visible gain.
-- Default task parallelism stays 8 per plugin (firmware uploads of 100 MB each do not set their own
-  limit); large sites raise `Oadm:MaxParallelTasksPerPlugin`.
+- Task parallelism decision: the per-plugin limit is the server setting `Tasks.MaxParallelPerPlugin`
+  (default 16, 1..256, Settings page "Parallel tasks per plugin"), replacing the configuration value
+  `Oadm:MaxParallelTasksPerPlugin` (default 8, no longer read). The engine reads it live whenever a
+  queued task could start, so an admin can raise it for a large rollout without a server restart
+  (queued tasks pick up the new limit, running tasks are never interrupted). A plugin's
+  `MaxParallelDevices` only lowers it (min of both); the firmware plugin sets 4 because every upgrade
+  streams a 100-250 MB image from the server and more parallel uploads only share the uplink. At 16 a
+  Restart on 5,000 devices (~90 s each) takes about 8 h; at 128 about 1 h.
 - The retention settings are server-only for now (like `Uploads.*`); the Settings page is being
   reworked separately.

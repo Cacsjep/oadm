@@ -72,7 +72,8 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             Read(rows, SettingKeys.ListenUrl, defaults.ListenUrl),
             Read(rows, SettingKeys.PollingFullRefreshMinutes, defaults.FullRefreshMinutes),
             Read(rows, SettingKeys.DevicesUseHostName, defaults.UseHostName),
-            Read(rows, SettingKeys.DiscoveryZeroConfSeconds, defaults.ZeroConfSeconds));
+            Read(rows, SettingKeys.DiscoveryZeroConfSeconds, defaults.ZeroConfSeconds),
+            Read(rows, SettingKeys.TasksMaxParallelPerPlugin, defaults.MaxParallelTasksPerPlugin));
     }
 
     /// <summary>Validates and writes all Goal 1 settings in one transaction.</summary>
@@ -89,6 +90,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.PollingFullRefreshMinutes] = JsonSerializer.Serialize(settings.FullRefreshMinutes),
             [SettingKeys.DevicesUseHostName] = JsonSerializer.Serialize(settings.UseHostName),
             [SettingKeys.DiscoveryZeroConfSeconds] = JsonSerializer.Serialize(settings.ZeroConfSeconds),
+            [SettingKeys.TasksMaxParallelPerPlugin] = JsonSerializer.Serialize(settings.MaxParallelTasksPerPlugin),
         };
         foreach (var (key, json) in values)
         {
@@ -180,6 +182,9 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             case SettingKeys.DiscoveryZeroConfSeconds:
                 RequireInt(key, value, ServerSettings.MinZeroConfSeconds, ServerSettings.MaxZeroConfSeconds);
                 break;
+            case SettingKeys.TasksMaxParallelPerPlugin:
+                RequireInt(key, value, ServerSettings.MinMaxParallelTasksPerPlugin, ServerSettings.MaxMaxParallelTasksPerPlugin);
+                break;
             case SettingKeys.ServerName:
                 if (value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(value.GetString()))
                 {
@@ -233,6 +238,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.TasksMaxHistory] = JsonSerializer.Serialize(ServerSettings.DefaultTasksMaxHistory),
             [SettingKeys.DevicesUseHostName] = JsonSerializer.Serialize(d.UseHostName),
             [SettingKeys.DiscoveryZeroConfSeconds] = JsonSerializer.Serialize(d.ZeroConfSeconds),
+            [SettingKeys.TasksMaxParallelPerPlugin] = JsonSerializer.Serialize(d.MaxParallelTasksPerPlugin),
         };
     }
 }

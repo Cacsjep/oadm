@@ -27,6 +27,13 @@ public static class SettingKeys
     /// <summary>A zero-conf scan of the add page ends after this many seconds. Int, default 30, 5..300.</summary>
     public const string DiscoveryZeroConfSeconds = "Discovery.ZeroConfSeconds";
 
+    /// <summary>
+    /// How many tasks (= devices) of one task plugin run at the same time; further tasks wait in Queued.
+    /// Int, default 16, 1..256. A plugin's <c>MaxParallelDevices</c> can only lower it. Read live by the task
+    /// engine: a change applies to tasks that start afterwards, running tasks are not interrupted.
+    /// </summary>
+    public const string TasksMaxParallelPerPlugin = "Tasks.MaxParallelPerPlugin";
+
     /// <summary>Prefix of plugin settings: <c>Plugin:&lt;pluginId&gt;:&lt;key&gt;</c>.</summary>
     public const string PluginPrefix = "Plugin:";
 
@@ -76,7 +83,8 @@ public sealed record ServerSettings(
     string ListenUrl,
     int FullRefreshMinutes = ServerSettings.DefaultFullRefreshMinutes,
     bool UseHostName = ServerSettings.DefaultUseHostName,
-    int ZeroConfSeconds = ServerSettings.DefaultZeroConfSeconds)
+    int ZeroConfSeconds = ServerSettings.DefaultZeroConfSeconds,
+    int MaxParallelTasksPerPlugin = ServerSettings.DefaultMaxParallelTasksPerPlugin)
 {
     public const int DefaultPollingIntervalSeconds = 60;
     public const int DefaultFullRefreshMinutes = 10;
@@ -98,6 +106,9 @@ public sealed record ServerSettings(
     public const int DefaultZeroConfSeconds = 30;
     public const int MinZeroConfSeconds = 5;
     public const int MaxZeroConfSeconds = 300;
+    public const int DefaultMaxParallelTasksPerPlugin = 16;
+    public const int MinMaxParallelTasksPerPlugin = 1;
+    public const int MaxMaxParallelTasksPerPlugin = 256;
 
     public static ServerSettings Defaults => new(
         DefaultPollingIntervalSeconds,
@@ -107,7 +118,8 @@ public sealed record ServerSettings(
         DefaultListenUrl,
         DefaultFullRefreshMinutes,
         DefaultUseHostName,
-        DefaultZeroConfSeconds);
+        DefaultZeroConfSeconds,
+        DefaultMaxParallelTasksPerPlugin);
 
     /// <summary>The machine host name (DNS host name, falling back to the NetBIOS/machine name).</summary>
     public static string DefaultServerName()

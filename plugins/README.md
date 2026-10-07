@@ -95,7 +95,8 @@ the server project for shared payload types (it then ships in the same folder).
   (`DeviceIdentityException` otherwise), moves the record (credentials and pin kept, change published,
   full refresh queued) and swaps `ctx.Vapix`; returns false when OADM uses the host name. Third-party
   hosts may throw `NotSupportedException` (SDK default).
-- `MaxParallelDevices` limits how many tasks of the plugin run at once (default 8).
+- `MaxParallelDevices` limits how many tasks of the plugin run at once; it can only lower the server
+  setting `Tasks.MaxParallelPerPlugin` (default 16, Settings page), the engine uses the smaller value.
 - Long requests: `request.Options.Set(VapixRequestOptions.Timeout, TimeSpan.FromMinutes(20))`
   before `ctx.Vapix.SendAsync(request, ct)`; use `StreamContent` for large bodies.
 - `ITaskPluginQuery.QueryAsync` serves the dialog (read-only, 30 s timeout on the server).

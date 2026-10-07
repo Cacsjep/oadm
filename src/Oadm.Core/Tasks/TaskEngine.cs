@@ -15,8 +15,9 @@ namespace Oadm.Core.Tasks;
 
 /// <summary>
 /// Runs task plugins against devices. Every task starts immediately; devices of one task run
-/// with bounded parallelism per plugin (<see cref="TaskEngineOptions.MaxParallelTasksPerPlugin"/>,
-/// <c>ITaskPlugin.MaxParallelDevices</c>). A task always targets exactly one device.
+/// with bounded parallelism per plugin: min(server setting <c>Tasks.MaxParallelPerPlugin</c> via
+/// <see cref="TaskEngineOptions.MaxParallelTasksPerPluginSource"/>, <c>ITaskPlugin.MaxParallelDevices</c>),
+/// read live whenever a queued task is scheduled. A task always targets exactly one device.
 /// Plugin exceptions become a Failed device result and never escape the engine.
 /// </summary>
 public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
@@ -34,7 +35,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     private readonly ITaskDeviceCredentials? _credentials;
     private readonly ITaskDeviceAddresses? _addresses;
     private readonly ConcurrentDictionary<Guid, RunningTask> _active = new();
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _gates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, PluginSlots> _gates = new(StringComparer.OrdinalIgnoreCase);
     private readonly CancellationTokenSource _shutdown = new();
     private int _disposed;
 
@@ -64,6 +65,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         _logger = _loggerFactory.CreateLogger<TaskEngine>();
         _options = options ?? new TaskEngineOptions();
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxParallelTasksPerPlugin, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(_options.MaxParallelTasksPerPlugin, MaxParallelLimit);
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxLogEntriesPerTask, 1);
         _files = uploadedFiles ?? NoUploadedFiles.Instance;
         _time = timeProvider ?? TimeProvider.System;
@@ -246,7 +248,54 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         return task.Id;
     }
 
-    /// <summary>Concurrency limit of a plugin: its MaxParallelDevices, else <see cref="TaskEngineOptions.MaxParallelTasksPerPlugin"/>.</summary>
+    /// <summary>Largest accepted per-plugin limit (the range of the server setting).</summary>
+    public const int MaxParallelLimit = 256;
+
+    /// <summary>
+    /// The per-plugin limit of the server (the setting <c>Tasks.MaxParallelPerPlugin</c> when a source is set,
+    /// else <see cref="TaskEngineOptions.MaxParallelTasksPerPlugin"/>), clamped to 1..256. Read live.
+    /// </summary>
+    public int ServerParallelLimit
+    {
+        get
+        {
+            var value = _options.MaxParallelTasksPerPlugin;
+            if (_options.MaxParallelTasksPerPluginSource is { } source)
+            {
+                try
+                {
+                    value = source();
+                }
+#pragma warning disable CA1031 // A failing source must not stop scheduling; the static value applies.
+                catch (Exception)
+#pragma warning restore CA1031
+                {
+                    value = _options.MaxParallelTasksPerPlugin;
+                }
+            }
+
+            return Math.Clamp(value, 1, MaxParallelLimit);
+        }
+    }
+
+    /// <summary>
+    /// Starts queued tasks that fit under the current limits, e.g. after the setting
+    /// <c>Tasks.MaxParallelPerPlugin</c> was raised. Lowering a limit never interrupts running tasks.
+    /// </summary>
+    public void RescheduleQueued()
+    {
+        foreach (var slots in _gates.Values)
+        {
+            slots.Pump();
+        }
+    }
+
+    /// <summary>Number of running (not queued) tasks of a plugin. For tests and diagnostics.</summary>
+    internal int RunningCount(string pluginId) => _gates.TryGetValue(pluginId, out var slots) ? slots.Running : 0;
+
+    /// <summary>
+    /// Concurrency limit of a plugin: min(<see cref="ServerParallelLimit"/>, its MaxParallelDevices when set).
+    /// </summary>
     internal int ParallelLimit(RegisteredTaskPlugin registration)
     {
         int? requested;
@@ -261,7 +310,8 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             requested = null;
         }
 
-        return requested is > 0 ? requested.Value : _options.MaxParallelTasksPerPlugin;
+        var server = ServerParallelLimit;
+        return requested is > 0 ? Math.Min(server, requested.Value) : server;
     }
 
     /// <summary>Requests cancellation. Returns false when the task is not active.</summary>
@@ -539,7 +589,9 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
 
     private async Task ExecuteTaskAsync(RunningTask task)
     {
-        var gate = _gates.GetOrAdd(task.Registration.Id, _ => new SemaphoreSlim(ParallelLimit(task.Registration)));
+        var registration = task.Registration;
+        var gate = _gates.GetOrAdd(registration.Id, id => new PluginSlots(
+            () => ParallelLimit(_plugins.TryGetTaskPlugin(id, out var current) ? current : registration)));
         var entered = false;
         try
         {

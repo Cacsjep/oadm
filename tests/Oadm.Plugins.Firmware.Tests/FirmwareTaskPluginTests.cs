@@ -49,6 +49,7 @@ public sealed class FirmwareTaskPluginTests
         Assert.Equal(TaskGroups.Maintenance, ((ITaskPlugin)plugin).Group);
         Assert.True(plugin.ShowInToolbar);
         Assert.True(plugin.RequiresDialog);
+        Assert.Equal(4, ((ITaskPlugin)plugin).MaxParallelDevices); // large uploads: at most 4 at once
     }
 
     [Fact]

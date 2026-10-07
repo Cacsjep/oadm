@@ -34,6 +34,8 @@ public sealed class SettingsAndPluginServiceTests
         Assert.Equal(1500, defaults.ScanTimeoutMs);
         Assert.Equal("http://0.0.0.0:5080", defaults.ListenUrl);
         Assert.Equal(30, defaults.ZeroConfSeconds);
+        Assert.True(defaults.HasMaxParallelTasksPerPlugin);
+        Assert.Equal(16, defaults.MaxParallelTasksPerPlugin);
         Assert.False(string.IsNullOrEmpty(defaults.ServerName));
 
         var saved = await host.Settings.SetAsync(new Proto.ServerSettings
@@ -44,7 +46,9 @@ public sealed class SettingsAndPluginServiceTests
             ServerName = "oadm-lab",
             ListenUrl = "http://0.0.0.0:6000",
             ZeroConfSeconds = 45,
+            MaxParallelTasksPerPlugin = 48,
         });
+        Assert.Equal(48, saved.MaxParallelTasksPerPlugin);
         Assert.Equal(30, saved.PollingIntervalSeconds);
 
         var partial = await host.Settings.SetAsync(new Proto.ServerSettings { ServerName = "renamed" });
@@ -58,6 +62,7 @@ public sealed class SettingsAndPluginServiceTests
         Assert.Equal("renamed", reloaded.ServerName);
         Assert.Equal("http://0.0.0.0:6000", reloaded.ListenUrl);
         Assert.Equal(45, reloaded.ZeroConfSeconds); // kept by the partial update
+        Assert.Equal(48, reloaded.MaxParallelTasksPerPlugin); // kept by the partial update
     }
 
     [Fact]
@@ -77,7 +82,26 @@ public sealed class SettingsAndPluginServiceTests
             Assert.Equal(StatusCode.InvalidArgument, ex.StatusCode);
         }
 
+        foreach (var parallel in new[] { 0, 257 })
+        {
+            ex = await Assert.ThrowsAsync<RpcException>(() => host.Settings.SetAsync(new Proto.ServerSettings { MaxParallelTasksPerPlugin = parallel }).ResponseAsync);
+            Assert.Equal(StatusCode.InvalidArgument, ex.StatusCode);
+        }
+
         Assert.Equal(60, (await host.Settings.GetAsync(new Proto.Empty())).PollingIntervalSeconds);
+        Assert.Equal(16, (await host.Settings.GetAsync(new Proto.Empty())).MaxParallelTasksPerPlugin);
+    }
+
+    [Fact]
+    public async Task TheTaskEngineUsesTheParallelTasksSetting()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var engine = host.Get<Oadm.Core.Tasks.TaskEngine>();
+        Assert.Equal(16, engine.ServerParallelLimit);
+
+        await host.Settings.SetAsync(new Proto.ServerSettings { MaxParallelTasksPerPlugin = 5 });
+
+        Assert.Equal(5, engine.ServerParallelLimit); // live, no restart
     }
 
     [Fact]

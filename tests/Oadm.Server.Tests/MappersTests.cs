@@ -229,6 +229,15 @@ public sealed class MappersTests
         Assert.Equal(withHostName, Mappers.FromProto(new Proto.ServerSettings { UseHostName = true }, current));
         Assert.Equal(withHostName, Mappers.FromProto(new Proto.ServerSettings { ServerName = "srv" }, withHostName)); // unset keeps it
         Assert.Equal(current, Mappers.FromProto(new Proto.ServerSettings { UseHostName = false }, withHostName));
+
+        // Tasks.MaxParallelPerPlugin: optional, unset keeps the stored value.
+        Assert.Equal(16, current.MaxParallelTasksPerPlugin);
+        Assert.True(Mappers.ToProto(current).HasMaxParallelTasksPerPlugin);
+        Assert.Equal(16, Mappers.ToProto(current).MaxParallelTasksPerPlugin);
+        var parallel = current with { MaxParallelTasksPerPlugin = 64 };
+        Assert.Equal(parallel, Mappers.FromProto(new Proto.ServerSettings { MaxParallelTasksPerPlugin = 64 }, current));
+        Assert.Equal(parallel, Mappers.FromProto(new Proto.ServerSettings { ServerName = "srv" }, parallel));
+        Assert.Equal(0, Mappers.FromProto(new Proto.ServerSettings { MaxParallelTasksPerPlugin = 0 }, current).MaxParallelTasksPerPlugin); // set: the store rejects it
     }
 
     [Fact]

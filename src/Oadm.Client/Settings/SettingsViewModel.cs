@@ -48,6 +48,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             .Rule(nameof(ScanParallelism), () => RangeError(ScanParallelism, 1, 256))
             .Rule(nameof(ScanTimeoutMs), () => RangeError(ScanTimeoutMs, 100, 30000))
             .Rule(nameof(ZeroConfSeconds), () => RangeError(ZeroConfSeconds, 5, 300))
+            .Rule(nameof(MaxParallelTasksPerPlugin), () => RangeError(MaxParallelTasksPerPlugin, MinParallelTasks, MaxParallelTasks))
             .Rule(nameof(ServerName), () => ServerName.Trim().Length == 0 ? "Enter a server name." : null)
             .Rule(nameof(ListenUrl), () => ListenUrlError(ListenUrl))
             .Rule(nameof(NewCredentialUserName), () => NewCredentialUserName.Trim().Length == 0 ? "Enter a user name." : null)
@@ -60,8 +61,13 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     private static readonly string[] ServerFields =
     [
         nameof(PollingIntervalSeconds), nameof(FullRefreshMinutes), nameof(ScanParallelism), nameof(ScanTimeoutMs),
-        nameof(ZeroConfSeconds), nameof(ServerName), nameof(ListenUrl),
+        nameof(ZeroConfSeconds), nameof(MaxParallelTasksPerPlugin), nameof(ServerName), nameof(ListenUrl),
     ];
+
+    /// <summary>Range and default of Tasks.MaxParallelPerPlugin (same as the server).</summary>
+    public const int MinParallelTasks = 1;
+    public const int MaxParallelTasks = 256;
+    public const int DefaultParallelTasks = 16;
 
     private static readonly string[] CredentialFields = [nameof(NewCredentialUserName), nameof(NewCredentialPassword)];
 
@@ -131,6 +137,12 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
 
     /// <summary>Discovery.ZeroConfSeconds: a zero-conf scan of the add page ends after this many seconds (5..300).</summary>
     [ObservableProperty] public partial decimal? ZeroConfSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// Tasks.MaxParallelPerPlugin: how many devices a task (restart, firmware update, ...) runs on at the same
+    /// time (1..256, default 16). Applies to tasks that start after saving.
+    /// </summary>
+    [ObservableProperty] public partial decimal? MaxParallelTasksPerPlugin { get; set; } = DefaultParallelTasks;
     [ObservableProperty] public partial string ServerName { get; set; } = "";
     [ObservableProperty] public partial string ListenUrl { get; set; } = "";
 
@@ -199,6 +211,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             ScanParallelism = (int)(ScanParallelism ?? 32),
             ScanTimeoutMs = (int)(ScanTimeoutMs ?? 1500),
             ZeroConfSeconds = (int)(ZeroConfSeconds ?? 30),
+            MaxParallelTasksPerPlugin = (int)(MaxParallelTasksPerPlugin ?? DefaultParallelTasks),
             ServerName = ServerName.Trim(),
             ListenUrl = ListenUrl.Trim(),
             UseHostName = UseHostName,
@@ -314,6 +327,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         ScanParallelism = settings.ScanParallelism;
         ScanTimeoutMs = settings.ScanTimeoutMs;
         ZeroConfSeconds = settings.ZeroConfSeconds > 0 ? settings.ZeroConfSeconds : 30; // 0 = older server without the setting
+        MaxParallelTasksPerPlugin = settings.HasMaxParallelTasksPerPlugin ? settings.MaxParallelTasksPerPlugin : DefaultParallelTasks; // unset = older server
         ServerName = settings.ServerName;
         ListenUrl = settings.ListenUrl;
         UseHostName = settings.UseHostName;
