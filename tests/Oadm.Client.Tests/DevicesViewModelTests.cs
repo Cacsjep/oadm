@@ -167,7 +167,7 @@ public sealed class DevicesViewModelTests
         using DevicesFixture f = CreateWithDevices();
         TaskPluginInfo restart = TestSupport.Plugin("oadm.restart", "Restart", toolbar: true, dialog: false, "1", "2");
         await f.SetPluginsAsync(restart);
-        f.Api.RunTaskAsync(default!, default!, default, default!, default).ReturnsForAnyArgs("task-1");
+        f.Api.RunTaskAsync(default!, default!, default, default!, default).ReturnsForAnyArgs((IReadOnlyList<string>)["task-1", "task-2"]);
         f.Select("1", "2");
         f.TasksVm.IsExpanded = false;
 

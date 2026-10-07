@@ -102,6 +102,7 @@ public sealed class EfTaskStore(IDbContextFactory<OadmDbContext> dbFactory) : IT
     internal static void Apply(TaskRecord task, TaskEntity entity)
     {
         entity.PluginId = task.PluginId;
+        entity.BatchId = task.BatchId;
         entity.Name = task.Name;
         entity.Status = task.State;
         entity.Owner = task.Owner;
@@ -142,7 +143,8 @@ public sealed class EfTaskStore(IDbContextFactory<OadmDbContext> dbFactory) : IT
             entity.FinishedUtc is { } f ? ToOffset(f) : null,
             entity.Progress,
             null,
-            [.. entity.Results.OrderBy(r => r.DeviceId).Select(r => new TaskDeviceRecord(r.DeviceId, r.Status, r.Message, r.Progress))]);
+            [.. entity.Results.OrderBy(r => r.DeviceId).Select(r => new TaskDeviceRecord(r.DeviceId, r.Status, r.Message, r.Progress))],
+            entity.BatchId == Guid.Empty ? entity.Id : entity.BatchId);
     }
 
     private static DateTimeOffset ToOffset(DateTime utc) =>

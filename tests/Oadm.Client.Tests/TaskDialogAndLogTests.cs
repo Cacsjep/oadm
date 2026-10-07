@@ -93,14 +93,14 @@ public sealed class TaskDialogAndLogTests
 
         await details.LoadLogAsync(api, CancellationToken.None);
 
-        Assert.Equal(4, details.Log.Count);
-        Assert.Equal("4 log entries", details.LogStatus);
+        Assert.Equal(3, details.Log.Count);
+        Assert.Equal("3 log entries", details.LogStatus);
         TaskLogRow first = details.Log[0];
         Assert.Equal("Info", first.LevelText);
         Assert.Equal("", first.Device); // task-level entry
         TaskLogRow warning = details.Log.Single(r => r.IsWarning);
         Assert.Equal("Warning", warning.LevelText);
-        Assert.Equal(devices.Find(warned.Devices[1].DeviceId)!.DisplayAddress, warning.Device);
+        Assert.Equal(devices.Find(warned.DeviceId)!.DisplayAddress, warning.Device);
         Assert.Contains(details.Rows, r => r.IsStateWarning && r.StateText == "Done with warnings");
     }
 

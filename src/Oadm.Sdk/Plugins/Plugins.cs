@@ -27,6 +27,12 @@ public interface ITaskPlugin : IPlugin
     bool CanRun(IDeviceInfo device);
 
     /// <summary>
+    /// How many tasks of this plugin may run at the same time (one task = one device); further tasks
+    /// wait in Queued. Null: the server default (8). Firmware upgrades use 2.
+    /// </summary>
+    int? MaxParallelDevices => null;
+
+    /// <summary>
     /// Runs once per device. Return normally for Done, call <see cref="ITaskExecutionContext.ReportWarning"/>
     /// for Done with warnings, throw for Failed. <paramref name="payloadJson"/> comes from the dialog;
     /// it is kept in memory only and never persisted, so it may carry secrets such as passwords.
@@ -64,6 +70,21 @@ public interface ITaskExecutionContext
 
     /// <summary>Entry in this task's log, per device, shown in the task details and persisted. Never log secrets.</summary>
     void Log(TaskLogLevel level, string message);
+
+    /// <summary>
+    /// The device no longer accepts the credentials OADM stored (factory default, password reset):
+    /// the server deletes them and refreshes the device, which then shows PasswordNotSet or
+    /// CredentialsRequired. Logged in the task log (without secrets).
+    /// </summary>
+    void MarkCredentialsInvalid() => throw new NotSupportedException("This context cannot change stored credentials.");
+
+    /// <summary>
+    /// Stores new credentials for the current device (encrypted, never logged), e.g. after the plugin
+    /// changed the password of the account OADM uses. Afterwards <see cref="Vapix"/> returns a client
+    /// with the new credentials; re-read it instead of keeping the old instance.
+    /// </summary>
+    Task UpdateCredentialsAsync(string userName, string password, CancellationToken ct) =>
+        throw new NotSupportedException("This context cannot change stored credentials.");
 }
 
 public enum TaskLogLevel

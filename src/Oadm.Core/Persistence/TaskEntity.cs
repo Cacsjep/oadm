@@ -10,6 +10,9 @@ public sealed class TaskEntity
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string PluginId { get; set; } = string.Empty;
+
+    /// <summary>Shared by the tasks of one run (one task per device). Empty for tasks of older versions.</summary>
+    public Guid BatchId { get; set; }
     public string Name { get; set; } = string.Empty;
     public TaskState Status { get; set; } = TaskState.Queued;
 

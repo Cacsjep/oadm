@@ -6,11 +6,18 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Oadm.Core.Persistence.Migrations
 {
     /// <inheritdoc />
-    public partial class DeviceApisAndTaskLog : Migration
+    public partial class DeviceApisTaskLogAndBatch : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.AddColumn<Guid>(
+                name: "BatchId",
+                table: "Tasks",
+                type: "TEXT",
+                nullable: false,
+                defaultValue: new Guid("00000000-0000-0000-0000-000000000000"));
+
             migrationBuilder.AddColumn<string>(
                 name: "Apis",
                 table: "Devices",
@@ -45,6 +52,11 @@ namespace Oadm.Core.Persistence.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "IX_Tasks_BatchId",
+                table: "Tasks",
+                column: "BatchId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_TaskLogEntries_TaskId",
                 table: "TaskLogEntries",
                 column: "TaskId");
@@ -55,6 +67,14 @@ namespace Oadm.Core.Persistence.Migrations
         {
             migrationBuilder.DropTable(
                 name: "TaskLogEntries");
+
+            migrationBuilder.DropIndex(
+                name: "IX_Tasks_BatchId",
+                table: "Tasks");
+
+            migrationBuilder.DropColumn(
+                name: "BatchId",
+                table: "Tasks");
 
             migrationBuilder.DropColumn(
                 name: "Apis",

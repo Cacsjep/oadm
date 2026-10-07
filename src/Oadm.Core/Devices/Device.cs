@@ -54,6 +54,12 @@ public sealed class Device : IDeviceInfo
     /// </summary>
     public IReadOnlyList<Oadm.Sdk.Vapix.DeviceApi> Apis { get; set; } = [];
 
+    /// <summary>
+    /// User name of the stored credentials (never the password); not a column. Filled by
+    /// <see cref="DeviceRepository"/> reads from the DeviceCredentials table, null when none are stored.
+    /// </summary>
+    public string? CredentialUserName { get; set; }
+
     /// <summary>End of validity of the device HTTPS certificate (UTC), null for HTTP-only or not yet checked.</summary>
     public DateTime? CertNotAfterUtc { get; set; }
 

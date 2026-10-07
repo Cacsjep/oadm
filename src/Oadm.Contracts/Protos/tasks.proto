@@ -37,7 +37,11 @@ message RunTaskRequest {
   string payload_json = 3;
   string owner = 4;
 }
-message RunTaskReply { string task_id = 1; }
+// One task per device; all tasks of one Run share a batch id.
+message RunTaskReply {
+  string task_id = 1 [deprecated = true];   // first of task_ids, kept for compatibility
+  repeated string task_ids = 2;             // in device order
+}
 message TaskIdRequest { string task_id = 1; }
 message DeleteAllReply { int32 deleted = 1; }
 
@@ -68,7 +72,9 @@ message TaskInfo {
   google.protobuf.Timestamp started = 7;
   google.protobuf.Timestamp finished = 8;
   int32 progress = 9;
-  repeated TaskDeviceResult devices = 10;
+  repeated TaskDeviceResult devices = 10;   // always exactly one entry (one task per device)
+  string batch_id = 11;                     // shared by the tasks started by one Run
+  string device_id = 12;                    // the task's device (= devices[0].device_id)
 }
 message TaskList { repeated TaskInfo tasks = 1; }
 

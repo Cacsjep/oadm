@@ -17,7 +17,10 @@ public interface ITaskDialogContext
     /// <summary>Calls the plugin's server-side <c>ITaskPluginQuery.QueryAsync</c> for one device (read-only).</summary>
     Task<string?> QueryAsync(Guid deviceId, string method, string? payloadJson, CancellationToken ct);
 
-    /// <summary>Uploads a local file to the server; put the returned id into the task payload.</summary>
+    /// <summary>
+    /// Uploads a local file to the server (256 KB chunks); put the returned id into the task payload.
+    /// <paramref name="progress"/> receives the fraction sent, from 0.0 to 1.0 (not a percentage).
+    /// </summary>
     Task<Oadm.Sdk.Plugins.UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct);
 }
 

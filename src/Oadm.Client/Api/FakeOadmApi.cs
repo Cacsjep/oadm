@@ -397,17 +397,23 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         }
     }
 
-    public Task<string> RunTaskAsync(string pluginId, IReadOnlyCollection<string> deviceIds, string? payloadJson, string owner, CancellationToken ct)
+    /// <summary>Like the server: one task per device, all sharing a batch id.</summary>
+    public Task<IReadOnlyList<string>> RunTaskAsync(string pluginId, IReadOnlyCollection<string> deviceIds, string? payloadJson, string owner, CancellationToken ct)
     {
         lock (_gate)
         {
             ThrowIfOffline();
             TaskPluginInfo plugin = _pluginTemplates.Find(p => p.Id == pluginId)
                 ?? throw new RpcException(new Status(StatusCode.NotFound, $"task plugin {pluginId} not found"));
-            TaskInfo task = AddTask(pluginId, plugin.DisplayName, owner, TaskState.Queued, 0, deviceIds);
             Action<TaskInfo, int>? onProgress = pluginId == RestartPluginId ? SimulateRestart : null;
-            _jobs[task.Id] = new FakeJob(task, pluginId == RestartPluginId ? 4 : 25, onProgress);
-            return Task.FromResult(task.Id);
+            var ids = new List<string>();
+            foreach (TaskInfo task in AddBatch(pluginId, plugin.DisplayName, owner, TaskState.Queued, 0, deviceIds.Distinct()))
+            {
+                _jobs[task.Id] = new FakeJob(task, pluginId == RestartPluginId ? 4 : 25, onProgress);
+                ids.Add(task.Id);
+            }
+
+            return Task.FromResult<IReadOnlyList<string>>(ids);
         }
     }
 
@@ -758,7 +764,14 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         });
     }
 
-    private TaskInfo AddTask(string pluginId, string name, string owner, TaskState state, int progress, IEnumerable<string> deviceIds)
+    private List<TaskInfo> AddBatch(string pluginId, string name, string owner, TaskState state, int progress, IEnumerable<string> deviceIds)
+    {
+        string batchId = Guid.NewGuid().ToString();
+        return [.. deviceIds.Select(id => AddTask(pluginId, name, owner, state, progress, id, batchId))];
+    }
+
+    /// <summary>A task targets exactly one device.</summary>
+    private TaskInfo AddTask(string pluginId, string name, string owner, TaskState state, int progress, string deviceId, string? batchId = null)
     {
         DateTime now = DateTime.UtcNow;
         var task = new TaskInfo
@@ -770,16 +783,15 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
             Owner = owner,
             Created = Timestamp.FromDateTime(now),
             Progress = progress,
+            DeviceId = deviceId,
         };
+        task.BatchId = batchId ?? task.Id;
         if (state != TaskState.Queued)
         {
             task.Started = Timestamp.FromDateTime(now);
         }
 
-        foreach (string id in deviceIds)
-        {
-            task.Devices.Add(new TaskDeviceResult { DeviceId = id, State = state, Progress = progress });
-        }
+        task.Devices.Add(new TaskDeviceResult { DeviceId = deviceId, State = state, Progress = progress });
 
         _tasks.Add(task);
         _taskEvents.Publish(new TaskChanged { Kind = TaskChanged.Types.Kind.Added, Task = task.Clone() });
@@ -898,36 +910,47 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
 
         DateTime now = DateTime.UtcNow;
 
-        // Many devices ("a, b +4") including one that was removed since.
-        TaskInfo bulk = AddTask(RestartPluginId, "Restart", OwnerName, TaskState.Done, 100,
-            [_devices[0].Id, _devices[2].Id, _devices[3].Id, _devices[6].Id, _devices[9].Id, "5f3c9a1e-7b2d-4c8e-9a6f-0d1e2f3a4b5c"]);
-        bulk.Started = Timestamp.FromDateTime(now.AddHours(-2));
+        // One run on several devices (one task per device), including one that was removed since.
+        foreach (TaskInfo done in AddBatch(RestartPluginId, "Restart", OwnerName, TaskState.Done, 100,
+            [_devices[0].Id, _devices[9].Id, "5f3c9a1e-7b2d-4c8e-9a6f-0d1e2f3a4b5c"]))
+        {
+            done.Started = Timestamp.FromDateTime(now.AddHours(-2));
+        }
 
-        TaskInfo failed =AddTask(RestartPluginId, "Restart", "admin@SECURITY-PC", TaskState.Failed, 100, [_devices[4].Id]);
+        TaskInfo failed = AddTask(RestartPluginId, "Restart", "admin@SECURITY-PC", TaskState.Failed, 100, _devices[4].Id);
         failed.Started = Timestamp.FromDateTime(now.AddMinutes(-40));
         failed.Devices[0].Message = "Device did not come back within 3 minutes";
-        AddLog(failed, failed.Devices[0].DeviceId, TaskLogLevel.Info, "Restart requested, waiting for the device to go offline", now.AddMinutes(-40));
-        AddLog(failed, failed.Devices[0].DeviceId, TaskLogLevel.Error, "Device did not come back within 3 minutes", now.AddMinutes(-37));
+        AddLog(failed, failed.DeviceId, TaskLogLevel.Info, "Restart requested, waiting for the device to go offline", now.AddMinutes(-40));
+        AddLog(failed, failed.DeviceId, TaskLogLevel.Error, "Device did not come back within 3 minutes", now.AddMinutes(-37));
 
-        TaskInfo warned = AddTask(IdentifyPluginId, "Identify (flash LED)", OwnerName, TaskState.DoneWithWarnings, 100, [_devices[2].Id, _devices[3].Id]);
-        warned.Started = Timestamp.FromDateTime(now.AddMinutes(-32));
-        warned.Finished = Timestamp.FromDateTime(now.AddMinutes(-31));
-        warned.Devices[0].State = TaskState.Done;
-        warned.Devices[0].Message = "LED flashed";
-        warned.Devices[1].Message = "LED not available, used the status indicator instead";
-        AddLog(warned, null, TaskLogLevel.Info, "Started on 2 devices", now.AddMinutes(-32));
-        AddLog(warned, warned.Devices[0].DeviceId, TaskLogLevel.Info, "LED flashed", now.AddMinutes(-32).AddSeconds(4));
-        AddLog(warned, warned.Devices[1].DeviceId, TaskLogLevel.Warning, "LED not available, used the status indicator instead", now.AddMinutes(-32).AddSeconds(5));
-        AddLog(warned, warned.Devices[1].DeviceId, TaskLogLevel.Info, "Status indicator flashed", now.AddMinutes(-31));
+        List<TaskInfo> identifyRun = AddBatch(IdentifyPluginId, "Identify (flash LED)", OwnerName, TaskState.Done, 100, [_devices[2].Id, _devices[3].Id]);
+        TaskInfo flashed = identifyRun[0];
+        TaskInfo warned = identifyRun[1];
+        foreach (TaskInfo t in identifyRun)
+        {
+            t.Started = Timestamp.FromDateTime(now.AddMinutes(-32));
+            t.Finished = Timestamp.FromDateTime(now.AddMinutes(-31));
+        }
 
-        TaskInfo cancelled = AddTask(RestartPluginId, "Restart", OwnerName, TaskState.Cancelled, 30, [_devices[7].Id]);
+        flashed.Devices[0].Message = "LED flashed";
+        AddLog(flashed, flashed.DeviceId, TaskLogLevel.Info, "LED flashed", now.AddMinutes(-32).AddSeconds(4));
+        warned.State = TaskState.DoneWithWarnings;
+        warned.Devices[0].State = TaskState.DoneWithWarnings;
+        warned.Devices[0].Message = "LED not available, used the status indicator instead";
+        AddLog(warned, null, TaskLogLevel.Info, "Started", now.AddMinutes(-32));
+        AddLog(warned, warned.DeviceId, TaskLogLevel.Warning, "LED not available, used the status indicator instead", now.AddMinutes(-32).AddSeconds(5));
+        AddLog(warned, warned.DeviceId, TaskLogLevel.Info, "Status indicator flashed", now.AddMinutes(-31));
+
+        TaskInfo cancelled = AddTask(RestartPluginId, "Restart", OwnerName, TaskState.Cancelled, 30, _devices[7].Id);
         cancelled.Started = Timestamp.FromDateTime(now.AddMinutes(-25));
 
-        TaskInfo running = AddTask(RestartPluginId, "Restart", OwnerName, TaskState.Running, 36, [_devices[1].Id, _devices[5].Id]);
-        running.Started = Timestamp.FromDateTime(now.AddSeconds(-50));
-        _jobs[running.Id] = new FakeJob(running, 1, null);
+        foreach (TaskInfo running in AddBatch(RestartPluginId, "Restart", OwnerName, TaskState.Running, 36, [_devices[1].Id, _devices[5].Id]))
+        {
+            running.Started = Timestamp.FromDateTime(now.AddSeconds(-50));
+            _jobs[running.Id] = new FakeJob(running, 1, null);
+        }
 
-        TaskInfo identify = AddTask(IdentifyPluginId, "Identify (flash LED)", "admin@SECURITY-PC", TaskState.Running, 64, [p3265.Id]);
+        TaskInfo identify = AddTask(IdentifyPluginId, "Identify (flash LED)", "admin@SECURITY-PC", TaskState.Running, 64, p3265.Id);
         identify.Started = Timestamp.FromDateTime(now.AddSeconds(-20));
         _jobs[identify.Id] = new FakeJob(identify, 1, null);
     }

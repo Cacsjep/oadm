@@ -34,7 +34,12 @@ public sealed record TaskRecord(
     DateTimeOffset? FinishedUtc,
     int Progress,
     string? PayloadJson,
-    IReadOnlyList<TaskDeviceRecord> Devices);
+    IReadOnlyList<TaskDeviceRecord> Devices,
+    Guid BatchId = default)
+{
+    /// <summary>The device of the task (a task always targets exactly one device); empty for a malformed record.</summary>
+    public Guid DeviceId => Devices.Count > 0 ? Devices[0].DeviceId : Guid.Empty;
+}
 
 /// <summary>Per-device result inside a task. <see cref="Message"/> is the last progress message, warning or error.</summary>
 public sealed record TaskDeviceRecord(Guid DeviceId, TaskState State, string? Message, int Progress);

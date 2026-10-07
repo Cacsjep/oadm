@@ -185,4 +185,38 @@ public sealed class DeviceRepositoryTests : IAsyncLifetime
         await _repo.UpdateAsync(added.Id, d => d.Apis = [new("fwmgr", "1.11")], CancellationToken.None);
         Assert.Equal("1.11", Assert.Single((await _repo.GetAsync(added.Id, CancellationToken.None))!.Apis).Version);
     }
+
+    [Fact]
+    public async Task ReadsCarryTheStoredCredentialUserNameButNeverThePassword()
+    {
+        var with = await _repo.AddAsync(NewDevice("ACCC8E000001"), CancellationToken.None);
+        var without = await _repo.AddAsync(NewDevice("ACCC8E000002"), CancellationToken.None);
+        await _db.Get<CredentialStore>().SetAsync(with.Id, "oadm-admin", "secret", CancellationToken.None);
+
+        Assert.Equal("oadm-admin", (await _repo.GetAsync(with.Id, CancellationToken.None))!.CredentialUserName);
+        Assert.Null((await _repo.GetAsync(without.Id, CancellationToken.None))!.CredentialUserName);
+        var listed = await _repo.ListDevicesAsync(CancellationToken.None);
+        Assert.Equal("oadm-admin", listed.Single(d => d.Id == with.Id).CredentialUserName);
+        Assert.Null(listed.Single(d => d.Id == without.Id).CredentialUserName);
+
+        // Plugins see it through the SDK interface.
+        IDeviceRepository sdk = _repo;
+        Assert.Equal("oadm-admin", (await sdk.FindAsync(with.Id, CancellationToken.None))!.CredentialUserName);
+        Assert.Equal("oadm-admin", (await sdk.ListAsync(CancellationToken.None)).Single(d => d.Id == with.Id).CredentialUserName);
+        Assert.Null(((IDeviceInfo)new DeviceRowStub()).CredentialUserName); // default for other implementations
+    }
+
+    private sealed class DeviceRowStub : IDeviceInfo
+    {
+        public Guid Id => Guid.Empty;
+        public string Serial => "";
+        public string Address => "";
+        public string? HostName => null;
+        public string? Model => null;
+        public string? FirmwareVersion => null;
+        public DeviceStatus Status => DeviceStatus.Unknown;
+        public DeviceCategory Category => DeviceCategory.Unknown;
+        public bool HasVideo => false;
+        public IReadOnlyList<Oadm.Sdk.Vapix.DeviceApi> Apis => [];
+    }
 }

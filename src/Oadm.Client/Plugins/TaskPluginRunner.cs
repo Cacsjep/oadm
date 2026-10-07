@@ -16,8 +16,8 @@ public sealed partial class TaskPluginRunner(
 {
     public static string OwnerName => $"{Environment.UserName}@{Environment.MachineName}";
 
-    /// <returns>The task id, or null when nothing was started (cancelled dialog, missing dialog, error).</returns>
-    public async Task<string?> RunAsync(TaskPluginInfo plugin, IReadOnlyList<DeviceRowViewModel> devices, CancellationToken ct)
+    /// <returns>The task ids (one per device), or null when nothing was started (cancelled dialog, missing dialog, error).</returns>
+    public async Task<IReadOnlyList<string>?> RunAsync(TaskPluginInfo plugin, IReadOnlyList<DeviceRowViewModel> devices, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(plugin);
         ArgumentNullException.ThrowIfNull(devices);
@@ -47,9 +47,9 @@ public sealed partial class TaskPluginRunner(
 
         try
         {
-            string taskId = await api.RunTaskAsync(plugin.Id, devices.Select(d => d.Id).ToList(), payload, OwnerName, ct).ConfigureAwait(true);
+            IReadOnlyList<string> taskIds = await api.RunTaskAsync(plugin.Id, devices.Select(d => d.Id).ToList(), payload, OwnerName, ct).ConfigureAwait(true);
             LogStarted(logger, plugin.DisplayName, devices.Count);
-            return taskId;
+            return taskIds;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

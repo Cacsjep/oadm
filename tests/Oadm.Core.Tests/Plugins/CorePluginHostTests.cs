@@ -104,7 +104,7 @@ public sealed class CorePluginHostTests : IAsyncLifetime
             new PluginOrigin("test", "1.0.0", null));
         await _host.StartAllAsync(CancellationToken.None);
 
-        var taskId = await core.Context!.Tasks.RunAsync("t.ok", [_devices.Add()], null, "core.a", CancellationToken.None);
+        var taskId = await core.Context!.Tasks.RunOneAsync("t.ok", [_devices.Add()], null, "core.a", CancellationToken.None);
         await _engine.WaitForCompletionAsync(taskId, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(TaskState.Done, (await _engine.GetAsync(taskId, CancellationToken.None))!.State);

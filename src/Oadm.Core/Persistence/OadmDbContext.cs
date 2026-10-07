@@ -73,6 +73,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(d => d.ProductType).HasMaxLength(128);
             e.Property(d => d.Category).HasConversion<string>().HasMaxLength(16);
             e.Ignore(d => d.HasVideo);
+            e.Ignore(d => d.CredentialUserName);
             e.Property(d => d.CertNotAfterUtc).HasConversion(NullableUtcConverter);
             e.Property(d => d.CertTrust).HasConversion<string>().HasMaxLength(16);
             e.Property(d => d.CertSubject).HasMaxLength(1024);
@@ -103,6 +104,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(t => t.FinishedUtc).HasConversion(NullableUtcConverter);
             e.Property(t => t.ScheduledUtc).HasConversion(NullableUtcConverter);
             e.HasIndex(t => t.CreatedUtc);
+            e.HasIndex(t => t.BatchId);
             e.HasMany(t => t.Results).WithOne().HasForeignKey(r => r.TaskId).OnDelete(DeleteBehavior.Cascade);
         });
 

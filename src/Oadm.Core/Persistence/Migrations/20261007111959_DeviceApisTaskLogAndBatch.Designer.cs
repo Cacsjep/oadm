@@ -11,8 +11,8 @@ using Oadm.Core.Persistence;
 namespace Oadm.Core.Persistence.Migrations
 {
     [DbContext(typeof(OadmDbContext))]
-    [Migration("20261007110111_DeviceApisAndTaskLog")]
-    partial class DeviceApisAndTaskLog
+    [Migration("20261007111959_DeviceApisTaskLogAndBatch")]
+    partial class DeviceApisTaskLogAndBatch
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -168,6 +168,9 @@ namespace Oadm.Core.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("TEXT");
 
@@ -207,6 +210,8 @@ namespace Oadm.Core.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BatchId");
 
                     b.HasIndex("CreatedUtc");
 

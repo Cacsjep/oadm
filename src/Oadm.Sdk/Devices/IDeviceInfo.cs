@@ -19,6 +19,13 @@ public interface IDeviceInfo
 
     /// <summary>VAPIX APIs and versions from the last full refresh; empty until known. See <c>DeviceApiExtensions</c>.</summary>
     IReadOnlyList<Vapix.DeviceApi> Apis { get; }
+
+    /// <summary>
+    /// User name of the credentials OADM stores for this device (never the password), null when none
+    /// are stored or not known (client side). Plugins that manage users must never remove or demote it.
+    /// Filled by the server for task execution, queries and <c>CanRun</c>.
+    /// </summary>
+    string? CredentialUserName => null;
 }
 
 /// <summary>Kind of Axis device. Mapped from basicdeviceinfo ProdType ("Dome Camera", "Network Speaker", ...).</summary>

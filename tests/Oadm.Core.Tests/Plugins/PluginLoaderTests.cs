@@ -86,10 +86,14 @@ public sealed class PluginLoaderTests : IDisposable
         var devices = new FakeDeviceRepository();
         await using var engine = new TaskEngine(new InMemoryTaskStore(), _registry, devices, new FakeVapixClientFactory());
 
-        var taskId = await engine.RunAsync("oadm.sample.ping", devices.AddMany(3), null, "o", CancellationToken.None);
-        await engine.WaitForCompletionAsync(taskId, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+        var taskIds = await engine.RunAsync("oadm.sample.ping", devices.AddMany(3), null, "o", CancellationToken.None);
+        Assert.Equal(3, taskIds.Count); // one task per device
+        foreach (var taskId in taskIds)
+        {
+            await engine.WaitForCompletionAsync(taskId, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(TaskState.Done, (await engine.GetAsync(taskId, CancellationToken.None))!.State);
+        }
 
-        Assert.Equal(TaskState.Done, (await engine.GetAsync(taskId, CancellationToken.None))!.State);
         var core = _registry.CorePlugins.Single().Plugin;
         Assert.Equal("3", await core.InvokeAsync("runs", null, CancellationToken.None));
     }

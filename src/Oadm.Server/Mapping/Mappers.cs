@@ -203,6 +203,8 @@ public static class Mappers
             Owner = task.Owner,
             Created = Timestamp.FromDateTimeOffset(task.CreatedUtc),
             Progress = task.Progress,
+            BatchId = (task.BatchId == Guid.Empty ? task.Id : task.BatchId).ToString(),
+            DeviceId = task.Devices.Count > 0 ? task.Devices[0].DeviceId.ToString() : string.Empty,
         };
 
         if (task.StartedUtc is { } started)

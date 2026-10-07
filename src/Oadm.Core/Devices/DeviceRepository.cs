@@ -22,16 +22,34 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
 {
     public IDeviceChangeFeed Changes => changeFeed;
 
+    /// <summary>All devices with <see cref="Device.CredentialUserName"/> filled.</summary>
     public async Task<IReadOnlyList<Device>> ListDevicesAsync(CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-        return await db.Devices.AsNoTracking().OrderBy(d => d.Serial).ToListAsync(ct).ConfigureAwait(false);
+        var devices = await db.Devices.AsNoTracking().OrderBy(d => d.Serial).ToListAsync(ct).ConfigureAwait(false);
+        var users = await db.DeviceCredentials.AsNoTracking()
+            .ToDictionaryAsync(c => c.DeviceId, c => c.UserName, ct).ConfigureAwait(false);
+        foreach (var device in devices)
+        {
+            device.CredentialUserName = users.GetValueOrDefault(device.Id);
+        }
+
+        return devices;
     }
 
+    /// <summary>One device with <see cref="Device.CredentialUserName"/> filled, or null.</summary>
     public async Task<Device?> GetAsync(Guid id, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-        return await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id, ct).ConfigureAwait(false);
+        var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id, ct).ConfigureAwait(false);
+        if (device is not null)
+        {
+            device.CredentialUserName = await db.DeviceCredentials.AsNoTracking()
+                .Where(c => c.DeviceId == id).Select(c => c.UserName)
+                .FirstOrDefaultAsync(ct).ConfigureAwait(false);
+        }
+
+        return device;
     }
 
     /// <summary>Finds a device by serial; the argument is normalized first (any MAC notation is accepted).</summary>

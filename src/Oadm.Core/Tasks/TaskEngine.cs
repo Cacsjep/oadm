@@ -15,7 +15,8 @@ namespace Oadm.Core.Tasks;
 
 /// <summary>
 /// Runs task plugins against devices. Every task starts immediately; devices of one task run
-/// with bounded parallelism (<see cref="TaskEngineOptions.MaxParallelDevicesPerTask"/>).
+/// with bounded parallelism per plugin (<see cref="TaskEngineOptions.MaxParallelTasksPerPlugin"/>,
+/// <c>ITaskPlugin.MaxParallelDevices</c>). A task always targets exactly one device.
 /// Plugin exceptions become a Failed device result and never escape the engine.
 /// </summary>
 public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
@@ -30,7 +31,9 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     private readonly TimeProvider _time;
     private readonly TaskChangeFeed _feed;
     private readonly IUploadedFiles _files;
+    private readonly ITaskDeviceCredentials? _credentials;
     private readonly ConcurrentDictionary<Guid, RunningTask> _active = new();
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _gates = new(StringComparer.OrdinalIgnoreCase);
     private readonly CancellationTokenSource _shutdown = new();
     private int _disposed;
 
@@ -42,8 +45,10 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         ILoggerFactory? loggerFactory = null,
         TaskEngineOptions? options = null,
         TimeProvider? timeProvider = null,
-        IUploadedFiles? uploadedFiles = null)
+        IUploadedFiles? uploadedFiles = null,
+        ITaskDeviceCredentials? credentials = null)
     {
+        _credentials = credentials;
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(plugins);
         ArgumentNullException.ThrowIfNull(devices);
@@ -55,7 +60,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _logger = _loggerFactory.CreateLogger<TaskEngine>();
         _options = options ?? new TaskEngineOptions();
-        ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxParallelDevicesPerTask, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxParallelTasksPerPlugin, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(_options.MaxLogEntriesPerTask, 1);
         _files = uploadedFiles ?? NoUploadedFiles.Instance;
         _time = timeProvider ?? TimeProvider.System;
@@ -74,10 +79,12 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
 
     /// <inheritdoc />
     /// <remarks>
-    /// <paramref name="ct"/> only cancels the submission, not the task. Use <see cref="Cancel"/>.
-    /// Throws <see cref="ArgumentException"/> for an unknown plugin id or an empty device list.
+    /// One task per device, all with a new shared batch id; the payload is shared in memory by the
+    /// batch and never persisted. <paramref name="ct"/> only cancels the submission, not the tasks.
+    /// Use <see cref="Cancel"/>. Throws <see cref="ArgumentException"/> for an unknown plugin id or an
+    /// empty device list.
     /// </remarks>
-    public async Task<Guid> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct)
+    public async Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
         ArgumentNullException.ThrowIfNull(deviceIds);
@@ -94,15 +101,28 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             throw new ArgumentException($"Unknown task plugin '{pluginId}'.", nameof(pluginId));
         }
 
+        var batchId = Guid.NewGuid();
+        var ids = new List<Guid>(distinct.Length);
+        foreach (var deviceId in distinct)
+        {
+            ids.Add(await StartTaskAsync(registration, batchId, deviceId, payloadJson, owner, ct).ConfigureAwait(false));
+        }
+
+        return ids;
+    }
+
+    private async Task<Guid> StartTaskAsync(RegisteredTaskPlugin registration, Guid batchId, Guid deviceId, string? payloadJson, string owner, CancellationToken ct)
+    {
         var task = new RunningTask(
             Guid.NewGuid(),
             registration,
-            distinct,
+            [deviceId],
             payloadJson,
             owner ?? string.Empty,
             _time.GetUtcNow(),
             _shutdown.Token,
-            _options.MaxLogEntriesPerTask);
+            _options.MaxLogEntriesPerTask,
+            batchId);
 
         _active[task.Id] = task;
         try
@@ -123,9 +143,27 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             throw;
         }
 
-        LogTaskQueued(task.Id, pluginId, distinct.Length, task.Owner);
+        LogTaskQueued(task.Id, registration.Id, deviceId, task.Owner);
         _ = Task.Run(() => ExecuteTaskAsync(task), CancellationToken.None);
         return task.Id;
+    }
+
+    /// <summary>Concurrency limit of a plugin: its MaxParallelDevices, else <see cref="TaskEngineOptions.MaxParallelTasksPerPlugin"/>.</summary>
+    internal int ParallelLimit(RegisteredTaskPlugin registration)
+    {
+        int? requested;
+        try
+        {
+            requested = registration.Plugin.MaxParallelDevices;
+        }
+#pragma warning disable CA1031 // Plugin code is untrusted.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            requested = null;
+        }
+
+        return requested is > 0 ? requested.Value : _options.MaxParallelTasksPerPlugin;
     }
 
     /// <summary>Requests cancellation. Returns false when the task is not active.</summary>
@@ -283,14 +321,30 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
 
     private async Task ExecuteTaskAsync(RunningTask task)
     {
+        var gate = _gates.GetOrAdd(task.Registration.Id, _ => new SemaphoreSlim(ParallelLimit(task.Registration)));
+        var entered = false;
         try
         {
-            task.MarkStarted(_time.GetUtcNow());
-            await PublishAsync(task, persist: true).ConfigureAwait(false);
+            // Queued until the plugin has a free slot; a cancel while waiting ends it as Cancelled.
+            try
+            {
+                await gate.WaitAsync(task.Token).ConfigureAwait(false);
+                entered = true;
+            }
+            catch (OperationCanceledException) when (task.Token.IsCancellationRequested)
+            {
+            }
 
-            var parallel = new ParallelOptions { MaxDegreeOfParallelism = _options.MaxParallelDevicesPerTask };
-            await Parallel.ForEachAsync(task.DeviceIds, parallel, (deviceId, _) => new ValueTask(ExecuteDeviceAsync(task, deviceId)))
-                .ConfigureAwait(false);
+            if (entered)
+            {
+                task.MarkStarted(_time.GetUtcNow());
+                await PublishAsync(task, persist: true).ConfigureAwait(false);
+            }
+
+            foreach (var deviceId in task.DeviceIds)
+            {
+                await ExecuteDeviceAsync(task, deviceId).ConfigureAwait(false);
+            }
         }
 #pragma warning disable CA1031 // The engine must never crash the host.
         catch (Exception ex)
@@ -301,6 +355,11 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         }
         finally
         {
+            if (entered)
+            {
+                gate.Release();
+            }
+
             await AwaitPendingWritesAsync(task).ConfigureAwait(false);
             task.Finish(_time.GetUtcNow());
             await PublishAsync(task, persist: true).ConfigureAwait(false);
@@ -489,10 +548,48 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             engine.AddLog(task, deviceId, level, message);
             engine.PersistThrottled(task, deviceId);
         }
+
+        public void MarkCredentialsInvalid(Guid deviceId)
+        {
+            var credentials = engine._credentials ?? throw new NotSupportedException("Stored credentials cannot be changed here.");
+            engine.AddLog(task, deviceId, TaskLogLevel.Warning, "The device no longer accepts the stored credentials; they were removed.");
+            engine.LogCredentialsInvalidated(task.Id, deviceId);
+            task.TrackWrite(Task.Run(async () =>
+            {
+                try
+                {
+                    await credentials.InvalidateAsync(deviceId, CancellationToken.None).ConfigureAwait(false);
+                }
+#pragma warning disable CA1031 // Logged; the task itself goes on.
+                catch (Exception ex)
+#pragma warning restore CA1031
+                {
+                    engine.LogCredentialsChangeFailed(ex, task.Id, deviceId);
+                }
+            }));
+        }
+
+        public async Task<IVapixClient> UpdateCredentialsAsync(Guid deviceId, string userName, string password, CancellationToken ct)
+        {
+            var credentials = engine._credentials ?? throw new NotSupportedException("Stored credentials cannot be changed here.");
+            await credentials.UpdateAsync(deviceId, userName, password, ct).ConfigureAwait(false);
+            engine.AddLog(task, deviceId, TaskLogLevel.Info, $"Stored credentials updated (user {userName}).");
+            engine.LogCredentialsUpdated(task.Id, deviceId, userName);
+            return await engine._vapix.CreateAsync(deviceId, ct).ConfigureAwait(false);
+        }
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Task {TaskId} queued: plugin {PluginId}, {DeviceCount} device(s), owner {Owner}")]
-    private partial void LogTaskQueued(Guid taskId, string pluginId, int deviceCount, string owner);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Task {TaskId}: stored credentials of device {DeviceId} removed (no longer accepted)")]
+    private partial void LogCredentialsInvalidated(Guid taskId, Guid deviceId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Task {TaskId}: stored credentials of device {DeviceId} updated (user {UserName})")]
+    private partial void LogCredentialsUpdated(Guid taskId, Guid deviceId, string userName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Task {TaskId}: changing the stored credentials of device {DeviceId} failed")]
+    private partial void LogCredentialsChangeFailed(Exception ex, Guid taskId, Guid deviceId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Task {TaskId} queued: plugin {PluginId}, device {DeviceId}, owner {Owner}")]
+    private partial void LogTaskQueued(Guid taskId, string pluginId, Guid deviceId, string owner);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Task {TaskId} ({PluginId}) finished: {State}")]
     private partial void LogTaskFinished(Guid taskId, string pluginId, TaskState state);

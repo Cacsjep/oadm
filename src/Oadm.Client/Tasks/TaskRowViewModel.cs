@@ -39,14 +39,17 @@ public sealed partial class TaskRowViewModel : ObservableObject
     [ObservableProperty] public partial bool IsActive { get; private set; }
     [ObservableProperty] public partial IReadOnlyList<TaskDeviceResult> DeviceResults { get; private set; } = [];
 
-    /// <summary>Addresses of the task's devices, see <see cref="TaskDeviceLabels"/>, in the order of <see cref="DeviceResults"/>.</summary>
-    [ObservableProperty] public partial IReadOnlyList<string> DeviceLabels { get; private set; } = [];
+    /// <summary>The task's device (a task always targets exactly one device); empty for a malformed task.</summary>
+    [ObservableProperty] public partial string DeviceId { get; private set; } = "";
 
-    /// <summary>The Devices cell: "10.0.0.48, 10.0.0.200 +3". Also the sort key of the column.</summary>
-    [ObservableProperty] public partial string DevicesText { get; private set; } = "";
+    /// <summary>Shared by the tasks started together (one per selected device).</summary>
+    [ObservableProperty] public partial string BatchId { get; private set; } = "";
 
-    /// <summary>Every device with its state and message, one per line. Null without devices.</summary>
-    [ObservableProperty] public partial string? DevicesTooltip { get; private set; }
+    /// <summary>The Device cell: the address as in the device grid, see <see cref="TaskDeviceLabels"/>. Also the sort key.</summary>
+    [ObservableProperty] public partial string DeviceText { get; private set; } = "";
+
+    /// <summary>"10.0.0.48: Failed - Connection refused". Null without a device.</summary>
+    [ObservableProperty] public partial string? DeviceTooltip { get; private set; }
 
     public bool IsStateOk => StateKind == PillKind.Ok;
     public bool IsStateWarning => StateKind == PillKind.Warning;
@@ -70,20 +73,16 @@ public sealed partial class TaskRowViewModel : ObservableObject
         ProgressText = string.Create(CultureInfo.CurrentCulture, $"{Progress} %");
         IsActive = task.State is TaskState.Queued or TaskState.Running;
         DeviceResults = task.Devices.ToList();
+        DeviceId = !string.IsNullOrEmpty(task.DeviceId) ? task.DeviceId : DeviceResults.Count > 0 ? DeviceResults[0].DeviceId : "";
+        BatchId = task.BatchId;
         ResolveDevices();
     }
 
-    /// <summary>Re-reads the device addresses from the device store (a device was added, removed or changed).</summary>
+    /// <summary>Re-reads the device address from the device store (the device was added, removed or changed).</summary>
     public void ResolveDevices()
     {
-        List<string> labels = DeviceResults.Select(r => TaskDeviceLabels.Label(r.DeviceId, _devices)).ToList();
-        if (!labels.SequenceEqual(DeviceLabels, StringComparer.Ordinal))
-        {
-            DeviceLabels = labels;
-            DevicesText = TaskDeviceLabels.Summary(labels);
-        }
-
-        DevicesTooltip = TaskDeviceLabels.Tooltip(DeviceResults, labels);
+        DeviceText = DeviceId.Length == 0 ? "" : TaskDeviceLabels.Label(DeviceId, _devices);
+        DeviceTooltip = TaskDeviceLabels.Tooltip(DeviceResults.Count > 0 ? DeviceResults[0] : null, DeviceText);
     }
 
     public static string ToText(TaskState state) => state switch

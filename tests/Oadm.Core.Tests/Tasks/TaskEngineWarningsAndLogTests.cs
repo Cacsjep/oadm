@@ -50,14 +50,17 @@ public sealed class TaskEngineWarningsAndLogTests : IAsyncLifetime
             return Task.CompletedTask;
         });
 
-        var record = await RunAsync("t.warn", [warned, clean]);
+        var records = await RunAllAsync("t.warn", [warned, clean]);
 
+        // One task per device: the warning only affects the warned device's task.
+        var record = records.Single(r => r.DeviceId == warned);
         Assert.Equal(TaskState.DoneWithWarnings, record.State);
-        var w = record.Devices.Single(d => d.DeviceId == warned);
+        var w = Assert.Single(record.Devices);
         Assert.Equal(TaskState.DoneWithWarnings, w.State);
         Assert.Equal("LED not available", w.Message);
         Assert.Equal(100, w.Progress);
-        Assert.Equal(TaskState.Done, record.Devices.Single(d => d.DeviceId == clean).State);
+        Assert.Equal(TaskState.Done, records.Single(r => r.DeviceId == clean).State);
+        Assert.Empty(await _store.GetLogAsync(records.Single(r => r.DeviceId == clean).Id, CancellationToken.None));
 
         var entry = Assert.Single(await _store.GetLogAsync(record.Id, CancellationToken.None));
         Assert.Equal(TaskLogLevel.Warning, entry.Level);
@@ -158,7 +161,7 @@ public sealed class TaskEngineWarningsAndLogTests : IAsyncLifetime
             await release.Task.WaitAsync(ct);
         });
 
-        var taskId = await Engine.RunAsync("t.live", [device], null, "o", CancellationToken.None);
+        var taskId = await Engine.RunOneAsync("t.live", [device], null, "o", CancellationToken.None);
         await logged.Task.WaitAsync(Timeout);
 
         var live = await Engine.GetLogAsync(taskId, CancellationToken.None);
@@ -190,7 +193,7 @@ public sealed class TaskEngineWarningsAndLogTests : IAsyncLifetime
             await release.Task.WaitAsync(ct);
         });
 
-        var taskId = await Engine.RunAsync("t.progress", [device], null, "o", CancellationToken.None);
+        var taskId = await Engine.RunOneAsync("t.progress", [device], null, "o", CancellationToken.None);
         await reported.Task.WaitAsync(Timeout);
         await WaitUntilAsync(() => _store.RunningMessages(taskId).Count == 1);
         await Task.Delay(100);
@@ -215,7 +218,7 @@ public sealed class TaskEngineWarningsAndLogTests : IAsyncLifetime
         Assert.True(_registry.RegisterTaskPlugin(new PayloadPlugin(p => seen = p), new PluginOrigin("test", "1.0.0", null)));
         using var subscription = Engine.Changes.Subscribe();
 
-        var taskId = await Engine.RunAsync(PayloadPlugin.PluginId, [device], """{"password":"S3cret!"}""", "o", CancellationToken.None);
+        var taskId = await Engine.RunOneAsync(PayloadPlugin.PluginId, [device], """{"password":"S3cret!"}""", "o", CancellationToken.None);
         await Engine.WaitForCompletionAsync(taskId, CancellationToken.None).WaitAsync(Timeout);
 
         Assert.Equal("""{"password":"S3cret!"}""", seen);
@@ -227,11 +230,18 @@ public sealed class TaskEngineWarningsAndLogTests : IAsyncLifetime
         }
     }
 
-    private async Task<TaskRecord> RunAsync(string pluginId, Guid[] devices)
+    private async Task<TaskRecord> RunAsync(string pluginId, Guid[] devices) => Assert.Single(await RunAllAsync(pluginId, devices));
+
+    private async Task<List<TaskRecord>> RunAllAsync(string pluginId, Guid[] devices)
     {
-        var taskId = await Engine.RunAsync(pluginId, devices, null, "tester", CancellationToken.None);
-        await Engine.WaitForCompletionAsync(taskId, CancellationToken.None).WaitAsync(Timeout);
-        return (await _store.GetAsync(taskId, CancellationToken.None))!;
+        var records = new List<TaskRecord>();
+        foreach (var taskId in await Engine.RunAsync(pluginId, devices, null, "tester", CancellationToken.None))
+        {
+            await Engine.WaitForCompletionAsync(taskId, CancellationToken.None).WaitAsync(Timeout);
+            records.Add((await _store.GetAsync(taskId, CancellationToken.None))!);
+        }
+
+        return records;
     }
 
     private void Register(string id, Func<ITaskExecutionContext, IDeviceInfo, CancellationToken, Task> execute)

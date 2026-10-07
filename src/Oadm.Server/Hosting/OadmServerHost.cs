@@ -149,7 +149,9 @@ public static partial class OadmServerHost
             sp.GetRequiredService<ILoggerFactory>(),
             sp.GetRequiredService<TaskEngineOptions>(),
             sp.GetRequiredService<TimeProvider>(),
-            sp.GetRequiredService<Sdk.Plugins.IUploadedFiles>()));
+            sp.GetRequiredService<Sdk.Plugins.IUploadedFiles>(),
+            sp.GetRequiredService<ITaskDeviceCredentials>()));
+        services.AddSingleton<ITaskDeviceCredentials, TaskDeviceCredentials>();
         services.AddSingleton(sp => new TaskPluginQueries(
             sp.GetRequiredService<PluginRegistry>(),
             sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),

@@ -29,14 +29,14 @@ public sealed class TaskDeleteAllTests
         var slow = await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.2", 2);
 
         var done = await host.Tasks.RunAsync(new Proto.RunTaskRequest { PluginId = RestartTaskPlugin.PluginId, DeviceIds = { fast.Id.ToString() } });
-        Assert.Equal(Proto.TaskState.Done, (await TestHelpers.WaitForTaskAsync(host, done.TaskId)).State);
+        Assert.Equal(Proto.TaskState.Done, (await TestHelpers.WaitForTaskAsync(host, done.TaskIds[0])).State);
         var running = await host.Tasks.RunAsync(new Proto.RunTaskRequest { PluginId = RestartTaskPlugin.PluginId, DeviceIds = { slow.Id.ToString() } });
         await TestHelpers.WaitUntilAsync(() => Task.FromResult(stuck.RestartCalls == 1), "restart sent");
 
         // Includes the AddDevices tasks created by AddDeviceAsync.
         var before = (await host.Tasks.ListAsync(new Proto.Empty())).Tasks.Select(t => t.Id).ToHashSet();
-        Assert.Contains(done.TaskId, before);
-        Assert.Contains(running.TaskId, before);
+        Assert.Contains(done.TaskIds[0], before);
+        Assert.Contains(running.TaskIds[0], before);
 
         using var cts = new CancellationTokenSource(TestHelpers.DefaultTimeout);
         using var watch = host.Tasks.Watch(new Proto.Empty(), cancellationToken: cts.Token);

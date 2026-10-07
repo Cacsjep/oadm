@@ -118,6 +118,11 @@ internal sealed class DelegateTaskPlugin(
 
     public bool CanRun(IDeviceInfo device) => canRun?.Invoke(device) ?? true;
 
+    /// <summary>ITaskPlugin.MaxParallelDevices; null = engine default.</summary>
+    public int? Limit { get; init; }
+
+    public int? MaxParallelDevices => Limit;
+
     public Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct) =>
         execute(ctx, device, ct);
 }

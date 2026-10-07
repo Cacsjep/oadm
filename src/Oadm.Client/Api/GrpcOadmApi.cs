@@ -106,11 +106,14 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<IReadOnlyList<TaskPluginInfo>> ListTaskPluginsAsync(CancellationToken ct) =>
         (await C.Tasks.ListTaskPluginsAsync(new Empty(), cancellationToken: ct)).Plugins;
 
-    public async Task<string> RunTaskAsync(string pluginId, IReadOnlyCollection<string> deviceIds, string? payloadJson, string owner, CancellationToken ct)
+    public async Task<IReadOnlyList<string>> RunTaskAsync(string pluginId, IReadOnlyCollection<string> deviceIds, string? payloadJson, string owner, CancellationToken ct)
     {
         var request = new RunTaskRequest { PluginId = pluginId, PayloadJson = payloadJson ?? "", Owner = owner };
         request.DeviceIds.AddRange(deviceIds);
-        return (await C.Tasks.RunAsync(request, cancellationToken: ct)).TaskId;
+        RunTaskReply reply = await C.Tasks.RunAsync(request, cancellationToken: ct);
+#pragma warning disable CS0612 // task_id is the deprecated single id of older servers.
+        return reply.TaskIds.Count > 0 ? reply.TaskIds : [reply.TaskId];
+#pragma warning restore CS0612
     }
 
     public async Task<IReadOnlyList<TaskInfo>> ListTasksAsync(CancellationToken ct) =>

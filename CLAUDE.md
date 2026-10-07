@@ -42,12 +42,16 @@ Oadm.sln
 src/
   Oadm.Contracts/      protobuf files + generated gRPC stubs, shared enums
   Oadm.Sdk/            plugin SDK: interfaces, attributes, context objects. No Avalonia, no EF
-  Oadm.Sdk.Client/     client-side plugin SDK: Avalonia dialog/page base classes, UI context
+  Oadm.Sdk.Client/     client-side plugin SDK: dialog/page interfaces, ITaskDialogContext, shared
+                       controls (Controls/: IconLabel, SearchBox, OadmIcon)
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)
   Oadm.Server/         host: gRPC services, plugin loader, polling, Serilog setup
   Oadm.Client/         Avalonia app: views, view models, gRPC client, plugin loader
-plugins/
-  Oadm.Plugins.Restart/   first Task plugin
+plugins/                (layout and SDK guide: plugins/README.md)
+  Oadm.Plugins.Restart/   first Task plugin (server only)
+  Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
+  Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
+                                (both copy their output to artifacts/plugins/<plugin id>/)
 tests/
   Oadm.Core.Tests/
   Oadm.Server.Tests/
@@ -77,8 +81,17 @@ Two processes, like ADM:
 - `AddDevicesService`: `Prepare(discoveredIds)`, `SetPasswords(...)`, `SetCredentials(...)`,
   `Commit(...)` mirroring the wizard steps below.
 - `TaskService`: `ListTaskPlugins` (context-menu entries incl. those contributed by Core
-  plugins), `Run(pluginId, deviceIds, payloadJson)`, `List`, `Watch` (stream), `Cancel`,
-  `Delete`.
+  plugins), `Run(pluginId, deviceIds, payloadJson)` (one task per device, reply `task_ids`;
+  `task_id` is deprecated = first id), `List`, `Watch` (stream), `Cancel`, `Delete`,
+  `DeleteAll`, `GetLog(taskId)` (per-task log, oldest first, live while running),
+  `Query(pluginId, deviceId, method, payloadJson)` (read-only `ITaskPluginQuery` for task
+  dialogs, 30 s timeout; NOT_FOUND, UNIMPLEMENTED, FAILED_PRECONDITION for an incompatible device,
+  changed certificate or rejected credentials, UNAVAILABLE, DEADLINE_EXCEEDED, INVALID_ARGUMENT;
+  the status detail is the user message).
+- `FileService`: `Upload` (client stream: header {name, size} then 256 KB data chunks; returns
+  id, name, size, SHA-256; INVALID_ARGUMENT, RESOURCE_EXHAUSTED over `Uploads.MaxMegabytes`),
+  `Delete(fileId)`. Uploads live in `<datafolder>/uploads/<id>.bin` + `<id>.json`, are deleted
+  after `Uploads.RetentionHours` (checked every 15 min) and reach tasks through `IUploadedFiles`.
 - `PluginService`: `ListCorePlugins` (navigation pages), per-plugin generic
   `Invoke(pluginId, method, payloadJson)` for Core plugin UI pages (later goal).
 - `SettingsService`: `Get`, `Set`.
@@ -92,12 +105,22 @@ Two processes, like ADM:
   HasVideo (derived from Category, not stored),
   CertFingerprintSha256 (nullable), CertNotAfterUtc (nullable), CertTrust (enum below),
   CertSubject, CertIssuer, CertNameMatches (nullable bool, address in SAN; stored, not shown
-  yet), LastSeenUtc, WarrantyExpiry (nullable, later), ReplacementModel (nullable, later), Tags.
+  yet), LastSeenUtc, WarrantyExpiry (nullable, later), ReplacementModel (nullable, later), Tags,
+  Apis (JSON column `[{id, version, name, status}]` from `apidiscovery.cgi getApiList`, written on
+  every full refresh incl. the first one after add; proto `repeated DeviceApi apis = 28`),
+  CredentialUserName (not stored: user name of the DeviceCredential, filled by repository reads
+  for plugins; never the password).
 - `DeviceCredential`: DeviceId, UserName, EncryptedPassword (AES-GCM, see Security).
-- `Task`: Id, PluginId, Name, Status (Queued, Running, Done, Failed, Cancelled), Owner
-  (client machine/user name), CreatedUtc, StartedUtc, FinishedUtc, Progress (0-100),
-  PayloadJson, ScheduledUtc (nullable, unused in Goal 1).
-- `TaskDeviceResult`: TaskId, DeviceId, Status, Message, Progress.
+- `Task`: Id, BatchId (shared by the tasks of one Run; proto `batch_id`), PluginId, Name, Status
+  (Queued, Running, Done, Failed, Cancelled, DoneWithWarnings), Owner (client machine/user name),
+  CreatedUtc, StartedUtc, FinishedUtc, Progress (0-100), PayloadJson (column kept but always NULL:
+  payloads may carry secrets and are never persisted; the migration clears old values),
+  ScheduledUtc (nullable, unused in Goal 1).
+- `TaskDeviceResult`: TaskId, DeviceId, Status, Message (last progress message, warning or
+  error), Progress. Exactly one row per task (proto `TaskInfo.device_id` = its DeviceId).
+- `TaskLogEntry` (table TaskLogEntries): Id (autoincrement), TaskId (cascade delete), DeviceId
+  (nullable = task level), TimeUtc, Level (Info, Warning, Error), Message (max 2000 chars).
+  At most 1000 entries per task; the 1000th says that later entries were dropped.
 - `Setting`: Key, ValueJson.
 
 Device status enum: `Ok`, `Unreachable`, `CredentialsRequired` (401/403), `PasswordNotSet`
@@ -239,15 +262,17 @@ Layout, top to bottom:
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
    client, horizontal scroll, multi-select, right-click context menu with core actions and
    all Task plugins whose `CanRun` is true for the whole selection.
-5. Resizable, collapsible bottom pane **Tasks** (no tabs). Columns: Name, Devices, Status,
-   Start time, Owner, Progress (bar). **Devices** lists the task's devices by their device grid
-   address (IP or host name, resolved through the client device store and updated live):
-   "10.0.0.48", "10.0.0.48, 10.0.0.200", or "10.0.0.48, 10.0.0.200 +3" for more; a device
-   removed since shows as "removed device 1a2b3c4d" (id shortened). Tooltip: one line per
-   device with its state and message ("10.0.0.200: Failed - Connection refused"). Sortable by
-   the text. The task details window lists the same addresses (plus MAC address, model,
-   status, message). Buttons: details, cancel, delete, **delete all** (with
-   confirmation; running tasks are cancelled first).
+5. Resizable, collapsible bottom pane **Tasks** (no tabs), one row per task (= per device).
+   Columns: Name, Device, Status, Start time, Owner, Progress (bar). **Device** is the task's
+   device by its device grid address (IP or host name, resolved through the client device store
+   and updated live); a device removed since shows as "removed device 1a2b3c4d" (id shortened).
+   Tooltip: "10.0.0.200: Failed - Connection refused". Sortable by the text. Status chips:
+   Queued/Cancelled neutral, Running violet, Done green, **Done with warnings** amber (warn
+   chip), Failed red. **Details** opens the task details window: a Devices card (device, MAC
+   address, model, status chip, message) and a Log card (level chip, time, device address,
+   message; loaded with `TaskService.GetLog`), built from the shared grid and chip styles.
+   Buttons: details, cancel, delete, **delete all** (with confirmation; running tasks are
+   cancelled first); all work per task.
 
 **Logs page** (rail, bottom): live client log with level filter and search. Server log
 streaming comes later.
@@ -277,11 +302,22 @@ full refreshes go through one deduplicating queue with bounded parallelism.
 
 # Tasks
 
-- A task targets one or more devices and starts immediately. States: Queued, Running, Done,
-  Failed, Cancelled. Per-device result and progress. Persisted, visible in the tasks pane,
-  history kept until the user deletes it.
-- Task engine: bounded parallelism per task (default 8 devices at once), cancellation via
-  `CancellationToken`, exceptions become `Failed` with message, never crash the server.
+- **A task always targets exactly one device.** Running a plugin on N selected devices creates
+  N tasks (one Run, one shared BatchId, the payload shared in memory), so one failing device
+  never marks the others as failed. The task state is the device state.
+- States: Queued, Running, Done, Failed, Cancelled, DoneWithWarnings (the plugin called
+  `ReportWarning`; a failure wins over a warning). Persisted, visible in the tasks pane, history
+  kept until the user deletes it.
+- Task engine: at most 8 running tasks per plugin (`TaskEngineOptions.MaxParallelTasksPerPlugin`,
+  overridden by `ITaskPlugin.MaxParallelDevices`, e.g. firmware 2); further tasks wait in Queued
+  and a cancel while queued ends them as Cancelled ("Cancelled before start."). Cancellation via
+  `CancellationToken`, exceptions become `Failed` with message (also logged as an Error entry),
+  never crash the server.
+- Persistence: every state transition writes the snapshot plus new log entries; a progress
+  report with a message, a warning or a log entry writes at most once per second per device
+  (the message survives as the device result). Payloads are never persisted or logged.
+- Task log: `ctx.Log(level, message)`, warnings, failures, precondition errors and credential
+  changes; live from memory while the task runs (`GetLog`), from TaskLogEntries afterwards.
 - Scheduling, retry and recurrence are out of scope for Goal 1.
 
 # Plugin System
@@ -321,6 +357,8 @@ public interface IDeviceInfo          // read-only device view for plugins
     DeviceStatus Status { get; }
     DeviceCategory Category { get; }   // Camera, Speaker, Radar, IoModule, ...
     bool HasVideo { get; }             // filter in CanRun, e.g. snapshot only for video devices
+    IReadOnlyList<DeviceApi> Apis { get; }   // apidiscovery list of the last full refresh
+    string? CredentialUserName => null;      // user OADM stores for the device (server side), never the password
 }
 
 public interface ITaskPlugin : IPlugin
@@ -328,7 +366,13 @@ public interface ITaskPlugin : IPlugin
     bool ShowInToolbar { get; }
     bool RequiresDialog { get; }       // client opens the matching ITaskPluginDialog first
     bool CanRun(IDeviceInfo device);
+    int? MaxParallelDevices => null;   // concurrent tasks of this plugin; null = 8
     Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct);
+}
+
+public interface ITaskPluginQuery     // optional on task plugins: read-only reads for the dialog
+{
+    Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct);
 }
 
 public interface ICorePlugin : IPlugin
@@ -341,10 +385,16 @@ public interface ICorePlugin : IPlugin
 
 public interface ITaskExecutionContext
 {
+    Guid TaskId { get; }
     IVapixClient Vapix { get; }        // pre-authenticated for the current device
     ILogger Logger { get; }
     ICorePlugin? Owner { get; }        // set when the task was contributed by a Core plugin
-    void ReportProgress(int percent, string? message = null);
+    IUploadedFiles Files { get; }      // uploads referenced by id in the payload
+    void ReportProgress(int percent, string? message = null);   // message persisted (throttled)
+    void ReportWarning(string message);                         // device ends DoneWithWarnings
+    void Log(TaskLogLevel level, string message);               // per-task log, never secrets
+    void MarkCredentialsInvalid();     // device lost OADM's credentials: delete them, refresh
+    Task UpdateCredentialsAsync(string userName, string password, CancellationToken ct); // store new ones; Vapix is swapped
 }
 
 public interface ICorePluginContext
@@ -363,7 +413,13 @@ public interface ICorePluginContext
 public interface ITaskPluginDialog
 {
     string PluginId { get; }
-    Task<string?> ShowAsync(IReadOnlyList<IDeviceInfo> devices, Window owner); // payload JSON, null = cancel
+    Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner); // payload JSON, null = cancel
+}
+
+public interface ITaskDialogContext   // server access of a dialog, bound to its plugin id
+{
+    Task<string?> QueryAsync(Guid deviceId, string method, string? payloadJson, CancellationToken ct); // TaskService.Query
+    Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct); // FileService.Upload, progress 0..1
 }
 
 public interface ICorePluginPage
@@ -373,16 +429,24 @@ public interface ICorePluginPage
 }
 ```
 
-Dialogs and pages are real Avalonia views with view models, styled by the host theme.
-Plugins never talk to devices from the client; payloads go to the server.
+Dialogs and pages are real Avalonia views with view models, styled by the host theme. They use
+the shared controls from `Oadm.Sdk.Client.Controls` (`IconLabel`, `SearchBox`, `OadmIcon`) and
+the theme resources (styles, colors, `Icon.*` geometries) of the host application; the icon keys
+are listed in `plugins/README.md`. Plugins never talk to devices from the client; payloads go to
+the server. gRPC errors reach the dialog as `RpcException` (Status.Detail is the message).
+
+`VapixRequestOptions.Timeout` (`HttpRequestOptionsKey<TimeSpan>` "Oadm.RequestTimeout") on a
+request passed to `IVapixClient.SendAsync` overrides the default 15 s timeout for that request
+(firmware and ACAP uploads use minutes); request bodies are streamed, never buffered.
 
 ## Loading and packaging
 
-- Server scans `<datafolder>/plugins/*/` plus the solution `plugins/` output on startup,
-  loads each `*.Server.dll` in its own collectible `AssemblyLoadContext`, resolves
-  `ITaskPlugin` and `ICorePlugin` implementations via reflection, then registers the Core
-  plugins' `TaskPlugins` too. Client does the same for `*.Client.dll` with
-  `ITaskPluginDialog` and `ICorePluginPage`.
+- Server scans `<app>/plugins/*/`, `<datafolder>/plugins/*/` and, in a repository checkout,
+  `<repo>/artifacts/plugins/*/` (`PluginPaths.Development`) on startup, loads each
+  `*.Server.dll` in its own collectible `AssemblyLoadContext`, resolves `ITaskPlugin` and
+  `ICorePlugin` implementations via reflection, then registers the Core plugins' `TaskPlugins`
+  too. Client does the same for `*.Client.dll` with `ITaskPluginDialog` and `ICorePluginPage`
+  over the same three roots (`ClientPluginLoader.DefaultRoots`).
 - Plugin folder: `plugin.json` (id, version, minSdkVersion), `<Name>.Server.dll`,
   optional `<Name>.Client.dll`, private dependencies. SDK assemblies are shared from the
   host and never copied into the plugin folder.
@@ -435,7 +499,8 @@ update the OADM device record. Decision table and verified device behavior: plug
 
 Server-side in `Setting`. Goal 1 keys: `Polling.IntervalSeconds` (60, 5..86400),
 `Polling.FullRefreshMinutes` (10, 1..1440), `Scan.Parallelism` (32), `Scan.TimeoutMs` (1500), `Server.Name` (hostname),
-`Server.ListenUrl`, `Devices.UseHostName` (bool, false: add devices by host name when one is
+`Server.ListenUrl`, `Uploads.MaxMegabytes` (2048, 1..65536), `Uploads.RetentionHours` (24,
+1..8760; both server-only, not on the settings page yet), `Devices.UseHostName` (bool, false: add devices by host name when one is
 known, otherwise by IP address; proto `optional bool use_host_name = 7` so a partial `Set`
 keeps it). Settings page in the client exposes them; `Devices.UseHostName` is the checkbox
 "Use host name when available, otherwise IP address". Client-side (local JSON in
@@ -462,10 +527,12 @@ LocalApplicationData): server address, grid column layout, bottom pane state.
   client.
 - Organize by feature (`Devices/`, `Discovery/`, `Tasks/`, `Plugins/`), not by layer.
 - **HARD RULE, reuse UI components.** Anything that appears in more than one place is one
-  shared control in `src/Oadm.Client/Controls`, never a copy. Existing ones: `IconLabel` (every
-  icon + text row: toolbar buttons, navigation rail, dialogs), `SearchBox` (every search
-  field), `OadmIcon`. Before writing new XAML, check `Controls/` and reuse; if a second place
-  needs something that exists only inline, extract it into a control first.
+  shared control, never a copy: in `src/Oadm.Sdk.Client/Controls` (namespace
+  `Oadm.Sdk.Client.Controls`, XAML prefix `ui`) when plugin dialogs need it too, else in
+  `src/Oadm.Client/Controls`. Existing shared ones: `IconLabel` (every icon + text row: toolbar
+  buttons, navigation rail, dialogs), `SearchBox` (every search field), `OadmIcon`. Before
+  writing new XAML, check both `Controls/` folders and reuse; if a second place needs something
+  that exists only inline, extract it into a control first.
 - **HARD RULE, no style differences.** Same kind of element, same look, everywhere: one
   style per element type in `Themes/OadmTheme.axaml`, no local overrides of font size,
   weight, color, padding or alignment in views. No special cases such as a bold selected rail

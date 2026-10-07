@@ -180,8 +180,8 @@ public sealed partial class DevicesViewModel : ObservableObject
             return;
         }
 
-        string? taskId = await _runner.RunAsync(plugin, SelectedDevices.ToList(), CancellationToken.None).ConfigureAwait(true);
-        if (taskId is not null)
+        IReadOnlyList<string>? taskIds = await _runner.RunAsync(plugin, SelectedDevices.ToList(), CancellationToken.None).ConfigureAwait(true);
+        if (taskIds is { Count: > 0 })
         {
             Tasks.ShowTasksCommand.Execute(null);
         }

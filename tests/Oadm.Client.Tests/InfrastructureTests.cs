@@ -26,11 +26,11 @@ public sealed class TaskPluginRunnerTests
         using var f = new DevicesFixture(registry: registry);
         f.SeedDevices(TestSupport.Device("1", "B8A44F631339", "10.0.0.48", "AXIS P3265-V"));
         f.Dialogs.ShowTaskPluginDialogAsync(dialog, Arg.Any<IReadOnlyList<IDeviceInfo>>()).Returns("{\"password\":\"x\"}");
-        f.Api.RunTaskAsync(default!, default!, default, default!, default).ReturnsForAnyArgs("t1");
+        f.Api.RunTaskAsync(default!, default!, default, default!, default).ReturnsForAnyArgs((IReadOnlyList<string>)["t1"]);
 
-        string? id = await f.Runner.RunAsync(TestSupport.Plugin("oadm.password", "Change password", false, true, "1"), [f.Store.Find("1")!], CancellationToken.None);
+        IReadOnlyList<string>? ids = await f.Runner.RunAsync(TestSupport.Plugin("oadm.password", "Change password", false, true, "1"), [f.Store.Find("1")!], CancellationToken.None);
 
-        Assert.Equal("t1", id);
+        Assert.Equal(["t1"], ids);
         await f.Api.Received(1).RunTaskAsync("oadm.password", Arg.Any<IReadOnlyCollection<string>>(), "{\"password\":\"x\"}",
             TaskPluginRunner.OwnerName, Arg.Any<CancellationToken>());
     }
@@ -45,7 +45,7 @@ public sealed class TaskPluginRunnerTests
         f.SeedDevices(TestSupport.Device("1", "B8A44F631339", "10.0.0.48", "AXIS P3265-V"));
         f.Dialogs.ShowTaskPluginDialogAsync(dialog, Arg.Any<IReadOnlyList<IDeviceInfo>>()).Returns((string?)null);
 
-        string? id = await f.Runner.RunAsync(TestSupport.Plugin("oadm.password", "Change password", false, true, "1"), [f.Store.Find("1")!], CancellationToken.None);
+        IReadOnlyList<string>? id = await f.Runner.RunAsync(TestSupport.Plugin("oadm.password", "Change password", false, true, "1"), [f.Store.Find("1")!], CancellationToken.None);
 
         Assert.Null(id);
         await f.Api.DidNotReceiveWithAnyArgs().RunTaskAsync(default!, default!, default, default!, default);
@@ -57,7 +57,7 @@ public sealed class TaskPluginRunnerTests
         using var f = new DevicesFixture();
         f.SeedDevices(TestSupport.Device("1", "B8A44F631339", "10.0.0.48", "AXIS P3265-V"));
 
-        string? id = await f.Runner.RunAsync(TestSupport.Plugin("oadm.pki.deploy", "Deploy certificate", false, true, "1"), [f.Store.Find("1")!], CancellationToken.None);
+        IReadOnlyList<string>? id = await f.Runner.RunAsync(TestSupport.Plugin("oadm.pki.deploy", "Deploy certificate", false, true, "1"), [f.Store.Find("1")!], CancellationToken.None);
 
         Assert.Null(id);
         await f.Dialogs.Received(1).ShowMessageAsync("Deploy certificate", Arg.Any<string>());
@@ -113,60 +113,53 @@ public sealed class StoreTests
     }
 
     [Fact]
-    public void Task_devices_column_lists_addresses_and_summarizes_the_rest()
+    public void Task_device_column_shows_the_address_and_state_tooltip()
     {
         var devices = new DeviceStore();
-        devices.Reset(
-        [
-            TestSupport.Device("d1", "A", "10.0.0.48", "M"),
-            TestSupport.Device("d2", "B", "10.0.0.200", "M"),
-            TestSupport.Device("d3", "C", "10.0.0.3", "M"),
-            TestSupport.Device("d4", "D", "10.0.0.4", "M"),
-            TestSupport.Device("d5", "E", "10.0.0.5", "M"),
-        ]);
+        devices.Reset([TestSupport.Device("d1", "A", "10.0.0.48", "M"), TestSupport.Device("d2", "B", "10.0.0.200", "M")]);
         var store = new TaskStore(devices);
 
         store.Reset(
         [
             TaskOn("one", ("d1", TaskState.Done, "")),
-            TaskOn("two", ("d1", TaskState.Done, ""), ("d2", TaskState.Failed, "Connection refused")),
-            TaskOn("five", ("d1", TaskState.Done, ""), ("d2", TaskState.Running, ""), ("d3", TaskState.Queued, ""), ("d4", TaskState.Queued, ""), ("d5", TaskState.Queued, "")),
+            TaskOn("two", ("d2", TaskState.Failed, "Connection refused")),
             TaskOn("none"),
         ]);
 
-        Assert.Equal("10.0.0.48", store.Find("one")!.DevicesText);
-        Assert.Equal("10.0.0.48, 10.0.0.200", store.Find("two")!.DevicesText);
-        Assert.Equal("10.0.0.48, 10.0.0.200 +3", store.Find("five")!.DevicesText);
-        Assert.Equal("", store.Find("none")!.DevicesText);
-        Assert.Null(store.Find("none")!.DevicesTooltip);
-        Assert.Equal(
-            "10.0.0.48: Done" + Environment.NewLine + "10.0.0.200: Failed - Connection refused",
-            store.Find("two")!.DevicesTooltip);
-        Assert.Equal(5, store.Find("five")!.DevicesTooltip!.Split(Environment.NewLine).Length);
+        Assert.Equal("10.0.0.48", store.Find("one")!.DeviceText);
+        Assert.Equal("d1", store.Find("one")!.DeviceId);
+        Assert.Equal("10.0.0.48: Done", store.Find("one")!.DeviceTooltip);
+        Assert.Equal("10.0.0.200: Failed - Connection refused", store.Find("two")!.DeviceTooltip);
+        Assert.Equal("", store.Find("none")!.DeviceText);
+        Assert.Null(store.Find("none")!.DeviceTooltip);
     }
 
     [Fact]
-    public void Task_devices_follow_device_store_changes_and_show_removed_devices()
+    public void Task_device_follows_device_store_changes_and_shows_removed_devices()
     {
         const string removedId = "1a2b3c4d-0000-4000-8000-000000000001";
         var devices = new DeviceStore();
         devices.Reset([TestSupport.Device(removedId, "A", "10.0.0.48", "M"), TestSupport.Device("d2", "B", "10.0.0.200", "M")]);
         var store = new TaskStore(devices);
-        store.Reset([TaskOn("t", (removedId, TaskState.Done, ""), ("d2", TaskState.Done, "ok"))]);
-        TaskRowViewModel row = store.Find("t")!;
-        Assert.Equal("10.0.0.48, 10.0.0.200", row.DevicesText);
+        store.Reset([TaskOn("t", (removedId, TaskState.Done, "")), TaskOn("u", ("d2", TaskState.Done, "ok"))]);
+        TaskRowViewModel removed = store.Find("t")!;
+        TaskRowViewModel renamedRow = store.Find("u")!;
+        Assert.Equal("10.0.0.48", removed.DeviceText);
 
         Device renamed = TestSupport.Device("d2", "B", "10.0.0.201", "M");
         devices.Apply(new DeviceChanged { Kind = DeviceChanged.Types.Kind.Updated, Device = renamed });
         devices.Apply(new DeviceChanged { Kind = DeviceChanged.Types.Kind.Removed, Device = new Device { Id = removedId } });
 
-        Assert.Equal("removed device 1a2b3c4d, 10.0.0.201", row.DevicesText);
-        Assert.Equal("removed device 1a2b3c4d: Done" + Environment.NewLine + "10.0.0.201: Done - ok", row.DevicesTooltip);
+        Assert.Equal("removed device 1a2b3c4d", removed.DeviceText);
+        Assert.Equal("removed device 1a2b3c4d: Done", removed.DeviceTooltip);
+        Assert.Equal("10.0.0.201", renamedRow.DeviceText);
+        Assert.Equal("10.0.0.201: Done - ok", renamedRow.DeviceTooltip);
 
-        // The details window lists the same addresses.
-        var details = new TaskDetailsViewModel(row, devices);
-        Assert.Equal(row.DeviceLabels, details.Rows.Select(d => d.Device).ToArray());
-        Assert.Equal(["", "B"], details.Rows.Select(d => d.Serial).ToArray());
+        // The details window names the device the same way.
+        var details = new TaskDetailsViewModel(renamedRow, devices);
+        Assert.Equal(["10.0.0.201"], details.Rows.Select(d => d.Device).ToArray());
+        Assert.Equal(["B"], details.Rows.Select(d => d.Serial).ToArray());
+        Assert.Equal([""], new TaskDetailsViewModel(removed, devices).Rows.Select(d => d.Serial).ToArray());
     }
 
     [Fact]
@@ -181,8 +174,8 @@ public sealed class StoreTests
 
         store.Reset([TaskOn("t", ("d1", TaskState.Done, ""))]);
 
-        Assert.Equal("axis-a.local", store.Find("t")!.DevicesText);
-        Assert.Equal(devices.Find("d1")!.DisplayAddress, store.Find("t")!.DevicesText);
+        Assert.Equal("axis-a.local", store.Find("t")!.DeviceText);
+        Assert.Equal(devices.Find("d1")!.DisplayAddress, store.Find("t")!.DeviceText);
     }
 
     [Fact]

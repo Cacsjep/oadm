@@ -34,7 +34,8 @@ public interface IOadmApi
 
     // TaskService
     Task<IReadOnlyList<TaskPluginInfo>> ListTaskPluginsAsync(CancellationToken ct);
-    Task<string> RunTaskAsync(string pluginId, IReadOnlyCollection<string> deviceIds, string? payloadJson, string owner, CancellationToken ct);
+    /// <summary>Starts one task per device (sharing a batch id) and returns the task ids.</summary>
+    Task<IReadOnlyList<string>> RunTaskAsync(string pluginId, IReadOnlyCollection<string> deviceIds, string? payloadJson, string owner, CancellationToken ct);
     Task<IReadOnlyList<TaskInfo>> ListTasksAsync(CancellationToken ct);
     IAsyncEnumerable<TaskChanged> WatchTasksAsync(CancellationToken ct);
     Task CancelTaskAsync(string taskId, CancellationToken ct);

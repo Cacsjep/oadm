@@ -88,13 +88,18 @@ public sealed partial class TaskGrpcService(
         var ids = GrpcGuard.ParseIds(request.DeviceIds, "device id");
         try
         {
-            var id = await engine.RunAsync(
+            var taskIds = await engine.RunAsync(
                 request.PluginId,
                 ids,
                 string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson,
                 GrpcGuard.Owner(context, request.Owner),
                 context.CancellationToken).ConfigureAwait(false);
-            return new Proto.RunTaskReply { TaskId = id.ToString() };
+            var reply = new Proto.RunTaskReply();
+            reply.TaskIds.AddRange(taskIds.Select(t => t.ToString()));
+#pragma warning disable CS0612 // task_id is deprecated but still filled for older clients.
+            reply.TaskId = reply.TaskIds.Count > 0 ? reply.TaskIds[0] : string.Empty;
+#pragma warning restore CS0612
+            return reply;
         }
         catch (ArgumentException ex)
         {

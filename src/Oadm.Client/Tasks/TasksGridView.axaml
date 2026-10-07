@@ -7,10 +7,10 @@
             CanUserReorderColumns="False">
     <DataGrid.Columns>
       <DataGridTextColumn Header="Name" Width="2*" MinWidth="160" Binding="{Binding Name}" x:DataType="tasks:TaskRowViewModel" />
-      <DataGridTemplateColumn Header="Devices" Width="2*" MinWidth="160" SortMemberPath="DevicesText">
+      <DataGridTemplateColumn Header="Device" Width="2*" MinWidth="160" SortMemberPath="DeviceText">
         <DataGridTemplateColumn.CellTemplate>
           <DataTemplate x:DataType="tasks:TaskRowViewModel">
-            <TextBlock Text="{Binding DevicesText}" ToolTip.Tip="{Binding DevicesTooltip}" />
+            <TextBlock Text="{Binding DeviceText}" ToolTip.Tip="{Binding DeviceTooltip}" />
           </DataTemplate>
         </DataGridTemplateColumn.CellTemplate>
       </DataGridTemplateColumn>

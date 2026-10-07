@@ -59,7 +59,7 @@ public sealed class TaskServiceTests
         });
         await TestHelpers.WaitUntilAsync(
             async () => (await host.Tasks.ListAsync(new Proto.Empty())).Tasks
-                .Any(t => t.Id == warmUp.TaskId && t.State == Proto.TaskState.Done),
+                .Any(t => t.Id == warmUp.TaskIds[0] && t.State == Proto.TaskState.Done),
             "warm-up restart");
 
         using var watch = host.Tasks.Watch(new Proto.Empty(), cancellationToken: cts.Token);
@@ -75,7 +75,7 @@ public sealed class TaskServiceTests
         var seen = new List<Proto.TaskChanged>();
         await foreach (var change in watch.ResponseStream.ReadAllAsync(cts.Token))
         {
-            if (change.Task.Id != run.TaskId)
+            if (change.Task.Id != run.TaskIds[0])
             {
                 continue;
             }
@@ -102,12 +102,12 @@ public sealed class TaskServiceTests
             "refresh after task");
 
         // Persisted, and deletable.
-        var listed = Assert.Single((await host.Tasks.ListAsync(new Proto.Empty())).Tasks, t => t.Id == run.TaskId);
+        var listed = Assert.Single((await host.Tasks.ListAsync(new Proto.Empty())).Tasks, t => t.Id == run.TaskIds[0]);
         Assert.Equal(Proto.TaskState.Done, listed.State);
-        await host.Tasks.DeleteAsync(new Proto.TaskIdRequest { TaskId = run.TaskId });
+        await host.Tasks.DeleteAsync(new Proto.TaskIdRequest { TaskId = run.TaskIds[0] });
         var remaining = (await host.Tasks.ListAsync(new Proto.Empty())).Tasks;
-        Assert.DoesNotContain(remaining, t => t.Id == run.TaskId);
-        Assert.Contains(remaining, t => t.Id == warmUp.TaskId);
+        Assert.DoesNotContain(remaining, t => t.Id == run.TaskIds[0]);
+        Assert.Contains(remaining, t => t.Id == warmUp.TaskIds[0]);
     }
 
     [Fact]
@@ -122,9 +122,9 @@ public sealed class TaskServiceTests
 
         var run = await host.Tasks.RunAsync(new Proto.RunTaskRequest { PluginId = RestartTaskPlugin.PluginId, DeviceIds = { device.Id.ToString() } });
         await TestHelpers.WaitUntilAsync(() => Task.FromResult(camera.RestartCalls == 1),"restart sent");
-        await host.Tasks.CancelAsync(new Proto.TaskIdRequest { TaskId = run.TaskId });
+        await host.Tasks.CancelAsync(new Proto.TaskIdRequest { TaskId = run.TaskIds[0] });
 
-        var final = await TestHelpers.WaitForTaskAsync(host, run.TaskId);
+        var final = await TestHelpers.WaitForTaskAsync(host, run.TaskIds[0]);
         Assert.Equal(Proto.TaskState.Cancelled, final.State);
         Assert.False(string.IsNullOrEmpty(final.Owner)); // falls back to the peer
     }

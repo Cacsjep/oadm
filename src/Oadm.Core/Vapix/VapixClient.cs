@@ -55,6 +55,7 @@ public sealed class VapixClient : IVapixClient, IDisposable
     private const string JsonMediaType = "application/json";
 
     private readonly HttpClient _http;
+    private readonly TimeSpan _timeout;
 
     /// <summary>Creates a client over a custom handler (tests, or a handler built by <see cref="CreateHandler"/>).</summary>
     public VapixClient(Uri baseAddress, HttpMessageHandler handler, CertificatePinning? pinning = null, TimeSpan? timeout = null, bool disposeHandler = true)
@@ -63,12 +64,18 @@ public sealed class VapixClient : IVapixClient, IDisposable
         ArgumentNullException.ThrowIfNull(handler);
         BaseAddress = baseAddress;
         Pinning = pinning;
+        _timeout = timeout ?? TimeSpan.FromSeconds(15);
+
+        // The timeout is applied per request in SendAsync so plugins can extend it (VapixRequestOptions.Timeout).
         _http = new HttpClient(handler, disposeHandler)
         {
             BaseAddress = baseAddress,
-            Timeout = timeout ?? TimeSpan.FromSeconds(15),
+            Timeout = System.Threading.Timeout.InfiniteTimeSpan,
         };
     }
+
+    /// <summary>Default per-request timeout; one request can override it with <see cref="VapixRequestOptions.Timeout"/>.</summary>
+    public TimeSpan Timeout => _timeout;
 
     public Uri BaseAddress { get; }
 
@@ -259,13 +266,30 @@ public sealed class VapixClient : IVapixClient, IDisposable
     /// <remarks>
     /// Relative URIs resolve against <see cref="BaseAddress"/>. The response is returned as-is
     /// (no status check); a pinned certificate mismatch throws <see cref="CertificateChangedException"/>.
+    /// The request body is streamed as given (never buffered here). The timeout is
+    /// <see cref="Timeout"/> unless the request sets <see cref="VapixRequestOptions.Timeout"/>; it covers
+    /// sending the body and reading the response, and surfaces like an HttpClient timeout
+    /// (<see cref="TaskCanceledException"/> with an inner <see cref="TimeoutException"/>).
     /// </remarks>
     public async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
+        var timeout = request.Options.TryGetValue(VapixRequestOptions.Timeout, out var requested) ? requested : _timeout;
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        if (timeout != System.Threading.Timeout.InfiniteTimeSpan)
+        {
+            timeoutCts.CancelAfter(timeout);
+        }
+
         try
         {
-            return await _http.SendAsync(request, ct).ConfigureAwait(false);
+            return await _http.SendAsync(request, HttpCompletionOption.ResponseContentRead, timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
+        {
+            throw new TaskCanceledException(
+                string.Create(System.Globalization.CultureInfo.InvariantCulture, $"The device did not answer within {timeout.TotalSeconds:0} seconds."),
+                new TimeoutException(ex.Message, ex));
         }
         catch (HttpRequestException ex) when (Pinning?.MismatchFingerprint is { } actual)
         {

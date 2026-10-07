@@ -52,10 +52,10 @@ public sealed class HeadlessSmokeTests
 
             // Tasks pane with the Devices column (after Name)
             vm.Devices.Tasks.IsExpanded = true;
-            await PumpUntilAsync(() => vm.Devices.Tasks.Tasks.Any(t => t.DevicesText.Length > 0));
+            await PumpUntilAsync(() => vm.Devices.Tasks.Tasks.Any(t => t.DeviceText.Length > 0));
             DataGrid tasksGrid = window.GetVisualDescendants().OfType<Oadm.Client.Tasks.TasksGridView>().Single()
                 .GetVisualDescendants().OfType<DataGrid>().Single();
-            Assert.Equal(["Name", "Devices", "Status", "Start time", "Owner", "Progress"], tasksGrid.Columns.Select(c => c.Header as string ?? "").ToArray());
+            Assert.Equal(["Name", "Device", "Status", "Start time", "Owner", "Progress"], tasksGrid.Columns.Select(c => c.Header as string ?? "").ToArray());
             Capture(window, outDir, "client-tasks-pane.png");
 
             foreach (NavItemViewModel item in vm.NavItems.Concat(vm.BottomNavItems).ToList())
@@ -96,7 +96,7 @@ public sealed class HeadlessSmokeTests
             await details.LoadLogAsync(app.Services!.GetRequiredService<IOadmApi>(), CancellationToken.None);
             var detailsWindow = new TaskDetailsWindow { DataContext = details };
             detailsWindow.Show();
-            await PumpUntilAsync(() => details.Log.Count == 4);
+            await PumpUntilAsync(() => details.Log.Count == 3);
             Capture(detailsWindow, outDir, "client-task-details.png");
             detailsWindow.Close();
             window.Close();

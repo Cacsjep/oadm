@@ -82,13 +82,13 @@ public sealed class TaskQueryUploadAndLogTests
             DeviceIds = { device.Id.ToString() },
             PayloadJson = JsonSerializer.Serialize(new { fileId = uploaded.Id }),
         });
-        var task = await TestHelpers.WaitForTaskAsync(host, run.TaskId);
+        var task = await TestHelpers.WaitForTaskAsync(host, run.TaskIds[0]);
 
         Assert.Equal(Proto.TaskState.DoneWithWarnings, task.State);
         Assert.Equal(Proto.TaskState.DoneWithWarnings, task.Devices[0].State);
         Assert.Equal("Same firmware already installed", task.Devices[0].Message);
 
-        var log = await host.Tasks.GetLogAsync(new Proto.TaskIdRequest { TaskId = run.TaskId });
+        var log = await host.Tasks.GetLogAsync(new Proto.TaskIdRequest { TaskId = run.TaskIds[0] });
         Assert.Equal(
             [$"read {content.Length} bytes, sha {uploaded.Sha256}", "Same firmware already installed"],
             log.Entries.Select(e => e.Message));
@@ -142,6 +142,73 @@ public sealed class TaskQueryUploadAndLogTests
         Assert.Equal(StatusCode.NotFound, ex.StatusCode);
     }
 
+    [Fact]
+    public async Task RunCreatesOneTaskPerDeviceWithBatchAndDeviceIds()
+    {
+        var network = new FakeAxisNetwork();
+        network.Add("10.9.0.1", FakeSerials.Make(1), "pw");
+        network.Add("10.9.0.2", FakeSerials.Make(2), "pw");
+        await using var host = await TestServerHost.StartAsync(network);
+        var plugin = new CredentialsPlugin();
+        Register(host, plugin);
+        var a = await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.1", 1);
+        var b = await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.2", 2);
+
+        var run = await host.Tasks.RunAsync(new Proto.RunTaskRequest
+        {
+            PluginId = CredentialsPlugin.PluginId,
+            DeviceIds = { a.Id.ToString(), b.Id.ToString() },
+            PayloadJson = "\"noop\"",
+        });
+
+        Assert.Equal(2, run.TaskIds.Count);
+#pragma warning disable CS0612 // the deprecated single id is still the first task
+        Assert.Equal(run.TaskIds[0], run.TaskId);
+#pragma warning restore CS0612
+        var tasks = new List<Proto.TaskInfo>();
+        foreach (var id in run.TaskIds)
+        {
+            tasks.Add(await TestHelpers.WaitForTaskAsync(host, id));
+        }
+
+        Assert.Equal([a.Id.ToString(), b.Id.ToString()], tasks.Select(t => t.DeviceId));
+        Assert.All(tasks, t => Assert.Equal(t.DeviceId, Assert.Single(t.Devices).DeviceId));
+        Assert.Single(tasks.Select(t => t.BatchId).Distinct());
+        Assert.True(Guid.TryParse(tasks[0].BatchId, out _));
+        Assert.All(tasks, t => Assert.Equal(Proto.TaskState.Done, t.State));
+        Assert.Equal(["root", "root"], plugin.SeenUserNames.Order()); // IDeviceInfo.CredentialUserName on the server
+    }
+
+    [Fact]
+    public async Task TasksCanUpdateOrInvalidateTheStoredCredentials()
+    {
+        var network = new FakeAxisNetwork();
+        var camera = network.Add("10.9.0.1", FakeSerials.Make(1), "pw");
+        network.Add("10.9.0.2", FakeSerials.Make(2), "pw");
+        await using var host = await TestServerHost.StartAsync(network);
+        Register(host, new CredentialsPlugin());
+        var changed = await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.1", 1);
+        var reset = await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.2", 2);
+
+        // The plugin changes the password of the OADM account on the device, then tells the server.
+        camera.Password = "N3w-pw";
+        var update = await host.Tasks.RunAsync(new Proto.RunTaskRequest { PluginId = CredentialsPlugin.PluginId, DeviceIds = { changed.Id.ToString() }, PayloadJson = "\"update\"" });
+        var updated = await TestHelpers.WaitForTaskAsync(host, update.TaskIds[0]);
+        Assert.Equal(Proto.TaskState.Done, updated.State);
+        var stored = await host.Get<Core.Security.CredentialStore>().GetAsync(changed.Id, CancellationToken.None);
+        Assert.Equal(("root", "N3w-pw"), (stored!.UserName, stored.Password));
+
+        var invalidate = await host.Tasks.RunAsync(new Proto.RunTaskRequest { PluginId = CredentialsPlugin.PluginId, DeviceIds = { reset.Id.ToString() }, PayloadJson = "\"invalidate\"" });
+        Assert.Equal(Proto.TaskState.Done, (await TestHelpers.WaitForTaskAsync(host, invalidate.TaskIds[0])).State);
+        await TestHelpers.WaitUntilAsync(
+            async () => !(await TestHelpers.GetDeviceAsync(host, reset.Id.ToString())).HasCredentials,
+            "credentials removed");
+        Assert.Null(await host.Get<Core.Security.CredentialStore>().GetAsync(reset.Id, CancellationToken.None));
+
+        var log = await host.Tasks.GetLogAsync(new Proto.TaskIdRequest { TaskId = update.TaskIds[0] });
+        Assert.DoesNotContain(log.Entries, e => e.Message.Contains("N3w-pw", StringComparison.Ordinal));
+    }
+
     private static Task<Proto.TaskQueryReply> Query(TestServerHost host, string pluginId, Guid deviceId, string method) =>
         host.Tasks.QueryAsync(new Proto.TaskQueryRequest { PluginId = pluginId, DeviceId = deviceId.ToString(), Method = method }).ResponseAsync;
 
@@ -161,6 +228,41 @@ public sealed class TaskQueryUploadAndLogTests
 
     private static void Register(TestServerHost host, ITaskPlugin plugin) =>
         Assert.True(host.Get<PluginRegistry>().RegisterTaskPlugin(plugin, new PluginOrigin(plugin.Id, "1.0.0", null)));
+
+    /// <summary>Payload "update": stores root/N3w-pw and checks the new client works; "invalidate": clears the credentials.</summary>
+    private sealed class CredentialsPlugin : ITaskPlugin
+    {
+        public const string PluginId = "test.credentials";
+
+        public System.Collections.Concurrent.ConcurrentBag<string?> SeenUserNames { get; } = [];
+
+        public string Id => PluginId;
+
+        public string DisplayName => "Credentials";
+
+        public string? IconKey => null;
+
+        public bool ShowInToolbar => false;
+
+        public bool RequiresDialog => true;
+
+        public bool CanRun(IDeviceInfo device) => true;
+
+        public async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)
+        {
+            SeenUserNames.Add(device.CredentialUserName);
+            switch (JsonSerializer.Deserialize<string>(payloadJson!))
+            {
+                case "update":
+                    await ctx.UpdateCredentialsAsync("root", "N3w-pw", ct);
+                    await ctx.Vapix.GetBasicDeviceInfoAsync(ct); // the swapped client uses the new password
+                    break;
+                case "invalidate":
+                    ctx.MarkCredentialsInvalid();
+                    break;
+            }
+        }
+    }
 
     /// <summary>Query: lists the device APIs or requires an API version. Task: reads an upload, logs and warns.</summary>
     private sealed class SamplePlugin : ITaskPlugin, ITaskPluginQuery

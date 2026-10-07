@@ -28,8 +28,10 @@ internal sealed class RunningTask : IDisposable
         string owner,
         DateTimeOffset created,
         CancellationToken shutdown,
-        int maxLogEntries = 1000)
+        int maxLogEntries = 1000,
+        Guid batchId = default)
     {
+        BatchId = batchId == Guid.Empty ? id : batchId;
         ArgumentOutOfRangeException.ThrowIfLessThan(maxLogEntries, 1);
         _maxLogEntries = maxLogEntries;
         Id = id;
@@ -45,6 +47,9 @@ internal sealed class RunningTask : IDisposable
     }
 
     public Guid Id { get; }
+
+    /// <summary>Shared by all tasks started by one RunAsync call (one task per device).</summary>
+    public Guid BatchId { get; }
 
     public RegisteredTaskPlugin Registration { get; }
 
@@ -312,7 +317,8 @@ internal sealed class RunningTask : IDisposable
                 _finished,
                 progress,
                 null,
-                devices);
+                devices,
+                BatchId);
         }
     }
 

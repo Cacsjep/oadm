@@ -116,7 +116,7 @@ public sealed class EfTaskStoreTests : IAsyncLifetime
 
         await using (var engine = new TaskEngine(_store, registry, devices, new FakeVapixClientFactory()))
         {
-            var id = await engine.RunAsync("test.ok", [deviceId], null, "tester", CancellationToken.None);
+            var id = await engine.RunOneAsync("test.ok", [deviceId], null, "tester", CancellationToken.None);
             await engine.WaitForCompletionAsync(id, CancellationToken.None);
             var stored = await _store.GetAsync(id, CancellationToken.None);
             Assert.Equal(TaskState.Done, stored!.State);
@@ -178,7 +178,7 @@ public sealed class EfTaskStoreTests : IAsyncLifetime
         {
             foreach (var plugin in new[] { "test.secret", CapturingPlugin.PluginId })
             {
-                var id = await engine.RunAsync(plugin, [deviceId], payload, "tester", CancellationToken.None);
+                var id = await engine.RunOneAsync(plugin, [deviceId], payload, "tester", CancellationToken.None);
                 await engine.WaitForCompletionAsync(id, CancellationToken.None);
             }
         }
