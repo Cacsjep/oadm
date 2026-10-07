@@ -812,6 +812,15 @@
     <Setter Property="TextWrapping" Value="NoWrap" />
   </Style>
 
+  <!-- Multi-line plain text fields, one entry per line (NTP servers of the date and time dialog) -->
+  <Style Selector="TextBox.multiline">
+    <Setter Property="VerticalContentAlignment" Value="Top" />
+    <Setter Property="Padding" Value="10,8" />
+    <Setter Property="AcceptsReturn" Value="True" />
+    <Setter Property="TextWrapping" Value="NoWrap" />
+    <Setter Property="MinHeight" Value="88" />
+  </Style>
+
   <!-- The one read-only code display (ui:CodeView): response bodies and headers, highlighted -->
   <Style Selector="ui|CodeView">
     <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />

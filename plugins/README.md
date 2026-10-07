@@ -137,7 +137,8 @@ Build dialogs from the host look (HARD RULE: reuse controls, no style difference
 
 - Styles and classes from the host theme (`Themes/OadmTheme.axaml`), e.g. `Border.card`,
   `TextBlock.secondary`, `TextBlock.fieldLabel`, `TextBlock.warning`, `TextBlock.error`,
-  `Button.primary`, `Button.secondary`, `Button.toolbar`, `Border.vseparator`, `Border.tile` (+ class
+  `Button.primary`, `Button.secondary`, `Button.toolbar`, `Border.vseparator`, `TextBox.multiline` (plain multi-line
+  input, one entry per line, e.g. NTP servers), `Border.tile` (+ class
   `selected`: a picture tile), `Border.liveViewSurface` (dark picture surface), `Button.picture` (a
   clickable picture without button chrome). Form fields are
   label left, input right like the add page editors: `Grid ColumnDefinitions="150,280"` with a
@@ -154,7 +155,7 @@ Build dialogs from the host look (HARD RULE: reuse controls, no style difference
   `Icon.server`, `Icon.externalLink`, `Icon.key`, `Icon.eye`, `Icon.eyeOff`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
   `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.network`, `Icon.firmware`, `Icon.users`,
   `Icon.user`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
-  `Icon.snapshot`, `Icon.export`,
+  `Icon.snapshot`, `Icon.export`, `Icon.clock`,
   `Icon.device.camera`, `Icon.device.encoder`,
   `Icon.device.speaker`, `Icon.device.audio`, `Icon.device.intercom`, `Icon.device.radar`,
   `Icon.device.io`, `Icon.device.door`, `Icon.device.generic`.

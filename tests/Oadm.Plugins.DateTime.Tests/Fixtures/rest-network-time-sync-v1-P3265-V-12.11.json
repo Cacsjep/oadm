@@ -1,0 +1,38 @@
+{
+  "status": "success",
+  "data": {
+    "ntp": {
+      "client": {
+        "advertisedServers": [],
+        "enabled": true,
+        "maximumPoll": 10,
+        "minimumPoll": 6,
+        "nts": {
+          "caCertificates": [],
+          "enabled": false,
+          "staticServers": [
+            ""
+          ]
+        },
+        "serversSource": "STATIC",
+        "staticServers": [
+          "10.0.0.17"
+        ],
+        "synced": true,
+        "timeOffset": 0.016422,
+        "timeToNextSync": 22
+      }
+    },
+    "ptp": {
+      "grandMasterIdentity": "",
+      "grandMasterOffset": 0.0,
+      "hardwareSupport": true,
+      "identity": "",
+      "portState": "STOPPED",
+      "synchronizeSystemClock": false,
+      "systemClockAdjustedOffset": 0.0,
+      "utcOffset": 0
+    },
+    "ptp_supported": true
+  }
+}
