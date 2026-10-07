@@ -71,6 +71,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.VapixCommander(.Client)/   core plugin: VAPIX command library, raw requests, rollouts
   Oadm.Plugins.NtpServer(.Client)/        core plugin: NTP server (RFC 5905 server mode) + "Use OADM as NTP server"
   Oadm.Plugins.DhcpServer(.Client)/       core plugin: DHCP server (RFC 2131) with static leases and lease list
+  Oadm.Plugins.Pki(.Client)/              core plugin: PKI (one CA for device certificates, trusted root store)
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
                                 (both copy their output to artifacts/plugins/<plugin id>/)
@@ -153,7 +154,7 @@ Two processes, like ADM:
   plugin, INTERNAL otherwise; the status detail is the message), `Watch(plugin_id)` (stream of `PluginEvent`
   {plugin_id, topic, payload_json} the plugin publishes through `ICorePluginContext.Events` from the call on; NOT_FOUND
   unknown plugin; `Oadm.Core.Plugins.PluginEventHub` fans out with 256 events buffered per watcher, oldest dropped).
-  Users: "Snapshot report", "VAPIX Commander", "NTP server".
+  Users: "Snapshot report", "VAPIX Commander", "NTP server", "DHCP server", "PKI".
 - `SettingsService`: `Get`, `Set` (`ServerSettings.zero_conf_seconds = 8`, 0 keeps the stored value),
   `ListCredentials`, `AddCredential(user_name, password)`
   (INVALID_ARGUMENT, RESOURCE_EXHAUSTED over 20 entries; an identical pair returns the existing
@@ -218,7 +219,8 @@ Verified: AXIS P3265-V on AXIS OS 12.11 reports ProdType `Dome Camera` (also ano
 Filled by the anonymous probe on the add page (discovered list shows the icon), on add and on
 every basicdeviceinfo poll.
 
-Certificate trust enum: `Trusted` (chain builds to a root in the server OS trust store),
+Certificate trust enum: `Trusted` (chain builds to a root in the server OS trust store, or to a
+trust anchor of a core plugin such as the PKI CA: `ITrustAnchors`, `Oadm.Core.Vapix.TrustAnchorRegistry`),
 `SelfSigned` (subject equals issuer and the only chain error is the untrusted root),
 `Untrusted` (any other chain failure, e.g. private CA not in the store), `Expired` (past
 NotAfter), `Unknown` (not checked yet or HTTP only). Only the chain is evaluated; the host name
@@ -698,6 +700,7 @@ public interface ICorePluginContext
     string? PluginDirectory => null;   // folder the plugin was loaded from (data files); never Assembly.Location
     ISecretProtector? Secrets => null; // Protect/Unprotect(value, purpose): AES-256-GCM with the master key
     IPluginEvents? Events => null;     // Publish(topic, payloadJson): live events to the plugin's page (PluginService.Watch)
+    ITrustAnchors? TrustAnchors => null; // Set(der[]): CAs the server trusts when rating device certificates (per plugin)
 }
 ```
 
@@ -1252,6 +1255,75 @@ Own RFC 2131 / 2132 implementation, IPv4 only, one interface, no relay agents (r
   datagrams; real socket on loopback; page view model incl. 5,000 leases; headless screenshots `dhcp-server-page.png`,
   `-page-errors.png`, `-page-other-server.png`, `dhcp-server-other-server-confirm.png`, `dhcp-server-static-lease-dialog.png`).
 
+## PKI plugin (core plugin)
+
+`plugins/Oadm.Plugins.Pki` (+ `.Client`), id `oadm.pki`, rail page **PKI** (icon `key`). Spec and decisions:
+`docs/specs/pki.md`, device API research `docs/specs/pki-research/`. Part 1 (built): the CA, its page and the server's
+trust; part 2 (the contributed Security tasks HTTPS / 802.1X Enable, Disable, View, Delete, Install manually, Renew) is
+not built yet and is the only writer of the `issued` registry.
+- CA store (plugin settings): `ca` (id = SHA-256 of the certificate, source generated/imported, certificate and chain PEM,
+  key as PKCS#8 PEM encrypted with `ICorePluginContext.Secrets`, purpose `pki:ca:<id>`), `previousCas` (public parts, at
+  most 10, newest first, expired ones dropped), `issued` (`{serialNumber, deviceId, purpose https|dot1x, caId, notAfterUtc,
+  issuedUtc}`, read only here; per device and purpose the newest counts), `config`. Without `Secrets` the plugin keeps no CA
+  ("CA cannot be stored on this server"); a key that cannot be decrypted (other master key) is the error state "CA key
+  cannot be read" with Generate / Import only, nothing is overwritten.
+- First start: the default CA "OADM Root CA <machine name>" in the background (status "Creating the certificate
+  authority"). Generate (`CaGenerator`, `CertificateRequest` only): RSA 4096, SHA-256 PKCS#1 v1.5, 16 random positive
+  serial bytes, NotBefore now - 5 min, BasicConstraints CA (critical), KeyUsage keyCertSign + cRLSign (critical), SKI +
+  AKI, 1..30 years (default 10), off the request thread.
+- Import (`CaImporter`): PKCS#12 + password (also the Back up file) or PEM certificate(s) + key (in the file or a separate
+  PEM: PKCS#8, PKCS#1, SEC1, encrypted PKCS#8), at most 1 MB, password never stored or logged. Checks with field errors
+  (`File`, `Password`, `KeyFile`, `KeyPassword`): readable / password right, exactly one certificate with a matching key,
+  a CA (keyCertSign when KeyUsage is present), RSA >= 2048 or ECDSA P-256 / P-384, valid now and NotAfter >= now +
+  device validity + 1 year ("This CA expires on <date>, before certificates it would issue."). The other certificates on
+  the issuer path become the chain.
+- Replace (generate or import): without `confirmed` and with an existing CA the reply is `needsConfirmation` with
+  `devicesWithCurrentCa` (also for 0 devices, and only after all checks passed, so the page asks after the field
+  checks); the page asks "N devices have certificates from the current CA. They keep working, but show 'Issued by a
+  previous CA' until they are renewed. Replace the CA?" (only "Replace the CA?" for 0). The old CA moves to
+  `previousCas`, the anchors are updated, a `state` event is published.
+- Trust anchors: the active CA, its chain and the previous CAs (+ chains) go to `ctx.TrustAnchors`, so device
+  certificates they issued are **Trusted** in the device grid without an OS change (lazy, next full refresh).
+- Export `.crt` (PEM, with the chain) / `.cer` (DER, CA only), previous CAs as well; Back up = PKCS#12 with key and chain,
+  AES-256-CBC + SHA-256, 100,000 iterations, password >= 8 (twice in the dialog), warning popup, logged "CA backup exported".
+- OS trust store (`TrustStore/`, `TrustStoreInstallers.ForServer` / `.ForClient`, one class per OS behind
+  `IProcessRunner` and `IMachineRootStore`, 30 s per tool, output to the log): Windows LocalMachine Root (client without
+  admin: `certutil -addstore Root` with runas), Debian/Ubuntu `/usr/local/share/ca-certificates/oadm-<fp16>.crt` +
+  `update-ca-certificates`, RHEL/Fedora `/etc/pki/ca-trust/source/anchors` + `update-ca-trust extract`, SUSE
+  `/etc/pki/trust/anchors` + `update-ca-certificates` (client without root: one `pkexec /bin/sh -c` prompt, without pkexec
+  the error shows the exact `sudo` command), macOS System keychain `security add-trusted-cert -d -r trustRoot` (client:
+  `osascript ... with administrator privileges`), check `find-certificate -Z -a`, remove `delete-certificate -Z <sha1>`.
+  Texts: "Permission denied: the server must run as administrator / root", "No supported certificate tool found
+  (update-ca-certificates or update-ca-trust)", "<tool> failed: <first line>", "The installation was cancelled.".
+  Tests use fakes only; nothing ever touches a real trust store.
+- Settings (`config`, `PkiValidation` shared by server and page): `deviceCertValidityDays` 365 (1..3650, shortened to the
+  CA's end when issuing, logged), `expiryWarningDays` 30 (1..365), `dot1x.eapolVersion` 1|2, `dot1x.identity`
+  mac|hostName|custom, `dot1x.customIdentity` (1..64 printable, placeholders `{serial}` `{hostName}` only),
+  `dot1x.radiusCa` oadm|imported + `radiusCaPem` (`importRadiusCa` checks a PEM/DER CA certificate, Save stores it).
+- Page methods (`PkiMethods`, camelCase, errors as `{errors: {Field: message}}` or `{error}`): `getState` (status, ca,
+  previousCas, config, serverTrustInstalled (checked every call), counts, radiusCa, `simulated` in fake mode), `generate`,
+  `import`, `previewReplace`, `exportPublic`, `exportPrevious`, `removePrevious`, `backup`, `installServerTrust`,
+  `saveSettings`, `importRadiusCa`; event `state` after every change.
+- Page (`HasOwnCards`, subtitle "Issues device certificates for HTTPS and IEEE 802.1X.", header chip "CA valid until
+  <date>" ok / "CA expires in N days" warning (within `expiryWarningDays`) / "CA expired", "CA key cannot be read" error):
+  cards Certificate authority (name, validity, key, fingerprint selectable, chain of an intermediate, "Trusted root store"
+  chips for the server and this computer, toolbar buttons Install in trusted root store, Export public certificate (PEM /
+  DER menu), Back up..., Generate new CA..., Import CA...), Device certificates (two fields + "Issued: 120 devices · 3
+  expire within 30 days · 4 from a previous CA"), IEEE 802.1X (EAPOL version, EAP identity + custom field, RADIUS server CA
+  with Import... / View, one Save for both cards), Previous certificate authorities (only when there are any: Name, Valid
+  until, Replaced, Export / Remove links, Remove confirmed). Dialogs `GenerateCaWindow`, `ImportCaWindow` (FileRow, key
+  FileRow only for a certificate without key), `BackupWindow`: `ValidatingViewModel`, errors under the fields, the
+  confirmation popups owned by the dialog. Last export folder per client in
+  `LocalApplicationData/Oadm/plugins/oadm.pki/client.json`. Fake mode (`FakeOadmApi.Pki.cs`): in-memory CA + one previous
+  CA, server store simulated, this computer never touched.
+- Tests: `tests/Oadm.Plugins.Pki.Tests` (generator extensions, importer formats and every check, service with real secret
+  protector, event hub and anchor registry: default CA, restart, other master key, no secrets, replace + confirmation,
+  previous CAs cap/expiry/remove, export, backup restore, settings, RADIUS CA, status texts; trust store installers per
+  OS with the fake runner; page view model incl. dialogs; fake mode; headless screenshots `pki-page.png`,
+  `pki-page-imported-intermediate.png`, `pki-generate-dialog.png`, `pki-import-dialog-errors.png`, `pki-backup-dialog.png`);
+  `tests/Oadm.Core.Tests/Vapix/TrustAnchorTests.cs` (anchored leaf / intermediate Trusted, self-signed stays, registry,
+  lazy re-rating in `CertificatePinning`, host context).
+
 ## Date and time plugin
 
 `plugins/Oadm.Plugins.DateTime` (+ `.Client`), id `oadm.datetime`, context menu (group Maintenance, icon `clock`)
@@ -1452,7 +1524,7 @@ password over HTTP, mDNS TXT keys. Still open:
 # Later Goals (not now)
 
 Client authentication and users, SSDP/WS-Discovery, scheduling/retry, Core plugins (NTP,
-DHCP, IDP) with their UI pages, backup/restore, certificates, warranty
+DHCP, IDP) with their UI pages, backup/restore, certificate deployment (PKI part 2), warranty
 and replacement data from Axis online services, installers/packaging, localization.
 
 # Resources

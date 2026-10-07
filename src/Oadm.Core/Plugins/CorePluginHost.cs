@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using Oadm.Core.Vapix;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Tasks;
@@ -33,6 +34,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     private readonly ITaskRunner _tasks;
     private readonly IPluginSettingsProvider _settings;
     private readonly ISecretProtector? _secrets;
+    private readonly TrustAnchorRegistry? _trustAnchors;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.OrdinalIgnoreCase);
@@ -47,7 +49,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         IPluginSettingsProvider settings,
         ILoggerFactory? loggerFactory = null,
         ISecretProtector? secrets = null,
-        PluginEventHub? events = null)
+        PluginEventHub? events = null,
+        TrustAnchorRegistry? trustAnchors = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(devices);
@@ -60,6 +63,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         _tasks = tasks;
         _settings = settings;
         _secrets = secrets;
+        _trustAnchors = trustAnchors;
         Events = events ?? new PluginEventHub();
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _logger = _loggerFactory.CreateLogger<CorePluginHost>();
@@ -103,7 +107,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     _loggerFactory.CreateLogger("Oadm.Plugins." + registered.Id),
                     registered.Origin.Directory,
                     _secrets,
-                    Events.For(registered.Id));
+                    Events.For(registered.Id),
+                    _trustAnchors?.For(registered.Id));
                 try
                 {
                     await registered.Plugin.StartAsync(context, ct).ConfigureAwait(false);
@@ -152,6 +157,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                 {
                     await entry.Plugin.StopAsync(ct).ConfigureAwait(false);
                     entry.State = CorePluginState.Stopped;
+                    _trustAnchors?.Remove(id); // a stopped plugin's CAs are no longer vouched for
                     LogStopped(id);
                 }
 #pragma warning disable CA1031 // Keep stopping the remaining plugins.
@@ -243,7 +249,8 @@ internal sealed class CorePluginContext(
     ILogger logger,
     string? pluginDirectory = null,
     ISecretProtector? secrets = null,
-    IPluginEvents? events = null) : ICorePluginContext
+    IPluginEvents? events = null,
+    ITrustAnchors? trustAnchors = null) : ICorePluginContext
 {
     public IDeviceRepository Devices { get; } = devices;
 
@@ -260,4 +267,6 @@ internal sealed class CorePluginContext(
     public ISecretProtector? Secrets { get; } = secrets;
 
     public IPluginEvents? Events { get; } = events;
+
+    public ITrustAnchors? TrustAnchors { get; } = trustAnchors;
 }

@@ -23,6 +23,9 @@ public sealed record VapixConnectionOptions
 
     /// <summary>Per-request timeout.</summary>
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(15);
+
+    /// <summary>Extra trust anchors for rating the device certificate (<see cref="VapixClient.ObservedCertificate"/>); null = OS store only.</summary>
+    public TrustAnchorRegistry? TrustAnchors { get; init; }
 }
 
 /// <summary>
@@ -97,7 +100,7 @@ public sealed class VapixClient : IVapixClient, IDisposable
     {
         ArgumentNullException.ThrowIfNull(options);
         var baseAddress = BuildBaseAddress(options.Scheme, options.Address);
-        var pinning = new CertificatePinning(options.PinnedCertificateFingerprint);
+        var pinning = new CertificatePinning(options.PinnedCertificateFingerprint) { TrustAnchors = options.TrustAnchors };
         var handler = CreateHandler(baseAddress, options.Credentials, pinning);
         return new VapixClient(baseAddress, handler, pinning, options.Timeout);
     }

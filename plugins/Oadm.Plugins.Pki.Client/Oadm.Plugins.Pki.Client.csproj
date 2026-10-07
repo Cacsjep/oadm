@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>Oadm.Plugins.Pki.Client</AssemblyName>
+    <RootNamespace>Oadm.Plugins.Pki.Client</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- Same folder as the server part: artifacts/plugins/oadm.pki/. -->
+    <OadmPluginId>oadm.pki</OadmPluginId>
+    <OadmPluginOutputDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'artifacts', 'plugins', '$(OadmPluginId)'))</OadmPluginOutputDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Avalonia, CommunityToolkit.Mvvm and the SDKs are shared from the client host (PluginLoadContext.IsShared):
+         compile against them, never copy them into the plugin folder. -->
+    <PackageReference Include="Avalonia" Version="12.0.4" ExcludeAssets="runtime" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.0" ExcludeAssets="runtime" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" ExcludeAssets="runtime" />
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Client\Oadm.Sdk.Client.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <!-- Contract models, field rules and the trust store installers are shared with the server part (same plugin folder). -->
+    <ProjectReference Include="..\Oadm.Plugins.Pki\Oadm.Plugins.Pki.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Oadm.Plugins.Pki.Tests" />
+  </ItemGroup>
+
+  <!-- Development deployment next to the server part in artifacts/plugins/oadm.pki/. -->
+  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
+    <ItemGroup>
+      <_OadmPluginFiles Include="$(OutDir)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_OadmPluginFiles)" DestinationFiles="@(_OadmPluginFiles->'$(OadmPluginOutputDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Message Importance="normal" Text="OADM client plugin $(OadmPluginId) deployed to $(OadmPluginOutputDir)" />
+  </Target>
+
+</Project>

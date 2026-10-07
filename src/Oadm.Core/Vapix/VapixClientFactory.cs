@@ -18,10 +18,14 @@ public interface IVapixConnector
     VapixClient Connect(VapixConnectionOptions options);
 }
 
-/// <summary>Real network connector: <see cref="VapixClient.Create"/>.</summary>
-public sealed class VapixConnector : IVapixConnector
+/// <summary>Real network connector: <see cref="VapixClient.Create"/>, with the server's extra trust anchors.</summary>
+public sealed class VapixConnector(TrustAnchorRegistry? trustAnchors = null) : IVapixConnector
 {
-    public VapixClient Connect(VapixConnectionOptions options) => VapixClient.Create(options);
+    public VapixClient Connect(VapixConnectionOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return VapixClient.Create(options.TrustAnchors is null && trustAnchors is not null ? options with { TrustAnchors = trustAnchors } : options);
+    }
 }
 
 /// <summary>

@@ -584,7 +584,8 @@
     <Setter Property="Padding" Value="0,3,0,0" />
   </Style>
   <!-- Plain text as the field content (a read-only value): level with the label -->
-  <Style Selector="ui|FormField > TextBlock">
+  <!-- Read-only values in a form row (also selectable ones such as a fingerprint) -->
+  <Style Selector="ui|FormField > :is(TextBlock)">
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
   <Style Selector="ui|FormField > CheckBox">

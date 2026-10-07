@@ -21,6 +21,10 @@ public sealed class CertificatePinning
     private string? _observed;
     private string? _mismatch;
     private CertificateInfo? _certificate;
+    private X509Certificate2? _presented;
+    private X509Certificate2[] _presentedChain = [];
+    private string? _host;
+    private long _anchorVersion;
 
     public CertificatePinning(string? pinnedFingerprint = null)
     {
@@ -54,13 +58,32 @@ public sealed class CertificatePinning
         }
     }
 
-    /// <summary>Description of the last certificate the device presented (any handshake, pinned or not).</summary>
+    /// <summary>
+    /// Description of the last certificate the device presented (any handshake, pinned or not). With
+    /// <see cref="TrustAnchors"/> the chain trust is evaluated again when the anchors changed since the handshake
+    /// (pooled connections are reused, so a new handshake may not come soon).
+    /// </summary>
     public CertificateInfo? ObservedCertificate
     {
         get
         {
             lock (_gate)
             {
+                if (TrustAnchors is { } anchors && _presented is { } presented && anchors.Current.Version != _anchorVersion)
+                {
+                    var current = anchors.Current;
+                    try
+                    {
+                        _certificate = CertificateTrustEvaluator.Describe(presented, _presentedChain, _host, CustomTrustRoots, current.Certificates);
+                    }
+                    catch (CryptographicException)
+                    {
+                        // keep the earlier description
+                    }
+
+                    _anchorVersion = current.Version;
+                }
+
                 return _certificate;
             }
         }
@@ -68,6 +91,12 @@ public sealed class CertificatePinning
 
     /// <summary>Trust roots for <see cref="ObservedCertificate"/> instead of the OS store (tests only).</summary>
     public X509Certificate2Collection? CustomTrustRoots { get; init; }
+
+    /// <summary>
+    /// Extra trust anchors (e.g. the CA of the PKI plugin) for <see cref="ObservedCertificate"/>: a certificate that
+    /// chains to one of them is Trusted. Never changes the pinning decision.
+    /// </summary>
+    public TrustAnchorRegistry? TrustAnchors { get; init; }
 
     /// <summary>SHA-256 fingerprint as upper-case hex without separators.</summary>
     public static string ComputeFingerprint(X509Certificate certificate)
@@ -121,18 +150,33 @@ public sealed class CertificatePinning
         if (certificate is not null)
         {
             CertificateInfo? info;
+            var anchors = TrustAnchors?.Current;
+            IReadOnlyList<X509Certificate2>? chain = presentedChain as IReadOnlyList<X509Certificate2> ?? presentedChain?.ToList();
             try
             {
-                info = CertificateTrustEvaluator.Describe(certificate, presentedChain, host, CustomTrustRoots);
+                info = CertificateTrustEvaluator.Describe(certificate, chain, host, CustomTrustRoots, anchors?.Certificates);
             }
             catch (CryptographicException)
             {
                 info = null; // describing is best effort, pinning below still decides
             }
 
+            // With anchors, keep copies of the presented certificates to rate them again when the anchors change.
+            X509Certificate2? presented = null;
+            X509Certificate2[] copies = [];
+            if (anchors is not null)
+            {
+                presented = X509CertificateLoader.LoadCertificate(certificate.RawData);
+                copies = chain is null ? [] : [.. chain.Select(c => X509CertificateLoader.LoadCertificate(c.RawData))];
+            }
+
             lock (_gate)
             {
                 _certificate = info;
+                _presented = presented;
+                _presentedChain = copies;
+                _host = host;
+                _anchorVersion = anchors?.Version ?? 0;
             }
         }
 

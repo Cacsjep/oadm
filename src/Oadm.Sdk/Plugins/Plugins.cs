@@ -209,6 +209,12 @@ public interface ICorePluginContext
     /// cannot push events: the page then polls through InvokeAsync.
     /// </summary>
     IPluginEvents? Events => null;
+
+    /// <summary>
+    /// Certificate authorities this plugin wants the server to trust when it rates device certificates (Trusted in the
+    /// device grid). Null when the host does not support it.
+    /// </summary>
+    ITrustAnchors? TrustAnchors => null;
 }
 
 /// <summary>Server-side encryption for secrets a plugin persists. Values never leave the server.</summary>

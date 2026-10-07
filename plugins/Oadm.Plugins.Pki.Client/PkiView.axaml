@@ -1,0 +1,183 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.Pki.Client"
+             x:Class="Oadm.Plugins.Pki.Client.PkiView"
+             x:DataType="vm:PkiViewModel"
+             ui:PageHeader.Subtitle="Issues device certificates for HTTPS and IEEE 802.1X.">
+  <!-- Description and status live in the host page header (ui:PageHeader); the cards start with their content. -->
+  <ui:PageHeader.Trailing>
+    <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"
+                   IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}"
+                   ToolTip.Tip="{Binding StatusDetail}" x:DataType="vm:PkiViewModel" />
+  </ui:PageHeader.Trailing>
+
+  <!-- Own cards (ICorePluginPage.HasOwnCards). Shared controls and theme classes only. -->
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="{DynamicResource Oadm.Gap}">
+
+      <!-- ============================== Certificate authority ============================== -->
+      <Border Classes="card">
+        <StackPanel Classes="form">
+          <ui:CardHeader Title="Certificate authority">
+            <TextBlock Classes="secondary" Text="{Binding CaSourceText}" IsVisible="{Binding HasCa}" VerticalAlignment="Center" />
+          </ui:CardHeader>
+
+          <ui:ProgressRow Text="Creating the certificate authority. This takes a few seconds." IsVisible="{Binding IsGenerating}" />
+          <TextBlock Classes="secondary" Text="{Binding NoCaText}" IsVisible="{Binding HasNoCa}" TextWrapping="Wrap" />
+
+          <StackPanel Classes="form" IsVisible="{Binding HasCa}">
+            <ui:FormField LabelWidth="240" Label="Name" Classes="wide">
+              <TextBlock Text="{Binding CaName}" TextTrimming="CharacterEllipsis" />
+            </ui:FormField>
+            <ui:FormField LabelWidth="240" Label="Valid" Classes="wide">
+              <TextBlock Text="{Binding ValidText}" />
+            </ui:FormField>
+            <ui:FormField LabelWidth="240" Label="Key" Classes="wide">
+              <TextBlock Text="{Binding KeyText}" />
+            </ui:FormField>
+            <ui:FormField LabelWidth="240" Label="Fingerprint" Classes="wide" Hint="SHA-256">
+              <SelectableTextBlock Text="{Binding Fingerprint}" TextWrapping="Wrap" />
+            </ui:FormField>
+            <ui:FormField LabelWidth="240" Label="Chain" Classes="wide" IsVisible="{Binding HasChain}">
+              <TextBlock Text="{Binding ChainText}" TextWrapping="Wrap" />
+            </ui:FormField>
+            <ui:FormField LabelWidth="240" Label="Trusted root store" Classes="wide">
+              <StackPanel Orientation="Horizontal" Spacing="24" ToolTip.Tip="{x:Static vm:PkiViewModel.TrustTooltip}">
+                <ui:StatusChip Text="{Binding ServerTrustText}" IsOk="{Binding IsServerTrustOk}" IsError="{Binding IsServerTrustError}"
+                               IsAccent="{Binding IsServerTrustAccent}" ToolTip.Tip="{Binding ServerTrustTip}" />
+                <ui:StatusChip Text="{Binding ClientTrustText}" IsOk="{Binding IsClientTrustOk}" IsError="{Binding IsClientTrustError}"
+                               IsAccent="{Binding IsClientTrustAccent}" ToolTip.Tip="{Binding ClientTrustTip}" />
+              </StackPanel>
+            </ui:FormField>
+          </StackPanel>
+
+          <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8" Margin="{DynamicResource Oadm.GapTop}">
+            <ui:ToolbarButton IconKey="check" Text="Install in trusted root store" Command="{Binding InstallTrustCommand}"
+                              ToolTip.Tip="Install the CA certificate as trusted root on the server and on this computer (asks for administrator rights)" />
+            <ui:ToolbarButton IconKey="export" Text="Export public certificate"
+                              IsEnabled="{Binding HasCa}"
+                              ToolTip.Tip="Save the CA certificate (public, without key) for browsers, RADIUS servers and other systems">
+              <ui:ToolbarButton.Flyout>
+                <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                  <MenuItem Header="PEM (.crt)" Command="{Binding ExportCommand}" CommandParameter="pem" />
+                  <MenuItem Header="DER (.cer)" Command="{Binding ExportCommand}" CommandParameter="der" />
+                </MenuFlyout>
+              </ui:ToolbarButton.Flyout>
+            </ui:ToolbarButton>
+            <ui:ToolbarButton IconKey="save" Text="Back up..." Command="{Binding BackupCommand}"
+                              ToolTip.Tip="Save the CA with its private key in a password-protected file (restore it on another server with Import CA)" />
+            <ui:ToolbarButton IconKey="refresh" Text="Generate new CA..." Command="{Binding GenerateCommand}"
+                              ToolTip.Tip="Create a new certificate authority; the current one stays trusted by the server as a previous CA" />
+            <ui:ToolbarButton IconKey="upload" Text="Import CA..." Command="{Binding ImportCommand}"
+                              ToolTip.Tip="Use your own CA (root or intermediate) from a .pfx / .p12 file or PEM files" />
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- ============================== Device certificates ============================== -->
+      <Border Classes="card">
+        <StackPanel Classes="form">
+          <ui:CardHeader Title="Device certificates" />
+          <ui:FormField LabelWidth="240" Label="Device certificate validity (days)">
+            <TextBox Text="{Binding DeviceCertValidityDays}" />
+          </ui:FormField>
+          <ui:FormField LabelWidth="240" Label="Warn before expiry (days)">
+            <TextBox Text="{Binding ExpiryWarningDays}" />
+          </ui:FormField>
+          <ui:FormField LabelWidth="240" Classes="wide">
+            <TextBlock Classes="secondary" Text="{Binding IssuedSummary}" TextWrapping="Wrap" />
+          </ui:FormField>
+        </StackPanel>
+      </Border>
+
+      <!-- ============================== IEEE 802.1X ============================== -->
+      <Border Classes="card">
+        <StackPanel Classes="form">
+          <ui:CardHeader Title="IEEE 802.1X" />
+          <ui:FormField LabelWidth="240" Label="EAPOL version">
+            <ComboBox ItemsSource="{Binding EapolChoices}" SelectedItem="{Binding EapolVersion}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:Choice">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </ui:FormField>
+          <ui:FormField LabelWidth="240" Label="EAP identity">
+            <ComboBox ItemsSource="{Binding IdentityChoices}" SelectedItem="{Binding Identity}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:Choice">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </ui:FormField>
+          <ui:FormField LabelWidth="240" Label="Custom identity" IsVisible="{Binding IsCustomIdentity}" Hint="{}{serial} and {hostName} are replaced">
+            <TextBox Text="{Binding CustomIdentity}" PlaceholderText="e.g. axis-{serial}" />
+          </ui:FormField>
+          <ui:FormField LabelWidth="240" Label="RADIUS server CA" InputWidth="520">
+            <StackPanel Classes="inputRow">
+              <ComboBox ItemsSource="{Binding RadiusChoices}" SelectedItem="{Binding RadiusCa}" Width="280">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:Choice">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+              <Button Classes="secondary" Content="Import..." Command="{Binding ImportRadiusCaCommand}" IsVisible="{Binding IsRadiusImported}"
+                      ToolTip.Tip="Choose the CA certificate (.crt or .cer) that issued the RADIUS server's certificate" />
+              <Button Classes="secondary" Content="View" Command="{Binding ViewRadiusCaCommand}" IsVisible="{Binding IsRadiusImported}" />
+            </StackPanel>
+          </ui:FormField>
+          <ui:FormField LabelWidth="240" Classes="wide" IsVisible="{Binding IsRadiusImported}">
+            <TextBlock Classes="secondary" Text="{Binding RadiusCaLine}" TextWrapping="Wrap" />
+          </ui:FormField>
+          <ui:FormField LabelWidth="240" InputWidth="460">
+            <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+              <ui:StatusChip Text="{Binding SaveResult}" IsOk="True" IsVisible="{Binding SaveResult, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}"
+                      ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+            </StackPanel>
+          </ui:FormField>
+        </StackPanel>
+      </Border>
+
+      <!-- ============================== Previous certificate authorities ============================== -->
+      <Border Classes="card" IsVisible="{Binding HasPreviousCas}">
+        <StackPanel Classes="form">
+          <ui:CardHeader Title="Previous certificate authorities"
+                         Description="Still trusted by the server, so devices with their certificates keep working until they are renewed." />
+          <DataGrid ItemsSource="{Binding PreviousCas}" IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False"
+                    SelectionMode="Single" MaxHeight="320">
+            <DataGrid.Columns>
+              <DataGridTemplateColumn Header="Name" Width="*" x:DataType="vm:PreviousCaRowViewModel">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:PreviousCaRowViewModel">
+                    <TextBlock Text="{Binding Name}" ToolTip.Tip="{Binding Tooltip}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Valid until" Width="130" Binding="{Binding ValidUntil}" x:DataType="vm:PreviousCaRowViewModel" />
+              <DataGridTextColumn Header="Replaced" Width="130" Binding="{Binding Replaced}" x:DataType="vm:PreviousCaRowViewModel" />
+              <DataGridTemplateColumn Width="170" x:DataType="vm:PreviousCaRowViewModel">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:PreviousCaRowViewModel">
+                    <StackPanel Orientation="Horizontal" Spacing="16" Margin="10,0">
+                      <Button Classes="link" Content="Export"
+                              Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).ExportPreviousCommand}" CommandParameter="{Binding}"
+                              ToolTip.Tip="Save this CA certificate (PEM, public only)" />
+                      <Button Classes="link" Content="Remove"
+                              Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).RemovePreviousCommand}" CommandParameter="{Binding}"
+                              ToolTip.Tip="The server no longer trusts certificates of this CA" />
+                    </StackPanel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

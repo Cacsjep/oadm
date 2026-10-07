@@ -796,16 +796,19 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         }
     }
 
-    /// <summary>Core plugins simulated in fake mode (FakeOadmApi.SnapshotReport.cs).</summary>
+    /// <summary>Core plugins simulated in fake mode (FakeOadmApi.SnapshotReport.cs, FakeOadmApi.Pki.cs).</summary>
     private static IEnumerable<CorePluginInfo> FakeCorePlugins =>
     [
         new CorePluginInfo { Id = SnapshotReportPluginId, DisplayName = "Snapshot report", IconKey = "snapshot" },
+        new CorePluginInfo { Id = PkiPluginId, DisplayName = "PKI", IconKey = "key" },
     ];
 
-    public Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) =>
-        pluginId == SnapshotReportPluginId
-            ? InvokeSnapshotReportAsync(method, payloadJson, ct)
-            : throw new RpcException(new Status(StatusCode.NotFound, $"Unknown core plugin '{pluginId}'."));
+    public Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) => pluginId switch
+    {
+        SnapshotReportPluginId => InvokeSnapshotReportAsync(method, payloadJson, ct),
+        PkiPluginId => InvokePkiAsync(method, payloadJson),
+        _ => throw new RpcException(new Status(StatusCode.NotFound, $"Unknown core plugin '{pluginId}'.")),
+    };
 
     // ---------------------------------------------------------------- live view
 
