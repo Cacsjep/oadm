@@ -560,13 +560,19 @@ client).
   names each task with `ITaskPlugin.GetTaskName(payloadJson)` once per Run (trimmed, trailing "..."
   stripped, at most `TaskPluginNames.MaxTaskNameLength` = 48 characters, longer names shortened with
   "…" and a warning logged; empty or throwing = `DisplayName`). Names never contain secrets.
-- Task engine: at most 8 running tasks per plugin (`TaskEngineOptions.MaxParallelTasksPerPlugin`,
-  overridden by `ITaskPlugin.MaxParallelDevices`, e.g. firmware 2); further tasks wait in Queued
-  and a cancel while queued ends them as Cancelled ("Cancelled before start."). Cancellation via
+- Task engine parallelism: at most `Tasks.MaxParallelPerPlugin` running tasks (= devices) per plugin, a
+  **server setting** (default 16, 1..256, Settings page "Parallel tasks per plugin"). A plugin's
+  `ITaskPlugin.MaxParallelDevices` can only lower it: limit = min(setting, MaxParallelDevices) (firmware
+  sets 4: large uploads share the server's link). Further tasks wait in Queued (FIFO per plugin,
+  `Core/Tasks/PluginSlots`) and a cancel while queued ends them as Cancelled ("Cancelled before start.").
+  The engine reads the setting live (`TaskParallelismSetting` -> `TaskEngineOptions.MaxParallelTasksPerPluginSource`)
+  each time a queued task could start: a change applies without a server restart to tasks that start
+  afterwards (a raised limit starts queued tasks at once via `TaskEngine.RescheduleQueued`; a lowered one
+  never interrupts running tasks, new ones start when fewer run). The former configuration value
+  `Oadm:MaxParallelTasksPerPlugin` is no longer read. Example: a Restart on 5,000 devices at about 90 s
+  each takes about 8 hours at 16, about 1 hour at 128. Cancellation via
   `CancellationToken`, exceptions become `Failed` with message (also logged as an Error entry),
-  never crash the server. The default 8 can be raised for large sites with the server configuration
-  `Oadm:MaxParallelTasksPerPlugin` (1..256; e.g. a Restart on 5,000 devices at 8 in parallel and about
-  90 s each takes about 16 hours). A Run on N devices publishes N Added changes and writes all N tasks in
+  never crash the server. A Run on N devices publishes N Added changes and writes all N tasks in
   one store transaction (`ITaskStore.AddRangeAsync`) before any of them starts; the engine overhead
   is measured at about 9 ms per task with SQLite (5,000 trivial tasks in about 45 s).
 - Persistence: every state transition writes the snapshot plus new log entries; a progress
@@ -626,7 +632,7 @@ public interface ITaskPlugin : IPlugin
     bool ShowInToolbar { get; }
     bool RequiresDialog { get; }       // client opens the matching ITaskPluginDialog first
     bool CanRun(IDeviceInfo device);
-    int? MaxParallelDevices => null;   // concurrent tasks of this plugin; null = 8
+    int? MaxParallelDevices => null;   // concurrent tasks of this plugin, only lowers Tasks.MaxParallelPerPlugin; null = the setting (16)
     bool ShowInMenus => true;          // false: not in context menu/toolbar (ListTaskPlugins skips it); started by its core plugin
     string GetTaskName(string? payloadJson) => DisplayName;  // task list name: exactly what this task does, max 48, no secrets
     Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct);
@@ -1226,7 +1232,12 @@ page "Zero-conf scan duration (s)"), `Server.Name` (hostname),
 1..8760; both server-only, not on the settings page yet), `Tasks.RetentionDays` (90, 0..3650, 0 = no age
 limit) and `Tasks.MaxHistory` (50000, 0 or 100..1000000, 0 = no limit): task history retention, applied
 one minute after start and then hourly by `TaskRetentionHostedService` (finished tasks only, one bulk
-delete, one Removed change per task; server-only, not on the settings page yet), `Devices.UseHostName` (bool, false: add devices by host name when one is
+delete, one Removed change per task; server-only, not on the settings page yet),
+`Tasks.MaxParallelPerPlugin` (16, 1..256: how many tasks (= devices) of one task plugin run at the same
+time, read live by the task engine, plugin `MaxParallelDevices` can only lower it; proto
+`optional int32 max_parallel_tasks_per_plugin = 9` so a partial `Set` keeps it; Settings page "Parallel
+tasks per plugin" with the hint "How many devices a task runs on at the same time, e.g. restarts or
+firmware updates."), `Devices.UseHostName` (bool, false: add devices by host name when one is
 known, otherwise by IP address; proto `optional bool use_host_name = 7` so a partial `Set`
 keeps it). Settings page in the client exposes them; `Devices.UseHostName` is the checkbox
 "Use host name when available, otherwise IP address". Settings page card **Credential list**:

@@ -42,7 +42,8 @@ public interface ITaskPlugin : IPlugin
 
     /// <summary>
     /// How many tasks of this plugin may run at the same time (one task = one device); further tasks
-    /// wait in Queued. Null: the server default (8). Firmware upgrades use 2.
+    /// wait in Queued. Can only lower the server setting Tasks.MaxParallelPerPlugin (default 16): the
+    /// engine uses the smaller of the two. Null: the server setting. Firmware upgrades use 4.
     /// </summary>
     int? MaxParallelDevices => null;
 

@@ -27,6 +27,8 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
         Assert.Equal(32, settings.ScanParallelism);
         Assert.Equal(1500, settings.ScanTimeoutMs);
         Assert.Equal(30, settings.ZeroConfSeconds);
+        Assert.Equal(16, settings.MaxParallelTasksPerPlugin);
+        Assert.Equal(16, await _store.GetAsync<int>(SettingKeys.TasksMaxParallelPerPlugin, CancellationToken.None));
         Assert.Equal("http://0.0.0.0:5080", settings.ListenUrl);
         Assert.Equal(ServerSettings.DefaultServerName(), settings.ServerName);
         Assert.False(string.IsNullOrWhiteSpace(settings.ServerName));
@@ -54,7 +56,7 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
     [Fact]
     public async Task SetServerSettingsWritesAll()
     {
-        var wanted = new ServerSettings(30, 8, 3000, "oadm-lab", "http://127.0.0.1:6000", 20, UseHostName: true, ZeroConfSeconds: 120);
+        var wanted = new ServerSettings(30, 8, 3000, "oadm-lab", "http://127.0.0.1:6000", 20, UseHostName: true, ZeroConfSeconds: 120, MaxParallelTasksPerPlugin: 64);
 
         await _store.SetServerSettingsAsync(wanted, CancellationToken.None);
 
@@ -70,10 +72,57 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
     [InlineData(SettingKeys.DevicesUseHostName, "1")]
     [InlineData(SettingKeys.DiscoveryZeroConfSeconds, "4")]
     [InlineData(SettingKeys.DiscoveryZeroConfSeconds, "301")]
+    [InlineData(SettingKeys.TasksMaxParallelPerPlugin, "0")]
+    [InlineData(SettingKeys.TasksMaxParallelPerPlugin, "257")]
+    [InlineData(SettingKeys.TasksMaxParallelPerPlugin, "2.5")]
+    [InlineData(SettingKeys.TasksMaxParallelPerPlugin, "\"16\"")]
     [InlineData("Any.Key", "{not json")]
     public async Task InvalidValuesAreRejected(string key, string json)
     {
         await Assert.ThrowsAsync<ArgumentException>(() => _store.SetJsonAsync(key, json, CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(256)]
+    public async Task MaxParallelTasksPerPluginAcceptsItsRange(int value)
+    {
+        await _store.SetAsync(SettingKeys.TasksMaxParallelPerPlugin, value, CancellationToken.None);
+
+        Assert.Equal(value, (await _store.GetServerSettingsAsync(CancellationToken.None)).MaxParallelTasksPerPlugin);
+    }
+
+    [Fact]
+    public async Task InvalidMaxParallelTasksPerPluginWritesNothing()
+    {
+        var bad = ServerSettings.Defaults with { MaxParallelTasksPerPlugin = 0 };
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _store.SetServerSettingsAsync(bad, CancellationToken.None));
+        Assert.Equal(16, (await _store.GetServerSettingsAsync(CancellationToken.None)).MaxParallelTasksPerPlugin);
+    }
+
+    [Fact]
+    public async Task TaskParallelismSettingFollowsTheStore()
+    {
+        using var setting = new Oadm.Core.Tasks.TaskParallelismSetting(_store);
+        var changes = 0;
+        setting.Changed += (_, _) => changes++;
+        Assert.Equal(16, setting.Current);
+
+        await _store.SetAsync(SettingKeys.TasksMaxParallelPerPlugin, 40, CancellationToken.None);
+        Assert.Equal(40, setting.Current);
+
+        await _store.SetServerSettingsAsync((await _store.GetServerSettingsAsync(CancellationToken.None)) with { ServerName = "x" }, CancellationToken.None);
+        Assert.Equal(1, changes); // unchanged value: no event
+
+        await _store.ResetAsync(SettingKeys.TasksMaxParallelPerPlugin, CancellationToken.None);
+        Assert.Equal(16, setting.Current);
+        Assert.Equal(2, changes);
+
+        await _store.SetAsync(SettingKeys.TasksMaxParallelPerPlugin, 3, CancellationToken.None);
+        using var loaded = new Oadm.Core.Tasks.TaskParallelismSetting(_store);
+        await loaded.LoadAsync(CancellationToken.None);
+        Assert.Equal(3, loaded.Current);
     }
 
     [Fact]

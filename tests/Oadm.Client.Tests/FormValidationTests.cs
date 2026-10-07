@@ -276,6 +276,50 @@ public sealed class FormValidationTests
         }, CancellationToken.None);
     }
 
+    [Fact]
+    public async Task Parallel_tasks_per_plugin_loads_validates_below_itself_and_saves()
+    {
+        HeadlessUnitTestSession session = HeadlessSession.Shared;
+        await session.Dispatch(async () =>
+        {
+            var api = new Oadm.Client.Api.FakeOadmApi(TimeSpan.FromMilliseconds(5));
+            using var f = new DevicesFixture(api);
+            using var connection = new Oadm.Client.Shell.ServerConnection(f.Api, f.Store, f.Tasks, f.Ui,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Shell.ServerConnection>.Instance);
+            var vm = new Oadm.Client.Settings.SettingsViewModel(f.Api, f.Settings, connection,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Settings.SettingsViewModel>.Instance);
+            await vm.LoadAsync();
+            Assert.Equal(16m, vm.MaxParallelTasksPerPlugin);
+
+            var window = new Window { Width = 900, Height = 1100, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
+            window.Show();
+            FormField field = window.GetVisualDescendants().OfType<FormField>().Single(x => x.Label == "Parallel tasks per plugin");
+            Assert.Equal("How many devices a task runs on at the same time, e.g. restarts or firmware updates.", field.Hint);
+
+            foreach (decimal? bad in new decimal?[] { null, 0m, 257m, 2.5m })
+            {
+                vm.MaxParallelTasksPerPlugin = bad;
+                Dispatcher.UIThread.RunJobs();
+                Assert.Equal("Enter a whole number from 1 to 256.", vm.ErrorOf(nameof(vm.MaxParallelTasksPerPlugin)));
+                Assert.True(field.HasError);
+                Assert.False(vm.SaveCommand.CanExecute(null));
+            }
+
+            vm.MaxParallelTasksPerPlugin = 32;
+            Dispatcher.UIThread.RunJobs();
+            Assert.Null(vm.ErrorOf(nameof(vm.MaxParallelTasksPerPlugin)));
+            Assert.False(field.HasError);
+            await vm.SaveCommand.ExecuteAsync(null);
+            Assert.Equal(32, (await api.GetSettingsAsync(CancellationToken.None)).MaxParallelTasksPerPlugin);
+
+            // A partial update without the field keeps it, like the server.
+            await api.SetSettingsAsync(new Oadm.Contracts.V1.ServerSettings { PollingIntervalSeconds = 60, FullRefreshMinutes = 10 }, CancellationToken.None);
+            await vm.LoadAsync();
+            Assert.Equal(32m, vm.MaxParallelTasksPerPlugin);
+            window.Close();
+        }, CancellationToken.None);
+    }
+
     private static double LabelTop(FormField field)
     {
         TextBlock label = field.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("fieldLabel"));

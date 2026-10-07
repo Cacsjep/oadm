@@ -76,6 +76,16 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
     public bool RequiresDialog => true;
 
+    /// <summary>Upgrades running at the same time.</summary>
+    public const int MaxParallelUpgrades = 4;
+
+    /// <summary>
+    /// At most <see cref="MaxParallelUpgrades"/> upgrades at once, also when the server setting
+    /// Tasks.MaxParallelPerPlugin is higher: every upgrade streams a 100-250 MB image from the server, and
+    /// more parallel uploads only share the server's link (each one slower, more upload timeouts).
+    /// </summary>
+    public int? MaxParallelDevices => MaxParallelUpgrades;
+
     /// <summary>"Upgrade firmware to 12.11.77" etc., see <see cref="FirmwarePayload.TaskName"/>.</summary>
     public string GetTaskName(string? payloadJson)
     {

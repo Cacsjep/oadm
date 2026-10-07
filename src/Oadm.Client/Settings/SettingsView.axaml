@@ -32,6 +32,10 @@
                           Hint="A scan on the add devices page ends after this time; Scan again starts a new one">
               <NumericUpDown Minimum="5" Maximum="300" Increment="5" FormatString="0" Value="{Binding ZeroConfSeconds}" />
             </ui:FormField>
+            <ui:FormField Label="Parallel tasks per plugin"
+                          Hint="How many devices a task runs on at the same time, e.g. restarts or firmware updates.">
+              <NumericUpDown Minimum="1" Maximum="256" Increment="1" FormatString="0" Value="{Binding MaxParallelTasksPerPlugin}" />
+            </ui:FormField>
             <ui:FormField Label="Server name">
               <TextBox Text="{Binding ServerName}" />
             </ui:FormField>
