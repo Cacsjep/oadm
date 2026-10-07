@@ -1,0 +1,96 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:net="using:Oadm.Sdk.Network"
+             xmlns:vm="using:Oadm.Plugins.DhcpServer.Client"
+             x:Class="Oadm.Plugins.DhcpServer.Client.DhcpServerView"
+             x:DataType="vm:DhcpServerViewModel"
+             ui:PageHeader.Subtitle="Gives the cameras their IP addresses (DHCP, UDP port 67).">
+  <!-- Description and status live in the host page header (ui:PageHeader); the card starts with the form. -->
+  <ui:PageHeader.Trailing>
+    <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"
+                   IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}"
+                   ToolTip.Tip="{Binding StatusDetail}" x:DataType="vm:DhcpServerViewModel" />
+  </ui:PageHeader.Trailing>
+  <!-- One card (the host's page card): settings form, then the lease list. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,Auto,*">
+    <StackPanel Grid.Row="0" Classes="form">
+      <ui:FormField>
+        <CheckBox Content="Enable DHCP server" IsChecked="{Binding IsEnabled}" />
+      </ui:FormField>
+
+      <ui:FormField Label="Listen on" InputWidth="460" Error="{Binding InterfaceError}">
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Listen.Items}" SelectedItem="{Binding Listen.Selected}"
+                  ToolTip.Tip="The interface the cameras are connected to. Only interfaces with an IPv4 address are listed.">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="net:InterfaceOption">
+              <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+      </ui:FormField>
+
+      <StackPanel Classes="inputRow">
+        <ui:FormField Label="Start address" InputWidth="180">
+          <TextBox Text="{Binding RangeStart}" PlaceholderText="e.g. 10.0.0.100" />
+        </ui:FormField>
+        <ui:FormField Classes="inline" Label="End address" InputWidth="180">
+          <TextBox Text="{Binding RangeEnd}" PlaceholderText="e.g. 10.0.0.199" />
+        </ui:FormField>
+      </StackPanel>
+
+      <ui:FormField Classes="wide">
+        <TextBlock Classes="secondary" Text="{Binding ClientsGetText}" IsVisible="{Binding ClientsGetText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   TextWrapping="Wrap" />
+      </ui:FormField>
+
+      <ui:FormField InputWidth="460">
+        <Button Classes="primary" HorizontalAlignment="Right" Content="Save" Command="{Binding SaveCommand}"
+                ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
+      </ui:FormField>
+    </StackPanel>
+
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" Margin="{DynamicResource Oadm.GapTop}">
+      <TextBlock Grid.Column="0" Classes="sectionTitle" Text="Leases" VerticalAlignment="Center" />
+      <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding LeaseSummary}" VerticalAlignment="Center" Margin="12,0,0,0" />
+      <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" Placeholder="Search MAC, IP address, name" Width="260" Margin="0,0,8,0" />
+      <ui:ToolbarButton Grid.Column="3" IconKey="add" Text="Static lease" Command="{Binding AddStaticCommand}"
+                        ToolTip.Tip="Reserve an IP address for a device (by its MAC address)" />
+    </Grid>
+
+    <Panel Grid.Row="2" Margin="0,8,0,0">
+      <DataGrid x:Name="LeaseGrid" ItemsSource="{Binding Rows}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
+                SelectionMode="Single" MinHeight="160">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="MAC address" Width="150" Binding="{Binding Mac}" x:DataType="vm:LeaseRowViewModel" />
+          <DataGridTextColumn Header="IP address" Width="130" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:LeaseRowViewModel" />
+          <DataGridTextColumn Header="Host name / device" Width="*" Binding="{Binding HostOrDevice}" x:DataType="vm:LeaseRowViewModel" />
+          <DataGridTextColumn Header="Type" Width="90" Binding="{Binding Type}" x:DataType="vm:LeaseRowViewModel" />
+          <DataGridTextColumn Header="Expires" Width="110" Binding="{Binding Expires}" SortMemberPath="ExpiresSortKey" x:DataType="vm:LeaseRowViewModel" />
+          <DataGridTemplateColumn Width="190" CanUserSort="False" x:DataType="vm:LeaseRowViewModel">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="vm:LeaseRowViewModel">
+                <StackPanel Orientation="Horizontal" Spacing="16" Margin="10,0">
+                  <Button Classes="link" Content="Edit" IsVisible="{Binding IsStatic}"
+                          Command="{Binding $parent[UserControl].((vm:DhcpServerViewModel)DataContext).EditStaticCommand}" CommandParameter="{Binding}"
+                          ToolTip.Tip="Change the MAC address, IP address or name" />
+                  <Button Classes="link" Content="Delete" IsVisible="{Binding IsStatic}"
+                          Command="{Binding $parent[UserControl].((vm:DhcpServerViewModel)DataContext).DeleteStaticCommand}" CommandParameter="{Binding}"
+                          ToolTip.Tip="Delete the static lease" />
+                  <Button Classes="link" Content="Make static" IsVisible="{Binding IsDynamic}"
+                          Command="{Binding $parent[UserControl].((vm:DhcpServerViewModel)DataContext).MakeStaticCommand}" CommandParameter="{Binding}"
+                          ToolTip.Tip="The device always gets this address" />
+                  <Button Classes="link" Content="Release" IsVisible="{Binding IsDynamic}"
+                          Command="{Binding $parent[UserControl].((vm:DhcpServerViewModel)DataContext).ReleaseCommand}" CommandParameter="{Binding}"
+                          ToolTip.Tip="Free the address; the device asks again at its next renewal" />
+                </StackPanel>
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+        </DataGrid.Columns>
+      </DataGrid>
+      <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding !HasRows}"
+                 HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
+    </Panel>
+  </Grid>
+</UserControl>

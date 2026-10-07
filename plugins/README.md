@@ -311,7 +311,11 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
 - Third sample: the NTP server (`plugins/Oadm.Plugins.NtpServer` + `.Client`, id `oadm.ntp-server`, spec in
   `CLAUDE.md` "NTP server plugin" and `docs/specs/ntp-server.md`): a network service in a core plugin (UDP responder,
   background upstream loop), persisted settings, live request log on the page, a contributed task that configures
-  devices. The DHCP server plugin follows the same pattern.
+  devices.
+- Fourth sample: the DHCP server (`plugins/Oadm.Plugins.DhcpServer` + `.Client`, id `oadm.dhcp-server`, spec in `CLAUDE.md`
+  "DHCP server plugin" and `docs/specs/dhcp-server.md`, manual test plan in its `README.md`): a service with an
+  injectable socket layer (`IDhcpSocketFactory`, in-memory network in the tests), a persisted lease table in plugin
+  settings, live lease changes with versions, a page with a virtualized lease grid and a dialog.
 
 ### Host support for service plugins (NTP, DHCP, ...)
 
@@ -327,12 +331,24 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
   and after the sequence ended wait ~2 s, re-read and watch again (this doubles as polling). Pattern:
   `NtpServerViewModel.RunAsync`.
 - **Server network interfaces**: `Oadm.Sdk.Network.SystemNetworkInterfaces.Instance.List()` returns
-  `ServerNetworkInterface` (id, name, description, addresses IPv4 first, up, loopback; `PrimaryAddress`) on Windows,
-  Linux and macOS. Depend on `IServerNetworkInterfaces` so tests inject fixed interfaces; return the list from a page
-  method (it lives on the server, the client machine has other interfaces).
-- **Privileged ports**: make the port injectable (tests bind 0 on 127.0.0.1, never the real port) and map bind errors
-  per OS: Windows has no privileged ports (AccessDenied = another program holds the port exclusively), Linux needs root
-  or `cap_net_bind_service`, macOS root for a single address. See `NtpStatusTexts.ForBindError`.
+  `ServerNetworkInterface` (id, name, description, addresses IPv4 first, up, loopback; `PrimaryAddress`, `PrimaryIpv4`,
+  plus `PrefixLengths`, `Gateways`, `DnsServers`, `DnsSuffix`, `Ipv4Index`) on Windows, Linux and macOS. Depend on
+  `IServerNetworkInterfaces` so tests inject fixed interfaces; return the list from a page method (it lives on the
+  server, the client machine has other interfaces). `InterfaceOptions.From(nic, addressText)` builds the select entry
+  (`InterfaceOption`, label "Ethernet - 10.0.0.17/24 (Intel I219)"); on the page `Oadm.Sdk.Client.Network.InterfaceSelection`
+  is the select's view model (items, selection kept across refreshes, a configured interface that is gone stays as
+  "(not available)"); bind the ComboBox to `Listen.Items` / `Listen.Selected`.
+- **Privileged ports**: make the port injectable (tests bind 0 on 127.0.0.1 or use an in-memory transport, never the
+  real port) and map bind errors per OS with `Oadm.Sdk.Network.PortBindErrors` (`Classify(SocketError, HostOs)`:
+  Windows has no privileged ports, AccessDenied = another program holds the port; Linux needs root or
+  `cap_net_bind_service`, macOS root for a single address; `InUseText`, `PermissionText`, `FindUdpPortOwner`,
+  `PermissionFix` for the texts). `HostOsInfo.Current`, `ScQueryServiceProbe` (Windows: is a service running, e.g.
+  W32Time, DHCPServer). See `NtpStatusTexts.ForBindError` and `DhcpStatusTexts.ForBindError`.
+- **Status line**: `Oadm.Sdk.Network.ServiceStatus` (kind ok / neutral / warning / error, plain text for technicians,
+  detail = the fix, shown as tooltip); protocol details go to the server log only.
+- **Rate limits**: `Oadm.Sdk.Network.KeyedRateLimiter<TKey>` (token bucket per key such as a client address or MAC,
+  LRU-capped table with idle expiry, one global bucket, per-key notices like "log once a minute"); no allocations in
+  the steady state. NTP: per client address; DHCP: per MAC.
 
 - Build pages like dialogs: shared controls (`ui:ToolbarButton`, `ui:SearchBox`, `ui:ProgressRow`,
   `ui:StatusChip`, ...), theme classes only, view models without Avalonia platform calls (decode images
