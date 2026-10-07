@@ -21,6 +21,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Recorded read-only answers of 10.0.0.48 (AXIS OS 12.11) from the PKI research, plus the time-service answer. -->
+    <None Include="..\..\docs\specs\pki-research\*.json;..\..\docs\specs\pki-research\*.xml;..\..\docs\specs\pki-research\*.txt" Link="Fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Oadm.Plugins.DateTime.Tests\Fixtures\time-service-getDateTimeInfo-P3265-V-12.11.json" Link="Fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Runs plugins against a step list the way the task engine does. -->
+    <Compile Include="..\Shared\StepRun.cs" Link="Shared\StepRun.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Oadm.Client supplies the host theme (OadmTheme.axaml), the host page view and the fake backend; Oadm.Core the
          event hub, the secret protector and the trust anchor registry. -->
     <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />

@@ -23,6 +23,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\CachedApiCheck.cs" Link="Common\CachedApiCheck.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Oadm.Plugins.Pki.Tests" />
   </ItemGroup>
 

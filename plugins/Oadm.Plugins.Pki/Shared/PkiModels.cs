@@ -178,6 +178,9 @@ public sealed record IssuedCertificate
     public DateTime NotAfterUtc { get; init; }
 
     public DateTime IssuedUtc { get; init; }
+
+    /// <summary>Alias of the certificate on the device ("OADM HTTPS 20261007-120000").</summary>
+    public string? Alias { get; init; }
 }
 
 /// <summary>The active CA as the page shows it.</summary>

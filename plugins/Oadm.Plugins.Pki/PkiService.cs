@@ -44,6 +44,7 @@ public sealed partial class PkiService : IAsyncDisposable
     private readonly ITrustAnchors? _anchors;
     private readonly ILogger _logger;
     private readonly ITrustStoreInstaller _trustStore;
+    private readonly IssuedRegistry _issued;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _stopping = new();
     private volatile CaMaterial? _ca;
@@ -64,6 +65,7 @@ public sealed partial class PkiService : IAsyncDisposable
         _anchors = anchors;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _trustStore = options.TrustStore ?? TrustStoreInstallers.ForServer(logger);
+        _issued = new IssuedRegistry(_store, options.Time);
     }
 
     /// <summary>The server offers no secret protection: no CA can be kept.</summary>
@@ -73,6 +75,15 @@ public sealed partial class PkiService : IAsyncDisposable
     public CaMaterial? Ca => _ca;
 
     public PkiConfig Config => _config;
+
+    /// <summary>The registry of issued device certificates (written by the task plugins).</summary>
+    public IssuedRegistry Issued => _issued;
+
+    /// <summary>Ids (SHA-256) of the active and the previous CAs.</summary>
+    public IReadOnlyList<string> KnownCaIds => [.. (_ca is { } ca ? new[] { ca.Id } : []), .. _previous.Select(p => p.Id)];
+
+    /// <summary>The server clock of the plugin.</summary>
+    public TimeProvider Time => _options.Time;
 
     /// <summary>Completes when the default CA of the first start is created (tests).</summary>
     public Task Background => _background;
@@ -120,6 +131,7 @@ public sealed partial class PkiService : IAsyncDisposable
             // stopping
         }
 
+        await _issued.DisposeAsync().ConfigureAwait(false);
         _stopping.Dispose();
         _gate.Dispose();
     }
@@ -132,7 +144,7 @@ public sealed partial class PkiService : IAsyncDisposable
         var config = _config;
         var now = Now.UtcDateTime;
         var previous = _previous.Where(p => ReadNotAfter(p.CertificatePem) is not { } end || end > now).ToList();
-        var issued = await _store.LoadIssuedAsync(ct).ConfigureAwait(false);
+        var issued = await _issued.SnapshotAsync(ct).ConfigureAwait(false);
         var counts = IssuedCounts.From(issued, ca?.Id, now, config.ExpiryWarningDays);
 
         bool? installed = null;
@@ -724,7 +736,7 @@ public sealed partial class PkiService : IAsyncDisposable
             return 0;
         }
 
-        var issued = await _store.LoadIssuedAsync(ct).ConfigureAwait(false);
+        var issued = await _issued.SnapshotAsync(ct).ConfigureAwait(false);
         return IssuedCounts.From(issued, ca.Id, Now.UtcDateTime, _config.ExpiryWarningDays).WithCurrentCa;
     }
 
