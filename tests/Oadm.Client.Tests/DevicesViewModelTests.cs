@@ -171,14 +171,14 @@ public sealed class DevicesViewModelTests
         await f.SetPluginsAsync(restart);
         f.Api.RunTaskAsync(default!, default!, default, default!, default).ReturnsForAnyArgs("task-1");
         f.Select("1", "2");
+        f.TasksVm.IsExpanded = false;
 
         await f.Devices.RunPluginCommand.ExecuteAsync(restart);
 
         await f.Api.Received(1).RunTaskAsync("oadm.restart",
             Arg.Is<IReadOnlyCollection<string>>(ids => ids.SequenceEqual(new[] { "1", "2" })),
             Arg.Is<string?>(p => p == null), Arg.Any<string>(), Arg.Any<CancellationToken>());
-        Assert.True(f.TasksVm.IsExpanded);
-        Assert.True(f.TasksVm.IsTasksTab);
+        Assert.True(f.TasksVm.IsExpanded); // a started task brings the collapsed pane back
     }
 
     [Fact]

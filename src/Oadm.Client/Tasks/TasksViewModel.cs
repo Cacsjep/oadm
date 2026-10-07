@@ -10,11 +10,10 @@ using Oadm.Client.Api;
 using Oadm.Client.Devices;
 using Oadm.Client.Dialogs;
 using Oadm.Client.Infrastructure;
-using Oadm.Client.Logging;
 
 namespace Oadm.Client.Tasks;
 
-/// <summary>The Tasks / Log pane below the device grid, also used as the full Tasks page.</summary>
+/// <summary>The resizable, collapsible Tasks pane below the device grid.</summary>
 public sealed partial class TasksViewModel : ObservableObject
 {
     private readonly TaskStore _store;
@@ -24,11 +23,13 @@ public sealed partial class TasksViewModel : ObservableObject
     private readonly IClientSettingsStore _settings;
     private readonly ILogger<TasksViewModel> _logger;
 
-    public TasksViewModel(TaskStore store, DeviceStore devices, IOadmApi api, IDialogService dialogs, LogStore log,
+    public const double DefaultPaneHeight = 260;
+    public const double MinPaneHeight = 120;
+
+    public TasksViewModel(TaskStore store, DeviceStore devices, IOadmApi api, IDialogService dialogs,
         IClientSettingsStore settings, ILogger<TasksViewModel> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
-        ArgumentNullException.ThrowIfNull(log);
         ArgumentNullException.ThrowIfNull(settings);
         _store = store;
         _devices = devices;
@@ -36,14 +37,15 @@ public sealed partial class TasksViewModel : ObservableObject
         _dialogs = dialogs;
         _settings = settings;
         _logger = logger;
-        LogEntries = log.Entries;
         IsExpanded = settings.Current.BottomPaneExpanded;
-        IsLogTab = settings.Current.BottomPaneTab == 1;
+        PaneHeight = settings.Current.TasksPaneHeight >= MinPaneHeight ? settings.Current.TasksPaneHeight : DefaultPaneHeight;
+        store.Tasks.CollectionChanged += (_, _) => DeleteAllCommand.NotifyCanExecuteChanged();
         store.Changed += (_, task) =>
         {
             OnPropertyChanged(nameof(ActiveCount));
             OnPropertyChanged(nameof(HasActive));
             OnPropertyChanged(nameof(ActiveCountText));
+            DeleteAllCommand.NotifyCanExecuteChanged();
             if (task is not null && task == SelectedTask)
             {
                 NotifySelectionCommands();
@@ -52,7 +54,6 @@ public sealed partial class TasksViewModel : ObservableObject
     }
 
     public ObservableCollection<TaskRowViewModel> Tasks => _store.Tasks;
-    public ObservableCollection<LogEntry> LogEntries { get; }
 
     public int ActiveCount => _store.ActiveCount;
     public bool HasActive => ActiveCount > 0;
@@ -65,15 +66,9 @@ public sealed partial class TasksViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsExpanded { get; set; }
 
+    /// <summary>Height of the expanded pane, changed by the splitter above it. Persisted per client.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsTasksTab))]
-    public partial bool IsLogTab { get; set; }
-
-    public bool IsTasksTab
-    {
-        get => !IsLogTab;
-        set => IsLogTab = !value;
-    }
+    public partial double PaneHeight { get; set; }
 
     partial void OnIsExpandedChanged(bool value)
     {
@@ -81,28 +76,27 @@ public sealed partial class TasksViewModel : ObservableObject
         _settings.Save();
     }
 
-    partial void OnIsLogTabChanged(bool value)
+    partial void OnPaneHeightChanged(double value)
     {
-        _settings.Current.BottomPaneTab = value ? 1 : 0;
+        _settings.Current.TasksPaneHeight = value;
         _settings.Save();
+    }
+
+    /// <summary>Called by the view when the user finished dragging the splitter.</summary>
+    public void CommitPaneHeight(double height)
+    {
+        if (double.IsFinite(height))
+        {
+            PaneHeight = Math.Max(MinPaneHeight, Math.Round(height));
+        }
     }
 
     [RelayCommand]
     private void ToggleExpanded() => IsExpanded = !IsExpanded;
 
+    /// <summary>Makes the pane visible, e.g. after a task was started.</summary>
     [RelayCommand]
-    private void ShowTasks()
-    {
-        IsLogTab = false;
-        IsExpanded = true;
-    }
-
-    [RelayCommand]
-    private void ShowLog()
-    {
-        IsLogTab = true;
-        IsExpanded = true;
-    }
+    private void ShowTasks() => IsExpanded = true;
 
     private bool HasSelection => SelectedTask is not null;
     private bool CanCancel => SelectedTask?.IsActive == true;
@@ -152,6 +146,31 @@ public sealed partial class TasksViewModel : ObservableObject
         {
             LogActionFailed(_logger, ex, "delete", task.Name);
             await _dialogs.ShowMessageAsync("Delete task", "The task could not be deleted: " + ex.Message).ConfigureAwait(true);
+        }
+    }
+
+    private bool HasTasks => Tasks.Count > 0;
+
+    [RelayCommand(CanExecute = nameof(HasTasks))]
+    private async Task DeleteAllAsync()
+    {
+        int active = ActiveCount;
+        string message = active > 0
+            ? $"Delete all {Tasks.Count} tasks? {active} running task(s) will be cancelled first. This cannot be undone."
+            : $"Delete all {Tasks.Count} tasks from the history? This cannot be undone.";
+        if (!await _dialogs.ConfirmAsync("Delete all tasks", message, "Delete all").ConfigureAwait(true))
+        {
+            return;
+        }
+
+        try
+        {
+            await _api.DeleteAllTasksAsync(CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            LogActionFailed(_logger, ex, "delete", "all");
+            await _dialogs.ShowMessageAsync("Delete all tasks", "The tasks could not be deleted: " + ex.Message).ConfigureAwait(true);
         }
     }
 

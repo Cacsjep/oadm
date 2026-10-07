@@ -465,6 +465,28 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         return Task.CompletedTask;
     }
 
+    public Task<int> DeleteAllTasksAsync(CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            foreach (TaskInfo task in _tasks.Where(t => t.State is TaskState.Queued or TaskState.Running).ToList())
+            {
+                _jobs.Remove(task.Id);
+                Finish(task, TaskState.Cancelled, "Cancelled by user");
+            }
+
+            List<TaskInfo> all = [.. _tasks];
+            _tasks.Clear();
+            foreach (TaskInfo task in all)
+            {
+                _taskEvents.Publish(new TaskChanged { Kind = TaskChanged.Types.Kind.Removed, Task = new TaskInfo { Id = task.Id } });
+            }
+
+            return Task.FromResult(all.Count);
+        }
+    }
+
     // ---------------------------------------------------------------- settings and core plugins
 
     public Task<ServerSettings> GetSettingsAsync(CancellationToken ct)

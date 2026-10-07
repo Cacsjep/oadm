@@ -122,6 +122,9 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task DeleteTaskAsync(string taskId, CancellationToken ct) =>
         await C.Tasks.DeleteAsync(new TaskIdRequest { TaskId = taskId }, cancellationToken: ct);
 
+    public async Task<int> DeleteAllTasksAsync(CancellationToken ct) =>
+        (await C.Tasks.DeleteAllAsync(new Empty(), cancellationToken: ct)).Deleted;
+
     public async Task<ServerSettings> GetSettingsAsync(CancellationToken ct) =>
         await C.Settings.GetAsync(new Empty(), cancellationToken: ct);
 

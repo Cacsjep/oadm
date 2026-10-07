@@ -7,7 +7,6 @@ using Oadm.Client.Devices;
 using Oadm.Client.Dialogs;
 using Oadm.Client.Discovery;
 using Oadm.Client.Infrastructure;
-using Oadm.Client.Logging;
 using Oadm.Client.Plugins;
 using Oadm.Client.Tasks;
 using Oadm.Contracts.V1;
@@ -77,7 +76,7 @@ internal sealed class DevicesFixture : IDisposable
         Registry = registry;
         Catalog = new TaskPluginCatalog(Api, Ui, NullLogger<TaskPluginCatalog>.Instance) { DebounceDelay = TimeSpan.FromHours(1) };
         Runner = new TaskPluginRunner(Api, Registry, Dialogs, NullLogger<TaskPluginRunner>.Instance);
-        TasksVm = new TasksViewModel(Tasks, Store, Api, Dialogs, new LogStore(Ui), Settings, NullLogger<TasksViewModel>.Instance);
+        TasksVm = new TasksViewModel(Tasks, Store, Api, Dialogs, Settings, NullLogger<TasksViewModel>.Instance);
         Devices = new DevicesViewModel(Store, Catalog, Runner, Api, Dialogs, Launcher,
             mode => new AddDevicesWizardViewModel(Api, Ui, NullLogger<AddDevicesWizardViewModel>.Instance, mode),
             new ColumnLayoutViewModel(Settings), TasksVm, NullLogger<DevicesViewModel>.Instance);

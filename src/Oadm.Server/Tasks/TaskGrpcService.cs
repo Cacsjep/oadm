@@ -110,6 +110,32 @@ public sealed partial class TaskGrpcService(
         return new Proto.Empty();
     }
 
+    /// <summary>Clears the task history: requests cancellation of every active task first, then deletes all tasks.</summary>
+    public override async Task<Proto.DeleteAllReply> DeleteAll(Proto.Empty request, ServerCallContext context)
+    {
+        var ct = context.CancellationToken;
+        var tasks = await engine.ListAsync(ct).ConfigureAwait(false);
+
+        // Cancel all at once so they stop in parallel instead of one after the other.
+        foreach (var task in tasks.Where(t => !t.State.IsTerminal()))
+        {
+            engine.Cancel(task.Id);
+        }
+
+        var deleted = 0;
+        foreach (var task in tasks)
+        {
+            // DeleteAsync waits for a cancelled task to stop and publishes Removed.
+            if (await engine.DeleteAsync(task.Id, ct).ConfigureAwait(false))
+            {
+                deleted++;
+            }
+        }
+
+        LogDeletedAll(deleted);
+        return new Proto.DeleteAllReply { Deleted = deleted };
+    }
+
     private bool SafeCanRun(RegisteredTaskPlugin plugin, Device device)
     {
         try
@@ -127,6 +153,9 @@ public sealed partial class TaskGrpcService(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Task plugin {PluginId} could not be described")]
     private partial void LogPluginInfoFailed(Exception ex, string pluginId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleted all tasks ({Count})")]
+    private partial void LogDeletedAll(int count);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Task plugin {PluginId}: CanRun threw for device {DeviceId}")]
     private partial void LogCanRunFailed(Exception ex, string pluginId, Guid deviceId);

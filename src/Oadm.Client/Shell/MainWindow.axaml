@@ -6,7 +6,7 @@
         xmlns:c="using:Oadm.Client.Controls"
         xmlns:shell="using:Oadm.Client.Shell"
         xmlns:dev="using:Oadm.Client.Devices"
-        xmlns:tasks="using:Oadm.Client.Tasks"
+        xmlns:log="using:Oadm.Client.Logging"
         xmlns:settings="using:Oadm.Client.Settings"
         mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="900"
         x:Class="Oadm.Client.Shell.MainWindow"
@@ -14,6 +14,7 @@
         Title="OADM"
         Width="1440" Height="900" MinWidth="1000" MinHeight="640"
         WindowStartupLocation="CenterScreen"
+        WindowState="Maximized"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="{StaticResource Oadm.TitleBarHeight}">
 
@@ -21,14 +22,11 @@
     <DataTemplate DataType="dev:DevicesViewModel">
       <dev:DevicesView />
     </DataTemplate>
-    <DataTemplate DataType="tasks:TasksViewModel">
-      <tasks:TasksPageView />
+    <DataTemplate DataType="log:LogsViewModel">
+      <log:LogsView />
     </DataTemplate>
     <DataTemplate DataType="settings:SettingsViewModel">
       <settings:SettingsView />
-    </DataTemplate>
-    <DataTemplate DataType="shell:AboutViewModel">
-      <shell:AboutView />
     </DataTemplate>
     <DataTemplate DataType="shell:CorePluginPageViewModel">
       <shell:CorePluginPageView />
@@ -36,34 +34,41 @@
   </Window.DataTemplates>
 
   <Grid RowDefinitions="Auto,*">
-    <!-- Title bar: app name left, connection state, system window buttons top-right -->
+    <!-- Title bar: app name left, system window buttons top-right. No connection indicator (see banner). -->
     <Border Grid.Row="0" Height="{StaticResource Oadm.TitleBarHeight}" Background="{StaticResource Oadm.WindowBackgroundBrush}"
             chrome:WindowDecorationProperties.ElementRole="TitleBar">
-      <Grid ColumnDefinitions="Auto,*,Auto" Margin="24,0,150,0">
-        <TextBlock Grid.Column="0" Classes="appName" Text="{x:Static shell:MainWindowViewModel.AppName}" VerticalAlignment="Center" />
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-          <Ellipse Classes="statusDot titleBar"
-                   Classes.ok="{Binding Connection.IsConnected}"
-                   Classes.warn="{Binding Connection.IsConnecting}"
-                   Classes.error="{Binding Connection.IsDisconnected}" />
-          <TextBlock Classes="secondary" Text="{Binding Connection.StatusText}" VerticalAlignment="Center" />
-        </StackPanel>
-      </Grid>
+      <TextBlock Classes="appName" Text="{x:Static shell:MainWindowViewModel.AppName}" Margin="20,0,0,0" VerticalAlignment="Center" />
     </Border>
 
     <Grid Grid.Row="1" ColumnDefinitions="Auto,*">
-      <!-- Navigation rail -->
-      <DockPanel Grid.Column="0" Width="{StaticResource Oadm.NavWidth}" Margin="16,4,16,16" LastChildFill="False">
+      <!-- Navigation rail: collapsed = icons with tooltips, expanded = icon + label -->
+      <DockPanel Grid.Column="0" Classes="rail" Classes.expanded="{Binding IsNavExpanded}" LastChildFill="False">
+        <Button DockPanel.Dock="Bottom" Classes="nav toggle" Margin="0,2"
+                Command="{Binding ToggleNavCommand}"
+                ToolTip.Tip="{Binding NavToggleText}" ToolTip.Placement="Right">
+          <Grid ColumnDefinitions="Auto,*">
+            <Panel Grid.Column="0">
+              <c:OadmIcon Data="{StaticResource Icon.panelOpen}" IsVisible="{Binding !IsNavExpanded}" />
+              <c:OadmIcon Data="{StaticResource Icon.panelClose}" IsVisible="{Binding IsNavExpanded}" />
+            </Panel>
+            <TextBlock Grid.Column="1" Classes="navLabel secondary" Text="{Binding NavToggleText}" Margin="12,0,0,0"
+                       VerticalAlignment="Center" IsVisible="{Binding IsNavExpanded}" />
+          </Grid>
+        </Button>
+        <Border DockPanel.Dock="Bottom" Classes="separator" Margin="4,6" />
         <ItemsControl DockPanel.Dock="Bottom" ItemsSource="{Binding BottomNavItems}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="shell:NavItemViewModel">
               <Button Classes="nav" Classes.selected="{Binding IsSelected}" Margin="0,2"
                       Command="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).NavigateCommand}"
-                      CommandParameter="{Binding}">
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                  <c:OadmIcon Data="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" />
-                  <TextBlock Classes="navLabel" Text="{Binding Title}" VerticalAlignment="Center" />
-                </StackPanel>
+                      CommandParameter="{Binding}"
+                      ToolTip.Tip="{Binding Title}" ToolTip.Placement="Right"
+                      ToolTip.ServiceEnabled="{Binding !$parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}">
+                <Grid ColumnDefinitions="Auto,*">
+                  <c:OadmIcon Grid.Column="0" Data="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" />
+                  <TextBlock Grid.Column="1" Classes="navLabel" Text="{Binding Title}" Margin="12,0,0,0" VerticalAlignment="Center"
+                             IsVisible="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}" />
+                </Grid>
               </Button>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
@@ -72,13 +77,16 @@
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="shell:NavItemViewModel">
               <StackPanel>
-                <Border Classes="separator" Margin="10,6" IsVisible="{Binding HasSeparatorBefore}" />
+                <Border Classes="separator" Margin="4,6" IsVisible="{Binding HasSeparatorBefore}" />
                 <Button Classes="nav" Classes.selected="{Binding IsSelected}" Margin="0,2"
                         Command="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).NavigateCommand}"
-                        CommandParameter="{Binding}">
+                        CommandParameter="{Binding}"
+                        ToolTip.Tip="{Binding Title}" ToolTip.Placement="Right"
+                        ToolTip.ServiceEnabled="{Binding !$parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}">
                   <Grid ColumnDefinitions="Auto,*,Auto">
                     <c:OadmIcon Grid.Column="0" Data="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" />
-                    <TextBlock Grid.Column="1" Classes="navLabel" Text="{Binding Title}" Margin="12,0,0,0" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Classes="navLabel" Text="{Binding Title}" Margin="12,0,0,0" VerticalAlignment="Center"
+                               IsVisible="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}" />
                     <Border Grid.Column="2" Classes="badge" IsVisible="{Binding HasBadge}">
                       <TextBlock Text="{Binding Badge}" />
                     </Border>
@@ -90,7 +98,7 @@
         </ItemsControl>
       </DockPanel>
 
-      <!-- Page -->
+      <!-- Page; the banner shows only while the server is unreachable -->
       <Grid Grid.Column="1" RowDefinitions="Auto,*" Margin="{StaticResource Oadm.PagePadding}">
         <Border Grid.Row="0" Classes="banner" Classes.connecting="{Binding Connection.IsConnecting}" Margin="0,0,0,12"
                 IsVisible="{Binding !Connection.IsConnected}">

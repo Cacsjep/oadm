@@ -12,7 +12,6 @@
           <DataTemplate x:DataType="tasks:TaskRowViewModel">
             <Border Classes="pill" Margin="10,0" Classes.ok="{Binding IsStateOk}" Classes.error="{Binding IsStateError}" Classes.accent="{Binding IsStateAccent}">
               <StackPanel Orientation="Horizontal">
-                <Ellipse />
                 <TextBlock Text="{Binding StateText}" />
               </StackPanel>
             </Border>

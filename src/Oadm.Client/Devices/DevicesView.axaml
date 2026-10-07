@@ -6,11 +6,12 @@
              xmlns:v1="using:Oadm.Contracts.V1"
              x:Class="Oadm.Client.Devices.DevicesView"
              x:DataType="dev:DevicesViewModel">
-  <Grid RowDefinitions="Auto,*,Auto">
-    <TextBlock Grid.Row="0" Classes="pageTitle" Text="Manage devices" Margin="4,0,0,16" />
+  <!-- Rows: title, device card, splitter, tasks card. DevicesView.axaml.cs sizes the last two from the TasksViewModel. -->
+  <Grid x:Name="LayoutRoot" RowDefinitions="Auto,*,Auto,Auto">
+    <TextBlock Grid.Row="0" Classes="pageTitle" Text="Devices" Margin="4,0,0,16" />
 
     <!-- Device card: toolbar, status line, grid -->
-    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}">
+    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" MinHeight="{StaticResource Oadm.DevicesCardMinHeight}">
       <Grid RowDefinitions="Auto,Auto,*">
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
@@ -137,7 +138,6 @@
                   <DataTemplate x:DataType="dev:DeviceRowViewModel">
                     <Border Classes="pill" Margin="10,0" Classes.ok="{Binding IsStatusOk}" Classes.warn="{Binding IsStatusWarning}" Classes.error="{Binding IsStatusError}">
                       <StackPanel Orientation="Horizontal">
-                        <Ellipse />
                         <TextBlock Text="{Binding StatusText}" />
                       </StackPanel>
                     </Border>
@@ -176,7 +176,12 @@
       </Grid>
     </Border>
 
-    <!-- Tasks / Log pane -->
-    <tasks:TasksPaneView Grid.Row="2" DataContext="{Binding Tasks}" Margin="{StaticResource Oadm.GapTop}" />
+    <!-- Drag to resize the tasks pane; hidden while the pane is collapsed (then a plain gap) -->
+    <GridSplitter x:Name="PaneSplitter" Grid.Row="2" Classes="paneSplitter"
+                  IsVisible="{Binding Tasks.IsExpanded}" />
+    <Border Grid.Row="2" Height="{StaticResource Oadm.SplitterHeight}" IsVisible="{Binding !Tasks.IsExpanded}" />
+
+    <!-- Tasks pane -->
+    <tasks:TasksPaneView Grid.Row="3" DataContext="{Binding Tasks}" />
   </Grid>
 </UserControl>

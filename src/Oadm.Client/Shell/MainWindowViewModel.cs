@@ -1,6 +1,4 @@
 using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.Globalization;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -9,61 +7,59 @@ using Microsoft.Extensions.Logging;
 
 using Oadm.Client.Api;
 using Oadm.Client.Devices;
+using Oadm.Client.Infrastructure;
+using Oadm.Client.Logging;
 using Oadm.Client.Plugins;
 using Oadm.Client.Settings;
-using Oadm.Client.Tasks;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Client;
 
 namespace Oadm.Client.Shell;
 
-/// <summary>Shell: navigation rail, current page, connection state.</summary>
+/// <summary>Shell: navigation rail (collapsible), current page, connection state.</summary>
 public sealed partial class MainWindowViewModel : ObservableObject
 {
     private readonly IOadmApi _api;
     private readonly IClientPluginRegistry _plugins;
     private readonly TaskPluginCatalog _catalog;
     private readonly ILogger<MainWindowViewModel> _logger;
+    private readonly IClientSettingsStore _settings;
     private readonly NavItemViewModel _devicesItem;
-    private readonly NavItemViewModel _tasksItem;
 
     public MainWindowViewModel(
         ServerConnection connection,
         DevicesViewModel devices,
-        TasksViewModel tasks,
+        LogsViewModel logs,
         SettingsViewModel settings,
         TaskPluginCatalog catalog,
         IClientPluginRegistry plugins,
         IOadmApi api,
+        IClientSettingsStore clientSettings,
         ILogger<MainWindowViewModel> logger)
     {
         ArgumentNullException.ThrowIfNull(connection);
-        ArgumentNullException.ThrowIfNull(tasks);
-        ArgumentNullException.ThrowIfNull(api);
+        ArgumentNullException.ThrowIfNull(clientSettings);
         Connection = connection;
         Devices = devices;
-        Tasks = tasks;
         _api = api;
         _plugins = plugins;
         _catalog = catalog;
+        _settings = clientSettings;
         _logger = logger;
+        IsNavExpanded = clientSettings.Current.NavRailExpanded;
 
-        _devicesItem = new NavItemViewModel("devices", "Manage devices", "devices", devices);
-        _tasksItem = new NavItemViewModel("tasks", "Tasks", "tasks", tasks) { HasSeparatorBefore = true };
+        // Top: Devices, then one entry per core plugin page (added on connect). Bottom: Logs, Settings.
+        _devicesItem = new NavItemViewModel("devices", "Devices", "devices", devices);
         NavItems.Add(_devicesItem);
-        NavItems.Add(_tasksItem);
+        BottomNavItems.Add(new NavItemViewModel("logs", "Logs", "logs", logs));
         BottomNavItems.Add(new NavItemViewModel("settings", "Settings", "settings", settings));
-        BottomNavItems.Add(new NavItemViewModel("about", "About", "about", new AboutViewModel(api.ServerAddress)));
 
-        tasks.PropertyChanged += OnTasksPropertyChanged;
         connection.Connected += (_, _) => _ = OnConnectedAsync();
-        UpdateTaskBadge();
         Navigate(_devicesItem);
     }
 
     public ServerConnection Connection { get; }
     public DevicesViewModel Devices { get; }
-    public TasksViewModel Tasks { get; }
 
     public static string AppName => "OADM";
 
@@ -73,6 +69,22 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] public partial object? CurrentPage { get; private set; }
 
     [ObservableProperty] public partial NavItemViewModel? CurrentItem { get; private set; }
+
+    /// <summary>Rail shows icon + label when true, icons only (with tooltips) when false. Persisted per client.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NavToggleText))]
+    public partial bool IsNavExpanded { get; set; }
+
+    public string NavToggleText => IsNavExpanded ? "Collapse" : "Expand";
+
+    partial void OnIsNavExpandedChanged(bool value)
+    {
+        _settings.Current.NavRailExpanded = value;
+        _settings.Save();
+    }
+
+    [RelayCommand]
+    private void ToggleNav() => IsNavExpanded = !IsNavExpanded;
 
     /// <summary>Starts the server streams. Call once after the window is shown.</summary>
     public void Start() => Connection.Start();
@@ -94,17 +106,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
         CurrentPage = item.Page;
     }
 
-    private void OnTasksPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(TasksViewModel.ActiveCount))
-        {
-            UpdateTaskBadge();
-        }
-    }
-
-    private void UpdateTaskBadge() =>
-        _tasksItem.Badge = Tasks.ActiveCount > 0 ? Tasks.ActiveCount.ToString(CultureInfo.CurrentCulture) : null;
-
     private async Task OnConnectedAsync()
     {
         await _catalog.RefreshAsync(CancellationToken.None).ConfigureAwait(true);
@@ -119,7 +120,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>One navigation entry per core plugin, after "Tasks".</summary>
+    /// <summary>One navigation entry per core plugin, below "Devices".</summary>
     internal void SyncCorePluginPages(IReadOnlyList<CorePluginInfo> corePlugins)
     {
         foreach (NavItemViewModel stale in NavItems.Where(n => n.Page is CorePluginPageViewModel && !corePlugins.Any(p => "plugin:" + p.Id == n.Key)).ToList())

@@ -11,6 +11,7 @@ service TaskService {
   rpc Watch (Empty) returns (stream TaskChanged);   // starts with a snapshot
   rpc Cancel (TaskIdRequest) returns (Empty);
   rpc Delete (TaskIdRequest) returns (Empty);
+  rpc DeleteAll (Empty) returns (DeleteAllReply);   // cancels running tasks first
 }
 
 message TaskPluginInfo {
@@ -32,6 +33,7 @@ message RunTaskRequest {
 }
 message RunTaskReply { string task_id = 1; }
 message TaskIdRequest { string task_id = 1; }
+message DeleteAllReply { int32 deleted = 1; }
 
 enum TaskState {
   TASK_STATE_UNSPECIFIED = 0;

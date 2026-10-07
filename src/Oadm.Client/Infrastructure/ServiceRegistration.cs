@@ -52,6 +52,7 @@ public static class ServiceRegistration
         services.AddSingleton<ColumnLayoutViewModel>();
         services.AddSingleton<TasksViewModel>();
         services.AddSingleton<SettingsViewModel>();
+        services.AddSingleton<LogsViewModel>();
         services.AddSingleton<Func<AddDevicesMode, AddDevicesWizardViewModel>>(sp => mode => new AddDevicesWizardViewModel(
             sp.GetRequiredService<IOadmApi>(),
             sp.GetRequiredService<IUiDispatcher>(),

@@ -17,8 +17,11 @@ public sealed class ClientSettings
 
     public bool BottomPaneExpanded { get; set; } = true;
 
-    /// <summary>0 = Tasks, 1 = Log.</summary>
-    public int BottomPaneTab { get; set; }
+    /// <summary>Height of the tasks pane set with the splitter, in pixels. 0 = default.</summary>
+    public double TasksPaneHeight { get; set; }
+
+    /// <summary>Navigation rail shows labels (expanded) or icons only (collapsed, the default).</summary>
+    public bool NavRailExpanded { get; set; }
 }
 
 public sealed class ColumnLayoutEntry

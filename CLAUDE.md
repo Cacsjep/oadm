@@ -187,8 +187,10 @@ Dark only, calm and spacious, no gradients inside the app.
   buttons and status pills. Secondary accent teal `#7FC8D0`.
 - Text: primary `#F2F2F2`, secondary `#9A9A9A` (labels like "Source", column headers).
   Font Inter (Avalonia.Fonts.Inter), 13 px body, 20 px card titles, semibold titles.
-- Status shown as small rounded pills (OK green `#3FB27F`, warning amber `#E0A43A`,
-  error red `#E5534B`, neutral grey), not plain text.
+- Status shown as small rounded chips, not plain text: solid fill in the status color with
+  white, regular-weight (not bold) text and no dot. Fills are slightly darkened so white stays
+  readable: OK green `#2B8A5E`, warning amber `#A86F0E`, error red `#C73B34`, running violet
+  `#6253DB`, neutral grey `#5F5F5F`. Count badges use the same chip style (violet).
 - Icons: one outline icon set (Fluent System Icons / Lucide geometry), monochrome
   `#CFCFCF`, 16 px. Toolbar uses icon + text buttons, not ADM's icon-only bar.
 - All colors and sizes as resources in `Themes/OadmTheme.axaml`; no hard-coded colors in views.

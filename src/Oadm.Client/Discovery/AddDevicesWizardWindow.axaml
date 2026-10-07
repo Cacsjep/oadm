@@ -100,7 +100,6 @@
                       <DataTemplate x:DataType="disc:DiscoveredRowViewModel">
                         <Border Classes="pill" Margin="10,0" Classes.ok="{Binding IsStatusOk}" Classes.warn="{Binding IsStatusWarning}" Classes.error="{Binding IsStatusError}">
                           <StackPanel Orientation="Horizontal">
-                            <Ellipse />
                             <TextBlock Text="{Binding StatusText}" />
                           </StackPanel>
                         </Border>

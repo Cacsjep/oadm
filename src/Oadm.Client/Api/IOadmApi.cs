@@ -40,6 +40,9 @@ public interface IOadmApi
     Task CancelTaskAsync(string taskId, CancellationToken ct);
     Task DeleteTaskAsync(string taskId, CancellationToken ct);
 
+    /// <summary>Cancels running tasks, then deletes every task. Returns the number deleted.</summary>
+    Task<int> DeleteAllTasksAsync(CancellationToken ct);
+
     // SettingsService
     Task<ServerSettings> GetSettingsAsync(CancellationToken ct);
     Task<ServerSettings> SetSettingsAsync(ServerSettings settings, CancellationToken ct);

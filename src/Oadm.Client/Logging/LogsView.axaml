@@ -1,0 +1,50 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="using:Oadm.Client.Controls"
+             xmlns:log="using:Oadm.Client.Logging"
+             x:Class="Oadm.Client.Logging.LogsView"
+             x:DataType="log:LogsViewModel">
+  <Grid RowDefinitions="Auto,*">
+    <TextBlock Grid.Row="0" Classes="pageTitle" Text="Logs" Margin="4,0,0,16" />
+
+    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}">
+      <Grid RowDefinitions="Auto,Auto,*">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10">
+            <TextBlock Classes="fieldLabel" Text="Level" />
+            <ComboBox ItemsSource="{x:Static log:LogsViewModel.Levels}" SelectedItem="{Binding SelectedLevel}" MinWidth="200" />
+          </StackPanel>
+          <TextBox Grid.Column="2" Width="{StaticResource Oadm.SearchWidth}" PlaceholderText="Search" Text="{Binding SearchText}" VerticalContentAlignment="Center">
+            <TextBox.InnerLeftContent>
+              <c:OadmIcon Data="{StaticResource Icon.search}" Margin="10,0,0,0" Foreground="{StaticResource Oadm.TextSecondaryBrush}" />
+            </TextBox.InnerLeftContent>
+            <TextBox.InnerRightContent>
+              <Button Classes="toolbar iconOnly" Padding="4" Margin="0,0,4,0" Command="{Binding ClearSearchCommand}" IsVisible="{Binding HasSearch}">
+                <c:OadmIcon Data="{StaticResource Icon.close}" Width="12" Height="12" />
+              </Button>
+            </TextBox.InnerRightContent>
+          </TextBox>
+        </Grid>
+
+        <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding StatusLine}" Margin="2,14,0,8" />
+
+        <DataGrid Grid.Row="2" ItemsSource="{Binding Entries}" IsReadOnly="True" SelectionMode="Extended"
+                  CanUserSortColumns="False" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Time" Width="100" Binding="{Binding TimeText}" x:DataType="log:LogEntry" />
+            <DataGridTemplateColumn Header="Level" Width="120">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="log:LogEntry">
+                  <Border Classes="pill" Margin="10,0" Classes.error="{Binding IsError}" Classes.warn="{Binding IsWarning}">
+                    <TextBlock Text="{Binding Level}" />
+                  </Border>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Message" Width="*" Binding="{Binding Message}" x:DataType="log:LogEntry" />
+          </DataGrid.Columns>
+        </DataGrid>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

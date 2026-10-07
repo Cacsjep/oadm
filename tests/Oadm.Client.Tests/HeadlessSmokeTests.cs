@@ -42,7 +42,7 @@ public sealed class HeadlessSmokeTests
             var window = new MainWindow { DataContext = vm, Width = 1440, Height = 900 };
             window.Show();
             vm.Start();
-            await PumpUntilAsync(() => vm.Devices.FilteredDevices.Count == 12 && vm.Tasks.Tasks.Count > 0);
+            await PumpUntilAsync(() => vm.Devices.FilteredDevices.Count == 12 && vm.Devices.Tasks.Tasks.Count > 0);
             Capture(window, outDir, "client-fake-headless.png");
 
             foreach (NavItemViewModel item in vm.NavItems.Concat(vm.BottomNavItems).ToList())
@@ -51,6 +51,11 @@ public sealed class HeadlessSmokeTests
                 await PumpUntilAsync(() => true);
                 Capture(window, outDir, $"client-page-{item.Key}.png");
             }
+
+            vm.ToggleNavCommand.Execute(null);
+            vm.NavigateCommand.Execute(vm.NavItems[0]);
+            await PumpUntilAsync(() => true);
+            Capture(window, outDir, "client-rail-expanded.png");
 
             var factory = app.Services!.GetRequiredService<Func<AddDevicesMode, AddDevicesWizardViewModel>>();
             AddDevicesWizardViewModel wizardVm = factory(AddDevicesMode.ZeroConf);

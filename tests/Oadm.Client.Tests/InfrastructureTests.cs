@@ -126,16 +126,60 @@ public sealed class StoreTests
     }
 
     [Fact]
-    public void Bottom_pane_state_is_persisted()
+    public void Bottom_pane_state_and_height_are_persisted()
     {
         using var f = new DevicesFixture();
+        Assert.Equal(TasksViewModel.DefaultPaneHeight, f.TasksVm.PaneHeight);
 
         f.TasksVm.ToggleExpandedCommand.Execute(null);
-        f.TasksVm.ShowLogCommand.Execute(null);
+        Assert.False(f.Settings.Current.BottomPaneExpanded);
+        f.TasksVm.ShowTasksCommand.Execute(null);
+        Assert.True(f.Settings.Current.BottomPaneExpanded);
 
-        Assert.True(f.Settings.Current.BottomPaneExpanded); // ShowLog expands again
-        Assert.Equal(1, f.Settings.Current.BottomPaneTab);
+        f.TasksVm.CommitPaneHeight(412.4);
+        Assert.Equal(412, f.Settings.Current.TasksPaneHeight);
+        f.TasksVm.CommitPaneHeight(10);
+        Assert.Equal(TasksViewModel.MinPaneHeight, f.TasksVm.PaneHeight);
         Assert.True(f.Settings.SaveCount > 0);
+
+        f.Settings.Current.TasksPaneHeight = 333;
+        var restored = new TasksViewModel(f.Tasks, f.Store, f.Api, f.Dialogs, f.Settings, NullLogger<TasksViewModel>.Instance);
+        Assert.Equal(333, restored.PaneHeight);
+    }
+
+    [Fact]
+    public async Task Delete_all_asks_for_confirmation_then_calls_the_server()
+    {
+        using var f = new DevicesFixture();
+        Assert.False(f.TasksVm.DeleteAllCommand.CanExecute(null));
+        f.Tasks.Reset(
+        [
+            new TaskInfo { Id = "a", Name = "Restart", State = TaskState.Running },
+            new TaskInfo { Id = "b", Name = "Restart", State = TaskState.Done },
+        ]);
+        Assert.True(f.TasksVm.DeleteAllCommand.CanExecute(null));
+
+        f.Dialogs.ConfirmAsync(default!, default!, default!).ReturnsForAnyArgs(false);
+        await f.TasksVm.DeleteAllCommand.ExecuteAsync(null);
+        await f.Api.DidNotReceiveWithAnyArgs().DeleteAllTasksAsync(default);
+
+        f.Dialogs.ConfirmAsync(default!, default!, default!).ReturnsForAnyArgs(true);
+        await f.TasksVm.DeleteAllCommand.ExecuteAsync(null);
+        await f.Dialogs.Received().ConfirmAsync("Delete all tasks", Arg.Is<string>(m => m.Contains("cancelled first", StringComparison.Ordinal)), "Delete all");
+        await f.Api.Received(1).DeleteAllTasksAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Fake_api_delete_all_cancels_and_removes_every_task()
+    {
+        using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
+        int before = (await api.ListTasksAsync(CancellationToken.None)).Count;
+        Assert.True(before > 0);
+
+        int deleted = await api.DeleteAllTasksAsync(CancellationToken.None);
+
+        Assert.Equal(before, deleted);
+        Assert.Empty(await api.ListTasksAsync(CancellationToken.None));
     }
 }
 
