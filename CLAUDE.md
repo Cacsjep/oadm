@@ -23,17 +23,49 @@ must feel at home: same workflows, same information, but our own modern dark Flu
 
 Cross-platform is a day-one requirement: Windows, Linux, macOS. No Windows-only APIs
 (no DPAPI, no registry, no WMI). Paths via `Path.Combine`, data folder via
-`Environment.SpecialFolder.LocalApplicationData/Oadm`. Every PR must build on all three
+`Environment.SpecialFolder.LocalApplicationData/Oadm` unless `--Oadm:DataDir=<folder>` or env
+`OADM_DATA_DIR` sets it (the installed services always do, see Packaging). Every PR must build on all three
 (CI matrix) and the server must run as a plain console process on all three.
 
 # Packaging
 
 Server and client publish as one self-contained single-file exe per platform
 (`PublishSingleFile`, `IncludeNativeLibrariesForSelfExtract`, `PublishReadyToRun`), see
-`manage publish`. Plugins ship next to the exe in `plugins/<name>/`.
+`manage publish`. Every plugin project is published once into `artifacts/publish/plugins/<plugin id>/`
+(`<OadmPluginId>`, server and client part together) and copied next to both exes in
+`plugins/<plugin id>/`, so a new plugin project is packaged without further changes.
+`--version` (default `0.1.0-dev`, a leading `v` is removed) goes to every assembly (`-p:Version`).
+
+Installers (`manage package <windows|linux|macos> [--rid] [--version]` into `artifacts/packages/`; layout
+table and notes in `packaging/README.md`; CI `.github/workflows/package.yml` on tags `v*`, manual runs and
+PRs touching packaging, which also installs, checks and removes the native package on each runner):
+- **Windows MSI** (WiX Toolset 6 via the `WixToolset.Sdk` MSBuild SDK, `packaging/windows/`, not in
+  Oadm.sln; WiX 7 not used, it requires the OSMF EULA), x64 and arm64, per machine: `Program Files\OADM\Server`
+  and `\Client`, Windows service "OADM Server" (`OadmServer`, automatic, LocalSystem, restart on failure,
+  `--Oadm:DataDir="%ProgramData%\OADM"`), Start menu shortcut, firewall rules TCP 5080 and UDP 123/67 for
+  `Oadm.Server.exe`, fixed UpgradeCode + MajorUpgrade (same version reinstall allowed). `%ProgramData%\OADM` is
+  created for SYSTEM and Administrators only and never removed. Files are harvested from the publish folders.
+- **Linux .deb** (`dpkg-deb`, `packaging/linux/build-deb.sh`, amd64 and arm64, built on Linux or in a container):
+  `/opt/oadm/server`, `/opt/oadm/client`, `/usr/bin/oadm-client`, `oadm.desktop` + hicolor icon, systemd unit
+  `oadm-server.service` (root, `Type=notify`, `Restart=on-failure`, `OADM_DATA_DIR=/var/lib/oadm`,
+  StateDirectory 0700, optional `/etc/default/oadm-server`); postinst enables and starts it like
+  dh_installsystemd and works without systemd; prerm stops it; data kept even on purge. Pre-release versions
+  are written `1.2.0~rc.1`. No .rpm.
+- **macOS .pkg** (`pkgbuild` + `productbuild`, `packaging/macos/build-pkg.sh`, x64 and arm64, built on macOS
+  only): `/Applications/OADM.app` (Info.plist, icns), server in `/Library/Application Support/OADM/server`,
+  LaunchDaemon `com.oadm.server` (root, `OADM_DATA_DIR=/Library/Application Support/OADM`, folder 0700),
+  `uninstall-oadm.sh` next to the server. Unsigned (executables ad hoc signed); Developer ID signing and
+  notarization are a later step.
+- The server runs as root / LocalSystem (NTP and DHCP plugins need UDP 123 and 67). As a service the host
+  integrates with the SCM and systemd (`Oadm.Server.Hosting.ServiceHosting`: `AddWindowsService`, `AddSystemd`,
+  content root = app folder; no-ops on a console). Services set `DOTNET_BUNDLE_EXTRACT_BASE_DIR` to a folder
+  only the service account can write (`%ProgramData%\OADM\runtime`, `/var/cache/oadm`,
+  `/Library/Application Support/OADM/runtime`), never a shared temp folder.
+- Version from the tag (`v1.2.0` -> `1.2.0`), else `0.1.0-dev`; MSI and .pkg use the numeric part.
+- Icons: `packaging/icons/` (drawn by `make-icons.py`); `oadm.ico` is also the client exe icon.
 
 Developer commands: one entry point per shell at the repo root, `./manage.sh` (bash) and
-`.\manage.ps1` (PowerShell 5.1/7), verb + target (`build`, `run`, `test`, `publish`, `clean`,
+`.\manage.ps1` (PowerShell 5.1/7), verb + target (`build`, `run`, `test`, `publish`, `package`, `clean`,
 `info`), `manage <verb> help` at every level. Both read their help texts from
 `scripts/manage-help.txt`; any new verb, target or option goes into both scripts and that file.
 Native AOT and trimming are deliberately NOT used for the host apps: AOT cannot load managed

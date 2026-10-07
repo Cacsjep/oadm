@@ -1,0 +1,17 @@
+#!/bin/sh
+# OADM server package postinstall: data folder for root only, then (re)load the LaunchDaemon.
+set -e
+
+DATA="/Library/Application Support/OADM"
+PLIST=/Library/LaunchDaemons/com.oadm.server.plist
+
+mkdir -p "$DATA" /Library/Logs/OADM
+chown root:wheel "$DATA"
+chmod 0700 "$DATA"
+chown root:wheel "$PLIST"
+chmod 0644 "$PLIST"
+
+launchctl bootout system/com.oadm.server >/dev/null 2>&1 || true
+launchctl enable system/com.oadm.server || true
+launchctl bootstrap system "$PLIST"
+exit 0

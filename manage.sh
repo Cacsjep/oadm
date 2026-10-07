@@ -79,7 +79,7 @@ usage_error() {
 }
 
 is_verb() {
-  case "$1" in build|run|test|publish|clean|info|help) return 0 ;; *) return 1 ;; esac
+  case "$1" in build|run|test|publish|package|clean|info|help) return 0 ;; *) return 1 ;; esac
 }
 
 # ---------------------------------------------------------------- argument parsing
@@ -92,11 +92,12 @@ OPT_DATA=""
 OPT_SERVER=""
 OPT_FILTER=""
 OPT_RID=""
+OPT_VERSION=""
 EXTRA=()
 
 # Options that take a value.
 option_has_value() {
-  case "$1" in --port|--data|--server|--filter|--rid) return 0 ;; *) return 1 ;; esac
+  case "$1" in --port|--data|--server|--filter|--rid|--version) return 0 ;; *) return 1 ;; esac
 }
 
 # Whether option $3 is valid for verb $1 and target $2.
@@ -107,7 +108,8 @@ option_allowed() {
     run:client:--fake|run:client:--server|run:client:--data|run:client:--release) return 0 ;;
     run:dev:--port|run:dev:--data|run:dev:--release) return 0 ;;
     test:*:--filter|test:*:--release) return 0 ;;
-    publish:*:--rid) return 0 ;;
+    publish:*:--rid|publish:*:--version) return 0 ;;
+    package:*:--rid|package:*:--version) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -143,6 +145,8 @@ parse_args() {
              case "$TARGET" in server|client|dev) ;; *) usage_error run "unknown target '$TARGET' for run" ;; esac ;;
     test)    TARGET="${TARGET:-unit}"; case "$TARGET" in unit|perf|hardware|all) ;; *) usage_error test "unknown target '$TARGET' for test" ;; esac ;;
     publish) TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client) ;; *) usage_error publish "unknown target '$TARGET' for publish" ;; esac ;;
+    package) [ -n "$TARGET" ] || usage_error package "missing target for package (windows, linux or macos)"
+             case "$TARGET" in windows|linux|macos) ;; *) usage_error package "unknown target '$TARGET' for package" ;; esac ;;
     clean|info)
              [ -z "$TARGET" ] || usage_error "$verb" "$verb takes no target"
              [ ${#EXTRA[@]} -eq 0 ] || usage_error "$verb" "$verb takes no extra arguments" ;;
@@ -170,6 +174,10 @@ parse_args() {
       --server) OPT_SERVER="$value" ;;
       --filter) OPT_FILTER="$value" ;;
       --rid) OPT_RID="$value" ;;
+      --version)
+        printf '%s\n' "$value" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$' \
+          || usage_error "$verb" "--version needs a version like 1.2.3 or 1.2.3-rc.1 (a leading v is removed)"
+        OPT_VERSION="${value#v}" ;;
     esac
   done
   if [ $OPT_RELEASE -eq 1 ]; then CONFIGURATION=Release; fi
@@ -228,10 +236,43 @@ export_dev_environment() {
   export ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-Development}"
 }
 
+# Version of published apps and packages: --version, else the development fallback.
+DEFAULT_VERSION="0.1.0-dev"
+app_version() {
+  echo "${OPT_VERSION:-$DEFAULT_VERSION}"
+}
+
 publish_app() {
+  rm -rf "$2"
   "$DOTNET" publish "$1" -c Release -r "$RID" --self-contained \
     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
-    -p:PublishReadyToRun=true -p:DebugType=embedded -o "$2" ${EXTRA[@]+"${EXTRA[@]}"}
+    -p:PublishReadyToRun=true -p:DebugType=embedded "-p:Version=$(app_version)" -o "$2" ${EXTRA[@]+"${EXTRA[@]}"}
+  # Native symbol files of NuGet packages (SkiaSharp, HarfBuzzSharp); managed symbols are embedded.
+  rm -f "$2"/*.pdb
+}
+
+# Plugin folder id of a plugin project (<OadmPluginId>, the folder name under artifacts/plugins), else the project name.
+plugin_id() {
+  local id
+  id="$(sed -n 's:.*<OadmPluginId>\([^<]*\)</OadmPluginId>.*:\1:p' "$1" | head -n 1 | tr -d '[:space:]')"
+  echo "${id:-$(basename "$(dirname "$1")")}"
+}
+
+# Publishes every plugin project (server and client part) into artifacts/publish/plugins/<id>/. Plugins are RID
+# independent; both apps get the whole folder, each loader picks its own *.Server.dll or *.Client.dll.
+PLUGIN_STAGE="$REPO_ROOT/artifacts/publish/plugins"
+publish_plugins() {
+  local p
+  rm -rf "$PLUGIN_STAGE"
+  mkdir -p "$PLUGIN_STAGE"
+  while IFS= read -r p; do
+    "$DOTNET" publish "$p" -c Release -p:OadmSkipPluginDeploy=true "-p:Version=$(app_version)" -o "$PLUGIN_STAGE/$(plugin_id "$p")"
+  done < <(plugin_projects)
+}
+
+copy_plugins() {
+  mkdir -p "$1/plugins"
+  cp -R "$PLUGIN_STAGE"/. "$1/plugins/"
 }
 
 # ---------------------------------------------------------------- verbs
@@ -316,22 +357,56 @@ cmd_test() {
 cmd_publish() {
   require_dotnet
   if [ -n "$OPT_RID" ]; then RID="$OPT_RID"; fi
-  local out p name
+  local out
+  publish_plugins
   if [ "$TARGET" = all ] || [ "$TARGET" = server ]; then
     out="$REPO_ROOT/artifacts/publish/server/$RID"
     publish_app "$SERVER_PROJECT" "$out"
-    mkdir -p "$out/plugins"
-    while IFS= read -r p; do
-      name="$(basename "$(dirname "$p")")"
-      "$DOTNET" publish "$p" -c Release -o "$out/plugins/$name"
-    done < <(plugin_projects)
+    copy_plugins "$out"
     echo "server published to $out"
   fi
   if [ "$TARGET" = all ] || [ "$TARGET" = client ]; then
     out="$REPO_ROOT/artifacts/publish/client/$RID"
     publish_app "$CLIENT_PROJECT" "$out"
+    copy_plugins "$out"
     echo "client published to $out"
   fi
+}
+
+# Installer for one platform in artifacts/packages; publishes server and client for the RID first.
+cmd_package() {
+  local prefix arch out server client
+  case "$TARGET" in windows) prefix=win ;; linux) prefix=linux ;; macos) prefix=osx ;; esac
+  case "$(uname -m)" in arm64|aarch64) arch=arm64 ;; *) arch=x64 ;; esac
+  RID="${OPT_RID:-$prefix-$arch}"
+  case "$RID" in "$prefix-x64"|"$prefix-arm64") ;; *) usage_error package "--rid for package $TARGET is $prefix-x64 or $prefix-arm64" ;; esac
+  case "$TARGET" in
+    windows)
+      case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) ;; *) echo "error: package windows needs Windows (WiX Toolset builds the MSI)" >&2; exit 1 ;; esac ;;
+    linux)
+      command -v dpkg-deb >/dev/null 2>&1 \
+        || { echo "error: package linux needs dpkg-deb (Debian, Ubuntu or a container, see packaging/README.md)" >&2; exit 1; } ;;
+    macos)
+      command -v pkgbuild >/dev/null 2>&1 && command -v productbuild >/dev/null 2>&1 \
+        || { echo "error: package macos needs macOS (pkgbuild, productbuild)" >&2; exit 1; } ;;
+  esac
+
+  OPT_RID="$RID"
+  TARGET=all
+  cmd_publish
+  server="$REPO_ROOT/artifacts/publish/server/$RID"
+  client="$REPO_ROOT/artifacts/publish/client/$RID"
+  out="$(abs_dir "$REPO_ROOT/artifacts/packages")"
+  case "$prefix" in
+    win)
+      # MSBuild gets Windows paths (Git Bash).
+      "$DOTNET" build "$(cygpath -w "$REPO_ROOT/packaging/windows/Oadm.Installer.wixproj")" -c Release --no-incremental \
+        "-p:OadmVersion=$(app_version)" "-p:OadmRid=$RID" "-p:OadmServerDir=$(cygpath -w "$server")" \
+        "-p:OadmClientDir=$(cygpath -w "$client")" "-p:OadmPackageDir=$(cygpath -w "$out")" ;;
+    linux) bash "$REPO_ROOT/packaging/linux/build-deb.sh" "$RID" "$(app_version)" "$server" "$client" "$out" ;;
+    osx) bash "$REPO_ROOT/packaging/macos/build-pkg.sh" "$RID" "$(app_version)" "$server" "$client" "$out" ;;
+  esac
+  echo "package written to $out"
 }
 
 cmd_clean() {

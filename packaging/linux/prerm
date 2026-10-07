@@ -1,0 +1,15 @@
+#!/bin/sh
+# oadm prerm: stop the server on removal (an upgrade restarts it in postinst instead).
+set -e
+
+UNIT=oadm-server.service
+
+if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
+    if command -v deb-systemd-invoke >/dev/null 2>&1; then
+        deb-systemd-invoke stop "$UNIT" >/dev/null || true
+    else
+        systemctl stop "$UNIT" >/dev/null || true
+    fi
+fi
+
+exit 0

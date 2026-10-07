@@ -1,0 +1,165 @@
+name: package
+
+# Installers: MSI (Windows), .deb (Linux amd64/arm64), .pkg (macOS arm64/x64), built with "manage package".
+# Tags v* and manual runs upload the installers as workflow artifacts; pull requests that touch packaging,
+# hosting or the manage scripts only build them (no upload). The native x64/arm64 package of each runner is
+# installed, checked (service running, gRPC answering on 5080, data folder and master key) and removed again.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'packaging/**'
+      - 'manage.ps1'
+      - 'manage.sh'
+      - 'scripts/**'
+      - 'src/Oadm.Server/Hosting/**'
+      - 'src/Oadm.Server/Oadm.Server.csproj'
+      - '.github/workflows/package.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, target: windows, rid: win-x64, smoke: true }
+          - { os: windows-latest, target: windows, rid: win-arm64, smoke: false }
+          - { os: ubuntu-latest, target: linux, rid: linux-x64, smoke: true }
+          - { os: ubuntu-latest, target: linux, rid: linux-arm64, smoke: false }
+          - { os: macos-latest, target: macos, rid: osx-arm64, smoke: true }
+          - { os: macos-latest, target: macos, rid: osx-x64, smoke: false }
+    name: ${{ matrix.target }} ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Version
+        id: version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF_NAME#v}"; else v="0.1.0-dev"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "OADM version $v"
+
+      - name: Build package (Windows)
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: ./manage.ps1 package windows --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
+
+      - name: Build package (Linux, macOS)
+        if: matrix.target != 'windows'
+        shell: bash
+        run: ./manage.sh package ${{ matrix.target }} --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
+
+      - name: Validate MSI
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem artifacts/packages/*.msi | Select-Object -First 1
+          $wi = New-Object -ComObject WindowsInstaller.Installer
+          $db = $wi.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $wi, @($msi.FullName, 0))
+          foreach ($q in "SELECT Name, DisplayName, StartType, Arguments FROM ServiceInstall", "SELECT Property, Value FROM Property WHERE Property='ProductVersion'") {
+            $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @($q))
+            $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null) | Out-Null
+            while ($rec = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)) {
+              $n = $rec.GetType().InvokeMember('FieldCount', 'GetProperty', $null, $rec, $null)
+              (1..$n | ForEach-Object { $rec.GetType().InvokeMember('StringData', 'GetProperty', $null, $rec, @([int]$_)) }) -join ' | '
+            }
+          }
+
+      - name: Inspect .deb
+        if: matrix.target == 'linux'
+        run: |
+          deb=$(ls artifacts/packages/*.deb)
+          dpkg-deb --info "$deb"
+          dpkg-deb --contents "$deb" | grep -E 'Oadm.Server$|Oadm.Client$|oadm-server.service|plugins/[^/]+/$'
+
+      - name: Smoke test (Windows MSI)
+        if: matrix.target == 'windows' && matrix.smoke
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem artifacts/packages/*.msi | Select-Object -First 1).FullName
+          $p = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /l*v install.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 80; throw "install failed: $($p.ExitCode)" }
+          $svc = Get-Service OadmServer
+          "service: $($svc.Status) $($svc.StartType)"
+          $ok = $false
+          for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
+            try { $c = New-Object Net.Sockets.TcpClient('127.0.0.1', 5080); $c.Close(); $ok = $true } catch { Start-Sleep 1 }
+          }
+          if (-not $ok) { Get-ChildItem C:\ProgramData\OADM\logs -ErrorAction SilentlyContinue | Get-Content -Tail 50; throw 'port 5080 not open' }
+          # The curl.exe of Windows has no HTTP/2; Git for Windows ships one with nghttp2.
+          $headers = & 'C:\Program Files\Git\mingw64\bin\curl.exe' -s --http2-prior-knowledge -X POST -H 'content-type: application/grpc' -H 'te: trailers' -D - -o NUL http://127.0.0.1:5080/oadm.Smoke/Test
+          $headers
+          if (-not ($headers -match 'grpc-status')) { throw 'no gRPC answer' }
+          foreach ($f in 'oadm.db', 'master.key') { if (-not (Test-Path "C:\ProgramData\OADM\$f")) { throw "$f missing" } }
+          if (-not (Test-Path 'C:\Program Files\OADM\Server\plugins\oadm.restart')) { throw 'server plugins missing' }
+          if (-not (Test-Path 'C:\Program Files\OADM\Client\plugins\oadm.restart')) { throw 'client plugins missing' }
+          (Get-Acl C:\ProgramData\OADM).Access | Format-Table IdentityReference, FileSystemRights -AutoSize
+          Get-NetFirewallRule -DisplayName 'OADM Server*' | Format-Table DisplayName, Enabled, Direction -AutoSize
+          # WinExe: Start-Process waits and returns the exit code.
+          $d = Start-Process 'C:\Program Files\OADM\Client\Oadm.Client.exe' -ArgumentList '--check-decoder' -Wait -PassThru
+          if ($d.ExitCode -ne 0) { throw "decoder check failed: $($d.ExitCode)" }
+          $p = Start-Process msiexec.exe -ArgumentList "/x `"$msi`" /qn /l*v uninstall.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content uninstall.log -Tail 80; throw "uninstall failed: $($p.ExitCode)" }
+          if (Get-Service OadmServer -ErrorAction SilentlyContinue) { throw 'service still installed' }
+          if (-not (Test-Path C:\ProgramData\OADM\master.key)) { throw 'data folder was removed' }
+          'install, service, gRPC, uninstall: ok'
+
+      - name: Smoke test (Linux .deb)
+        if: matrix.target == 'linux' && matrix.smoke
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ./artifacts/packages/oadm_*_amd64.deb
+          systemctl status oadm-server --no-pager || true
+          for i in $(seq 60); do (exec 3<>/dev/tcp/127.0.0.1/5080) 2>/dev/null && break; sleep 1; done
+          headers=$(curl -s --http2-prior-knowledge -X POST -H 'content-type: application/grpc' -H 'te: trailers' -D - -o /dev/null http://127.0.0.1:5080/oadm.Smoke/Test)
+          echo "$headers"
+          echo "$headers" | grep -qi grpc-status
+          systemctl is-active oadm-server
+          sudo ls -la /var/lib/oadm
+          test "$(sudo stat -c %a /var/lib/oadm/master.key)" = 600
+          test "$(sudo stat -c %a /var/lib/oadm)" = 700
+          test -L /usr/bin/oadm-client
+          test -d /opt/oadm/server/plugins/oadm.restart && test -d /opt/oadm/client/plugins/oadm.restart
+          oadm-client --check-decoder
+          sudo apt-get remove -y oadm
+          ! systemctl is-active oadm-server
+          sudo test -f /var/lib/oadm/master.key
+          echo "install, service, gRPC, remove: ok"
+
+      - name: Smoke test (macOS .pkg)
+        if: matrix.target == 'macos' && matrix.smoke
+        run: |
+          pkgutil --check-signature artifacts/packages/*.pkg || true
+          sudo installer -pkg artifacts/packages/*.pkg -target /
+          for i in $(seq 60); do nc -z 127.0.0.1 5080 && break; sleep 1; done
+          sudo launchctl print system/com.oadm.server | head -20
+          headers=$(curl -s --http2-prior-knowledge -X POST -H 'content-type: application/grpc' -H 'te: trailers' -D - -o /dev/null http://127.0.0.1:5080/oadm.Smoke/Test)
+          echo "$headers"
+          echo "$headers" | grep -qi grpc-status
+          sudo ls -la "/Library/Application Support/OADM"
+          test "$(sudo stat -f %Lp '/Library/Application Support/OADM/master.key')" = 600
+          test -x /Applications/OADM.app/Contents/MacOS/Oadm.Client
+          test -d /Applications/OADM.app/Contents/MacOS/plugins/oadm.restart
+          /Applications/OADM.app/Contents/MacOS/Oadm.Client --check-decoder
+          sudo "/Library/Application Support/OADM/server/uninstall-oadm.sh"
+          sleep 3
+          ! nc -z 127.0.0.1 5080
+          echo "install, daemon, gRPC, uninstall: ok"
+
+      - name: Upload
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: oadm-${{ steps.version.outputs.version }}-${{ matrix.rid }}
+          path: artifacts/packages/*
+          if-no-files-found: error

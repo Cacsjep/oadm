@@ -1,0 +1,39 @@
+#!/bin/sh
+# oadm postinst: data folder, then enable and (re)start oadm-server.service like dh_installsystemd.
+# Works without systemd (containers): the unit is enabled for a later boot, nothing is started.
+set -e
+
+UNIT=oadm-server.service
+
+if [ "$1" = configure ]; then
+    mkdir -p /var/lib/oadm
+    chmod 0700 /var/lib/oadm
+fi
+
+if [ "$1" = configure ] || [ "$1" = abort-upgrade ] || [ "$1" = abort-deconfigure ] || [ "$1" = abort-remove ]; then
+    if command -v deb-systemd-helper >/dev/null 2>&1; then
+        # Removes only a mask created by deb-systemd-helper on package removal.
+        deb-systemd-helper unmask "$UNIT" >/dev/null || true
+        # was-enabled is true on a first installation, false when the admin disabled the unit.
+        if deb-systemd-helper --quiet was-enabled "$UNIT"; then
+            deb-systemd-helper enable "$UNIT" >/dev/null || true
+        else
+            deb-systemd-helper update-state "$UNIT" >/dev/null || true
+        fi
+    fi
+
+    if [ -d /run/systemd/system ]; then
+        systemctl --system daemon-reload >/dev/null || true
+        if [ -n "$2" ]; then action=restart; else action=start; fi
+        if command -v deb-systemd-invoke >/dev/null 2>&1; then
+            deb-systemd-invoke "$action" "$UNIT" >/dev/null || true
+        else
+            systemctl "$action" "$UNIT" >/dev/null || true
+        fi
+    else
+        echo "oadm: systemd is not running; start the server with:"
+        echo "  OADM_DATA_DIR=/var/lib/oadm /opt/oadm/server/Oadm.Server"
+    fi
+fi
+
+exit 0

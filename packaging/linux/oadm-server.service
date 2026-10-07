@@ -1,0 +1,28 @@
+[Unit]
+Description=OADM Server (Open AXIS Device Management)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Microsoft.Extensions.Hosting.Systemd reports READY=1 once Kestrel listens.
+Type=notify
+ExecStart=/opt/oadm/server/Oadm.Server
+WorkingDirectory=/opt/oadm/server
+# root: NTP (UDP 123) and DHCP (UDP 67, SO_BINDTODEVICE) server plugins.
+User=root
+Environment=OADM_DATA_DIR=/var/lib/oadm
+# Native libraries of the single-file exe are extracted here instead of $HOME/.net or /var/tmp.
+Environment=DOTNET_BUNDLE_EXTRACT_BASE_DIR=/var/cache/oadm
+# Local overrides, e.g. OADM_DATA_DIR=... or Oadm__ListenUrl=http://0.0.0.0:5090 (not shipped by the package).
+EnvironmentFile=-/etc/default/oadm-server
+StateDirectory=oadm
+StateDirectoryMode=0700
+CacheDirectory=oadm
+CacheDirectoryMode=0700
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+SyslogIdentifier=oadm-server
+
+[Install]
+WantedBy=multi-user.target

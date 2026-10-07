@@ -14,7 +14,8 @@ Verbs:
   run       Run server, client, or dev (server + client)
   test      Run unit, perf, hardware or all tests              (default target: unit)
   publish   Self-contained single-file apps in artifacts/publish (default target: all)
-  clean     Remove bin, obj and artifacts
+  package   Installer for windows (MSI), linux (.deb) or macos (.pkg) in artifacts/packages
+  clean    Remove bin, obj and artifacts
   info      Show the .NET SDK, configuration and RID in use
   help      Show this overview, or "manage help <verb>"
 
@@ -37,6 +38,7 @@ Examples:
   manage test
   manage run dev
   manage publish server --rid linux-x64
+  manage package windows --version 1.2.0
 
 ## build
 Usage: manage build [all|server|client|plugins] [--release] [-- dotnet build args]
@@ -109,24 +111,55 @@ Examples:
   manage test all -- --no-build
 
 ## publish
-Usage: manage publish [all|server|client] [--rid RID] [-- dotnet publish args]
+Usage: manage publish [all|server|client] [--rid RID] [--version V] [-- dotnet publish args]
 
 Self-contained single-file Release builds (ReadyToRun, embedded symbols, no .NET install
-needed on the target machine).
+needed on the target machine). Every plugin project is published once into
+artifacts/publish/plugins/<plugin id>/ and copied next to each exe in plugins/<plugin id>/
+(the server loads the *.Server.dll, the client the *.Client.dll of each folder).
 
 Targets:
   all      Server and client (default)
-  server   artifacts/publish/server/<rid>, bundled plugins next to the exe in plugins/<name>/
-  client   artifacts/publish/client/<rid>
+  server   artifacts/publish/server/<rid> with plugins/<plugin id>/
+  client   artifacts/publish/client/<rid> with plugins/<plugin id>/
 
 Options:
-  --rid RID   Target platform: win-x64, win-arm64, linux-x64, linux-arm64, osx-x64,
-              osx-arm64 (default: {RID})
+  --rid RID     Target platform: win-x64, win-arm64, linux-x64, linux-arm64, osx-x64,
+                osx-arm64 (default: {RID})
+  --version V   Version of the apps and plugins, e.g. 1.2.0 or 1.2.0-rc.1; a leading v
+                (tag v1.2.0) is removed (default: 0.1.0-dev)
 
 Examples:
   manage publish
   manage publish client --rid win-x64
-  manage publish server --rid linux-arm64
+  manage publish server --rid linux-arm64 --version 1.2.0
+
+## package
+Usage: manage package <windows|linux|macos> [--rid RID] [--version V]
+
+Publishes server and client for the RID (same as "manage publish all"), then builds the
+installer into artifacts/packages. Layout, services and data folders: packaging/README.md.
+
+Targets:
+  windows   OADM-<version>-<rid>.msi (WiX Toolset, restored from NuGet). Needs Windows.
+            Program Files\OADM, Windows service "OADM Server", Start menu entry
+  linux     oadm_<version>_<amd64|arm64>.deb (dpkg-deb). Needs dpkg-deb: Debian, Ubuntu or
+            a container. /opt/oadm, systemd unit oadm-server.service
+  macos     OADM-<version>-<rid>.pkg (pkgbuild, productbuild). Needs macOS.
+            /Applications/OADM.app, LaunchDaemon com.oadm.server; unsigned
+
+Options:
+  --rid RID     <os>-x64 or <os>-arm64 of the target (default: this machine's architecture)
+  --version V   Package and app version, e.g. 1.2.0, 1.2.0-rc.1 or v1.2.0 (default: 0.1.0-dev).
+                The MSI and the .pkg use the numeric part, the .deb writes 1.2.0~rc.1
+
+Exit codes: 1 when the platform tools are missing.
+
+Examples:
+  manage package windows
+  manage package windows --rid win-arm64 --version 1.2.0
+  manage package linux --rid linux-arm64 --version v1.2.0
+  manage package macos --rid osx-arm64
 
 ## clean
 Usage: manage clean

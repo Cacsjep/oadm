@@ -1,0 +1,29 @@
+#!/bin/sh
+# oadm postrm: systemd state clean-up like dh_installsystemd. The data folder /var/lib/oadm (database,
+# master key, logs) is kept even on purge; delete it by hand when it is no longer needed.
+set -e
+
+UNIT=oadm-server.service
+
+if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
+    systemctl --system daemon-reload >/dev/null || true
+fi
+
+if command -v deb-systemd-helper >/dev/null 2>&1; then
+    if [ "$1" = remove ]; then
+        deb-systemd-helper mask "$UNIT" >/dev/null || true
+    fi
+    if [ "$1" = purge ]; then
+        deb-systemd-helper purge "$UNIT" >/dev/null || true
+        deb-systemd-helper unmask "$UNIT" >/dev/null || true
+    fi
+fi
+
+if [ "$1" = purge ]; then
+    rm -rf /var/cache/oadm
+    if [ -d /var/lib/oadm ]; then
+        echo "oadm: the data folder /var/lib/oadm was kept (database, master key, logs)."
+    fi
+fi
+
+exit 0

@@ -2,6 +2,8 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Exe icon on Windows (Explorer, Start menu); the installers use the same artwork. -->
+    <ApplicationIcon>..\..\packaging\icons\oadm.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <AssemblyName>Oadm.Client</AssemblyName>
     <RootNamespace>Oadm.Client</RootNamespace>
