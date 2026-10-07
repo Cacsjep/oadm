@@ -1,0 +1,14 @@
+HTTP/1.1 401 Unauthorized
+Date: Wed, 07 Oct 2026 09:18:14 GMT
+Server: Apache/2.4.68 (Unix) OpenSSL/3.5.7
+WWW-Authenticate: Digest realm="AXIS_B8A44F631339", nonce="WuZJmDxdBgA=39fdff8bf7ff2dd27b4393cb149e16a98e3ac5dc", algorithm=MD5, qop="auth"
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+X-XSS-Protection: 1; mode=block
+Content-Security-Policy: default-src 'self'; frame-ancestors 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://*.axis.com mediastream: blob:; script-src 'self' https://*.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://*.axis.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com https://*.axis.com data: blob:; media-src 'self' mediastream: blob:; object-src 'none'
+Referrer-Policy: strict-origin-when-cross-origin
+Upgrade: h2
+Connection: Upgrade
+Transfer-Encoding: chunked
+Content-Type: application/json; charset=utf-8
+
