@@ -291,7 +291,15 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             var devices = record.Devices
                 .Select(d => d.State.IsTerminal() ? d : d with { State = TaskState.Failed, Message = Message })
                 .ToArray();
-            var recovered = record with { State = TaskState.Failed, FinishedUtc = now, Progress = 100, Devices = devices };
+            var steps = record.Steps
+                .Select(s => s.State switch
+                {
+                    TaskStepState.Running => s with { State = TaskStepState.Failed, Detail = Message, FinishedUtc = now },
+                    TaskStepState.Pending => s with { State = TaskStepState.Skipped, Detail = "Not run: the server stopped." },
+                    _ => s,
+                })
+                .ToArray();
+            var recovered = record with { State = TaskState.Failed, FinishedUtc = now, Progress = 100, Devices = devices, Steps = steps };
             await _store.UpdateAsync(recovered, ct).ConfigureAwait(false);
             _feed.Publish(new TaskChange(TaskChangeKind.Updated, recovered));
         }
@@ -351,6 +359,8 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
 #pragma warning restore CA1031
         {
             LogEngineFault(ex, task.Id);
+            task.Steps?.FailCurrent(ex.Message);
+            task.Steps?.Close(succeeded: false, "Not run: an earlier step failed.");
             task.FailUnfinished(ex.Message);
         }
         finally
@@ -388,6 +398,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         var plugin = task.Registration.Plugin;
         var pluginLogger = _loggerFactory.CreateLogger("Oadm.Plugins." + plugin.Id);
         using var scope = pluginLogger.BeginScope(new Dictionary<string, object> { ["TaskId"] = task.Id, ["DeviceId"] = deviceId });
+        TaskStepList? steps = null;
         try
         {
             var device = await _devices.FindAsync(deviceId, ct).ConfigureAwait(false);
@@ -407,15 +418,21 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
                     pluginLogger,
                     task.Registration.Owner,
                     _files,
-                    new Sink(this, task));
+                    new Sink(this, task),
+                    _time);
+                steps = context.Steps;
+                task.AttachSteps(steps);
 
                 await plugin.ExecuteAsync(context, device!, task.PayloadJson, ct).ConfigureAwait(false);
-                task.SetDevice(deviceId, task.SuccessState(deviceId), null, 100);
+                steps.Close(succeeded: true, "Not run.");
+                task.SetDevice(deviceId, task.SuccessState(deviceId), task.LastWarning(deviceId), 100);
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            task.SetDevice(deviceId, TaskState.Cancelled, "Cancelled.", null);
+            steps?.FailCurrent("Cancelled.");
+            steps?.Close(succeeded: false, "Not run: the task was cancelled.");
+            task.SetDevice(deviceId, TaskState.Cancelled, "Cancelled.", steps?.Progress);
             AddLog(task, deviceId, TaskLogLevel.Info, "Cancelled.");
         }
 #pragma warning disable CA1031 // Plugin failures are isolated per device.
@@ -423,7 +440,9 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
 #pragma warning restore CA1031
         {
             LogDeviceFailed(ex, task.Id, deviceId, plugin.Id);
-            task.SetDevice(deviceId, TaskState.Failed, ex.Message, null);
+            steps?.FailCurrent(ex.Message);
+            steps?.Close(succeeded: false, "Not run: an earlier step failed.");
+            task.SetDevice(deviceId, TaskState.Failed, ex.Message, steps?.Progress);
             AddLog(task, deviceId, TaskLogLevel.Error, ex.Message);
         }
 
@@ -546,6 +565,15 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         public void Log(Guid deviceId, TaskLogLevel level, string message)
         {
             engine.AddLog(task, deviceId, level, message);
+            engine.PersistThrottled(task, deviceId);
+        }
+
+        public void StepsChanged(Guid deviceId, TaskStepList steps)
+        {
+            var snapshot = steps.Snapshot();
+            var running = snapshot.FirstOrDefault(s => s.State == TaskStepState.Running);
+            task.SetStepMessage(deviceId, running);
+            engine.PublishProgress(task);
             engine.PersistThrottled(task, deviceId);
         }
 

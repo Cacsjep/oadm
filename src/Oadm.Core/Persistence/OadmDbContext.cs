@@ -16,6 +16,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
     public DbSet<TaskEntity> Tasks => Set<TaskEntity>();
     public DbSet<TaskDeviceResultEntity> TaskDeviceResults => Set<TaskDeviceResultEntity>();
     public DbSet<TaskLogEntryEntity> TaskLogEntries => Set<TaskLogEntryEntity>();
+    public DbSet<TaskStepEntity> TaskSteps => Set<TaskStepEntity>();
 
     /// <summary>Longer task log messages are cut to this length.</summary>
     public const int TaskLogEntryMaxLength = 2000;
@@ -106,6 +107,19 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.HasIndex(t => t.CreatedUtc);
             e.HasIndex(t => t.BatchId);
             e.HasMany(t => t.Results).WithOne().HasForeignKey(r => r.TaskId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(t => t.Steps).WithOne().HasForeignKey(s => s.TaskId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TaskStepEntity>(e =>
+        {
+            e.ToTable("TaskSteps");
+            e.HasKey(s => new { s.TaskId, s.Index });
+            e.Property(s => s.Index).ValueGeneratedNever();
+            e.Property(s => s.Name).IsRequired().HasMaxLength(Sdk.Plugins.TaskStepList.MaxNameLength);
+            e.Property(s => s.State).HasConversion<string>().HasMaxLength(16);
+            e.Property(s => s.Detail).HasMaxLength(Sdk.Plugins.TaskStepList.MaxDetailLength);
+            e.Property(s => s.StartedUtc).HasConversion(NullableUtcConverter);
+            e.Property(s => s.FinishedUtc).HasConversion(NullableUtcConverter);
         });
 
         modelBuilder.Entity<TaskDeviceResultEntity>(e =>

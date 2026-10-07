@@ -48,8 +48,18 @@ the server project for shared payload types (it then ships in the same folder).
 - `CanRun(device)`: cheap, synchronous; check `device.Apis.Supports(apiId, minVersion)`.
 - `ExecuteAsync(ctx, device, payloadJson, ct)` runs once per device; every device is its own task.
   Re-check `(await ctx.Vapix.GetApiListAsync(ct)).Require(...)` before the first write.
-- `ctx.ReportProgress(percent, message)`, `ctx.ReportWarning(message)` (Done with warnings),
-  `ctx.Log(level, message)` (task log shown in the task details). Never put secrets in them.
+- **Steps (rule): every device request and every wait is its own named step**, so the user always
+  sees what the task does. `ctx.PlanSteps("Check compatibility", "Upload firmware", ...)` up front,
+  then per step `using var step = ctx.BeginStep("Upload firmware")` (or
+  `await ctx.StepAsync("Read users", async step => ...)`), `step.ReportProgress(45, "37 of 82 MB")`,
+  end with `step.Complete(detail)`, `step.Warn(message)`, `step.Skip(reason)` or `step.Fail(message)`;
+  Dispose alone = Done, an exception escaping the step = Failed. Steps that do not apply:
+  `ctx.SkipStep(name, "Keep unchanged")`. Planned steps never reached end Skipped. Names are short
+  imperatives ("Set DNS", "Wait for the device to come back"); never secrets in names or details.
+  Test with `TaskStepList` + `tests/Shared/StepRun.cs` (same end rules as the server).
+- `ctx.ReportProgress(percent, message)` (optional: progress is derived from the steps),
+  `ctx.ReportWarning(message)` (Done with warnings), `ctx.Log(level, message)` (task log shown in
+  the task details). Never put secrets in them.
 - `ctx.Files.FindAsync / OpenReadAsync(fileId)` for files the dialog uploaded.
 - `ctx.UpdateCredentialsAsync(user, password, ct)` after changing the password of the account
   OADM uses (re-read `ctx.Vapix` afterwards); `ctx.MarkCredentialsInvalid()` after a factory

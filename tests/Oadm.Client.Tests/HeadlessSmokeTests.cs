@@ -73,7 +73,8 @@ public sealed class HeadlessSmokeTests
             await PumpUntilAsync(() => vm.Devices.Tasks.Tasks.Any(t => t.DeviceText.Length > 0));
             DataGrid tasksGrid = window.GetVisualDescendants().OfType<Oadm.Client.Tasks.TasksGridView>().Single()
                 .GetVisualDescendants().OfType<DataGrid>().Single();
-            Assert.Equal(["Name", "Device", "Status", "Start time", "Owner", "Progress"], tasksGrid.Columns.Select(c => c.Header as string ?? "").ToArray());
+            Assert.Equal(["Name", "Device", "Status", "Current step", "Start time", "Owner", "Progress"], tasksGrid.Columns.Select(c => c.Header as string ?? "").ToArray());
+            await PumpUntilAsync(() => vm.Devices.Tasks.Tasks.Any(t => t.CurrentStepText.Contains("Upload firmware", StringComparison.Ordinal)));
             Capture(window, outDir, "client-tasks-pane.png");
 
             // Live view of the first camera: the fake server replays recorded H.265, decoded by FFmpeg.
@@ -143,6 +144,16 @@ public sealed class HeadlessSmokeTests
             await PumpUntilAsync(() => details.Log.Count == 3);
             Capture(detailsWindow, outDir, "client-task-details.png");
             detailsWindow.Close();
+
+            // Task details of a running multi-step task: the step list follows the task live.
+            TaskRowViewModel upgrade = vm.Devices.Tasks.Tasks.First(t => t.PluginId == "oadm.firmware");
+            var stepDetails = new TaskDetailsViewModel(upgrade, app.Services!.GetRequiredService<DeviceStore>());
+            await stepDetails.LoadLogAsync(app.Services!.GetRequiredService<IOadmApi>(), CancellationToken.None);
+            var stepsWindow = new TaskDetailsWindow { DataContext = stepDetails };
+            stepsWindow.Show();
+            await PumpUntilAsync(() => stepDetails.Steps.Count == 10 && stepDetails.Steps.Any(s => s.IsRunning));
+            Capture(stepsWindow, outDir, "client-task-details-steps.png");
+            stepsWindow.Close();
             window.Close();
             return vm.Devices.FilteredDevices.Count;
         }, CancellationToken.None);

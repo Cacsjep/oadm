@@ -178,10 +178,23 @@ internal sealed class FakeVapix : IVapixClient
     private static HttpResponseMessage Text(string text) => new(HttpStatusCode.OK) { Content = new StringContent(text, Encoding.UTF8, "text/plain") };
 }
 
-internal sealed class FakeTaskContext(IVapixClient vapix) : ITaskExecutionContext, ITaskQueryContext
+internal sealed class FakeTaskContext : ITaskExecutionContext, ITaskQueryContext
 {
+    public FakeTaskContext(IVapixClient vapix)
+    {
+        Vapix = vapix;
+        Steps = new TaskStepList(onWarning: Warnings.Add);
+    }
+
+    /// <summary>The steps exactly as the server's task engine records them.</summary>
+    public TaskStepList Steps { get; }
+
+    public void PlanSteps(params string[] names) => Steps.Plan(names);
+
+    public ITaskStep BeginStep(string name) => Steps.Begin(name);
+
     public Guid TaskId { get; } = Guid.NewGuid();
-    public IVapixClient Vapix { get; } = vapix;
+    public IVapixClient Vapix { get; }
     public ILogger Logger => CapturingLogger;
     public CapturingLogger CapturingLogger { get; } = new();
     public ICorePlugin? Owner => null;
@@ -198,7 +211,8 @@ internal sealed class FakeTaskContext(IVapixClient vapix) : ITaskExecutionContex
 
     /// <summary>Everything the task wrote anywhere that could be persisted or shown.</summary>
     public IEnumerable<string> AllText() => Progress.Select(p => p.Message ?? string.Empty)
-        .Concat(Warnings).Concat(Log.Select(l => l.Message)).Concat(CapturingLogger.Messages);
+        .Concat(Warnings).Concat(Log.Select(l => l.Message)).Concat(CapturingLogger.Messages)
+        .Concat(Steps.Snapshot().SelectMany(s => new[] { s.Name, s.Detail ?? string.Empty }));
 }
 
 internal sealed class CapturingLogger : ILogger

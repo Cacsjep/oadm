@@ -65,7 +65,7 @@ Manifest schema -> minimum AXIS OS: 1.0-1.2 10.7, 1.3 10.9, 1.3.1 11.0, 1.4.0 11
 | Root apps | Package user `root`: refuse on AXIS OS >= 12.0; warning (AllowRoot needed) on 11.8-11.x. |
 | Signing | Signature cannot be checked locally. `AllowUnsigned=false` -> warning in the dialog; device error 2 becomes "signature missing or invalid; device accepts only signed applications". |
 | Install kind | Not installed -> Install; lower -> Upgrade; equal -> Reinstall (allowed); higher -> Downgrade, refused unless the dialog's "Allow downgrade" is set. Vendor change -> warning (device refuses with error 27). |
-| Upload | Streams the file from `ctx.Files` as multipart `file`; progress 10-80 %. |
+| Upload | Streams the file from `ctx.Files` as multipart `file`; step progress in bytes. |
 | Lost upload answer | Timeout / connection error while waiting for `upload.cgi` -> poll `list.cgi` up to 5 min for the expected version; found -> Done with warning, else Failed. |
 | Verify | After install: listed with the expected version, else Failed. Optional start: control start, then status must be Running, else Done with warning. |
 | Remove | Confirmation in the dialog. Bundled (`Bundled=Yes`) apps are refused. Not installed -> Done with warning. Verified gone afterwards. |
@@ -74,12 +74,22 @@ Manifest schema -> minimum AXIS OS: 1.0-1.2 10.7, 1.3 10.9, 1.3.1 11.0, 1.4.0 11
 | Payload | `{action: install|remove|start|stop, application, fileId, sha256, version, allowDowngrade, startAfterInstall}`; no secrets. |
 | Hardware tests | None for writes. Only read-only calls were made against 10.0.0.48 during development. |
 
+## Task steps
+
+Every device request and every wait is a named task step (`AcapTaskPlugin.Steps`, planned up front);
+the task progress is derived from the steps. Steps that do not apply end Skipped with the reason.
+
+| Action | Steps |
+|---|---|
+| Install / upgrade | Check compatibility, Read package, Read device info (basicdeviceinfo), Read embedded development version (param.cgi, "Not reported" when absent), Read unsigned application setting (config.cgi `AllowUnsigned`), Read installed applications, Check compatibility of package, Upload package (byte progress, then "The device installs the package"), Verify installation (Warning when the upload answer was lost but the version is listed); with "Start after install": Start application, Verify application state (Warning if not running; both Skipped when already running) |
+| Remove | Check compatibility, Read installed applications (Warning when not installed, Failed for bundled apps), Remove application, Verify removal |
+| Start / Stop | Check compatibility, Read installed applications (Warning when not installed), Start application / Stop application, Verify application state (both Skipped when already in the requested state) |
+
 ## Known SDK gaps
 
-- `IVapixClient.SendAsync` uses the client's fixed 15 s `HttpClient.Timeout`. `upload.cgi` answers
-  only after the installation, which can take longer for large or signed packages. The task
-  recovers by verifying through `list.cgi`, but a per-request timeout (or an upload helper with a
-  longer timeout) in the SDK would be cleaner.
+- Resolved: `upload.cgi` answers only after the installation; the upload sets
+  `VapixRequestOptions.Timeout` to 10 minutes (`ApplicationApiClient.UploadTimeout`). A lost answer
+  is still recovered by verifying through `list.cgi`.
 - `IProgress<double>` of `ITaskDialogContext.UploadAsync` has no documented unit; the dialog
   accepts both 0..1 and 0..100.
 - `CanRun` depends on `IDeviceInfo.Apis`; until the API list is persisted and refreshed the menu

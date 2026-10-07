@@ -137,11 +137,24 @@ internal sealed class FakeNetworkVapix : IVapixClient
     }
 }
 
-internal sealed class RecordingContext(IVapixClient vapix) : ITaskExecutionContext, ITaskQueryContext
+internal sealed class RecordingContext : ITaskExecutionContext, ITaskQueryContext
 {
+    public RecordingContext(IVapixClient vapix)
+    {
+        Vapix = vapix;
+        Steps = new TaskStepList(onWarning: Warnings.Add);
+    }
+
+    /// <summary>The steps exactly as the server's task engine records them.</summary>
+    public TaskStepList Steps { get; }
+
+    public void PlanSteps(params string[] names) => Steps.Plan(names);
+
+    public ITaskStep BeginStep(string name) => Steps.Begin(name);
+
     public Guid TaskId { get; } = Guid.NewGuid();
 
-    public IVapixClient Vapix { get; } = vapix;
+    public IVapixClient Vapix { get; }
 
     public ILogger Logger { get; } = NullLogger.Instance;
 

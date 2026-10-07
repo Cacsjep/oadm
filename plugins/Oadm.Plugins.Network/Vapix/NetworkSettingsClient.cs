@@ -21,19 +21,43 @@ public static class NetworkSettingsClient
         ArgumentNullException.ThrowIfNull(apis);
         if (NetworkApis.UseJsonApi(apis))
         {
-            var api = apis.Require(NetworkApis.NetworkSettings, NetworkApis.NetworkSettingsBase);
-            var request = new JsonMethodRequest(api.Version, "getNetworkInfo", "{}");
-            var json = await SendForStringAsync(vapix, request, ct).ConfigureAwait(false);
-            var settings = NetworkInfoParser.ParseGetNetworkInfo(json, connectionAddress);
-            if (apis.Supports(NetworkApis.ParamCgi, NetworkApis.ParamCgiBase))
-            {
-                var ipv6 = await vapix.ListParametersAsync(NetworkInfoParser.Ipv6Groups, ct).ConfigureAwait(false);
-                settings = NetworkInfoParser.WithIpv6Parameters(settings, ipv6);
-            }
-
-            return settings;
+            var settings = await ReadNetworkInfoAsync(vapix, apis, connectionAddress, ct).ConfigureAwait(false);
+            return ReadsIpv6ModeSeparately(apis)
+                ? await ReadIpv6ModeAsync(vapix, settings, ct).ConfigureAwait(false)
+                : settings;
         }
 
+        return await ReadParametersAsync(vapix, apis, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>True when the JSON API is used and the IPv6 address mode comes from a second request (param.cgi).</summary>
+    public static bool ReadsIpv6ModeSeparately(IReadOnlyList<DeviceApi> apis) =>
+        NetworkApis.UseJsonApi(apis) && apis.Supports(NetworkApis.ParamCgi, NetworkApis.ParamCgiBase);
+
+    /// <summary>network-settings getNetworkInfo (one request).</summary>
+    public static async Task<CurrentNetworkSettings> ReadNetworkInfoAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, string? connectionAddress, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(vapix);
+        ArgumentNullException.ThrowIfNull(apis);
+        var api = apis.Require(NetworkApis.NetworkSettings, NetworkApis.NetworkSettingsBase);
+        var request = new JsonMethodRequest(api.Version, "getNetworkInfo", "{}");
+        var json = await SendForStringAsync(vapix, request, ct).ConfigureAwait(false);
+        return NetworkInfoParser.ParseGetNetworkInfo(json, connectionAddress);
+    }
+
+    /// <summary>Completes <paramref name="settings"/> with the IPv6 address mode from param.cgi (one request).</summary>
+    public static async Task<CurrentNetworkSettings> ReadIpv6ModeAsync(IVapixClient vapix, CurrentNetworkSettings settings, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(vapix);
+        var ipv6 = await vapix.ListParametersAsync(NetworkInfoParser.Ipv6Groups, ct).ConfigureAwait(false);
+        return NetworkInfoParser.WithIpv6Parameters(settings, ipv6);
+    }
+
+    /// <summary>The legacy param.cgi Network group for devices without network-settings (one request).</summary>
+    public static async Task<CurrentNetworkSettings> ReadParametersAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(vapix);
+        ArgumentNullException.ThrowIfNull(apis);
         apis.Require(NetworkApis.ParamCgi, NetworkApis.ParamCgiBase);
         var parameters = await vapix.ListParametersAsync(NetworkInfoParser.LegacyGroups, ct).ConfigureAwait(false);
         return NetworkInfoParser.ParseParameters(parameters);

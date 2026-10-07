@@ -205,6 +205,7 @@ public static class Mappers
             Progress = task.Progress,
             BatchId = (task.BatchId == Guid.Empty ? task.Id : task.BatchId).ToString(),
             DeviceId = task.Devices.Count > 0 ? task.Devices[0].DeviceId.ToString() : string.Empty,
+            CurrentStepIndex = task.CurrentStepIndex,
         };
 
         if (task.StartedUtc is { } started)
@@ -224,8 +225,44 @@ public static class Mappers
             Message = d.Message ?? string.Empty,
             Progress = d.Progress,
         }));
+        proto.Steps.AddRange(task.Steps.Select(ToProto));
         return proto;
     }
+
+    public static Proto.TaskStep ToProto(Sdk.Plugins.TaskStepInfo step)
+    {
+        ArgumentNullException.ThrowIfNull(step);
+        var proto = new Proto.TaskStep
+        {
+            Index = step.Index,
+            Name = step.Name,
+            State = ToProto(step.State),
+            Detail = step.Detail ?? string.Empty,
+            Progress = step.Progress,
+        };
+        if (step.StartedUtc is { } started)
+        {
+            proto.Started = Timestamp.FromDateTimeOffset(started);
+        }
+
+        if (step.FinishedUtc is { } finished)
+        {
+            proto.Finished = Timestamp.FromDateTimeOffset(finished);
+        }
+
+        return proto;
+    }
+
+    public static Proto.TaskStepState ToProto(Sdk.Plugins.TaskStepState state) => state switch
+    {
+        Sdk.Plugins.TaskStepState.Pending => Proto.TaskStepState.Pending,
+        Sdk.Plugins.TaskStepState.Running => Proto.TaskStepState.Running,
+        Sdk.Plugins.TaskStepState.Done => Proto.TaskStepState.Done,
+        Sdk.Plugins.TaskStepState.Warning => Proto.TaskStepState.Warning,
+        Sdk.Plugins.TaskStepState.Skipped => Proto.TaskStepState.Skipped,
+        Sdk.Plugins.TaskStepState.Failed => Proto.TaskStepState.Failed,
+        _ => Proto.TaskStepState.Unspecified,
+    };
 
     public static Proto.TaskChanged ToProto(TaskChange change)
     {

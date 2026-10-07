@@ -49,6 +49,9 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
 {
     public const string ListPath = "/axis-cgi/applications/list.cgi";
     public const string UploadPath = "/axis-cgi/applications/upload.cgi";
+
+    /// <summary>Per-request timeout of the upload (sending the package and the installation).</summary>
+    public static readonly TimeSpan UploadTimeout = TimeSpan.FromMinutes(10);
     public const string ControlPath = "/axis-cgi/applications/control.cgi";
     public const string ConfigPath = "/axis-cgi/applications/config.cgi";
     public const string EmbeddedDevelopmentVersionParameter = "Properties.EmbeddedDevelopment.Version";
@@ -67,26 +70,29 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
     public async Task<AcapDeviceFacts> GetDeviceFactsAsync(CancellationToken ct)
     {
         var info = await _vapix.GetBasicDeviceInfoAsync(ct).ConfigureAwait(false);
-        string? embdev = null;
+        return new AcapDeviceFacts
+        {
+            Architecture = info.Architecture,
+            FirmwareVersion = info.Version,
+            EmbeddedDevelopmentVersion = await TryGetEmbeddedDevelopmentVersionAsync(ct).ConfigureAwait(false),
+            AllowUnsigned = await TryGetAllowUnsignedAsync(ct).ConfigureAwait(false),
+        };
+    }
+
+    /// <summary>The device's embedded development (ACAP SDK) version parameter; null when not available.</summary>
+    public async Task<string?> TryGetEmbeddedDevelopmentVersionAsync(CancellationToken ct)
+    {
         try
         {
             var parameters = await _vapix.ListParametersAsync([EmbeddedDevelopmentVersionParameter], ct).ConfigureAwait(false);
-            parameters.TryGetValue(EmbeddedDevelopmentVersionParameter, out embdev);
+            return parameters.TryGetValue(EmbeddedDevelopmentVersionParameter, out var embdev) ? embdev : null;
         }
 #pragma warning disable CA1031 // Optional value: only legacy package.conf packages need it.
         catch (Exception ex) when (ex is not OperationCanceledException)
 #pragma warning restore CA1031
         {
-            embdev = null;
+            return null;
         }
-
-        return new AcapDeviceFacts
-        {
-            Architecture = info.Architecture,
-            FirmwareVersion = info.Version,
-            EmbeddedDevelopmentVersion = embdev,
-            AllowUnsigned = await TryGetAllowUnsignedAsync(ct).ConfigureAwait(false),
-        };
     }
 
     /// <summary><c>config.cgi?action=get&amp;name=AllowUnsigned</c> (AXIS OS 11.2+); null when not available.</summary>
@@ -116,6 +122,8 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
         file.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
         content.Add(file, "file", fileName);
         using var request = new HttpRequestMessage(HttpMethod.Post, UploadPath) { Content = content };
+        // upload.cgi answers only after the installation, which can take minutes for large packages.
+        request.Options.Set(VapixRequestOptions.Timeout, UploadTimeout);
         var text = await SendForTextAsync(request, ct).ConfigureAwait(false);
         EnsureOk(text, UploadErrors);
     }

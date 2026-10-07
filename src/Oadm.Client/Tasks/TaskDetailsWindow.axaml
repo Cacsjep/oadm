@@ -5,20 +5,21 @@
         x:Class="Oadm.Client.Tasks.TaskDetailsWindow"
         x:DataType="tasks:TaskDetailsViewModel"
         Title="{Binding Title}"
-        Width="980" Height="680" MinWidth="640" MinHeight="420"
+        Width="1040" Height="820" MinWidth="640" MinHeight="520"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="{StaticResource Oadm.TitleBarHeight}">
-  <Grid RowDefinitions="Auto,*,16,*,Auto" Margin="0,0,0,16">
+  <Grid RowDefinitions="Auto,Auto,16,3*,16,2*,Auto" Margin="0,0,0,16">
     <Border Height="{StaticResource Oadm.TitleBarHeight}" chrome:WindowDecorationProperties.ElementRole="TitleBar" Padding="24,0">
       <TextBlock Classes="appName" Text="{Binding Title}" VerticalAlignment="Center" />
     </Border>
 
+    <!-- A task targets exactly one device: one row -->
     <Border Grid.Row="1" Classes="card" Margin="16,0">
-      <Grid RowDefinitions="Auto,*">
-        <TextBlock Classes="cardTitle" Text="Devices" Margin="0,0,0,12" />
-        <DataGrid Grid.Row="1" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single">
+      <Grid RowDefinitions="Auto,Auto">
+        <TextBlock Classes="cardTitle" Text="Device" Margin="0,0,0,12" />
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single" MaxHeight="140">
           <DataGrid.Columns>
             <DataGridTextColumn Header="Device" Width="2*" Binding="{Binding Device}" x:DataType="tasks:TaskDeviceRow" />
             <DataGridTextColumn Header="MAC address" Width="*" Binding="{Binding Serial}" x:DataType="tasks:TaskDeviceRow" />
@@ -38,7 +39,51 @@
       </Grid>
     </Border>
 
+    <!-- What the task did, step by step (live while it runs) -->
     <Border Grid.Row="3" Classes="card" Margin="16,0">
+      <Grid RowDefinitions="Auto,*">
+        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+          <TextBlock Classes="cardTitle" Text="Steps" />
+          <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding StepsStatus}" VerticalAlignment="Center" />
+        </Grid>
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Steps}" IsReadOnly="True" SelectionMode="Single"
+                  CanUserSortColumns="False" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="#" Width="48" Binding="{Binding Number}" x:DataType="tasks:TaskStepRowViewModel" />
+            <DataGridTemplateColumn Header="Status" Width="130">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="tasks:TaskStepRowViewModel">
+                  <Border Classes="pill" Margin="10,0" Classes.ok="{Binding IsStateOk}" Classes.warn="{Binding IsStateWarning}" Classes.error="{Binding IsStateError}" Classes.accent="{Binding IsStateAccent}">
+                    <TextBlock Text="{Binding StateText}" />
+                  </Border>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Step" Width="2*" Binding="{Binding Name}" x:DataType="tasks:TaskStepRowViewModel" />
+            <DataGridTemplateColumn Header="Detail" Width="3*">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="tasks:TaskStepRowViewModel">
+                  <TextBlock Text="{Binding Detail}" ToolTip.Tip="{Binding Detail}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Duration" Width="110" Binding="{Binding DurationText}" x:DataType="tasks:TaskStepRowViewModel" />
+            <DataGridTemplateColumn Header="Progress" Width="180">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="tasks:TaskStepRowViewModel">
+                  <Grid ColumnDefinitions="*,52" Margin="10,0,12,0" VerticalAlignment="Center" IsVisible="{Binding IsRunning}">
+                    <ProgressBar Value="{Binding Progress}" Minimum="0" Maximum="100" Classes="stream" />
+                    <TextBlock Grid.Column="1" Classes="secondary" Margin="10,0,0,0" Text="{Binding ProgressText}" HorizontalAlignment="Right" />
+                  </Grid>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="5" Classes="card" Margin="16,0">
       <Grid RowDefinitions="Auto,*">
         <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
           <TextBlock Classes="cardTitle" Text="Log" />
@@ -64,6 +109,6 @@
       </Grid>
     </Border>
 
-    <Button Grid.Row="4" Classes="secondary" Content="Close" HorizontalAlignment="Right" Margin="0,16,16,0" Click="OnClose" IsCancel="True" IsDefault="True" />
+    <Button Grid.Row="6" Classes="secondary" Content="Close" HorizontalAlignment="Right" Margin="0,16,16,0" Click="OnClose" IsCancel="True" IsDefault="True" />
   </Grid>
 </Window>

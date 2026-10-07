@@ -10,5 +10,12 @@ public partial class TaskDetailsWindow : Window
         InitializeComponent();
     }
 
+    /// <summary>Stops the view model from following the task once the window is gone.</summary>
+    protected override void OnClosed(EventArgs e)
+    {
+        (DataContext as IDisposable)?.Dispose();
+        base.OnClosed(e);
+    }
+
     private void OnClose(object? sender, RoutedEventArgs e) => Close();
 }

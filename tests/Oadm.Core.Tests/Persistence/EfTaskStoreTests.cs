@@ -135,6 +135,44 @@ public sealed class EfTaskStoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task StepsRoundTripAreRewrittenInPlaceAndDeletedWithTheTask()
+    {
+        var t0 = new DateTimeOffset(2026, 10, 7, 12, 0, 0, TimeSpan.Zero);
+        var task = NewTask(t0, Guid.NewGuid()) with
+        {
+            Steps =
+            [
+                new(0, "Check compatibility", TaskStepState.Done, "network-settings 1.8", 100, t0, t0.AddSeconds(1)),
+                new(1, "Set DNS", TaskStepState.Pending, null, 0, null, null),
+            ],
+        };
+        await _store.AddAsync(task, CancellationToken.None);
+        Assert.Equal(task.Steps, (await _store.GetAsync(task.Id, CancellationToken.None))!.Steps);
+
+        // A dynamic step was inserted before the pending one: indices shift, rows are updated in place.
+        var updated = task with
+        {
+            Steps =
+            [
+                task.Steps[0],
+                new(1, "Set host name", TaskStepState.Skipped, "Keep unchanged", 0, t0.AddSeconds(2), t0.AddSeconds(2)),
+                new(2, "Set DNS", TaskStepState.Running, null, 40, t0.AddSeconds(2), null),
+            ],
+        };
+        await _store.UpdateAsync(updated, CancellationToken.None);
+        var loaded = (await _store.GetAsync(task.Id, CancellationToken.None))!;
+        Assert.Equal(updated.Steps, loaded.Steps);
+        Assert.Equal(2, loaded.CurrentStepIndex);
+        Assert.Equal(updated.Steps, Assert.Single(await _store.ListAsync(CancellationToken.None)).Steps);
+
+        await _store.UpdateAsync(updated with { Steps = [task.Steps[0]] }, CancellationToken.None);
+        Assert.Single((await _store.GetAsync(task.Id, CancellationToken.None))!.Steps);
+
+        Assert.True(await _store.DeleteAsync(task.Id, CancellationToken.None));
+        Assert.Null(await _store.GetAsync(task.Id, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task LogEntriesRoundTripInOrderAndAreDeletedWithTheTask()
     {
         var device = Guid.NewGuid();

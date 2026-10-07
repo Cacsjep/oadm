@@ -93,7 +93,9 @@ Two processes, like ADM:
 - `TaskService`: `ListTaskPlugins` (context-menu entries incl. those contributed by Core
   plugins), `Run(pluginId, deviceIds, payloadJson)` (one task per device, reply `task_ids`;
   `task_id` is deprecated = first id), `List`, `Watch` (stream), `Cancel`, `Delete`,
-  `DeleteAll`, `GetLog(taskId)` (per-task log, oldest first, live while running),
+  `DeleteAll`, `GetLog(taskId)` (per-task log, oldest first, live while running); `TaskInfo` carries
+  `repeated TaskStep steps = 13` (index, name, `TaskStepState`, detail, progress, started, finished) and
+  `current_step_index = 14` (-1 none),
   `Query(pluginId, deviceId, method, payloadJson)` (read-only `ITaskPluginQuery` for task
   dialogs, 30 s timeout; NOT_FOUND, UNIMPLEMENTED, FAILED_PRECONDITION for an incompatible device,
   changed certificate or rejected credentials, UNAVAILABLE, DEADLINE_EXCEEDED, INVALID_ARGUMENT;
@@ -131,6 +133,12 @@ Two processes, like ADM:
   ScheduledUtc (nullable, unused in Goal 1).
 - `TaskDeviceResult`: TaskId, DeviceId, Status, Message (last progress message, warning or
   error), Progress. Exactly one row per task (proto `TaskInfo.device_id` = its DeviceId).
+- `TaskStep` (table TaskSteps, migration `TaskSteps`): key (TaskId, Index), Name (max 200), State
+  (Pending, Running, Done, Warning, Skipped, Failed; stored as string), Detail (max 1000: result, progress
+  detail, skip reason or error), Progress (0-100), StartedUtc, FinishedUtc (nullable). Cascade-deleted with
+  the task; rows are rewritten by index with every task snapshot (a dynamic step may shift later ones).
+  At most 200 steps per task (`TaskStepList.MaxSteps`). The current step (`TaskRecord.CurrentStepIndex`,
+  not stored) is the running one, else the last that started (the failed one), else the last ended.
 - `TaskLogEntry` (table TaskLogEntries): Id (autoincrement), TaskId (cascade delete), DeviceId
   (nullable = task level), TimeUtc, Level (Info, Warning, Error), Message (max 2000 chars).
   At most 1000 entries per task; the 1000th says that later entries were dropped.
@@ -280,14 +288,19 @@ Layout, top to bottom:
    client, horizontal scroll, multi-select, right-click context menu with core actions and
    all Task plugins whose `CanRun` is true for the whole selection.
 5. Resizable, collapsible bottom pane **Tasks** (no tabs), one row per task (= per device).
-   Columns: Name, Device, Status, Start time, Owner, Progress (bar). **Device** is the task's
+   Columns: Name, Device, Status, Current step, Start time, Owner, Progress (bar). **Current step** is
+   "Step 3/6 · Upload firmware" plus " · 45 %" while the running step reports progress (tooltip: the text
+   and the step detail); a failed task shows its failed step; empty for plugins without steps. **Device** is the task's
    device by its device grid address (IP or host name, resolved through the client device store
    and updated live); a device removed since shows as "removed device 1a2b3c4d" (id shortened).
    Tooltip: "10.0.0.200: Failed - Connection refused". Sortable by the text. Status chips:
    Queued/Cancelled neutral, Running violet, Done green, **Done with warnings** amber (warn
-   chip), Failed red. **Details** opens the task details window: a Devices card (device, MAC
-   address, model, status chip, message) and a Log card (level chip, time, device address,
-   message; loaded with `TaskService.GetLog`), built from the shared grid and chip styles.
+   chip), Failed red. **Details** opens the task details window, live while it is open: a Device card
+   (device, MAC address, model, status chip, message), a **Steps** card ("3 of 9 steps finished"; per
+   step #, state chip (Pending/Skipped neutral, Running violet, Done green, Warning amber, Failed red),
+   name, detail, duration, progress bar + percent only for the running step; rows updated in place) and a
+   Log card (level chip, time, device address, message; `TaskService.GetLog`, re-read when the current
+   step or the task state changes, new entries appended), built from the shared grid and chip styles.
    Buttons: details, cancel, delete, **delete all** (with confirmation; running tasks are
    cancelled first); all work per task.
 
@@ -378,6 +391,20 @@ full refreshes go through one deduplicating queue with bounded parallelism.
 - States: Queued, Running, Done, Failed, Cancelled, DoneWithWarnings (the plugin called
   `ReportWarning`; a failure wins over a warning). Persisted, visible in the tasks pane, history
   kept until the user deletes it.
+- **Steps: a task always tells the user exactly what it is doing.** Every device request and every
+  wait of a task plugin is its own short, imperative, named step ("Read users", "Upload firmware",
+  "Wait for the device to come back"); five requests = five steps. Plugins plan their steps up front
+  (`PlanSteps`, shown Pending) and may add steps on the way; steps that do not apply are Skipped with a
+  reason ("Keep unchanged"). Engine rules: beginning a step completes the running one; when the plugin
+  returns, a running step ends Done and planned steps never reached end Skipped ("Not run."); when it
+  throws, the running step (or the one its `using` just ended) ends Failed with the exception message and
+  pending ones Skipped ("Not run: an earlier step failed." / "... the task was cancelled."; a cancelled
+  running step is Failed "Cancelled."). The running step is also the device message ("Upload firmware -
+  12 of 80 MB"). Overall progress = steps with equal weights, the running one with its own progress,
+  unless the plugin calls `ReportProgress` (then that value wins). Step changes go to the change feed
+  immediately and are persisted with the throttled writes (max 1/s per device) plus every state
+  transition. Recovery after a server restart marks a Running step Failed ("Server stopped while the
+  task was running.") and Pending ones Skipped.
 - Task engine: at most 8 running tasks per plugin (`TaskEngineOptions.MaxParallelTasksPerPlugin`,
   overridden by `ITaskPlugin.MaxParallelDevices`, e.g. firmware 2); further tasks wait in Queued
   and a cancel while queued ends them as Cancelled ("Cancelled before start."). Cancellation via
@@ -460,12 +487,29 @@ public interface ITaskExecutionContext
     ILogger Logger { get; }
     ICorePlugin? Owner { get; }        // set when the task was contributed by a Core plugin
     IUploadedFiles Files { get; }      // uploads referenced by id in the payload
-    void ReportProgress(int percent, string? message = null);   // message persisted (throttled)
+    void ReportProgress(int percent, string? message = null);   // optional with steps; wins over the derived progress
+    void PlanSteps(params string[] names) { }                   // DIM: pending steps shown up front
+    ITaskStep BeginStep(string name);                           // DIM default: a detached step (third-party contexts)
     void ReportWarning(string message);                         // device ends DoneWithWarnings
     void Log(TaskLogLevel level, string message);               // per-task log, never secrets
     void MarkCredentialsInvalid();     // device lost OADM's credentials: delete them, refresh
     Task UpdateCredentialsAsync(string userName, string password, CancellationToken ct); // store new ones; Vapix is swapped
 }
+
+public interface ITaskStep : IDisposable   // Dispose without an end = Done; escaping exception = Failed
+{
+    string Name { get; }
+    TaskStepState State { get; }       // Pending, Running, Done, Warning, Skipped, Failed
+    void ReportProgress(int percent, string? detail = null);    // "37 of 82 MB"
+    void Complete(string? detail = null);                       // Done, detail = result ("AXIS OS 12.11.77")
+    void Warn(string message);         // Warning + ctx.ReportWarning (task ends Done with warnings)
+    void Skip(string reason);          // did not apply
+    void Fail(string message);         // records the failure; throw to fail the task
+}
+// Helpers (TaskStepExtensions): ctx.StepAsync(name, async step => ...) (Done / Failed + rethrow),
+// ctx.SkipStep(name, reason). Pattern: using var step = ctx.BeginStep("Send restart"); ...
+// TaskStepList (Oadm.Sdk.Plugins) is the state machine behind it, used by the engine and by test
+// fakes; tests/Shared/StepRun.cs runs a plugin with the engine's end rules for step assertions.
 
 public interface ICorePluginContext
 {
@@ -507,7 +551,8 @@ the server. gRPC errors reach the dialog as `RpcException` (Status.Detail is the
 
 `VapixRequestOptions.Timeout` (`HttpRequestOptionsKey<TimeSpan>` "Oadm.RequestTimeout") on a
 request passed to `IVapixClient.SendAsync` overrides the default 15 s timeout for that request
-(firmware and ACAP uploads use minutes); request bodies are streamed, never buffered.
+(firmware and ACAP uploads use minutes; plugins use the SDK constant, never their own key); request
+bodies are streamed, never buffered.
 
 ## Loading and packaging
 
@@ -551,8 +596,24 @@ state through `ITaskDialogContext.QueryAsync`), `IUploadedFiles` (dialog uploads
 ## First plugin: Restart
 
 `plugins/Oadm.Plugins.Restart`: `ShowInToolbar = true`, `RequiresDialog = false`, calls
-`restart.cgi`, then polls basicdeviceinfo until the device answers again (timeout 3 min),
-reporting progress. No client assembly needed.
+`restart.cgi`, then polls basicdeviceinfo until the device answers again (timeout 3 min).
+Steps: Check device (basicdeviceinfo; unreachable fails "Nothing was changed"), Send restart, Wait for
+the device to go offline, Wait for the device to come back, Verify device (serial number; a different
+one is a Warning). No client assembly needed.
+
+Steps of the other task plugins (details in each plugin README):
+- Users: Check compatibility, Read password policy, Identify OADM account, Read users, Validate change,
+  Add/Update/Remove user <name> (one per write), Verify users.
+- Network: Check compatibility, Read current settings, Read IPv6 address mode, Validate settings, Set
+  host name, Set DNS, Set IPv6 (+ Enable IPv6), Set IPv4 (order as written), Wait for the settings to
+  apply, Check reachability; unchanged sections Skipped "Keep unchanged".
+- Firmware: Check compatibility, Read device info, Validate file, Read firmware status, Upload firmware
+  (byte progress), Install firmware (until offline), Wait for device to come back, Verify version, Read
+  commit state, Commit firmware (retries add "Wait before retrying the commit" and "(attempt n)" steps).
+- ACAP install: Check compatibility, Read package, Read device info, Read embedded development version,
+  Read unsigned application setting, Read installed applications, Check compatibility of package, Upload
+  package (byte progress), Verify installation (+ Start application, Verify application state); remove,
+  start, stop: Check compatibility, Read installed applications, <action> application, Verify ....
 
 ## Network settings plugin
 

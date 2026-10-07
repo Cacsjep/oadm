@@ -9,9 +9,10 @@ namespace Oadm.Plugins.Users;
 /// <summary>
 /// "Users..." on the device context menu: add a user, change a password and/or role, or remove a
 /// user on every selected device through pwdgrp.cgi (API discovery id <c>user-management</c> 1.x).
-/// Per device: fresh API check, read policy, current account and users, plan (validation and
-/// lock-out protection), one write, read back and verify. The payload carries the password; it is
-/// never logged.
+/// Per device, one named step per request: Check compatibility, Read password policy, Identify OADM
+/// account, Read users, Validate change (lock-out protection), the write ("Add user joe", "Update user
+/// joe", "Remove user joe"), Verify users. The payload carries the password; it is never logged and
+/// never part of a step name or detail.
 /// </summary>
 public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
 {
@@ -40,49 +41,121 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
         var payload = UsersJson.ParsePayload(payloadJson);
+        var writeStep = WriteStepName(payload);
+        ctx.PlanSteps(StepCheckCompatibility, StepReadPolicy, StepIdentifyAccount, StepReadUsers, StepValidate, writeStep, StepVerify);
 
-        ctx.ReportProgress(0, "Checking device compatibility");
-        var apis = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
-        var api = apis.Require(PwdgrpApi.ApiId, PwdgrpApi.MinVersion);
-        ctx.Log(TaskLogLevel.Info, $"Device offers {api.Id} {api.Version}; using pwdgrp.cgi.");
-
-        ctx.ReportProgress(15, "Reading users");
-        var state = await ReadStateAsync(ctx.Vapix, apis, ct).ConfigureAwait(false);
-        ctx.Log(TaskLogLevel.Info, $"Passphrase policy {state.Policy}; OADM account '{state.CurrentAccount ?? "unknown"}'; {state.Users.Count} user(s) on the device.");
-
-        var plan = UserChangePlanner.Plan(payload, state.Users, state.CurrentAccount, state.Policy, device.FirmwareVersion);
-        if (plan.Kind == PlanKind.Skip)
+        var apis = await ctx.StepAsync(StepCheckCompatibility, async step =>
         {
-            if (plan.IsWarning)
+            var list = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
+            var api = list.Require(PwdgrpApi.ApiId, PwdgrpApi.MinVersion);
+            ctx.Log(TaskLogLevel.Info, $"Device offers {api.Id} {api.Version}; using pwdgrp.cgi.");
+            step.Complete($"{api.Id} {api.Version}");
+            return list;
+        }).ConfigureAwait(false);
+
+        var policy = PassphrasePolicy.None;
+        if (apis.Supports(PwdgrpApi.SystemReadyApiId, PwdgrpApi.SystemReadyMinVersion))
+        {
+            policy = await ctx.StepAsync(StepReadPolicy, async step =>
             {
-                ctx.ReportWarning(plan.Message);
+                var read = await ReadPolicyAsync(ctx.Vapix, ct).ConfigureAwait(false);
+                step.Complete($"Passphrase policy: {read}");
+                return read;
+            }).ConfigureAwait(false);
+        }
+        else
+        {
+            ctx.SkipStep(StepReadPolicy, "The device does not offer systemready; no passphrase policy.");
+        }
+
+        var current = await ctx.StepAsync(StepIdentifyAccount, async step =>
+        {
+            var account = await ReadCurrentAccountAsync(ctx.Vapix, ct).ConfigureAwait(false);
+            if (account is null)
+            {
+                step.Complete("Unknown account");
             }
             else
             {
-                ctx.Log(TaskLogLevel.Info, plan.Message);
+                step.Complete($"OADM uses '{account}'");
             }
 
-            ctx.ReportProgress(100, plan.Message);
+            return account;
+        }).ConfigureAwait(false);
+
+        var users = await ctx.StepAsync(StepReadUsers, async step =>
+        {
+            var list = await ReadUsersAsync(ctx.Vapix, current, ct).ConfigureAwait(false);
+            step.Complete(list.Count == 1 ? "1 user" : $"{list.Count} users");
+            return list;
+        }).ConfigureAwait(false);
+        ctx.Log(TaskLogLevel.Info, $"Passphrase policy {policy}; OADM account '{current ?? "unknown"}'; {users.Count} user(s) on the device.");
+
+        UserChangePlan plan;
+        using (var step = ctx.BeginStep(StepValidate))
+        {
+            plan = UserChangePlanner.Plan(payload, users, current, policy, device.FirmwareVersion);
+            if (plan.Kind == PlanKind.Skip)
+            {
+                if (plan.IsWarning)
+                {
+                    step.Warn(plan.Message);
+                }
+                else
+                {
+                    ctx.Log(TaskLogLevel.Info, plan.Message);
+                    step.Complete(plan.Message);
+                }
+            }
+            else
+            {
+                step.Complete(plan.Message);
+            }
+        }
+
+        if (plan.Kind == PlanKind.Skip)
+        {
+            ctx.SkipStep(writeStep, "Nothing to change on this device.");
+            ctx.SkipStep(StepVerify, "Nothing was changed.");
             return;
         }
 
-        ctx.ReportProgress(40, plan.Message);
         ctx.Log(TaskLogLevel.Info, plan.Message);
         LogWriting(ctx.Logger, payload.Mode, payload.UserName, device.Serial);
-        var (request, verb) = BuildWrite(payload, plan);
-        using (request)
+        using (ctx.BeginStep(writeStep))
         {
-            using var response = await ctx.Vapix.SendAsync(request, ct).ConfigureAwait(false);
-            var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            PwdgrpApi.EnsureWriteSucceeded((int)response.StatusCode, body, verb);
+            var (request, verb) = BuildWrite(payload, plan);
+            using (request)
+            {
+                using var response = await ctx.Vapix.SendAsync(request, ct).ConfigureAwait(false);
+                var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                PwdgrpApi.EnsureWriteSucceeded((int)response.StatusCode, body, verb);
+            }
         }
 
-        ctx.ReportProgress(75, "Verifying");
-        var after = await ReadUsersAsync(ctx.Vapix, state.CurrentAccount, ct).ConfigureAwait(false);
-        var done = Verify(payload.Mode, payload.UserName, plan, after);
-        ctx.Log(TaskLogLevel.Info, done);
-        ctx.ReportProgress(100, done);
+        await ctx.StepAsync(StepVerify, async step =>
+        {
+            var after = await ReadUsersAsync(ctx.Vapix, current, ct).ConfigureAwait(false);
+            var done = Verify(payload.Mode, payload.UserName, plan, after);
+            ctx.Log(TaskLogLevel.Info, done);
+            step.Complete(done);
+        }).ConfigureAwait(false);
     }
+
+    internal const string StepCheckCompatibility = "Check compatibility";
+    internal const string StepReadPolicy = "Read password policy";
+    internal const string StepIdentifyAccount = "Identify OADM account";
+    internal const string StepReadUsers = "Read users";
+    internal const string StepValidate = "Validate change";
+    internal const string StepVerify = "Verify users";
+
+    /// <summary>The name of the write step: "Add user joe", "Update user joe", "Remove user joe". Never contains the password.</summary>
+    internal static string WriteStepName(UsersPayload payload) => payload.Mode switch
+    {
+        UsersMode.Add => $"Add user {payload.UserName}",
+        UsersMode.Remove => $"Remove user {payload.UserName}",
+        _ => $"Update user {payload.UserName}",
+    };
 
     /// <summary>Read-only. <c>listUsers</c> returns <see cref="UsersQueryResult"/> JSON for the dialog.</summary>
     public async Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct)
@@ -162,12 +235,18 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
     private static async Task<DeviceState> ReadStateAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, CancellationToken ct)
     {
         var policy = apis.Supports(PwdgrpApi.SystemReadyApiId, PwdgrpApi.SystemReadyMinVersion)
-            ? PwdgrpApi.ParsePassphrasePolicy(await SendForStringAsync(vapix, PwdgrpApi.BuildSystemReady(), ct).ConfigureAwait(false) ?? string.Empty)
+            ? await ReadPolicyAsync(vapix, ct).ConfigureAwait(false)
             : PassphrasePolicy.None;
-        var current = PwdgrpApi.ParseCurrentAccount(await SendForStringAsync(vapix, PwdgrpApi.BuildCurrentAccount(), ct).ConfigureAwait(false) ?? string.Empty);
+        var current = await ReadCurrentAccountAsync(vapix, ct).ConfigureAwait(false);
         var users = await ReadUsersAsync(vapix, current, ct).ConfigureAwait(false);
         return new DeviceState(users, current, policy);
     }
+
+    private static async Task<PassphrasePolicy> ReadPolicyAsync(IVapixClient vapix, CancellationToken ct) =>
+        PwdgrpApi.ParsePassphrasePolicy(await SendForStringAsync(vapix, PwdgrpApi.BuildSystemReady(), ct).ConfigureAwait(false) ?? string.Empty);
+
+    private static async Task<string?> ReadCurrentAccountAsync(IVapixClient vapix, CancellationToken ct) =>
+        PwdgrpApi.ParseCurrentAccount(await SendForStringAsync(vapix, PwdgrpApi.BuildCurrentAccount(), ct).ConfigureAwait(false) ?? string.Empty);
 
     private static async Task<IReadOnlyList<DeviceUser>> ReadUsersAsync(IVapixClient vapix, string? currentAccount, CancellationToken ct)
     {

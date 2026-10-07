@@ -99,12 +99,6 @@ public sealed class FwmgrClient(IVapixClient vapix)
     public const string Path = "axis-cgi/firmwaremanagement.cgi";
     public const string Context = "oadm";
 
-    /// <summary>
-    /// Request option carrying the desired timeout of a long request (firmware upload). The SDK's
-    /// VAPIX client does not honor it yet (see README, SDK gaps).
-    /// </summary>
-    public static readonly HttpRequestOptionsKey<TimeSpan> RequestTimeoutOption = new("Oadm.RequestTimeout");
-
     private const string Boundary = "oadm-fw-7c1b0e4d5a2f";
 
     public async Task<FwmgrStatus> GetStatusAsync(CancellationToken ct)
@@ -137,7 +131,7 @@ public sealed class FwmgrClient(IVapixClient vapix)
         ArgumentNullException.ThrowIfNull(firmware);
         ArgumentNullException.ThrowIfNull(options);
         using var request = BuildUpgradeRequest(firmware, fileName, options);
-        request.Options.Set(RequestTimeoutOption, timeout);
+        request.Options.Set(VapixRequestOptions.Timeout, timeout);
         var data = await SendAsync(request, "upgrade", ct).ConfigureAwait(false);
         return GetString(data, "firmwareVersion");
     }

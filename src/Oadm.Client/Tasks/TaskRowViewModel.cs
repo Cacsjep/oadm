@@ -51,6 +51,18 @@ public sealed partial class TaskRowViewModel : ObservableObject
     /// <summary>"10.0.0.48: Failed - Connection refused". Null without a device.</summary>
     [ObservableProperty] public partial string? DeviceTooltip { get; private set; }
 
+    /// <summary>The task's named steps, in order (empty for plugins without steps).</summary>
+    [ObservableProperty] public partial IReadOnlyList<TaskStep> Steps { get; private set; } = [];
+
+    /// <summary>Index of the running step, else of the last started one; -1 without one.</summary>
+    [ObservableProperty] public partial int CurrentStepIndex { get; private set; } = -1;
+
+    /// <summary>The Current step cell: "Step 3/6 · Upload firmware · 45 %"; empty without steps.</summary>
+    [ObservableProperty] public partial string CurrentStepText { get; private set; } = "";
+
+    /// <summary>The full current step text plus its detail (progress detail, result or error); null without steps.</summary>
+    [ObservableProperty] public partial string? CurrentStepTooltip { get; private set; }
+
     public bool IsStateOk => StateKind == PillKind.Ok;
     public bool IsStateWarning => StateKind == PillKind.Warning;
     public bool IsStateError => StateKind == PillKind.Error;
@@ -75,7 +87,27 @@ public sealed partial class TaskRowViewModel : ObservableObject
         DeviceResults = task.Devices.ToList();
         DeviceId = !string.IsNullOrEmpty(task.DeviceId) ? task.DeviceId : DeviceResults.Count > 0 ? DeviceResults[0].DeviceId : "";
         BatchId = task.BatchId;
+        Steps = task.Steps.ToList();
+        CurrentStepIndex = Steps.Count == 0 ? -1 : task.CurrentStepIndex;
+        TaskStep? current = CurrentStepIndex >= 0 && CurrentStepIndex < Steps.Count ? Steps[CurrentStepIndex] : null;
+        CurrentStepText = FormatCurrentStep(current, Steps.Count);
+        CurrentStepTooltip = CurrentStepText.Length == 0 ? null
+            : string.IsNullOrEmpty(current?.Detail) ? CurrentStepText : $"{CurrentStepText}\n{current.Detail}";
         ResolveDevices();
+    }
+
+    /// <summary>"Step 3/6 · Upload firmware", plus " · 45 %" while a running step reports progress.</summary>
+    public static string FormatCurrentStep(TaskStep? step, int count)
+    {
+        if (step is null || count == 0)
+        {
+            return count == 0 ? "" : string.Create(CultureInfo.CurrentCulture, $"{count} steps planned");
+        }
+
+        string text = string.Create(CultureInfo.CurrentCulture, $"Step {step.Index + 1}/{count} \u00B7 {step.Name}");
+        return step.State == TaskStepState.Running && step.Progress is > 0 and < 100
+            ? string.Create(CultureInfo.CurrentCulture, $"{text} \u00B7 {step.Progress} %")
+            : text;
     }
 
     /// <summary>Re-reads the device address from the device store (the device was added, removed or changed).</summary>

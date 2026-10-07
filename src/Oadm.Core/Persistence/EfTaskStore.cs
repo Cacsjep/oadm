@@ -30,7 +30,8 @@ public sealed class EfTaskStore(IDbContextFactory<OadmDbContext> dbFactory) : IT
     {
         ArgumentNullException.ThrowIfNull(task);
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-        var entity = await db.Tasks.Include(t => t.Results).FirstOrDefaultAsync(t => t.Id == task.Id, ct).ConfigureAwait(false);
+        var entity = await db.Tasks.Include(t => t.Results).Include(t => t.Steps).AsSplitQuery()
+            .FirstOrDefaultAsync(t => t.Id == task.Id, ct).ConfigureAwait(false);
         if (entity is null)
         {
             entity = new TaskEntity { Id = task.Id };
@@ -44,7 +45,7 @@ public sealed class EfTaskStore(IDbContextFactory<OadmDbContext> dbFactory) : IT
     public async Task<TaskRecord?> GetAsync(Guid id, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-        var entity = await db.Tasks.AsNoTracking().Include(t => t.Results)
+        var entity = await db.Tasks.AsNoTracking().Include(t => t.Results).Include(t => t.Steps).AsSplitQuery()
             .FirstOrDefaultAsync(t => t.Id == id, ct).ConfigureAwait(false);
         return entity is null ? null : ToRecord(entity);
     }
@@ -52,7 +53,7 @@ public sealed class EfTaskStore(IDbContextFactory<OadmDbContext> dbFactory) : IT
     public async Task<IReadOnlyList<TaskRecord>> ListAsync(CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-        var entities = await db.Tasks.AsNoTracking().Include(t => t.Results)
+        var entities = await db.Tasks.AsNoTracking().Include(t => t.Results).Include(t => t.Steps)
             .OrderByDescending(t => t.CreatedUtc)
             .AsSplitQuery()
             .ToListAsync(ct).ConfigureAwait(false);
@@ -64,6 +65,7 @@ public sealed class EfTaskStore(IDbContextFactory<OadmDbContext> dbFactory) : IT
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
         await db.TaskLogEntries.Where(l => l.TaskId == id).ExecuteDeleteAsync(ct).ConfigureAwait(false);
         await db.TaskDeviceResults.Where(r => r.TaskId == id).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+        await db.TaskSteps.Where(s => s.TaskId == id).ExecuteDeleteAsync(ct).ConfigureAwait(false);
         var rows = await db.Tasks.Where(t => t.Id == id).ExecuteDeleteAsync(ct).ConfigureAwait(false);
         return rows > 0;
     }
@@ -128,6 +130,26 @@ public sealed class EfTaskStore(IDbContextFactory<OadmDbContext> dbFactory) : IT
             row.Message = device.Message;
             row.Progress = Math.Clamp(device.Progress, 0, 100);
         }
+
+        // Steps are keyed by their position; a later snapshot may insert steps, so rows are rewritten in place.
+        entity.Steps.RemoveAll(s => s.Index < 0 || s.Index >= task.Steps.Count);
+        for (var i = 0; i < task.Steps.Count; i++)
+        {
+            var step = task.Steps[i];
+            var row = entity.Steps.Find(s => s.Index == i);
+            if (row is null)
+            {
+                row = new TaskStepEntity { TaskId = entity.Id, Index = i };
+                entity.Steps.Add(row);
+            }
+
+            row.Name = step.Name;
+            row.State = step.State;
+            row.Detail = step.Detail;
+            row.Progress = Math.Clamp(step.Progress, 0, 100);
+            row.StartedUtc = step.StartedUtc?.UtcDateTime;
+            row.FinishedUtc = step.FinishedUtc?.UtcDateTime;
+        }
     }
 
     internal static TaskRecord ToRecord(TaskEntity entity)
@@ -144,7 +166,17 @@ public sealed class EfTaskStore(IDbContextFactory<OadmDbContext> dbFactory) : IT
             entity.Progress,
             null,
             [.. entity.Results.OrderBy(r => r.DeviceId).Select(r => new TaskDeviceRecord(r.DeviceId, r.Status, r.Message, r.Progress))],
-            entity.BatchId == Guid.Empty ? entity.Id : entity.BatchId);
+            entity.BatchId == Guid.Empty ? entity.Id : entity.BatchId)
+        {
+            Steps = [.. entity.Steps.OrderBy(s => s.Index).Select(s => new Sdk.Plugins.TaskStepInfo(
+                s.Index,
+                s.Name,
+                s.State,
+                s.Detail,
+                s.Progress,
+                s.StartedUtc is { } started ? ToOffset(started) : null,
+                s.FinishedUtc is { } finished ? ToOffset(finished) : null))],
+        };
     }
 
     private static DateTimeOffset ToOffset(DateTime utc) =>

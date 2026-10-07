@@ -2,7 +2,17 @@
 
 First task plugin (`oadm.restart`). Toolbar + context menu, no dialog. Calls `restart.cgi`, then
 polls `basicdeviceinfo.cgi` every 5 s until the device has gone down and answers again
-(timeout 3 min), reporting progress 0 -> 10 -> ... -> 100.
+(timeout 3 min for both waits together).
+
+Steps (each device request and each wait is its own step):
+
+| Step | What happens |
+|---|---|
+| Check device | `basicdeviceinfo.cgi`; fails "Nothing was changed" when the device does not answer. Detail: model and AXIS OS |
+| Send restart | `restart.cgi` |
+| Wait for the device to go offline | polls until `basicdeviceinfo.cgi` stops answering; progress = elapsed / timeout |
+| Wait for the device to come back | polls until it answers again |
+| Verify device | compares the serial number; a different one ends the step (and the task) with a warning |
 
 ## Packaging
 

@@ -47,6 +47,17 @@ come from the host and are never copied.
 
 ## Task (per device)
 
+Task steps shown to the user: **Check compatibility** ("network-settings 1.37" or "param.cgi"),
+**Read current settings** (getNetworkInfo, or the param.cgi Network group on legacy devices), **Read IPv6
+address mode** (param.cgi; Skipped when it is already part of the first read or param.cgi is missing),
+**Validate settings** (the plan below), **Set host name**, **Set DNS**,
+**Set IPv6** (+ **Enable IPv6** when the interface is switched on with a second request), **Set IPv4**
+(IPv4 before IPv6 for a device reached over IPv6), **Wait for the settings to apply**, **Check
+reachability**. Every device request is its own step; sections the user kept unchanged are Skipped
+("Keep unchanged"), the two last steps are Skipped when the change does not affect OADM's connection.
+A failing write is Failed and the later steps Skipped; the reachability warnings below end
+**Check reachability** as Warning (Done with warnings).
+
 1. Parse and validate the payload for the whole batch. Invalid: fails with "... Nothing was changed."
 2. Fresh `GetApiListAsync`; read the current settings (getNetworkInfo, or param.cgi on legacy devices).
 3. Build the plan: method per section from the decision table below, `Require(...)` per method, device
