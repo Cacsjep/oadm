@@ -14,6 +14,8 @@ internal sealed record FakeDevice(Guid Id, DeviceStatus Status = DeviceStatus.Ok
 
     public string? HostName => null;
 
+    public IReadOnlyList<DeviceApi> Apis { get; init; } = [];
+
     public string? Model => "M3106";
 
     public string? FirmwareVersion => "11.0.0";
@@ -54,6 +56,10 @@ internal sealed class FakeVapixClient : IVapixClient
 
     /// <summary>Called with the 1-based ping number; true = device answers.</summary>
     public Func<int, bool> Answers { get; set; } = _ => true;
+
+    public IReadOnlyList<DeviceApi> ApiList { get; set; } = [];
+
+    public Task<IReadOnlyList<DeviceApi>> GetApiListAsync(CancellationToken ct) => Task.FromResult(ApiList);
 
     public Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct)
     {

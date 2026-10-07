@@ -217,4 +217,36 @@ public static partial class VapixParsers
 
     [GeneratedRegex("realm=\"AXIS_(?<serial>[0-9A-Za-z]+)\"", RegexOptions.CultureInvariant)]
     private static partial Regex AxisRealmRegex();
+
+    /// <summary>Parses <c>apidiscovery.cgi getApiList</c>: <c>data.apiList[] { id, version, name, status }</c>.</summary>
+    public static IReadOnlyList<DeviceApi> ParseApiList(string json)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        if (doc.RootElement.TryGetProperty("error", out var error))
+        {
+            throw new VapixException($"apidiscovery failed: {error}");
+        }
+
+        var result = new List<DeviceApi>();
+        if (doc.RootElement.TryGetProperty("data", out var data) && data.TryGetProperty("apiList", out var list))
+        {
+            foreach (var api in list.EnumerateArray())
+            {
+                var id = api.TryGetProperty("id", out var i) ? i.GetString() : null;
+                var version = api.TryGetProperty("version", out var v) ? v.GetString() : null;
+                if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(version))
+                {
+                    continue;
+                }
+
+                result.Add(new DeviceApi(
+                    id,
+                    version,
+                    api.TryGetProperty("name", out var n) ? n.GetString() : null,
+                    api.TryGetProperty("status", out var st) ? st.GetString() : null));
+            }
+        }
+
+        return result;
+    }
 }

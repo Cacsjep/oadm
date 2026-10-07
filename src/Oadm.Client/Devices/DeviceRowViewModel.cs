@@ -43,6 +43,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo
     [ObservableProperty] public partial string CategoryIconKey { get; private set; } = "device.generic";
     [ObservableProperty] public partial string CategoryTooltip { get; private set; } = "";
     [ObservableProperty] public partial bool HasVideo { get; private set; }
+    public IReadOnlyList<Oadm.Sdk.Vapix.DeviceApi> Apis { get; private set; } = [];
     [ObservableProperty] public partial DateTime? CertNotAfterUtc { get; private set; }
     [ObservableProperty] public partial ChipInfo CertExpires { get; private set; } = ChipInfo.Empty;
     [ObservableProperty] public partial ChipInfo CertTrust { get; private set; } = ChipInfo.Empty;

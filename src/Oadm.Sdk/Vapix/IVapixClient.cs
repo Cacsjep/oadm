@@ -8,6 +8,9 @@ public interface IVapixClient
     Task<IReadOnlyDictionary<string, string>> ListParametersAsync(IEnumerable<string> groups, CancellationToken ct);
     Task RestartAsync(CancellationToken ct);
 
+    /// <summary>Fresh API discovery list (<c>apidiscovery.cgi getApiList</c>). Use with <c>Require(...)</c> before writing.</summary>
+    Task<IReadOnlyList<DeviceApi>> GetApiListAsync(CancellationToken ct);
+
     /// <summary>Raw escape hatch for plugins: sends a request relative to the device base address.</summary>
     Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct);
 }

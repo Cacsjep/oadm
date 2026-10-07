@@ -120,7 +120,7 @@ internal sealed class FakeDialog(string pluginId, string? payload) : ITaskPlugin
     public string PluginId { get; } = pluginId;
     public int ShowCount { get; private set; }
 
-    public Task<string?> ShowAsync(IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo> devices, Avalonia.Controls.Window owner)
+    public Task<string?> ShowAsync(Oadm.Sdk.Client.ITaskDialogContext ctx, IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo> devices, Avalonia.Controls.Window owner)
     {
         ShowCount++;
         return Task.FromResult(payload);

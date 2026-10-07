@@ -377,6 +377,31 @@ Plugins never talk to devices from the client; payloads go to the server.
 - Plugin failures (load or execution) are logged and isolated; a broken plugin never
   prevents server or client from starting.
 
+## HARD RULE: device safety for task plugins
+
+Any plugin that changes a device (users, network, firmware, ACAP, ...) must never risk
+breaking it:
+1. **Compatibility first.** Declare the VAPIX API ids and minimum versions it needs. `CanRun`
+   checks them against the cached `device.Apis` (from `apidiscovery.cgi getApiList`, refreshed
+   on every full refresh); `ExecuteAsync` re-checks with a fresh `ctx.Vapix.GetApiListAsync()`
+   and `Require(...)` BEFORE the first write. A different major version is a different API.
+   Unsupported devices fail with `DeviceNotCompatibleException` ("Nothing was changed").
+2. **Validate before writing.** Validate all input (addresses, masks, passwords, files)
+   before touching the device. Prefer device-side dry runs or validation methods when the API
+   offers them.
+3. **No lock-out.** Never remove or demote the account OADM itself uses, never apply network
+   settings that make the device unreachable without a clear warning in the dialog.
+4. **Secrets.** Payloads are kept in memory only, never persisted, never logged.
+5. **Read-only queries.** `ITaskPluginQuery` is read-only by contract.
+6. **Hardware tests** for write operations are opt-in only (`Category=HardwareWrite`, never in
+   `test-hardware`), and never run against a device without the developer explicitly asking.
+
+Shared SDK pieces for this: `DeviceApi` + `DeviceApiExtensions.Supports/Require`,
+`IVapixClient.GetApiListAsync`, `IDeviceInfo.Apis`, `ITaskPluginQuery` (dialog reads current
+state through `ITaskDialogContext.QueryAsync`), `IUploadedFiles` (dialog uploads through
+`ITaskDialogContext.UploadAsync`, task reads by id), `ReportWarning` (Done with warnings) and
+`Log` (persisted per-task log).
+
 ## First plugin: Restart
 
 `plugins/Oadm.Plugins.Restart`: `ShowInToolbar = true`, `RequiresDialog = false`, calls

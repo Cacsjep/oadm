@@ -91,5 +91,15 @@ public sealed class RestartTaskPluginTests
         public ICorePlugin? Owner => null;
 
         public void ReportProgress(int percent, string? message = null) => Reports.Add((percent, message));
+
+        public IUploadedFiles Files => throw new NotSupportedException();
+
+        public void ReportWarning(string message)
+        {
+        }
+
+        public void Log(TaskLogLevel level, string message)
+        {
+        }
     }
 }

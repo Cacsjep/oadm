@@ -8,7 +8,17 @@ public interface ITaskPluginDialog
 {
     string PluginId { get; }
     /// <summary>Returns the payload JSON sent to the server, or null when the user cancelled.</summary>
-    Task<string?> ShowAsync(IReadOnlyList<IDeviceInfo> devices, Window owner);
+    Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner);
+}
+
+/// <summary>Server access for a task plugin dialog. Build dialogs from the shared OADM controls and theme.</summary>
+public interface ITaskDialogContext
+{
+    /// <summary>Calls the plugin's server-side <c>ITaskPluginQuery.QueryAsync</c> for one device (read-only).</summary>
+    Task<string?> QueryAsync(Guid deviceId, string method, string? payloadJson, CancellationToken ct);
+
+    /// <summary>Uploads a local file to the server; put the returned id into the task payload.</summary>
+    Task<Oadm.Sdk.Plugins.UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct);
 }
 
 /// <summary>UI page of a core plugin, shown in the navigation rail.</summary>

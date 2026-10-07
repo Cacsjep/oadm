@@ -16,6 +16,9 @@ public interface IDeviceInfo
 
     /// <summary>The device produces video (camera, encoder, video intercom). Use it in <c>CanRun</c>, e.g. for snapshots.</summary>
     bool HasVideo { get; }
+
+    /// <summary>VAPIX APIs and versions from the last full refresh; empty until known. See <c>DeviceApiExtensions</c>.</summary>
+    IReadOnlyList<Vapix.DeviceApi> Apis { get; }
 }
 
 /// <summary>Kind of Axis device. Mapped from basicdeviceinfo ProdType ("Dome Camera", "Network Speaker", ...).</summary>

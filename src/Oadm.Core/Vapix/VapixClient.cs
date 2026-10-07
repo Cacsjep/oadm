@@ -49,6 +49,7 @@ public sealed class VapixClient : IVapixClient, IDisposable
     internal const string ParamPath = "axis-cgi/param.cgi";
     internal const string SystemReadyPath = "axis-cgi/systemready.cgi";
     internal const string PwdgrpPath = "axis-cgi/pwdgrp.cgi";
+    internal const string ApiDiscoveryPath = "axis-cgi/apidiscovery.cgi";
     internal const string RestartPath = "axis-cgi/restart.cgi";
 
     private const string JsonMediaType = "application/json";
@@ -148,6 +149,12 @@ public sealed class VapixClient : IVapixClient, IDisposable
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<DeviceApi>> GetApiListAsync(CancellationToken ct)
+    {
+        var json = await PostJsonAsync(ApiDiscoveryPath, """{"apiVersion":"1.0","method":"getApiList"}""", ct).ConfigureAwait(false);
+        return VapixParsers.ParseApiList(json);
+    }
+
     public async Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct)
     {
         var json = await PostJsonAsync(BasicDeviceInfoPath, """{"apiVersion":"1.0","method":"getAllProperties"}""", ct).ConfigureAwait(false);
