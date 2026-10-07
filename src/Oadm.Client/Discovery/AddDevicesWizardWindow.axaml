@@ -65,7 +65,7 @@
                 <c:SearchBox Grid.Column="2" Text="{Binding SearchText}" />
               </Grid>
               <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,0,0,10" IsVisible="{Binding IsRangeMode}">
-                <ProgressBar Value="{Binding ScanProgress}" Minimum="0" Maximum="100" />
+                <ProgressBar Value="{Binding ScanProgress}" Minimum="0" Maximum="100" Classes.stream="{Binding IsScanning}" />
                 <TextBlock Grid.Column="1" Classes="secondary" Margin="12,0,0,0" Text="{Binding ScanStatusText}" />
               </Grid>
               <DataGrid Grid.Row="2" ItemsSource="{Binding FilteredDiscovered}" SelectionMode="Single" IsReadOnly="True" CanUserReorderColumns="False">

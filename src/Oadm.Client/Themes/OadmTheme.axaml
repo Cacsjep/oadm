@@ -463,6 +463,8 @@
   </Style>
 
   <!-- Progress -->
+  <!-- The one progress bar. Class "stream" (set while work is running) shows the Vuetify-style
+       stream: a dotted line in the unfilled part that keeps flowing toward the filled part. -->
   <Style Selector="ProgressBar">
     <Setter Property="Foreground" Value="{StaticResource Oadm.AccentBrush}" />
     <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
@@ -470,6 +472,51 @@
     <Setter Property="Height" Value="{StaticResource Oadm.ProgressHeight}" />
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.ProgressCornerRadius}" />
     <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Template">
+      <ControlTemplate TargetType="ProgressBar">
+        <Border Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}" ClipToBounds="True">
+          <Panel>
+            <Border Name="PART_Stream" IsVisible="False" Margin="0,0,-16,0" Opacity="0.55">
+              <Border.Background>
+                <DrawingBrush TileMode="Tile" DestinationRect="0,0,8,6" Stretch="None" AlignmentX="Left" AlignmentY="Top">
+                  <DrawingBrush.Drawing>
+                    <DrawingGroup>
+                      <GeometryDrawing Brush="Transparent" Geometry="M0,0 H8 V6 H0 Z" />
+                      <GeometryDrawing Brush="{StaticResource Oadm.AccentBrush}">
+                        <GeometryDrawing.Geometry>
+                          <EllipseGeometry Center="2,3" RadiusX="1.5" RadiusY="1.5" />
+                        </GeometryDrawing.Geometry>
+                      </GeometryDrawing>
+                    </DrawingGroup>
+                  </DrawingBrush.Drawing>
+                </DrawingBrush>
+              </Border.Background>
+              <Border.RenderTransform>
+                <TranslateTransform />
+              </Border.RenderTransform>
+            </Border>
+            <Border Name="PART_Indicator" Background="{TemplateBinding Foreground}"
+                    CornerRadius="{TemplateBinding CornerRadius}" HorizontalAlignment="Left" />
+          </Panel>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ProgressBar.stream">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ProgressBar.stream /template/ Border#PART_Stream">
+    <Setter Property="IsVisible" Value="True" />
+    <Style.Animations>
+      <Animation Duration="0:0:0.4" IterationCount="Infinite">
+        <KeyFrame Cue="0%">
+          <Setter Property="TranslateTransform.X" Value="0" />
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="TranslateTransform.X" Value="-8" />
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
   </Style>
 
   <!-- Data grids -->

@@ -24,7 +24,7 @@
         <DataGridTemplateColumn.CellTemplate>
           <DataTemplate x:DataType="tasks:TaskRowViewModel">
             <Grid ColumnDefinitions="*,52" Margin="10,0,12,0" VerticalAlignment="Center">
-              <ProgressBar Value="{Binding Progress}" Minimum="0" Maximum="100" />
+              <ProgressBar Value="{Binding Progress}" Minimum="0" Maximum="100" Classes.stream="{Binding IsActive}" />
               <TextBlock Grid.Column="1" Classes="secondary" Margin="10,0,0,0" Text="{Binding ProgressText}" HorizontalAlignment="Right" />
             </Grid>
           </DataTemplate>
