@@ -1,3 +1,5 @@
+using Oadm.Sdk.Network;
+
 namespace Oadm.Plugins.NtpServer.Serving;
 
 /// <summary>Limits of <see cref="NtpRateLimiter"/>.</summary>
@@ -45,149 +47,45 @@ public enum RateDecision
 public readonly record struct RateResult(RateDecision Decision, bool Log);
 
 /// <summary>
-/// Per-client token buckets (key = client address) in a bounded LRU table plus one global bucket. Thread safe; no
-/// allocations in the steady state (table nodes are reused once the table is full or entries expire).
+/// The NTP view of the shared <see cref="KeyedRateLimiter{TKey}"/> (key = client address): token bucket per client in a
+/// bounded LRU table plus one global bucket; notice 0 = Kiss-o'-Death "RATE", notice 1 = "Rate limited" log entry.
 /// </summary>
 public sealed class NtpRateLimiter
 {
-    private readonly RateLimitOptions _options;
-    private readonly TimeProvider _time;
-    private readonly Lock _sync = new();
-    private readonly Dictionary<UInt128, LinkedListNode<Client>> _clients = [];
-    private readonly LinkedList<Client> _lru = new(); // first = most recently seen
-    private readonly Stack<LinkedListNode<Client>> _free = new();
-    private double _globalTokens;
-    private long _globalRefill;
-    private long _lastGlobalDrop;
+    private readonly KeyedRateLimiter<UInt128> _limiter;
 
     public NtpRateLimiter(RateLimitOptions? options = null, TimeProvider? time = null)
     {
-        _options = options ?? new RateLimitOptions();
-        _time = time ?? TimeProvider.System;
-        _globalTokens = _options.GlobalPerSecond;
-        _globalRefill = _time.GetTimestamp();
+        Options = options ?? new RateLimitOptions();
+        _limiter = new KeyedRateLimiter<UInt128>(
+            new KeyedRateLimitOptions
+            {
+                Burst = Options.Burst,
+                RefillSeconds = Options.RefillSeconds,
+                MaxClients = Options.MaxClients,
+                IdleExpiry = Options.IdleExpiry,
+                GlobalPerSecond = Options.GlobalPerSecond,
+                NoticeIntervals = [Options.KissInterval, Options.LimitedLogInterval],
+            },
+            time);
     }
 
-    public RateLimitOptions Options => _options;
+    public RateLimitOptions Options { get; }
 
     /// <summary>Clients currently tracked (bounded by <see cref="RateLimitOptions.MaxClients"/>).</summary>
-    public int ClientCount
-    {
-        get
-        {
-            lock (_sync)
-            {
-                return _clients.Count;
-            }
-        }
-    }
+    public int ClientCount => _limiter.ClientCount;
 
     /// <summary>The global limit dropped a request within <paramref name="window"/>.</summary>
-    public bool GloballyLimitedWithin(TimeSpan window)
-    {
-        var last = Interlocked.Read(ref _lastGlobalDrop);
-        return last != 0 && _time.GetElapsedTime(last) <= window;
-    }
+    public bool GloballyLimitedWithin(TimeSpan window) => _limiter.GloballyLimitedWithin(window);
 
     public RateResult Check(UInt128 client)
     {
-        var now = _time.GetTimestamp();
-        lock (_sync)
+        var result = _limiter.Check(client);
+        return result.Decision switch
         {
-            // Global bucket first: a flood must not even touch the client table.
-            _globalTokens = Math.Min(_options.GlobalPerSecond, _globalTokens + (Seconds(_globalRefill, now) * _options.GlobalPerSecond));
-            _globalRefill = now;
-            if (_globalTokens < 1)
-            {
-                Interlocked.Exchange(ref _lastGlobalDrop, now);
-                return new RateResult(RateDecision.GlobalDrop, false);
-            }
-
-            _globalTokens -= 1;
-
-            ExpireIdle(now);
-            var entry = Touch(client, now);
-            entry.Tokens = Math.Min(_options.Burst, entry.Tokens + (Seconds(entry.LastRefill, now) / _options.RefillSeconds));
-            entry.LastRefill = now;
-            if (entry.Tokens >= 1)
-            {
-                entry.Tokens -= 1;
-                return new RateResult(RateDecision.Allow, false);
-            }
-
-            var kiss = entry.LastKiss == 0 || Seconds(entry.LastKiss, now) >= _options.KissInterval.TotalSeconds;
-            if (kiss)
-            {
-                entry.LastKiss = now;
-            }
-
-            var log = entry.LastLog == 0 || Seconds(entry.LastLog, now) >= _options.LimitedLogInterval.TotalSeconds;
-            if (log)
-            {
-                entry.LastLog = now;
-            }
-
-            return new RateResult(kiss ? RateDecision.DropWithKiss : RateDecision.Drop, log);
-        }
-    }
-
-    private Client Touch(UInt128 key, long now)
-    {
-        if (_clients.TryGetValue(key, out var node))
-        {
-            _lru.Remove(node);
-            _lru.AddFirst(node);
-            node.Value.LastSeen = now;
-            return node.Value;
-        }
-
-        if (_clients.Count >= _options.MaxClients && _lru.Last is { } oldest)
-        {
-            _lru.RemoveLast();
-            _clients.Remove(oldest.Value.Key);
-            node = oldest;
-        }
-        else
-        {
-            node = _free.Count > 0 ? _free.Pop() : new LinkedListNode<Client>(new Client());
-        }
-
-        node.Value.Reset(key, _options.Burst, now);
-        _lru.AddFirst(node);
-        _clients[key] = node;
-        return node.Value;
-    }
-
-    private void ExpireIdle(long now)
-    {
-        var idle = _options.IdleExpiry.TotalSeconds;
-        while (_lru.Last is { } last && Seconds(last.Value.LastSeen, now) >= idle)
-        {
-            _lru.RemoveLast();
-            _clients.Remove(last.Value.Key);
-            _free.Push(last);
-        }
-    }
-
-    private double Seconds(long from, long to) => _time.GetElapsedTime(from, to).TotalSeconds;
-
-    private sealed class Client
-    {
-        public UInt128 Key;
-        public double Tokens;
-        public long LastRefill;
-        public long LastSeen;
-        public long LastKiss;
-        public long LastLog;
-
-        public void Reset(UInt128 key, double tokens, long now)
-        {
-            Key = key;
-            Tokens = tokens;
-            LastRefill = now;
-            LastSeen = now;
-            LastKiss = 0;
-            LastLog = 0;
-        }
+            RateLimitDecision.Allow => new RateResult(RateDecision.Allow, false),
+            RateLimitDecision.GlobalDrop => new RateResult(RateDecision.GlobalDrop, false),
+            _ => new RateResult(result.IsDue(0) ? RateDecision.DropWithKiss : RateDecision.Drop, result.IsDue(1)),
+        };
     }
 }

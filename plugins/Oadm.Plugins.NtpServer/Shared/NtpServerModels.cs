@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Oadm.Sdk.Network;
+
 namespace Oadm.Plugins.NtpServer;
 
 /// <summary>Ids and names shared by the server part, the page and the tests.</summary>
@@ -53,18 +55,6 @@ public sealed record NtpConfig
     public string? Upstream { get; init; }
 }
 
-/// <summary>One entry of the interface select.</summary>
-public sealed record InterfaceOption(string Id, string Label, string Name, IReadOnlyList<string> Addresses);
-
-/// <summary>Status line: kind ok / neutral / warning / error, text, optional detail (tooltip).</summary>
-public sealed record NtpStatusInfo(string Kind, string Text, string? Detail = null)
-{
-    public const string Ok = "ok";
-    public const string Neutral = "neutral";
-    public const string Warning = "warning";
-    public const string Error = "error";
-}
-
 /// <summary>One answered or limited request.</summary>
 /// <param name="Seq">Increasing number (newest = largest).</param>
 /// <param name="TimeUtc">When it was received.</param>
@@ -91,7 +81,7 @@ public sealed record NtpState
 {
     public NtpConfig Config { get; init; } = new();
 
-    public NtpStatusInfo Status { get; init; } = new(NtpStatusInfo.Neutral, "Stopped");
+    public ServiceStatus Status { get; init; } = new(ServiceStatus.Neutral, "Stopped");
 
     public IReadOnlyList<InterfaceOption> Interfaces { get; init; } = [];
 

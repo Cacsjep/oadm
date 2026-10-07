@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
-             xmlns:ntp="using:Oadm.Plugins.NtpServer"
+             xmlns:net="using:Oadm.Sdk.Network"
              xmlns:vm="using:Oadm.Plugins.NtpServer.Client"
              x:Class="Oadm.Plugins.NtpServer.Client.NtpServerView"
              x:DataType="vm:NtpServerViewModel">
@@ -18,10 +18,10 @@
 
       <Grid ColumnDefinitions="150,420">
         <TextBlock Classes="fieldLabel" Text="Listen on" />
-        <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding Interfaces}" SelectedItem="{Binding SelectedInterface}"
+        <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding Listen.Items}" SelectedItem="{Binding Listen.Selected}"
                   ToolTip.Tip="The interface the cameras reach this server on. All interfaces listens on every address.">
           <ComboBox.ItemTemplate>
-            <DataTemplate x:DataType="ntp:InterfaceOption">
+            <DataTemplate x:DataType="net:InterfaceOption">
               <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
             </DataTemplate>
           </ComboBox.ItemTemplate>

@@ -32,7 +32,7 @@ public sealed partial class NtpServerService : IAsyncDisposable
     private volatile NtpConfig _config = new();
     private volatile NtpUdpServer? _server;
     private volatile UpstreamMonitor? _upstream;
-    private volatile NtpStatusInfo? _bindError;
+    private volatile ServiceStatus? _bindError;
     private long _lastBindAttempt;
     private long _publishedSeq;
     private string? _publishedState;
@@ -120,9 +120,7 @@ public sealed partial class NtpServerService : IAsyncDisposable
         var options = new List<InterfaceOption> { new(NtpServerPluginInfo.AllInterfaces, NtpServerPluginInfo.AllInterfacesLabel, NtpServerPluginInfo.AllInterfacesLabel, []) };
         foreach (var nic in UsableInterfaces())
         {
-            var primary = nic.PrimaryAddress!;
-            var label = $"{nic.Name} - {primary}" + (string.Equals(nic.Description, nic.Name, StringComparison.Ordinal) ? string.Empty : $" ({nic.Description})");
-            options.Add(new InterfaceOption(nic.Id, label, nic.Name, [.. nic.Addresses.Select(a => a.ToString())]));
+            options.Add(InterfaceOptions.From(nic));
         }
 
         return options;
@@ -334,7 +332,7 @@ public sealed partial class NtpServerService : IAsyncDisposable
     private IEnumerable<ServerNetworkInterface> UsableInterfaces() =>
         _options.Interfaces.List().Where(n => n.IsUp && (!n.IsLoopback || _options.IncludeLoopback) && n.PrimaryAddress is not null);
 
-    private NtpStatusInfo ComputeStatus()
+    private ServiceStatus ComputeStatus()
     {
         if (!_config.Enabled)
         {

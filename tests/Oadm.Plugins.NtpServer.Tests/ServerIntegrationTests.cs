@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using Oadm.Core.Plugins;
 using Oadm.Plugins.NtpServer.Protocol;
 using Oadm.Plugins.NtpServer.Upstream;
+using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.NtpServer.Tests;
@@ -44,7 +45,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
         var state = await StateAsync();
         Assert.False(state.Config.Enabled);
         Assert.Equal("Stopped", state.Status.Text);
-        Assert.Equal(NtpStatusInfo.Neutral, state.Status.Kind);
+        Assert.Equal(ServiceStatus.Neutral, state.Status.Kind);
         Assert.Equal(["all", "lo-id", "eth-id"], state.Interfaces.Select(i => i.Id));
         Assert.Empty(Service.Endpoints);
     }
@@ -54,7 +55,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
     {
         var reply = await SaveAsync();
         Assert.True(reply.Saved);
-        Assert.Equal(NtpStatusInfo.Ok, reply.State.Status.Kind);
+        Assert.Equal(ServiceStatus.Ok, reply.State.Status.Kind);
         Assert.Equal($"Running on 127.0.0.1:{Endpoint.Port}", reply.State.Status.Text);
         Assert.NotEqual(123, Endpoint.Port);
 
@@ -196,7 +197,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
         Assert.Equal(0x7F000001u, answer.Value.ReferenceId);
 
         upstream.Behavior = UpstreamBehavior.NoAnswer;
-        await Wait.UntilAsync(() => Service.GetState(false).Status.Kind == NtpStatusInfo.Warning, TimeSpan.FromSeconds(10));
+        await Wait.UntilAsync(() => Service.GetState(false).Status.Kind == ServiceStatus.Warning, TimeSpan.FromSeconds(10));
         var state = Service.GetState(false);
         Assert.Equal($"Upstream {upstream.HostText} does not answer, using this computer's time", state.Status.Text);
         Assert.Equal(10, state.Stratum);
@@ -206,7 +207,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
 
         upstream.Behavior = UpstreamBehavior.Answer;
         await Wait.UntilAsync(() => Service.GetState(false).Stratum == 3, TimeSpan.FromSeconds(10));
-        Assert.Equal(NtpStatusInfo.Ok, Service.GetState(false).Status.Kind);
+        Assert.Equal(ServiceStatus.Ok, Service.GetState(false).Status.Kind);
     }
 
     [Fact]
@@ -234,7 +235,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
     {
         await using var upstream = new FakeUpstream { ClockOffset = TimeSpan.FromSeconds(3.2) };
         var reply = await SaveAsync(upstream: upstream.HostText);
-        Assert.Equal(NtpStatusInfo.Warning, reply.State.Status.Kind);
+        Assert.Equal(ServiceStatus.Warning, reply.State.Status.Kind);
         Assert.Equal("Server clock differs from upstream by 3.2 s", reply.State.Status.Text);
     }
 
@@ -250,7 +251,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
         Assert.True(state.Config.Enabled);
         Assert.Equal("lo-id", state.Config.InterfaceId);
         Assert.Equal("Loopback", state.Config.InterfaceName);
-        Assert.Equal(NtpStatusInfo.Ok, state.Status.Kind);
+        Assert.Equal(ServiceStatus.Ok, state.Status.Kind);
         Assert.NotNull((await NtpProbe.QueryAsync(restarted.Service.Endpoints[0], TimeSpan.FromSeconds(1))).Answer);
     }
 
@@ -265,11 +266,11 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
         await plugin.StartAsync(new TestCoreContext(new InMemoryPluginSettingsProvider().GetSettings(NtpServerPluginInfo.PluginId), null), CancellationToken.None);
         var reply = NtpJson.Deserialize<SaveReply>(await plugin.InvokeAsync(NtpServerMethods.Save, NtpJson.Serialize(new SaveRequest(true, "lo-id", null)), CancellationToken.None));
         Assert.True(reply.Saved);
-        Assert.Equal(NtpStatusInfo.Error, reply.State.Status.Kind);
+        Assert.Equal(ServiceStatus.Error, reply.State.Status.Kind);
         Assert.Equal($"Port {port} is in use by another program", reply.State.Status.Text);
 
         blocker.Dispose();
-        await Wait.UntilAsync(() => plugin.Service!.GetState(false).Status.Kind == NtpStatusInfo.Ok);
+        await Wait.UntilAsync(() => plugin.Service!.GetState(false).Status.Kind == ServiceStatus.Ok);
         Assert.Equal($"Running on 127.0.0.1:{port}", plugin.Service!.GetState(false).Status.Text);
     }
 
@@ -277,7 +278,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
     public async Task A_missing_interface_is_an_error()
     {
         await SaveAsync(interfaceId: "eth-id");
-        Assert.Equal(NtpStatusInfo.Error, Service.GetState(false).Status.Kind); // 192.0.2.17 does not exist on this machine
+        Assert.Equal(ServiceStatus.Error, Service.GetState(false).Status.Kind); // 192.0.2.17 does not exist on this machine
         Assert.Equal("Interface Ethernet is not available", Service.GetState(false).Status.Text);
 
         await Assert.ThrowsAsync<ArgumentException>(() => SaveAsync(interfaceId: "gone-id"));

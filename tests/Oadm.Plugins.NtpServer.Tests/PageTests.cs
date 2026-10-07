@@ -7,6 +7,7 @@ using Avalonia.Threading;
 
 using Oadm.Core.Plugins;
 using Oadm.Plugins.NtpServer.Client;
+using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.NtpServer.Tests;
@@ -229,7 +230,7 @@ public sealed class HeadlessPageTests
             vm.HandleEvent(new PluginEvent(NtpServerMethods.StateTopic, NtpJson.Serialize(new NtpState
             {
                 Config = new NtpConfig { Enabled = true, InterfaceId = "lo-id" },
-                Status = Status.NtpStatusTexts.ForBindError(System.Net.Sockets.SocketError.AddressAlreadyInUse, 123, "Ethernet", Status.HostOs.Windows, windowsTimeRunning: true),
+                Status = Status.NtpStatusTexts.ForBindError(System.Net.Sockets.SocketError.AddressAlreadyInUse, 123, "Ethernet", HostOs.Windows, windowsTimeRunning: true),
             })));
             Pump();
             Capture(window, outDir, "ntp-server-page-errors.png");

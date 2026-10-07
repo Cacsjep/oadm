@@ -9,7 +9,9 @@ using CommunityToolkit.Mvvm.Input;
 using Oadm.Plugins.NtpServer.Serving;
 using Oadm.Plugins.NtpServer.Upstream;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Network;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.NtpServer.Client;
@@ -62,15 +64,21 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
 
     public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged;
 
-    public ObservableCollection<InterfaceOption> Interfaces { get; } = [];
+    /// <summary>The "Listen on" select (shared with the other service pages).</summary>
+    public InterfaceSelection Listen { get; } = new();
+
+    public ObservableCollection<InterfaceOption> Interfaces => Listen.Items;
 
     public ObservableCollection<RequestRowViewModel> Requests { get; } = [];
 
     [ObservableProperty]
     public partial bool IsEnabled { get; set; }
 
-    [ObservableProperty]
-    public partial InterfaceOption? SelectedInterface { get; set; }
+    public InterfaceOption? SelectedInterface
+    {
+        get => Listen.Selected;
+        set => Listen.Selected = value;
+    }
 
     [ObservableProperty]
     public partial string Upstream { get; set; } = string.Empty;
@@ -98,11 +106,11 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
     [NotifyPropertyChangedFor(nameof(HasUpstreamInfo))]
     public partial string? UpstreamInfoText { get; set; }
 
-    public bool IsStatusOk => StatusKind == NtpStatusInfo.Ok;
+    public bool IsStatusOk => StatusKind == ServiceStatus.Ok;
 
-    public bool IsStatusWarning => StatusKind == NtpStatusInfo.Warning;
+    public bool IsStatusWarning => StatusKind == ServiceStatus.Warning;
 
-    public bool IsStatusError => StatusKind == NtpStatusInfo.Error;
+    public bool IsStatusError => StatusKind == ServiceStatus.Error;
 
     public bool IsStatusAccent => StatusKind == "accent";
 
@@ -234,7 +242,7 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            SetStatus(NtpStatusInfo.Error, "Saving failed", Message(ex));
+            SetStatus(ServiceStatus.Error, "Saving failed", Message(ex));
         }
         finally
         {
@@ -319,31 +327,11 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
         IsEnabled = config.Enabled;
         Upstream = config.Upstream ?? string.Empty;
         UpstreamResult = null;
-        SelectedInterface = Interfaces.FirstOrDefault(i => string.Equals(i.Id, config.InterfaceId, StringComparison.Ordinal)) ?? Interfaces.FirstOrDefault();
+        Listen.Select(config.InterfaceId);
     }
 
-    private void ApplyInterfaces(IReadOnlyList<InterfaceOption> options, NtpConfig config)
-    {
-        if (options.Count == 0)
-        {
-            return;
-        }
-
-        var selectedId = SelectedInterface?.Id ?? config.InterfaceId;
-        Interfaces.Clear();
-        foreach (var option in options)
-        {
-            Interfaces.Add(option);
-        }
-
-        // A stored interface that is gone stays selectable so the user sees what is configured.
-        if (!options.Any(o => string.Equals(o.Id, selectedId, StringComparison.Ordinal)) && string.Equals(selectedId, config.InterfaceId, StringComparison.Ordinal))
-        {
-            Interfaces.Add(new InterfaceOption(config.InterfaceId, $"{config.InterfaceName ?? config.InterfaceId} (not available)", config.InterfaceName ?? config.InterfaceId, []));
-        }
-
-        SelectedInterface = Interfaces.FirstOrDefault(i => string.Equals(i.Id, selectedId, StringComparison.Ordinal)) ?? Interfaces[0];
-    }
+    private void ApplyInterfaces(IReadOnlyList<InterfaceOption> options, NtpConfig config) =>
+        Listen.Apply(options, config.InterfaceId, config.InterfaceName);
 
     private void ApplyStatus(NtpState state)
     {

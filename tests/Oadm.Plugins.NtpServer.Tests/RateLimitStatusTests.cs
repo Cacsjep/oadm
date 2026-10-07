@@ -155,7 +155,7 @@ public sealed class StatusMappingTests
     public void Address_in_use_on_Windows_names_the_Windows_Time_service_when_it_runs()
     {
         var withW32 = NtpStatusTexts.ForBindError(SocketError.AddressAlreadyInUse, 123, "Ethernet", HostOs.Windows, windowsTimeRunning: true);
-        Assert.Equal(NtpStatusInfo.Error, withW32.Kind);
+        Assert.Equal(ServiceStatus.Error, withW32.Kind);
         Assert.Equal("Port 123 is in use by another program (Windows Time service)", withW32.Text);
         Assert.Contains("net stop w32time", withW32.Detail, StringComparison.Ordinal);
 
@@ -174,7 +174,7 @@ public sealed class StatusMappingTests
     public void Access_denied_on_Linux_and_macOS_is_a_permission_problem_with_the_fix()
     {
         var linux = NtpStatusTexts.ForBindError(SocketError.AccessDenied, 123, "eth0", HostOs.Linux);
-        Assert.Equal(NtpStatusInfo.Error, linux.Kind);
+        Assert.Equal(ServiceStatus.Error, linux.Kind);
         Assert.Equal("Insufficient permission to use port 123", linux.Text);
         Assert.Contains("setcap 'cap_net_bind_service=+ep'", linux.Detail, StringComparison.Ordinal);
 
@@ -200,7 +200,7 @@ public sealed class StatusMappingTests
     public void Address_not_available_means_the_interface_is_gone(HostOs os)
     {
         var status = NtpStatusTexts.ForBindError(SocketError.AddressNotAvailable, 123, "Ethernet", os);
-        Assert.Equal(NtpStatusInfo.Error, status.Kind);
+        Assert.Equal(ServiceStatus.Error, status.Kind);
         Assert.Equal("Interface Ethernet is not available", status.Text);
     }
 
@@ -209,11 +209,11 @@ public sealed class StatusMappingTests
     {
         Assert.Equal("Running on 10.0.0.17:123", NtpStatusTexts.Running([new IPEndPoint(IPAddress.Parse("10.0.0.17"), 123)], false).Text);
         Assert.Equal("Running on all interfaces, port 123", NtpStatusTexts.Running([new IPEndPoint(IPAddress.Any, 123), new IPEndPoint(IPAddress.IPv6Any, 123)], true).Text);
-        Assert.Equal(new NtpStatusInfo(NtpStatusInfo.Neutral, "Stopped"), NtpStatusTexts.Stopped);
+        Assert.Equal(new ServiceStatus(ServiceStatus.Neutral, "Stopped"), NtpStatusTexts.Stopped);
         Assert.Equal("Upstream pool.ntp.org does not answer, using this computer's time", NtpStatusTexts.UpstreamNotReachable("pool.ntp.org", "No answer within 2 s").Text);
         Assert.Equal("Server clock differs from upstream by 3.2 s", NtpStatusTexts.ClockDiffers(-3.2).Text);
         Assert.Equal("Too many requests, dropping", NtpStatusTexts.TooManyRequests(2000).Text);
-        Assert.Equal(NtpStatusInfo.Warning, NtpStatusTexts.ClockDiffers(2).Kind);
+        Assert.Equal(ServiceStatus.Warning, NtpStatusTexts.ClockDiffers(2).Kind);
     }
 }
 
