@@ -15,11 +15,27 @@ public sealed record RoleOption(UserRole Role, string Name)
 }
 
 /// <summary>One existing account of the first selected device.</summary>
-public sealed record ExistingUserRow(DeviceUser User)
+public sealed partial class ExistingUserRow(DeviceUser user, string? protectedReason = null) : ObservableObject
 {
+    public DeviceUser User { get; } = user;
+
     public string Name => User.Name;
 
     public string RoleText => UserRoles.Describe(User.Role, User.Ptz) + (User.IsCurrentAccount ? " (used by OADM)" : string.Empty);
+
+    /// <summary>Why OADM never removes this account (the account OADM uses, the last administrator); null otherwise.</summary>
+    public string? ProtectedReason { get; } = protectedReason;
+
+    public bool IsProtected => ProtectedReason is not null;
+
+    /// <summary>False for protected rows in Remove mode: greyed and not selectable, the tooltip says why.</summary>
+    [ObservableProperty]
+    public partial bool IsSelectable { get; set; } = true;
+
+    /// <summary>Row tooltip: the reason when the row cannot be selected.</summary>
+    public string? Tooltip => IsSelectable ? null : ProtectedReason;
+
+    partial void OnIsSelectableChanged(bool value) => OnPropertyChanged(nameof(Tooltip));
 }
 
 /// <summary>
@@ -31,6 +47,7 @@ public sealed partial class UsersDialogViewModel : ObservableObject
 {
     private readonly IReadOnlyList<IDeviceInfo> _devices;
     private string? _currentAccount;
+    private IReadOnlyList<ExistingUserRow> _selectedRows = [];
 
     public UsersDialogViewModel(IReadOnlyList<IDeviceInfo> devices)
     {
@@ -75,7 +92,7 @@ public sealed partial class UsersDialogViewModel : ObservableObject
     public string UsersDescription => string.IsNullOrEmpty(UsersSource) ? UsersStatus : UsersSource + " " + UsersStatus;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsAdd), nameof(IsChange), nameof(IsRemove), nameof(ShowPassword), nameof(ShowRole), nameof(ApplyText))]
+    [NotifyPropertyChangedFor(nameof(IsAdd), nameof(IsChange), nameof(IsRemove), nameof(ShowUserName), nameof(ShowPassword), nameof(ShowRole), nameof(ApplyText), nameof(MultiSelect))]
     private UsersMode _mode = UsersMode.Add;
 
     [ObservableProperty]
@@ -166,6 +183,15 @@ public sealed partial class UsersDialogViewModel : ObservableObject
         }
     }
 
+    /// <summary>Add and Change type the user name; Remove picks the users in the Existing users list.</summary>
+    public bool ShowUserName => !IsRemove;
+
+    /// <summary>Remove mode allows several rows to be selected (one task per device removes all of them).</summary>
+    public bool MultiSelect => IsRemove;
+
+    /// <summary>The users Remove removes: the selected rows that are not protected, in list order.</summary>
+    public IReadOnlyList<string> UsersToRemove => _selectedRows.Where(r => !r.IsProtected).Select(r => r.Name).ToList();
+
     public bool ShowPassword => IsAdd || (IsChange && ChangePassword);
 
     public bool ShowRole => IsAdd || (IsChange && ChangeRole);
@@ -174,7 +200,7 @@ public sealed partial class UsersDialogViewModel : ObservableObject
     {
         UsersMode.Add => "Add user",
         UsersMode.Change => "Change user",
-        _ => "Remove user",
+        _ => UsersToRemove.Count > 1 ? "Remove users" : "Remove user",
     };
 
     /// <summary>Loads the users of the first selected device. Failures are shown, never thrown: the dialog stays usable.</summary>
@@ -216,9 +242,18 @@ public sealed partial class UsersDialogViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(result);
         ExistingUsers.Clear();
+        _selectedRows = [];
+        var admins = result.Users.Count(u => u.Role == UserRole.Administrator);
         foreach (var user in result.Users)
         {
-            ExistingUsers.Add(new ExistingUserRow(user));
+            var isCurrent = user.IsCurrentAccount
+                || (result.CurrentAccount is not null && string.Equals(user.Name, result.CurrentAccount, StringComparison.OrdinalIgnoreCase));
+            var reason = isCurrent
+                ? "OADM uses this account for the device; it cannot be removed."
+                : user.Role == UserRole.Administrator && admins <= 1
+                    ? "The last administrator of the device cannot be removed."
+                    : null;
+            ExistingUsers.Add(new ExistingUserRow(user, reason) { IsSelectable = !(IsRemove && reason is not null) });
         }
 
         _currentAccount = result.CurrentAccount;
@@ -259,7 +294,34 @@ public sealed partial class UsersDialogViewModel : ObservableObject
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(this, null);
 
-    partial void OnModeChanged(UsersMode value) => Update();
+    partial void OnModeChanged(UsersMode value)
+    {
+        foreach (var row in ExistingUsers)
+        {
+            row.IsSelectable = !(value == UsersMode.Remove && row.IsProtected);
+        }
+
+        Update();
+    }
+
+    /// <summary>
+    /// The rows selected in the Existing users list (the view forwards the grid selection). Remove mode
+    /// removes every selectable one; Add and Change use the last one like a single click.
+    /// </summary>
+    public void SetSelectedUsers(IEnumerable<ExistingUserRow> rows)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        var selected = rows.Where(r => ExistingUsers.Contains(r)).ToList();
+        _selectedRows = selected;
+        if (!IsRemove)
+        {
+            SelectedExistingUser = selected.Count == 0 ? null : selected[^1];
+        }
+
+        OnPropertyChanged(nameof(UsersToRemove));
+        OnPropertyChanged(nameof(ApplyText));
+        Update();
+    }
 
     partial void OnUserNameChanged(string value) => Update();
 
@@ -300,7 +362,8 @@ public sealed partial class UsersDialogViewModel : ObservableObject
     private UsersPayload CreatePayload() => new()
     {
         Mode = Mode,
-        UserName = UserName.Trim(),
+        UserName = IsRemove ? string.Empty : UserName.Trim(),
+        UserNames = IsRemove ? UsersToRemove : null,
         Password = ShowPassword ? Password : null,
         Role = SelectedRole.Role,
         Ptz = Ptz,
@@ -325,7 +388,7 @@ public sealed partial class UsersDialogViewModel : ObservableObject
         }
 
         error ??= ConfirmError();
-        ValidationError = UserName.Length == 0 && error is not null ? null : error;
+        ValidationError = (IsRemove ? payload.RemoveNames.Count == 0 : UserName.Length == 0) && error is not null ? null : error;
         CanApply = error is null;
         LockOutWarning = BuildLockOutWarning(payload);
         Summary = BuildSummary(payload);
@@ -338,17 +401,18 @@ public sealed partial class UsersDialogViewModel : ObservableObject
             return null;
         }
 
-        if (_currentAccount is not null && string.Equals(payload.UserName, _currentAccount, StringComparison.OrdinalIgnoreCase))
+        if (payload.Mode == UsersMode.Change && _currentAccount is not null && string.Equals(payload.UserName, _currentAccount, StringComparison.OrdinalIgnoreCase))
         {
-            return $"'{_currentAccount}' is the account OADM uses for {Describe(_devices[0])}. OADM will refuse to remove it, demote it or change its password there.";
+            return $"'{_currentAccount}' is the account OADM uses for {Describe(_devices[0])}. OADM will refuse to demote it or change its password there.";
         }
 
-        return "OADM never removes or demotes the account it uses for a device, nor the last administrator. Such devices fail with \"Nothing was changed\".";
+        return null;
     }
 
     private string BuildSummary(UsersPayload p)
     {
         var name = p.UserName.Length == 0 ? "<user name>" : $"'{p.UserName}'";
+        var removeNames = p.RemoveNames;
         var devices = DeviceCount == 1 ? "1 device" : $"{DeviceCount} devices";
         return p.Mode switch
         {
@@ -356,7 +420,9 @@ public sealed partial class UsersDialogViewModel : ObservableObject
             UsersMode.Change when p.ChangePassword && p.ChangeRole => $"Set a new password and the role {UserRoles.Describe(p.Role, p.Ptz)} for user {name} on {devices}. Devices without this user are skipped with a warning.",
             UsersMode.Change when p.ChangeRole => $"Set the role {UserRoles.Describe(p.Role, p.Ptz)} for user {name} on {devices}. Devices without this user are skipped with a warning.",
             UsersMode.Change => $"Set a new password for user {name} on {devices}. Devices without this user are skipped with a warning.",
-            _ => $"Remove user {name} from {devices}. Devices without this user are skipped with a warning.",
+            _ when removeNames.Count == 0 => "Select the users to remove in the Existing users list.",
+            _ when removeNames.Count == 1 => $"Remove user '{removeNames[0]}' from {devices}. Devices without this user are skipped with a warning.",
+            _ => $"Remove users '{string.Join("', '", removeNames)}' from {devices}. Devices without some of these users skip them with a warning.",
         };
     }
 

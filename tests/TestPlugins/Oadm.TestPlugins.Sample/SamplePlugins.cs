@@ -57,6 +57,8 @@ public sealed class SampleContributedTask(SampleCorePlugin owner) : ITaskPlugin
 
     public string DisplayName => "Sample ping";
 
+    public string GetTaskName(string? payloadJson) => "Ping sample core";
+
     public string? IconKey => null;
 
     public bool ShowInToolbar => false;
@@ -84,6 +86,8 @@ public sealed class SampleStandaloneTask : ITaskPlugin
     public string Id => "oadm.sample.standalone";
 
     public string DisplayName => "Sample standalone";
+
+    public string GetTaskName(string? payloadJson) => string.IsNullOrWhiteSpace(payloadJson) ? DisplayName : "Run sample standalone";
 
     public string? IconKey => null;
 

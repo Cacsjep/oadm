@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Network.Client;
@@ -26,6 +27,7 @@ public sealed class AssignIpDialog : ITaskPluginDialog
 
         using var model = new AssignIpViewModel(devices);
         var window = new AssignIpWindow { DataContext = model };
+        model.Confirm = (title, message, confirmText) => MessageWindow.ConfirmAsync(window, title, message, confirmText);
         if (owner.Bounds.Width > 0 && owner.Bounds.Height > 0)
         {
             window.Width = owner.Bounds.Width * WidthShare;

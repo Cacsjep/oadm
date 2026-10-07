@@ -54,6 +54,32 @@ public sealed record AcapPayload
     /// <summary>Install: start the application after a successful install.</summary>
     public bool StartAfterInstall { get; init; }
 
+    /// <summary>Friendly name of the application ("AXIS Video Motion Detection"); only names the task.</summary>
+    public string? AppDisplayName { get; init; }
+
+    /// <summary>Install: the kind on every compatible device in the dialog preview (null = mixed); only names the task.</summary>
+    public InstallKind? Kind { get; init; }
+
+    /// <summary>
+    /// The task name: "Install AXIS Video Motion Detection 4.5.2", "Upgrade ... to 4.5.2" (every device
+    /// upgrades), "Remove ...", "Start ...", "Stop ...".
+    /// </summary>
+    public string TaskName()
+    {
+        var app = !string.IsNullOrWhiteSpace(AppDisplayName) ? AppDisplayName.Trim()
+            : !string.IsNullOrWhiteSpace(Application) ? Application.Trim()
+            : "application";
+        var version = string.IsNullOrWhiteSpace(Version) ? null : Version.Trim();
+        return Action switch
+        {
+            AcapAction.Install when Kind == InstallKind.Upgrade && version is not null => $"Upgrade {app} to {version}",
+            AcapAction.Install => version is null ? $"Install {app}" : $"Install {app} {version}",
+            AcapAction.Remove => $"Remove {app}",
+            AcapAction.Start => $"Start {app}",
+            _ => $"Stop {app}",
+        };
+    }
+
     public string ToJson() => JsonSerializer.Serialize(this, AcapPlugin.Json);
 
     /// <summary>Parses and validates a payload. Throws <see cref="ArgumentException"/> for invalid input; nothing has been changed then.</summary>

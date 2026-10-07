@@ -37,7 +37,7 @@ public static partial class PayloadValidator
 
         if (payload.Ipv6 is { } v6)
         {
-            ValidateIpv6(v6, payload.Devices.Count, errors);
+            ValidateIpv6(v6, payload.Devices, errors);
         }
 
         if (payload.Dns is { } dns)
@@ -149,6 +149,15 @@ public static partial class PayloadValidator
         return errors;
     }
 
+    /// <summary>A DNS change alone (servers, domain name, search domains), with the same messages as <see cref="Validate"/>.</summary>
+    public static IReadOnlyList<string> ValidateDnsChange(DnsChange dns)
+    {
+        ArgumentNullException.ThrowIfNull(dns);
+        var errors = new List<string>();
+        ValidateDns(dns, errors);
+        return errors;
+    }
+
     /// <summary>Static DNS servers alone (Assign IP address: the servers are optional, domains are kept).</summary>
     public static IReadOnlyList<string> ValidateDnsServers(IReadOnlyList<string> servers)
     {
@@ -162,44 +171,77 @@ public static partial class PayloadValidator
         return errors;
     }
 
-    private static void ValidateIpv6(Ipv6Change v6, int deviceCount, List<string> errors)
+    private static void ValidateIpv6(Ipv6Change v6, IReadOnlyDictionary<Guid, DeviceAssignment> devices, List<string> errors)
     {
         if (v6.Mode != Ipv6Mode.Static)
         {
             return;
         }
 
-        if (deviceCount != 1)
+        var missing = 0;
+        var seen = new List<IPAddress>();
+        foreach (var (_, entry) in devices)
         {
-            errors.Add("IPv6: a static IPv6 address can only be set for one device at a time.");
+            var text = v6.AddressFor(entry);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                missing++;
+                continue;
+            }
+
+            if (!TryParseIpv6(text, out var address))
+            {
+                errors.Add($"IPv6: \"{text}\" is not a valid IPv6 address.");
+                continue;
+            }
+
+            if (Ipv6AddressProblem(address) is { } problem)
+            {
+                errors.Add($"IPv6: {text} {problem}.");
+            }
+
+            if (seen.Exists(a => a.Equals(address)))
+            {
+                errors.Add($"IPv6: {text} is assigned to more than one device.");
+            }
+
+            seen.Add(address);
         }
 
-        if (!TryParseIpv6(v6.Address, out var address))
+        if (missing > 0)
         {
-            errors.Add("IPv6: enter a valid IPv6 address.");
-        }
-        else if (Ipv6AddressProblem(address) is { } problem)
-        {
-            errors.Add($"IPv6: {v6.Address} {problem}.");
+            errors.Add(devices.Count == 1 ? "IPv6: enter a valid IPv6 address." : missing == 1 ? "IPv6: one device has no IPv6 address." : $"IPv6: {missing} devices have no IPv6 address.");
         }
 
-        if (v6.PrefixLength is not { } prefix || prefix is < 1 or > 128)
+        errors.AddRange(ValidateIpv6Network(v6.PrefixLength, v6.Gateway));
+    }
+
+    /// <summary>The settings shared by all devices of a static IPv6 change: prefix length (1-128) and the optional gateway.</summary>
+    public static IReadOnlyList<string> ValidateIpv6Network(int? prefixLength, string? gateway)
+    {
+        var errors = new List<string>();
+        if (prefixLength is not { } prefix || prefix is < 1 or > 128)
         {
             errors.Add("IPv6: enter a prefix length between 1 and 128.");
         }
 
-        if (!string.IsNullOrWhiteSpace(v6.Gateway))
+        if (!string.IsNullOrWhiteSpace(gateway))
         {
-            if (!TryParseIpv6(v6.Gateway, out var gateway))
+            if (!TryParseIpv6(gateway, out var address))
             {
                 errors.Add("IPv6: the gateway is not a valid IPv6 address.");
             }
-            else if (Ipv6AddressProblem(gateway) is { } gatewayProblem)
+            else if (Ipv6AddressProblem(address) is { } gatewayProblem)
             {
-                errors.Add($"IPv6: gateway {v6.Gateway} {gatewayProblem}.");
+                errors.Add($"IPv6: gateway {gateway} {gatewayProblem}.");
             }
         }
+
+        return errors;
     }
+
+    /// <summary>Why a valid IPv6 literal cannot be a device address ("is the loopback address"), or null.</summary>
+    public static string? Ipv6Problem(string? text) => TryParseIpv6(text, out var address) ? Ipv6AddressProblem(address) : null;
 
     private static void ValidateDns(DnsChange dns, List<string> errors)
     {

@@ -92,7 +92,7 @@ public sealed class TaskServiceTests
         Assert.Equal(Proto.TaskState.Done, final.State);
         Assert.Equal(100, final.Progress);
         Assert.Equal("WS01/alice", final.Owner);
-        Assert.Equal("Restart", final.Name);
+        Assert.Equal("Restart device", final.Name);
         Assert.Equal(Proto.TaskChanged.Types.Kind.Added, seen[0].Kind);
         Assert.Contains(seen, c => c.Task.State == Proto.TaskState.Running && c.Task.Progress is > 0 and < 100);
         Assert.Equal(2, camera.RestartCalls);

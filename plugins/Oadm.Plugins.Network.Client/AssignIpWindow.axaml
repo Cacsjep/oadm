@@ -11,7 +11,8 @@
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
   <!-- Clone of ADM's "Assign IP address": page 1 DHCP or IP range, page 2 the new addresses. Shared controls and
-       theme classes only; the table is the AddressAssignmentGrid shared with "Network settings...". -->
+       theme classes only; the table is the AddressAssignmentGrid shared with "Network settings...". Field errors
+       below their input, row errors in the table; Finish confirms in the shared message window. -->
   <Grid RowDefinitions="Auto,*,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
 
@@ -33,7 +34,7 @@
                 <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding DefaultRouter}" PlaceholderText="192.168.0.1" />
               </Grid>
               <TextBlock Classes="secondary small" Text="{Binding RangeHint}" TextWrapping="Wrap" IsVisible="{Binding UseRange}" />
-              <TextBlock Classes="secondary small" Text="{Binding CurrentText}" TextWrapping="Wrap" />
+              <TextBlock Classes="error" Text="{Binding PrefillStatus}" TextWrapping="Wrap" IsVisible="{Binding PrefillStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             </StackPanel>
           </StackPanel>
         </Border>
@@ -65,30 +66,13 @@
           </StackPanel>
         </Border>
 
-        <!-- Reachability warning: must be acknowledged before Finish -->
-        <Border Classes="card" IsVisible="{Binding ShowWarning}">
-          <StackPanel>
-            <ui:CardHeader Title="The devices get new IP addresses" />
-            <StackPanel Classes="form">
-              <TextBlock Classes="warning" Text="{Binding Warning}" TextWrapping="Wrap" />
-              <CheckBox IsChecked="{Binding WarningAcknowledged}" Content="I understand that OADM may lose contact with these devices" />
-            </StackPanel>
-          </StackPanel>
-        </Border>
-
-        <ItemsControl ItemsSource="{Binding Errors}" IsVisible="{Binding HasErrors}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="x:String">
-              <TextBlock Classes="error" Text="{Binding}" TextWrapping="Wrap" />
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
       </StackPanel>
     </ScrollViewer>
 
     <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
       <Button Classes="secondary" Content="Back" Command="{Binding BackCommand}" IsVisible="{Binding IsReviewPage}" />
-      <Button Classes="primary" Content="{Binding PrimaryText}" Command="{Binding PrimaryCommand}" IsDefault="True" />
+      <Button Classes="primary" Content="{Binding PrimaryText}" Command="{Binding PrimaryCommand}" IsDefault="True"
+              ToolTip.Tip="{Binding BlockedReason}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>
   </Grid>
 </Window>

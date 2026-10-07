@@ -75,6 +75,19 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
     public bool RequiresDialog => true;
 
+    /// <summary>"Upgrade firmware to 12.11.77" etc., see <see cref="FirmwarePayload.TaskName"/>.</summary>
+    public string GetTaskName(string? payloadJson)
+    {
+        try
+        {
+            return FirmwarePayload.Parse(payloadJson).TaskName();
+        }
+        catch (ArgumentException)
+        {
+            return DisplayName;
+        }
+    }
+
     /// <summary>Only devices that are reachable with working credentials and offer fwmgr 1.x.</summary>
     public bool CanRun(IDeviceInfo device)
     {
@@ -135,8 +148,7 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         {
             file = await ctx.Files.FindAsync(payload.FileId, ct).ConfigureAwait(false)
                 ?? throw new FileNotFoundException("The uploaded firmware file is no longer available on the server. Upload it again. Nothing was changed.");
-            var header = await ReadHeaderAsync(ctx.Files, file.Id, ct).ConfigureAwait(false);
-            image = FirmwareImageInspector.Inspect(payload.FileName ?? file.Name, file.Size, header);
+            image = FirmwareImageInspector.Inspect(payload.FileName ?? file.Name, file.Size);
             var check = FirmwareCompatibility.Evaluate(info.ProdNbr, info.Version, image, payload.FactoryDefaultMode, payload.AllowDowngrade);
             ctx.Log(TaskLogLevel.Info, Invariant($"Device {info.ProdNbr} runs {info.Version}; file {image.FileName} ({file.Size} bytes, SHA-256 {file.Sha256}): {check.Message}"));
             if (check.IsNoOp)
@@ -477,17 +489,6 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         throw new InvalidOperationException(
             Invariant($"Firmware {actual} is running but could not be committed ({last?.Message}). The device rolls back to {oldVersion} by itself {_timings.AutoRollbackMinutes} minutes after booting unless the firmware is committed."),
             last);
-    }
-
-    private static async Task<byte[]> ReadHeaderAsync(IUploadedFiles files, string fileId, CancellationToken ct)
-    {
-        var stream = await files.OpenReadAsync(fileId, ct).ConfigureAwait(false);
-        await using (stream.ConfigureAwait(false))
-        {
-            var buffer = new byte[FirmwareImageInspector.HeaderLength];
-            var read = await stream.ReadAtLeastAsync(buffer, buffer.Length, throwOnEndOfStream: false, ct).ConfigureAwait(false);
-            return buffer[..read];
-        }
     }
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);

@@ -9,6 +9,7 @@ using Oadm.Client.Infrastructure;
 using Oadm.Plugins.Network.Client;
 using Oadm.Plugins.Network.Model;
 using Oadm.Plugins.Network.Vapix;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Network.Tests;
@@ -40,33 +41,64 @@ public sealed class HeadlessDialogTests
 
         var rows = await session.Dispatch(async () =>
         {
-            // Several devices: static range with preview, host name template, DNS, and the reachability warning.
+            // Several devices: static IPv4 and IPv6 per device in the table, host name template, DNS.
             var devices = Enumerable.Range(0, 4)
                 .Select(i => (IDeviceInfo)new FakeDevice(Guid.NewGuid(), $"10.0.0.{48 + i}", Serial: $"ACCC8E00000{i + 1}"))
                 .ToList();
             var vm = new NetworkSettingsViewModel(devices);
             vm.ApplyCurrent(current);
             vm.SelectedIpv4 = vm.Ipv4Choices.Single(c => c.Value == Ipv4Choice.Static);
-            vm.Ipv4Address = "10.0.0.100";
+            vm.SelectedIpv6 = vm.Ipv6Choices.Single(c => c.Value == Ipv6Choice.Static);
+            for (var i = 0; i < devices.Count; i++)
+            {
+                vm.Assignment.Rows[i].NewAddress = $"10.0.0.{100 + i}";
+                vm.Assignment.Rows[i].NewIpv6Address = $"2001:db8::{100 + i}";
+            }
+
+            vm.Assignment.Merge(new AddressCheckResponse([], [new("2001:db8::103", InUse: true, AnswersPing: true)]));
             vm.SelectedDns = vm.DnsChoices.Single(c => c.Value == SourceChoice.Static);
             vm.DnsSecondary = "10.0.0.2";
             vm.SelectedHostName = vm.HostNameChoices.Single(c => c.Value == SourceChoice.Static);
             vm.HostNameText = "cam-{n}";
-            var window = new NetworkSettingsWindow { DataContext = vm, Height = 1500 };
+            var window = new NetworkSettingsWindow { DataContext = vm, Width = 1100, Height = 1500 };
             window.Show();
             await PumpAsync();
             Capture(window, outDir, "network-settings-dialog-multi.png");
             Assert.True(vm.HasWarning);
-            Assert.False(vm.CanApply);
+            Assert.False(vm.CanApply); // 2001:db8::103 answers ping
+            Assert.Null(window.FindControl<CheckBox>("Acknowledge")); // no inline acknowledgement any more
+
+            vm.Assignment.Rows[3].NewIpv6Address = "2001:db8::110";
+            await PumpAsync();
+            Assert.True(vm.CanApply);
+
+            // Apply on a risky change opens the shared confirmation window.
+            MessageWindow? popup = null;
+            vm.Confirm = async (title, message, confirm) =>
+            {
+                popup = new MessageWindow { Heading = title, Message = message, ConfirmText = confirm, CancelText = "Cancel" };
+                var shown = popup.ShowDialog<bool>(window);
+                await PumpAsync();
+                Capture(popup, outDir, "network-settings-confirm.png");
+                popup.Close(false);
+                return await shown;
+            };
+            await vm.ApplyCommand.ExecuteAsync(null);
+            Assert.NotNull(popup);
+            Assert.Equal("Apply", popup!.ConfirmText);
+            Assert.Null(vm.ResultJson); // declined
             window.Close();
 
-            // One device: everything unchanged, apply disabled.
+            // One device: invalid mask shown below its field; IP address field instead of the table.
             var single = new NetworkSettingsViewModel([devices[0]]);
             single.ApplyCurrent(current);
-            var window2 = new NetworkSettingsWindow { DataContext = single };
+            single.SelectedIpv4 = single.Ipv4Choices.Single(c => c.Value == Ipv4Choice.Static);
+            single.Ipv4Mask = "255.0.255.0";
+            var window2 = new NetworkSettingsWindow { DataContext = single, Height = 1100 };
             window2.Show();
             await PumpAsync();
             Capture(window2, outDir, "network-settings-dialog-single.png");
+            Assert.True(single.HasErrors);
             window2.Close();
             return vm.Assignment.Rows.Count;
         }, CancellationToken.None);
@@ -102,8 +134,13 @@ public sealed class HeadlessDialogTests
             vm.ApplyCurrent(current);
             vm.IpRange = "10.0.0.100-103,10.0.0.120";
             vm.DnsPrimary = "10.0.0.2";
+            vm.DefaultRouter = "10.0.0.255";
             var window = new AssignIpWindow { DataContext = vm, Height = 900 };
             window.Show();
+            await PumpAsync();
+            Capture(window, outDir, "assign-ip-page1-error.png");
+            Assert.False(vm.CanContinue); // error below the Default router field
+            vm.DefaultRouter = "10.0.0.138";
             await PumpAsync();
             Capture(window, outDir, "assign-ip-page1.png");
             Assert.True(vm.CanContinue);
@@ -112,19 +149,30 @@ public sealed class HeadlessDialogTests
             vm.GoToReview();
             vm.Assignment.Merge(new AddressCheckResponse(
                 [new("10.0.0.102", Guid.NewGuid(), "M3106-L Mk II ACCC8E0000AA")],
-                [new("10.0.0.103", InUse: true)]));
+                [new("10.0.0.103", InUse: true, AnswersPing: true)]));
             vm.Assignment.Rows[4].NewAddress = "10.0.0.100";
             await PumpAsync();
             Capture(window, outDir, "assign-ip-page2.png");
             var found = vm.Assignment.Rows.Count(r => r.HasConflict);
             window.Close();
 
-            // DHCP on one device: finishes on page 1 after the warning.
+            // DHCP on one device: finishes on page 1, Finish asks in the shared confirmation window.
             using var single = new AssignIpViewModel([devices[0]]) { UseDhcp = true };
             var window2 = new AssignIpWindow { DataContext = single };
             window2.Show();
             await PumpAsync();
             Capture(window2, outDir, "assign-ip-dhcp.png");
+            single.Confirm = async (title, message, confirm) =>
+            {
+                var popup = new MessageWindow { Heading = title, Message = message, ConfirmText = confirm, CancelText = "Cancel" };
+                var shown = popup.ShowDialog<bool>(window2);
+                await PumpAsync();
+                Capture(popup, outDir, "assign-ip-confirm.png");
+                popup.Close(true);
+                return await shown;
+            };
+            await single.PrimaryCommand.ExecuteAsync(null);
+            Assert.NotNull(single.ResultJson);
             window2.Close();
             return (vm.Assignment.Rows.Count, found);
         }, CancellationToken.None);

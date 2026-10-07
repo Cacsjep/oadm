@@ -1,4 +1,5 @@
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
 using Oadm.Tests.Shared;
 
@@ -21,8 +22,8 @@ public sealed class UsersTaskPluginTests
         return ctx;
     }
 
-    /// <summary>The detail of the last step: the result the user sees for the device.</summary>
-    private static string? LastDetail(FakeTaskContext ctx) => ctx.Steps.Snapshot()[^1].Detail;
+    /// <summary>Detail of the last work step (before the final "Completed" step of a successful task).</summary>
+    private static string? LastDetail(FakeTaskContext ctx) => ctx.Steps.Snapshot().Last(s => s.Name != TaskStepList.CompletedStepName).Detail;
 
     // ---- compatibility ----
 
@@ -94,7 +95,7 @@ public sealed class UsersTaskPluginTests
         Assert.Equal("action=add&user=joe&pwd=S3cret-Passw0rd%21&grp=users&sgrp=operator%3Aviewer%3Aptz&comment=", write.Body);
         Assert.Equal(
             ["Check compatibility: Done", "Read password policy: Done", "Identify OADM account: Done", "Read users: Done",
-             "Validate change: Done", "Add user joe: Done", "Verify users: Done"],
+             "Validate change: Done", "Add user joe: Done", "Verify users: Done", "Completed: Done"],
             StepRun.Lines(ctx.Steps));
         Assert.Equal("user-management 1.2", StepRun.Detail(ctx.Steps, "Check compatibility"));
         Assert.Equal("Passphrase policy: None", StepRun.Detail(ctx.Steps, "Read password policy"));
@@ -134,7 +135,7 @@ public sealed class UsersTaskPluginTests
         Assert.Contains("nothing to change", StepRun.Detail(ctx.Steps, "Validate change"), StringComparison.Ordinal);
         Assert.Equal(
             ["Check compatibility: Done", "Read password policy: Done", "Identify OADM account: Done", "Read users: Done",
-             "Validate change: Done", "Update user acs: Skipped", "Verify users: Skipped"],
+             "Validate change: Done", "Update user acs: Skipped", "Verify users: Skipped", "Completed: Done"],
             StepRun.Lines(ctx.Steps));
         Assert.Equal("Nothing to change on this device.", StepRun.Detail(ctx.Steps, "Update user acs"));
     }
@@ -150,6 +151,70 @@ public sealed class UsersTaskPluginTests
         Assert.DoesNotContain("acs", vapix.UsersBody(), StringComparison.Ordinal);
     }
 
+    private static string RemovePayload(params string[] users) =>
+        UsersJson.Serialize(new UsersPayload { Mode = UsersMode.Remove, UserNames = users });
+
+    [Fact]
+    public async Task Remove_of_several_users_is_one_task_with_one_step_per_user()
+    {
+        var vapix = new FakeVapix();
+        var ctx = await RunAsync(vapix, RemovePayload("fakeroot", "acs"));
+        Assert.Equal(["action=remove&user=fakeroot", "action=remove&user=acs"], vapix.Writes.Select(w => w.Body));
+        Assert.Equal(
+            ["Check compatibility: Done", "Read password policy: Done", "Identify OADM account: Done", "Read users: Done",
+             "Validate change: Done", "Remove user fakeroot: Done", "Remove user acs: Done", "Verify users: Done", "Completed: Done"],
+            StepRun.Lines(ctx.Steps));
+        Assert.Equal("Users 'fakeroot', 'acs' removed.", LastDetail(ctx));
+        Assert.Empty(ctx.Warnings);
+    }
+
+    [Fact]
+    public async Task Remove_of_several_users_skips_missing_ones_with_a_warning()
+    {
+        var vapix = new FakeVapix();
+        var ctx = await RunAsync(vapix, RemovePayload("ghost", "acs"));
+        Assert.Equal("action=remove&user=acs", Assert.Single(vapix.Writes).Body);
+        Assert.Contains("'ghost' does not exist", Assert.Single(ctx.Warnings), StringComparison.Ordinal);
+        Assert.Equal(
+            ["Check compatibility: Done", "Read password policy: Done", "Identify OADM account: Done", "Read users: Done",
+             "Validate change: Warning", "Remove user ghost: Skipped", "Remove user acs: Done", "Verify users: Done", "Completed: Done"],
+            StepRun.Lines(ctx.Steps));
+    }
+
+    [Fact]
+    public async Task Remove_of_several_users_including_the_oadm_account_changes_nothing()
+    {
+        var vapix = new FakeVapix();
+        var ctx = new FakeTaskContext(vapix);
+        var ex = await Assert.ThrowsAsync<UserManagementException>(() => RunAsync(vapix, RemovePayload("acs", "root"), ctx: ctx));
+        Assert.Contains("account OADM uses", ex.Message, StringComparison.Ordinal);
+        Assert.Empty(vapix.Writes);
+        Assert.Equal(["Validate change: Failed", "Remove user acs: Skipped", "Remove user root: Skipped", "Verify users: Skipped"], StepRun.Lines(ctx.Steps)[^4..]);
+    }
+
+    [Theory]
+    [InlineData(UsersMode.Add, "joe", false, false, "Add user joe")]
+    [InlineData(UsersMode.Change, "joe", true, false, "Change password joe")]
+    [InlineData(UsersMode.Change, "joe", false, true, "Change role joe")]
+    [InlineData(UsersMode.Change, "joe", true, true, "Change user joe")]
+    [InlineData(UsersMode.Remove, "joe", false, false, "Remove user joe")]
+    public void Task_name_says_exactly_what_the_task_does(UsersMode mode, string user, bool changePassword, bool changeRole, string expected)
+    {
+        var json = Payload(mode, user, Secret, UserRole.Operator, changePassword: changePassword, changeRole: changeRole);
+        var name = ((ITaskPlugin)_plugin).GetTaskName(json);
+        Assert.Equal(expected, name);
+        Assert.DoesNotContain(Secret, name, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Task_name_of_a_multi_remove_lists_the_users_and_falls_back_without_payload()
+    {
+        Assert.Equal("Remove users fakeroot, acs", _plugin.GetTaskName(RemovePayload("fakeroot", "acs")));
+        Assert.Equal("Remove user acs", _plugin.GetTaskName(RemovePayload("acs")));
+        Assert.Equal("Users", _plugin.GetTaskName(null));
+        Assert.Equal("Users", _plugin.GetTaskName("{not json"));
+    }
+
     [Fact]
     public async Task Missing_user_on_remove_is_a_warning_not_a_failure()
     {
@@ -159,7 +224,7 @@ public sealed class UsersTaskPluginTests
         Assert.Contains("does not exist", Assert.Single(ctx.Warnings), StringComparison.Ordinal);
         Assert.Equal(
             ["Check compatibility: Done", "Read password policy: Done", "Identify OADM account: Done", "Read users: Done",
-             "Validate change: Warning", "Remove user ghost: Skipped", "Verify users: Skipped"],
+             "Validate change: Warning", "Remove user ghost: Skipped", "Verify users: Skipped", "Completed: Done"],
             StepRun.Lines(ctx.Steps));
     }
 

@@ -53,6 +53,9 @@ public sealed class RestartTaskPlugin : ITaskPlugin
 
     public string DisplayName => "Restart";
 
+    /// <summary>The task name in the tasks pane.</summary>
+    public string GetTaskName(string? payloadJson) => "Restart device";
+
     public string Group => TaskGroups.Maintenance;
 
     public string? IconKey => "restart";

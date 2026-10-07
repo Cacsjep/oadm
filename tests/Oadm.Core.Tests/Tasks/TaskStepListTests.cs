@@ -129,6 +129,35 @@ public sealed class TaskStepListTests
     }
 
     [Fact]
+    public void CloseAfterAFailureAppendsNoCompletedStep()
+    {
+        var steps = new TaskStepList(_time);
+        steps.Plan(["A", "B"]);
+        steps.Begin("A");
+        steps.FailCurrent("Refused");
+        steps.Close(succeeded: false, "Not run: an earlier step failed.");
+
+        Assert.Equal("A:Failed, B:Skipped", Shape(steps));
+        Assert.Equal(0, steps.CurrentIndex);
+    }
+
+    [Fact]
+    public void TheCompletedStepIsAddedEvenWhenTheListIsFull()
+    {
+        var steps = new TaskStepList(_time);
+        for (var i = 0; i < TaskStepList.MaxSteps; i++)
+        {
+            steps.Begin("S" + i).Complete();
+        }
+
+        steps.Close(succeeded: true, "Not run.");
+
+        Assert.Equal(TaskStepList.MaxSteps + 1, steps.Count);
+        Assert.Equal(TaskStepList.CompletedStepName, steps.Snapshot()[^1].Name);
+        Assert.Equal(100, steps.Progress);
+    }
+
+    [Fact]
     public void CloseCompletesTheRunningStepOnSuccessAndIgnoresLaterChanges()
     {
         var changes = 0;
@@ -137,13 +166,14 @@ public sealed class TaskStepListTests
         steps.Plan(["A", "B"]);
         var a = steps.Begin("A");
         steps.Close(succeeded: true, "Not run.");
-        Assert.Equal("A:Done, B:Skipped", Shape(steps));
+        Assert.Equal("A:Done, B:Skipped, Completed:Done", Shape(steps));
+        Assert.Equal(2, steps.CurrentIndex);
         var before = changes;
 
         a.Fail("late");
         steps.Begin("C").Complete();
         steps.Plan(["D"]);
-        Assert.Equal("A:Done, B:Skipped", Shape(steps));
+        Assert.Equal("A:Done, B:Skipped, Completed:Done", Shape(steps));
         Assert.Equal(before, changes);
     }
 

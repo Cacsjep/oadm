@@ -74,6 +74,18 @@ public sealed class RolloutEngineTests : IAsyncLifetime
 
     private static string[] Lines(TaskRecord task) => [.. task.Steps.Select(s => $"{s.Name}: {s.State}")];
 
+    [Theory]
+    [InlineData(new[] { "Read brand parameters" }, "Read brand parameters")]
+    [InlineData(new[] { "Read brand parameters", "Set day/night shift level" }, "Read brand parameters +1 more")]
+    [InlineData(new[] { "Set the very long overlay text parameter of the first view area", "B", "C" }, "Set the very long overlay text paramete… +2 more")]
+    public void Task_name_is_the_command_or_the_first_command_plus_count(string[] commands, string expected)
+    {
+        var name = RolloutTaskPlugin.TaskName(commands);
+        Assert.Equal(expected, name);
+        Assert.True(name!.Length <= Oadm.Sdk.Plugins.TaskPluginNames.MaxTaskNameLength);
+        Assert.Null(RolloutTaskPlugin.TaskName([]));
+    }
+
     [Fact]
     public async Task Every_command_is_a_named_step_with_its_result_or_error()
     {
@@ -87,8 +99,9 @@ public sealed class RolloutEngineTests : IAsyncLifetime
         var first = await Task(reply.TaskIds[0]);
         Assert.Equal(TaskState.Done, first.State);
         Assert.Equal(RolloutTaskPlugin.PluginId, first.PluginId);
+        Assert.Equal("Read brand parameters +2 more", first.Name);
         Assert.Equal(
-            ["Check compatibility: Done", "Read brand parameters: Done", "Read basic device information: Done", "Set day/night shift level: Done"],
+            ["Check compatibility: Done", "Read brand parameters: Done", "Read basic device information: Done", "Set day/night shift level: Done", "Completed: Done"],
             Lines(first));
         Assert.Equal("All 3 commands supported (fresh API list)", first.Steps[0].Detail);
         Assert.Equal("Product: P3265-V", first.Steps[1].Detail);

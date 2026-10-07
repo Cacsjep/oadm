@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+using System.Collections;
 using System.ComponentModel;
 using System.Globalization;
 
@@ -40,45 +40,49 @@ public sealed record Choice<T>(T Value, string Label)
     public override string ToString() => Label;
 }
 
+/// <summary>Asks the user to confirm a risky change (the host's shared <c>MessageWindow</c>): title, message, confirm button text.</summary>
+public delegate Task<bool> ConfirmChange(string title, string message, string confirmText);
 
 /// <summary>
 /// "Network settings..." dialog. Every section starts at "Keep unchanged", so only touched sections end up in the
-/// payload. Validation is the same <see cref="PayloadValidator"/> the server runs before writing.
+/// payload. Validation is the same <see cref="PayloadValidator"/> the server runs before writing. Errors appear once:
+/// at the field they belong to (<see cref="INotifyDataErrorInfo"/>) or in the row of the Devices table. Several
+/// devices: the new IPv4 (and static IPv6) addresses are set per device in the table only, suggested from the first
+/// device's current address. Apply asks for confirmation (<see cref="Confirm"/>) when the change can cut OADM off.
 /// </summary>
-public sealed partial class NetworkSettingsViewModel : ObservableObject
+public sealed partial class NetworkSettingsViewModel : ObservableObject, INotifyDataErrorInfo
 {
+    public const string ConfirmTitle = "The devices may become unreachable";
+
     private static readonly HashSet<string> Inputs =
     [
         nameof(SelectedIpv4), nameof(Ipv4Address), nameof(Ipv4Mask), nameof(Ipv4Gateway),
         nameof(SelectedIpv6), nameof(Ipv6Address), nameof(Ipv6Prefix), nameof(Ipv6Gateway),
         nameof(SelectedDns), nameof(DnsPrimary), nameof(DnsSecondary), nameof(DnsDomain), nameof(DnsSearch),
-        nameof(SelectedHostName), nameof(HostNameText), nameof(WarningAcknowledged),
+        nameof(SelectedHostName), nameof(HostNameText),
     ];
 
     private readonly IReadOnlyList<IDeviceInfo> _devices;
+    private readonly FieldErrors _fieldErrors;
     private NetworkPayload? _payload;
     private bool _initialized;
     private bool _recomputing;
-    private string? _lastRangeText;
+    private string? _lastSuggestion;
 
     public NetworkSettingsViewModel(IReadOnlyList<IDeviceInfo> devices)
     {
         ArgumentNullException.ThrowIfNull(devices);
         _devices = devices;
+        _fieldErrors = new FieldErrors(name => ErrorsChanged?.Invoke(this, new DataErrorsChangedEventArgs(name)));
         Ipv4Choices = [new(Ipv4Choice.Keep, "Keep unchanged"), new(Ipv4Choice.Dhcp, "DHCP"), new(Ipv4Choice.Static, "Static")];
-        var v6 = new List<Choice<Ipv6Choice>>
-        {
+        Ipv6Choices =
+        [
             new(Ipv6Choice.Keep, "Keep unchanged"),
             new(Ipv6Choice.Disabled, "Disabled"),
             new(Ipv6Choice.Auto, "Automatic (router advertisement)"),
             new(Ipv6Choice.Dhcp, "DHCPv6"),
-        };
-        if (devices.Count == 1)
-        {
-            v6.Add(new(Ipv6Choice.Static, "Static"));
-        }
-
-        Ipv6Choices = v6;
+            new(Ipv6Choice.Static, "Static"),
+        ];
         DnsChoices = [new(SourceChoice.Keep, "Keep unchanged"), new(SourceChoice.Dhcp, "From DHCP"), new(SourceChoice.Static, "Static")];
         HostNameChoices = [new(SourceChoice.Keep, "Keep unchanged"), new(SourceChoice.Dhcp, "From DHCP"), new(SourceChoice.Static, "Static")];
         SelectedIpv4 = Ipv4Choices[0];
@@ -91,11 +95,16 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
         Recompute();
     }
 
-    /// <summary>The per-device table (address range assignment, host name template), shared with "Assign IP address...".</summary>
+    /// <summary>The per-device table (new IPv4 / IPv6 addresses, host names), shared with "Assign IP address...".</summary>
     public AddressAssignmentViewModel Assignment { get; }
 
     /// <summary>Raised when the dialog should close: true = apply (see <see cref="ResultJson"/>), false = cancel.</summary>
     public event EventHandler<bool>? CloseRequested;
+
+    public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged;
+
+    /// <summary>Confirmation before a risky Apply; the dialog shows the shared message window. Null: no confirmation.</summary>
+    public ConfirmChange? Confirm { get; set; }
 
     public IReadOnlyList<Choice<Ipv4Choice>> Ipv4Choices { get; }
 
@@ -111,14 +120,12 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
         ? $"{Label(_devices[0])}. Only sections you change are written."
         : $"{_devices.Count} devices, starting with {Label(_devices[0])}. Only sections you change are written.";
 
-    /// <summary>Description of the Devices card: which devices, and where the current values come from.</summary>
+    /// <summary>Description of the Devices card: which devices (plus a failed prefill).</summary>
     public string DevicesDescription => string.IsNullOrEmpty(PrefillStatus) ? DeviceSummary : DeviceSummary + " " + PrefillStatus;
 
     public bool IsMultiDevice => _devices.Count > 1;
 
-    public string Ipv4AddressLabel => IsMultiDevice ? "IP range" : "IP address";
-
-    public string Ipv4AddressPlaceholder => IsMultiDevice ? "192.168.0.100 or 192.168.0.100-120" : "192.168.0.90";
+    public bool IsSingleDevice => !IsMultiDevice;
 
     public string HostNameLabel => IsMultiDevice ? "Host name template" : "Host name";
 
@@ -127,6 +134,10 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial Choice<Ipv4Choice> SelectedIpv4 { get; set; }
 
+    /// <summary>
+    /// One device: the new IPv4 address (field). Several devices: no field; the first device's current address is
+    /// where the suggestions in the table start.
+    /// </summary>
     [ObservableProperty]
     public partial string Ipv4Address { get; set; } = string.Empty;
 
@@ -139,6 +150,7 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial Choice<Ipv6Choice> SelectedIpv6 { get; set; }
 
+    /// <summary>One device: the static IPv6 address (field). Several devices: per row in the table.</summary>
     [ObservableProperty]
     public partial string Ipv6Address { get; set; } = string.Empty;
 
@@ -169,33 +181,21 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string HostNameText { get; set; } = string.Empty;
 
-    [ObservableProperty]
-    public partial string CurrentIpv4Text { get; set; } = string.Empty;
-
-    [ObservableProperty]
-    public partial string CurrentIpv6Text { get; set; } = string.Empty;
-
-    [ObservableProperty]
-    public partial string CurrentDnsText { get; set; } = string.Empty;
-
-    [ObservableProperty]
-    public partial string CurrentHostNameText { get; set; } = string.Empty;
-
+    /// <summary>Only set when the current settings could not be read.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DevicesDescription))]
     public partial string PrefillStatus { get; set; } = string.Empty;
 
+    /// <summary>What the change can do to OADM's connection; shown in the confirmation on Apply. Null: nothing risky.</summary>
     [ObservableProperty]
     public partial string? ReachabilityWarning { get; set; }
 
     [ObservableProperty]
-    public partial bool WarningAcknowledged { get; set; }
-
-    [ObservableProperty]
     public partial bool CanApply { get; set; }
 
-    public ObservableCollection<string> Errors { get; } = [];
-
+    /// <summary>Why Apply is disabled (its tooltip), null when it is enabled.</summary>
+    [ObservableProperty]
+    public partial string? ApplyBlockedReason { get; set; }
 
     public bool IsIpv4Static => SelectedIpv4.Value == Ipv4Choice.Static;
 
@@ -205,11 +205,18 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
 
     public bool IsHostNameStatic => SelectedHostName.Value == SourceChoice.Static;
 
-    public bool ShowPreview => IsMultiDevice && (IsIpv4Static || IsHostNameStatic);
+    /// <summary>The IPv4 address field: one device only.</summary>
+    public bool ShowIpv4Address => IsIpv4Static && IsSingleDevice;
+
+    /// <summary>The IPv6 address field: one device only.</summary>
+    public bool ShowIpv6Address => IsIpv6Static && IsSingleDevice;
+
+    public bool ShowPreview => IsMultiDevice && (IsIpv4Static || IsIpv6Static || IsHostNameStatic);
 
     public bool HasWarning => !string.IsNullOrEmpty(ReachabilityWarning);
 
-    public bool HasErrors => Errors.Count > 0;
+    /// <summary>A field has an error (shown below that field).</summary>
+    public bool HasErrors => _fieldErrors.HasErrors;
 
     /// <summary>Payload JSON after Apply; null before.</summary>
     public string? ResultJson { get; private set; }
@@ -217,12 +224,16 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
     /// <summary>Current payload (null while the input cannot be turned into one).</summary>
     public NetworkPayload? Payload => _payload;
 
+    public IEnumerable GetErrors(string? propertyName) => _fieldErrors.GetErrors(propertyName);
+
+    /// <summary>The error of one field (tests).</summary>
+    public string? ErrorOf(string propertyName) => _fieldErrors[propertyName];
+
     /// <summary>Reads the first device's current settings through the plugin query and prefills the fields. Never throws.</summary>
     public async Task LoadCurrentAsync(ITaskDialogContext ctx, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         Assignment.Attach(ctx, _devices[0].Id);
-        PrefillStatus = $"Reading current settings from {Label(_devices[0])}...";
         try
         {
             var json = await ctx.QueryAsync(_devices[0].Id, NetworkSettingsTaskPlugin.QueryGetNetworkInfo, null, ct).ConfigureAwait(true);
@@ -246,42 +257,33 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
         }
     }
 
-    /// <summary>Shows and prefills from the current settings of the first selected device.</summary>
+    /// <summary>Prefills the fields from the current settings of the first selected device.</summary>
     public void ApplyCurrent(CurrentNetworkSettings current)
     {
         ArgumentNullException.ThrowIfNull(current);
-        PrefillStatus = IsMultiDevice
-            ? $"Current values are from {Label(_devices[0])} ({current.Source})."
-            : $"Current values read via {current.Source}.";
+        PrefillStatus = string.Empty;
 
         var v4 = current.Ipv4;
-        CurrentIpv4Text = v4.Supported
-            ? $"Current: {ModeText(v4.Mode)}, {AddressText(v4.Address, v4.PrefixLength)}, gateway {v4.Gateway ?? "none"}"
-            : "Current: IPv4 is not supported on this interface";
         var mask = v4.StaticPrefixLength ?? v4.PrefixLength;
         Ipv4Mask = mask is { } m ? Ipv4.MaskText(m) : Ipv4Mask;
         Ipv4Gateway = v4.Gateway ?? v4.StaticGateway ?? Ipv4Gateway;
         Ipv4Address = v4.Address ?? v4.StaticAddress ?? Ipv4Address;
 
         var v6 = current.Ipv6;
-        CurrentIpv6Text = !v6.Supported
-            ? "Current: IPv6 is not supported on this interface"
-            : v6.Enabled
-                ? $"Current: enabled, {ModeText(v6.Mode)}{(v6.Addresses.Count > 0 ? ", " + string.Join(", ", v6.Addresses) : string.Empty)}"
-                : "Current: disabled";
         if (v6.StaticAddresses.Count > 0)
         {
-            var staticV6 = v6.StaticAddresses[0];
-            var parts = staticV6.Split('/');
+            var parts = v6.StaticAddresses[0].Split('/');
             Ipv6Address = parts[0];
             Ipv6Prefix = parts.Length > 1 ? parts[1] : Ipv6Prefix;
+            if (IsMultiDevice && Assignment.Rows[0].NewIpv6Address.Length == 0)
+            {
+                Assignment.Rows[0].NewIpv6Address = parts[0];
+            }
         }
 
         Ipv6Gateway = v6.Gateway ?? Ipv6Gateway;
 
         var dns = current.Dns;
-        CurrentDnsText = $"Current: {(dns.UseDhcp ? "from DHCP" : "static")}, servers {(dns.Servers.Count > 0 ? string.Join(", ", dns.Servers) : "none")}" +
-            (string.IsNullOrEmpty(dns.DomainName) ? string.Empty : $", domain {dns.DomainName}");
         var staticServers = dns.StaticServers.Count > 0 ? dns.StaticServers : dns.Servers;
         DnsPrimary = staticServers.ElementAtOrDefault(0) ?? DnsPrimary;
         DnsSecondary = staticServers.ElementAtOrDefault(1) ?? DnsSecondary;
@@ -289,16 +291,15 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
         var search = dns.StaticSearchDomains.Count > 0 ? dns.StaticSearchDomains : dns.SearchDomains;
         DnsSearch = search.Count > 0 ? string.Join(", ", search) : DnsSearch;
 
-        var host = current.HostName;
-        CurrentHostNameText = $"Current: {host.HostName ?? "none"}{(host.UseDhcp ? " (DHCP preferred)" : string.Empty)}";
         if (!IsMultiDevice)
         {
-            HostNameText = host.StaticHostName ?? host.HostName ?? HostNameText;
+            HostNameText = current.HostName.StaticHostName ?? current.HostName.HostName ?? HostNameText;
         }
     }
 
+    /// <summary>Apply: confirms a risky change first (shared confirmation window), then closes with the payload.</summary>
     [RelayCommand]
-    private void Apply()
+    private async Task ApplyAsync()
     {
         Recompute();
         if (!CanApply || _payload is null)
@@ -306,7 +307,13 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
             return;
         }
 
-        ResultJson = _payload.ToJson();
+        var payload = _payload;
+        if (HasWarning && Confirm is { } confirm && !await confirm(ConfirmTitle, ReachabilityWarning!, "Apply").ConfigureAwait(true))
+        {
+            return;
+        }
+
+        ResultJson = payload.ToJson();
         CloseRequested?.Invoke(this, true);
     }
 
@@ -331,10 +338,12 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
             if (name == nameof(SelectedIpv4))
             {
                 OnPropertyChanged(nameof(IsIpv4Static));
+                OnPropertyChanged(nameof(ShowIpv4Address));
             }
             else if (name == nameof(SelectedIpv6))
             {
                 OnPropertyChanged(nameof(IsIpv6Static));
+                OnPropertyChanged(nameof(ShowIpv6Address));
             }
             else if (name == nameof(SelectedDns))
             {
@@ -353,7 +362,7 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
         }
     }
 
-    /// <summary>Rebuilds payload, preview, warning and errors from the inputs.</summary>
+    /// <summary>Rebuilds payload, table, warning and errors from the inputs.</summary>
     private void Recompute()
     {
         if (_recomputing)
@@ -374,23 +383,22 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
 
     private void RecomputeCore()
     {
-        var errors = new List<string>();
-        var ipv4Addresses = AssignIpv4(errors);
+        var fields = new Dictionary<string, string?>();
+        int? prefix = Ipv4.TryParsePrefix(Ipv4Mask, out var p) ? p : null;
+        int? v6Prefix = int.TryParse(Ipv6Prefix?.Trim().TrimStart('/'), NumberStyles.None, CultureInfo.InvariantCulture, out var pp) ? pp : null;
+        var ipv4Addresses = AssignIpv4(prefix);
+        Assignment.SetIpv6(IsMultiDevice && IsIpv6Static);
         var hostNames = AssignHostNames();
 
         var devices = new Dictionary<Guid, DeviceAssignment>();
         for (var i = 0; i < _devices.Count; i++)
         {
-            devices[_devices[i].Id] = new DeviceAssignment(ipv4Addresses?.ElementAtOrDefault(i), hostNames?.ElementAtOrDefault(i));
+            devices[_devices[i].Id] = new DeviceAssignment(
+                ipv4Addresses?.ElementAtOrDefault(i),
+                hostNames?.ElementAtOrDefault(i),
+                IsIpv6Static ? (IsMultiDevice ? Assignment.Rows[i].NewIpv6Address.Trim() : Ipv6Address.Trim()) : null);
         }
 
-        int? prefix = Ipv4.TryParsePrefix(Ipv4Mask, out var p) ? p : null;
-        if (IsIpv4Static && prefix is null)
-        {
-            errors.Add("IPv4: enter a subnet mask (255.255.255.0) or prefix length (24).");
-        }
-
-        int? v6Prefix = int.TryParse(Ipv6Prefix?.Trim().TrimStart('/'), NumberStyles.None, CultureInfo.InvariantCulture, out var pp) ? pp : null;
         var payload = new NetworkPayload
         {
             Ipv4 = SelectedIpv4.Value switch
@@ -404,7 +412,7 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
                 Ipv6Choice.Disabled => new Ipv6Change(Ipv6Mode.Disabled),
                 Ipv6Choice.Auto => new Ipv6Change(Ipv6Mode.Auto),
                 Ipv6Choice.Dhcp => new Ipv6Change(Ipv6Mode.Dhcp),
-                Ipv6Choice.Static => new Ipv6Change(Ipv6Mode.Static, Ipv6Address.Trim(), v6Prefix, NullIfEmpty(Ipv6Gateway)),
+                Ipv6Choice.Static => new Ipv6Change(Ipv6Mode.Static, null, v6Prefix, NullIfEmpty(Ipv6Gateway)),
                 _ => null,
             },
             Dns = SelectedDns.Value switch
@@ -426,76 +434,137 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
             Devices = devices,
         };
 
-        if (errors.Count == 0 || payload.HasChanges)
+        if (IsIpv4Static)
         {
-            foreach (var error in PayloadValidator.Validate(payload).Where(e => !errors.Contains(e)))
+            AddIpv4FieldErrors(fields, prefix);
+        }
+
+        if (IsIpv6Static)
+        {
+            AddIpv6FieldErrors(fields, v6Prefix);
+        }
+
+        if (payload.Dns is { UseDhcp: false } dns)
+        {
+            foreach (var error in PayloadValidator.ValidateDnsChange(dns))
             {
-                // The UI reports a missing mask itself; the validator's range message would repeat it.
-                if (!(prefix is null && error.StartsWith("IPv4: enter a subnet mask", StringComparison.Ordinal)))
-                {
-                    errors.Add(error);
-                }
+                var field = error.Contains("search", StringComparison.OrdinalIgnoreCase) ? nameof(DnsSearch)
+                    : error.Contains("domain name", StringComparison.Ordinal) ? nameof(DnsDomain)
+                    : nameof(DnsPrimary);
+                fields.TryAdd(field, FieldErrors.Clean(error));
             }
         }
 
-        if (IsMultiDevice && IsIpv4Static && Assignment.HasConflicts && errors.Count == 0)
+        if (payload.HostName is { UseDhcp: false })
         {
-            errors.Add("IPv4: resolve the conflicts shown in the Devices table.");
+            var hostOnly = new NetworkPayload { HostName = payload.HostName, Devices = devices };
+            if (PayloadValidator.Validate(hostOnly) is [var error, ..])
+            {
+                fields[nameof(HostNameText)] = FieldErrors.Clean(error);
+            }
         }
 
-        if (!payload.HasChanges)
-        {
-            errors.Clear();
-        }
+        _fieldErrors.SetAll(fields);
 
-        Errors.Clear();
-        foreach (var error in errors)
-        {
-            Errors.Add(error);
-        }
+        // The whole payload, exactly as the server validates it before the first write (rows included).
+        var remaining = payload.HasChanges ? PayloadValidator.Validate(payload) : [];
+        var rowProblems = ShowPreview && (Assignment.HasConflicts || Assignment.HasError);
+        ApplyBlockedReason = !payload.HasChanges
+            ? "Choose at least one setting to change."
+            : _fieldErrors.First
+                ?? (Assignment.Error is { } tableError && IsMultiDevice && IsIpv4Static ? tableError : null)
+                ?? (rowProblems ? "Resolve the problems shown in the Devices table." : null)
+                ?? remaining.Select(FieldErrors.Clean).FirstOrDefault();
 
         Assignment.ShowHostName = IsHostNameStatic;
         Assignment.SetHostNames(hostNames);
         ReachabilityWarning = ComputeWarning(payload, ipv4Addresses);
-        _payload = errors.Count == 0 && payload.HasChanges ? payload : null;
-        CanApply = _payload is not null && (!HasWarning || WarningAcknowledged);
+        _payload = ApplyBlockedReason is null ? payload : null;
+        CanApply = _payload is not null;
         OnPropertyChanged(nameof(HasErrors));
         OnPropertyChanged(nameof(ShowPreview));
         OnPropertyChanged(nameof(Payload));
     }
 
-    private List<string>? AssignIpv4(List<string> errors)
+    private void AddIpv4FieldErrors(Dictionary<string, string?> fields, int? prefix)
+    {
+        var network = PayloadValidator.ValidateIpv4Network(prefix, Ipv4Gateway.Trim());
+        if (prefix is null)
+        {
+            fields[nameof(Ipv4Mask)] = "Enter a subnet mask (255.255.255.0) or prefix length (24).";
+        }
+        else if (network.FirstOrDefault(e => e.Contains("subnet mask", StringComparison.Ordinal)) is { } maskError)
+        {
+            fields[nameof(Ipv4Mask)] = FieldErrors.Clean(maskError);
+        }
+
+        if (prefix is not null && network.FirstOrDefault(e => !e.Contains("subnet mask", StringComparison.Ordinal)) is { } gatewayError)
+        {
+            fields[nameof(Ipv4Gateway)] = FieldErrors.Clean(gatewayError);
+        }
+
+        if (IsSingleDevice)
+        {
+            var row = new AssignmentRow(new AssignmentDevice(_devices[0].Id, _devices[0].Address), Ipv4Address);
+            var problem = AddressConflicts.Find([row], prefix, fields.ContainsKey(nameof(Ipv4Gateway)) ? null : Ipv4Gateway.Trim())[0];
+            if (problem is not null)
+            {
+                fields[nameof(Ipv4Address)] = problem == "No address" ? "Enter an IP address." : problem + ".";
+            }
+        }
+    }
+
+    private void AddIpv6FieldErrors(Dictionary<string, string?> fields, int? v6Prefix)
+    {
+        foreach (var error in PayloadValidator.ValidateIpv6Network(v6Prefix, Ipv6Gateway))
+        {
+            fields.TryAdd(error.Contains("prefix", StringComparison.Ordinal) ? nameof(Ipv6Prefix) : nameof(Ipv6Gateway), FieldErrors.Clean(error));
+        }
+
+        if (IsSingleDevice)
+        {
+            var row = new AssignmentRow(new AssignmentDevice(_devices[0].Id, _devices[0].Address), Ipv6Address);
+            var problem = AddressConflicts.FindIpv6([row])[0];
+            if (problem is not null)
+            {
+                fields[nameof(Ipv6Address)] = problem == "No IPv6 address" ? "Enter an IPv6 address." : problem + ".";
+            }
+        }
+    }
+
+    /// <summary>
+    /// The new IPv4 addresses per device. One device: the field. Several: the table, suggested once from the first
+    /// device's current address (same assignment as "Assign IP address..."); mask or gateway changes only re-check.
+    /// </summary>
+    private List<string>? AssignIpv4(int? prefix)
     {
         if (!IsIpv4Static || !IsMultiDevice)
         {
             Assignment.Clear();
-            _lastRangeText = null;
+            _lastSuggestion = null;
             return IsIpv4Static ? [Ipv4Address.Trim()] : null;
         }
 
-        // Same range syntax and assignment as "Assign IP address..." (a single address is the start address).
-        int? prefix = Ipv4.TryParsePrefix(Ipv4Mask, out var p) ? p : null;
-        var text = Ipv4Address.Trim();
-        if (!IpRangeExpression.TryParse(text, out var range, out var rangeError))
+        var start = Ipv4Address.Trim();
+        var gateway = Ipv4Gateway.Trim();
+        var key = $"{start}|{prefix}|{gateway}";
+        if (!string.Equals(_lastSuggestion, key, StringComparison.Ordinal))
         {
-            errors.Add("IPv4: " + rangeError);
-            _lastRangeText = null;
-            return null;
-        }
-
-        // Suggest again only when range, mask or gateway changed; a new range discards the user's edits.
-        var key = $"{text}|{prefix}|{Ipv4Gateway.Trim()}";
-        if (!string.Equals(_lastRangeText, key, StringComparison.Ordinal))
-        {
-            var resetEdits = _lastRangeText is null || !_lastRangeText.StartsWith(text + "|", StringComparison.Ordinal);
-            _lastRangeText = key;
-            Assignment.Assign(range!, prefix, Ipv4Gateway.Trim(), resetEdits);
-        }
-
-        if (Assignment.Error is { } error)
-        {
-            errors.Add("IPv4: " + error);
-            return null;
+            // A new start discards edits; a new mask or gateway suggests again around the user's edits.
+            var first = _lastSuggestion is null || !_lastSuggestion.StartsWith(start + "|", StringComparison.Ordinal);
+            _lastSuggestion = key;
+            if (IpRangeExpression.TryParse(start, out var range, out _))
+            {
+                Assignment.Assign(range!, prefix, gateway, resetEdits: first);
+            }
+            else if (first)
+            {
+                Assignment.EditManually(prefix, gateway);
+            }
+            else
+            {
+                Assignment.UpdateNetwork(prefix, gateway);
+            }
         }
 
         return [.. Assignment.Addresses];
@@ -534,18 +603,6 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
 
     private static string Label(IDeviceInfo device) =>
         string.IsNullOrEmpty(device.Model) ? $"{device.Address} ({device.Serial})" : $"{device.Model} at {device.Address}";
-
-    private static string ModeText(string? mode) => mode?.ToLowerInvariant() switch
-    {
-        "dhcp" => "DHCP",
-        "static" => "static",
-        "auto" => "automatic",
-        null => "mode unknown",
-        _ => mode,
-    };
-
-    private static string AddressText(string? address, int? prefix) =>
-        address is null ? "no address" : prefix is { } p ? $"{address} / {Ipv4.MaskText(p)}" : address;
 
     private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

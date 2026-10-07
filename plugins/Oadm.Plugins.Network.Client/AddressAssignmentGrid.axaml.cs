@@ -7,7 +7,7 @@ namespace Oadm.Plugins.Network.Client;
 
 /// <summary>
 /// View of <see cref="AddressAssignmentViewModel"/>, shared by both network dialogs. Code-behind only shows the
-/// host name column (DataGrid columns are not in the visual tree, so they cannot bind to the view model).
+/// IPv6 and host name columns (DataGrid columns are not in the visual tree, so they cannot bind to the view model).
 /// </summary>
 public sealed partial class AddressAssignmentGrid : UserControl
 {
@@ -37,7 +37,7 @@ public sealed partial class AddressAssignmentGrid : UserControl
 
     private void OnModelChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(AddressAssignmentViewModel.ShowHostName))
+        if (e.PropertyName is nameof(AddressAssignmentViewModel.ShowHostName) or nameof(AddressAssignmentViewModel.ShowIpv6))
         {
             UpdateColumns();
         }
@@ -47,10 +47,14 @@ public sealed partial class AddressAssignmentGrid : UserControl
     {
         if (this.FindControl<DataGrid>("Grid") is { } grid)
         {
-            var column = grid.Columns.FirstOrDefault(c => Equals(c.Header, "New host name"));
-            if (column is not null)
+            if (grid.Columns.FirstOrDefault(c => Equals(c.Header, "New host name")) is { } host)
             {
-                column.IsVisible = _model?.ShowHostName == true;
+                host.IsVisible = _model?.ShowHostName == true;
+            }
+
+            if (grid.Columns.FirstOrDefault(c => Equals(c.Header, "New IPv6 address")) is { } ipv6)
+            {
+                ipv6.IsVisible = _model?.ShowIpv6 == true;
             }
         }
     }

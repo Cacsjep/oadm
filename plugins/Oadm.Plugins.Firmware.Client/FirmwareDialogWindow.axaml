@@ -17,7 +17,7 @@
     <!-- File -->
     <Border Grid.Row="1" Classes="card" Margin="16,0">
       <StackPanel>
-        <ui:CardHeader Title="Firmware file" Description="AXIS OS image (.bin) uploaded to the server and installed on every selected device that accepts it." />
+        <ui:CardHeader Title="Firmware file" Description="AXIS OS image (.bin) uploaded to the server and installed on every selected device that accepts it. Each device verifies the signature and the product itself before it installs anything." />
         <ui:FileRow FileName="{Binding FileName}" Details="{Binding FileDetails}" Error="{Binding FileError}" Command="{Binding BrowseCommand}" />
       </StackPanel>
     </Border>

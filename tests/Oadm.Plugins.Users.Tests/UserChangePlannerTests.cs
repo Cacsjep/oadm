@@ -3,6 +3,31 @@ namespace Oadm.Plugins.Users.Tests;
 /// <summary>Lock-out protection and existence checks, independent of HTTP.</summary>
 public sealed class UserChangePlannerTests
 {
+    [Fact]
+    public void Removing_several_administrators_keeps_the_last_one()
+    {
+        IReadOnlyList<DeviceUser> users =
+        [
+            new("a", UserRole.Administrator, false), new("b", UserRole.Administrator, false), new("oadm", UserRole.Operator, false),
+        ];
+
+        var ex = Assert.Throws<UserManagementException>(() => UserChangePlanner.PlanRemoval(["a", "b"], users, "oadm", "12.11.77"));
+        Assert.Contains("'b' is the last administrator", ex.Message, StringComparison.Ordinal);
+
+        var plans = UserChangePlanner.PlanRemoval(["a", "ghost"], users, "oadm", "12.11.77");
+        Assert.Equal([PlanKind.Write, PlanKind.Skip], plans.Select(p => p.Plan.Kind));
+        Assert.True(plans[1].Plan.IsWarning);
+    }
+
+    [Fact]
+    public void Remove_payload_needs_at_least_one_valid_user()
+    {
+        Assert.Throws<UserManagementException>(() => UserChangePlanner.ValidatePayload(new UsersPayload { Mode = UsersMode.Remove }, PassphrasePolicy.None));
+        Assert.Throws<UserManagementException>(() => UserChangePlanner.ValidatePayload(new UsersPayload { Mode = UsersMode.Remove, UserNames = ["ok", "bad name!"] }, PassphrasePolicy.None));
+        UserChangePlanner.ValidatePayload(new UsersPayload { Mode = UsersMode.Remove, UserNames = ["a", "a", "b"] }, PassphrasePolicy.None);
+        Assert.Equal(["a", "b"], new UsersPayload { Mode = UsersMode.Remove, UserNames = ["a", " a", "b"] }.RemoveNames);
+    }
+
     private static readonly IReadOnlyList<DeviceUser> Users =
     [
         new("root", UserRole.Administrator, true, true),

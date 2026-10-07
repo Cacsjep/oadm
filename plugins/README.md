@@ -46,13 +46,26 @@ the server project for shared payload types (it then ships in the same folder).
 
 ## Server side
 
-- **Name and group.** `DisplayName` is what the context menu, the toolbar and the tasks pane show:
+- **Name and group.** `DisplayName` is what the context menu and the toolbar show:
   at most `TaskPluginNames.MaxDisplayNameLength` (32) characters and **no trailing "..."**, also not for
   tasks that open a dialog (the host never appends dots and strips them defensively; the server loader
   logs a warning and shortens longer names with an ellipsis). `Group` (default `TaskGroups.General`)
   is the context menu submenu the task appears in: reuse a `TaskGroups` constant (`Applications`,
   `General`, `Maintenance`, `Network`, `Security`, `Users`, `Video`) when one fits, or name a new group
   (it gets its own submenu, sorted by name; groups always show as submenus, even with one task).
+- **Task name (rule): the task list says exactly what the task does**, never the menu name.
+  Implement `string GetTaskName(string? payloadJson)` (default interface implementation returns
+  `DisplayName`): "Add user joe", "Set static IP 10.0.0.60", "Upgrade firmware to 12.11.77 (factory
+  default)", "Install AXIS Video Motion Detection 4.5.2", "Restart device". At most
+  `TaskPluginNames.MaxTaskNameLength` (48) characters (the engine shortens longer names with "…" and logs
+  a warning; a throwing or empty name falls back to `DisplayName`). Called once per Run, so all devices of
+  a run share the name; put what the name needs (friendly app name, upgrade/downgrade) into the payload.
+  **Never secrets** (passwords) in names: they are persisted and shown to everyone. Bundled names:
+  Users "Add user joe" / "Change password joe" / "Change role joe" / "Change user joe" / "Remove user joe"
+  / "Remove users joe, ann"; Firmware "Upgrade firmware to X" / "Downgrade firmware to X" / "Install
+  firmware X" (mixed) / "Install firmware" (version unknown) + " (factory default)"; ACAP "Install <app>
+  <version>" / "Upgrade <app> to <version>" / "Remove|Start|Stop <app>"; Restart "Restart device"; VAPIX
+  Commander rollout: the command name or "<first command> +N more"; Network: see its README.
 - `CanRun(device)`: cheap, synchronous; check `device.Apis.Supports(apiId, minVersion)`.
 - `ExecuteAsync(ctx, device, payloadJson, ct)` runs once per device; every device is its own task.
   Re-check `(await ctx.Vapix.GetApiListAsync(ct)).Require(...)` before the first write.
@@ -64,7 +77,11 @@ the server project for shared payload types (it then ships in the same folder).
   Dispose alone = Done, an exception escaping the step = Failed. Steps that do not apply:
   `ctx.SkipStep(name, "Keep unchanged")`. Planned steps never reached end Skipped. Names are short
   imperatives ("Set DNS", "Wait for the device to come back"); never secrets in names or details.
-  Test with `TaskStepList` + `tests/Shared/StepRun.cs` (same end rules as the server).
+  When the task succeeds (Done or Done with warnings) the engine appends a final step **Completed**
+  (Done), so the tasks pane shows "Step 8/8 · Completed"; failed and cancelled tasks get none (the
+  failed step stays current). Plugins never add it themselves.
+  Test with `TaskStepList` + `tests/Shared/StepRun.cs` (same end rules as the server, including
+  "Completed: Done" at the end of a successful run).
 - `ctx.ReportProgress(percent, message)` (optional: progress is derived from the steps),
   `ctx.ReportWarning(message)` (Done with warnings), `ctx.Log(level, message)` (task log shown in
   the task details). Never put secrets in them.
@@ -111,6 +128,7 @@ Build dialogs from the host look (HARD RULE: reuse controls, no style difference
   | `ui:ToolbarSeparator` | vertical line between toolbar groups |
   | `ui:SearchBox Text` | every search field |
   | `ui:PasswordBox Text` | **every password field** (a `TextBox` with the bullet mask and an eye button to show / hide the password, tooltip "Show password" / "Hide password"); never a `TextBox` with `PasswordChar` |
+  | `MessageWindow.ConfirmAsync(owner, title, message, confirmText)` / `ShowMessageAsync` | **every confirmation or message popup** (the host uses the same window); e.g. the Network dialogs confirm risky changes on Apply / Finish instead of an inline warning with a check box |
   | `ui:StatusChip Text IsOk IsWarning IsError IsAccent` | every status value (border-only chip), in grid cells with `Margin="10,0"` |
   | `ui:FileRow FileName Details Error Command` | a chosen local file with its "Choose file..." button; format sizes with `FileSizeText.Format` |
   | `ui:ProgressRow Value Text IsActive` | upload or scan progress (0 to 100) with its status text |

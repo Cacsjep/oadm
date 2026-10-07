@@ -72,12 +72,12 @@ public sealed class AssignIpTests
             Devices = new Dictionary<Guid, DeviceAssignment> { [device.Id] = new("10.0.0.60") },
         }.ToJson();
 
-        await StepRun.RunAsync(ctx.Steps, () => new AssignIpTaskPlugin(Fast, TimeProvider.System).ExecuteAsync(ctx, device, payload, CancellationToken.None));
+        await StepRun.RunAsync(ctx.Steps, () => new AssignIpTaskPlugin(Fast, TimeProvider.System, new FakeAddressProbe()).ExecuteAsync(ctx, device, payload, CancellationToken.None));
 
         Assert.Equal(
-            ["Check compatibility: Done", "Read current settings: Done", "Validate settings: Done", "Set DNS: Done", "Set IPv4: Done",
+            ["Check compatibility: Done", "Read current settings: Done", "Validate settings: Done", "Check address is free: Done", "Set DNS: Done", "Set IPv4: Done",
              "Wait for the settings to apply: Done", "Check reachability: Skipped", "Wait for the device at the new address: Done",
-             "Verify device identity: Done", "Update OADM device address: Done"],
+             "Verify device identity: Done", "Update OADM device address: Done", "Completed: Done"],
             StepRun.Lines(ctx.Steps));
         Assert.Equal(["10.0.0.60"], ctx.AddressUpdates);
 
@@ -100,15 +100,48 @@ public sealed class AssignIpTests
         var ctx = new RecordingContext(vapix);
         var payload = new NetworkPayload { Ipv4 = new Ipv4Change(Ipv4Mode.Dhcp), Devices = new Dictionary<Guid, DeviceAssignment> { [device.Id] = new() } }.ToJson();
 
-        await StepRun.RunAsync(ctx.Steps, () => new AssignIpTaskPlugin(Fast, TimeProvider.System).ExecuteAsync(ctx, device, payload, CancellationToken.None));
+        await StepRun.RunAsync(ctx.Steps, () => new AssignIpTaskPlugin(Fast, TimeProvider.System, new FakeAddressProbe()).ExecuteAsync(ctx, device, payload, CancellationToken.None));
 
         Assert.Equal(
-            ["Check compatibility: Done", "Read current settings: Done", "Validate settings: Done", "Set DNS: Skipped", "Set IPv4: Done",
+            ["Check compatibility: Done", "Read current settings: Done", "Validate settings: Done", "Check address is free: Skipped", "Set DNS: Skipped", "Set IPv4: Done",
              "Wait for the settings to apply: Done", "Check reachability: Done", "Wait for the device at the new address: Skipped",
-             "Verify device identity: Skipped", "Update OADM device address: Skipped"],
+             "Verify device identity: Skipped", "Update OADM device address: Skipped", "Completed: Done"],
             StepRun.Lines(ctx.Steps));
         Assert.Equal("DHCP: address assigned by the network, the device will be found again by the next scan", StepRun.Detail(ctx.Steps, "Update OADM device address"));
     }
+
+    [Fact]
+    public async Task Address_in_use_is_refused_before_any_write()
+    {
+        var device = new FakeDevice(Guid.NewGuid());
+        var vapix = new FakeNetworkVapix();
+        var ctx = new RecordingContext(vapix);
+        var probe = new FakeAddressProbe { Answers = { ["10.0.0.60"] = new(true, false) } };
+        var payload = new NetworkPayload
+        {
+            Ipv4 = new Ipv4Change(Ipv4Mode.Static, 24, "10.0.0.138"),
+            Dns = new DnsChange(false, ["10.0.0.2"], KeepDomains: true),
+            Devices = new Dictionary<Guid, DeviceAssignment> { [device.Id] = new("10.0.0.60") },
+        }.ToJson();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            StepRun.RunAsync(ctx.Steps, () => new AssignIpTaskPlugin(Fast, TimeProvider.System, probe).ExecuteAsync(ctx, device, payload, CancellationToken.None)));
+
+        Assert.Equal("10.0.0.60 is already in use (answers ping). Nothing was changed.", ex.Message);
+        Assert.Empty(vapix.Writes);
+        Assert.Equal("Check address is free: Failed", StepRun.Lines(ctx.Steps)[3]);
+        Assert.DoesNotContain("Completed: Done", StepRun.Lines(ctx.Steps));
+    }
+
+    [Theory]
+    [InlineData("""{"ipv4":{"mode":"static","prefixLength":24,"gateway":"10.0.0.138"},"devices":{"00000000-0000-0000-0000-000000000001":{"ipv4Address":"10.0.0.60"}}}""", "Assign IP 10.0.0.60")]
+    [InlineData("""{"ipv4":{"mode":"static","prefixLength":24,"gateway":"10.0.0.138"},"devices":{"00000000-0000-0000-0000-000000000001":{"ipv4Address":"10.0.0.60"},"00000000-0000-0000-0000-000000000002":{"ipv4Address":"10.0.0.61"}}}""", "Assign IP addresses")]
+    [InlineData("""{"ipv4":{"mode":"dhcp"},"devices":{}}""", "Assign IP via DHCP")]
+    [InlineData("""{"dns":{"useDhcp":true},"devices":{}}""", "Assign IP address")]
+    [InlineData("{", "Assign IP address")]
+    [InlineData(null, "Assign IP address")]
+    public void Task_name_says_what_the_task_does(string? payload, string expected) =>
+        Assert.Equal(expected, ((ITaskPlugin)new AssignIpTaskPlugin(Fast, TimeProvider.System, new FakeAddressProbe())).GetTaskName(payload));
 
     [Fact]
     public async Task Check_query_lists_managed_devices_without_probing()
@@ -116,27 +149,64 @@ public sealed class AssignIpTests
         var managed = new FakeDevice(Guid.NewGuid(), "10.0.0.20", Serial: "ACCC8E0000AA");
         var ctx = new QueryContext(new FakeNetworkVapix(), [managed]);
 
-        var json = await new AssignIpTaskPlugin().QueryAsync(ctx, managed, "checkAddresses", new AddressCheckRequest(["10.0.0.20", "bad", "10.0.0.21"], Probe: false).ToJson(), CancellationToken.None);
+        var json = await new AssignIpTaskPlugin(Fast, TimeProvider.System, new FakeAddressProbe()).QueryAsync(ctx, managed, "checkAddresses", new AddressCheckRequest(["10.0.0.20", "bad", "10.0.0.21"], Probe: false).ToJson(), CancellationToken.None);
 
         var response = AddressCheckResponse.Parse(json);
         var device = Assert.Single(response.Managed);
         Assert.Equal(("10.0.0.20", managed.Id, "P3265-V ACCC8E0000AA"), (device.Address, device.DeviceId, device.Device));
         Assert.Equal(["10.0.0.20", "10.0.0.21"], response.Probed.Select(p => p.Address));
         Assert.All(response.Probed, p => Assert.False(p.InUse));
-        await Assert.ThrowsAsync<ArgumentException>(() => new AssignIpTaskPlugin().QueryAsync(ctx, managed, "checkAddresses",
+        await Assert.ThrowsAsync<ArgumentException>(() => new AssignIpTaskPlugin(Fast, TimeProvider.System, new FakeAddressProbe()).QueryAsync(ctx, managed, "checkAddresses",
             new AddressCheckRequest([.. Enumerable.Range(0, 300).Select(i => $"10.0.{i / 250}.{(i % 250) + 1}")]).ToJson(), CancellationToken.None));
-        await Assert.ThrowsAsync<NotSupportedException>(() => new AssignIpTaskPlugin().QueryAsync(ctx, managed, "setEverything", null, CancellationToken.None));
+        await Assert.ThrowsAsync<NotSupportedException>(() => new AssignIpTaskPlugin(Fast, TimeProvider.System, new FakeAddressProbe()).QueryAsync(ctx, managed, "setEverything", null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Check_query_probes_ipv4_and_ipv6_and_reports_ping_answers()
+    {
+        var managed = new FakeDevice(Guid.NewGuid(), "10.0.0.20");
+        var ctx = new QueryContext(new FakeNetworkVapix(), [managed]);
+        var probe = new FakeAddressProbe
+        {
+            Answers =
+            {
+                ["10.0.0.30"] = new(true, false),   // ping only
+                ["10.0.0.31"] = new(false, true),   // TCP 80/443 only
+                ["2001:db8::30"] = new(true, true),
+            },
+        };
+
+        var json = await new AssignIpTaskPlugin(Fast, TimeProvider.System, probe).QueryAsync(ctx, managed, "checkAddresses",
+            new AddressCheckRequest(["10.0.0.30", "10.0.0.31", "10.0.0.32", "2001:db8::30", "fe80::1%3"]).ToJson(), CancellationToken.None);
+
+        var probed = AddressCheckResponse.Parse(json).Probed.ToDictionary(p => p.Address);
+        Assert.Equal(["10.0.0.30", "10.0.0.31", "10.0.0.32", "2001:db8::30"], probed.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal("In use (answers ping)", probed["10.0.0.30"].InUseText);
+        Assert.True(probed["10.0.0.30"].InUse);
+        Assert.Equal("In use (answers on port 80/443)", probed["10.0.0.31"].InUseText);
+        Assert.True(probed["10.0.0.31"].InUse);
+        Assert.False(probed["10.0.0.32"].InUse); // nothing answers
+        Assert.True(probed["2001:db8::30"].AnswersPing);
     }
 
     [Fact]
     public async Task Probe_marks_an_address_with_a_listening_host_in_use()
     {
-        // A local listener stands in for a device's web server; TEST-NET-1 (RFC 5737) is never assigned.
+        // A local listener stands in for a device's web server; TEST-NET-1 (RFC 5737) is never assigned. No ping here.
         using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
         listener.Start();
         var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-        Assert.True(await AddressCheck.AnswersAsync("127.0.0.1", [port], CancellationToken.None));
-        Assert.False(await AddressCheck.AnswersAsync("192.0.2.1", [port], CancellationToken.None));
+        var probe = new NetworkAddressProbe { Ports = [port], PingAttempts = 0 };
+        Assert.Equal(new AddressProbeResult(false, true), await probe.ProbeAsync("127.0.0.1", CancellationToken.None));
+        Assert.False((await probe.ProbeAsync("192.0.2.1", CancellationToken.None)).InUse);
+    }
+
+    [Fact]
+    public void Own_address_is_recognized_in_any_notation()
+    {
+        Assert.True(AddressCheck.IsOwnAddress("10.0.0.48", ["10.0.0.48"]));
+        Assert.True(AddressCheck.IsOwnAddress("2001:db8::10", [null, "2001:DB8:0::10/64"]));
+        Assert.False(AddressCheck.IsOwnAddress("10.0.0.49", ["10.0.0.48", null]));
     }
 
     // ---- dialog view model ----
@@ -174,31 +244,41 @@ public sealed class AssignIpTests
         vm.ApplyCurrent(Current);
         Assert.Equal("255.255.255.0", vm.SubnetMask);
         Assert.Equal("10.0.0.138", vm.DefaultRouter);
-        Assert.Contains("10.0.0.48 (DHCP)", vm.CurrentText, StringComparison.Ordinal);
+        Assert.Equal(string.Empty, vm.PrefillStatus); // no info line: the values are in the fields
     }
 
     [Fact]
-    public void Page_one_validates_range_mask_router_and_dns()
+    public void Page_one_shows_each_error_below_its_field()
     {
         var vm = Filled(2, "10.0.0.300");
-        Assert.Contains(vm.Errors, e => e.Contains("must be a number 0-255", StringComparison.Ordinal));
+        Assert.Contains("must be a number 0-255", vm.ErrorOf(nameof(vm.IpRange)), StringComparison.Ordinal);
+        Assert.Single(vm.GetErrors(nameof(vm.IpRange)).Cast<string>());
         Assert.False(vm.CanContinue);
+        Assert.Equal(vm.ErrorOf(nameof(vm.IpRange)), vm.BlockedReason);
 
         vm.IpRange = "10.0.0.100-110";
+        Assert.Null(vm.ErrorOf(nameof(vm.IpRange)));
         vm.DefaultRouter = "10.0.0.255";
-        Assert.Contains(vm.Errors, e => e.Contains("Default router 10.0.0.255 is the broadcast address", StringComparison.Ordinal));
+        Assert.Equal("Default router 10.0.0.255 is the broadcast address of its subnet.", vm.ErrorOf(nameof(vm.DefaultRouter)));
+        Assert.Null(vm.ErrorOf(nameof(vm.SubnetMask)));
+
+        vm.SubnetMask = "255.0.255.0";
+        Assert.NotNull(vm.ErrorOf(nameof(vm.SubnetMask)));
+        vm.SubnetMask = "255.255.255.0";
 
         vm.DefaultRouter = "10.0.0.138";
         vm.DnsPrimary = "dns.example.com";
-        Assert.Contains(vm.Errors, e => e.Contains("is not a valid IP address", StringComparison.Ordinal));
+        Assert.Contains("is not a valid IP address", vm.ErrorOf(nameof(vm.DnsPrimary)), StringComparison.Ordinal);
+        Assert.Null(vm.ErrorOf(nameof(vm.DnsSecondary)));
 
         vm.DnsPrimary = "10.0.0.2";
-        Assert.Empty(vm.Errors);
+        Assert.False(vm.HasErrors);
         Assert.True(vm.CanContinue);
+        Assert.Null(vm.BlockedReason);
     }
 
     [Fact]
-    public void Next_suggests_addresses_in_grid_order_and_finish_builds_the_payload()
+    public async Task Next_suggests_addresses_in_grid_order_and_finish_confirms_and_builds_the_payload()
     {
         var vm = Filled(3);
         vm.DnsPrimary = "10.0.0.2";
@@ -209,17 +289,31 @@ public sealed class AssignIpTests
         Assert.Equal(["10.0.0.100", "10.0.0.101", "10.0.0.102"], vm.Assignment.Rows.Select(r => r.NewAddress));
         Assert.Equal(["AC:CC:8E:00:00:01", "AC:CC:8E:00:00:02", "AC:CC:8E:00:00:03"], vm.Assignment.Rows.Select(r => r.MacAddress));
         Assert.All(vm.Assignment.Rows, r => Assert.Equal("Ready", r.StatusText));
-        Assert.True(vm.ShowWarning);
+        Assert.True(vm.HasWarning);
         Assert.Contains("3 of 3 devices get a new IPv4 address", vm.Warning, StringComparison.Ordinal);
-        Assert.False(vm.CanContinue); // the warning must be acknowledged
+        Assert.True(vm.CanContinue); // no inline acknowledgement: Finish asks
 
         vm.Assignment.Rows[1].NewAddress = "10.0.0.150"; // edit one row
-        vm.WarningAcknowledged = true;
         Assert.True(vm.CanContinue);
 
+        // The confirmation is declined first: the dialog stays open.
+        var asked = new List<(string Title, string Message, string Confirm)>();
+        var answer = false;
+        vm.Confirm = (title, message, confirm) =>
+        {
+            asked.Add((title, message, confirm));
+            return Task.FromResult(answer);
+        };
         var closed = false;
         vm.CloseRequested += (_, finish) => closed = finish;
-        vm.PrimaryCommand.Execute(null);
+        await vm.PrimaryCommand.ExecuteAsync(null);
+        Assert.False(closed);
+        Assert.Null(vm.ResultJson);
+        var question = Assert.Single(asked);
+        Assert.Equal(("The devices get new IP addresses", vm.Warning, "Finish"), question);
+
+        answer = true;
+        await vm.PrimaryCommand.ExecuteAsync(null);
 
         Assert.True(closed);
         var payload = NetworkPayload.Parse(vm.ResultJson);
@@ -237,10 +331,10 @@ public sealed class AssignIpTests
     {
         var vm = Filled(3, "10.0.0.253-254");
         vm.PrimaryCommand.Execute(null);
-        vm.WarningAcknowledged = true;
 
         Assert.Equal("Not enough addresses: the IP range has 2 free addresses for 3 devices. Extend the range.", vm.Assignment.Error);
-        Assert.Contains(vm.Errors, e => e.StartsWith("Not enough addresses", StringComparison.Ordinal));
+        Assert.Equal(vm.Assignment.Error, vm.BlockedReason); // shown below the table, not repeated
+        Assert.False(vm.HasErrors);
         Assert.Equal(string.Empty, vm.Assignment.Rows[2].NewAddress);
         Assert.Equal("No address", vm.Assignment.Rows[2].Conflict);
         Assert.False(vm.CanContinue);
@@ -254,11 +348,12 @@ public sealed class AssignIpTests
     {
         var vm = Filled(2);
         vm.PrimaryCommand.Execute(null);
-        vm.WarningAcknowledged = true;
         vm.Assignment.Rows[1].NewAddress = "10.0.0.100";
 
         Assert.All(vm.Assignment.Rows, r => Assert.Equal("Assigned to more than one device", r.Conflict));
         Assert.False(vm.CanContinue);
+        Assert.False(vm.HasErrors); // only in the Status column
+        Assert.Equal("Resolve the problems shown in the table, or edit the new IP addresses.", vm.BlockedReason);
     }
 
     [Fact]
@@ -294,22 +389,26 @@ public sealed class AssignIpTests
 
         vm.Assignment.Rows[0].NewAddress = "10.0.0.101"; // the user picks a managed device's address
         Assert.Equal("Used by P3265-V ACCC8E0000AA", vm.Assignment.Rows[0].Conflict);
-        vm.WarningAcknowledged = true;
         Assert.False(vm.CanContinue);
     }
 
     [Fact]
-    public void Dhcp_finishes_on_the_first_page_after_the_warning()
+    public async Task Dhcp_finishes_on_the_first_page_after_the_confirmation()
     {
         var vm = new AssignIpViewModel(Devices(2)) { UseDhcp = true };
         Assert.Equal("Finish", vm.PrimaryText);
-        Assert.True(vm.ShowWarning);
         Assert.Contains("DHCP server", vm.Warning, StringComparison.Ordinal);
-        Assert.False(vm.CanContinue);
+        Assert.True(vm.CanContinue);
+        string? title = null;
+        vm.Confirm = (t, _, _) =>
+        {
+            title = t;
+            return Task.FromResult(true);
+        };
 
-        vm.WarningAcknowledged = true;
-        vm.PrimaryCommand.Execute(null);
+        await vm.PrimaryCommand.ExecuteAsync(null);
 
+        Assert.Equal("The devices get their addresses from DHCP", title);
         var payload = NetworkPayload.Parse(vm.ResultJson);
         Assert.Equal(Ipv4Mode.Dhcp, payload.Ipv4!.Mode);
         Assert.Null(payload.Dns);

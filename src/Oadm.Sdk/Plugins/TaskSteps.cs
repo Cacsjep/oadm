@@ -142,6 +142,12 @@ public sealed class TaskStepList
 
     public const int MaxDetailLength = 1000;
 
+    /// <summary>
+    /// Name of the step <see cref="Close"/> appends when a task succeeds (Done or Done with warnings), so the
+    /// current step of a finished task reads "Step 8/8 · Completed". Failed and cancelled tasks get none.
+    /// </summary>
+    public const string CompletedStepName = "Completed";
+
     private readonly Lock _sync = new();
     private readonly List<Slot> _steps = [];
     private readonly TimeProvider _time;
@@ -326,7 +332,9 @@ public sealed class TaskStepList
 
     /// <summary>
     /// For hosts, when the task ends: a running step ends Done (<paramref name="succeeded"/>) or Failed,
-    /// pending steps become Skipped with <paramref name="skipReason"/>. Later changes are ignored.
+    /// pending steps become Skipped with <paramref name="skipReason"/>. On success a final step
+    /// <see cref="CompletedStepName"/> (Done) is appended, also beyond <see cref="MaxSteps"/>. Later changes
+    /// are ignored.
     /// </summary>
     public void Close(bool succeeded, string skipReason)
     {
@@ -351,6 +359,19 @@ public sealed class TaskStepList
                     slot.Detail = CleanDetail(skipReason);
                 }
             }
+
+            if (succeeded)
+            {
+                _steps.Add(new Slot(CompletedStepName)
+                {
+                    State = TaskStepState.Done,
+                    Progress = 100,
+                    StartedUtc = now,
+                    FinishedUtc = now,
+                });
+            }
+
+            _implicitlyEnded = null;
         }
 
         RaiseChanged();

@@ -16,6 +16,15 @@ public enum FactoryDefaultMode
     Hard = 2,
 }
 
+/// <summary>What the dialog preview expects on the devices that will install the file (only for the task name).</summary>
+public enum FirmwareDirection
+{
+    /// <summary>Unknown or mixed (some devices upgrade, others downgrade).</summary>
+    Unknown = 0,
+    Upgrade = 1,
+    Downgrade = 2,
+}
+
 /// <summary>Payload of the "Upgrade firmware" task, written by the dialog.</summary>
 public sealed record FirmwarePayload
 {
@@ -30,9 +39,35 @@ public sealed record FirmwarePayload
     /// <summary>Allow installing an older version than the one on the device.</summary>
     public bool AllowDowngrade { get; init; }
 
+    /// <summary>Upgrade or downgrade on every installing device (dialog preview); only names the task, never decides anything.</summary>
+    public FirmwareDirection Direction { get; init; }
+
+    /// <summary>
+    /// The task name: "Upgrade firmware to 12.11.77", "Downgrade firmware to 10.12.236", "Install firmware
+    /// 12.11.77" (mixed), "Install firmware" (version unknown), plus " (factory default)" with a soft or hard
+    /// factory default.
+    /// </summary>
+    public string TaskName()
+    {
+        var version = FirmwareImageInspector.ParseFileName(FileName).Version?.Text;
+        var name = version is null
+            ? "Install firmware"
+            : Direction switch
+            {
+                FirmwareDirection.Downgrade => "Downgrade firmware to " + version,
+                FirmwareDirection.Unknown when AllowDowngrade => "Install firmware " + version,
+                _ => "Upgrade firmware to " + version,
+            };
+        return FactoryDefaultMode == FactoryDefaultMode.None ? name : name + " (factory default)";
+    }
+
     public static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
-        Converters = { new JsonStringEnumConverter<FactoryDefaultMode>(JsonNamingPolicy.CamelCase) },
+        Converters =
+        {
+            new JsonStringEnumConverter<FactoryDefaultMode>(JsonNamingPolicy.CamelCase),
+            new JsonStringEnumConverter<FirmwareDirection>(JsonNamingPolicy.CamelCase),
+        },
     };
 
     public string ToJson() => JsonSerializer.Serialize(this, JsonOptions);

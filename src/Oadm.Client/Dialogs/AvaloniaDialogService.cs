@@ -7,6 +7,7 @@ using Oadm.Client.Discovery;
 using Oadm.Client.Plugins;
 using Oadm.Client.Tasks;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Client.Dialogs;
@@ -20,8 +21,7 @@ public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLa
             return;
         }
 
-        var window = new MessageWindow { DataContext = new MessageDialogModel(title, message, "OK", "", false) };
-        await window.ShowDialog<bool>(owner).ConfigureAwait(true);
+        await MessageWindow.ShowMessageAsync(owner, title, message).ConfigureAwait(true);
     }
 
     public async Task<bool> ConfirmAsync(string title, string message, string confirmText)
@@ -31,8 +31,7 @@ public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLa
             return false;
         }
 
-        var window = new MessageWindow { DataContext = new MessageDialogModel(title, message, confirmText, "Cancel", true) };
-        return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
+        return await MessageWindow.ConfirmAsync(owner, title, message, confirmText).ConfigureAwait(true);
     }
 
     public Window? Owner => CurrentOwner();

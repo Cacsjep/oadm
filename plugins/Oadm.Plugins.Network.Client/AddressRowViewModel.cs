@@ -7,7 +7,11 @@ using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Network.Client;
 
-/// <summary>One device in the address assignment table: current address, new address (editable), conflict.</summary>
+/// <summary>
+/// One device in the address assignment table: current address, new IPv4 address and (static IPv6 only) new IPv6
+/// address, both editable, and the problem of the row. Problems are shown only here (Status column), never repeated
+/// elsewhere in the dialog.
+/// </summary>
 public sealed partial class AddressRowViewModel : ObservableObject
 {
     private bool _settingSuggestion;
@@ -27,7 +31,7 @@ public sealed partial class AddressRowViewModel : ObservableObject
 
     public string CurrentAddress => Device.Address;
 
-    /// <summary>The new IPv4 address, suggested from the range or typed by the user; "Unchanged" when IPv4 is kept.</summary>
+    /// <summary>The new IPv4 address, suggested or typed by the user; "Unchanged" when IPv4 is kept.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText), nameof(IsChanged), nameof(IsReady))]
     public partial string NewAddress { get; set; } = string.Empty;
@@ -40,22 +44,39 @@ public sealed partial class AddressRowViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsEditable { get; set; }
 
+    /// <summary>The new static IPv6 address (column "New IPv6 address", shown only for static IPv6).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusText), nameof(IsReady))]
+    public partial string NewIpv6Address { get; set; } = string.Empty;
+
+    /// <summary>True while IPv6 is set to static: the IPv6 cell is editable and counts for the status.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusText), nameof(IsReady))]
+    public partial bool IsIpv6Editable { get; set; }
+
     [ObservableProperty]
     public partial string NewHostName { get; set; } = string.Empty;
 
-    /// <summary>Why the new address cannot be used, or null.</summary>
+    /// <summary>Why the new IPv4 address cannot be used, or null.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText), nameof(HasConflict), nameof(IsReady))]
     public partial string? Conflict { get; set; }
 
-    public bool HasConflict => Conflict is not null;
+    /// <summary>Why the new IPv6 address cannot be used, or null.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusText), nameof(HasConflict), nameof(IsReady))]
+    public partial string? Ipv6Conflict { get; set; }
 
-    /// <summary>Ready and actually changing the address (green chip).</summary>
-    public bool IsReady => Conflict is null && IsChanged;
+    public bool HasConflict => Conflict is not null || Ipv6Conflict is not null;
+
+    /// <summary>Ready and actually changing an address (green chip).</summary>
+    public bool IsReady => !HasConflict && (IsChanged || IsIpv6Editable);
 
     public bool IsChanged => IsEditable && !string.Equals(NewAddress.Trim(), CurrentAddress, StringComparison.OrdinalIgnoreCase);
 
-    public string StatusText => Conflict ?? (!IsEditable ? "Unchanged" : IsChanged ? "Ready" : "Keeps its address");
+    public string StatusText =>
+        Conflict ?? (Ipv6Conflict is { } v6 ? "IPv6: " + v6 : null)
+        ?? (IsChanged || IsIpv6Editable ? "Ready" : IsEditable ? "Keeps its address" : "Unchanged");
 
     /// <summary>Sets a suggestion (not a user edit).</summary>
     public void Suggest(string? address)
@@ -88,6 +109,8 @@ public sealed partial class AddressRowViewModel : ObservableObject
     }
 
     public AssignmentRow ToAssignmentRow() => new(new AssignmentDevice(Device.Id, Device.Address), NewAddress);
+
+    public AssignmentRow ToIpv6Row() => new(new AssignmentDevice(Device.Id, Device.Address), NewIpv6Address);
 
     private static string FormatMac(string serial)
     {

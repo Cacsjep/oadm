@@ -29,12 +29,13 @@ public sealed record ReachabilityOptions(TimeSpan SettleDelay, TimeSpan ProbeInt
 /// (<see cref="ITaskExecutionContext.UpdateDeviceAddressAsync"/>); a DHCP change keeps the record, the server's
 /// periodic mDNS browse finds the device again.
 /// </summary>
-internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvider time)
+internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvider time, IAddressProbe probe)
 {
     internal const string StepCheckCompatibility = "Check compatibility";
     internal const string StepReadSettings = "Read current settings";
     internal const string StepReadIpv6Mode = "Read IPv6 address mode";
     internal const string StepValidate = "Validate settings";
+    internal const string StepCheckAddressFree = "Check address is free";
     internal const string StepSetHostName = "Set host name";
     internal const string StepSetDns = "Set DNS";
     internal const string StepSetIpv6 = "Set IPv6";
@@ -58,6 +59,7 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
         }
 
         planned.Add(StepValidate);
+        planned.Add(StepCheckAddressFree);
         planned.AddRange(sections.Order().Select(SectionStepName));
         planned.AddRange([StepWaitApply, StepCheckReachability, StepWaitNewAddress, StepVerifyIdentity, StepUpdateAddress]);
         ctx.PlanSteps([.. planned]);
@@ -119,6 +121,9 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
         {
             ctx.Log(TaskLogLevel.Info, "Plan: " + string.Join("; ", plan.Steps.Select(s => s.Description)) + ".");
         }
+
+        // No write at all when a new static address is already taken by another host.
+        await CheckAddressesFreeAsync(ctx, device, payload, plan, sections, current, ct).ConfigureAwait(false);
 
         // Write in order, one step per request; the connection-relevant section is last.
         var done = new List<string>();
@@ -191,6 +196,67 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
                 ? DhcpReason
                 : "The new address is assigned by the network; the device will be found again by the next scan";
         SkipAll(ctx, followReason, StepWaitNewAddress, StepVerifyIdentity, StepUpdateAddress);
+    }
+
+    /// <summary>
+    /// Step "Check address is free": every new static address (IPv4, IPv6) this task writes is probed with
+    /// <see cref="IAddressProbe"/> (ping and TCP 80/443). An answer from anything but the device itself fails the
+    /// step and the task before the first write. Skipped when no static address is written (DHCP, kept).
+    /// </summary>
+    private async Task CheckAddressesFreeAsync(
+        ITaskExecutionContext ctx,
+        IDeviceInfo device,
+        NetworkPayload payload,
+        NetworkPlan plan,
+        IReadOnlyList<StepKind> sections,
+        CurrentNetworkSettings current,
+        CancellationToken ct)
+    {
+        var entry = payload.Devices.TryGetValue(device.Id, out var e) ? e : null;
+        var addresses = new List<string>();
+        if (sections.Contains(StepKind.Ipv4) && plan.Steps.Any(s => s.Kind == StepKind.Ipv4)
+            && payload.Ipv4 is { Mode: Ipv4Mode.Static } && entry?.Ipv4Address?.Trim() is { Length: > 0 } v4)
+        {
+            addresses.Add(v4);
+        }
+
+        if (sections.Contains(StepKind.Ipv6) && plan.Steps.Any(s => s.Kind == StepKind.Ipv6)
+            && payload.Ipv6 is { Mode: Ipv6Mode.Static } v6 && v6.AddressFor(entry) is { Length: > 0 } v6Address)
+        {
+            addresses.Add(v6Address);
+        }
+
+        if (addresses.Count == 0)
+        {
+            ctx.SkipStep(StepCheckAddressFree, payload.Ipv4 is { Mode: Ipv4Mode.Dhcp } ? "DHCP: no static address is set" : "No static address is set");
+            return;
+        }
+
+        using var step = ctx.BeginStep(StepCheckAddressFree);
+        string?[] own = [device.Address, current.Ipv4.Address, .. current.Ipv6.Addresses];
+        var details = new List<string>();
+        for (var i = 0; i < addresses.Count; i++)
+        {
+            var address = addresses[i];
+            if (AddressCheck.IsOwnAddress(address, own))
+            {
+                details.Add($"{address} is the device's own address");
+                continue;
+            }
+
+            step.ReportProgress(100 * i / addresses.Count, $"Probing {address}");
+            var result = await probe.ProbeAsync(address, ct).ConfigureAwait(false);
+            if (result.InUse)
+            {
+                var message = $"{address} is already in use ({result.Reason}). Nothing was changed.";
+                ctx.Log(TaskLogLevel.Error, message);
+                throw new InvalidOperationException(message);
+            }
+
+            details.Add($"{address} is free");
+        }
+
+        step.Complete(string.Join("; ", details));
     }
 
     /// <summary>Host name, DNS, then the address family OADM does not use, and the one it connects with last (as the planner writes them).</summary>

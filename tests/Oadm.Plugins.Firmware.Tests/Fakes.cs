@@ -25,7 +25,7 @@ internal static class Fixture
             .Select(a => new DeviceApi(a.GetProperty("id").GetString()!, a.GetProperty("version").GetString()!, a.GetProperty("name").GetString(), a.GetProperty("status").GetString()))];
     }
 
-    /// <summary>Synthetic AXIS OS-like image: non-zero, non-archive header, deterministic content.</summary>
+    /// <summary>Synthetic image with deterministic content (the content is never inspected).</summary>
     public static byte[] Image(int size = 2 * 1024 * 1024, byte seed = 7)
     {
         var data = new byte[size];

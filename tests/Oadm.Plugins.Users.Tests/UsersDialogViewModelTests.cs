@@ -71,18 +71,81 @@ public sealed class UsersDialogViewModelTests
     }
 
     [Fact]
-    public void Remove_mode_needs_only_a_user_name()
+    public void Remove_mode_picks_the_users_in_the_list_without_a_user_name_field()
     {
         var vm = Create();
+        vm.Apply(RecordedResult());
         vm.IsRemove = true;
-        vm.UserName = "acs";
+        Assert.False(vm.ShowUserName);
+        Assert.True(vm.MultiSelect);
         Assert.False(vm.ShowPassword);
         Assert.False(vm.ShowRole);
-        Assert.True(vm.CanApply);
+        Assert.False(vm.CanApply);
+        Assert.Null(vm.ValidationError);
+        Assert.Equal("Select the users to remove in the Existing users list.", vm.Summary);
         Assert.Equal("Remove user", vm.ApplyText);
+
+        vm.SetSelectedUsers([vm.ExistingUsers[3]]);
+        Assert.True(vm.CanApply);
         var payload = UsersJson.ParsePayload(vm.BuildPayload());
         Assert.Equal(UsersMode.Remove, payload.Mode);
+        Assert.Equal(["acs"], payload.RemoveNames);
         Assert.Null(payload.Password);
+        Assert.Equal("Remove user 'acs' from 1 device. Devices without this user are skipped with a warning.", vm.Summary);
+
+        vm.SetSelectedUsers([vm.ExistingUsers[1], vm.ExistingUsers[3]]);
+        payload = UsersJson.ParsePayload(vm.BuildPayload());
+        Assert.Equal(["fakeroot", "acs"], payload.UserNames);
+        Assert.Equal("Remove users", vm.ApplyText);
+        Assert.StartsWith("Remove users 'fakeroot', 'acs' from 1 device.", vm.Summary, StringComparison.Ordinal);
+        Assert.Equal("Remove users fakeroot, acs", UsersTaskPlugin.TaskName(payload));
+    }
+
+    [Fact]
+    public void Protected_accounts_cannot_be_selected_for_removal()
+    {
+        var vm = Create();
+        vm.Apply(RecordedResult());
+        var root = vm.ExistingUsers[0];
+        Assert.True(root.IsProtected);
+        Assert.True(root.IsSelectable); // Add mode: every row can be clicked
+        Assert.Null(root.Tooltip);
+
+        vm.IsRemove = true;
+        Assert.False(root.IsSelectable);
+        Assert.Equal("OADM uses this account for the device; it cannot be removed.", root.Tooltip);
+        Assert.All(vm.ExistingUsers.Skip(1), r => Assert.True(r.IsSelectable));
+
+        vm.SetSelectedUsers([root]);
+        Assert.Empty(vm.UsersToRemove);
+        Assert.False(vm.CanApply);
+
+        vm.IsChange = true;
+        Assert.True(root.IsSelectable);
+    }
+
+    [Fact]
+    public void The_last_administrator_is_protected()
+    {
+        var vm = Create();
+        vm.Apply(new UsersQueryResult(true, "1.2", null, "op", PassphrasePolicy.None,
+            [new DeviceUser("boss", UserRole.Administrator, false), new DeviceUser("op", UserRole.Operator, false, IsCurrentAccount: true)]));
+        vm.IsRemove = true;
+        Assert.Equal("The last administrator of the device cannot be removed.", vm.ExistingUsers[0].Tooltip);
+        Assert.Equal("OADM uses this account for the device; it cannot be removed.", vm.ExistingUsers[1].Tooltip);
+    }
+
+    [Fact]
+    public void Clicking_a_row_in_change_mode_fills_the_user_name()
+    {
+        var vm = Create();
+        vm.Apply(RecordedResult());
+        vm.IsChange = true;
+        vm.SetSelectedUsers([vm.ExistingUsers[3]]);
+        Assert.True(vm.ShowUserName);
+        Assert.Equal("acs", vm.UserName);
+        vm.UserName = "acs2"; // stays editable
+        Assert.Equal("acs2", vm.UserName);
     }
 
     [Fact]
@@ -129,15 +192,19 @@ public sealed class UsersDialogViewModelTests
     }
 
     [Fact]
-    public void Own_account_shows_a_lock_out_warning()
+    public void Own_account_shows_a_lock_out_warning_only_in_change_mode()
     {
         var vm = Create();
         vm.Apply(RecordedResult());
-        vm.IsRemove = true;
+        vm.IsChange = true;
         vm.UserName = "root";
         Assert.Contains("'root' is the account OADM uses", vm.LockOutWarning, StringComparison.Ordinal);
+
+        // No generic warning text: the protection itself is unchanged and enforced by the server.
         vm.UserName = "acs";
-        Assert.Contains("never removes or demotes", vm.LockOutWarning, StringComparison.Ordinal);
+        Assert.Null(vm.LockOutWarning);
+        vm.IsRemove = true;
+        Assert.Null(vm.LockOutWarning);
         vm.IsAdd = true;
         Assert.Null(vm.LockOutWarning);
     }

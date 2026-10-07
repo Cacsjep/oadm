@@ -105,16 +105,52 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         }
 
         var batchId = Guid.NewGuid();
+        var name = TaskNameFor(registration, payloadJson);
         var ids = new List<Guid>(distinct.Length);
         foreach (var deviceId in distinct)
         {
-            ids.Add(await StartTaskAsync(registration, batchId, deviceId, payloadJson, owner, ct).ConfigureAwait(false));
+            ids.Add(await StartTaskAsync(registration, batchId, deviceId, payloadJson, owner, name, ct).ConfigureAwait(false));
         }
 
         return ids;
     }
 
-    private async Task<Guid> StartTaskAsync(RegisteredTaskPlugin registration, Guid batchId, Guid deviceId, string? payloadJson, string owner, CancellationToken ct)
+    /// <summary>
+    /// The task name from <see cref="ITaskPlugin.GetTaskName"/>: trimmed, without a trailing "...", at most
+    /// <see cref="TaskPluginNames.MaxTaskNameLength"/> characters (longer names are shortened with an ellipsis
+    /// and a warning is logged). The plugin's display name when the plugin returns nothing or throws.
+    /// </summary>
+    internal string TaskNameFor(RegisteredTaskPlugin registration, string? payloadJson)
+    {
+        string? raw;
+        try
+        {
+            raw = registration.Plugin.GetTaskName(payloadJson);
+        }
+#pragma warning disable CA1031 // Plugin code is untrusted; a broken name never stops the task.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogTaskNameFailed(ex, registration.Id);
+            return registration.DisplayName;
+        }
+
+        var stripped = TaskPluginNames.StripEllipsis(raw);
+        if (stripped.Length == 0)
+        {
+            return registration.DisplayName;
+        }
+
+        var name = TaskPluginNames.Normalize(stripped, TaskPluginNames.MaxTaskNameLength);
+        if (stripped.Length > TaskPluginNames.MaxTaskNameLength)
+        {
+            LogTaskNameTooLong(registration.Id, stripped.Length, TaskPluginNames.MaxTaskNameLength, name);
+        }
+
+        return name;
+    }
+
+    private async Task<Guid> StartTaskAsync(RegisteredTaskPlugin registration, Guid batchId, Guid deviceId, string? payloadJson, string owner, string name, CancellationToken ct)
     {
         var task = new RunningTask(
             Guid.NewGuid(),
@@ -125,7 +161,8 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             _time.GetUtcNow(),
             _shutdown.Token,
             _options.MaxLogEntriesPerTask,
-            batchId);
+            batchId,
+            name);
 
         _active[task.Id] = task;
         try
@@ -466,7 +503,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
 
         return task.Registration.Plugin.CanRun(device)
             ? null
-            : $"{task.Name} cannot run on this device.";
+            : $"{task.Registration.DisplayName} cannot run on this device.";
     }
 
     private void PublishProgress(RunningTask task)
@@ -643,6 +680,12 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             }
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Task plugin {PluginId}: GetTaskName failed; the display name is used")]
+    private partial void LogTaskNameFailed(Exception ex, string pluginId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Task plugin {PluginId}: task name has {Length} characters, more than {Max}; shown as '{Name}'")]
+    private partial void LogTaskNameTooLong(string pluginId, int length, int max, string name);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Task {TaskId}: device {DeviceId} now has the address {Address}")]
     private partial void LogDeviceAddressUpdated(Guid taskId, Guid deviceId, string address);

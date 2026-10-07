@@ -40,9 +40,26 @@ public enum PassphrasePolicy
 /// </summary>
 public sealed class UsersPayload
 {
+    /// <summary>Most users one Remove task removes per device.</summary>
+    public const int MaxRemoveUsers = 50;
+
     public UsersMode Mode { get; init; }
 
+    /// <summary>The user of Add and Change. Remove uses <see cref="UserNames"/> (this name when that is empty).</summary>
     public string UserName { get; init; } = string.Empty;
+
+    /// <summary>Remove mode: every user to remove; one task per device removes all of them.</summary>
+    public IReadOnlyList<string>? UserNames { get; init; }
+
+    /// <summary>
+    /// The users a Remove task removes, trimmed, without duplicates, in the given order:
+    /// <see cref="UserNames"/>, or <see cref="UserName"/> when that list is empty.
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> RemoveNames =>
+        UserNames is { Count: > 0 }
+            ? [.. UserNames.Select(n => (n ?? string.Empty).Trim()).Distinct(StringComparer.Ordinal)]
+            : string.IsNullOrWhiteSpace(UserName) ? [] : [UserName.Trim()];
 
     /// <summary>New password for Add, or for Change when <see cref="ChangePassword"/> is set. Never logged.</summary>
     public string? Password { get; init; }
@@ -58,7 +75,9 @@ public sealed class UsersPayload
     public bool ChangeRole { get; init; }
 
     public override string ToString() =>
-        $"{Mode} user '{UserName}', role {UserRoles.Describe(Role, Ptz)}, changePassword={ChangePassword}, changeRole={ChangeRole}";
+        Mode == UsersMode.Remove
+            ? $"Remove users '{string.Join("', '", RemoveNames)}'"
+            : $"{Mode} user '{UserName}', role {UserRoles.Describe(Role, Ptz)}, changePassword={ChangePassword}, changeRole={ChangeRole}";
 }
 
 /// <summary>One account on the device.</summary>

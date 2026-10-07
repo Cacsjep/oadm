@@ -43,8 +43,8 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
         var payload = UsersJson.ParsePayload(payloadJson);
-        var writeStep = WriteStepName(payload);
-        ctx.PlanSteps(StepCheckCompatibility, StepReadPolicy, StepIdentifyAccount, StepReadUsers, StepValidate, writeStep, StepVerify);
+        var writeSteps = WriteStepNames(payload);
+        ctx.PlanSteps([StepCheckCompatibility, StepReadPolicy, StepIdentifyAccount, StepReadUsers, StepValidate, .. writeSteps, StepVerify]);
 
         var apis = await ctx.StepAsync(StepCheckCompatibility, async step =>
         {
@@ -93,6 +93,13 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
         }).ConfigureAwait(false);
         ctx.Log(TaskLogLevel.Info, $"Passphrase policy {policy}; OADM account '{current ?? "unknown"}'; {users.Count} user(s) on the device.");
 
+        if (payload.Mode == UsersMode.Remove)
+        {
+            await RemoveAsync(ctx, device, payload, users, current, policy, ct).ConfigureAwait(false);
+            return;
+        }
+
+        var writeStep = writeSteps[0];
         UserChangePlan plan;
         using (var step = ctx.BeginStep(StepValidate))
         {
@@ -144,6 +151,86 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
         }).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Remove mode: validates every user first (a protected one fails the task before anything is removed),
+    /// then one "Remove user x" step per user (missing ones Skipped, the Validate step ends with a warning),
+    /// then one verification of the whole list.
+    /// </summary>
+    private static async Task RemoveAsync(
+        ITaskExecutionContext ctx,
+        IDeviceInfo device,
+        UsersPayload payload,
+        IReadOnlyList<DeviceUser> users,
+        string? current,
+        PassphrasePolicy policy,
+        CancellationToken ct)
+    {
+        IReadOnlyList<UserRemoval> removals;
+        using (var step = ctx.BeginStep(StepValidate))
+        {
+            UserChangePlanner.ValidatePayload(payload, policy);
+            removals = UserChangePlanner.PlanRemoval(payload.RemoveNames, users, current, device.FirmwareVersion);
+            var missing = removals.Where(r => r.Plan.Kind == PlanKind.Skip).Select(r => r.Plan.Message).ToList();
+            var writes = removals.Where(r => r.Plan.Kind == PlanKind.Write).Select(r => r.Name).ToList();
+            var summary = writes.Count == 0 ? null : writes.Count == 1 ? $"Remove user '{writes[0]}'" : $"Remove users '{string.Join("', '", writes)}'";
+            if (missing.Count > 0)
+            {
+                step.Warn(string.Join(" ", missing));
+            }
+            else
+            {
+                step.Complete(summary);
+            }
+
+            if (summary is not null)
+            {
+                ctx.Log(TaskLogLevel.Info, summary);
+            }
+        }
+
+        var removed = new List<string>();
+        foreach (var removal in removals)
+        {
+            var name = RemoveStepName(removal.Name);
+            if (removal.Plan.Kind == PlanKind.Skip)
+            {
+                ctx.SkipStep(name, $"User '{removal.Name}' does not exist on this device.");
+                continue;
+            }
+
+            LogWriting(ctx.Logger, UsersMode.Remove, removal.Name, device.Serial);
+            using (ctx.BeginStep(name))
+            {
+                using var request = PwdgrpApi.BuildRemove(removal.Name);
+                using var response = await ctx.Vapix.SendAsync(request, ct).ConfigureAwait(false);
+                var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                PwdgrpApi.EnsureWriteSucceeded((int)response.StatusCode, body, "Removed");
+            }
+
+            removed.Add(removal.Name);
+        }
+
+        if (removed.Count == 0)
+        {
+            ctx.SkipStep(StepVerify, "Nothing was changed.");
+            return;
+        }
+
+        await ctx.StepAsync(StepVerify, async step =>
+        {
+            var after = await ReadUsersAsync(ctx.Vapix, current, ct).ConfigureAwait(false);
+            var still = removed.Where(n => after.Any(u => string.Equals(u.Name, n, StringComparison.Ordinal))).ToList();
+            if (still.Count > 0)
+            {
+                throw new UserManagementException($"The device confirmed the removal, but user '{string.Join("', '", still)}' is still listed.");
+            }
+
+            var done = removed.Count == 1 ? $"User '{removed[0]}' removed." : $"Users '{string.Join("', '", removed)}' removed.";
+            ctx.Log(TaskLogLevel.Info, done);
+            step.Complete(done);
+        }).ConfigureAwait(false);
+    }
+
     internal const string StepCheckCompatibility = "Check compatibility";
     internal const string StepReadPolicy = "Read password policy";
     internal const string StepIdentifyAccount = "Identify OADM account";
@@ -152,12 +239,67 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
     internal const string StepVerify = "Verify users";
 
     /// <summary>The name of the write step: "Add user joe", "Update user joe", "Remove user joe". Never contains the password.</summary>
-    internal static string WriteStepName(UsersPayload payload) => payload.Mode switch
+    internal static string WriteStepName(UsersPayload payload) => WriteStepNames(payload)[0];
+
+    /// <summary>The write steps: one for Add and Change, one "Remove user x" per user for Remove.</summary>
+    internal static IReadOnlyList<string> WriteStepNames(UsersPayload payload) => payload.Mode switch
     {
-        UsersMode.Add => $"Add user {payload.UserName}",
-        UsersMode.Remove => $"Remove user {payload.UserName}",
-        _ => $"Update user {payload.UserName}",
+        UsersMode.Add => [$"Add user {payload.UserName}"],
+        UsersMode.Remove => payload.RemoveNames.Count == 0 ? [RemoveStepName(payload.UserName)] : [.. payload.RemoveNames.Select(RemoveStepName)],
+        _ => [$"Update user {payload.UserName}"],
     };
+
+    private static string RemoveStepName(string userName) => $"Remove user {userName}";
+
+    /// <summary>
+    /// The task name: "Add user joe", "Change password joe" (only the password), "Change role joe" (only role
+    /// or PTZ), "Change user joe" (both), "Remove user joe" / "Remove users joe, ann". Never the password.
+    /// </summary>
+    public string GetTaskName(string? payloadJson)
+    {
+        UsersPayload payload;
+        try
+        {
+            payload = UsersJson.ParsePayload(payloadJson);
+        }
+        catch (ArgumentException)
+        {
+            return DisplayName;
+        }
+
+        return TaskName(payload) ?? DisplayName;
+    }
+
+    /// <summary>See <see cref="GetTaskName"/>; null when the payload names no user.</summary>
+    public static string? TaskName(UsersPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        if (payload.Mode == UsersMode.Remove)
+        {
+            var names = payload.RemoveNames;
+            return names.Count switch
+            {
+                0 => null,
+                1 => $"Remove user {names[0]}",
+                _ => $"Remove users {string.Join(", ", names)}",
+            };
+        }
+
+        var name = payload.UserName.Trim();
+        if (name.Length == 0)
+        {
+            return null;
+        }
+
+        return payload.Mode switch
+        {
+            UsersMode.Add => $"Add user {name}",
+            UsersMode.Change when payload.ChangePassword && !payload.ChangeRole => $"Change password {name}",
+            UsersMode.Change when payload.ChangeRole && !payload.ChangePassword => $"Change role {name}",
+            UsersMode.Change => $"Change user {name}",
+            _ => null,
+        };
+    }
 
     /// <summary>Read-only. <c>listUsers</c> returns <see cref="UsersQueryResult"/> JSON for the dialog.</summary>
     public async Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct)

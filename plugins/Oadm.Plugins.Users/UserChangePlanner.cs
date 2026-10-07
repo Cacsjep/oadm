@@ -21,6 +21,9 @@ public sealed record UserChangePlan(PlanKind Kind, string Message, bool IsWarnin
     public bool SetsRole { get; init; }
 }
 
+/// <summary>The plan for one user of a Remove task.</summary>
+public sealed record UserRemoval(string Name, UserChangePlan Plan);
+
 /// <summary>
 /// Pure decision logic for one device: validation, existence checks and lock-out protection. Throws
 /// <see cref="UserManagementException"/> (Failed, "Nothing was changed") when the change is refused.
@@ -110,38 +113,97 @@ public static class UserChangePlanner
                 };
 
             case UsersMode.Remove:
-                if (existing is null)
-                {
-                    return new UserChangePlan(PlanKind.Skip, $"User '{name}' does not exist on this device; nothing was changed.", IsWarning: true);
-                }
-
-                RequireKnownAccount(currentAccount, "remove");
-                if (isCurrent)
-                {
-                    throw new UserManagementException($"'{name}' is the account OADM uses for this device and cannot be removed. Nothing was changed.");
-                }
-
-                if (existing.Role == UserRole.Administrator && adminCount <= 1)
-                {
-                    throw new UserManagementException($"'{name}' is the last administrator on this device and cannot be removed. Nothing was changed.");
-                }
-
-                if (string.Equals(name, "root", StringComparison.Ordinal) && IsOlderThan(firmwareVersion, RootRemovableSince))
-                {
-                    throw new UserManagementException("The account root cannot be removed on AXIS OS older than 11.5. Nothing was changed.");
-                }
-
-                return new UserChangePlan(PlanKind.Write, $"Remove user '{name}'");
+                var removals = PlanRemoval(payload.RemoveNames, users, currentAccount, firmwareVersion);
+                return removals.Count == 1 ? removals[0].Plan : Combine(removals);
 
             default:
                 throw new UserManagementException($"Unknown mode {payload.Mode}. Nothing was changed.");
         }
     }
 
+    /// <summary>
+    /// Plans the removal of every user in <paramref name="names"/> on one device, in order. Users the device
+    /// does not have are skipped with a warning. Throws <see cref="UserManagementException"/> (nothing is
+    /// removed) when any of them is protected: the account OADM uses, the last administrator (counting the
+    /// administrators removed earlier in the list), or root before AXIS OS 11.5.
+    /// </summary>
+    public static IReadOnlyList<UserRemoval> PlanRemoval(
+        IReadOnlyList<string> names,
+        IReadOnlyList<DeviceUser> users,
+        string? currentAccount,
+        string? firmwareVersion)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        ArgumentNullException.ThrowIfNull(users);
+        var adminsLeft = users.Count(u => u.Role == UserRole.Administrator);
+        var result = new List<UserRemoval>(names.Count);
+        foreach (var name in names)
+        {
+            var existing = users.FirstOrDefault(u => string.Equals(u.Name, name, StringComparison.Ordinal));
+            if (existing is null)
+            {
+                result.Add(new UserRemoval(name, new UserChangePlan(PlanKind.Skip, $"User '{name}' does not exist on this device; nothing was changed.", IsWarning: true)));
+                continue;
+            }
+
+            RequireKnownAccount(currentAccount, "remove");
+            if (string.Equals(name, currentAccount, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new UserManagementException($"'{name}' is the account OADM uses for this device and cannot be removed. Nothing was changed.");
+            }
+
+            if (existing.Role == UserRole.Administrator && adminsLeft <= 1)
+            {
+                throw new UserManagementException($"'{name}' is the last administrator on this device and cannot be removed. Nothing was changed.");
+            }
+
+            if (string.Equals(name, "root", StringComparison.Ordinal) && IsOlderThan(firmwareVersion, RootRemovableSince))
+            {
+                throw new UserManagementException("The account root cannot be removed on AXIS OS older than 11.5. Nothing was changed.");
+            }
+
+            if (existing.Role == UserRole.Administrator)
+            {
+                adminsLeft--;
+            }
+
+            result.Add(new UserRemoval(name, new UserChangePlan(PlanKind.Write, $"Remove user '{name}'")));
+        }
+
+        return result;
+    }
+
+    /// <summary>One plan for several removals: Write when any user is removed; messages joined.</summary>
+    private static UserChangePlan Combine(IReadOnlyList<UserRemoval> removals)
+    {
+        var writes = removals.Where(r => r.Plan.Kind == PlanKind.Write).Select(r => r.Name).ToList();
+        var skips = removals.Where(r => r.Plan.Kind == PlanKind.Skip).ToList();
+        if (writes.Count == 0)
+        {
+            return new UserChangePlan(PlanKind.Skip, string.Join(" ", skips.Select(r => r.Plan.Message)), skips.Exists(r => r.Plan.IsWarning));
+        }
+
+        var message = $"Remove users '{string.Join("', '", writes)}'";
+        return new UserChangePlan(PlanKind.Write, skips.Count == 0 ? message : message + "; " + string.Join(" ", skips.Select(r => r.Plan.Message)));
+    }
+
     /// <summary>Input validation shared by the dialog and the server. Throws with a user-facing reason.</summary>
     public static void ValidatePayload(UsersPayload payload, PassphrasePolicy policy)
     {
         ArgumentNullException.ThrowIfNull(payload);
+        if (payload.Mode == UsersMode.Remove)
+        {
+            var names = payload.RemoveNames;
+            Fail(names.Count == 0 ? "Choose the users to remove in the Existing users list." : null);
+            Fail(names.Count > UsersPayload.MaxRemoveUsers ? $"At most {UsersPayload.MaxRemoveUsers} users can be removed at once." : null);
+            foreach (var name in names)
+            {
+                Fail(CredentialRules.ValidateUserName(name));
+            }
+
+            return;
+        }
+
         Fail(CredentialRules.ValidateUserName(payload.UserName));
         switch (payload.Mode)
         {

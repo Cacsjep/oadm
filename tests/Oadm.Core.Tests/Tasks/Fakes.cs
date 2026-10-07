@@ -123,6 +123,11 @@ internal sealed class DelegateTaskPlugin(
 
     public int? MaxParallelDevices => Limit;
 
+    /// <summary>ITaskPlugin.GetTaskName; null = the default (display name).</summary>
+    public Func<string?, string>? TaskName { get; init; }
+
+    public string GetTaskName(string? payloadJson) => TaskName is null ? DisplayName : TaskName(payloadJson);
+
     public Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct) =>
         execute(ctx, device, ct);
 }

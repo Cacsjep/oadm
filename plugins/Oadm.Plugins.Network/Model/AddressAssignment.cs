@@ -66,11 +66,16 @@ public static class AddressAssigner
 /// <param name="Address">The address.</param>
 /// <param name="DeviceId">The managed device that has this address, if any.</param>
 /// <param name="Device">Label of that device ("P3265-V ACCC8E000001").</param>
-/// <param name="InUse">Something accepted a TCP connection on port 80 or 443 at this address.</param>
-public sealed record AddressStatus(string Address, Guid? DeviceId = null, string? Device = null, bool InUse = false);
+/// <param name="InUse">Something answers at this address: a ping or a TCP connection on port 80 or 443.</param>
+/// <param name="AnswersPing">The address answered an ICMP echo (ping).</param>
+public sealed record AddressStatus(string Address, Guid? DeviceId = null, string? Device = null, bool InUse = false, bool AnswersPing = false)
+{
+    /// <summary>The row status of an address in use: "In use (answers ping)" or "In use (answers on port 80/443)".</summary>
+    public string InUseText => AnswersPing ? "In use (answers ping)" : "In use (answers on port 80/443)";
+}
 
 /// <summary>Request of the read-only query "checkAddresses".</summary>
-/// <param name="Addresses">Candidate addresses to probe (TCP 80/443 connect only, at most <see cref="AddressCheckRequest.MaxProbes"/>).</param>
+/// <param name="Addresses">Candidate IPv4 or IPv6 addresses to probe (ping and TCP 80/443 connect, at most <see cref="AddressCheckRequest.MaxProbes"/>).</param>
 /// <param name="Probe">False: only report managed devices.</param>
 public sealed record AddressCheckRequest(IReadOnlyList<string> Addresses, bool Probe = true)
 {
@@ -154,14 +159,64 @@ public static class AddressConflicts
             {
                 result[i] = $"Used by {status.Device ?? "another managed device"}";
             }
-            else if (known?.GetValueOrDefault(text) is { InUse: true } && !string.Equals(text, row.Device.CurrentAddress, StringComparison.Ordinal))
+            else if (known?.GetValueOrDefault(text) is { InUse: true } inUse && !string.Equals(text, row.Device.CurrentAddress, StringComparison.Ordinal))
             {
-                result[i] = "In use: another host answers at this address";
+                result[i] = inUse.InUseText;
             }
         }
 
         return result;
     }
+
+    /// <summary>
+    /// Problems of the new static IPv6 addresses, one message per row (null = fine): missing, invalid, unusable,
+    /// duplicate, another managed device's address, or in use (answers ping or TCP 80/443).
+    /// </summary>
+    public static IReadOnlyList<string?> FindIpv6(
+        IReadOnlyList<AssignmentRow> rows,
+        IReadOnlyDictionary<string, AddressStatus>? known = null)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        var parsed = rows.Select(r => PayloadValidator.TryParseIpv6(r.NewAddress, out var a) ? a : null).ToList();
+        var result = new string?[rows.Count];
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var text = rows[i].NewAddress?.Trim();
+            if (string.IsNullOrEmpty(text))
+            {
+                result[i] = "No IPv6 address";
+                continue;
+            }
+
+            if (parsed[i] is not { } address)
+            {
+                result[i] = "Not a valid IPv6 address";
+                continue;
+            }
+
+            if (PayloadValidator.Ipv6Problem(text) is { } problem)
+            {
+                result[i] = Capitalize(problem);
+            }
+            else if (parsed.Count(a => a is not null && a.Equals(address)) > 1)
+            {
+                result[i] = "Assigned to more than one device";
+            }
+            else if (Lookup(known, address) is { DeviceId: { } other } status && other != rows[i].Device.Id)
+            {
+                result[i] = $"Used by {status.Device ?? "another managed device"}";
+            }
+            else if (Lookup(known, address) is { InUse: true } inUse && !AddressCheck.IsOwnAddress(text, [rows[i].Device.CurrentAddress]))
+            {
+                result[i] = inUse.InUseText;
+            }
+        }
+
+        return result;
+    }
+
+    private static AddressStatus? Lookup(IReadOnlyDictionary<string, AddressStatus>? known, System.Net.IPAddress address) =>
+        known?.Values.FirstOrDefault(s => PayloadValidator.TryParseIpv6(s.Address, out var a) && a.Equals(address));
 
     /// <summary>"is the broadcast address of its subnet" becomes "Broadcast address of its subnet".</summary>
     private static string Capitalize(string problem)

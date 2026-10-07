@@ -49,6 +49,19 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
     public bool RequiresDialog => true;
 
+    /// <summary>"Install AXIS Video Motion Detection 4.5.2", "Upgrade ... to ...", "Remove ...", "Start ...", "Stop ...".</summary>
+    public string GetTaskName(string? payloadJson)
+    {
+        try
+        {
+            return AcapPayload.Parse(payloadJson).TaskName();
+        }
+        catch (ArgumentException)
+        {
+            return DisplayName;
+        }
+    }
+
     /// <summary>Reachable with credentials, and the cached API list offers the Application API 1.x.</summary>
     public bool CanRun(IDeviceInfo device)
     {
