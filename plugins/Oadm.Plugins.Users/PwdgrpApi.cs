@@ -78,8 +78,12 @@ public static partial class PwdgrpApi
         new(HttpMethod.Post, new Uri(PwdgrpPath, UriKind.Relative)) { Content = new FormUrlEncodedContent(fields) };
 
     /// <summary>
-    /// Parses the <c>action=get</c> body (lines <c>group="a,b"</c>). Users come from <c>digusers</c> (all
-    /// accounts) plus anyone listed in an access group; the role is the highest group.
+    /// Parses the <c>action=get</c> body (lines <c>group="a,b"</c>). The login users are the members of
+    /// <c>digusers</c>; the role is the highest of <c>admin</c>/<c>operator</c>/<c>viewer</c>. Verified on
+    /// hardware: AXIS OS 10.12 also lists its internal system accounts (<c>wwwa*</c>, <c>debugar</c>,
+    /// <c>sdk</c>, <c>ptzadm</c>, <c>vdo</c>, ...) inside the access groups, but never in <c>digusers</c>;
+    /// AXIS OS 12 lists only real users. Only when a device has no <c>digusers</c> line the members of
+    /// the access groups are used.
     /// </summary>
     public static IReadOnlyList<DeviceUser> ParseUsers(string body, string? currentAccount = null)
     {
@@ -99,7 +103,10 @@ public static partial class PwdgrpApi
 
         List<string> Group(string name) => groups.TryGetValue(name, out var list) ? list : [];
         var names = new List<string>();
-        foreach (var name in Group("digusers").Concat(Group("admin")).Concat(Group("operator")).Concat(Group("viewer")).Concat(Group("ptz")))
+        var source = groups.ContainsKey("digusers")
+            ? Group("digusers")
+            : Group("admin").Concat(Group("operator")).Concat(Group("viewer")).Concat(Group("ptz"));
+        foreach (var name in source)
         {
             if (!names.Contains(name, StringComparer.Ordinal))
             {

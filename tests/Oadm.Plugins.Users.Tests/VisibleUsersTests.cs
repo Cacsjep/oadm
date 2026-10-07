@@ -35,4 +35,20 @@ public sealed class VisibleUsersTests
 
         Assert.Equal(["root", "fakeroot", "root20", "acs"], visible.Select(u => u.Name).ToArray()); // device order (digusers first)
     }
+
+    [Fact]
+    public void Axis_os_10_system_accounts_in_the_access_groups_are_not_users()
+    {
+        // Recorded from an AXIS M3206-LVE on AXIS OS 10.12.323: admin/operator/viewer also contain
+        // internal accounts (wwwa*, debugar, sdk, ptzadm, vdo); only digusers holds the real users.
+        var body = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "pwdgrp-get-m3206lve-10.12.txt"));
+
+        var all = PwdgrpApi.ParseUsers(body, "root");
+        var visible = UsersTaskPlugin.VisibleUsers(all);
+
+        Assert.Equal(["root", "root2", "root15"], all.Select(u => u.Name).ToArray());
+        Assert.Equal(["root", "root2", "root15"], visible.Select(u => u.Name).ToArray());
+        Assert.All(visible, u => Assert.Equal(UserRole.Administrator, u.Role));
+        Assert.All(visible, u => Assert.True(u.Ptz));
+    }
 }
