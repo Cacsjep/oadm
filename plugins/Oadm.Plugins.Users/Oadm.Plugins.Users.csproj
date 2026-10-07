@@ -31,4 +31,9 @@
     <Message Importance="normal" Text="OADM plugin $(OadmPluginId) deployed to $(OadmPluginOutputDir)" />
   </Target>
 
+  <ItemGroup>
+    <!-- Cheap CanRun check on the cached API list (scale to thousands of devices). -->
+    <Compile Include="..\Shared\CachedApiCheck.cs" Link="Common\CachedApiCheck.cs" />
+  </ItemGroup>
+
 </Project>

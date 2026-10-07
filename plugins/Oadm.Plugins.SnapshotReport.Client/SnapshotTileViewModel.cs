@@ -21,6 +21,7 @@ public sealed partial class SnapshotTileViewModel : ObservableObject, IDisposabl
 {
     private readonly Func<SnapshotTileViewModel, Task> _refresh;
     private readonly Action<SnapshotTileViewModel> _preview;
+    private string? _searchText;
 
     public SnapshotTileViewModel(SnapshotTile tile, Func<SnapshotTileViewModel, Task> refresh, Action<SnapshotTileViewModel> preview)
     {
@@ -49,7 +50,16 @@ public sealed partial class SnapshotTileViewModel : ObservableObject, IDisposabl
     public string Facts => FactsText.Line(Tile.Device);
 
     /// <summary>Text the search box matches against.</summary>
-    public string SearchText => string.Join(' ', Title, Facts, Tile.Device.HostName, FactsText.Status(Tile.Device.Status));
+    public string SearchText => _searchText ??= string.Join(' ', Title, Facts, Tile.Device.HostName, FactsText.Status(Tile.Device.Status));
+
+    /// <summary>The snapshot still has to be loaded (lazy loading: only while the tile is shown).</summary>
+    internal bool NeedsLoad { get; set; }
+
+    /// <summary>Cancels the running lazy load (the tile scrolled away); null while none runs.</summary>
+    internal CancellationTokenSource? LoadCts { get; set; }
+
+    /// <summary>Position in the page's list of tiles holding a decoded picture (memory bound).</summary>
+    internal LinkedListNode<SnapshotTileViewModel>? CacheNode { get; set; }
 
     /// <summary>The device itself cannot deliver sources (offline, credentials); refreshing the tile re-reads the sources.</summary>
     public bool IsDeviceError => Tile.Error is not null;
@@ -138,6 +148,24 @@ public sealed partial class SnapshotTileViewModel : ObservableObject, IDisposabl
     {
         Error = error;
         State = TileState.Error;
+    }
+
+    /// <summary>
+    /// Drops the decoded picture and the JPEG to bound memory (the tile is far from view); it waits for a new snapshot
+    /// when it is shown again.
+    /// </summary>
+    public void Unload()
+    {
+        var old = Image;
+        Image = null;
+        Jpeg = null;
+        (old as IDisposable)?.Dispose();
+        CapturedUtc = null;
+        Resolution = null;
+        if (State == TileState.Ok)
+        {
+            State = TileState.Waiting;
+        }
     }
 
     public void Dispose()

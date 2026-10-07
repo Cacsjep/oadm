@@ -28,7 +28,18 @@ public static class HeadlessEntry
         .WithInterFont();
 }
 
+/// <summary>
+/// Tests that start an Avalonia headless session run one after another: two sessions at the same time in one test
+/// process deadlock.
+/// </summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class HeadlessSessions
+{
+    public const string Name = "Avalonia headless";
+}
+
 /// <summary>Renders the page, the preview and the export dialog offscreen with fake data. Set OADM_SCREENSHOT_DIR to write PNGs.</summary>
+[Collection(HeadlessSessions.Name)]
 public sealed class HeadlessPageTests
 {
     [Fact]

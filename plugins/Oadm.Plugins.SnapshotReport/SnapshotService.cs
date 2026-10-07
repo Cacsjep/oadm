@@ -24,6 +24,9 @@ public sealed partial class SnapshotService : IDisposable
 {
     private static readonly TimeSpan SourceCacheLifetime = TimeSpan.FromMinutes(5);
 
+    /// <summary>Up to this many ids are looked up one by one; more use one list call.</summary>
+    private const int FindOneByOneLimit = 16;
+
     private readonly IDeviceRepository _devices;
     private readonly IVapixClientFactory _vapix;
     private readonly TimeProvider _time;
@@ -37,7 +40,8 @@ public sealed partial class SnapshotService : IDisposable
         _devices = devices;
         _vapix = vapix;
         _time = time ?? TimeProvider.System;
-        _gate = new SemaphoreSlim(Math.Max(1, parallelism));
+        Parallelism = Math.Max(1, parallelism);
+        _gate = new SemaphoreSlim(Parallelism);
         Timeout = timeout ?? SnapshotReportPluginInfo.SnapshotTimeout;
     }
 
@@ -52,6 +56,12 @@ public sealed partial class SnapshotService : IDisposable
         if (deviceIds.Count == 0)
         {
             devices = await _devices.ListAsync(ct).ConfigureAwait(false);
+        }
+        else if (deviceIds.Count > FindOneByOneLimit)
+        {
+            // Thousands of ids (a report of a large site): one list call and a set lookup, not one lookup per id.
+            var wanted = deviceIds as IReadOnlySet<Guid> ?? deviceIds.ToHashSet();
+            devices = (await _devices.ListAsync(ct).ConfigureAwait(false)).Where(d => wanted.Contains(d.Id));
         }
         else
         {
@@ -70,23 +80,57 @@ public sealed partial class SnapshotService : IDisposable
         return [.. devices.Where(d => d.HasVideo).OrderBy(d => d.Address, AddressComparer.Instance).ThenBy(d => d.Serial, StringComparer.Ordinal)];
     }
 
-    /// <summary>One tile per video source of the requested video devices (non-video devices are skipped).</summary>
-    public async Task<ListSourcesResult> ListSourcesAsync(ListSourcesRequest request, CancellationToken ct)
+    /// <summary>
+    /// One tile per video source of the requested video devices (non-video devices are skipped). The page's list
+    /// (<paramref name="refreshSources"/> true) reads the sources again; a report uses the sources read in the last
+    /// minutes. Bounded fan-out: <see cref="SnapshotReportPluginInfo.Parallelism"/> workers, never one task per device.
+    /// </summary>
+    public async Task<ListSourcesResult> ListSourcesAsync(ListSourcesRequest request, CancellationToken ct, bool refreshSources = true)
     {
         ArgumentNullException.ThrowIfNull(request);
         var devices = await GetVideoDevicesAsync(request.DeviceIds, ct).ConfigureAwait(false);
-        var perDevice = await Task.WhenAll(devices.Select(d => ListDeviceAsync(d, ct))).ConfigureAwait(false);
+        var perDevice = new IReadOnlyList<SnapshotTile>[devices.Count];
+        await ForEachBoundedAsync(devices.Count, async i => perDevice[i] = await ListDeviceAsync(devices[i], refreshSources, ct).ConfigureAwait(false), ct).ConfigureAwait(false);
         return new ListSourcesResult { Tiles = [.. perDevice.SelectMany(t => t)] };
     }
 
-    /// <summary>Takes one snapshot. Never throws for device problems; they end up in <see cref="CapturedSnapshot.Error"/>.</summary>
-    public async Task<CapturedSnapshot> TakeAsync(Guid deviceId, int camera, int maxWidth, int maxHeight, CancellationToken ct)
+    /// <summary>
+    /// Runs <paramref name="body"/> for 0..count-1 with <see cref="Parallelism"/> workers (thousands of items: a few
+    /// tasks, not one per item; the device requests inside are bounded by the shared gate as well).
+    /// </summary>
+    public async Task ForEachBoundedAsync(int count, Func<int, Task> body, CancellationToken ct)
     {
-        var device = await _devices.FindAsync(deviceId, ct).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(body);
+        var next = -1;
+        async Task WorkerAsync()
+        {
+            int i;
+            while ((i = Interlocked.Increment(ref next)) < count)
+            {
+                ct.ThrowIfCancellationRequested();
+                await body(i).ConfigureAwait(false);
+            }
+        }
+
+        await Task.WhenAll(Enumerable.Range(0, Math.Min(Parallelism, Math.Max(count, 1))).Select(_ => WorkerAsync())).ConfigureAwait(false);
+    }
+
+    /// <summary>Device requests running at the same time (all callers together).</summary>
+    public int Parallelism { get; }
+
+    /// <summary>Takes one snapshot. Never throws for device problems; they end up in <see cref="CapturedSnapshot.Error"/>.</summary>
+    public async Task<CapturedSnapshot> TakeAsync(Guid deviceId, int camera, int maxWidth, int maxHeight, CancellationToken ct) =>
+        await TakeAsync(await _devices.FindAsync(deviceId, ct).ConfigureAwait(false), camera, maxWidth, maxHeight, ct).ConfigureAwait(false);
+
+    /// <summary>Takes one snapshot of a device already looked up (null = no longer managed). Never throws for device problems.</summary>
+    public async Task<CapturedSnapshot> TakeAsync(IDeviceInfo? device, int camera, int maxWidth, int maxHeight, CancellationToken ct)
+    {
         if (device is null)
         {
             return Failed("The device is no longer managed");
         }
+
+        var deviceId = device.Id;
 
         if (!device.HasVideo)
         {
@@ -197,7 +241,7 @@ public sealed partial class SnapshotService : IDisposable
 
     public void Dispose() => _gate.Dispose();
 
-    private async Task<IReadOnlyList<SnapshotTile>> ListDeviceAsync(IDeviceInfo device, CancellationToken ct)
+    private async Task<IReadOnlyList<SnapshotTile>> ListDeviceAsync(IDeviceInfo device, bool refreshSources, CancellationToken ct)
     {
         if (SnapshotRequests.StatusError(device.Status) is { } statusError)
         {
@@ -212,7 +256,11 @@ public sealed partial class SnapshotService : IDisposable
             try
             {
                 var client = await _vapix.CreateAsync(device.Id, timeout.Token).ConfigureAwait(false);
-                _sources.TryRemove(device.Id, out _);
+                if (refreshSources)
+                {
+                    _sources.TryRemove(device.Id, out _);
+                }
+
                 var sources = await GetSourcesAsync(device.Id, client, timeout.Token).ConfigureAwait(false);
                 return Expand(device, sources);
             }
