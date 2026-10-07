@@ -1,28 +1,76 @@
 # Oadm.Plugins.Network
 
-Task plugin `oadm.network`, "Network settings..." in the device context menu (no toolbar button).
-Opens a dialog, then changes IPv4, IPv6, DNS and host name on the selected devices.
+Two task plugins in one package (`artifacts/plugins/oadm.network/`):
+
+- `oadm.network`, **"Network settings..."** (context menu, no toolbar button): IPv4, IPv6, DNS and host name
+  for the selected devices.
+- `oadm.network.assign-ip`, **"Assign IP address..."** (context menu and toolbar, multi-device first): clone of
+  ADM's "Assign IP address to selected devices", DHCP or an IP address range.
+
+Both open a dialog, run one task per device with the same per-device task (`NetworkTaskRunner`) and OADM
+follows a device to its new static address.
 
 | Part | Assembly | Content |
 |---|---|---|
-| `plugins/Oadm.Plugins.Network` | `Oadm.Plugins.Network.Server.dll` | `NetworkSettingsTaskPlugin` (`ITaskPlugin` + `ITaskPluginQuery`), payload model, validation, VAPIX requests |
-| `plugins/Oadm.Plugins.Network.Client` | `Oadm.Plugins.Network.Client.dll` | `NetworkSettingsDialog` (`ITaskPluginDialog`), `NetworkSettingsViewModel`, `NetworkSettingsWindow` |
+| `plugins/Oadm.Plugins.Network` | `Oadm.Plugins.Network.Server.dll` | `NetworkSettingsTaskPlugin`, `AssignIpTaskPlugin` (`ITaskPlugin` + `ITaskPluginQuery`), `NetworkTaskRunner`, `AddressCheck` (query), payload model, validation, IP range syntax (`IpRangeExpression`), address suggestion and conflicts (`AddressAssigner`, `AddressConflicts`), VAPIX requests |
+| `plugins/Oadm.Plugins.Network.Client` | `Oadm.Plugins.Network.Client.dll` | `NetworkSettingsDialog`/`ViewModel`/`Window`, `AssignIpDialog`/`ViewModel`/`Window`, the shared address table `AddressAssignmentGrid` + `AddressAssignmentViewModel` + `AddressRowViewModel`, `NetworkWarnings` |
 | `tests/Oadm.Plugins.Network.Tests` | | unit, fixture, view model and headless dialog tests |
 
-Both assemblies build into `artifacts/plugins/oadm.network/` next to `plugin.json`. The client part
-references the server assembly for the shared payload model and validator (it is in the same plugin
-folder, so the client plugin load context resolves it). The SDKs, Avalonia and CommunityToolkit.Mvvm
-come from the host and are never copied.
+The client part references the server assembly for the shared payload model, validator, range parser and
+assignment (same plugin folder, so the client plugin load context resolves it). The SDKs, Avalonia and
+CommunityToolkit.Mvvm come from the host and are never copied.
 
-## Dialog
+## ADM reference: "Assign IP address"
+
+Researched October 2026. Sources:
+- ADM user manual, https://help.axis.com/en-us/axis-device-manager (mentions only that ADM can "assign IP
+  addresses"; no dialog details).
+- "How to assign an IP address and access your device", https://help.axis.com/en-us/access-your-device: ADM
+  procedure. Several devices: *Device manager > Manage devices*, select the devices, **Assign IP address to
+  selected devices**, select **Assign the following IP address range**, enter the range in the **IP range**
+  field, **Next**, "To change the IP address, select a device and click **Edit IP**", **Finish**. "AXIS Device
+  Manager suggests IP addresses from a specified range." One device: **Assign the following IP address**, IP
+  address, subnet mask, default router, **OK**.
+- AXIS Camera Station 5 manual, https://help.axis.com/en-us/axis-camera-station-5, "Assign IP address" (same
+  options): **Obtain IP addresses automatically (DHCP)** or **Assign the following IP address range** with IP
+  range, subnet mask and default router; range syntax "192.168.0.* or 10.*.1.*", "192.168.0.10-192.168.0.20
+  (this address range can be shortened to 192.168.0.10-20) or 10.10-30.1.101", "10.10-30.1.*",
+  "192.168.0.*,192.168.1.10-192.168.1.20"; then "Review the current IP addresses and the new IP addresses",
+  **Edit IP** per device, **Finish**; inaccessible devices are skipped.
+- Not documented anywhere: what happens with more devices than addresses, how addresses in use are handled,
+  and whether ADM follows a device to its new address. OADM's decisions are below.
+
+How OADM clones it:
+
+| ADM | OADM |
+|---|---|
+| Menu "Assign IP address to selected devices" | Context menu and toolbar **Assign IP address...** |
+| Obtain IP addresses automatically (DHCP) | Same wording; Finish on page 1 (single device: "Obtain IP address automatically (DHCP)") |
+| Assign the following IP address range: IP range, subnet mask, default router | Same wording and fields, plus optional DNS servers (domain name and search domains of each device are kept: `DnsChange.KeepDomains`). Single device: "Assign the following IP address", field "IP address" |
+| Range syntax: wildcards, first-last (also shortened), range in any octet, commas | All of them (`IpRangeExpression`), plus a single address alone = start address (consecutive addresses up to the end of its subnet); at most 1,048,576 addresses per expression |
+| Next: current and new IP addresses, Edit IP per device, Finish | Page 2 "New IP addresses": MAC address, Model, Current IP address, New IP address (edited in the cell instead of an Edit IP dialog), Status chip; Back, Finish |
+| Suggests addresses from the range | In grid order (the order the host passes the selection), the first free addresses of the range. Skipped: network and broadcast address, loopback/multicast/link-local, the default router, addresses of other managed devices, addresses found in use, duplicates. A device keeps its own address when the range reaches it |
+| (undocumented) too few addresses | "Not enough addresses: the IP range has N free addresses for M devices. Extend the range." and rows without an address; Finish stays disabled until every row has a valid address |
+| (undocumented) addresses in use | Page 2 runs the read-only query `checkAddresses` (also the **Check addresses** button): all managed device addresses plus a TCP connect to port 80 and 443 of each candidate from the server (no ICMP, no ARP request of our own, no HTTP; a refused connection also means "in use"); taken addresses are skipped and suggested again around them (3 rounds); remaining ones are flagged |
+| Invalid devices are skipped | Each device is its own task; one failing device never affects the others |
+
+Conflicts per row (status chip, Finish disabled): "No address", "Not a valid IPv4 address", network/broadcast/
+loopback/multicast/link-local, "Same as the default router", "Outside the subnet of the default router",
+"Assigned to more than one device", "Used by <model serial>", "In use: another host answers at this address".
+A strong warning (checkbox "I understand that OADM may lose contact with these devices") must be acknowledged
+before Finish, on the page where the user finishes.
+
+## Network settings dialog
 
 - Sections **IPv4**, **IPv6**, **DNS**, **Host name**, each starting at **Keep unchanged**. Only
   touched sections go into the payload and only those are written.
 - Prefill: the read-only query `getNetworkInfo` reads the first selected device ("Current: ..." line
   per section, fields prefilled). A failed query never blocks the dialog.
 - IPv4 static: subnet mask as `255.255.255.0`, `24` or `/24`, default gateway required. With several
-  devices the address field is the **start address**: device *n* in list order gets start + *n* - 1,
-  shown in a **Preview** table (device, current address, new address, new host name).
+  devices the address field is an **IP range** with the Assign IP address syntax (a single address is the
+  start address), suggested and checked exactly like there, in the same table (`AddressAssignmentGrid`,
+  with the extra column **New host name**); every new address can be edited. A new range discards edits; a
+  new mask or gateway suggests again around them.
 - IPv6: Disabled, Automatic (router advertisement), DHCPv6, Static (static only for one device).
 - DNS: from DHCP, or static primary/secondary server, domain name, search domains.
 - Host name: from DHCP, or static. Several devices use a template with `{n}` (position) or `{serial}`.
@@ -30,33 +78,43 @@ come from the host and are never copied.
   devices get a new address, and for IPv6 changes on devices OADM reaches over IPv6.
 - Validation is the same `PayloadValidator` the server runs: address/mask/gateway in one subnet, no
   network or broadcast address, no loopback/multicast/link-local, no duplicates in the batch (address
-  equal to the gateway included), range fits the subnet, IPv6 syntax and prefix, DNS servers, domain
-  and host name syntax, duplicate host names.
+  equal to the gateway included), IPv6 syntax and prefix, DNS servers, domain and host name syntax,
+  duplicate host names; plus the table's conflicts.
 
 ## Payload
+
+Both plugins send a `NetworkPayload`; Assign IP address only `ipv4` and optionally `dns` (anything else is
+refused before the first request).
 
 ```json
 {
   "ipv4": { "mode": "static", "prefixLength": 24, "gateway": "10.0.0.1" },
   "ipv6": { "mode": "auto" },
-  "dns": { "useDhcp": false, "servers": ["10.0.0.2"], "domainName": "example.com", "searchDomains": [] },
+  "dns": { "useDhcp": false, "servers": ["10.0.0.2"], "domainName": "example.com", "searchDomains": [], "keepDomains": false },
   "hostName": { "useDhcp": false },
   "devices": { "<device id>": { "ipv4Address": "10.0.0.100", "hostName": "cam-1" } }
 }
 ```
 
+Query `checkAddresses` (both plugins, read-only): request `{"addresses":["10.0.0.100"],"probe":true}` (at most
+256), answer `{"managed":[{"address","deviceId","device"}],"probed":[{"address","inUse"}]}`.
+
 ## Task (per device)
 
-Task steps shown to the user: **Check compatibility** ("network-settings 1.37" or "param.cgi"),
-**Read current settings** (getNetworkInfo, or the param.cgi Network group on legacy devices), **Read IPv6
-address mode** (param.cgi; Skipped when it is already part of the first read or param.cgi is missing),
-**Validate settings** (the plan below), **Set host name**, **Set DNS**,
-**Set IPv6** (+ **Enable IPv6** when the interface is switched on with a second request), **Set IPv4**
-(IPv4 before IPv6 for a device reached over IPv6), **Wait for the settings to apply**, **Check
-reachability**. Every device request is its own step; sections the user kept unchanged are Skipped
-("Keep unchanged"), the two last steps are Skipped when the change does not affect OADM's connection.
-A failing write is Failed and the later steps Skipped; the reachability warnings below end
-**Check reachability** as Warning (Done with warnings).
+Steps of **Network settings...**: **Check compatibility** ("network-settings 1.37" or "param.cgi"), **Read
+current settings** (getNetworkInfo, or the param.cgi Network group on legacy devices), **Read IPv6 address mode**
+(param.cgi; Skipped when it is already part of the first read or param.cgi is missing), **Validate settings**
+(the plan below), **Set host name**, **Set DNS**, **Set IPv6** (+ **Enable IPv6** when the interface is switched
+on with a second request), **Set IPv4** (IPv4 before IPv6 for a device reached over IPv6), **Wait for the
+settings to apply**, **Check reachability**, **Wait for the device at the new address**, **Verify device
+identity**, **Update OADM device address**.
+
+Steps of **Assign IP address...**: Check compatibility, Read current settings, Validate settings, Set DNS,
+Set IPv4, Wait for the settings to apply, Check reachability, Wait for the device at the new address, Verify
+device identity, Update OADM device address (no IPv6 mode read, no host name or IPv6 step).
+
+Every device request is its own step; sections the user kept unchanged are Skipped ("Keep unchanged"). A
+failing write is Failed and the later steps Skipped.
 
 1. Parse and validate the payload for the whole batch. Invalid: fails with "... Nothing was changed."
 2. Fresh `GetApiListAsync`; read the current settings (getNetworkInfo, or param.cgi on legacy devices).
@@ -66,13 +124,25 @@ A failing write is Failed and the later steps Skipped; the reachability warnings
 4. Write in order **host name, DNS, IPv6, IPv4** (the address family OADM connects with is always last;
    for a device reached over IPv6 the order is host name, DNS, IPv4, IPv6). Each step is logged with
    `ctx.Log`; a failing step names the steps already applied.
-5. After the connection-relevant write: log "The device will be re-addressed from A to B", wait 5 s,
-   then watch the old address for 45 s:
-   - re-addressed and the old address stops answering: `ReportWarning` (device moved; OADM still has
-     the old address, remove and add it again);
-   - re-addressed to a static address but the old address keeps answering: `ReportWarning` (the device
-     rolls back failed changes; check its system log);
-   - same address but no answer: `ReportWarning` (check mask and gateway).
+5. After the connection-relevant write: log "The device will be re-addressed from A to B", **Wait for the
+   settings to apply** (5 s), then:
+
+| Case | Check reachability | Wait for the device at the new address | Verify device identity | Update OADM device address |
+|---|---|---|---|---|
+| New static address (IPv4, or IPv6 when OADM connects over IPv6) | Skipped "The device moves to B." | polls B every 3 s with `ctx.CreateClientForAsync(B)` for up to 90 s; Done "The device answers at B" | serial number at B equals the device's: Done | `ctx.UpdateDeviceAddressAsync(B)`: Done "A -> B" |
+| ... not answering at B | Skipped | **Warning**: "does not answer at B within 90 s, nor at A" (check mask and router; record keeps A) or "... but still answers at A, so the new address may not be active" (the device rolls back failed changes) | Skipped "The device was not found at the new address." | Skipped (same) |
+| ... another serial at B | Skipped | Done | **Warning** "Another device answers at B (serial ..., expected ...). The address may be in use." | Skipped "The device at the new address is not this device." |
+| ... OADM uses the host name (`Devices.UseHostName`) | Skipped | Done | Done | Skipped "OADM reaches the device by host name H; the host name is kept." |
+| ... server refuses (serial check on the server) | Skipped | Done | Done | **Warning** with the server's message |
+| DHCP (new address unknown) | watches A for 45 s; **Warning** when A stops answering ("OADM keeps the old address until the next mDNS scan finds the device again") | Skipped | Skipped | Skipped "DHCP: address assigned by the network, the device will be found again by the next scan" |
+| Same address | watches A; Done, or **Warning** "check the subnet mask and gateway" | Skipped "The address does not change." | Skipped | Skipped |
+| Change does not affect OADM's connection | Skipped | Skipped | Skipped | Skipped |
+
+Re-finding moved devices (server): every 5 minutes (first run 30 s after start), when at least one device is
+**Unreachable** and addressed by IP, the server browses mDNS for 15 s (`DeviceRelocationHostedService`). A
+managed device announced at another address is verified there (authenticated basicdeviceinfo, same serial)
+and its record moves (`DeviceAddressService.TryRelocateAsync`: logged, published, full refresh queued, status
+Unknown until the refresh). Devices addressed by host name are never moved.
 
 ## VAPIX decision table
 

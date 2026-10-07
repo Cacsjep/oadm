@@ -21,6 +21,12 @@ public interface ITaskQueryContext
     IVapixClient Vapix { get; }
 
     ILogger Logger { get; }
+
+    /// <summary>
+    /// Read-only view of all managed devices (e.g. to flag an address another managed device already uses).
+    /// Null when the host does not offer it.
+    /// </summary>
+    IDeviceRepository? Devices => null;
 }
 
 /// <summary>

@@ -21,6 +21,9 @@ public sealed class TaskPluginTests
     private const string ReadIpv6 = "Read IPv6 address mode: Done";
     private const string Validate = "Validate settings: Done";
 
+    private static readonly string[] FollowSkipped =
+        ["Wait for the device at the new address: Skipped", "Verify device identity: Skipped", "Update OADM device address: Skipped"];
+
     private static string StaticPayload(Guid id, string address) => new NetworkPayload
     {
         Ipv4 = new Ipv4Change(Ipv4Mode.Static, 24, "10.0.0.138"),
@@ -64,7 +67,7 @@ public sealed class TaskPluginTests
 
         Assert.Equal(
             ["Check compatibility: Failed", "Read current settings: Skipped", "Read IPv6 address mode: Skipped", "Validate settings: Skipped", "Set host name: Skipped", "Set DNS: Skipped",
-             "Set IPv6: Skipped", "Set IPv4: Skipped", "Wait for the settings to apply: Skipped", "Check reachability: Skipped"],
+             "Set IPv6: Skipped", "Set IPv4: Skipped", "Wait for the settings to apply: Skipped", "Check reachability: Skipped", .. FollowSkipped],
             StepRun.Lines(ctx.Steps));
         Assert.Equal(1, vapix.ApiListCalls);
         Assert.Empty(vapix.Sent);
@@ -105,45 +108,6 @@ public sealed class TaskPluginTests
         Assert.Equal(0, vapix.ApiListCalls);
     }
 
-    [Fact]
-    public async Task Readdressed_device_that_stops_answering_finishes_with_a_warning()
-    {
-        var id = Guid.NewGuid();
-        var vapix = new FakeNetworkVapix { Answers = _ => false };
-        var ctx = new RecordingContext(vapix);
-
-        await RunAsync(ctx, id, StaticPayload(id, "10.0.0.60"));
-
-        var writes = vapix.Writes;
-        Assert.Equal(2, writes.Count);
-        Assert.Contains("setResolverConfiguration", writes[0].Body, StringComparison.Ordinal);
-        Assert.Contains("setIPv4AddressConfiguration", writes[1].Body, StringComparison.Ordinal); // address change last
-        var warning = Assert.Single(ctx.Warnings);
-        Assert.Contains("no longer answers at 10.0.0.48", warning, StringComparison.Ordinal);
-        Assert.Contains("10.0.0.60", warning, StringComparison.Ordinal);
-        Assert.Contains(ctx.LogEntries, l => l.Level == TaskLogLevel.Warning && l.Message.Contains("re-addressed from 10.0.0.48 to 10.0.0.60", StringComparison.Ordinal));
-        Assert.Equal(
-            [Compat, Read, ReadIpv6, Validate, "Set host name: Skipped", "Set DNS: Done", "Set IPv6: Skipped", "Set IPv4: Done",
-             "Wait for the settings to apply: Done", "Check reachability: Warning"],
-            StepRun.Lines(ctx.Steps));
-        Assert.Equal(warning, StepRun.Detail(ctx.Steps, "Check reachability"));
-        Assert.Equal("Keep unchanged", StepRun.Detail(ctx.Steps, "Set host name"));
-        Assert.Equal("DNS 10.0.0.2", StepRun.Detail(ctx.Steps, "Set DNS"));
-        Assert.Empty(ctx.Progress); // progress is derived from the steps
-    }
-
-    [Fact]
-    public async Task Readdressed_device_still_answering_at_the_old_address_is_suspicious()
-    {
-        var id = Guid.NewGuid();
-        var vapix = new FakeNetworkVapix { Answers = _ => true };
-        var ctx = new RecordingContext(vapix);
-
-        await RunAsync(ctx, id, StaticPayload(id, "10.0.0.60"));
-
-        Assert.Contains("still answers at 10.0.0.48", Assert.Single(ctx.Warnings), StringComparison.Ordinal);
-        Assert.True(vapix.Pings > 1);
-    }
 
     [Fact]
     public async Task Same_address_and_still_reachable_is_a_clean_success()
@@ -157,7 +121,7 @@ public sealed class TaskPluginTests
         Assert.Empty(ctx.Warnings);
         Assert.Equal(
             [Compat, Read, ReadIpv6, Validate, "Set host name: Skipped", "Set DNS: Done", "Set IPv6: Skipped", "Set IPv4: Done",
-             "Wait for the settings to apply: Done", "Check reachability: Done"],
+             "Wait for the settings to apply: Done", "Check reachability: Done", .. FollowSkipped],
             StepRun.Lines(ctx.Steps));
         Assert.Equal("network-settings 1.37", StepRun.Detail(ctx.Steps, "Check compatibility"));
         Assert.Equal("2 sections to change", StepRun.Detail(ctx.Steps, "Validate settings"));
@@ -191,7 +155,7 @@ public sealed class TaskPluginTests
         Assert.Equal(0, vapix.Pings);
         Assert.Equal(
             [Compat, Read, ReadIpv6, Validate, "Set host name: Skipped", "Set DNS: Done", "Set IPv6: Skipped", "Set IPv4: Skipped",
-             "Wait for the settings to apply: Skipped", "Check reachability: Skipped"],
+             "Wait for the settings to apply: Skipped", "Check reachability: Skipped", .. FollowSkipped],
             StepRun.Lines(ctx.Steps));
         Assert.Equal("The change does not affect how OADM reaches the device.", StepRun.Detail(ctx.Steps, "Check reachability"));
     }
@@ -212,7 +176,7 @@ public sealed class TaskPluginTests
 
         Assert.Equal(
             [Compat, Read, ReadIpv6, Validate, "Set host name: Skipped", "Set DNS: Done", "Set IPv6: Skipped", "Set IPv4: Failed",
-             "Wait for the settings to apply: Skipped", "Check reachability: Skipped"],
+             "Wait for the settings to apply: Skipped", "Check reachability: Skipped", .. FollowSkipped],
             StepRun.Lines(ctx.Steps));
         Assert.Equal(ex.Message, StepRun.Detail(ctx.Steps, "Set IPv4"));
         Assert.Contains("(4004/107)", ex.Message, StringComparison.Ordinal);

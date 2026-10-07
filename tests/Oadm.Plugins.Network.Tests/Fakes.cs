@@ -63,7 +63,10 @@ internal sealed class FakeNetworkVapix : IVapixClient
 {
     private int _pings;
 
-    public Uri BaseAddress { get; } = new("http://10.0.0.48/");
+    public Uri BaseAddress { get; init; } = new("http://10.0.0.48/");
+
+    /// <summary>Serial number basicdeviceinfo reports.</summary>
+    public string Serial { get; set; } = "ACCC8E000001";
 
     public IReadOnlyList<DeviceApi> ApiList { get; set; } = Fixture.Modern;
 
@@ -100,7 +103,7 @@ internal sealed class FakeNetworkVapix : IVapixClient
             throw new HttpRequestException("Connection timed out");
         }
 
-        return Task.FromResult(new BasicDeviceInfo("ACCC8E000001", "P3265-V", null, null, "12.11.77", null, null));
+        return Task.FromResult(new BasicDeviceInfo(Serial, "P3265-V", null, null, "12.11.77", null, null));
     }
 
     public Task<IReadOnlyDictionary<string, string>> ListParametersAsync(IEnumerable<string> groups, CancellationToken ct)
@@ -173,4 +176,40 @@ internal sealed class RecordingContext : ITaskExecutionContext, ITaskQueryContex
     public void ReportWarning(string message) => Warnings.Add(message);
 
     public void Log(TaskLogLevel level, string message) => LogEntries.Add((level, message));
+
+    /// <summary>Devices at other addresses (CreateClientForAsync); missing = not answering.</summary>
+    public Dictionary<string, FakeNetworkVapix> Others { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>False: like a third-party host without address support (the SDK default throws).</summary>
+    public bool SupportsAddresses { get; set; } = true;
+
+    /// <summary>What UpdateDeviceAddressAsync does: null = moves the record (returns true).</summary>
+    public Func<string, bool>? UpdateAddress { get; set; }
+
+    public List<string> AddressUpdates { get; } = [];
+
+    public List<string> ClientsCreated { get; } = [];
+
+    public Task<IVapixClient> CreateClientForAsync(string address, CancellationToken ct)
+    {
+        if (!SupportsAddresses)
+        {
+            throw new NotSupportedException();
+        }
+
+        ClientsCreated.Add(address);
+        IVapixClient client = Others.TryGetValue(address, out var other) ? other : new FakeNetworkVapix { Answers = _ => false };
+        return Task.FromResult(client);
+    }
+
+    public Task<bool> UpdateDeviceAddressAsync(string newAddress, CancellationToken ct)
+    {
+        if (!SupportsAddresses)
+        {
+            throw new NotSupportedException();
+        }
+
+        AddressUpdates.Add(newAddress);
+        return Task.FromResult(UpdateAddress?.Invoke(newAddress) ?? true);
+    }
 }

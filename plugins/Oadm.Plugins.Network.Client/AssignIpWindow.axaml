@@ -1,0 +1,94 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Network.Client"
+        x:Class="Oadm.Plugins.Network.Client.AssignIpWindow"
+        x:DataType="vm:AssignIpViewModel"
+        Title="{Binding Title}"
+        Width="900" Height="720" MinWidth="680" MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+  <!-- Clone of ADM's "Assign IP address": page 1 DHCP or IP range, page 2 the new addresses. Shared controls and
+       theme classes only; the table is the AddressAssignmentGrid shared with "Network settings...". -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+
+    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="16,0" Spacing="{DynamicResource Oadm.Gap}">
+        <!-- Page 1: Assign IP address -->
+        <Border Classes="card" IsVisible="{Binding IsSettingsPage}">
+          <StackPanel>
+            <ui:CardHeader Title="Assign IP address" Description="{Binding PageDescription}" />
+            <StackPanel Classes="form">
+              <RadioButton GroupName="ipv4" Content="{Binding DhcpOptionText}" IsChecked="{Binding UseDhcp}" />
+              <RadioButton GroupName="ipv4" Content="{Binding RangeOptionText}" IsChecked="{Binding UseRange}" />
+              <Grid Classes="form" ColumnDefinitions="150,320" RowDefinitions="Auto,Auto,Auto" IsVisible="{Binding UseRange}">
+                <TextBlock Classes="fieldLabel" Text="{Binding RangeLabel}" />
+                <TextBox Grid.Column="1" Text="{Binding IpRange}" PlaceholderText="{Binding RangePlaceholder}" />
+                <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Subnet mask" />
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding SubnetMask}" PlaceholderText="255.255.255.0" />
+                <TextBlock Grid.Row="2" Classes="fieldLabel" Text="Default router" />
+                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding DefaultRouter}" PlaceholderText="192.168.0.1" />
+              </Grid>
+              <TextBlock Classes="secondary small" Text="{Binding RangeHint}" TextWrapping="Wrap" IsVisible="{Binding UseRange}" />
+              <TextBlock Classes="secondary small" Text="{Binding CurrentText}" TextWrapping="Wrap" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <!-- Page 1: optional DNS servers (static assignment only) -->
+        <Border Classes="card">
+          <Border.IsVisible>
+            <MultiBinding Converter="{x:Static BoolConverters.And}">
+              <Binding Path="IsSettingsPage" />
+              <Binding Path="UseRange" />
+            </MultiBinding>
+          </Border.IsVisible>
+          <StackPanel>
+            <ui:CardHeader Title="DNS servers" Description="Optional. Leave empty to keep the current DNS settings; domain name and search domains are always kept." />
+            <Grid Classes="form" ColumnDefinitions="150,320" RowDefinitions="Auto,Auto">
+              <TextBlock Classes="fieldLabel" Text="Primary DNS server" />
+              <TextBox Grid.Column="1" Text="{Binding DnsPrimary}" PlaceholderText="optional" />
+              <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Secondary DNS server" />
+              <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding DnsSecondary}" PlaceholderText="optional" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Page 2: new IP addresses -->
+        <Border Classes="card" IsVisible="{Binding IsReviewPage}">
+          <StackPanel>
+            <ui:CardHeader Title="New IP addresses" Description="{Binding PageDescription}" />
+            <vm:AddressAssignmentGrid Margin="{DynamicResource Oadm.GapTop}" DataContext="{Binding Assignment}" />
+          </StackPanel>
+        </Border>
+
+        <!-- Reachability warning: must be acknowledged before Finish -->
+        <Border Classes="card" IsVisible="{Binding ShowWarning}">
+          <StackPanel>
+            <ui:CardHeader Title="The devices get new IP addresses" />
+            <StackPanel Classes="form">
+              <TextBlock Classes="warning" Text="{Binding Warning}" TextWrapping="Wrap" />
+              <CheckBox IsChecked="{Binding WarningAcknowledged}" Content="I understand that OADM may lose contact with these devices" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <ItemsControl ItemsSource="{Binding Errors}" IsVisible="{Binding HasErrors}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <TextBlock Classes="error" Text="{Binding}" TextWrapping="Wrap" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </ScrollViewer>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="secondary" Content="Back" Command="{Binding BackCommand}" IsVisible="{Binding IsReviewPage}" />
+      <Button Classes="primary" Content="{Binding PrimaryText}" Command="{Binding PrimaryCommand}" IsDefault="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

@@ -157,8 +157,11 @@ public static partial class OadmServerHost
             sp.GetRequiredService<TaskEngineOptions>(),
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<Sdk.Plugins.IUploadedFiles>(),
-            sp.GetRequiredService<ITaskDeviceCredentials>()));
+            sp.GetRequiredService<ITaskDeviceCredentials>(),
+            sp.GetRequiredService<ITaskDeviceAddresses>()));
         services.AddSingleton<ITaskDeviceCredentials, TaskDeviceCredentials>();
+        services.AddSingleton<DeviceAddressService>();
+        services.AddSingleton<ITaskDeviceAddresses>(sp => sp.GetRequiredService<DeviceAddressService>());
         services.AddSingleton(sp => new TaskPluginQueries(
             sp.GetRequiredService<PluginRegistry>(),
             sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
@@ -176,6 +179,9 @@ public static partial class OadmServerHost
         // Polling
         services.AddSingleton<DevicePollingService>();
         services.AddHostedService<DevicePollingHostedService>();
+        // Re-find managed devices that moved (mDNS, matched by serial)
+        services.AddSingleton(new DeviceRelocationOptions());
+        services.AddHostedService<DeviceRelocationHostedService>();
 
         // Discovery
         services.AddSingleton<IMdnsBrowser, MdnsBrowser>();

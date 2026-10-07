@@ -125,8 +125,10 @@ public static class NetworkPlanner
     private static PlannedStep DnsStep(DnsChange dns, DeviceApi? ns, IReadOnlyList<DeviceApi> apis, CurrentNetworkSettings current)
     {
         var servers = (dns.Servers ?? []).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).ToList();
-        var search = (dns.SearchDomains ?? []).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).ToList();
-        var domain = dns.DomainName?.Trim() ?? string.Empty;
+        var keptSearch = current.Dns.StaticSearchDomains.Count > 0 ? current.Dns.StaticSearchDomains : current.Dns.SearchDomains;
+        var search = (dns.KeepDomains ? (ns is null ? [] : keptSearch) : dns.SearchDomains ?? [])
+            .Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).ToList();
+        var domain = (dns.KeepDomains ? current.Dns.StaticDomainName ?? current.Dns.DomainName : dns.DomainName)?.Trim() ?? string.Empty;
         var description = dns.UseDhcp ? "DNS from DHCP" : $"DNS {string.Join(", ", servers)}";
         if (!dns.UseDhcp)
         {

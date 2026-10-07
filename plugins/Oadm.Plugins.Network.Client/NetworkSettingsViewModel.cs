@@ -40,8 +40,6 @@ public sealed record Choice<T>(T Value, string Label)
     public override string ToString() => Label;
 }
 
-/// <summary>One row of the per-device preview (address range and host name template).</summary>
-public sealed record PreviewRow(string Device, string CurrentAddress, string NewAddress, string NewHostName);
 
 /// <summary>
 /// "Network settings..." dialog. Every section starts at "Keep unchanged", so only touched sections end up in the
@@ -60,6 +58,8 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
     private readonly IReadOnlyList<IDeviceInfo> _devices;
     private NetworkPayload? _payload;
     private bool _initialized;
+    private bool _recomputing;
+    private string? _lastRangeText;
 
     public NetworkSettingsViewModel(IReadOnlyList<IDeviceInfo> devices)
     {
@@ -85,9 +85,14 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
         SelectedIpv6 = Ipv6Choices[0];
         SelectedDns = DnsChoices[0];
         SelectedHostName = HostNameChoices[0];
+        Assignment = new AddressAssignmentViewModel(devices);
+        Assignment.Changed += (_, _) => Recompute();
         _initialized = true;
         Recompute();
     }
+
+    /// <summary>The per-device table (address range assignment, host name template), shared with "Assign IP address...".</summary>
+    public AddressAssignmentViewModel Assignment { get; }
 
     /// <summary>Raised when the dialog should close: true = apply (see <see cref="ResultJson"/>), false = cancel.</summary>
     public event EventHandler<bool>? CloseRequested;
@@ -111,7 +116,9 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
 
     public bool IsMultiDevice => _devices.Count > 1;
 
-    public string Ipv4AddressLabel => IsMultiDevice ? "Start address" : "IP address";
+    public string Ipv4AddressLabel => IsMultiDevice ? "IP range" : "IP address";
+
+    public string Ipv4AddressPlaceholder => IsMultiDevice ? "192.168.0.100 or 192.168.0.100-120" : "192.168.0.90";
 
     public string HostNameLabel => IsMultiDevice ? "Host name template" : "Host name";
 
@@ -189,7 +196,6 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
 
     public ObservableCollection<string> Errors { get; } = [];
 
-    public ObservableCollection<PreviewRow> Preview { get; } = [];
 
     public bool IsIpv4Static => SelectedIpv4.Value == Ipv4Choice.Static;
 
@@ -199,7 +205,7 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
 
     public bool IsHostNameStatic => SelectedHostName.Value == SourceChoice.Static;
 
-    public bool ShowPreview => Preview.Count > 0;
+    public bool ShowPreview => IsMultiDevice && (IsIpv4Static || IsHostNameStatic);
 
     public bool HasWarning => !string.IsNullOrEmpty(ReachabilityWarning);
 
@@ -215,6 +221,7 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
     public async Task LoadCurrentAsync(ITaskDialogContext ctx, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
+        Assignment.Attach(ctx, _devices[0].Id);
         PrefillStatus = $"Reading current settings from {Label(_devices[0])}...";
         try
         {
@@ -349,6 +356,24 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
     /// <summary>Rebuilds payload, preview, warning and errors from the inputs.</summary>
     private void Recompute()
     {
+        if (_recomputing)
+        {
+            return;
+        }
+
+        _recomputing = true;
+        try
+        {
+            RecomputeCore();
+        }
+        finally
+        {
+            _recomputing = false;
+        }
+    }
+
+    private void RecomputeCore()
+    {
         var errors = new List<string>();
         var ipv4Addresses = AssignIpv4(errors);
         var hostNames = AssignHostNames();
@@ -413,6 +438,11 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
             }
         }
 
+        if (IsMultiDevice && IsIpv4Static && Assignment.HasConflicts && errors.Count == 0)
+        {
+            errors.Add("IPv4: resolve the conflicts shown in the Devices table.");
+        }
+
         if (!payload.HasChanges)
         {
             errors.Clear();
@@ -424,7 +454,8 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
             Errors.Add(error);
         }
 
-        UpdatePreview(ipv4Addresses, hostNames);
+        Assignment.ShowHostName = IsHostNameStatic;
+        Assignment.SetHostNames(hostNames);
         ReachabilityWarning = ComputeWarning(payload, ipv4Addresses);
         _payload = errors.Count == 0 && payload.HasChanges ? payload : null;
         CanApply = _payload is not null && (!HasWarning || WarningAcknowledged);
@@ -435,30 +466,39 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
 
     private List<string>? AssignIpv4(List<string> errors)
     {
-        if (!IsIpv4Static)
+        if (!IsIpv4Static || !IsMultiDevice)
         {
+            Assignment.Clear();
+            _lastRangeText = null;
+            return IsIpv4Static ? [Ipv4Address.Trim()] : null;
+        }
+
+        // Same range syntax and assignment as "Assign IP address..." (a single address is the start address).
+        int? prefix = Ipv4.TryParsePrefix(Ipv4Mask, out var p) ? p : null;
+        var text = Ipv4Address.Trim();
+        if (!IpRangeExpression.TryParse(text, out var range, out var rangeError))
+        {
+            errors.Add("IPv4: " + rangeError);
+            _lastRangeText = null;
             return null;
         }
 
-        if (!IsMultiDevice)
+        // Suggest again only when range, mask or gateway changed; a new range discards the user's edits.
+        var key = $"{text}|{prefix}|{Ipv4Gateway.Trim()}";
+        if (!string.Equals(_lastRangeText, key, StringComparison.Ordinal))
         {
-            return [Ipv4Address.Trim()];
+            var resetEdits = _lastRangeText is null || !_lastRangeText.StartsWith(text + "|", StringComparison.Ordinal);
+            _lastRangeText = key;
+            Assignment.Assign(range!, prefix, Ipv4Gateway.Trim(), resetEdits);
         }
 
-        if (string.IsNullOrWhiteSpace(Ipv4Address))
-        {
-            errors.Add("IPv4: enter the start address of the range.");
-            return null;
-        }
-
-        var prefix = Ipv4.TryParsePrefix(Ipv4Mask, out var p) ? p : 32;
-        if (!Ipv4.TryAssignRange(Ipv4Address.Trim(), prefix, _devices.Count, out var addresses, out var error))
+        if (Assignment.Error is { } error)
         {
             errors.Add("IPv4: " + error);
             return null;
         }
 
-        return addresses.ToList();
+        return [.. Assignment.Addresses];
     }
 
     private List<string>? AssignHostNames()
@@ -471,43 +511,16 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
         return _devices.Select((d, i) => PayloadValidator.ExpandHostName(HostNameText, i + 1, d.Serial)).ToList();
     }
 
-    private void UpdatePreview(List<string>? addresses, List<string>? hostNames)
-    {
-        Preview.Clear();
-        if (!IsMultiDevice || (addresses is null && hostNames is null))
-        {
-            return;
-        }
-
-        for (var i = 0; i < _devices.Count; i++)
-        {
-            var device = _devices[i];
-            Preview.Add(new PreviewRow(
-                Label(device),
-                device.Address,
-                addresses?.ElementAtOrDefault(i) ?? "unchanged",
-                hostNames?.ElementAtOrDefault(i) ?? "unchanged"));
-        }
-    }
-
     private string? ComputeWarning(NetworkPayload payload, List<string>? addresses)
     {
         var parts = new List<string>();
         if (payload.Ipv4 is { Mode: Ipv4Mode.Static } && addresses is not null)
         {
-            var moving = _devices.Where((d, i) => !string.Equals(d.Address, addresses.ElementAtOrDefault(i), StringComparison.OrdinalIgnoreCase)).Count();
-            if (moving > 0)
-            {
-                parts.Add(moving == 1 && !IsMultiDevice
-                    ? "The device gets a new IPv4 address. OADM reaches it at its current address and loses contact after the change, until you add it again with the new address."
-                    : $"{moving} of {_devices.Count} devices get a new IPv4 address. OADM reaches them at their current address and loses contact after the change, until you add them again with the new address.");
-            }
-
-            parts.Add("A wrong subnet mask or gateway makes devices unreachable from the server. Make sure the server can reach the new addresses.");
+            parts.AddRange(NetworkWarnings.Static(_devices, addresses));
         }
         else if (payload.Ipv4 is { Mode: Ipv4Mode.Dhcp })
         {
-            parts.Add("With DHCP the devices get their address from the DHCP server. It can differ from the current address, and OADM then loses contact with them. Make sure a DHCP server is available on their network.");
+            parts.Add(NetworkWarnings.Dhcp);
         }
 
         var ipv6Connected = _devices.Count(d => d.Address.Contains(':', StringComparison.Ordinal));

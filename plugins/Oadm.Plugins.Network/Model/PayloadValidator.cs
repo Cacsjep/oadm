@@ -70,22 +70,14 @@ public static partial class PayloadValidator
             return;
         }
 
+        var networkErrors = ValidateIpv4Network(v4.PrefixLength, v4.Gateway);
+        errors.AddRange(networkErrors);
         if (v4.PrefixLength is not { } prefix || prefix is < 1 or > 30)
         {
-            errors.Add("IPv4: enter a subnet mask between /1 (128.0.0.0) and /30 (255.255.255.252).");
             return;
         }
 
-        uint gateway = 0;
-        if (string.IsNullOrWhiteSpace(v4.Gateway) || !Ipv4.TryParse(v4.Gateway, out gateway))
-        {
-            errors.Add("IPv4: enter a valid default gateway.");
-        }
-        else if (Ipv4.HostAddressProblem(gateway, prefix) is { } gatewayProblem)
-        {
-            errors.Add($"IPv4: gateway {v4.Gateway} {gatewayProblem}.");
-            gateway = 0;
-        }
+        var gateway = networkErrors.Count == 0 && Ipv4.TryParse(v4.Gateway, out var g) ? g : 0;
 
         var seen = new Dictionary<uint, int>();
         var missing = 0;
@@ -133,6 +125,41 @@ public static partial class PayloadValidator
         {
             errors.Add($"IPv4: {Ipv4.Format(address)} is assigned to {count} devices.");
         }
+    }
+
+    /// <summary>The settings shared by all devices of a static IPv4 change: subnet mask (/1 to /30) and default gateway.</summary>
+    public static IReadOnlyList<string> ValidateIpv4Network(int? prefixLength, string? gateway)
+    {
+        var errors = new List<string>();
+        if (prefixLength is not { } prefix || prefix is < 1 or > 30)
+        {
+            errors.Add("IPv4: enter a subnet mask between /1 (128.0.0.0) and /30 (255.255.255.252).");
+            return errors;
+        }
+
+        if (string.IsNullOrWhiteSpace(gateway) || !Ipv4.TryParse(gateway, out var address))
+        {
+            errors.Add("IPv4: enter a valid default gateway.");
+        }
+        else if (Ipv4.HostAddressProblem(address, prefix) is { } problem)
+        {
+            errors.Add($"IPv4: gateway {gateway} {problem}.");
+        }
+
+        return errors;
+    }
+
+    /// <summary>Static DNS servers alone (Assign IP address: the servers are optional, domains are kept).</summary>
+    public static IReadOnlyList<string> ValidateDnsServers(IReadOnlyList<string> servers)
+    {
+        ArgumentNullException.ThrowIfNull(servers);
+        var errors = new List<string>();
+        if (servers.Count > 0)
+        {
+            ValidateDns(new DnsChange(false, servers), errors);
+        }
+
+        return errors;
     }
 
     private static void ValidateIpv6(Ipv6Change v6, int deviceCount, List<string> errors)

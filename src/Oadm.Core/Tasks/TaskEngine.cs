@@ -32,6 +32,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     private readonly TaskChangeFeed _feed;
     private readonly IUploadedFiles _files;
     private readonly ITaskDeviceCredentials? _credentials;
+    private readonly ITaskDeviceAddresses? _addresses;
     private readonly ConcurrentDictionary<Guid, RunningTask> _active = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _gates = new(StringComparer.OrdinalIgnoreCase);
     private readonly CancellationTokenSource _shutdown = new();
@@ -46,9 +47,11 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         TaskEngineOptions? options = null,
         TimeProvider? timeProvider = null,
         IUploadedFiles? uploadedFiles = null,
-        ITaskDeviceCredentials? credentials = null)
+        ITaskDeviceCredentials? credentials = null,
+        ITaskDeviceAddresses? addresses = null)
     {
         _credentials = credentials;
+        _addresses = addresses;
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(plugins);
         ArgumentNullException.ThrowIfNull(devices);
@@ -605,7 +608,44 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             engine.LogCredentialsUpdated(task.Id, deviceId, userName);
             return await engine._vapix.CreateAsync(deviceId, ct).ConfigureAwait(false);
         }
+
+        public Task<IVapixClient> CreateClientForAsync(Guid deviceId, string address, CancellationToken ct)
+        {
+            var addresses = engine._addresses ?? throw new NotSupportedException("Clients for other addresses cannot be created here.");
+            return addresses.CreateClientAsync(deviceId, address, ct);
+        }
+
+        public async Task<(bool Updated, IVapixClient? Client)> UpdateDeviceAddressAsync(Guid deviceId, string newAddress, CancellationToken ct)
+        {
+            var addresses = engine._addresses ?? throw new NotSupportedException("The device address cannot be changed here.");
+            DeviceAddressChangeResult result;
+            try
+            {
+                result = await addresses.UpdateAddressAsync(deviceId, newAddress, ct).ConfigureAwait(false);
+            }
+            catch (DeviceIdentityException ex)
+            {
+                engine.AddLog(task, deviceId, TaskLogLevel.Warning, ex.Message);
+                throw;
+            }
+
+            switch (result)
+            {
+                case DeviceAddressChangeResult.Updated:
+                    engine.AddLog(task, deviceId, TaskLogLevel.Info, $"OADM device address changed to {newAddress}.");
+                    engine.LogDeviceAddressUpdated(task.Id, deviceId, newAddress);
+                    return (true, await engine._vapix.CreateAsync(deviceId, ct).ConfigureAwait(false));
+                case DeviceAddressChangeResult.KeptHostName:
+                    engine.AddLog(task, deviceId, TaskLogLevel.Info, "OADM reaches the device by host name; the host name is kept.");
+                    return (false, null);
+                default:
+                    return (false, null);
+            }
+        }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Task {TaskId}: device {DeviceId} now has the address {Address}")]
+    private partial void LogDeviceAddressUpdated(Guid taskId, Guid deviceId, string address);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Task {TaskId}: stored credentials of device {DeviceId} removed (no longer accepted)")]
     private partial void LogCredentialsInvalidated(Guid taskId, Guid deviceId);

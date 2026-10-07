@@ -177,6 +177,20 @@ Must work on all three OS and on multiple NICs (bind one socket per interface). 
 continuously while the add wizard is open and once at server start. SSDP and WS-Discovery
 are explicitly out of scope for Goal 1.
 
+## Following moved devices
+
+OADM keeps a device managed when its address changes (`Oadm.Core.Devices.DeviceAddressService`):
+- **By a task** (Network plugins after setting a static address): `ITaskExecutionContext.UpdateDeviceAddressAsync`.
+  The server reads basicdeviceinfo at the new address with the stored credentials, scheme and pinned
+  certificate; a different or missing serial throws `DeviceIdentityException` and the record stays. Otherwise
+  the record's Address changes (credentials and pin kept, Unreachable becomes Unknown), the change is published
+  and a full refresh queued. Logged ("Device X moved from A to B").
+- **By the periodic re-find** (`Oadm.Server.Devices.DeviceRelocationHostedService`, `DeviceRelocationOptions`):
+  every 5 minutes (first run 30 s after start), only while at least one device is Unreachable and addressed by
+  IP, a 15 s zero-conf session looks for those serials; a device announced at another address is verified
+  there the same way and moved (`TryRelocateAsync`). This covers DHCP changes, where the new address is unknown.
+- Devices addressed by host name (`Devices.UseHostName`) keep their host name; their record never moves.
+
 ## IP range scan
 
 For every address in the range (parallelism from settings, default 32): try HTTPS 443 then
@@ -503,7 +517,12 @@ public interface ITaskExecutionContext
     void Log(TaskLogLevel level, string message);               // per-task log, never secrets
     void MarkCredentialsInvalid();     // device lost OADM's credentials: delete them, refresh
     Task UpdateCredentialsAsync(string userName, string password, CancellationToken ct); // store new ones; Vapix is swapped
+    Task<IVapixClient> CreateClientForAsync(string address, CancellationToken ct);       // DIM: device at another address (same credentials, scheme, pin); caller disposes
+    Task<bool> UpdateDeviceAddressAsync(string newAddress, CancellationToken ct);         // DIM: server verifies the serial, moves the record, Vapix is swapped; false = host name kept
 }
+// DIM defaults throw NotSupportedException. UpdateDeviceAddressAsync throws DeviceIdentityException (Oadm.Sdk.Plugins)
+// when the device at the new address has another serial or does not answer; the record stays unchanged.
+// ITaskQueryContext has IDeviceRepository? Devices (DIM null): all managed devices, read-only.
 
 public interface ITaskStep : IDisposable   // Dispose without an end = Done; escaping exception = Failed
 {
@@ -617,7 +636,11 @@ Steps of the other task plugins (details in each plugin README):
   Add/Update/Remove user <name> (one per write), Verify users.
 - Network: Check compatibility, Read current settings, Read IPv6 address mode, Validate settings, Set
   host name, Set DNS, Set IPv6 (+ Enable IPv6), Set IPv4 (order as written), Wait for the settings to
-  apply, Check reachability; unchanged sections Skipped "Keep unchanged".
+  apply, Check reachability, Wait for the device at the new address, Verify device identity, Update OADM
+  device address; unchanged sections Skipped "Keep unchanged".
+- Assign IP address: Check compatibility, Read current settings, Validate settings, Set DNS, Set IPv4, Wait
+  for the settings to apply, Check reachability, Wait for the device at the new address, Verify device
+  identity, Update OADM device address.
 - Firmware: Check compatibility, Read device info, Validate file, Read firmware status, Upload firmware
   (byte progress), Install firmware (until offline), Wait for device to come back, Verify version, Read
   commit state, Commit firmware (retries add "Wait before retrying the commit" and "(attempt n)" steps).
@@ -629,13 +652,37 @@ Steps of the other task plugins (details in each plugin README):
 ## Network settings plugin
 
 `plugins/Oadm.Plugins.Network` (+ `.Client`), id `oadm.network`, context menu "Network settings...",
-dialog with IPv4 / IPv6 / DNS / Host name sections (each "Keep unchanged" by default), address range
-assignment with preview for several devices, acknowledged warning before any change that can cut OADM
-off. Uses network-settings 1.x (`getNetworkInfo`, `setIPv4AddressConfiguration`,
+dialog with IPv4 / IPv6 / DNS / Host name sections (each "Keep unchanged" by default), IP range
+assignment in the shared address table for several devices, acknowledged warning before any change that
+can cut OADM off. Uses network-settings 1.x (`getNetworkInfo`, `setIPv4AddressConfiguration`,
 `setResolverConfiguration`, `setHostnameConfiguration`, `setIPv6AddressConfiguration` >= 1.6) and
 param.cgi `Network.*` for the IPv6 address mode and for devices without network-settings. Writes the
-address family OADM connects with last, then reports re-addressing with `ReportWarning`; it does not
-update the OADM device record. Decision table and verified device behavior: plugin `README.md`.
+address family OADM connects with last. After a new static address (IPv4, or IPv6 when OADM connects over
+IPv6) OADM follows the device: it polls the new address (90 s), verifies the serial number and moves the
+device record (`UpdateDeviceAddressAsync`); not answering, another serial or a refused move end as Warning
+with the record unchanged; host names are kept. DHCP keeps the record (step "Update OADM device address"
+Skipped "DHCP: address assigned by the network, the device will be found again by the next scan"), the
+periodic re-find moves it. Decision table and verified device behavior: plugin `README.md`.
+
+## Assign IP address plugin
+
+Same package, id `oadm.network.assign-ip`, context menu and toolbar **Assign IP address...**, a clone of
+ADM's "Assign IP address to selected devices" (research and sources in the Network plugin `README.md`):
+- Page 1: "Obtain IP addresses automatically (DHCP)" (Finish here) or "Assign the following IP address
+  range" with **IP range**, **Subnet mask**, **Default router** (prefilled from the first device), optional
+  DNS servers (domain name and search domains of each device kept). One device: "Assign the following IP
+  address", field "IP address".
+- IP range syntax as ADM/ACS (`IpRangeExpression`): `192.168.0.*`, `10.*.1.*`, `192.168.0.10-192.168.0.20`,
+  `192.168.0.10-20`, `10.10-30.1.101`, `10.10-30.1.*`, comma lists; a single address alone is a start address.
+- Page 2 "New IP addresses": the shared `AddressAssignmentGrid` (MAC address, Model, Current IP address, New IP
+  address editable in the cell, Status chip), devices in the grid order the host passes. Suggestions skip
+  network/broadcast addresses, the router, other managed devices' addresses and addresses in use (query
+  `checkAddresses`: managed devices plus a TCP connect to 80/443 from the server; also a **Check addresses**
+  button). "Not enough addresses: ..." when the range is too small; conflicts (duplicate, outside the subnet,
+  used by a managed device, in use) are red chips and block Finish; the warning must be acknowledged.
+- Payload: `NetworkPayload` with `ipv4` (+ `dns` with `keepDomains`) only; one task per device with the
+  Network plugin's steps for DNS and IPv4 and the follow-the-device steps.
+- "Network settings..." shares range parsing, suggestion, conflicts, validation, warnings and the table.
 
 ## Applications (ACAP) plugin
 

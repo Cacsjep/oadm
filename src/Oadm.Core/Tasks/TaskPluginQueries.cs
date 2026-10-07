@@ -73,7 +73,7 @@ public sealed partial class TaskPluginQueries
 
             var vapix = await _vapix.CreateAsync(deviceId, token).ConfigureAwait(false);
             var logger = _loggerFactory.CreateLogger("Oadm.Plugins." + registration.Id);
-            return await query.QueryAsync(new QueryContext(vapix, logger), device, method, payloadJson, token).ConfigureAwait(false);
+            return await query.QueryAsync(new QueryContext(vapix, logger, _devices), device, method, payloadJson, token).ConfigureAwait(false);
         }
         catch (TaskQueryException)
         {
@@ -115,11 +115,13 @@ public sealed partial class TaskPluginQueries
     [LoggerMessage(Level = LogLevel.Warning, Message = "Query {Method} of task plugin {PluginId} failed for device {DeviceId}")]
     private partial void LogQueryFailed(Exception ex, string pluginId, string method, Guid deviceId);
 
-    private sealed class QueryContext(IVapixClient vapix, ILogger logger) : ITaskQueryContext
+    private sealed class QueryContext(IVapixClient vapix, ILogger logger, IDeviceRepository devices) : ITaskQueryContext
     {
         public IVapixClient Vapix { get; } = vapix;
 
         public ILogger Logger { get; } = logger;
+
+        public IDeviceRepository? Devices { get; } = devices;
     }
 }
 

@@ -21,14 +21,9 @@
         <Border Classes="card">
           <StackPanel>
             <ui:CardHeader Classes="flush" Title="Devices" Description="{Binding DevicesDescription}" />
-            <DataGrid Margin="{DynamicResource Oadm.GapTop}" ItemsSource="{Binding Preview}" IsVisible="{Binding ShowPreview}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
-              <DataGrid.Columns>
-                <DataGridTextColumn Header="Device" Width="2*" Binding="{Binding Device}" x:DataType="vm:PreviewRow" />
-                <DataGridTextColumn Header="Current address" Width="*" Binding="{Binding CurrentAddress}" x:DataType="vm:PreviewRow" />
-                <DataGridTextColumn Header="New address" Width="*" Binding="{Binding NewAddress}" x:DataType="vm:PreviewRow" />
-                <DataGridTextColumn Header="New host name" Width="*" Binding="{Binding NewHostName}" x:DataType="vm:PreviewRow" />
-              </DataGrid.Columns>
-            </DataGrid>
+            <Panel Margin="{DynamicResource Oadm.GapTop}" IsVisible="{Binding ShowPreview}">
+              <vm:AddressAssignmentGrid DataContext="{Binding Assignment}" />
+            </Panel>
           </StackPanel>
         </Border>
 
@@ -43,7 +38,7 @@
               </Grid>
               <Grid Classes="form" ColumnDefinitions="150,280" RowDefinitions="Auto,Auto,Auto" IsVisible="{Binding IsIpv4Static}">
                 <TextBlock Classes="fieldLabel" Text="{Binding Ipv4AddressLabel}" />
-                <TextBox Grid.Column="1" Text="{Binding Ipv4Address}" PlaceholderText="192.168.0.90" />
+                <TextBox Grid.Column="1" Text="{Binding Ipv4Address}" PlaceholderText="{Binding Ipv4AddressPlaceholder}" />
                 <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Subnet mask" />
                 <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Ipv4Mask}" PlaceholderText="255.255.255.0 or 24" />
                 <TextBlock Grid.Row="2" Classes="fieldLabel" Text="Default gateway" />
