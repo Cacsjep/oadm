@@ -8,6 +8,8 @@ public partial class TaskDetailsWindow : Window
     public TaskDetailsWindow()
     {
         InitializeComponent();
+        Footer.CancelButton.Click += OnClose;
+        Footer.CancelButton.IsDefault = true;
     }
 
     /// <summary>Stops the view model from following the task once the window is gone.</summary>

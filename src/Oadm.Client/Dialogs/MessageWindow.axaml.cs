@@ -10,6 +10,13 @@ public partial class MessageWindow : Window
     public MessageWindow()
     {
         InitializeComponent();
+        Footer.CancelButton.Click += OnCancel;
+    }
+
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+        Footer.CancelButton.IsVisible = DataContext is not MessageDialogModel { ShowCancel: false };
     }
 
     private void OnConfirm(object? sender, RoutedEventArgs e) => Close(true);

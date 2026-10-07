@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:chrome="using:Avalonia.Controls.Chrome"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
         xmlns:tasks="using:Oadm.Client.Tasks"
         x:Class="Oadm.Client.Tasks.TaskDetailsWindow"
         x:DataType="tasks:TaskDetailsViewModel"
@@ -10,10 +10,8 @@
         ShowInTaskbar="False"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="{StaticResource Oadm.TitleBarHeight}">
-  <Grid RowDefinitions="Auto,Auto,16,3*,16,2*,Auto" Margin="0,0,0,16">
-    <Border Height="{StaticResource Oadm.TitleBarHeight}" chrome:WindowDecorationProperties.ElementRole="TitleBar" Padding="24,0">
-      <TextBlock Classes="appName" Text="{Binding Title}" VerticalAlignment="Center" />
-    </Border>
+  <Grid RowDefinitions="Auto,Auto,16,3*,16,2*,Auto">
+    <ui:DialogTitleBar Text="{Binding Title}" />
 
     <!-- A task targets exactly one device: one row -->
     <Border Grid.Row="1" Classes="card" Margin="16,0">
@@ -109,6 +107,6 @@
       </Grid>
     </Border>
 
-    <Button Grid.Row="6" Classes="secondary" Content="Close" HorizontalAlignment="Right" Margin="0,16,16,0" Click="OnClose" IsCancel="True" IsDefault="True" />
+    <ui:DialogFooter Grid.Row="6" x:Name="Footer" CancelText="Close" />
   </Grid>
 </Window>
