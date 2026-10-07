@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:tasks="using:Oadm.Client.Tasks"
              x:Class="Oadm.Client.Tasks.TasksGridView"
              x:DataType="tasks:TasksViewModel">
@@ -17,11 +18,7 @@
       <DataGridTemplateColumn Header="Status" Width="170" SortMemberPath="StateText">
         <DataGridTemplateColumn.CellTemplate>
           <DataTemplate x:DataType="tasks:TaskRowViewModel">
-            <Border Classes="pill" Margin="10,0" Classes.ok="{Binding IsStateOk}" Classes.warn="{Binding IsStateWarning}" Classes.error="{Binding IsStateError}" Classes.accent="{Binding IsStateAccent}">
-              <StackPanel Orientation="Horizontal">
-                <TextBlock Text="{Binding StateText}" />
-              </StackPanel>
-            </Border>
+            <ui:StatusChip Text="{Binding StatusMessage}" ToolTip.Tip="{Binding StatusTooltip}" IsOk="{Binding IsStateOk}" IsWarning="{Binding IsStateWarning}" IsError="{Binding IsStateError}" IsAccent="{Binding IsStateAccent}" />
           </DataTemplate>
         </DataGridTemplateColumn.CellTemplate>
       </DataGridTemplateColumn>
@@ -37,7 +34,7 @@
       <DataGridTemplateColumn Header="Progress" Width="2*" MinWidth="180" SortMemberPath="Progress">
         <DataGridTemplateColumn.CellTemplate>
           <DataTemplate x:DataType="tasks:TaskRowViewModel">
-            <Grid ColumnDefinitions="*,52" Margin="10,0,12,0" VerticalAlignment="Center">
+            <Grid ColumnDefinitions="*,52" Margin="10,0,12,0" VerticalAlignment="Center" IsVisible="{Binding IsActive}">
               <ProgressBar Value="{Binding Progress}" Minimum="0" Maximum="100" Classes.stream="{Binding IsActive}" />
               <TextBlock Grid.Column="1" Classes="secondary" Margin="10,0,0,0" Text="{Binding ProgressText}" HorizontalAlignment="Right" />
             </Grid>

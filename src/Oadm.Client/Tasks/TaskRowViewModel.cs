@@ -37,6 +37,11 @@ public sealed partial class TaskRowViewModel : ObservableObject
     [ObservableProperty] public partial int Progress { get; private set; }
     [ObservableProperty] public partial string ProgressText { get; private set; } = "";
     [ObservableProperty] public partial bool IsActive { get; private set; }
+
+    /// <summary>Shown right of the status icon: the error or warning message, empty otherwise (icon only).</summary>
+    [ObservableProperty] public partial string StatusMessage { get; private set; } = "";
+
+    [ObservableProperty] public partial string StatusTooltip { get; private set; } = "";
     [ObservableProperty] public partial IReadOnlyList<TaskDeviceResult> DeviceResults { get; private set; } = [];
 
     /// <summary>The task's device (a task always targets exactly one device); empty for a malformed task.</summary>
@@ -87,6 +92,9 @@ public sealed partial class TaskRowViewModel : ObservableObject
         DeviceResults = task.Devices.ToList();
         DeviceId = !string.IsNullOrEmpty(task.DeviceId) ? task.DeviceId : DeviceResults.Count > 0 ? DeviceResults[0].DeviceId : "";
         BatchId = task.BatchId;
+        string message = DeviceResults.Count > 0 ? DeviceResults[0].Message : "";
+        StatusMessage = task.State is TaskState.Failed or TaskState.DoneWithWarnings ? message : "";
+        StatusTooltip = string.IsNullOrEmpty(message) ? StateText : $"{StateText}: {message}";
         Steps = task.Steps.ToList();
         CurrentStepIndex = Steps.Count == 0 ? -1 : task.CurrentStepIndex;
         TaskStep? current = CurrentStepIndex >= 0 && CurrentStepIndex < Steps.Count ? Steps[CurrentStepIndex] : null;

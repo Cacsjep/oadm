@@ -267,10 +267,17 @@ Dark only, calm and spacious, no gradients inside the app.
   buttons and status pills. Secondary accent teal `#7FC8D0`.
 - Text: primary `#F2F2F2`, secondary `#9A9A9A` (labels like "Source", column headers).
   Font Inter (Avalonia.Fonts.Inter), 11.7 px body, 9.9 px small, 18 px card titles, 21.6 px page titles, semibold titles.
-- Status shown as small rounded chips, not plain text: transparent background, 1 px border in
-  the status color (OK green, warning amber, error red, running violet, neutral grey), normal
-  text color, regular weight (not bold), no dot. No status dot on the device icon either.
-  Count badges stay a small solid violet pill.
+- Status is never a chip: everywhere a status or result is shown (device certificate columns,
+  tasks, task steps, logs, add page, plugin dialogs) use `ui:StatusChip` = a small icon colored
+  by the status (check ok green, warning amber, error red, running violet and spinning, neutral
+  grey) with plain text in the normal text color to its right, plus optional detail text
+  (e.g. the error message). Device grid: the first-column device icon is colored by the device
+  status and the Status column is plain text. Tasks pane: the Status column shows only the
+  colored icon, with the error or warning message right of it when there is one; finished tasks
+  show no progress bar. Count badges stay a small solid violet pill.
+- Window chrome: title bar and caption buttons are 32 px high (caption buttons 46x32), exactly
+  like the Windows default. Main window minimum size 1280x720.
+- Text fields and number fields: text vertically centered (measured, no extra offset).
 - Icons: one outline icon set (Fluent System Icons / Lucide geometry), monochrome
   `#CFCFCF`, 16 px. Toolbar uses icon + text buttons, not ADM's icon-only bar.
 - All colors and sizes as resources in `Themes/OadmTheme.axaml`; no hard-coded colors in views.

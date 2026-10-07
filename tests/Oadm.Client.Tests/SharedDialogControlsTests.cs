@@ -38,18 +38,22 @@ public sealed class SharedDialogControlsTests
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
-            Assert.Equal(48, title.Height);
+            Assert.Equal(32, title.Height); // same as the Windows caption height
             Assert.Equal(WindowDecorationsElementRole.TitleBar, WindowDecorationProperties.GetElementRole(title));
             Assert.Equal(new Avalonia.Thickness(0, 0, 0, 16), header.Margin);
             Assert.False(header.Children.OfType<TextBlock>().Single(t => t.Classes.Contains("secondary")).IsVisible);
 
-            Assert.Contains("pill", chip.Classes);
+            // Status = colored icon + plain text, no chip border.
+            Assert.Contains("status", chip.Classes);
             Assert.Contains("ok", chip.Classes);
+            OadmIcon statusIcon = chip.Children.OfType<OadmIcon>().Single();
+            Assert.IsAssignableFrom<Geometry>(statusIcon.Data);
             chip.IsOk = false;
             chip.IsError = true;
+            chip.Detail = "Login failed";
             Assert.DoesNotContain("ok", chip.Classes);
             Assert.Contains("error", chip.Classes);
-            Assert.Equal(1, chip.BorderThickness.Left);
+            Assert.Equal("Upgrade: Login failed", chip.Children.OfType<TextBlock>().Single().Text);
 
             ProgressBar bar = progress.Children.OfType<ProgressBar>().Single();
             Assert.Equal(42, bar.Value);

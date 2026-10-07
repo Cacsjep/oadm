@@ -104,9 +104,8 @@
                             Command="{Binding $parent[UserControl].((dev:DevicesViewModel)DataContext).LiveView.ToggleCommand}"
                             CommandParameter="{Binding}">
                     <Panel Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Background="Transparent" ToolTip.Tip="{Binding CategoryTooltip}">
-                      <ui:OadmIcon Data="{Binding CategoryIconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Width="18" Height="18" HorizontalAlignment="Left" VerticalAlignment="Top" />
-                      <Ellipse Classes="statusDot" HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                               Classes.ok="{Binding IsStatusOk}" Classes.warn="{Binding IsStatusWarning}" Classes.error="{Binding IsStatusError}" />
+                      <ui:OadmIcon Data="{Binding CategoryIconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Classes.ok="{Binding IsStatusOk}" Classes.warn="{Binding IsStatusWarning}" Classes.error="{Binding IsStatusError}" />
                     </Panel>
                     </Button>
                   </DataTemplate>
@@ -116,11 +115,7 @@
               <DataGridTemplateColumn Tag="status" Header="Status" Width="160*" MinWidth="70" SortMemberPath="StatusText">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:DeviceRowViewModel">
-                    <Border Classes="pill" Margin="10,0" Classes.ok="{Binding IsStatusOk}" Classes.warn="{Binding IsStatusWarning}" Classes.error="{Binding IsStatusError}">
-                      <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding StatusText}" />
-                      </StackPanel>
-                    </Border>
+                    <TextBlock Text="{Binding StatusText}" />
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
@@ -142,20 +137,14 @@
               <DataGridTemplateColumn Tag="certExpires" Header="Certificate expires" Width="156*" MinWidth="70" SortMemberPath="CertExpiresSortKey">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:DeviceRowViewModel">
-                    <Border Classes="pill" Margin="10,0" IsVisible="{Binding CertExpires.HasText}" ToolTip.Tip="{Binding CertTooltip}"
-                            Classes.ok="{Binding CertExpires.IsOk}" Classes.warn="{Binding CertExpires.IsWarning}" Classes.error="{Binding CertExpires.IsError}">
-                      <TextBlock Text="{Binding CertExpires.Text}" />
-                    </Border>
+                    <ui:StatusChip Text="{Binding CertExpires.Text}" IsVisible="{Binding CertExpires.HasText}" ToolTip.Tip="{Binding CertTooltip}" IsOk="{Binding CertExpires.IsOk}" IsWarning="{Binding CertExpires.IsWarning}" IsError="{Binding CertExpires.IsError}" />
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
               <DataGridTemplateColumn Tag="certTrust" Header="Certificate" Width="110*" MinWidth="70" SortMemberPath="CertTrust.Text">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:DeviceRowViewModel">
-                    <Border Classes="pill" Margin="10,0" IsVisible="{Binding CertTrust.HasText}" ToolTip.Tip="{Binding CertTooltip}"
-                            Classes.ok="{Binding CertTrust.IsOk}" Classes.warn="{Binding CertTrust.IsWarning}" Classes.error="{Binding CertTrust.IsError}">
-                      <TextBlock Text="{Binding CertTrust.Text}" />
-                    </Border>
+                    <ui:StatusChip Text="{Binding CertTrust.Text}" IsVisible="{Binding CertTrust.HasText}" ToolTip.Tip="{Binding CertTooltip}" IsOk="{Binding CertTrust.IsOk}" IsWarning="{Binding CertTrust.IsWarning}" IsError="{Binding CertTrust.IsError}" />
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
