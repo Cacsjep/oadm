@@ -59,7 +59,30 @@ algorithms on the same machine and data.
 
 ### Plugins
 
-See the section "Plugins" below.
+| Plugin | Checked | Finding | Fix | Before | After |
+|---|---|---|---|---|---|
+| All (server `CanRun`) | `CanRun` of Users, Network, Assign IP, Firmware, ACAP, Date and time, Restart, Rollout (called 5,000 x N per ListTaskPlugins computation) | No I/O, but the API-based ones used `DeviceApiExtensions.Supports` (LINQ, `OrderByDescending`, version parsing, allocations per call) | `plugins/Shared/CachedApiCheck.cs`: one indexed pass, parses only matching entries, no allocations (linked into the plugins) | 100,000 checks: 228 ms cold / ~40 ms warm | 10.6 ms cold / ~9 ms warm |
+| Users | dialog with 5,000 selected | Queries only the first device, DataGrid, count summary | none (test: 1 query for 5,000 devices) | | |
+| Network settings, Assign IP | per-device grid (virtualized DataGrid), suggestions, conflicts | `AddressConflicts.FindIpv6` was O(n^2) (`Count` per row, known addresses re-parsed per row), run on every row edit | Dictionary of address counts, IPv6 index built once per call (`Model/AddressAssignment.cs`) | 5,000 rows vs 5,000 managed: 5,281 ms | 20-30 ms; both dialogs with 5,000 devices 110-150 ms |
+| Firmware | dialog with 5,000 selected | One sequential status query per device when the dialog opens (5,000 camera requests); summary in 3 passes | First 50 preloaded (max 4 in flight), other rows lazily when the grid shows them (`LoadingRow`), cancelled on close; one-pass summary | 5,000 queries | 50 queries |
+| ACAP | compatibility after picking a package | One query per selected device, repeated on "Allow downgrade"; rows added one by one | Bounded sample: 25 devices (one per model/firmware first), max 4 in flight; others "Checked at install" (the task still checks every device); list replaced as a whole | 5,000 queries | 25 queries |
+| Date and time | dialog with 5,000 selected | Already one-pass, one query | cheap API check | | |
+| Snapshot report page | tiles, image loading, memory | `ItemsControl` + `WrapPanel` created 5,000 tile controls, all 5,000 snapshots loaded eagerly and kept decoded, status line and filter per tile | Rows in a `VirtualizingStackPanel` (tiles per row from the width), only shown rows load (max 4 requests in flight), loads of rows scrolled away are cancelled, at most 150 hidden decoded pictures kept (LRU), one-pass filter | 5,000 requests on open, 5,000 controls | 24 requests on open, < 200 tile controls; fast scroll over 1,250 rows < 1 s |
+| Snapshot report server | listing sources, report jobs | One task per device waiting on the gate, `FindAsync` per id, a report listed sources again and looked every device up again; `MaxItems` 1,000 rejected a 5,000-device report | 4 bounded workers, one `ListAsync` for > 16 ids, cached sources for reports, `MaxItems` 5,000 with smaller snapshots above 200 / 1,000 items | | 5,000 devices listed with 0 `FindAsync`, report snapshot phase ~130 ms with fakes |
+| VAPIX Commander | targets, rollout, results | Client already virtualized and O(n), rollout one `RunAsync`; `RolloutRegistry` checked `All(_finished.Contains)` per finished task (O(n^2)), server compatibility `FindAsync` per device | Set + remaining counter; one device list for > 16 ids | bookkeeping 183 ms, compatibility 154 ms | 3 ms, 82 ms |
+
+Open points from the plugin audit (need a design decision, not changed):
+
+- `DeviceApiExtensions.Supports/FindApi` in the SDK could adopt the `CachedApiCheck` approach (and cache
+  `DeviceApi.ParsedVersion`); then the shared plugin helper can go.
+- Snapshot report PDF: MigraDoc builds the whole document in memory and the finished PDF is kept as a
+  `byte[]` for 30 minutes; with the size caps a 5,000-snapshot report still peaks at several hundred MB.
+  Streaming or batched rendering to a temp file needs a design decision.
+- Snapshot sources are listed with 4 parallel device requests: the first open of a 5,000-device site
+  takes (5,000 / 4) x device latency (minutes).
+- Plugin scale tests live in `tests/Oadm.Plugins.*/ScaleTests.cs` (quick ones in unit, rendering and
+  report ones `Category=Perf`); the two snapshot headless test classes share a non-parallel collection
+  (`HeadlessSessions`) because two Avalonia headless sessions in one process deadlocked.
 
 ## Contracts (backward compatible)
 
