@@ -24,7 +24,8 @@ namespace Oadm.Server.AddDevices;
 /// <para><b>Prepare</b> probes every selected device anonymously (<see cref="VapixProbe"/>) and
 /// classifies it: factory default needs the initial password, everything else needs credentials.
 /// Already managed serials are left out.</para>
-/// <para><b>Commit</b> stores each device (serial unique, host name or IP as address), pins the
+/// <para><b>Commit</b> stores each device (serial unique, host name or IP as address per the server
+/// setting <c>Devices.UseHostName</c>), pins the
 /// certificate fingerprint from the probe, sets the initial root password on factory-default
 /// devices when one is given (over HTTPS when the device offers it), stores credentials (initial
 /// password as root, else the per-device entry, else the entry with an empty discovered_id),
@@ -89,13 +90,15 @@ public sealed partial class AddDevicesGrpcService(
         }
 
         var selected = await ResolveAsync(request.SessionId, request.DiscoveredIds, ct).ConfigureAwait(false);
-        var serverName = (await settings.GetServerSettingsAsync(ct).ConfigureAwait(false)).ServerName;
+        var serverSettings = await settings.GetServerSettingsAsync(ct).ConfigureAwait(false);
+        var serverName = serverSettings.ServerName;
+        var useHostName = serverSettings.UseHostName; // CommitRequest.use_host_name is unused
         var added = new ConcurrentDictionary<string, Guid>();
 
         await Parallel.ForEachAsync(selected, new ParallelOptions { MaxDegreeOfParallelism = Parallelism, CancellationToken = ct }, async (found, token) =>
         {
             var deviceCredentials = PickCredentials(request.Credentials, found.DiscoveredId);
-            var id = await AddOneAsync(found, request.UseHostName, initialPassword, deviceCredentials, serverName, token).ConfigureAwait(false);
+            var id = await AddOneAsync(found, useHostName, initialPassword, deviceCredentials, serverName, token).ConfigureAwait(false);
             if (id is { } deviceId)
             {
                 added[found.DiscoveredId] = deviceId;

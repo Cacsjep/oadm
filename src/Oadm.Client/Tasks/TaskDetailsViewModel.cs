@@ -3,7 +3,7 @@ using Oadm.Contracts.V1;
 
 namespace Oadm.Client.Tasks;
 
-public sealed record TaskDeviceRow(string Device, string Model, string StateText, PillKind StateKind, string Message, int Progress)
+public sealed record TaskDeviceRow(string Device, string Serial, string Model, string StateText, PillKind StateKind, string Message, int Progress)
 {
     public bool IsStateOk => StateKind == PillKind.Ok;
     public bool IsStateError => StateKind == PillKind.Error;
@@ -22,9 +22,8 @@ public sealed class TaskDetailsViewModel
         Rows = task.DeviceResults.Select(r =>
         {
             DeviceRowViewModel? device = devices.Find(r.DeviceId);
-            string label = device is null ? r.DeviceId : $"{device.DisplayAddress} ({device.Serial})";
-            return new TaskDeviceRow(label, device?.Model ?? "", TaskRowViewModel.ToText(r.State), TaskRowViewModel.ToKind(r.State),
-                r.Message, Math.Clamp(r.Progress, 0, 100));
+            return new TaskDeviceRow(TaskDeviceLabels.Label(r.DeviceId, devices), device?.Serial ?? "", device?.Model ?? "",
+                TaskRowViewModel.ToText(r.State), TaskRowViewModel.ToKind(r.State), r.Message, Math.Clamp(r.Progress, 0, 100));
         }).ToList();
     }
 

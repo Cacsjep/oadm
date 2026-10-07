@@ -18,6 +18,7 @@
       <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single">
         <DataGrid.Columns>
           <DataGridTextColumn Header="Device" Width="2*" Binding="{Binding Device}" x:DataType="tasks:TaskDeviceRow" />
+          <DataGridTextColumn Header="MAC address" Width="*" Binding="{Binding Serial}" x:DataType="tasks:TaskDeviceRow" />
           <DataGridTextColumn Header="Model" Width="*" Binding="{Binding Model}" x:DataType="tasks:TaskDeviceRow" />
           <DataGridTemplateColumn Header="Status" Width="120">
             <DataGridTemplateColumn.CellTemplate>

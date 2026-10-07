@@ -7,6 +7,13 @@
             CanUserReorderColumns="False">
     <DataGrid.Columns>
       <DataGridTextColumn Header="Name" Width="2*" MinWidth="160" Binding="{Binding Name}" x:DataType="tasks:TaskRowViewModel" />
+      <DataGridTemplateColumn Header="Devices" Width="2*" MinWidth="160" SortMemberPath="DevicesText">
+        <DataGridTemplateColumn.CellTemplate>
+          <DataTemplate x:DataType="tasks:TaskRowViewModel">
+            <TextBlock Text="{Binding DevicesText}" ToolTip.Tip="{Binding DevicesTooltip}" />
+          </DataTemplate>
+        </DataGridTemplateColumn.CellTemplate>
+      </DataGridTemplateColumn>
       <DataGridTemplateColumn Header="Status" Width="130" SortMemberPath="StateText">
         <DataGridTemplateColumn.CellTemplate>
           <DataTemplate x:DataType="tasks:TaskRowViewModel">

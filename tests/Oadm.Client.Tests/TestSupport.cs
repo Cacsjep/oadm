@@ -63,7 +63,7 @@ internal sealed class DevicesFixture : IDisposable
         Ui = new ImmediateUiDispatcher();
         Settings = new InMemoryClientSettingsStore();
         Store = new DeviceStore();
-        Tasks = new TaskStore();
+        Tasks = new TaskStore(Store);
         Dialogs = Substitute.For<IDialogService>();
         Launcher = Substitute.For<IUrlLauncher>();
         if (registry is null)

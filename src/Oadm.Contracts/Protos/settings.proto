@@ -15,4 +15,7 @@ message ServerSettings {
   string server_name = 4;
   string listen_url = 5;
   int32 full_refresh_minutes = 6;       // default 10, 1..1440
+  // Devices.UseHostName: add devices by host name when known, else by IP. Default false.
+  // optional so a partial Set without it keeps the stored value.
+  optional bool use_host_name = 7;
 }
