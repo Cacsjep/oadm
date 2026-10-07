@@ -1,0 +1,152 @@
+# Help texts of manage.sh and manage.ps1. Both scripts print these sections verbatim, so the
+# two shells always show the same help. A section starts with "## <name>" and ends at the next
+# one. {RID} and {CONFIGURATION} are replaced with the current defaults. Lines starting with
+# "#" before the first section are comments.
+
+## overview
+OADM developer commands. One entry point per shell, same verbs and options:
+  ./manage.sh  <verb> [target] [options] [-- extra args]    bash: Linux, macOS, Git Bash
+  .\manage.ps1 <verb> [target] [options] [-- extra args]    Windows PowerShell 5.1, PowerShell 7
+The help below writes "manage" for either one.
+
+Verbs:
+  build     Build all, server, client or plugins              (default target: all)
+  run       Run server, client, or dev (server + client)
+  test      Run unit, hardware or all tests                    (default target: unit)
+  publish   Self-contained single-file apps in artifacts/publish (default target: all)
+  clean     Remove bin, obj and artifacts
+  info      Show the .NET SDK, configuration and RID in use
+  help      Show this overview, or "manage help <verb>"
+
+Every verb has its own help: "manage <verb> help", "manage <verb> -h" or "manage <verb> --help".
+
+Environment:
+  CONFIGURATION   Build configuration, Debug or Release (now: {CONFIGURATION}). --release overrides it
+  RID             Runtime identifier for publish (now: {RID}). --rid overrides it
+  DOTNET_ROOT     Extra place to look for a .NET 10 SDK (also PATH, ~/.dotnet and
+                  %LOCALAPPDATA%\Microsoft\dotnet). Set for the launched apps automatically
+
+Arguments after "--" go unchanged to dotnet (build, test, publish) or to the app (run).
+PowerShell removes a bare --, write '--' (quoted) there.
+
+Exit codes: 0 success, 1 environment error (no .NET 10 SDK, no dev-cameras.yaml, server did not
+start), 2 usage error, any other value is the exit code of dotnet or of the app.
+
+Examples:
+  manage build
+  manage test
+  manage run dev
+  manage publish server --rid linux-x64
+
+## build
+Usage: manage build [all|server|client|plugins] [--release] [-- dotnet build args]
+
+Targets:
+  all       Whole solution: server, client, plugins, tests, tools (default)
+  server    Server and the bundled plugins
+  client    Avalonia client
+  plugins   Bundled plugins only (plugins/*/*.csproj, deployed to artifacts/plugins/<id>)
+
+Options:
+  --release   Build Release instead of {CONFIGURATION}
+
+Examples:
+  manage build
+  manage build server --release
+  manage build client -- -v detailed
+
+## run
+Usage: manage run <server|client|dev> [options] [-- app args]
+
+Targets:
+  server   Build server and plugins, run the server in the foreground (Ctrl+C stops it)
+  client   Build and run the Avalonia client
+  dev      Build everything, start the server in the background (log in
+           artifacts/logs/server-dev.log), wait until it listens, then run the client.
+           Closing the client stops the server. App args after -- go to the client
+
+Options:
+  --port N       server, dev: listen on http://0.0.0.0:N (default: the server setting, 5080).
+                 dev also points the client at http://localhost:N
+  --data DIR     server, dev: server data folder (default: OADM_DATA_DIR, else
+                 LocalApplicationData/Oadm). client: client settings and log folder
+  --server URL   client: server address for this run (default: the client setting)
+  --fake         client: run on built-in sample data without a server
+  --release      Build and run Release instead of {CONFIGURATION}
+
+Examples:
+  manage run server
+  manage run server --port 5099 --data ./tmp-data
+  manage run client --fake
+  manage run client --server http://10.0.0.5:5080
+  manage run dev --port 5099 --data ./tmp-data
+
+## test
+Usage: manage test [unit|hardware|all] [--filter EXPR] [--release] [-- dotnet test args]
+
+Targets:
+  unit       Tests that need no camera, Category!=Hardware (default, what CI runs)
+  hardware   Read-only camera tests, Category=Hardware, against the cameras in
+             dev-cameras.yaml or the file named by OADM_DEV_CAMERAS
+  all        unit and hardware together (hardware tests skip themselves without cameras)
+Write tests on real devices (Category=HardwareWrite) never run from here.
+
+Options:
+  --filter EXPR   dotnet test filter, combined with the target's category filter,
+                  e.g. FullyQualifiedName~Discovery
+  --release       Test Release instead of {CONFIGURATION}
+
+Examples:
+  manage test
+  manage test unit --filter FullyQualifiedName~Polling
+  manage test hardware
+  manage test all -- --no-build
+
+## publish
+Usage: manage publish [all|server|client] [--rid RID] [-- dotnet publish args]
+
+Self-contained single-file Release builds (ReadyToRun, embedded symbols, no .NET install
+needed on the target machine).
+
+Targets:
+  all      Server and client (default)
+  server   artifacts/publish/server/<rid>, bundled plugins next to the exe in plugins/<name>/
+  client   artifacts/publish/client/<rid>
+
+Options:
+  --rid RID   Target platform: win-x64, win-arm64, linux-x64, linux-arm64, osx-x64,
+              osx-arm64 (default: {RID})
+
+Examples:
+  manage publish
+  manage publish client --rid win-x64
+  manage publish server --rid linux-arm64
+
+## clean
+Usage: manage clean
+
+Removes every bin and obj folder under src, plugins, tests and tools, and the artifacts folder
+(published apps, dev logs, development plugin deployment). Server and client data folders
+(LocalApplicationData/Oadm, OADM_DATA_DIR) are not touched.
+
+Example:
+  manage clean
+
+## info
+Usage: manage info
+
+Shows the repository root, the dotnet executable and its .NET 10 SDKs, DOTNET_ROOT, the build
+configuration and the default publish RID. Fails with exit code 1 when no .NET 10 SDK is found.
+
+Example:
+  manage info
+
+## help
+Usage: manage help [verb]
+
+Without a verb: the overview of all verbs. With a verb: the targets, options and examples of
+that verb, same as "manage <verb> help".
+
+Examples:
+  manage help
+  manage help run
