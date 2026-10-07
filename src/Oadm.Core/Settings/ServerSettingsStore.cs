@@ -69,7 +69,8 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             Read(rows, SettingKeys.ScanParallelism, defaults.ScanParallelism),
             Read(rows, SettingKeys.ScanTimeoutMs, defaults.ScanTimeoutMs),
             Read(rows, SettingKeys.ServerName, defaults.ServerName),
-            Read(rows, SettingKeys.ListenUrl, defaults.ListenUrl));
+            Read(rows, SettingKeys.ListenUrl, defaults.ListenUrl),
+            Read(rows, SettingKeys.PollingFullRefreshMinutes, defaults.FullRefreshMinutes));
     }
 
     /// <summary>Validates and writes all Goal 1 settings in one transaction.</summary>
@@ -83,6 +84,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.ScanTimeoutMs] = JsonSerializer.Serialize(settings.ScanTimeoutMs),
             [SettingKeys.ServerName] = JsonSerializer.Serialize(settings.ServerName),
             [SettingKeys.ListenUrl] = JsonSerializer.Serialize(settings.ListenUrl),
+            [SettingKeys.PollingFullRefreshMinutes] = JsonSerializer.Serialize(settings.FullRefreshMinutes),
         };
         foreach (var (key, json) in values)
         {
@@ -143,6 +145,9 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             case SettingKeys.PollingIntervalSeconds:
                 RequireInt(key, value, 5, 86_400);
                 break;
+            case SettingKeys.PollingFullRefreshMinutes:
+                RequireInt(key, value, ServerSettings.MinFullRefreshMinutes, ServerSettings.MaxFullRefreshMinutes);
+                break;
             case SettingKeys.ScanParallelism:
                 RequireInt(key, value, 1, 1024);
                 break;
@@ -188,6 +193,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.ScanTimeoutMs] = JsonSerializer.Serialize(d.ScanTimeoutMs),
             [SettingKeys.ServerName] = JsonSerializer.Serialize(d.ServerName),
             [SettingKeys.ListenUrl] = JsonSerializer.Serialize(d.ListenUrl),
+            [SettingKeys.PollingFullRefreshMinutes] = JsonSerializer.Serialize(d.FullRefreshMinutes),
         };
     }
 }

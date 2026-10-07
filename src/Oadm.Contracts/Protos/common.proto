@@ -14,6 +14,29 @@ enum DeviceStatus {
   DEVICE_STATUS_CERTIFICATE_CHANGED = 5;
 }
 
+// Chain trust of a device HTTPS certificate (chain only, host name ignored).
+enum CertificateTrust {
+  CERTIFICATE_TRUST_UNKNOWN = 0;      // not checked yet or HTTP only
+  CERTIFICATE_TRUST_TRUSTED = 1;      // chain builds to a root in the server OS trust store
+  CERTIFICATE_TRUST_SELF_SIGNED = 2;  // subject == issuer, only the root is untrusted
+  CERTIFICATE_TRUST_UNTRUSTED = 3;    // any other chain failure (e.g. private CA)
+  CERTIFICATE_TRUST_EXPIRED = 4;      // past NotAfter
+}
+
+// Kind of Axis device, mapped on the server from basicdeviceinfo ProdType.
+enum DeviceCategory {
+  DEVICE_CATEGORY_UNKNOWN = 0;
+  DEVICE_CATEGORY_CAMERA = 1;
+  DEVICE_CATEGORY_ENCODER = 2;
+  DEVICE_CATEGORY_SPEAKER = 3;
+  DEVICE_CATEGORY_AUDIO = 4;
+  DEVICE_CATEGORY_INTERCOM = 5;
+  DEVICE_CATEGORY_RADAR = 6;
+  DEVICE_CATEGORY_IO_MODULE = 7;
+  DEVICE_CATEGORY_DOOR_CONTROLLER = 8;
+  DEVICE_CATEGORY_OTHER = 9;
+}
+
 message Device {
   string id = 1;                 // Guid
   string serial = 2;             // MAC, upper hex, no separators
@@ -34,4 +57,12 @@ message Device {
   string warranty_expiry = 17;   // later goal
   string replacement_model = 18; // later goal
   repeated string tags = 19;
+  google.protobuf.Timestamp cert_not_after = 20;  // unset for HTTP-only / not checked
+  CertificateTrust cert_trust = 21;
+  string cert_subject = 22;
+  string cert_issuer = 23;
+  optional bool cert_name_matches = 24;           // address in SAN; stored for later use
+  string product_type = 25;                       // raw ProdType, e.g. "Dome Camera"
+  DeviceCategory category = 26;
+  bool has_video = 27;                            // derived from category
 }

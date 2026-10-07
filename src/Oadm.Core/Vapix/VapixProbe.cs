@@ -71,6 +71,7 @@ public sealed class VapixProbe
         string? serial;
         string? model = null;
         string? firmware = null;
+        string? productType = null;
         bool authRequired;
 
         if (response.StatusCode == HttpStatusCode.Unauthorized)
@@ -92,6 +93,7 @@ public sealed class VapixProbe
                 serial = info.SerialNumber;
                 model = info.ProdNbr;
                 firmware = info.Version;
+                productType = info.ProdType;
             }
             catch (VapixException)
             {
@@ -112,6 +114,7 @@ public sealed class VapixProbe
                 var props = await client.GetUnrestrictedPropertiesAsync(ct).ConfigureAwait(false);
                 model = props.GetValueOrDefault("ProdNbr");
                 firmware = props.GetValueOrDefault("Version");
+                productType = props.GetValueOrDefault("ProdType");
             }
             catch (Exception ex) when (!ct.IsCancellationRequested && IsBestEffortFailure(ex))
             {
@@ -143,7 +146,8 @@ public sealed class VapixProbe
             IsFactoryDefault: factoryDefault,
             AuthenticationRequired: authRequired,
             CertificateFingerprint: client.CertificateFingerprint,
-            Status: status);
+            Status: status,
+            ProductType: string.IsNullOrWhiteSpace(productType) ? null : productType.Trim());
     }
 
     private static bool IsTransportFailure(Exception ex)

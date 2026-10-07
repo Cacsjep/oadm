@@ -136,7 +136,7 @@ public sealed class DeviceServiceTests
         var network = new FakeAxisNetwork();
         var fake = network.Add("10.9.0.1", FakeSerials.Make(1), "pw");
         await using var host = await TestServerHost.StartAsync(network);
-        var device = await AddDeviceAsync(host, "10.9.0.1", 1, status: SdkDeviceStatus.Unknown);
+        var device = await AddDeviceAsync(host, "10.9.0.1", 1, status: SdkDeviceStatus.Ok);
         var polling = host.Get<DevicePollingService>();
 
         await polling.PollAllAsync(CancellationToken.None);
@@ -156,6 +156,11 @@ public sealed class DeviceServiceTests
         var back = await TestHelpers.GetDeviceAsync(host, device.Id.ToString());
         Assert.Equal(Proto.DeviceStatus.Ok, back.Status);
         Assert.Equal("12.7.0", back.FirmwareVersion);
+
+        // Back online: a full refresh is queued right away and fills the network columns.
+        await TestHelpers.WaitUntilAsync(
+            async () => (await TestHelpers.GetDeviceAsync(host, device.Id.ToString())).HasDhcpEnabled,
+            "full refresh after coming back online");
 
         await host.Settings.SetAsync(new Proto.ServerSettings { PollingIntervalSeconds = 7 });
         Assert.Equal(7, polling.IntervalSeconds);

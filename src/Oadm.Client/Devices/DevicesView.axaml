@@ -94,8 +94,8 @@
               <DataGridTemplateColumn Tag="icon" Width="44" CanUserResize="False" CanUserSort="False" CanUserReorder="False">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:DeviceRowViewModel">
-                    <Panel Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
-                      <c:OadmIcon Data="{StaticResource Icon.devices}" Width="18" Height="18" HorizontalAlignment="Left" VerticalAlignment="Top" />
+                    <Panel Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Background="Transparent" ToolTip.Tip="{Binding CategoryTooltip}">
+                      <c:OadmIcon Data="{Binding CategoryIconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Width="18" Height="18" HorizontalAlignment="Left" VerticalAlignment="Top" />
                       <Ellipse Classes="statusDot" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                Classes.ok="{Binding IsStatusOk}" Classes.warn="{Binding IsStatusWarning}" Classes.error="{Binding IsStatusError}" />
                     </Panel>
@@ -129,6 +129,26 @@
               <DataGridTextColumn Tag="firmware" Header="Firmware" Width="100*" MinWidth="70" Binding="{Binding FirmwareVersion}" x:DataType="dev:DeviceRowViewModel" />
               <DataGridTextColumn Tag="dhcp" Header="DHCP" Width="86*" MinWidth="70" Binding="{Binding DhcpText}" x:DataType="dev:DeviceRowViewModel" />
               <DataGridTextColumn Tag="https" Header="HTTPS" Width="96*" MinWidth="70" Binding="{Binding HttpsText}" x:DataType="dev:DeviceRowViewModel" />
+              <DataGridTemplateColumn Tag="certExpires" Header="Certificate expires" Width="156*" MinWidth="70" SortMemberPath="CertExpiresSortKey">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="dev:DeviceRowViewModel">
+                    <Border Classes="pill" Margin="10,0" IsVisible="{Binding CertExpires.HasText}" ToolTip.Tip="{Binding CertTooltip}"
+                            Classes.ok="{Binding CertExpires.IsOk}" Classes.warn="{Binding CertExpires.IsWarning}" Classes.error="{Binding CertExpires.IsError}">
+                      <TextBlock Text="{Binding CertExpires.Text}" />
+                    </Border>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTemplateColumn Tag="certTrust" Header="Certificate" Width="110*" MinWidth="70" SortMemberPath="CertTrust.Text">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="dev:DeviceRowViewModel">
+                    <Border Classes="pill" Margin="10,0" IsVisible="{Binding CertTrust.HasText}" ToolTip.Tip="{Binding CertTooltip}"
+                            Classes.ok="{Binding CertTrust.IsOk}" Classes.warn="{Binding CertTrust.IsWarning}" Classes.error="{Binding CertTrust.IsError}">
+                      <TextBlock Text="{Binding CertTrust.Text}" />
+                    </Border>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
               <DataGridTextColumn Tag="dot1x" Header="IEEE 802.1X" Width="124*" MinWidth="70" Binding="{Binding Dot1xText}" x:DataType="dev:DeviceRowViewModel" />
             </DataGrid.Columns>
           </DataGrid>

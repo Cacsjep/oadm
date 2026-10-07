@@ -4,6 +4,7 @@ using Oadm.Contracts.V1;
 using Oadm.Sdk.Devices;
 
 using ContractStatus = Oadm.Contracts.V1.DeviceStatus;
+using DeviceCategory = Oadm.Contracts.V1.DeviceCategory;
 using SdkStatus = Oadm.Sdk.Devices.DeviceStatus;
 
 namespace Oadm.Client.Devices;
@@ -37,10 +38,24 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo
     [ObservableProperty] public partial PillKind StatusKind { get; private set; }
     [ObservableProperty] public partial bool HasCredentials { get; private set; }
     [ObservableProperty] public partial string Scheme { get; private set; } = "";
+    [ObservableProperty] public partial DeviceCategory Category { get; private set; }
+    [ObservableProperty] public partial string? ProductType { get; private set; }
+    [ObservableProperty] public partial string CategoryIconKey { get; private set; } = "device.generic";
+    [ObservableProperty] public partial string CategoryTooltip { get; private set; } = "";
+    [ObservableProperty] public partial bool HasVideo { get; private set; }
+    [ObservableProperty] public partial DateTime? CertNotAfterUtc { get; private set; }
+    [ObservableProperty] public partial ChipInfo CertExpires { get; private set; } = ChipInfo.Empty;
+    [ObservableProperty] public partial ChipInfo CertTrust { get; private set; } = ChipInfo.Empty;
+    [ObservableProperty] public partial string? CertTooltip { get; private set; }
+
+    /// <summary>Sort key of the "Certificate expires" column; devices without a certificate sort last.</summary>
+    public DateTime CertExpiresSortKey => CertNotAfterUtc ?? DateTime.MaxValue;
 
     Guid IDeviceInfo.Id => Guid.TryParse(Id, out Guid id) ? id : Guid.Empty;
 
     SdkStatus IDeviceInfo.Status => DeviceStatusInfo.ToSdk(ContractStatus);
+
+    Oadm.Sdk.Devices.DeviceCategory IDeviceInfo.Category => DeviceCategoryInfo.ToSdk(Category);
 
     public bool IsStatusOk => StatusKind == PillKind.Ok;
     public bool IsStatusWarning => StatusKind == PillKind.Warning;
@@ -65,6 +80,16 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo
         StatusKind = DeviceStatusInfo.ToKind(device.Status);
         HasCredentials = device.HasCredentials;
         Scheme = device.Scheme;
+        Category = device.Category;
+        ProductType = string.IsNullOrEmpty(device.ProductType) ? null : device.ProductType;
+        CategoryIconKey = DeviceCategoryInfo.ToIconKey(device.Category);
+        CategoryTooltip = DeviceCategoryInfo.ToTooltip(device.Category, ProductType);
+        HasVideo = device.HasVideo;
+        DateTime now = DateTime.UtcNow;
+        CertNotAfterUtc = device.CertNotAfter?.ToDateTime();
+        CertExpires = CertificateDisplay.Expiry(CertNotAfterUtc, now);
+        CertTrust = CertificateDisplay.Trust(device.CertTrust, CertNotAfterUtc, now);
+        CertTooltip = CertificateDisplay.Tooltip(device.CertSubject, device.CertIssuer, CertNotAfterUtc);
     }
 
     /// <summary>Case-insensitive search across the visible text columns.</summary>
@@ -81,6 +106,8 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo
 
         bool Contains(string? value) => value?.Contains(term, StringComparison.OrdinalIgnoreCase) == true;
     }
+
+    partial void OnCertNotAfterUtcChanged(DateTime? value) => OnPropertyChanged(nameof(CertExpiresSortKey));
 
     partial void OnStatusKindChanged(PillKind value)
     {

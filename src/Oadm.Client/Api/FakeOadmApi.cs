@@ -33,6 +33,7 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
     private ServerSettings _settings = new()
     {
         PollingIntervalSeconds = 60,
+        FullRefreshMinutes = 10,
         ScanParallelism = 32,
         ScanTimeoutMs = 1500,
         ServerName = "acs",
@@ -509,6 +510,11 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
                 throw new RpcException(new Status(StatusCode.InvalidArgument, "Polling interval must be at least 5 seconds"));
             }
 
+            if (settings.FullRefreshMinutes is < 1 or > 1440)
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "Full refresh interval must be between 1 and 1440 minutes"));
+            }
+
             _settings = settings.Clone();
             return Task.FromResult(_settings.Clone());
         }
@@ -692,7 +698,7 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         list.Add(Discovered("B8A44F7788AA", "10.0.0.90", "AXIS M3215-LVE", DeviceStatus.PasswordNotSet));
         list.Add(Discovered("B8A44F99CC01", "10.0.0.91", "AXIS P3268-LV", DeviceStatus.PasswordNotSet));
         list.Add(Discovered("ACCC8E5F6071", "10.0.0.92", "AXIS Q6075-E", DeviceStatus.CredentialsRequired));
-        list.Add(Discovered("ACCC8E8192A3", "10.0.0.93", "AXIS M3088-V", DeviceStatus.CredentialsRequired));
+        list.Add(Discovered("ACCC8E8192A3", "10.0.0.93", "AXIS C1310-E Mk II", DeviceStatus.CredentialsRequired));
         list.Add(Discovered("B8A44FB4C5D6", "10.0.0.94", "AXIS P1455-LE", DeviceStatus.CredentialsRequired));
 
         if (session.IsRangeScan)
@@ -728,6 +734,8 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
             AlreadyManaged = alreadyManaged,
             Source = DiscoverySource.Mdns,
             Scheme = "https",
+            ProductType = SampleProductType(model),
+            Category = SampleCategory(model),
         };
     }
 
@@ -747,20 +755,32 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         _devices.Add(CreateDevice("ACCC8E0A1B2C", "10.0.0.21", "AXIS M3106-L Mk II", "11.11.124", DeviceStatus.Ok));
         _devices.Add(CreateDevice("ACCC8EF00D11", "10.0.0.22", "AXIS Q6135-LE", "12.6.94", DeviceStatus.Ok));
         _devices.Add(CreateDevice("B8A44F2E7A90", "10.0.0.23", "AXIS P1468-LE", "12.11.77", DeviceStatus.CredentialsRequired));
-        _devices.Add(CreateDevice("00408CA1B2C3", "10.0.0.30", "AXIS Q1798-LE", "11.11.124", DeviceStatus.Unreachable));
+        _devices.Add(CreateDevice("00408CA1B2C3", "10.0.0.30", "AXIS A9188", "11.11.124", DeviceStatus.Unreachable));
         _devices.Add(CreateDevice("B8A44F3C4D5E", "10.0.0.31", "AXIS M4317-PLVE", "12.11.77", DeviceStatus.Ok));
         _devices.Add(CreateDevice("ACCC8E77E3A1", "10.0.0.32", "AXIS P3727-PLE", "11.8.64", DeviceStatus.Ok));
         _devices.Add(CreateDevice("B8A44F4A5B6C", "10.0.0.33", "AXIS Q3538-LVE", "12.11.77", DeviceStatus.CertificateChanged));
-        _devices.Add(CreateDevice("ACCC8E9081F2", "10.0.0.34", "AXIS M2036-LE", "11.11.124", DeviceStatus.Ok));
-        _devices.Add(CreateDevice("B8A44F5D6E7F", "10.0.0.35", "AXIS P1385-E", "12.6.94", DeviceStatus.Ok));
+        _devices.Add(CreateDevice("ACCC8E9081F2", "10.0.0.34", "AXIS C1310-E Mk II", "11.11.124", DeviceStatus.Ok));
+        _devices.Add(CreateDevice("B8A44F5D6E7F", "10.0.0.35", "AXIS D2110-VE", "12.6.94", DeviceStatus.Ok));
         _devices.Add(CreateDevice("B8A44F11AA22", "10.0.0.40", "AXIS F9111", "12.11.77", DeviceStatus.PasswordNotSet));
         Device q1656 = CreateDevice("ACCC8E3344BB", "10.0.0.41", "AXIS Q1656-LE", "12.6.94", DeviceStatus.Ok);
         q1656.DhcpEnabled = false;
         q1656.HttpsEnabled = false;
         q1656.Scheme = "http";
+        ClearCertificate(q1656);
         _devices.Add(q1656);
         _devices[2].Dot1XEnabled = true;
         _devices[9].Dot1XEnabled = true;
+
+        // Certificate mix: self-signed defaults (CreateDevice), a private CA that is trusted by the
+        // server OS, one not in the trust store, one expiring soon, one expired, HTTP only above.
+        const string issuingCa = "CN=OADM Lab Issuing CA, O=Example Corp";
+        SetCertificate(_devices[0], CertificateTrust.SelfSigned, 300);
+        SetCertificate(_devices[1], CertificateTrust.Trusted, 245, issuingCa);
+        SetCertificate(_devices[2], CertificateTrust.Trusted, 512, issuingCa);
+        SetCertificate(_devices[5], CertificateTrust.Trusted, 12, issuingCa);
+        SetCertificate(_devices[6], CertificateTrust.Untrusted, 88, "CN=Site Camera CA, O=Example Corp");
+        SetCertificate(_devices[8], CertificateTrust.Expired, -3);
+        ClearCertificate(_devices[10]); // factory default: never fully refreshed
 
         DateTime now = DateTime.UtcNow;
         TaskInfo add = AddTask("oadm.add-devices", "Add devices", OwnerName, TaskState.Done, 100, _devices.Select(d => d.Id));
@@ -800,7 +820,54 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         Scheme = "https",
         LastSeen = Timestamp.FromDateTime(DateTime.UtcNow),
         HasCredentials = status != DeviceStatus.PasswordNotSet,
+        ProductType = SampleProductType(model),
+        Category = SampleCategory(model),
+        HasVideo = SampleCategory(model) is DeviceCategory.Camera or DeviceCategory.Encoder or DeviceCategory.Intercom,
+        CertTrust = CertificateTrust.SelfSigned,
+        CertNotAfter = Timestamp.FromDateTime(DateTime.UtcNow.AddDays(1000 + (serial[^1] % 7 * 61)).AddHours(1)),
+        CertSubject = "CN=axis-" + serial.ToLowerInvariant(),
+        CertIssuer = "CN=axis-" + serial.ToLowerInvariant(),
+        CertNameMatches = false,
     };
+
+    /// <summary>ProdType like the real devices report it (AXIS P3265-V says "Dome Camera").</summary>
+    internal static string SampleProductType(string model) => model switch
+    {
+        _ when model.Contains("P3265", StringComparison.Ordinal) => "Dome Camera",
+        _ when model.Contains("C1310", StringComparison.Ordinal) => "Network Horn Speaker",
+        _ when model.Contains("D2110", StringComparison.Ordinal) => "Security Radar",
+        _ when model.Contains("A9188", StringComparison.Ordinal) => "Network I/O Relay Module",
+        _ when model.Contains("Q6135", StringComparison.Ordinal) => "PTZ Network Camera",
+        _ => "Network Camera",
+    };
+
+    internal static DeviceCategory SampleCategory(string model) => SampleProductType(model) switch
+    {
+        "Network Horn Speaker" => DeviceCategory.Speaker,
+        "Security Radar" => DeviceCategory.Radar,
+        "Network I/O Relay Module" => DeviceCategory.IoModule,
+        _ => DeviceCategory.Camera,
+    };
+
+    /// <summary>Sample certificate: <paramref name="issuer"/> null means self-signed (issuer = subject).</summary>
+    private static void SetCertificate(Device device, CertificateTrust trust, int daysLeft, string? issuer = null)
+    {
+        string subject = "CN=axis-" + device.Serial.ToLowerInvariant();
+        device.CertTrust = trust;
+        device.CertNotAfter = Timestamp.FromDateTime(DateTime.UtcNow.AddDays(daysLeft).AddHours(daysLeft < 0 ? -1 : 1));
+        device.CertSubject = issuer is null ? subject : "CN=" + device.Address + ", O=Example Corp";
+        device.CertIssuer = issuer ?? subject;
+        device.CertNameMatches = issuer is not null;
+    }
+
+    private static void ClearCertificate(Device device)
+    {
+        device.CertTrust = CertificateTrust.Unknown;
+        device.CertNotAfter = null;
+        device.CertSubject = string.Empty;
+        device.CertIssuer = string.Empty;
+        device.ClearCertNameMatches();
+    }
 
     private sealed class FakeJob(TaskInfo task, int step, Action<TaskInfo, int>? onProgress)
     {

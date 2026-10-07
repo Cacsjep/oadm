@@ -27,6 +27,7 @@ public sealed record SystemReadyInfo(bool SystemReady, bool? NeedSetup, string? 
 /// <param name="AuthenticationRequired">True when getAllProperties answered 401.</param>
 /// <param name="CertificateFingerprint">SHA-256 of the TLS certificate, null for HTTP.</param>
 /// <param name="Status">Status derived from the probe (Ok, CredentialsRequired, PasswordNotSet).</param>
+/// <param name="ProductType">ProdType ("Dome Camera", "Network Speaker", ...) when revealed anonymously.</param>
 public sealed record VapixProbeResult(
     string Address,
     string Scheme,
@@ -36,7 +37,8 @@ public sealed record VapixProbeResult(
     bool IsFactoryDefault,
     bool AuthenticationRequired,
     string? CertificateFingerprint,
-    DeviceStatus Status)
+    DeviceStatus Status,
+    string? ProductType = null)
 {
     public Uri BaseAddress => VapixClient.BuildBaseAddress(Scheme, Address);
 }

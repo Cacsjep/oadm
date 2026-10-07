@@ -103,7 +103,8 @@ public sealed class VapixDeviceProbe : IDeviceProbe, IDisposable
                         props.GetValueOrDefault("ProdFullName"),
                         props.GetValueOrDefault("Version"),
                         DiscoveredDeviceStatus.AnonymousAccess,
-                        true);
+                        true,
+                        props.GetValueOrDefault("ProdType"));
                 }
             }
 
@@ -204,6 +205,7 @@ public sealed class VapixDeviceProbe : IDeviceProbe, IDisposable
                         Model = props.GetValueOrDefault("ProdNbr"),
                         ProductName = props.GetValueOrDefault("ProdFullName"),
                         FirmwareVersion = props.GetValueOrDefault("Version"),
+                        ProductType = props.GetValueOrDefault("ProdType"),
                     };
                 }
             }

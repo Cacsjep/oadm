@@ -36,6 +36,8 @@ public sealed class ColumnLayoutViewModel
         ("firmware", "Firmware"),
         ("dhcp", "DHCP"),
         ("https", "HTTPS"),
+        ("certExpires", "Certificate expires"),
+        ("certTrust", "Certificate"),
         ("dot1x", "IEEE 802.1X"),
     ];
 

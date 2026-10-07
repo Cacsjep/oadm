@@ -36,6 +36,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     // server side
     [ObservableProperty] public partial decimal? PollingIntervalSeconds { get; set; } = 60;
+    [ObservableProperty] public partial decimal? FullRefreshMinutes { get; set; } = 10;
     [ObservableProperty] public partial decimal? ScanParallelism { get; set; } = 32;
     [ObservableProperty] public partial decimal? ScanTimeoutMs { get; set; } = 1500;
     [ObservableProperty] public partial string ServerName { get; set; } = "";
@@ -81,6 +82,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         var settings = new ServerSettings
         {
             PollingIntervalSeconds = (int)(PollingIntervalSeconds ?? 60),
+            FullRefreshMinutes = (int)(FullRefreshMinutes ?? 10),
             ScanParallelism = (int)(ScanParallelism ?? 32),
             ScanTimeoutMs = (int)(ScanTimeoutMs ?? 1500),
             ServerName = ServerName.Trim(),
@@ -125,6 +127,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private void Apply(ServerSettings settings)
     {
         PollingIntervalSeconds = settings.PollingIntervalSeconds;
+        FullRefreshMinutes = settings.FullRefreshMinutes;
         ScanParallelism = settings.ScanParallelism;
         ScanTimeoutMs = settings.ScanTimeoutMs;
         ServerName = settings.ServerName;

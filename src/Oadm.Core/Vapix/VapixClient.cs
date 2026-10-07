@@ -77,6 +77,13 @@ public sealed class VapixClient : IVapixClient, IDisposable
     /// <summary>SHA-256 fingerprint of the certificate the device presented last (HTTPS only).</summary>
     public string? CertificateFingerprint => Pinning?.ObservedFingerprint;
 
+    /// <summary>
+    /// Subject, issuer, validity and chain trust of the certificate from the last TLS handshake
+    /// (HTTPS only, null before the first handshake). Pooled connections are reused, so this
+    /// reflects the most recent new connection.
+    /// </summary>
+    public CertificateInfo? ObservedCertificate => Pinning?.ObservedCertificate;
+
     /// <summary>Creates a client with a real <see cref="HttpClientHandler"/> for the given options.</summary>
     public static VapixClient Create(VapixConnectionOptions options)
     {

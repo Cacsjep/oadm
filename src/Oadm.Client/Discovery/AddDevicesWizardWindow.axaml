@@ -82,6 +82,15 @@
                       </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                   </DataGridTemplateColumn>
+                  <DataGridTemplateColumn Width="40" CanUserSort="False" CanUserResize="False">
+                    <DataGridTemplateColumn.CellTemplate>
+                      <DataTemplate x:DataType="disc:DiscoveredRowViewModel">
+                        <Panel Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Background="Transparent" ToolTip.Tip="{Binding CategoryTooltip}">
+                          <c:OadmIcon Data="{Binding CategoryIconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Panel>
+                      </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                  </DataGridTemplateColumn>
                   <DataGridTextColumn Header="Address" Width="150" Binding="{Binding Address}" x:DataType="disc:DiscoveredRowViewModel" />
                   <DataGridTextColumn Header="Serial" Width="150" Binding="{Binding Serial}" x:DataType="disc:DiscoveredRowViewModel" />
                   <DataGridTextColumn Header="Model" Width="*" Binding="{Binding Model}" x:DataType="disc:DiscoveredRowViewModel" />

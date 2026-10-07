@@ -22,6 +22,9 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
     [ObservableProperty] public partial string HostName { get; private set; } = "";
     [ObservableProperty] public partial string Model { get; private set; } = "";
     [ObservableProperty] public partial DeviceStatus Status { get; private set; }
+    [ObservableProperty] public partial DeviceCategory Category { get; private set; }
+    [ObservableProperty] public partial string CategoryIconKey { get; private set; } = "device.generic";
+    [ObservableProperty] public partial string CategoryTooltip { get; private set; } = "";
     [ObservableProperty] public partial string StatusText { get; private set; } = "";
     [ObservableProperty] public partial PillKind StatusKind { get; private set; }
 
@@ -48,6 +51,9 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
         HostName = device.HostName;
         Model = string.IsNullOrEmpty(device.Model) ? "" : device.Model;
         Status = device.Status;
+        Category = device.Category;
+        CategoryIconKey = DeviceCategoryInfo.ToIconKey(device.Category);
+        CategoryTooltip = DeviceCategoryInfo.ToTooltip(device.Category, device.ProductType);
         IsAlreadyManaged = device.AlreadyManaged;
         StatusText = device.AlreadyManaged ? "Already added" : DeviceStatusInfo.ToText(device.Status);
         StatusKind = device.AlreadyManaged ? PillKind.Neutral : DeviceStatusInfo.ToKind(device.Status);

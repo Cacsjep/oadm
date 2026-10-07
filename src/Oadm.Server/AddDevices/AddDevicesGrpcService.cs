@@ -166,6 +166,8 @@ public sealed partial class AddDevicesGrpcService(
                     HostName = hostName,
                     Model = probed?.Model ?? found.Model,
                     FirmwareVersion = probed?.FirmwareVersion ?? found.FirmwareVersion,
+                    ProductType = probed?.ProductType ?? found.ProductType,
+                    Category = DeviceCategoryMapper.Map(probed?.ProductType ?? found.ProductType),
                     Scheme = Mappers.ToDeviceScheme(scheme),
                     CertFingerprintSha256 = scheme == Uri.UriSchemeHttps ? probed?.CertificateFingerprint : null,
                     ServerName = serverName,

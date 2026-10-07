@@ -27,4 +27,6 @@ message DiscoveredDevice {
   string scheme = 9;
   bool scan_finished = 10;    // true on the final message of a range scan; other fields empty
   int32 progress_percent = 11;
+  string product_type = 12;   // raw ProdType, empty until known
+  DeviceCategory category = 13;
 }
