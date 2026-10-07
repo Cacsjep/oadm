@@ -17,6 +17,7 @@
     <InstallerPlatform Condition="'$(OadmRid)' == 'win-arm64'">arm64</InstallerPlatform>
     <OutputType>Package</OutputType>
     <OutputName>OADM-$(OadmVersion)-$(OadmRid)</OutputName>
+    <IntermediateOutputPath>obj\$(OadmRid)\$(Configuration)\</IntermediateOutputPath>
     <OutputPath Condition="'$(OadmPackageDir)' != ''">$([MSBuild]::EnsureTrailingSlash('$(OadmPackageDir)'))</OutputPath>
     <DefineConstants>ProductVersion=$(OadmMsiVersion);ServerDir=$(OadmServerDir);ClientDir=$(OadmClientDir);IconsDir=$(MSBuildThisFileDirectory)..\icons</DefineConstants>
     <!-- Same version reinstall (development builds) is allowed on purpose. -->

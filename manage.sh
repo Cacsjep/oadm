@@ -400,7 +400,7 @@ cmd_package() {
   case "$prefix" in
     win)
       # MSBuild gets Windows paths (Git Bash).
-      "$DOTNET" build "$(cygpath -w "$REPO_ROOT/packaging/windows/Oadm.Installer.wixproj")" -c Release \
+      "$DOTNET" build "$(cygpath -w "$REPO_ROOT/packaging/windows/Oadm.Installer.wixproj")" -c Release --no-incremental \
         "-p:OadmVersion=$(app_version)" "-p:OadmRid=$RID" "-p:OadmServerDir=$(cygpath -w "$server")" \
         "-p:OadmClientDir=$(cygpath -w "$client")" "-p:OadmPackageDir=$(cygpath -w "$out")" ;;
     linux) bash "$REPO_ROOT/packaging/linux/build-deb.sh" "$RID" "$(app_version)" "$server" "$client" "$out" ;;

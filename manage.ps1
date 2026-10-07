@@ -424,7 +424,7 @@ function Invoke-Package {
     $client = Join-Path $RepoRoot "artifacts/publish/client/$($script:Rid)"
     $out = Get-AbsoluteDir (Join-Path $RepoRoot 'artifacts/packages')
     if ($prefix -eq 'win') {
-        Invoke-Dotnet @('build', (Join-Path $RepoRoot 'packaging/windows/Oadm.Installer.wixproj'), '-c', 'Release',
+        Invoke-Dotnet @('build', (Join-Path $RepoRoot 'packaging/windows/Oadm.Installer.wixproj'), '-c', 'Release', '--no-incremental',
             "-p:OadmVersion=$version", "-p:OadmRid=$($script:Rid)", "-p:OadmServerDir=$server", "-p:OadmClientDir=$client",
             "-p:OadmPackageDir=$out")
     } else {
