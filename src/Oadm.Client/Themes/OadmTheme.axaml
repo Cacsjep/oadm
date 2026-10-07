@@ -461,6 +461,16 @@
   <Style Selector="CheckBox">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
   </Style>
+  <!-- Every checkbox: box and check mark at 80 % (16 px instead of Fluent's 20 px), scaled
+       around their own center so a checkbox centered in a cell stays exactly centered. -->
+  <Style Selector="CheckBox /template/ Border#NormalRectangle">
+    <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+    <Setter Property="RenderTransform" Value="scale(0.8)" />
+  </Style>
+  <Style Selector="CheckBox /template/ Viewbox">
+    <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+    <Setter Property="RenderTransform" Value="scale(0.8)" />
+  </Style>
 
   <!-- Progress -->
   <!-- The one progress bar. Class "stream" (set while work is running) shows the Vuetify-style
