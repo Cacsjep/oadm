@@ -29,8 +29,7 @@ NTP server                                   [● Running on 10.0.0.17:123]   <-
   on Windows mention the Windows Time service when it holds the port), `Insufficient permission to use
   port 123` (error; Linux: run as root or grant CAP_NET_BIND_SERVICE, exact command in the tooltip/docs;
   macOS: run with sudo), `Interface <name> is not available` (error), `Upstream <host> not reachable,
-  serving the server clock` (warning), `Server clock not synchronized, answering as unsynchronized`
-  (warning, stratum 16).
+  serving the server clock` (warning).
 - Request log: last 40 entries in memory (ring buffer), pushed live to the page; device column resolves
   the client IP against managed devices. No database table.
 
