@@ -333,6 +333,17 @@
     <Setter Property="Width" Value="{StaticResource Oadm.NavWidthExpanded}" />
   </Style>
 
+  <!-- Icon + text rows (buttons, menu entries, rail items): center both vertically -->
+  <!-- Inter reserves descender space below the baseline, so centered capitals look ~1.5 px high
+       next to a 16 px icon (measured). A 3 px top margin on a centered element moves it 1.5 px. -->
+  <Style Selector="StackPanel[Orientation=Horizontal] > TextBlock">
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Margin" Value="0,3,0,0" />
+  </Style>
+  <Style Selector="StackPanel[Orientation=Horizontal] > c|OadmIcon">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
   <!-- Toolbar buttons: icon + text -->
   <Style Selector="Button.toolbar">
     <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
