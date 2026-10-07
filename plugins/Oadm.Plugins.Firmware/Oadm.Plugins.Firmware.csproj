@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Oadm.Plugins.Firmware.Server</AssemblyName>
+    <RootNamespace>Oadm.Plugins.Firmware</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <!-- Folder name under artifacts/plugins/, must equal the id in plugin.json. -->
+    <OadmPluginId>oadm.firmware</OadmPluginId>
+    <OadmPluginOutputDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'artifacts', 'plugins', '$(OadmPluginId)'))</OadmPluginOutputDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The SDK is shared from the host: never copy it (or its dependencies) into the plugin folder. -->
+    <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+    <InternalsVisibleTo Include="Oadm.Plugins.Firmware.Tests" />
+  </ItemGroup>
+
+  <!-- Development deployment: copy the plugin output to artifacts/plugins/oadm.firmware/ (see the Restart plugin). -->
+  <Target Name="OadmDeployPlugin" AfterTargets="Build">
+    <ItemGroup>
+      <_OadmPluginFiles Include="$(OutDir)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_OadmPluginFiles)" DestinationFiles="@(_OadmPluginFiles->'$(OadmPluginOutputDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Message Importance="normal" Text="OADM plugin $(OadmPluginId) deployed to $(OadmPluginOutputDir)" />
+  </Target>
+
+</Project>

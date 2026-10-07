@@ -1,0 +1,6 @@
+{
+  "id": "oadm.firmware",
+  "version": "0.1.0",
+  "minSdkVersion": "0.1.0",
+  "displayName": "Upgrade firmware"
+}
