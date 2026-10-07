@@ -53,7 +53,8 @@ src/
   Oadm.Contracts/      protobuf files + generated gRPC stubs, shared enums
   Oadm.Sdk/            plugin SDK: interfaces, attributes, context objects. No Avalonia, no EF
   Oadm.Sdk.Client/     client-side plugin SDK: dialog/page interfaces, ITaskDialogContext, shared
-                       controls (Controls/: IconLabel, SearchBox, OadmIcon)
+                       controls (Controls/: IconLabel, SearchBox, OadmIcon, DialogTitleBar,
+                       CardHeader, DialogFooter, StatusChip, FileRow, ProgressRow)
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)
   Oadm.Server/         host: gRPC services, plugin loader, polling, Serilog setup
   Oadm.Client/         Avalonia app: views, view models, gRPC client, plugin loader
@@ -500,7 +501,9 @@ public interface ICorePluginPage
 ```
 
 Dialogs and pages are real Avalonia views with view models, styled by the host theme. They use
-the shared controls from `Oadm.Sdk.Client.Controls` (`IconLabel`, `SearchBox`, `OadmIcon`) and
+the shared controls from `Oadm.Sdk.Client.Controls` (`IconLabel`, `SearchBox`, `OadmIcon`,
+`DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip`, `FileRow`, `ProgressRow`; usage in
+`plugins/README.md`) and
 the theme resources (styles, colors, `Icon.*` geometries) of the host application; the icon keys
 are listed in `plugins/README.md`. Plugins never talk to devices from the client; payloads go to
 the server. gRPC errors reach the dialog as `RpcException` (Status.Detail is the message).
@@ -610,7 +613,9 @@ LocalApplicationData): server address, grid column layout, bottom pane state.
   shared control, never a copy: in `src/Oadm.Sdk.Client/Controls` (namespace
   `Oadm.Sdk.Client.Controls`, XAML prefix `ui`) when plugin dialogs need it too, else in
   `src/Oadm.Client/Controls`. Existing shared ones: `IconLabel` (every icon + text row: toolbar
-  buttons, navigation rail, dialogs), `SearchBox` (every search field), `OadmIcon`. Before
+  buttons, navigation rail, dialogs), `SearchBox` (every search field), `OadmIcon`, and for
+  dialogs `DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip` (status chip),
+  `FileRow` (chosen file + "Choose file..."), `ProgressRow` (progress bar + status text). Before
   writing new XAML, check both `Controls/` folders and reuse; if a second place needs something
   that exists only inline, extract it into a control first.
 - **HARD RULE, no style differences.** Same kind of element, same look, everywhere: one

@@ -219,7 +219,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             FilePath = path;
             FileName = _image.FileName;
             FileError = _image.RejectReason;
-            FileDetails = FormatSize(size) + (_image.IsIdentified
+            FileDetails = FileSizeText.Format(size) + (_image.IsIdentified
                 ? $"  ·  for {_image.Product}, AXIS OS {_image.Version}"
                 : "  ·  product and version not recognized from the file name; each device checks the image itself");
         }
@@ -378,11 +378,6 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
 
         StartCommand.NotifyCanExecuteChanged();
     }
-
-    private static string FormatSize(long bytes) =>
-        bytes >= 1024 * 1024
-            ? string.Create(CultureInfo.InvariantCulture, $"{bytes / (1024.0 * 1024.0):0.0} MB")
-            : string.Create(CultureInfo.InvariantCulture, $"{bytes / 1024.0:0} KB");
 }
 
 /// <summary>Ids shared with the server part (kept here so the client does not reference the server assembly).</summary>

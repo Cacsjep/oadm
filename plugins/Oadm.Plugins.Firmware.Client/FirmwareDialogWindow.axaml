@@ -1,49 +1,40 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:chrome="using:Avalonia.Controls.Chrome"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
         xmlns:fw="using:Oadm.Plugins.Firmware.Client"
         x:Class="Oadm.Plugins.Firmware.Client.FirmwareDialogWindow"
         x:DataType="fw:FirmwareDialogViewModel"
         Title="{Binding Title}"
-        Width="900" Height="620" MinWidth="680" MinHeight="460"
+        Width="1040" Height="760" MinWidth="820" MinHeight="560"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
-  <!-- Plain controls only: colors, fonts and sizes come from the host theme (OadmTheme.axaml). -->
-  <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" Margin="0,0,0,16">
-    <Border Height="{DynamicResource Oadm.TitleBarHeight}" chrome:WindowDecorationProperties.ElementRole="TitleBar" Padding="24,0">
-      <TextBlock Classes="appName" Text="{Binding Title}" VerticalAlignment="Center" />
-    </Border>
+  <!-- Layout of the add devices wizard: title bar, cards, button row. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
 
     <!-- File -->
-    <Border Grid.Row="1" Classes="card" Margin="16,0,16,16">
-      <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
-        <TextBlock Classes="sectionTitle" Text="Firmware file" />
-        <StackPanel Grid.Row="1" Spacing="2" Margin="0,8,0,0">
-          <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis" />
-          <TextBlock Classes="secondary" Text="{Binding FileDetails}" IsVisible="{Binding FileDetails, Converter={x:Static ObjectConverters.IsNotNull}}" TextWrapping="Wrap" />
-          <TextBlock Classes="error" Text="{Binding FileError}" IsVisible="{Binding FileError, Converter={x:Static ObjectConverters.IsNotNull}}" TextWrapping="Wrap" />
-        </StackPanel>
-        <Button Grid.Column="1" Grid.RowSpan="2" Classes="secondary" VerticalAlignment="Center" Content="Choose file..." Command="{Binding BrowseCommand}" />
-      </Grid>
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <StackPanel>
+        <ui:CardHeader Title="Firmware file" Description="AXIS OS image (.bin) uploaded to the server and installed on every selected device that accepts it." />
+        <ui:FileRow FileName="{Binding FileName}" Details="{Binding FileDetails}" Error="{Binding FileError}" Command="{Binding BrowseCommand}" />
+      </StackPanel>
     </Border>
 
     <!-- Devices -->
-    <Border Grid.Row="2" Classes="card" Margin="16,0">
+    <Border Grid.Row="2" Classes="card" Margin="16,16,16,0">
       <Grid RowDefinitions="Auto,*">
-        <TextBlock Classes="secondary" Text="{Binding Summary}" Margin="0,0,0,8" />
-        <DataGrid Grid.Row="1" ItemsSource="{Binding Devices}" IsReadOnly="True" SelectionMode="Single" CanUserSortColumns="True">
+        <ui:CardHeader Title="Devices" Description="{Binding Summary}" />
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Devices}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
           <DataGrid.Columns>
-            <DataGridTextColumn Header="Address" Width="*" Binding="{Binding Address}" x:DataType="fw:FirmwareDeviceRow" />
+            <DataGridTextColumn Header="Address" Width="130" Binding="{Binding Address}" x:DataType="fw:FirmwareDeviceRow" />
             <DataGridTextColumn Header="Model" Width="*" Binding="{Binding Model}" x:DataType="fw:FirmwareDeviceRow" />
-            <DataGridTextColumn Header="Firmware" Width="*" Binding="{Binding CurrentVersion}" x:DataType="fw:FirmwareDeviceRow" />
-            <DataGridTemplateColumn Header="Result" Width="150">
+            <DataGridTextColumn Header="Firmware" Width="110" Binding="{Binding CurrentVersion}" x:DataType="fw:FirmwareDeviceRow" />
+            <DataGridTemplateColumn Header="Result" Width="170" SortMemberPath="VerdictText">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="fw:FirmwareDeviceRow">
-                  <Border Classes="pill" Margin="10,0" Classes.ok="{Binding IsOk}" Classes.warn="{Binding IsWarn}" Classes.error="{Binding IsError}" ToolTip.Tip="{Binding Message}">
-                    <TextBlock Text="{Binding VerdictText}" />
-                  </Border>
+                  <ui:StatusChip Margin="10,0" Text="{Binding VerdictText}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarn}" IsError="{Binding IsError}" ToolTip.Tip="{Binding Message}" />
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
@@ -56,25 +47,23 @@
 
     <!-- Options -->
     <Border Grid.Row="3" Classes="card" Margin="16,16,16,0">
-      <StackPanel Spacing="10">
-        <TextBlock Classes="sectionTitle" Text="Options" />
-        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
-          <TextBlock Classes="fieldLabel" Text="Factory default" Margin="0,0,16,0" />
-          <ComboBox Grid.Column="1" MinWidth="360" ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" />
-          <TextBlock Grid.Row="1" Grid.Column="1" Classes="warning" Margin="0,6,0,0" TextWrapping="Wrap" Text="{Binding ModeWarning}" IsVisible="{Binding HasModeWarning}" />
-        </Grid>
-        <CheckBox IsChecked="{Binding AllowDowngrade}" Content="Allow downgrade to an older AXIS OS version (requires a factory default)" />
-        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsUploading}">
-          <ProgressBar Classes="stream" Value="{Binding UploadProgress}" Minimum="0" Maximum="100" VerticalAlignment="Center" />
-          <TextBlock Grid.Column="1" Classes="secondary" Margin="12,0,0,0" Text="{Binding UploadText}" />
-        </Grid>
-        <TextBlock Classes="error" Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" TextWrapping="Wrap" />
+      <StackPanel>
+        <ui:CardHeader Title="Options" />
+        <StackPanel Classes="form">
+          <Grid ColumnDefinitions="150,360">
+            <TextBlock Classes="fieldLabel" Text="Factory default" />
+            <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" />
+          </Grid>
+          <TextBlock Classes="warning" TextWrapping="Wrap" Text="{Binding ModeWarning}" IsVisible="{Binding HasModeWarning}" />
+          <CheckBox IsChecked="{Binding AllowDowngrade}" Content="Allow downgrade to an older AXIS OS version (requires a factory default)" />
+          <ui:ProgressRow Value="{Binding UploadProgress}" Text="{Binding UploadText}" IsVisible="{Binding IsUploading}" />
+          <TextBlock Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        </StackPanel>
       </StackPanel>
     </Border>
 
-    <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="16,16,16,0">
-      <Button Classes="secondary" Content="Cancel" Command="{Binding CancelCommand}" IsCancel="True" />
+    <ui:DialogFooter Grid.Row="4" CancelCommand="{Binding CancelCommand}">
       <Button Classes="primary" Content="Upgrade" Command="{Binding StartCommand}" IsDefault="True" />
-    </StackPanel>
+    </ui:DialogFooter>
   </Grid>
 </Window>

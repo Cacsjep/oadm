@@ -324,7 +324,7 @@ public sealed class FirmwareDialogHeadlessTests
             ];
             ctx.Status[devices[0].Id] = new ClientStatus { Supported = true, ActiveVersion = "11.11.160", InactiveVersion = "11.11.100", IsCommitted = true }.ToJson();
             using var vm = new DialogViewModel(ctx, devices, new FakeFileSource());
-            var window = new DialogWindow { DataContext = vm, Width = 980, Height = 640 };
+            var window = new DialogWindow { DataContext = vm };
             window.Show();
             await vm.SelectFileAsync("C:\\Downloads\\P3265-V_12_11_77.bin", CancellationToken.None);
             await vm.LoadStatusAsync(CancellationToken.None);

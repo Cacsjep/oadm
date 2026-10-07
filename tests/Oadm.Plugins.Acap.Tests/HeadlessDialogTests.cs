@@ -50,7 +50,7 @@ public sealed class HeadlessDialogTests
         using var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
         var (rows, compat) = await session.Dispatch(async () =>
         {
-            var window = new AcapWindow { Width = 980, Height = 720 };
+            var window = new AcapWindow();
             var vm = new AcapDialogViewModel(ctx, [d1, d2], new FakePicker(eapPath));
             window.Attach(vm);
             window.Show();

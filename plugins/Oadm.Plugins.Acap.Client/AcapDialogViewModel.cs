@@ -51,11 +51,24 @@ public sealed partial class DeviceCompatibilityRow(DeviceChoice device) : Observ
 
     public string DeviceLabel => Device.Label;
 
+    /// <summary>Full report text (kind of install and warnings, or the problems).</summary>
     [ObservableProperty]
     public partial string Result { get; set; } = "Checking...";
 
+    /// <summary>Short verdict for the status chip, e.g. "Upgrade from 3.8.0" or "Not compatible".</summary>
+    [ObservableProperty]
+    public partial string Verdict { get; set; } = "Checking";
+
+    /// <summary>Warnings of a compatible device, problems of an incompatible one.</summary>
+    [ObservableProperty]
+    public partial string? Details { get; set; }
+
     [ObservableProperty]
     public partial bool IsOk { get; set; }
+
+    /// <summary>Installable, but with warnings or as a downgrade.</summary>
+    [ObservableProperty]
+    public partial bool IsWarning { get; set; }
 
     [ObservableProperty]
     public partial bool IsError { get; set; }
@@ -139,7 +152,12 @@ public sealed partial class AcapDialogViewModel : ObservableObject
     public partial EapManifest? Package { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPackageFile), nameof(PackageFileName))]
     public partial string? PackagePath { get; set; }
+
+    /// <summary>Size of the picked file ("1.2 MB"), shown in the file row.</summary>
+    [ObservableProperty]
+    public partial string? PackageFileDetails { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasPackageError))]
@@ -153,13 +171,18 @@ public sealed partial class AcapDialogViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(InstallCommand), nameof(PickPackageCommand), nameof(StartCommand), nameof(StopCommand), nameof(RemoveCommand))]
+    [NotifyPropertyChangedFor(nameof(ShowUploadStatus))]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
     public partial double UploadProgress { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowUploadStatus))]
     public partial string? UploadStatus { get; set; }
+
+    /// <summary>The last upload outcome (cancelled, failed) while no upload is running.</summary>
+    public bool ShowUploadStatus => !IsBusy && !string.IsNullOrEmpty(UploadStatus);
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
@@ -175,7 +198,12 @@ public sealed partial class AcapDialogViewModel : ObservableObject
 
     public bool HasPackageError => !string.IsNullOrEmpty(PackageError);
 
-    public string PackageTitle => Package is null ? string.Empty : $"{Package.DisplayName} {Package.Version}";
+    /// <summary>A package file was picked (valid or not): the install card is shown.</summary>
+    public bool HasPackageFile => !string.IsNullOrEmpty(PackagePath);
+
+    public string? PackageFileName => PackagePath is null ? null : Path.GetFileName(PackagePath);
+
+    public string PackageTitle => Package is null ? "Install or upgrade" : $"{Package.DisplayName} {Package.Version}";
 
     public string PackageDetails => Package is null
         ? string.Empty
@@ -331,10 +359,12 @@ public sealed partial class AcapDialogViewModel : ObservableObject
     {
         PackagePath = path;
         PackageError = null;
+        PackageFileDetails = null;
         Package = null;
         Compatibility.Clear();
         try
         {
+            PackageFileDetails = FileSizeText.Format(new FileInfo(path).Length);
             Package = await Task.Run(() => EapReader.ReadAsync(path, CancellationToken.None)).ConfigureAwait(true);
         }
         catch (Exception ex) when (ex is InvalidEapException or IOException or UnauthorizedAccessException)
@@ -374,8 +404,11 @@ public sealed partial class AcapDialogViewModel : ObservableObject
                 var installed = state.Applications.FirstOrDefault(a => string.Equals(a.Name, package.AppName, StringComparison.Ordinal));
                 var report = AcapCompatibility.Check(package, state.Device, installed, AllowDowngrade);
                 row.IsOk = report.IsCompatible;
+                row.IsWarning = report.IsCompatible && (report.Warnings.Count > 0 || report.Kind == InstallKind.Downgrade);
                 row.IsError = !report.IsCompatible;
                 row.Result = report.Summary;
+                row.Verdict = report.IsCompatible ? report.KindText : "Not compatible";
+                row.Details = string.Join(" ", report.IsCompatible ? report.Warnings : report.Problems);
             }
 #pragma warning disable CA1031 // Shown per device.
             catch (Exception ex)
@@ -383,6 +416,8 @@ public sealed partial class AcapDialogViewModel : ObservableObject
             {
                 row.IsError = true;
                 row.Result = "Could not read the device: " + ex.Message;
+                row.Verdict = "Not readable";
+                row.Details = row.Result;
             }
         }
 

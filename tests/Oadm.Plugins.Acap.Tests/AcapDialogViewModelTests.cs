@@ -212,10 +212,17 @@ public sealed class AcapDialogViewModelTests : IDisposable
         Assert.Equal("Hello World 1.2.0", vm.PackageTitle);
         Assert.Contains("Architecture aarch64", vm.PackageDetails, StringComparison.Ordinal);
         Assert.Equal(3, vm.Compatibility.Count);
+        Assert.True(vm.HasPackageFile);
+        Assert.Equal(Path.GetFileName(path), vm.PackageFileName);
+        Assert.EndsWith("KB", vm.PackageFileDetails, StringComparison.Ordinal);
         Assert.True(vm.Compatibility[0].IsOk);
+        Assert.False(vm.Compatibility[0].IsWarning);
         Assert.Equal("Upgrade from 1.0.0", vm.Compatibility[0].Result);
+        Assert.Equal("Upgrade from 1.0.0", vm.Compatibility[0].Verdict);
         Assert.True(vm.Compatibility[1].IsError);
+        Assert.Equal("Not compatible", vm.Compatibility[1].Verdict);
         Assert.Contains("armv7hf", vm.Compatibility[1].Result, StringComparison.Ordinal);
+        Assert.Contains("armv7hf", vm.Compatibility[1].Details, StringComparison.Ordinal);
         Assert.True(vm.Compatibility[2].IsError);
         Assert.Contains("needs AXIS OS 12.0", vm.Compatibility[2].Result, StringComparison.Ordinal);
         Assert.Equal(1, vm.CompatibleCount);
@@ -252,6 +259,8 @@ public sealed class AcapDialogViewModelTests : IDisposable
         await TestWait.UntilAsync(() => vm.CompatibleCount == 1);
         Assert.True(vm.InstallCommand.CanExecute(null));
         Assert.Equal("Downgrade from 2.0.0", vm.Compatibility[0].Result);
+        Assert.Equal("Downgrade from 2.0.0", vm.Compatibility[0].Verdict);
+        Assert.True(vm.Compatibility[0].IsWarning);
     }
 
     [Fact]

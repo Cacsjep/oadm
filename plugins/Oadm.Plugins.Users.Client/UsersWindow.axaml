@@ -1,82 +1,85 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:chrome="using:Avalonia.Controls.Chrome"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
         xmlns:u="using:Oadm.Plugins.Users.Client"
         x:Class="Oadm.Plugins.Users.Client.UsersWindow"
         x:DataType="u:UsersDialogViewModel"
         Title="Users"
-        Width="760" SizeToContent="Height"
-        CanResize="False"
+        Width="1040" Height="700" MinWidth="900" MinHeight="560"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
-  <!-- Plain controls only: fonts, colors, paddings and control sizes come from the host theme (OadmTheme.axaml). -->
-  <Grid RowDefinitions="Auto,Auto,Auto">
-    <Border Grid.Row="0" Height="{DynamicResource Oadm.TitleBarHeight}" Padding="24,0" chrome:WindowDecorationProperties.ElementRole="TitleBar">
-      <TextBlock Classes="appName" Text="Users" VerticalAlignment="Center" />
-    </Border>
+  <!-- Layout of the add devices wizard: title bar, cards, button row. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="Users" />
 
-    <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="16" Margin="24,0,24,0">
+    <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource Oadm.Gap}" Margin="16,0">
       <!-- Left: what to do -->
-      <StackPanel Grid.Column="0" Spacing="10">
-        <TextBlock Classes="sectionTitle" Text="Action" />
-        <StackPanel Orientation="Horizontal" Spacing="16">
-          <RadioButton GroupName="mode" Content="Add" IsChecked="{Binding IsAdd}" />
-          <RadioButton GroupName="mode" Content="Change" IsChecked="{Binding IsChange}" />
-          <RadioButton GroupName="mode" Content="Remove" IsChecked="{Binding IsRemove}" />
-        </StackPanel>
+      <Border Grid.Column="0" Classes="card">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+          <StackPanel>
+            <ui:CardHeader Title="User" Description="{Binding Summary}" />
+            <StackPanel Classes="form">
+              <Grid ColumnDefinitions="150,280">
+                <TextBlock Classes="fieldLabel" Text="Action" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16">
+                  <RadioButton GroupName="mode" Content="Add" IsChecked="{Binding IsAdd}" />
+                  <RadioButton GroupName="mode" Content="Change" IsChecked="{Binding IsChange}" />
+                  <RadioButton GroupName="mode" Content="Remove" IsChecked="{Binding IsRemove}" />
+                </StackPanel>
+              </Grid>
 
-        <TextBlock Classes="fieldLabel" Text="User name" />
-        <TextBox Text="{Binding UserName}" PlaceholderText="1-14 characters: a-z, A-Z, 0-9" />
+              <Grid ColumnDefinitions="150,280">
+                <TextBlock Classes="fieldLabel" Text="User name" />
+                <TextBox Grid.Column="1" Text="{Binding UserName}" PlaceholderText="1-14 characters: a-z, A-Z, 0-9" />
+              </Grid>
 
-        <StackPanel Spacing="6" IsVisible="{Binding IsChange}">
-          <CheckBox Content="Set a new password" IsChecked="{Binding ChangePassword}" />
-          <CheckBox Content="Change role" IsChecked="{Binding ChangeRole}" />
-        </StackPanel>
+              <Grid ColumnDefinitions="150,280" IsVisible="{Binding IsChange}">
+                <StackPanel Grid.Column="1">
+                  <CheckBox Content="Set a new password" IsChecked="{Binding ChangePassword}" />
+                  <CheckBox Content="Change role" IsChecked="{Binding ChangeRole}" />
+                </StackPanel>
+              </Grid>
 
-        <StackPanel Spacing="10" IsVisible="{Binding ShowPassword}">
-          <TextBlock Classes="fieldLabel" Text="Password" />
-          <TextBox Text="{Binding Password}" PasswordChar="&#x2022;" />
-          <TextBlock Classes="fieldLabel" Text="Confirm password" />
-          <TextBox Text="{Binding ConfirmPassword}" PasswordChar="&#x2022;" />
-          <TextBlock Classes="secondary small" Text="{Binding PolicyHint}" TextWrapping="Wrap" />
-        </StackPanel>
+              <Grid Classes="form" ColumnDefinitions="150,280" RowDefinitions="Auto,Auto,Auto" IsVisible="{Binding ShowPassword}">
+                <TextBlock Classes="fieldLabel" Text="Password" />
+                <TextBox Grid.Column="1" Text="{Binding Password}" PasswordChar="&#x2022;" />
+                <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Confirm password" />
+                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding ConfirmPassword}" PasswordChar="&#x2022;" />
+                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Classes="secondary small" Text="{Binding PolicyHint}" TextWrapping="Wrap" />
+              </Grid>
 
-        <StackPanel Spacing="10" IsVisible="{Binding ShowRole}">
-          <TextBlock Classes="fieldLabel" Text="Role" />
-          <ComboBox ItemsSource="{Binding Roles}" SelectedItem="{Binding SelectedRole}" HorizontalAlignment="Stretch" />
-          <CheckBox Content="PTZ control" IsChecked="{Binding Ptz}" />
-        </StackPanel>
-      </StackPanel>
+              <Grid Classes="form" ColumnDefinitions="150,280" RowDefinitions="Auto,Auto" IsVisible="{Binding ShowRole}">
+                <TextBlock Classes="fieldLabel" Text="Role" />
+                <ComboBox Grid.Column="1" ItemsSource="{Binding Roles}" SelectedItem="{Binding SelectedRole}" HorizontalAlignment="Stretch" />
+                <CheckBox Grid.Row="1" Grid.Column="1" Content="PTZ control" IsChecked="{Binding Ptz}" />
+              </Grid>
+
+              <TextBlock Classes="warning" Text="{Binding LockOutWarning}" TextWrapping="Wrap" IsVisible="{Binding LockOutWarning, Converter={x:Static ObjectConverters.IsNotNull}}" />
+              <TextBlock Classes="error" Text="{Binding ValidationError}" TextWrapping="Wrap" IsVisible="{Binding ValidationError, Converter={x:Static ObjectConverters.IsNotNull}}" />
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
 
       <!-- Right: existing users of the first selected device (read-only query) -->
-      <Border Grid.Column="1" Classes="card" VerticalAlignment="Stretch">
-        <DockPanel>
-          <TextBlock DockPanel.Dock="Top" Classes="sectionTitle" Text="{Binding UsersTitle}" TextWrapping="Wrap" />
-          <TextBlock DockPanel.Dock="Top" Classes="secondary small" Text="{Binding UsersStatus}" TextWrapping="Wrap" Margin="0,4,0,8" />
-          <ListBox ItemsSource="{Binding ExistingUsers}" SelectedItem="{Binding SelectedExistingUser}" Background="{DynamicResource Oadm.TransparentBrush}">
-            <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="u:ExistingUserRow">
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                  <TextBlock Grid.Column="0" Text="{Binding Name}" />
-                  <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding RoleText}" />
-                </Grid>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-        </DockPanel>
+      <Border Grid.Column="1" Classes="card">
+        <Grid RowDefinitions="Auto,*">
+          <ui:CardHeader Title="Existing users" Description="{Binding UsersDescription}" />
+          <DataGrid Grid.Row="1" ItemsSource="{Binding ExistingUsers}" SelectedItem="{Binding SelectedExistingUser}" SelectionMode="Single"
+                    IsReadOnly="True" CanUserReorderColumns="False">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="User name" Width="*" Binding="{Binding Name}" x:DataType="u:ExistingUserRow" />
+              <DataGridTextColumn Header="Role" Width="2*" Binding="{Binding RoleText}" x:DataType="u:ExistingUserRow" />
+            </DataGrid.Columns>
+          </DataGrid>
+        </Grid>
       </Border>
     </Grid>
 
-    <StackPanel Grid.Row="2" Spacing="8" Margin="24,16,24,20">
-      <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
-      <TextBlock Classes="warning" Text="{Binding LockOutWarning}" TextWrapping="Wrap" IsVisible="{Binding LockOutWarning, Converter={x:Static ObjectConverters.IsNotNull}}" />
-      <TextBlock Classes="error" Text="{Binding ValidationError}" TextWrapping="Wrap" IsVisible="{Binding ValidationError, Converter={x:Static ObjectConverters.IsNotNull}}" />
-      <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-        <Button Classes="secondary" Content="Cancel" Command="{Binding CancelCommand}" IsCancel="True" />
-        <Button Classes="primary" Content="{Binding ApplyText}" Command="{Binding ApplyCommand}" IsDefault="True" />
-      </StackPanel>
-    </StackPanel>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="{Binding ApplyText}" Command="{Binding ApplyCommand}" IsDefault="True" />
+    </ui:DialogFooter>
   </Grid>
 </Window>

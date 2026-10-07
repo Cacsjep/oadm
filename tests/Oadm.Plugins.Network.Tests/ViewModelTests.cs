@@ -216,6 +216,7 @@ public sealed class ViewModelTests
         Assert.Equal((devices[0].Id, "getNetworkInfo"), Assert.Single(ctx.Queries));
         Assert.Equal("10.0.0.138", vm.Ipv4Gateway);
         Assert.Contains("network-settings 1.38", vm.PrefillStatus, StringComparison.Ordinal);
+        Assert.Equal(vm.DeviceSummary + " " + vm.PrefillStatus, vm.DevicesDescription);
         Assert.Equal(string.Empty, vm.HostNameText); // a single name is never prefilled for several devices
     }
 

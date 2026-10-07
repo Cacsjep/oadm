@@ -106,6 +106,9 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
         ? $"{Label(_devices[0])}. Only sections you change are written."
         : $"{_devices.Count} devices, starting with {Label(_devices[0])}. Only sections you change are written.";
 
+    /// <summary>Description of the Devices card: which devices, and where the current values come from.</summary>
+    public string DevicesDescription => string.IsNullOrEmpty(PrefillStatus) ? DeviceSummary : DeviceSummary + " " + PrefillStatus;
+
     public bool IsMultiDevice => _devices.Count > 1;
 
     public string Ipv4AddressLabel => IsMultiDevice ? "Start address" : "IP address";
@@ -172,6 +175,7 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject
     public partial string CurrentHostNameText { get; set; } = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DevicesDescription))]
     public partial string PrefillStatus { get; set; } = string.Empty;
 
     [ObservableProperty]

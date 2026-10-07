@@ -43,6 +43,12 @@ public sealed partial class UsersDialogViewModel : ObservableObject
             1 => $"Existing users on {Describe(devices[0])}",
             _ => $"Existing users on {Describe(devices[0])} (first of {devices.Count} selected devices)",
         };
+        UsersSource = devices.Count switch
+        {
+            0 => string.Empty,
+            1 => $"On {Describe(devices[0])}.",
+            _ => $"On {Describe(devices[0])}, the first of {devices.Count} selected devices.",
+        };
         Update();
     }
 
@@ -61,6 +67,12 @@ public sealed partial class UsersDialogViewModel : ObservableObject
     public int DeviceCount => _devices.Count;
 
     public string UsersTitle { get; }
+
+    /// <summary>Which device the existing users come from (card description).</summary>
+    public string UsersSource { get; }
+
+    /// <summary>Card description of the existing users: source device and load status.</summary>
+    public string UsersDescription => string.IsNullOrEmpty(UsersSource) ? UsersStatus : UsersSource + " " + UsersStatus;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAdd), nameof(IsChange), nameof(IsRemove), nameof(ShowPassword), nameof(ShowRole), nameof(ApplyText))]
@@ -99,6 +111,7 @@ public sealed partial class UsersDialogViewModel : ObservableObject
     private string _policyHint = CredentialRules.Hint(PassphrasePolicy.None);
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UsersDescription))]
     private string _usersStatus = "Loading users...";
 
     [ObservableProperty]

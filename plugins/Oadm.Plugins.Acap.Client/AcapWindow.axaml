@@ -1,63 +1,68 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:chrome="using:Avalonia.Controls.Chrome"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
         xmlns:vm="using:Oadm.Plugins.Acap.Client"
         x:Class="Oadm.Plugins.Acap.Client.AcapWindow"
         x:DataType="vm:AcapDialogViewModel"
         Title="{Binding Title}"
-        Width="980" Height="720" MinWidth="760" MinHeight="560"
+        Width="1040" Height="760" MinWidth="820" MinHeight="560"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="{StaticResource Oadm.TitleBarHeight}">
-  <!-- Plain controls only; colors, sizes and button classes come from the host theme (OadmTheme.axaml). -->
+        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+  <!-- Layout of the add devices wizard: title bar, cards, button row. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,*,Auto,Auto">
-    <Border Grid.Row="0" Height="{StaticResource Oadm.TitleBarHeight}" Padding="24,0" chrome:WindowDecorationProperties.ElementRole="TitleBar">
-      <TextBlock Classes="appName" Text="{Binding Title}" VerticalAlignment="Center" />
-    </Border>
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
 
     <!-- Installed applications -->
-    <Border Grid.Row="1" Classes="card" Margin="16,0,16,0">
-      <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-          <TextBlock Classes="cardTitle" Text="Installed applications" />
-          <ComboBox Grid.Column="1" MinWidth="260" ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" IsVisible="{Binding ShowDevicePicker}">
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <ui:CardHeader Grid.Row="0" Title="Installed applications" Description="{Binding ScopeText}">
+          <ComboBox ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" IsVisible="{Binding ShowDevicePicker}">
             <ComboBox.ItemTemplate>
               <DataTemplate x:DataType="vm:DeviceChoice">
                 <TextBlock Text="{Binding Label}" />
               </DataTemplate>
             </ComboBox.ItemTemplate>
           </ComboBox>
-        </Grid>
-        <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding ScopeText}" Margin="0,6,0,12" />
+        </ui:CardHeader>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="4" Margin="0,0,0,10">
-          <Button Classes="toolbar" Content="Start" Command="{Binding StartCommand}" />
-          <Button Classes="toolbar" Content="Stop" Command="{Binding StopCommand}" />
-          <Button Classes="toolbar" Content="Remove" Command="{Binding RemoveCommand}" />
+        <!-- Toolbar: same buttons as the Devices page -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4" Margin="0,0,0,10">
+          <Button Classes="toolbar" Command="{Binding StartCommand}">
+            <ui:IconLabel Icon="{DynamicResource Icon.start}" Text="Start" />
+          </Button>
+          <Button Classes="toolbar" Command="{Binding StopCommand}">
+            <ui:IconLabel Icon="{DynamicResource Icon.stop}" Text="Stop" />
+          </Button>
+          <Button Classes="toolbar" Command="{Binding RemoveCommand}">
+            <ui:IconLabel Icon="{DynamicResource Icon.remove}" Text="Remove" />
+          </Button>
           <Border Classes="vseparator" />
-          <Button Classes="toolbar" Content="Refresh" Command="{Binding RefreshCommand}" />
-          <Button Classes="toolbar" Content="Install or upgrade..." Command="{Binding PickPackageCommand}" />
+          <Button Classes="toolbar" Command="{Binding RefreshCommand}">
+            <ui:IconLabel Icon="{DynamicResource Icon.refresh}" Text="Refresh" />
+          </Button>
+          <Button Classes="toolbar" Command="{Binding PickPackageCommand}" ToolTip.Tip="Choose an ACAP package (.eap) to install on the selected devices">
+            <ui:IconLabel Icon="{DynamicResource Icon.upload}" Text="Install or upgrade..." />
+          </Button>
         </StackPanel>
 
-        <Panel Grid.Row="3">
+        <Panel Grid.Row="2">
           <DataGrid ItemsSource="{Binding Applications}" SelectedItem="{Binding SelectedApplication}" SelectionMode="Single"
                     IsReadOnly="True" CanUserReorderColumns="False">
             <DataGrid.Columns>
-              <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" />
-              <DataGridTextColumn Header="Vendor" Binding="{Binding Vendor}" Width="1.4*" />
-              <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="84" />
-              <DataGridTemplateColumn Header="Status" Width="92" SortMemberPath="Status">
+              <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" x:DataType="vm:ApplicationRow" />
+              <DataGridTextColumn Header="Vendor" Binding="{Binding Vendor}" Width="1.4*" x:DataType="vm:ApplicationRow" />
+              <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="100" x:DataType="vm:ApplicationRow" />
+              <DataGridTemplateColumn Header="Status" Width="120" SortMemberPath="Status">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="vm:ApplicationRow">
-                    <Border Classes="pill" Classes.ok="{Binding IsRunning}">
-                      <TextBlock Text="{Binding Status}" />
-                    </Border>
+                    <ui:StatusChip Margin="10,0" Text="{Binding Status}" IsOk="{Binding IsRunning}" />
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Header="License" Binding="{Binding License}" Width="150" />
-              <DataGridTextColumn Header="Signature" Binding="{Binding Signature}" Width="96" />
+              <DataGridTextColumn Header="License" Binding="{Binding License}" Width="170" x:DataType="vm:ApplicationRow" />
+              <DataGridTextColumn Header="Signature" Binding="{Binding Signature}" Width="110" x:DataType="vm:ApplicationRow" />
             </DataGrid.Columns>
           </DataGrid>
           <ProgressBar Classes.stream="{Binding IsLoading}" VerticalAlignment="Top" IsVisible="{Binding IsLoading}" />
@@ -66,9 +71,9 @@
         </Panel>
 
         <!-- Remove confirmation -->
-        <Grid Grid.Row="4" ColumnDefinitions="*,Auto" Margin="0,12,0,0" IsVisible="{Binding ConfirmRemoveVisible}">
+        <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,12,0,0" IsVisible="{Binding ConfirmRemoveVisible}">
           <TextBlock Classes="warning" Text="{Binding ConfirmRemoveText}" TextWrapping="Wrap" VerticalAlignment="Center" />
-          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="12,0,0,0">
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="16,0,0,0">
             <Button Classes="secondary" Content="Keep" Command="{Binding CancelRemoveCommand}" />
             <Button Classes="primary" Content="Remove" Command="{Binding ConfirmRemoveCommand}" />
           </StackPanel>
@@ -77,44 +82,37 @@
     </Border>
 
     <!-- Install or upgrade -->
-    <Border Grid.Row="2" Classes="card" Margin="16,16,16,0" IsVisible="{Binding HasPackage}">
-      <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto">
-        <TextBlock Grid.Row="0" Classes="cardTitle" Text="{Binding PackageTitle}" />
-        <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding PackageDetails}" TextWrapping="Wrap" Margin="0,6,0,12" />
-        <ItemsControl Grid.Row="2" ItemsSource="{Binding Compatibility}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:DeviceCompatibilityRow">
-              <Grid ColumnDefinitions="260,*" Margin="0,0,0,6">
-                <TextBlock Text="{Binding DeviceLabel}" VerticalAlignment="Center" />
-                <Border Grid.Column="1" Classes="pill" Classes.ok="{Binding IsOk}" Classes.error="{Binding IsError}">
-                  <TextBlock Text="{Binding Result}" TextWrapping="Wrap" />
-                </Border>
-              </Grid>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="24" Margin="0,8,0,0">
-          <CheckBox Content="Start after install" IsChecked="{Binding StartAfterInstall}" />
-          <CheckBox Content="Allow downgrade" IsChecked="{Binding AllowDowngrade}" />
-          <TextBlock Classes="secondary" Text="{Binding CompatibilitySummary}" VerticalAlignment="Center" />
+    <Border Grid.Row="2" Classes="card" Margin="16,16,16,0" IsVisible="{Binding HasPackageFile}">
+      <StackPanel>
+        <ui:CardHeader Title="{Binding PackageTitle}" Description="{Binding PackageDetails}" />
+        <StackPanel Classes="form">
+          <ui:FileRow FileName="{Binding PackageFileName}" Details="{Binding PackageFileDetails}" Error="{Binding PackageError}" Command="{Binding PickPackageCommand}" />
+          <DataGrid ItemsSource="{Binding Compatibility}" MaxHeight="240" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False" IsVisible="{Binding HasPackage}">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Device" Binding="{Binding DeviceLabel}" Width="240" x:DataType="vm:DeviceCompatibilityRow" />
+              <DataGridTemplateColumn Header="Result" Width="200" SortMemberPath="Verdict">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:DeviceCompatibilityRow">
+                    <ui:StatusChip Margin="10,0" Text="{Binding Verdict}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" ToolTip.Tip="{Binding Result}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Details" Binding="{Binding Details}" Width="*" x:DataType="vm:DeviceCompatibilityRow" />
+            </DataGrid.Columns>
+          </DataGrid>
+          <StackPanel Orientation="Horizontal" Spacing="24" IsVisible="{Binding HasPackage}">
+            <CheckBox Content="Start after install" IsChecked="{Binding StartAfterInstall}" />
+            <CheckBox Content="Allow downgrade" IsChecked="{Binding AllowDowngrade}" />
+            <TextBlock Classes="secondary" Text="{Binding CompatibilitySummary}" />
+          </StackPanel>
+          <ui:ProgressRow Value="{Binding UploadProgress}" Text="{Binding UploadStatus}" IsVisible="{Binding IsBusy}" />
+          <TextBlock Classes="secondary" Text="{Binding UploadStatus}" TextWrapping="Wrap" IsVisible="{Binding ShowUploadStatus}" />
         </StackPanel>
-        <Grid Grid.Row="4" ColumnDefinitions="*,Auto" Margin="0,10,0,0" IsVisible="{Binding IsBusy}">
-          <ProgressBar Value="{Binding UploadProgress}" Minimum="0" Maximum="100" VerticalAlignment="Center" />
-          <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding UploadStatus}" Margin="12,0,0,0" />
-        </Grid>
-      </Grid>
+      </StackPanel>
     </Border>
 
-    <!-- Footer -->
-    <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="24,16,24,20">
-      <StackPanel VerticalAlignment="Center">
-        <TextBlock Classes="error" Text="{Binding PackageError}" TextWrapping="Wrap" IsVisible="{Binding HasPackageError}" />
-        <TextBlock Classes="secondary" Text="{Binding UploadStatus}" TextWrapping="Wrap" IsVisible="{Binding !IsBusy}" />
-      </StackPanel>
-      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-        <Button Classes="secondary" Content="Cancel" Command="{Binding CancelCommand}" IsCancel="True" />
-        <Button Classes="primary" Content="Install" Command="{Binding InstallCommand}" IsVisible="{Binding HasPackage}" />
-      </StackPanel>
-    </Grid>
+    <ui:DialogFooter Grid.Row="3" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Install" Command="{Binding InstallCommand}" IsVisible="{Binding HasPackage}" IsDefault="True" />
+    </ui:DialogFooter>
   </Grid>
 </Window>

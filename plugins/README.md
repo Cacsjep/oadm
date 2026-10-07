@@ -68,13 +68,32 @@ the payload. Failures are `Grpc.Core.RpcException`; show `Status.Detail` to the 
 
 Build dialogs from the host look (HARD RULE: reuse controls, no style differences):
 
-- Controls from `Oadm.Sdk.Client.Controls` (`xmlns:ui="using:Oadm.Sdk.Client.Controls"`):
-  `ui:IconLabel` (every icon + text row, e.g. button content), `ui:SearchBox` (every search
-  field), `ui:OadmIcon` (single icon).
+- Window and layout like the add devices wizard: `Width`/`Height` explicit (e.g. 1040 x 700),
+  `ExtendClientAreaToDecorationsHint="True"`,
+  `ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}"`, a root grid of
+  title bar, cards with `Margin="16,0"` (`16,16,16,0` for each further card) and the footer.
+- Controls from `Oadm.Sdk.Client.Controls` (`xmlns:ui="using:Oadm.Sdk.Client.Controls"`), never
+  hand-built copies:
+
+  | Control | Use for |
+  |---|---|
+  | `ui:DialogTitleBar Text="..."` | first row of every dialog window (title, draggable, caption buttons) |
+  | `ui:CardHeader Title Description` | heading of every card (card title, secondary description); child controls go right of the title (e.g. a device picker). Class `flush` when the content below is optional and adds `Margin="{DynamicResource Oadm.GapTop}"` itself |
+  | `ui:DialogFooter CancelCommand` | last row: Cancel left; children are the right-hand buttons (`Button.secondary` for Back, one `Button.primary`) |
+  | `ui:IconLabel Icon Text` | every icon + text row, e.g. button content; toolbar rows are `Button.toolbar` with an `IconLabel`, like the Devices page |
+  | `ui:SearchBox Text` | every search field |
+  | `ui:StatusChip Text IsOk IsWarning IsError IsAccent` | every status value (border-only chip), in grid cells with `Margin="10,0"` |
+  | `ui:FileRow FileName Details Error Command` | a chosen local file with its "Choose file..." button; format sizes with `FileSizeText.Format` |
+  | `ui:ProgressRow Value Text IsActive` | upload or scan progress (0 to 100) with its status text |
+  | `ui:OadmIcon Data` | a single icon |
+
 - Styles and classes from the host theme (`Themes/OadmTheme.axaml`), e.g. `Border.card`,
-  `TextBlock.cardTitle`, `TextBlock.secondary`, `TextBlock.fieldLabel`, `Button.primary`,
-  `Button.secondary`, `Border.pill` with `ok`, `warn`, `error`, `accent`. No local colors or font
-  sizes.
+  `TextBlock.secondary`, `TextBlock.fieldLabel`, `TextBlock.warning`, `TextBlock.error`,
+  `Button.primary`, `Button.secondary`, `Button.toolbar`, `Border.vseparator`. Form fields are
+  label left, input right like the wizard steps: `Grid ColumnDefinitions="150,280"` with a
+  `TextBlock.fieldLabel`; stack rows in `StackPanel Classes="form"` (or `Grid Classes="form"`),
+  which sets the row spacing. Tables are `DataGrid`s (the theme styles them). No local colors,
+  font sizes, font weights or paddings.
 - Icons are application resources of the client, available to plugin windows at runtime
   (`Icon="{DynamicResource Icon.key}"`; a plugin project cannot resolve them at compile time,
   so use `DynamicResource`). Available keys:
@@ -83,7 +102,9 @@ Build dialogs from the host look (HARD RULE: reuse controls, no style difference
   `Icon.remove`, `Icon.refresh`, `Icon.restart`, `Icon.identify`, `Icon.columns`, `Icon.search`,
   `Icon.details`, `Icon.cancel`, `Icon.chevronDown`, `Icon.chevronUp`, `Icon.close`, `Icon.check`,
   `Icon.server`, `Icon.externalLink`, `Icon.key`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
-  `Icon.panelClose`, `Icon.deleteAll`, `Icon.device.camera`, `Icon.device.encoder`,
+  `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.network`, `Icon.firmware`, `Icon.users`,
+  `Icon.user`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
+  `Icon.device.camera`, `Icon.device.encoder`,
   `Icon.device.speaker`, `Icon.device.audio`, `Icon.device.intercom`, `Icon.device.radar`,
   `Icon.device.io`, `Icon.device.door`, `Icon.device.generic`.
 

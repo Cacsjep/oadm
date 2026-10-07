@@ -113,6 +113,7 @@ public sealed class UsersDialogViewModelTests
         Assert.Equal("Administrator with PTZ (used by OADM)", vm.ExistingUsers[0].RoleText);
         Assert.Equal("4 user(s).", vm.UsersStatus);
         Assert.Contains("first of 3 selected devices", vm.UsersTitle, StringComparison.Ordinal);
+        Assert.EndsWith("the first of 3 selected devices. 4 user(s).", vm.UsersDescription, StringComparison.Ordinal);
     }
 
     [Fact]

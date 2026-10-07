@@ -52,7 +52,7 @@ public sealed class HeadlessDialogTests
             vm.DnsSecondary = "10.0.0.2";
             vm.SelectedHostName = vm.HostNameChoices.Single(c => c.Value == SourceChoice.Static);
             vm.HostNameText = "cam-{n}";
-            var window = new NetworkSettingsWindow { DataContext = vm, Width = 760, Height = 1500 };
+            var window = new NetworkSettingsWindow { DataContext = vm, Height = 1500 };
             window.Show();
             await PumpAsync();
             Capture(window, outDir, "network-settings-dialog-multi.png");
@@ -63,7 +63,7 @@ public sealed class HeadlessDialogTests
             // One device: everything unchanged, apply disabled.
             var single = new NetworkSettingsViewModel([devices[0]]);
             single.ApplyCurrent(current);
-            var window2 = new NetworkSettingsWindow { DataContext = single, Width = 760, Height = 900 };
+            var window2 = new NetworkSettingsWindow { DataContext = single };
             window2.Show();
             await PumpAsync();
             Capture(window2, outDir, "network-settings-dialog-single.png");
