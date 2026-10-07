@@ -87,7 +87,7 @@
             <DataGridTemplateColumn Header="Login" Width="230" SortMemberPath="ChipText">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="disc:DiscoveredRowViewModel">
-                  <ui:StatusChip Margin="10,0" Text="{Binding ChipText}" ToolTip.Tip="{Binding ChipTooltip}"
+                  <ui:StatusChip Text="{Binding ChipText}" Detail="{Binding StatusDetail}" ToolTip.Tip="{Binding ChipTooltip}"
                                  IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}" IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}" />
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>

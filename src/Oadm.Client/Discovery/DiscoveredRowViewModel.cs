@@ -50,6 +50,9 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
     [ObservableProperty] public partial bool IsSelected { get; set; }
 
     [ObservableProperty] public partial string ChipText { get; private set; } = "";
+
+    /// <summary>Shown right of the status text for failures (e.g. the login error).</summary>
+    [ObservableProperty] public partial string StatusDetail { get; private set; } = "";
     [ObservableProperty] public partial PillKind ChipKind { get; private set; }
     [ObservableProperty] public partial bool CanAdd { get; private set; }
 
@@ -170,6 +173,7 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
                 AuthState.Unreachable => ("Unreachable", PillKind.Error),
                 _ => ("Checking...", PillKind.Accent),
             };
+        StatusDetail = !IsAdded && !IsAlreadyManaged && AuthState is AuthState.LoginFailed or AuthState.Unreachable ? AuthDetail : "";
         CanAdd = !IsMuted && (AuthState == AuthState.Authenticated || (AuthState == AuthState.PasswordNotSet && PendingPassword is not null));
         if (!CanAdd)
         {
