@@ -46,7 +46,7 @@ public sealed partial class TasksViewModel : ObservableObject
             OnPropertyChanged(nameof(HasActive));
             OnPropertyChanged(nameof(ActiveCountText));
             DeleteAllCommand.NotifyCanExecuteChanged();
-            if (task is not null && task == SelectedTask)
+            if (task is null || task == SelectedTask)
             {
                 NotifySelectionCommands();
             }

@@ -8,7 +8,7 @@ public sealed class TaskEngineOptions
     /// </summary>
     public int MaxParallelTasksPerPlugin { get; set; } = 8;
 
-    /// <summary>Buffered changes per change-feed subscriber before the oldest are dropped.</summary>
+    /// <summary>Unused since change-feed subscriptions coalesce per task instead of dropping changes; kept for compatibility.</summary>
     public int ChangeFeedCapacity { get; set; } = 4096;
 
     /// <summary>Log entries kept per task; later entries are dropped (the last kept one says so). Default 1000.</summary>

@@ -46,6 +46,60 @@ public sealed class CredentialStore(
         changeFeed.Publish(new DeviceChange(DeviceChangeKind.Updated, deviceId, device));
     }
 
+    /// <summary>
+    /// Stores (or replaces) the same credentials on many devices in one transaction (one write for 5,000
+    /// devices instead of 5,000), then publishes one device Updated change per device.
+    /// </summary>
+    /// <exception cref="KeyNotFoundException">One of the devices does not exist; nothing is stored.</exception>
+    public async Task SetManyAsync(IReadOnlyCollection<Guid> deviceIds, string userName, string password, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        ArgumentException.ThrowIfNullOrEmpty(userName);
+        ArgumentNullException.ThrowIfNull(password);
+
+        var ids = deviceIds.Distinct().ToList();
+        var devices = new List<Device>(ids.Count);
+        await using (var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false))
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
+            foreach (var chunk in ids.Chunk(500))
+            {
+                var found = await db.Devices.AsNoTracking().Where(d => chunk.Contains(d.Id)).ToListAsync(ct).ConfigureAwait(false);
+                if (found.Count != chunk.Length)
+                {
+                    var missing = chunk.First(id => !found.Exists(d => d.Id == id));
+                    throw new KeyNotFoundException($"Device {missing} not found.");
+                }
+
+                var existing = await db.DeviceCredentials.Where(c => chunk.Contains(c.DeviceId))
+                    .ToDictionaryAsync(c => c.DeviceId, ct).ConfigureAwait(false);
+                foreach (var id in chunk)
+                {
+                    var encrypted = protector.Protect(password, id.ToByteArray());
+                    if (existing.TryGetValue(id, out var row))
+                    {
+                        row.UserName = userName;
+                        row.EncryptedPassword = encrypted;
+                    }
+                    else
+                    {
+                        db.DeviceCredentials.Add(new DeviceCredential { DeviceId = id, UserName = userName, EncryptedPassword = encrypted });
+                    }
+                }
+
+                await db.SaveChangesAsync(ct).ConfigureAwait(false);
+                devices.AddRange(found);
+            }
+
+            await transaction.CommitAsync(ct).ConfigureAwait(false);
+        }
+
+        foreach (var device in devices)
+        {
+            changeFeed.Publish(new DeviceChange(DeviceChangeKind.Updated, device.Id, device));
+        }
+    }
+
     /// <summary>Returns the decrypted credentials, or null if none are stored.</summary>
     /// <exception cref="System.Security.Cryptography.CryptographicException">Stored blob cannot be decrypted (wrong master key or tampered).</exception>
     public async Task<DeviceCredentials?> GetAsync(Guid deviceId, CancellationToken ct)

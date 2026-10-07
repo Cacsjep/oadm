@@ -8,11 +8,37 @@ namespace Oadm.Plugins.SnapshotReport.Client;
 /// <summary>Page view. View only: decoding pictures and opening the preview and export windows.</summary>
 public partial class SnapshotReportView : UserControl, ISnapshotReportUi
 {
+    private readonly Dictionary<Control, SnapshotTileRow> _realized = [];
     private bool _loadedOnce;
 
     public SnapshotReportView()
     {
         InitializeComponent();
+
+        // Lazy loading: the view model loads snapshots only for the rows the virtualizing panel realized.
+        var rows = this.FindControl<ItemsControl>("TileRows")!;
+        rows.ContainerPrepared += (_, e) =>
+        {
+            if (rows.ItemFromContainer(e.Container) is SnapshotTileRow row && DataContext is SnapshotReportViewModel vm)
+            {
+                _realized[e.Container] = row;
+                vm.SetRowRealized(row, true);
+            }
+        };
+        rows.ContainerClearing += (_, e) =>
+        {
+            if (_realized.Remove(e.Container, out var row) && DataContext is SnapshotReportViewModel vm)
+            {
+                vm.SetRowRealized(row, false);
+            }
+        };
+        rows.SizeChanged += (_, e) =>
+        {
+            if (DataContext is SnapshotReportViewModel vm)
+            {
+                vm.AvailableWidth = e.NewSize.Width;
+            }
+        };
     }
 
     /// <summary>Loads the snapshots the first time the page is shown (the rail creates the view at connect).</summary>

@@ -11,6 +11,7 @@ using Oadm.Client.Api;
 using Oadm.Client.Devices.Toolbar;
 using Oadm.Client.Dialogs;
 using Oadm.Client.Discovery;
+using Oadm.Client.Infrastructure;
 using Oadm.Client.LiveView;
 using Oadm.Client.Plugins;
 using Oadm.Client.Tasks;
@@ -86,10 +87,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         store.Changed += (_, _) => catalog.RequestRefresh();
         catalog.Changed += (_, _) => RebuildPluginActions();
         SelectedDevices.CollectionChanged += (_, _) => OnSelectionChanged();
-        foreach (DeviceRowViewModel row in store.Devices)
-        {
-            FilteredDevices.Add(row);
-        }
+        FilteredDevices.ReplaceAll(store.Devices);
 
         RebuildPluginActions();
     }
@@ -110,10 +108,10 @@ public sealed partial class DevicesViewModel : ObservableObject
     public LiveViewViewModel LiveView { get; }
 
     /// <summary>Rows shown in the grid (search applied). Sorting is done by the grid.</summary>
-    public ObservableCollection<DeviceRowViewModel> FilteredDevices { get; } = [];
+    public RangeObservableCollection<DeviceRowViewModel> FilteredDevices { get; } = [];
 
     /// <summary>Kept in sync with the grid selection by the view.</summary>
-    public ObservableCollection<DeviceRowViewModel> SelectedDevices { get; } = [];
+    public RangeObservableCollection<DeviceRowViewModel> SelectedDevices { get; } = [];
 
     /// <summary>Context menu for the current selection: core actions plus runnable task plugins.</summary>
     public ObservableCollection<MenuEntryViewModel> ContextMenuEntries { get; } = [];
@@ -251,7 +249,9 @@ public sealed partial class DevicesViewModel : ObservableObject
 
                 break;
             default:
+                // Reset (a snapshot or a batch of several adds/removes): filter again, drop removed rows from the selection.
                 ApplyFilter();
+                RemoveGoneFromSelection();
                 break;
         }
 
@@ -259,17 +259,29 @@ public sealed partial class DevicesViewModel : ObservableObject
         OnPropertyChanged(nameof(IsEmpty));
     }
 
-    private void ApplyFilter()
+    /// <summary>
+    /// Search over all devices: O(n) matching and at most one collection notification (Reset), none when
+    /// the result did not change. The former version used List.Contains inside loops (O(n^2), 25 million
+    /// comparisons for 5,000 devices) and one event per added or removed row.
+    /// </summary>
+    internal void ApplyFilter()
     {
-        var matching = _store.Devices.Where(d => d.Matches(SearchText)).ToList();
-        foreach (DeviceRowViewModel row in FilteredDevices.Where(r => !matching.Contains(r)).ToList())
+        string search = SearchText;
+        FilteredDevices.ReplaceAll(string.IsNullOrWhiteSpace(search)
+            ? _store.Devices
+            : _store.Devices.Where(d => d.Matches(search)).ToList());
+    }
+
+    private void RemoveGoneFromSelection()
+    {
+        if (SelectedDevices.Count > 0)
         {
-            FilteredDevices.Remove(row);
+            SelectedDevices.RemoveAll(row => _store.Find(row.Id) != row);
         }
 
-        foreach (DeviceRowViewModel row in matching.Where(r => !FilteredDevices.Contains(r)))
+        if (LiveView.Device is { } shown && _store.Find(shown.Id) is null)
         {
-            FilteredDevices.Add(row);
+            LiveView.CloseCommand.Execute(null);
         }
     }
 

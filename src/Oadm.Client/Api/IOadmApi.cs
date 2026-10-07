@@ -16,6 +16,7 @@ public interface IOadmApi
 
     // DeviceService
     Task<IReadOnlyList<Device>> ListDevicesAsync(CancellationToken ct);
+    /// <summary>Snapshot (one ADDED per device), then one SNAPSHOT_END, then live changes.</summary>
     IAsyncEnumerable<DeviceChanged> WatchDevicesAsync(CancellationToken ct);
     Task RemoveDevicesAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct);
     Task RefreshDevicesAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct);
@@ -45,6 +46,7 @@ public interface IOadmApi
     /// <summary>Starts one task per device (sharing a batch id) and returns the task ids.</summary>
     Task<IReadOnlyList<string>> RunTaskAsync(string pluginId, IReadOnlyCollection<string> deviceIds, string? payloadJson, string owner, CancellationToken ct);
     Task<IReadOnlyList<TaskInfo>> ListTasksAsync(CancellationToken ct);
+    /// <summary>Snapshot (every active task plus the newest <see cref="Oadm.Client.Tasks.TaskStore.MaxTasks"/>), then one SNAPSHOT_END, then live changes.</summary>
     IAsyncEnumerable<TaskChanged> WatchTasksAsync(CancellationToken ct);
     Task CancelTaskAsync(string taskId, CancellationToken ct);
     Task DeleteTaskAsync(string taskId, CancellationToken ct);

@@ -87,13 +87,37 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo
         CategoryIconKey = DeviceCategoryInfo.ToIconKey(device.Category);
         CategoryTooltip = DeviceCategoryInfo.ToTooltip(device.Category, ProductType);
         HasVideo = device.HasVideo;
-        Apis = [.. device.Apis.Select(a => new Oadm.Sdk.Vapix.DeviceApi(
-            a.Id, a.Version, string.IsNullOrEmpty(a.Name) ? null : a.Name, string.IsNullOrEmpty(a.Status) ? null : a.Status))];
+        IReadOnlyList<Oadm.Sdk.Vapix.DeviceApi> apis = DeviceApiLists.Intern(device.Apis);
+        if (!ReferenceEquals(apis, Apis))
+        {
+            Apis = apis;
+            _changed = true;
+        }
+
         DateTime now = DateTime.UtcNow;
         CertNotAfterUtc = device.CertNotAfter?.ToDateTime();
         CertExpires = CertificateDisplay.Expiry(CertNotAfterUtc, now);
         CertTrust = CertificateDisplay.Trust(device.CertTrust, CertNotAfterUtc, now);
         CertTooltip = CertificateDisplay.Tooltip(device.CertSubject, device.CertIssuer, CertNotAfterUtc);
+    }
+
+    /// <summary>
+    /// Applies a newer device state; returns whether anything the client keeps changed. Scale: most
+    /// updates of 5,000 devices change nothing visible, and an unchanged row costs no events.
+    /// </summary>
+    public bool Apply(Device device)
+    {
+        _changed = false;
+        Update(device);
+        return _changed;
+    }
+
+    private bool _changed;
+
+    protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        _changed = true;
+        base.OnPropertyChanged(e);
     }
 
     /// <summary>Case-insensitive search across the visible text columns.</summary>

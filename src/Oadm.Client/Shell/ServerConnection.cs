@@ -92,26 +92,38 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsConnecting));
     }
 
+    /// <summary>
+    /// One Watch stream: the snapshot (one ADDED per device, then SNAPSHOT_END) is collected off the UI
+    /// thread and applied as one <see cref="DeviceStore.Reset"/>; live changes go through a
+    /// <see cref="ChangeBatcher{T}"/> so a burst of 5,000 changes becomes a few UI batches. Snapshot and
+    /// changes share the batcher, so they are applied in stream order.
+    /// </summary>
     private async Task DeviceLoopAsync(CancellationToken ct)
     {
         TimeSpan delay = MinDelay;
+        var batcher = new ChangeBatcher<StreamItem<Device, DeviceChanged>>(_ui, ApplyDevices);
         while (!ct.IsCancellationRequested)
         {
             try
             {
-                IReadOnlyList<Device> snapshot = await _api.ListDevicesAsync(ct).ConfigureAwait(false);
-                _ui.Post(() =>
-                {
-                    _devices.Reset(snapshot);
-                    SetState(ConnectionState.Connected, "Connected to " + _api.ServerAddress);
-                    Connected?.Invoke(this, EventArgs.Empty);
-                });
-                LogConnected(_logger, _api.ServerAddress);
-                delay = MinDelay;
-
+                List<Device>? snapshot = [];
                 await foreach (DeviceChanged change in _api.WatchDevicesAsync(ct).ConfigureAwait(false))
                 {
-                    _ui.Post(() => _devices.Apply(change));
+                    if (snapshot is null)
+                    {
+                        batcher.Add(StreamItem<Device, DeviceChanged>.Of(change));
+                    }
+                    else if (change.Kind == DeviceChanged.Types.Kind.SnapshotEnd)
+                    {
+                        batcher.Add(StreamItem<Device, DeviceChanged>.Of(snapshot));
+                        snapshot = null;
+                        LogConnected(_logger, _api.ServerAddress);
+                        delay = MinDelay;
+                    }
+                    else if (change.Device is not null)
+                    {
+                        snapshot.Add(change.Device);
+                    }
                 }
 
                 throw new InvalidOperationException("Device stream ended");
@@ -142,19 +154,32 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Like <see cref="DeviceLoopAsync"/>: snapshot (newest <see cref="TaskStore.MaxTasks"/> plus active) as one reset, then batched changes.</summary>
     private async Task TaskLoopAsync(CancellationToken ct)
     {
         TimeSpan delay = MinDelay;
+        var batcher = new ChangeBatcher<StreamItem<TaskInfo, TaskChanged>>(_ui, ApplyTasks);
         while (!ct.IsCancellationRequested)
         {
             try
             {
-                IReadOnlyList<TaskInfo> snapshot = await _api.ListTasksAsync(ct).ConfigureAwait(false);
-                _ui.Post(() => _tasks.Reset(snapshot));
-                delay = MinDelay;
+                List<TaskInfo>? snapshot = [];
                 await foreach (TaskChanged change in _api.WatchTasksAsync(ct).ConfigureAwait(false))
                 {
-                    _ui.Post(() => _tasks.Apply(change));
+                    if (snapshot is null)
+                    {
+                        batcher.Add(StreamItem<TaskInfo, TaskChanged>.Of(change));
+                    }
+                    else if (change.Kind == TaskChanged.Types.Kind.SnapshotEnd)
+                    {
+                        batcher.Add(StreamItem<TaskInfo, TaskChanged>.Of(snapshot));
+                        snapshot = null;
+                        delay = MinDelay;
+                    }
+                    else if (change.Task is not null)
+                    {
+                        snapshot.Add(change.Task);
+                    }
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -177,6 +202,56 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
 
             delay = TimeSpan.FromTicks(Math.Min(MaxDelay.Ticks, delay.Ticks * 2));
         }
+    }
+
+    /// <summary>UI thread: applies a batch in order; consecutive changes go to the store as one batch.</summary>
+    private void ApplyDevices(IReadOnlyList<StreamItem<Device, DeviceChanged>> items)
+    {
+        var changes = new List<DeviceChanged>();
+        foreach (StreamItem<Device, DeviceChanged> item in items)
+        {
+            if (item.Snapshot is null)
+            {
+                changes.Add(item.Change!);
+                continue;
+            }
+
+            _devices.ApplyBatch(changes);
+            changes.Clear();
+            _devices.Reset(item.Snapshot);
+            SetState(ConnectionState.Connected, "Connected to " + _api.ServerAddress);
+            Connected?.Invoke(this, EventArgs.Empty);
+        }
+
+        _devices.ApplyBatch(changes);
+    }
+
+    private void ApplyTasks(IReadOnlyList<StreamItem<TaskInfo, TaskChanged>> items)
+    {
+        var changes = new List<TaskChanged>();
+        foreach (StreamItem<TaskInfo, TaskChanged> item in items)
+        {
+            if (item.Snapshot is null)
+            {
+                changes.Add(item.Change!);
+                continue;
+            }
+
+            _tasks.ApplyBatch(changes);
+            changes.Clear();
+            _tasks.Reset(item.Snapshot);
+        }
+
+        _tasks.ApplyBatch(changes);
+    }
+
+    /// <summary>Either a whole snapshot or one live change of a Watch stream.</summary>
+    private sealed record StreamItem<TItem, TChange>(IReadOnlyList<TItem>? Snapshot, TChange? Change)
+        where TChange : class
+    {
+        public static StreamItem<TItem, TChange> Of(IReadOnlyList<TItem> snapshot) => new(snapshot, null);
+
+        public static StreamItem<TItem, TChange> Of(TChange change) => new(null, change);
     }
 
     private void SetState(ConnectionState state, string text)

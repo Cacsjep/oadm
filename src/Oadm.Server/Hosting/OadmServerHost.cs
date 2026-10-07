@@ -119,7 +119,19 @@ public static partial class OadmServerHost
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(options);
 
-        services.AddGrpc(o => o.EnableDetailedErrors = false);
+        services.AddGrpc(o =>
+        {
+            o.EnableDetailedErrors = false;
+
+            // Scale: Watch snapshots and ListTaskPlugins for 5,000 devices are large and repetitive (API
+            // lists, ids); gzip shrinks them several times. Only used when the client accepts gzip
+            // (Grpc.Net.Client does by default).
+            o.ResponseCompressionAlgorithm = "gzip";
+            o.ResponseCompressionLevel = System.IO.Compression.CompressionLevel.Fastest;
+
+            // A Run or Remove on 5,000+ devices carries 5,000 ids (about 200 KB); keep headroom.
+            o.MaxReceiveMessageSize = 16 * 1024 * 1024;
+        });
         services.AddGrpcReflection();
 
         services.AddOadmPersistence(_ => new OadmPaths(options.DataDirectory ?? configuration["Oadm:DataDir"]));
@@ -139,6 +151,7 @@ public static partial class OadmServerHost
             sp.GetRequiredService<ILogger<Core.Uploads.UploadStore>>()));
         services.AddSingleton<Sdk.Plugins.IUploadedFiles>(sp => sp.GetRequiredService<Core.Uploads.UploadStore>());
         services.AddHostedService<UploadCleanupHostedService>();
+        services.AddHostedService<TaskRetentionHostedService>();
         // Live view: RTSP upstreams shared between viewers
         services.AddSingleton<ILiveVideoSourceFactory, AxisLiveVideoSourceFactory>();
         services.AddSingleton(new LiveViewHubOptions());
@@ -147,7 +160,12 @@ public static partial class OadmServerHost
         // Plugins and tasks
         services.AddSingleton<PluginRegistry>();
         services.AddSingleton<PluginLoader>();
-        services.AddSingleton(new TaskEngineOptions());
+        // Oadm:MaxParallelTasksPerPlugin (configuration, default 8): a large site may raise it so a Restart on
+        // 5,000 devices does not take 5,000 / 8 x the restart time; plugins limit themselves with MaxParallelDevices.
+        services.AddSingleton(new TaskEngineOptions
+        {
+            MaxParallelTasksPerPlugin = Math.Clamp(configuration.GetValue("Oadm:MaxParallelTasksPerPlugin", 8), 1, 256),
+        });
         services.AddSingleton(sp => new TaskEngine(
             sp.GetRequiredService<ITaskStore>(),
             sp.GetRequiredService<PluginRegistry>(),
@@ -168,6 +186,7 @@ public static partial class OadmServerHost
             sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
             sp.GetRequiredService<ILoggerFactory>()));
         services.AddSingleton<Sdk.Tasks.ITaskRunner>(sp => sp.GetRequiredService<TaskEngine>());
+        services.AddSingleton<TaskPluginRunnableCache>();
         services.AddSingleton(sp => new CorePluginHost(
             sp.GetRequiredService<PluginRegistry>(),
             sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),

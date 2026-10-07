@@ -79,7 +79,7 @@ public sealed class VapixCommanderServerTests
             Assert.Null(saved.Error);
             Assert.Single((await InvokeAsync<CommandListReply>(host, CommanderMethods.ListSaved, null)).Commands);
 
-            var menus = await host.Tasks.ListTaskPluginsAsync(new Proto.Empty());
+            var menus = await host.Tasks.ListTaskPluginsAsync(new Proto.ListTaskPluginsRequest());
             Assert.DoesNotContain(menus.Plugins, p => p.Id == RolloutTaskPlugin.PluginId);
         }
         finally

@@ -212,6 +212,8 @@ namespace Oadm.Core.Persistence.Migrations
 
                     b.HasIndex("CreatedUtc");
 
+                    b.HasIndex("Status");
+
                     b.ToTable("Tasks", (string)null);
                 });
 

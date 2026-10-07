@@ -31,8 +31,11 @@ public sealed class DeviceGrpcService(
         return reply;
     }
 
-    /// <summary>Snapshot (one ADDED per device), then live changes until the client or the server stops.</summary>
-    public override async Task Watch(Proto.Empty request, IServerStreamWriter<Proto.DeviceChanged> responseStream, ServerCallContext context)
+    /// <summary>
+    /// Snapshot (one ADDED per device), SNAPSHOT_END when asked for, then live changes until the client
+    /// or the server stops. A slow client gets the changes coalesced per device, never dropped.
+    /// </summary>
+    public override async Task Watch(Proto.WatchDevicesRequest request, IServerStreamWriter<Proto.DeviceChanged> responseStream, ServerCallContext context)
     {
         using var linked = GrpcGuard.LinkWithShutdown(context, lifetime.ApplicationStopping);
         var ct = linked.Token;
@@ -48,11 +51,33 @@ public sealed class DeviceGrpcService(
                 await responseStream.WriteAsync(Mappers.ToProto(change, withCredentials.Contains(device.Id)), ct).ConfigureAwait(false);
             }
 
-            await foreach (var change in subscription.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+            if (request.SnapshotEndMarker)
             {
-                var hasCredentials = change.Kind != DeviceChangeKind.Removed
-                    && await credentials.HasCredentialsAsync(change.DeviceId, ct).ConfigureAwait(false);
-                await responseStream.WriteAsync(Mappers.ToProto(change, hasCredentials), ct).ConfigureAwait(false);
+                await responseStream.WriteAsync(new Proto.DeviceChanged { Kind = Proto.DeviceChanged.Types.Kind.SnapshotEnd }, ct).ConfigureAwait(false);
+            }
+
+            // Changes are taken in batches: a burst (Refresh all, a Run on 5,000 devices) asks the
+            // credential table once per batch instead of once per device.
+            var reader = subscription.Reader;
+            var batch = new List<DeviceChange>();
+            while (await reader.WaitToReadAsync(ct).ConfigureAwait(false))
+            {
+                batch.Clear();
+                while (batch.Count < 1000 && reader.TryRead(out var next))
+                {
+                    batch.Add(next);
+                }
+
+                var withCredentialsNow = batch.Count > 16
+                    ? await credentials.ListDeviceIdsWithCredentialsAsync(ct).ConfigureAwait(false)
+                    : null;
+                foreach (var change in batch)
+                {
+                    var hasCredentials = change.Kind != DeviceChangeKind.Removed
+                        && (withCredentialsNow?.Contains(change.DeviceId)
+                            ?? await credentials.HasCredentialsAsync(change.DeviceId, ct).ConfigureAwait(false));
+                    await responseStream.WriteAsync(Mappers.ToProto(change, hasCredentials), ct).ConfigureAwait(false);
+                }
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -61,13 +86,10 @@ public sealed class DeviceGrpcService(
         }
     }
 
+    /// <summary>Removes the devices in one transaction (unknown ids are ignored).</summary>
     public override async Task<Proto.Empty> Remove(Proto.DeviceIds request, ServerCallContext context)
     {
-        foreach (var id in GrpcGuard.ParseIds(request.Ids, "device id"))
-        {
-            await devices.RemoveAsync(id, context.CancellationToken).ConfigureAwait(false);
-        }
-
+        await devices.RemoveManyAsync(GrpcGuard.ParseIds(request.Ids, "device id"), context.CancellationToken).ConfigureAwait(false);
         return new Proto.Empty();
     }
 
@@ -92,17 +114,18 @@ public sealed class DeviceGrpcService(
             throw GrpcGuard.InvalidArgument("User name is required.");
         }
 
+        try
+        {
+            // One transaction for all devices (5,000 selected devices: one commit, not 5,000).
+            await credentials.SetManyAsync(ids, request.UserName.Trim(), request.Password, context.CancellationToken).ConfigureAwait(false);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            throw GrpcGuard.NotFound(ex.Message);
+        }
+
         foreach (var id in ids)
         {
-            try
-            {
-                await credentials.SetAsync(id, request.UserName.Trim(), request.Password, context.CancellationToken).ConfigureAwait(false);
-            }
-            catch (KeyNotFoundException)
-            {
-                throw GrpcGuard.NotFound($"Device {id} not found.");
-            }
-
             clients.Invalidate(id);
         }
 

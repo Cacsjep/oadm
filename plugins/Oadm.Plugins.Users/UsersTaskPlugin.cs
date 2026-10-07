@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 
+using Oadm.Plugins.Shared;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
@@ -30,12 +31,14 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
     public bool RequiresDialog => true;
 
-    /// <summary>Needs working credentials and pwdgrp.cgi (user-management 1.x) in the cached API list.</summary>
+    private static readonly Version MinUserManagement = Version.Parse(PwdgrpApi.MinVersion);
+
+    /// <summary>Needs working credentials and pwdgrp.cgi (user-management 1.x) in the cached API list (cheap: called for every device).</summary>
     public bool CanRun(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
         return device.Status is DeviceStatus.Ok or DeviceStatus.Unknown
-            && device.Apis.Supports(PwdgrpApi.ApiId, PwdgrpApi.MinVersion);
+            && CachedApiCheck.Supports(device.Apis, PwdgrpApi.ApiId, MinUserManagement);
     }
 
     public async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)

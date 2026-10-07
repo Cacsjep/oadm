@@ -47,6 +47,9 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin
 
     public CommandLibrary Library { get; private set; } = CommandLibrary.Empty;
 
+    /// <summary>Up to this many devices are looked up one by one; more use one device list.</summary>
+    private const int FindOneByOneLimit = 16;
+
     internal RolloutRegistry Rollouts { get; } = new();
 
     private ICorePluginContext Context => _ctx ?? throw new InvalidOperationException("The VAPIX Commander is not started.");
@@ -245,9 +248,22 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin
         }
 
         var reply = new CompatibilityReply();
-        foreach (var deviceId in request.DeviceIds.Distinct())
+        var ids = request.DeviceIds.Distinct().ToList();
+
+        // Thousands of devices: one device list and a dictionary, not one repository lookup per device.
+        Dictionary<Guid, IDeviceInfo>? known = null;
+        if (ids.Count > FindOneByOneLimit)
         {
-            var device = await Context.Devices.FindAsync(deviceId, ct).ConfigureAwait(false);
+            known = [];
+            foreach (var d in await Context.Devices.ListAsync(ct).ConfigureAwait(false))
+            {
+                known.TryAdd(d.Id, d);
+            }
+        }
+
+        foreach (var deviceId in ids)
+        {
+            var device = known is not null ? known.GetValueOrDefault(deviceId) : await Context.Devices.FindAsync(deviceId, ct).ConfigureAwait(false);
             reply.Devices.Add(new DeviceCompatibility
             {
                 DeviceId = deviceId,

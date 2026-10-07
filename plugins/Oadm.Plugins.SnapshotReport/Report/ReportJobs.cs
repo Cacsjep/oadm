@@ -14,7 +14,20 @@ namespace Oadm.Plugins.SnapshotReport.Report;
 /// </summary>
 public sealed partial class ReportJobs : IDisposable
 {
-    public const int MaxItems = 1000;
+    /// <summary>Snapshots per report: a site with 5,000 cameras fits in one report.</summary>
+    public const int MaxItems = 5000;
+
+    /// <summary>Reports with more snapshots than this take them at <see cref="LargeReportMaxWidth"/> at most (memory bound).</summary>
+    public const int LargeReportItems = 200;
+
+    /// <summary>Reports with more snapshots than this take them at <see cref="HugeReportMaxWidth"/> at most (memory bound).</summary>
+    public const int HugeReportItems = 1000;
+
+    /// <summary>1280x720 still fills the 17 cm picture area at about 190 dpi.</summary>
+    public const int LargeReportMaxWidth = 1280;
+
+    /// <summary>960x540: about 140 dpi on paper, a quarter of the full-HD bytes.</summary>
+    public const int HugeReportMaxWidth = 960;
 
     private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(30);
 
@@ -106,37 +119,63 @@ public sealed partial class ReportJobs : IDisposable
         _shutdown.Dispose();
     }
 
+    /// <summary>
+    /// Phase 1 of a report: the tiles and fresh snapshots of every item, in request order. Devices and sources are
+    /// read once for all items (one device list, cached sources), snapshots are taken by
+    /// <see cref="SnapshotReportPluginInfo.Parallelism"/> workers at <see cref="SnapshotSize"/>.
+    /// <paramref name="onTaken"/> gets the number of finished items and whether the last one succeeded.
+    /// </summary>
+    public async Task<ReportEntry[]> CollectAsync(ReportRequest request, Action<int, bool>? onTaken, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var ids = request.Items.Select(i => i.DeviceId).ToHashSet();
+
+        // Sources the page just read are reused (no second source request per device for the report).
+        var listed = await _snapshots.ListSourcesAsync(new ListSourcesRequest { DeviceIds = [.. ids] }, ct, refreshSources: false).ConfigureAwait(false);
+        var tiles = new Dictionary<(Guid, int), SnapshotTile>();
+        var byDevice = new Dictionary<Guid, SnapshotTile>();
+        foreach (var t in listed.Tiles)
+        {
+            tiles.TryAdd((t.Device.DeviceId, t.Camera), t);
+            byDevice.TryAdd(t.Device.DeviceId, t);
+        }
+
+        var devices = (await _snapshots.GetVideoDevicesAsync(ids, ct).ConfigureAwait(false)).ToDictionary(d => d.Id);
+        var (maxWidth, maxHeight) = SnapshotSize(request);
+        var entries = new ReportEntry[request.Items.Count];
+        var done = 0;
+        await _snapshots.ForEachBoundedAsync(entries.Length, async index =>
+        {
+            var item = request.Items[index];
+            var tile = Resolve(item, tiles, byDevice);
+            var snapshot = tile.Error is { } error && tile.Device.DeviceId == Guid.Empty
+                ? new CapturedSnapshot(null, 0, 0, null, error)
+                : await _snapshots.TakeAsync(devices.GetValueOrDefault(item.DeviceId), item.Camera, maxWidth, maxHeight, ct).ConfigureAwait(false);
+            entries[index] = new ReportEntry(tile, snapshot);
+            onTaken?.Invoke(Interlocked.Increment(ref done), snapshot.IsOk);
+        }, ct).ConfigureAwait(false);
+        return entries;
+    }
+
     private async Task RunAsync(Job job, ReportRequest request, string version)
     {
         var ct = job.Cancel.Token;
         try
         {
-            var ids = request.Items.Select(i => i.DeviceId).Distinct().ToList();
-            var listed = await _snapshots.ListSourcesAsync(new ListSourcesRequest { DeviceIds = ids }, ct).ConfigureAwait(false);
-            var tiles = listed.Tiles.ToDictionary(t => (t.Device.DeviceId, t.Camera));
-            var byDevice = listed.Tiles.GroupBy(t => t.Device.DeviceId).ToDictionary(g => g.Key, g => g.First());
-
-            var entries = new ReportEntry[request.Items.Count];
-            var done = 0;
-            job.Message = string.Create(CultureInfo.InvariantCulture, $"Take snapshot 1 of {entries.Length}");
-            await Task.WhenAll(request.Items.Select(async (item, index) =>
+            var total = request.Items.Count;
+            job.Message = string.Create(CultureInfo.InvariantCulture, $"Take snapshot 1 of {total}");
+            var entries = await CollectAsync(request, (finished, ok) =>
             {
-                var tile = Resolve(item, tiles, byDevice);
-                var snapshot = tile.Error is { } error && tile.Device.DeviceId == Guid.Empty
-                    ? new CapturedSnapshot(null, 0, 0, null, error)
-                    : await _snapshots.TakeAsync(item.DeviceId, item.Camera, request.MaxWidth, request.MaxHeight, ct).ConfigureAwait(false);
-                entries[index] = new ReportEntry(tile, snapshot);
-                var finished = Interlocked.Increment(ref done);
                 job.Done = finished;
-                if (!snapshot.IsOk)
+                if (!ok)
                 {
                     Interlocked.Increment(ref job.FailedCount);
                 }
 
-                job.Message = finished < entries.Length
-                    ? string.Create(CultureInfo.InvariantCulture, $"Take snapshot {finished + 1} of {entries.Length}")
+                job.Message = finished < total
+                    ? string.Create(CultureInfo.InvariantCulture, $"Take snapshot {finished + 1} of {total}")
                     : "Build PDF";
-            })).ConfigureAwait(false);
+            }, ct).ConfigureAwait(false);
 
             ct.ThrowIfCancellationRequested();
             job.Message = "Build PDF";
@@ -161,6 +200,24 @@ public sealed partial class ReportJobs : IDisposable
             job.Error = ex.Message;
             LogReportFailed(ex, job.Id);
         }
+    }
+
+    /// <summary>
+    /// Snapshot size of a report: the requested size, capped for large reports so that thousands of snapshots stay
+    /// within memory (the job holds every JPEG until the PDF is built).
+    /// </summary>
+    public static (int Width, int Height) SnapshotSize(ReportRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var cap = request.Items.Count > HugeReportItems ? HugeReportMaxWidth
+            : request.Items.Count > LargeReportItems ? LargeReportMaxWidth
+            : int.MaxValue;
+        if (request.MaxWidth <= cap)
+        {
+            return (request.MaxWidth, request.MaxHeight);
+        }
+
+        return (cap, (int)Math.Round((double)request.MaxHeight * cap / request.MaxWidth));
     }
 
     private static SnapshotTile Resolve(ReportItem item, Dictionary<(Guid, int), SnapshotTile> tiles, Dictionary<Guid, SnapshotTile> byDevice)

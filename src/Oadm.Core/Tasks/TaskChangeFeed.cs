@@ -2,25 +2,29 @@ using System.Threading.Channels;
 
 using Microsoft.Extensions.Logging;
 
+using Oadm.Core.Collections;
+
 namespace Oadm.Core.Tasks;
 
 /// <summary>
 /// Fan-out of task changes to any number of subscribers (gRPC Watch streams). Each subscriber
-/// gets its own bounded channel; a slow subscriber loses its oldest buffered changes, never
-/// blocks the engine. Since every change carries a full snapshot, the latest one wins.
+/// gets its own channel; a slow subscriber never blocks the engine. Since every change carries a
+/// full snapshot, the latest one wins: under a burst (more than 1,024 waiting) changes are coalesced
+/// per task (a waiting change of the same
+/// task is replaced, an Added stays Added), so a burst of 5,000 tasks (one Run, Delete all, retention)
+/// never drops the final state of a task and a subscriber buffers at most one change per task.
 /// </summary>
 public sealed partial class TaskChangeFeed
 {
     private readonly Lock _sync = new();
     private readonly List<Subscription> _subscribers = [];
-    private readonly int _capacity;
     private readonly ILogger? _logger;
     private bool _completed;
 
+    /// <param name="capacity">Kept for source compatibility (must be at least 1); subscriptions coalesce instead of dropping.</param>
     public TaskChangeFeed(int capacity = 4096, ILogger? logger = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
-        _capacity = capacity;
         _logger = logger;
     }
 
@@ -30,18 +34,13 @@ public sealed partial class TaskChangeFeed
     /// <summary>Starts buffering changes. Dispose the subscription to stop.</summary>
     public TaskChangeSubscription Subscribe()
     {
-        var channel = Channel.CreateBounded<TaskChange>(new BoundedChannelOptions(_capacity)
-        {
-            FullMode = BoundedChannelFullMode.DropOldest,
-            SingleReader = true,
-            SingleWriter = false,
-        });
+        var channel = new KeyedCoalescingChannel<Guid, TaskChange>(c => c.Task.Id, Merge);
         var subscription = new Subscription(this, channel);
         lock (_sync)
         {
             if (_completed)
             {
-                channel.Writer.TryComplete();
+                channel.Complete();
             }
             else
             {
@@ -59,7 +58,7 @@ public sealed partial class TaskChangeFeed
         {
             foreach (var subscriber in _subscribers)
             {
-                subscriber.Channel.Writer.TryWrite(change);
+                subscriber.Channel.TryWrite(change);
             }
         }
 
@@ -86,12 +85,18 @@ public sealed partial class TaskChangeFeed
             _completed = true;
             foreach (var subscriber in _subscribers)
             {
-                subscriber.Channel.Writer.TryComplete();
+                subscriber.Channel.Complete();
             }
 
             _subscribers.Clear();
         }
     }
+
+    /// <summary>An Added not read yet stays Added with the newer snapshot; otherwise the newer change wins.</summary>
+    internal static TaskChange Merge(TaskChange waiting, TaskChange newer) =>
+        waiting.Kind == TaskChangeKind.Added && newer.Kind == TaskChangeKind.Updated
+            ? newer with { Kind = TaskChangeKind.Added }
+            : newer;
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Task change handler threw")]
     private static partial void LogHandlerFailed(ILogger logger, Exception ex);
@@ -103,12 +108,12 @@ public sealed partial class TaskChangeFeed
             _subscribers.Remove(subscription);
         }
 
-        subscription.Channel.Writer.TryComplete();
+        subscription.Channel.Complete();
     }
 
-    private sealed class Subscription(TaskChangeFeed owner, Channel<TaskChange> channel) : TaskChangeSubscription
+    private sealed class Subscription(TaskChangeFeed owner, KeyedCoalescingChannel<Guid, TaskChange> channel) : TaskChangeSubscription
     {
-        public Channel<TaskChange> Channel { get; } = channel;
+        public KeyedCoalescingChannel<Guid, TaskChange> Channel { get; } = channel;
 
         public override ChannelReader<TaskChange> Reader => Channel.Reader;
 

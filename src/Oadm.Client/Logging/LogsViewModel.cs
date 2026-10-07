@@ -4,6 +4,8 @@ using System.Collections.Specialized;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using Oadm.Client.Infrastructure;
+
 namespace Oadm.Client.Logging;
 
 /// <summary>Entry of the level filter: shows entries at or above <see cref="MinimumRank"/>.</summary>
@@ -35,7 +37,7 @@ public sealed partial class LogsViewModel : ObservableObject
     ];
 
     /// <summary>Entries matching the filter, newest first.</summary>
-    public ObservableCollection<LogEntry> Entries { get; } = [];
+    public RangeObservableCollection<LogEntry> Entries { get; } = [];
 
     [ObservableProperty]
     public partial LogLevelOption SelectedLevel { get; set; }
@@ -112,12 +114,8 @@ public sealed partial class LogsViewModel : ObservableObject
 
     private void Rebuild()
     {
-        Entries.Clear();
-        foreach (LogEntry entry in _source.Where(Matches))
-        {
-            Entries.Add(entry);
-        }
-
+        // One Reset per filter change instead of one event per entry.
+        Entries.ReplaceAll(_source.Where(Matches).ToList());
         OnPropertyChanged(nameof(StatusLine));
     }
 }

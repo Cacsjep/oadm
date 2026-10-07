@@ -12,7 +12,7 @@ The help below writes "manage" for either one.
 Verbs:
   build     Build all, server, client or plugins              (default target: all)
   run       Run server, client, or dev (server + client)
-  test      Run unit, hardware or all tests                    (default target: unit)
+  test      Run unit, perf, hardware or all tests              (default target: unit)
   publish   Self-contained single-file apps in artifacts/publish (default target: all)
   clean     Remove bin, obj and artifacts
   info      Show the .NET SDK, configuration and RID in use
@@ -82,13 +82,18 @@ Examples:
   manage run dev --port 5099 --data ./tmp-data
 
 ## test
-Usage: manage test [unit|hardware|all] [--filter EXPR] [--release] [-- dotnet test args]
+Usage: manage test [unit|perf|hardware|all] [--filter EXPR] [--release] [-- dotnet test args]
 
 Targets:
-  unit       Tests that need no camera, Category!=Hardware (default, what CI runs)
+  unit       Tests that need no camera, Category!=Hardware and Category!=Perf
+             (default, fast, what CI runs on every change)
+  perf       Scale tests, Category=Perf: 5,000 devices and 50,000 tasks (client stores,
+             Devices grid, ListTaskPlugins, Watch snapshots, polling spread, task engine
+             batches, task history paging and retention). A few minutes; each test has a time
+             budget and writes its measured times to the test output
   hardware   Read-only camera tests, Category=Hardware, against the cameras in
              dev-cameras.yaml or the file named by OADM_DEV_CAMERAS
-  all        unit and hardware together (hardware tests skip themselves without cameras)
+  all        unit, perf and hardware together (hardware tests skip themselves without cameras)
 Write tests on real devices (Category=HardwareWrite) never run from here.
 
 Options:
@@ -99,6 +104,7 @@ Options:
 Examples:
   manage test
   manage test unit --filter FullyQualifiedName~Polling
+  manage test perf -- --logger "console;verbosity=detailed"
   manage test hardware
   manage test all -- --no-build
 
