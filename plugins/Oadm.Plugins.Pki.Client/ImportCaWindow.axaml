@@ -1,0 +1,42 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Pki.Client"
+        x:Class="Oadm.Plugins.Pki.Client.ImportCaWindow"
+        x:DataType="vm:ImportCaViewModel"
+        Title="{x:Static vm:ImportCaViewModel.Title}"
+        Width="720" Height="480" MinWidth="600" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+  <!-- Title bar, one card (file, password, optional key file), footer. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:ImportCaViewModel.Title}" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <StackPanel Classes="form">
+        <TextBlock Classes="secondary" TextWrapping="Wrap"
+                   Text="Your own CA (root or intermediate) with its private key: a .pfx / .p12 file, or a PEM certificate and its key. A backup made with Back up can be imported here too." />
+        <ui:FormField Label="CA file" Classes="wide" Error="{Binding FileError}">
+          <ui:FileRow FileName="{Binding FileText}" Details="{Binding FileDetails}" Command="{Binding ChooseFileCommand}" />
+        </ui:FormField>
+        <ui:FormField Label="Password" Hint="Of the .pfx / .p12 file or of an encrypted key in the PEM file.">
+          <ui:PasswordBox Text="{Binding Password}" />
+        </ui:FormField>
+        <ui:FormField Label="Private key" Classes="wide" Error="{Binding KeyFileError}" IsVisible="{Binding NeedsKeyFile}">
+          <ui:FileRow FileName="{Binding KeyFileText}" Command="{Binding ChooseKeyFileCommand}" />
+        </ui:FormField>
+        <ui:FormField Label="Key password" Hint="Only for an encrypted key." IsVisible="{Binding NeedsKeyFile}">
+          <ui:PasswordBox Text="{Binding KeyPassword}" />
+        </ui:FormField>
+        <ui:ProgressRow Text="Checking the CA" IsVisible="{Binding IsBusy}" />
+      </StackPanel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Import" Command="{Binding ImportCommand}"
+              ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>
