@@ -367,6 +367,16 @@ LocalApplicationData): server address, grid column layout, bottom pane state.
 - Dependency injection everywhere (Microsoft.Extensions.DependencyInjection), also in the
   client.
 - Organize by feature (`Devices/`, `Discovery/`, `Tasks/`, `Plugins/`), not by layer.
+- **HARD RULE, reuse UI components.** Anything that appears in more than one place is one
+  shared control in `src/Oadm.Client/Controls`, never a copy. Existing ones: `IconLabel` (every
+  icon + text row: toolbar buttons, navigation rail, dialogs), `SearchBox` (every search
+  field), `OadmIcon`. Before writing new XAML, check `Controls/` and reuse; if a second place
+  needs something that exists only inline, extract it into a control first.
+- **HARD RULE, no style differences.** Same kind of element, same look, everywhere: one
+  style per element type in `Themes/OadmTheme.axaml`, no local overrides of font size,
+  weight, color, padding or alignment in views. No special cases such as a bold selected rail
+  item or a greyed toggle unless the spec says so. When a mismatch is found, fix the shared
+  style or control, not the single view.
 - UI is verified only with Avalonia headless tests rendering offscreen (screenshots via
   `OADM_SCREENSHOT_DIR`). Never automate the real desktop: no simulated clicks or drags, no
   capturing real windows on a developer machine.

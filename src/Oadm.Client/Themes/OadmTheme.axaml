@@ -316,15 +316,6 @@
   <Style Selector="Button.nav.selected /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
   </Style>
-  <Style Selector="Button.nav.selected TextBlock.navLabel">
-    <Setter Property="FontWeight" Value="SemiBold" />
-  </Style>
-  <Style Selector="Button.nav.toggle c|OadmIcon">
-    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
-  </Style>
-  <Style Selector="Button.nav.toggle:pointerover c|OadmIcon">
-    <Setter Property="Foreground" Value="{StaticResource Oadm.IconBrush}" />
-  </Style>
   <Style Selector="DockPanel.rail">
     <Setter Property="Width" Value="{StaticResource Oadm.NavWidthCollapsed}" />
     <Setter Property="Margin" Value="{StaticResource Oadm.NavMargin}" />
@@ -334,11 +325,9 @@
   </Style>
 
   <!-- Icon + text rows (buttons, menu entries, rail items): center both vertically -->
-  <!-- Inter reserves descender space below the baseline, so centered capitals look ~1.5 px high
-       next to a 16 px icon (measured). A 3 px top margin on a centered element moves it 1.5 px. -->
+  <!-- Icon + text rows are always c:IconLabel (it owns centering and the Inter correction). -->
   <Style Selector="StackPanel[Orientation=Horizontal] > TextBlock">
     <Setter Property="VerticalAlignment" Value="Center" />
-    <Setter Property="Margin" Value="0,3,0,0" />
   </Style>
   <Style Selector="StackPanel[Orientation=Horizontal] > c|OadmIcon">
     <Setter Property="VerticalAlignment" Value="Center" />
@@ -557,6 +546,19 @@
   </Style>
   <Style Selector="MenuItem">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <!-- Same alignment as c:IconLabel: icon centered, header text with the Inter correction -->
+  <Style Selector="MenuItem /template/ ContentPresenter#PART_IconPresenter">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="MenuItem /template/ ContentPresenter#PART_HeaderPresenter">
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Margin" Value="0,3,0,0" />
+  </Style>
+
+  <!-- The one search field -->
+  <Style Selector="c|SearchBox">
+    <Setter Property="Width" Value="{StaticResource Oadm.SearchWidth}" />
   </Style>
 
   <!-- Wizard step indicator -->

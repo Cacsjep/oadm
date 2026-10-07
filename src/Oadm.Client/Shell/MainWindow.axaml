@@ -46,14 +46,12 @@
         <Button DockPanel.Dock="Bottom" Classes="nav toggle" Margin="0,2"
                 Command="{Binding ToggleNavCommand}"
                 ToolTip.Tip="{Binding NavToggleText}" ToolTip.Placement="Right">
-          <Grid ColumnDefinitions="Auto,*">
-            <Panel Grid.Column="0">
-              <c:OadmIcon Data="{StaticResource Icon.panelOpen}" IsVisible="{Binding !IsNavExpanded}" />
-              <c:OadmIcon Data="{StaticResource Icon.panelClose}" IsVisible="{Binding IsNavExpanded}" />
-            </Panel>
-            <TextBlock Grid.Column="1" Classes="navLabel secondary" Text="{Binding NavToggleText}" Margin="12,0,0,0"
-                       VerticalAlignment="Center" IsVisible="{Binding IsNavExpanded}" />
-          </Grid>
+          <Panel>
+            <c:IconLabel Icon="{StaticResource Icon.panelOpen}" Text="{Binding NavToggleText}" Spacing="12"
+                         IsTextVisible="False" IsVisible="{Binding !IsNavExpanded}" />
+            <c:IconLabel Icon="{StaticResource Icon.panelClose}" Text="{Binding NavToggleText}" Spacing="12"
+                         IsVisible="{Binding IsNavExpanded}" />
+          </Panel>
         </Button>
         <Border DockPanel.Dock="Bottom" Classes="separator" Margin="4,6" />
         <ItemsControl DockPanel.Dock="Bottom" ItemsSource="{Binding BottomNavItems}">
@@ -64,11 +62,8 @@
                       CommandParameter="{Binding}"
                       ToolTip.Tip="{Binding Title}" ToolTip.Placement="Right"
                       ToolTip.ServiceEnabled="{Binding !$parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}">
-                <Grid ColumnDefinitions="Auto,*">
-                  <c:OadmIcon Grid.Column="0" Data="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" />
-                  <TextBlock Grid.Column="1" Classes="navLabel" Text="{Binding Title}" Margin="12,0,0,0" VerticalAlignment="Center"
-                             IsVisible="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}" />
-                </Grid>
+                <c:IconLabel Icon="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Text="{Binding Title}" Spacing="12"
+                             IsTextVisible="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}" />
               </Button>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
@@ -83,11 +78,10 @@
                         CommandParameter="{Binding}"
                         ToolTip.Tip="{Binding Title}" ToolTip.Placement="Right"
                         ToolTip.ServiceEnabled="{Binding !$parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}">
-                  <Grid ColumnDefinitions="Auto,*,Auto">
-                    <c:OadmIcon Grid.Column="0" Data="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" />
-                    <TextBlock Grid.Column="1" Classes="navLabel" Text="{Binding Title}" Margin="12,0,0,0" VerticalAlignment="Center"
-                               IsVisible="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}" />
-                    <Border Grid.Column="2" Classes="badge" IsVisible="{Binding HasBadge}">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <c:IconLabel Grid.Column="0" Icon="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Text="{Binding Title}" Spacing="12"
+                                 IsTextVisible="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}" />
+                    <Border Grid.Column="1" Classes="badge" IsVisible="{Binding HasBadge}">
                       <TextBlock Text="{Binding Badge}" />
                     </Border>
                   </Grid>

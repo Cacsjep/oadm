@@ -14,16 +14,7 @@
             <TextBlock Classes="fieldLabel" Text="Level" />
             <ComboBox ItemsSource="{x:Static log:LogsViewModel.Levels}" SelectedItem="{Binding SelectedLevel}" MinWidth="200" />
           </StackPanel>
-          <TextBox Grid.Column="2" Width="{StaticResource Oadm.SearchWidth}" PlaceholderText="Search" Text="{Binding SearchText}" VerticalContentAlignment="Center">
-            <TextBox.InnerLeftContent>
-              <c:OadmIcon Data="{StaticResource Icon.search}" Margin="10,0,0,0" Foreground="{StaticResource Oadm.TextSecondaryBrush}" />
-            </TextBox.InnerLeftContent>
-            <TextBox.InnerRightContent>
-              <Button Classes="toolbar iconOnly" Padding="4" Margin="0,0,4,0" Command="{Binding ClearSearchCommand}" IsVisible="{Binding HasSearch}">
-                <c:OadmIcon Data="{StaticResource Icon.close}" Width="12" Height="12" />
-              </Button>
-            </TextBox.InnerRightContent>
-          </TextBox>
+          <c:SearchBox Grid.Column="2" Text="{Binding SearchText}" />
         </Grid>
 
         <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding StatusLine}" Margin="2,14,0,8" />
