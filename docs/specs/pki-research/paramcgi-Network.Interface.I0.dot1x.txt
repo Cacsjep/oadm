@@ -1,0 +1,6 @@
+root.Network.Interface.I0.dot1x.EAPOLVersion=3
+root.Network.Interface.I0.dot1x.Enabled=no
+root.Network.Interface.I0.dot1x.Status=Stopped
+root.Network.Interface.I0.dot1x.EAP.MultiAuthEnabled=no
+root.Network.Interface.I0.dot1x.EAPTLS.Identity=48
+root.Network.Interface.I0.dot1x.EAPTLS.PrivateKeyPassword=******

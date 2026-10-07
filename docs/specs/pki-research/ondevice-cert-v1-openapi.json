@@ -1,0 +1,2543 @@
+{
+  "components": {
+    "parameters": {
+      "importType": {
+        "description": "This option determines how the import should be handled",
+        "in": "query",
+        "name": "importType",
+        "schema": {
+          "enum": [
+            "merge",
+            "default"
+          ],
+          "type": "string"
+        }
+      },
+      "recursive": {
+        "description": "This option determines if the sub-entities shall be fetched recursively",
+        "in": "query",
+        "name": "recursive",
+        "schema": {
+          "type": "boolean"
+        }
+      },
+      "strict": {
+        "description": "This option determines if additional properties are allowed",
+        "in": "query",
+        "name": "strict",
+        "schema": {
+          "type": "boolean"
+        }
+      },
+      "traceId": {
+        "description": "This options sets the traceparent used for tracing request",
+        "in": "header",
+        "name": "traceparent",
+        "schema": {
+          "pattern": "^00-([0-9a-fA-F]{32})-([0-9a-fA-F]{16})-([0-9a-fA-F]{2})$",
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "properties": {
+                "information": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "warnings": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            }
+          }
+        },
+        "description": "OK"
+      },
+      "201": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "properties": {
+                "information": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "warnings": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            }
+          }
+        },
+        "description": "Created"
+      },
+      "400": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          },
+          "text/html": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "description": "Bad Request"
+      },
+      "401": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          },
+          "text/html": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "description": "Unauthorized"
+      },
+      "404": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "Not Found"
+      },
+      "409": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "Conflict"
+      },
+      "413": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "Payload Too Large"
+      },
+      "414": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "URI Too Long"
+      }
+    },
+    "schemas": {
+      "cert.v1": {
+        "additionalProperties": false,
+        "properties": {
+          "ca_certificates": {
+            "$ref": "#/components/schemas/cert.v1.ca_certificates"
+          },
+          "certificates": {
+            "$ref": "#/components/schemas/cert.v1.certificates"
+          },
+          "keystores": {
+            "$ref": "#/components/schemas/cert.v1.keystores"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/cert.v1.settings"
+          }
+        },
+        "type": "object"
+      },
+      "cert.v1.ca_certificates": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "alias": {
+              "$ref": "#/components/schemas/datatype.alias"
+            },
+            "certificate": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "cert.v1.ca_certificates-add": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "$ref": "#/components/schemas/datatype.alias"
+          },
+          "certificate": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "alias",
+          "certificate"
+        ],
+        "type": "object"
+      },
+      "cert.v1.ca_certificates-item": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "$ref": "#/components/schemas/datatype.alias"
+          },
+          "certificate": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "cert.v1.ca_certificates-set-item": {
+        "additionalProperties": false,
+        "properties": {
+          "certificate": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "cert.v1.certificates": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "alias": {
+              "$ref": "#/components/schemas/datatype.alias"
+            },
+            "certificate": {
+              "type": "string"
+            },
+            "keystore": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "cert.v1.certificates-add": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "$ref": "#/components/schemas/datatype.alias"
+          },
+          "certificate": {
+            "type": "string"
+          },
+          "keystore": {
+            "type": "string"
+          },
+          "private_key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "alias",
+          "certificate",
+          "private_key"
+        ],
+        "type": "object"
+      },
+      "cert.v1.certificates-item": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "$ref": "#/components/schemas/datatype.alias"
+          },
+          "certificate": {
+            "type": "string"
+          },
+          "keystore": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "cert.v1.certificates-set-item": {
+        "additionalProperties": false,
+        "properties": {
+          "certificate": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "cert.v1.keystores": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "certifications": {
+              "$ref": "#/components/schemas/datatype.keystore_certifications"
+            },
+            "id": {
+              "type": "string"
+            },
+            "key_types": {
+              "$ref": "#/components/schemas/datatype.keystore_key_types_list"
+            },
+            "security_level": {
+              "$ref": "#/components/schemas/datatype.keystore_seclevel"
+            }
+          },
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "cert.v1.keystores-item": {
+        "additionalProperties": false,
+        "properties": {
+          "certifications": {
+            "$ref": "#/components/schemas/datatype.keystore_certifications"
+          },
+          "id": {
+            "type": "string"
+          },
+          "key_types": {
+            "$ref": "#/components/schemas/datatype.keystore_key_types_list"
+          },
+          "security_level": {
+            "$ref": "#/components/schemas/datatype.keystore_seclevel"
+          }
+        },
+        "type": "object"
+      },
+      "cert.v1.settings": {
+        "additionalProperties": false,
+        "properties": {
+          "keystore": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "cert.v1.settings-set": {
+        "additionalProperties": false,
+        "properties": {
+          "keystore": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "datatype.alias": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "datatype.create_certificate_input": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "$ref": "#/components/schemas/datatype.alias"
+          },
+          "key_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "keystore": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "subject_alt_names": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/datatype.san_list"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "valid_from": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "valid_to": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "alias",
+          "key_type",
+          "keystore",
+          "subject",
+          "subject_alt_names",
+          "valid_from",
+          "valid_to"
+        ],
+        "type": "object"
+      },
+      "datatype.create_certificate_input-set": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "$ref": "#/components/schemas/datatype.alias"
+          },
+          "key_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "keystore": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "subject_alt_names": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/datatype.san_list-set"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "valid_from": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "valid_to": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "datatype.get_csr_input": {
+        "additionalProperties": false,
+        "properties": {
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject_alt_names": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/datatype.san_list"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "subject",
+          "subject_alt_names"
+        ],
+        "type": "object"
+      },
+      "datatype.get_csr_input-set": {
+        "additionalProperties": false,
+        "properties": {
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subject_alt_names": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/datatype.san_list-set"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "datatype.install_from_pkcs12_input": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "$ref": "#/components/schemas/datatype.alias"
+          },
+          "keystore": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "passphrase": {
+            "secret": true,
+            "type": "string"
+          },
+          "pkcs12": {
+            "secret": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "alias",
+          "keystore",
+          "passphrase",
+          "pkcs12"
+        ],
+        "type": "object"
+      },
+      "datatype.install_from_pkcs12_input-set": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "$ref": "#/components/schemas/datatype.alias"
+          },
+          "keystore": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "passphrase": {
+            "secret": true,
+            "type": "string"
+          },
+          "pkcs12": {
+            "secret": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "datatype.keystore_certifications": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "datatype.keystore_certifications-set": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "datatype.keystore_key_types": {
+        "enum": [
+          "EC-P256",
+          "EC-P384",
+          "EC-P521",
+          "RSA-1024",
+          "RSA-2048",
+          "RSA-3072",
+          "RSA-4096"
+        ],
+        "type": "string"
+      },
+      "datatype.keystore_key_types_list": {
+        "items": {
+          "$ref": "#/components/schemas/datatype.keystore_key_types"
+        },
+        "type": "array"
+      },
+      "datatype.keystore_key_types_list-set": {
+        "items": {
+          "$ref": "#/components/schemas/datatype.keystore_key_types"
+        },
+        "type": "array"
+      },
+      "datatype.keystore_seclevel": {
+        "enum": [
+          "SOFTWARE",
+          "TRUSTED_ENVIRONMENT",
+          "STRONG"
+        ],
+        "type": "string"
+      },
+      "datatype.san_list": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "datatype.san_list-set": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "error": {
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Management of X.509 certificates.",
+    "title": "cert",
+    "version": "1.1.2"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/cert/v1": {
+      "description": "This is the path for 'cert.v1'. Description: The certificate management root object.",
+      "get": {
+        "description": "Use this operation to get the value of 'cert.v1'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/cert.v1"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1"
+        ]
+      }
+    },
+    "/cert/v1/ca_certificates": {
+      "description": "This is the path for 'ca_certificates'. Description: Installed CA certificates.",
+      "get": {
+        "description": "Use this operation to get the value of 'ca_certificates'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/cert.v1.ca_certificates"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.ca_certificates"
+        ]
+      },
+      "post": {
+        "description": "Use this operation to add an item to the collection 'ca_certificates'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/cert.v1.ca_certificates-add"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/cert.v1.ca_certificates-item"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "409": {
+            "$ref": "#/components/responses/409"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.ca_certificates"
+        ]
+      }
+    },
+    "/cert/v1/ca_certificates/{alias}": {
+      "delete": {
+        "description": "Use this operation to remove an item from the collection 'ca_certificates'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.ca_certificates"
+        ]
+      },
+      "description": "This is the path for an individual item in the collection 'ca_certificates'",
+      "get": {
+        "description": "Use this operation to get the value of an item in the collection 'ca_certificates'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/cert.v1.ca_certificates-item"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.ca_certificates"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "alias",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.alias"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Use this operation to set an item in the collection 'ca_certificates' to a certain value",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/cert.v1.ca_certificates-set-item"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.ca_certificates"
+        ]
+      }
+    },
+    "/cert/v1/ca_certificates/{alias}/alias": {
+      "description": "This is the path for 'alias'. Description: Identifier for this certificate entry.",
+      "get": {
+        "description": "Use this operation to get the value of 'alias'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/datatype.alias"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.ca_certificates"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "alias",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.alias"
+          }
+        }
+      ]
+    },
+    "/cert/v1/ca_certificates/{alias}/certificate": {
+      "description": "This is the path for 'certificate'. Description: The X.509 certificate in PEM format. Can be replaced with a newer version.",
+      "get": {
+        "description": "Use this operation to get the value of 'certificate'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "type": "string"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.ca_certificates"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "alias",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.alias"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Use this operation to set 'certificate' to a certain value",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.ca_certificates"
+        ]
+      }
+    },
+    "/cert/v1/certificates": {
+      "description": "This is the path for 'certificates'. Description: Installed server and client certificates.",
+      "get": {
+        "description": "Use this operation to get the value of 'certificates'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/cert.v1.certificates"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.certificates"
+        ]
+      },
+      "post": {
+        "description": "Use this operation to add an item to the collection 'certificates'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/cert.v1.certificates-add"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/cert.v1.certificates-item"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "409": {
+            "$ref": "#/components/responses/409"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.certificates"
+        ]
+      }
+    },
+    "/cert/v1/certificates/{alias}": {
+      "delete": {
+        "description": "Use this operation to remove an item from the collection 'certificates'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.certificates"
+        ]
+      },
+      "description": "This is the path for an individual item in the collection 'certificates'",
+      "get": {
+        "description": "Use this operation to get the value of an item in the collection 'certificates'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/cert.v1.certificates-item"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.certificates"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "alias",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.alias"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Use this operation to set an item in the collection 'certificates' to a certain value",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/cert.v1.certificates-set-item"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.certificates"
+        ]
+      }
+    },
+    "/cert/v1/certificates/{alias}/alias": {
+      "description": "This is the path for 'alias'. Description: Identifier for this certificate entry.",
+      "get": {
+        "description": "Use this operation to get the value of 'alias'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/datatype.alias"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.certificates"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "alias",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.alias"
+          }
+        }
+      ]
+    },
+    "/cert/v1/certificates/{alias}/certificate": {
+      "description": "This is the path for 'certificate'. Description: The X.509 certificate in PEM format. Can be replaced with a freshly signed version for the same private key.",
+      "get": {
+        "description": "Use this operation to get the value of 'certificate'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "type": "string"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.certificates"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "alias",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.alias"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Use this operation to set 'certificate' to a certain value",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.certificates"
+        ]
+      }
+    },
+    "/cert/v1/certificates/{alias}/get_csr": {
+      "description": "This is the path for 'get_csr'. Description: Get a PKCS10 certificate signing request in PEM format.",
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "alias",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.alias"
+          }
+        }
+      ],
+      "post": {
+        "description": "Use this operation to trigger the action 'get_csr'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/datatype.get_csr_input-set"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "type": "string"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.certificates"
+        ]
+      }
+    },
+    "/cert/v1/certificates/{alias}/keystore": {
+      "description": "This is the path for 'keystore'. Description: The keystore this private key is protected by. Can not be changed once the private key has been protected.",
+      "get": {
+        "description": "Use this operation to get the value of 'keystore'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "type": "string"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.certificates"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "alias",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.alias"
+          }
+        }
+      ]
+    },
+    "/cert/v1/create_certificate": {
+      "description": "This is the path for 'create_certificate'. Description: Create a self-signed certificate.",
+      "post": {
+        "description": "Use this operation to trigger the action 'create_certificate'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/datatype.create_certificate_input-set"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1"
+        ]
+      }
+    },
+    "/cert/v1/install_from_pkcs12": {
+      "description": "This is the path for 'install_from_pkcs12'. Description: Install a server/client certificate with a private key from a password protected encrypted PKCS12 archive.",
+      "post": {
+        "description": "Use this operation to trigger the action 'install_from_pkcs12'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/datatype.install_from_pkcs12_input-set"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1"
+        ]
+      }
+    },
+    "/cert/v1/keystores": {
+      "description": "This is the path for 'keystores'. Description: List of keystores available on the system.",
+      "get": {
+        "description": "Use this operation to get the value of 'keystores'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/cert.v1.keystores"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.keystores"
+        ]
+      }
+    },
+    "/cert/v1/keystores/{id}": {
+      "description": "This is the path for an individual item in the collection 'keystores'",
+      "get": {
+        "description": "Use this operation to get the value of an item in the collection 'keystores'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/cert.v1.keystores-item"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.keystores"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/cert/v1/keystores/{id}/certifications": {
+      "description": "This is the path for 'certifications'. Description: The list of security standards of the subsystem that this keystore is certified with.",
+      "get": {
+        "description": "Use this operation to get the value of 'certifications'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/datatype.keystore_certifications"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.keystores"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/cert/v1/keystores/{id}/id": {
+      "description": "This is the path for 'id'. Description: Keystore identifier.",
+      "get": {
+        "description": "Use this operation to get the value of 'id'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "type": "string"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.keystores"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/cert/v1/keystores/{id}/key_types": {
+      "description": "This is the path for 'key_types'. Description: A list of available key types offered by the keystore.",
+      "get": {
+        "description": "Use this operation to get the value of 'key_types'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/datatype.keystore_key_types_list"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.keystores"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/cert/v1/keystores/{id}/security_level": {
+      "description": "This is the path for 'security_level'. Description: The level of protection for private keys that this keystore offers.",
+      "get": {
+        "description": "Use this operation to get the value of 'security_level'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/datatype.keystore_seclevel"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.keystores"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/cert/v1/settings": {
+      "description": "This is the path for 'settings'. Description: Global settings for certificate management.",
+      "get": {
+        "description": "Use this operation to get the value of 'settings'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/cert.v1.settings"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.settings"
+        ]
+      },
+      "patch": {
+        "description": "Use this operation to set 'settings' to a certain value",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/cert.v1.settings-set"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.settings"
+        ]
+      }
+    },
+    "/cert/v1/settings/keystore": {
+      "description": "This is the path for 'keystore'. Description: The selected keystore. Newly installed or generated private keys are protected in it by default.",
+      "get": {
+        "description": "Use this operation to get the value of 'keystore'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "type": "string"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.settings"
+        ]
+      },
+      "patch": {
+        "description": "Use this operation to set 'keystore' to a certain value",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "cert.v1.settings"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/config/rest"
+    }
+  ]
+}

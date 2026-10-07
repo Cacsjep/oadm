@@ -1,0 +1,114 @@
+{
+  "status": "success",
+  "data": {
+    "ip": {
+      "configs": [
+        {
+          "id": "2",
+          "ipv4": {
+            "configurationMode": "DHCP",
+            "enabled": true,
+            "linkLocalMode": "FALLBACK",
+            "staticAddressConfig": {
+              "address": "192.168.0.90",
+              "broadcastAddress": "192.168.0.255",
+              "prefixLength": 24
+            },
+            "staticDefaultRouter": "192.168.0.1",
+            "vendorClassIdentifier": "AXIS,Dome Camera,P3265-V,12.11.77"
+          },
+          "ipv6": {
+            "autoConfigurationMode": "AUTO",
+            "enabled": false,
+            "staticAddresses": [],
+            "staticDefaultRouter": null
+          }
+        }
+      ],
+      "ipStatus": {
+        "ipv4": {
+          "addresses": [
+            {
+              "ipAddress": "10.0.0.48",
+              "origin": "DHCP",
+              "prefixLength": 24
+            }
+          ],
+          "defaultRouter": "10.0.0.138"
+        },
+        "ipv6": {
+          "addresses": [],
+          "defaultRouters": []
+        }
+      }
+    },
+    "modem_supported": false,
+    "sfp_supported": false,
+    "switch_supported": false,
+    "system": {
+      "activeUplink": "WIRED",
+      "hostname": "axis-b8a44f631339",
+      "nameServers": [
+        "1.1.1.1"
+      ],
+      "searchDomains": [],
+      "staticHostname": "axis-b8a44f631339",
+      "staticNameServers": [
+        "1.1.1.1"
+      ],
+      "staticSearchDomains": [],
+      "tcpEcn": "ACCEPT_INITIATE",
+      "uplinkBandwidthLimitation": 0,
+      "useDhcpHostname": true,
+      "useDhcpResolver": false
+    },
+    "wired": {
+      "auth": {
+        "configs": {
+          "eapTls": {
+            "caCerts": [],
+            "clientCertId": "Axis device ID ECC-P256 (802.1AR)",
+            "eapolVersion": 3,
+            "identity": "48"
+          },
+          "macsecPsk": {
+            "ckn": null
+          },
+          "mschapv2": {
+            "caCerts": [],
+            "eapolVersion": 3,
+            "identity": null,
+            "peap": {
+              "label": "CLIENT_EAP_ENCRYPTION",
+              "version": 1
+            }
+          }
+        },
+        "macsecStatus": "STOPPED",
+        "mode": "EAP_TLS",
+        "status": "STOPPED"
+      },
+      "ipConfigId": "2",
+      "linkMode": "100FD",
+      "lowerState": "UP",
+      "macAddress": "b8:a4:4f:63:13:39",
+      "managesSfp": false,
+      "maxMtu": 1500,
+      "maxNumberOfVlans": 1,
+      "minMtu": 68,
+      "mtu": 1500,
+      "staticLinkMode": "AUTO",
+      "staticMtu": 1500,
+      "supportedLinkModes": [
+        "AUTO",
+        "10HD",
+        "10FD",
+        "100HD",
+        "100FD"
+      ],
+      "vlans": []
+    },
+    "wired_supported": true,
+    "wlan_supported": false
+  }
+}

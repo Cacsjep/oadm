@@ -1,0 +1,2 @@
+root.Network.HTTP.AuthenticationPolicy=recommended
+root.Network.HTTP.AuthenticationWithQop=no

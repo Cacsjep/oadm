@@ -194,15 +194,98 @@ Previous certificate authorities  (card, only when there are any)
 
 ## Part 2: task plugins (contributed, group Security)
 
-Waiting for the device API research (`docs/specs/pki-research/README.md`); decisions already made:
+Device API research, request examples and the 10.0.0.48 fixtures: `docs/specs/pki-research/`.
 
-- Entries: HTTPS: Enable/Update, HTTPS: Disable, IEEE 802.1X: Enable/Update, IEEE 802.1X: Disable, View installed
-  certificates (read-only window, grouped client / server / CA certificates like ADM, many devices), Delete
-  certificates (the certificate in use by HTTPS or 802.1X is greyed and protected), Install certificates
-  manually (`.pfx` / `.p12` matched to devices by MAC, IP or FQDN in the common name, like ADM), Renew
-  certificates now (renews whatever OADM issued on the device: HTTPS, 802.1X or both).
-- Certificates: issued by the active CA, validity `deviceCertValidityDays`, SAN IP address + host name (+ FQDN,
-  `axis-<serial>.local`), CN = the address OADM uses; every issued certificate is recorded in `issued`.
-- HTTPS Enable/Update keeps the HTTP policy; OADM switches its own connection to HTTPS and pins the new
-  certificate (no CertificateChanged status for a change OADM made).
-- No automatic renewal.
+### Decisions (user)
+
+| Topic | Decision |
+|---|---|
+| Key generation | On the device: `create_certificate` -> `get_csr` -> OADM signs -> `PATCH` the signed certificate. The private key never leaves the device. |
+| Key type | RSA 2048. Keystore: the device's default keystore (secure element SE0 / TEE0 / TPM0 when present, else software). |
+| Firmware | REST certificate API `cert` v1 only (AXIS OS 11.11 and later). Older devices fail "Needs AXIS OS 11.11 or later. Nothing was changed." No SOAP fallback for keys and CSRs. |
+| 802.1X safety | Checks + confirmation: the task fails before any write when the device clock is more than 5 minutes off the server clock or the chain is incomplete; the client asks with `ui:MessageWindow` "Devices on ports that enforce 802.1X become unreachable if authentication fails." (Cancel / Enable). |
+| HTTPS: Disable | Connection policy HTTP only (like ADM), certificates stay; OADM switches its own connection to HTTP. Confirmation: "Video systems that use HTTPS lose the connection to these devices." |
+| Renewal | Manual only ("Renew certificates now"). |
+
+### Compatibility (`PkiCompatibility`)
+
+- `getApiList` does not list the certificate API: the task reads `GET /config/discover` (cached per device for 10 min in
+  the plugin, re-read fresh in `ExecuteAsync` before the first write) and requires `cert` v1 (>= 1.0).
+- HTTPS: additionally SOAP `aweb:GetWebServerTlsConfiguration` must answer (web server TLS service).
+- 802.1X: `network-settings` 1.x with the `wired.8021X` object in `getNetworkInfo`.
+- `CanRun` (cached data only): AXIS OS >= 11.11 from `FirmwareVersion`, `network-settings` in `Apis` for 802.1X; the
+  exact check happens in the task ("Check compatibility" step).
+
+### Aliases and the issued registry
+
+- Device certificate alias: `OADM HTTPS <yyyyMMdd-HHmmss>` / `OADM 802.1X <yyyyMMdd-HHmmss>`; CA certificate alias
+  `OADM CA <first 8 hex of fingerprint>` (RADIUS CA: `OADM RADIUS CA <8 hex>`). Aliases are percent-encoded in URLs.
+- Every signed certificate is appended to the plugin's `issued` registry (serial, deviceId, purpose, caId, notAfter,
+  alias). Older OADM certificates of the same purpose on the device are deleted after the switch succeeded (step
+  "Remove previous OADM certificate"); never certificates OADM did not issue.
+
+### Certificate content
+
+Subject `CN=<address OADM uses>`; SAN `IP:<IPv4/IPv6 address>` always, `DNS:<host name>` and `DNS:<FQDN>` when known
+(from the device's network info), `DNS:axis-<serial lowercase>.local`; validity `deviceCertValidityDays` from now - 5 min,
+capped at the CA's NotAfter; EKU serverAuth (HTTPS) / clientAuth (802.1X); KeyUsage digitalSignature + keyEncipherment;
+AKI = CA SKI. The CSR's public key is checked (RSA >= 2048 or EC) and OADM puts in its own subject and SAN, never the
+CSR's. The chain (CA + intermediates of an imported CA) goes to the device as CA certificates.
+
+### Tasks (one per device, steps, names)
+
+1. **HTTPS: Enable/Update** (id `oadm.pki.https-enable`). Steps: Check compatibility, Read web server settings, Install
+   CA certificate (Skipped "Already installed"), Create key on the device, Get certificate request, Sign certificate,
+   Install certificate, Switch web server to the new certificate (`SetWebServerTlsConfiguration`: the new alias, policy
+   unchanged; when the policy is HTTP only it becomes HTTP and HTTPS, because Enable must enable), Verify HTTPS (new TLS
+   handshake: served fingerprint = the new certificate; OADM pins it and switches its scheme to https through a host
+   API, so no CertificateChanged status), Remove previous OADM certificate. Name "Enable HTTPS" / "Update HTTPS
+   certificate" (device already serving an OADM certificate).
+2. **HTTPS: Disable** (`oadm.pki.https-disable`, confirmation). Steps: Check compatibility, Read web server settings,
+   Set HTTP only, Verify (HTTP answers; OADM's device record switches to http). Name "Disable HTTPS".
+3. **IEEE 802.1X: Enable/Update** (`oadm.pki.dot1x-enable`, confirmation). Steps: Check compatibility, Check device clock
+   (fails beyond 5 min: "The device clock is 12 min off. Set the date and time first. Nothing was changed."), Install CA
+   certificates (RADIUS server CA from the PKI page + chain), Create key on the device, Get certificate request, Sign
+   certificate, Install certificate, Set 802.1X configuration (`setWired8021XConfiguration`: enabled, EAP-TLS,
+   identity from the page setting (MAC = serial, host name, custom with `{serial}` / `{hostName}`), EAPOL version,
+   certClient = new alias, certsCA), Verify 802.1X settings (read back), Remove previous OADM certificate. Name "Enable
+   IEEE 802.1X" / "Update IEEE 802.1X certificate".
+4. **IEEE 802.1X: Disable** (`oadm.pki.dot1x-disable`). Steps: Check compatibility, Set 802.1X off, Verify. Certificates
+   stay. Name "Disable IEEE 802.1X".
+5. **Renew certificates now** (`oadm.pki.renew`). Renews what OADM issued on the device (from `issued` + the device's
+   certificate list): per purpose a new key + CSR on a new alias, sign, install, switch (web server / 802.1X), verify,
+   remove the old one. Skipped purposes say why ("No OADM 802.1X certificate on this device"). Name "Renew certificates"
+   ("Renew HTTPS certificate" / "Renew IEEE 802.1X certificate" when only one applies).
+6. **View installed certificates** (`oadm.pki.view`, dialog, read-only, no task): a window like ADM's "Installed
+   Certificates": grouped Client / Server / CA certificates (expanders with counts), columns MAC address, Address, Issued
+   by, Issued to, Valid to, In use (HTTPS, 802.1X), Source (OADM / other); SearchBox; Refresh. Reads through
+   `ITaskPluginQuery` (`listCertificates`, at most 4 devices at a time, progress row). Virtualized; with many devices it
+   loads progressively.
+7. **Delete certificates** (`oadm.pki.delete`, dialog): the same list with check boxes; certificates in use by the web
+   server or 802.1X, and the Axis factory device ID certificates, are greyed with a tooltip and cannot be selected.
+   Payload: aliases per device (the server re-checks "in use" before deleting). Steps: Check compatibility, Read
+   certificates, Delete certificate <alias> (one step each), Verify. Name "Delete certificate <alias>" / "Delete N
+   certificates".
+8. **Install certificates manually** (`oadm.pki.install`, dialog): choose `.pfx` / `.p12` files (one password for all,
+   like ADM) and the purpose (HTTPS / 802.1X / CA only); files are matched to devices by MAC address, IP address or FQDN
+   in the subject CN or SAN (match must be unique; a table shows file -> device, unmatched rows red in the Status
+   column). Upload via `ITaskDialogContext.UploadAsync`; the task installs with `install_from_pkcs12` (base64, password
+   in memory only), then switches HTTPS or 802.1X like 1 / 3 when that purpose was chosen. Name "Install certificate
+   <file>".
+
+Context menu: group **Security**; display names "HTTPS: Enable/Update", "HTTPS: Disable", "IEEE 802.1X: Enable/Update",
+"IEEE 802.1X: Disable", "View installed certificates", "Delete certificates", "Install certificates manually", "Renew
+certificates now" (all at most 32 characters).
+
+### Device grid
+
+- The Certificate column shows "Trusted (OADM CA)" for certificates of the active CA and "Issued by a previous CA"
+  (warning) for previous CAs; the Certificate expires column warns `expiryWarningDays` before expiry (setting of the PKI
+  page; default 30, replacing the fixed 30).
+
+### Open points (need an approved hardware write test on 10.0.0.48)
+
+- Whether `PATCH certificates/<alias>` accepts a PEM chain (otherwise the chain goes only as CA certificates).
+- `SetWebServerTlsConfiguration` as a write on 12.11.
+- 802.1X verification against a real RADIUS server and switch is out of scope; the read-back of the settings is the
+  verification.

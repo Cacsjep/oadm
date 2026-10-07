@@ -1,0 +1,12 @@
+{
+  "status": "success",
+  "data": {
+    "profiles": [],
+    "supportedServices": [
+      "MQTT",
+      "NETAUTH",
+      "WEBSERVER",
+      "RTSPS"
+    ]
+  }
+}
