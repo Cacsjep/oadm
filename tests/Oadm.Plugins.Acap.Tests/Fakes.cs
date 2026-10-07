@@ -214,9 +214,19 @@ internal sealed class RecordingContext(IVapixClient vapix, IUploadedFiles? files
     public List<string> Warnings { get; } = [];
     public List<(TaskLogLevel Level, string Message)> Logs { get; } = [];
 
+    /// <summary>The steps of the current run, with the server's semantics (see <c>StepRun</c>).</summary>
+    public TaskStepList Steps { get; private set; } = new();
+
     public void ReportProgress(int percent, string? message = null) => Progress.Add((percent, message));
 
     public void ReportWarning(string message) => Warnings.Add(message);
 
     public void Log(TaskLogLevel level, string message) => Logs.Add((level, message));
+
+    public void PlanSteps(params string[] names) => Steps.Plan(names);
+
+    public ITaskStep BeginStep(string name) => Steps.Begin(name);
+
+    /// <summary>Starts a fresh step list, like a new task (the context is reused by some tests).</summary>
+    public TaskStepList NewRun() => Steps = new TaskStepList(onWarning: ReportWarning);
 }

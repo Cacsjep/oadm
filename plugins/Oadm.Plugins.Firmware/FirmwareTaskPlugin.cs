@@ -80,6 +80,25 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         return device.Status == DeviceStatus.Ok && device.Apis.Supports(FwmgrClient.ApiId, FwmgrClient.MinApiVersion);
     }
 
+    /// <summary>Step names, in order (see README.md).</summary>
+    public static class Steps
+    {
+        public const string CheckCompatibility = "Check compatibility";
+        public const string ReadDeviceInfo = "Read device info";
+        public const string ValidateFile = "Validate file";
+        public const string ReadFirmwareStatus = "Read firmware status";
+        public const string Upload = "Upload firmware";
+        public const string Install = "Install firmware";
+        public const string WaitForDevice = "Wait for device to come back";
+        public const string VerifyVersion = "Verify version";
+        public const string ReadCommitState = "Read commit state";
+        public const string Commit = "Commit firmware";
+        public const string WaitBeforeRetry = "Wait before retrying the commit";
+
+        public static readonly string[] Planned =
+            [CheckCompatibility, ReadDeviceInfo, ValidateFile, ReadFirmwareStatus, Upload, Install, WaitForDevice, VerifyVersion, ReadCommitState, Commit];
+    }
+
     public async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
@@ -87,41 +106,63 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
         // 1. Validate everything before the first request that changes the device.
         var payload = FirmwarePayload.Parse(payloadJson);
-        if (device.Status != DeviceStatus.Ok)
+        ctx.PlanSteps(Steps.Planned);
+
+        using (var step = ctx.BeginStep(Steps.CheckCompatibility))
         {
-            throw new InvalidOperationException($"The device status is {device.Status}; firmware is only installed on devices with status OK. Nothing was changed.");
+            if (device.Status != DeviceStatus.Ok)
+            {
+                throw new InvalidOperationException($"The device status is {device.Status}; firmware is only installed on devices with status OK. Nothing was changed.");
+            }
+
+            var apis = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
+            apis.Require(FwmgrClient.ApiId, FwmgrClient.MinApiVersion);
+            step.Complete("fwmgr " + (apis.FindApi(FwmgrClient.ApiId, 1)?.Version ?? FwmgrClient.MinApiVersion));
         }
 
-        ctx.ReportProgress(0, "Checking device compatibility");
-        var apis = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
-        apis.Require(FwmgrClient.ApiId, FwmgrClient.MinApiVersion);
-
-        var file = await ctx.Files.FindAsync(payload.FileId, ct).ConfigureAwait(false)
-            ?? throw new FileNotFoundException("The uploaded firmware file is no longer available on the server. Upload it again. Nothing was changed.");
-        var header = await ReadHeaderAsync(ctx.Files, file.Id, ct).ConfigureAwait(false);
-        var image = FirmwareImageInspector.Inspect(payload.FileName ?? file.Name, file.Size, header);
-
-        var info = await ctx.Vapix.GetBasicDeviceInfoAsync(ct).ConfigureAwait(false);
-        var check = FirmwareCompatibility.Evaluate(info.ProdNbr, info.Version, image, payload.FactoryDefaultMode, payload.AllowDowngrade);
-        ctx.Log(TaskLogLevel.Info, Invariant($"Device {info.ProdNbr} runs {info.Version}; file {image.FileName} ({file.Size} bytes, SHA-256 {file.Sha256}): {check.Message}"));
-        if (check.IsNoOp)
+        BasicDeviceInfo info;
+        using (var step = ctx.BeginStep(Steps.ReadDeviceInfo))
         {
-            ctx.ReportWarning($"Already up to date: the device runs {info.Version}. Nothing was installed.");
-            ctx.ReportProgress(100, "Already up to date");
-            return;
+            info = await ctx.Vapix.GetBasicDeviceInfoAsync(ct).ConfigureAwait(false);
+            step.Complete($"AXIS {info.ProdNbr}, AXIS OS {info.Version}");
         }
 
-        if (!check.WillInstall)
+        UploadedFile file;
+        FirmwareImageInfo image;
+        using (var step = ctx.BeginStep(Steps.ValidateFile))
         {
-            throw new InvalidOperationException(check.Message + " Nothing was changed.");
+            file = await ctx.Files.FindAsync(payload.FileId, ct).ConfigureAwait(false)
+                ?? throw new FileNotFoundException("The uploaded firmware file is no longer available on the server. Upload it again. Nothing was changed.");
+            var header = await ReadHeaderAsync(ctx.Files, file.Id, ct).ConfigureAwait(false);
+            image = FirmwareImageInspector.Inspect(payload.FileName ?? file.Name, file.Size, header);
+            var check = FirmwareCompatibility.Evaluate(info.ProdNbr, info.Version, image, payload.FactoryDefaultMode, payload.AllowDowngrade);
+            ctx.Log(TaskLogLevel.Info, Invariant($"Device {info.ProdNbr} runs {info.Version}; file {image.FileName} ({file.Size} bytes, SHA-256 {file.Sha256}): {check.Message}"));
+            if (check.IsNoOp)
+            {
+                step.Warn($"Already up to date: the device runs {info.Version}. Nothing was installed.");
+                SkipRemaining(ctx, "Already up to date.");
+                return;
+            }
+
+            if (!check.WillInstall)
+            {
+                throw new InvalidOperationException(check.Message + " Nothing was changed.");
+            }
+
+            step.Complete(Invariant($"{image.FileName}, {file.Size / (1024 * 1024)} MB: {check.Message}"));
         }
 
         var fwmgr = new FwmgrClient(ctx.Vapix);
-        var before = await fwmgr.GetStatusAsync(ct).ConfigureAwait(false);
-        if (before.HasUncommittedUpgrade)
+        using (var step = ctx.BeginStep(Steps.ReadFirmwareStatus))
         {
-            throw new InvalidOperationException(
-                $"A previous firmware upgrade on this device is not committed yet (active {before.ActiveFirmwareVersion}, previous {before.InactiveFirmwareVersion ?? "unknown"}). Wait for it to finish or commit it first. Nothing was changed.");
+            var before = await fwmgr.GetStatusAsync(ct).ConfigureAwait(false);
+            if (before.HasUncommittedUpgrade)
+            {
+                throw new InvalidOperationException(
+                    $"A previous firmware upgrade on this device is not committed yet (active {before.ActiveFirmwareVersion}, previous {before.InactiveFirmwareVersion ?? "unknown"}). Wait for it to finish or commit it first. Nothing was changed.");
+            }
+
+            step.Complete("AXIS OS " + (before.ActiveFirmwareVersion ?? info.Version) + ", committed");
         }
 
         // 2. Upload. From here on the device may change.
@@ -130,37 +171,52 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         var old = AxisOsVersion.TryParse(info.Version);
 
         // 3. Wait for the restart and verify the version.
-        ctx.ReportProgress(55, "Installing firmware, the device restarts");
         var backVersionText = await WaitForRestartAsync(ctx, info.Version, payload.FactoryDefaultMode, ct).ConfigureAwait(false);
-        ctx.ReportProgress(92, "Verifying firmware version");
-        var actual = AxisOsVersion.TryParse(backVersionText);
-        if (actual is null || (expected is not null && actual != expected) || (expected is null && actual == old))
+        AxisOsVersion actual;
+        using (var step = ctx.BeginStep(Steps.VerifyVersion))
         {
-            if (actual is not null && actual == old)
+            var parsed = AxisOsVersion.TryParse(backVersionText);
+            if (parsed is null || (expected is not null && parsed != expected) || (expected is null && parsed == old))
             {
+                if (parsed is not null && parsed == old)
+                {
+                    throw new InvalidOperationException(
+                        $"The device came back with its previous firmware {info.Version}: the new firmware{(expected is null ? string.Empty : " " + expected)} did not start and the device rolled back. Settings are unchanged.");
+                }
+
                 throw new InvalidOperationException(
-                    $"The device came back with its previous firmware {info.Version}: the new firmware{(expected is null ? string.Empty : " " + expected)} did not start and the device rolled back. Settings are unchanged.");
+                    $"The device reports firmware {backVersionText ?? "unknown"} after the upgrade, expected {expected?.Text ?? "a new version"}. Check the device; the previous firmware {info.Version} is kept for rollback.");
             }
 
-            throw new InvalidOperationException(
-                $"The device reports firmware {backVersionText ?? "unknown"} after the upgrade, expected {expected?.Text ?? "a new version"}. Check the device; the previous firmware {info.Version} is kept for rollback.");
+            actual = parsed;
+            step.Complete($"AXIS OS {actual}");
         }
 
         // 4. Commit (only for upgrades that keep the settings; factory default upgrades commit themselves).
         if (payload.FactoryDefaultMode == FactoryDefaultMode.None)
         {
-            ctx.ReportProgress(96, "Committing firmware");
             await CommitAsync(ctx, fwmgr, actual, info.Version, ct).ConfigureAwait(false);
         }
         else
         {
+            const string Reason = "The device commits a factory default upgrade by itself.";
+            ctx.SkipStep(Steps.ReadCommitState, Reason);
+            ctx.SkipStep(Steps.Commit, Reason);
             ctx.ReportWarning(payload.FactoryDefaultMode == FactoryDefaultMode.Hard
                 ? "Hard factory default applied: all settings including the IP configuration and the users were reset. Set a password and check the address."
                 : "Soft factory default applied: settings and users were reset (network settings kept). Set a password for the device.");
         }
 
         ctx.Log(TaskLogLevel.Info, Invariant($"Firmware {actual} installed (previous {info.Version} kept as rollback image)."));
-        ctx.ReportProgress(100, $"Firmware {actual} installed");
+    }
+
+    /// <summary>Marks every planned step after the current one as Skipped with <paramref name="reason"/>.</summary>
+    private static void SkipRemaining(ITaskExecutionContext ctx, string reason)
+    {
+        foreach (var name in Steps.Planned.SkipWhile(n => n != Steps.ValidateFile).Skip(1))
+        {
+            ctx.SkipStep(name, reason);
+        }
     }
 
     /// <summary>Read-only: "status" returns <see cref="FirmwareStatusInfo"/> JSON for one device.</summary>
@@ -213,26 +269,28 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             ? new FwmgrUpgradeOptions(mode, "never", _timings.AutoRollbackMinutes.ToString(CultureInfo.InvariantCulture))
             : new FwmgrUpgradeOptions(mode, "started", "never");
 
+        using var step = ctx.BeginStep(Steps.Upload);
+        var totalMb = file.Size / (1024 * 1024);
         var lastPercent = -1;
         using var content = new FirmwareStreamContent(
             token => ctx.Files.OpenReadAsync(file.Id, token),
             file.Size,
             sent =>
             {
-                var percent = 2 + (int)(48 * (double)sent / Math.Max(1, file.Size));
+                var percent = (int)(100 * (double)sent / Math.Max(1, file.Size));
                 if (percent != lastPercent)
                 {
                     lastPercent = percent;
-                    ctx.ReportProgress(percent, Invariant($"Uploading firmware ({sent / (1024 * 1024)} of {file.Size / (1024 * 1024)} MB)"));
+                    step.ReportProgress(percent, Invariant($"{sent / (1024 * 1024)} of {totalMb} MB"));
                 }
             });
 
-        ctx.ReportProgress(2, "Uploading firmware");
         ctx.Log(TaskLogLevel.Info, Invariant($"Uploading {image.FileName}: factoryDefaultMode={options.FactoryDefaultMode.ToString().ToLowerInvariant()}, autoCommit={options.AutoCommit}, autoRollback={options.AutoRollback}."));
         try
         {
             var version = await fwmgr.UpgradeAsync(content, image.FileName, options, _timings.UploadTimeout, ct).ConfigureAwait(false);
             ctx.Log(TaskLogLevel.Info, $"Device accepted the image (version {version ?? "not reported"}).");
+            step.Complete(Invariant($"{totalMb} MB, device accepted AXIS OS {version ?? "(version not reported)"}"));
             return version;
         }
         catch (FwmgrException ex) when (ex.NothingInstalled)
@@ -244,52 +302,90 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         {
             // The whole image went out but the answer was lost (the device may already reboot). Verify by version.
             ctx.Log(TaskLogLevel.Warning, "The upload completed but the device's answer was lost: " + ex.Message + " Checking the version after the restart.");
+            step.Complete("Image sent; the device's answer was lost, the version is checked after the restart");
             return null;
         }
         catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or IOException or TaskCanceledException)
         {
             throw new InvalidOperationException(
-                Invariant($"The upload was interrupted after {content.BytesSent / (1024 * 1024)} of {file.Size / (1024 * 1024)} MB ({ex.Message}). The device still runs {oldVersion}."), ex);
+                Invariant($"The upload was interrupted after {content.BytesSent / (1024 * 1024)} of {totalMb} MB ({ex.Message}). The device still runs {oldVersion}."), ex);
         }
     }
 
+    /// <summary>
+    /// Two steps sharing one timeout: "Install firmware" waits until the device goes offline to restart
+    /// (or already answers with another version), "Wait for device to come back" until it answers again.
+    /// </summary>
     private async Task<string?> WaitForRestartAsync(ITaskExecutionContext ctx, string oldVersion, FactoryDefaultMode mode, CancellationToken ct)
     {
         var start = _time.GetTimestamp();
-        var wentDown = false;
-        while (true)
+        var minutes = _timings.RestartTimeout.TotalMinutes.ToString("0.#", CultureInfo.InvariantCulture);
+        string? changedVersion = null;
+        using (var step = ctx.BeginStep(Steps.Install))
         {
-            await Task.Delay(_timings.PollInterval, _time, ct).ConfigureAwait(false);
-            var elapsed = _time.GetElapsedTime(start);
-            var version = await TryReadVersionAsync(ctx, ct).ConfigureAwait(false);
-            if (version is not null && (wentDown || !string.Equals(version, oldVersion, StringComparison.Ordinal)))
+            while (true)
             {
-                ctx.ReportProgress(90, "Device is back online");
-                return version;
-            }
+                await Task.Delay(_timings.PollInterval, _time, ct).ConfigureAwait(false);
+                var elapsed = _time.GetElapsedTime(start);
+                var version = await TryReadVersionAsync(ctx, ct).ConfigureAwait(false);
+                if (version is null)
+                {
+                    step.Complete("The device restarts");
+                    break;
+                }
 
-            wentDown |= version is null;
-            if (elapsed >= _timings.RestartTimeout)
-            {
-                var minutes = _timings.RestartTimeout.TotalMinutes.ToString("0.#", CultureInfo.InvariantCulture);
-                if (!wentDown)
+                if (!string.Equals(version, oldVersion, StringComparison.Ordinal))
+                {
+                    changedVersion = version;
+                    step.Complete("The device restarted");
+                    break;
+                }
+
+                if (elapsed >= _timings.RestartTimeout)
                 {
                     throw new TimeoutException($"The device did not restart within {minutes} minutes after the upload and still runs {oldVersion}.");
                 }
 
-                var hint = mode switch
-                {
-                    FactoryDefaultMode.Hard => " A hard factory default resets the IP configuration, so the device may be at another address.",
-                    FactoryDefaultMode.None => Invariant($" If the new firmware starts but is not committed, the device rolls back to {oldVersion} by itself {_timings.AutoRollbackMinutes} minutes after booting."),
-                    _ => string.Empty,
-                };
-                throw new TimeoutException($"The device did not come back within {minutes} minutes after the firmware upload.{hint}");
+                step.ReportProgress(Percent(elapsed), "The device installs the firmware");
+            }
+        }
+
+        using (var step = ctx.BeginStep(Steps.WaitForDevice))
+        {
+            if (changedVersion is not null)
+            {
+                step.Complete($"Answers with AXIS OS {changedVersion}");
+                return changedVersion;
             }
 
-            var progress = 55 + (int)(35 * Math.Min(1.0, elapsed / _timings.RestartTimeout));
-            ctx.ReportProgress(progress, version is null ? "Installing firmware, waiting for the device to come back" : "Installing firmware, waiting for the device to restart");
+            while (true)
+            {
+                await Task.Delay(_timings.PollInterval, _time, ct).ConfigureAwait(false);
+                var elapsed = _time.GetElapsedTime(start);
+                var version = await TryReadVersionAsync(ctx, ct).ConfigureAwait(false);
+                if (version is not null)
+                {
+                    step.Complete($"Answers with AXIS OS {version}");
+                    return version;
+                }
+
+                if (elapsed >= _timings.RestartTimeout)
+                {
+                    var hint = mode switch
+                    {
+                        FactoryDefaultMode.Hard => " A hard factory default resets the IP configuration, so the device may be at another address.",
+                        FactoryDefaultMode.None => Invariant($" If the new firmware starts but is not committed, the device rolls back to {oldVersion} by itself {_timings.AutoRollbackMinutes} minutes after booting."),
+                        _ => string.Empty,
+                    };
+                    throw new TimeoutException($"The device did not come back within {minutes} minutes after the firmware upload.{hint}");
+                }
+
+                step.ReportProgress(Percent(elapsed), "Not answering yet");
+            }
         }
     }
+
+    private int Percent(TimeSpan elapsed) => (int)(100 * Math.Min(1.0, elapsed / _timings.RestartTimeout));
 
     /// <summary>Anonymous basicdeviceinfo (works after a factory default too); null while the device does not answer.</summary>
     private async Task<string?> TryReadVersionAsync(ITaskExecutionContext ctx, CancellationToken ct)
@@ -326,21 +422,41 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         }
     }
 
+    /// <summary>
+    /// Per attempt one "Read commit state" and one "Commit firmware" step (retries are suffixed
+    /// "(attempt n)"), with a "Wait before retrying the commit" step in between.
+    /// </summary>
     private async Task CommitAsync(ITaskExecutionContext ctx, FwmgrClient fwmgr, AxisOsVersion actual, string oldVersion, CancellationToken ct)
     {
         Exception? last = null;
+        var commitBegun = false;
         for (var attempt = 1; attempt <= _timings.CommitAttempts; attempt++)
         {
+            var suffix = attempt == 1 ? string.Empty : Invariant($" (attempt {attempt})");
             try
             {
-                var status = await fwmgr.GetStatusAsync(ct).ConfigureAwait(false);
+                var status = await ctx.StepAsync(Steps.ReadCommitState + suffix, async step =>
+                {
+                    var s = await fwmgr.GetStatusAsync(ct).ConfigureAwait(false);
+                    step.Complete(s.IsCommitted == true && s.PendingCommit is null && s.TimeToRollback is null ? "Already committed" : "Not committed yet");
+                    return s;
+                }).ConfigureAwait(false);
+
+                var commitName = commitBegun ? Steps.Commit + suffix : Steps.Commit;
                 if (status.IsCommitted == true && status.PendingCommit is null && status.TimeToRollback is null)
                 {
+                    ctx.SkipStep(commitName, "Already committed by the device.");
                     ctx.Log(TaskLogLevel.Info, "Firmware already committed by the device.");
                     return;
                 }
 
-                var committed = await fwmgr.CommitAsync(ct).ConfigureAwait(false);
+                commitBegun = true;
+                var committed = await ctx.StepAsync(commitName, async step =>
+                {
+                    var version = await fwmgr.CommitAsync(ct).ConfigureAwait(false);
+                    step.Complete($"AXIS OS {version ?? actual.Text}");
+                    return version;
+                }).ConfigureAwait(false);
                 ctx.Log(TaskLogLevel.Info, $"Committed firmware {committed ?? actual.Text}.");
                 return;
             }
@@ -350,6 +466,7 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 ctx.Log(TaskLogLevel.Warning, Invariant($"Commit attempt {attempt} failed: {ex.Message}"));
                 if (attempt < _timings.CommitAttempts)
                 {
+                    using var wait = ctx.BeginStep(Steps.WaitBeforeRetry);
                     await Task.Delay(_timings.CommitRetryDelay, _time, ct).ConfigureAwait(false);
                 }
             }

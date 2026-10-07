@@ -409,7 +409,7 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
             var ids = new List<string>();
             foreach (TaskInfo task in AddBatch(pluginId, plugin.DisplayName, owner, TaskState.Queued, 0, deviceIds.Distinct()))
             {
-                _jobs[task.Id] = new FakeJob(task, pluginId == RestartPluginId ? 4 : 25, onProgress);
+                _jobs[task.Id] = new FakeJob(task, pluginId == RestartPluginId ? 4 : 25, onProgress, StepsOf(pluginId));
                 ids.Add(task.Id);
             }
 
@@ -750,12 +750,18 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
                 }
             }
 
+            if (++job.Ticks % job.TicksPerStep != 0)
+            {
+                continue;
+            }
+
             task.Progress = Math.Min(100, task.Progress + job.Step);
             foreach (TaskDeviceResult r in task.Devices.Where(r => r.State == TaskState.Running))
             {
                 r.Progress = task.Progress;
             }
 
+            SetSteps(task, job.StepNames, task.Progress);
             job.OnProgress?.Invoke(task, task.Progress);
             if (task.Progress >= 100)
             {
@@ -780,25 +786,16 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
                 continue;
             }
 
-            if (progress is >= 12 and < 16)
+            // The device message follows the simulated steps (SetSteps); this only moves the device.
+            if (progress is >= 24 and < 28)
             {
-                if (result.Message != "Restarting")
-                {
-                    AddLog(task, result.DeviceId, TaskLogLevel.Info, "Restart requested, waiting for the device to go offline");
-                }
-
-                result.Message = "Restarting";
+                AddLog(task, result.DeviceId, TaskLogLevel.Info, "Restart requested, waiting for the device to go offline");
                 device.Status = DeviceStatus.Unreachable;
                 PublishUpdated(device);
             }
             else if (progress is >= 80 and < 84)
             {
-                if (result.Message != "Device is back online")
-                {
-                    AddLog(task, result.DeviceId, TaskLogLevel.Info, "Device is back online");
-                }
-
-                result.Message = "Device is back online";
+                AddLog(task, result.DeviceId, TaskLogLevel.Info, "Device is back online");
                 device.Status = DeviceStatus.Ok;
                 device.LastSeen = Timestamp.FromDateTime(DateTime.UtcNow);
                 PublishUpdated(device);
@@ -808,6 +805,13 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
 
     private void Finish(TaskInfo task, TaskState state, string? message)
     {
+        if (state is TaskState.Cancelled or TaskState.Failed)
+        {
+            EndSteps(task, state == TaskState.Cancelled ? "Cancelled." : message ?? "Failed.", state == TaskState.Cancelled
+                ? "Not run: the task was cancelled."
+                : "Not run: an earlier step failed.");
+        }
+
         task.State = state;
         task.Finished = Timestamp.FromDateTime(DateTime.UtcNow);
         if (state == TaskState.Done)
@@ -999,11 +1003,14 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
             [_devices[0].Id, _devices[9].Id, "5f3c9a1e-7b2d-4c8e-9a6f-0d1e2f3a4b5c"]))
         {
             done.Started = Timestamp.FromDateTime(now.AddHours(-2));
+            SetSteps(done, RestartSteps, 100);
         }
 
         TaskInfo failed = AddTask(RestartPluginId, "Restart", "admin@SECURITY-PC", TaskState.Failed, 100, _devices[4].Id);
         failed.Started = Timestamp.FromDateTime(now.AddMinutes(-40));
         failed.Devices[0].Message = "Device did not come back within 3 minutes";
+        SetSteps(failed, RestartSteps, 70);
+        EndSteps(failed, "Device did not come back within 3 minutes.", "Not run: an earlier step failed.");
         AddLog(failed, failed.DeviceId, TaskLogLevel.Info, "Restart requested, waiting for the device to go offline", now.AddMinutes(-40));
         AddLog(failed, failed.DeviceId, TaskLogLevel.Error, "Device did not come back within 3 minutes", now.AddMinutes(-37));
 
@@ -1017,6 +1024,10 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         }
 
         flashed.Devices[0].Message = "LED flashed";
+        SetSteps(flashed, IdentifySteps, 100);
+        SetSteps(warned, IdentifySteps, 100);
+        warned.Steps[1].State = TaskStepState.Warning;
+        warned.Steps[1].Detail = "LED not available, used the status indicator instead";
         AddLog(flashed, flashed.DeviceId, TaskLogLevel.Info, "LED flashed", now.AddMinutes(-32).AddSeconds(4));
         warned.State = TaskState.DoneWithWarnings;
         warned.Devices[0].State = TaskState.DoneWithWarnings;
@@ -1027,16 +1038,28 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
 
         TaskInfo cancelled = AddTask(RestartPluginId, "Restart", OwnerName, TaskState.Cancelled, 30, _devices[7].Id);
         cancelled.Started = Timestamp.FromDateTime(now.AddMinutes(-25));
+        SetSteps(cancelled, RestartSteps, 30);
+        EndSteps(cancelled, "Cancelled.", "Not run: the task was cancelled.");
 
         foreach (TaskInfo running in AddBatch(RestartPluginId, "Restart", OwnerName, TaskState.Running, 36, [_devices[1].Id, _devices[5].Id]))
         {
             running.Started = Timestamp.FromDateTime(now.AddSeconds(-50));
-            _jobs[running.Id] = new FakeJob(running, 1, null);
+            SetSteps(running, RestartSteps, running.Progress);
+            _jobs[running.Id] = new FakeJob(running, 1, null, RestartSteps);
         }
 
         TaskInfo identify = AddTask(IdentifyPluginId, "Identify (flash LED)", "admin@SECURITY-PC", TaskState.Running, 64, p3265.Id);
         identify.Started = Timestamp.FromDateTime(now.AddSeconds(-20));
-        _jobs[identify.Id] = new FakeJob(identify, 1, null);
+        SetSteps(identify, IdentifySteps, identify.Progress);
+        _jobs[identify.Id] = new FakeJob(identify, 1, null, IdentifySteps);
+
+        // A firmware upgrade in the middle of its upload: many small steps, byte progress on the running one.
+        TaskInfo firmware = AddTask(FirmwarePluginId, "Upgrade AXIS OS", OwnerName, TaskState.Running, 42, _devices[2].Id);
+        firmware.Started = Timestamp.FromDateTime(now.AddSeconds(-95));
+        SetSteps(firmware, FirmwareSteps, firmware.Progress);
+        AddLog(firmware, firmware.DeviceId, TaskLogLevel.Info, "Compatible: fwmgr 1.4, AXIS OS 12.6.94 can be upgraded to 12.11.77", now.AddSeconds(-94));
+        AddLog(firmware, firmware.DeviceId, TaskLogLevel.Info, "Uploading AXIS_OS_Q6135-LE_12_11_77.bin (82 MB, SHA-256 verified)", now.AddSeconds(-74));
+        _jobs[firmware.Id] = new FakeJob(firmware, 1, null, FirmwareSteps) { TicksPerStep = 8 };
     }
 
     private Device CreateDevice(string serial, string address, string model, string firmware, DeviceStatus status) => WithSampleApis(new Device
@@ -1117,11 +1140,107 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         device.ClearCertNameMatches();
     }
 
-    private sealed class FakeJob(TaskInfo task, int step, Action<TaskInfo, int>? onProgress)
+    private sealed class FakeJob(TaskInfo task, int step, Action<TaskInfo, int>? onProgress, IReadOnlyList<string> stepNames)
     {
         public TaskInfo Task { get; } = task;
         public int Step { get; } = step;
         public Action<TaskInfo, int>? OnProgress { get; } = onProgress;
+        public IReadOnlyList<string> StepNames { get; } = stepNames;
+
+        /// <summary>Advance only every n-th tick (the sample firmware upload is slow).</summary>
+        public int TicksPerStep { get; init; } = 1;
+
+        public int Ticks { get; set; }
+    }
+
+    private const string FirmwarePluginId = "oadm.firmware";
+
+    /// <summary>The steps of the Restart task plugin, as the server reports them.</summary>
+    private static readonly string[] RestartSteps =
+        ["Check device", "Send restart", "Wait for the device to go offline", "Wait for the device to come back", "Verify device"];
+
+    private static readonly string[] IdentifySteps = ["Check device", "Flash LED", "Wait 10 s", "Stop flashing"];
+
+    /// <summary>The steps of the Firmware task plugin on its normal path.</summary>
+    private static readonly string[] FirmwareSteps =
+    [
+        "Check compatibility", "Read device info", "Validate file", "Read firmware status", "Upload firmware",
+        "Install firmware", "Wait for device to come back", "Verify version", "Read commit state", "Commit firmware",
+    ];
+
+    private static readonly string[] GenericSteps = ["Check compatibility", "Read current settings", "Apply change", "Verify device"];
+
+    private static string[] StepsOf(string pluginId) => pluginId switch
+    {
+        RestartPluginId => RestartSteps,
+        IdentifyPluginId => IdentifySteps,
+        _ => GenericSteps,
+    };
+
+    /// <summary>
+    /// Simulated steps from the overall progress: equal weights like the server, earlier steps Done, the
+    /// current one Running with its share of the progress, later ones Pending. Step times are synthetic.
+    /// </summary>
+    private static void SetSteps(TaskInfo task, IReadOnlyList<string> names, int progress)
+    {
+        DateTime start = task.Started?.ToDateTime() ?? DateTime.UtcNow;
+        double share = 100.0 / names.Count;
+        bool finished = progress >= 100;
+        int current = Math.Min(names.Count - 1, (int)(progress / share));
+        task.Steps.Clear();
+        for (int i = 0; i < names.Count; i++)
+        {
+            TaskStepState state = finished || i < current ? TaskStepState.Done : i == current ? TaskStepState.Running : TaskStepState.Pending;
+            var step = new TaskStep
+            {
+                Index = i,
+                Name = names[i],
+                State = state,
+                Progress = state == TaskStepState.Done ? 100 : state == TaskStepState.Running ? (int)((progress - (i * share)) / share * 100) : 0,
+            };
+            if (state != TaskStepState.Pending)
+            {
+                step.Started = Timestamp.FromDateTime(start.AddSeconds(i * 7));
+            }
+
+            if (state == TaskStepState.Done)
+            {
+                step.Finished = Timestamp.FromDateTime(start.AddSeconds((i * 7) + 6));
+            }
+
+            if (state == TaskStepState.Running && names[i] == "Upload firmware")
+            {
+                step.Detail = string.Create(CultureInfo.InvariantCulture, $"{step.Progress * 82 / 100} of 82 MB");
+            }
+
+            task.Steps.Add(step);
+        }
+
+        task.CurrentStepIndex = finished ? names.Count - 1 : current;
+        foreach (TaskDeviceResult result in task.Devices.Where(r => r.State == TaskState.Running))
+        {
+            TaskStep running = task.Steps[task.CurrentStepIndex];
+            result.Message = string.IsNullOrEmpty(running.Detail) ? running.Name : $"{running.Name} - {running.Detail}";
+        }
+    }
+
+    /// <summary>Like the server when a task fails or is cancelled: the running step fails, pending ones are skipped.</summary>
+    private static void EndSteps(TaskInfo task, string failure, string skipReason)
+    {
+        foreach (TaskStep step in task.Steps)
+        {
+            if (step.State == TaskStepState.Running)
+            {
+                step.State = TaskStepState.Failed;
+                step.Detail = failure;
+                step.Finished = Timestamp.FromDateTime(DateTime.UtcNow);
+            }
+            else if (step.State == TaskStepState.Pending)
+            {
+                step.State = TaskStepState.Skipped;
+                step.Detail = skipReason;
+            }
+        }
     }
 
     private sealed class FakeSession(string id, IPAddress? from, IPAddress? to)

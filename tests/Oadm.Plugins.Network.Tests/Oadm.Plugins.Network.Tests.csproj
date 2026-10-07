@@ -30,4 +30,8 @@
     <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Runs plugins against a step list the way the task engine does. -->
+    <Compile Include="..\Shared\StepRun.cs" Link="Shared\StepRun.cs" />
+  </ItemGroup>
 </Project>

@@ -1,6 +1,7 @@
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
+using Oadm.Tests.Shared;
 
 namespace Oadm.Plugins.Acap.Tests;
 
@@ -14,6 +15,13 @@ public sealed class AcapTaskPluginTests
         var files = new InMemoryUploadedFiles();
         return (device, new RecordingContext(device, files), files);
     }
+
+    private static readonly string[] Prepared =
+        ["Check compatibility: Done", "Read package: Done", "Read device info: Done", "Read embedded development version: Done", "Read unsigned application setting: Done", "Read installed applications: Done", "Check compatibility of package: Done"];
+
+    /// <summary>Runs the task the way the server does (fresh steps per run), so its steps end like in the task engine.</summary>
+    private static Task Run(RecordingContext ctx, string? payload) =>
+        StepRun.RunAsync(ctx.NewRun(), () => Plugin.ExecuteAsync(ctx, new FakeDevice(), payload, CancellationToken.None));
 
     private static string InstallPayload(UploadedFile file, bool allowDowngrade = false, bool start = false, string? app = null) =>
         new AcapPayload { Action = AcapAction.Install, FileId = file.Id, Sha256 = file.Sha256, Application = app, AllowDowngrade = allowDowngrade, StartAfterInstall = start }.ToJson();
@@ -50,12 +58,13 @@ public sealed class AcapTaskPluginTests
 
         foreach (var payload in new[] { InstallPayload(file), new AcapPayload { Action = AcapAction.Remove, Application = "hello" }.ToJson() })
         {
-            var ex = await Assert.ThrowsAsync<DeviceNotCompatibleException>(() => Plugin.ExecuteAsync(ctx, new FakeDevice(), payload, CancellationToken.None));
+            var ex = await Assert.ThrowsAsync<DeviceNotCompatibleException>(() => Run(ctx, payload));
             Assert.Contains("Nothing was changed", ex.Message, StringComparison.Ordinal);
         }
 
         Assert.Equal(2, device.ApiListCalls);
         Assert.Empty(device.Writes);
+        Assert.Equal(["Check compatibility: Failed", "Read installed applications: Skipped", "Remove application: Skipped", "Verify removal: Skipped"], StepRun.Lines(ctx.Steps));
     }
 
     [Theory]
@@ -69,7 +78,7 @@ public sealed class AcapTaskPluginTests
     public async Task Invalid_payloads_fail_without_touching_the_device(string? payload)
     {
         var (device, ctx, _) = Setup();
-        await Assert.ThrowsAsync<ArgumentException>(() => Plugin.ExecuteAsync(ctx, new FakeDevice(), payload, CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(() => Run(ctx, payload));
         Assert.Empty(device.Requests);
         Assert.Equal(0, device.ApiListCalls);
     }
@@ -81,14 +90,18 @@ public sealed class AcapTaskPluginTests
         var eap = EapBuilder.FromManifest(EapBuilder.Manifest(appName: "hello", version: "1.2.0"));
         var file = files.Add("hello_1_2_0_aarch64.eap", eap);
 
-        await Plugin.ExecuteAsync(ctx, new FakeDevice(), InstallPayload(file, start: true, app: "hello"), CancellationToken.None);
+        await Run(ctx, InstallPayload(file, start: true, app: "hello"));
 
         Assert.Equal(["upload", "start hello"], device.Writes);
         Assert.Equal(eap.Length, device.UploadedBytes);
         Assert.Equal("hello_1_2_0_aarch64.eap", device.UploadedFileName);
         Assert.True(device.Apps["hello"].IsRunning);
-        Assert.Equal((100, "Installed Hello World 1.2.0"), ctx.Progress[^1]);
-        Assert.True(ctx.Progress.Select(p => p.Percent).SequenceEqual(ctx.Progress.Select(p => p.Percent).Order()), "progress must not go backwards");
+        Assert.Empty(ctx.Progress); // progress is derived from the steps
+        Assert.Equal([.. Prepared, "Upload package: Done", "Verify installation: Done", "Start application: Done", "Verify application state: Done"], StepRun.Lines(ctx.Steps));
+        Assert.Equal("hello 1.2.0, aarch64", StepRun.Detail(ctx.Steps, "Read package"));
+        Assert.Equal("AXIS OS 12.11.77, aarch64", StepRun.Detail(ctx.Steps, "Read device info"));
+        Assert.Equal("Installed Hello World 1.2.0 (Stopped)", StepRun.Detail(ctx.Steps, "Verify installation"));
+        Assert.Equal("Hello World is running", StepRun.Detail(ctx.Steps, "Verify application state"));
         Assert.Contains(ctx.Logs, l => l.Message.Contains("New install on AXIS OS 12.11.77 (aarch64)", StringComparison.Ordinal));
         Assert.Empty(ctx.Warnings);
     }
@@ -100,12 +113,13 @@ public sealed class AcapTaskPluginTests
         device.Add("hello", "1.0.0", status: "Running");
         var file = files.Add("hello.eap", EapBuilder.FromManifest(EapBuilder.Manifest(version: "1.2.0")));
 
-        await Plugin.ExecuteAsync(ctx, new FakeDevice(), InstallPayload(file, start: true), CancellationToken.None);
+        await Run(ctx, InstallPayload(file, start: true));
 
         Assert.Equal(["upload"], device.Writes);
         Assert.Equal("1.2.0", device.Apps["hello"].Version);
         Assert.Contains(ctx.Logs, l => l.Message.StartsWith("Upgrade from 1.0.0", StringComparison.Ordinal));
-        Assert.StartsWith("Upgraded", ctx.Progress[^1].Message, StringComparison.Ordinal);
+        Assert.StartsWith("Upgraded", StepRun.Detail(ctx.Steps, "Verify installation"), StringComparison.Ordinal);
+        Assert.Equal([.. Prepared, "Upload package: Done", "Verify installation: Done", "Start application: Skipped", "Verify application state: Skipped"], StepRun.Lines(ctx.Steps));
     }
 
     [Fact]
@@ -115,12 +129,16 @@ public sealed class AcapTaskPluginTests
         device.Add("hello", "2.0.0");
         var file = files.Add("hello.eap", EapBuilder.FromManifest(EapBuilder.Manifest(version: "1.2.0")));
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Plugin.ExecuteAsync(ctx, new FakeDevice(), InstallPayload(file), CancellationToken.None));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Run(ctx, InstallPayload(file)));
 
         Assert.Contains("downgrade option", ex.Message, StringComparison.Ordinal);
         Assert.Contains("Nothing was changed", ex.Message, StringComparison.Ordinal);
         Assert.Empty(device.Writes);
         Assert.Equal("2.0.0", device.Apps["hello"].Version);
+        Assert.Equal(
+            ["Check compatibility: Done", "Read package: Done", "Read device info: Done", "Read embedded development version: Done", "Read unsigned application setting: Done", "Read installed applications: Done", "Check compatibility of package: Failed", "Upload package: Skipped", "Verify installation: Skipped"],
+            StepRun.Lines(ctx.Steps));
+        Assert.Equal(ex.Message, StepRun.Detail(ctx.Steps, "Check compatibility of package"));
     }
 
     [Fact]
@@ -130,10 +148,11 @@ public sealed class AcapTaskPluginTests
         device.Add("hello", "2.0.0");
         var file = files.Add("hello.eap", EapBuilder.FromManifest(EapBuilder.Manifest(version: "1.2.0")));
 
-        await Plugin.ExecuteAsync(ctx, new FakeDevice(), InstallPayload(file, allowDowngrade: true), CancellationToken.None);
+        await Run(ctx, InstallPayload(file, allowDowngrade: true));
 
         Assert.Equal("1.2.0", device.Apps["hello"].Version);
-        Assert.StartsWith("Downgraded", ctx.Progress[^1].Message, StringComparison.Ordinal);
+        Assert.StartsWith("Downgraded", StepRun.Detail(ctx.Steps, "Verify installation"), StringComparison.Ordinal);
+        Assert.Equal([.. Prepared, "Upload package: Done", "Verify installation: Done"], StepRun.Lines(ctx.Steps));
     }
 
     [Fact]
@@ -142,7 +161,7 @@ public sealed class AcapTaskPluginTests
         var (device, ctx, files) = Setup();
         var file = files.Add("hello.eap", EapBuilder.FromManifest(EapBuilder.Manifest(architecture: "armv7hf")));
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Plugin.ExecuteAsync(ctx, new FakeDevice(), InstallPayload(file), CancellationToken.None));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Run(ctx, InstallPayload(file)));
 
         Assert.Contains("built for armv7hf, the device is aarch64", ex.Message, StringComparison.Ordinal);
         Assert.Empty(device.Writes);
@@ -156,7 +175,7 @@ public sealed class AcapTaskPluginTests
         device.Firmware = "11.11.124";
         var file = files.Add("hello.eap", EapBuilder.FromManifest(EapBuilder.Manifest(schema: "1.11.0", osMin: "12.11", osMax: "99")));
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Plugin.ExecuteAsync(ctx, new FakeDevice(), InstallPayload(file), CancellationToken.None));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Run(ctx, InstallPayload(file)));
 
         Assert.Contains("AXIS OS 11.11.124 is not supported", ex.Message, StringComparison.Ordinal);
         Assert.Empty(device.Writes);
@@ -168,10 +187,12 @@ public sealed class AcapTaskPluginTests
         var (device, ctx, files) = Setup();
         var file = files.Add("broken.eap", "not a tarball"u8.ToArray());
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Plugin.ExecuteAsync(ctx, new FakeDevice(), InstallPayload(file), CancellationToken.None));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Run(ctx, InstallPayload(file)));
 
         Assert.Contains("Nothing was changed", ex.Message, StringComparison.Ordinal);
         Assert.Empty(device.Writes);
+        Assert.Equal("Read package: Failed", StepRun.Lines(ctx.Steps)[1]);
+        Assert.All(StepRun.Lines(ctx.Steps).Skip(2), l => Assert.EndsWith(": Skipped", l, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -184,9 +205,9 @@ public sealed class AcapTaskPluginTests
         var wrongName = new AcapPayload { Action = AcapAction.Install, FileId = file.Id, Application = "other" }.ToJson();
         var missing = new AcapPayload { Action = AcapAction.Install, FileId = "nope" }.ToJson();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => Plugin.ExecuteAsync(ctx, new FakeDevice(), wrongHash, CancellationToken.None));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => Plugin.ExecuteAsync(ctx, new FakeDevice(), wrongName, CancellationToken.None));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => Plugin.ExecuteAsync(ctx, new FakeDevice(), missing, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Run(ctx, wrongHash));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Run(ctx, wrongName));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Run(ctx, missing));
         Assert.Empty(device.Writes);
     }
 
@@ -197,9 +218,11 @@ public sealed class AcapTaskPluginTests
         device.UploadReply = "Error: 2";
         var file = files.Add("hello.eap", EapBuilder.FromManifest(EapBuilder.Manifest()));
 
-        var ex = await Assert.ThrowsAsync<AcapDeviceException>(() => Plugin.ExecuteAsync(ctx, new FakeDevice(), InstallPayload(file), CancellationToken.None));
+        var ex = await Assert.ThrowsAsync<AcapDeviceException>(() => Run(ctx, InstallPayload(file)));
 
         Assert.Contains("signature", ex.Message, StringComparison.Ordinal);
+        Assert.Equal([.. Prepared, "Upload package: Failed", "Verify installation: Skipped"], StepRun.Lines(ctx.Steps));
+        Assert.Equal(ex.Message, StepRun.Detail(ctx.Steps, "Upload package"));
     }
 
     [Fact]
@@ -209,10 +232,10 @@ public sealed class AcapTaskPluginTests
         device.UploadTimesOut = true;
         var file = files.Add("hello.eap", EapBuilder.FromManifest(EapBuilder.Manifest(version: "1.2.0")));
 
-        await Plugin.ExecuteAsync(ctx, new FakeDevice(), InstallPayload(file), CancellationToken.None);
+        await Run(ctx, InstallPayload(file));
 
         Assert.Contains(ctx.Warnings, w => w.Contains("not confirmed in time", StringComparison.Ordinal));
-        Assert.Equal(100, ctx.Progress[^1].Percent);
+        Assert.Equal([.. Prepared, "Upload package: Done", "Verify installation: Warning"], StepRun.Lines(ctx.Steps));
     }
 
     [Fact]
@@ -222,9 +245,10 @@ public sealed class AcapTaskPluginTests
         device.StartHasNoEffect = true;
         var file = files.Add("hello.eap", EapBuilder.FromManifest(EapBuilder.Manifest()));
 
-        await Plugin.ExecuteAsync(ctx, new FakeDevice(), InstallPayload(file, start: true), CancellationToken.None);
+        await Run(ctx, InstallPayload(file, start: true));
 
         Assert.Contains(ctx.Warnings, w => w.Contains("after the start command", StringComparison.Ordinal));
+        Assert.Equal([.. Prepared, "Upload package: Done", "Verify installation: Done", "Start application: Done", "Verify application state: Warning"], StepRun.Lines(ctx.Steps));
     }
 
     [Fact]
@@ -233,11 +257,11 @@ public sealed class AcapTaskPluginTests
         var (device, ctx, _) = Setup();
         device.Add("hello", "1.0.0", status: "Running");
 
-        await Plugin.ExecuteAsync(ctx, new FakeDevice(), new AcapPayload { Action = AcapAction.Remove, Application = "hello" }.ToJson(), CancellationToken.None);
+        await Run(ctx, new AcapPayload { Action = AcapAction.Remove, Application = "hello" }.ToJson());
 
         Assert.Equal(["remove hello"], device.Writes);
         Assert.False(device.Apps.ContainsKey("hello"));
-        Assert.Equal(100, ctx.Progress[^1].Percent);
+        Assert.Equal(["Check compatibility: Done", "Read installed applications: Done", "Remove application: Done", "Verify removal: Done"], StepRun.Lines(ctx.Steps));
     }
 
     [Fact]
@@ -245,10 +269,12 @@ public sealed class AcapTaskPluginTests
     {
         var (device, ctx, _) = Setup();
 
-        await Plugin.ExecuteAsync(ctx, new FakeDevice(), new AcapPayload { Action = AcapAction.Remove, Application = "hello" }.ToJson(), CancellationToken.None);
+        await Run(ctx, new AcapPayload { Action = AcapAction.Remove, Application = "hello" }.ToJson());
 
         Assert.Empty(device.Writes);
         Assert.Contains(ctx.Warnings, w => w.Contains("not installed", StringComparison.Ordinal));
+        Assert.Equal(["Check compatibility: Done", "Read installed applications: Warning", "Remove application: Skipped", "Verify removal: Skipped"], StepRun.Lines(ctx.Steps));
+        Assert.Equal("Not installed.", StepRun.Detail(ctx.Steps, "Remove application"));
     }
 
     [Fact]
@@ -258,10 +284,11 @@ public sealed class AcapTaskPluginTests
         device.Add("objectanalytics", "1.26.205", status: "Running", bundled: true);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            Plugin.ExecuteAsync(ctx, new FakeDevice(), new AcapPayload { Action = AcapAction.Remove, Application = "objectanalytics" }.ToJson(), CancellationToken.None));
+            Run(ctx, new AcapPayload { Action = AcapAction.Remove, Application = "objectanalytics" }.ToJson()));
 
         Assert.Contains("bundled", ex.Message, StringComparison.Ordinal);
         Assert.Empty(device.Writes);
+        Assert.Equal(["Check compatibility: Done", "Read installed applications: Failed", "Remove application: Skipped", "Verify removal: Skipped"], StepRun.Lines(ctx.Steps));
     }
 
     [Fact]
@@ -270,11 +297,13 @@ public sealed class AcapTaskPluginTests
         var (device, ctx, _) = Setup();
         device.Add("hello", "1.0.0");
 
-        await Plugin.ExecuteAsync(ctx, new FakeDevice(), new AcapPayload { Action = AcapAction.Start, Application = "hello" }.ToJson(), CancellationToken.None);
+        await Run(ctx, new AcapPayload { Action = AcapAction.Start, Application = "hello" }.ToJson());
         Assert.True(device.Apps["hello"].IsRunning);
 
-        await Plugin.ExecuteAsync(ctx, new FakeDevice(), new AcapPayload { Action = AcapAction.Stop, Application = "hello" }.ToJson(), CancellationToken.None);
+        await Run(ctx, new AcapPayload { Action = AcapAction.Stop, Application = "hello" }.ToJson());
         Assert.False(device.Apps["hello"].IsRunning);
+        Assert.Equal(["Check compatibility: Done", "Read installed applications: Done", "Stop application: Done", "Verify application state: Done"], StepRun.Lines(ctx.Steps));
+        Assert.Equal("hello nice is Stopped", StepRun.Detail(ctx.Steps, "Verify application state"));
 
         Assert.Equal(["start hello", "stop hello"], device.Writes);
     }
@@ -285,10 +314,11 @@ public sealed class AcapTaskPluginTests
         var (device, ctx, _) = Setup();
         device.Add("hello", "1.0.0", status: "Running");
 
-        await Plugin.ExecuteAsync(ctx, new FakeDevice(), new AcapPayload { Action = AcapAction.Start, Application = "hello" }.ToJson(), CancellationToken.None);
+        await Run(ctx, new AcapPayload { Action = AcapAction.Start, Application = "hello" }.ToJson());
 
         Assert.Empty(device.Writes);
-        Assert.Contains("already running", ctx.Progress[^1].Message, StringComparison.Ordinal);
+        Assert.Equal(["Check compatibility: Done", "Read installed applications: Done", "Start application: Skipped", "Verify application state: Skipped"], StepRun.Lines(ctx.Steps));
+        Assert.Contains("already running", StepRun.Detail(ctx.Steps, "Start application"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -299,8 +329,9 @@ public sealed class AcapTaskPluginTests
         device.Add("hello", "1.0.0");
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            Plugin.ExecuteAsync(ctx, new FakeDevice(), new AcapPayload { Action = AcapAction.Start, Application = "hello" }.ToJson(), CancellationToken.None));
+            Run(ctx, new AcapPayload { Action = AcapAction.Start, Application = "hello" }.ToJson()));
         Assert.Contains("did not start", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(["Check compatibility: Done", "Read installed applications: Done", "Start application: Done", "Verify application state: Failed"], StepRun.Lines(ctx.Steps));
     }
 
     [Fact]
@@ -308,10 +339,11 @@ public sealed class AcapTaskPluginTests
     {
         var (device, ctx, _) = Setup();
 
-        await Plugin.ExecuteAsync(ctx, new FakeDevice(), new AcapPayload { Action = AcapAction.Stop, Application = "hello" }.ToJson(), CancellationToken.None);
+        await Run(ctx, new AcapPayload { Action = AcapAction.Stop, Application = "hello" }.ToJson());
 
         Assert.Empty(device.Writes);
         Assert.Single(ctx.Warnings);
+        Assert.Equal(["Check compatibility: Done", "Read installed applications: Warning", "Stop application: Skipped", "Verify application state: Skipped"], StepRun.Lines(ctx.Steps));
     }
 
     [Fact]

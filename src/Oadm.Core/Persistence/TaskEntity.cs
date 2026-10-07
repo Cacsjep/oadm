@@ -32,6 +32,33 @@ public sealed class TaskEntity
     public DateTime? ScheduledUtc { get; set; }
 
     public List<TaskDeviceResultEntity> Results { get; set; } = [];
+
+    public List<TaskStepEntity> Steps { get; set; } = [];
+}
+
+/// <summary>
+/// One named step of a task (row of TaskSteps), key (TaskId, Index). Written with the task snapshot
+/// (throttled like progress) and deleted with the task.
+/// </summary>
+public sealed class TaskStepEntity
+{
+    public Guid TaskId { get; set; }
+
+    /// <summary>Position in the task's step list, 0-based.</summary>
+    public int Index { get; set; }
+
+    public string Name { get; set; } = string.Empty;
+
+    public Sdk.Plugins.TaskStepState State { get; set; }
+
+    public string? Detail { get; set; }
+
+    /// <summary>0-100.</summary>
+    public int Progress { get; set; }
+
+    public DateTime? StartedUtc { get; set; }
+
+    public DateTime? FinishedUtc { get; set; }
 }
 
 /// <summary>

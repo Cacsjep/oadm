@@ -62,8 +62,29 @@ public interface ITaskExecutionContext
     /// <summary>Files uploaded by the dialog (firmware, ACAP packages), referenced by id in the payload.</summary>
     IUploadedFiles Files { get; }
 
-    /// <summary>Progress of the current device; the message is shown live and persisted as the last step.</summary>
+    /// <summary>
+    /// Overall progress of the task with an optional status message. Optional when the plugin uses steps:
+    /// without explicit calls the progress is derived from the steps (each step weighs the same; the running
+    /// one counts with its own <see cref="ITaskStep.ReportProgress"/>). Once called, this value wins.
+    /// </summary>
     void ReportProgress(int percent, string? message = null);
+
+    /// <summary>
+    /// Announces the steps the task will (probably) run, in order, so the user sees them as Pending from the
+    /// start. Optional: <see cref="BeginStep"/> also adds steps that were not planned. Planned steps that never
+    /// run end as Skipped. Name steps in the imperative, short and specific ("Upload firmware").
+    /// </summary>
+    void PlanSteps(params string[] names)
+    {
+    }
+
+    /// <summary>
+    /// Starts the named step (activating the planned step of that name) and returns it; see
+    /// <see cref="ITaskStep"/> for the end rules. Every device request and every wait is its own step.
+    /// Use <c>using var step = ctx.BeginStep("...")</c> or the helper
+    /// <see cref="TaskStepExtensions.StepAsync{T}"/>. A running step is completed when the next one begins.
+    /// </summary>
+    ITaskStep BeginStep(string name) => new TaskStepList(onWarning: ReportWarning).Begin(name);
 
     /// <summary>The device finishes as "Done with warnings" (unless it fails); the message is logged.</summary>
     void ReportWarning(string message);

@@ -73,18 +73,32 @@ internal sealed class FakeFiles : IUploadedFiles
     }
 }
 
-internal sealed class RecordingContext(IVapixClient vapix, IUploadedFiles files) : ITaskExecutionContext
+internal sealed class RecordingContext : ITaskExecutionContext
 {
+    public RecordingContext(IVapixClient vapix, IUploadedFiles files)
+    {
+        Vapix = vapix;
+        Files = files;
+        Steps = new TaskStepList(onWarning: ReportWarning);
+    }
+
+    /// <summary>The task's steps, with the server's semantics (see <c>StepRun</c>).</summary>
+    public TaskStepList Steps { get; }
+
     public List<(int Percent, string? Message)> Reports { get; } = [];
     public List<string> Warnings { get; } = [];
     public List<(TaskLogLevel Level, string Message)> Logs { get; } = [];
     public Guid TaskId { get; } = Guid.NewGuid();
-    public IVapixClient Vapix { get; } = vapix;
+    public IVapixClient Vapix { get; }
     public ILogger Logger => NullLogger.Instance;
     public ICorePlugin? Owner => null;
-    public IUploadedFiles Files { get; } = files;
+    public IUploadedFiles Files { get; }
 
     public void ReportProgress(int percent, string? message = null) => Reports.Add((percent, message));
+
+    public void PlanSteps(params string[] names) => Steps.Plan(names);
+
+    public ITaskStep BeginStep(string name) => Steps.Begin(name);
 
     public void ReportWarning(string message) => Warnings.Add(message);
 

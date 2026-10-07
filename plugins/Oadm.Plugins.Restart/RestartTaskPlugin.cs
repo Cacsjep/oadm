@@ -1,15 +1,26 @@
+using System.Globalization;
+
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
+using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.Restart;
 
 /// <summary>
 /// Restarts a device via restart.cgi, then polls basicdeviceinfo until the device has gone down
 /// and answers again. Fails with <see cref="TimeoutException"/> when it is not back in time.
+/// Steps: Check device, Send restart, Wait for the device to go offline, Wait for the device to come
+/// back, Verify device.
 /// </summary>
 public sealed class RestartTaskPlugin : ITaskPlugin
 {
     public const string PluginId = "oadm.restart";
+
+    public const string StepCheck = "Check device";
+    public const string StepRestart = "Send restart";
+    public const string StepWaitOffline = "Wait for the device to go offline";
+    public const string StepWaitOnline = "Wait for the device to come back";
+    public const string StepVerify = "Verify device";
 
     public static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(3);
@@ -60,50 +71,86 @@ public sealed class RestartTaskPlugin : ITaskPlugin
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
 
-        ctx.ReportProgress(0, "Sending restart command");
-        await ctx.Vapix.RestartAsync(ct).ConfigureAwait(false);
-        ctx.ReportProgress(10, "Waiting for the device to go down");
+        ctx.PlanSteps(StepCheck, StepRestart, StepWaitOffline, StepWaitOnline, StepVerify);
 
+        using (var step = ctx.BeginStep(StepCheck))
+        {
+            var info = await TryReadAsync(ctx, ct).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("The device does not answer. Nothing was changed.");
+            step.Complete(Describe(info));
+        }
+
+        using (var step = ctx.BeginStep(StepRestart))
+        {
+            await ctx.Vapix.RestartAsync(ct).ConfigureAwait(false);
+            step.Complete("Restart accepted");
+        }
+
+        // One deadline for both waits, as before: the whole restart must finish within the timeout.
         var start = _time.GetTimestamp();
-        var wentDown = false;
+        using (var step = ctx.BeginStep(StepWaitOffline))
+        {
+            await WaitAsync(ctx, step, start, wantAnswer: false, ct).ConfigureAwait(false);
+            step.Complete("The device went offline");
+        }
+
+        BasicDeviceInfo back;
+        using (var step = ctx.BeginStep(StepWaitOnline))
+        {
+            back = await WaitAsync(ctx, step, start, wantAnswer: true, ct).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("The device answered without device information.");
+            step.Complete(string.Create(CultureInfo.InvariantCulture, $"Back after {_time.GetElapsedTime(start).TotalSeconds:0} s"));
+        }
+
+        using (var step = ctx.BeginStep(StepVerify))
+        {
+            if (!string.IsNullOrEmpty(device.Serial) && !string.Equals(back.SerialNumber, device.Serial, StringComparison.OrdinalIgnoreCase))
+            {
+                step.Warn($"The device now reports serial number {back.SerialNumber}, expected {device.Serial}.");
+            }
+            else
+            {
+                step.Complete(Describe(back));
+            }
+        }
+    }
+
+    private static string Describe(BasicDeviceInfo info) =>
+        string.IsNullOrEmpty(info.Version) ? info.ProdNbr : $"{info.ProdNbr}, AXIS OS {info.Version}";
+
+    /// <summary>Polls until the device stops answering (<paramref name="wantAnswer"/> false) or answers again.</summary>
+    private async Task<BasicDeviceInfo?> WaitAsync(ITaskExecutionContext ctx, ITaskStep step, long start, bool wantAnswer, CancellationToken ct)
+    {
         while (true)
         {
             await Task.Delay(_pollInterval, _time, ct).ConfigureAwait(false);
             var elapsed = _time.GetElapsedTime(start);
             if (elapsed >= _timeout)
             {
-                throw new TimeoutException(wentDown
+                throw new TimeoutException(wantAnswer
                     ? $"Device did not come back within {_timeout.TotalMinutes:0.#} minutes after restart."
                     : $"Device did not restart within {_timeout.TotalMinutes:0.#} minutes.");
             }
 
-            var answered = await TryPingAsync(ctx, ct).ConfigureAwait(false);
-            var progress = 10 + (int)(80 * Math.Min(1.0, elapsed / _timeout));
-            if (!answered)
+            var info = await TryReadAsync(ctx, ct).ConfigureAwait(false);
+            if ((info is not null) == wantAnswer)
             {
-                wentDown = true;
-                ctx.ReportProgress(progress, "Waiting for the device to come back");
+                return info;
             }
-            else if (wentDown)
-            {
-                ctx.ReportProgress(100, "Device is back online");
-                return;
-            }
-            else
-            {
-                ctx.ReportProgress(progress, "Waiting for the device to go down");
-            }
+
+            step.ReportProgress(
+                (int)(100 * Math.Min(1.0, elapsed / _timeout)),
+                string.Create(CultureInfo.InvariantCulture, $"{elapsed.TotalSeconds:0} s of at most {_timeout.TotalSeconds:0} s"));
         }
     }
 
-    private async Task<bool> TryPingAsync(ITaskExecutionContext ctx, CancellationToken ct)
+    private async Task<BasicDeviceInfo?> TryReadAsync(ITaskExecutionContext ctx, CancellationToken ct)
     {
         using var attempt = CancellationTokenSource.CreateLinkedTokenSource(ct);
         attempt.CancelAfter(_requestTimeout);
         try
         {
-            await ctx.Vapix.GetBasicDeviceInfoAsync(attempt.Token).ConfigureAwait(false);
-            return true;
+            return await ctx.Vapix.GetBasicDeviceInfoAsync(attempt.Token).ConfigureAwait(false);
         }
 #pragma warning disable CA1031 // Any error or request timeout while rebooting means "not answering yet".
         catch (Exception)
@@ -111,7 +158,7 @@ public sealed class RestartTaskPlugin : ITaskPlugin
         {
             // A failure that raced with task cancellation must surface as cancellation.
             ct.ThrowIfCancellationRequested();
-            return false;
+            return null;
         }
     }
 }

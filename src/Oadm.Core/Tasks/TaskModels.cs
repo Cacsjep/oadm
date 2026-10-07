@@ -1,3 +1,5 @@
+using Oadm.Sdk.Plugins;
+
 namespace Oadm.Core.Tasks;
 
 /// <summary>Lifecycle state of a task and of each device inside it. Mirrors the TaskState proto enum.</summary>
@@ -39,6 +41,12 @@ public sealed record TaskRecord(
 {
     /// <summary>The device of the task (a task always targets exactly one device); empty for a malformed record.</summary>
     public Guid DeviceId => Devices.Count > 0 ? Devices[0].DeviceId : Guid.Empty;
+
+    /// <summary>The task's named steps in order (<c>ITaskExecutionContext.PlanSteps/BeginStep</c>); empty when the plugin uses none.</summary>
+    public IReadOnlyList<TaskStepInfo> Steps { get; init; } = [];
+
+    /// <summary>The running step, else the last one that started or ended; -1 without such a step.</summary>
+    public int CurrentStepIndex => TaskStepList.CurrentIndexOf(Steps);
 }
 
 /// <summary>Per-device result inside a task. <see cref="Message"/> is the last progress message, warning or error.</summary>

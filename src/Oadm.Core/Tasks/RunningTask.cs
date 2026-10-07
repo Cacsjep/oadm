@@ -19,6 +19,7 @@ internal sealed class RunningTask : IDisposable
     private DateTimeOffset? _finished;
     private bool _cancelRequested;
     private bool _disposed;
+    private TaskStepList? _steps;
 
     public RunningTask(
         Guid id,
@@ -73,6 +74,55 @@ internal sealed class RunningTask : IDisposable
 
     /// <summary>Guards snapshot + feed publish so subscribers see changes in order.</summary>
     public Lock PublishLock { get; } = new();
+
+    /// <summary>The step list of the running plugin context (one device per task). Set before the plugin starts.</summary>
+    public void AttachSteps(TaskStepList steps)
+    {
+        lock (_sync)
+        {
+            _steps = steps;
+        }
+    }
+
+    /// <summary>The step list of the plugin, if it started.</summary>
+    public TaskStepList? Steps
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _steps;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The running step becomes the device message ("Upload firmware - 12 of 80 MB") so the tooltip and
+    /// older clients show what the task is doing. Returns false when the device is not running.
+    /// </summary>
+    public bool SetStepMessage(Guid deviceId, TaskStepInfo? running)
+    {
+        lock (_sync)
+        {
+            var slot = _devices[deviceId];
+            if (slot.State != TaskState.Running || running is null)
+            {
+                return false;
+            }
+
+            slot.Message = running.Detail is null ? running.Name : $"{running.Name} - {running.Detail}";
+            return true;
+        }
+    }
+
+    /// <summary>The last warning of the device, the final message of a "Done with warnings" device.</summary>
+    public string? LastWarning(Guid deviceId)
+    {
+        lock (_sync)
+        {
+            return _devices[deviceId].LastWarning;
+        }
+    }
 
     public bool Cancel()
     {
@@ -145,6 +195,7 @@ internal sealed class RunningTask : IDisposable
             }
 
             slot.Progress = Math.Clamp(percent, 0, 100);
+            slot.ExplicitProgress = true;
             if (message is not null)
             {
                 slot.Message = message;
@@ -166,6 +217,7 @@ internal sealed class RunningTask : IDisposable
             }
 
             slot.HasWarning = true;
+            slot.LastWarning = message;
             slot.Message = message;
             return true;
         }
@@ -294,11 +346,14 @@ internal sealed class RunningTask : IDisposable
     {
         lock (_sync)
         {
+            // Without explicit ReportProgress calls the progress of a running device follows its steps.
+            var stepProgress = _steps?.Progress;
             var devices = _deviceOrder
                 .Select(id =>
                 {
                     var s = _devices[id];
-                    return new TaskDeviceRecord(id, s.State, s.Message, s.Progress);
+                    var progress = s.State == TaskState.Running && !s.ExplicitProgress && stepProgress is { } p ? p : s.Progress;
+                    return new TaskDeviceRecord(id, s.State, s.Message, progress);
                 })
                 .ToArray();
 
@@ -318,7 +373,10 @@ internal sealed class RunningTask : IDisposable
                 progress,
                 null,
                 devices,
-                BatchId);
+                BatchId)
+            {
+                Steps = _steps?.Snapshot() ?? [],
+            };
         }
     }
 
@@ -347,6 +405,11 @@ internal sealed class RunningTask : IDisposable
         public int Progress { get; set; }
 
         public bool HasWarning { get; set; }
+
+        public string? LastWarning { get; set; }
+
+        /// <summary>The plugin called ReportProgress itself; its value wins over the step-derived progress.</summary>
+        public bool ExplicitProgress { get; set; }
 
         /// <summary>Last throttled (progress, log, warning) store write for this device.</summary>
         public DateTimeOffset? LastPersist { get; set; }

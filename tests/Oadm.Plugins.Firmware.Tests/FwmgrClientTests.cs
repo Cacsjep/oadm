@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text;
 
+using Oadm.Sdk.Vapix;
+
 namespace Oadm.Plugins.Firmware.Tests;
 
 public sealed class FwmgrClientTests
@@ -201,7 +203,7 @@ public sealed class FwmgrClientTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Uri = request.RequestUri;
-            if (request.Options.TryGetValue(FwmgrClient.RequestTimeoutOption, out var timeout))
+            if (request.Options.TryGetValue(VapixRequestOptions.Timeout, out var timeout))
             {
                 RequestedTimeout = timeout;
             }

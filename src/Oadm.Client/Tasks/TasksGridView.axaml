@@ -25,9 +25,16 @@
           </DataTemplate>
         </DataGridTemplateColumn.CellTemplate>
       </DataGridTemplateColumn>
+      <DataGridTemplateColumn Header="Current step" Width="3*" MinWidth="200" SortMemberPath="CurrentStepText">
+        <DataGridTemplateColumn.CellTemplate>
+          <DataTemplate x:DataType="tasks:TaskRowViewModel">
+            <TextBlock Text="{Binding CurrentStepText}" ToolTip.Tip="{Binding CurrentStepTooltip}" />
+          </DataTemplate>
+        </DataGridTemplateColumn.CellTemplate>
+      </DataGridTemplateColumn>
       <DataGridTextColumn Header="Start time" Width="170" Binding="{Binding StartTimeText}" x:DataType="tasks:TaskRowViewModel" />
       <DataGridTextColumn Header="Owner" Width="180" Binding="{Binding Owner}" x:DataType="tasks:TaskRowViewModel" />
-      <DataGridTemplateColumn Header="Progress" Width="3*" MinWidth="200" SortMemberPath="Progress">
+      <DataGridTemplateColumn Header="Progress" Width="2*" MinWidth="180" SortMemberPath="Progress">
         <DataGridTemplateColumn.CellTemplate>
           <DataTemplate x:DataType="tasks:TaskRowViewModel">
             <Grid ColumnDefinitions="*,52" Margin="10,0,12,0" VerticalAlignment="Center">

@@ -62,6 +62,27 @@ message TaskDeviceResult {
   int32 progress = 4;
 }
 
+enum TaskStepState {
+  TASK_STEP_STATE_UNSPECIFIED = 0;
+  TASK_STEP_STATE_PENDING = 1;
+  TASK_STEP_STATE_RUNNING = 2;
+  TASK_STEP_STATE_DONE = 3;
+  TASK_STEP_STATE_WARNING = 4;
+  TASK_STEP_STATE_SKIPPED = 5;
+  TASK_STEP_STATE_FAILED = 6;
+}
+
+// One named step of a task (ITaskExecutionContext.PlanSteps / BeginStep), e.g. "Upload firmware".
+message TaskStep {
+  int32 index = 1;                          // position in TaskInfo.steps, 0-based
+  string name = 2;
+  TaskStepState state = 3;
+  string detail = 4;                        // result, progress detail, skip reason or error
+  int32 progress = 5;                       // 0-100
+  google.protobuf.Timestamp started = 6;    // unset when the step never started
+  google.protobuf.Timestamp finished = 7;
+}
+
 message TaskInfo {
   string id = 1;
   string plugin_id = 2;
@@ -75,6 +96,8 @@ message TaskInfo {
   repeated TaskDeviceResult devices = 10;   // always exactly one entry (one task per device)
   string batch_id = 11;                     // shared by the tasks started by one Run
   string device_id = 12;                    // the task's device (= devices[0].device_id)
+  repeated TaskStep steps = 13;             // in order; empty when the plugin reports no steps
+  int32 current_step_index = 14;            // running step, else the last started/ended one; -1 none
 }
 message TaskList { repeated TaskInfo tasks = 1; }
 

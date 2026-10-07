@@ -64,10 +64,14 @@ is hidden for devices whose API list is unknown or incompatible.
 5. Exactly one write (`add`, `update` or `remove`), arguments in the POST body, never in the URL.
 6. Read back with `action=get` and verify the user exists / has the role / is gone.
 
-Results: progress message per device ("User 'joe' added as Operator with PTZ."); skips that the
-user should notice are `ReportWarning` (Done with warnings): user to add already exists, user to
-change or remove does not exist. Steps go to `ctx.Log`; passwords never appear in logs, progress,
-warnings, exception messages or URLs (tested).
+Task steps shown to the user (one per request, planned up front): **Check compatibility**
+("user-management 1.2"), **Read password policy** (Skipped without systemready), **Identify OADM
+account**, **Read users** ("4 users"), **Validate change**, the write **Add user joe** / **Update user
+joe** / **Remove user joe**, **Verify users** (detail: "User 'joe' added as Operator with PTZ.").
+A failure marks its step Failed and the later steps Skipped. Skips that the user should notice end
+**Validate change** as Warning (Done with warnings): user to add already exists, user to change or
+remove does not exist; the write and Verify users are then Skipped. Passwords never appear in step
+names or details, logs, warnings, exception messages or URLs (tested).
 
 ## Lock-out protection
 

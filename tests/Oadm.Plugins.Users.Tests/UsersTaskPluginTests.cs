@@ -1,5 +1,6 @@
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Vapix;
+using Oadm.Tests.Shared;
 
 namespace Oadm.Plugins.Users.Tests;
 
@@ -12,12 +13,16 @@ public sealed class UsersTaskPluginTests
     private static string Payload(UsersMode mode, string user, string? password = null, UserRole role = UserRole.Viewer, bool ptz = false, bool changePassword = false, bool changeRole = false) =>
         UsersJson.Serialize(new UsersPayload { Mode = mode, UserName = user, Password = password, Role = role, Ptz = ptz, ChangePassword = changePassword, ChangeRole = changeRole });
 
-    private static async Task<FakeTaskContext> RunAsync(FakeVapix vapix, string payload, FakeDevice? device = null)
+    private static async Task<FakeTaskContext> RunAsync(FakeVapix vapix, string payload, FakeDevice? device = null, FakeTaskContext? ctx = null)
     {
-        var ctx = new FakeTaskContext(vapix);
-        await new UsersTaskPlugin().ExecuteAsync(ctx, device ?? new FakeDevice(), payload, CancellationToken.None);
+        ctx ??= new FakeTaskContext(vapix);
+        var context = ctx;
+        await StepRun.RunAsync(context.Steps, () => new UsersTaskPlugin().ExecuteAsync(context, device ?? new FakeDevice(), payload, CancellationToken.None));
         return ctx;
     }
+
+    /// <summary>The detail of the last step: the result the user sees for the device.</summary>
+    private static string? LastDetail(FakeTaskContext ctx) => ctx.Steps.Snapshot()[^1].Detail;
 
     // ---- compatibility ----
 
@@ -50,8 +55,14 @@ public sealed class UsersTaskPluginTests
     public async Task Execute_rechecks_fresh_api_list_before_any_request(string apiId, string version)
     {
         var vapix = new FakeVapix { ApiList = Fixtures.Apis((apiId, version)) };
-        var ex = await Assert.ThrowsAsync<DeviceNotCompatibleException>(() => RunAsync(vapix, Payload(UsersMode.Add, "joe", Secret)));
+        var ctx = new FakeTaskContext(vapix);
+        var ex = await Assert.ThrowsAsync<DeviceNotCompatibleException>(() => RunAsync(vapix, Payload(UsersMode.Add, "joe", Secret), ctx: ctx));
         Assert.Contains("Nothing was changed", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(
+            ["Check compatibility: Failed", "Read password policy: Skipped", "Identify OADM account: Skipped", "Read users: Skipped",
+             "Validate change: Skipped", "Add user joe: Skipped", "Verify users: Skipped"],
+            StepRun.Lines(ctx.Steps));
+        Assert.Equal(ex.Message, StepRun.Detail(ctx.Steps, "Check compatibility"));
         Assert.Equal(1, vapix.ApiListCalls);
         Assert.Empty(vapix.Requests);
     }
@@ -79,7 +90,16 @@ public sealed class UsersTaskPluginTests
         var write = Assert.Single(vapix.Writes);
         Assert.Equal(HttpMethod.Post, write.Method);
         Assert.Equal("action=add&user=joe&pwd=S3cret-Passw0rd%21&grp=users&sgrp=operator%3Aviewer%3Aptz&comment=", write.Body);
-        Assert.Equal((100, "User 'joe' added as Operator with PTZ."), ctx.Progress[^1]);
+        Assert.Equal(
+            ["Check compatibility: Done", "Read password policy: Done", "Identify OADM account: Done", "Read users: Done",
+             "Validate change: Done", "Add user joe: Done", "Verify users: Done"],
+            StepRun.Lines(ctx.Steps));
+        Assert.Equal("user-management 1.2", StepRun.Detail(ctx.Steps, "Check compatibility"));
+        Assert.Equal("Passphrase policy: None", StepRun.Detail(ctx.Steps, "Read password policy"));
+        Assert.Equal("OADM uses 'root'", StepRun.Detail(ctx.Steps, "Identify OADM account"));
+        Assert.Equal("4 users", StepRun.Detail(ctx.Steps, "Read users"));
+        Assert.Equal("User 'joe' added as Operator with PTZ.", LastDetail(ctx));
+        Assert.Empty(ctx.Progress); // progress is derived from the steps
         Assert.Empty(ctx.Warnings);
     }
 
@@ -89,7 +109,8 @@ public sealed class UsersTaskPluginTests
         var vapix = new FakeVapix();
         var ctx = await RunAsync(vapix, Payload(UsersMode.Change, "acs", Secret, changePassword: true));
         Assert.Equal("action=update&user=acs&pwd=S3cret-Passw0rd%21", Assert.Single(vapix.Writes).Body);
-        Assert.Equal("User 'acs': password changed (Operator).", ctx.Progress[^1].Message);
+        Assert.Equal("User 'acs': password changed (Operator).", LastDetail(ctx));
+        Assert.Contains("Update user acs: Done", StepRun.Lines(ctx.Steps));
     }
 
     [Fact]
@@ -98,7 +119,7 @@ public sealed class UsersTaskPluginTests
         var vapix = new FakeVapix();
         var ctx = await RunAsync(vapix, Payload(UsersMode.Change, "acs", role: UserRole.Viewer, ptz: true, changeRole: true));
         Assert.Equal("action=update&user=acs&sgrp=viewer%3Aptz", Assert.Single(vapix.Writes).Body);
-        Assert.Equal("User 'acs': role is now Viewer with PTZ.", ctx.Progress[^1].Message);
+        Assert.Equal("User 'acs': role is now Viewer with PTZ.", LastDetail(ctx));
     }
 
     [Fact]
@@ -108,7 +129,12 @@ public sealed class UsersTaskPluginTests
         var ctx = await RunAsync(vapix, Payload(UsersMode.Change, "acs", role: UserRole.Operator, changeRole: true));
         Assert.Empty(vapix.Writes);
         Assert.Empty(ctx.Warnings);
-        Assert.Contains("nothing to change", ctx.Progress[^1].Message, StringComparison.Ordinal);
+        Assert.Contains("nothing to change", StepRun.Detail(ctx.Steps, "Validate change"), StringComparison.Ordinal);
+        Assert.Equal(
+            ["Check compatibility: Done", "Read password policy: Done", "Identify OADM account: Done", "Read users: Done",
+             "Validate change: Done", "Update user acs: Skipped", "Verify users: Skipped"],
+            StepRun.Lines(ctx.Steps));
+        Assert.Equal("Nothing to change on this device.", StepRun.Detail(ctx.Steps, "Update user acs"));
     }
 
     [Fact]
@@ -117,7 +143,8 @@ public sealed class UsersTaskPluginTests
         var vapix = new FakeVapix();
         var ctx = await RunAsync(vapix, Payload(UsersMode.Remove, "acs"));
         Assert.Equal("action=remove&user=acs", Assert.Single(vapix.Writes).Body);
-        Assert.Equal("User 'acs' removed.", ctx.Progress[^1].Message);
+        Assert.Equal("User 'acs' removed.", LastDetail(ctx));
+        Assert.Contains("Remove user acs: Done", StepRun.Lines(ctx.Steps));
         Assert.DoesNotContain("acs", vapix.UsersBody(), StringComparison.Ordinal);
     }
 
@@ -128,6 +155,10 @@ public sealed class UsersTaskPluginTests
         var ctx = await RunAsync(vapix, Payload(UsersMode.Remove, "ghost"));
         Assert.Empty(vapix.Writes);
         Assert.Contains("does not exist", Assert.Single(ctx.Warnings), StringComparison.Ordinal);
+        Assert.Equal(
+            ["Check compatibility: Done", "Read password policy: Done", "Identify OADM account: Done", "Read users: Done",
+             "Validate change: Warning", "Remove user ghost: Skipped", "Verify users: Skipped"],
+            StepRun.Lines(ctx.Steps));
     }
 
     [Fact]
@@ -143,34 +174,46 @@ public sealed class UsersTaskPluginTests
     public async Task Device_error_answer_fails_the_device()
     {
         var vapix = new FakeVapix { WriteAnswer = "Error: invalid password." };
-        var ex = await Assert.ThrowsAsync<UserManagementException>(() => RunAsync(vapix, Payload(UsersMode.Add, "joe", Secret)));
+        var ctx = new FakeTaskContext(vapix);
+        var ex = await Assert.ThrowsAsync<UserManagementException>(() => RunAsync(vapix, Payload(UsersMode.Add, "joe", Secret), ctx: ctx));
         Assert.Contains("invalid password", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(
+            ["Check compatibility: Done", "Read password policy: Done", "Identify OADM account: Done", "Read users: Done",
+             "Validate change: Done", "Add user joe: Failed", "Verify users: Skipped"],
+            StepRun.Lines(ctx.Steps));
+        Assert.Equal(ex.Message, StepRun.Detail(ctx.Steps, "Add user joe"));
     }
 
     [Fact]
     public async Task Success_answer_without_effect_fails_the_read_back_check()
     {
         var vapix = new FakeVapix { ApplyWrites = false };
-        var ex = await Assert.ThrowsAsync<UserManagementException>(() => RunAsync(vapix, Payload(UsersMode.Add, "joe", Secret)));
+        var ctx = new FakeTaskContext(vapix);
+        var ex = await Assert.ThrowsAsync<UserManagementException>(() => RunAsync(vapix, Payload(UsersMode.Add, "joe", Secret), ctx: ctx));
         Assert.Contains("not listed", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(["Add user joe: Done", "Verify users: Failed"], StepRun.Lines(ctx.Steps)[^2..]);
     }
 
     [Fact]
     public async Task Password_violating_device_policy_is_refused_before_writing()
     {
         var vapix = new FakeVapix { SystemReadyBody = """{"data":{"passphrasepolicy":"complex"}}""" };
-        var ex = await Assert.ThrowsAsync<UserManagementException>(() => RunAsync(vapix, Payload(UsersMode.Add, "joe", "short")));
+        var ctx = new FakeTaskContext(vapix);
+        var ex = await Assert.ThrowsAsync<UserManagementException>(() => RunAsync(vapix, Payload(UsersMode.Add, "joe", "short"), ctx: ctx));
         Assert.Contains("Nothing was changed", ex.Message, StringComparison.Ordinal);
         Assert.Empty(vapix.Writes);
+        Assert.Equal(["Validate change: Failed", "Add user joe: Skipped", "Verify users: Skipped"], StepRun.Lines(ctx.Steps)[^3..]);
     }
 
     [Fact]
     public async Task Without_systemready_api_the_policy_is_not_queried()
     {
         var vapix = new FakeVapix { ApiList = Fixtures.Apis(("user-management", "1.0")) };
-        await RunAsync(vapix, Payload(UsersMode.Add, "joe", "x"));
+        var ctx = await RunAsync(vapix, Payload(UsersMode.Add, "joe", "x"));
         Assert.DoesNotContain(vapix.Requests, r => r.Uri == "axis-cgi/systemready.cgi");
         Assert.Single(vapix.Writes);
+        Assert.Equal("Read password policy: Skipped", StepRun.Lines(ctx.Steps)[1]);
+        Assert.Contains("systemready", StepRun.Detail(ctx.Steps, "Read password policy"), StringComparison.Ordinal);
     }
 
     [Fact]

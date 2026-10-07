@@ -92,15 +92,20 @@ Additional gates, all before the first write:
 
 ## Execution
 
-| Step | Progress | Details |
-|---|---|---|
-| Checks above | 0 | |
-| Upload | 2-50 | `ctx.Files.OpenReadAsync` streamed in 80 KB chunks (`FirmwareStreamContent`), Content-Length set, never buffered; reopened if the HTTP stack resends after a Digest challenge; `Expect: 100-continue` so the 401 comes before the body |
-| Upgrade params | | settings kept: `autoCommit=never`, `autoRollback=30` (minutes, longer than the 15 min wait) so the device reverts by itself if OADM never verifies. Factory default: `autoCommit=started`, `autoRollback=never`, because the reset removes OADM's credentials |
-| Installing / restart | 55-90 | poll anonymous `basicdeviceinfo getAllUnrestrictedProperties` every 5 s (works after a factory default); back = answers after having been down, or answers with another version. Timeout **15 min** |
-| Verify | 92 | version after restart == `firmwareVersion` from the upgrade answer (or the file name). Old version again = the device rolled back -> Failed |
-| Commit | 96 | settings kept only: `status`, then `commit` unless already committed; 3 attempts 10 s apart |
-| Done | 100 | "Firmware X installed"; factory default -> Done with warning (set a password / check the address) |
+Every device request and every wait is a named task step (`FirmwareTaskPlugin.Steps`, all planned up
+front, so the user sees them as Pending); the task progress is derived from the steps.
+
+| Step | Details |
+|---|---|
+| Check compatibility | status OK, fresh `getApiList` + `Require("fwmgr", "1.0")`; detail "fwmgr 1.10" |
+| Read device info | `basicdeviceinfo`; detail "AXIS P3265-V, AXIS OS 11.11.160" |
+| Validate file | uploaded file present, header/name inspection, decision table; already up to date -> Warning and all later steps Skipped ("Already up to date.") |
+| Read firmware status | fwmgr `status`: no uncommitted previous upgrade |
+| Upload firmware | `ctx.Files.OpenReadAsync` streamed in 80 KB chunks (`FirmwareStreamContent`), Content-Length set, never buffered; reopened if the HTTP stack resends after a Digest challenge; `Expect: 100-continue` so the 401 comes before the body. Step progress in bytes ("12 of 80 MB"). Request timeout 20 min via `VapixRequestOptions.Timeout`. Params: settings kept: `autoCommit=never`, `autoRollback=30` (minutes, longer than the 15 min wait) so the device reverts by itself if OADM never verifies. Factory default: `autoCommit=started`, `autoRollback=never`, because the reset removes OADM's credentials |
+| Install firmware | poll anonymous `basicdeviceinfo getAllUnrestrictedProperties` every 5 s (works after a factory default) until the device goes offline (or already answers with another version) |
+| Wait for device to come back | same probe until it answers again. Both waits share one timeout of **15 min** |
+| Verify version | version after restart == `firmwareVersion` from the upgrade answer (or the file name). Old version again = the device rolled back -> Failed |
+| Read commit state / Commit firmware | settings kept only: `status`, then `commit` unless already committed (Commit Skipped); 3 attempts, "Wait before retrying the commit" (10 s) between them, retries named "... (attempt 2)". Factory default: both Skipped ("The device commits a factory default upgrade by itself.") and Done with warning (set a password / check the address) |
 
 Failure messages always say what the device runs now and what happens next: upload refused or
 interrupted ("still runs X"), did not restart, did not come back (with the auto-rollback time or
@@ -144,12 +149,9 @@ device: numeric `autoRollback` as a JSON string (`"30"`), the exact answer timin
 
 ## SDK gaps
 
-- **Request timeout.** `VapixClient` uses one `HttpClient` with a 15 s `Timeout`; a 100-250 MB
-  upload plus device-side verification takes minutes. The plugin sets the request option
-  `Oadm.RequestTimeout` (`FwmgrClient.RequestTimeoutOption`, 20 min); the host must honor it
-  (e.g. `HttpClient.Timeout = Infinite` plus a per-request linked CTS). Until then real uploads
-  over slow links fail; a timeout after the full body was sent is treated as "answer lost" and
-  verified by version.
+- **Request timeout.** A 100-250 MB upload plus device-side verification takes minutes; the plugin
+  sets the SDK option `VapixRequestOptions.Timeout` (20 min) on the upload request. A timeout after
+  the full body was sent is treated as "answer lost" and verified by version.
 - `ITaskDialogContext.UploadAsync` does not document the unit of `IProgress<double>`; the dialog
   accepts 0..1 or 0..100.
 - The engine has no per-plugin concurrency hint: firmware uploads of 8 devices at once share one
