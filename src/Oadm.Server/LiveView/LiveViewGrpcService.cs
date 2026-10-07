@@ -61,6 +61,9 @@ public sealed class LiveViewGrpcService(
     public override async Task Watch(Proto.LiveViewRequest request, IServerStreamWriter<Proto.LiveViewFrame> responseStream, ServerCallContext context)
     {
         var id = GrpcGuard.ParseId(request.DeviceId, "device id");
+
+        // Encoded video does not compress; skip the server-wide gzip for these frames.
+        context.WriteOptions = new WriteOptions(WriteFlags.NoCompress);
         using var linked = GrpcGuard.LinkWithShutdown(context, lifetime.ApplicationStopping);
         var ct = linked.Token;
         var device = await devices.GetAsync(id, ct).ConfigureAwait(false)

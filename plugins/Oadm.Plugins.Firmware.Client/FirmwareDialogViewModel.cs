@@ -71,6 +71,9 @@ public sealed partial class FirmwareDeviceRow(IDeviceInfo device) : ObservableOb
     public bool IsError => Check is { WillInstall: false, IsNoOp: false };
 
     public bool WillInstall => Check?.WillInstall == true;
+
+    /// <summary>The status query was started for this row (preloaded or because the grid showed it).</summary>
+    internal bool StatusRequested { get; set; }
 }
 
 /// <summary>
@@ -81,6 +84,10 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
 {
     private readonly ITaskDialogContext _ctx;
     private readonly IFirmwareFileSource _files;
+    private readonly CancellationTokenSource _lifetime = new();
+
+    // Never disposed: status reads still in flight release it after the dialog closed (it has no wait handle).
+    private readonly SemaphoreSlim _statusSlots = new(MaxParallelStatusQueries);
     private CancellationTokenSource? _uploadCts;
     private FirmwareImageInfo? _image;
 
@@ -171,36 +178,86 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     /// <summary>Set after a successful start.</summary>
     public string? Result { get; private set; }
 
-    /// <summary>Reads the current firmware state of every device through the plugin's read-only "status" query.</summary>
+    /// <summary>Rows whose status is read when the dialog opens; the others are read when the grid shows them.</summary>
+    public const int StatusPreloadCount = 50;
+
+    /// <summary>Status queries in flight at most (each one reaches a device through the server).</summary>
+    public const int MaxParallelStatusQueries = 4;
+
+    /// <summary>
+    /// Reads the current firmware state through the plugin's read-only "status" query, for the first
+    /// <see cref="StatusPreloadCount"/> devices only (at most <see cref="MaxParallelStatusQueries"/> at a time): with
+    /// thousands of selected devices the other rows are read lazily when the grid shows them
+    /// (<see cref="EnsureStatusAsync"/>); until then they use the cached firmware version.
+    /// </summary>
     public async Task LoadStatusAsync(CancellationToken ct)
     {
-        foreach (var row in Devices.ToList())
+        var rows = new List<FirmwareDeviceRow>(Math.Min(StatusPreloadCount, Devices.Count));
+        for (var i = 0; i < Devices.Count && rows.Count < StatusPreloadCount; i++)
         {
-            try
+            if (!Devices[i].StatusRequested)
             {
-                var json = await _ctx.QueryAsync(row.Device.Id, FirmwareTaskPluginIds.StatusQuery, null, ct).ConfigureAwait(true);
-                if (FirmwareStatusInfo.FromJson(json) is not { } status)
-                {
-                    continue;
-                }
-
-                row.Supported = status.Supported;
-                row.CurrentVersion = status.ActiveVersion ?? row.CurrentVersion;
-                row.FirmwareState = DescribeState(status);
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                throw;
-            }
-#pragma warning disable CA1031 // A failed status read only means the table shows the cached version.
-            catch (Exception)
-#pragma warning restore CA1031
-            {
-                row.FirmwareState = "Status not available";
+                Devices[i].StatusRequested = true;
+                rows.Add(Devices[i]);
             }
         }
 
+        await Task.WhenAll(rows.Select(row => ReadStatusAsync(row, ct))).ConfigureAwait(true);
         Evaluate();
+    }
+
+    /// <summary>Reads the status of a row the grid shows, once; re-evaluates that row and the summary.</summary>
+    public async Task EnsureStatusAsync(FirmwareDeviceRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        if (row.StatusRequested || _lifetime.IsCancellationRequested)
+        {
+            return;
+        }
+
+        row.StatusRequested = true;
+        try
+        {
+            await ReadStatusAsync(row, _lifetime.Token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return; // dialog closed
+        }
+
+        EvaluateRow(row);
+        UpdateSummary();
+    }
+
+    private async Task ReadStatusAsync(FirmwareDeviceRow row, CancellationToken ct)
+    {
+        await _statusSlots.WaitAsync(ct).ConfigureAwait(true);
+        try
+        {
+            var json = await _ctx.QueryAsync(row.Device.Id, FirmwareTaskPluginIds.StatusQuery, null, ct).ConfigureAwait(true);
+            if (FirmwareStatusInfo.FromJson(json) is not { } status)
+            {
+                return;
+            }
+
+            row.Supported = status.Supported;
+            row.CurrentVersion = status.ActiveVersion ?? row.CurrentVersion;
+            row.FirmwareState = DescribeState(status);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+#pragma warning disable CA1031 // A failed status read only means the table shows the cached version.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            row.FirmwareState = "Status not available";
+        }
+        finally
+        {
+            _statusSlots.Release();
+        }
     }
 
     public static string DescribeState(FirmwareStatusInfo status)
@@ -371,36 +428,64 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         _uploadCts?.Cancel();
         _uploadCts?.Dispose();
         _uploadCts = null;
+        if (!_lifetime.IsCancellationRequested)
+        {
+            _lifetime.Cancel();
+        }
+
+        _lifetime.Dispose();
     }
 
+    /// <summary>One pass over all rows (thousands of devices: no nested loops, one summary).</summary>
     private void Evaluate()
     {
         foreach (var row in Devices)
         {
-            if (_image is null)
-            {
-                row.Check = null;
-            }
-            else if (!row.Supported)
-            {
-                row.Check = new FirmwareCheck(FirmwareVerdict.InvalidFile, "The device does not offer the firmware management API (fwmgr 1.x).");
-            }
-            else
-            {
-                row.Check = FirmwareCompatibility.Evaluate(row.Model, row.CurrentVersion, _image, SelectedMode.Mode, AllowDowngrade);
-            }
+            EvaluateRow(row);
         }
 
+        UpdateSummary();
+    }
+
+    private void EvaluateRow(FirmwareDeviceRow row)
+    {
+        if (_image is null)
+        {
+            row.Check = null;
+        }
+        else if (!row.Supported)
+        {
+            row.Check = new FirmwareCheck(FirmwareVerdict.InvalidFile, "The device does not offer the firmware management API (fwmgr 1.x).");
+        }
+        else
+        {
+            row.Check = FirmwareCompatibility.Evaluate(row.Model, row.CurrentVersion, _image, SelectedMode.Mode, AllowDowngrade);
+        }
+    }
+
+    private void UpdateSummary()
+    {
         if (_image is null)
         {
             Summary = "Choose an AXIS OS .bin file.";
         }
         else
         {
-            var install = Devices.Count(d => d.WillInstall);
-            var upToDate = Devices.Count(d => d.Check?.IsNoOp == true);
+            int install = 0, upToDate = 0;
+            foreach (var row in Devices)
+            {
+                if (row.WillInstall)
+                {
+                    install++;
+                }
+                else if (row.Check?.IsNoOp == true)
+                {
+                    upToDate++;
+                }
+            }
+
             var skipped = Devices.Count - install - upToDate;
-            Summary = string.Create(CultureInfo.InvariantCulture, $"{install} of {Devices.Count} device(s) will be updated, {upToDate} already up to date, {skipped} not possible.");
+            Summary = string.Create(CultureInfo.InvariantCulture, $"{install:N0} of {Devices.Count:N0} device(s) will be updated, {upToDate:N0} already up to date, {skipped:N0} not possible.");
         }
 
         StartCommand.NotifyCanExecuteChanged();

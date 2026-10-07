@@ -1,5 +1,6 @@
 using System.Globalization;
 
+using Oadm.Plugins.Shared;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
@@ -62,12 +63,14 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
         }
     }
 
-    /// <summary>Reachable with credentials, and the cached API list offers the Application API 1.x.</summary>
+    private static readonly Version MinApplicationApi = Version.Parse(AcapPlugin.ApplicationApiMinVersion);
+
+    /// <summary>Reachable with credentials, and the cached API list offers the Application API 1.x (cheap: called for every device).</summary>
     public bool CanRun(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
         return device.Status is DeviceStatus.Ok or DeviceStatus.Unknown
-            && device.Apis.Supports(AcapPlugin.ApplicationApiId, AcapPlugin.ApplicationApiMinVersion);
+            && CachedApiCheck.Supports(device.Apis, AcapPlugin.ApplicationApiId, MinApplicationApi);
     }
 
     public async Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct)

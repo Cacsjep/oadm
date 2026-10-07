@@ -100,6 +100,141 @@ public sealed class EfTaskStore(IDbContextFactory<OadmDbContext> dbFactory) : IT
         return [.. rows.Select(r => new TaskLogEntry(ToOffset(r.TimeUtc), r.DeviceId, r.Level, r.Message))];
     }
 
+    // ------------------------------------------------------------------ scale: batches and paging
+
+    /// <summary>Statement size for id lists (SQLite limits parameters and statement length).</summary>
+    private const int IdChunk = 500;
+
+    private static readonly TaskState[] ActiveStates = [TaskState.Queued, TaskState.Running];
+
+    private static readonly TaskState[] TerminalStates = [TaskState.Done, TaskState.DoneWithWarnings, TaskState.Failed, TaskState.Cancelled];
+
+    /// <summary>All tasks of one Run in one transaction (5,000 tasks: one commit instead of 5,000).</summary>
+    public async Task AddRangeAsync(IReadOnlyList<TaskRecord> tasks, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(tasks);
+        if (tasks.Count == 0)
+        {
+            return;
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        db.ChangeTracker.AutoDetectChangesEnabled = false;
+        await using var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
+        foreach (var chunk in tasks.Chunk(1000))
+        {
+            foreach (var task in chunk)
+            {
+                var entity = new TaskEntity { Id = task.Id };
+                Apply(task, entity);
+                db.Tasks.Add(entity);
+            }
+
+            await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            db.ChangeTracker.Clear();
+        }
+
+        await transaction.CommitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>One page, newest first (CreatedUtc index), plus the total count.</summary>
+    public async Task<TaskPage> ListPageAsync(int offset, int limit, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var total = await db.Tasks.CountAsync(ct).ConfigureAwait(false);
+        if (limit <= 0)
+        {
+            return new TaskPage([], total);
+        }
+
+        var entities = await db.Tasks.AsNoTracking().Include(t => t.Results).Include(t => t.Steps)
+            .OrderByDescending(t => t.CreatedUtc).ThenByDescending(t => t.Id)
+            .Skip(Math.Max(0, offset)).Take(limit)
+            .AsSplitQuery()
+            .ToListAsync(ct).ConfigureAwait(false);
+        return new TaskPage([.. entities.Select(ToRecord)], total);
+    }
+
+    /// <summary>Queued and Running tasks (Status index), newest first.</summary>
+    public async Task<IReadOnlyList<TaskRecord>> ListActiveAsync(CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var entities = await db.Tasks.AsNoTracking().Include(t => t.Results).Include(t => t.Steps)
+            .Where(t => ActiveStates.Contains(t.Status))
+            .OrderByDescending(t => t.CreatedUtc)
+            .AsSplitQuery()
+            .ToListAsync(ct).ConfigureAwait(false);
+        return [.. entities.Select(ToRecord)];
+    }
+
+    public async Task<IReadOnlyList<Guid>> ListIdsAsync(CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        return await db.Tasks.AsNoTracking().OrderByDescending(t => t.CreatedUtc).Select(t => t.Id).ToListAsync(ct).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<Guid>> ListExpiredAsync(DateTimeOffset? finishedBefore, int? keepNewest, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var ids = new HashSet<Guid>();
+        if (finishedBefore is { } before)
+        {
+            DateTime? cutoff = before.UtcDateTime;
+            ids.UnionWith(await db.Tasks.AsNoTracking()
+                .Where(t => TerminalStates.Contains(t.Status)
+                    && ((t.FinishedUtc != null && t.FinishedUtc < cutoff) || (t.FinishedUtc == null && t.CreatedUtc < cutoff.Value)))
+                .Select(t => t.Id)
+                .ToListAsync(ct).ConfigureAwait(false));
+        }
+
+        if (keepNewest is { } keep)
+        {
+            ids.UnionWith(await db.Tasks.AsNoTracking()
+                .OrderByDescending(t => t.CreatedUtc).ThenByDescending(t => t.Id)
+                .Skip(Math.Max(0, keep))
+                .Where(t => TerminalStates.Contains(t.Status))
+                .Select(t => t.Id)
+                .ToListAsync(ct).ConfigureAwait(false));
+        }
+
+        return [.. ids];
+    }
+
+    /// <summary>Deletes tasks with their logs, results and steps in one transaction, in chunks of ids.</summary>
+    public async Task<IReadOnlyList<TaskRecord>> DeleteManyAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        var deleted = new List<TaskRecord>(ids.Count);
+        if (ids.Count == 0)
+        {
+            return deleted;
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
+        foreach (var chunk in ids.Distinct().Chunk(IdChunk))
+        {
+            // Results are needed for the Removed changes (device id); steps are not.
+            var rows = await db.Tasks.AsNoTracking().Include(t => t.Results)
+                .Where(t => chunk.Contains(t.Id))
+                .ToListAsync(ct).ConfigureAwait(false);
+            if (rows.Count == 0)
+            {
+                continue;
+            }
+
+            var found = rows.Select(r => r.Id).ToList();
+            await db.TaskLogEntries.Where(l => found.Contains(l.TaskId)).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+            await db.TaskDeviceResults.Where(r => found.Contains(r.TaskId)).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+            await db.TaskSteps.Where(s => found.Contains(s.TaskId)).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+            await db.Tasks.Where(t => found.Contains(t.Id)).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+            deleted.AddRange(rows.Select(ToRecord));
+        }
+
+        await transaction.CommitAsync(ct).ConfigureAwait(false);
+        return deleted;
+    }
+
     /// <summary>Copies a snapshot onto a (tracked) entity, syncing the device result rows.</summary>
     internal static void Apply(TaskRecord task, TaskEntity entity)
     {

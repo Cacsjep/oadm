@@ -47,7 +47,7 @@ texts from [`scripts/manage-help.txt`](scripts/manage-help.txt).
 | `manage run server [--port N] [--data DIR] [--release]` | Build and run the server in the foreground (default `http://0.0.0.0:5080`) |
 | `manage run client [--fake] [--server URL] [--data DIR] [--release]` | Build the client and all plugins, then run the client; `--fake` runs on sample data without a server |
 | `manage run dev [--port N] [--data DIR] [--release]` | Server in the background (log in `artifacts/logs/server-dev.log`), then the client; closing the client stops the server |
-| `manage test [unit\|hardware\|all] [--filter EXPR] [--release]` | Unit tests (default, what CI runs), read-only hardware tests against `dev-cameras.yaml`, or both |
+| `manage test [unit\|perf\|hardware\|all] [--filter EXPR] [--release]` | Unit tests (default, fast, what CI runs), scale tests with 5,000 devices and 50,000 tasks (`Category=Perf`, a few minutes, see [`docs/scale-audit.md`](docs/scale-audit.md)), read-only hardware tests against `dev-cameras.yaml`, or all of them |
 | `manage publish [all\|server\|client] [--rid RID]` | Self-contained single-file apps in `artifacts/publish/<app>/<rid>`, plugins next to the server exe |
 | `manage clean` | Remove `bin`, `obj` and `artifacts` (data folders stay) |
 | `manage info` | Show the .NET SDK, `DOTNET_ROOT`, configuration and RID in use |
@@ -96,7 +96,8 @@ Hardware tests are tagged `Category=Hardware` and skip themselves when the file 
 
 ```sh
 ./manage.sh test hardware     # dotnet test Oadm.sln --filter Category=Hardware
-./manage.sh test unit         # dotnet test Oadm.sln --filter Category!=Hardware (what CI runs)
+./manage.sh test unit         # dotnet test Oadm.sln --filter "Category!=Hardware&Category!=Perf" (what CI runs)
+./manage.sh test perf         # dotnet test Oadm.sln --filter Category=Perf (scale tests, docs/scale-audit.md)
 ```
 
 ## Layout

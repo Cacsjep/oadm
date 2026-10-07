@@ -16,7 +16,8 @@ namespace Oadm.Core.Devices;
 /// <list type="bullet">
 /// <item>Status poll: every <c>Polling.IntervalSeconds</c> (live-updated from
 /// <see cref="ServerSettingsStore.Changed"/>) one basicdeviceinfo call per device with bounded
-/// parallelism, updating Status, Model, FirmwareVersion and LastSeenUtc.</item>
+/// parallelism, the starts spread evenly over the interval (<see cref="PollRoundAsync"/>), updating
+/// Status, Model, FirmwareVersion and LastSeenUtc (a LastSeenUtc-only change is not published).</item>
 /// <item>Full refresh: basicdeviceinfo plus param.cgi network info (DHCP, HTTPS, 802.1X, UPnP
 /// name), the HTTPS certificate seen in the TLS handshake (expiry, chain trust, subject, issuer)
 /// and the Server column. Queued with <see cref="QueueRefresh"/> (on add, manual Refresh, after a
@@ -123,37 +124,82 @@ public sealed partial class DevicePollingService : IDisposable
         }
     }
 
-    /// <summary>One status poll of every managed device, with bounded parallelism.</summary>
-    public async Task PollAllAsync(CancellationToken ct)
+    /// <summary>Share of the poll interval over which the status polls of one round are spread.</summary>
+    public const double RoundSpreadFraction = 0.9;
+
+    /// <summary>One status poll of every managed device, with bounded parallelism, all started at once.</summary>
+    public Task PollAllAsync(CancellationToken ct) => PollRoundAsync(TimeSpan.Zero, ct);
+
+    /// <summary>
+    /// One status poll of every managed device. Scale: the starts are spread evenly over
+    /// <paramref name="spreadOver"/> (the poll loop passes <see cref="RoundSpreadFraction"/> of the
+    /// interval), so 5,000 devices at 60 s mean about 90 polls per second instead of a burst of 5,000,
+    /// and at most <see cref="MaxParallelism"/> run at the same time (a slow or unreachable device
+    /// delays later starts, it never adds parallel requests). Each device row is read right before its
+    /// poll, so a row changed during the round is polled with its current address and credentials.
+    /// </summary>
+    public async Task PollRoundAsync(TimeSpan spreadOver, CancellationToken ct)
     {
-        var devices = await _devices.ListDevicesAsync(ct).ConfigureAwait(false);
+        var ids = await _devices.ListDeviceIdsAsync(ct).ConfigureAwait(false);
+        var start = _time.GetUtcNow();
         var options = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, MaxParallelism), CancellationToken = ct };
-        await Parallel.ForEachAsync(devices, options, async (device, token) =>
+        await Parallel.ForEachAsync(PacedAsync(ids, start, spreadOver, ct), options, async (id, token) =>
         {
-            await UpdateDeviceAsync(device, full: false, token).ConfigureAwait(false);
+            await PollAsync(id, token).ConfigureAwait(false);
         }).ConfigureAwait(false);
     }
 
+    /// <summary>Planned start of the device at <paramref name="index"/> of <paramref name="count"/> within a round.</summary>
+    public static TimeSpan StartOffset(int index, int count, TimeSpan spreadOver) =>
+        count <= 1 || spreadOver <= TimeSpan.Zero ? TimeSpan.Zero : spreadOver * ((double)index / count);
+
+    private async IAsyncEnumerable<Guid> PacedAsync(IReadOnlyList<Guid> ids, DateTimeOffset start, TimeSpan spreadOver,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        for (var i = 0; i < ids.Count; i++)
+        {
+            var wait = start + StartOffset(i, ids.Count, spreadOver) - _time.GetUtcNow();
+            if (wait > MinPacingDelay)
+            {
+                await Task.Delay(wait, _time, ct).ConfigureAwait(false);
+            }
+
+            yield return ids[i];
+        }
+    }
+
+    /// <summary>Waits shorter than this are skipped (timer resolution); the next wait catches up.</summary>
+    private static readonly TimeSpan MinPacingDelay = TimeSpan.FromMilliseconds(5);
+
     /// <summary>
-    /// Queues a full refresh for every device whose last full refresh (or, when it had none since
-    /// the service started, the service start) is at least <see cref="FullRefreshMinutes"/> ago.
-    /// Returns the queued device ids.
+    /// Queues a full refresh for every device whose last full refresh is at least
+    /// <see cref="FullRefreshMinutes"/> ago. A device without a full refresh since the service started
+    /// counts from the service start plus a stagger: the n-th of N devices (by serial) is due
+    /// n/N of an interval later, so after a server start 5,000 devices are not all due at once.
+    /// Reads only the device ids. Returns the queued device ids.
     /// </summary>
     public async Task<IReadOnlyList<Guid>> QueueDueFullRefreshesAsync(CancellationToken ct)
     {
-        var devices = await _devices.ListDevicesAsync(ct).ConfigureAwait(false);
+        var ids = await _devices.ListDeviceIdsAsync(ct).ConfigureAwait(false);
         var now = _time.GetUtcNow();
         var interval = TimeSpan.FromMinutes(FullRefreshMinutes);
-        var known = devices.Select(d => d.Id).ToHashSet();
+        var known = ids.ToHashSet();
         foreach (var gone in _lastFullRefresh.Keys.Where(id => !known.Contains(id)))
         {
             _lastFullRefresh.TryRemove(gone, out _);
         }
 
-        var due = devices
-            .Where(d => (_lastFullRefresh.TryGetValue(d.Id, out var last) ? last : _startedAt) + interval <= now)
-            .Select(d => d.Id)
-            .ToList();
+        var due = new List<Guid>();
+        for (var i = 0; i < ids.Count; i++)
+        {
+            var id = ids[i];
+            var baseline = _lastFullRefresh.TryGetValue(id, out var last) ? last : _startedAt + StartOffset(i, ids.Count, interval);
+            if (baseline + interval <= now)
+            {
+                due.Add(id);
+            }
+        }
+
         QueueRefresh(due);
         return due;
     }
@@ -186,8 +232,14 @@ public sealed partial class DevicePollingService : IDisposable
         }
     }
 
+    /// <summary>
+    /// A round starts every interval (measured from the start of the previous round, so a round that
+    /// takes most of the interval does not double it); its polls are spread over the interval. A round
+    /// that takes longer than the interval is followed by the next one right away.
+    /// </summary>
     private async Task RunPollLoopAsync(CancellationToken ct)
     {
+        var nextRound = _time.GetUtcNow() + TimeSpan.FromSeconds(IntervalSeconds);
         while (!ct.IsCancellationRequested)
         {
             CancellationToken wake;
@@ -199,21 +251,31 @@ public sealed partial class DevicePollingService : IDisposable
             using var delayCts = CancellationTokenSource.CreateLinkedTokenSource(ct, wake);
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(IntervalSeconds), _time, delayCts.Token).ConfigureAwait(false);
+                var wait = nextRound - _time.GetUtcNow();
+                if (wait > TimeSpan.Zero)
+                {
+                    await Task.Delay(wait, _time, delayCts.Token).ConfigureAwait(false);
+                }
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
-                continue; // interval changed: start waiting again with the new value
+                // Interval changed: start waiting again with the new value.
+                nextRound = _time.GetUtcNow() + TimeSpan.FromSeconds(IntervalSeconds);
+                continue;
             }
 
+            var interval = TimeSpan.FromSeconds(IntervalSeconds);
+            var roundStart = _time.GetUtcNow();
             try
             {
-                await PollAllAsync(ct).ConfigureAwait(false);
+                await PollRoundAsync(interval * RoundSpreadFraction, ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
                 LogPollFailed(ex);
             }
+
+            nextRound = roundStart + interval;
         }
 
         ct.ThrowIfCancellationRequested();

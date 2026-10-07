@@ -158,6 +158,19 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             case SettingKeys.UploadsRetentionHours:
                 RequireInt(key, value, 1, ServerSettings.MaxUploadsRetentionHours);
                 break;
+            case SettingKeys.TasksRetentionDays:
+                RequireInt(key, value, 0, ServerSettings.MaxTasksRetentionDays);
+                break;
+            case SettingKeys.TasksMaxHistory:
+                RequireInt(key, value, 0, ServerSettings.MaxTasksMaxHistory);
+                if (value.GetInt32() is > 0 and < ServerSettings.MinTasksMaxHistory)
+                {
+                    throw new ArgumentException(
+                        string.Create(CultureInfo.InvariantCulture, $"'{key}' must be 0 (no limit) or at least {ServerSettings.MinTasksMaxHistory}."),
+                        nameof(valueJson));
+                }
+
+                break;
             case SettingKeys.ScanParallelism:
                 RequireInt(key, value, 1, 1024);
                 break;
@@ -216,6 +229,8 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.PollingFullRefreshMinutes] = JsonSerializer.Serialize(d.FullRefreshMinutes),
             [SettingKeys.UploadsMaxMegabytes] = JsonSerializer.Serialize(ServerSettings.DefaultUploadsMaxMegabytes),
             [SettingKeys.UploadsRetentionHours] = JsonSerializer.Serialize(ServerSettings.DefaultUploadsRetentionHours),
+            [SettingKeys.TasksRetentionDays] = JsonSerializer.Serialize(ServerSettings.DefaultTasksRetentionDays),
+            [SettingKeys.TasksMaxHistory] = JsonSerializer.Serialize(ServerSettings.DefaultTasksMaxHistory),
             [SettingKeys.DevicesUseHostName] = JsonSerializer.Serialize(d.UseHostName),
             [SettingKeys.DiscoveryZeroConfSeconds] = JsonSerializer.Serialize(d.ZeroConfSeconds),
         };

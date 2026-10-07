@@ -298,6 +298,25 @@ public static class Mappers
         return proto;
     }
 
+    /// <summary>
+    /// A task plugin with its runnable set. <paramref name="compact"/>: when fewer devices are not
+    /// runnable than runnable, sends <c>runnable_on_all_except</c> with the not-runnable ids instead
+    /// (usually a handful instead of 5,000 ids per plugin).
+    /// </summary>
+    public static Proto.TaskPluginInfo ToProto(Tasks.TaskPluginRunnable entry, bool compact)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        if (!compact || entry.Runnable.Count <= entry.NotRunnable.Count)
+        {
+            return ToProto(entry.Plugin, entry.Runnable);
+        }
+
+        var proto = ToProto(entry.Plugin, []);
+        proto.RunnableOnAllExcept = true;
+        proto.NotRunnableDeviceIds.AddRange(entry.NotRunnable.Select(id => id.ToString()));
+        return proto;
+    }
+
     public static Proto.CorePluginInfo ToProto(RegisteredCorePlugin plugin)
     {
         ArgumentNullException.ThrowIfNull(plugin);

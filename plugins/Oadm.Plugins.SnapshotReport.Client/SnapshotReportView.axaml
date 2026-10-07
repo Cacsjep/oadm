@@ -33,50 +33,62 @@
                     IsVisible="{Binding IsProgressVisible}" Margin="0,0,0,12" />
 
     <Panel Grid.Row="3">
+      <!-- Virtualized by rows (thousands of tiles): only the shown rows exist; each row holds as many tiles as fit. -->
       <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-        <ItemsControl ItemsSource="{Binding FilteredTiles}">
+        <ItemsControl x:Name="TileRows" ItemsSource="{Binding Rows}">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
-              <WrapPanel Orientation="Horizontal" />
+              <VirtualizingStackPanel />
             </ItemsPanelTemplate>
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:SnapshotTileViewModel">
-              <Border Classes="tile" Classes.selected="{Binding IsSelected}"
-                      Width="{Binding $parent[UserControl].((vm:SnapshotReportViewModel)DataContext).TileWidth}">
-                <Grid RowDefinitions="Auto,Auto,Auto,Auto">
-                  <!-- Picture: click opens the large preview -->
-                  <Button Grid.Row="0" Classes="picture" Command="{Binding PreviewCommand}" ToolTip.Tip="Show large">
-                    <Border Classes="liveViewSurface"
-                            Height="{Binding $parent[UserControl].((vm:SnapshotReportViewModel)DataContext).PictureHeight}">
-                      <Panel>
-                        <Image Source="{Binding Image}" Stretch="Uniform" IsVisible="{Binding HasImage}" />
-                        <ui:OadmIcon Data="{DynamicResource Icon.snapshot}" Width="28" Height="28"
-                                     HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasImage}" />
-                      </Panel>
+            <DataTemplate x:DataType="vm:SnapshotTileRow">
+              <ItemsControl ItemsSource="{Binding Tiles}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:SnapshotTileViewModel">
+                    <Border Classes="tile" Classes.selected="{Binding IsSelected}"
+                            Width="{Binding $parent[UserControl].((vm:SnapshotReportViewModel)DataContext).TileWidth}">
+                      <Grid RowDefinitions="Auto,Auto,Auto,Auto">
+                        <!-- Picture: click opens the large preview -->
+                        <Button Grid.Row="0" Classes="picture" Command="{Binding PreviewCommand}" ToolTip.Tip="Show large">
+                          <Border Classes="liveViewSurface"
+                                  Height="{Binding $parent[UserControl].((vm:SnapshotReportViewModel)DataContext).PictureHeight}">
+                            <Panel>
+                              <Image Source="{Binding Image}" Stretch="Uniform" IsVisible="{Binding HasImage}" />
+                              <ui:OadmIcon Data="{DynamicResource Icon.snapshot}" Width="28" Height="28"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasImage}" />
+                            </Panel>
+                          </Border>
+                        </Button>
+
+                        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,8,0,0">
+                          <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected}" VerticalAlignment="Center"
+                                    ToolTip.Tip="Include in the report" />
+                          <TextBlock Grid.Column="1" Text="{Binding Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                     ToolTip.Tip="{Binding Title}" />
+                          <Button Grid.Column="2" Classes="toolbar iconOnly" Command="{Binding RefreshCommand}" ToolTip.Tip="Take a new snapshot">
+                            <ui:OadmIcon Data="{DynamicResource Icon.refresh}" />
+                          </Button>
+                        </Grid>
+
+                        <TextBlock Grid.Row="2" Classes="secondary small" Text="{Binding Facts}" TextTrimming="CharacterEllipsis"
+                                   ToolTip.Tip="{Binding Facts}" />
+
+                        <Panel Grid.Row="3" Margin="0,6,0,0">
+                          <ui:StatusChip Text="{Binding StatusText}" IsAccent="{Binding IsLoading}" IsError="{Binding IsError}"
+                                         IsVisible="{Binding ShowStatus}" ToolTip.Tip="{Binding StatusText}" />
+                          <TextBlock Classes="secondary small" Text="{Binding CaptureText}" IsVisible="{Binding !ShowStatus}" />
+                        </Panel>
+                      </Grid>
                     </Border>
-                  </Button>
-
-                  <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,8,0,0">
-                    <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected}" VerticalAlignment="Center"
-                              ToolTip.Tip="Include in the report" />
-                    <TextBlock Grid.Column="1" Text="{Binding Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                               ToolTip.Tip="{Binding Title}" />
-                    <Button Grid.Column="2" Classes="toolbar iconOnly" Command="{Binding RefreshCommand}" ToolTip.Tip="Take a new snapshot">
-                      <ui:OadmIcon Data="{DynamicResource Icon.refresh}" />
-                    </Button>
-                  </Grid>
-
-                  <TextBlock Grid.Row="2" Classes="secondary small" Text="{Binding Facts}" TextTrimming="CharacterEllipsis"
-                             ToolTip.Tip="{Binding Facts}" />
-
-                  <Panel Grid.Row="3" Margin="0,6,0,0">
-                    <ui:StatusChip Text="{Binding StatusText}" IsAccent="{Binding IsLoading}" IsError="{Binding IsError}"
-                                   IsVisible="{Binding ShowStatus}" ToolTip.Tip="{Binding StatusText}" />
-                    <TextBlock Classes="secondary small" Text="{Binding CaptureText}" IsVisible="{Binding !ShowStatus}" />
-                  </Panel>
-                </Grid>
-              </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>

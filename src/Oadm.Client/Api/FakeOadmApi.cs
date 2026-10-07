@@ -149,6 +149,8 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 yield return new DeviceChanged { Kind = DeviceChanged.Types.Kind.Added, Device = device };
             }
 
+            yield return new DeviceChanged { Kind = DeviceChanged.Types.Kind.SnapshotEnd };
+
             await foreach (DeviceChanged change in channel.Reader.ReadAllAsync(ct))
             {
                 yield return change;
@@ -608,6 +610,8 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
             {
                 yield return new TaskChanged { Kind = TaskChanged.Types.Kind.Added, Task = task };
             }
+
+            yield return new TaskChanged { Kind = TaskChanged.Types.Kind.SnapshotEnd };
 
             await foreach (TaskChanged change in channel.Reader.ReadAllAsync(ct))
             {

@@ -141,7 +141,7 @@ parse_args() {
     build)   TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client|plugins) ;; *) usage_error build "unknown target '$TARGET' for build" ;; esac ;;
     run)     [ -n "$TARGET" ] || usage_error run "missing target for run (server, client or dev)"
              case "$TARGET" in server|client|dev) ;; *) usage_error run "unknown target '$TARGET' for run" ;; esac ;;
-    test)    TARGET="${TARGET:-unit}"; case "$TARGET" in unit|hardware|all) ;; *) usage_error test "unknown target '$TARGET' for test" ;; esac ;;
+    test)    TARGET="${TARGET:-unit}"; case "$TARGET" in unit|perf|hardware|all) ;; *) usage_error test "unknown target '$TARGET' for test" ;; esac ;;
     publish) TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client) ;; *) usage_error publish "unknown target '$TARGET' for publish" ;; esac ;;
     clean|info)
              [ -z "$TARGET" ] || usage_error "$verb" "$verb takes no target"
@@ -299,7 +299,8 @@ cmd_test() {
   require_dotnet
   local filter
   case "$TARGET" in
-    unit) filter="Category!=Hardware" ;;
+    unit) filter="Category!=Hardware&Category!=Perf" ;;
+    perf) filter="Category=Perf" ;;
     hardware)
       if [ ! -f "$REPO_ROOT/dev-cameras.yaml" ] && [ -z "${OADM_DEV_CAMERAS:-}" ]; then
         echo "error: dev-cameras.yaml not found and OADM_DEV_CAMERAS not set, copy dev-cameras.example.yaml first" >&2

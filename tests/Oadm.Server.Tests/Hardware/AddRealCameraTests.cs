@@ -45,7 +45,7 @@ public sealed class AddRealCameraTests
             async () => (await TestHelpers.GetDeviceAsync(host, deviceId)).HasDhcpEnabled,
             "first full refresh after add",
             TimeSpan.FromSeconds(60));
-        Assert.Empty((await host.Tasks.ListAsync(new Proto.Empty())).Tasks);
+        Assert.Empty((await host.Tasks.ListAsync(new Proto.ListTasksRequest())).Tasks);
 
         var device = await TestHelpers.GetDeviceAsync(host, deviceId);
         Assert.Equal(Proto.DeviceStatus.Ok, device.Status);

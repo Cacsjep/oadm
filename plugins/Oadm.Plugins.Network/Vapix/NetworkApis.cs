@@ -1,3 +1,4 @@
+using Oadm.Plugins.Shared;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.Network.Vapix;
@@ -24,11 +25,14 @@ public static class NetworkApis
     /// <summary>Legacy param.cgi (Network.*); also the only way to set the IPv6 address mode, static address and gateway.</summary>
     public const string ParamCgiBase = "1.0";
 
-    /// <summary>The device offers something this plugin can configure (used by CanRun on the cached list).</summary>
+    private static readonly Version NetworkSettingsBaseVersion = Version.Parse(NetworkSettingsBase);
+    private static readonly Version ParamCgiBaseVersion = Version.Parse(ParamCgiBase);
+
+    /// <summary>The device offers something this plugin can configure (used by CanRun on the cached list for every device: cheap).</summary>
     public static bool CanConfigure(IEnumerable<DeviceApi> apis)
     {
-        var list = apis as IReadOnlyCollection<DeviceApi> ?? apis.ToList();
-        return list.Supports(NetworkSettings, NetworkSettingsBase) || list.Supports(ParamCgi, ParamCgiBase);
+        var list = apis as IReadOnlyList<DeviceApi> ?? [.. apis];
+        return CachedApiCheck.Supports(list, NetworkSettings, NetworkSettingsBaseVersion) || CachedApiCheck.Supports(list, ParamCgi, ParamCgiBaseVersion);
     }
 
     public static bool UseJsonApi(IEnumerable<DeviceApi> apis) => apis.Supports(NetworkSettings, NetworkSettingsBase);

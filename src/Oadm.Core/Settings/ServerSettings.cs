@@ -15,6 +15,12 @@ public static class SettingKeys
 
     /// <summary>Uploads older than this are deleted by the server. Not on the settings page yet.</summary>
     public const string UploadsRetentionHours = "Uploads.RetentionHours";
+
+    /// <summary>Finished tasks older than this many days are deleted from the history. Int, default 90, 0..3650 (0 = no age limit). Not on the settings page yet.</summary>
+    public const string TasksRetentionDays = "Tasks.RetentionDays";
+
+    /// <summary>The history keeps at most this many tasks; older finished ones are deleted. Int, default 50000, 0 or 100..1000000 (0 = no limit). Not on the settings page yet.</summary>
+    public const string TasksMaxHistory = "Tasks.MaxHistory";
     /// <summary>Add devices by host name when one is known, otherwise by IP address. Bool, default false.</summary>
     public const string DevicesUseHostName = "Devices.UseHostName";
 
@@ -83,6 +89,11 @@ public sealed record ServerSettings(
     public const int MaxUploadsMaxMegabytes = 65_536;
     public const int DefaultUploadsRetentionHours = 24;
     public const int MaxUploadsRetentionHours = 8760;
+    public const int DefaultTasksRetentionDays = 90;
+    public const int MaxTasksRetentionDays = 3650;
+    public const int DefaultTasksMaxHistory = 50_000;
+    public const int MinTasksMaxHistory = 100;
+    public const int MaxTasksMaxHistory = 1_000_000;
     public const bool DefaultUseHostName = false;
     public const int DefaultZeroConfSeconds = 30;
     public const int MinZeroConfSeconds = 5;

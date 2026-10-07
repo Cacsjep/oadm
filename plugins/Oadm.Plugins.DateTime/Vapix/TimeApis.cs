@@ -1,3 +1,4 @@
+using Oadm.Plugins.Shared;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.DateAndTime.Vapix;
@@ -29,18 +30,29 @@ public static class TimeApis
     /// <summary>Legacy Time.* parameters (time zone, NTP) for devices without time-service / ntp.</summary>
     public const string ParamCgiBase = "1.0";
 
-    /// <summary>The device offers something this plugin can configure (CanRun on the cached list).</summary>
+    private static readonly Version TimeServiceBaseVersion = Version.Parse(TimeServiceBase);
+    private static readonly Version ParamCgiBaseVersion = Version.Parse(ParamCgiBase);
+    private static readonly Version NtpBaseVersion = Version.Parse(NtpBase);
+    private static readonly Version NtpNtsVersion = Version.Parse(NtpNts);
+
+    /// <summary>The device offers something this plugin can configure (CanRun on the cached list for every device: cheap).</summary>
     public static bool CanConfigure(IEnumerable<DeviceApi> apis)
     {
-        var list = apis as IReadOnlyCollection<DeviceApi> ?? apis.ToList();
-        return list.Supports(TimeService, TimeServiceBase) || list.Supports(ParamCgi, ParamCgiBase);
+        var list = AsList(apis);
+        return CachedApiCheck.Supports(list, TimeService, TimeServiceBaseVersion) || CachedApiCheck.Supports(list, ParamCgi, ParamCgiBaseVersion);
     }
 
-    public static bool HasTimeService(IEnumerable<DeviceApi> apis) => apis.Supports(TimeService, TimeServiceBase);
+    public static bool HasTimeService(IEnumerable<DeviceApi> apis) => CachedApiCheck.Supports(AsList(apis), TimeService, TimeServiceBaseVersion);
 
-    public static bool HasNtpApi(IEnumerable<DeviceApi> apis) => apis.Supports(Ntp, NtpBase);
+    public static bool HasNtpApi(IEnumerable<DeviceApi> apis) => CachedApiCheck.Supports(AsList(apis), Ntp, NtpBaseVersion);
 
-    public static bool SupportsNts(IEnumerable<DeviceApi> apis) => apis.Supports(Ntp, NtpNts);
+    public static bool SupportsNts(IEnumerable<DeviceApi> apis) => CachedApiCheck.Supports(AsList(apis), Ntp, NtpNtsVersion);
+
+    private static IReadOnlyList<DeviceApi> AsList(IEnumerable<DeviceApi> apis)
+    {
+        ArgumentNullException.ThrowIfNull(apis);
+        return apis as IReadOnlyList<DeviceApi> ?? [.. apis];
+    }
 
     /// <summary>"time-service 1.1, ntp 1.5", "param.cgi" or a mix.</summary>
     public static string Describe(IReadOnlyCollection<DeviceApi> apis)

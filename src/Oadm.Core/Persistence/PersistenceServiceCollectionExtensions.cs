@@ -35,7 +35,9 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton(pathsFactory);
         services.TryAddSingleton(TimeProvider.System);
 
-        services.AddDbContextFactory<OadmDbContext>((sp, o) => o.UseSqlite(sp.GetRequiredService<OadmPaths>().ConnectionString));
+        services.AddDbContextFactory<OadmDbContext>((sp, o) => o
+            .UseSqlite(sp.GetRequiredService<OadmPaths>().ConnectionString)
+            .AddInterceptors(SqlitePragmaInterceptor.Instance));
 
         services.AddSingleton(sp => CredentialProtector.FromKeyFile(sp.GetRequiredService<OadmPaths>().MasterKeyPath));
         services.AddSingleton<CredentialStore>();

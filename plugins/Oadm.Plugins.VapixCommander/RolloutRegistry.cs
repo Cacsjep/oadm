@@ -44,6 +44,10 @@ internal sealed class RolloutRegistry(TimeProvider? time = null)
         private readonly HashSet<Guid> _started = [];
         private readonly HashSet<Guid> _finished = [];
         private List<Guid>? _taskIds;
+        private HashSet<Guid>? _taskSet;
+
+        // Tasks of _taskIds not finished yet: O(1) per finished task (5,000 devices: no scan of all ids per Finish).
+        private int _remaining;
 
         public Guid Id { get; } = id;
 
@@ -98,6 +102,13 @@ internal sealed class RolloutRegistry(TimeProvider? time = null)
             lock (_sync)
             {
                 _taskIds = [.. taskIds];
+                _taskSet = [.. taskIds];
+                _remaining = 0;
+                foreach (var taskId in _taskSet)
+                {
+                    _remaining += _finished.Contains(taskId) ? 0 : 1;
+                }
+
                 IReadOnlyList<Guid> cancel = AbortReason is null ? [] : CancelNotStarted();
                 RemoveWhenDone();
                 return cancel;
@@ -108,7 +119,7 @@ internal sealed class RolloutRegistry(TimeProvider? time = null)
         {
             lock (_sync)
             {
-                _finished.Add(taskId);
+                MarkFinished(taskId);
                 RemoveWhenDone();
             }
         }
@@ -117,14 +128,26 @@ internal sealed class RolloutRegistry(TimeProvider? time = null)
         private List<Guid> CancelNotStarted()
         {
             var cancel = _taskIds!.Where(t => !_started.Contains(t)).ToList();
-            _finished.UnionWith(cancel);
+            foreach (var taskId in cancel)
+            {
+                MarkFinished(taskId);
+            }
+
             RemoveWhenDone();
             return cancel;
         }
 
+        private void MarkFinished(Guid taskId)
+        {
+            if (_finished.Add(taskId) && _taskSet?.Contains(taskId) == true)
+            {
+                _remaining--;
+            }
+        }
+
         private void RemoveWhenDone()
         {
-            if (_taskIds is not null && _taskIds.All(_finished.Contains))
+            if (_taskSet is not null && _remaining == 0)
             {
                 owner.Remove(Id);
             }

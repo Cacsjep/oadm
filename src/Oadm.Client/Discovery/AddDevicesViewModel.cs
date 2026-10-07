@@ -74,7 +74,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         _ui = ui;
         _logger = logger;
         Mode = mode;
-        Rows.CollectionChanged += (_, _) => UpdateSummary();
+        Rows.CollectionChanged += OnRowsChanged;
 
         // Field errors below their field: IP range, address, login and first password editors.
         Validation
@@ -148,7 +148,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     } + " OADM logs in with your known credentials; authenticated devices can be added right away.";
 
     public ObservableCollection<DiscoveredRowViewModel> Rows { get; } = [];
-    public ObservableCollection<DiscoveredRowViewModel> FilteredRows { get; } = [];
+    public RangeObservableCollection<DiscoveredRowViewModel> FilteredRows { get; } = [];
 
     /// <summary>Device ids added while the page was open.</summary>
     public List<string> AddedDeviceIds { get; } = [];
@@ -383,7 +383,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                 foreach (CommitResult result in reply.Results.Where(r => r.DeviceId.Length > 0))
                 {
                     AddedDeviceIds.Add(result.DeviceId);
-                    session.FirstOrDefault(r => r.DiscoveredId == result.DiscoveredId)?.MarkAdded();
+                    _rowsById.GetValueOrDefault(result.DiscoveredId)?.MarkAdded();
                     added++;
                 }
 
@@ -657,12 +657,14 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
         if (!string.IsNullOrEmpty(found.DiscoveredId))
         {
-            DiscoveredRowViewModel? row = Rows.FirstOrDefault(r => r.DiscoveredId == found.DiscoveredId)
-                ?? Rows.FirstOrDefault(r => found.Serial.Length > 0 && r.Serial == found.Serial);
+            // Scale: O(1) lookups; a /16 range scan can report thousands of devices, each several times.
+            DiscoveredRowViewModel? row = _rowsById.GetValueOrDefault(found.DiscoveredId)
+                ?? (found.Serial.Length > 0 ? FindBySerial(found.Serial) : null);
             if (row is null)
             {
                 row = new DiscoveredRowViewModel(found, sessionId);
                 row.PropertyChanged += OnRowPropertyChanged;
+                _rowsById.TryAdd(row.DiscoveredId, row);
                 Rows.Add(row);
                 if (row.Matches(SearchText))
                 {
@@ -721,19 +723,83 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     private void OnRowPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(DiscoveredRowViewModel.IsSelected) or nameof(DiscoveredRowViewModel.CanAdd) or nameof(DiscoveredRowViewModel.ChipText))
+        if (e.PropertyName == nameof(DiscoveredRowViewModel.Serial) && sender is DiscoveredRowViewModel { Serial.Length: > 0 } withSerial)
+        {
+            _rowsBySerial.TryAdd(withSerial.Serial, withSerial);
+        }
+
+        bool countsChanged = sender is DiscoveredRowViewModel row && Recount(row);
+        if (countsChanged || e.PropertyName is nameof(DiscoveredRowViewModel.IsSelected) or nameof(DiscoveredRowViewModel.CanAdd) or nameof(DiscoveredRowViewModel.ChipText))
         {
             UpdateSummary();
         }
     }
 
+    private void OnRowsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems is not null)
+        {
+            foreach (DiscoveredRowViewModel row in e.NewItems.OfType<DiscoveredRowViewModel>())
+            {
+                Recount(row);
+                if (row.Serial.Length > 0)
+                {
+                    _rowsBySerial.TryAdd(row.Serial, row);
+                }
+            }
+        }
+
+        UpdateSummary();
+    }
+
+    /// <summary>The first row with the serial; rows are indexed when added and when they learn a serial.</summary>
+    private DiscoveredRowViewModel? FindBySerial(string serial) =>
+        _rowsBySerial.TryGetValue(serial, out DiscoveredRowViewModel? row) && row.Serial == serial ? row : null;
+
+    /// <summary>Updates the summary counters for one row in O(1); true when they changed.</summary>
+    private bool Recount(DiscoveredRowViewModel row)
+    {
+        var now = new RowCounts(row.CanAdd, row.ShowLogIn, row.ShowSetPassword, row.IsSelected && row.CanAdd);
+        if (_counted.TryGetValue(row, out RowCounts old))
+        {
+            if (old == now)
+            {
+                return false;
+            }
+
+            Count(old, -1);
+        }
+
+        Count(now, 1);
+        _counted[row] = now;
+        return true;
+    }
+
+    private void Count(RowCounts counts, int delta)
+    {
+        _ready += counts.Ready ? delta : 0;
+        _failed += counts.NeedsLogin ? delta : 0;
+        _factory += counts.NeedsPassword ? delta : 0;
+        _selected += counts.Selected ? delta : 0;
+    }
+
+    /// <summary>What a row adds to the summary ("ready to add", "need a login", "need a password", "selected").</summary>
+    private readonly record struct RowCounts(bool Ready, bool NeedsLogin, bool NeedsPassword, bool Selected);
+
+    // Scale: per-row bookkeeping so a discovered device, a login result or a checkbox costs O(1), not a
+    // scan of every row (4 counts over 5,000 rows per change made "select all" O(n^2)).
+    private readonly Dictionary<string, DiscoveredRowViewModel> _rowsById = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DiscoveredRowViewModel> _rowsBySerial = new(StringComparer.Ordinal);
+    private readonly Dictionary<DiscoveredRowViewModel, RowCounts> _counted = [];
+    private int _ready;
+    private int _failed;
+    private int _factory;
+    private int _selected;
+
     partial void OnSearchTextChanged(string value)
     {
-        FilteredRows.Clear();
-        foreach (DiscoveredRowViewModel row in Rows.Where(r => r.Matches(value)))
-        {
-            FilteredRows.Add(row);
-        }
+        // One Reset instead of one event per row.
+        FilteredRows.ReplaceAll(Rows.Where(r => r.Matches(value)).ToList());
     }
 
     partial void OnFocusedRowChanged(DiscoveredRowViewModel? value)
@@ -746,10 +812,10 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     private void UpdateSummary()
     {
-        int ready = Rows.Count(r => r.CanAdd);
-        int failed = Rows.Count(r => r.ShowLogIn);
-        int factory = Rows.Count(r => r.ShowSetPassword);
-        SelectedCount = Rows.Count(r => r.IsSelected && r.CanAdd);
+        int ready = _ready;
+        int failed = _failed;
+        int factory = _factory;
+        SelectedCount = _selected;
         var parts = new List<string> { string.Create(CultureInfo.CurrentCulture, $"{Rows.Count} found"), string.Create(CultureInfo.CurrentCulture, $"{ready} ready to add") };
         if (failed > 0)
         {

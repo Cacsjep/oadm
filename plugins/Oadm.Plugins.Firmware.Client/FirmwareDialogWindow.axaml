@@ -26,7 +26,7 @@
     <Border Grid.Row="2" Classes="card" Margin="16,16,16,0">
       <Grid RowDefinitions="Auto,*">
         <ui:CardHeader Title="Devices" Description="{Binding Summary}" />
-        <DataGrid Grid.Row="1" ItemsSource="{Binding Devices}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
+        <DataGrid x:Name="DevicesGrid" Grid.Row="1" ItemsSource="{Binding Devices}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
           <DataGrid.Columns>
             <DataGridTextColumn Header="Address" Width="130" Binding="{Binding Address}" x:DataType="fw:FirmwareDeviceRow" />
             <DataGridTextColumn Header="Model" Width="*" Binding="{Binding Model}" x:DataType="fw:FirmwareDeviceRow" />

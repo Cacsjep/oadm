@@ -90,13 +90,23 @@ Two processes, like ADM:
   later without changing the service contracts (auth travels in gRPC metadata, never in
   messages).
 - **Oadm.Client** is a thin UI: no device logic, no VAPIX calls. Everything goes through gRPC.
-  It subscribes to `DeviceService.Watch` and `TaskService.Watch` streams and keeps an
-  in-memory mirror for the grids.
+  It subscribes to `DeviceService.Watch` and `TaskService.Watch` streams (with snapshot end marker; the
+  task snapshot is limited to `TaskStore.MaxTasks` = 10,000 plus the active tasks) and keeps an
+  in-memory mirror for the grids. Stream changes reach the UI thread through a coalescing
+  `ChangeBatcher` (one dispatcher post per burst) and are applied to the stores as batches.
+- Server change feeds (devices, tasks) deliver every change in order while a watcher keeps up; beyond
+  1,024 waiting changes they coalesce per entity (`KeyedCoalescingChannel`: the latest snapshot wins,
+  an Added stays Added), so a slow client never loses a final state and never blocks the server.
+- gRPC responses are gzip-compressed (live view frames excepted); server `MaxReceiveMessageSize` 16 MB,
+  client 32 MB.
 
 ## gRPC services (Oadm.Contracts)
 
-- `DeviceService`: `List`, `Watch` (stream of DeviceChanged events), `Remove`, `Refresh`,
-  `SetCredentials`, `GetWebUiUrl`.
+- `DeviceService`: `List` (legacy: one message with every device, 23 MB for 5,000 devices with their
+  API lists; clients do not use it), `Watch(WatchDevicesRequest)` (stream of DeviceChanged events: one
+  ADDED per device, then with `snapshot_end_marker = 1` one `SNAPSHOT_END` (kind 4, no device), then live
+  changes; the request is wire compatible with the former Empty), `Remove` and `SetCredentials` (one
+  transaction for all ids), `Refresh`, `GetWebUiUrl`.
 - `DiscoveryService`: `StartZeroConf`, `StartRangeScan(from, to)`, `ProbeAddress(address)` (one
   entered IP or host name, optional port/scheme; INVALID_ARGUMENT for an unusable or unresolvable
   address), `WatchDiscovered` (stream; every device with its automatic login result
@@ -116,10 +126,16 @@ Two processes, like ADM:
   `Commit(session_id, discovered_ids, initial_passwords map = 6, initial_root_password)` (reply:
   `device_ids`, `results = 3` with discovered_id, device_id, status), `Prepare` (legacy, unused).
   See "Add Devices Page".
-- `TaskService`: `ListTaskPlugins` (context-menu entries incl. those contributed by Core
-  plugins; `TaskPluginInfo.display_name` normalized by the server, `group = 8` never empty), `Run(pluginId, deviceIds, payloadJson)` (one task per device, reply `task_ids`;
-  `task_id` is deprecated = first id), `List`, `Watch` (stream), `Cancel`, `Delete`,
-  `DeleteAll`, `GetLog(taskId)` (per-task log, oldest first, live while running); `TaskInfo` carries
+- `TaskService`: `ListTaskPlugins(ListTaskPluginsRequest)` (context-menu entries incl. those contributed by Core
+  plugins; `TaskPluginInfo.display_name` normalized by the server, `group = 8` never empty; runnable sets
+  cached by `TaskPluginRunnableCache` per device-table version, at most 10 s old; with `compact = 1` a
+  plugin carries the shorter of `runnable_device_ids` or `runnable_on_all_except = 9` +
+  `not_runnable_device_ids = 10`: 74 KB instead of 1.8 MB for 5,000 devices x 10 plugins), `Run(pluginId, deviceIds, payloadJson)` (one task per device, reply `task_ids`;
+  `task_id` is deprecated = first id; all tasks of a Run written in one transaction), `List(ListTasksRequest)`
+  (newest first; `limit`/`offset` paging, `TaskList.total_count = 2`; limit 0 = all, legacy),
+  `Watch(WatchTasksRequest)` (stream: snapshot of every active task plus the newest `snapshot_limit`
+  (0 = all), `SNAPSHOT_END` (kind 4, no task) when `snapshot_end_marker`, then live changes), `Cancel`, `Delete`,
+  `DeleteAll` (cancels and waits for active tasks, then one bulk delete), `GetLog(taskId)` (per-task log, oldest first, live while running); `TaskInfo` carries
   `repeated TaskStep steps = 13` (index, name, `TaskStepState`, detail, progress, started, finished) and
   `current_step_index = 14` (-1 none),
   `Query(pluginId, deviceId, method, payloadJson)` (read-only `ITaskPluginQuery` for task
@@ -148,6 +164,10 @@ Two processes, like ADM:
 
 # Data Model (EF Core, SQLite)
 
+SQLite runs with the WAL journal (`DatabaseInitializer`) and `synchronous=NORMAL` on every connection
+(`SqlitePragmaInterceptor`): a commit does not wait for an fsync, the database stays consistent after a
+crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
+
 - `Device`: Id (Guid), Serial (= MAC, unique, upper hex, no separators), Address,
   UseHostName (bool), HostName, Model (ProdNbr), FirmwareVersion, DhcpEnabled, HttpsEnabled,
   Dot1xEnabled, UpnpFriendlyName, ServerName, Status (enum below), Scheme (http/https),
@@ -168,7 +188,8 @@ Two processes, like ADM:
   (Queued, Running, Done, Failed, Cancelled, DoneWithWarnings), Owner (client machine/user name),
   CreatedUtc, StartedUtc, FinishedUtc, Progress (0-100), PayloadJson (column kept but always NULL:
   payloads may carry secrets and are never persisted; the migration clears old values),
-  ScheduledUtc (nullable, unused in Goal 1).
+  ScheduledUtc (nullable, unused in Goal 1). Indexes: CreatedUtc (paging, newest first), BatchId, Status
+  (migration `TaskStatusIndex`: active tasks for startup recovery and every Watch snapshot).
 - `TaskDeviceResult`: TaskId, DeviceId, Status, Message (last progress message, warning or
   error), Progress. Exactly one row per task (proto `TaskInfo.device_id` = its DeviceId).
 - `TaskStep` (table TaskSteps, migration `TaskSteps`): key (TaskId, Index), Name (max 200), State
@@ -500,7 +521,13 @@ default (`Polling.IntervalSeconds`). Full refresh (basicdeviceinfo + network par
 certificate info + server name) on add, after a task finishes on that device,
 every **10 minutes** per device (`Polling.FullRefreshMinutes`, checked every 30 s),
 and immediately when a status poll sees a device go from any non-Ok status back to Ok. All
-full refreshes go through one deduplicating queue with bounded parallelism.
+full refreshes go through one deduplicating queue with bounded parallelism. Scale: a poll round starts
+every interval and spreads its device starts evenly over 90 % of it (`PollRoundAsync`, at most
+`MaxParallelism` = 16 at once; 5,000 devices at 60 s = about 90 polls per second, not a burst); each
+device row is read right before its poll. After a server start the first scheduled full refresh is
+staggered: the n-th of N devices is due n/N of an interval later. A poll that changes nothing but
+LastSeenUtc is written but not published to watchers (no 5,000 identical updates per minute to every
+client).
 
 # Tasks
 
@@ -509,7 +536,8 @@ full refreshes go through one deduplicating queue with bounded parallelism.
   never marks the others as failed. The task state is the device state.
 - States: Queued, Running, Done, Failed, Cancelled, DoneWithWarnings (the plugin called
   `ReportWarning`; a failure wins over a warning). Persisted, visible in the tasks pane, history
-  kept until the user deletes it.
+  kept until the user deletes it or the retention removes it (finished tasks older than
+  `Tasks.RetentionDays` = 90 or beyond the newest `Tasks.MaxHistory` = 50,000; hourly, see Settings).
 - **Steps: a task always tells the user exactly what it is doing.** Every device request and every
   wait of a task plugin is its own short, imperative, named step ("Read users", "Upload firmware",
   "Wait for the device to come back"); five requests = five steps. Plugins plan their steps up front
@@ -536,7 +564,11 @@ full refreshes go through one deduplicating queue with bounded parallelism.
   overridden by `ITaskPlugin.MaxParallelDevices`, e.g. firmware 2); further tasks wait in Queued
   and a cancel while queued ends them as Cancelled ("Cancelled before start."). Cancellation via
   `CancellationToken`, exceptions become `Failed` with message (also logged as an Error entry),
-  never crash the server.
+  never crash the server. The default 8 can be raised for large sites with the server configuration
+  `Oadm:MaxParallelTasksPerPlugin` (1..256; e.g. a Restart on 5,000 devices at 8 in parallel and about
+  90 s each takes about 16 hours). A Run on N devices publishes N Added changes and writes all N tasks in
+  one store transaction (`ITaskStore.AddRangeAsync`) before any of them starts; the engine overhead
+  is measured at about 9 ms per task with SQLite (5,000 trivial tasks in about 45 s).
 - Persistence: every state transition writes the snapshot plus new log entries; a progress
   report with a message, a warning or a log entry writes at most once per second per device
   (the message survives as the device result). Payloads are never persisted or logged.
@@ -1191,7 +1223,10 @@ Server-side in `Setting`. Goal 1 keys: `Polling.IntervalSeconds` (60, 5..86400),
 `Discovery.ZeroConfSeconds` (30, 5..300: a zero-conf scan of the add page ends after this time; Settings
 page "Zero-conf scan duration (s)"), `Server.Name` (hostname),
 `Server.ListenUrl`, `Uploads.MaxMegabytes` (2048, 1..65536), `Uploads.RetentionHours` (24,
-1..8760; both server-only, not on the settings page yet), `Devices.UseHostName` (bool, false: add devices by host name when one is
+1..8760; both server-only, not on the settings page yet), `Tasks.RetentionDays` (90, 0..3650, 0 = no age
+limit) and `Tasks.MaxHistory` (50000, 0 or 100..1000000, 0 = no limit): task history retention, applied
+one minute after start and then hourly by `TaskRetentionHostedService` (finished tasks only, one bulk
+delete, one Removed change per task; server-only, not on the settings page yet), `Devices.UseHostName` (bool, false: add devices by host name when one is
 known, otherwise by IP address; proto `optional bool use_host_name = 7` so a partial `Set`
 keeps it). Settings page in the client exposes them; `Devices.UseHostName` is the checkbox
 "Use host name when available, otherwise IP address". Settings page card **Credential list**:
@@ -1262,7 +1297,28 @@ LocalApplicationData): server address, grid column layout, bottom pane state.
   for many devices, bounded parallelism on the server), per-device work is lazy for visible rows
   or summarized ("4,812 compatible, 188 missing API"), and images/snapshots load only for visible
   tiles. Every feature with a device list has a test with at least 5000 fake devices that keeps
-  filtering/selection/summary fast.
+  filtering/selection/summary fast. Target size: **5,000 devices and 50,000 tasks in the history**
+  (audit, numbers and fixes: `docs/scale-audit.md`). Concretely:
+  - Collections bound to a grid are `RangeObservableCollection` (`Oadm.Client.Infrastructure`): a
+    filter, select-all, snapshot or batch is one `ReplaceAll`/`AddRange`/`InsertRange`/`RemoveAll`
+    (one Reset), never one event per item. `GridSelection` hands a multi-item selection change to the
+    view model collection in one step (`IResettableList`).
+  - No `List.Contains`/`FirstOrDefault`/`Count(predicate)` over all rows inside a per-row loop or a
+    per-event handler: index by id (`Dictionary`, `HashSet`) and keep counters up to date per change
+    (add page summary, `TaskStore.ActiveCount`).
+  - Stores apply a change in O(1) (`DeviceStore.ApplyBatch`, `TaskStore.ApplyBatch`), raise one
+    `Changed` per batch with the affected ids, and an update that changes nothing raises nothing.
+    Derived data follows only the affected ids (task device labels by device id).
+  - Server-to-UI streams go through `ChangeBatcher` (one dispatcher post per burst).
+  - Server: per-device work has bounded parallelism and is spread over time (polling); writes for many
+    devices or tasks are one transaction (`RemoveManyAsync`, `SetManyAsync`, `AddRangeAsync`,
+    `DeleteManyAsync`); lists that can grow without bound are paged or limited (task history, Watch
+    snapshot) and have a retention; derived per-device results are cached per device-table version.
+  - gRPC: never one message whose size grows with the device or task count when a stream or a page
+    can carry it; sets of ids are sent in their shorter form (compact runnable sets).
+  - Tests: `[Trait("Category", "Perf")]` for scale tests that take longer than about a second; they run
+    with `manage test perf` (not in `manage test unit`), each with a generous but meaningful time
+    budget, and write their measured times to the test output.
 - Core plugin pages never repeat the page title in a card heading: description and status go into
   the host page header via `ui:PageHeader.Subtitle` / `ui:PageHeader.Trailing`; the card starts with
   the form. User-facing texts use plain language (no protocol jargon such as stratum, DISCOVER/OFFER).

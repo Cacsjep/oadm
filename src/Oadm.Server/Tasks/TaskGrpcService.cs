@@ -1,6 +1,5 @@
 using Grpc.Core;
 
-using Oadm.Core.Devices;
 using Oadm.Core.Plugins;
 using Oadm.Core.Tasks;
 using Oadm.Server.Common;
@@ -13,8 +12,7 @@ namespace Oadm.Server.Tasks;
 /// <summary>gRPC TaskService over the <see cref="TaskEngine"/> and the <see cref="PluginRegistry"/>.</summary>
 public sealed partial class TaskGrpcService(
     TaskEngine engine,
-    PluginRegistry registry,
-    DeviceRepository devices,
+    TaskPluginRunnableCache runnable,
     TaskPluginQueries queries,
     IHostApplicationLifetime lifetime,
     ILogger<TaskGrpcService> logger) : Proto.TaskService.TaskServiceBase
@@ -61,27 +59,25 @@ public sealed partial class TaskGrpcService(
         }
     }
 
-    /// <summary>Context-menu entries incl. core-plugin contributions, with the devices each one can run on.</summary>
-    public override async Task<Proto.TaskPluginList> ListTaskPlugins(Proto.Empty request, ServerCallContext context)
+    /// <summary>
+    /// Context-menu entries incl. core-plugin contributions, with the devices each one can run on.
+    /// The runnable sets come from the <see cref="TaskPluginRunnableCache"/>; with <c>compact</c> each
+    /// plugin carries the shorter of the runnable or the not-runnable ids.
+    /// </summary>
+    public override async Task<Proto.TaskPluginList> ListTaskPlugins(Proto.ListTaskPluginsRequest request, ServerCallContext context)
     {
-        var all = await devices.ListDevicesAsync(context.CancellationToken).ConfigureAwait(false);
         var reply = new Proto.TaskPluginList();
-        foreach (var plugin in registry.TaskPlugins)
+        foreach (var entry in await runnable.GetAsync(context.CancellationToken).ConfigureAwait(false))
         {
             try
             {
-                if (!plugin.Plugin.ShowInMenus)
-                {
-                    continue; // started by its core plugin's page only
-                }
-
-                reply.Plugins.Add(Mappers.ToProto(plugin, all.Where(d => SafeCanRun(plugin, d)).Select(d => d.Id)));
+                reply.Plugins.Add(Mappers.ToProto(entry, request.Compact));
             }
 #pragma warning disable CA1031 // A plugin with a throwing property must not break the menu.
             catch (Exception ex)
 #pragma warning restore CA1031
             {
-                LogPluginInfoFailed(ex, plugin.Id);
+                LogPluginInfoFailed(ex, entry.Plugin.Id);
             }
         }
 
@@ -112,23 +108,53 @@ public sealed partial class TaskGrpcService(
         }
     }
 
-    public override async Task<Proto.TaskList> List(Proto.Empty request, ServerCallContext context)
+    /// <summary>Newest first; a page with <c>limit</c> (store paging), every task without.</summary>
+    public override async Task<Proto.TaskList> List(Proto.ListTasksRequest request, ServerCallContext context)
     {
+        var ct = context.CancellationToken;
         var reply = new Proto.TaskList();
-        reply.Tasks.AddRange((await engine.ListAsync(context.CancellationToken).ConfigureAwait(false)).Select(Mappers.ToProto));
+        if (request.Limit > 0)
+        {
+            var page = await engine.ListPageAsync(Math.Max(0, request.Offset), request.Limit, ct).ConfigureAwait(false);
+            reply.Tasks.AddRange(page.Tasks.Select(Mappers.ToProto));
+            reply.TotalCount = page.TotalCount;
+            return reply;
+        }
+
+        var all = await engine.ListAsync(ct).ConfigureAwait(false);
+        reply.Tasks.AddRange(all.Skip(Math.Max(0, request.Offset)).Select(Mappers.ToProto));
+        reply.TotalCount = all.Count;
         return reply;
     }
 
-    /// <summary>Snapshot (one ADDED per task), then live changes.</summary>
-    public override async Task Watch(Proto.Empty request, IServerStreamWriter<Proto.TaskChanged> responseStream, ServerCallContext context)
+    /// <summary>
+    /// Snapshot (one ADDED per task: every active task plus the newest <c>snapshot_limit</c>, 0 = all),
+    /// SNAPSHOT_END when asked for, then live changes.
+    /// </summary>
+    public override async Task Watch(Proto.WatchTasksRequest request, IServerStreamWriter<Proto.TaskChanged> responseStream, ServerCallContext context)
     {
         using var linked = GrpcGuard.LinkWithShutdown(context, lifetime.ApplicationStopping);
         var ct = linked.Token;
         try
         {
-            await foreach (var change in engine.WatchAsync(includeSnapshot: true, ct).ConfigureAwait(false))
+            var (snapshot, subscription) = await engine.SubscribeWithSnapshotAsync(
+                request.SnapshotLimit > 0 ? request.SnapshotLimit : null, ct).ConfigureAwait(false);
+            using (subscription)
             {
-                await responseStream.WriteAsync(Mappers.ToProto(change), ct).ConfigureAwait(false);
+                foreach (var record in snapshot)
+                {
+                    await responseStream.WriteAsync(Mappers.ToProto(new TaskChange(TaskChangeKind.Added, record)), ct).ConfigureAwait(false);
+                }
+
+                if (request.SnapshotEndMarker)
+                {
+                    await responseStream.WriteAsync(new Proto.TaskChanged { Kind = Proto.TaskChanged.Types.Kind.SnapshotEnd }, ct).ConfigureAwait(false);
+                }
+
+                await foreach (var change in subscription.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+                {
+                    await responseStream.WriteAsync(Mappers.ToProto(change), ct).ConfigureAwait(false);
+                }
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -159,45 +185,12 @@ public sealed partial class TaskGrpcService(
         return new Proto.Empty();
     }
 
-    /// <summary>Clears the task history: requests cancellation of every active task first, then deletes all tasks.</summary>
+    /// <summary>Clears the task history: cancels every active task, waits for them, then one bulk delete.</summary>
     public override async Task<Proto.DeleteAllReply> DeleteAll(Proto.Empty request, ServerCallContext context)
     {
-        var ct = context.CancellationToken;
-        var tasks = await engine.ListAsync(ct).ConfigureAwait(false);
-
-        // Cancel all at once so they stop in parallel instead of one after the other.
-        foreach (var task in tasks.Where(t => !t.State.IsTerminal()))
-        {
-            engine.Cancel(task.Id);
-        }
-
-        var deleted = 0;
-        foreach (var task in tasks)
-        {
-            // DeleteAsync waits for a cancelled task to stop and publishes Removed.
-            if (await engine.DeleteAsync(task.Id, ct).ConfigureAwait(false))
-            {
-                deleted++;
-            }
-        }
-
+        var deleted = await engine.DeleteAllAsync(context.CancellationToken).ConfigureAwait(false);
         LogDeletedAll(deleted);
         return new Proto.DeleteAllReply { Deleted = deleted };
-    }
-
-    private bool SafeCanRun(RegisteredTaskPlugin plugin, Device device)
-    {
-        try
-        {
-            return plugin.Plugin.CanRun(device);
-        }
-#pragma warning disable CA1031 // Plugin code is untrusted.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            LogCanRunFailed(ex, plugin.Id, device.Id);
-            return false;
-        }
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Task plugin {PluginId} could not be described")]
@@ -205,7 +198,4 @@ public sealed partial class TaskGrpcService(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Deleted all tasks ({Count})")]
     private partial void LogDeletedAll(int count);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Task plugin {PluginId}: CanRun threw for device {DeviceId}")]
-    private partial void LogCanRunFailed(Exception ex, string pluginId, Guid deviceId);
 }

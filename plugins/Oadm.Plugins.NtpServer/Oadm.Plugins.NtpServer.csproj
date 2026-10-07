@@ -24,6 +24,7 @@
   <ItemGroup>
     <Compile Include="..\Oadm.Plugins.DateTime\Model\*.cs" Link="DateTime\Model\%(Filename)%(Extension)" />
     <Compile Include="..\Oadm.Plugins.DateTime\Vapix\*.cs" Link="DateTime\Vapix\%(Filename)%(Extension)" />
+    <Compile Include="..\Shared\CachedApiCheck.cs" Link="Common\CachedApiCheck.cs" />
     <EmbeddedResource Include="..\Oadm.Plugins.DateTime\Model\TimeZones.txt" LogicalName="Oadm.Plugins.DateAndTime.TimeZones.txt" Link="DateTime\Model\TimeZones.txt" />
   </ItemGroup>
 

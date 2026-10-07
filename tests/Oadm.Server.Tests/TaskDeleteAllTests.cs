@@ -34,12 +34,12 @@ public sealed class TaskDeleteAllTests
         await TestHelpers.WaitUntilAsync(() => Task.FromResult(stuck.RestartCalls == 1), "restart sent");
 
         // Includes the AddDevices tasks created by AddDeviceAsync.
-        var before = (await host.Tasks.ListAsync(new Proto.Empty())).Tasks.Select(t => t.Id).ToHashSet();
+        var before = (await host.Tasks.ListAsync(new Proto.ListTasksRequest())).Tasks.Select(t => t.Id).ToHashSet();
         Assert.Contains(done.TaskIds[0], before);
         Assert.Contains(running.TaskIds[0], before);
 
         using var cts = new CancellationTokenSource(TestHelpers.DefaultTimeout);
-        using var watch = host.Tasks.Watch(new Proto.Empty(), cancellationToken: cts.Token);
+        using var watch = host.Tasks.Watch(new Proto.WatchTasksRequest(), cancellationToken: cts.Token);
         var snapshot = new HashSet<string>();
         var removed = new HashSet<string>();
         var deleteAll = Task.Run(async () =>
@@ -78,7 +78,7 @@ public sealed class TaskDeleteAllTests
 
         var reply = await deleteAll;
         Assert.Equal(before.Count, reply.Deleted);
-        Assert.Empty((await host.Tasks.ListAsync(new Proto.Empty())).Tasks);
+        Assert.Empty((await host.Tasks.ListAsync(new Proto.ListTasksRequest())).Tasks);
         Assert.Equal(1, stuck.RestartCalls);
     }
 
@@ -90,6 +90,6 @@ public sealed class TaskDeleteAllTests
         var reply = await host.Tasks.DeleteAllAsync(new Proto.Empty());
 
         Assert.Equal(0, reply.Deleted);
-        Assert.Empty((await host.Tasks.ListAsync(new Proto.Empty())).Tasks);
+        Assert.Empty((await host.Tasks.ListAsync(new Proto.ListTasksRequest())).Tasks);
     }
 }

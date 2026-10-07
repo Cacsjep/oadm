@@ -15,5 +15,14 @@ public partial class FirmwareDialogWindow : Window
                 vm.CloseRequested += (_, payload) => Close(payload);
             }
         };
+
+        // The grid virtualizes its rows: the status of a device is read only when its row is shown.
+        this.FindControl<DataGrid>("DevicesGrid")!.LoadingRow += (_, e) =>
+        {
+            if (DataContext is FirmwareDialogViewModel vm && e.Row.DataContext is FirmwareDeviceRow row)
+            {
+                _ = vm.EnsureStatusAsync(row);
+            }
+        };
     }
 }
