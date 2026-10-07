@@ -94,7 +94,10 @@ Device status enum: `Ok`, `Unreachable`, `CredentialsRequired` (401/403), `Passw
 
 ## Zero-conf: mDNS / Bonjour only (Goal 1)
 
-Browse `_axis-video._tcp.local`. TXT record carries `macaddress`; A/AAAA gives the address.
+Browse `_axis-video._tcp.local`. Verified on AXIS OS 12.11: the TXT record has exactly one
+key `macaddress=<SERIAL>`, the instance name is `<Bonjour.FriendlyName> - <SERIAL>`, SRV
+points to port 80 at `axis-<serial lowercase>.local`, A/AAAA gives the address. Ignore
+169.254.x.x link-local addresses when a routable one is announced.
 Must work on all three OS and on multiple NICs (bind one socket per interface). Runs
 continuously while the add wizard is open and once at server start. SSDP and WS-Discovery
 are explicitly out of scope for Goal 1.
@@ -111,18 +114,22 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
 
 # Device Communication (VAPIX)
 
-- Auth: HTTP Digest via `HttpClient` credentials. Basic is never sent over plain HTTP.
+- Auth: AXIS OS 12 uses Digest on port 80 and Basic on port 443 (seen in
+  `/config/rest/virtualhost/v1` and the 401 headers). The client offers Digest only over
+  HTTP and Basic or Digest over HTTPS. Basic is never sent over plain HTTP.
+- Factory-default check without credentials: `systemready.cgi` returns `needsetup` (yes =
+  no admin user yet) and `passphrasepolicy` (none, length, complex).
 - Prefer HTTPS, fall back to HTTP if 443 is closed. Store which scheme worked.
 - Certificates: trust on first use. Store SHA-256 fingerprint on add. A later mismatch sets
   status `CertificateChanged` and blocks tasks until the user accepts the new certificate.
 - Endpoints used in Goal 1:
   - `basicdeviceinfo.cgi` -> SerialNumber, ProdNbr, ProdShortName, Version, HardwareID
-  - `param.cgi?action=list&group=Network.BootProto,Network.UPnP.FriendlyName,Network.Interface.I0.dot1x.Enabled,HTTPS`
-    -> DHCP, UPnP name, 802.1X, HTTPS (exact HTTPS parameter to be verified on a real device,
-    AXIS OS 11+ may require the network settings JSON API)
-  - `pwdgrp.cgi?action=add&user=root&pwd=<pw>&grp=root&sgrp=admin:operator:viewer:ptz`
-    -> first password on a factory-default device (verify whether current AXIS OS requires
-    HTTPS for this call)
+  - `param.cgi?action=list&group=Network.BootProto,Network.UPnP.FriendlyName,Network.Interface.I0.dot1x.Enabled,HTTPS.Enabled`
+    -> DHCP, UPnP name, 802.1X, HTTPS (`HTTPS.Enabled=yes|no` still exists on 12.x)
+  - `pwdgrp.cgi` action add, user root, grp root, sgrp admin:operator:viewer:ptz
+    -> first password on a factory-default device. Works over HTTP without credentials, but
+    we send it over HTTPS when available and always with arguments in the POST body, never
+    in the URL. Since AXIS OS 11.5 the first user does not have to be named root.
   - `restart.cgi` -> Restart task plugin
 - All VAPIX access lives in `Oadm.Core.Vapix.VapixClient`, one method per endpoint,
   unit-tested against recorded responses in `tests/.../Fixtures`.
@@ -136,7 +143,9 @@ Toolbar buttons: **Add devices** (zero-conf) and **Add devices from IP range**.
 2. **Host name**: checkbox "Use host name when available, otherwise IP address" (default off).
 3. **Set password**: list of selected devices that are factory default (`PasswordNotSet`).
    Fields: new password, confirm. Button **Skip** leaves them without a password.
-   Password rules shown inline (1-64 printable ASCII chars).
+   Password rules shown inline: 1-64 printable ASCII chars, plus the stricter device
+   passphrase policy from systemready when present (length: min 15 chars, complex: min 12
+   with mixed character types).
 4. **Credentials**: for devices that already have a password: user name, password, checkbox
    "Use these credentials for all selected devices", per-device override possible.
    Wrong credentials do not block adding; the device gets status `CredentialsRequired`.
@@ -369,9 +378,10 @@ device grid, (7) add wizard, (8) plugin loader + Restart plugin, (9) polish and 
 
 # Open Points to Verify on Real Hardware
 
-- Exact VAPIX parameter for the HTTPS enabled state on AXIS OS 11/12.
-- Whether `pwdgrp.cgi` for the first root password requires HTTPS on current AXIS OS.
-- mDNS TXT record keys on current firmware.
+Resolved on AXIS P3265-V, AXIS OS 12.11.77 (see VAPIX section): HTTPS parameter, first
+password over HTTP, mDNS TXT keys. Still open:
+- Success response of `pwdgrp.cgi` on a factory-default device (needs a reset camera).
+- `restart.cgi` end to end through the Restart plugin.
 
 # Later Goals (not now)
 
