@@ -135,12 +135,12 @@
               <Border Classes="inlineEditor" IsVisible="{Binding IsPresetOpen}">
                 <StackPanel Classes="form">
                   <TextBlock Classes="sectionTitle" Text="Save with values" />
-                  <Grid ColumnDefinitions="150,*">
-                    <TextBlock Classes="fieldLabel" Text="Name" />
-                    <TextBox Grid.Column="1" Text="{Binding PresetName}" />
-                  </Grid>
+                  <ui:FormField Classes="wide" Label="Name">
+                    <TextBox Text="{Binding PresetName}" />
+                  </ui:FormField>
                   <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button Classes="primary" Content="Save" Command="{Binding ConfirmPresetCommand}" />
+                    <Button Classes="primary" Content="Save" Command="{Binding ConfirmPresetCommand}"
+                            ToolTip.Tip="{Binding PresetBlockedReason}" ToolTip.ShowOnDisabled="True" />
                     <Button Classes="secondary" Content="Cancel" Command="{Binding CancelPresetCommand}" />
                   </StackPanel>
                 </StackPanel>
@@ -155,19 +155,15 @@
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="c:FieldViewModel">
-                      <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto">
-                        <TextBlock Classes="fieldLabel" Text="{Binding Label}" />
-                        <Panel Grid.Column="1">
+                      <!-- The error shows below the input (data validation of Text / SelectedOption), the hint otherwise -->
+                      <ui:FormField Classes="wide" Label="{Binding Label}" Hint="{Binding Hint}">
+                        <Panel>
                           <TextBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" IsVisible="{Binding IsTextInput}" />
                           <ui:PasswordBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" IsVisible="{Binding IsPassword}" />
                           <CheckBox IsChecked="{Binding BoolValue}" Content="Yes" IsVisible="{Binding IsBoolean}" />
                           <ComboBox ItemsSource="{Binding Options}" SelectedItem="{Binding SelectedOption}" HorizontalAlignment="Stretch" IsVisible="{Binding IsEnum}" />
                         </Panel>
-                        <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,4,0,0">
-                          <TextBlock Classes="error small" Text="{Binding Error}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
-                          <TextBlock Classes="secondary small" Text="{Binding Hint}" TextWrapping="Wrap" IsVisible="{Binding Hint, Converter={x:Static ObjectConverters.IsNotNull}}" />
-                        </StackPanel>
-                      </Grid>
+                      </ui:FormField>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
@@ -179,7 +175,7 @@
         <!-- Raw request (like Postman) -->
         <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding IsRawTab}">
           <StackPanel Classes="form" DataContext="{Binding Raw}" x:DataType="c:RawEditorViewModel">
-            <Grid ColumnDefinitions="110,*" ColumnSpacing="8">
+            <Grid Classes="inputRow" ColumnDefinitions="110,*" ColumnSpacing="8">
               <ComboBox ItemsSource="{Binding Methods}" SelectedItem="{Binding Method}" HorizontalAlignment="Stretch" />
               <TextBox Grid.Column="1" Text="{Binding Path}" PlaceholderText="/axis-cgi/param.cgi" />
             </Grid>
@@ -198,6 +194,8 @@
                 <DataGridTextColumn Header="Value" Width="*" Binding="{Binding Value}" x:DataType="c:KeyValueRowViewModel" />
               </DataGrid.Columns>
             </DataGrid>
+            <TextBlock Classes="fieldMessage error" Text="{Binding QueryRowsError}"
+                       IsVisible="{Binding QueryRowsError, Converter={x:Static ObjectConverters.IsNotNull}}" />
 
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Classes="sectionTitle" Text="Headers" VerticalAlignment="Center" />
@@ -213,20 +211,21 @@
                 <DataGridTextColumn Header="Value" Width="*" Binding="{Binding Value}" x:DataType="c:KeyValueRowViewModel" />
               </DataGrid.Columns>
             </DataGrid>
+            <TextBlock Classes="fieldMessage error" Text="{Binding HeaderRowsError}"
+                       IsVisible="{Binding HeaderRowsError, Converter={x:Static ObjectConverters.IsNotNull}}" />
 
-            <Grid ColumnDefinitions="150,*">
-              <TextBlock Classes="fieldLabel" Text="Body" />
-              <ComboBox Grid.Column="1" ItemsSource="{Binding BodyTypeOptions}" SelectedItem="{Binding BodyType}" Width="160" />
-            </Grid>
+            <ui:FormField Label="Body" InputWidth="160">
+              <ComboBox ItemsSource="{Binding BodyTypeOptions}" SelectedItem="{Binding BodyType}" />
+            </ui:FormField>
             <TextBox Classes="code" Text="{Binding BodyText}" Height="120" IsVisible="{Binding HasBody}"
                      PlaceholderText="JSON, form (key=value&amp;key2=value), text or XML; use {{name}} for fields" />
 
-            <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto" RowSpacing="10">
-              <TextBlock Classes="fieldLabel" Text="Timeout (s)" />
-              <NumericUpDown Grid.Column="1" Value="{Binding TimeoutSeconds}" Minimum="1" Maximum="600" Increment="5" FormatString="0" Width="160" HorizontalAlignment="Left" />
-              <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Response" />
-              <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding ResponseKindOptions}" SelectedItem="{Binding ResponseKind}" Width="160" />
-            </Grid>
+            <ui:FormField Label="Timeout (s)" InputWidth="160">
+              <NumericUpDown Value="{Binding TimeoutSeconds}" Minimum="1" Maximum="600" Increment="5" FormatString="0" />
+            </ui:FormField>
+            <ui:FormField Label="Response" InputWidth="160">
+              <ComboBox ItemsSource="{Binding ResponseKindOptions}" SelectedItem="{Binding ResponseKind}" />
+            </ui:FormField>
 
             <TextBlock Classes="sectionTitle" Text="Fields" IsVisible="{Binding HasFields}" />
             <ItemsControl ItemsSource="{Binding Fields}" IsVisible="{Binding HasFields}">
@@ -235,48 +234,56 @@
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="c:RawFieldViewModel">
-                  <Grid ColumnDefinitions="140,*,130,*" ColumnSpacing="8">
-                    <TextBlock Classes="fieldLabel" Text="{Binding Placeholder}" />
-                    <TextBox Grid.Column="1" Text="{Binding Label}" PlaceholderText="Label" />
-                    <ComboBox Grid.Column="2" ItemsSource="{x:Static c:RawEditorViewModel.FieldTypeOptions}" SelectedItem="{Binding Type}" HorizontalAlignment="Stretch" />
-                    <Panel Grid.Column="3">
-                      <TextBox Text="{Binding Value}" PlaceholderText="Value" IsVisible="{Binding !IsPassword}" />
-                      <ui:PasswordBox Text="{Binding Value}" PlaceholderText="Value" IsVisible="{Binding IsPassword}" />
-                    </Panel>
-                  </Grid>
+                  <StackPanel>
+                    <Grid ColumnDefinitions="140,*,130,*" ColumnSpacing="8">
+                      <TextBlock Classes="fieldLabel" Text="{Binding Placeholder}" />
+                      <TextBox Grid.Column="1" Text="{Binding Label}" PlaceholderText="Label" />
+                      <ComboBox Grid.Column="2" ItemsSource="{x:Static c:RawEditorViewModel.FieldTypeOptions}" SelectedItem="{Binding Type}" HorizontalAlignment="Stretch" />
+                      <Panel Grid.Column="3">
+                        <TextBox Text="{Binding Value}" PlaceholderText="Value" IsVisible="{Binding !IsPassword}" />
+                        <ui:PasswordBox Text="{Binding Value}" PlaceholderText="Value" IsVisible="{Binding IsPassword}" />
+                      </Panel>
+                    </Grid>
+                    <!-- The problem of this field row, directly below it -->
+                    <TextBlock Classes="fieldMessage error" Text="{Binding Error}" IsVisible="{Binding HasError}" />
+                  </StackPanel>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <TextBlock Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
-
             <StackPanel Orientation="Horizontal" Spacing="8">
-              <Button Classes="secondary" Content="Add to rollout" Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).AddRawToRolloutCommand}" />
+              <Button Classes="secondary" Content="Add to rollout" Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).AddRawToRolloutCommand}"
+                      ToolTip.Tip="{Binding BlockedReason}" ToolTip.ShowOnDisabled="True" />
               <Button Classes="secondary" Command="{Binding OpenSaveCommand}"><ui:IconLabel Icon="{DynamicResource Icon.save}" Text="Save as command..." /></Button>
             </StackPanel>
 
             <Border Classes="inlineEditor" IsVisible="{Binding IsSaveOpen}">
               <StackPanel Classes="form">
                 <TextBlock Classes="sectionTitle" Text="Save as command" />
-                <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
-                  <TextBlock Classes="fieldLabel" Text="Name" />
-                  <TextBox Grid.Column="1" Text="{Binding SaveName}" />
-                  <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Category" />
-                  <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Categories}" SelectedItem="{Binding SaveCategory}" Width="200" />
-                  <TextBlock Grid.Row="2" Classes="fieldLabel" Text="Description" />
-                  <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding SaveDescription}" />
-                  <TextBlock Grid.Row="3" Classes="fieldLabel" Text="Requires API" />
-                  <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <ui:FormField Classes="wide" Label="Name">
+                  <TextBox Text="{Binding SaveName}" />
+                </ui:FormField>
+                <ui:FormField Label="Category" InputWidth="200">
+                  <ComboBox ItemsSource="{Binding Categories}" SelectedItem="{Binding SaveCategory}" />
+                </ui:FormField>
+                <ui:FormField Classes="wide" Label="Description">
+                  <TextBox Text="{Binding SaveDescription}" />
+                </ui:FormField>
+                <ui:FormField Classes="wide" Label="Requires API">
+                  <StackPanel Classes="inputRow">
                     <TextBox Text="{Binding RequiresApi}" PlaceholderText="param-cgi" Width="200" />
                     <TextBox Text="{Binding RequiresVersion}" PlaceholderText="1.0" Width="80" />
                   </StackPanel>
-                  <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Spacing="16">
+                </ui:FormField>
+                <ui:FormField Classes="wide">
+                  <StackPanel Orientation="Horizontal" Spacing="16">
                     <CheckBox Content="Changes the device" IsChecked="{Binding Writes}" />
                     <CheckBox Content="Dangerous (restart, reset, network, users)" IsChecked="{Binding Dangerous}" />
                   </StackPanel>
-                </Grid>
+                </ui:FormField>
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                  <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}" />
+                  <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}"
+                          ToolTip.Tip="{Binding BlockedReason}" ToolTip.ShowOnDisabled="True" />
                   <Button Classes="secondary" Content="Cancel" Command="{Binding CancelSaveCommand}" />
                 </StackPanel>
               </StackPanel>

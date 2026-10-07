@@ -59,5 +59,27 @@ public static class PasswordRules
         return password == confirm ? null : "The passwords do not match.";
     }
 
+    /// <summary>Error of the password field alone (empty, length, characters, policy); null when valid.</summary>
+    public static string? PasswordError(string password, string? policy)
+    {
+        ArgumentNullException.ThrowIfNull(password);
+        if (password.Length == 0)
+        {
+            return "Enter a password.";
+        }
+
+        string? error = Validate(password, password, policy);
+        return string.IsNullOrEmpty(error) ? null : error;
+    }
+
+    /// <summary>Error of the confirmation field; null when it repeats the password.</summary>
+    public static string? ConfirmError(string password, string confirm)
+    {
+        ArgumentNullException.ThrowIfNull(password);
+        ArgumentNullException.ThrowIfNull(confirm);
+        return confirm.Length == 0 ? "Enter the password again."
+            : confirm != password ? "The passwords do not match." : null;
+    }
+
     private static string Normalize(string? policy) => (policy ?? "").Trim().ToLowerInvariant();
 }

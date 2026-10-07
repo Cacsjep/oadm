@@ -37,6 +37,7 @@ public sealed class CommanderViewHeadlessTests
         App.Options = new AppOptions { UseFake = true, DataFolder = dataFolder };
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var completed = false;
         try
         {
             var page = await session.Dispatch(PageFixture.CreateAsync, CancellationToken.None);
@@ -94,8 +95,28 @@ public sealed class CommanderViewHeadlessTests
                 vm.Raw.MakeField(vm.Raw.QueryRows[1]);
                 Dispatcher.UIThread.RunJobs();
                 Capture(window, outDir, "plugin-vapix-commander-raw.png");
+
+                // Raw editor with errors: each one directly below its input (path, JSON body, field row), save form name.
+                vm.Raw.Path = "axis-cgi/param.cgi";
+                vm.Raw.BodyType = "json";
+                vm.Raw.BodyText = "{ broken";
+                vm.Raw.Fields[0].Label = "";
+                vm.Raw.OpenSaveCommand.Execute(null);
+                vm.Raw.SaveName = "ab";
+                vm.Raw.ShowProblems();
+                Dispatcher.UIThread.RunJobs();
+                Assert.Equal("The path must be relative to the device, start with / and must not contain \"..\".", vm.Raw.ErrorOf(nameof(vm.Raw.Path)));
+                Assert.StartsWith("The JSON body is not valid", vm.Raw.ErrorOf(nameof(vm.Raw.BodyText)), StringComparison.Ordinal);
+                Assert.Equal("Name must have 3 to 80 characters.", vm.Raw.ErrorOf(nameof(vm.Raw.SaveName)));
+                var pathBox = view.GetVisualDescendants().OfType<TextBox>().Single(t => t.IsEffectivelyVisible && t.Text == "axis-cgi/param.cgi");
+                Assert.True(DataValidationErrors.GetHasErrors(pathBox));
+                Assert.False(vm.AddRawToRolloutCommand.CanExecute(null));
+                Assert.False(vm.Raw.SaveCommand.CanExecute(null));
+                Capture(window, outDir, "plugin-vapix-commander-raw-errors.png");
                 window.Close();
+                completed = true;
             }, CancellationToken.None);
+            Assert.True(completed, "the page checks did not run to the end");
         }
         finally
         {

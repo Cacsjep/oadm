@@ -313,6 +313,10 @@ public sealed class ViewModelTests
         var vm = new NetworkSettingsViewModel(Devices(1));
         vm.SelectedIpv6 = vm.Ipv6Choices.Single(c => c.Value == Ipv6Choice.Static);
         Assert.True(vm.ShowIpv6Address);
+        Assert.Null(vm.ErrorOf(nameof(vm.Ipv6Address))); // untouched: not shown yet, but Apply says why it waits
+        Assert.Equal("Enter an IPv6 address.", vm.ApplyBlockedReason);
+        Assert.False(vm.CanApply);
+        vm.ApplyCommand.Execute(null); // trying to apply shows every error below its field
         Assert.Equal("Enter an IPv6 address.", vm.ErrorOf(nameof(vm.Ipv6Address)));
 
         vm.Ipv6Address = "::1";

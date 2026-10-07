@@ -83,9 +83,12 @@ public sealed class HeadlessDialogTests
             nts.IsNtp = true;
             nts.UseNts = true;
             nts.NtpServersText = "nts.netnod.se\nnts.example..com";
+            nts.ApplyCommand.Execute(null); // OK tried: the missing time zone shows below the list too
             var window4 = new DateTimeWindow { DataContext = nts };
             window4.Show();
             await PumpAsync();
+            Assert.Equal("Select a time zone.", nts.TimeZoneError);
+            Assert.NotNull(nts.ErrorOf(nameof(nts.NtpServersText)));
             Capture(window4, outDir, "datetime-dialog-nts-error.png");
             window4.Close();
             return (ok, errors);

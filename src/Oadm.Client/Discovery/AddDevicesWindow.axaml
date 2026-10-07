@@ -21,30 +21,35 @@
 
         <!-- IP range: Enter or Scan starts -->
         <StackPanel Grid.Row="1" Classes="inputRow" IsVisible="{Binding IsRangeMode}">
-          <TextBlock Classes="fieldLabel" Text="From" VerticalAlignment="Center" />
-          <TextBox x:Name="RangeFromBox" Width="180" Text="{Binding RangeFrom}" PlaceholderText="192.168.0.1">
-            <TextBox.KeyBindings>
-              <KeyBinding Gesture="Enter" Command="{Binding StartRangeCommand}" />
-            </TextBox.KeyBindings>
-          </TextBox>
-          <TextBlock Classes="fieldLabel" Text="To" VerticalAlignment="Center" />
-          <TextBox Width="180" Text="{Binding RangeTo}" PlaceholderText="192.168.0.254">
-            <TextBox.KeyBindings>
-              <KeyBinding Gesture="Enter" Command="{Binding StartRangeCommand}" />
-            </TextBox.KeyBindings>
-          </TextBox>
-          <ui:ToolbarButton Text="Scan" IconKey="search" Command="{Binding StartRangeCommand}" />
+          <ui:FormField Classes="inline" Label="From" InputWidth="180">
+            <TextBox x:Name="RangeFromBox" Text="{Binding RangeFrom}" PlaceholderText="192.168.0.1">
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding StartRangeCommand}" />
+              </TextBox.KeyBindings>
+            </TextBox>
+          </ui:FormField>
+          <ui:FormField Classes="inline" Label="To" InputWidth="180">
+            <TextBox x:Name="RangeToBox" Text="{Binding RangeTo}" PlaceholderText="192.168.0.254">
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding StartRangeCommand}" />
+              </TextBox.KeyBindings>
+            </TextBox>
+          </ui:FormField>
+          <ui:ToolbarButton Text="Scan" IconKey="search" Command="{Binding StartRangeCommand}"
+                            ToolTip.Tip="{Binding RangeBlockedReason}" ToolTip.ShowOnDisabled="True" />
         </StackPanel>
 
         <!-- Add manually: Enter or Find probes one address -->
         <StackPanel Grid.Row="1" Classes="inputRow" IsVisible="{Binding IsManualMode}">
-          <TextBlock Classes="fieldLabel" Text="Address" VerticalAlignment="Center" />
-          <TextBox x:Name="AddressBox" Width="380" Text="{Binding ManualAddress}" PlaceholderText="10.0.0.48, camera.example.com or https://10.0.0.48:8443">
-            <TextBox.KeyBindings>
-              <KeyBinding Gesture="Enter" Command="{Binding ProbeAddressCommand}" />
-            </TextBox.KeyBindings>
-          </TextBox>
-          <ui:ToolbarButton Text="Find" IconKey="search" Command="{Binding ProbeAddressCommand}" />
+          <ui:FormField Classes="inline" Label="Address" InputWidth="380">
+            <TextBox x:Name="AddressBox" Text="{Binding ManualAddress}" PlaceholderText="10.0.0.48, camera.example.com or https://10.0.0.48:8443">
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding ProbeAddressCommand}" />
+              </TextBox.KeyBindings>
+            </TextBox>
+          </ui:FormField>
+          <ui:ToolbarButton Text="Find" IconKey="search" Command="{Binding ProbeAddressCommand}"
+                            ToolTip.Tip="{Binding AddressBlockedReason}" ToolTip.ShowOnDisabled="True" />
         </StackPanel>
 
         <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,10">
@@ -129,26 +134,25 @@
           <StackPanel Classes="form">
             <TextBlock Classes="sectionTitle" Text="{Binding EditorTitle}" />
             <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding EditorRow.AuthDetail, FallbackValue=''}" />
-            <Grid ColumnDefinitions="150,280,*" RowDefinitions="Auto,Auto" Classes="form">
-              <TextBlock Classes="fieldLabel" Text="User name" />
-              <TextBox x:Name="LoginUserBox" Grid.Column="1" Text="{Binding EditorUserName}" />
-              <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Password" />
-              <ui:PasswordBox x:Name="LoginPasswordBox" Grid.Row="1" Grid.Column="1" Text="{Binding EditorPassword}">
+            <ui:FormField Label="User name">
+              <TextBox x:Name="LoginUserBox" Text="{Binding EditorUserName}" />
+            </ui:FormField>
+            <ui:FormField Label="Password">
+              <ui:PasswordBox x:Name="LoginPasswordBox" Text="{Binding EditorPassword}">
                 <ui:PasswordBox.KeyBindings>
                   <KeyBinding Gesture="Enter" Command="{Binding RetryCommand}" />
                 </ui:PasswordBox.KeyBindings>
               </ui:PasswordBox>
-            </Grid>
-            <Grid ColumnDefinitions="150,*">
-              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+            </ui:FormField>
+            <ui:FormField Classes="wide">
+              <StackPanel Orientation="Horizontal" Spacing="8">
                 <CheckBox Content="Save to credential list" IsChecked="{Binding SaveToCredentialList}" VerticalAlignment="Center"
                           ToolTip.Tip="Store the credential encrypted on the server; OADM then tries it on every device it finds" />
-                <Button Classes="primary" Content="Retry" Command="{Binding RetryCommand}" />
+                <Button Classes="primary" Content="Retry" Command="{Binding RetryCommand}"
+                        ToolTip.Tip="{Binding RetryBlockedReason}" ToolTip.ShowOnDisabled="True" />
                 <Button Classes="secondary" Content="Cancel" Command="{Binding CancelEditorCommand}" />
               </StackPanel>
-            </Grid>
-            <TextBlock Classes="error" Text="{Binding EditorError}" TextWrapping="Wrap"
-                       IsVisible="{Binding EditorError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </ui:FormField>
           </StackPanel>
         </Border>
 
@@ -156,26 +160,24 @@
         <Border Grid.Row="5" Classes="inlineEditor" IsVisible="{Binding IsPasswordEditorOpen}">
           <StackPanel Classes="form">
             <TextBlock Classes="sectionTitle" Text="{Binding EditorTitle}" />
-            <Grid ColumnDefinitions="150,280,*" RowDefinitions="Auto,Auto" Classes="form">
-              <TextBlock Classes="fieldLabel" Text="New password" />
-              <ui:PasswordBox x:Name="NewPasswordBox" Grid.Column="1" Text="{Binding NewPassword}" />
-              <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Confirm password" />
-              <ui:PasswordBox Grid.Row="1" Grid.Column="1" Text="{Binding ConfirmPassword}">
+            <ui:FormField Label="New password" Hint="{Binding PolicyHint}">
+              <ui:PasswordBox x:Name="NewPasswordBox" Text="{Binding NewPassword}" />
+            </ui:FormField>
+            <ui:FormField Label="Confirm password">
+              <ui:PasswordBox Text="{Binding ConfirmPassword}">
                 <ui:PasswordBox.KeyBindings>
                   <KeyBinding Gesture="Enter" Command="{Binding ApplyPasswordCommand}" />
                 </ui:PasswordBox.KeyBindings>
               </ui:PasswordBox>
-            </Grid>
-            <TextBlock Classes="secondary small" TextWrapping="Wrap" Text="{Binding PolicyHint}" />
-            <Grid ColumnDefinitions="150,*">
-              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+            </ui:FormField>
+            <ui:FormField Classes="wide">
+              <StackPanel Orientation="Horizontal" Spacing="8">
                 <CheckBox Content="Use for all factory-default devices" IsChecked="{Binding UseForAllFactoryDefault}" VerticalAlignment="Center" />
-                <Button Classes="primary" Content="Apply" Command="{Binding ApplyPasswordCommand}" />
+                <Button Classes="primary" Content="Apply" Command="{Binding ApplyPasswordCommand}"
+                        ToolTip.Tip="{Binding ApplyPasswordBlockedReason}" ToolTip.ShowOnDisabled="True" />
                 <Button Classes="secondary" Content="Cancel" Command="{Binding CancelEditorCommand}" />
               </StackPanel>
-            </Grid>
-            <TextBlock Classes="error" Text="{Binding EditorError}" TextWrapping="Wrap"
-                       IsVisible="{Binding EditorError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </ui:FormField>
           </StackPanel>
         </Border>
 

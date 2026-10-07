@@ -1,4 +1,3 @@
-using System.Collections;
 using System.ComponentModel;
 using System.Globalization;
 
@@ -7,6 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Plugins.Network.Model;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Validation;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Network.Client;
@@ -46,11 +46,12 @@ public delegate Task<bool> ConfirmChange(string title, string message, string co
 /// <summary>
 /// "Network settings..." dialog. Every section starts at "Keep unchanged", so only touched sections end up in the
 /// payload. Validation is the same <see cref="PayloadValidator"/> the server runs before writing. Errors appear once:
-/// at the field they belong to (<see cref="INotifyDataErrorInfo"/>) or in the row of the Devices table. Several
+/// below the field they belong to (<see cref="ValidatingViewModel"/>, once the field was edited or Apply was tried)
+/// or in the row of the Devices table. Several
 /// devices: the new IPv4 (and static IPv6) addresses are set per device in the table only, suggested from the first
 /// device's current address. Apply asks for confirmation (<see cref="Confirm"/>) when the change can cut OADM off.
 /// </summary>
-public sealed partial class NetworkSettingsViewModel : ObservableObject, INotifyDataErrorInfo
+public sealed partial class NetworkSettingsViewModel : ValidatingViewModel
 {
     public const string ConfirmTitle = "The devices may become unreachable";
 
@@ -62,8 +63,15 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject, INotify
         nameof(SelectedHostName), nameof(HostNameText),
     ];
 
+    /// <summary>The fields with errors, in the order the first error is reported (Apply tooltip).</summary>
+    private static readonly string[] Fields =
+    [
+        nameof(Ipv4Address), nameof(Ipv4Mask), nameof(Ipv4Gateway), nameof(Ipv6Address), nameof(Ipv6Prefix), nameof(Ipv6Gateway),
+        nameof(DnsPrimary), nameof(DnsSecondary), nameof(DnsDomain), nameof(DnsSearch), nameof(HostNameText),
+    ];
+
     private readonly IReadOnlyList<IDeviceInfo> _devices;
-    private readonly FieldErrors _fieldErrors;
+    private Dictionary<string, string?> _fieldErrors = [];
     private NetworkPayload? _payload;
     private bool _initialized;
     private bool _recomputing;
@@ -73,7 +81,7 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject, INotify
     {
         ArgumentNullException.ThrowIfNull(devices);
         _devices = devices;
-        _fieldErrors = new FieldErrors(name => ErrorsChanged?.Invoke(this, new DataErrorsChangedEventArgs(name)));
+        Validation.Rules(Fields, () => _fieldErrors);
         Ipv4Choices = [new(Ipv4Choice.Keep, "Keep unchanged"), new(Ipv4Choice.Dhcp, "DHCP"), new(Ipv4Choice.Static, "Static")];
         Ipv6Choices =
         [
@@ -100,8 +108,6 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject, INotify
 
     /// <summary>Raised when the dialog should close: true = apply (see <see cref="ResultJson"/>), false = cancel.</summary>
     public event EventHandler<bool>? CloseRequested;
-
-    public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged;
 
     /// <summary>Confirmation before a risky Apply; the dialog shows the shared message window. Null: no confirmation.</summary>
     public ConfirmChange? Confirm { get; set; }
@@ -215,19 +221,11 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject, INotify
 
     public bool HasWarning => !string.IsNullOrEmpty(ReachabilityWarning);
 
-    /// <summary>A field has an error (shown below that field).</summary>
-    public bool HasErrors => _fieldErrors.HasErrors;
-
     /// <summary>Payload JSON after Apply; null before.</summary>
     public string? ResultJson { get; private set; }
 
     /// <summary>Current payload (null while the input cannot be turned into one).</summary>
     public NetworkPayload? Payload => _payload;
-
-    public IEnumerable GetErrors(string? propertyName) => _fieldErrors.GetErrors(propertyName);
-
-    /// <summary>The error of one field (tests).</summary>
-    public string? ErrorOf(string propertyName) => _fieldErrors[propertyName];
 
     /// <summary>Reads the first device's current settings through the plugin query and prefills the fields. Never throws.</summary>
     public async Task LoadCurrentAsync(ITaskDialogContext ctx, CancellationToken ct)
@@ -295,6 +293,8 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject, INotify
         {
             HostNameText = current.HostName.StaticHostName ?? current.HostName.HostName ?? HostNameText;
         }
+
+        Validation.Reset(); // prefilled, not edited: errors show once the user edits a field or tries Apply
     }
 
     /// <summary>Apply: confirms a risky change first (shared confirmation window), then closes with the payload.</summary>
@@ -304,6 +304,7 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject, INotify
         Recompute();
         if (!CanApply || _payload is null)
         {
+            Validation.ShowAll();
             return;
         }
 
@@ -451,7 +452,7 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject, INotify
                 var field = error.Contains("search", StringComparison.OrdinalIgnoreCase) ? nameof(DnsSearch)
                     : error.Contains("domain name", StringComparison.Ordinal) ? nameof(DnsDomain)
                     : nameof(DnsPrimary);
-                fields.TryAdd(field, FieldErrors.Clean(error));
+                fields.TryAdd(field, FieldErrorText.Clean(error));
             }
         }
 
@@ -460,21 +461,22 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject, INotify
             var hostOnly = new NetworkPayload { HostName = payload.HostName, Devices = devices };
             if (PayloadValidator.Validate(hostOnly) is [var error, ..])
             {
-                fields[nameof(HostNameText)] = FieldErrors.Clean(error);
+                fields[nameof(HostNameText)] = FieldErrorText.Clean(error);
             }
         }
 
-        _fieldErrors.SetAll(fields);
+        _fieldErrors = fields;
+        Validation.Validate();
 
         // The whole payload, exactly as the server validates it before the first write (rows included).
         var remaining = payload.HasChanges ? PayloadValidator.Validate(payload) : [];
         var rowProblems = ShowPreview && (Assignment.HasConflicts || Assignment.HasError);
         ApplyBlockedReason = !payload.HasChanges
             ? "Choose at least one setting to change."
-            : _fieldErrors.First
+            : Validation.FirstError
                 ?? (Assignment.Error is { } tableError && IsMultiDevice && IsIpv4Static ? tableError : null)
                 ?? (rowProblems ? "Resolve the problems shown in the Devices table." : null)
-                ?? remaining.Select(FieldErrors.Clean).FirstOrDefault();
+                ?? remaining.Select(FieldErrorText.Clean).FirstOrDefault();
 
         Assignment.ShowHostName = IsHostNameStatic;
         Assignment.SetHostNames(hostNames);
@@ -495,12 +497,12 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject, INotify
         }
         else if (network.FirstOrDefault(e => e.Contains("subnet mask", StringComparison.Ordinal)) is { } maskError)
         {
-            fields[nameof(Ipv4Mask)] = FieldErrors.Clean(maskError);
+            fields[nameof(Ipv4Mask)] = FieldErrorText.Clean(maskError);
         }
 
         if (prefix is not null && network.FirstOrDefault(e => !e.Contains("subnet mask", StringComparison.Ordinal)) is { } gatewayError)
         {
-            fields[nameof(Ipv4Gateway)] = FieldErrors.Clean(gatewayError);
+            fields[nameof(Ipv4Gateway)] = FieldErrorText.Clean(gatewayError);
         }
 
         if (IsSingleDevice)
@@ -518,7 +520,7 @@ public sealed partial class NetworkSettingsViewModel : ObservableObject, INotify
     {
         foreach (var error in PayloadValidator.ValidateIpv6Network(v6Prefix, Ipv6Gateway))
         {
-            fields.TryAdd(error.Contains("prefix", StringComparison.Ordinal) ? nameof(Ipv6Prefix) : nameof(Ipv6Gateway), FieldErrors.Clean(error));
+            fields.TryAdd(error.Contains("prefix", StringComparison.Ordinal) ? nameof(Ipv6Prefix) : nameof(Ipv6Gateway), FieldErrorText.Clean(error));
         }
 
         if (IsSingleDevice)

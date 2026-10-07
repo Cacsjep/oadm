@@ -20,14 +20,18 @@ public sealed class ViewModelTests
 
     private static string[] Errors(DateTimeDialogViewModel vm, string property) => [.. vm.GetErrors(property).Cast<string>()];
 
+    private static TimeZoneEntry Zone(string id) => TimeZoneCatalog.Find(id)!;
+
     [Fact]
-    public void Starts_unchanged_with_ok_disabled()
+    public void Starts_like_adm_without_keep_and_with_ok_disabled_until_a_zone_is_known()
     {
         var vm = Create();
 
-        Assert.True(vm.IsKeepMode);
+        Assert.True(vm.IsNtp); // no "Keep unchanged": NTP until the device says otherwise
         Assert.Null(vm.SelectedZone);
         Assert.False(vm.CanApply);
+        Assert.False(vm.HasErrors); // nothing edited: no error below any field yet
+        Assert.Equal("Select a time zone.", vm.ApplyBlockedReason); // the OK tooltip says why
         Assert.Null(vm.BuildPayload());
         Assert.Equal("Set date and time", vm.Title);
         Assert.True(vm.IsLoading);
@@ -51,7 +55,46 @@ public sealed class ViewModelTests
         Assert.Equal("10.0.0.17", vm.NtpServersText);
         Assert.Equal("2026-10-07", vm.ManualDate);
         Assert.Equal("18:24:01", vm.ManualTime);
-        Assert.Null(vm.SelectedZone); // a POSIX zone has no list entry
+
+        // ADM defaults: the device's mode (NTP enabled) and, as its POSIX zone has no list entry, the server's zone.
+        Assert.True(vm.IsNtp);
+        Assert.Equal("Europe/Vienna", vm.SelectedZone!.Id);
+        Assert.False(vm.TimeZoneUnchanged);
+        Assert.False(vm.HasErrors);
+        Assert.True(vm.CanApply);
+        var payload = vm.BuildPayload()!;
+        Assert.Equal("Europe/Vienna", payload.TimeZone);
+        Assert.Equal(TimeMode.Ntp, payload.Mode);
+        Assert.Equal(["10.0.0.17"], payload.Ntp!.Servers);
+    }
+
+    [Fact]
+    public void Device_with_ntp_off_defaults_to_set_manually()
+    {
+        var vm = Create(3);
+
+        vm.ApplyCurrent(Current10048 with { NtpEnabled = false, TimeZone = "Asia/Tokyo" });
+
+        Assert.True(vm.IsManual);
+        Assert.Equal("Asia/Tokyo", vm.SelectedZone!.Id); // the first device's zone, also for several devices
+        Assert.False(vm.TimeZoneUnchanged); // several devices: the name stays "Change date and time"
+        Assert.Equal(TimeMode.Manual, vm.BuildPayload()!.Mode);
+    }
+
+    [Fact]
+    public void Ok_shows_every_error_below_its_field()
+    {
+        var vm = Create();
+        bool? closed = null;
+        vm.CloseRequested += (_, ok) => closed = ok;
+
+        vm.ApplyCommand.Execute(null);
+
+        Assert.Null(closed);
+        Assert.Equal("Select a time zone.", vm.TimeZoneError); // below the time zone list
+        Assert.Equal(["Enter at least one NTP server."], Errors(vm, nameof(vm.NtpServersText)));
+        vm.SelectedZone = Zone("Europe/Vienna");
+        Assert.Null(vm.TimeZoneError);
     }
 
     [Fact]
@@ -62,26 +105,26 @@ public sealed class ViewModelTests
         vm.ApplyCurrent(Current10048 with { TimeZone = "Europe/Vienna" });
 
         Assert.Equal("Europe/Vienna", vm.SelectedZone!.Id);
-        Assert.False(vm.ChangesTimeZone);
-        Assert.False(vm.CanApply);
+        Assert.True(vm.TimeZoneUnchanged); // the task is named after the time mode
+        Assert.True(vm.CanApply); // ADM: OK always writes zone and mode
+        Assert.True(vm.BuildPayload()!.TimeZoneUnchanged);
         vm.AdjustForDst = false;
-        Assert.True(vm.ChangesTimeZone);
+        Assert.False(vm.TimeZoneUnchanged);
         Assert.False(vm.BuildPayload()!.DaylightSaving);
-        vm.KeepTimeZoneCommand.Execute(null);
-        Assert.False(vm.ChangesTimeZone);
     }
 
     [Fact]
     public void Choosing_a_time_zone()
     {
         var vm = Create(3);
+        vm.UseDhcp = true;
         vm.ZoneSearch = "vienna";
 
         vm.SelectedZone = Assert.Single(vm.FilteredZones);
 
         Assert.True(vm.CanApply);
         Assert.Equal("Europe/Vienna", vm.BuildPayload()!.TimeZone);
-        Assert.Equal(TimeMode.Keep, vm.BuildPayload()!.Mode);
+        Assert.Equal(TimeMode.Ntp, vm.BuildPayload()!.Mode);
         Assert.StartsWith("Set to (UTC+01:00) Vienna", vm.TimeZoneDescription, StringComparison.Ordinal);
         Assert.True(vm.CanAdjustDst);
     }
@@ -90,6 +133,7 @@ public sealed class ViewModelTests
     public void Ntp_servers_report_errors_on_the_field()
     {
         var vm = Create();
+        vm.SelectedZone = Zone("Europe/Vienna");
         vm.IsNtp = true;
         vm.UseServers = true;
         vm.NtpServersText = "10.0.0.17\nbad host!";
@@ -109,6 +153,7 @@ public sealed class ViewModelTests
     public void Dhcp_needs_no_server_list()
     {
         var vm = Create();
+        vm.SelectedZone = Zone("Europe/Vienna");
         vm.IsNtp = true;
         vm.UseDhcp = true;
         vm.NtpServersText = "garbage !!";
@@ -124,6 +169,7 @@ public sealed class ViewModelTests
     public void Nts_uses_the_server_list()
     {
         var vm = Create();
+        vm.SelectedZone = Zone("Europe/Vienna");
         vm.IsNtp = true;
         vm.UseDhcp = true;
         vm.UseNts = true;
@@ -173,7 +219,7 @@ public sealed class ViewModelTests
         vm.IsServerTime = true;
 
         Assert.False(vm.CanEditTimeZone);
-        Assert.False(vm.ChangesTimeZone);
+        Assert.False(vm.TimeZoneUnchanged);
         Assert.Equal("The devices get the time zone of the OADM server: Europe/Vienna.", vm.TimeZoneDescription);
         var payload = vm.BuildPayload()!;
         Assert.Equal(TimeMode.ServerTime, payload.Mode);

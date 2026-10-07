@@ -79,6 +79,17 @@ public sealed class HeadlessPageTests
             dialog.Show();
             Pump();
             Capture(dialog, outDir, "snapshot-report-export.png");
+            Assert.False(export.HasErrors); // remembered values, nothing edited
+
+            // Errors directly below their fields, Export disabled with the reason as tooltip.
+            export.Site = " ";
+            export.DateText = "07.10.2026";
+            Pump();
+            Assert.Equal("Enter the site or customer name.", export.ErrorOf(nameof(export.Site)));
+            Assert.Equal("Enter the date as yyyy-MM-dd.", export.ErrorOf(nameof(export.DateText)));
+            Assert.False(export.ExportCommand.CanExecute(null));
+            Assert.Equal("Enter the site or customer name.", export.ExportBlockedReason);
+            Capture(dialog, outDir, "snapshot-report-export-errors.png");
             dialog.Close();
 
             var result = (vm.Tiles.Count, vm.Tiles.Count(t => t.IsError));

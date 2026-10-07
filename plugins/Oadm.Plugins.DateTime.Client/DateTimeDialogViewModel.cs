@@ -1,5 +1,3 @@
-using System.Collections;
-using System.ComponentModel;
 using System.Globalization;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -8,6 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 using Oadm.Plugins.DateAndTime.Model;
 using Oadm.Plugins.DateAndTime.Vapix;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Validation;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.DateAndTime.Client;
@@ -16,14 +15,15 @@ namespace Oadm.Plugins.DateAndTime.Client;
 /// "Set date and time" dialog, a clone of the ADM / AXIS Camera Station dialog: Device time (first selected device,
 /// read-only), Time zone (searchable IANA list, "Automatically adjust for daylight saving time changes") and Time mode
 /// (Synchronize with server computer time, Synchronize with NTP server: Obtain from DHCP / Use servers / NTS, Set
-/// manually). Every section starts unchanged so only what the user changes is written. Field errors are reported per
-/// property through <see cref="INotifyDataErrorInfo"/> (shown under the input), with the server's own rules
-/// (<see cref="PayloadValidator"/>). No per-device work: the device summaries are one O(n) pass over the cached API lists.
+/// manually). Exactly like ADM there is no "keep": OK writes the time zone and the time mode to every selected device.
+/// Defaults: the first device's time zone (the OADM server's when the device has no IANA zone) and its time mode (NTP
+/// when enabled, otherwise manual). Field errors are reported below their input (<see cref="ValidatingViewModel"/>),
+/// with the server's own rules (<see cref="PayloadValidator"/>). No per-device work: the device summaries are one
+/// O(n) pass over the cached API lists.
 /// </summary>
-public sealed partial class DateTimeDialogViewModel : ObservableObject, INotifyDataErrorInfo
+public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
 {
     private readonly IReadOnlyList<IDeviceInfo> _devices;
-    private readonly Dictionary<string, string> _errors = new(StringComparer.Ordinal);
     private readonly Func<DateTimeOffset> _now;
     private string? _initialZoneId;
     private bool _initialDst = true;
@@ -66,14 +66,18 @@ public sealed partial class DateTimeDialogViewModel : ObservableObject, INotifyD
         ManualDate = local.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         ManualTime = local.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
         DeviceTimeStatus = $"Reading the time of {Label(devices[0])}...";
+        Validation
+            .Rule(nameof(SelectedZone), () => IsServerTime ? null
+                : SelectedZone is null ? "Select a time zone." : PayloadValidator.ValidateTimeZone(SelectedZone.Id))
+            .Rule(nameof(NtpServersText), () => ShowServerList ? PayloadValidator.ValidateNtpServers(ParseServers(NtpServersText), UseNts) : null)
+            .Rule(nameof(ManualDate), ManualDateError)
+            .Rule(nameof(ManualTime), () => IsManual && ParseTime(ManualTime) is null ? "Enter the time as hh:mm or hh:mm:ss." : null);
         _ready = true;
         Recompute();
     }
 
     /// <summary>Raised when the dialog should close: true = OK (see <see cref="ResultJson"/>), false = cancel.</summary>
     public event EventHandler<bool>? CloseRequested;
-
-    public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged;
 
     public string Title => _devices.Count == 1 ? "Set date and time" : $"Set date and time for {_devices.Count.ToString("N0", CultureInfo.InvariantCulture)} devices";
 
@@ -140,35 +144,34 @@ public sealed partial class DateTimeDialogViewModel : ObservableObject, INotifyD
     [ObservableProperty]
     public partial bool AdjustForDst { get; set; } = true;
 
-    public bool ChangesTimeZone => !IsServerTime && SelectedZone is not null
-        && (!string.Equals(SelectedZone.Id, _initialZoneId, StringComparison.Ordinal) || AdjustForDst != _initialDst);
+    /// <summary>The selected zone and DST equal what the (single) device has: the task is named after the time mode.</summary>
+    public bool TimeZoneUnchanged => !IsMultiDevice && !IsServerTime && SelectedZone is not null && _initialZoneId is not null
+        && string.Equals(SelectedZone.Id, _initialZoneId, StringComparison.Ordinal) && AdjustForDst == _initialDst;
 
     public bool CanEditTimeZone => !IsServerTime;
 
     public bool CanAdjustDst => CanEditTimeZone && SelectedZone is { ObservesDaylightSaving: true };
 
-    public bool CanKeepTimeZone => ChangesTimeZone;
+    /// <summary>The time zone error, shown directly below the time zone list.</summary>
+    public string? TimeZoneError => ErrorOf(nameof(SelectedZone));
+
+    public bool HasTimeZoneError => TimeZoneError is not null;
 
     /// <summary>Card description: what happens with the time zone.</summary>
     public string TimeZoneDescription => IsServerTime
         ? ServerTimeZone is { } server
             ? $"The devices get the time zone of the OADM server: {server}."
             : "The OADM server's time zone is not known to AXIS devices; the devices keep their time zone."
-        : ChangesTimeZone
-            ? $"Set to {SelectedZone!.Label}" + (AdjustForDst || !SelectedZone.ObservesDaylightSaving ? "." : ", without daylight saving time.")
-            : "Keep unchanged." + (_initialZoneId is { } zone ? $" The device uses {zone}." : string.Empty);
+        : SelectedZone is { } zone
+            ? $"Set to {zone.Label}" + (AdjustForDst || !zone.ObservesDaylightSaving ? "." : ", without daylight saving time.")
+            : "Select the time zone of the devices.";
 
     // ---- Time mode ----
 
+    /// <summary>Always written. Starts at NTP; the first device's mode once it is read (NTP if enabled, otherwise manual).</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsKeepMode), nameof(IsServerTime), nameof(IsNtp), nameof(IsManual))]
-    public partial TimeMode Mode { get; set; }
-
-    public bool IsKeepMode
-    {
-        get => Mode == TimeMode.Keep;
-        set => SetMode(value, TimeMode.Keep);
-    }
+    [NotifyPropertyChangedFor(nameof(IsServerTime), nameof(IsNtp), nameof(IsManual))]
+    public partial TimeMode Mode { get; set; } = TimeMode.Ntp;
 
     public bool IsServerTime
     {
@@ -247,32 +250,38 @@ public sealed partial class DateTimeDialogViewModel : ObservableObject, INotifyD
 
     public bool HasModeNote => ModeNote is not null;
 
-    public string ModeDescription => DeviceTimeModeText.Length == 0 ? "Keep unchanged." : "Device: " + DeviceTimeModeText;
+    public string ModeDescription => DeviceTimeModeText.Length == 0
+        ? "Written to every selected device."
+        : "Written to every selected device. Device: " + DeviceTimeModeText;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ApplyBlockedReason))]
     public partial bool CanApply { get; set; }
+
+    /// <summary>Why OK is disabled (its tooltip): the first field error.</summary>
+    public string? ApplyBlockedReason => CanApply ? null : FormError ?? "Check the input.";
 
     /// <summary>The payload of the last successful <see cref="Apply"/>.</summary>
     public string? ResultJson { get; private set; }
 
-    public bool HasErrors => _errors.Count > 0;
-
-    public IEnumerable GetErrors(string? propertyName) =>
-        propertyName is not null && _errors.TryGetValue(propertyName, out var error) ? new[] { error } : Array.Empty<string>();
-
-    /// <summary>The payload for the current input, or null when nothing changes or an input is invalid.</summary>
+    /// <summary>The payload for the current input (time zone and time mode, always both), or null when an input is invalid.</summary>
     public DateTimePayload? BuildPayload()
     {
+        var zone = IsServerTime ? null : SelectedZone;
         var payload = new DateTimePayload(
-            TimeZone: ChangesTimeZone ? SelectedZone!.Id : null,
+            TimeZone: zone?.Id,
             Mode: Mode,
             Ntp: Mode == TimeMode.Ntp ? new NtpSettings(UseNts ? NtpSource.Static : UseDhcp ? NtpSource.Dhcp : NtpSource.Static, ShowServerList ? ParseServers(NtpServersText) : [], UseNts) : null,
             ManualDateTime: Mode == TimeMode.Manual ? CombineManual() : null,
-            DaylightSaving: !ChangesTimeZone || AdjustForDst || !SelectedZone!.ObservesDaylightSaving);
+            DaylightSaving: zone is null || AdjustForDst || !zone.ObservesDaylightSaving,
+            TimeZoneUnchanged: TimeZoneUnchanged);
         return PayloadValidator.Validate(payload, _maxYear).Count == 0 ? payload : null;
     }
 
-    /// <summary>Shows the first device's settings and prefills the inputs (time zone of a single device, servers, date).</summary>
+    /// <summary>
+    /// Shows the first device's settings and prefills the inputs like ADM: its time zone (the OADM server's when it has
+    /// no IANA zone), its time mode (NTP if enabled, otherwise manual), servers, date.
+    /// </summary>
     public void ApplyCurrent(CurrentTimeSettings current)
     {
         ArgumentNullException.ThrowIfNull(current);
@@ -294,16 +303,18 @@ public sealed partial class DateTimeDialogViewModel : ObservableObject, INotifyD
         DeviceTimeModeText = DescribeMode(current);
         ServerTimeText = DescribeServerTime(current);
 
-        if (current.TimeZone is { } zone && TimeZoneCatalog.Find(zone) is { } entry && !IsMultiDevice)
+        _initialZoneId = current.TimeZone;
+        _initialDst = current.DstEnabled ?? true;
+        var defaultZone = current.TimeZone is { } zone && TimeZoneCatalog.Find(zone) is { } entry
+            ? entry
+            : current.ServerTimeZone is { } serverZone ? TimeZoneCatalog.Find(serverZone) : null;
+        if (defaultZone is not null)
         {
-            _initialZoneId = zone;
-            _initialDst = true;
-            SelectedZone = entry;
+            SelectedZone = defaultZone;
+            AdjustForDst = current.TimeZone is null || _initialDst;
         }
-        else if (!IsMultiDevice)
-        {
-            _initialZoneId = current.TimeZone;
-        }
+
+        Mode = current.NtpEnabled == false ? TimeMode.Manual : TimeMode.Ntp;
 
         var servers = current.NtsEnabled == true ? current.NtsServers : current.NtpServers;
         if (string.IsNullOrWhiteSpace(NtpServersText) && servers.Count > 0)
@@ -320,6 +331,7 @@ public sealed partial class DateTimeDialogViewModel : ObservableObject, INotifyD
         }
 
         OnPropertyChanged(nameof(ModeDescription));
+        Validation.Reset(); // prefilled, not edited: errors show once the user edits a field or tries OK
         Recompute();
     }
 
@@ -358,13 +370,6 @@ public sealed partial class DateTimeDialogViewModel : ObservableObject, INotifyD
     }
 
     [RelayCommand]
-    private void KeepTimeZone()
-    {
-        SelectedZone = _initialZoneId is { } id ? TimeZoneCatalog.Find(id) : null;
-        AdjustForDst = _initialDst;
-    }
-
-    [RelayCommand]
     private void UseComputerTime()
     {
         var local = _now();
@@ -379,6 +384,7 @@ public sealed partial class DateTimeDialogViewModel : ObservableObject, INotifyD
         var payload = BuildPayload();
         if (payload is null)
         {
+            Validation.ShowAll(); // every problem below its field
             return;
         }
 
@@ -430,61 +436,45 @@ public sealed partial class DateTimeDialogViewModel : ObservableObject, INotifyD
             return;
         }
 
-        SetError(nameof(SelectedZone), CanEditTimeZone && SelectedZone is not null ? PayloadValidator.ValidateTimeZone(SelectedZone.Id) : null);
-        SetError(nameof(NtpServersText), ShowServerList ? PayloadValidator.ValidateNtpServers(ParseServers(NtpServersText), UseNts) : null);
-        string? dateError = null;
-        string? timeError = null;
-        if (IsManual)
-        {
-            dateError = System.DateTime.TryParseExact(ManualDate?.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _)
-                ? null
-                : "Enter the date as yyyy-mm-dd.";
-            timeError = ParseTime(ManualTime) is null ? "Enter the time as hh:mm or hh:mm:ss." : null;
-            if (dateError is null && timeError is null)
-            {
-                dateError = PayloadValidator.ValidateManualDateTime(CombineManual(), _maxYear);
-            }
-        }
-
-        SetError(nameof(ManualDate), dateError);
-        SetError(nameof(ManualTime), timeError);
-
+        Validation.Validate();
         foreach (var name in new[]
         {
-            nameof(ChangesTimeZone), nameof(CanEditTimeZone), nameof(CanAdjustDst), nameof(CanKeepTimeZone), nameof(TimeZoneDescription),
+            nameof(TimeZoneUnchanged), nameof(CanEditTimeZone), nameof(CanAdjustDst), nameof(TimeZoneDescription),
             nameof(ShowServerList), nameof(ModeNote), nameof(HasModeNote),
         })
         {
             OnPropertyChanged(name);
         }
 
-        CanApply = !HasErrors && BuildPayload() is not null;
+        CanApply = IsFormValid && BuildPayload() is not null;
+        OnPropertyChanged(nameof(ApplyBlockedReason));
     }
 
-    private void SetError(string property, string? error)
+    protected override void OnValidationChanged()
     {
-        var had = _errors.TryGetValue(property, out var old);
-        if (error is null)
+        OnPropertyChanged(nameof(TimeZoneError));
+        OnPropertyChanged(nameof(HasTimeZoneError));
+        if (_ready)
         {
-            if (!had)
-            {
-                return;
-            }
-
-            _errors.Remove(property);
+            CanApply = IsFormValid && BuildPayload() is not null;
+            OnPropertyChanged(nameof(ApplyBlockedReason));
         }
-        else
-        {
-            if (had && old == error)
-            {
-                return;
-            }
+    }
 
-            _errors[property] = error;
+    /// <summary>Format of the date, then the year range of the combined date and time.</summary>
+    private string? ManualDateError()
+    {
+        if (!IsManual)
+        {
+            return null;
         }
 
-        ErrorsChanged?.Invoke(this, new DataErrorsChangedEventArgs(property));
-        OnPropertyChanged(nameof(HasErrors));
+        if (!System.DateTime.TryParseExact(ManualDate?.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+        {
+            return "Enter the date as yyyy-mm-dd.";
+        }
+
+        return ParseTime(ManualTime) is null ? null : PayloadValidator.ValidateManualDateTime(CombineManual(), _maxYear);
     }
 
     private string? CombineManual()

@@ -60,7 +60,8 @@ src/
   Oadm.Sdk.Client/     client-side plugin SDK: dialog/page/toolbar interfaces, ITaskDialogContext,
                        IToolbarContext, shared controls (Controls/: IconLabel, SearchBox, OadmIcon,
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, FileRow, ProgressRow,
-                       ToolbarButton, ToolbarSeparator, PasswordBox, MessageWindow)
+                       ToolbarButton, ToolbarSeparator, PasswordBox, MessageWindow, FormField),
+                       form validation (Validation/: ValidatingViewModel, FormValidator)
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)
   Oadm.Server/         host: gRPC services, plugin loader, polling, Serilog setup
   Oadm.Client/         Avalonia app: views, view models, gRPC client, plugin loader
@@ -743,7 +744,7 @@ API guide: `plugins/README.md`.
 
 Dialogs and pages are real Avalonia views with view models, styled by the host theme. They use
 the shared controls from `Oadm.Sdk.Client.Controls` (`IconLabel`, `SearchBox`, `PasswordBox`, `OadmIcon`,
-`DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip`, `FileRow`, `ProgressRow`,
+`DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip`, `FileRow`, `ProgressRow`, `FormField`,
 `ToolbarButton`, `ToolbarSeparator`, `MessageWindow` (every message and confirmation popup:
 `MessageWindow.ConfirmAsync` / `ShowMessageAsync`, used by the host dialog service and plugin dialogs);
 usage in `plugins/README.md`) and
@@ -835,8 +836,8 @@ Steps of the other task plugins (details in each plugin README):
   12.11.77", "Downgrade firmware to 10.12.236", "Install firmware 12.11.77" (mixed), "Install firmware"
   (version unknown), + " (factory default)".
 - Date and time: Check compatibility, Read current time settings, Read NTP settings, Validate settings, Set time zone,
-  Set NTP configuration / Turn off NTP, Set date and time, Verify time settings, Verify NTP settings (only the changed
-  sections are planned; values the device already has are Skipped "Already ...").
+  Set NTP configuration / Turn off NTP, Set date and time, Verify time settings, Verify NTP settings (like ADM the time
+  zone and the time mode are always planned; values the device already has are Skipped "Already ...").
 - ACAP install: Check compatibility, Read package, Read device info, Read embedded development version,
   Read unsigned application setting, Read installed applications, Check compatibility of package, Upload
   package (byte progress), Verify installation (+ Start application, Verify application state); remove,
@@ -1063,23 +1064,31 @@ JSON schema: `docs/vapix-commander/command-format.md` + `command.schema.json` (t
 `plugins/Oadm.Plugins.DateTime` (+ `.Client`), id `oadm.datetime`, context menu (group Maintenance, icon `clock`)
 **Date and time**: a clone of the ADM / AXIS Camera Station "Set date and time" dialog (the ADM manual has no date and
 time chapter; wording from the ACS 5 manual, sources in the plugin `README.md`), for any number of devices.
-- Dialog "Set date and time": **Device time** card for the first selected device (read-only query `getTimeSettings`:
-  device time and offset, time zone, time mode with sync state, server time and difference); **Time zone** card: the 313
-  IANA zones of AXIS OS 12.11 (bundled list, offsets from the OS time zone database) in a DataGrid (UTC offset, City,
-  Time zone, DST) with `ui:SearchBox`, "Automatically adjust for daylight saving time changes", Keep unchanged;
-  **Time mode** card: Keep unchanged, Synchronize with server computer time (NTP off, the OADM server's UTC sent once per
-  device at execution time, the devices get the server's time zone), Synchronize with NTP server (Obtain from DHCP / Use
-  servers, up to 5, one per line; Use NTS with NTS KE servers on ntp 1.5+), Set manually (date + time in the device's
-  zone, NTP off). OK. Field errors via INotifyDataErrorInfo under the inputs; device notes are O(n) summaries of the
-  cached API lists ("500 of the selected devices have no Time API ...").
+- Dialog "Set date and time" behaves **exactly like ADM** (user decision): no "Keep unchanged" anywhere, OK always
+  writes the time zone and the selected time mode to every selected device. **Device time** card for the first selected
+  device (read-only query `getTimeSettings`: device time and offset, time zone, time mode with sync state, server time and
+  difference); **Time zone** card: the 313 IANA zones of AXIS OS 12.11 (bundled list, offsets from the OS time zone
+  database) in a DataGrid (UTC offset, City, Time zone, DST) with `ui:SearchBox`, "Automatically adjust for daylight
+  saving time changes"; **Time mode** card: Synchronize with server computer time (NTP off, the OADM server's UTC sent
+  once per device at execution time, the devices get the server's time zone, the zone list is disabled), Synchronize
+  with NTP server (Obtain from DHCP / Use servers, up to 5, one per line; Use NTS with NTS KE servers on ntp 1.5+), Set
+  manually (date + time in the device's zone, NTP off). Defaults when the dialog opens: time zone = the first device's
+  current IANA zone (the OADM server's zone when the device has none, e.g. a POSIX zone), time mode = the first device's
+  mode (NTP if enabled, otherwise Set manually). OK (disabled with the reason as tooltip until a zone is chosen and every
+  field is valid; field errors below their inputs, the zone error directly below the list); device notes are O(n)
+  summaries of the cached API lists ("500 of the selected devices have no Time API ..."). Devices without the Time API
+  fail setting the clock with "Nothing was changed" (no legacy date.cgi).
 - APIs: time-service 1.x (`getDateTimeInfo`, `setTimeZone`, `setPosixTimeZone` for DST off, `setDateTime`), ntp 1.x
   (`getNTPInfo`, `setNTPClientConfiguration`; NTS from 1.5), param.cgi `Time.*` for older firmware (time zone as POSIX,
   one NTP server; no date and time without the Time API; date.cgi is not used). Decision table and what 10.0.0.48
-  reports: plugin `README.md`. Only changed sections are written; values the device already has are skipped; every
-  write is verified by reading again (Warning on a mismatch or a clock more than 3 s off).
-- Task names (`GetTaskName(payloadJson)` on the plugin class): "Set time zone Europe/Vienna", "Set NTP servers 10.0.0.17,
-  pool.ntp.org", "Set NTP servers from DHCP", "Sync with server time", "Set date and time 2026-10-07 18:00", "Change
-  date and time" (zone and time mode).
+  reports: plugin `README.md`. Payload (`DateTimePayload`): `timeZone` (required except server time), `mode` (Ntp,
+  ServerTime, Manual; required), `ntp`, `manualDateTime`, `daylightSaving`, `timeZoneUnchanged` (name hint). Values the
+  device already has are skipped; every write is verified by reading again (Warning on a mismatch or a clock more than
+  3 s off).
+- Task names (`GetTaskName(payloadJson)` on the plugin class): "Change date and time", or the most specific name when
+  only the time mode differs from the device (one device whose zone and DST are kept, `timeZoneUnchanged`): "Set NTP
+  servers 10.0.0.17, pool.ntp.org", "Set NTP servers from DHCP", "Set NTS KE servers ...", "Set date and time
+  2026-10-07 18:00"; "Sync with server time" for server time mode.
 - Tests: `tests/Oadm.Plugins.DateTime.Tests` (request bodies per API version, recorded 10.0.0.48 fixtures, validation,
   time zones and POSIX conversion, step sequences against a stateful fake device, view model with 5000 devices, headless
   screenshots `datetime-dialog-single.png`, `-multi-errors.png`, `-server-time.png`, `-nts-error.png`).
@@ -1147,12 +1156,24 @@ LocalApplicationData): server address, grid column layout, bottom pane state.
   param.cgi `key=value` highlighted with `# Error` lines red, `Language` Auto/Json/Xml/KeyValue/Plain with
   Auto from the content type then the text, `IsFormatted` false = exact text; unparsable text plain, above
   512 K characters plain; monospace `Oadm.FontFamilyMono`, no wrapping, selectable and copyable; colors
-  `Oadm.Code.*Brush`; logic in `CodeText` without UI; editable bodies stay `TextBox.code`). Before
+  `Oadm.Code.*Brush`; logic in `CodeText` without UI; editable bodies stay `TextBox.code`), `FormField` (every labeled form row: label,
+  input, error or hint below the input; classes `wide` and `inline`). Before
   writing new XAML, check both `Controls/` folders and reuse; if a second place needs something
   that exists only inline, extract it into a control first.
 - Plugin projects copy their output to `artifacts/plugins/<id>/` after every build. A running
   client or server keeps those files open; build or test with `-p:OadmSkipPluginDeploy=true` (e.g.
   together with `--artifacts-path`) to skip the copy while the apps run.
+- **HARD RULE, validation errors directly below the field.** On every input of the client and of every plugin, a
+  validation error appears directly below that input, like Vuetify: small red text (`Oadm.StatusErrorBrush`,
+  `Oadm.FontSizeSmall`) aligned with the input's left edge plus a red input border, no space reserved without an
+  error, the label stays level with the input. Never collected elsewhere: no error lists at the bottom of dialogs, no
+  summary lines under cards (row errors stay in the row's Status column, a whole-table error directly below the
+  table). Labeled rows are `ui:FormField` (label, input, hint or error below the input); the error itself is Avalonia's
+  `DataValidationErrors` styled in `OadmTheme.axaml` from `INotifyDataErrorInfo`. Form view models derive from
+  `Oadm.Sdk.Client.Validation.ValidatingViewModel` (rules per property on its `FormValidator`: `Rule`, `Rules`,
+  `ShowAll`, `Reset`, `SetServerError`); errors show once the field was edited or a submit was tried, never on an
+  untouched form; submit buttons stay disabled while any error exists and their tooltip says why. Usage:
+  `plugins/README.md` "Validation".
 - **HARD RULE, scale to thousands of devices.** A site can have 1000+ cameras. Every list of
   devices, discovered devices, tasks, sources or tiles is virtualized (DataGrid, virtualizing
   ListBox/ItemsRepeater; never an ItemsControl/StackPanel creating one control per item), search,

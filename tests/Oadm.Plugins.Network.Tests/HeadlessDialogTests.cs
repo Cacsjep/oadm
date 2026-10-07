@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 using Oadm.Client;
 using Oadm.Client.Infrastructure;
@@ -93,12 +94,21 @@ public sealed class HeadlessDialogTests
             var single = new NetworkSettingsViewModel([devices[0]]);
             single.ApplyCurrent(current);
             single.SelectedIpv4 = single.Ipv4Choices.Single(c => c.Value == Ipv4Choice.Static);
+            Assert.False(single.HasErrors); // prefilled and untouched: nothing shown yet
             single.Ipv4Mask = "255.0.255.0";
+            single.SelectedDns = single.DnsChoices.Single(c => c.Value == SourceChoice.Static);
+            single.DnsPrimary = "10.0.0.300";
             var window2 = new NetworkSettingsWindow { DataContext = single, Height = 1100 };
             window2.Show();
             await PumpAsync();
             Capture(window2, outDir, "network-settings-dialog-single.png");
             Assert.True(single.HasErrors);
+            Assert.NotNull(single.ErrorOf(nameof(single.Ipv4Mask)));
+            Assert.NotNull(single.ErrorOf(nameof(single.DnsPrimary)));
+            FormField maskField = window2.GetVisualDescendants().OfType<FormField>().Single(f => f.Label == "Subnet mask");
+            Assert.True(maskField.HasError);
+            Assert.False(single.CanApply);
+            Assert.Equal(single.ErrorOf(nameof(single.Ipv4Mask)), single.ApplyBlockedReason);
             window2.Close();
             return vm.Assignment.Rows.Count;
         }, CancellationToken.None);

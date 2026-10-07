@@ -4,13 +4,13 @@ using System.Text.Json.Serialization;
 
 namespace Oadm.Plugins.DateAndTime.Model;
 
-/// <summary>How the devices get their time (ADM "Time mode"). <see cref="Keep"/> leaves synchronization unchanged.</summary>
+/// <summary>
+/// How the devices get their time (ADM "Time mode"). Like ADM there is no "keep": OK always writes the mode. A payload
+/// without a mode (0) is invalid.
+/// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter<TimeMode>))]
 public enum TimeMode
 {
-    /// <summary>Synchronization unchanged (only the time zone is written).</summary>
-    Keep = 0,
-
     /// <summary>"Synchronize with NTP server": the NTP client on, servers from DHCP or the list.</summary>
     Ntp = 1,
 
@@ -39,23 +39,28 @@ public enum NtpSource
 public sealed record NtpSettings(NtpSource Source, IReadOnlyList<string> Servers, bool Nts = false);
 
 /// <summary>
-/// Payload of the "Date and time" task. Null sections are kept unchanged on the device; only the sections the user
-/// changed are written. Never contains secrets.
+/// Payload of the "Date and time" task. Exactly like ADM, OK always writes the time zone and the time mode to every
+/// device (no optional sections); the steps skip values a device already has ("Already ..."). Never contains secrets.
 /// </summary>
-/// <param name="TimeZone">IANA id ("Europe/Vienna") or null = keep the device's time zone.</param>
-/// <param name="Mode">Time mode; <see cref="TimeMode.Keep"/> = keep synchronization unchanged.</param>
+/// <param name="TimeZone">IANA id ("Europe/Vienna"); required except in <see cref="TimeMode.ServerTime"/>, where the OADM server's zone is used.</param>
+/// <param name="Mode">Time mode, always written.</param>
 /// <param name="Ntp">NTP settings when <paramref name="Mode"/> is <see cref="TimeMode.Ntp"/>.</param>
 /// <param name="ManualDateTime">Local date and time of the device ("yyyy-MM-ddTHH:mm:ss") when <paramref name="Mode"/> is <see cref="TimeMode.Manual"/>.</param>
 /// <param name="DaylightSaving">
 /// "Automatically adjust for daylight saving time changes" for <paramref name="TimeZone"/>: true sets the IANA zone, false sets
 /// its standard-time POSIX rule with daylight saving off (setPosixTimeZone enableDst=false).
 /// </param>
+/// <param name="TimeZoneUnchanged">
+/// Name hint from the dialog: the time zone equals what the (single) device already has, so the task is named after
+/// the time mode ("Set NTP servers 10.0.0.17") instead of "Change date and time". Changes nothing that is written.
+/// </param>
 public sealed record DateTimePayload(
-    string? TimeZone = null,
-    TimeMode Mode = TimeMode.Keep,
+    string? TimeZone,
+    TimeMode Mode,
     NtpSettings? Ntp = null,
     string? ManualDateTime = null,
-    bool DaylightSaving = true)
+    bool DaylightSaving = true,
+    bool TimeZoneUnchanged = false)
 {
     public const string ManualFormat = "yyyy-MM-ddTHH:mm:ss";
 
@@ -63,10 +68,6 @@ public sealed record DateTimePayload(
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
-
-    public bool ChangesTimeZone => !string.IsNullOrEmpty(TimeZone);
-
-    public bool ChangesSync => Mode != TimeMode.Keep;
 
     public string ToJson() => JsonSerializer.Serialize(this, JsonOptions);
 

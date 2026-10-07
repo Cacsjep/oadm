@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Validation;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Users.Client;
@@ -42,9 +43,17 @@ public sealed partial class ExistingUserRow(DeviceUser user, string? protectedRe
 /// View model of the "Users" dialog: Add, Change (password and/or role) or Remove one user on all
 /// selected devices. Reads the existing users of the first device through the read-only plugin
 /// query. Holds the password in memory only; <see cref="BuildPayload"/> returns the task payload.
+/// Every rule reports below its field (<see cref="ValidatingViewModel"/>); Apply stays disabled while any
+/// error exists and its tooltip says why.
 /// </summary>
-public sealed partial class UsersDialogViewModel : ObservableObject
+public sealed partial class UsersDialogViewModel : ValidatingViewModel
 {
+    /// <summary>Validation key of the Change mode check boxes ("password, role or both").</summary>
+    public const string ChangeSelection = "ChangeSelection";
+
+    /// <summary>Validation key of the Remove mode selection in the Existing users list (tooltip only).</summary>
+    public const string RemoveSelection = "RemoveSelection";
+
     private readonly IReadOnlyList<IDeviceInfo> _devices;
     private string? _currentAccount;
     private IReadOnlyList<ExistingUserRow> _selectedRows = [];
@@ -54,6 +63,19 @@ public sealed partial class UsersDialogViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(devices);
         _devices = devices;
         SelectedRole = Roles[2];
+        Validation
+            .Rule(nameof(UserName), () => ShowUserName ? CredentialRules.ValidateUserName(UserName.Trim()) : null)
+            .Rule(ChangeSelection, () => IsChange && !ChangePassword && !ChangeRole ? "Choose what to change: password, role or both." : null)
+            .Rule(nameof(Password), () => ShowPassword ? CredentialRules.ValidatePassword(Password, Policy) : null)
+            .Rule(nameof(ConfirmPassword), () => ShowPassword && !string.Equals(Password, ConfirmPassword, StringComparison.Ordinal)
+                ? (ConfirmPassword.Length == 0 ? "Enter the password again." : "The passwords do not match.")
+                : null)
+            .Rule(nameof(SelectedRole), () => ShowRole && SelectedRole.Role == UserRole.None ? "Choose a role." : null)
+            .Rule(RemoveSelection, () => !IsRemove ? null
+                : UsersToRemove.Count == 0 ? "Choose the users to remove in the Existing users list."
+                : UsersToRemove.Count > UsersPayload.MaxRemoveUsers ? $"At most {UsersPayload.MaxRemoveUsers} users can be removed at once."
+                : null);
+        Validation.Validate();
         UsersTitle = devices.Count switch
         {
             0 => "Existing users",
@@ -132,9 +154,6 @@ public sealed partial class UsersDialogViewModel : ObservableObject
     private string _usersStatus = "Loading users...";
 
     [ObservableProperty]
-    private string? _validationError;
-
-    [ObservableProperty]
     private string? _lockOutWarning;
 
     [ObservableProperty]
@@ -195,6 +214,12 @@ public sealed partial class UsersDialogViewModel : ObservableObject
     public bool ShowPassword => IsAdd || (IsChange && ChangePassword);
 
     public bool ShowRole => IsAdd || (IsChange && ChangeRole);
+
+    /// <summary>Error of the Change mode check boxes (shown below them).</summary>
+    public string? ChangeSelectionError => ErrorOf(ChangeSelection);
+
+    /// <summary>Why Apply is disabled (tooltip).</summary>
+    public string? ApplyBlockedReason => CanApply ? null : FormError ?? "Check the input.";
 
     public string ApplyText => Mode switch
     {
@@ -284,6 +309,7 @@ public sealed partial class UsersDialogViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanApply))]
     private void Apply()
     {
+        Validation.ShowAll();
         var payload = BuildPayload();
         if (payload is not null)
         {
@@ -333,9 +359,17 @@ public sealed partial class UsersDialogViewModel : ObservableObject
 
     partial void OnPtzChanged(bool value) => Update();
 
-    partial void OnChangePasswordChanged(bool value) => Update();
+    partial void OnChangePasswordChanged(bool value)
+    {
+        Validation.Touch(ChangeSelection);
+        Update();
+    }
 
-    partial void OnChangeRoleChanged(bool value) => Update();
+    partial void OnChangeRoleChanged(bool value)
+    {
+        Validation.Touch(ChangeSelection);
+        Update();
+    }
 
     partial void OnPolicyChanged(PassphrasePolicy value) => Update();
 
@@ -374,22 +408,31 @@ public sealed partial class UsersDialogViewModel : ObservableObject
     private string? ConfirmError() =>
         ShowPassword && !string.Equals(Password, ConfirmPassword, StringComparison.Ordinal) ? "The passwords do not match." : null;
 
+    protected override void OnValidationChanged()
+    {
+        OnPropertyChanged(nameof(ChangeSelectionError));
+        Update();
+    }
+
     private void Update()
     {
         var payload = CreatePayload();
-        string? error = null;
-        try
+        Validation.Validate(); // the field rules (each below its field)
+        var valid = Validation.IsValid;
+        if (valid)
         {
-            UserChangePlanner.ValidatePayload(payload, Policy);
-        }
-        catch (UserManagementException ex)
-        {
-            error = ex.Message.Replace(" Nothing was changed.", string.Empty, StringComparison.Ordinal);
+            try
+            {
+                UserChangePlanner.ValidatePayload(payload, Policy); // what the server checks, as a last guard
+            }
+            catch (UserManagementException)
+            {
+                valid = false;
+            }
         }
 
-        error ??= ConfirmError();
-        ValidationError = (IsRemove ? payload.RemoveNames.Count == 0 : UserName.Length == 0) && error is not null ? null : error;
-        CanApply = error is null;
+        CanApply = valid && ConfirmError() is null;
+        OnPropertyChanged(nameof(ApplyBlockedReason));
         LockOutWarning = BuildLockOutWarning(payload);
         Summary = BuildSummary(payload);
     }

@@ -4,6 +4,7 @@
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              x:Class="Oadm.Client.Settings.SettingsView"
              x:DataType="settings:SettingsViewModel">
+  <!-- Every labeled input is a ui:FormField: its error appears directly below the input. -->
   <ScrollViewer>
     <StackPanel Spacing="16" MaxWidth="760" HorizontalAlignment="Left">
       <TextBlock Classes="pageTitle" Text="Settings" Margin="4,0,0,0" />
@@ -13,34 +14,38 @@
           <TextBlock Classes="cardTitle" Text="Server" />
           <TextBlock Classes="secondary" TextWrapping="Wrap"
                      Text="Stored on the OADM server and shared by every client." />
-          <Grid ColumnDefinitions="220,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="12" ColumnSpacing="16">
-            <TextBlock Grid.Row="0" Classes="fieldLabel" Text="Status polling interval (s)" />
-            <NumericUpDown Grid.Row="0" Grid.Column="1" Width="180" HorizontalAlignment="Left" Minimum="5" Maximum="3600" Increment="5"
-                           FormatString="0" Value="{Binding PollingIntervalSeconds}" />
-            <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Full refresh interval (min)" />
-            <NumericUpDown Grid.Row="1" Grid.Column="1" Width="180" HorizontalAlignment="Left" Minimum="1" Maximum="1440" Increment="1"
-                           FormatString="0" Value="{Binding FullRefreshMinutes}"
-                           ToolTip.Tip="Network parameters and certificate info are re-read this often, and when a device comes back online" />
-            <TextBlock Grid.Row="2" Classes="fieldLabel" Text="IP range scan parallelism" />
-            <NumericUpDown Grid.Row="2" Grid.Column="1" Width="180" HorizontalAlignment="Left" Minimum="1" Maximum="256"
-                           FormatString="0" Value="{Binding ScanParallelism}" />
-            <TextBlock Grid.Row="3" Classes="fieldLabel" Text="IP range scan timeout (ms)" />
-            <NumericUpDown Grid.Row="3" Grid.Column="1" Width="180" HorizontalAlignment="Left" Minimum="100" Maximum="30000" Increment="100"
-                           FormatString="0" Value="{Binding ScanTimeoutMs}" />
-            <TextBlock Grid.Row="4" Classes="fieldLabel" Text="Zero-conf scan duration (s)" />
-            <NumericUpDown Grid.Row="4" Grid.Column="1" Width="180" HorizontalAlignment="Left" Minimum="5" Maximum="300" Increment="5"
-                           FormatString="0" Value="{Binding ZeroConfSeconds}"
-                           ToolTip.Tip="A scan on the add devices page ends after this time; Scan again starts a new one" />
-            <TextBlock Grid.Row="5" Classes="fieldLabel" Text="Server name" />
-            <TextBox Grid.Row="5" Grid.Column="1" Width="320" HorizontalAlignment="Left" Text="{Binding ServerName}" />
-            <TextBlock Grid.Row="6" Classes="fieldLabel" Text="Listen URL" />
-            <TextBox Grid.Row="6" Grid.Column="1" Width="320" HorizontalAlignment="Left" Text="{Binding ListenUrl}" />
-            <TextBlock Grid.Row="7" Classes="fieldLabel" Text="Device address" />
-            <CheckBox Grid.Row="7" Grid.Column="1" IsChecked="{Binding UseHostName}" Content="Use host name when available, otherwise IP address"
-                      ToolTip.Tip="Applies to devices added from now on. Host names keep devices reachable when DHCP changes their address, but need working DNS" />
-          </Grid>
+          <StackPanel Classes="form">
+            <ui:FormField Label="Status polling interval (s)">
+              <NumericUpDown Minimum="5" Maximum="3600" Increment="5" FormatString="0" Value="{Binding PollingIntervalSeconds}" />
+            </ui:FormField>
+            <ui:FormField Label="Full refresh interval (min)"
+                          Hint="Network parameters and certificate info are re-read this often, and when a device comes back online">
+              <NumericUpDown Minimum="1" Maximum="1440" Increment="1" FormatString="0" Value="{Binding FullRefreshMinutes}" />
+            </ui:FormField>
+            <ui:FormField Label="IP range scan parallelism">
+              <NumericUpDown Minimum="1" Maximum="256" FormatString="0" Value="{Binding ScanParallelism}" />
+            </ui:FormField>
+            <ui:FormField Label="IP range scan timeout (ms)">
+              <NumericUpDown Minimum="100" Maximum="30000" Increment="100" FormatString="0" Value="{Binding ScanTimeoutMs}" />
+            </ui:FormField>
+            <ui:FormField Label="Zero-conf scan duration (s)"
+                          Hint="A scan on the add devices page ends after this time; Scan again starts a new one">
+              <NumericUpDown Minimum="5" Maximum="300" Increment="5" FormatString="0" Value="{Binding ZeroConfSeconds}" />
+            </ui:FormField>
+            <ui:FormField Label="Server name">
+              <TextBox Text="{Binding ServerName}" />
+            </ui:FormField>
+            <ui:FormField Label="Listen URL" Hint="Takes effect after the server restarts">
+              <TextBox Text="{Binding ListenUrl}" PlaceholderText="http://0.0.0.0:5080" />
+            </ui:FormField>
+            <ui:FormField Classes="wide" Label="Device address">
+              <CheckBox IsChecked="{Binding UseHostName}" Content="Use host name when available, otherwise IP address"
+                        ToolTip.Tip="Applies to devices added from now on. Host names keep devices reachable when DHCP changes their address, but need working DNS" />
+            </ui:FormField>
+          </StackPanel>
           <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}" />
+            <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}"
+                    ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
             <Button Classes="secondary" Content="Reload" Command="{Binding LoadCommand}" />
           </StackPanel>
           <TextBlock Text="{Binding ServerMessage}" Classes.error="{Binding ServerMessageIsError}" Classes.secondary="{Binding !ServerMessageIsError}"
@@ -67,13 +72,22 @@
             </ItemsControl.ItemTemplate>
           </ItemsControl>
           <TextBlock Classes="secondary" Text="No credentials yet." IsVisible="{Binding HasNoCredentials}" />
-          <Grid ColumnDefinitions="220,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="12" ColumnSpacing="16">
-            <TextBlock Grid.Row="0" Classes="fieldLabel" Text="User name" />
-            <TextBox Grid.Row="0" Grid.Column="1" Width="320" HorizontalAlignment="Left" Text="{Binding NewCredentialUserName}" />
-            <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Password" />
-            <ui:PasswordBox Grid.Row="1" Grid.Column="1" Width="320" HorizontalAlignment="Left" Text="{Binding NewCredentialPassword}" />
-            <Button Grid.Row="2" Grid.Column="1" Classes="primary" Content="Add credential" Command="{Binding AddCredentialCommand}" />
-          </Grid>
+          <StackPanel Classes="form">
+            <ui:FormField Label="User name">
+              <TextBox Text="{Binding NewCredentialUserName}" />
+            </ui:FormField>
+            <ui:FormField Label="Password">
+              <ui:PasswordBox Text="{Binding NewCredentialPassword}">
+                <ui:PasswordBox.KeyBindings>
+                  <KeyBinding Gesture="Enter" Command="{Binding AddCredentialCommand}" />
+                </ui:PasswordBox.KeyBindings>
+              </ui:PasswordBox>
+            </ui:FormField>
+            <ui:FormField>
+              <Button Classes="primary" Content="Add credential" Command="{Binding AddCredentialCommand}"
+                      ToolTip.Tip="{Binding AddCredentialBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            </ui:FormField>
+          </StackPanel>
           <TextBlock Text="{Binding CredentialMessage}" Classes.error="{Binding CredentialMessageIsError}" Classes.secondary="{Binding !CredentialMessageIsError}"
                      TextWrapping="Wrap" IsVisible="{Binding CredentialMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         </StackPanel>
@@ -82,15 +96,17 @@
       <Border Classes="card">
         <StackPanel Spacing="16">
           <TextBlock Classes="cardTitle" Text="This client" />
-          <Grid ColumnDefinitions="220,*" ColumnSpacing="16">
-            <TextBlock Classes="fieldLabel" Text="Server address" />
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-              <TextBox Width="320" Text="{Binding ServerAddress}" PlaceholderText="http://localhost:5080" />
-              <Button Classes="secondary" Content="Connect" Command="{Binding ApplyServerAddressCommand}" />
-            </StackPanel>
-          </Grid>
-          <TextBlock Classes="secondary" Text="{Binding ClientMessage}" TextWrapping="Wrap"
-                     IsVisible="{Binding ClientMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <StackPanel Classes="inputRow">
+            <ui:FormField Label="Server address" Hint="{Binding ClientMessage}">
+              <TextBox Text="{Binding ServerAddress}" PlaceholderText="http://localhost:5080">
+                <TextBox.KeyBindings>
+                  <KeyBinding Gesture="Enter" Command="{Binding ApplyServerAddressCommand}" />
+                </TextBox.KeyBindings>
+              </TextBox>
+            </ui:FormField>
+            <Button Classes="secondary" Content="Connect" Command="{Binding ApplyServerAddressCommand}"
+                    ToolTip.Tip="{Binding ConnectBlockedReason}" ToolTip.ShowOnDisabled="True" />
+          </StackPanel>
         </StackPanel>
       </Border>
     </StackPanel>

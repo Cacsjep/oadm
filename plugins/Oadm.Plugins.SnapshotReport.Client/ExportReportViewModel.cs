@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Validation;
 
 namespace Oadm.Plugins.SnapshotReport.Client;
 
@@ -22,10 +23,14 @@ public interface IReportSavePicker
 
 /// <summary>
 /// Export dialog: site / customer, technician and date (remembered per client except the date), then the
-/// server builds the PDF from fresh full-HD snapshots of the selected tiles and the dialog saves it.
+/// server builds the PDF from fresh full-HD snapshots of the selected tiles and the dialog saves it. Field errors show
+/// below their input once edited (<see cref="ValidatingViewModel"/>); Export stays disabled with the reason as tooltip.
 /// </summary>
-public sealed partial class ExportReportViewModel : ObservableObject
+public sealed partial class ExportReportViewModel : ValidatingViewModel
 {
+    /// <summary>Longest site and technician text (one line in the PDF footer).</summary>
+    public const int MaxTextLength = 120;
+
     public static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
 
     private readonly ICorePluginClientContext _ctx;
@@ -47,6 +52,13 @@ public sealed partial class ExportReportViewModel : ObservableObject
         Site = _settings.Site;
         Technician = _settings.Technician;
         DateText = DateOnly.FromDateTime((time ?? TimeProvider.System).GetLocalNow().Date).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        Validation
+            .Rule(nameof(Site), () => string.IsNullOrWhiteSpace(Site) ? "Enter the site or customer name."
+                : Site.Trim().Length > MaxTextLength ? $"Use at most {MaxTextLength} characters." : null)
+            .Rule(nameof(Technician), () => (Technician ?? string.Empty).Trim().Length > MaxTextLength ? $"Use at most {MaxTextLength} characters." : null)
+            .Rule(nameof(DateText), () => Date is null ? "Enter the date as yyyy-MM-dd." : null);
+        Validation.Validate();
+        Validation.Reset(); // remembered values: nothing shown before the user edits a field
         var devices = tiles.Select(t => t.DeviceId).Distinct().Count();
         Summary = string.Create(CultureInfo.InvariantCulture,
             $"{tiles.Count} {(tiles.Count == 1 ? "snapshot" : "snapshots")} from {devices} {(devices == 1 ? "camera" : "cameras")}. The server takes new snapshots (up to {SnapshotReportPluginInfo.ReportMaxWidth}x{SnapshotReportPluginInfo.ReportMaxHeight}) and builds an A4 PDF with two snapshots per page.");
@@ -65,8 +77,6 @@ public sealed partial class ExportReportViewModel : ObservableObject
     public int ItemCount => _items.Count;
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
-    [NotifyPropertyChangedFor(nameof(SiteError))]
     public partial string Site { get; set; }
 
     [ObservableProperty]
@@ -74,14 +84,14 @@ public sealed partial class ExportReportViewModel : ObservableObject
 
     /// <summary>Report date as typed (yyyy-MM-dd), today by default.</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
-    [NotifyPropertyChangedFor(nameof(Date), nameof(DateError), nameof(SuggestedFileName))]
+    [NotifyPropertyChangedFor(nameof(Date), nameof(SuggestedFileName))]
     public partial string DateText { get; set; }
 
     /// <summary>The parsed report date; null while <see cref="DateText"/> is not a valid yyyy-MM-dd date.</summary>
     public DateOnly? Date => DateOnly.TryParseExact(DateText?.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? date : null;
 
-    public string? DateError => Date is null ? "Enter the date as yyyy-MM-dd." : null;
+    /// <summary>The date error (shown below the field once edited).</summary>
+    public string? DateError => Validation.ErrorOf(nameof(DateText));
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
@@ -120,7 +130,19 @@ public sealed partial class ExportReportViewModel : ObservableObject
     [ObservableProperty]
     public partial string? SavedPath { get; private set; }
 
-    public string? SiteError => string.IsNullOrWhiteSpace(Site) ? "Enter the site or customer name." : null;
+    /// <summary>The site error (shown below the field once edited).</summary>
+    public string? SiteError => Validation.ErrorOf(nameof(Site));
+
+    /// <summary>Why Export is disabled (tooltip).</summary>
+    public string? ExportBlockedReason => IsBusy ? null : FormError ?? (_items.Count == 0 ? "Select at least one snapshot." : null);
+
+    protected override void OnValidationChanged()
+    {
+        OnPropertyChanged(nameof(SiteError));
+        OnPropertyChanged(nameof(DateError));
+        OnPropertyChanged(nameof(ExportBlockedReason));
+        ExportCommand.NotifyCanExecuteChanged();
+    }
 
     /// <summary>"Maintenance report - Site - 2026-10-07.pdf" without characters file systems refuse.</summary>
     public string SuggestedFileName
@@ -196,7 +218,7 @@ public sealed partial class ExportReportViewModel : ObservableObject
         }
     }
 
-    private bool CanExport() => !IsBusy && !string.IsNullOrWhiteSpace(Site) && Date is not null && _items.Count > 0;
+    private bool CanExport() => !IsBusy && Validation.IsValid && _items.Count > 0;
 
     [RelayCommand]
     private async Task CancelAsync()

@@ -33,6 +33,9 @@ public sealed class TaskPluginTests
 
     private string? Detail(string step) => StepRun.Detail(_ctx.Steps, step);
 
+    /// <summary>What the fake device (10.0.0.48) already has: NTP on with 10.0.0.17.</summary>
+    private static readonly NtpSettings SameNtp = new(NtpSource.Static, ["10.0.0.17"]);
+
     [Fact]
     public void Plugin_identity()
     {
@@ -57,15 +60,18 @@ public sealed class TaskPluginTests
     }
 
     [Fact]
-    public async Task Time_zone_only()
+    public async Task New_time_zone_with_the_current_time_mode()
     {
-        await RunAsync(new DateTimePayload("Europe/Vienna"));
+        // Like ADM both are written; the time mode the device already has is skipped.
+        await RunAsync(new DateTimePayload("Europe/Vienna", TimeMode.Ntp, SameNtp));
 
         Assert.Equal(
         [
             "Check compatibility: Done", "Read current time settings: Done", "Read NTP settings: Done", "Validate settings: Done",
-            "Set time zone: Done", "Verify time settings: Done", "Completed: Done",
+            "Set time zone: Done", "Set NTP configuration: Skipped", "Verify time settings: Done", "Verify NTP settings: Skipped", "Completed: Done",
         ], Lines);
+        Assert.Equal("Already set", Detail("Set NTP configuration"));
+        Assert.Equal("NTP was not changed.", Detail("Verify NTP settings"));
         Assert.Equal("setTimeZone", Assert.Single(_vapix.Writes).Method);
         Assert.Equal("time-service 1.1, ntp 1.5", Detail("Check compatibility"));
         Assert.Equal("2026-10-07 18:24:01 (UTC+02:00), POSIX <UTC1>-1<UTC2>-2,M3.5.0/2:00:00,M10.5.0/3:00:00, daylight saving on", Detail("Read current time settings"));
@@ -78,32 +84,40 @@ public sealed class TaskPluginTests
     [Fact]
     public async Task Ntp_servers()
     {
-        await RunAsync(new DateTimePayload(Mode: TimeMode.Ntp, Ntp: new NtpSettings(NtpSource.Static, ["10.0.0.1", "pool.ntp.org"])));
+        await RunAsync(new DateTimePayload("Europe/Vienna", TimeMode.Ntp, new NtpSettings(NtpSource.Static, ["10.0.0.1", "pool.ntp.org"])));
 
         Assert.Equal(
         [
             "Check compatibility: Done", "Read current time settings: Done", "Read NTP settings: Done", "Validate settings: Done",
-            "Set NTP configuration: Done", "Verify time settings: Skipped", "Verify NTP settings: Done", "Completed: Done",
+            "Set time zone: Done", "Set NTP configuration: Done", "Verify time settings: Done", "Verify NTP settings: Done", "Completed: Done",
         ], Lines);
         Assert.Equal("NTP servers 10.0.0.1, pool.ntp.org, not synchronized (the device synchronizes within a few minutes)", Detail("Verify NTP settings"));
-        Assert.Equal("Time zone and time were not changed.", Detail("Verify time settings"));
     }
 
     [Fact]
     public async Task Unchanged_ntp_is_skipped_and_nothing_is_written()
     {
-        await RunAsync(new DateTimePayload(Mode: TimeMode.Ntp, Ntp: new NtpSettings(NtpSource.Static, ["10.0.0.17"])));
+        var payload = new DateTimePayload("Europe/Vienna", TimeMode.Ntp, SameNtp);
+        await RunAsync(payload);
+        var writes = _vapix.Writes.Count;
 
-        Assert.Equal("Set NTP configuration: Skipped", Lines[4]);
-        Assert.Equal("Already set", Detail("Set NTP configuration"));
-        Assert.Equal("Nothing was changed.", Detail("Verify NTP settings"));
-        Assert.Empty(_vapix.Writes);
+        // Second run: the device already has both, nothing is written.
+        var second = new RecordingContext(_vapix);
+        await StepRun.RunAsync(second.Steps, () => _plugin.ExecuteAsync(second, new FakeDevice(Guid.NewGuid()), payload.ToJson(), CancellationToken.None));
+
+        var lines = StepRun.Lines(second.Steps);
+        Assert.Equal("Set time zone: Skipped", lines[4]);
+        Assert.Equal("Already Europe/Vienna", StepRun.Detail(second.Steps, "Set time zone"));
+        Assert.Equal("Set NTP configuration: Skipped", lines[5]);
+        Assert.Equal("Already set", StepRun.Detail(second.Steps, "Set NTP configuration"));
+        Assert.Equal("Nothing was changed.", StepRun.Detail(second.Steps, "Verify NTP settings"));
+        Assert.Equal(writes, _vapix.Writes.Count);
     }
 
     [Fact]
     public async Task Sync_with_server_time()
     {
-        await RunAsync(new DateTimePayload(Mode: TimeMode.ServerTime));
+        await RunAsync(new DateTimePayload(null, TimeMode.ServerTime));
 
         Assert.Equal(
         [
@@ -151,7 +165,7 @@ public sealed class TaskPluginTests
     [Fact]
     public async Task Invalid_payload_fails_before_any_request()
     {
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => RunAsync(new DateTimePayload(Mode: TimeMode.Ntp, Ntp: new NtpSettings(NtpSource.Static, ["bad host!"]))));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => RunAsync(new DateTimePayload("Europe/Vienna", TimeMode.Ntp, new NtpSettings(NtpSource.Static, ["bad host!"]))));
 
         Assert.EndsWith("Nothing was changed.", ex.Message, StringComparison.Ordinal);
         Assert.Empty(_vapix.Sent);
@@ -175,7 +189,7 @@ public sealed class TaskPluginTests
     {
         _vapix.ApiList = Fixture.FutureMajor;
 
-        await Assert.ThrowsAsync<DeviceNotCompatibleException>(() => RunAsync(new DateTimePayload("Europe/Vienna")));
+        await Assert.ThrowsAsync<DeviceNotCompatibleException>(() => RunAsync(new DateTimePayload("Europe/Vienna", TimeMode.Ntp, SameNtp)));
 
         Assert.Equal("Check compatibility: Failed", Lines[0]);
         Assert.Empty(_vapix.Sent);
@@ -210,7 +224,7 @@ public sealed class TaskPluginTests
     {
         _vapix.Respond = r => r.Method == "getDateTimeInfo" ? throw new HttpRequestException("refused", new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.ConnectionRefused)) : null;
 
-        var ex = await Assert.ThrowsAsync<Vapix.TimeApiException>(() => RunAsync(new DateTimePayload("Europe/Vienna")));
+        var ex = await Assert.ThrowsAsync<Vapix.TimeApiException>(() => RunAsync(new DateTimePayload("Europe/Vienna", TimeMode.Ntp, SameNtp)));
 
         Assert.Equal("getDateTimeInfo failed: Connection refused", ex.Message);
         Assert.Equal("Read current time settings: Failed", Lines[1]);
@@ -236,7 +250,7 @@ public sealed class TaskPluginTests
         // The device acknowledges setDateTime but keeps its clock 1 hour behind.
         _vapix.Respond = r => r.Method == "setDateTime" ? (HttpStatusCode.OK, """{"apiVersion":"1.1","method":"setDateTime","data":{}}""") : null;
 
-        await RunAsync(new DateTimePayload(Mode: TimeMode.Manual, ManualDateTime: "2026-10-07T19:24:00"));
+        await RunAsync(new DateTimePayload("Europe/Vienna", TimeMode.Manual, ManualDateTime: "2026-10-07T19:24:00"));
 
         Assert.Equal("Verify time settings: Warning", Lines.Single(l => l.StartsWith("Verify time", StringComparison.Ordinal)));
         Assert.Contains("differs by -3599.0 s", Detail("Verify time settings"), StringComparison.Ordinal);
@@ -258,17 +272,15 @@ public sealed class TaskPluginTests
     }
 
     [Theory]
-    [InlineData("""{"timeZone":"Europe/Vienna"}""", "Set time zone Europe/Vienna")]
-    [InlineData("""{"timeZone":"Europe/Vienna","daylightSaving":false}""", "Set time zone Europe/Vienna without DST")]
-    [InlineData("""{"mode":"Ntp","ntp":{"source":"Static","servers":["10.0.0.17","pool.ntp.org"]}}""", "Set NTP servers 10.0.0.17, pool.ntp.org")]
-    [InlineData("""{"mode":"Ntp","ntp":{"source":"Static","servers":["a1","a2","a3","a4","a5"]}}""", "Set NTP servers a1, a2, a3 +2")]
-    [InlineData("""{"mode":"Ntp","ntp":{"source":"Dhcp","servers":[]}}""", "Set NTP servers from DHCP")]
-    [InlineData("""{"mode":"Ntp","ntp":{"source":"Static","servers":["nts.netnod.se"],"nts":true}}""", "Set NTS KE servers nts.netnod.se")]
-    [InlineData("""{"mode":"ServerTime"}""", "Sync with server time")]
-    [InlineData("""{"mode":"Manual","manualDateTime":"2026-10-07T18:00:00"}""", "Set date and time 2026-10-07 18:00")]
-    [InlineData("""{"mode":"Manual","manualDateTime":"2026-10-07T18:00:30"}""", "Set date and time 2026-10-07 18:00:30")]
-    [InlineData("""{"timeZone":"Europe/Vienna","mode":"Manual","manualDateTime":"2026-10-07T18:00:00"}""", "Change date and time")]
     [InlineData("""{"timeZone":"Europe/Vienna","mode":"Ntp","ntp":{"source":"Dhcp","servers":[]}}""", "Change date and time")]
+    [InlineData("""{"timeZone":"Europe/Vienna","daylightSaving":false,"mode":"Manual","manualDateTime":"2026-10-07T18:00:00"}""", "Change date and time")]
+    [InlineData("""{"timeZone":"Europe/Vienna","timeZoneUnchanged":true,"mode":"Ntp","ntp":{"source":"Static","servers":["10.0.0.17","pool.ntp.org"]}}""", "Set NTP servers 10.0.0.17, pool.ntp.org")]
+    [InlineData("""{"timeZone":"Europe/Vienna","timeZoneUnchanged":true,"mode":"Ntp","ntp":{"source":"Static","servers":["a1","a2","a3","a4","a5"]}}""", "Set NTP servers a1, a2, a3 +2")]
+    [InlineData("""{"timeZone":"Europe/Vienna","timeZoneUnchanged":true,"mode":"Ntp","ntp":{"source":"Dhcp","servers":[]}}""", "Set NTP servers from DHCP")]
+    [InlineData("""{"timeZone":"Europe/Vienna","timeZoneUnchanged":true,"mode":"Ntp","ntp":{"source":"Static","servers":["nts.netnod.se"],"nts":true}}""", "Set NTS KE servers nts.netnod.se")]
+    [InlineData("""{"mode":"ServerTime"}""", "Sync with server time")]
+    [InlineData("""{"timeZone":"Europe/Vienna","timeZoneUnchanged":true,"mode":"Manual","manualDateTime":"2026-10-07T18:00:00"}""", "Set date and time 2026-10-07 18:00")]
+    [InlineData("""{"timeZone":"Europe/Vienna","timeZoneUnchanged":true,"mode":"Manual","manualDateTime":"2026-10-07T18:00:30"}""", "Set date and time 2026-10-07 18:00:30")]
     [InlineData("not json", "Date and time")]
     [InlineData(null, "Date and time")]
     public void Task_names(string? payload, string name)
@@ -280,17 +292,17 @@ public sealed class TaskPluginTests
     public void Planned_steps_follow_the_payload()
     {
         Assert.Equal(
-            ["Check compatibility", "Read current time settings", "Read NTP settings", "Validate settings", "Set time zone", "Verify time settings"],
-            DateTimeTaskRunner.PlannedSteps(new DateTimePayload("Europe/Vienna")));
+            ["Check compatibility", "Read current time settings", "Read NTP settings", "Validate settings", "Set time zone", "Set NTP configuration", "Verify time settings", "Verify NTP settings"],
+            DateTimeTaskRunner.PlannedSteps(new DateTimePayload("Europe/Vienna", TimeMode.Ntp, SameNtp)));
         Assert.Equal(
             ["Check compatibility", "Read current time settings", "Read NTP settings", "Validate settings", "Set time zone", "Turn off NTP", "Set date and time", "Verify time settings", "Verify NTP settings"],
-            DateTimeTaskRunner.PlannedSteps(new DateTimePayload(Mode: TimeMode.ServerTime)));
+            DateTimeTaskRunner.PlannedSteps(new DateTimePayload(null, TimeMode.ServerTime)));
     }
 
     [Fact]
     public void Payload_with_ntp_parameters_is_valid_json()
     {
-        var json = new DateTimePayload(Mode: TimeMode.Ntp, Ntp: new NtpSettings(NtpSource.Static, ["10.0.0.1"])).ToJson();
+        var json = new DateTimePayload("Europe/Vienna", TimeMode.Ntp, new NtpSettings(NtpSource.Static, ["10.0.0.1"])).ToJson();
 
         Assert.Equal("Static", JsonNode.Parse(json)!["ntp"]!["source"]!.GetValue<string>());
     }

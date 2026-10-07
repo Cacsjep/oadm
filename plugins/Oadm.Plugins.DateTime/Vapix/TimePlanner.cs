@@ -96,10 +96,9 @@ public static class TimePlanner
         var hasTimeService = TimeApis.HasTimeService(apis);
         var timeVersion = hasTimeService ? apis.Require(TimeApis.TimeService, TimeApis.TimeServiceBase).Version : null;
 
-        // Time zone: the chosen one, or the server's in server time mode.
+        // Time zone (always, like ADM): the chosen one, or the server's in server time mode.
         var zone = payload.Mode == TimeMode.ServerTime ? serverTimeZone : payload.TimeZone;
         var dst = payload.Mode == TimeMode.ServerTime || payload.DaylightSaving;
-        if (payload.ChangesTimeZone || payload.Mode == TimeMode.ServerTime)
         {
             if (zone is null || !TimeZoneCatalog.IsKnown(zone))
             {
@@ -114,7 +113,7 @@ public static class TimePlanner
             }
         }
 
-        if (payload.ChangesSync)
+        // Time mode (always): NTP on with its servers, or off for server time and manual.
         {
             var (section, state) = PlanNtp(payload, apis, current);
             sections.Add(section);

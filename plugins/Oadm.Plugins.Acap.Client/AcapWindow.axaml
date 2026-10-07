@@ -112,7 +112,8 @@
     </Border>
 
     <ui:DialogFooter Grid.Row="3" CancelCommand="{Binding CancelCommand}">
-      <Button Classes="primary" Content="Install" Command="{Binding InstallCommand}" IsVisible="{Binding HasPackage}" IsDefault="True" />
+      <Button Classes="primary" Content="Install" Command="{Binding InstallCommand}" IsVisible="{Binding HasPackage}" IsDefault="True"
+              ToolTip.Tip="{Binding InstallBlockedReason}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>
   </Grid>
 </Window>

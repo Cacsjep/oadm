@@ -25,15 +25,17 @@
             <StackPanel Classes="form">
               <RadioButton GroupName="ipv4" Content="{Binding DhcpOptionText}" IsChecked="{Binding UseDhcp}" />
               <RadioButton GroupName="ipv4" Content="{Binding RangeOptionText}" IsChecked="{Binding UseRange}" />
-              <Grid Classes="form" ColumnDefinitions="150,320" RowDefinitions="Auto,Auto,Auto" IsVisible="{Binding UseRange}">
-                <TextBlock Classes="fieldLabel" Text="{Binding RangeLabel}" />
-                <TextBox Grid.Column="1" Text="{Binding IpRange}" PlaceholderText="{Binding RangePlaceholder}" />
-                <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Subnet mask" />
-                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding SubnetMask}" PlaceholderText="255.255.255.0" />
-                <TextBlock Grid.Row="2" Classes="fieldLabel" Text="Default router" />
-                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding DefaultRouter}" PlaceholderText="192.168.0.1" />
-              </Grid>
-              <TextBlock Classes="secondary small" Text="{Binding RangeHint}" TextWrapping="Wrap" IsVisible="{Binding UseRange}" />
+              <StackPanel Classes="form" IsVisible="{Binding UseRange}">
+                <ui:FormField Label="{Binding RangeLabel}" Hint="{Binding RangeHint}">
+                  <TextBox Text="{Binding IpRange}" PlaceholderText="{Binding RangePlaceholder}" />
+                </ui:FormField>
+                <ui:FormField Label="Subnet mask">
+                  <TextBox Text="{Binding SubnetMask}" PlaceholderText="255.255.255.0" />
+                </ui:FormField>
+                <ui:FormField Label="Default router">
+                  <TextBox Text="{Binding DefaultRouter}" PlaceholderText="192.168.0.1" />
+                </ui:FormField>
+              </StackPanel>
               <TextBlock Classes="error" Text="{Binding PrefillStatus}" TextWrapping="Wrap" IsVisible="{Binding PrefillStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             </StackPanel>
           </StackPanel>
@@ -49,12 +51,14 @@
           </Border.IsVisible>
           <StackPanel>
             <ui:CardHeader Title="DNS servers" Description="Optional. Leave empty to keep the current DNS settings; domain name and search domains are always kept." />
-            <Grid Classes="form" ColumnDefinitions="150,320" RowDefinitions="Auto,Auto">
-              <TextBlock Classes="fieldLabel" Text="Primary DNS server" />
-              <TextBox Grid.Column="1" Text="{Binding DnsPrimary}" PlaceholderText="optional" />
-              <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Secondary DNS server" />
-              <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding DnsSecondary}" PlaceholderText="optional" />
-            </Grid>
+            <StackPanel Classes="form">
+              <ui:FormField Label="Primary DNS server">
+                <TextBox Text="{Binding DnsPrimary}" PlaceholderText="optional" />
+              </ui:FormField>
+              <ui:FormField Label="Secondary DNS server">
+                <TextBox Text="{Binding DnsSecondary}" PlaceholderText="optional" />
+              </ui:FormField>
+            </StackPanel>
           </StackPanel>
         </Border>
 

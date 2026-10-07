@@ -1,4 +1,3 @@
-using System.Collections;
 using System.ComponentModel;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -6,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Plugins.Network.Model;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Validation;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Network.Client;
@@ -19,15 +19,18 @@ namespace Oadm.Plugins.Network.Client;
 /// Errors appear once: below their field (<see cref="INotifyDataErrorInfo"/>) or in the row of the table. Finish asks
 /// for confirmation (<see cref="Confirm"/>, the host's shared message window) with the reachability warning.
 /// </summary>
-public sealed partial class AssignIpViewModel : ObservableObject, IDisposable, INotifyDataErrorInfo
+public sealed partial class AssignIpViewModel : ValidatingViewModel, IDisposable
 {
     private static readonly HashSet<string> Inputs =
     [
         nameof(UseDhcp), nameof(IpRange), nameof(SubnetMask), nameof(DefaultRouter), nameof(DnsPrimary), nameof(DnsSecondary),
     ];
 
+    /// <summary>The shared fields, in the order the first error is reported (button tooltip).</summary>
+    private static readonly string[] Fields = [nameof(IpRange), nameof(SubnetMask), nameof(DefaultRouter), nameof(DnsPrimary), nameof(DnsSecondary)];
+
     private readonly IReadOnlyList<IDeviceInfo> _devices;
-    private readonly FieldErrors _fieldErrors;
+    private Dictionary<string, string?> _fieldErrors = [];
     private readonly bool _initialized;
     private ITaskDialogContext? _context;
     private NetworkPayload? _payload;
@@ -43,7 +46,7 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable, I
         }
 
         _devices = devices;
-        _fieldErrors = new FieldErrors(name => ErrorsChanged?.Invoke(this, new DataErrorsChangedEventArgs(name)));
+        Validation.Rules(Fields, () => _fieldErrors);
         Assignment = new AddressAssignmentViewModel(devices);
         Assignment.Changed += (_, _) => Recompute();
         Assignment.PropertyChanged += (_, e) =>
@@ -60,7 +63,6 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable, I
     /// <summary>Raised when the dialog should close: true = finish (see <see cref="ResultJson"/>), false = cancel.</summary>
     public event EventHandler<bool>? CloseRequested;
 
-    public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged;
 
     /// <summary>Confirmation of Finish with the reachability warning (shared message window). Null: no confirmation.</summary>
     public ConfirmChange? Confirm { get; set; }
@@ -151,12 +153,9 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable, I
     public partial string? BlockedReason { get; set; }
 
     /// <summary>A field has an error (shown below that field).</summary>
-    public bool HasErrors => _fieldErrors.HasErrors;
 
-    public IEnumerable GetErrors(string? propertyName) => _fieldErrors.GetErrors(propertyName);
 
     /// <summary>The error of one field (tests).</summary>
-    public string? ErrorOf(string propertyName) => _fieldErrors[propertyName];
 
     /// <summary>Payload JSON after Finish; null before.</summary>
     public string? ResultJson { get; private set; }
@@ -206,11 +205,13 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable, I
         if (string.IsNullOrWhiteSpace(SubnetMask) && mask is { } prefix)
         {
             SubnetMask = Ipv4.MaskText(prefix);
+            Validation.Reset(nameof(SubnetMask)); // prefilled, not edited
         }
 
         if (string.IsNullOrWhiteSpace(DefaultRouter) && (v4.Gateway ?? v4.StaticGateway) is { } router)
         {
             DefaultRouter = router;
+            Validation.Reset(nameof(DefaultRouter));
         }
     }
 
@@ -346,7 +347,8 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable, I
             }
         }
 
-        _fieldErrors.SetAll(fields);
+        _fieldErrors = fields;
+        Validation.Validate();
 
         var devices = new Dictionary<Guid, DeviceAssignment>();
         for (var i = 0; i < _devices.Count; i++)
@@ -362,11 +364,11 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable, I
         };
 
         // Page 2 (and DHCP): the whole payload, exactly as the server validates it before the first write.
-        var remaining = !_fieldErrors.HasErrors && tableError is null && (UseDhcp || IsReviewPage)
+        var remaining = Validation.IsValid && tableError is null && (UseDhcp || IsReviewPage)
             ? PayloadValidator.Validate(payload).Select(Strip).ToList()
             : [];
         var rowProblems = IsReviewPage && !UseDhcp && Assignment.HasConflicts;
-        var blocked = _fieldErrors.First
+        var blocked = Validation.FirstError
             ?? tableError
             ?? (rowProblems ? "Resolve the problems shown in the table, or edit the new IP addresses." : null)
             ?? remaining.FirstOrDefault();
@@ -392,7 +394,7 @@ public sealed partial class AssignIpViewModel : ObservableObject, IDisposable, I
     /// <summary>The dialog speaks ADM's words: "IPv4: ... gateway" becomes "... default router".</summary>
     private static string Strip(string error)
     {
-        var text = FieldErrors.Clean(error)
+        var text = FieldErrorText.Clean(error)
             .Replace("default gateway", "default router", StringComparison.Ordinal)
             .Replace("gateway", "default router", StringComparison.Ordinal)
             .Replace("Gateway", "Default router", StringComparison.Ordinal);

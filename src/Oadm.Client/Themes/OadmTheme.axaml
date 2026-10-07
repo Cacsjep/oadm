@@ -149,6 +149,10 @@
       <x:Double x:Key="Oadm.LiveViewMinWidth">320</x:Double>
       <x:Double x:Key="Oadm.ProgressHeight">6</x:Double>
       <x:Double x:Key="Oadm.Gap">16</x:Double>
+      <!-- Form rows (ui:FormField): label column, input column, gap between input and its error or hint -->
+      <x:Double x:Key="Oadm.FormLabelWidth">180</x:Double>
+      <x:Double x:Key="Oadm.FormInputWidth">280</x:Double>
+      <Thickness x:Key="Oadm.FieldMessageMargin">0,4,0,0</Thickness>
       <CornerRadius x:Key="Oadm.CardCornerRadius">16</CornerRadius>
       <CornerRadius x:Key="Oadm.ControlCornerRadius">8</CornerRadius>
       <CornerRadius x:Key="Oadm.PillCornerRadius">10</CornerRadius>
@@ -505,6 +509,78 @@
     <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.TextDisabledBrush}" />
   </Style>
+
+  <!-- Validation (Vuetify-like): the error of an input is small red text directly below it, aligned with its
+       left edge, and the input gets a red border. Nothing is reserved while there is no error. Every input with
+       data validation (TextBox, ui:PasswordBox, NumericUpDown, ComboBox) shows its INotifyDataErrorInfo error
+       this way; ui:FormField shows the hint or an explicit error in the same place. -->
+  <Style Selector="DataValidationErrors">
+    <Setter Property="ErrorTemplate">
+      <DataTemplate>
+        <ItemsControl ItemsSource="{ReflectionBinding}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Classes="fieldMessage error" Margin="0" Text="{ReflectionBinding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </DataTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="DataValidationErrors /template/ ContentControl#InlineDataValidationContentControl">
+    <Setter Property="Margin" Value="{StaticResource Oadm.FieldMessageMargin}" />
+  </Style>
+  <Style Selector="TextBlock.fieldMessage">
+    <!-- The UI font also below code fields (their monospace font would be inherited) -->
+    <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamily}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="Margin" Value="{StaticResource Oadm.FieldMessageMargin}" />
+  </Style>
+  <Style Selector="TextBlock.fieldMessage.error">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="TextBox:error /template/ Border#PART_BorderElement, TextBox:error:pointerover /template/ Border#PART_BorderElement, TextBox:error:focus /template/ Border#PART_BorderElement">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="ComboBox:error /template/ Border#Background, ComboBox:error:pointerover /template/ Border#Background">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="NumericUpDown:error /template/ ButtonSpinner#PART_Spinner">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+
+  <!-- Form rows: every labeled input is a ui:FormField (label, input, error or hint below the input) -->
+  <Style Selector="ui|FormField">
+    <Setter Property="LabelWidth" Value="{StaticResource Oadm.FormLabelWidth}" />
+    <Setter Property="InputWidth" Value="{StaticResource Oadm.FormInputWidth}" />
+    <Setter Property="LabelHeight" Value="{StaticResource Oadm.ControlHeight}" />
+  </Style>
+  <Style Selector="ui|FormField.wide">
+    <Setter Property="InputWidth" Value="NaN" />
+  </Style>
+  <Style Selector="ui|FormField.inline">
+    <Setter Property="LabelWidth" Value="NaN" />
+  </Style>
+  <Style Selector="ui|FormField > ComboBox, ui|FormField > NumericUpDown">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+  </Style>
+  <!-- An error below a select field must not shrink the field: the minimum height belongs to the box -->
+  <Style Selector="ComboBox /template/ Border#Background">
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+  </Style>
+  <!-- Label level with the text of the input: plain text blocks need the measured Inter correction (as select fields) -->
+  <Style Selector="ui|FormField TextBlock.fieldLabel">
+    <Setter Property="Padding" Value="0,3,0,0" />
+  </Style>
+  <!-- Plain text as the field content (a read-only value): level with the label -->
+  <Style Selector="ui|FormField > TextBlock">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ui|FormField > CheckBox">
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+  </Style>
   <Style Selector="TextBlock.fieldLabel">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
     <Setter Property="VerticalAlignment" Value="Center" />
@@ -860,6 +936,14 @@
     <Setter Property="Orientation" Value="Horizontal" />
     <Setter Property="Spacing" Value="10" />
     <Setter Property="Margin" Value="0,0,0,12" />
+  </Style>
+  <!-- Top-aligned so an error appearing below one input moves nothing else in the row -->
+  <Style Selector="StackPanel.inputRow > :is(Control), Grid.inputRow > :is(Control)">
+    <Setter Property="VerticalAlignment" Value="Top" />
+  </Style>
+  <!-- Several inputs in one form field (e.g. API and version): the field's row spacing applies, not the row margin -->
+  <Style Selector="ui|FormField StackPanel.inputRow">
+    <Setter Property="Margin" Value="0" />
   </Style>
 
   <!-- Connection banner -->

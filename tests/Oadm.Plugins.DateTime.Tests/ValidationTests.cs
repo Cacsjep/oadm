@@ -67,11 +67,16 @@ public sealed class ValidationTests
     }
 
     [Fact]
-    public void Payload_needs_a_change()
+    public void Payload_needs_a_time_mode_and_a_time_zone()
     {
-        var errors = PayloadValidator.Validate(new DateTimePayload());
+        // Like ADM there is no "keep": a payload without a mode or (except server time) without a zone is refused.
+        var errors = PayloadValidator.Validate(DateTimePayload.Parse("{}"));
+        Assert.Equal([PayloadValidator.FieldMode, PayloadValidator.FieldTimeZone], errors.Select(e => e.Field));
 
-        Assert.Equal(PayloadValidator.FieldMode, Assert.Single(errors).Field);
+        var noZone = PayloadValidator.Validate(new DateTimePayload(null, TimeMode.Ntp, new NtpSettings(NtpSource.Dhcp, [])));
+        Assert.Equal("Select a time zone.", Assert.Single(noZone).Message);
+
+        Assert.Empty(PayloadValidator.Validate(new DateTimePayload(null, TimeMode.ServerTime))); // the server's zone is used
     }
 
     [Fact]
@@ -89,8 +94,8 @@ public sealed class ValidationTests
     [Fact]
     public void Dhcp_needs_no_servers_but_nts_does()
     {
-        Assert.Empty(PayloadValidator.Validate(new DateTimePayload(Mode: TimeMode.Ntp, Ntp: new NtpSettings(NtpSource.Dhcp, []))));
-        Assert.Single(PayloadValidator.Validate(new DateTimePayload(Mode: TimeMode.Ntp, Ntp: new NtpSettings(NtpSource.Static, [], Nts: true))));
+        Assert.Empty(PayloadValidator.Validate(new DateTimePayload("UTC", TimeMode.Ntp, new NtpSettings(NtpSource.Dhcp, []))));
+        Assert.Single(PayloadValidator.Validate(new DateTimePayload("UTC", TimeMode.Ntp, new NtpSettings(NtpSource.Static, [], Nts: true))));
     }
 
     [Fact]

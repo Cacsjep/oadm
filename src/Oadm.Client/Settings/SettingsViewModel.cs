@@ -12,14 +12,19 @@ using Oadm.Client.Shell;
 using Grpc.Core;
 
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Client.Validation;
 
 namespace Oadm.Client.Settings;
 
 /// <summary>One credential list entry: user name and when it was added (never a password).</summary>
 public sealed record CredentialItemViewModel(string Id, string UserName, string AddedText);
 
-/// <summary>Server settings (SettingsService), the credential list, plus the client-side server address.</summary>
-public sealed partial class SettingsViewModel : ObservableObject
+/// <summary>
+/// Server settings (SettingsService), the credential list, plus the client-side server address. Every field
+/// reports its error below itself (<see cref="ValidatingViewModel"/>); Save, Add credential and Connect stay
+/// disabled while their fields have errors.
+/// </summary>
+public sealed partial class SettingsViewModel : ValidatingViewModel
 {
     private readonly IOadmApi _api;
     private readonly IClientSettingsStore _clientSettings;
@@ -36,6 +41,82 @@ public sealed partial class SettingsViewModel : ObservableObject
         _logger = logger;
         ServerAddress = clientSettings.Current.ServerAddress;
         connection.Connected += (_, _) => _ = LoadAsync();
+
+        Validation
+            .Rule(nameof(PollingIntervalSeconds), () => RangeError(PollingIntervalSeconds, 5, 3600))
+            .Rule(nameof(FullRefreshMinutes), () => RangeError(FullRefreshMinutes, 1, 1440))
+            .Rule(nameof(ScanParallelism), () => RangeError(ScanParallelism, 1, 256))
+            .Rule(nameof(ScanTimeoutMs), () => RangeError(ScanTimeoutMs, 100, 30000))
+            .Rule(nameof(ZeroConfSeconds), () => RangeError(ZeroConfSeconds, 5, 300))
+            .Rule(nameof(ServerName), () => ServerName.Trim().Length == 0 ? "Enter a server name." : null)
+            .Rule(nameof(ListenUrl), () => ListenUrlError(ListenUrl))
+            .Rule(nameof(NewCredentialUserName), () => NewCredentialUserName.Trim().Length == 0 ? "Enter a user name." : null)
+            .Rule(nameof(NewCredentialPassword), () => NewCredentialPassword.Length == 0 ? "Enter the password." : null)
+            .Rule(nameof(ServerAddress), () => ServerAddressError(ServerAddress));
+        Validation.Validate();
+        Validation.Reset();
+    }
+
+    private static readonly string[] ServerFields =
+    [
+        nameof(PollingIntervalSeconds), nameof(FullRefreshMinutes), nameof(ScanParallelism), nameof(ScanTimeoutMs),
+        nameof(ZeroConfSeconds), nameof(ServerName), nameof(ListenUrl),
+    ];
+
+    private static readonly string[] CredentialFields = [nameof(NewCredentialUserName), nameof(NewCredentialPassword)];
+
+    /// <summary>Why Save is disabled (tooltip).</summary>
+    public string? SaveBlockedReason => Validation.FirstErrorOf(ServerFields);
+
+    /// <summary>Why Add credential is disabled (tooltip).</summary>
+    public string? AddCredentialBlockedReason => Validation.FirstErrorOf(CredentialFields);
+
+    /// <summary>Why Connect is disabled (tooltip).</summary>
+    public string? ConnectBlockedReason => Validation.FirstErrorOf([nameof(ServerAddress)]);
+
+    protected override void OnValidationChanged()
+    {
+        OnPropertyChanged(nameof(SaveBlockedReason));
+        OnPropertyChanged(nameof(AddCredentialBlockedReason));
+        OnPropertyChanged(nameof(ConnectBlockedReason));
+        SaveCommand.NotifyCanExecuteChanged();
+        AddCredentialCommand.NotifyCanExecuteChanged();
+        ApplyServerAddressCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>"Enter a value from 5 to 3600." for an empty or out-of-range number field.</summary>
+    public static string? RangeError(decimal? value, int min, int max) =>
+        value is null || value < min || value > max || decimal.Truncate(value.Value) != value
+            ? string.Create(CultureInfo.CurrentCulture, $"Enter a whole number from {min} to {max}.")
+            : null;
+
+    /// <summary>The listen URL Kestrel binds to: http(s), a host (also * or +) and optionally a port.</summary>
+    public static string? ListenUrlError(string? url)
+    {
+        string text = (url ?? "").Trim();
+        if (text.Length == 0)
+        {
+            return "Enter a listen URL, e.g. http://0.0.0.0:5080.";
+        }
+
+        string probe = text.Replace("://*", "://localhost", StringComparison.Ordinal).Replace("://+", "://localhost", StringComparison.Ordinal);
+        return Uri.TryCreate(probe, UriKind.Absolute, out Uri? uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            ? null
+            : "Enter a URL like http://0.0.0.0:5080.";
+    }
+
+    /// <summary>The server address of this client: http(s) URL (a bare host gets http:// and the default port).</summary>
+    public static string? ServerAddressError(string? address)
+    {
+        if ((address ?? "").Trim().Length == 0)
+        {
+            return "Enter the server address, e.g. http://server:5080.";
+        }
+
+        string normalized = GrpcOadmApi.Normalize(address!);
+        return Uri.TryCreate(normalized, UriKind.Absolute, out Uri? uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            ? null
+            : "Enter an address like http://server:5080.";
     }
 
     // client side
@@ -76,7 +157,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     public partial bool IsBusy { get; private set; }
 
-    private bool CanSave => IsLoaded && !IsBusy;
+    private bool CanSave => IsLoaded && !IsBusy && Validation.IsValidFor(ServerFields);
 
     [RelayCommand]
     public async Task LoadAsync()
@@ -85,6 +166,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             IsBusy = true;
             Apply(await _api.GetSettingsAsync(CancellationToken.None).ConfigureAwait(true));
+            Validation.Reset(ServerFields); // loaded values: nothing edited yet
             IsLoaded = true;
             ServerMessage = null;
             await LoadCredentialsAsync().ConfigureAwait(true);
@@ -104,6 +186,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task SaveAsync()
     {
+        if (!Validation.IsValidFor(ServerFields))
+        {
+            Validation.ShowAll(ServerFields);
+            return;
+        }
+
         var settings = new ServerSettings
         {
             PollingIntervalSeconds = (int)(PollingIntervalSeconds ?? 60),
@@ -119,6 +207,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             IsBusy = true;
             Apply(await _api.SetSettingsAsync(settings, CancellationToken.None).ConfigureAwait(true));
+            Validation.Reset(ServerFields);
             ServerMessageIsError = false;
             ServerMessage = "Saved. A changed listen URL takes effect after the server restarts.";
             LogSaved(_logger);
@@ -134,31 +223,35 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanAddCredential))]
     private async Task AddCredentialAsync()
     {
         string user = NewCredentialUserName.Trim();
-        if (user.Length == 0 || NewCredentialPassword.Length == 0)
+        if (!Validation.IsValidFor(CredentialFields))
         {
-            CredentialMessageIsError = true;
-            CredentialMessage = "Enter a user name and a password.";
+            Validation.ShowAll(CredentialFields);
             return;
         }
+
+        CredentialMessage = null;
 
         try
         {
             await _api.AddCredentialAsync(user, NewCredentialPassword, CancellationToken.None).ConfigureAwait(true);
             NewCredentialPassword = "";
+            Validation.Reset(CredentialFields); // ready for the next one
             CredentialMessageIsError = false;
             CredentialMessage = $"Added. OADM tries {user} on every device it finds.";
             await LoadCredentialsAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
-            CredentialMessageIsError = true;
-            CredentialMessage = "Adding failed: " + (ex is RpcException rpc ? rpc.Status.Detail : ex.Message);
+            // e.g. the entry exists already or the list is full: below the user name
+            Validation.SetServerError(nameof(NewCredentialUserName), "Adding failed: " + (ex is RpcException rpc ? rpc.Status.Detail : ex.Message));
         }
     }
+
+    private bool CanAddCredential() => Validation.IsValidFor(CredentialFields);
 
     [RelayCommand]
     private async Task RemoveCredentialAsync(CredentialItemViewModel? item)
@@ -194,15 +287,16 @@ public sealed partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(HasNoCredentials));
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanApplyServerAddress))]
     private void ApplyServerAddress()
     {
-        string address = GrpcOadmApi.Normalize(ServerAddress);
-        if (!Uri.TryCreate(address, UriKind.Absolute, out Uri? uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        if (!Validation.IsValidFor(nameof(ServerAddress)))
         {
-            ClientMessage = "Enter an address like http://server:5080.";
+            Validation.ShowAll(nameof(ServerAddress));
             return;
         }
+
+        string address = GrpcOadmApi.Normalize(ServerAddress);
 
         ServerAddress = address;
         _clientSettings.Current.ServerAddress = address;
@@ -210,6 +304,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         _connection.Reconnect(address);
         ClientMessage = "Connecting to " + _connection.ServerAddress;
     }
+
+    private bool CanApplyServerAddress() => Validation.IsValidFor(nameof(ServerAddress));
 
     private void Apply(ServerSettings settings)
     {

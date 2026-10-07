@@ -12,7 +12,8 @@ namespace Oadm.Plugins.DateAndTime;
 /// "Automatically adjust for daylight saving time changes"), time mode (Synchronize with server computer time,
 /// Synchronize with NTP server: from DHCP or manual servers incl. NTS, Set manually) for any number of devices.
 /// Compatibility is checked on the cached API list in <see cref="CanRun"/> and per method on a fresh list before the
-/// first write; only changed sections are written (see <see cref="DateTimeTaskRunner"/> for the steps).
+/// first write. Like ADM, the time zone and the time mode are always written; values a device already has are skipped
+/// (see <see cref="DateTimeTaskRunner"/> for the steps).
 /// </summary>
 public sealed class DateTimeTaskPlugin : ITaskPlugin, ITaskPluginQuery
 {
@@ -95,9 +96,11 @@ public sealed class DateTimeTaskPlugin : ITaskPlugin, ITaskPluginQuery
     }
 
     /// <summary>
-    /// Exact task name for the tasks pane: "Set time zone Europe/Vienna", "Set NTP servers 10.0.0.17, pool.ntp.org",
-    /// "Set NTP servers from DHCP", "Sync with server time", "Set date and time 2026-10-07 18:00", or "Change date and
-    /// time" when several sections change. Falls back to <see cref="DisplayName"/> for an unreadable payload.
+    /// Exact task name for the tasks pane: "Change date and time" (time zone and time mode are written), or the most
+    /// specific name when only the time mode differs from the device (<see cref="DateTimePayload.TimeZoneUnchanged"/>):
+    /// "Set NTP servers 10.0.0.17, pool.ntp.org", "Set NTP servers from DHCP", "Set NTS KE servers ...", "Set date and
+    /// time 2026-10-07 18:00"; "Sync with server time" for server time mode. Falls back to <see cref="DisplayName"/>
+    /// for an unreadable payload.
     /// </summary>
     public string GetTaskName(string? payloadJson)
     {
@@ -122,16 +125,9 @@ public sealed class DateTimeTaskPlugin : ITaskPlugin, ITaskPluginQuery
             return "Sync with server time";
         }
 
-        if (payload.ChangesTimeZone && payload.ChangesSync)
+        if (!payload.TimeZoneUnchanged)
         {
             return "Change date and time";
-        }
-
-        if (payload.ChangesTimeZone)
-        {
-            return payload.DaylightSaving
-                ? $"Set time zone {payload.TimeZone}"
-                : $"Set time zone {payload.TimeZone} without DST";
         }
 
         return payload.Mode switch
@@ -141,7 +137,7 @@ public sealed class DateTimeTaskPlugin : ITaskPlugin, ITaskPluginQuery
             TimeMode.Ntp when payload.Ntp is { } ntp => "Set NTP servers " + ServerList(ntp.Servers),
             TimeMode.Manual when payload.ParsedManualDateTime is { } manual => "Set date and time " + manual.ToString(
                 manual.Second == 0 ? "yyyy-MM-dd HH:mm" : "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
-            _ => null,
+            _ => "Change date and time",
         };
     }
 

@@ -85,10 +85,17 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.True(page.IsLoginEditorOpen);
         Assert.Equal("Log in to 10.0.0.93 (ACCC8E8192A3)", page.EditorTitle);
         Assert.True(page.SaveToCredentialList);
+        Assert.Null(page.ErrorOf(nameof(page.EditorPassword))); // untouched editor: no errors yet
+        Assert.False(page.RetryCommand.CanExecute(null)); // ...but no password: Retry waits
+        Assert.Equal("Enter the password.", page.RetryBlockedReason);
 
+        page.EditorPassword = "x";
+        page.EditorPassword = "";
+        Assert.Equal("Enter the password.", page.ErrorOf(nameof(page.EditorPassword))); // below the password field
         page.EditorPassword = "wrong";
+        Assert.True(page.RetryCommand.CanExecute(null));
         await page.RetryCommand.ExecuteAsync(null);
-        Assert.Equal("The user name or password is wrong.", page.EditorError);
+        Assert.Equal("The user name or password is wrong.", page.ErrorOf(nameof(page.EditorPassword)));
         Assert.Equal("Login failed", failed.ChipText);
         Assert.True(page.IsLoginEditorOpen);
 
@@ -120,16 +127,19 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.Contains("device policy \"complex\"", page.PolicyHint, StringComparison.Ordinal);
         page.NewPassword = "simple";
         page.ConfirmPassword = "simple";
-        page.ApplyPasswordCommand.Execute(null);
-        Assert.Equal("The device passphrase policy requires at least 12 characters.", page.EditorError);
+        Assert.Equal("The device passphrase policy requires at least 12 characters.", page.ErrorOf(nameof(page.NewPassword)));
+        Assert.Null(page.ErrorOf(nameof(page.ConfirmPassword)));
+        Assert.False(page.ApplyPasswordCommand.CanExecute(null));
 
         // One password for all factory-default devices: checked against every device's policy.
         page.NewPassword = "Str0ng-Passw0rd!";
         page.ConfirmPassword = "Str0ng-Passw0rd";
-        page.ApplyPasswordCommand.Execute(null);
-        Assert.Equal("The passwords do not match.", page.EditorError);
+        Assert.Null(page.ErrorOf(nameof(page.NewPassword)));
+        Assert.Equal("The passwords do not match.", page.ErrorOf(nameof(page.ConfirmPassword)));
+        Assert.Equal("The passwords do not match.", page.ApplyPasswordBlockedReason);
         page.ConfirmPassword = "Str0ng-Passw0rd!";
         page.UseForAllFactoryDefault = true;
+        Assert.True(page.ApplyPasswordCommand.CanExecute(null));
         page.ApplyPasswordCommand.Execute(null);
 
         Assert.False(page.IsEditorOpen);
@@ -157,14 +167,22 @@ public sealed class AddDevicesPageTests : IDisposable
         await page.OpenAsync();
         Assert.Empty(page.Rows);
 
+        Assert.False(page.StartRangeCommand.CanExecute(null));
+        Assert.Null(page.ErrorOf(nameof(page.RangeFrom))); // nothing shown on the untouched form
+        page.RangeFrom = "10.0.1";
+        Assert.Equal("Enter a valid IPv4 address, e.g. 192.168.0.1.", page.ErrorOf(nameof(page.RangeFrom)));
+        Assert.Null(page.ErrorOf(nameof(page.RangeTo)));
         page.RangeFrom = "10.0.1.20";
         page.RangeTo = "10.0.1.1";
-        await page.StartRangeCommand.ExecuteAsync(null);
-        Assert.Equal("The end address must not be lower than the start address.", page.ErrorText);
+        Assert.Null(page.ErrorOf(nameof(page.RangeFrom)));
+        Assert.Equal("The last address must not be lower than the first.", page.ErrorOf(nameof(page.RangeTo)));
+        Assert.False(page.StartRangeCommand.CanExecute(null));
 
         page.RangeTo = "10.0.1.40";
+        Assert.True(page.StartRangeCommand.CanExecute(null));
         await page.StartRangeCommand.ExecuteAsync(null);
         Assert.Null(page.ErrorText);
+        Assert.False(page.HasErrors);
         await TestSupport.WaitUntilAsync(() => !page.IsScanning && page.Rows.All(r => r.AuthState != AuthState.Pending) && page.Rows.Count == 7);
 
         Assert.Equal(100, page.ScanProgress);
@@ -184,6 +202,7 @@ public sealed class AddDevicesPageTests : IDisposable
         page.ManualAddress = "camera7.example.com:8443";
         await page.ProbeAddressCommand.ExecuteAsync(null);
         Assert.Equal("", page.ManualAddress);
+        Assert.Null(page.ErrorOf(nameof(page.ManualAddress))); // cleared for the next address, no error
         page.ManualAddress = "10.0.0.93";
         await page.ProbeAddressCommand.ExecuteAsync(null);
         await TestSupport.WaitUntilAsync(() => page.Rows.Count == 2 && page.Rows.All(r => r.AuthState != AuthState.Pending) && !page.IsScanning);
@@ -193,12 +212,14 @@ public sealed class AddDevicesPageTests : IDisposable
 
         page.ManualAddress = "10.0.0.199";
         await page.ProbeAddressCommand.ExecuteAsync(null);
-        await TestSupport.WaitUntilAsync(() => page.ErrorText is not null);
-        Assert.Equal("No Axis device answered at 10.0.0.199.", page.ErrorText);
+        await TestSupport.WaitUntilAsync(() => page.ErrorOf(nameof(page.ManualAddress)) is not null);
+        Assert.Equal("No Axis device answered at 10.0.0.199.", page.ErrorOf(nameof(page.ManualAddress))); // below the address
+        Assert.Null(page.ErrorText);
 
         page.ManualAddress = "ftp://x";
+        Assert.Null(page.ErrorOf(nameof(page.ManualAddress))); // editing clears the server's answer
         await page.ProbeAddressCommand.ExecuteAsync(null);
-        Assert.Equal("'ftp://x' is not a valid IP address or host name.", page.ErrorText);
+        Assert.Equal("'ftp://x' is not a valid IP address or host name.", page.ErrorOf(nameof(page.ManualAddress)));
 
         Row(page, "camera7.example.com:8443").IsSelected = true;
         await page.AddCommand.ExecuteAsync(null);

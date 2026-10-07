@@ -150,7 +150,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject
     public partial string? ConfirmRemoveText { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasPackage))]
+    [NotifyPropertyChangedFor(nameof(HasPackage), nameof(InstallBlockedReason))]
     [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
     public partial EapManifest? Package { get; set; }
 
@@ -163,7 +163,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject
     public partial string? PackageFileDetails { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasPackageError))]
+    [NotifyPropertyChangedFor(nameof(HasPackageError), nameof(InstallBlockedReason))]
     public partial string? PackageError { get; set; }
 
     [ObservableProperty]
@@ -174,7 +174,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(InstallCommand), nameof(PickPackageCommand), nameof(StartCommand), nameof(StopCommand), nameof(RemoveCommand))]
-    [NotifyPropertyChangedFor(nameof(ShowUploadStatus))]
+    [NotifyPropertyChangedFor(nameof(ShowUploadStatus), nameof(InstallBlockedReason))]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
@@ -189,6 +189,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
+    [NotifyPropertyChangedFor(nameof(InstallBlockedReason))]
     public partial int CompatibleCount { get; set; }
 
     public bool HasSelection => SelectedApplication is not null;
@@ -443,12 +444,20 @@ public sealed partial class AcapDialogViewModel : ObservableObject
 
     private bool CanInstall() => Package is not null && CompatibleCount > 0 && !IsBusy;
 
+    /// <summary>Why Install is disabled (its tooltip); the package's own error stays at the file row.</summary>
+    public string? InstallBlockedReason =>
+        IsBusy ? null
+        : Package is null ? PackageError ?? "Choose an ACAP package (.eap)."
+        : CompatibleCount == 0 ? "None of the selected devices can install this package (see Result)."
+        : null;
+
     /// <summary>Uploads the package to the server, then completes with the install payload.</summary>
     [RelayCommand(CanExecute = nameof(CanInstall))]
     private async Task InstallAsync()
     {
         var package = Package!;
         IsBusy = true;
+        PackageError = null;
         UploadProgress = 0;
         UploadStatus = "Uploading the package to the server...";
         using var cts = new CancellationTokenSource();
@@ -479,7 +488,8 @@ public sealed partial class AcapDialogViewModel : ObservableObject
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            UploadStatus = "Upload failed: " + ex.Message;
+            UploadStatus = null;
+            PackageError = "Upload failed: " + ex.Message; // at the file row, like a rejected package
         }
         finally
         {
