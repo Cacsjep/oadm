@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 
+using Oadm.Plugins.Shared;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
@@ -88,11 +89,13 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         }
     }
 
-    /// <summary>Only devices that are reachable with working credentials and offer fwmgr 1.x.</summary>
+    private static readonly Version MinFwmgr = Version.Parse(FwmgrClient.MinApiVersion);
+
+    /// <summary>Only devices that are reachable with working credentials and offer fwmgr 1.x (cheap: called for every device).</summary>
     public bool CanRun(IDeviceInfo device)
     {
         ArgumentNullException.ThrowIfNull(device);
-        return device.Status == DeviceStatus.Ok && device.Apis.Supports(FwmgrClient.ApiId, FwmgrClient.MinApiVersion);
+        return device.Status == DeviceStatus.Ok && CachedApiCheck.Supports(device.Apis, FwmgrClient.ApiId, MinFwmgr);
     }
 
     /// <summary>Step names, in order (see README.md).</summary>

@@ -177,7 +177,18 @@ public static class AddressConflicts
         IReadOnlyDictionary<string, AddressStatus>? known = null)
     {
         ArgumentNullException.ThrowIfNull(rows);
+        // O(n): duplicates and managed addresses are dictionary lookups, never a scan of every row or known address per row.
         var parsed = rows.Select(r => PayloadValidator.TryParseIpv6(r.NewAddress, out var a) ? a : null).ToList();
+        var counts = new Dictionary<System.Net.IPAddress, int>();
+        foreach (var a in parsed)
+        {
+            if (a is not null)
+            {
+                counts[a] = counts.GetValueOrDefault(a) + 1;
+            }
+        }
+
+        Dictionary<System.Net.IPAddress, AddressStatus>? knownByAddress = null;
         var result = new string?[rows.Count];
         for (var i = 0; i < rows.Count; i++)
         {
@@ -198,15 +209,15 @@ public static class AddressConflicts
             {
                 result[i] = Capitalize(problem);
             }
-            else if (parsed.Count(a => a is not null && a.Equals(address)) > 1)
+            else if (counts.GetValueOrDefault(address) > 1)
             {
                 result[i] = "Assigned to more than one device";
             }
-            else if (Lookup(known, address) is { DeviceId: { } other } status && other != rows[i].Device.Id)
+            else if ((knownByAddress ??= IndexIpv6(known)).GetValueOrDefault(address) is { DeviceId: { } other } status && other != rows[i].Device.Id)
             {
                 result[i] = $"Used by {status.Device ?? "another managed device"}";
             }
-            else if (Lookup(known, address) is { InUse: true } inUse && !AddressCheck.IsOwnAddress(text, [rows[i].Device.CurrentAddress]))
+            else if (knownByAddress.GetValueOrDefault(address) is { InUse: true } inUse && !AddressCheck.IsOwnAddress(text, [rows[i].Device.CurrentAddress]))
             {
                 result[i] = inUse.InUseText;
             }
@@ -215,8 +226,20 @@ public static class AddressConflicts
         return result;
     }
 
-    private static AddressStatus? Lookup(IReadOnlyDictionary<string, AddressStatus>? known, System.Net.IPAddress address) =>
-        known?.Values.FirstOrDefault(s => PayloadValidator.TryParseIpv6(s.Address, out var a) && a.Equals(address));
+    /// <summary>Known IPv6 addresses by parsed address (any notation); the first status of an address wins.</summary>
+    private static Dictionary<System.Net.IPAddress, AddressStatus> IndexIpv6(IReadOnlyDictionary<string, AddressStatus>? known)
+    {
+        var index = new Dictionary<System.Net.IPAddress, AddressStatus>();
+        foreach (var status in known?.Values ?? [])
+        {
+            if (PayloadValidator.TryParseIpv6(status.Address, out var a))
+            {
+                index.TryAdd(a, status);
+            }
+        }
+
+        return index;
+    }
 
     /// <summary>"is the broadcast address of its subnet" becomes "Broadcast address of its subnet".</summary>
     private static string Capitalize(string problem)

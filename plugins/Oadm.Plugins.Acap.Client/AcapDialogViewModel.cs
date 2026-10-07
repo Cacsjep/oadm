@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -86,6 +87,12 @@ public sealed partial class AcapDialogViewModel : ObservableObject
 {
     private readonly ITaskDialogContext _ctx;
     private readonly IEapFilePicker _picker;
+    /// <summary>Devices whose applications the dialog reads to preview compatibility (one per model and firmware first).</summary>
+    public const int CompatibilitySampleSize = 25;
+
+    /// <summary>Application list queries in flight at most while checking compatibility.</summary>
+    public const int MaxParallelQueries = 4;
+
     private readonly Dictionary<Guid, Task<ListApplicationsResult>> _cache = [];
     private Action? _cancelUpload;
     private bool _initialized;
@@ -118,11 +125,21 @@ public sealed partial class AcapDialogViewModel : ObservableObject
 
     public string ScopeText => Devices.Count == 1
         ? $"Actions apply to {Devices[0].Label}."
-        : $"Actions apply to all {Devices.Count} selected devices.";
+        : string.Create(CultureInfo.InvariantCulture, $"Actions apply to all {Devices.Count:N0} selected devices.");
 
     public ObservableCollection<ApplicationRow> Applications { get; } = [];
 
-    public ObservableCollection<DeviceCompatibilityRow> Compatibility { get; } = [];
+    /// <summary>
+    /// One row per selected device, replaced as a whole (one change notification, virtualized grid). Only
+    /// <see cref="CompatibilitySampleSize"/> devices are read and checked in the dialog; the task checks every device
+    /// again before installing.
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<DeviceCompatibilityRow> Compatibility { get; private set; } = [];
+
+    /// <summary>Devices of <see cref="Compatibility"/> that were checked in the dialog.</summary>
+    [ObservableProperty]
+    public partial int CheckedCount { get; private set; }
 
     /// <summary>The payload when the dialog completed, null otherwise.</summary>
     public string? Result { get; private set; }
@@ -222,7 +239,9 @@ public sealed partial class AcapDialogViewModel : ObservableObject
 
     public string CompatibilitySummary => Package is null
         ? string.Empty
-        : $"{CompatibleCount} of {Devices.Count} device(s) can install this package.";
+        : CheckedCount >= Devices.Count
+            ? string.Create(CultureInfo.InvariantCulture, $"{CompatibleCount:N0} of {Devices.Count:N0} device(s) can install this package.")
+            : string.Create(CultureInfo.InvariantCulture, $"{CompatibleCount:N0} of {CheckedCount:N0} checked devices can install this package; the other {Devices.Count - CheckedCount:N0} are checked by the task before installing.");
 
     /// <summary>Loads the application list of the selected device. Called when the dialog opens.</summary>
     public Task InitializeAsync() => LoadApplicationsAsync(refresh: false);
@@ -230,7 +249,11 @@ public sealed partial class AcapDialogViewModel : ObservableObject
     [RelayCommand]
     private Task RefreshAsync()
     {
-        _cache.Clear();
+        lock (_cache)
+        {
+            _cache.Clear();
+        }
+
         return LoadApplicationsAsync(refresh: true);
     }
 
@@ -290,13 +313,17 @@ public sealed partial class AcapDialogViewModel : ObservableObject
 
     private Task<ListApplicationsResult> QueryAsync(IDeviceInfo device)
     {
-        if (!_cache.TryGetValue(device.Id, out var task) || task.IsFaulted || task.IsCanceled)
+        // Locked: the compatibility check runs several queries at once.
+        lock (_cache)
         {
-            task = QueryCoreAsync(device.Id);
-            _cache[device.Id] = task;
-        }
+            if (!_cache.TryGetValue(device.Id, out var task) || task.IsFaulted || task.IsCanceled)
+            {
+                task = QueryCoreAsync(device.Id);
+                _cache[device.Id] = task;
+            }
 
-        return task;
+            return task;
+        }
     }
 
     private async Task<ListApplicationsResult> QueryCoreAsync(Guid deviceId)
@@ -320,7 +347,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject
     private void Remove()
     {
         var app = SelectedApplication!;
-        var where = Devices.Count == 1 ? Devices[0].Label : $"all {Devices.Count} selected devices";
+        var where = Devices.Count == 1 ? Devices[0].Label : string.Create(CultureInfo.InvariantCulture, $"all {Devices.Count:N0} selected devices");
         ConfirmRemoveText = app.App.Bundled
             ? $"{app.Name} is bundled with AXIS OS and cannot be removed."
             : $"Remove {app.Name} from {where}? The application and its settings are deleted from the device.";
@@ -364,7 +391,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject
         PackageError = null;
         PackageFileDetails = null;
         Package = null;
-        Compatibility.Clear();
+        Compatibility = [];
         try
         {
             PackageFileDetails = FileSizeText.Format(new FileInfo(path).Length);
@@ -382,56 +409,121 @@ public sealed partial class AcapDialogViewModel : ObservableObject
 
     partial void OnAllowDowngradeChanged(bool value) => _ = CheckCompatibilityAsync();
 
+    /// <summary>
+    /// Builds one row per device in one pass and checks a bounded sample (<see cref="SampleIndexes"/>) with at most
+    /// <see cref="MaxParallelQueries"/> queries in flight: never one server call per selected device.
+    /// </summary>
     private async Task CheckCompatibilityAsync()
     {
         var package = Package;
-        Compatibility.Clear();
+        var allowDowngrade = AllowDowngrade;
         CompatibleCount = 0;
-        OnPropertyChanged(nameof(CompatibilitySummary));
+        CheckedCount = 0;
         if (package is null)
         {
+            Compatibility = [];
+            OnPropertyChanged(nameof(CompatibilitySummary));
             return;
         }
 
-        var rows = Devices.Select(d => new DeviceCompatibilityRow(d)).ToList();
-        foreach (var row in rows)
+        var rows = new DeviceCompatibilityRow[Devices.Count];
+        for (var i = 0; i < rows.Length; i++)
         {
-            Compatibility.Add(row);
+            rows[i] = new DeviceCompatibilityRow(Devices[i]);
         }
 
-        foreach (var row in rows)
+        var sample = SampleIndexes(Devices, CompatibilitySampleSize);
+        var sampled = new bool[rows.Length];
+        foreach (var i in sample)
         {
-            try
+            sampled[i] = true;
+        }
+
+        for (var i = 0; i < rows.Length; i++)
+        {
+            if (!sampled[i])
             {
-                var state = await QueryAsync(row.Device.Device).ConfigureAwait(true);
-                var installed = state.Applications.FirstOrDefault(a => string.Equals(a.Name, package.AppName, StringComparison.Ordinal));
-                var report = AcapCompatibility.Check(package, state.Device, installed, AllowDowngrade);
-                row.IsOk = report.IsCompatible;
-                row.Kind = report.IsCompatible ? report.Kind : null;
-                row.IsWarning = report.IsCompatible && (report.Warnings.Count > 0 || report.Kind == InstallKind.Downgrade);
-                row.IsError = !report.IsCompatible;
-                row.Result = report.Summary;
-                row.Verdict = report.IsCompatible ? report.KindText : "Not compatible";
-                row.Details = string.Join(" ", report.IsCompatible ? report.Warnings : report.Problems);
-            }
-#pragma warning disable CA1031 // Shown per device.
-            catch (Exception ex)
-#pragma warning restore CA1031
-            {
-                row.IsError = true;
-                row.Result = "Could not read the device: " + ex.Message;
-                row.Verdict = "Not readable";
-                row.Details = row.Result;
+                rows[i].Verdict = "Checked at install";
+                rows[i].Result = "Checked by the task on the device before anything is installed.";
             }
         }
 
-        if (!ReferenceEquals(package, Package))
-        {
-            return;
-        }
-
-        CompatibleCount = rows.Count(r => r.IsOk);
+        Compatibility = rows;
         OnPropertyChanged(nameof(CompatibilitySummary));
+
+        using var slots = new SemaphoreSlim(MaxParallelQueries);
+        await Task.WhenAll(sample.Select(i => CheckRowAsync(rows[i], package, allowDowngrade, slots))).ConfigureAwait(true);
+
+        if (!ReferenceEquals(package, Package) || !ReferenceEquals(rows, Compatibility))
+        {
+            return;
+        }
+
+        var compatible = 0;
+        foreach (var i in sample)
+        {
+            compatible += rows[i].IsOk ? 1 : 0;
+        }
+
+        CheckedCount = sample.Count;
+        CompatibleCount = compatible;
+        OnPropertyChanged(nameof(CompatibilitySummary));
+    }
+
+    private async Task CheckRowAsync(DeviceCompatibilityRow row, EapManifest package, bool allowDowngrade, SemaphoreSlim slots)
+    {
+        await slots.WaitAsync().ConfigureAwait(true);
+        try
+        {
+            var state = await QueryAsync(row.Device.Device).ConfigureAwait(true);
+            var installed = state.Applications.FirstOrDefault(a => string.Equals(a.Name, package.AppName, StringComparison.Ordinal));
+            var report = AcapCompatibility.Check(package, state.Device, installed, allowDowngrade);
+            row.IsOk = report.IsCompatible;
+            row.Kind = report.IsCompatible ? report.Kind : null;
+            row.IsWarning = report.IsCompatible && (report.Warnings.Count > 0 || report.Kind == InstallKind.Downgrade);
+            row.IsError = !report.IsCompatible;
+            row.Result = report.Summary;
+            row.Verdict = report.IsCompatible ? report.KindText : "Not compatible";
+            row.Details = string.Join(" ", report.IsCompatible ? report.Warnings : report.Problems);
+        }
+#pragma warning disable CA1031 // Shown per device.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            row.IsError = true;
+            row.Result = "Could not read the device: " + ex.Message;
+            row.Verdict = "Not readable";
+            row.Details = row.Result;
+        }
+        finally
+        {
+            slots.Release();
+        }
+    }
+
+    /// <summary>
+    /// Indexes (ascending) of the devices the dialog checks: the first device of every model and firmware version, then
+    /// the first devices in order, at most <paramref name="max"/>. O(n).
+    /// </summary>
+    public static IReadOnlyList<int> SampleIndexes(IReadOnlyList<DeviceChoice> devices, int max)
+    {
+        ArgumentNullException.ThrowIfNull(devices);
+        var picked = new SortedSet<int>();
+        var seen = new HashSet<(string?, string?)>();
+        for (var i = 0; i < devices.Count && picked.Count < max; i++)
+        {
+            if (seen.Add((devices[i].Device.Model, devices[i].Device.FirmwareVersion)))
+            {
+                picked.Add(i);
+            }
+        }
+
+        for (var i = 0; i < devices.Count && picked.Count < max; i++)
+        {
+            picked.Add(i);
+        }
+
+        return [.. picked];
     }
 
     /// <summary>The install kind shared by every compatible device, null when they differ (names the task only).</summary>

@@ -3,7 +3,9 @@
 Task plugin `oadm.acap`, context menu entry **Applications (ACAP)** in the group Applications (dialog, not in the toolbar).
 The dialog lists the applications installed on the first selected device (device picker when
 several are selected) and lets the user start, stop or remove one, or install/upgrade an `.eap`
-package. Every action is applied to all selected devices as one task.
+package. Every action is applied to all selected devices as one task. With thousands of selected devices the
+package preview reads at most 25 devices (the first device of every model and firmware first, 4 queries at
+a time); the other rows say "Checked at install" and the task checks every device before it writes.
 
 | Part | Assembly | Contents |
 |---|---|---|
