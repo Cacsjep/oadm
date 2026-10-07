@@ -186,7 +186,7 @@ Dark only, calm and spacious, no gradients inside the app.
 - Accent violet `#6C5CE7` (hover `#7D6EF0`), used for selection, progress bars, primary
   buttons and status pills. Secondary accent teal `#7FC8D0`.
 - Text: primary `#F2F2F2`, secondary `#9A9A9A` (labels like "Source", column headers).
-  Font Inter (Avalonia.Fonts.Inter), 13 px body, 20 px card titles, semibold titles.
+  Font Inter (Avalonia.Fonts.Inter), 11.7 px body, 9.9 px small, 18 px card titles, 21.6 px page titles, semibold titles.
 - Status shown as small rounded chips, not plain text: transparent background, 1 px border in
   the status color (OK green, warning amber, error red, running violet, neutral grey), normal
   text color, regular weight (not bold), no dot. No status dot on the device icon either.
@@ -227,11 +227,7 @@ Device grid columns, default order:
 | Firmware | Version |
 | DHCP | Network.BootProto == dhcp -> Yes/No |
 | HTTPS | HTTPS enabled -> Enabled/Disabled |
-| Server | OADM server name (hostname by default) |
 | IEEE 802.1X | dot1x.Enabled -> Enabled/Disabled |
-| UPnP friendly name | Network.UPnP.FriendlyName |
-| Warranty expiry | later goal, shows "Not synchronized" |
-| Device replacement | later goal, empty |
 
 Polling: server refreshes status (basicdeviceinfo) for every device every **60 s** by
 default, user-configurable in Settings. Full parameter refresh on add, on manual Refresh, and

@@ -31,11 +31,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo
     [ObservableProperty] public partial string? FirmwareVersion { get; private set; }
     [ObservableProperty] public partial string DhcpText { get; private set; } = "";
     [ObservableProperty] public partial string HttpsText { get; private set; } = "";
-    [ObservableProperty] public partial string ServerName { get; private set; } = "";
     [ObservableProperty] public partial string Dot1xText { get; private set; } = "";
-    [ObservableProperty] public partial string UpnpFriendlyName { get; private set; } = "";
-    [ObservableProperty] public partial string WarrantyText { get; private set; } = "";
-    [ObservableProperty] public partial string ReplacementText { get; private set; } = "";
     [ObservableProperty] public partial ContractStatus ContractStatus { get; private set; }
     [ObservableProperty] public partial string StatusText { get; private set; } = "";
     [ObservableProperty] public partial PillKind StatusKind { get; private set; }
@@ -64,10 +60,6 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo
         DhcpText = device.HasDhcpEnabled ? (device.DhcpEnabled ? "Yes" : "No") : "";
         HttpsText = EnabledText(device.HasHttpsEnabled, device.HttpsEnabled);
         Dot1xText = EnabledText(device.HasDot1XEnabled, device.Dot1XEnabled);
-        ServerName = device.ServerName;
-        UpnpFriendlyName = device.UpnpFriendlyName;
-        WarrantyText = string.IsNullOrEmpty(device.WarrantyExpiry) ? NotSynchronized : device.WarrantyExpiry;
-        ReplacementText = device.ReplacementModel;
         ContractStatus = device.Status;
         StatusText = DeviceStatusInfo.ToText(device.Status);
         StatusKind = DeviceStatusInfo.ToKind(device.Status);
@@ -85,7 +77,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo
 
         string term = search.Trim();
         return Contains(Serial) || Contains(Address) || Contains(HostName) || Contains(Model) || Contains(FirmwareVersion)
-            || Contains(StatusText) || Contains(ServerName) || Contains(UpnpFriendlyName);
+            || Contains(StatusText);
 
         bool Contains(string? value) => value?.Contains(term, StringComparison.OrdinalIgnoreCase) == true;
     }

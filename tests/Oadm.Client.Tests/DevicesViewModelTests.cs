@@ -102,8 +102,6 @@ public sealed class DevicesViewModelTests
         Assert.Equal("Yes", row.DhcpText);
         Assert.Equal("", row.HttpsText);
         Assert.Equal("Disabled", row.Dot1xText);
-        Assert.Equal("Not synchronized", row.WarrantyText);
-        Assert.Equal("", row.ReplacementText);
         Assert.Equal("10.0.0.48", row.DisplayAddress);
     }
 

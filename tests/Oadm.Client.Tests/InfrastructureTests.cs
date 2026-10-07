@@ -191,7 +191,7 @@ public sealed class ColumnLayoutTests
         var layout = new ColumnLayoutViewModel(new InMemoryClientSettingsStore());
 
         Assert.Equal(
-            ["icon", "mac", "status", "address", "model", "firmware", "dhcp", "https", "server", "dot1x", "upnp", "warranty", "replacement"],
+            ["icon", "mac", "status", "address", "model", "firmware", "dhcp", "https", "dot1x"],
             layout.Columns.Select(c => c.Key).ToArray());
         Assert.DoesNotContain(layout.Choosable, c => c.Key == "icon");
         Assert.Equal("IEEE 802.1X", layout.Find("dot1x")!.Header);
@@ -203,11 +203,11 @@ public sealed class ColumnLayoutTests
         var settings = new InMemoryClientSettingsStore();
         var layout = new ColumnLayoutViewModel(settings);
 
-        layout.Find("upnp")!.IsVisible = false;
+        layout.Find("dot1x")!.IsVisible = false;
         layout.Capture([("model", 1, 200.0), ("mac", 4, 150.0)]);
 
         var restored = new ColumnLayoutViewModel(settings);
-        Assert.False(restored.Find("upnp")!.IsVisible);
+        Assert.False(restored.Find("dot1x")!.IsVisible);
         Assert.Equal(200.0, restored.Find("model")!.Width);
         Assert.True(restored.Find("model")!.DisplayIndex < restored.Find("mac")!.DisplayIndex);
     }

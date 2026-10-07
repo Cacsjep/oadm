@@ -36,11 +36,7 @@ public sealed class ColumnLayoutViewModel
         ("firmware", "Firmware"),
         ("dhcp", "DHCP"),
         ("https", "HTTPS"),
-        ("server", "Server"),
         ("dot1x", "IEEE 802.1X"),
-        ("upnp", "UPnP friendly name"),
-        ("warranty", "Warranty expiry"),
-        ("replacement", "Device replacement"),
     ];
 
     private readonly IClientSettingsStore _settings;

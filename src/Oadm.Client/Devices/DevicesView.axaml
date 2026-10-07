@@ -132,8 +132,8 @@
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Tag="mac" Header="MAC address" Width="140" Binding="{Binding Serial}" x:DataType="dev:DeviceRowViewModel" />
-              <DataGridTemplateColumn Tag="status" Header="Status" Width="160" SortMemberPath="StatusText">
+              <DataGridTextColumn Tag="mac" Header="MAC address" Width="140*" MinWidth="70" Binding="{Binding Serial}" x:DataType="dev:DeviceRowViewModel" />
+              <DataGridTemplateColumn Tag="status" Header="Status" Width="160*" MinWidth="70" SortMemberPath="StatusText">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:DeviceRowViewModel">
                     <Border Classes="pill" Margin="10,0" Classes.ok="{Binding IsStatusOk}" Classes.warn="{Binding IsStatusWarning}" Classes.error="{Binding IsStatusError}">
@@ -144,7 +144,7 @@
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTemplateColumn Tag="address" Header="Address" Width="120" SortMemberPath="DisplayAddress">
+              <DataGridTemplateColumn Tag="address" Header="Address" Width="120*" MinWidth="70" SortMemberPath="DisplayAddress">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:DeviceRowViewModel">
                     <Button Classes="link" Margin="10,0" HorizontalAlignment="Left" ToolTip.Tip="Open the web interface of the device"
@@ -155,15 +155,11 @@
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Tag="model" Header="Model" Width="160" Binding="{Binding Model}" x:DataType="dev:DeviceRowViewModel" />
-              <DataGridTextColumn Tag="firmware" Header="Firmware" Width="100" Binding="{Binding FirmwareVersion}" x:DataType="dev:DeviceRowViewModel" />
-              <DataGridTextColumn Tag="dhcp" Header="DHCP" Width="86" Binding="{Binding DhcpText}" x:DataType="dev:DeviceRowViewModel" />
-              <DataGridTextColumn Tag="https" Header="HTTPS" Width="96" Binding="{Binding HttpsText}" x:DataType="dev:DeviceRowViewModel" />
-              <DataGridTextColumn Tag="server" Header="Server" Width="100" Binding="{Binding ServerName}" x:DataType="dev:DeviceRowViewModel" />
-              <DataGridTextColumn Tag="dot1x" Header="IEEE 802.1X" Width="124" Binding="{Binding Dot1xText}" x:DataType="dev:DeviceRowViewModel" />
-              <DataGridTextColumn Tag="upnp" Header="UPnP friendly name" Width="250" Binding="{Binding UpnpFriendlyName}" x:DataType="dev:DeviceRowViewModel" />
-              <DataGridTextColumn Tag="warranty" Header="Warranty expiry" Width="140" Binding="{Binding WarrantyText}" x:DataType="dev:DeviceRowViewModel" />
-              <DataGridTextColumn Tag="replacement" Header="Device replacement" Width="150" Binding="{Binding ReplacementText}" x:DataType="dev:DeviceRowViewModel" />
+              <DataGridTextColumn Tag="model" Header="Model" Width="160*" MinWidth="70" Binding="{Binding Model}" x:DataType="dev:DeviceRowViewModel" />
+              <DataGridTextColumn Tag="firmware" Header="Firmware" Width="100*" MinWidth="70" Binding="{Binding FirmwareVersion}" x:DataType="dev:DeviceRowViewModel" />
+              <DataGridTextColumn Tag="dhcp" Header="DHCP" Width="86*" MinWidth="70" Binding="{Binding DhcpText}" x:DataType="dev:DeviceRowViewModel" />
+              <DataGridTextColumn Tag="https" Header="HTTPS" Width="96*" MinWidth="70" Binding="{Binding HttpsText}" x:DataType="dev:DeviceRowViewModel" />
+              <DataGridTextColumn Tag="dot1x" Header="IEEE 802.1X" Width="124*" MinWidth="70" Binding="{Binding Dot1xText}" x:DataType="dev:DeviceRowViewModel" />
             </DataGrid.Columns>
           </DataGrid>
 

@@ -55,9 +55,11 @@ internal sealed class DeviceGridLayoutBinder
         {
             (DataGridColumn column, ColumnOptionViewModel? option) = ordered[i];
             column.IsVisible = option!.IsVisible;
-            if (option.Width > 0)
+            // Saved widths are used as star weights: columns keep their proportions and the
+            // grid always fills its full width. The icon column stays fixed.
+            if (option.Width > 0 && option.Key != "icon")
             {
-                column.Width = new DataGridLength(option.Width);
+                column.Width = new DataGridLength(option.Width, DataGridLengthUnitType.Star);
             }
 
             column.DisplayIndex = i;
