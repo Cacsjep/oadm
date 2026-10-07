@@ -317,6 +317,9 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
   "DHCP server plugin" and `docs/specs/dhcp-server.md`, manual test plan in its `README.md`): a service with an
   injectable socket layer (`IDhcpSocketFactory`, in-memory network in the tests), a persisted lease table in plugin
   settings, live lease changes with versions, a page with a virtualized lease grid and a dialog.
+- Fifth sample: the PKI (`plugins/Oadm.Plugins.Pki` + `.Client`, id `oadm.pki`, spec in `CLAUDE.md` "PKI plugin" and
+  `docs/specs/pki.md`): a CA key kept with `ctx.Secrets`, trust anchors for the server's own certificate rating, OS tools
+  behind a process runner (`IProcessRunner`, a fake in the tests), a page with several cards and three dialogs.
 
 ### Host support for service plugins (NTP, DHCP, ...)
 
@@ -345,6 +348,12 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
   `cap_net_bind_service`, macOS root for a single address; `InUseText`, `PermissionText`, `FindUdpPortOwner`,
   `PermissionFix` for the texts). `HostOsInfo.Current`, `ScQueryServiceProbe` (Windows: is a service running, e.g.
   W32Time, DHCPServer). See `NtpStatusTexts.ForBindError` and `DhcpStatusTexts.ForBindError`.
+- **Trust anchors**: `ctx.TrustAnchors?.Set(derCertificates)` (SDK `ITrustAnchors`, null on hosts without it) replaces
+  the plugin's set of CA certificates (public DER only) that the server trusts besides the OS store when it rates device
+  certificates (Certificate column of the device grid): a device certificate that chains to one of them is Trusted, a
+  self-signed one stays Self-signed, pinning is never affected. The host keeps one set per plugin (the union counts) and
+  removes it when the plugin stops; devices show the new rating with their next full refresh. The PKI plugin sets its
+  active CA, its chain and the previous CAs on start and on every change.
 - **Status line**: `Oadm.Sdk.Network.ServiceStatus` (kind ok / neutral / warning / error, plain text for technicians,
   detail = the fix, shown as tooltip); protocol details go to the server log only.
 - **Rate limits**: `Oadm.Sdk.Network.KeyedRateLimiter<TKey>` (token bucket per key such as a client address or MAC,
