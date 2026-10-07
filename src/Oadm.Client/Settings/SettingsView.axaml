@@ -12,7 +12,7 @@
           <TextBlock Classes="cardTitle" Text="Server" />
           <TextBlock Classes="secondary" TextWrapping="Wrap"
                      Text="Stored on the OADM server and shared by every client." />
-          <Grid ColumnDefinitions="220,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="12" ColumnSpacing="16">
+          <Grid ColumnDefinitions="220,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="12" ColumnSpacing="16">
             <TextBlock Grid.Row="0" Classes="fieldLabel" Text="Status polling interval (s)" />
             <NumericUpDown Grid.Row="0" Grid.Column="1" Width="180" HorizontalAlignment="Left" Minimum="5" Maximum="3600" Increment="5"
                            FormatString="0" Value="{Binding PollingIntervalSeconds}" />
@@ -30,6 +30,9 @@
             <TextBox Grid.Row="4" Grid.Column="1" Width="320" HorizontalAlignment="Left" Text="{Binding ServerName}" />
             <TextBlock Grid.Row="5" Classes="fieldLabel" Text="Listen URL" />
             <TextBox Grid.Row="5" Grid.Column="1" Width="320" HorizontalAlignment="Left" Text="{Binding ListenUrl}" />
+            <TextBlock Grid.Row="6" Classes="fieldLabel" Text="Device address" />
+            <CheckBox Grid.Row="6" Grid.Column="1" IsChecked="{Binding UseHostName}" Content="Use host name when available, otherwise IP address"
+                      ToolTip.Tip="Applies to devices added from now on. Host names keep devices reachable when DHCP changes their address, but need working DNS" />
           </Grid>
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}" />

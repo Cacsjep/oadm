@@ -110,14 +110,7 @@
               </DataGrid>
             </Grid>
 
-            <!-- 2. Host name -->
-            <StackPanel IsVisible="{Binding IsHostNameStep}" Spacing="10">
-              <CheckBox IsChecked="{Binding UseHostName}" Content="Use host name when available, otherwise IP address" />
-              <TextBlock Classes="secondary" TextWrapping="Wrap"
-                         Text="With host names the devices stay reachable when DHCP gives them a new address. This requires working DNS for the device host names." />
-            </StackPanel>
-
-            <!-- 3. Set password -->
+            <!-- 2. Set password -->
             <Grid IsVisible="{Binding IsPasswordStep}" RowDefinitions="*,Auto">
               <DataGrid Grid.Row="0" ItemsSource="{Binding PasswordDevices}" IsReadOnly="True" SelectionMode="Single" Margin="0,0,0,16">
                 <DataGrid.Columns>
@@ -138,7 +131,7 @@
               </Grid>
             </Grid>
 
-            <!-- 4. Credentials -->
+            <!-- 3. Credentials -->
             <Grid IsVisible="{Binding IsCredentialsStep}" RowDefinitions="Auto,Auto,*">
               <Grid Grid.Row="0" ColumnDefinitions="150,280" RowDefinitions="Auto,Auto" RowSpacing="10" IsEnabled="{Binding UseForAll}">
                 <TextBlock Grid.Row="0" Classes="fieldLabel" Text="User name" />
@@ -172,7 +165,7 @@
               </DataGrid>
             </Grid>
 
-            <!-- 5. Review -->
+            <!-- 4. Review -->
             <DataGrid IsVisible="{Binding IsReviewStep}" ItemsSource="{Binding ReviewRows}" IsReadOnly="True" SelectionMode="Single">
               <DataGrid.Columns>
                 <DataGridTextColumn Header="Address" Width="200" Binding="{Binding Address}" x:DataType="disc:ReviewRow" />

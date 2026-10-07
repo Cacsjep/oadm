@@ -40,6 +40,7 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         ScanTimeoutMs = 1500,
         ServerName = "acs",
         ListenUrl = "http://0.0.0.0:5080",
+        UseHostName = false,
     };
     private bool _online = true;
 
@@ -363,7 +364,7 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
                 };
                 Device device = CreateDevice(found.Serial, found.Address, found.Model, "12.11.77", status);
                 device.HostName = found.HostName;
-                device.UseHostName = request.UseHostName && found.HostName.Length > 0;
+                device.UseHostName = _settings.UseHostName && found.HostName.Length > 0; // the server setting, not the request
                 device.HasCredentials = credentials is not null || request.InitialRootPassword.Length > 0;
                 _devices.Add(device);
                 reply.DeviceIds.Add(device.Id);
@@ -596,7 +597,9 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
                 throw new RpcException(new Status(StatusCode.InvalidArgument, "Full refresh interval must be between 1 and 1440 minutes"));
             }
 
+            bool useHostName = settings.HasUseHostName ? settings.UseHostName : _settings.UseHostName; // unset keeps it, like the server
             _settings = settings.Clone();
+            _settings.UseHostName = useHostName;
             return Task.FromResult(_settings.Clone());
         }
     }
@@ -895,7 +898,12 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
 
         DateTime now = DateTime.UtcNow;
 
-        TaskInfo failed = AddTask(RestartPluginId, "Restart", "admin@SECURITY-PC", TaskState.Failed, 100, [_devices[4].Id]);
+        // Many devices ("a, b +4") including one that was removed since.
+        TaskInfo bulk = AddTask(RestartPluginId, "Restart", OwnerName, TaskState.Done, 100,
+            [_devices[0].Id, _devices[2].Id, _devices[3].Id, _devices[6].Id, _devices[9].Id, "5f3c9a1e-7b2d-4c8e-9a6f-0d1e2f3a4b5c"]);
+        bulk.Started = Timestamp.FromDateTime(now.AddHours(-2));
+
+        TaskInfo failed =AddTask(RestartPluginId, "Restart", "admin@SECURITY-PC", TaskState.Failed, 100, [_devices[4].Id]);
         failed.Started = Timestamp.FromDateTime(now.AddMinutes(-40));
         failed.Devices[0].Message = "Device did not come back within 3 minutes";
         AddLog(failed, failed.Devices[0].DeviceId, TaskLogLevel.Info, "Restart requested, waiting for the device to go offline", now.AddMinutes(-40));

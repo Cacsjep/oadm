@@ -67,7 +67,6 @@ public sealed class AddDevicesServiceTests
         var commit = new Proto.CommitRequest
         {
             SessionId = session,
-            UseHostName = false,
             InitialRootPassword = "initial-Pass1",
             Credentials = { new Proto.DeviceCredentials { UserName = "root", Password = Password } },
         };
@@ -175,6 +174,24 @@ public sealed class AddDevicesServiceTests
             InitialRootPassword = "badépassword",
         }).ResponseAsync);
         Assert.Equal(StatusCode.InvalidArgument, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task CommitTakesUseHostNameFromTheServerSettingNotTheRequest()
+    {
+        await using var host = await TestServerHost.StartAsync(Network());
+        var (session, devices) = await TestHelpers.ScanAsync(host, "10.9.0.1", "10.9.0.2");
+
+        // The request flag is unused: setting false wins over a true request.
+        await host.AddDevices.CommitAsync(new Proto.CommitRequest { SessionId = session, UseHostName = true, DiscoveredIds = { devices[0].DiscoveredId } });
+        // Setting true: stored on the device; range scan results have no host name, so the IP stays the address.
+        await host.Settings.SetAsync(new Proto.ServerSettings { UseHostName = true });
+        await host.AddDevices.CommitAsync(new Proto.CommitRequest { SessionId = session, DiscoveredIds = { devices[1].DiscoveredId } });
+
+        var list = (await host.Devices.ListAsync(new Proto.Empty())).Devices.ToDictionary(d => d.Address);
+        Assert.False(list["10.9.0.1"].UseHostName);
+        Assert.True(list["10.9.0.2"].UseHostName);
+        Assert.True((await host.Settings.GetAsync(new Proto.Empty())).UseHostName);
     }
 
     [Fact]

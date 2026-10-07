@@ -84,7 +84,7 @@ public sealed class StoreTests
     [Fact]
     public void Task_store_keeps_newest_first_and_tracks_active_count()
     {
-        var store = new TaskStore();
+        var store = new TaskStore(new DeviceStore());
         DateTime now = DateTime.UtcNow;
         store.Reset(
         [
@@ -103,6 +103,86 @@ public sealed class StoreTests
         Assert.Equal("Done", store.Find("new")!.StateText);
         Assert.True(store.Find("new")!.IsStateOk);
         Assert.Equal(1, store.ActiveCount);
+    }
+
+    private static TaskInfo TaskOn(string id, params (string DeviceId, TaskState State, string Message)[] devices)
+    {
+        var task = new TaskInfo { Id = id, Name = "Restart", State = TaskState.Running };
+        task.Devices.AddRange(devices.Select(d => new TaskDeviceResult { DeviceId = d.DeviceId, State = d.State, Message = d.Message }));
+        return task;
+    }
+
+    [Fact]
+    public void Task_devices_column_lists_addresses_and_summarizes_the_rest()
+    {
+        var devices = new DeviceStore();
+        devices.Reset(
+        [
+            TestSupport.Device("d1", "A", "10.0.0.48", "M"),
+            TestSupport.Device("d2", "B", "10.0.0.200", "M"),
+            TestSupport.Device("d3", "C", "10.0.0.3", "M"),
+            TestSupport.Device("d4", "D", "10.0.0.4", "M"),
+            TestSupport.Device("d5", "E", "10.0.0.5", "M"),
+        ]);
+        var store = new TaskStore(devices);
+
+        store.Reset(
+        [
+            TaskOn("one", ("d1", TaskState.Done, "")),
+            TaskOn("two", ("d1", TaskState.Done, ""), ("d2", TaskState.Failed, "Connection refused")),
+            TaskOn("five", ("d1", TaskState.Done, ""), ("d2", TaskState.Running, ""), ("d3", TaskState.Queued, ""), ("d4", TaskState.Queued, ""), ("d5", TaskState.Queued, "")),
+            TaskOn("none"),
+        ]);
+
+        Assert.Equal("10.0.0.48", store.Find("one")!.DevicesText);
+        Assert.Equal("10.0.0.48, 10.0.0.200", store.Find("two")!.DevicesText);
+        Assert.Equal("10.0.0.48, 10.0.0.200 +3", store.Find("five")!.DevicesText);
+        Assert.Equal("", store.Find("none")!.DevicesText);
+        Assert.Null(store.Find("none")!.DevicesTooltip);
+        Assert.Equal(
+            "10.0.0.48: Done" + Environment.NewLine + "10.0.0.200: Failed - Connection refused",
+            store.Find("two")!.DevicesTooltip);
+        Assert.Equal(5, store.Find("five")!.DevicesTooltip!.Split(Environment.NewLine).Length);
+    }
+
+    [Fact]
+    public void Task_devices_follow_device_store_changes_and_show_removed_devices()
+    {
+        const string removedId = "1a2b3c4d-0000-4000-8000-000000000001";
+        var devices = new DeviceStore();
+        devices.Reset([TestSupport.Device(removedId, "A", "10.0.0.48", "M"), TestSupport.Device("d2", "B", "10.0.0.200", "M")]);
+        var store = new TaskStore(devices);
+        store.Reset([TaskOn("t", (removedId, TaskState.Done, ""), ("d2", TaskState.Done, "ok"))]);
+        TaskRowViewModel row = store.Find("t")!;
+        Assert.Equal("10.0.0.48, 10.0.0.200", row.DevicesText);
+
+        Device renamed = TestSupport.Device("d2", "B", "10.0.0.201", "M");
+        devices.Apply(new DeviceChanged { Kind = DeviceChanged.Types.Kind.Updated, Device = renamed });
+        devices.Apply(new DeviceChanged { Kind = DeviceChanged.Types.Kind.Removed, Device = new Device { Id = removedId } });
+
+        Assert.Equal("removed device 1a2b3c4d, 10.0.0.201", row.DevicesText);
+        Assert.Equal("removed device 1a2b3c4d: Done" + Environment.NewLine + "10.0.0.201: Done - ok", row.DevicesTooltip);
+
+        // The details window lists the same addresses.
+        var details = new TaskDetailsViewModel(row, devices);
+        Assert.Equal(row.DeviceLabels, details.Rows.Select(d => d.Device).ToArray());
+        Assert.Equal(["", "B"], details.Rows.Select(d => d.Serial).ToArray());
+    }
+
+    [Fact]
+    public void Task_devices_use_the_host_name_like_the_device_grid()
+    {
+        var devices = new DeviceStore();
+        Device device = TestSupport.Device("d1", "A", "10.0.0.48", "M");
+        device.HostName = "axis-a.local";
+        device.UseHostName = true;
+        devices.Reset([device]);
+        var store = new TaskStore(devices);
+
+        store.Reset([TaskOn("t", ("d1", TaskState.Done, ""))]);
+
+        Assert.Equal("axis-a.local", store.Find("t")!.DevicesText);
+        Assert.Equal(devices.Find("d1")!.DisplayAddress, store.Find("t")!.DevicesText);
     }
 
     [Fact]
@@ -221,7 +301,7 @@ public sealed class ServerConnectionTests
         using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
         api.SetOnline(false);
         var devices = new DeviceStore();
-        var tasks = new TaskStore();
+        var tasks = new TaskStore(devices);
         using var connection = new ServerConnection(api, devices, tasks, new ImmediateUiDispatcher(), NullLogger<ServerConnection>.Instance);
         int connectedEvents = 0;
         connection.Connected += (_, _) => connectedEvents++;
@@ -254,7 +334,7 @@ public sealed class ServerConnectionTests
     {
         using var api = new GrpcOadmApi("http://127.0.0.1:1");
         var devices = new DeviceStore();
-        using var connection = new ServerConnection(api, devices, new TaskStore(), new ImmediateUiDispatcher(), NullLogger<ServerConnection>.Instance);
+        using var connection = new ServerConnection(api, devices, new TaskStore(devices), new ImmediateUiDispatcher(), NullLogger<ServerConnection>.Instance);
 
         connection.Start();
 

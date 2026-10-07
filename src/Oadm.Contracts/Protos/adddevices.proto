@@ -2,7 +2,7 @@ syntax = "proto3";
 package oadm.v1;
 option csharp_namespace = "Oadm.Contracts.V1";
 
-// Mirrors the ADM add wizard: select, host name, set password, credentials, review, finish.
+// Mirrors the ADM add wizard: select, set password, credentials, review, finish.
 service AddDevicesService {
   rpc Prepare (PrepareRequest) returns (AddPlan);
   rpc Commit (CommitRequest) returns (CommitReply);
@@ -34,7 +34,7 @@ message DeviceCredentials {
 message CommitRequest {
   string session_id = 1;
   repeated string discovered_ids = 2;
-  bool use_host_name = 3;
+  bool use_host_name = 3;            // unused, ignored: the server setting Devices.UseHostName decides
   string initial_root_password = 4;  // empty = Skip
   repeated DeviceCredentials credentials = 5;
 }

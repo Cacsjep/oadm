@@ -41,6 +41,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] public partial decimal? ScanTimeoutMs { get; set; } = 1500;
     [ObservableProperty] public partial string ServerName { get; set; } = "";
     [ObservableProperty] public partial string ListenUrl { get; set; } = "";
+
+    /// <summary>Devices.UseHostName: newly added devices are addressed by host name when one is known.</summary>
+    [ObservableProperty] public partial bool UseHostName { get; set; }
     [ObservableProperty] public partial string? ServerMessage { get; private set; }
     [ObservableProperty] public partial bool ServerMessageIsError { get; private set; }
 
@@ -87,6 +90,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             ScanTimeoutMs = (int)(ScanTimeoutMs ?? 1500),
             ServerName = ServerName.Trim(),
             ListenUrl = ListenUrl.Trim(),
+            UseHostName = UseHostName,
         };
         try
         {
@@ -132,6 +136,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         ScanTimeoutMs = settings.ScanTimeoutMs;
         ServerName = settings.ServerName;
         ListenUrl = settings.ListenUrl;
+        UseHostName = settings.UseHostName;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server settings saved")]

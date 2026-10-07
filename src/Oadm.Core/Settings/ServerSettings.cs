@@ -15,6 +15,8 @@ public static class SettingKeys
 
     /// <summary>Uploads older than this are deleted by the server. Not on the settings page yet.</summary>
     public const string UploadsRetentionHours = "Uploads.RetentionHours";
+    /// <summary>Add devices by host name when one is known, otherwise by IP address. Bool, default false.</summary>
+    public const string DevicesUseHostName = "Devices.UseHostName";
 
     /// <summary>Prefix of plugin settings: <c>Plugin:&lt;pluginId&gt;:&lt;key&gt;</c>.</summary>
     public const string PluginPrefix = "Plugin:";
@@ -63,7 +65,8 @@ public sealed record ServerSettings(
     int ScanTimeoutMs,
     string ServerName,
     string ListenUrl,
-    int FullRefreshMinutes = ServerSettings.DefaultFullRefreshMinutes)
+    int FullRefreshMinutes = ServerSettings.DefaultFullRefreshMinutes,
+    bool UseHostName = ServerSettings.DefaultUseHostName)
 {
     public const int DefaultPollingIntervalSeconds = 60;
     public const int DefaultFullRefreshMinutes = 10;
@@ -76,6 +79,7 @@ public sealed record ServerSettings(
     public const int MaxUploadsMaxMegabytes = 65_536;
     public const int DefaultUploadsRetentionHours = 24;
     public const int MaxUploadsRetentionHours = 8760;
+    public const bool DefaultUseHostName = false;
 
     public static ServerSettings Defaults => new(
         DefaultPollingIntervalSeconds,
@@ -83,7 +87,8 @@ public sealed record ServerSettings(
         DefaultScanTimeoutMs,
         DefaultServerName(),
         DefaultListenUrl,
-        DefaultFullRefreshMinutes);
+        DefaultFullRefreshMinutes,
+        DefaultUseHostName);
 
     /// <summary>The machine host name (DNS host name, falling back to the NetBIOS/machine name).</summary>
     public static string DefaultServerName()

@@ -25,15 +25,15 @@ public enum WizardStep
 {
     IpRange,
     Select,
-    HostName,
     Password,
     Credentials,
     Review,
 }
 
 /// <summary>
-/// The ADM add devices wizard: (IP range) - select devices - host name - set password - credentials - review.
-/// All device work is done by the server; this view model only drives the steps.
+/// The ADM add devices wizard: (IP range) - select devices - set password - credentials - review.
+/// All device work is done by the server; this view model only drives the steps. Whether devices
+/// are addressed by host name is the server setting <c>Devices.UseHostName</c>, not a wizard step.
 /// </summary>
 public sealed partial class AddDevicesWizardViewModel : ObservableObject, IAsyncDisposable
 {
@@ -59,7 +59,6 @@ public sealed partial class AddDevicesWizardViewModel : ObservableObject, IAsync
         }
 
         Steps.Add(new WizardStepItem(WizardStep.Select, "Select devices"));
-        Steps.Add(new WizardStepItem(WizardStep.HostName, "Host name"));
         Steps.Add(new WizardStepItem(WizardStep.Password, "Set password"));
         Steps.Add(new WizardStepItem(WizardStep.Credentials, "Credentials"));
         Steps.Add(new WizardStepItem(WizardStep.Review, "Review"));
@@ -91,13 +90,12 @@ public sealed partial class AddDevicesWizardViewModel : ObservableObject, IAsync
     public event EventHandler<bool>? CloseRequested;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsIpRangeStep), nameof(IsSelectStep), nameof(IsHostNameStep), nameof(IsPasswordStep),
+    [NotifyPropertyChangedFor(nameof(IsIpRangeStep), nameof(IsSelectStep), nameof(IsPasswordStep),
         nameof(IsCredentialsStep), nameof(IsReviewStep), nameof(CanGoBack), nameof(IsLastStep), nameof(StepTitle), nameof(StepDescription))]
     public partial WizardStep CurrentStep { get; private set; }
 
     public bool IsIpRangeStep => CurrentStep == WizardStep.IpRange;
     public bool IsSelectStep => CurrentStep == WizardStep.Select;
-    public bool IsHostNameStep => CurrentStep == WizardStep.HostName;
     public bool IsPasswordStep => CurrentStep == WizardStep.Password;
     public bool IsCredentialsStep => CurrentStep == WizardStep.Credentials;
     public bool IsReviewStep => CurrentStep == WizardStep.Review;
@@ -108,7 +106,6 @@ public sealed partial class AddDevicesWizardViewModel : ObservableObject, IAsync
     {
         WizardStep.IpRange => "Enter IP range",
         WizardStep.Select => "Select devices",
-        WizardStep.HostName => "Host name",
         WizardStep.Password => "Set password",
         WizardStep.Credentials => "Enter credentials",
         _ => "Review",
@@ -120,7 +117,6 @@ public sealed partial class AddDevicesWizardViewModel : ObservableObject, IAsync
         WizardStep.Select => IsRangeMode
             ? "Devices found in the IP range. Select the devices to add."
             : "Devices found on the network with zero-configuration (Bonjour). Select the devices to add.",
-        WizardStep.HostName => "Choose how the devices are addressed.",
         WizardStep.Password => "These devices have no password yet (factory default). Set a password for the root account, or skip to add them without one.",
         WizardStep.Credentials => "These devices already have a password. Enter the credentials to use.",
         _ => "Check what will happen and click Finish to add the devices.",
@@ -146,8 +142,8 @@ public sealed partial class AddDevicesWizardViewModel : ObservableObject, IAsync
     [ObservableProperty] public partial string SelectionText { get; private set; } = "0 devices found, 0 selected";
     [ObservableProperty] public partial int SelectedCount { get; private set; }
 
-    // Host name
-    [ObservableProperty] public partial bool UseHostName { get; set; }
+    /// <summary>The server setting Devices.UseHostName, read when the plan is prepared; only used for the review.</summary>
+    public bool UseHostName { get; private set; }
 
     // Password
     [ObservableProperty] public partial string NewPassword { get; set; } = "";
@@ -236,9 +232,6 @@ public sealed partial class AddDevicesWizardViewModel : ObservableObject, IAsync
                 break;
             case WizardStep.Select:
                 await PrepareAsync().ConfigureAwait(true);
-                break;
-            case WizardStep.HostName:
-                GoTo(NextApplicable(WizardStep.HostName));
                 break;
             case WizardStep.Password:
                 SkipPassword = false;
@@ -420,6 +413,7 @@ public sealed partial class AddDevicesWizardViewModel : ObservableObject, IAsync
         {
             IsBusy = true;
             _plan = await _api.PrepareAddAsync(_sessionId, ids, _cts.Token).ConfigureAwait(true);
+            UseHostName = await ReadUseHostNameAsync().ConfigureAwait(true);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -445,7 +439,21 @@ public sealed partial class AddDevicesWizardViewModel : ObservableObject, IAsync
             CredentialDevices.Add(previous.GetValueOrDefault(item.DiscoveredId) ?? new CredentialRowViewModel(item));
         }
 
-        GoTo(WizardStep.HostName);
+        GoTo(NextApplicable(WizardStep.Select));
+    }
+
+    /// <summary>Best effort: the review falls back to IP addresses when the settings cannot be read.</summary>
+    private async Task<bool> ReadUseHostNameAsync()
+    {
+        try
+        {
+            return (await _api.GetSettingsAsync(_cts.Token).ConfigureAwait(true)).UseHostName;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogSettingsFailed(_logger, ex.Message);
+            return false;
+        }
     }
 
     private async Task FinishAsync()
@@ -480,7 +488,6 @@ public sealed partial class AddDevicesWizardViewModel : ObservableObject, IAsync
         var request = new CommitRequest
         {
             SessionId = _sessionId ?? "",
-            UseHostName = UseHostName,
             InitialRootPassword = PasswordDevices.Count > 0 && !SkipPassword ? NewPassword : "",
         };
         request.DiscoveredIds.AddRange(_plan.Items.Select(i => i.DiscoveredId));
@@ -738,6 +745,9 @@ public sealed partial class AddDevicesWizardViewModel : ObservableObject, IAsync
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Add devices wizard committed {Count} device(s)")]
     private static partial void LogCommitted(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Reading the server settings failed: {Reason}")]
+    private static partial void LogSettingsFailed(ILogger logger, string reason);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Stopping discovery failed: {Reason}")]
     private static partial void LogStopFailed(ILogger logger, string reason);

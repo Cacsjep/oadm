@@ -280,10 +280,11 @@ public static class Mappers
             ServerName = settings.ServerName,
             ListenUrl = settings.ListenUrl,
             FullRefreshMinutes = settings.FullRefreshMinutes,
+            UseHostName = settings.UseHostName,
         };
     }
 
-    /// <summary>Proto to Core. Zero or empty fields keep the <paramref name="current"/> value (partial update).</summary>
+    /// <summary>Proto to Core. Zero, empty or unset fields keep the <paramref name="current"/> value (partial update).</summary>
     public static ServerSettings FromProto(Proto.ServerSettings proto, ServerSettings current)
     {
         ArgumentNullException.ThrowIfNull(proto);
@@ -294,7 +295,8 @@ public static class Mappers
             proto.ScanTimeoutMs == 0 ? current.ScanTimeoutMs : proto.ScanTimeoutMs,
             string.IsNullOrWhiteSpace(proto.ServerName) ? current.ServerName : proto.ServerName.Trim(),
             string.IsNullOrWhiteSpace(proto.ListenUrl) ? current.ListenUrl : proto.ListenUrl.Trim(),
-            proto.FullRefreshMinutes == 0 ? current.FullRefreshMinutes : proto.FullRefreshMinutes);
+            proto.FullRefreshMinutes == 0 ? current.FullRefreshMinutes : proto.FullRefreshMinutes,
+            proto.HasUseHostName ? proto.UseHostName : current.UseHostName);
     }
 
     public static Proto.DeviceStatus ToProto(DiscoveredDeviceStatus status) => status switch

@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 using Microsoft.Extensions.DependencyInjection;
 
@@ -49,6 +50,14 @@ public sealed class HeadlessSmokeTests
             await PumpUntilAsync(() => vm.Devices.FilteredDevices.Count == 12 && vm.Devices.Tasks.Tasks.Count > 0);
             Capture(window, outDir, "client-fake-headless.png");
 
+            // Tasks pane with the Devices column (after Name)
+            vm.Devices.Tasks.IsExpanded = true;
+            await PumpUntilAsync(() => vm.Devices.Tasks.Tasks.Any(t => t.DevicesText.Length > 0));
+            DataGrid tasksGrid = window.GetVisualDescendants().OfType<Oadm.Client.Tasks.TasksGridView>().Single()
+                .GetVisualDescendants().OfType<DataGrid>().Single();
+            Assert.Equal(["Name", "Devices", "Status", "Start time", "Owner", "Progress"], tasksGrid.Columns.Select(c => c.Header as string ?? "").ToArray());
+            Capture(window, outDir, "client-tasks-pane.png");
+
             foreach (NavItemViewModel item in vm.NavItems.Concat(vm.BottomNavItems).ToList())
             {
                 vm.NavigateCommand.Execute(item);
@@ -68,7 +77,16 @@ public sealed class HeadlessSmokeTests
             await PumpUntilAsync(() => wizardVm.Discovered.Count >= 8);
             wizardVm.SelectAllCommand.Execute(null);
             await PumpUntilAsync(() => true);
+            Assert.Equal(["Select devices", "Set password", "Credentials", "Review"], wizardVm.Steps.Select(s => s.Title).ToArray());
             Capture(wizard, outDir, "client-wizard.png");
+            await wizardVm.NextCommand.ExecuteAsync(null);
+            await PumpUntilAsync(() => wizardVm.CurrentStep == WizardStep.Password);
+            Capture(wizard, outDir, "client-wizard-password.png");
+            wizardVm.SkipCommand.Execute(null);
+            wizardVm.Password = "secret";
+            await wizardVm.NextCommand.ExecuteAsync(null);
+            await PumpUntilAsync(() => wizardVm.CurrentStep == WizardStep.Review);
+            Capture(wizard, outDir, "client-wizard-review.png");
             await wizardVm.DisposeAsync();
             wizard.Close();
 

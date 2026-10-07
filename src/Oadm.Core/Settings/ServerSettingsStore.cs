@@ -70,7 +70,8 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             Read(rows, SettingKeys.ScanTimeoutMs, defaults.ScanTimeoutMs),
             Read(rows, SettingKeys.ServerName, defaults.ServerName),
             Read(rows, SettingKeys.ListenUrl, defaults.ListenUrl),
-            Read(rows, SettingKeys.PollingFullRefreshMinutes, defaults.FullRefreshMinutes));
+            Read(rows, SettingKeys.PollingFullRefreshMinutes, defaults.FullRefreshMinutes),
+            Read(rows, SettingKeys.DevicesUseHostName, defaults.UseHostName));
     }
 
     /// <summary>Validates and writes all Goal 1 settings in one transaction.</summary>
@@ -85,6 +86,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.ServerName] = JsonSerializer.Serialize(settings.ServerName),
             [SettingKeys.ListenUrl] = JsonSerializer.Serialize(settings.ListenUrl),
             [SettingKeys.PollingFullRefreshMinutes] = JsonSerializer.Serialize(settings.FullRefreshMinutes),
+            [SettingKeys.DevicesUseHostName] = JsonSerializer.Serialize(settings.UseHostName),
         };
         foreach (var (key, json) in values)
         {
@@ -167,6 +169,13 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
                 }
 
                 break;
+            case SettingKeys.DevicesUseHostName:
+                if (value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                {
+                    throw new ArgumentException($"'{key}' must be true or false.", nameof(valueJson));
+                }
+
+                break;
             case SettingKeys.ListenUrl:
                 if (value.ValueKind != JsonValueKind.String
                     || !Uri.TryCreate(value.GetString(), UriKind.Absolute, out var uri)
@@ -202,6 +211,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.PollingFullRefreshMinutes] = JsonSerializer.Serialize(d.FullRefreshMinutes),
             [SettingKeys.UploadsMaxMegabytes] = JsonSerializer.Serialize(ServerSettings.DefaultUploadsMaxMegabytes),
             [SettingKeys.UploadsRetentionHours] = JsonSerializer.Serialize(ServerSettings.DefaultUploadsRetentionHours),
+            [SettingKeys.DevicesUseHostName] = JsonSerializer.Serialize(d.UseHostName),
         };
     }
 }

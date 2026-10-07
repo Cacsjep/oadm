@@ -1,0 +1,43 @@
+﻿{
+    "method":  "getApiList",
+    "apiVersion":  "1.1",
+    "data":  {
+                 "apiList":  [
+                                 {
+                                     "id":  "fwmgr",
+                                     "version":  "1.10",
+                                     "name":  "Firmware Management",
+                                     "docLink":  "https://www.axis.com/partner_pages/vapix_library/#/",
+                                     "status":  "official"
+                                 },
+                                 {
+                                     "id":  "user-management",
+                                     "version":  "1.2",
+                                     "name":  "User Management",
+                                     "docLink":  "https://www.axis.com/partner_pages/vapix_library/#/",
+                                     "status":  "official"
+                                 },
+                                 {
+                                     "id":  "api-discovery",
+                                     "version":  "1.1",
+                                     "name":  "API Discovery Service",
+                                     "docLink":  "https://www.axis.com/partner_pages/vapix_library/#/",
+                                     "status":  "official"
+                                 },
+                                 {
+                                     "id":  "network-settings",
+                                     "version":  "1.37",
+                                     "name":  "Network Settings",
+                                     "docLink":  "https://www.axis.com/partner_pages/vapix_library/#/",
+                                     "status":  "official"
+                                 },
+                                 {
+                                     "id":  "basic-device-info",
+                                     "version":  "1.3",
+                                     "name":  "Basic Device Information",
+                                     "docLink":  "https://www.axis.com/partner_pages/vapix_library/#/",
+                                     "status":  "official"
+                                 }
+                             ]
+             }
+}

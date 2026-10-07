@@ -73,7 +73,7 @@ public sealed class TaskDialogAndLogTests
     [Fact]
     public void DoneWithWarningsIsAWarnChip()
     {
-        var row = new TaskRowViewModel(new TaskInfo { Id = "t1", Name = "Users", State = TaskState.DoneWithWarnings, Progress = 100 });
+        var row = new TaskRowViewModel(new TaskInfo { Id = "t1", Name = "Users", State = TaskState.DoneWithWarnings, Progress = 100 }, new DeviceStore());
 
         Assert.Equal("Done with warnings", row.StateText);
         Assert.Equal(PillKind.Warning, row.StateKind);
@@ -89,7 +89,7 @@ public sealed class TaskDialogAndLogTests
         var devices = new DeviceStore();
         devices.Reset(await api.ListDevicesAsync(CancellationToken.None));
         TaskInfo warned = (await api.ListTasksAsync(CancellationToken.None)).Single(t => t.State == TaskState.DoneWithWarnings);
-        var details = new TaskDetailsViewModel(new TaskRowViewModel(warned), devices);
+        var details = new TaskDetailsViewModel(new TaskRowViewModel(warned, devices), devices);
 
         await details.LoadLogAsync(api, CancellationToken.None);
 
@@ -108,7 +108,7 @@ public sealed class TaskDialogAndLogTests
     public async Task DetailsShowWhenTheLogCannotBeLoaded()
     {
         using var api = new FakeOadmApi(seedSampleData: false);
-        var details = new TaskDetailsViewModel(new TaskRowViewModel(new TaskInfo { Id = "gone", Name = "x" }), new DeviceStore());
+        var details = new TaskDetailsViewModel(new TaskRowViewModel(new TaskInfo { Id = "gone", Name = "x" }, new DeviceStore()), new DeviceStore());
 
         await details.LoadLogAsync(api, CancellationToken.None);
 

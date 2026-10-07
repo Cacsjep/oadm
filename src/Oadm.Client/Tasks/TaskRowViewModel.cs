@@ -12,10 +12,14 @@ namespace Oadm.Client.Tasks;
 /// <summary>One row of the Tasks grid.</summary>
 public sealed partial class TaskRowViewModel : ObservableObject
 {
-    public TaskRowViewModel(TaskInfo task)
+    private readonly DeviceStore _devices;
+
+    public TaskRowViewModel(TaskInfo task, DeviceStore devices)
     {
         ArgumentNullException.ThrowIfNull(task);
+        ArgumentNullException.ThrowIfNull(devices);
         Id = task.Id;
+        _devices = devices;
         Update(task);
     }
 
@@ -34,6 +38,15 @@ public sealed partial class TaskRowViewModel : ObservableObject
     [ObservableProperty] public partial string ProgressText { get; private set; } = "";
     [ObservableProperty] public partial bool IsActive { get; private set; }
     [ObservableProperty] public partial IReadOnlyList<TaskDeviceResult> DeviceResults { get; private set; } = [];
+
+    /// <summary>Addresses of the task's devices, see <see cref="TaskDeviceLabels"/>, in the order of <see cref="DeviceResults"/>.</summary>
+    [ObservableProperty] public partial IReadOnlyList<string> DeviceLabels { get; private set; } = [];
+
+    /// <summary>The Devices cell: "10.0.0.48, 10.0.0.200 +3". Also the sort key of the column.</summary>
+    [ObservableProperty] public partial string DevicesText { get; private set; } = "";
+
+    /// <summary>Every device with its state and message, one per line. Null without devices.</summary>
+    [ObservableProperty] public partial string? DevicesTooltip { get; private set; }
 
     public bool IsStateOk => StateKind == PillKind.Ok;
     public bool IsStateWarning => StateKind == PillKind.Warning;
@@ -57,6 +70,20 @@ public sealed partial class TaskRowViewModel : ObservableObject
         ProgressText = string.Create(CultureInfo.CurrentCulture, $"{Progress} %");
         IsActive = task.State is TaskState.Queued or TaskState.Running;
         DeviceResults = task.Devices.ToList();
+        ResolveDevices();
+    }
+
+    /// <summary>Re-reads the device addresses from the device store (a device was added, removed or changed).</summary>
+    public void ResolveDevices()
+    {
+        List<string> labels = DeviceResults.Select(r => TaskDeviceLabels.Label(r.DeviceId, _devices)).ToList();
+        if (!labels.SequenceEqual(DeviceLabels, StringComparer.Ordinal))
+        {
+            DeviceLabels = labels;
+            DevicesText = TaskDeviceLabels.Summary(labels);
+        }
+
+        DevicesTooltip = TaskDeviceLabels.Tooltip(DeviceResults, labels);
     }
 
     public static string ToText(TaskState state) => state switch

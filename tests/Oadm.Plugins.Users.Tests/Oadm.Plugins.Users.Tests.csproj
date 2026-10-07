@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- test method names use underscores -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1861</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="Avalonia.Headless" Version="12.0.4" />
+    <PackageReference Include="Avalonia.Skia" Version="12.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The real client host provides the theme (OadmTheme.axaml) and the shared runtime assemblies
+         (Avalonia, CommunityToolkit.Mvvm, SDKs) that the plugin compiles against but does not ship. -->
+    <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Users\Oadm.Plugins.Users.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Users.Client\Oadm.Plugins.Users.Client.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
