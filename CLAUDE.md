@@ -170,14 +170,19 @@ renders the steps.
 Reference: MultiDrive (Avalonia showcase), `docs/style-reference-multidrive.png`, https://multidrive.io/.
 Dark only, calm and spacious, no gradients inside the app.
 
-- Window: custom title bar (ExtendClientAreaToDecorationsHint), app name top-left, window
-  buttons top-right, background near-black `#141414`.
-- Left navigation rail (~220 px): icon + label items, selected item as rounded pill
-  `#2A2A2A`, thin separators between groups, count badge as small violet pill, "Settings"
-  and "About" pinned to the bottom. Entries: Manage devices, Tasks, Settings, plus one per
-  Core plugin page.
-- Content in rounded cards: background `#1E1E1E`, corner radius 16, padding 20-24, 16 px gap.
-  The device grid sits in one large card; the Tasks/Log pane is a second card below it.
+- Window: starts maximized. Custom title bar (ExtendClientAreaToDecorationsHint), app name
+  top-left, window buttons top-right, background near-black `#141414`. Caption button hover
+  is a neutral grey slightly lighter than the title bar (never the system blue/accent); the
+  close button hovers red like Windows. No connection indicator in the title bar; a banner
+  appears only while the server is unreachable.
+- Left navigation rail: collapsed by default (icons only, ~56 px, tooltips with the label),
+  expand/collapse toggle at the bottom of the rail; expanded ~220 px with icon + label.
+  Selected item as rounded pill `#2A2A2A`. Entries top: Devices, then one per Core plugin
+  page. Pinned bottom: Logs, Settings, then the expand toggle. No Tasks page, no About page.
+- Content in rounded cards: background `#181818` (only slightly lighter than the window),
+  corner radius 16, padding 20-24, 16 px gap. The device grid sits in one card, the tasks
+  pane in a second card below it, separated by a draggable splitter so the user can resize
+  the tasks pane; the split is persisted per client.
 - Accent violet `#6C5CE7` (hover `#7D6EF0`), used for selection, progress bars, primary
   buttons and status pills. Secondary accent teal `#7FC8D0`.
 - Text: primary `#F2F2F2`, secondary `#9A9A9A` (labels like "Source", column headers).
@@ -194,17 +199,19 @@ Reference for content: ADM screenshot `docs/adm-manage-devices.png`. Same inform
 density, styled as described in Visual Style.
 
 Layout, top to bottom:
-1. Title "Manage devices". Left navigation rail with "Manage devices" plus one entry per
-   Core plugin page (later goal, rail exists from day one).
+1. Title "Devices". Left navigation rail as described in Visual Style.
 2. Toolbar: Add devices, Add from IP range, Remove, Refresh, then Task plugin actions that
    declare `ShowInToolbar`, search box right-aligned.
 3. Status line: "N devices, M selected".
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
    client, horizontal scroll, multi-select, right-click context menu with core actions and
    all Task plugins whose `CanRun` is true for the whole selection.
-5. Collapsible bottom pane with tabs **Tasks** and **Log**.
-   Tasks columns: Name, Status, Start time, Owner, Progress (bar). Right side buttons:
-   details, cancel, delete.
+5. Resizable, collapsible bottom pane **Tasks** (no tabs). Columns: Name, Status, Start
+   time, Owner, Progress (bar). Buttons: details, cancel, delete, **delete all** (with
+   confirmation; running tasks are cancelled first).
+
+**Logs page** (rail, bottom): live client log with level filter and search. Server log
+streaming comes later.
 
 Device grid columns, default order:
 
