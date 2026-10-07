@@ -6,7 +6,7 @@ using Oadm.Sdk.Vapix;
 
 namespace Oadm.Core.Tests.Tasks;
 
-internal sealed record FakeDevice(Guid Id, DeviceStatus Status = DeviceStatus.Ok) : IDeviceInfo
+internal sealed record FakeDevice(Guid Id, DeviceStatus Status = DeviceStatus.Ok, DeviceCategory Category = DeviceCategory.Camera) : IDeviceInfo
 {
     public string Serial => Id.ToString("N")[..12].ToUpperInvariant();
 
@@ -17,6 +17,8 @@ internal sealed record FakeDevice(Guid Id, DeviceStatus Status = DeviceStatus.Ok
     public string? Model => "M3106";
 
     public string? FirmwareVersion => "11.0.0";
+
+    public bool HasVideo => DeviceCategories.HasVideo(Category);
 }
 
 internal sealed class FakeDeviceRepository : IDeviceRepository

@@ -71,7 +71,8 @@ public static partial class VapixParsers
             ProdFullName: Get(p, "ProdFullName"),
             Version: Get(p, "Version") ?? string.Empty,
             HardwareId: Get(p, "HardwareID"),
-            Architecture: Get(p, "Architecture"));
+            Architecture: Get(p, "Architecture"),
+            ProdType: Get(p, "ProdType"));
     }
 
     /// <summary>

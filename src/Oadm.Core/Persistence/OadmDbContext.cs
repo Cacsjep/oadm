@@ -56,6 +56,13 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(d => d.Status).HasConversion<string>().HasMaxLength(32);
             e.Property(d => d.Scheme).HasConversion<string>().HasMaxLength(8);
             e.Property(d => d.LastSeenUtc).HasConversion(NullableUtcConverter);
+            e.Property(d => d.ProductType).HasMaxLength(128);
+            e.Property(d => d.Category).HasConversion<string>().HasMaxLength(16);
+            e.Ignore(d => d.HasVideo);
+            e.Property(d => d.CertNotAfterUtc).HasConversion(NullableUtcConverter);
+            e.Property(d => d.CertTrust).HasConversion<string>().HasMaxLength(16);
+            e.Property(d => d.CertSubject).HasMaxLength(1024);
+            e.Property(d => d.CertIssuer).HasMaxLength(1024);
             e.Property(d => d.Tags).HasConversion(TagsConverter, TagsComparer).IsRequired();
         });
 

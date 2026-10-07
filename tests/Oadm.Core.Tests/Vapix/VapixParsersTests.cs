@@ -11,6 +11,7 @@ public class VapixParsersTests
 
         Assert.Equal("B8A44F631339", info.SerialNumber);
         Assert.Equal("P3265-V", info.ProdNbr);
+        Assert.Equal("Dome Camera", info.ProdType);
         Assert.Equal("AXIS P3265-V", info.ProdShortName);
         Assert.Equal("AXIS P3265-V Dome Camera", info.ProdFullName);
         Assert.Equal("12.11.77", info.Version);

@@ -14,4 +14,5 @@ message ServerSettings {
   int32 scan_timeout_ms = 3;            // default 1500
   string server_name = 4;
   string listen_url = 5;
+  int32 full_refresh_minutes = 6;       // default 10, 1..1440
 }

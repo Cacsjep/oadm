@@ -11,12 +11,16 @@ namespace Oadm.Core.Vapix;
 /// <see cref="ObservedFingerprint"/> so the caller can store it. With a pinned fingerprint a
 /// different certificate is rejected and <see cref="MismatchFingerprint"/> is set; the
 /// <see cref="VapixClient"/> turns that into a <see cref="CertificateChangedException"/>.
+/// Independently of pinning, every presented certificate is described in
+/// <see cref="ObservedCertificate"/> (subject, issuer, validity, chain trust against the OS store,
+/// host name match) by a separate chain build; that never changes the pinning decision.
 /// </summary>
 public sealed class CertificatePinning
 {
     private readonly Lock _gate = new();
     private string? _observed;
     private string? _mismatch;
+    private CertificateInfo? _certificate;
 
     public CertificatePinning(string? pinnedFingerprint = null)
     {
@@ -49,6 +53,21 @@ public sealed class CertificatePinning
             }
         }
     }
+
+    /// <summary>Description of the last certificate the device presented (any handshake, pinned or not).</summary>
+    public CertificateInfo? ObservedCertificate
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _certificate;
+            }
+        }
+    }
+
+    /// <summary>Trust roots for <see cref="ObservedCertificate"/> instead of the OS store (tests only).</summary>
+    public X509Certificate2Collection? CustomTrustRoots { get; init; }
 
     /// <summary>SHA-256 fingerprint as upper-case hex without separators.</summary>
     public static string ComputeFingerprint(X509Certificate certificate)
@@ -92,9 +111,38 @@ public sealed class CertificatePinning
         }
     }
 
+    /// <summary>
+    /// Records the presented certificate in <see cref="ObservedCertificate"/> and then applies the pin
+    /// (<see cref="Validate(X509Certificate?)"/>). <paramref name="presentedChain"/> supplies the
+    /// intermediates the device sent; <paramref name="host"/> is used for the name match only.
+    /// </summary>
+    public bool Validate(X509Certificate2? certificate, IEnumerable<X509Certificate2>? presentedChain, string? host)
+    {
+        if (certificate is not null)
+        {
+            CertificateInfo? info;
+            try
+            {
+                info = CertificateTrustEvaluator.Describe(certificate, presentedChain, host, CustomTrustRoots);
+            }
+            catch (CryptographicException)
+            {
+                info = null; // describing is best effort, pinning below still decides
+            }
+
+            lock (_gate)
+            {
+                _certificate = info;
+            }
+        }
+
+        return Validate(certificate);
+    }
+
     /// <summary>Callback for <c>HttpClientHandler.ServerCertificateCustomValidationCallback</c>.</summary>
     public bool ValidateCallback(HttpRequestMessage request, X509Certificate2? certificate, X509Chain? chain, SslPolicyErrors errors)
     {
-        return Validate(certificate);
+        var presented = chain?.ChainElements.Select(e => e.Certificate).ToList();
+        return Validate(certificate, presented, request?.RequestUri?.Host);
     }
 }

@@ -8,6 +8,7 @@ using Oadm.Core.Tasks;
 using Oadm.Core.Vapix;
 
 using Proto = Oadm.Contracts.V1;
+using DeviceCategory = Oadm.Sdk.Devices.DeviceCategory;
 using SdkDeviceStatus = Oadm.Sdk.Devices.DeviceStatus;
 
 namespace Oadm.Server.Mapping;
@@ -34,7 +35,23 @@ public static class Mappers
             HasCredentials = hasCredentials,
             WarrantyExpiry = device.WarrantyExpiry?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
             ReplacementModel = device.ReplacementModel ?? string.Empty,
+            ProductType = device.ProductType ?? string.Empty,
+            Category = ToProto(device.Category),
+            HasVideo = device.HasVideo,
+            CertTrust = ToProto(device.CertTrust),
+            CertSubject = device.CertSubject ?? string.Empty,
+            CertIssuer = device.CertIssuer ?? string.Empty,
         };
+
+        if (device.CertNotAfterUtc is { } notAfter)
+        {
+            proto.CertNotAfter = Timestamp.FromDateTime(DateTime.SpecifyKind(notAfter, DateTimeKind.Utc));
+        }
+
+        if (device.CertNameMatches is { } nameMatches)
+        {
+            proto.CertNameMatches = nameMatches;
+        }
 
         if (device.DhcpEnabled is { } dhcp)
         {
@@ -86,6 +103,29 @@ public static class Mappers
         SdkDeviceStatus.PasswordNotSet => Proto.DeviceStatus.PasswordNotSet,
         SdkDeviceStatus.CertificateChanged => Proto.DeviceStatus.CertificateChanged,
         _ => Proto.DeviceStatus.Unknown,
+    };
+
+    public static Proto.DeviceCategory ToProto(DeviceCategory category) => category switch
+    {
+        DeviceCategory.Camera => Proto.DeviceCategory.Camera,
+        DeviceCategory.Encoder => Proto.DeviceCategory.Encoder,
+        DeviceCategory.Speaker => Proto.DeviceCategory.Speaker,
+        DeviceCategory.Audio => Proto.DeviceCategory.Audio,
+        DeviceCategory.Intercom => Proto.DeviceCategory.Intercom,
+        DeviceCategory.Radar => Proto.DeviceCategory.Radar,
+        DeviceCategory.IoModule => Proto.DeviceCategory.IoModule,
+        DeviceCategory.DoorController => Proto.DeviceCategory.DoorController,
+        DeviceCategory.Other => Proto.DeviceCategory.Other,
+        _ => Proto.DeviceCategory.Unknown,
+    };
+
+    public static Proto.CertificateTrust ToProto(CertificateTrust trust) => trust switch
+    {
+        CertificateTrust.Trusted => Proto.CertificateTrust.Trusted,
+        CertificateTrust.SelfSigned => Proto.CertificateTrust.SelfSigned,
+        CertificateTrust.Untrusted => Proto.CertificateTrust.Untrusted,
+        CertificateTrust.Expired => Proto.CertificateTrust.Expired,
+        _ => Proto.CertificateTrust.Unknown,
     };
 
     public static string ToSchemeString(DeviceScheme scheme) =>
@@ -199,6 +239,7 @@ public static class Mappers
             ScanTimeoutMs = settings.ScanTimeoutMs,
             ServerName = settings.ServerName,
             ListenUrl = settings.ListenUrl,
+            FullRefreshMinutes = settings.FullRefreshMinutes,
         };
     }
 
@@ -212,7 +253,8 @@ public static class Mappers
             proto.ScanParallelism == 0 ? current.ScanParallelism : proto.ScanParallelism,
             proto.ScanTimeoutMs == 0 ? current.ScanTimeoutMs : proto.ScanTimeoutMs,
             string.IsNullOrWhiteSpace(proto.ServerName) ? current.ServerName : proto.ServerName.Trim(),
-            string.IsNullOrWhiteSpace(proto.ListenUrl) ? current.ListenUrl : proto.ListenUrl.Trim());
+            string.IsNullOrWhiteSpace(proto.ListenUrl) ? current.ListenUrl : proto.ListenUrl.Trim(),
+            proto.FullRefreshMinutes == 0 ? current.FullRefreshMinutes : proto.FullRefreshMinutes);
     }
 
     public static Proto.DeviceStatus ToProto(DiscoveredDeviceStatus status) => status switch
@@ -244,6 +286,8 @@ public static class Mappers
             Source = ToProto(device.Sources),
             Scheme = device.Scheme ?? string.Empty,
             ProgressPercent = progressPercent,
+            ProductType = device.ProductType ?? string.Empty,
+            Category = ToProto(DeviceCategoryMapper.Map(device.ProductType)),
         };
     }
 

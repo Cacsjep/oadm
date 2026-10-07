@@ -18,8 +18,13 @@ namespace Oadm.Core.Devices;
 /// <see cref="ServerSettingsStore.Changed"/>) one basicdeviceinfo call per device with bounded
 /// parallelism, updating Status, Model, FirmwareVersion and LastSeenUtc.</item>
 /// <item>Full refresh: basicdeviceinfo plus param.cgi network info (DHCP, HTTPS, 802.1X, UPnP
-/// name) and the Server column. Queued with <see cref="QueueRefresh"/> (on add, manual Refresh,
-/// after a task) or run directly with <see cref="RefreshAsync"/>.</item>
+/// name), the HTTPS certificate seen in the TLS handshake (expiry, chain trust, subject, issuer)
+/// and the Server column. Queued with <see cref="QueueRefresh"/> (on add, manual Refresh, after a
+/// task) or run directly with <see cref="RefreshAsync"/>.</item>
+/// <item>Scheduled full refresh: every <c>Polling.FullRefreshMinutes</c> (default 10) per device,
+/// checked every <see cref="FullRefreshCheckPeriod"/>, and immediately when a status poll sees a
+/// device go from a non-Ok status back to Ok. Both go through the deduplicating refresh queue,
+/// so parallelism stays bounded.</item>
 /// </list>
 /// Status comes from <see cref="DeviceStatusClassifier"/>; a pinned certificate mismatch becomes
 /// CertificateChanged; a 401 on a device whose systemready says needsetup becomes PasswordNotSet.
@@ -36,7 +41,10 @@ public sealed partial class DevicePollingService : IDisposable
     private readonly ConcurrentDictionary<Guid, byte> _pendingRefresh = new();
     private readonly Lock _wakeSync = new();
     private CancellationTokenSource _wake = new();
+    private readonly ConcurrentDictionary<Guid, DateTimeOffset> _lastFullRefresh = new();
+    private readonly DateTimeOffset _startedAt;
     private int _intervalSeconds = ServerSettings.DefaultPollingIntervalSeconds;
+    private int _fullRefreshMinutes = ServerSettings.DefaultFullRefreshMinutes;
 
     public DevicePollingService(
         DeviceRepository devices,
@@ -53,6 +61,7 @@ public sealed partial class DevicePollingService : IDisposable
         _settings = settings;
         _time = timeProvider ?? TimeProvider.System;
         _logger = (ILogger?)logger ?? NullLogger.Instance;
+        _startedAt = _time.GetUtcNow();
         _settings.Changed += OnSettingChanged;
     }
 
@@ -61,6 +70,12 @@ public sealed partial class DevicePollingService : IDisposable
 
     /// <summary>Current poll interval in seconds.</summary>
     public int IntervalSeconds => Volatile.Read(ref _intervalSeconds);
+
+    /// <summary>Current scheduled full refresh interval in minutes.</summary>
+    public int FullRefreshMinutes => Volatile.Read(ref _fullRefreshMinutes);
+
+    /// <summary>How often the scheduler looks for devices whose full refresh is due. Default 30 s.</summary>
+    public TimeSpan FullRefreshCheckPeriod { get; init; } = TimeSpan.FromSeconds(30);
 
     /// <summary>Raised after a device was polled or refreshed (also when the device did not answer).</summary>
     public event EventHandler<Device>? DeviceUpdated;
@@ -88,6 +103,7 @@ public sealed partial class DevicePollingService : IDisposable
         {
             var settings = await _settings.GetServerSettingsAsync(ct).ConfigureAwait(false);
             Volatile.Write(ref _intervalSeconds, settings.PollingIntervalSeconds);
+            Volatile.Write(ref _fullRefreshMinutes, settings.FullRefreshMinutes);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -96,9 +112,10 @@ public sealed partial class DevicePollingService : IDisposable
 
         var worker = RunRefreshQueueAsync(ct);
         var poller = RunPollLoopAsync(ct);
+        var scheduler = RunFullRefreshScheduleAsync(ct);
         try
         {
-            await Task.WhenAll(worker, poller).ConfigureAwait(false);
+            await Task.WhenAll(worker, poller, scheduler).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -116,6 +133,34 @@ public sealed partial class DevicePollingService : IDisposable
             await UpdateDeviceAsync(device, full: false, token).ConfigureAwait(false);
         }).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Queues a full refresh for every device whose last full refresh (or, when it had none since
+    /// the service started, the service start) is at least <see cref="FullRefreshMinutes"/> ago.
+    /// Returns the queued device ids.
+    /// </summary>
+    public async Task<IReadOnlyList<Guid>> QueueDueFullRefreshesAsync(CancellationToken ct)
+    {
+        var devices = await _devices.ListDevicesAsync(ct).ConfigureAwait(false);
+        var now = _time.GetUtcNow();
+        var interval = TimeSpan.FromMinutes(FullRefreshMinutes);
+        var known = devices.Select(d => d.Id).ToHashSet();
+        foreach (var gone in _lastFullRefresh.Keys.Where(id => !known.Contains(id)))
+        {
+            _lastFullRefresh.TryRemove(gone, out _);
+        }
+
+        var due = devices
+            .Where(d => (_lastFullRefresh.TryGetValue(d.Id, out var last) ? last : _startedAt) + interval <= now)
+            .Select(d => d.Id)
+            .ToList();
+        QueueRefresh(due);
+        return due;
+    }
+
+    /// <summary>Start time of the last full refresh of a device since the service started, null when none.</summary>
+    public DateTimeOffset? LastFullRefresh(Guid deviceId) =>
+        _lastFullRefresh.TryGetValue(deviceId, out var last) ? last : null;
 
     /// <summary>Lightweight status poll of one device. Returns the updated row, null when the device is gone.</summary>
     public async Task<Device?> PollAsync(Guid deviceId, CancellationToken ct)
@@ -174,6 +219,28 @@ public sealed partial class DevicePollingService : IDisposable
         ct.ThrowIfCancellationRequested();
     }
 
+    private async Task RunFullRefreshScheduleAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            await Task.Delay(FullRefreshCheckPeriod, _time, ct).ConfigureAwait(false);
+            try
+            {
+                var queued = await QueueDueFullRefreshesAsync(ct).ConfigureAwait(false);
+                if (queued.Count > 0)
+                {
+                    LogScheduledFullRefresh(queued.Count);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                LogScheduleFailed(ex);
+            }
+        }
+
+        ct.ThrowIfCancellationRequested();
+    }
+
     private async Task RunRefreshQueueAsync(CancellationToken ct)
     {
         var options = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, MaxParallelism / 2), CancellationToken = ct };
@@ -193,11 +260,23 @@ public sealed partial class DevicePollingService : IDisposable
 
     private async Task<Device?> UpdateDeviceAsync(Device device, bool full, CancellationToken ct)
     {
+        if (full)
+        {
+            // Stamped at the start so the scheduler does not queue a refresh that is already running.
+            _lastFullRefresh[device.Id] = _time.GetUtcNow();
+        }
+
         var observation = await ObserveAsync(device, full, ct).ConfigureAwait(false);
         var updated = await _devices.UpdateAsync(device.Id, d => observation.ApplyTo(d), ct).ConfigureAwait(false);
+
         if (updated is not null)
         {
             DeviceUpdated?.Invoke(this, updated);
+            if (!full && device.Status != DeviceStatus.Ok && updated.Status == DeviceStatus.Ok)
+            {
+                LogBackOnline(device.Id, device.Status);
+                QueueRefresh([device.Id]);
+            }
         }
 
         return updated;
@@ -237,6 +316,11 @@ public sealed partial class DevicePollingService : IDisposable
             observation.Status = DeviceStatus.Ok;
             observation.Model = info.ProdNbr;
             observation.Firmware = info.Version;
+            if (!string.IsNullOrWhiteSpace(info.ProdType))
+            {
+                observation.ProductType = info.ProdType.Trim();
+                observation.Category = DeviceCategoryMapper.Map(observation.ProductType, _logger);
+            }
             observation.LastSeen = _time.GetUtcNow().UtcDateTime;
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
@@ -273,6 +357,16 @@ public sealed partial class DevicePollingService : IDisposable
             {
                 LogNetworkInfoFailed(device.Id, ex.Message);
             }
+
+            if (device.Scheme == DeviceScheme.Http)
+            {
+                observation.ClearCertificate = true;
+            }
+            else if (client.ObservedCertificate is { } certificate)
+            {
+                observation.Certificate = certificate;
+                observation.CertificateTrust = certificate.TrustAt(_time.GetUtcNow());
+            }
         }
 
         return observation;
@@ -293,6 +387,12 @@ public sealed partial class DevicePollingService : IDisposable
 
     private void OnSettingChanged(object? sender, SettingChangedEventArgs e)
     {
+        if (e.Key == SettingKeys.PollingFullRefreshMinutes)
+        {
+            OnFullRefreshMinutesChanged(e.ValueJson);
+            return;
+        }
+
         if (e.Key != SettingKeys.PollingIntervalSeconds)
         {
             return;
@@ -334,6 +434,28 @@ public sealed partial class DevicePollingService : IDisposable
         }
     }
 
+    private void OnFullRefreshMinutesChanged(string? valueJson)
+    {
+        var minutes = ServerSettings.DefaultFullRefreshMinutes;
+        if (valueJson is not null)
+        {
+            try
+            {
+                minutes = JsonSerializer.Deserialize<int>(valueJson);
+            }
+            catch (JsonException)
+            {
+                return;
+            }
+        }
+
+        if (minutes is >= ServerSettings.MinFullRefreshMinutes and <= ServerSettings.MaxFullRefreshMinutes
+            && Interlocked.Exchange(ref _fullRefreshMinutes, minutes) != minutes)
+        {
+            LogFullRefreshChanged(minutes);
+        }
+    }
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Reading server settings failed")]
     private partial void LogSettingsFailed(Exception ex);
 
@@ -355,6 +477,18 @@ public sealed partial class DevicePollingService : IDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "Polling interval changed to {Seconds} s")]
     private partial void LogIntervalChanged(int seconds);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Full refresh interval changed to {Minutes} min")]
+    private partial void LogFullRefreshChanged(int minutes);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Scheduled full refresh queued for {Count} devices")]
+    private partial void LogScheduledFullRefresh(int count);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Scheduling the periodic full refresh failed")]
+    private partial void LogScheduleFailed(Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Device {DeviceId} is back online (was {Previous}), queuing a full refresh")]
+    private partial void LogBackOnline(Guid deviceId, DeviceStatus previous);
+
     /// <summary>What one poll learned; applied to the freshly loaded row so concurrent edits survive.</summary>
     private sealed class Observation
     {
@@ -372,6 +506,17 @@ public sealed partial class DevicePollingService : IDisposable
 
         public string? ServerName { get; set; }
 
+        public string? ProductType { get; set; }
+
+        public DeviceCategory Category { get; set; }
+
+        public CertificateInfo? Certificate { get; set; }
+
+        public CertificateTrust CertificateTrust { get; set; }
+
+        /// <summary>The device is HTTP only: drop any certificate info from an earlier HTTPS time.</summary>
+        public bool ClearCertificate { get; set; }
+
         public void ApplyTo(Device d)
         {
             d.Status = Status;
@@ -380,12 +525,34 @@ public sealed partial class DevicePollingService : IDisposable
             d.LastSeenUtc = LastSeen ?? d.LastSeenUtc;
             d.CertFingerprintSha256 ??= Fingerprint;
             d.ServerName = ServerName ?? d.ServerName;
+            if (ProductType is not null)
+            {
+                d.ProductType = ProductType;
+                d.Category = Category;
+            }
             if (Network is { } n)
             {
                 d.DhcpEnabled = n.DhcpEnabled ?? d.DhcpEnabled;
                 d.HttpsEnabled = n.HttpsEnabled ?? d.HttpsEnabled;
                 d.Dot1xEnabled = n.Dot1xEnabled ?? d.Dot1xEnabled;
                 d.UpnpFriendlyName = n.UpnpFriendlyName ?? d.UpnpFriendlyName;
+            }
+
+            if (Certificate is { } c)
+            {
+                d.CertNotAfterUtc = c.NotAfterUtc;
+                d.CertTrust = CertificateTrust;
+                d.CertSubject = c.Subject;
+                d.CertIssuer = c.Issuer;
+                d.CertNameMatches = c.NameMatches;
+            }
+            else if (ClearCertificate)
+            {
+                d.CertNotAfterUtc = null;
+                d.CertTrust = CertificateTrust.Unknown;
+                d.CertSubject = null;
+                d.CertIssuer = null;
+                d.CertNameMatches = null;
             }
         }
     }

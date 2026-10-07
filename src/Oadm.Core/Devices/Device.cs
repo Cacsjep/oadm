@@ -1,3 +1,4 @@
+using Oadm.Core.Vapix;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Core.Devices;
@@ -37,6 +38,30 @@ public sealed class Device : IDeviceInfo
 
     /// <summary>TOFU certificate fingerprint (hex SHA-256), null for HTTP devices.</summary>
     public string? CertFingerprintSha256 { get; set; }
+
+    /// <summary>Raw basicdeviceinfo ProdType, e.g. "Dome Camera", "Network Speaker".</summary>
+    public string? ProductType { get; set; }
+
+    /// <summary>Category mapped from <see cref="ProductType"/> by <see cref="DeviceCategoryMapper"/>.</summary>
+    public DeviceCategory Category { get; set; } = DeviceCategory.Unknown;
+
+    /// <summary>Derived from <see cref="Category"/>; not stored.</summary>
+    public bool HasVideo => DeviceCategories.HasVideo(Category);
+
+    /// <summary>End of validity of the device HTTPS certificate (UTC), null for HTTP-only or not yet checked.</summary>
+    public DateTime? CertNotAfterUtc { get; set; }
+
+    /// <summary>Chain trust of the HTTPS certificate (chain only, host name ignored). Unknown for HTTP-only.</summary>
+    public CertificateTrust CertTrust { get; set; } = CertificateTrust.Unknown;
+
+    /// <summary>Subject distinguished name of the HTTPS certificate.</summary>
+    public string? CertSubject { get; set; }
+
+    /// <summary>Issuer distinguished name of the HTTPS certificate.</summary>
+    public string? CertIssuer { get; set; }
+
+    /// <summary>The address we connect to is in the certificate SAN. Stored for later use, not shown yet.</summary>
+    public bool? CertNameMatches { get; set; }
 
     public DateTime? LastSeenUtc { get; set; }
 

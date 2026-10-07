@@ -6,7 +6,8 @@ namespace Oadm.Core.Persistence;
 /// <summary>
 /// Used only by <c>dotnet ef migrations add</c>. Add a migration with:
 /// <c>dotnet tool restore</c> then
-/// <c>dotnet ef migrations add &lt;Name&gt; --project src/Oadm.Core --output-dir Persistence/Migrations</c>.
+/// <c>dotnet ef migrations add &lt;Name&gt; --project src/Oadm.Core --output-dir Persistence/Migrations --namespace Oadm.Core.Persistence.Migrations</c>.
+/// Enum columns stored as strings need <c>defaultValue: "Unknown"</c> (not "") in AddColumn for existing rows.
 /// </summary>
 public sealed class OadmDbContextDesignTimeFactory : IDesignTimeDbContextFactory<OadmDbContext>
 {

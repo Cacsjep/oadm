@@ -191,7 +191,7 @@ public sealed class ColumnLayoutTests
         var layout = new ColumnLayoutViewModel(new InMemoryClientSettingsStore());
 
         Assert.Equal(
-            ["icon", "mac", "status", "address", "model", "firmware", "dhcp", "https", "dot1x"],
+            ["icon", "mac", "status", "address", "model", "firmware", "dhcp", "https", "certExpires", "certTrust", "dot1x"],
             layout.Columns.Select(c => c.Key).ToArray());
         Assert.DoesNotContain(layout.Choosable, c => c.Key == "icon");
         Assert.Equal("IEEE 802.1X", layout.Find("dot1x")!.Header);

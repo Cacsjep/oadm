@@ -61,7 +61,13 @@ public sealed class AddRealCameraTests
         if (device.Scheme == "https")
         {
             Assert.Matches("^[0-9A-F]{64}$", row!.CertFingerprintSha256);
+            Assert.NotNull(device.CertNotAfter);
+            Assert.NotEqual(Proto.CertificateTrust.Unknown, device.CertTrust);
+            Assert.False(string.IsNullOrEmpty(device.CertIssuer));
         }
+
+        Assert.False(string.IsNullOrEmpty(device.ProductType));
+        Assert.NotEqual(Proto.DeviceCategory.Unknown, device.Category);
 
         // The status poll keeps it Ok with the pinned certificate.
         await host.Get<Core.Devices.DevicePollingService>().PollAllAsync(CancellationToken.None);

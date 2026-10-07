@@ -39,6 +39,7 @@ public enum DiscoverySources
 /// <param name="FirmwareVersion">AXIS OS version, e.g. "12.11.77".</param>
 /// <param name="Status">Authentication state.</param>
 /// <param name="AnonymousFullAccess">True when getAllProperties answered 200 without credentials.</param>
+/// <param name="ProductType">ProdType, e.g. "Dome Camera", when the device disclosed it anonymously.</param>
 public sealed record DeviceProbeResult(
     IPAddress Address,
     string Serial,
@@ -47,7 +48,8 @@ public sealed record DeviceProbeResult(
     string? ProductName,
     string? FirmwareVersion,
     DiscoveredDeviceStatus Status,
-    bool AnonymousFullAccess);
+    bool AnonymousFullAccess,
+    string? ProductType = null);
 
 /// <summary>A device in a discovery session, deduplicated by serial.</summary>
 /// <param name="DiscoveredId">Stable id within the session. Equal to <paramref name="Serial"/>.</param>
@@ -60,6 +62,7 @@ public sealed record DeviceProbeResult(
 /// <param name="Scheme">"https" or "http", null until probed.</param>
 /// <param name="Sources">All sources that reported this device in the session.</param>
 /// <param name="LastSeenUtc">Last time any source reported the device.</param>
+/// <param name="ProductType">ProdType, null until known.</param>
 public sealed record DiscoveredDevice(
     string DiscoveredId,
     string Serial,
@@ -70,7 +73,8 @@ public sealed record DiscoveredDevice(
     DiscoveredDeviceStatus Status,
     string? Scheme,
     DiscoverySources Sources,
-    DateTimeOffset LastSeenUtc);
+    DateTimeOffset LastSeenUtc,
+    string? ProductType = null);
 
 /// <summary>Kind of discovery session.</summary>
 public enum DiscoverySessionKind

@@ -88,8 +88,11 @@ Two processes, like ADM:
 - `Device`: Id (Guid), Serial (= MAC, unique, upper hex, no separators), Address,
   UseHostName (bool), HostName, Model (ProdNbr), FirmwareVersion, DhcpEnabled, HttpsEnabled,
   Dot1xEnabled, UpnpFriendlyName, ServerName, Status (enum below), Scheme (http/https),
-  CertFingerprintSha256 (nullable), LastSeenUtc, WarrantyExpiry (nullable, later),
-  ReplacementModel (nullable, later), Tags.
+  ProductType (raw basicdeviceinfo ProdType, e.g. "Dome Camera"), Category (enum below),
+  HasVideo (derived from Category, not stored),
+  CertFingerprintSha256 (nullable), CertNotAfterUtc (nullable), CertTrust (enum below),
+  CertSubject, CertIssuer, CertNameMatches (nullable bool, address in SAN; stored, not shown
+  yet), LastSeenUtc, WarrantyExpiry (nullable, later), ReplacementModel (nullable, later), Tags.
 - `DeviceCredential`: DeviceId, UserName, EncryptedPassword (AES-GCM, see Security).
 - `Task`: Id, PluginId, Name, Status (Queued, Running, Done, Failed, Cancelled), Owner
   (client machine/user name), CreatedUtc, StartedUtc, FinishedUtc, Progress (0-100),
@@ -99,6 +102,23 @@ Two processes, like ADM:
 
 Device status enum: `Ok`, `Unreachable`, `CredentialsRequired` (401/403), `PasswordNotSet`
 (factory default), `CertificateChanged`, `Unknown`.
+
+Device category enum (`Oadm.Sdk.Devices.DeviceCategory`, also used by Core): `Camera`,
+`Encoder`, `Speaker`, `Audio`, `Intercom`, `Radar`, `IoModule`, `DoorController`, `Other`,
+`Unknown`. Mapped from ProdType in exactly one place, `Oadm.Core.Devices.DeviceCategoryMapper`:
+case-insensitive keyword rules, first match wins (intercom/door station, door controller,
+encoder/video server, camera, radar, speaker/horn, audio/microphone/amplifier, I/O / relay
+module). Empty ProdType is `Unknown`; an unmatched one is `Other` and logged once per string.
+Verified: AXIS P3265-V on AXIS OS 12.11 reports ProdType `Dome Camera` (also anonymously via
+`getAllUnrestrictedProperties`). `HasVideo` is true for Camera, Encoder and Intercom.
+Filled by the anonymous probe in the add wizard (discovered list shows the icon), on add and on
+every basicdeviceinfo poll.
+
+Certificate trust enum: `Trusted` (chain builds to a root in the server OS trust store),
+`SelfSigned` (subject equals issuer and the only chain error is the untrusted root),
+`Untrusted` (any other chain failure, e.g. private CA not in the store), `Expired` (past
+NotAfter), `Unknown` (not checked yet or HTTP only). Only the chain is evaluated; the host name
+is ignored because devices are usually reached by IP address.
 
 # Device Discovery
 
@@ -132,6 +152,11 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
 - Prefer HTTPS, fall back to HTTP if 443 is closed. Store which scheme worked.
 - Certificates: trust on first use. Store SHA-256 fingerprint on add. A later mismatch sets
   status `CertificateChanged` and blocks tasks until the user accepts the new certificate.
+- Certificate info: the TLS callback (`CertificatePinning`) also describes every presented
+  certificate with a separate `X509Chain` build (system trust store, `RevocationMode.NoCheck`,
+  no downloads, validity dates ignored) into `VapixClient.ObservedCertificate`; pinning and
+  TOFU decisions are unaffected. Expiry is applied at refresh time (`TrustAt(now)`). Captured
+  on add and on every full refresh; cleared for HTTP-only devices. Cross-platform APIs only.
 - Endpoints used in Goal 1:
   - `basicdeviceinfo.cgi` -> SerialNumber, ProdNbr, ProdShortName, Version, HardwareID
   - `param.cgi?action=list&group=Network.BootProto,Network.UPnP.FriendlyName,Network.Interface.I0.dot1x.Enabled,HTTPS.Enabled`
@@ -219,7 +244,7 @@ Device grid columns, default order:
 
 | Column | Source |
 |---|---|
-| (icon) | device type icon with status overlay |
+| (icon) | category icon (camera, encoder, speaker, audio, intercom, radar, I/O module, door controller, generic), tooltip "Camera (Dome Camera)" |
 | MAC address | SerialNumber from basicdeviceinfo |
 | Status | computed, see enum |
 | Address | IP or host name, hyperlink opens device web UI in default browser |
@@ -227,11 +252,16 @@ Device grid columns, default order:
 | Firmware | Version |
 | DHCP | Network.BootProto == dhcp -> Yes/No |
 | HTTPS | HTTPS enabled -> Enabled/Disabled |
+| Certificate expires | CertNotAfterUtc as days left: "245 days", "1 day", "Today", "Expired 3 days ago". Chip: ok > 30 days, warn <= 30 days, error expired. Empty for HTTP-only |
+| Certificate | CertTrust: Trusted (ok), Self-signed (warn), Untrusted / Expired (error). Empty for HTTP-only. Both certificate cells have a tooltip with subject, issuer and valid-until date |
 | IEEE 802.1X | dot1x.Enabled -> Enabled/Disabled |
 
 Polling: server refreshes status (basicdeviceinfo) for every device every **60 s** by
-default, user-configurable in Settings. Full parameter refresh on add and
-after a task finishes on that device.
+default (`Polling.IntervalSeconds`). Full refresh (basicdeviceinfo + network parameters +
+certificate info + server name) on add, after a task finishes on that device, on manual
+Refresh, every **10 minutes** per device (`Polling.FullRefreshMinutes`, checked every 30 s),
+and immediately when a status poll sees a device go from any non-Ok status back to Ok. All
+full refreshes go through one deduplicating queue with bounded parallelism.
 
 # Tasks
 
@@ -266,6 +296,19 @@ public interface IPlugin
     string Id { get; }                 // "oadm.restart", "oadm.ntp"
     string DisplayName { get; }
     string? IconKey { get; }
+}
+
+public interface IDeviceInfo          // read-only device view for plugins
+{
+    Guid Id { get; }
+    string Serial { get; }
+    string Address { get; }
+    string? HostName { get; }
+    string? Model { get; }
+    string? FirmwareVersion { get; }
+    DeviceStatus Status { get; }
+    DeviceCategory Category { get; }   // Camera, Speaker, Radar, IoModule, ...
+    bool HasVideo { get; }             // filter in CanRun, e.g. snapshot only for video devices
 }
 
 public interface ITaskPlugin : IPlugin
@@ -342,8 +385,8 @@ reporting progress. No client assembly needed.
 
 # Settings
 
-Server-side in `Setting`. Goal 1 keys: `Polling.IntervalSeconds` (60),
-`Scan.Parallelism` (32), `Scan.TimeoutMs` (1500), `Server.Name` (hostname),
+Server-side in `Setting`. Goal 1 keys: `Polling.IntervalSeconds` (60, 5..86400),
+`Polling.FullRefreshMinutes` (10, 1..1440), `Scan.Parallelism` (32), `Scan.TimeoutMs` (1500), `Server.Name` (hostname),
 `Server.ListenUrl`. Settings page in the client exposes them. Client-side (local JSON in
 LocalApplicationData): server address, grid column layout, bottom pane state.
 

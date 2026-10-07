@@ -24,4 +24,5 @@ public sealed record BasicDeviceInfo(
     string? ProdFullName,
     string Version,
     string? HardwareId,
-    string? Architecture);
+    string? Architecture,
+    string? ProdType = null);

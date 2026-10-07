@@ -55,6 +55,61 @@ public sealed class MappersTests
         Assert.True(proto.HasCredentials);
         Assert.Equal(["lobby"], proto.Tags);
         Assert.Equal(string.Empty, proto.WarrantyExpiry);
+        Assert.Null(proto.CertNotAfter);
+        Assert.Equal(Proto.CertificateTrust.Unknown, proto.CertTrust);
+        Assert.False(proto.HasCertNameMatches);
+        Assert.Equal(Proto.DeviceCategory.Unknown, proto.Category);
+        Assert.False(proto.HasVideo);
+    }
+
+    [Fact]
+    public void DeviceMapsCertificateAndCategoryFields()
+    {
+        var notAfter = new DateTime(2027, 6, 9, 8, 0, 0, DateTimeKind.Utc);
+        var device = new Device
+        {
+            Serial = "B8A44F631339",
+            Address = "10.0.0.48",
+            ProductType = "Dome Camera",
+            Category = Sdk.Devices.DeviceCategory.Camera,
+            CertNotAfterUtc = notAfter,
+            CertTrust = Core.Vapix.CertificateTrust.SelfSigned,
+            CertSubject = "CN=axis-b8a44f631339",
+            CertIssuer = "CN=axis-b8a44f631339",
+            CertNameMatches = false,
+        };
+
+        var proto = Mappers.ToProto(device, hasCredentials: true);
+
+        Assert.Equal(notAfter, proto.CertNotAfter.ToDateTime());
+        Assert.Equal(Proto.CertificateTrust.SelfSigned, proto.CertTrust);
+        Assert.Equal("CN=axis-b8a44f631339", proto.CertSubject);
+        Assert.Equal("CN=axis-b8a44f631339", proto.CertIssuer);
+        Assert.True(proto.HasCertNameMatches);
+        Assert.False(proto.CertNameMatches);
+        Assert.Equal("Dome Camera", proto.ProductType);
+        Assert.Equal(Proto.DeviceCategory.Camera, proto.Category);
+        Assert.True(proto.HasVideo);
+    }
+
+    [Theory]
+    [InlineData(Core.Vapix.CertificateTrust.Unknown, Proto.CertificateTrust.Unknown)]
+    [InlineData(Core.Vapix.CertificateTrust.Trusted, Proto.CertificateTrust.Trusted)]
+    [InlineData(Core.Vapix.CertificateTrust.SelfSigned, Proto.CertificateTrust.SelfSigned)]
+    [InlineData(Core.Vapix.CertificateTrust.Untrusted, Proto.CertificateTrust.Untrusted)]
+    [InlineData(Core.Vapix.CertificateTrust.Expired, Proto.CertificateTrust.Expired)]
+    public void CertificateTrustMapsOneToOne(Core.Vapix.CertificateTrust trust, Proto.CertificateTrust expected)
+    {
+        Assert.Equal(expected, Mappers.ToProto(trust));
+    }
+
+    [Fact]
+    public void EveryDeviceCategoryHasAProtoValue()
+    {
+        foreach (var category in Enum.GetValues<Sdk.Devices.DeviceCategory>())
+        {
+            Assert.Equal(category.ToString(), Mappers.ToProto(category).ToString());
+        }
     }
 
     [Theory]
@@ -132,6 +187,8 @@ public sealed class MappersTests
 
         Assert.Equal(current, Mappers.FromProto(Mappers.ToProto(current), current));
         Assert.Equal(current with { ServerName = "new" }, Mappers.FromProto(new Proto.ServerSettings { ServerName = " new " }, current));
+        Assert.Equal(10, Mappers.ToProto(current).FullRefreshMinutes);
+        Assert.Equal(current with { FullRefreshMinutes = 25 }, Mappers.FromProto(new Proto.ServerSettings { FullRefreshMinutes = 25 }, current));
     }
 
     [Fact]
@@ -139,7 +196,7 @@ public sealed class MappersTests
     {
         var device = new DiscoveredDevice(
             "B8A44F631339", "B8A44F631339", IPAddress.Parse("10.0.0.48"), "axis-b8a44f631339", "P3265-V", "12.11.77",
-            DiscoveredDeviceStatus.AnonymousAccess, "https", DiscoverySources.Mdns | DiscoverySources.RangeScan, DateTimeOffset.UtcNow);
+            DiscoveredDeviceStatus.AnonymousAccess, "https", DiscoverySources.Mdns | DiscoverySources.RangeScan, DateTimeOffset.UtcNow, "Network Speaker");
 
         var proto = Mappers.ToProto(device, alreadyManaged: true, progressPercent: 42);
 
@@ -148,6 +205,8 @@ public sealed class MappersTests
         Assert.Equal(Proto.DeviceStatus.Ok, proto.Status);
         Assert.Equal(Proto.DiscoverySource.Mdns, proto.Source);
         Assert.True(proto.AlreadyManaged);
+        Assert.Equal("Network Speaker", proto.ProductType);
+        Assert.Equal(Proto.DeviceCategory.Speaker, proto.Category);
         Assert.Equal(42, proto.ProgressPercent);
         Assert.False(proto.ScanFinished);
 

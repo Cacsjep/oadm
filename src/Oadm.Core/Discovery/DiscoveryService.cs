@@ -274,10 +274,11 @@ public sealed class DiscoveryService : IAsyncDisposable
         string? FirmwareVersion,
         string? Scheme,
         DiscoveredDeviceStatus? Status,
-        DiscoverySources Source)
+        DiscoverySources Source,
+        string? ProductType = null)
     {
         public static DeviceObservation FromProbe(DeviceProbeResult r, DiscoverySources source)
-            => new(r.Serial, r.Address, null, r.Model, r.FirmwareVersion, r.Scheme, r.Status, source);
+            => new(r.Serial, r.Address, null, r.Model, r.FirmwareVersion, r.Scheme, r.Status, source, r.ProductType);
     }
 
     /// <summary>
@@ -289,7 +290,7 @@ public sealed class DiscoveryService : IAsyncDisposable
     {
         if (existing is null)
         {
-            return new DiscoveredDevice(o.Serial, o.Serial, o.Address, o.HostName, o.Model, o.FirmwareVersion, o.Status ?? DiscoveredDeviceStatus.Unknown, o.Scheme, o.Source, now);
+            return new DiscoveredDevice(o.Serial, o.Serial, o.Address, o.HostName, o.Model, o.FirmwareVersion, o.Status ?? DiscoveredDeviceStatus.Unknown, o.Scheme, o.Source, now, o.ProductType);
         }
 
         var merged = existing with
@@ -298,6 +299,7 @@ public sealed class DiscoveryService : IAsyncDisposable
             HostName = o.HostName ?? existing.HostName,
             Model = o.Model ?? existing.Model,
             FirmwareVersion = o.FirmwareVersion ?? existing.FirmwareVersion,
+            ProductType = o.ProductType ?? existing.ProductType,
             Scheme = o.Scheme ?? existing.Scheme,
             Status = o.Status ?? existing.Status,
             Sources = existing.Sources | o.Source,

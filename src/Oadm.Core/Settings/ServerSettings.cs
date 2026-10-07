@@ -4,6 +4,7 @@ namespace Oadm.Core.Settings;
 public static class SettingKeys
 {
     public const string PollingIntervalSeconds = "Polling.IntervalSeconds";
+    public const string PollingFullRefreshMinutes = "Polling.FullRefreshMinutes";
     public const string ScanParallelism = "Scan.Parallelism";
     public const string ScanTimeoutMs = "Scan.TimeoutMs";
     public const string ServerName = "Server.Name";
@@ -55,9 +56,13 @@ public sealed record ServerSettings(
     int ScanParallelism,
     int ScanTimeoutMs,
     string ServerName,
-    string ListenUrl)
+    string ListenUrl,
+    int FullRefreshMinutes = ServerSettings.DefaultFullRefreshMinutes)
 {
     public const int DefaultPollingIntervalSeconds = 60;
+    public const int DefaultFullRefreshMinutes = 10;
+    public const int MinFullRefreshMinutes = 1;
+    public const int MaxFullRefreshMinutes = 1440;
     public const int DefaultScanParallelism = 32;
     public const int DefaultScanTimeoutMs = 1500;
     public const string DefaultListenUrl = "http://0.0.0.0:5080";
@@ -67,7 +72,8 @@ public sealed record ServerSettings(
         DefaultScanParallelism,
         DefaultScanTimeoutMs,
         DefaultServerName(),
-        DefaultListenUrl);
+        DefaultListenUrl,
+        DefaultFullRefreshMinutes);
 
     /// <summary>The machine host name (DNS host name, falling back to the NetBIOS/machine name).</summary>
     public static string DefaultServerName()
