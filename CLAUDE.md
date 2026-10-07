@@ -408,6 +408,17 @@ state through `ITaskDialogContext.QueryAsync`), `IUploadedFiles` (dialog uploads
 `restart.cgi`, then polls basicdeviceinfo until the device answers again (timeout 3 min),
 reporting progress. No client assembly needed.
 
+## Network settings plugin
+
+`plugins/Oadm.Plugins.Network` (+ `.Client`), id `oadm.network`, context menu "Network settings...",
+dialog with IPv4 / IPv6 / DNS / Host name sections (each "Keep unchanged" by default), address range
+assignment with preview for several devices, acknowledged warning before any change that can cut OADM
+off. Uses network-settings 1.x (`getNetworkInfo`, `setIPv4AddressConfiguration`,
+`setResolverConfiguration`, `setHostnameConfiguration`, `setIPv6AddressConfiguration` >= 1.6) and
+param.cgi `Network.*` for the IPv6 address mode and for devices without network-settings. Writes the
+address family OADM connects with last, then reports re-addressing with `ReportWarning`; it does not
+update the OADM device record. Decision table and verified device behavior: plugin `README.md`.
+
 # Settings
 
 Server-side in `Setting`. Goal 1 keys: `Polling.IntervalSeconds` (60, 5..86400),
