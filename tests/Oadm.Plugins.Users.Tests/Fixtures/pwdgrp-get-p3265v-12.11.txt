@@ -1,0 +1,5 @@
+admin="root20,fakeroot,root"
+operator="root20,fakeroot,acs,root"
+viewer="root20,fakeroot,acs,root"
+ptz="root20,fakeroot,root"
+digusers="root,fakeroot,root20,acs"
