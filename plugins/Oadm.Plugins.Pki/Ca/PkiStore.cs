@@ -23,9 +23,12 @@ public sealed class PkiStore(IPluginSettings settings)
     public Task SavePreviousAsync(IReadOnlyList<StoredPreviousCa> previous, CancellationToken ct) =>
         _settings.SetAsync(PreviousCasKey, PkiJson.Serialize(previous), ct);
 
-    /// <summary>The registry of issued device certificates (read only in this part).</summary>
+    /// <summary>The registry of issued device certificates (see <see cref="IssuedRegistry"/>).</summary>
     public async Task<List<IssuedCertificate>> LoadIssuedAsync(CancellationToken ct) =>
         PkiJson.TryDeserialize<List<IssuedCertificate>>(await _settings.GetAsync(IssuedKey, ct).ConfigureAwait(false)) ?? [];
+
+    public Task SaveIssuedAsync(IReadOnlyList<IssuedCertificate> issued, CancellationToken ct) =>
+        _settings.SetAsync(IssuedKey, PkiJson.Serialize(issued), ct);
 
     public async Task<PkiConfig> LoadConfigAsync(CancellationToken ct) =>
         PkiJson.TryDeserialize<PkiConfig>(await _settings.GetAsync(ConfigKey, ct).ConfigureAwait(false)) ?? new PkiConfig();

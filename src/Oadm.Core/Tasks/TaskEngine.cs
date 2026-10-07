@@ -903,6 +903,24 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
                     return (false, null);
             }
         }
+
+        public async Task<IVapixClient> UpdateDeviceTlsAsync(Guid deviceId, string scheme, string? expectedFingerprintSha256, CancellationToken ct)
+        {
+            var addresses = engine._addresses ?? throw new NotSupportedException("The device connection cannot be changed here.");
+            try
+            {
+                await addresses.UpdateTlsAsync(deviceId, scheme, expectedFingerprintSha256, ct).ConfigureAwait(false);
+            }
+            catch (DeviceIdentityException ex)
+            {
+                engine.AddLog(task, deviceId, TaskLogLevel.Warning, ex.Message);
+                throw;
+            }
+
+            var https = string.Equals(scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+            engine.AddLog(task, deviceId, TaskLogLevel.Info, https ? "OADM now connects over HTTPS and trusts the new certificate." : "OADM now connects over HTTP.");
+            return await engine._vapix.CreateAsync(deviceId, ct).ConfigureAwait(false);
+        }
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Task plugin {PluginId}: GetTaskName failed; the display name is used")]

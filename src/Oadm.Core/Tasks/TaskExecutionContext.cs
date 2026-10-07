@@ -98,6 +98,13 @@ internal sealed partial class TaskExecutionContext : ITaskExecutionContext
         return updated;
     }
 
+    public async Task UpdateDeviceTlsAsync(string scheme, string? expectedFingerprintSha256, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(scheme);
+        var client = await _sink.UpdateDeviceTlsAsync(_deviceId, scheme.Trim(), expectedFingerprintSha256, ct).ConfigureAwait(false);
+        Volatile.Write(ref _vapix, client);
+    }
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Task {TaskId}, device {DeviceId}: warning: {Message}")]
     private static partial void LogPluginWarning(ILogger logger, Guid taskId, Guid deviceId, string message);
 
@@ -127,4 +134,7 @@ internal interface ITaskExecutionSink
 
     /// <summary>Moves the device record after verifying the serial; returns whether it moved and, if so, the client for the new address.</summary>
     Task<(bool Updated, IVapixClient? Client)> UpdateDeviceAddressAsync(Guid deviceId, string newAddress, CancellationToken ct);
+
+    /// <summary>Switches scheme and certificate pin after verifying the device; returns the client for the new connection.</summary>
+    Task<IVapixClient> UpdateDeviceTlsAsync(Guid deviceId, string scheme, string? expectedFingerprintSha256, CancellationToken ct);
 }

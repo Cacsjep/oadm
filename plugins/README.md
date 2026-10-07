@@ -95,6 +95,12 @@ the server project for shared payload types (it then ships in the same folder).
   (`DeviceIdentityException` otherwise), moves the record (credentials and pin kept, change published,
   full refresh queued) and swaps `ctx.Vapix`; returns false when OADM uses the host name. Third-party
   hosts may throw `NotSupportedException` (SDK default).
+- After changing the device's web server (a new HTTPS certificate, or HTTPS turned off):
+  `ctx.UpdateDeviceTlsAsync("https", newCertificateSha256, ct)` or `ctx.UpdateDeviceTlsAsync("http", null, ct)`. The server
+  connects that way, verifies the serial number and (https) that the device presents exactly that certificate, then stores
+  scheme, pin and certificate details, so the device never shows CertificateChanged; `ctx.Vapix` is swapped. Throws
+  `DeviceIdentityException` while the device does not answer that way yet (retry while the web server restarts); the
+  record is unchanged then. Third-party hosts may throw `NotSupportedException` (SDK default). Used by the PKI tasks.
 - `MaxParallelDevices` limits how many tasks of the plugin run at once; it can only lower the server
   setting `Tasks.MaxParallelPerPlugin` (default 16, Settings page), the engine uses the smaller value.
 - Long requests: `request.Options.Set(VapixRequestOptions.Timeout, TimeSpan.FromMinutes(20))`
@@ -319,7 +325,12 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
   settings, live lease changes with versions, a page with a virtualized lease grid and a dialog.
 - Fifth sample: the PKI (`plugins/Oadm.Plugins.Pki` + `.Client`, id `oadm.pki`, spec in `CLAUDE.md` "PKI plugin" and
   `docs/specs/pki.md`): a CA key kept with `ctx.Secrets`, trust anchors for the server's own certificate rating, OS tools
-  behind a process runner (`IProcessRunner`, a fake in the tests), a page with several cards and three dialogs.
+  behind a process runner (`IProcessRunner`, a fake in the tests), a page with several cards and three dialogs. It also
+  contributes eight Security task plugins (`ICorePlugin.TaskPlugins`, sharing the core plugin's CA through a
+  `Func<PkiService?>`): keys created on the device, CSRs signed by the CA, `UpdateDeviceTlsAsync` to follow the new web
+  server certificate, read-only queries for a grouped certificate list, confirmation-only dialogs (an `ITaskPluginDialog`
+  whose `ShowAsync` shows `MessageWindow.ConfirmAsync` and returns "{}"), and a stateful fake camera for the tests
+  (`tests/Oadm.Plugins.Pki.Tests/FakeCamera.cs`).
 
 ### Host support for service plugins (NTP, DHCP, ...)
 

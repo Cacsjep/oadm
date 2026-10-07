@@ -16,6 +16,14 @@ public interface ITaskDeviceAddresses
     /// Throws <c>DeviceIdentityException</c> when the device there is not the same one.
     /// </summary>
     Task<DeviceAddressChangeResult> UpdateAddressAsync(Guid deviceId, string newAddress, CancellationToken ct);
+
+    /// <summary>
+    /// Switches the device record to <paramref name="scheme"/> ("https" / "http") after verifying the serial number
+    /// and, for https, that the device presents the certificate <paramref name="expectedFingerprintSha256"/>; stores the
+    /// new pin and certificate details. Throws <c>DeviceIdentityException</c> otherwise (record unchanged).
+    /// </summary>
+    Task UpdateTlsAsync(Guid deviceId, string scheme, string? expectedFingerprintSha256, CancellationToken ct) =>
+        throw new NotSupportedException("The device connection cannot be changed here.");
 }
 
 /// <summary>Outcome of a device address change.</summary>

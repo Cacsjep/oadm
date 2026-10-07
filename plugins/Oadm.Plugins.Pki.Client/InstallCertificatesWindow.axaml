@@ -1,0 +1,57 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Pki.Client"
+        x:Class="Oadm.Plugins.Pki.Client.InstallCertificatesWindow"
+        x:DataType="vm:InstallCertificatesViewModel"
+        Title="{x:Static vm:InstallCertificatesViewModel.Title}"
+        Width="1040" Height="680" MinWidth="820" MinHeight="520"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+  <!-- Title bar, one card (purpose, files, password, file -> device table), footer. Shared controls only. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:InstallCertificatesViewModel.Title}" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+        <ui:CardHeader Grid.Row="0" Title="Certificate files" Description="{Binding Scope}" />
+        <StackPanel Grid.Row="1" Classes="form">
+          <TextBlock Classes="secondary" TextWrapping="Wrap"
+                     Text="Each .pfx / .p12 file goes to the selected device whose MAC address, IP address or host name it names." />
+          <ui:FormField Label="Use for">
+            <ComboBox ItemsSource="{Binding Purposes}" SelectedItem="{Binding SelectedPurpose}" />
+          </ui:FormField>
+          <ui:FormField Label="Files" Classes="wide" Error="{Binding FilesError}">
+            <ui:FileRow FileName="{Binding FilesText}" ButtonText="Choose files..." Command="{Binding ChooseFilesCommand}" />
+          </ui:FormField>
+          <ui:FormField Label="Password" Hint="One password for all files." Error="{Binding PasswordError}">
+            <ui:PasswordBox Text="{Binding Password}" />
+          </ui:FormField>
+        </StackPanel>
+        <TextBlock Grid.Row="2" Classes="secondary" Text="{Binding Summary}" Margin="0,4,0,8" />
+        <DataGrid Grid.Row="3" ItemsSource="{Binding Files}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="File" Binding="{Binding FileName}" Width="1.2*" x:DataType="vm:InstallFileRow" />
+            <DataGridTextColumn Header="Certificate" Binding="{Binding Certificate}" Width="1.4*" x:DataType="vm:InstallFileRow" />
+            <DataGridTextColumn Header="Device" Binding="{Binding DeviceText}" Width="1.2*" x:DataType="vm:InstallFileRow" />
+            <DataGridTemplateColumn Header="Status" Width="1.4*" SortMemberPath="Status">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:InstallFileRow">
+                  <ui:StatusChip Margin="10,0" Text="{Binding Status}" Detail="{Binding StatusDetail}" IsOk="{Binding IsOk}" IsError="{Binding IsError}" ToolTip.Tip="{Binding StatusDetail}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+        <ui:ProgressRow Grid.Row="4" Value="{Binding UploadProgress}" Text="{Binding UploadStatus}" IsVisible="{Binding IsBusy}" Margin="0,10,0,0" />
+      </Grid>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Install" Command="{Binding InstallCommand}" IsDefault="True"
+              ToolTip.Tip="{Binding InstallBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

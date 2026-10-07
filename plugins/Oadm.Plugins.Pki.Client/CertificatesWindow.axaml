@@ -1,0 +1,85 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Pki.Client"
+        x:Class="Oadm.Plugins.Pki.Client.CertificatesWindow"
+        x:DataType="vm:CertificatesViewModel"
+        Title="{Binding Title}"
+        Width="1180" Height="760" MinWidth="900" MinHeight="520"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+  <!-- Like ADM's "Installed certificates": grouped Client / Server / CA, one row per certificate and device. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <Grid RowDefinitions="Auto,Auto,Auto,*">
+        <ui:CardHeader Grid.Row="0" Title="Certificates" Description="{Binding Scope}" />
+
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,10">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <Button Classes="toolbar" Command="{Binding RefreshCommand}">
+              <ui:IconLabel Icon="{DynamicResource Icon.refresh}" Text="Refresh" />
+            </Button>
+            <Button Classes="toolbar" Command="{Binding SelectAllCommand}" IsVisible="{Binding DeleteMode}"
+                    ToolTip.Tip="Check every certificate in the list that can be deleted">
+              <ui:IconLabel Icon="{DynamicResource Icon.check}" Text="Select all" />
+            </Button>
+            <Button Classes="toolbar" Command="{Binding SelectNoneCommand}" IsVisible="{Binding DeleteMode}">
+              <ui:IconLabel Icon="{DynamicResource Icon.cancel}" Text="Select none" />
+            </Button>
+          </StackPanel>
+          <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding Summary}" VerticalAlignment="Center" Margin="16,0" TextTrimming="CharacterEllipsis" />
+          <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" Placeholder="Search MAC, address, name, issuer" Width="300" />
+        </Grid>
+
+        <ui:ProgressRow Grid.Row="2" Value="{Binding Progress}" Text="{Binding ProgressText}" IsVisible="{Binding IsLoading}" Margin="0,0,0,10" />
+
+        <DataGrid Grid.Row="3" x:Name="CertificateGrid" IsReadOnly="True" SelectionMode="Extended" CanUserReorderColumns="False"
+                  HeadersVisibility="Column">
+          <DataGrid.Styles>
+            <!-- Group headers with their count, like ADM's expanders ("Server certificates (12)"). -->
+            <Style Selector="DataGridRowGroupHeader">
+              <Setter Property="IsItemCountVisible" Value="True" />
+              <Setter Property="ItemCountFormat" Value="({0})" />
+            </Style>
+          </DataGrid.Styles>
+          <DataGrid.Columns>
+            <DataGridTemplateColumn Header="" Width="40" CanUserSort="False">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:CertificateRow">
+                  <CheckBox IsChecked="{Binding IsChecked}" IsEnabled="{Binding IsSelectable}" HorizontalAlignment="Center"
+                            ToolTip.Tip="{Binding BlockedReason}" ToolTip.ShowOnDisabled="True" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="MAC address" Binding="{Binding MacAddress}" Width="130" x:DataType="vm:CertificateRow" />
+            <DataGridTextColumn Header="Address" Binding="{Binding Address}" Width="120" x:DataType="vm:CertificateRow" />
+            <DataGridTextColumn Header="Name" Binding="{Binding Alias}" Width="1.4*" x:DataType="vm:CertificateRow" />
+            <DataGridTextColumn Header="Issued by" Binding="{Binding IssuedBy}" Width="1.2*" x:DataType="vm:CertificateRow" />
+            <DataGridTemplateColumn Header="Issued to" Width="1.2*" SortMemberPath="IssuedTo">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:CertificateRow">
+                  <Panel Margin="10,0">
+                    <TextBlock Text="{Binding IssuedTo}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" IsVisible="{Binding !IsError}" ToolTip.Tip="{Binding IssuedTo}" />
+                    <ui:StatusChip Text="Not readable" Detail="{Binding Error}" IsError="True" IsVisible="{Binding IsError}" ToolTip.Tip="{Binding Error}" />
+                  </Panel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Valid to" Binding="{Binding ValidTo}" Width="100" x:DataType="vm:CertificateRow" />
+            <DataGridTextColumn Header="In use" Binding="{Binding InUse}" Width="110" x:DataType="vm:CertificateRow" />
+            <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="80" x:DataType="vm:CertificateRow" />
+          </DataGrid.Columns>
+        </DataGrid>
+      </Grid>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}" CancelText="Close">
+      <Button Classes="primary" Content="{Binding DeleteText}" Command="{Binding DeleteCommand}" IsVisible="{Binding DeleteMode}"
+              ToolTip.Tip="{Binding DeleteBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

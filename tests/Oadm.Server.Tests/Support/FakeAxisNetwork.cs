@@ -29,8 +29,14 @@ internal sealed class FakeAxisDevice
     /// <summary>Factory default: no admin user yet (systemready needsetup = yes).</summary>
     public bool NeedSetup => Password is null;
 
-    /// <summary>Serves HTTPS (443). The fake has no TLS, so tests use HTTP-only devices.</summary>
-    public bool ServesHttps { get; init; }
+    /// <summary>Serves HTTPS (443). The fake has no TLS; with <see cref="Certificate"/> the pinning check is simulated.</summary>
+    public bool ServesHttps { get; set; }
+
+    /// <summary>
+    /// The certificate the device "presents" on HTTPS: the connection's <see cref="CertificatePinning"/> validates it
+    /// like a real handshake (a pin mismatch fails the request). Null: no certificate check.
+    /// </summary>
+    public System.Security.Cryptography.X509Certificates.X509Certificate2? Certificate { get; set; }
 
     /// <summary>When true, every connection is refused.</summary>
     public bool Offline { get; set; }
@@ -201,7 +207,7 @@ internal sealed class FakeAxisNetwork
     public FakeAxisDevice? Find(string host) => _devices.GetValueOrDefault(host.Trim('[', ']'));
 
     /// <summary>Anonymous handler (probes).</summary>
-    public HttpMessageHandler CreateHandler(NetworkCredential? credentials = null) => new Handler(this, credentials);
+    public HttpMessageHandler CreateHandler(NetworkCredential? credentials = null, CertificatePinning? pinning = null) => new Handler(this, credentials, pinning);
 
     /// <summary><see cref="IVapixConnector"/> that sends the connection's credentials to the fake device.</summary>
     public IVapixConnector CreateConnector() => new Connector(this);
@@ -209,7 +215,7 @@ internal sealed class FakeAxisNetwork
     /// <summary>The anonymous probe used by AddDevices, wired to this network.</summary>
     public VapixProbe CreateProbe() => new(TimeSpan.FromSeconds(2), (_, _) => CreateHandler());
 
-    private sealed class Handler(FakeAxisNetwork network, NetworkCredential? credentials) : HttpMessageHandler
+    private sealed class Handler(FakeAxisNetwork network, NetworkCredential? credentials, CertificatePinning? pinning) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -219,6 +225,12 @@ internal sealed class FakeAxisNetwork
             if (device is null || (uri.Scheme == Uri.UriSchemeHttps && !device.ServesHttps))
             {
                 throw FakeAxisDevice.Refused();
+            }
+
+            if (uri.Scheme == Uri.UriSchemeHttps && pinning is not null && device.Certificate is { } certificate && !device.Offline
+                && !pinning.Validate(certificate, null, uri.Host))
+            {
+                throw new HttpRequestException("The SSL connection could not be established (certificate pin mismatch).");
             }
 
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -233,8 +245,11 @@ internal sealed class FakeAxisNetwork
 
     private sealed class Connector(FakeAxisNetwork network) : IVapixConnector
     {
-        public VapixClient Connect(VapixConnectionOptions options) =>
-            new(VapixClient.BuildBaseAddress(options.Scheme, options.Address), network.CreateHandler(options.Credentials), null, TimeSpan.FromSeconds(5));
+        public VapixClient Connect(VapixConnectionOptions options)
+        {
+            var pinning = options.Scheme == Uri.UriSchemeHttps ? new CertificatePinning(options.PinnedCertificateFingerprint) : null;
+            return new(VapixClient.BuildBaseAddress(options.Scheme, options.Address), network.CreateHandler(options.Credentials, pinning), pinning, TimeSpan.FromSeconds(5));
+        }
     }
 }
 

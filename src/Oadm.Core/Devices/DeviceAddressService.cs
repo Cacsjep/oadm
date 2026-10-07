@@ -64,6 +64,86 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
         return await MoveAsync(device, address, "changed by a task", ct).ConfigureAwait(false);
     }
 
+    /// <summary>Clock for the certificate expiry rating after <see cref="UpdateTlsAsync"/>.</summary>
+    public TimeProvider Time { get; init; } = TimeProvider.System;
+
+    /// <inheritdoc />
+    /// <exception cref="DeviceIdentityException">
+    /// The device does not answer with the new scheme, reports another serial number or presents another certificate.
+    /// </exception>
+    public async Task UpdateTlsAsync(Guid deviceId, string scheme, string? expectedFingerprintSha256, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(scheme);
+        var https = string.Equals(scheme.Trim(), Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+        if (!https && !string.Equals(scheme.Trim(), Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"\"{scheme}\" is not http or https.", nameof(scheme));
+        }
+
+        var expected = https && !string.IsNullOrWhiteSpace(expectedFingerprintSha256) ? CertificatePinning.Normalize(expectedFingerprintSha256) : null;
+        var device = await _devices.GetAsync(deviceId, ct).ConfigureAwait(false)
+            ?? throw new KeyNotFoundException($"Device {deviceId} not found.");
+
+        using var client = await _clients.CreateUncachedAsync(device, device.Address, https ? Uri.UriSchemeHttps : Uri.UriSchemeHttp, expected, ct).ConfigureAwait(false);
+        await VerifySerialAsync(client, device, https ? "over HTTPS" : "over HTTP", ct).ConfigureAwait(false);
+
+        string? fingerprint = null;
+        CertificateInfo? certificate = null;
+        if (https)
+        {
+            fingerprint = client.CertificateFingerprint;
+            if (fingerprint is null || (expected is not null && !string.Equals(fingerprint, expected, StringComparison.Ordinal)))
+            {
+                throw new DeviceIdentityException(
+                    $"The device at {device.Address} does not present the expected certificate. The OADM device record is unchanged.");
+            }
+
+            certificate = client.ObservedCertificate;
+        }
+
+        var now = Time.GetUtcNow();
+        var updated = await _devices.UpdateAsync(
+            device.Id,
+            d =>
+            {
+                d.Scheme = https ? DeviceScheme.Https : DeviceScheme.Http;
+                if (https)
+                {
+                    d.CertFingerprintSha256 = fingerprint;
+                    d.HttpsEnabled = true;
+                    if (certificate is not null)
+                    {
+                        d.CertNotAfterUtc = certificate.NotAfterUtc;
+                        d.CertTrust = certificate.TrustAt(now);
+                        d.CertSubject = certificate.Subject;
+                        d.CertIssuer = certificate.Issuer;
+                        d.CertNameMatches = certificate.NameMatches;
+                    }
+                }
+                else
+                {
+                    d.CertNotAfterUtc = null;
+                    d.CertTrust = CertificateTrust.Unknown;
+                    d.CertSubject = null;
+                    d.CertIssuer = null;
+                    d.CertNameMatches = null;
+                }
+
+                if (d.Status is DeviceStatus.CertificateChanged or DeviceStatus.Unreachable)
+                {
+                    d.Status = DeviceStatus.Unknown; // it answered; the queued refresh sets the real status
+                }
+            },
+            ct).ConfigureAwait(false);
+        if (updated is null)
+        {
+            throw new KeyNotFoundException($"Device {device.Id} not found.");
+        }
+
+        LogTlsChanged(device.Serial, device.Address, https ? Uri.UriSchemeHttps : Uri.UriSchemeHttp, fingerprint ?? "-");
+        _queueRefresh(device.Id);
+    }
+
     /// <summary>
     /// mDNS saw <paramref name="serial"/> at <paramref name="announcedAddress"/>: when that is a managed device which
     /// is unreachable at its stored address, verify it there and move the record. Never throws for device errors.
@@ -167,6 +247,12 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
     private async Task VerifyIdentityAsync(Device device, string address, CancellationToken ct)
     {
         using var client = await _clients.CreateForAddressAsync(device, address, ct).ConfigureAwait(false);
+        await VerifySerialAsync(client, device, "at " + address, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Authenticated basicdeviceinfo through <paramref name="client"/>: the serial number must be the device's.</summary>
+    private async Task VerifySerialAsync(VapixClient client, Device device, string where, CancellationToken ct)
+    {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(VerifyTimeout);
         BasicDeviceInfo info;
@@ -176,17 +262,21 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            throw new DeviceIdentityException($"The device does not answer at {address}.");
+            throw new DeviceIdentityException($"The device does not answer {where}.");
+        }
+        catch (CertificateChangedException ex)
+        {
+            throw new DeviceIdentityException($"The device {where} does not present the expected certificate. The OADM device record is unchanged.", ex);
         }
         catch (Exception ex) when (ex is VapixException or HttpRequestException or IOException)
         {
-            throw new DeviceIdentityException($"The device at {address} could not be identified: {ex.Message}", ex);
+            throw new DeviceIdentityException($"The device {where} could not be identified: {ex.Message}", ex);
         }
 
         if (!DeviceSerial.TryNormalize(info.SerialNumber, out var serial) || !string.Equals(serial, device.Serial, StringComparison.Ordinal))
         {
             throw new DeviceIdentityException(
-                $"The device at {address} has serial number {info.SerialNumber}, not {device.Serial}. The OADM device record is unchanged.");
+                $"The device {where} has serial number {info.SerialNumber}, not {device.Serial}. The OADM device record is unchanged.");
         }
     }
 
@@ -209,6 +299,9 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Device {Serial} moved from {OldAddress} to {NewAddress} ({Reason})")]
     private partial void LogMoved(string serial, string oldAddress, string newAddress, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Device {Serial} at {Address}: OADM now connects over {Scheme} (certificate {Fingerprint})")]
+    private partial void LogTlsChanged(string serial, string address, string scheme, string fingerprint);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Device {Serial} is reached by host name {HostName}; it is kept (new address {NewAddress})")]
     private partial void LogKeptHostName(string serial, string hostName, string newAddress);

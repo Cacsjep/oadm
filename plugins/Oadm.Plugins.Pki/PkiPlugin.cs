@@ -1,3 +1,4 @@
+using Oadm.Plugins.Pki.Tasks;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Pki;
@@ -5,8 +6,8 @@ namespace Oadm.Plugins.Pki;
 /// <summary>
 /// Core plugin "PKI" (spec <c>docs/specs/pki.md</c>): one active certificate authority that issues device certificates for
 /// HTTPS and IEEE 802.1X. Part 1: the CA (generated on first start or imported), previous CAs, export and backup, the
-/// server's trust store, trust anchors for the device grid's certificate rating, settings. The task plugins that deploy
-/// certificates (part 2) are contributed later. Page backend methods: <see cref="PkiMethods"/>; live event: state.
+/// server's trust store, trust anchors for the device grid's certificate rating, settings. Part 2: the contributed Security
+/// task plugins that deploy certificates (<see cref="TaskPlugins"/>). Page backend methods: <see cref="PkiMethods"/>; live event: state.
 /// </summary>
 public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
 {
@@ -21,6 +22,18 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
     public PkiPlugin(PkiOptions options)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        PkiService? Current() => _service;
+        TaskPlugins =
+        [
+            new HttpsEnableTask(Current),
+            new HttpsDisableTask(Current),
+            new Dot1xEnableTask(Current),
+            new Dot1xDisableTask(Current),
+            new ViewCertificatesTask(Current),
+            new DeleteCertificatesTask(Current),
+            new InstallCertificatesTask(Current),
+            new RenewTask(Current),
+        ];
     }
 
     public string Id => PkiPluginInfo.PluginId;
@@ -29,8 +42,8 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
 
     public string? IconKey => PkiPluginInfo.IconKey;
 
-    /// <summary>The certificate tasks (part 2) are not contributed yet.</summary>
-    public IReadOnlyList<ITaskPlugin> TaskPlugins { get; } = [];
+    /// <summary>The Security tasks (part 2): HTTPS and IEEE 802.1X enable / disable, view, delete, manual install, renew.</summary>
+    public IReadOnlyList<ITaskPlugin> TaskPlugins { get; }
 
     /// <summary>The running service (null while stopped).</summary>
     public PkiService? Service => _service;
