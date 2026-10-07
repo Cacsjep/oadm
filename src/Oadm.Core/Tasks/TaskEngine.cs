@@ -147,10 +147,22 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     public async Task<IReadOnlyList<TaskRecord>> ListAsync(CancellationToken ct)
     {
         var stored = await _store.ListAsync(ct).ConfigureAwait(false);
-        var result = new List<TaskRecord>(stored.Count);
+        var result = new List<TaskRecord>(stored.Count + _active.Count);
+        var seen = new HashSet<Guid>();
         foreach (var record in stored)
         {
+            seen.Add(record.Id);
             result.Add(_active.TryGetValue(record.Id, out var live) ? live.Snapshot() : record);
+        }
+
+        // Tasks already published but not yet written to the store must be part of a snapshot,
+        // otherwise a watcher subscribing in that window misses their Added event.
+        foreach (var live in _active.Values)
+        {
+            if (seen.Add(live.Id))
+            {
+                result.Insert(0, live.Snapshot());
+            }
         }
 
         return result;
