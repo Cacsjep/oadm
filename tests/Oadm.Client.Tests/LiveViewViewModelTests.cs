@@ -63,7 +63,7 @@ public sealed class LiveViewViewModelTests
         var stream = await StreamAsync(0);
         Assert.Equal("a", stream.Request.DeviceId);
         Assert.Equal([VideoCodec.H265, VideoCodec.H264], stream.Request.AcceptedCodecs);
-        Assert.Equal((640, 360, 10), (stream.Request.MaxWidth, stream.Request.MaxHeight, stream.Request.Fps));
+        Assert.Equal((1920, 1080, 25), (stream.Request.MaxWidth, stream.Request.MaxHeight, stream.Request.Fps));
 
         stream.Send(VideoCodec.H265);
         await TestSupport.WaitUntilAsync(() => vm.Image is not null);

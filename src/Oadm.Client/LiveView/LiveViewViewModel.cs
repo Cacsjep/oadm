@@ -63,11 +63,11 @@ public sealed partial class LiveViewViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Requested stream size and rate (the server picks the closest camera resolution).</summary>
-    public int MaxWidth { get; set; } = 640;
+    public int MaxWidth { get; set; } = LiveViewDefaults.Width;
 
-    public int MaxHeight { get; set; } = 360;
+    public int MaxHeight { get; set; } = LiveViewDefaults.Height;
 
-    public int Fps { get; set; } = 10;
+    public int Fps { get; set; } = LiveViewDefaults.Fps;
 
     /// <summary>Reconnect delays; tests shorten them.</summary>
     public IReadOnlyList<TimeSpan> Backoff { get; init; } = DefaultBackoff;
@@ -448,6 +448,14 @@ public sealed partial class LiveViewViewModel : ObservableObject, IDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Live view stream: {Reason}")]
     private static partial void LogStreamFailed(ILogger logger, string reason);
+}
+
+/// <summary>Default live view request: full HD at 25 fps, which any current PC decodes in software.</summary>
+public static class LiveViewDefaults
+{
+    public const int Width = 1920;
+    public const int Height = 1080;
+    public const int Fps = 25;
 }
 
 /// <summary>

@@ -328,7 +328,8 @@ web UI. Reference screenshot: headless `client-liveview.png`.
 - Negotiation: H.265 > H.264 among the codecs the camera lists in `Properties.Image.Format` and
   the client can decode; when opening a codec fails the next is tried. No MJPEG. Resolution: the
   largest of the source's resolutions with the sensor aspect that fits the requested box (default
-  640x360), 10 fps.
+  1920x1080), always 25 fps (user decision: full HD at 25 fps decodes in software on any current PC or
+  laptop).
 - Sharing: one upstream camera connection per (device, camera, codec, resolution, fps) shared by
   all viewers, opened on the first and closed when the last viewer leaves. A joining viewer gets
   the cached GOP first (picture within one frame time). Slow viewers never buffer: a full queue

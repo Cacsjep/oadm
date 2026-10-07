@@ -57,7 +57,7 @@ public sealed class NegotiationAndAuthTests
     [InlineData(700, 500, "640x360")]   // keeps 16:9, does not pick 640x480
     [InlineData(1280, 800, "1280x720")]
     [InlineData(100, 100, "320x180")]   // nothing fits: smallest of the sensor aspect
-    [InlineData(0, 0, "640x360")]       // defaults
+    [InlineData(0, 0, "1920x1080")]     // defaults: full HD
     public void ResolutionFitsTheBoxAndKeepsTheSensorAspect(int maxW, int maxH, string expected)
     {
         ImageSize[] supported = [new(1920, 1080), new(1440, 1080), new(1280, 720), new(800, 600), new(640, 480), new(640, 360), new(320, 180)];
@@ -73,7 +73,7 @@ public sealed class NegotiationAndAuthTests
     [Fact]
     public void FpsIsClamped()
     {
-        Assert.Equal(10, LiveViewNegotiation.ClampFps(0));
+        Assert.Equal(25, LiveViewNegotiation.ClampFps(0));
         Assert.Equal(30, LiveViewNegotiation.ClampFps(120));
         Assert.Equal(5, LiveViewNegotiation.ClampFps(5));
     }

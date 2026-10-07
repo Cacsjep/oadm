@@ -71,9 +71,9 @@ public sealed record LiveViewCapabilities(IReadOnlyList<VideoCodecKind> Codecs, 
 /// <summary>Codec and resolution choice for a live view request.</summary>
 public static class LiveViewNegotiation
 {
-    public const int DefaultWidth = 640;
-    public const int DefaultHeight = 360;
-    public const int DefaultFps = 10;
+    public const int DefaultWidth = 1920;
+    public const int DefaultHeight = 1080;
+    public const int DefaultFps = 25;
     public const int MaxFps = 30;
 
     /// <summary>Preference order: H.265, then H.264.</summary>
