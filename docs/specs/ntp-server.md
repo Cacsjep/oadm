@@ -41,16 +41,18 @@ NTP server                                   [● Running on 10.0.0.17:123]   <-
   using its own client on the same packet codec, and reports stratum = upstream stratum + 1 and
   reference id = upstream address; the measured offset between server clock and upstream is shown as a
   warning when > 1 s ("Server clock differs from upstream by 3.2 s"); the plugin does NOT set the OS clock.
-- Without upstream: stratum 3 with reference id "LOCL"... only if the OS reports its clock synchronized
-  where detectable (Windows: w32tm status via registry/API if simple, Linux: adjtimex/timedatectl
-  status if simple); otherwise still answer but mark the status warning. Keep detection best effort and
-  never block serving.
+- Without upstream (user decision): OADM is a fully valid NTP server on its own clock, like chrony's
+  `local stratum 10` / ntpd's local clock: leap indicator 0 (synchronized), stratum 10, reference id
+  "LOCL", reference timestamp = now, small root dispersion. Clients (Axis cameras) accept and sync.
+  There is NO "server clock not synchronized" status and the server never answers as unsynchronized
+  (LI 3 / stratum 16) in this mode. If an upstream is configured but unreachable, it falls back to this
+  local mode and the status says "Upstream <host> not reachable, serving the server clock" (warning).
 
 ## Protocol (RFC 5905 server mode, SNTPv4 compatible, RFC 4330)
 
 - UDP, IPv4 and IPv6, port 123. Answer mode 3 (client) requests with mode 4 (server) responses; versions
   3 and 4; ignore everything else (control mode 6/7, broadcast, symmetric) silently: no amplification.
-- Response: LI (0, or 3 when unsynchronized), VN = request VN, mode 4, stratum, poll = request poll,
+- Response: LI 0, VN = request VN, mode 4, stratum, poll = request poll,
   precision from Stopwatch resolution, root delay/dispersion, reference id, reference timestamp (last
   upstream sync or now), originate = request transmit timestamp, receive timestamp taken immediately
   when the datagram is read, transmit timestamp set right before sending. NTP era handling (2036) in
