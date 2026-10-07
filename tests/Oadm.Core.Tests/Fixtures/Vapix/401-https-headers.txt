@@ -1,0 +1,11 @@
+HTTP/2 401 
+www-authenticate: Basic realm="AXIS_B8A44F631339"
+x-content-type-options: nosniff
+x-frame-options: SAMEORIGIN
+x-xss-protection: 1; mode=block
+content-security-policy: default-src 'self'; frame-ancestors 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://*.axis.com mediastream: blob:; script-src 'self' https://*.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://*.axis.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com https://*.axis.com data: blob:; media-src 'self' mediastream: blob:; object-src 'none'
+referrer-policy: strict-origin-when-cross-origin
+content-type: application/json; charset=utf-8
+date: Wed, 07 Oct 2026 09:18:14 GMT
+server: Apache/2.4.68 (Unix) OpenSSL/3.5.7
+

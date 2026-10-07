@@ -1,0 +1,3 @@
+Network.BootProto=dhcp
+# Error: Error -1 getting param in group 'Does.Not.Exist'
+HTTPS.Enabled=yes
