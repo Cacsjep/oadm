@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Oadm.Plugins.Firmware.Client</AssemblyName>
+    <RootNamespace>Oadm.Plugins.Firmware.Client</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <OadmPluginId>oadm.firmware</OadmPluginId>
+    <OadmPluginOutputDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'artifacts', 'plugins', '$(OadmPluginId)'))</OadmPluginOutputDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Avalonia, DataGrid and CommunityToolkit.Mvvm are shared from the client host (PluginLoadContext.IsShared): compile against them, never copy them. -->
+    <PackageReference Include="Avalonia" Version="12.0.4" ExcludeAssets="runtime" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.0" ExcludeAssets="runtime" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Listed explicitly so the transitive SDK is not copied into the plugin folder either. -->
+    <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Client\Oadm.Sdk.Client.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- One decision logic for dialog preview and server enforcement: compiled into both assemblies. -->
+    <Compile Include="..\Oadm.Plugins.Firmware\Shared\*.cs" LinkBase="Shared" />
+    <InternalsVisibleTo Include="Oadm.Plugins.Firmware.Tests" />
+  </ItemGroup>
+
+  <!-- Development deployment next to the server part in artifacts/plugins/oadm.firmware/. -->
+  <Target Name="OadmDeployPlugin" AfterTargets="Build">
+    <ItemGroup>
+      <_OadmPluginFiles Include="$(OutDir)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_OadmPluginFiles)" DestinationFiles="@(_OadmPluginFiles->'$(OadmPluginOutputDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Message Importance="normal" Text="OADM plugin $(OadmPluginId) (client) deployed to $(OadmPluginOutputDir)" />
+  </Target>
+
+</Project>
