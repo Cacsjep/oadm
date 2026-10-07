@@ -34,4 +34,13 @@ public sealed class CorePluginPageViewModel(string pluginId, string title, objec
     public bool HasOwnCards { get; } = hasOwnCards && view is not null;
 
     public bool ShowInCard => !HasOwnCards;
+
+    /// <summary>
+    /// The view for the host card, or null. A control can have only one visual parent, so the view
+    /// is handed to exactly one of the two presenters (<see cref="CardView"/> / <see cref="OwnCardsView"/>).
+    /// </summary>
+    public object? CardView => HasOwnCards ? null : View;
+
+    /// <summary>The view for pages that bring their own cards, or null.</summary>
+    public object? OwnCardsView => HasOwnCards ? View : null;
 }

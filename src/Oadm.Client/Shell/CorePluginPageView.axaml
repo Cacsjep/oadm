@@ -7,12 +7,12 @@
     <TextBlock Classes="pageTitle" Text="{Binding Title}" />
     <Border Grid.Row="1" Classes="card" IsVisible="{Binding ShowInCard}">
       <Panel>
-        <ContentControl Content="{Binding View}" IsVisible="{Binding HasView}" />
+        <ContentControl Content="{Binding CardView}" IsVisible="{Binding HasView}" />
         <TextBlock Classes="secondary" IsVisible="{Binding !HasView}"
                    Text="The page of this plugin is not installed on this client." />
       </Panel>
     </Border>
     <!-- Pages with several panels (ICorePluginPage.HasOwnCards) bring their own cards. -->
-    <ContentControl Grid.Row="1" Content="{Binding View}" IsVisible="{Binding HasOwnCards}" />
+    <ContentControl Grid.Row="1" Content="{Binding OwnCardsView}" IsVisible="{Binding HasOwnCards}" />
   </Grid>
 </UserControl>
