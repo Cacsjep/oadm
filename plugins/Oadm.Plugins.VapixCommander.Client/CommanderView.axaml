@@ -5,40 +5,53 @@
              xmlns:v="using:Oadm.Plugins.VapixCommander"
              x:Class="Oadm.Plugins.VapixCommander.Client.CommanderView"
              x:DataType="c:CommanderViewModel">
-  <!-- VAPIX Commander page: library | rollout set or raw request (+ result) | target devices, Run bar below.
+  <!-- VAPIX Commander page: library | rollout set or raw request (+ result) | target devices with the run controls at its bottom.
        Shared controls and theme classes only (CLAUDE.md "reuse UI components", "no style differences"). -->
-  <Grid RowDefinitions="*,Auto" ColumnDefinitions="430,*,340" RowSpacing="{DynamicResource Oadm.Gap}" ColumnSpacing="{DynamicResource Oadm.Gap}">
+  <Grid ColumnDefinitions="430,*,340" ColumnSpacing="{DynamicResource Oadm.Gap}">
 
     <!-- ============================== Library ============================== -->
     <Border Grid.Column="0" Classes="card">
-      <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="10">
-        <ui:CardHeader Title="Library" Description="{Binding LibrarySummary}" />
+      <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
+        <ui:CardHeader Title="Library" Description="{Binding LibrarySummary}">
+          <Button Classes="toolbar iconOnly" Command="{Binding ImportCommand}" ToolTip.Tip="Import commands from a file (saved for all OADM clients)">
+            <ui:OadmIcon Data="{DynamicResource Icon.upload}" />
+          </Button>
+        </ui:CardHeader>
         <ui:SearchBox Grid.Row="1" Text="{Binding LibrarySearch}" Placeholder="Search commands" HorizontalAlignment="Left" />
-        <TreeView Grid.Row="2" ItemsSource="{Binding LibraryTree}" SelectedItem="{Binding SelectedNode}" DoubleTapped="OnLibraryDoubleTapped">
+        <!-- A click on a command adds it to the rollout set, a click on a group expands or collapses it (code-behind). -->
+        <TreeView x:Name="LibraryTreeView" Grid.Row="2" ItemsSource="{Binding LibraryTree}" SelectedItem="{Binding SelectedNode}">
           <TreeView.Styles>
             <Style Selector="TreeViewItem" x:DataType="c:LibraryNodeViewModel">
               <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
             </Style>
+            <!-- Export / delete of a saved command appear on hover of its row. -->
+            <Style Selector="Grid.libraryRow StackPanel.rowActions">
+              <Setter Property="Opacity" Value="0" />
+            </Style>
+            <Style Selector="Grid.libraryRow:pointerover StackPanel.rowActions">
+              <Setter Property="Opacity" Value="1" />
+            </Style>
           </TreeView.Styles>
           <TreeView.ItemTemplate>
             <TreeDataTemplate x:DataType="c:LibraryNodeViewModel" ItemsSource="{Binding Children}">
-              <Grid ColumnDefinitions="*,Auto" ToolTip.Tip="{Binding Tooltip}">
+              <Grid Classes="libraryRow" ColumnDefinitions="*,Auto" Background="Transparent" ToolTip.Tip="{Binding Tooltip}"
+                    Tapped="OnLibraryNodeTapped" DoubleTapped="OnLibraryNodeDoubleTapped">
                 <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="8,0,4,0">
-                  <Border Classes="badge" IsVisible="{Binding IsGroup}"><TextBlock Text="{Binding CountText}" /></Border>
+                <StackPanel Grid.Column="1" Classes="rowActions" Orientation="Horizontal" IsVisible="{Binding IsSaved}">
+                  <Button Classes="toolbar iconOnly" ToolTip.Tip="Export this saved command to a file"
+                          Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).ExportSavedCommand}" CommandParameter="{Binding}">
+                    <ui:OadmIcon Data="{DynamicResource Icon.export}" />
+                  </Button>
+                  <Button Classes="toolbar iconOnly" ToolTip.Tip="Delete this saved command for all OADM clients"
+                          Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).DeleteSavedCommand}" CommandParameter="{Binding}">
+                    <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
+                  </Button>
                 </StackPanel>
               </Grid>
             </TreeDataTemplate>
           </TreeView.ItemTemplate>
         </TreeView>
         <TextBlock Grid.Row="3" Classes="warning small" Text="{Binding LibraryProblems}" TextWrapping="Wrap" IsVisible="{Binding HasLibraryProblems}" />
-        <WrapPanel Grid.Row="4" ItemSpacing="8" LineSpacing="8">
-          <Button Classes="primary" Content="Add to rollout" Command="{Binding AddCommandCommand}" />
-          <Button Classes="secondary" Content="Delete" Command="{Binding DeleteSavedCommand}" ToolTip.Tip="Delete the selected saved command" />
-          <Button Classes="secondary" Content="Export" Command="{Binding ExportSelectedCommand}" ToolTip.Tip="Export the selected saved command" />
-          <Button Classes="secondary" Content="Export all" Command="{Binding ExportAllCommand}" />
-          <Button Classes="secondary" Content="Import" Command="{Binding ImportCommand}" />
-        </WrapPanel>
       </Grid>
     </Border>
 
@@ -68,31 +81,56 @@
         </Grid>
 
         <!-- Rollout set -->
-        <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*" RowSpacing="10" IsVisible="{Binding IsRolloutTab}">
-          <DataGrid ItemsSource="{Binding RolloutItems}" SelectedItem="{Binding SelectedRolloutItem}" SelectionMode="Single"
-                    IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False" MaxHeight="220" MinHeight="120">
+        <Grid Grid.Row="1" RowDefinitions="Auto,*" RowSpacing="10" IsVisible="{Binding IsRolloutTab}">
+          <!-- Keyboard (code-behind): Delete removes the selected row, Ctrl+Up / Ctrl+Down move it. -->
+          <DataGrid x:Name="RolloutGrid" ItemsSource="{Binding RolloutItems}" SelectedItem="{Binding SelectedRolloutItem}" SelectionMode="Single"
+                    IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False" MaxHeight="260" MinHeight="120">
             <DataGrid.Columns>
               <DataGridTextColumn Header="#" Width="44" Binding="{Binding Position}" x:DataType="c:RolloutCommandViewModel" />
               <DataGridTextColumn Header="Command" Width="*" Binding="{Binding Name}" x:DataType="c:RolloutCommandViewModel" />
-              <DataGridTextColumn Header="Category" Width="110" Binding="{Binding Category}" x:DataType="c:RolloutCommandViewModel" />
-              <DataGridTextColumn Header="Kind" Width="140" Binding="{Binding KindText}" x:DataType="c:RolloutCommandViewModel" />
-              <DataGridTextColumn Header="Source" Width="100" Binding="{Binding SourceText}" x:DataType="c:RolloutCommandViewModel" />
+              <DataGridTextColumn Header="Category" Width="100" Binding="{Binding Category}" x:DataType="c:RolloutCommandViewModel" />
+              <DataGridTextColumn Header="Kind" Width="130" Binding="{Binding KindText}" x:DataType="c:RolloutCommandViewModel" />
+              <DataGridTextColumn Header="Source" Width="96" Binding="{Binding SourceText}" x:DataType="c:RolloutCommandViewModel" />
+              <DataGridTemplateColumn Width="147" CanUserResize="False" CanUserSort="False" CanUserReorder="False">
+                <DataGridTemplateColumn.Header>
+                  <!-- Right-aligned like the row icons, so it sits above their Remove icon. -->
+                  <Panel Width="137">
+                    <Button Classes="toolbar iconOnly" HorizontalAlignment="Right" ToolTip.Tip="Remove all commands from the rollout set"
+                            Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).ClearCommand}">
+                      <ui:OadmIcon Data="{DynamicResource Icon.deleteAll}" />
+                    </Button>
+                  </Panel>
+                </DataGridTemplateColumn.Header>
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="c:RolloutCommandViewModel">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,15,0">
+                      <Button Classes="toolbar iconOnly" ToolTip.Tip="Move up (Ctrl+Up)" CommandParameter="{Binding}"
+                              Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).MoveUpCommand}">
+                        <ui:OadmIcon Data="{DynamicResource Icon.chevronUp}" />
+                      </Button>
+                      <Button Classes="toolbar iconOnly" ToolTip.Tip="Move down (Ctrl+Down)" CommandParameter="{Binding}"
+                              Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).MoveDownCommand}">
+                        <ui:OadmIcon Data="{DynamicResource Icon.chevronDown}" />
+                      </Button>
+                      <Button Classes="toolbar iconOnly" ToolTip.Tip="Save with values: a new saved command with the entered values, for all OADM clients" CommandParameter="{Binding}"
+                              Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).SavePresetCommand}">
+                        <ui:OadmIcon Data="{DynamicResource Icon.save}" />
+                      </Button>
+                      <Button Classes="toolbar iconOnly" ToolTip.Tip="Remove from the rollout set (Delete)" CommandParameter="{Binding}"
+                              Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).RemoveCommand}">
+                        <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
+                      </Button>
+                    </StackPanel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
             </DataGrid.Columns>
           </DataGrid>
-          <WrapPanel Grid.Row="1" ItemSpacing="8" LineSpacing="8">
-            <Button Classes="secondary" Command="{Binding MoveUpCommand}"><ui:IconLabel Icon="{DynamicResource Icon.chevronUp}" Text="Up" /></Button>
-            <Button Classes="secondary" Command="{Binding MoveDownCommand}"><ui:IconLabel Icon="{DynamicResource Icon.chevronDown}" Text="Down" /></Button>
-            <Button Classes="secondary" Command="{Binding RemoveCommand}"><ui:IconLabel Icon="{DynamicResource Icon.remove}" Text="Remove" /></Button>
-            <Button Classes="secondary" Content="Clear" Command="{Binding ClearCommand}" />
-            <Button Classes="secondary" Command="{Binding SavePresetCommand}" ToolTip.Tip="Save this command with the entered values for all OADM clients">
-              <ui:IconLabel Icon="{DynamicResource Icon.save}" Text="Save with values..." />
-            </Button>
-          </WrapPanel>
 
-          <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
+          <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Spacing="12">
               <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding !HasRolloutItems}"
-                         Text="Pick commands in the library (double-click or Add to rollout), fill their values, choose the target devices and run. Every command becomes a named step of the task on each device." />
+                         Text="Click commands in the library to add them, fill their values, choose the target devices and run. Every command becomes a named step of the task on each device." />
 
               <Border Classes="inlineEditor" IsVisible="{Binding IsPresetOpen}">
                 <StackPanel Classes="form">
@@ -280,25 +318,27 @@
       </Grid>
     </Border>
 
-    <!-- ============================== Target devices ============================== -->
+    <!-- ============================== Target devices (+ run, docked at the bottom) ============================== -->
     <Border Grid.Column="2" Classes="card">
-      <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="10">
+      <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto" RowSpacing="10">
         <ui:CardHeader Title="Target devices" Description="{Binding TargetSummary}" />
         <WrapPanel Grid.Row="1" ItemSpacing="8" LineSpacing="8">
           <Button Classes="secondary" Content="Devices page selection" Command="{Binding UseDevicesSelectionCommand}" />
-          <Button Classes="secondary" Content="All" Command="{Binding SelectAllTargetsCommand}" />
+          <Button Classes="secondary" Content="All" Command="{Binding SelectAllTargetsCommand}" ToolTip.Tip="Select every device matching the search" />
           <Button Classes="secondary" Content="Compatible" Command="{Binding SelectCompatibleTargetsCommand}" />
           <Button Classes="secondary" Content="None" Command="{Binding ClearTargetsCommand}" />
         </WrapPanel>
         <ui:SearchBox Grid.Row="2" Text="{Binding TargetSearch}" Placeholder="Search devices" HorizontalAlignment="Left" />
-        <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Disabled">
-          <ItemsControl ItemsSource="{Binding VisibleTargets}">
+        <TextBlock Grid.Row="3" Classes="secondary small" Text="{Binding CompatibilitySummary}" TextWrapping="Wrap" IsVisible="{Binding HasCompatibilitySummary}" />
+        <!-- Thousands of devices: virtualized, only the visible rows exist. -->
+        <ScrollViewer Grid.Row="4" HorizontalScrollBarVisibility="Disabled">
+          <ItemsControl x:Name="TargetList" ItemsSource="{Binding VisibleTargets}">
             <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate><StackPanel Spacing="10" /></ItemsPanelTemplate>
+              <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="c:TargetDeviceViewModel">
-                <StackPanel Spacing="4">
+                <StackPanel Spacing="4" Margin="0,0,0,10">
                   <CheckBox IsChecked="{Binding IsSelected}">
                     <StackPanel>
                       <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
@@ -307,35 +347,28 @@
                   </CheckBox>
                   <StackPanel Margin="28,0,0,0" Spacing="2">
                     <ui:StatusChip IsWarning="True" Text="{Binding StatusText}" IsVisible="{Binding !IsReachable}" />
-                    <ItemsControl ItemsSource="{Binding Compatibility}">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="c:CompatibilityChip">
-                          <ui:StatusChip Text="{Binding Line}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" ToolTip.Tip="{Binding Line}" />
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                    <ui:StatusChip Text="{Binding CompatibilityText}" IsOk="{Binding AllCompatible}" IsWarning="{Binding IsCompatibilityWarning}" IsError="{Binding IsCompatibilityError}"
+                                   ToolTip.Tip="{Binding CompatibilityTooltip}" IsVisible="{Binding HasCompatibility}" />
                   </StackPanel>
                 </StackPanel>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
         </ScrollViewer>
-      </Grid>
-    </Border>
 
-    <!-- ============================== Run bar ============================== -->
-    <Border Grid.Row="1" Grid.ColumnSpan="3" Classes="card">
-      <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="16">
-        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-          <ui:StatusChip Text="{Binding Status}" IsOk="{Binding IsStatusOk}" IsError="{Binding IsStatusError}" IsVisible="{Binding HasStatus}" MaxWidth="700" />
-          <Button Classes="link" Content="Show tasks" Command="{Binding ShowTasksCommand}" IsVisible="{Binding CanShowTasks}" />
+        <Border Grid.Row="5" Classes="separator" />
+        <StackPanel Grid.Row="6" Spacing="10">
+          <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding HasStatus}">
+            <ui:StatusChip Text="{Binding Status}" IsOk="{Binding IsStatusOk}" IsError="{Binding IsStatusError}" ToolTip.Tip="{Binding Status}" MaxWidth="300" />
+            <Button Classes="link" Content="Show tasks" Command="{Binding ShowTasksCommand}" IsVisible="{Binding CanShowTasks}" />
+          </StackPanel>
+          <TextBlock Classes="secondary" Text="{Binding RunSummary}" TextWrapping="Wrap" />
+          <CheckBox Content="Stop on first error" IsChecked="{Binding StopOnFirstError}"
+                    ToolTip.Tip="The first failure stops the whole rollout: the failing device skips its remaining commands, devices not started yet are cancelled, running devices stop after their current command." />
+          <Button Classes="primary" HorizontalAlignment="Right" Command="{Binding RunCommand}">
+            <ui:IconLabel Icon="{DynamicResource Icon.start}" Text="{Binding RunText}" />
+          </Button>
         </StackPanel>
-        <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding RunSummary}" VerticalAlignment="Center" />
-        <CheckBox Grid.Column="2" Content="Stop on first error" IsChecked="{Binding StopOnFirstError}" VerticalAlignment="Center"
-                  ToolTip.Tip="The first failure stops the whole rollout: the failing device skips its remaining commands, devices not started yet are cancelled, running devices stop after their current command." />
-        <Button Grid.Column="3" Classes="primary" Command="{Binding RunCommand}">
-          <ui:IconLabel Icon="{DynamicResource Icon.start}" Text="{Binding RunText}" />
-        </Button>
       </Grid>
     </Border>
   </Grid>

@@ -962,13 +962,19 @@ JSON schema: `docs/vapix-commander/command-format.md` + `command.schema.json` (t
   `checkCompatibility` (deviceIds x command refs against the cached `device.Apis`: Compatible, Missing
   API, Version too old, API list not read yet, Needs a video device), `rollout`. User-level problems come
   back as `error` in the reply, not as gRPC errors.
-- Page (`HasOwnCards`: three cards and a Run bar, shared controls only): **Library** card (SearchBox,
-  TreeView Built-in / Saved by category with count badges, no write / dangerous badges in the tree: the
-  tooltip, the Kind column of the rollout set, the header of the selected command ("Write · dangerous ·
-  <description>") and the run confirmation say it; double-click or "Add to rollout", Delete / Export
-  saved, Export all, Import); middle card with a
-  segmented switch **Rollout set** (DataGrid #, Command, Category, Kind, Source; Up, Down, Remove,
-  Clear, "Save with values..." = saved copy in Custom; field form of the selected command checked like
+- Page (`HasOwnCards`: three cards, shared controls only, compact icon buttons = `Button.toolbar.iconOnly`
+  + `ui:OadmIcon` with a tooltip): **Library** card (Import icon right of the title, SearchBox, TreeView
+  Built-in / Saved by category without any badges (no counts, no write / dangerous: the tooltip, the Kind
+  column of the rollout set, the header of the selected command ("Write · dangerous · <description>") and
+  the run confirmation say it). A single click on a command adds it to the rollout set, a click on a group
+  only expands / collapses it (a double click is one action); Enter does the same for the selected node.
+  Saved commands show Export and Delete icons on hover of their row (Delete key on a selected saved
+  command); no "Add to rollout" and no "Export all" buttons); middle card with a
+  segmented switch **Rollout set** (DataGrid #, Command, Category, Kind, Source and an icon column with
+  per-row Move up, Move down, Save with values (saved copy in Custom with the entered values, opens the
+  name editor for that row) and Remove, disabled when not possible (first row up, last row down); a
+  "Remove all" icon in that column's header; no button row. Keyboard on the grid: Delete removes the
+  selected row, Ctrl+Up / Ctrl+Down move it. Selecting a row shows its field form below, checked like
   the server while typing; `ui:PasswordBox` for passwords) / **Raw request** (method, path, query and
   header tables with Make field, body type + body, timeout, response kind, fields from `{{placeholders}}`
   typed by hand, "Add to rollout", "Save as command..." with name, category, description, requires
@@ -979,18 +985,31 @@ JSON schema: `docs/vapix-commander/command-format.md` + `command.schema.json` (t
   (else from the text: param.cgi key=value); JSON and XML are always shown pretty-printed (2 spaces,
   also when the device sends them minified) with a **Pretty / Raw** switch (default Pretty; Raw = the
   exact device text from `TryOutcome.RawBody`, which the server sends only when it differs from the
-  pretty body), content type and "Cut at 256 KB." next to it. **Target devices** card (Devices page selection preselected; buttons
-  Devices page selection, All, Compatible, None; SearchBox; per device a check box and one status chip
-  per rollout command). Run bar: status chip of the last action (+ "Show tasks" opens the Devices page),
-  summary "3 commands × 2 devices · 1 write", **Stop on first error** (default on), **Run on N
-  devices**: a confirmation lists every command with its kind, incompatible devices and the stop mode
-  when a command writes; dangerous commands need a second explicit confirmation.
+  pretty body), content type and "Cut at 256 KB." next to it. **Target devices** card (Devices page
+  selection preselected; buttons Devices page selection, All (matching the search), Compatible, None;
+  SearchBox; compatibility summary "4,812 compatible · 188 not compatible · 12 not checked"; per device
+  a check box and one status chip: "Compatible" or the first problem "<command>: Missing API x (+N
+  more)", tooltip = every command). The run controls are docked at the bottom of this card (no separate
+  Run bar card): status chip of the last action (+ "Show tasks" opens the Devices page), summary "3
+  commands × 2 devices · 1 write", **Stop on first error** (default on), **Run on N devices**: a
+  confirmation lists every command with its kind, incompatible devices and the stop mode when a command
+  writes; dangerous commands need a second explicit confirmation.
+- Scale (a site can have thousands of devices): the target list is virtualized (`ItemsControl` with
+  `VirtualizingStackPanel`, only visible rows exist); `Targets` / `VisibleTargets` are replaced as whole
+  lists (one reset, no per-item collection events), sorted by IPv4 address numerically; the selection is
+  counted incrementally and All / None / Devices page selection / Compatible set the flags in one O(n)
+  pass with a single notification; compatibility is computed on the client from each device's cached
+  API list (`Compatibility.Check`, the server re-checks a fresh list before writes), no request per
+  device. 5000 devices: filter, select all, devices page selection, compatibility and select compatible
+  each stay under 200 ms (test).
 - Tests: `tests/Oadm.Plugins.VapixCommander.Tests` (rendering of all field types, typed JSON, booleans
   per kind, validation, every response kind incl. error texts and transport mapping with a fake device,
   stop on first error through the real task engine and core plugin host, saved CRUD / encryption /
-  export / import, compatibility, page view models against the in-process plugin, bundled library,
-  headless screenshots `plugin-vapix-commander-rollout.png`, `-try-error.png`, `-raw.png`, `-try-json.png`,
-  `-try-json-raw.png`, `-try-xml.png`, `-try-paramcgi.png`); `tests/Oadm.Client.Tests/CodeViewTests`
+  export / import, compatibility, page view models against the in-process plugin (library click, per-row
+  rollout actions and their disabled states, 5000-device timing), bundled library,
+  headless screenshots `plugin-vapix-commander-rollout.png` (library + rollout set with four rows),
+  `-try-error.png`, `-raw.png`, `-try-json.png`, `-try-json-raw.png`, `-try-xml.png`, `-try-paramcgi.png`,
+  `-many-devices.png` (5000 devices, asserts that only a few rows are realized)); `tests/Oadm.Client.Tests/CodeViewTests`
   (detection, pretty-printing, tokens, fallbacks, size limits, rendering and copy);
   `tests/Oadm.Server.Tests/VapixCommanderServerTests` (PluginService routing, hidden task) and the
   read-only hardware test `VapixCommanderHardwareTests` (param.cgi list Brand and basicdeviceinfo, Try
