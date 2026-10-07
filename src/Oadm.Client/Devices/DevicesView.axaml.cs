@@ -5,16 +5,11 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 
 using Oadm.Client.LiveView;
-using Oadm.Client.Tasks;
 
 namespace Oadm.Client.Devices;
 
 public partial class DevicesView : UserControl
 {
-    private const int DevicesRow = 1;
-    private const int TasksRow = 3;
-
-    private TasksViewModel? _tasks;
     private LiveViewViewModel? _liveView;
 
     // Device card : live view split while the panel is open (about 60 : 40), kept when the user drags the splitter.
@@ -25,24 +20,12 @@ public partial class DevicesView : UserControl
     {
         InitializeComponent();
         DeviceGrid.CellPointerPressed += OnCellPointerPressed;
-        PaneSplitter.DragCompleted += (_, _) => _tasks?.CommitPaneHeight(LayoutRoot.RowDefinitions[TasksRow].ActualHeight);
-        if (this.TryFindResource("Oadm.DevicesCardMinHeight", out object? min) && min is double minHeight)
-        {
-            LayoutRoot.RowDefinitions[DevicesRow].MinHeight = minHeight;
-        }
-
         AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
-        if (_tasks is not null)
-        {
-            _tasks.PropertyChanged -= OnTasksPropertyChanged;
-            _tasks = null;
-        }
-
         if (_liveView is not null)
         {
             _liveView.PropertyChanged -= OnLiveViewPropertyChanged;
@@ -53,9 +36,6 @@ public partial class DevicesView : UserControl
         {
             vm.Toolbar.AttachTo(ToolbarPanel, vm.ToolbarContext);
             DeviceGridLayoutBinder.Attach(DeviceGrid, vm.Columns);
-            _tasks = vm.Tasks;
-            _tasks.PropertyChanged += OnTasksPropertyChanged;
-            ApplyPaneRow();
             _liveView = vm.LiveView;
             _liveView.PropertyChanged += OnLiveViewPropertyChanged;
             ApplyLiveViewColumns();
@@ -105,35 +85,6 @@ public partial class DevicesView : UserControl
         {
             _liveView.CloseCommand.Execute(null);
             e.Handled = true;
-        }
-    }
-
-    private void OnTasksPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName is nameof(TasksViewModel.IsExpanded) or nameof(TasksViewModel.PaneHeight))
-        {
-            ApplyPaneRow();
-        }
-    }
-
-    /// <summary>Expanded: the tasks row has the persisted pixel height the splitter changes. Collapsed: header only.</summary>
-    private void ApplyPaneRow()
-    {
-        if (_tasks is null)
-        {
-            return;
-        }
-
-        RowDefinition row = LayoutRoot.RowDefinitions[TasksRow];
-        if (_tasks.IsExpanded)
-        {
-            row.MinHeight = TasksViewModel.MinPaneHeight;
-            row.Height = new GridLength(_tasks.PaneHeight, GridUnitType.Pixel);
-        }
-        else
-        {
-            row.MinHeight = 0;
-            row.Height = GridLength.Auto;
         }
     }
 

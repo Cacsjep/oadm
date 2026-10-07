@@ -23,7 +23,7 @@ public sealed partial class NavItemViewModel(string key, string title, string ic
 }
 
 /// <summary>Navigation page of a core plugin. <see cref="View"/> comes from the plugin's client assembly, if installed.</summary>
-public sealed class CorePluginPageViewModel(string pluginId, string title, object? view, bool hasOwnCards = false)
+public sealed class CorePluginPageViewModel(string pluginId, string title, object? view, bool hasOwnCards = false, Oadm.Client.Tasks.TasksViewModel? tasks = null)
 {
     public string PluginId { get; } = pluginId;
     public string Title { get; } = title;
@@ -43,4 +43,9 @@ public sealed class CorePluginPageViewModel(string pluginId, string title, objec
 
     /// <summary>The view for pages that bring their own cards, or null.</summary>
     public object? OwnCardsView => HasOwnCards ? View : null;
+
+    /// <summary>The shared tasks pane below the page (ICorePluginPage.ShowTasksPane), or null.</summary>
+    public Oadm.Client.Tasks.TasksViewModel? Tasks { get; } = tasks;
+
+    public bool ShowTasksPane => Tasks is not null;
 }

@@ -38,6 +38,13 @@ public interface ICorePluginPage
     /// shows it below the page title without its own card. Default false.
     /// </summary>
     bool HasOwnCards => false;
+
+    /// <summary>
+    /// True when the page starts tasks (e.g. a rollout) and the technician should watch them without
+    /// switching pages: the host shows the shared tasks pane (splitter, persisted height) below the
+    /// page, exactly like on the Devices page. Default false.
+    /// </summary>
+    bool ShowTasksPane => false;
 }
 
 /// <summary>

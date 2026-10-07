@@ -152,7 +152,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
             NavItems.Add(new NavItemViewModel("plugin:" + plugin.Id, plugin.DisplayName,
                 string.IsNullOrEmpty(plugin.IconKey) ? "plugin" : plugin.IconKey,
-                new CorePluginPageViewModel(plugin.Id, plugin.DisplayName, view, page?.HasOwnCards == true))
+                new CorePluginPageViewModel(plugin.Id, plugin.DisplayName, view, page?.HasOwnCards == true,
+                    page?.ShowTasksPane == true && view is not null ? Devices.Tasks : null))
             {
                 HasSeparatorBefore = first,
             });

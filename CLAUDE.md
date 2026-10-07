@@ -676,6 +676,8 @@ public interface ICorePluginPage
     string PluginId { get; }
     Control CreateView(ICorePluginClientContext ctx);  // page shown in the navigation rail
     bool HasOwnCards => false;         // true: the view lays out its own cards, no host card around it
+    bool ShowTasksPane => false;       // true: the shared tasks pane (TasksPaneLayout) sits below the page,
+                                       // so rollouts are watched without switching pages (VAPIX Commander)
 }
 
 public interface ICorePluginClientContext  // UI thread; all but InvokeAsync have defaults
@@ -1046,6 +1048,9 @@ LocalApplicationData): server address, grid column layout, bottom pane state.
   "Hide password", icons `Icon.eye` / `Icon.eyeOff`; never a `TextBox` with `PasswordChar`). Before
   writing new XAML, check both `Controls/` folders and reuse; if a second place needs something
   that exists only inline, extract it into a control first.
+- Plugin projects copy their output to `artifacts/plugins/<id>/` after every build. A running
+  client or server keeps those files open; build or test with `-p:OadmSkipPluginDeploy=true` (e.g.
+  together with `--artifacts-path`) to skip the copy while the apps run.
 - **HARD RULE, no style differences.** Same kind of element, same look, everywhere: one
   style per element type in `Themes/OadmTheme.axaml`, no local overrides of font size,
   weight, color, padding or alignment in views. No special cases such as a bold selected rail

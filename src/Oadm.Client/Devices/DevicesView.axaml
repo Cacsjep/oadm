@@ -7,12 +7,14 @@
              xmlns:lv="using:Oadm.Client.LiveView"
                       x:Class="Oadm.Client.Devices.DevicesView"
              x:DataType="dev:DevicesViewModel">
-  <!-- Rows: title, device card, splitter, tasks card. DevicesView.axaml.cs sizes the last two from the TasksViewModel. -->
-  <Grid x:Name="LayoutRoot" RowDefinitions="Auto,*,Auto,Auto">
+  <!-- Rows: title, then the shared TasksPaneLayout (device card above, splitter, tasks pane below). -->
+  <Grid x:Name="LayoutRoot" RowDefinitions="Auto,*">
     <TextBlock Grid.Row="0" Classes="pageTitle" Text="Devices" Margin="4,0,0,16" />
 
+    <tasks:TasksPaneLayout Grid.Row="1" Tasks="{Binding Tasks}" MainMinHeight="{StaticResource Oadm.DevicesCardMinHeight}">
+    <tasks:TasksPaneLayout.MainContent>
     <!-- Device card, and the live view panel on its right while open (DevicesView.axaml.cs sizes the columns) -->
-    <Grid x:Name="DeviceRow" Grid.Row="1" ColumnDefinitions="*,Auto,0">
+    <Grid x:Name="DeviceRow" ColumnDefinitions="*,Auto,0">
     <!-- Device card: toolbar, status line, grid -->
     <Border Grid.Column="0" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" MinHeight="{StaticResource Oadm.DevicesCardMinHeight}">
       <Grid RowDefinitions="Auto,Auto,*">
@@ -149,13 +151,7 @@
                      HasSourceChoice="{Binding LiveView.HasSourceChoice}"
                      SelectSourceCommand="{Binding LiveView.SelectSourceCommand}" />
     </Grid>
-
-    <!-- Drag to resize the tasks pane; hidden while the pane is collapsed (then a plain gap) -->
-    <GridSplitter x:Name="PaneSplitter" Grid.Row="2" Classes="paneSplitter"
-                  IsVisible="{Binding Tasks.IsExpanded}" />
-    <Border Grid.Row="2" Height="{StaticResource Oadm.SplitterHeight}" IsVisible="{Binding !Tasks.IsExpanded}" />
-
-    <!-- Tasks pane -->
-    <tasks:TasksPaneView Grid.Row="3" DataContext="{Binding Tasks}" />
+    </tasks:TasksPaneLayout.MainContent>
+    </tasks:TasksPaneLayout>
   </Grid>
 </UserControl>

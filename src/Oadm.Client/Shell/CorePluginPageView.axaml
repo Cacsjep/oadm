@@ -1,18 +1,26 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:shell="using:Oadm.Client.Shell"
+             xmlns:tasks="using:Oadm.Client.Tasks"
              x:Class="Oadm.Client.Shell.CorePluginPageView"
              x:DataType="shell:CorePluginPageViewModel">
   <Grid RowDefinitions="Auto,*" RowSpacing="16">
     <TextBlock Classes="pageTitle" Text="{Binding Title}" />
-    <Border Grid.Row="1" Classes="card" IsVisible="{Binding ShowInCard}">
-      <Panel>
-        <ContentControl Content="{Binding CardView}" IsVisible="{Binding HasView}" />
-        <TextBlock Classes="secondary" IsVisible="{Binding !HasView}"
-                   Text="The page of this plugin is not installed on this client." />
-      </Panel>
-    </Border>
-    <!-- Pages with several panels (ICorePluginPage.HasOwnCards) bring their own cards. -->
-    <ContentControl Grid.Row="1" Content="{Binding OwnCardsView}" IsVisible="{Binding HasOwnCards}" />
+    <!-- Page content above; with ShowTasksPane the shared tasks pane below (same as the Devices page). -->
+    <tasks:TasksPaneLayout Grid.Row="1" Tasks="{Binding Tasks}" ShowTasks="{Binding ShowTasksPane}">
+      <tasks:TasksPaneLayout.MainContent>
+        <Panel>
+          <Border Classes="card" IsVisible="{Binding ShowInCard}">
+            <Panel>
+              <ContentControl Content="{Binding CardView}" IsVisible="{Binding HasView}" />
+              <TextBlock Classes="secondary" IsVisible="{Binding !HasView}"
+                         Text="The page of this plugin is not installed on this client." />
+            </Panel>
+          </Border>
+          <!-- Pages with several panels (ICorePluginPage.HasOwnCards) bring their own cards. -->
+          <ContentControl Content="{Binding OwnCardsView}" IsVisible="{Binding HasOwnCards}" />
+        </Panel>
+      </tasks:TasksPaneLayout.MainContent>
+    </tasks:TasksPaneLayout>
   </Grid>
 </UserControl>

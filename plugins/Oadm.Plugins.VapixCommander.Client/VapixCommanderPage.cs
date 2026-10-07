@@ -13,6 +13,11 @@ public sealed class VapixCommanderPage : ICorePluginPage
 
     public bool HasOwnCards => true;
 
+
+    /// <summary>Rollouts are watched right here: the host shows the tasks pane below the page.</summary>
+
+    public bool ShowTasksPane => true;
+
     public Control CreateView(ICorePluginClientContext ctx)
     {
         ArgumentNullException.ThrowIfNull(ctx);
