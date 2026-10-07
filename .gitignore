@@ -483,3 +483,6 @@ $RECYCLE.BIN/
 
 # OADM: local developer camera list, contains passwords
 /dev-cameras.yaml
+
+# Claude Code agent worktrees
+/.claude/worktrees/
