@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=OADM
+GenericName=Device Manager
+Comment=Open AXIS Device Management
+Exec=/opt/oadm/client/Oadm.Client
+Icon=oadm
+Terminal=false
+Categories=Network;Utility;
+StartupWMClass=Oadm.Client
