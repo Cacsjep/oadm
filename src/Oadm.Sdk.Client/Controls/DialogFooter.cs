@@ -8,7 +8,7 @@ using Avalonia.Metadata;
 namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>
-/// The button row at the bottom of every dialog, laid out like the add devices wizard: Cancel
+/// The button row at the bottom of every dialog, laid out like the add devices page: Cancel
 /// (secondary, Escape) on the left, the dialog's own buttons (<see cref="Actions"/>, e.g. a
 /// secondary Back and a primary Apply) on the right. Margin comes from the theme.
 /// </summary>

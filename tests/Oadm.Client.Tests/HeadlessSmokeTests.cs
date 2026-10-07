@@ -52,7 +52,7 @@ public static class HeadlessSession
 public sealed class HeadlessSmokeTests
 {
     [Fact]
-    public async Task Main_window_pages_and_wizard_render_with_fake_server()
+    public async Task Main_window_pages_and_add_page_render_with_fake_server()
     {
         string dataFolder = HeadlessSession.DataFolder;
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
@@ -115,25 +115,65 @@ public sealed class HeadlessSmokeTests
             await PumpUntilAsync(() => true);
             Capture(window, outDir, "client-rail-expanded.png");
 
-            var factory = app.Services!.GetRequiredService<Func<AddDevicesMode, AddDevicesWizardViewModel>>();
-            AddDevicesWizardViewModel wizardVm = factory(AddDevicesMode.ZeroConf);
-            var wizard = new AddDevicesWizardWindow { DataContext = wizardVm };
-            wizard.Show();
-            await PumpUntilAsync(() => wizardVm.Discovered.Count >= 8);
-            wizardVm.SelectAllCommand.Execute(null);
+            // The Devices page toolbar: toolbar plugins with a separator between groups.
+            StackPanel toolbarPanel = window.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Name == "ToolbarPanel");
+            Assert.Equal(["Scan", "Scan IP range", "Add manually", "Remove", "Restart"],
+                toolbarPanel.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.ToolbarButton>().Select(b => b.Text ?? "").ToArray());
+            Capture(window, outDir, "client-toolbar.png");
+
+            // The add page in its three modes, with mixed automatic login results.
+            var factory = app.Services!.GetRequiredService<Func<AddDevicesMode, AddDevicesViewModel>>();
+            AddDevicesViewModel scanVm = factory(AddDevicesMode.Scan);
+            var scanWindow = new AddDevicesWindow { DataContext = scanVm };
+            scanWindow.Show();
+            await PumpUntilAsync(() => scanVm.Rows.Count == 10 && scanVm.Rows.All(r => r.AuthState != AuthState.Pending));
+            scanVm.SelectAllAuthenticatedCommand.Execute(null);
             await PumpUntilAsync(() => true);
-            Assert.Equal(["Select devices", "Set password", "Credentials", "Review"], wizardVm.Steps.Select(s => s.Title).ToArray());
-            Capture(wizard, outDir, "client-wizard.png");
-            await wizardVm.NextCommand.ExecuteAsync(null);
-            await PumpUntilAsync(() => wizardVm.CurrentStep == WizardStep.Password);
-            Capture(wizard, outDir, "client-wizard-password.png");
-            wizardVm.SkipCommand.Execute(null);
-            wizardVm.Password = "secret";
-            await wizardVm.NextCommand.ExecuteAsync(null);
-            await PumpUntilAsync(() => wizardVm.CurrentStep == WizardStep.Review);
-            Capture(wizard, outDir, "client-wizard-review.png");
-            await wizardVm.DisposeAsync();
-            wizard.Close();
+            Capture(scanWindow, outDir, "client-add-scan.png");
+            scanVm.FocusedRow = scanVm.Rows.Single(r => r.ShowLogIn);
+            scanVm.EditorPassword = "secret";
+            await PumpUntilAsync(() => scanVm.IsLoginEditorOpen);
+            Capture(scanWindow, outDir, "client-add-login.png");
+            scanVm.CancelEditorCommand.Execute(null);
+            scanVm.OpenEditorCommand.Execute(scanVm.Rows.First(r => r.PassphrasePolicy == "complex"));
+            scanVm.NewPassword = "short";
+            scanVm.ConfirmPassword = "short";
+            scanVm.ApplyPasswordCommand.Execute(null);
+            await PumpUntilAsync(() => scanVm.IsPasswordEditorOpen && scanVm.EditorError is not null);
+            Capture(scanWindow, outDir, "client-add-password.png");
+            await scanVm.DisposeAsync();
+            scanWindow.Close();
+
+            AddDevicesViewModel rangeVm = factory(AddDevicesMode.IpRange);
+            var rangeWindow = new AddDevicesWindow { DataContext = rangeVm };
+            rangeWindow.Show();
+            rangeVm.RangeFrom = "10.0.1.1";
+            rangeVm.RangeTo = "10.0.1.254";
+            await rangeVm.StartRangeCommand.ExecuteAsync(null);
+            await PumpUntilAsync(() => !rangeVm.IsScanning && rangeVm.Rows.Count == 6 && rangeVm.Rows.All(r => r.AuthState != AuthState.Pending));
+            Capture(rangeWindow, outDir, "client-add-range.png");
+            await rangeVm.DisposeAsync();
+            rangeWindow.Close();
+
+            AddDevicesViewModel manualVm = factory(AddDevicesMode.Manual);
+            var manualWindow = new AddDevicesWindow { DataContext = manualVm };
+            manualWindow.Show();
+            foreach (string address in new[] { "camera7.example.com:8443", "10.0.0.93", "10.0.0.90" })
+            {
+                manualVm.ManualAddress = address;
+                await manualVm.ProbeAddressCommand.ExecuteAsync(null);
+            }
+
+            await PumpUntilAsync(() => manualVm.Rows.Count == 3 && manualVm.Rows.All(r => r.AuthState != AuthState.Pending) && !manualVm.IsScanning);
+            manualVm.ManualAddress = "10.0.0.199";
+            await manualVm.ProbeAddressCommand.ExecuteAsync(null);
+            await PumpUntilAsync(() => manualVm.ErrorText is not null);
+            manualVm.ManualAddress = "https://10.0.0.48:8443";
+            manualVm.SelectAllAuthenticatedCommand.Execute(null);
+            await PumpUntilAsync(() => true);
+            Capture(manualWindow, outDir, "client-add-manual.png");
+            await manualVm.DisposeAsync();
+            manualWindow.Close();
 
             // Task details with per-device results and the task log (fake "Done with warnings" task).
             TaskRowViewModel warned = vm.Devices.Tasks.Tasks.First(t => t.State == TaskState.DoneWithWarnings);

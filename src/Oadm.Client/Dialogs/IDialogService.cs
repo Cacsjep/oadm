@@ -1,6 +1,5 @@
 using Oadm.Client.Discovery;
 using Oadm.Client.Tasks;
-using Oadm.Contracts.V1;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Devices;
 
@@ -13,8 +12,11 @@ public interface IDialogService
 
     Task<bool> ConfirmAsync(string title, string message, string confirmText);
 
-    /// <summary>Shows the add devices wizard; returns the commit reply, or null when cancelled.</summary>
-    Task<CommitReply?> ShowAddDevicesWizardAsync(AddDevicesWizardViewModel wizard);
+    /// <summary>Shows the add devices page; true when devices were added.</summary>
+    Task<bool> ShowAddDevicesAsync(AddDevicesViewModel page);
+
+    /// <summary>The window dialogs open on (active window, else the main window); null without a desktop.</summary>
+    Avalonia.Controls.Window? Owner { get; }
 
     /// <summary>Shows a client plugin dialog; returns the payload JSON, or null when cancelled.</summary>
     Task<string?> ShowTaskPluginDialogAsync(ITaskPluginDialog dialog, IReadOnlyList<IDeviceInfo> devices);

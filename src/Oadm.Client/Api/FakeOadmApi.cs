@@ -13,7 +13,7 @@ namespace Oadm.Client.Api;
 
 /// <summary>
 /// In-process stand-in for the server: realistic sample devices and tasks, simulated discovery,
-/// wizard commit and the Restart task. Start the client with <c>--fake</c> to use it.
+/// automatic login results of the add page, credential list and the Restart task. Start the client with <c>--fake</c> to use it.
 /// </summary>
 public sealed class FakeOadmApi : IOadmApi, IDisposable
 {
@@ -27,6 +27,7 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
     private readonly Dictionary<string, UploadedFileInfo> _uploads = [];
     private readonly Dictionary<string, FakeJob> _jobs = [];
     private readonly Dictionary<string, FakeSession> _sessions = [];
+    private readonly List<CredentialEntry> _credentials = [];
     private readonly Broadcast<DeviceChanged> _deviceEvents = new();
     private readonly Broadcast<TaskChanged> _taskEvents = new();
     private readonly List<TaskPluginInfo> _pluginTemplates;
@@ -57,6 +58,8 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         if (seedSampleData)
         {
             Seed();
+            AddCredentialLocked("root");
+            AddCredentialLocked("operator");
         }
 
         _ = Task.Run(() => SimulationLoopAsync(_cts.Token));
@@ -221,16 +224,7 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
 
     // ---------------------------------------------------------------- discovery
 
-    public Task<string> StartZeroConfAsync(CancellationToken ct)
-    {
-        lock (_gate)
-        {
-            ThrowIfOffline();
-            var session = new FakeSession(Guid.NewGuid().ToString("N"), null, null);
-            _sessions[session.Id] = session;
-            return Task.FromResult(session.Id);
-        }
-    }
+    public Task<string> StartZeroConfAsync(CancellationToken ct) => Task.FromResult(NewSession(FakeSessionKind.Scan, null, null, null));
 
     public Task<string> StartRangeScanAsync(string firstAddress, string lastAddress, CancellationToken ct)
     {
@@ -239,15 +233,25 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
             throw new RpcException(new Status(StatusCode.InvalidArgument, "invalid address range"));
         }
 
-        lock (_gate)
-        {
-            ThrowIfOffline();
-            var session = new FakeSession(Guid.NewGuid().ToString("N"), first, last);
-            _sessions[session.Id] = session;
-            return Task.FromResult(session.Id);
-        }
+        return Task.FromResult(NewSession(FakeSessionKind.Range, first, last, null));
     }
 
+    public Task<string> ProbeAddressAsync(string address, CancellationToken ct)
+    {
+        string entered = (address ?? "").Trim();
+        if (entered.Length == 0 || entered.Contains(' ', StringComparison.Ordinal) || entered.StartsWith("ftp:", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"'{entered}' is not a valid IP address or host name."));
+        }
+
+        return Task.FromResult(NewSession(FakeSessionKind.Manual, null, null, entered));
+    }
+
+    /// <summary>
+    /// Like the server: every device first arrives "checking" (auth pending), the automatic login
+    /// result follows a moment later. Mixed results: authenticated, login failed, factory default,
+    /// unreachable and already added devices.
+    /// </summary>
     public async IAsyncEnumerable<DiscoveredDevice> WatchDiscoveredAsync(string sessionId, [EnumeratorCancellation] CancellationToken ct)
     {
         FakeSession session;
@@ -258,37 +262,46 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
                 ?? throw new RpcException(new Status(StatusCode.NotFound, "unknown discovery session"));
         }
 
-        List<DiscoveredDevice> candidates = BuildDiscoveryCandidates(session);
-        if (session.IsRangeScan)
+        List<(DiscoveredDevice Found, DiscoveredDevice Auth)> candidates = BuildDiscoveryCandidates(session);
+        if (session.Kind == FakeSessionKind.Scan)
         {
-            const int steps = 20;
+            foreach ((DiscoveredDevice found, _) in candidates)
+            {
+                await Task.Delay(_tick, ct);
+                yield return Remember(session, found);
+            }
+
+            foreach ((_, DiscoveredDevice auth) in candidates)
+            {
+                await Task.Delay(_tick, ct);
+                yield return Remember(session, auth);
+            }
+
+            // mDNS keeps browsing while the add page is open
+            await Task.Delay(Timeout.Infinite, ct);
+        }
+        else
+        {
+            const int steps = 10;
             for (int step = 1; step <= steps; step++)
             {
                 await Task.Delay(_tick, ct);
                 int percent = step * 100 / steps;
-                foreach (DiscoveredDevice found in candidates.Where((_, i) => (i * steps / Math.Max(1, candidates.Count)) + 1 == step))
+                foreach ((DiscoveredDevice found, _) in candidates.Where((_, i) => (i * steps / Math.Max(1, candidates.Count)) + 1 == step))
                 {
                     found.ProgressPercent = percent;
-                    session.Found[found.DiscoveredId] = found;
-                    yield return found.Clone();
+                    yield return Remember(session, found);
                 }
 
                 yield return new DiscoveredDevice { ProgressPercent = percent };
             }
 
             yield return new DiscoveredDevice { ScanFinished = true, ProgressPercent = 100 };
-        }
-        else
-        {
-            foreach (DiscoveredDevice found in candidates)
+            foreach ((_, DiscoveredDevice auth) in candidates)
             {
                 await Task.Delay(_tick, ct);
-                session.Found[found.DiscoveredId] = found;
-                yield return found.Clone();
+                yield return Remember(session, auth);
             }
-
-            // mDNS keeps browsing while the wizard is open
-            await Task.Delay(Timeout.Infinite, ct);
         }
     }
 
@@ -296,7 +309,10 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
     {
         lock (_gate)
         {
-            _sessions.Remove(sessionId);
+            if (_sessions.TryGetValue(sessionId, out FakeSession? session))
+            {
+                session.Stopped = true;
+            }
         }
 
         return Task.CompletedTask;
@@ -304,34 +320,56 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
 
     // ---------------------------------------------------------------- add devices
 
-    public Task<AddPlan> PrepareAddAsync(string sessionId, IReadOnlyCollection<string> discoveredIds, CancellationToken ct)
+    public Task<DiscoveredDevice> RetryAuthAsync(RetryAuthRequest request, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(request);
         lock (_gate)
         {
             ThrowIfOffline();
-            FakeSession session = _sessions.GetValueOrDefault(sessionId)
-                ?? throw new RpcException(new Status(StatusCode.NotFound, "unknown discovery session"));
-            var plan = new AddPlan();
-            foreach (string id in discoveredIds)
+            if (string.IsNullOrWhiteSpace(request.UserName) || request.Password.Length == 0)
             {
-                if (!session.Found.TryGetValue(id, out DiscoveredDevice? found))
-                {
-                    continue;
-                }
-
-                plan.Items.Add(new AddPlanItem
-                {
-                    DiscoveredId = id,
-                    Serial = found.Serial,
-                    Address = found.Address,
-                    HostName = found.HostName,
-                    Model = found.Model,
-                    NeedsInitialPassword = found.Status == DeviceStatus.PasswordNotSet,
-                    NeedsCredentials = found.Status == DeviceStatus.CredentialsRequired,
-                });
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "Enter a user name and a password."));
             }
 
-            return Task.FromResult(plan);
+            FakeSession session = _sessions.GetValueOrDefault(request.SessionId)
+                ?? throw new RpcException(new Status(StatusCode.NotFound, "unknown discovery session"));
+            DiscoveredDevice found = session.Found.GetValueOrDefault(request.DiscoveredId)
+                ?? throw new RpcException(new Status(StatusCode.NotFound, $"Discovered device '{request.DiscoveredId}' is unknown."));
+            if (found.Status == DeviceStatus.PasswordNotSet)
+            {
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, "The device has no password yet (factory default); set its first password instead."));
+            }
+
+            if (found.AlreadyManaged || _devices.Exists(d => d.Serial == found.Serial))
+            {
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, $"The device {found.Serial} has already been added."));
+            }
+
+            DiscoveredDevice result = found.Clone();
+            result.ProgressPercent = 100;
+            if (IsAcceptedPassword(request.Password))
+            {
+                string user = request.UserName.Trim();
+                result.AuthState = AuthState.Authenticated;
+                result.AuthUserName = user;
+                result.AuthDetail = "";
+                result.CredentialId = "entered";
+                if (request.SaveToCredentialList)
+                {
+                    CredentialEntry entry = AddCredentialLocked(user);
+                    result.CredentialId = "list:" + entry.Id;
+                }
+            }
+            else
+            {
+                result.AuthState = AuthState.LoginFailed;
+                result.AuthUserName = "";
+                result.CredentialId = "";
+                result.AuthDetail = "The user name or password is wrong.";
+            }
+
+            session.Found[result.DiscoveredId] = result;
+            return Task.FromResult(result.Clone());
         }
     }
 
@@ -343,6 +381,14 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
             ThrowIfOffline();
             FakeSession session = _sessions.GetValueOrDefault(request.SessionId)
                 ?? throw new RpcException(new Status(StatusCode.NotFound, "unknown discovery session"));
+            foreach (string password in request.InitialPasswords.Values.Append(request.InitialRootPassword).Where(p => p.Length > 0))
+            {
+                if (password.Length > 64 || password.Any(c => c < 0x20 || c > 0x7E))
+                {
+                    throw new RpcException(new Status(StatusCode.InvalidArgument, "Password must be 1-64 printable ASCII characters."));
+                }
+            }
+
             var reply = new CommitReply();
             DeviceCredentials? forAll = request.Credentials.FirstOrDefault(c => c.DiscoveredId.Length == 0);
             foreach (string id in request.DiscoveredIds)
@@ -350,30 +396,61 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
                 if (!session.Found.TryGetValue(id, out DiscoveredDevice? found) || found.AlreadyManaged
                     || _devices.Exists(d => d.Serial == found.Serial))
                 {
+                    reply.Results.Add(new CommitResult { DiscoveredId = id });
                     continue;
                 }
 
                 DeviceCredentials? credentials = request.Credentials.FirstOrDefault(c => c.DiscoveredId == id) ?? forAll;
+                string initial = request.InitialPasswords.TryGetValue(id, out string? own) && own.Length > 0 ? own : request.InitialRootPassword;
                 DeviceStatus status = found.Status switch
                 {
-                    DeviceStatus.PasswordNotSet => request.InitialRootPassword.Length > 0 ? DeviceStatus.Ok : DeviceStatus.PasswordNotSet,
-                    DeviceStatus.CredentialsRequired => credentials is not null && IsAcceptedPassword(credentials.Password)
-                        ? DeviceStatus.Ok
-                        : DeviceStatus.CredentialsRequired,
-                    _ => found.Status,
+                    DeviceStatus.PasswordNotSet => initial.Length > 0 ? DeviceStatus.Ok : DeviceStatus.PasswordNotSet,
+                    _ when credentials is not null => IsAcceptedPassword(credentials.Password) ? DeviceStatus.Ok : DeviceStatus.CredentialsRequired,
+                    _ when found.AuthState == AuthState.Authenticated => DeviceStatus.Ok,
+                    DeviceStatus.Unreachable => DeviceStatus.Unreachable,
+                    _ => DeviceStatus.CredentialsRequired,
                 };
-                Device device = CreateDevice(found.Serial, found.Address, found.Model, "12.11.77", status);
+                string address = found.EnteredAddress.Length > 0 ? found.EnteredAddress : found.Address;
+                Device device = CreateDevice(found.Serial, address, found.Model, "12.11.77", status);
                 device.HostName = found.HostName;
                 device.UseHostName = _settings.UseHostName && found.HostName.Length > 0; // the server setting, not the request
-                device.HasCredentials = credentials is not null || request.InitialRootPassword.Length > 0;
+                device.HasCredentials = credentials is not null || initial.Length > 0 || found.AuthState == AuthState.Authenticated;
                 _devices.Add(device);
                 reply.DeviceIds.Add(device.Id);
+                reply.Results.Add(new CommitResult { DiscoveredId = id, DeviceId = device.Id, Status = status });
                 _deviceEvents.Publish(new DeviceChanged { Kind = DeviceChanged.Types.Kind.Added, Device = device.Clone() });
                 found.AlreadyManaged = true;
+                found.AuthState = AuthState.AlreadyAdded;
             }
 
             // Adding devices is not a task: devices just appear and fill in.
             return Task.FromResult(reply);
+        }
+    }
+
+    private string NewSession(FakeSessionKind kind, IPAddress? from, IPAddress? to, string? entered)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            var session = new FakeSession(Guid.NewGuid().ToString("N"), kind, from, to, entered);
+            _sessions[session.Id] = session;
+            return session.Id;
+        }
+    }
+
+    private DiscoveredDevice Remember(FakeSession session, DiscoveredDevice message)
+    {
+        lock (_gate)
+        {
+            if (session.Found.TryGetValue(message.DiscoveredId, out DiscoveredDevice? known)
+                && (known.AuthState is AuthState.AlreadyAdded || (known.AuthState == AuthState.Authenticated && known.CredentialId.Length > 0 && message.AuthState != AuthState.Authenticated)))
+            {
+                return known.Clone(); // a retry or an add already decided this device
+            }
+
+            session.Found[message.DiscoveredId] = message.Clone();
+            return message.Clone();
         }
     }
 
@@ -897,7 +974,8 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         }
     }
 
-    private List<DiscoveredDevice> BuildDiscoveryCandidates(FakeSession session)
+    /// <summary>Each device as first seen (login pending) and with its automatic login result.</summary>
+    private List<(DiscoveredDevice Found, DiscoveredDevice Auth)> BuildDiscoveryCandidates(FakeSession session)
     {
         var list = new List<DiscoveredDevice>();
         lock (_gate)
@@ -905,40 +983,86 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
             // some managed devices answer too and show up greyed out
             foreach (Device managed in _devices.Take(3))
             {
-                list.Add(Discovered(managed.Serial, managed.Address, managed.Model, DeviceStatus.Ok, alreadyManaged: true));
+                list.Add(Discovered(managed.Serial, managed.Address, managed.Model, DeviceStatus.Ok, AuthState.AlreadyAdded, alreadyManaged: true));
             }
         }
 
-        list.Add(Discovered("B8A44F7788AA", "10.0.0.90", "AXIS M3215-LVE", DeviceStatus.PasswordNotSet));
-        list.Add(Discovered("B8A44F99CC01", "10.0.0.91", "AXIS P3268-LV", DeviceStatus.PasswordNotSet));
-        list.Add(Discovered("ACCC8E5F6071", "10.0.0.92", "AXIS Q6075-E", DeviceStatus.CredentialsRequired));
-        list.Add(Discovered("ACCC8E8192A3", "10.0.0.93", "AXIS C1310-E Mk II", DeviceStatus.CredentialsRequired));
-        list.Add(Discovered("B8A44FB4C5D6", "10.0.0.94", "AXIS P1455-LE", DeviceStatus.CredentialsRequired));
+        list.Add(Discovered("ACCC8E5F6071", "10.0.0.92", "AXIS Q6075-E", DeviceStatus.CredentialsRequired, AuthState.Authenticated, user: "root"));
+        list.Add(Discovered("B8A44FB4C5D6", "10.0.0.94", "AXIS P1455-LE", DeviceStatus.CredentialsRequired, AuthState.Authenticated, user: "root"));
+        list.Add(Discovered("B8A44F6610AB", "10.0.0.96", "AXIS M3088-V", DeviceStatus.CredentialsRequired, AuthState.Authenticated, user: "operator"));
+        list.Add(Discovered("ACCC8E8192A3", "10.0.0.93", "AXIS C1310-E Mk II", DeviceStatus.CredentialsRequired, AuthState.LoginFailed,
+            detail: "None of the 2 known credentials worked."));
+        list.Add(Discovered("B8A44F7788AA", "10.0.0.90", "AXIS M3215-LVE", DeviceStatus.PasswordNotSet, AuthState.PasswordNotSet, policy: "none"));
+        list.Add(Discovered("B8A44F99CC01", "10.0.0.91", "AXIS P3268-LV", DeviceStatus.PasswordNotSet, AuthState.PasswordNotSet, policy: "complex"));
+        list.Add(Discovered("ACCC8E2B3C4D", "10.0.0.95", "", DeviceStatus.Unreachable, AuthState.Unreachable,
+            detail: "The device did not answer on HTTPS or HTTP."));
 
-        if (session.IsRangeScan)
+        switch (session.Kind)
         {
-            // place the finds inside the requested range
-            uint from = ToUInt(session.From!);
-            uint to = Math.Max(from, ToUInt(session.To!));
-            uint span = to - from + 1;
-            for (int i = 0; i < list.Count; i++)
+            case FakeSessionKind.Range:
             {
-                list[i].Source = DiscoverySource.RangeScan;
-                list[i].Address = FromUInt(from + (uint)((i * 7 + 3) % span));
+                // place the finds inside the requested range; only devices that answer are found
+                list.RemoveAll(d => d.AlreadyManaged || d.Status == DeviceStatus.Unreachable);
+                uint from = ToUInt(session.From!);
+                uint to = Math.Max(from, ToUInt(session.To!));
+                uint span = to - from + 1;
+                for (int i = 0; i < list.Count; i++)
+                {
+                    list[i].Source = DiscoverySource.RangeScan;
+                    list[i].Address = FromUInt(from + (uint)((i * 7 + 3) % span));
+                }
+
+                break;
             }
 
-            // the managed ones keep their real address, so only new devices make sense in a range scan
-            list.RemoveAll(d => d.AlreadyManaged);
+            case FakeSessionKind.Manual:
+            {
+                string entered = session.Entered!;
+                string host = entered.Contains("://", StringComparison.Ordinal) ? entered[(entered.IndexOf("://", StringComparison.Ordinal) + 3)..] : entered;
+                DiscoveredDevice? known = list.Find(d => d.Address == host.Split(':')[0]);
+                if (known is null && host.Contains("99", StringComparison.Ordinal))
+                {
+                    list.Clear(); // nothing answers there
+                    break;
+                }
+
+                if (known is null || known.Status == DeviceStatus.Unreachable)
+                {
+                    string serial = "B8A44F" + (Math.Abs(StringComparer.Ordinal.GetHashCode(host)) % 0xFFFFFF).ToString("X6", CultureInfo.InvariantCulture);
+                    known = Discovered(serial, IPAddress.TryParse(host.Split(':')[0], out _) ? host.Split(':')[0] : "10.0.0.120", "AXIS P3265-V",
+                        DeviceStatus.CredentialsRequired, AuthState.Authenticated, user: "root");
+                }
+
+                known.Source = DiscoverySource.Manual;
+                known.EnteredAddress = host;
+                known.HostName = IPAddress.TryParse(host.Split(':')[0], out _) ? "" : host;
+                list.Clear();
+                list.Add(known);
+                break;
+            }
         }
 
-        foreach (DiscoveredDevice d in list)
+        var result = new List<(DiscoveredDevice, DiscoveredDevice)>();
+        foreach (DiscoveredDevice auth in list)
         {
-            d.DiscoveredId = "d-" + d.Serial;
+            auth.DiscoveredId = auth.Serial;
+            DiscoveredDevice found = auth.Clone();
+            if (!found.AlreadyManaged)
+            {
+                found.AuthState = found.Status == DeviceStatus.Unreachable ? AuthState.Unreachable : AuthState.Pending;
+                found.AuthUserName = "";
+                found.CredentialId = "";
+                found.AuthDetail = found.AuthState == AuthState.Unreachable ? auth.AuthDetail : "";
+                found.PassphrasePolicy = "";
+            }
+
+            result.Add((found, auth));
         }
 
-        return list;
+        return result;
 
-        static DiscoveredDevice Discovered(string serial, string address, string model, DeviceStatus status, bool alreadyManaged = false) => new()
+        static DiscoveredDevice Discovered(string serial, string address, string model, DeviceStatus status, AuthState auth,
+            bool alreadyManaged = false, string user = "", string detail = "", string policy = "") => new()
         {
             Serial = serial,
             Address = address,
@@ -948,9 +1072,70 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
             AlreadyManaged = alreadyManaged,
             Source = DiscoverySource.Mdns,
             Scheme = "https",
-            ProductType = SampleProductType(model),
-            Category = SampleCategory(model),
+            ProductType = model.Length == 0 ? "" : SampleProductType(model),
+            Category = model.Length == 0 ? DeviceCategory.Unknown : SampleCategory(model),
+            AuthState = auth,
+            AuthUserName = user,
+            CredentialId = user.Length == 0 ? "" : "list:fake-" + user,
+            AuthDetail = detail,
+            PassphrasePolicy = policy,
         };
+    }
+
+    // ---------------------------------------------------------------- credential list
+
+    public Task<IReadOnlyList<CredentialEntry>> ListCredentialsAsync(CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            return Task.FromResult<IReadOnlyList<CredentialEntry>>(_credentials.Select(c => c.Clone()).ToList());
+        }
+    }
+
+    public Task<CredentialEntry> AddCredentialAsync(string userName, string password, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            if (string.IsNullOrWhiteSpace(userName))
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "The user name must be 1-64 characters."));
+            }
+
+            if (string.IsNullOrEmpty(password) || password.Length > 64 || password.Any(c => c < 0x20 || c > 0x7E))
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "Password must be 1-64 printable ASCII characters."));
+            }
+
+            return Task.FromResult(AddCredentialLocked(userName.Trim()).Clone());
+        }
+    }
+
+    public Task RemoveCredentialAsync(string id, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            if (_credentials.RemoveAll(c => c.Id == id) == 0)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, $"Credential '{id}' not found."));
+            }
+
+            return Task.CompletedTask;
+        }
+    }
+
+    private CredentialEntry AddCredentialLocked(string userName)
+    {
+        var entry = new CredentialEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            UserName = userName,
+            Created = Timestamp.FromDateTime(DateTime.UtcNow),
+        };
+        _credentials.Add(entry);
+        return entry;
     }
 
     private static uint ToUInt(IPAddress address)
@@ -1243,12 +1428,21 @@ public sealed class FakeOadmApi : IOadmApi, IDisposable
         }
     }
 
-    private sealed class FakeSession(string id, IPAddress? from, IPAddress? to)
+    private enum FakeSessionKind
+    {
+        Scan,
+        Range,
+        Manual,
+    }
+
+    private sealed class FakeSession(string id, FakeSessionKind kind, IPAddress? from, IPAddress? to, string? entered)
     {
         public string Id { get; } = id;
+        public FakeSessionKind Kind { get; } = kind;
         public IPAddress? From { get; } = from;
         public IPAddress? To { get; } = to;
-        public bool IsRangeScan => From is not null;
+        public string? Entered { get; } = entered;
+        public bool Stopped { get; set; }
         public Dictionary<string, DiscoveredDevice> Found { get; } = [];
     }
 

@@ -716,7 +716,7 @@
     <Setter Property="Margin" Value="0,3,0,0" />
   </Style>
 
-  <!-- Dialog windows (add devices wizard, task plugin dialogs): title bar, card headings, button row -->
+  <!-- Dialog windows (add devices page, task plugin dialogs): title bar, card headings, button row -->
   <Style Selector="ui|DialogTitleBar">
     <Setter Property="Height" Value="{StaticResource Oadm.TitleBarHeight}" />
     <Setter Property="Padding" Value="24,0" />
@@ -744,42 +744,18 @@
     <Setter Property="Width" Value="{StaticResource Oadm.SearchWidth}" />
   </Style>
 
-  <!-- Wizard step indicator -->
-  <Style Selector="Border.stepDot">
-    <Setter Property="Width" Value="24" />
-    <Setter Property="Height" Value="24" />
-    <Setter Property="CornerRadius" Value="12" />
+  <!-- Inline editor below a list (add devices page: log in, set password) -->
+  <Style Selector="Border.inlineEditor">
     <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="16" />
+    <Setter Property="Margin" Value="{StaticResource Oadm.GapTop}" />
   </Style>
-  <Style Selector="Border.stepDot TextBlock">
-    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
-    <Setter Property="FontWeight" Value="SemiBold" />
-    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
-    <Setter Property="HorizontalAlignment" Value="Center" />
-    <Setter Property="VerticalAlignment" Value="Center" />
-  </Style>
-  <Style Selector="Border.stepDot.current">
-    <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
-  </Style>
-  <Style Selector="Border.stepDot.current TextBlock">
-    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
-  </Style>
-  <Style Selector="Border.stepDot.done">
-    <Setter Property="Background" Value="{StaticResource Oadm.AccentMutedBrush}" />
-  </Style>
-  <Style Selector="Border.stepDot.done TextBlock">
-    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
-  </Style>
-  <Style Selector="TextBlock.stepLabel">
-    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
-    <Setter Property="VerticalAlignment" Value="Center" />
-  </Style>
-  <Style Selector="TextBlock.stepLabel.current">
-    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
-    <Setter Property="FontWeight" Value="SemiBold" />
-  </Style>
-  <Style Selector="TextBlock.stepLabel.skipped">
-    <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  <!-- Input row above a list (IP range, address) -->
+  <Style Selector="StackPanel.inputRow">
+    <Setter Property="Orientation" Value="Horizontal" />
+    <Setter Property="Spacing" Value="10" />
+    <Setter Property="Margin" Value="0,0,0,12" />
   </Style>
 
   <!-- Connection banner -->

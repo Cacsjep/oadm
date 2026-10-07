@@ -5,8 +5,7 @@
              xmlns:dev="using:Oadm.Client.Devices"
              xmlns:tasks="using:Oadm.Client.Tasks"
              xmlns:lv="using:Oadm.Client.LiveView"
-             xmlns:v1="using:Oadm.Contracts.V1"
-             x:Class="Oadm.Client.Devices.DevicesView"
+                      x:Class="Oadm.Client.Devices.DevicesView"
              x:DataType="dev:DevicesViewModel">
   <!-- Rows: title, device card, splitter, tasks card. DevicesView.axaml.cs sizes the last two from the TasksViewModel. -->
   <Grid x:Name="LayoutRoot" RowDefinitions="Auto,*,Auto,Auto">
@@ -18,34 +17,8 @@
     <Border Grid.Column="0" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" MinHeight="{StaticResource Oadm.DevicesCardMinHeight}">
       <Grid RowDefinitions="Auto,Auto,*">
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
-            <Button Classes="primary" Command="{Binding AddDevicesCommand}" ToolTip.Tip="Search the network with zero-configuration (Bonjour)" Margin="0,0,6,0">
-              <ui:IconLabel Icon="{StaticResource Icon.add}" Text="Add devices" Spacing="8" />
-            </Button>
-            <Button Classes="toolbar" Command="{Binding AddFromRangeCommand}" ToolTip.Tip="Scan an IP address range">
-              <ui:IconLabel Icon="{StaticResource Icon.range}" Text="Add from IP range" Spacing="8" />
-            </Button>
-            <Button Classes="toolbar" Command="{Binding RemoveCommand}">
-              <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Remove" Spacing="8" />
-            </Button>
-            <Border Classes="vseparator" IsVisible="{Binding !!ToolbarActions.Count}" />
-            <ItemsControl ItemsSource="{Binding ToolbarActions}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <StackPanel Orientation="Horizontal" Spacing="4" />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="v1:TaskPluginInfo">
-                  <Button Classes="toolbar"
-                          Command="{Binding $parent[UserControl].((dev:DevicesViewModel)DataContext).RunPluginCommand}"
-                          CommandParameter="{Binding}">
-                    <ui:IconLabel Icon="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Text="{Binding DisplayName}" Spacing="8" />
-                  </Button>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </StackPanel>
+          <!-- Toolbar plugins (built-in: Scan, Scan IP range, Add manually | Remove | task actions), filled by DevicesView.axaml.cs -->
+          <StackPanel x:Name="ToolbarPanel" Grid.Column="0" Orientation="Horizontal" Spacing="4" />
 
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
             <Button Classes="toolbar" ToolTip.Tip="Choose columns">
@@ -155,7 +128,7 @@
           <StackPanel IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
             <ui:OadmIcon Data="{StaticResource Icon.devices}" Width="32" Height="32" HorizontalAlignment="Center" />
             <TextBlock Classes="sectionTitle" Text="No devices yet" HorizontalAlignment="Center" />
-            <TextBlock Classes="secondary" Text="Click Add devices to search the network, or Add from IP range." HorizontalAlignment="Center" />
+            <TextBlock Classes="secondary" Text="Click Scan to find devices on the network, or Scan IP range or Add manually." HorizontalAlignment="Center" />
           </StackPanel>
         </Panel>
       </Grid>

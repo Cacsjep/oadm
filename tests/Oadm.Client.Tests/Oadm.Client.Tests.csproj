@@ -22,6 +22,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />
+    <!-- Built (and deployed to artifacts/test-plugins) but loaded at runtime by the toolbar plugin tests. -->
+    <ProjectReference Include="..\TestPlugins\Oadm.TestPlugins.Sample.Client\Oadm.TestPlugins.Sample.Client.csproj" ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
 </Project>

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:settings="using:Oadm.Client.Settings"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
              x:Class="Oadm.Client.Settings.SettingsView"
              x:DataType="settings:SettingsViewModel">
   <ScrollViewer>
@@ -40,6 +41,37 @@
           </StackPanel>
           <TextBlock Text="{Binding ServerMessage}" Classes.error="{Binding ServerMessageIsError}" Classes.secondary="{Binding !ServerMessageIsError}"
                      TextWrapping="Wrap" IsVisible="{Binding ServerMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="16">
+          <TextBlock Classes="cardTitle" Text="Credential list" />
+          <TextBlock Classes="secondary" TextWrapping="Wrap"
+                     Text="When adding devices, the server logs in to every device it finds with these credentials (and with the credentials of devices already added). Passwords are stored encrypted on the server and never shown again." />
+          <ItemsControl ItemsSource="{Binding Credentials}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="settings:CredentialItemViewModel">
+                <Grid ColumnDefinitions="220,*,Auto" ColumnSpacing="16" Margin="0,0,0,6">
+                  <ui:IconLabel Icon="{StaticResource Icon.key}" Text="{Binding UserName}" />
+                  <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding AddedText}" VerticalAlignment="Center" />
+                  <ui:ToolbarButton Grid.Column="2" Text="Remove" IconKey="remove"
+                                    Command="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).RemoveCredentialCommand}"
+                                    CommandParameter="{Binding}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Classes="secondary" Text="No credentials yet." IsVisible="{Binding HasNoCredentials}" />
+          <Grid ColumnDefinitions="220,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="12" ColumnSpacing="16">
+            <TextBlock Grid.Row="0" Classes="fieldLabel" Text="User name" />
+            <TextBox Grid.Row="0" Grid.Column="1" Width="320" HorizontalAlignment="Left" Text="{Binding NewCredentialUserName}" />
+            <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Password" />
+            <TextBox Grid.Row="1" Grid.Column="1" Width="320" HorizontalAlignment="Left" PasswordChar="&#x2022;" Text="{Binding NewCredentialPassword}" />
+            <Button Grid.Row="2" Grid.Column="1" Classes="primary" Content="Add credential" Command="{Binding AddCredentialCommand}" />
+          </Grid>
+          <TextBlock Text="{Binding CredentialMessage}" Classes.error="{Binding CredentialMessageIsError}" Classes.secondary="{Binding !CredentialMessageIsError}"
+                     TextWrapping="Wrap" IsVisible="{Binding CredentialMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         </StackPanel>
       </Border>
 

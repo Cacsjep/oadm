@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 
 using Oadm.Client.Api;
 using Oadm.Client.Devices;
+using Oadm.Client.Devices.Toolbar;
 using Oadm.Client.Dialogs;
 using Oadm.Client.Discovery;
 using Oadm.Client.LiveView;
@@ -54,11 +55,19 @@ public static class ServiceRegistration
         services.AddSingleton<TasksViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<LogsViewModel>();
-        services.AddSingleton<Func<AddDevicesMode, AddDevicesWizardViewModel>>(sp => mode => new AddDevicesWizardViewModel(
+        services.AddSingleton<Func<AddDevicesMode, AddDevicesViewModel>>(sp => mode => new AddDevicesViewModel(
             sp.GetRequiredService<IOadmApi>(),
             sp.GetRequiredService<IUiDispatcher>(),
-            sp.GetRequiredService<ILogger<AddDevicesWizardViewModel>>(),
+            sp.GetRequiredService<ILogger<AddDevicesViewModel>>(),
             mode));
+
+        // Toolbar plugins: the built-in ones are registered like plugin parts; DeviceToolbar adds those of client plugins.
+        foreach (Oadm.Sdk.Client.IToolbarPlugin plugin in BuiltInToolbarPlugins.All)
+        {
+            services.AddSingleton(plugin);
+        }
+
+        services.AddSingleton<DeviceToolbar>();
         services.AddSingleton<IVideoDecoderFactory, FfmpegVideoDecoderFactory>();
         services.AddSingleton<LiveViewViewModel>();
         services.AddSingleton<DevicesViewModel>();

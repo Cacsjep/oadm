@@ -7,7 +7,7 @@ using Avalonia.Metadata;
 namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>
-/// The heading of a card, like the steps of the add devices wizard: card title, optional
+/// The heading of a card, like the add devices page: card title, optional
 /// secondary description below it, optional controls on the right of the title (<see cref="Trailing"/>,
 /// e.g. a device picker). Spacing below comes from the theme.
 /// </summary>

@@ -55,6 +55,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         BottomNavItems.Add(new NavItemViewModel("settings", "Settings", "settings", settings));
 
         connection.Connected += (_, _) => _ = OnConnectedAsync();
+        devices.NavigateRequested += (_, key) => Navigate(NavItems.Concat(BottomNavItems).FirstOrDefault(n => n.Key == key));
         Navigate(_devicesItem);
     }
 

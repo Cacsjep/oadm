@@ -25,12 +25,17 @@ public interface IOadmApi
     // DiscoveryService
     Task<string> StartZeroConfAsync(CancellationToken ct);
     Task<string> StartRangeScanAsync(string firstAddress, string lastAddress, CancellationToken ct);
+
+    /// <summary>Probes one entered address (IP or host name, optional port and scheme); returns the session id.</summary>
+    Task<string> ProbeAddressAsync(string address, CancellationToken ct);
     IAsyncEnumerable<DiscoveredDevice> WatchDiscoveredAsync(string sessionId, CancellationToken ct);
     Task StopDiscoveryAsync(string sessionId, CancellationToken ct);
 
     // AddDevicesService
-    Task<AddPlan> PrepareAddAsync(string sessionId, IReadOnlyCollection<string> discoveredIds, CancellationToken ct);
     Task<CommitReply> CommitAddAsync(CommitRequest request, CancellationToken ct);
+
+    /// <summary>Logs in to a discovered device with the entered credentials; returns the updated device.</summary>
+    Task<DiscoveredDevice> RetryAuthAsync(RetryAuthRequest request, CancellationToken ct);
 
     // TaskService
     Task<IReadOnlyList<TaskPluginInfo>> ListTaskPluginsAsync(CancellationToken ct);
@@ -57,6 +62,11 @@ public interface IOadmApi
     // SettingsService
     Task<ServerSettings> GetSettingsAsync(CancellationToken ct);
     Task<ServerSettings> SetSettingsAsync(ServerSettings settings, CancellationToken ct);
+
+    /// <summary>The credential list (ids and user names only; passwords never come back).</summary>
+    Task<IReadOnlyList<CredentialEntry>> ListCredentialsAsync(CancellationToken ct);
+    Task<CredentialEntry> AddCredentialAsync(string userName, string password, CancellationToken ct);
+    Task RemoveCredentialAsync(string id, CancellationToken ct);
 
     // LiveViewService
     /// <summary>Encoded access units of a device's camera, relayed by the server.</summary>

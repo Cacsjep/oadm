@@ -13,6 +13,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
 {
     public DbSet<Device> Devices => Set<Device>();
     public DbSet<DeviceCredential> DeviceCredentials => Set<DeviceCredential>();
+    public DbSet<CredentialListEntry> CredentialListEntries => Set<CredentialListEntry>();
     public DbSet<TaskEntity> Tasks => Set<TaskEntity>();
     public DbSet<TaskDeviceResultEntity> TaskDeviceResults => Set<TaskDeviceResultEntity>();
     public DbSet<TaskLogEntryEntity> TaskLogEntries => Set<TaskLogEntryEntity>();
@@ -90,6 +91,16 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(c => c.UserName).IsRequired().HasMaxLength(64);
             e.Property(c => c.EncryptedPassword).IsRequired();
             e.HasOne<Device>().WithOne().HasForeignKey<DeviceCredential>(c => c.DeviceId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CredentialListEntry>(e =>
+        {
+            e.ToTable("CredentialListEntries");
+            e.HasKey(c => c.Id);
+            e.Property(c => c.Id).ValueGeneratedNever();
+            e.Property(c => c.UserName).IsRequired().HasMaxLength(CredentialListStore.MaxUserNameLength);
+            e.Property(c => c.EncryptedPassword).IsRequired();
+            e.Property(c => c.CreatedUtc).HasConversion(UtcConverter);
         });
 
         modelBuilder.Entity<TaskEntity>(e =>

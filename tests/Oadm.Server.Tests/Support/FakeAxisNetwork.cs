@@ -42,6 +42,9 @@ internal sealed class FakeAxisDevice
 
     public int PwdgrpCalls { get; private set; }
 
+    /// <summary>Requests that carried credentials the device rejected.</summary>
+    public int RejectedLogins { get; private set; }
+
     /// <summary>Requests with a password in the URL query (must never happen).</summary>
     public int PasswordInUrl { get; private set; }
 
@@ -72,6 +75,10 @@ internal sealed class FakeAxisDevice
 
         var authorized = !NeedSetup && credentials is not null
             && credentials.UserName == User && credentials.Password == Password;
+        if (credentials is not null && !authorized && !NeedSetup)
+        {
+            RejectedLogins++;
+        }
 
         switch (path)
         {

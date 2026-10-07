@@ -32,11 +32,14 @@ public sealed class VapixProbe
     /// Steps: basicdeviceinfo getAllProperties (401 realm AXIS_&lt;serial&gt; or anonymous 200),
     /// then best effort getAllUnrestrictedProperties (model, firmware) and systemready (needsetup).
     /// </summary>
-    public async Task<VapixProbeResult?> ProbeAsync(string address, CancellationToken ct)
+    /// <param name="address">Host name or IP, optionally with a port ("cam.local:8443").</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <param name="schemes">Schemes to try in order; default HTTPS then HTTP.</param>
+    public async Task<VapixProbeResult?> ProbeAsync(string address, CancellationToken ct, IReadOnlyList<string>? schemes = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(address);
 
-        foreach (var scheme in Schemes)
+        foreach (var scheme in schemes ?? Schemes)
         {
             ct.ThrowIfCancellationRequested();
             var baseAddress = VapixClient.BuildBaseAddress(scheme, address);

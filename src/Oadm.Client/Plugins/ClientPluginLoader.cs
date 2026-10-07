@@ -15,6 +15,9 @@ public interface IClientPluginRegistry
     ICorePluginPage? FindPage(string pluginId);
     IReadOnlyList<ITaskPluginDialog> Dialogs { get; }
     IReadOnlyList<ICorePluginPage> Pages { get; }
+
+    /// <summary>Toolbar parts of the Devices page from plugins (the built-in ones are registered in the container).</summary>
+    IReadOnlyList<IToolbarPlugin> ToolbarPlugins { get; }
 }
 
 /// <summary>
@@ -22,12 +25,13 @@ public interface IClientPluginRegistry
 /// <c>&lt;repo&gt;/artifacts/plugins/*/</c> (same discovery as the server's <c>PluginPaths.Development</c>) for
 /// <c>*.Client.dll</c>, loads each in its own
 /// <see cref="AssemblyLoadContext"/> that shares the SDK and Avalonia with the host, and instantiates every
-/// <see cref="ITaskPluginDialog"/> and <see cref="ICorePluginPage"/>. Failures are logged and skipped.
+/// <see cref="ITaskPluginDialog"/>, <see cref="ICorePluginPage"/> and <see cref="IToolbarPlugin"/>. Failures are logged and skipped.
 /// </summary>
 public sealed partial class ClientPluginLoader : IClientPluginRegistry
 {
     private readonly List<ITaskPluginDialog> _dialogs = [];
     private readonly List<ICorePluginPage> _pages = [];
+    private readonly List<IToolbarPlugin> _toolbar = [];
     private readonly ILogger<ClientPluginLoader> _logger;
 
     public ClientPluginLoader(AppOptions options, ILogger<ClientPluginLoader> logger)
@@ -82,6 +86,7 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
 
     public IReadOnlyList<ITaskPluginDialog> Dialogs => _dialogs;
     public IReadOnlyList<ICorePluginPage> Pages => _pages;
+    public IReadOnlyList<IToolbarPlugin> ToolbarPlugins => _toolbar;
 
     public ITaskPluginDialog? FindDialog(string pluginId) =>
         _dialogs.Find(d => string.Equals(d.PluginId, pluginId, StringComparison.OrdinalIgnoreCase));
@@ -114,6 +119,12 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
                     {
                         _pages.Add(page);
                         LogLoaded(_logger, "page", page.PluginId, dll);
+                    }
+
+                    if (typeof(IToolbarPlugin).IsAssignableFrom(type) && Activator.CreateInstance(type) is IToolbarPlugin toolbar)
+                    {
+                        _toolbar.Add(toolbar);
+                        LogLoaded(_logger, "toolbar", toolbar.Id, dll);
                     }
                 }
             }

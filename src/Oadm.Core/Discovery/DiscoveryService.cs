@@ -79,6 +79,22 @@ public sealed class DiscoveryService : IAsyncDisposable
         return session.Handle;
     }
 
+    /// <summary>
+    /// Starts a session that probes one address the user entered ("Add manually"). The session
+    /// behaves like a range scan: at most one device, then a final event with
+    /// <see cref="DiscoveryEvent.Finished"/> = true. <paramref name="probe"/> does the anonymous
+    /// probe (the caller knows ports, schemes and host names); null means nothing answered.
+    /// </summary>
+    /// <param name="enteredAddress">The address as entered (host[:port]), kept on the device as <see cref="DiscoveredDevice.EnteredAddress"/>.</param>
+    public DiscoverySession StartAddressProbe(string enteredAddress, Func<CancellationToken, Task<DeviceProbeResult?>> probe)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(enteredAddress);
+        ArgumentNullException.ThrowIfNull(probe);
+        var session = CreateSession(DiscoverySessionKind.Manual);
+        session.Run = Task.Run(() => RunAddressProbeAsync(session, enteredAddress, probe, session.Stop.Token), CancellationToken.None);
+        return session.Handle;
+    }
+
     /// <summary>Snapshot of the devices discovered so far in a session.</summary>
     /// <exception cref="KeyNotFoundException">Unknown session.</exception>
     public IReadOnlyList<DiscoveredDevice> GetDevices(string sessionId) => GetSession(sessionId).Snapshot().Devices;
@@ -256,12 +272,36 @@ public sealed class DiscoveryService : IAsyncDisposable
         }
     }
 
+    private async Task RunAddressProbeAsync(Session session, string enteredAddress, Func<CancellationToken, Task<DeviceProbeResult?>> probe, CancellationToken ct)
+    {
+        try
+        {
+            var result = await probe(ct).ConfigureAwait(false);
+            session.Progress = 100;
+            if (result is not null)
+            {
+                Publish(session, DeviceObservation.FromProbe(result, DiscoverySources.Manual) with { EnteredAddress = enteredAddress });
+            }
+
+            DiscoveryLog.SessionFinished(_logger, session.Handle.Id, result is null ? 0 : 1);
+            session.Complete(new DiscoveryEvent(null, 100, true));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            DiscoveryLog.SessionFailed(_logger, ex, session.Handle.Id);
+            session.Complete(new DiscoveryEvent(null, 100, true));
+        }
+    }
+
     private void Publish(Session session, DeviceObservation observation)
     {
         var changed = session.Merge(observation, _time.GetUtcNow());
         if (changed is not null)
         {
-            session.Broadcast(new DiscoveryEvent(changed, session.Handle.Kind == DiscoverySessionKind.RangeScan ? session.Progress : 0, false));
+            session.Broadcast(new DiscoveryEvent(changed, session.Handle.Kind == DiscoverySessionKind.ZeroConf ? 0 : session.Progress, false));
         }
     }
 
@@ -275,7 +315,8 @@ public sealed class DiscoveryService : IAsyncDisposable
         string? Scheme,
         DiscoveredDeviceStatus? Status,
         DiscoverySources Source,
-        string? ProductType = null)
+        string? ProductType = null,
+        string? EnteredAddress = null)
     {
         public static DeviceObservation FromProbe(DeviceProbeResult r, DiscoverySources source)
             => new(r.Serial, r.Address, null, r.Model, r.FirmwareVersion, r.Scheme, r.Status, source, r.ProductType);
@@ -290,7 +331,7 @@ public sealed class DiscoveryService : IAsyncDisposable
     {
         if (existing is null)
         {
-            return new DiscoveredDevice(o.Serial, o.Serial, o.Address, o.HostName, o.Model, o.FirmwareVersion, o.Status ?? DiscoveredDeviceStatus.Unknown, o.Scheme, o.Source, now, o.ProductType);
+            return new DiscoveredDevice(o.Serial, o.Serial, o.Address, o.HostName, o.Model, o.FirmwareVersion, o.Status ?? DiscoveredDeviceStatus.Unknown, o.Scheme, o.Source, now, o.ProductType, o.EnteredAddress);
         }
 
         var merged = existing with
@@ -303,6 +344,7 @@ public sealed class DiscoveryService : IAsyncDisposable
             Scheme = o.Scheme ?? existing.Scheme,
             Status = o.Status ?? existing.Status,
             Sources = existing.Sources | o.Source,
+            EnteredAddress = o.EnteredAddress ?? existing.EnteredAddress,
             LastSeenUtc = existing.LastSeenUtc,
         };
 
@@ -368,7 +410,7 @@ public sealed class DiscoveryService : IAsyncDisposable
             {
                 foreach (var d in _devices.Values)
                 {
-                    writer.TryWrite(new DiscoveryEvent(d, Handle.Kind == DiscoverySessionKind.RangeScan ? Progress : 0, false));
+                    writer.TryWrite(new DiscoveryEvent(d, Handle.Kind == DiscoverySessionKind.ZeroConf ? 0 : Progress, false));
                 }
 
                 if (_completed)

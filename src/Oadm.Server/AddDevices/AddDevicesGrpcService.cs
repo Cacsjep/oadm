@@ -20,18 +20,19 @@ using SdkDeviceStatus = Oadm.Sdk.Devices.DeviceStatus;
 namespace Oadm.Server.AddDevices;
 
 /// <summary>
-/// gRPC AddDevicesService, the server side of the ADM add wizard.
-/// <para><b>Prepare</b> probes every selected device anonymously (<see cref="VapixProbe"/>) and
-/// classifies it: factory default needs the initial password, everything else needs credentials.
-/// Already managed serials are left out.</para>
-/// <para><b>Commit</b> stores each device (serial unique, host name or IP as address per the server
-/// setting <c>Devices.UseHostName</c>), pins the
-/// certificate fingerprint from the probe, sets the initial root password on factory-default
-/// devices when one is given (over HTTPS when the device offers it), stores credentials (initial
-/// password as root, else the per-device entry, else the entry with an empty discovered_id),
-/// verifies them with one authenticated call (wrong credentials still add the device, status
-/// CredentialsRequired) and finally queues the first full refresh. Adding devices is not a task
-/// and never shows up in the task list.</para>
+/// gRPC AddDevicesService, the server side of the add devices page.
+/// <para><b>RetryAuth</b> logs in to one discovered device with credentials the technician typed
+/// (<see cref="DiscoveryAuthenticator"/>); the automatic login with known credentials runs while
+/// the page watches discovery.</para>
+/// <para><b>Commit</b> stores each device (serial unique; the entered address of "Add manually",
+/// else host name or IP per the server setting <c>Devices.UseHostName</c>), pins the certificate
+/// fingerprint from the probe, sets the initial root password on factory-default devices when one
+/// is given (per device from <c>initial_passwords</c>, else <c>initial_root_password</c>; over HTTPS
+/// when the device offers it), stores credentials (initial password as root, else explicit request
+/// credentials, else the credential that worked in the session's login), verifies them with one
+/// authenticated call (wrong credentials still add the device, status CredentialsRequired) and
+/// finally queues the first full refresh. Adding devices is not a task and never shows up in the
+/// task list. <b>Prepare</b> is the legacy wizard step, kept for wire compatibility.</para>
 /// </summary>
 public sealed partial class AddDevicesGrpcService(
     IDiscoveryBackend discovery,
@@ -42,6 +43,7 @@ public sealed partial class AddDevicesGrpcService(
     VapixProbe probe,
     ServerSettingsStore settings,
     DevicePollingService polling,
+    DiscoveryAuthenticator authenticator,
     ILogger<AddDevicesGrpcService> logger) : Proto.AddDevicesService.AddDevicesServiceBase
 {
     /// <summary>Devices handled at the same time during Prepare and Commit.</summary>
@@ -73,48 +75,102 @@ public sealed partial class AddDevicesGrpcService(
         return plan;
     }
 
+    public override async Task<Proto.DiscoveredDevice> RetryAuth(Proto.RetryAuthRequest request, ServerCallContext context)
+    {
+        var ct = context.CancellationToken;
+        if (string.IsNullOrWhiteSpace(request.UserName) || string.IsNullOrEmpty(request.Password))
+        {
+            throw GrpcGuard.InvalidArgument("Enter a user name and a password.");
+        }
+
+        var found = discovery.FindDiscovered(request.SessionId, request.DiscoveredId)
+            ?? throw GrpcGuard.NotFound($"Discovered device '{request.DiscoveredId}' is unknown (discovery session '{request.SessionId}').");
+        if (await devices.FindBySerialAsync(found.Serial, ct).ConfigureAwait(false) is not null)
+        {
+            throw GrpcGuard.FailedPrecondition($"The device {found.Serial} has already been added.");
+        }
+
+        try
+        {
+            var result = await authenticator.RetryAsync(request.SessionId, found, request.UserName, request.Password, request.SaveToCredentialList, ct).ConfigureAwait(false);
+            return Mappers.ToProto(found, false, 100, result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw GrpcGuard.FailedPrecondition(ex.Message);
+        }
+    }
+
     public override async Task<Proto.CommitReply> Commit(Proto.CommitRequest request, ServerCallContext context)
     {
         var ct = context.CancellationToken;
         var initialPassword = string.IsNullOrEmpty(request.InitialRootPassword) ? null : request.InitialRootPassword;
-        if (initialPassword is not null)
+        try
         {
-            try
+            foreach (var password in request.InitialPasswords.Values.Where(p => p.Length > 0).Append(initialPassword).OfType<string>())
             {
-                VapixClient.ValidatePassword(initialPassword);
+                VapixClient.ValidatePassword(password);
             }
-            catch (ArgumentException ex)
-            {
-                throw GrpcGuard.InvalidArgument(ex.Message);
-            }
+        }
+        catch (ArgumentException ex)
+        {
+            throw GrpcGuard.InvalidArgument(ex.Message);
         }
 
         var selected = await ResolveAsync(request.SessionId, request.DiscoveredIds, ct).ConfigureAwait(false);
         var serverSettings = await settings.GetServerSettingsAsync(ct).ConfigureAwait(false);
         var serverName = serverSettings.ServerName;
         var useHostName = serverSettings.UseHostName; // CommitRequest.use_host_name is unused
-        var added = new ConcurrentDictionary<string, Guid>();
+        var added = new ConcurrentDictionary<string, (Guid Id, SdkDeviceStatus Status)>();
 
         await Parallel.ForEachAsync(selected, new ParallelOptions { MaxDegreeOfParallelism = Parallelism, CancellationToken = ct }, async (found, token) =>
         {
-            var deviceCredentials = PickCredentials(request.Credentials, found.DiscoveredId);
-            var id = await AddOneAsync(found, useHostName, initialPassword, deviceCredentials, serverName, token).ConfigureAwait(false);
-            if (id is { } deviceId)
+            var deviceCredentials = PickCredentials(request.Credentials, found.DiscoveredId) ?? MatchedCredentials(request.SessionId, found);
+            var devicePassword = request.InitialPasswords.TryGetValue(found.DiscoveredId, out var own) && own.Length > 0 ? own : initialPassword;
+            var result = await AddOneAsync(found, useHostName, devicePassword, deviceCredentials, serverName, token).ConfigureAwait(false);
+            if (result is { } one)
             {
-                added[found.DiscoveredId] = deviceId;
+                added[found.DiscoveredId] = one;
             }
         }).ConfigureAwait(false);
 
         var reply = new Proto.CommitReply();
-        var ids = selected.Where(s => added.ContainsKey(s.DiscoveredId)).Select(s => added[s.DiscoveredId]).ToArray();
+        var ids = selected.Where(s => added.ContainsKey(s.DiscoveredId)).Select(s => added[s.DiscoveredId].Id).ToArray();
         reply.DeviceIds.AddRange(ids.Select(i => i.ToString()));
+        foreach (var found in selected)
+        {
+            var ok = added.TryGetValue(found.DiscoveredId, out var one);
+            reply.Results.Add(new Proto.CommitResult
+            {
+                DiscoveredId = found.DiscoveredId,
+                DeviceId = ok ? one.Id.ToString() : string.Empty,
+                Status = ok ? Mappers.ToProto(one.Status) : Proto.DeviceStatus.Unknown,
+            });
+        }
+
         if (ids.Length > 0)
         {
             polling.QueueRefresh(ids);
         }
 
+        if (!string.IsNullOrWhiteSpace(request.SessionId))
+        {
+            authenticator.MarkAdded(request.SessionId, selected.Where(s => added.ContainsKey(s.DiscoveredId)).Select(s => s.Serial));
+        }
+
         LogCommitted(ids.Length, selected.Count);
         return reply;
+    }
+
+    /// <summary>The credential that worked in the session's automatic login or RetryAuth (server memory only).</summary>
+    private Proto.DeviceCredentials? MatchedCredentials(string sessionId, DiscoveredDevice found)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId) || authenticator.MatchedCredentials(sessionId, found.Serial) is not { } matched)
+        {
+            return null;
+        }
+
+        return new Proto.DeviceCredentials { DiscoveredId = found.DiscoveredId, UserName = matched.UserName, Password = matched.Password };
     }
 
     /// <summary>Per-device credentials override the default entry (empty discovered_id).</summary>
@@ -125,9 +181,16 @@ public sealed partial class AddDevicesGrpcService(
             ?? usable.FirstOrDefault(c => string.IsNullOrEmpty(c.DiscoveredId));
     }
 
-    /// <summary>The connection address: the host name when asked for and known, else the IP.</summary>
+    /// <summary>The connection address: the entered address of "Add manually", else the host name when asked for and known, else the IP.</summary>
     internal static (string Address, string? HostName) ChooseAddress(DiscoveredDevice found, bool useHostName)
     {
+        if (!string.IsNullOrWhiteSpace(found.EnteredAddress))
+        {
+            var host = EnteredAddress.TryParse(found.EnteredAddress, out var entered, out _) ? entered!.Host : null;
+            var isName = host is not null && !IPAddress.TryParse(host, out _);
+            return (found.EnteredAddress, isName ? host : found.HostName);
+        }
+
         var hostName = found.HostName;
         if (!string.IsNullOrWhiteSpace(hostName) && !hostName.Contains('.', StringComparison.Ordinal))
         {
@@ -138,7 +201,7 @@ public sealed partial class AddDevicesGrpcService(
         return (address, string.IsNullOrWhiteSpace(hostName) ? null : hostName);
     }
 
-    private async Task<Guid?> AddOneAsync(
+    private async Task<(Guid Id, SdkDeviceStatus Status)?> AddOneAsync(
         DiscoveredDevice found,
         bool useHostName,
         string? initialPassword,
@@ -203,7 +266,7 @@ public sealed partial class AddDevicesGrpcService(
 
         await devices.UpdateAsync(device.Id, d => d.Status = status, ct).ConfigureAwait(false);
         LogAdded(device.Serial, device.Address, status);
-        return device.Id;
+        return (device.Id, status);
     }
 
     private async Task<SdkDeviceStatus> SetInitialPasswordAsync(Device device, string password, CancellationToken ct)
@@ -253,10 +316,11 @@ public sealed partial class AddDevicesGrpcService(
     {
         try
         {
-            var result = await probe.ProbeAsync(found.Address.ToString(), ct).ConfigureAwait(false);
+            string[]? schemes = found.EnteredAddress is not null && found.Scheme is not null ? [found.Scheme] : null;
+            var result = await probe.ProbeAsync(found.ConnectAddress, ct, schemes).ConfigureAwait(false);
             if (result is not null && !string.Equals(result.Serial, found.Serial, StringComparison.OrdinalIgnoreCase))
             {
-                LogSerialMismatch(found.Address.ToString(), found.Serial, result.Serial);
+                LogSerialMismatch(found.ConnectAddress, found.Serial, result.Serial);
                 return null;
             }
 
@@ -264,7 +328,7 @@ public sealed partial class AddDevicesGrpcService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
-            LogProbeFailed(found.Address.ToString(), ex.Message);
+            LogProbeFailed(found.ConnectAddress, ex.Message);
             return null;
         }
     }

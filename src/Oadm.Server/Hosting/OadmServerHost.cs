@@ -195,6 +195,7 @@ public static partial class OadmServerHost
             sp.GetService<ILogger<CoreDiscoveryService>>(),
             sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<IDiscoveryBackend, CoreDiscoveryBackend>();
+        services.AddSingleton<DiscoveryAuthenticator>();
         return services;
     }
 

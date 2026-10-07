@@ -6,14 +6,32 @@ import "Protos/common.proto";
 service DiscoveryService {
   rpc StartZeroConf (Empty) returns (DiscoverySession);
   rpc StartRangeScan (RangeScanRequest) returns (DiscoverySession);
+  // Streams the devices of a session with the result of the server's automatic login
+  // (auth_state). Range scans and address probes send scan_finished when the scan is done and the
+  // stream ends once every login attempt of the session finished.
   rpc WatchDiscovered (DiscoverySession) returns (stream DiscoveredDevice);
   rpc Stop (DiscoverySession) returns (Empty);
+  // Probes one address entered by the user ("Add manually"): IP or host name, optional port and
+  // scheme ("https://cam.example.com:8443"). Watch the session like a range scan (one device at
+  // most, then scan_finished). INVALID_ARGUMENT for an unusable or unresolvable address.
+  rpc ProbeAddress (ProbeAddressRequest) returns (DiscoverySession);
 }
 
 message DiscoverySession { string session_id = 1; }
 message RangeScanRequest { string from = 1; string to = 2; }
+message ProbeAddressRequest { string address = 1; }
 
-enum DiscoverySource { DISCOVERY_SOURCE_UNSPECIFIED = 0; MDNS = 1; RANGE_SCAN = 2; }
+enum DiscoverySource { DISCOVERY_SOURCE_UNSPECIFIED = 0; MDNS = 1; RANGE_SCAN = 2; MANUAL = 3; }
+
+// Result of the server's automatic login with the technician's known credentials.
+enum AuthState {
+  AUTH_STATE_PENDING = 0;          // not probed yet or the login is still running ("Checking")
+  AUTH_STATE_AUTHENTICATED = 1;    // a known credential worked: auth_user_name, credential_id
+  AUTH_STATE_PASSWORD_NOT_SET = 2; // factory default: the first password is set on add
+  AUTH_STATE_LOGIN_FAILED = 3;     // no known credential worked; RetryAuth with new ones
+  AUTH_STATE_UNREACHABLE = 4;      // the device did not answer
+  AUTH_STATE_ALREADY_ADDED = 5;    // serial is managed already
+}
 
 message DiscoveredDevice {
   string discovered_id = 1;   // stable within the session
@@ -29,4 +47,12 @@ message DiscoveredDevice {
   int32 progress_percent = 11;
   string product_type = 12;   // raw ProdType, empty until known
   DeviceCategory category = 13;
+  AuthState auth_state = 14;
+  string auth_user_name = 15;    // user of the credential that worked (never a password)
+  // Which known credential worked: "list:<id>" (credential list), "device:<id>" (credentials of a
+  // managed device) or "entered" (RetryAuth, kept in server memory only). Passwords never leave the server.
+  string credential_id = 16;
+  string auth_detail = 17;       // reason for LOGIN_FAILED / UNREACHABLE, user facing
+  string passphrase_policy = 18; // factory default only: systemready passphrasepolicy (none, length, complex)
+  string entered_address = 19;   // MANUAL: the address as entered (host[:port]); used as the device address on add
 }
