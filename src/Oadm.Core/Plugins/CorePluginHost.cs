@@ -32,6 +32,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     private readonly IVapixClientFactory _vapix;
     private readonly ITaskRunner _tasks;
     private readonly IPluginSettingsProvider _settings;
+    private readonly ISecretProtector? _secrets;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.OrdinalIgnoreCase);
@@ -44,7 +45,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         IVapixClientFactory vapix,
         ITaskRunner tasks,
         IPluginSettingsProvider settings,
-        ILoggerFactory? loggerFactory = null)
+        ILoggerFactory? loggerFactory = null,
+        ISecretProtector? secrets = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(devices);
@@ -56,6 +58,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         _vapix = vapix;
         _tasks = tasks;
         _settings = settings;
+        _secrets = secrets;
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _logger = _loggerFactory.CreateLogger<CorePluginHost>();
     }
@@ -92,7 +95,9 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     _vapix,
                     _tasks,
                     _settings.GetSettings(registered.Id),
-                    _loggerFactory.CreateLogger("Oadm.Plugins." + registered.Id));
+                    _loggerFactory.CreateLogger("Oadm.Plugins." + registered.Id),
+                    registered.Origin.Directory,
+                    _secrets);
                 try
                 {
                     await registered.Plugin.StartAsync(context, ct).ConfigureAwait(false);
@@ -229,7 +234,9 @@ internal sealed class CorePluginContext(
     IVapixClientFactory vapix,
     ITaskRunner tasks,
     IPluginSettings settings,
-    ILogger logger) : ICorePluginContext
+    ILogger logger,
+    string? pluginDirectory = null,
+    ISecretProtector? secrets = null) : ICorePluginContext
 {
     public IDeviceRepository Devices { get; } = devices;
 
@@ -240,4 +247,8 @@ internal sealed class CorePluginContext(
     public IPluginSettings Settings { get; } = settings;
 
     public ILogger Logger { get; } = logger;
+
+    public string? PluginDirectory { get; } = pluginDirectory;
+
+    public ISecretProtector? Secrets { get; } = secrets;
 }

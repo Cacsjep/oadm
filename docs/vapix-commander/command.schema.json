@@ -12,7 +12,7 @@
   },
   "$defs": {
     "category": {
-      "enum": ["Common", "System", "Network", "Security", "Users", "Time", "Video", "Image", "PTZ", "Audio", "I/O", "Events", "Storage", "Applications", "Maintenance"]
+      "enum": ["Common", "System", "Network", "Security", "Users", "Time", "Video", "Image", "PTZ", "Audio", "I/O", "Events", "Storage", "Applications", "Maintenance", "Custom"]
     },
     "placeholderName": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$" },
     "command": {
@@ -96,6 +96,7 @@
       "properties": {
         "kind": { "enum": ["param-cgi", "json-rpc", "rest", "text", "xml", "raw"] },
         "success": { "type": "string" },
+        "errorPattern": { "type": "string", "description": "Regex; a matching body is a device error even with HTTP 2xx" },
         "extract": {
           "type": "array",
           "items": {

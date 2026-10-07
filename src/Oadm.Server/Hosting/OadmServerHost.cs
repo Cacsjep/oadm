@@ -174,7 +174,8 @@ public static partial class OadmServerHost
             sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
             sp.GetRequiredService<Sdk.Tasks.ITaskRunner>(),
             sp.GetRequiredService<IPluginSettingsProvider>(),
-            sp.GetRequiredService<ILoggerFactory>()));
+            sp.GetRequiredService<ILoggerFactory>(),
+            new Core.Security.PluginSecretProtector(sp.GetRequiredService<Core.Security.CredentialProtector>())));
 
         // Polling
         services.AddSingleton<DevicePollingService>();

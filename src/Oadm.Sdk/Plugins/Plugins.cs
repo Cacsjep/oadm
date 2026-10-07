@@ -46,6 +46,13 @@ public interface ITaskPlugin : IPlugin
     int? MaxParallelDevices => null;
 
     /// <summary>
+    /// False hides the plugin from the device context menu and the toolbar (it is not listed by
+    /// TaskService.ListTaskPlugins). Used by tasks a core plugin starts itself from its page, e.g. the
+    /// VAPIX Commander rollout. Default true.
+    /// </summary>
+    bool ShowInMenus => true;
+
+    /// <summary>
     /// Runs once per device. Return normally for Done, call <see cref="ITaskExecutionContext.ReportWarning"/>
     /// for Done with warnings, throw for Failed. <paramref name="payloadJson"/> comes from the dialog;
     /// it is kept in memory only and never persisted, so it may carry secrets such as passwords.
@@ -172,6 +179,28 @@ public interface ICorePluginContext
     ITaskRunner Tasks { get; }
     IPluginSettings Settings { get; }
     ILogger Logger { get; }
+
+    /// <summary>
+    /// Folder the plugin was loaded from (plugin.json, assemblies, data files such as a command library).
+    /// Null for plugins registered in code. Use it instead of <c>Assembly.Location</c>.
+    /// </summary>
+    string? PluginDirectory => null;
+
+    /// <summary>
+    /// Encrypts secrets the plugin stores in <see cref="Settings"/> with the server's master key
+    /// (AES-256-GCM, like device passwords). Null when the host offers no protector: then do not store secrets.
+    /// </summary>
+    ISecretProtector? Secrets => null;
+}
+
+/// <summary>Server-side encryption for secrets a plugin persists. Values never leave the server.</summary>
+public interface ISecretProtector
+{
+    /// <summary>Encrypts <paramref name="plaintext"/>; <paramref name="purpose"/> is bound as associated data (e.g. a record id).</summary>
+    string Protect(string plaintext, string purpose);
+
+    /// <summary>Decrypts a value of <see cref="Protect"/> with the same purpose. Throws when it was tampered with.</summary>
+    string Unprotect(string protectedValue, string purpose);
 }
 
 /// <summary>Settings store namespaced per plugin.</summary>

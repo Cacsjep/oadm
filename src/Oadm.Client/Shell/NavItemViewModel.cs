@@ -23,10 +23,15 @@ public sealed partial class NavItemViewModel(string key, string title, string ic
 }
 
 /// <summary>Navigation page of a core plugin. <see cref="View"/> comes from the plugin's client assembly, if installed.</summary>
-public sealed class CorePluginPageViewModel(string pluginId, string title, object? view)
+public sealed class CorePluginPageViewModel(string pluginId, string title, object? view, bool hasOwnCards = false)
 {
     public string PluginId { get; } = pluginId;
     public string Title { get; } = title;
     public object? View { get; } = view;
     public bool HasView => View is not null;
+
+    /// <summary>The view brings its own cards (<c>ICorePluginPage.HasOwnCards</c>): no host card around it.</summary>
+    public bool HasOwnCards { get; } = hasOwnCards && view is not null;
+
+    public bool ShowInCard => !HasOwnCards;
 }

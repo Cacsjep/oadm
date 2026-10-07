@@ -70,6 +70,11 @@ public sealed partial class TaskGrpcService(
         {
             try
             {
+                if (!plugin.Plugin.ShowInMenus)
+                {
+                    continue; // started by its core plugin's page only
+                }
+
                 reply.Plugins.Add(Mappers.ToProto(plugin, all.Where(d => SafeCanRun(plugin, d)).Select(d => d.Id)));
             }
 #pragma warning disable CA1031 // A plugin with a throwing property must not break the menu.

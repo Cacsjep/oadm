@@ -1,0 +1,331 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:c="using:Oadm.Plugins.VapixCommander.Client"
+             xmlns:v="using:Oadm.Plugins.VapixCommander"
+             x:Class="Oadm.Plugins.VapixCommander.Client.CommanderView"
+             x:DataType="c:CommanderViewModel">
+  <!-- VAPIX Commander page: library | rollout set or raw request (+ result) | target devices, Run bar below.
+       Shared controls and theme classes only (CLAUDE.md "reuse UI components", "no style differences"). -->
+  <Grid RowDefinitions="*,Auto" ColumnDefinitions="330,*,340" RowSpacing="{DynamicResource Oadm.Gap}" ColumnSpacing="{DynamicResource Oadm.Gap}">
+
+    <!-- ============================== Library ============================== -->
+    <Border Grid.Column="0" Classes="card">
+      <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="10">
+        <ui:CardHeader Title="Library" Description="{Binding LibrarySummary}" />
+        <ui:SearchBox Grid.Row="1" Text="{Binding LibrarySearch}" Placeholder="Search commands" HorizontalAlignment="Left" />
+        <TreeView Grid.Row="2" ItemsSource="{Binding LibraryTree}" SelectedItem="{Binding SelectedNode}" DoubleTapped="OnLibraryDoubleTapped">
+          <TreeView.Styles>
+            <Style Selector="TreeViewItem" x:DataType="c:LibraryNodeViewModel">
+              <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+            </Style>
+          </TreeView.Styles>
+          <TreeView.ItemTemplate>
+            <TreeDataTemplate x:DataType="c:LibraryNodeViewModel" ItemsSource="{Binding Children}">
+              <Grid ColumnDefinitions="*,Auto" ToolTip.Tip="{Binding Tooltip}">
+                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="8,0,4,0">
+                  <Border Classes="badge" IsVisible="{Binding IsGroup}"><TextBlock Text="{Binding CountText}" /></Border>
+                  <ui:StatusChip IsWarning="True" Text="Write" IsVisible="{Binding IsWrite}" />
+                  <ui:StatusChip IsError="True" Text="Dangerous" IsVisible="{Binding IsDangerous}" />
+                </StackPanel>
+              </Grid>
+            </TreeDataTemplate>
+          </TreeView.ItemTemplate>
+        </TreeView>
+        <TextBlock Grid.Row="3" Classes="warning small" Text="{Binding LibraryProblems}" TextWrapping="Wrap" IsVisible="{Binding HasLibraryProblems}" />
+        <WrapPanel Grid.Row="4" ItemSpacing="8" LineSpacing="8">
+          <Button Classes="primary" Content="Add to rollout" Command="{Binding AddCommandCommand}" />
+          <Button Classes="secondary" Content="Delete" Command="{Binding DeleteSavedCommand}" ToolTip.Tip="Delete the selected saved command" />
+          <Button Classes="secondary" Content="Export" Command="{Binding ExportSelectedCommand}" ToolTip.Tip="Export the selected saved command" />
+          <Button Classes="secondary" Content="Export all" Command="{Binding ExportAllCommand}" />
+          <Button Classes="secondary" Content="Import" Command="{Binding ImportCommand}" />
+        </WrapPanel>
+      </Grid>
+    </Border>
+
+    <!-- ============================== Rollout set / raw request ============================== -->
+    <Border Grid.Column="1" Classes="card">
+      <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12">
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+          <Border Classes="segmented">
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="segment" Classes.selected="{Binding IsRolloutTab}" Content="Rollout set" Command="{Binding ShowRolloutCommand}" />
+              <Button Classes="segment" Classes.selected="{Binding IsRawTab}" Content="Raw request" Command="{Binding ShowRawCommand}" />
+            </StackPanel>
+          </Border>
+          <TextBlock Grid.Column="2" Classes="fieldLabel" Text="Send to" />
+          <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8">
+            <ComboBox ItemsSource="{Binding Targets}" SelectedItem="{Binding TryDevice}" MinWidth="200" PlaceholderText="Device">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="c:TargetDeviceViewModel">
+                  <TextBlock Text="{Binding Title}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <Button Classes="secondary" Command="{Binding TryCommand}" ToolTip.Tip="Send the selected command to this device now (read-only commands run immediately, changes ask first)">
+              <ui:IconLabel Icon="{DynamicResource Icon.send}" Text="Send" />
+            </Button>
+          </StackPanel>
+        </Grid>
+
+        <!-- Rollout set -->
+        <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*" RowSpacing="10" IsVisible="{Binding IsRolloutTab}">
+          <DataGrid ItemsSource="{Binding RolloutItems}" SelectedItem="{Binding SelectedRolloutItem}" SelectionMode="Single"
+                    IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False" MaxHeight="220" MinHeight="120">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="#" Width="44" Binding="{Binding Position}" x:DataType="c:RolloutCommandViewModel" />
+              <DataGridTextColumn Header="Command" Width="*" Binding="{Binding Name}" x:DataType="c:RolloutCommandViewModel" />
+              <DataGridTextColumn Header="Category" Width="110" Binding="{Binding Category}" x:DataType="c:RolloutCommandViewModel" />
+              <DataGridTextColumn Header="Kind" Width="140" Binding="{Binding KindText}" x:DataType="c:RolloutCommandViewModel" />
+              <DataGridTextColumn Header="Source" Width="100" Binding="{Binding SourceText}" x:DataType="c:RolloutCommandViewModel" />
+            </DataGrid.Columns>
+          </DataGrid>
+          <WrapPanel Grid.Row="1" ItemSpacing="8" LineSpacing="8">
+            <Button Classes="secondary" Command="{Binding MoveUpCommand}"><ui:IconLabel Icon="{DynamicResource Icon.chevronUp}" Text="Up" /></Button>
+            <Button Classes="secondary" Command="{Binding MoveDownCommand}"><ui:IconLabel Icon="{DynamicResource Icon.chevronDown}" Text="Down" /></Button>
+            <Button Classes="secondary" Command="{Binding RemoveCommand}"><ui:IconLabel Icon="{DynamicResource Icon.remove}" Text="Remove" /></Button>
+            <Button Classes="secondary" Content="Clear" Command="{Binding ClearCommand}" />
+            <Button Classes="secondary" Command="{Binding SavePresetCommand}" ToolTip.Tip="Save this command with the entered values for all OADM clients">
+              <ui:IconLabel Icon="{DynamicResource Icon.save}" Text="Save with values..." />
+            </Button>
+          </WrapPanel>
+
+          <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="12">
+              <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding !HasRolloutItems}"
+                         Text="Pick commands in the library (double-click or Add to rollout), fill their values, choose the target devices and run. Every command becomes a named step of the task on each device." />
+
+              <Border Classes="inlineEditor" IsVisible="{Binding IsPresetOpen}">
+                <StackPanel Classes="form">
+                  <TextBlock Classes="sectionTitle" Text="Save with values" />
+                  <Grid ColumnDefinitions="150,*">
+                    <TextBlock Classes="fieldLabel" Text="Name" />
+                    <TextBox Grid.Column="1" Text="{Binding PresetName}" />
+                  </Grid>
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Classes="primary" Content="Save" Command="{Binding ConfirmPresetCommand}" />
+                    <Button Classes="secondary" Content="Cancel" Command="{Binding CancelPresetCommand}" />
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+
+              <StackPanel Classes="form" DataContext="{Binding SelectedRolloutItem}" IsVisible="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).HasSelectedRolloutItem}" x:DataType="c:RolloutCommandViewModel">
+                <ui:CardHeader Classes="flush" Title="{Binding Name}" Description="{Binding Command.Description}" />
+                <TextBlock Classes="secondary" Text="No values needed." IsVisible="{Binding !HasFields}" />
+                <ItemsControl ItemsSource="{Binding Fields}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><StackPanel Spacing="10" /></ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="c:FieldViewModel">
+                      <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto">
+                        <TextBlock Classes="fieldLabel" Text="{Binding Label}" />
+                        <Panel Grid.Column="1">
+                          <TextBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" IsVisible="{Binding IsTextInput}" />
+                          <ui:PasswordBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" IsVisible="{Binding IsPassword}" />
+                          <CheckBox IsChecked="{Binding BoolValue}" Content="Yes" IsVisible="{Binding IsBoolean}" />
+                          <ComboBox ItemsSource="{Binding Options}" SelectedItem="{Binding SelectedOption}" HorizontalAlignment="Stretch" IsVisible="{Binding IsEnum}" />
+                        </Panel>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,4,0,0">
+                          <TextBlock Classes="error small" Text="{Binding Error}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+                          <TextBlock Classes="secondary small" Text="{Binding Hint}" TextWrapping="Wrap" IsVisible="{Binding Hint, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                        </StackPanel>
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+        </Grid>
+
+        <!-- Raw request (like Postman) -->
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding IsRawTab}">
+          <StackPanel Classes="form" DataContext="{Binding Raw}" x:DataType="c:RawEditorViewModel">
+            <Grid ColumnDefinitions="110,*" ColumnSpacing="8">
+              <ComboBox ItemsSource="{Binding Methods}" SelectedItem="{Binding Method}" HorizontalAlignment="Stretch" />
+              <TextBox Grid.Column="1" Text="{Binding Path}" PlaceholderText="/axis-cgi/param.cgi" />
+            </Grid>
+
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="sectionTitle" Text="Query parameters" VerticalAlignment="Center" />
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button Classes="secondary" Content="Add" Command="{Binding AddQueryRowCommand}" />
+                <Button Classes="secondary" Content="Remove" Command="{Binding RemoveQueryRowCommand}" />
+                <Button Classes="secondary" Content="Make field" Command="{Binding MakeQueryFieldCommand}" ToolTip.Tip="Turn the selected value into a {{placeholder}} field" />
+              </StackPanel>
+            </Grid>
+            <DataGrid ItemsSource="{Binding QueryRows}" SelectedItem="{Binding SelectedQueryRow}" SelectionMode="Single" CanUserSortColumns="False" MinHeight="90" MaxHeight="200">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Key" Width="*" Binding="{Binding Key}" x:DataType="c:KeyValueRowViewModel" />
+                <DataGridTextColumn Header="Value" Width="*" Binding="{Binding Value}" x:DataType="c:KeyValueRowViewModel" />
+              </DataGrid.Columns>
+            </DataGrid>
+
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="sectionTitle" Text="Headers" VerticalAlignment="Center" />
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button Classes="secondary" Content="Add" Command="{Binding AddHeaderRowCommand}" />
+                <Button Classes="secondary" Content="Remove" Command="{Binding RemoveHeaderRowCommand}" />
+                <Button Classes="secondary" Content="Make field" Command="{Binding MakeHeaderFieldCommand}" />
+              </StackPanel>
+            </Grid>
+            <DataGrid ItemsSource="{Binding HeaderRows}" SelectedItem="{Binding SelectedHeaderRow}" SelectionMode="Single" CanUserSortColumns="False" MinHeight="60" MaxHeight="160">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Header" Width="*" Binding="{Binding Key}" x:DataType="c:KeyValueRowViewModel" />
+                <DataGridTextColumn Header="Value" Width="*" Binding="{Binding Value}" x:DataType="c:KeyValueRowViewModel" />
+              </DataGrid.Columns>
+            </DataGrid>
+
+            <Grid ColumnDefinitions="150,*">
+              <TextBlock Classes="fieldLabel" Text="Body" />
+              <ComboBox Grid.Column="1" ItemsSource="{Binding BodyTypeOptions}" SelectedItem="{Binding BodyType}" Width="160" />
+            </Grid>
+            <TextBox Classes="code" Text="{Binding BodyText}" Height="120" IsVisible="{Binding HasBody}"
+                     PlaceholderText="JSON, form (key=value&amp;key2=value), text or XML; use {{name}} for fields" />
+
+            <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto" RowSpacing="10">
+              <TextBlock Classes="fieldLabel" Text="Timeout (s)" />
+              <NumericUpDown Grid.Column="1" Value="{Binding TimeoutSeconds}" Minimum="1" Maximum="600" Increment="5" FormatString="0" Width="160" HorizontalAlignment="Left" />
+              <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Response" />
+              <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding ResponseKindOptions}" SelectedItem="{Binding ResponseKind}" Width="160" />
+            </Grid>
+
+            <TextBlock Classes="sectionTitle" Text="Fields" IsVisible="{Binding HasFields}" />
+            <ItemsControl ItemsSource="{Binding Fields}" IsVisible="{Binding HasFields}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel Spacing="8" /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="c:RawFieldViewModel">
+                  <Grid ColumnDefinitions="140,*,130,*" ColumnSpacing="8">
+                    <TextBlock Classes="fieldLabel" Text="{Binding Placeholder}" />
+                    <TextBox Grid.Column="1" Text="{Binding Label}" PlaceholderText="Label" />
+                    <ComboBox Grid.Column="2" ItemsSource="{x:Static c:RawEditorViewModel.FieldTypeOptions}" SelectedItem="{Binding Type}" HorizontalAlignment="Stretch" />
+                    <Panel Grid.Column="3">
+                      <TextBox Text="{Binding Value}" PlaceholderText="Value" IsVisible="{Binding !IsPassword}" />
+                      <ui:PasswordBox Text="{Binding Value}" PlaceholderText="Value" IsVisible="{Binding IsPassword}" />
+                    </Panel>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Classes="secondary" Content="Add to rollout" Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).AddRawToRolloutCommand}" />
+              <Button Classes="secondary" Command="{Binding OpenSaveCommand}"><ui:IconLabel Icon="{DynamicResource Icon.save}" Text="Save as command..." /></Button>
+            </StackPanel>
+
+            <Border Classes="inlineEditor" IsVisible="{Binding IsSaveOpen}">
+              <StackPanel Classes="form">
+                <TextBlock Classes="sectionTitle" Text="Save as command" />
+                <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="10">
+                  <TextBlock Classes="fieldLabel" Text="Name" />
+                  <TextBox Grid.Column="1" Text="{Binding SaveName}" />
+                  <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Category" />
+                  <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Categories}" SelectedItem="{Binding SaveCategory}" Width="200" />
+                  <TextBlock Grid.Row="2" Classes="fieldLabel" Text="Description" />
+                  <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding SaveDescription}" />
+                  <TextBlock Grid.Row="3" Classes="fieldLabel" Text="Requires API" />
+                  <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <TextBox Text="{Binding RequiresApi}" PlaceholderText="param-cgi" Width="200" />
+                    <TextBox Text="{Binding RequiresVersion}" PlaceholderText="1.0" Width="80" />
+                  </StackPanel>
+                  <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Spacing="16">
+                    <CheckBox Content="Changes the device" IsChecked="{Binding Writes}" />
+                    <CheckBox Content="Dangerous (restart, reset, network, users)" IsChecked="{Binding Dangerous}" />
+                  </StackPanel>
+                </Grid>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}" />
+                  <Button Classes="secondary" Content="Cancel" Command="{Binding CancelSaveCommand}" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- Result of Send (Try) -->
+        <Border Grid.Row="2" Classes="inlineEditor" IsVisible="{Binding HasTryResult}" MaxHeight="360">
+          <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="8" DataContext="{Binding TryResult}" x:DataType="c:TryResultViewModel">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+              <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding Success}" IsError="{Binding IsError}" />
+              <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding ExchangeLine}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+              <Button Grid.Column="2" Classes="toolbar iconOnly" Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).CloseTryResultCommand}" ToolTip.Tip="Close">
+                <ui:OadmIcon Data="{DynamicResource Icon.close}" />
+              </Button>
+            </Grid>
+            <SelectableTextBlock Grid.Row="1" Text="{Binding Summary}" TextWrapping="Wrap" />
+            <SelectableTextBlock Grid.Row="2" Classes="secondary small" Text="{Binding RequestLine}" TextWrapping="Wrap" />
+            <Grid Grid.Row="3" ColumnDefinitions="*,*" ColumnSpacing="8" IsVisible="{Binding HasBody}">
+              <TextBox Classes="code" Text="{Binding Body}" IsReadOnly="True" />
+              <TextBox Grid.Column="1" Classes="code" Text="{Binding HeadersText}" IsReadOnly="True" />
+            </Grid>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+
+    <!-- ============================== Target devices ============================== -->
+    <Border Grid.Column="2" Classes="card">
+      <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="10">
+        <ui:CardHeader Title="Target devices" Description="{Binding TargetSummary}" />
+        <WrapPanel Grid.Row="1" ItemSpacing="8" LineSpacing="8">
+          <Button Classes="secondary" Content="Devices page selection" Command="{Binding UseDevicesSelectionCommand}" />
+          <Button Classes="secondary" Content="All" Command="{Binding SelectAllTargetsCommand}" />
+          <Button Classes="secondary" Content="Compatible" Command="{Binding SelectCompatibleTargetsCommand}" />
+          <Button Classes="secondary" Content="None" Command="{Binding ClearTargetsCommand}" />
+        </WrapPanel>
+        <ui:SearchBox Grid.Row="2" Text="{Binding TargetSearch}" Placeholder="Search devices" HorizontalAlignment="Left" />
+        <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Disabled">
+          <ItemsControl ItemsSource="{Binding VisibleTargets}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate><StackPanel Spacing="10" /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="c:TargetDeviceViewModel">
+                <StackPanel Spacing="4">
+                  <CheckBox IsChecked="{Binding IsSelected}">
+                    <StackPanel>
+                      <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="secondary small" Text="{Binding Subtitle}" />
+                    </StackPanel>
+                  </CheckBox>
+                  <StackPanel Margin="28,0,0,0" Spacing="2">
+                    <ui:StatusChip IsWarning="True" Text="{Binding StatusText}" IsVisible="{Binding !IsReachable}" />
+                    <ItemsControl ItemsSource="{Binding Compatibility}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="c:CompatibilityChip">
+                          <ui:StatusChip Text="{Binding Line}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" ToolTip.Tip="{Binding Line}" />
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Grid>
+    </Border>
+
+    <!-- ============================== Run bar ============================== -->
+    <Border Grid.Row="1" Grid.ColumnSpan="3" Classes="card">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="16">
+        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+          <ui:StatusChip Text="{Binding Status}" IsOk="{Binding IsStatusOk}" IsError="{Binding IsStatusError}" IsVisible="{Binding HasStatus}" MaxWidth="700" />
+          <Button Classes="link" Content="Show tasks" Command="{Binding ShowTasksCommand}" IsVisible="{Binding CanShowTasks}" />
+        </StackPanel>
+        <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding RunSummary}" VerticalAlignment="Center" />
+        <CheckBox Grid.Column="2" Content="Stop on first error" IsChecked="{Binding StopOnFirstError}" VerticalAlignment="Center"
+                  ToolTip.Tip="The first failure stops the whole rollout: the failing device skips its remaining commands, devices not started yet are cancelled, running devices stop after their current command." />
+        <Button Grid.Column="3" Classes="primary" Command="{Binding RunCommand}">
+          <ui:IconLabel Icon="{DynamicResource Icon.start}" Text="{Binding RunText}" />
+        </Button>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

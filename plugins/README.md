@@ -224,6 +224,11 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
   the page. Keep replies below the client's 32 MB message limit: hand out large results in chunks (see
   `readReport`) and run long work as a background job the page polls (see `generateReport` /
   `reportStatus`).
+- More context: `ctx.PluginDirectory` (the plugin folder, for data files such as the VAPIX Commander
+  `Library/*.json`), `ctx.Secrets` (`ISecretProtector`, encrypt secrets you store in `Settings`; null =
+  do not store them), `ctx.Tasks.Cancel(taskId)`. A contributed task plugin that only the page starts
+  sets `ShowInMenus => false` and has no public constructor (the loader then never registers it alone).
+  Never dispose clients from `Vapix.CreateAsync`: the factory caches them.
 - Video sources: `IVapixClient.GetVideoSourcesAsync()` returns the same sources the live view offers
   (`VideoSource` with camera number, name, sensor and resolutions); `VideoResolutions.Choose` picks the
   largest resolution that fits a box with the sensor aspect.
@@ -231,7 +236,14 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
   `CreateView(ctx)`) in the plugin's `*.Client.dll`. The host lists the running core plugins
   (`PluginService.ListCorePlugins`), adds one rail entry per plugin below Devices and shows the view
   inside the page card under the title; `ctx.InvokeAsync(method, payload, ct)` calls the server part.
-  Without the client part the page says that it is not installed on this client.
+  Without the client part the page says that it is not installed on this client. A page with several
+  panels sets `HasOwnCards => true` and lays out its own `Border.card`s. The context also offers the
+  managed devices and the Devices page selection (`Devices`, `SelectedDevices`, `DevicesChanged`),
+  `OwnerName`, `ConfirmAsync`, `ShowMessageAsync`, `OpenAsync(HostPages.Devices)` and `Owner`.
+- Second sample: the VAPIX Commander (`plugins/Oadm.Plugins.VapixCommander` + `.Client`, id
+  `oadm.vapix-commander`, spec in `CLAUDE.md` "VAPIX Commander"): command library from data files, saved
+  commands with encrypted secrets, a three-card page and rollouts as a hidden contributed task plugin
+  with one named step per command.
 - Build pages like dialogs: shared controls (`ui:ToolbarButton`, `ui:SearchBox`, `ui:ProgressRow`,
   `ui:StatusChip`, ...), theme classes only, view models without Avalonia platform calls (decode images
   and open windows through a small interface the view implements, so the view model is testable).

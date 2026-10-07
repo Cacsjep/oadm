@@ -67,6 +67,7 @@ src/
 plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.Restart/   first Task plugin (server only)
   Oadm.Plugins.SnapshotReport(.Client)/   first Core plugin: rail page + PDF maintenance report
+  Oadm.Plugins.VapixCommander(.Client)/   core plugin: VAPIX command library, raw requests, rollouts
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
                                 (both copy their output to artifacts/plugins/<plugin id>/)
@@ -130,7 +131,7 @@ Two processes, like ADM:
 - `PluginService`: `ListCorePlugins` (navigation pages), per-plugin generic
   `Invoke(pluginId, method, payloadJson)` for Core plugin UI pages (NOT_FOUND unknown plugin or
   object, FAILED_PRECONDITION not running, INVALID_ARGUMENT for an `ArgumentException` of the
-  plugin, INTERNAL otherwise; the status detail is the message). First user: "Snapshot report".
+  plugin, INTERNAL otherwise; the status detail is the message). Users: "Snapshot report", "VAPIX Commander".
 - `SettingsService`: `Get`, `Set` (`ServerSettings.zero_conf_seconds = 8`, 0 keeps the stored value),
   `ListCredentials`, `AddCredential(user_name, password)`
   (INVALID_ARGUMENT, RESOURCE_EXHAUSTED over 20 entries; an identical pair returns the existing
@@ -581,6 +582,7 @@ public interface ITaskPlugin : IPlugin
     bool RequiresDialog { get; }       // client opens the matching ITaskPluginDialog first
     bool CanRun(IDeviceInfo device);
     int? MaxParallelDevices => null;   // concurrent tasks of this plugin; null = 8
+    bool ShowInMenus => true;          // false: not in context menu/toolbar (ListTaskPlugins skips it); started by its core plugin
     Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct);
 }
 
@@ -637,9 +639,11 @@ public interface ICorePluginContext
 {
     IDeviceRepository Devices { get; }
     IVapixClientFactory Vapix { get; }
-    ITaskRunner Tasks { get; }         // core plugins may start tasks themselves
+    ITaskRunner Tasks { get; }         // core plugins may start tasks themselves; Cancel(taskId) (DIM false)
     ISettingsStore Settings { get; }   // namespaced per plugin
     ILogger Logger { get; }
+    string? PluginDirectory => null;   // folder the plugin was loaded from (data files); never Assembly.Location
+    ISecretProtector? Secrets => null; // Protect/Unprotect(value, purpose): AES-256-GCM with the master key
 }
 ```
 
@@ -671,6 +675,19 @@ public interface ICorePluginPage
 {
     string PluginId { get; }
     Control CreateView(ICorePluginClientContext ctx);  // page shown in the navigation rail
+    bool HasOwnCards => false;         // true: the view lays out its own cards, no host card around it
+}
+
+public interface ICorePluginClientContext  // UI thread; all but InvokeAsync have defaults
+{
+    Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct); // PluginService.Invoke
+    IReadOnlyList<IDeviceInfo> Devices { get; }          // + DevicesChanged
+    IReadOnlyList<IDeviceInfo> SelectedDevices { get; }  // selection of the Devices page
+    string OwnerName { get; }                            // "user@machine" for tasks the page starts
+    Task ShowMessageAsync(string title, string message);
+    Task<bool> ConfirmAsync(string title, string message, string confirmText);
+    Task OpenAsync(string hostPage);                     // HostPages.Devices etc.
+    Window? Owner { get; }
 }
 
 public interface IToolbarPlugin          // a part of the Devices page toolbar
@@ -883,6 +900,91 @@ Read-only for devices (param.cgi reads and image.cgi snapshots).
   back with PDFsharp: pages, cover text via ToUnicode, DCT images; view models; headless screenshots
   `snapshot-report-page.png`, `-preview.png`, `-export.png`; hardware test through the in-process server
   writing `snapshot-report-10.0.0.48.pdf` to `OADM_SCREENSHOT_DIR`).
+
+## VAPIX Commander (core plugin)
+
+`plugins/Oadm.Plugins.VapixCommander` (+ `.Client`), id `oadm.vapix-commander`, rail page **VAPIX
+Commander** (icon `command`). A technician picks one or more VAPIX commands, fills their fields and rolls
+them out to any number of devices, or sends one now to one device (Postman-like). Command format v1 and
+JSON schema: `docs/vapix-commander/command-format.md` + `command.schema.json` (the contract; category
+`Custom` for saved commands, optional `response.errorPattern`).
+
+- Library: every `Library/*.json` next to the plugin assembly (`ICorePluginContext.PluginDirectory`,
+  fallback `AppContext.BaseDirectory/Library`), loaded once at start with strict JSON (unknown
+  properties are errors) and `CommandValidator`; broken files and invalid or duplicate commands are
+  skipped, logged and listed on the page ("N library entries could not be loaded"). The bundled library
+  (163 commands, separate commit) is checked by `tests/Oadm.Plugins.VapixCommander.Library.Tests` and
+  `BundledLibraryTests` (every command loads and validates with this engine).
+- Saved commands: server side in plugin setting `savedCommands` (one JSON document, at most 500),
+  shared by all clients, editable (renaming replaces), deletable, export/import as a library file
+  (`formatVersion` 1, category of the commands or `Custom`; import keeps valid ids, same id replaces,
+  invalid ones are reported). Password field values are encrypted with the server master key through
+  the SDK `ISecretProtector` (`ICorePluginContext.Secrets`, AES-256-GCM, purpose
+  `vapix-commander:<id>:<field>`), never listed, never exported; without a protector they are dropped.
+  A saved command lists `storedSecretFields`; leaving such a field empty uses the stored value.
+- Engine (server, payload in memory only, password values never logged, masked as `***` in request
+  lines and bodies shown to the user): `FieldValues` checks values per type (integer, number, boolean,
+  enum, string/password with pattern and min/max length; numbers min/max) before anything is sent;
+  `CommandRenderer` fills `{{field}}` in path (URL-escaped), query (escaped, "," and ":" kept), headers
+  (no Authorization/Cookie/Host), body (json: a value that is exactly `{{field}}` is typed; form;
+  text; xml: XML-escaped; SOAP content type for envelopes) and extract paths; booleans are yes/no for
+  `param-cgi`, true/false elsewhere, unless `trueValue`/`falseValue`; timeout via
+  `VapixRequestOptions.Timeout` (default 15 s, max 600 s). `CommandExecutor` sends with the factory's
+  cached client (never disposed by the plugin), decodes the body as UTF-8 itself (Axis sends
+  `charset=utf8`), shows binary answers as "image/jpeg, 123.4 KB", pretty-prints JSON/XML (cut at
+  256 KB) and interprets per kind (`ResponseInterpreter`, table in command-format.md). Errors: device
+  text (`# Error: ...` line, JSON `message (code N)`, REST error/problem+json, SOAP fault, Axis
+  `GeneralError`, first text line, HTML title) or transport text ("Timeout after 15 s", "Connection
+  refused", "Host unreachable", "TLS/certificate error: ...", "Unauthorized - HTTP 401 (check
+  credentials)", "Not Found - HTTP 404 (API not available on this firmware)", "Bad Request - HTTP 400:
+  <device text>", "Server error - HTTP 500: <device text>"). HTTP 204 / empty 2xx is success.
+- Rollout: page method `rollout` validates every command and value first (nothing starts on an error),
+  writes need `confirmed`, then `ITaskRunner.RunAsync` with the contributed, hidden task plugin
+  `oadm.vapix-commander.run` (`ShowInMenus = false`; one task per device, owner = client user). Steps:
+  **Check compatibility** (fresh `GetApiListAsync` when a command writes or nothing is cached, else
+  the cached API list; detail "All 3 commands supported (fresh API list)"), then one step per command
+  named like the command ("(2)" for repeats) with the extracted result ("Product: P3265-V") or the
+  error as detail. An incompatible command fails its step "Missing API x. Nothing was sent."; a failed
+  command does not stop the others on that device; the task ends Failed with "<command>: <error>"
+  (+N more failed) as the device message (tasks pane, next to the error icon), every request is logged
+  (masked). **Stop on first error** (`RolloutRegistry`, server memory): the first failure aborts the
+  rollout; the failing device skips its remaining commands ("Not run: stopped on the first error."),
+  tasks not started yet are cancelled (`ITaskRunner.Cancel`, "Cancelled before start."), running
+  devices finish their current command, skip the rest ("Not run: the rollout stopped after an error on
+  another device.") and end Cancelled.
+- Page methods (`CommanderMethods`, camelCase JSON, records in `CommanderContract.cs`): `listLibrary`,
+  `listSaved`, `save`, `delete`, `export`, `import`, `tryRequest` (deviceId, command ref
+  library/saved/inline, values, confirmed; read-only commands run at once, writes need `confirmed` and
+  re-check a fresh API list; refuses CertificateChanged devices and cached-incompatible ones; returns
+  status, reason, duration, headers, pretty body, request line and the interpreted result),
+  `checkCompatibility` (deviceIds x command refs against the cached `device.Apis`: Compatible, Missing
+  API, Version too old, API list not read yet, Needs a video device), `rollout`. User-level problems come
+  back as `error` in the reply, not as gRPC errors.
+- Page (`HasOwnCards`: three cards and a Run bar, shared controls only): **Library** card (SearchBox,
+  TreeView Built-in / Saved by category with count badges, Write (warn) / Dangerous (error) status chips,
+  double-click or "Add to rollout", Delete / Export saved, Export all, Import); middle card with a
+  segmented switch **Rollout set** (DataGrid #, Command, Category, Kind, Source; Up, Down, Remove,
+  Clear, "Save with values..." = saved copy in Custom; field form of the selected command checked like
+  the server while typing; `ui:PasswordBox` for passwords) / **Raw request** (method, path, query and
+  header tables with Make field, body type + body, timeout, response kind, fields from `{{placeholders}}`
+  typed by hand, "Add to rollout", "Save as command..." with name, category, description, requires
+  prefilled from the path (param.cgi -> param-cgi 1.0, `/config/rest/<api>/v<n>` -> `<api> n.0`, known
+  CGIs), changes-the-device (prefilled from method/action) and dangerous); "Send to <device>" + **Send**
+  shows the result card (status chip, "HTTP 200 OK · 84 ms · address", interpreted result, request
+  line, pretty body and headers). **Target devices** card (Devices page selection preselected; buttons
+  Devices page selection, All, Compatible, None; SearchBox; per device a check box and one status chip
+  per rollout command). Run bar: status chip of the last action (+ "Show tasks" opens the Devices page),
+  summary "3 commands × 2 devices · 1 write", **Stop on first error** (default on), **Run on N
+  devices**: a confirmation lists every command with its kind, incompatible devices and the stop mode
+  when a command writes; dangerous commands need a second explicit confirmation.
+- Tests: `tests/Oadm.Plugins.VapixCommander.Tests` (rendering of all field types, typed JSON, booleans
+  per kind, validation, every response kind incl. error texts and transport mapping with a fake device,
+  stop on first error through the real task engine and core plugin host, saved CRUD / encryption /
+  export / import, compatibility, page view models against the in-process plugin, bundled library,
+  headless screenshots `plugin-vapix-commander-rollout.png`, `-try-error.png`, `-raw.png`);
+  `tests/Oadm.Server.Tests/VapixCommanderServerTests` (PluginService routing, hidden task) and the
+  read-only hardware test `VapixCommanderHardwareTests` (param.cgi list Brand and basicdeviceinfo, Try
+  and a rollout on 10.0.0.48 through the in-process server). Not in fake mode (`--fake`) yet.
 
 ## Applications (ACAP) plugin
 

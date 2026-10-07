@@ -29,11 +29,54 @@ public interface ICorePluginPage
 {
     string PluginId { get; }
     string Title { get; }
+
+    /// <summary>Creates the page content once per connection, on the UI thread; the host shows it in a card below the title.</summary>
     Control CreateView(ICorePluginClientContext ctx);
+
+    /// <summary>
+    /// True when the view lays out its own cards (<c>Border.card</c>, e.g. several panels side by side); the host then
+    /// shows it below the page title without its own card. Default false.
+    /// </summary>
+    bool HasOwnCards => false;
 }
 
+/// <summary>
+/// What a core plugin page can see and do. Members are called and raise their events on the UI thread.
+/// Everything except <see cref="InvokeAsync"/> has a default so older hosts keep working.
+/// </summary>
 public interface ICorePluginClientContext
 {
-    /// <summary>Calls ICorePlugin.InvokeAsync on the server.</summary>
+    /// <summary>
+    /// Calls ICorePlugin.InvokeAsync on the server. Errors arrive as <c>Grpc.Core.RpcException</c>
+    /// (Status.Detail is the message).
+    /// </summary>
     Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct);
+
+    /// <summary>All managed devices (client mirror of the device table), see <see cref="DevicesChanged"/>.</summary>
+    IReadOnlyList<IDeviceInfo> Devices => [];
+
+    /// <summary>Devices selected in the grid of the Devices page, in selection order.</summary>
+    IReadOnlyList<IDeviceInfo> SelectedDevices => [];
+
+    /// <summary>A device was added, removed or changed.</summary>
+    event EventHandler? DevicesChanged
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>"user@machine" of this client, the owner shown for tasks the page starts on the server.</summary>
+    string OwnerName => Environment.UserName + "@" + Environment.MachineName;
+
+    /// <summary>The host's message dialog.</summary>
+    Task ShowMessageAsync(string title, string message) => Task.CompletedTask;
+
+    /// <summary>The host's confirmation dialog; true when confirmed. Without a host dialog nothing is confirmed.</summary>
+    Task<bool> ConfirmAsync(string title, string message, string confirmText) => Task.FromResult(false);
+
+    /// <summary>Opens a host page (<see cref="HostPages"/>), e.g. Devices to watch the tasks pane.</summary>
+    Task OpenAsync(string hostPage) => Task.CompletedTask;
+
+    /// <summary>Main window, owner for the plugin's own dialogs and file pickers.</summary>
+    Window? Owner => null;
 }

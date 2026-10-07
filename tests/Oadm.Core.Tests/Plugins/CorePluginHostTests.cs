@@ -110,6 +110,32 @@ public sealed class CorePluginHostTests : IAsyncLifetime
         Assert.Equal(TaskState.Done, (await _engine.GetAsync(taskId, CancellationToken.None))!.State);
     }
 
+    [Fact]
+    public async Task ContextCarriesPluginFolderSecretsAndTaskCancel()
+    {
+        using var protector = new Oadm.Core.Security.CredentialProtector(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+        var secrets = new Oadm.Core.Security.PluginSecretProtector(protector);
+        await using var host = new CorePluginHost(_registry, _devices, _vapix, _engine, _settings, secrets: secrets);
+        var core = new TestCorePlugin("core.dir", []);
+        Assert.True(_registry.RegisterCorePlugin(core, new PluginOrigin("test", "1.0.0", "/plugins/core.dir")));
+        _registry.RegisterTaskPlugin(
+            new DelegateTaskPlugin("t.wait", (_, _, ct) => Task.Delay(Timeout.Infinite, ct)),
+            new PluginOrigin("test", "1.0.0", null));
+
+        await host.StartAllAsync(CancellationToken.None);
+
+        Assert.Equal("/plugins/core.dir", core.Context!.PluginDirectory);
+        var sealedValue = core.Context.Secrets!.Protect("pw", "a");
+        Assert.NotEqual("pw", sealedValue);
+        Assert.Equal("pw", core.Context.Secrets.Unprotect(sealedValue, "a"));
+        Assert.ThrowsAny<System.Security.Cryptography.CryptographicException>(() => core.Context.Secrets.Unprotect(sealedValue, "b"));
+
+        var taskId = await core.Context.Tasks.RunOneAsync("t.wait", [_devices.Add()], null, "core.dir", CancellationToken.None);
+        Assert.True(core.Context.Tasks.Cancel(taskId));
+        await _engine.WaitForCompletionAsync(taskId, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(TaskState.Cancelled, (await _engine.GetAsync(taskId, CancellationToken.None))!.State);
+    }
+
     private void Register(ICorePlugin plugin) =>
         Assert.True(_registry.RegisterCorePlugin(plugin, new PluginOrigin("test", "1.0.0", null)));
 

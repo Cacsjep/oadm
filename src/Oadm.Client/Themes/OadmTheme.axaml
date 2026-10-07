@@ -779,6 +779,21 @@
     <Setter Property="Spacing" Value="10" />
   </Style>
 
+  <!-- Multi-line code fields: request and response bodies, headers (VAPIX Commander) -->
+  <Style Selector="TextBox.code">
+    <Setter Property="FontFamily" Value="Cascadia Mono,Consolas,Menlo,DejaVu Sans Mono,monospace" />
+    <Setter Property="VerticalContentAlignment" Value="Top" />
+    <Setter Property="Padding" Value="10,8" />
+    <Setter Property="AcceptsReturn" Value="True" />
+    <Setter Property="TextWrapping" Value="NoWrap" />
+  </Style>
+
+  <!-- Trees (command library) -->
+  <Style Selector="TreeViewItem">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="MinHeight" Value="30" />
+  </Style>
+
   <!-- The one search field -->
   <Style Selector="ui|SearchBox">
     <Setter Property="Width" Value="{StaticResource Oadm.SearchWidth}" />

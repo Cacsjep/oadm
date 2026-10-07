@@ -83,6 +83,17 @@ unless the field sets `"trueValue"`/`"falseValue"`.
 | `xml` | HTTP 2xx and no SOAP fault / `<GeneralError>` | fault string |
 | `raw` | HTTP 2xx | body excerpt (first 300 chars) |
 
+- Response bodies are decoded as UTF-8 by the plugin (Axis devices send `charset=utf8`). Binary answers
+  (`image/*`, `video/*`, `audio/*`, `application/octet-stream`, zip, pdf) show content type and size
+  ("image/jpeg, 123.4 KB") instead of text.
+- HTTP 204 or an empty body with 2xx is a success ("OK") for every kind.
+- Optional `response.errorPattern` (regex, multi-line): a body that matches is a device error even with
+  HTTP 2xx (e.g. ptz.cgi answers `Error: ...` with 200); the matching line is the error text.
+- Non-2xx answers show the status text plus the device's body text (JSON `error`, `# Error:` line,
+  SOAP fault, first text line), e.g. daynight.cgi HTTP 500 bodies.
+- A JSON `apiVersion` in the answer that differs from the request (devices answer with their highest
+  minor version) is never an error.
+
 Transport errors always map to readable text: `Timeout after N s`, `Connection refused`,
 `Host unreachable`, `TLS/certificate error: ...`, `Unauthorized - HTTP 401 (check credentials)`,
 `Forbidden - HTTP 403 (user lacks permission)`, `Not Found - HTTP 404 (API not available on this
@@ -91,11 +102,14 @@ it has one.
 
 Optional `response.extract`: list of `{ "label": "...", "path": "data.x.y" | "param": "Key.Name" }`
 values shown in the step detail after success (e.g. the current shift level for read commands).
+Paths support array indices (`data.devices.0.name` or `data.devices[0].name`) and `{{placeholders}}`;
+`param` keys may carry a leading `root.` and surrounding quotes (both ignored).
 
 ### Categories
 
 `Common`, `System`, `Network`, `Security`, `Users`, `Time`, `Video`, `Image`, `PTZ`, `Audio`,
-`I/O`, `Events`, `Storage`, `Applications`, `Maintenance`. Each library file holds one category:
+`I/O`, `Events`, `Storage`, `Applications`, `Maintenance`, plus `Custom` for saved (user-made) commands
+and exports. Each library file holds one category:
 `Library/<category>.json` = `{ "formatVersion": 1, "category": "...", "commands": [ ... ] }`.
 
 ### Safety rules (CLAUDE.md "device safety")

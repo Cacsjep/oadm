@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- test method names use underscores -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1861</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="Avalonia.Headless" Version="12.0.4" />
+    <PackageReference Include="Avalonia.Skia" Version="12.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The real client host provides the theme (OadmTheme.axaml) and the shared runtime assemblies; Oadm.Core
+         provides the task engine, core plugin host and plugin settings for the engine-level tests. -->
+    <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />
+    <ProjectReference Include="..\..\src\Oadm.Core\Oadm.Core.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.VapixCommander\Oadm.Plugins.VapixCommander.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.VapixCommander.Client\Oadm.Plugins.VapixCommander.Client.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Samples\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Runs plugins against a step list the way the task engine does. -->
+    <Compile Include="..\Shared\StepRun.cs" Link="Shared\StepRun.cs" />
+  </ItemGroup>
+</Project>

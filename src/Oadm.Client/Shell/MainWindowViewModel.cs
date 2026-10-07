@@ -142,7 +142,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             {
                 try
                 {
-                    view = page.CreateView(new CorePluginClientContext(_api, plugin.Id));
+                    view = page.CreateView(new CorePluginClientContext(_api, plugin.Id, Devices.ToolbarContext));
                 }
                 catch (Exception ex)
                 {
@@ -152,7 +152,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
             NavItems.Add(new NavItemViewModel("plugin:" + plugin.Id, plugin.DisplayName,
                 string.IsNullOrEmpty(plugin.IconKey) ? "plugin" : plugin.IconKey,
-                new CorePluginPageViewModel(plugin.Id, plugin.DisplayName, view))
+                new CorePluginPageViewModel(plugin.Id, plugin.DisplayName, view, page?.HasOwnCards == true))
             {
                 HasSeparatorBefore = first,
             });
@@ -167,9 +167,32 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private static partial void LogPageFailed(ILogger logger, Exception ex, string pluginId);
 }
 
-/// <summary>Bridges a core plugin page to PluginService.Invoke.</summary>
-internal sealed class CorePluginClientContext(IOadmApi api, string pluginId) : ICorePluginClientContext
+/// <summary>
+/// Bridges a core plugin page to PluginService.Invoke; devices, selection, dialogs and host pages come from the
+/// Devices page's <see cref="IToolbarContext"/> (same data and dialogs as toolbar plugins).
+/// </summary>
+internal sealed class CorePluginClientContext(IOadmApi api, string pluginId, IToolbarContext host) : ICorePluginClientContext
 {
+    public IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo> Devices => host.Devices;
+
+    public IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo> SelectedDevices => host.SelectedDevices;
+
+    public event EventHandler? DevicesChanged
+    {
+        add => host.DevicesChanged += value;
+        remove => host.DevicesChanged -= value;
+    }
+
+    public string OwnerName => TaskPluginRunner.OwnerName;
+
+    public Avalonia.Controls.Window? Owner => host.Owner;
+
     public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
         api.InvokeCorePluginAsync(pluginId, method, payloadJson, ct);
+
+    public Task ShowMessageAsync(string title, string message) => host.ShowMessageAsync(title, message);
+
+    public Task<bool> ConfirmAsync(string title, string message, string confirmText) => host.ConfirmAsync(title, message, confirmText);
+
+    public Task OpenAsync(string hostPage) => host.OpenAsync(hostPage);
 }

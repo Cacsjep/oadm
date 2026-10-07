@@ -1,0 +1,67 @@
+{
+  "formatVersion": 1,
+  "category": "Common",
+  "commands": [
+    {
+      "id": "common.brand.read",
+      "version": 1,
+      "name": "Read brand parameters",
+      "category": "Common",
+      "description": "Lists the Brand parameter group (product name and number).",
+      "requires": [ { "api": "param-cgi", "minVersion": "1.0" } ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": { "action": "list", "group": "Brand" },
+        "timeoutSeconds": 15
+      },
+      "response": {
+        "kind": "param-cgi",
+        "extract": [ { "label": "Product", "param": "Brand.ProdNbr" } ]
+      }
+    },
+    {
+      "id": "common.basicdeviceinfo.read",
+      "version": 1,
+      "name": "Read basic device information",
+      "category": "Common",
+      "requires": [ { "api": "basic-device-info", "minVersion": "1.0" } ],
+      "writes": false,
+      "fields": [],
+      "request": {
+        "method": "POST",
+        "path": "/axis-cgi/basicdeviceinfo.cgi",
+        "bodyType": "json",
+        "body": { "apiVersion": "1.0", "method": "getAllProperties" }
+      },
+      "response": {
+        "kind": "json-rpc",
+        "extract": [
+          { "label": "Model", "path": "data.propertyList.ProdNbr" },
+          { "label": "AXIS OS", "path": "data.propertyList.Version" }
+        ]
+      }
+    },
+    {
+      "id": "common.daynight.shiftlevel",
+      "version": 1,
+      "name": "Set day/night shift level",
+      "category": "Common",
+      "description": "Light level at which the camera switches between day and night mode.",
+      "requires": [ { "api": "param-cgi", "minVersion": "1.0" } ],
+      "writes": true,
+      "fields": [
+        { "name": "channel", "label": "Image channel", "type": "integer", "default": 0, "min": 0, "max": 7 },
+        { "name": "level", "label": "Shift level", "type": "integer", "default": 50, "min": 0, "max": 100, "unit": "%" }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/axis-cgi/param.cgi",
+        "query": { "action": "update", "ImageSource.I{{channel}}.DayNight.ShiftLevel": "{{level}}" }
+      },
+      "response": { "kind": "param-cgi", "success": "OK" }
+    }
+  ]
+}
