@@ -1,10 +1,10 @@
 # Oadm.Plugins.Restart
 
 First task plugin (`oadm.restart`). Toolbar + context menu, no dialog. Calls `restart.cgi`, then
-polls `basicdeviceinfo.cgi` every 5 s until the device has gone down and answers again
-(timeout 3 min for both waits together).
+polls `basicdeviceinfo.cgi` every 5 s until the device goes down and answers again
+(3 min for both waits together).
 
-Steps (each device request and each wait is its own step):
+Steps (one per request and per wait):
 
 | Step | What happens |
 |---|---|
@@ -23,7 +23,7 @@ Steps (each device request and each wait is its own step):
 
 ## Development deployment
 
-Every build of this project (also as part of `dotnet build Oadm.sln`) copies its output to
+Every build (also `dotnet build Oadm.sln`) copies the output to
 
 ```
 <repo>/artifacts/plugins/oadm.restart/
@@ -32,8 +32,7 @@ Every build of this project (also as part of `dotnet build Oadm.sln`) copies its
 The server finds that folder with `Oadm.Core.Plugins.PluginPaths.Development()` (walks up from the
 server's base directory to `Oadm.sln`). Installed plugins live in `<datafolder>/plugins/<id>/`
 (`PluginPaths.Installed(dataFolder)`) with the same layout. The loader reads plugin assemblies
-into memory, so rebuilding while the server runs does not fail on locked files; restart the
-server to pick up the new build.
+into memory, so a rebuild works while the server runs. Restart the server to load the new build.
 
-Another plugin project gets the same behavior by copying the `OadmPluginId` /
-`OadmPluginOutputDir` properties and the `OadmDeployPlugin` target from the `.csproj`.
+To do the same in another plugin project, copy the `OadmPluginId` / `OadmPluginOutputDir`
+properties and the `OadmDeployPlugin` target from the `.csproj`.

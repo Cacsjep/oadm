@@ -1,7 +1,7 @@
 # VAPIX Commander command format (v1)
 
 Shared contract between the VAPIX Commander core plugin (`plugins/Oadm.Plugins.VapixCommander*`)
-and the battery-included command library (`plugins/Oadm.Plugins.VapixCommander/Library/*.json`).
+and the bundled command library (`plugins/Oadm.Plugins.VapixCommander/Library/*.json`).
 JSON Schema: `command.schema.json` next to this file. Decisions by the user (2026-10-07):
 
 - A technician picks one or more commands, fills their fields and rolls them out to any number
@@ -10,10 +10,10 @@ JSON Schema: `command.schema.json` next to this file. Decisions by the user (202
   devices not started yet are cancelled, running devices stop after their current command.
 - Saved commands (e.g. "Day Night Level 50") are stored on the server and shared by all clients;
   export/import as JSON files.
-- A raw editor (method, path, query, body) exists like Postman; values can become `{{field}}`
-  placeholders and be saved as a new command. Raw commands obey the same safety rules.
-- On failure the user must see the device's own error text (VAPIX error message / code) or, for
-  transport problems, a meaningful text such as "Timeout after 15 s" or "Bad Request - HTTP 400".
+- A raw editor (method, path, query, body), like Postman. Values can become `{{field}}`
+  placeholders and the request can be saved as a new command. Raw commands follow the same safety rules.
+- On failure the user must see the device's own error text (VAPIX error message / code), or for
+  transport problems a readable text such as "Timeout after 15 s" or "Bad Request - HTTP 400".
 
 ## One command = one JSON object
 
@@ -91,8 +91,8 @@ unless the field sets `"trueValue"`/`"falseValue"`.
   HTTP 2xx (e.g. ptz.cgi answers `Error: ...` with 200); the matching line is the error text.
 - Non-2xx answers show the status text plus the device's body text (JSON `error`, `# Error:` line,
   SOAP fault, first text line), e.g. daynight.cgi HTTP 500 bodies.
-- A JSON `apiVersion` in the answer that differs from the request (devices answer with their highest
-  minor version) is never an error.
+- An answer `apiVersion` that differs from the request is never an error (devices answer with their
+  highest minor version).
 
 Transport errors always map to readable text: `Timeout after N s`, `Connection refused`,
 `Host unreachable`, `TLS/certificate error: ...`, `Unauthorized - HTTP 401 (check credentials)`,

@@ -24,10 +24,10 @@ waits). Only MAC addresses of the Axis blocks in `AxisOui` (00:40:8C, AC:CC:8E, 
 1. `ctx.AutoAdd.FollowAsync(serial = MAC, address)`: a managed device at another address is verified there by the server
    (serial with the stored credentials) and its record moved, whether the check box is on or not; devices reached by
    host name keep it.
-2. Unmanaged and the check box on: `ctx.AutoAdd.AddAsync(address, serial, "DHCP server")`, the add page's pipeline on
-   the server: anonymous Axis check, factory default -> added as "Password not set" (context menu "Set password"),
-   credential list login -> added as Ok, or "Credentials required" when no credential fits (context menu "Log in"); not
-   an Axis device, another serial or no answer -> not added (server log).
+2. Unmanaged and the check box on: `ctx.AutoAdd.AddAsync(address, serial, "DHCP server")` runs the add page's pipeline
+   on the server. Anonymous Axis check, then: factory default -> added as "Password not set" (context menu "Set
+   password"); credential list login works -> added as Ok; no credential fits -> added as "Credentials required"
+   (context menu "Log in"). Not an Axis device, another serial or no answer -> not added (server log).
 3. No answer yet (cameras answer HTTP a few seconds after DHCP) or a moved device not verified yet: one retry after 30 s,
    dropped when the lease changed meanwhile.
 
@@ -41,9 +41,9 @@ The server writes the audit entries ("Device added automatically", "Device moved
 | Linux | binds 0.0.0.0:67 with `SO_BINDTODEVICE` to the interface | root, or once `sudo setcap 'cap_net_bind_service,cap_net_raw=+ep' <Oadm.Server>` (`cap_net_raw` for the device binding on kernels before 5.7); dnsmasq / isc-dhcp-server / NetworkManager shared connections must not hold port 67 (`sudo ss -ulpn 'sport = :67'`) |
 | macOS | binds 0.0.0.0:67 with `IP_BOUND_IF` to the interface index | run the server with sudo; Internet Sharing (bootpd) must be off (`sudo lsof -nP -iUDP:67`) |
 
-Every OS also checks the receiving interface of each packet when bound to 0.0.0.0. The check for other DHCP servers uses
-UDP 68 with address reuse (the OS DHCP client often holds it). Replies to clients without an address are broadcast:
-unicasting to a MAC without an ARP entry is not possible portably (documented limitation; clients accept broadcasts).
+When bound to 0.0.0.0, every OS also checks the interface each packet arrived on. The check for other DHCP servers uses
+UDP 68 with address reuse (the OS DHCP client often holds it). Replies to clients without an address are broadcast,
+because unicast to a MAC without an ARP entry is not portable (known limitation; clients accept broadcasts).
 
 ## Manual test plan (real network, only on an isolated test network)
 
@@ -69,15 +69,15 @@ Never run these on a production network: a second DHCP server hands out wrong ad
     starts it with the warning status.
 11. **Port in use**: on Windows start Internet Connection Sharing (or on Linux `dnsmasq --port=0 --dhcp-range=...`), save:
     "Port 67 is in use by another program" with the hint in the tooltip; stop the other program: OADM starts within 30 s.
-12. **Restart**: restart the OADM server: the server comes back enabled with the same leases; the cameras keep their
-    addresses at the next renewal.
-13. **Automatic add**: add a credential of the cameras on the Credentials page, check "Automatically add Axis devices
-    that get an address", Save, restart a camera that OADM does not manage: within a minute it appears on the Devices
-    page (status Ok), the audit log shows "Device added automatically". A factory-default camera appears as "Password
-    not set"; "Set password" in its context menu sets the first password. Remove a managed camera's static lease and give
-    it a new address from the range: its record follows the new address ("Device moved" in the audit log).
+12. **Restart**: restart the OADM server: it comes back enabled with the same leases; the cameras keep their addresses
+    at the next renewal.
+13. **Automatic add**: add the cameras' credential on the Credentials page, check "Automatically add Axis devices that
+    get an address", Save. Restart a camera that OADM does not manage: within a minute it appears on the Devices page
+    (status Ok) and the audit log shows "Device added automatically". A factory-default camera appears as "Password not
+    set"; "Set password" in its context menu sets the first password. Remove a managed camera's static lease so it gets
+    a new address from the range: OADM follows it ("Device moved" in the audit log).
 14. **Interface change**: change the server's address to another subnet: status "Range is not inside the interface
     subnet"; pull the cable: "Interface Ethernet is not available".
 
 Automated tests (`tests/Oadm.Plugins.DhcpServer.Tests`) cover all of this on an in-memory network (`FakeDhcpNetwork`) and
-on the loopback address with random ports; they never send DHCP traffic on a real interface.
+on loopback with random ports. They never send DHCP traffic on a real interface.

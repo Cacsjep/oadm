@@ -1,6 +1,6 @@
 # VAPIX Commander command library
 
-The battery-included commands of the VAPIX Commander plugin. One file per category,
+The bundled commands of the VAPIX Commander plugin. One file per category,
 `<Category>.json` = `{ "formatVersion": 1, "category": "...", "commands": [ ... ] }`, in the format
 of `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md`, validated against `plugins/Oadm.Plugins.VapixCommander/Schema/command.schema.json`.
 `I/O` lives in `IO.json` because `/` cannot be part of a file name.
@@ -60,13 +60,13 @@ of `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md`, validated aga
   `PTZ.ImageSource.I#.PTZEnabled` true/false).
 - **Passwords** (`users.add`, `users.password.set`, `events.mqtt.client.configure`) only travel in POST
   bodies (form or JSON), never in the URL; a test enforces this.
-- Network addressing (static IP, DHCP switch) is deliberately not in the library: the Network plugin
-  does it and follows the device to its new address, a raw command would lose it.
+- Network addressing (static IP, DHCP switch) is not in the library: the Network plugin does it and
+  follows the device to its new address; a raw command would lose the device.
 
 ## Verification
 
-Every parameter, method and response path was checked against developer.axis.com and, wherever that is
-possible without writing, against the dev camera **10.0.0.48** (AXIS P3265-V Dome Camera, AXIS OS 12.11.77):
+Every parameter, method and response path was checked against developer.axis.com and, where possible
+without writing, against the dev camera **10.0.0.48** (AXIS P3265-V Dome Camera, AXIS OS 12.11.77):
 
 - **Readers**: all 59 were executed on 10.0.0.48 by the hardware test (HTTP 2xx, no VAPIX error, every
   `response.extract` resolved). `image.light.info` reached the device, which answers with its documented
@@ -74,12 +74,12 @@ possible without writing, against the dev camera **10.0.0.48** (AXIS P3265-V Dom
 - **param.cgi setters**: every parameter name and every enum/boolean value the command can send was
   checked against `param.cgi?action=listdefinitions&listformat=xmlschema` read on 10.0.0.48 (the
   device's own type definitions). They were never sent.
-- **Other setters**: method and parameter names are from the VAPIX documentation; their API is listed
-  by 10.0.0.48 and its readers were proven there, but the setter itself was never sent (the camera is
-  read-only for this work).
+- **Other setters**: method and parameter names are from the VAPIX documentation. 10.0.0.48 lists
+  their API and its readers work there; the setter itself was never sent (the camera is read-only for
+  this work).
 
-Recorded read-only responses of 20 readers are in
-`tests/Oadm.Plugins.VapixCommander.Library.Tests/Fixtures/<command id>.txt`; a test proves every
+Recorded responses of 20 readers are in
+`tests/Oadm.Plugins.VapixCommander.Library.Tests/Fixtures/<command id>.txt`; a test checks that every
 extract of those commands resolves on them.
 
 ### Tests
@@ -125,7 +125,7 @@ dotnet test tests/Oadm.Plugins.VapixCommander.Library.Tests --filter Category=Ha
 
 ## What the engine must support (format notes)
 
-The library relies on these readings of command-format.md; the commander engine should implement them:
+The library relies on these readings of command-format.md, which the engine must implement:
 
 1. `response.extract` `param`/`path` may contain `{{placeholders}}` (e.g. `Image.I{{channel}}.Stream.FPS`)
    and `path` segments may be array indices (`data.devices.0.IPv4.addresses.0.address`). Arrays and
