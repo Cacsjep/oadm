@@ -27,12 +27,17 @@ internal static class GrpcGuard
     public static RpcException FailedPrecondition(string message) => new(new Status(StatusCode.FailedPrecondition, message));
 
     /// <summary>
-    /// Who started an action: the <c>oadm-owner</c> request header (client sends "machine/user"),
-    /// else the explicit value, else the peer address.
+    /// Who started an action: the logged-in caller ("user@machine", authenticated), else (tests without the auth
+    /// interceptor) the explicit value, the <c>oadm-owner</c> request header or the peer address.
     /// </summary>
     public static string Owner(ServerCallContext context, string? explicitOwner = null)
     {
         ArgumentNullException.ThrowIfNull(context);
+        if (Core.Auth.CallerContext.Current is { } caller)
+        {
+            return caller.Owner;
+        }
+
         if (!string.IsNullOrWhiteSpace(explicitOwner))
         {
             return explicitOwner.Trim();

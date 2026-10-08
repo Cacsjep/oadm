@@ -29,12 +29,12 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
         Assert.Equal(30, settings.ZeroConfSeconds);
         Assert.Equal(16, settings.MaxParallelTasksPerPlugin);
         Assert.Equal(16, await _store.GetAsync<int>(SettingKeys.TasksMaxParallelPerPlugin, CancellationToken.None));
-        Assert.Equal("http://0.0.0.0:5080", settings.ListenUrl);
+        Assert.Equal("https://0.0.0.0:5080", settings.ListenUrl);
         Assert.Equal(ServerSettings.DefaultServerName(), settings.ServerName);
         Assert.False(string.IsNullOrWhiteSpace(settings.ServerName));
 
         Assert.Equal(60, await _store.GetAsync<int>(SettingKeys.PollingIntervalSeconds, CancellationToken.None));
-        Assert.Equal("\"http://0.0.0.0:5080\"", await _store.GetJsonAsync(SettingKeys.ListenUrl, CancellationToken.None));
+        Assert.Equal("\"https://0.0.0.0:5080\"", await _store.GetJsonAsync(SettingKeys.ListenUrl, CancellationToken.None));
         Assert.Null(await _store.GetJsonAsync("Unknown.Key", CancellationToken.None));
     }
 

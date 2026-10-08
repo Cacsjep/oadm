@@ -14,6 +14,7 @@ using Oadm.Core.Settings;
 using Oadm.Core.Tasks;
 using Oadm.Core.Vapix;
 using Oadm.Server.AddDevices;
+using Oadm.Server.Auth;
 using Oadm.Server.Devices;
 using Oadm.Server.Discovery;
 using Oadm.Server.Files;
@@ -66,7 +67,12 @@ public static partial class OadmServerHost
         var builder = WebApplication.CreateBuilder(ServiceHosting.CreateBuilderOptions(args, ServiceHosting.IsRunningAsService()));
         ServiceHosting.AddServiceLifetimes(builder.Services);
 
-        builder.WebHost.ConfigureKestrel(k => k.ConfigureEndpointDefaults(l => l.Protocols = HttpProtocols.Http2));
+        builder.WebHost.ConfigureKestrel(k =>
+        {
+            k.ConfigureEndpointDefaults(l => l.Protocols = HttpProtocols.Http2);
+            // https listen URLs use the server's own certificate (server-tls.json), loaded in StartAsync.
+            k.ConfigureHttpsDefaults(h => h.ServerCertificateSelector = (_, _) => k.ApplicationServices.GetRequiredService<ServerTlsCertificate>().Certificate);
+        });
         builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(30));
 
         builder.Services.AddSerilog((sp, lc) =>
@@ -97,6 +103,9 @@ public static partial class OadmServerHost
         options.ConfigureServices?.Invoke(builder.Services);
 
         var app = builder.Build();
+        app.MapGrpcService<AuthGrpcService>();
+        app.MapGrpcService<UserGrpcService>();
+        app.MapGrpcService<AuditGrpcService>();
         app.MapGrpcService<DeviceGrpcService>();
         app.MapGrpcService<TaskGrpcService>();
         app.MapGrpcService<SettingsGrpcService>();
@@ -132,11 +141,18 @@ public static partial class OadmServerHost
 
             // A Run or Remove on 5,000+ devices carries 5,000 ids (about 200 KB); keep headroom.
             o.MaxReceiveMessageSize = 16 * 1024 * 1024;
+
+            // Every call needs a login (except AuthService Status, Login, CreateFirstAdmin); roles per AccessPolicy.
+            o.Interceptors.Add<AuthInterceptor>();
         });
         services.AddGrpcReflection();
 
         services.AddOadmPersistence(_ => new OadmPaths(options.DataDirectory ?? configuration["Oadm:DataDir"]));
         services.AddSingleton(options);
+
+        // Access: TLS certificate of the gRPC endpoint, audit and session cleanup
+        services.AddSingleton<ServerTlsCertificate>();
+        services.AddHostedService<AuthMaintenanceHostedService>();
 
         // VAPIX
         // Extra trust anchors of core plugins (PKI CA): device certificates chaining to them are rated Trusted.
@@ -248,6 +264,9 @@ public static partial class OadmServerHost
         // 1. Database and master key.
         await sp.GetRequiredService<DatabaseInitializer>().InitializeAsync(ct).ConfigureAwait(false);
 
+        // 1b. No user yet: a one-time setup code for creating the first administrator from another computer.
+        await sp.GetRequiredService<Core.Auth.AuthManager>().PrepareFirstAdminAsync(ct).ConfigureAwait(false);
+
         // 2. Plugins: built-in first (their ids are reserved), then installed and development folders.
         var registry = sp.GetRequiredService<PluginRegistry>();
         var roots = options.PluginRoots ?? DefaultPluginRoots(paths);
@@ -278,6 +297,16 @@ public static partial class OadmServerHost
         if (addresses is not null && addresses.Count == 0 && string.IsNullOrEmpty(app.Configuration["urls"]))
         {
             addresses.Add(listenUrl);
+        }
+
+        if (addresses is not null && addresses.Any(a => a.StartsWith("https:", StringComparison.OrdinalIgnoreCase)))
+        {
+            var regenerate = string.Equals(app.Configuration[ServerTlsCertificate.RegenerateConfigKey], "true", StringComparison.OrdinalIgnoreCase);
+            await sp.GetRequiredService<ServerTlsCertificate>().LoadOrCreateAsync(regenerate, ct).ConfigureAwait(false);
+        }
+        else if (addresses is { Count: > 0 })
+        {
+            LogPlainHttp(logger, string.Join(", ", addresses));
         }
 
         await app.StartAsync(ct).ConfigureAwait(false);
@@ -325,6 +354,9 @@ public static partial class OadmServerHost
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Plugin problem in {Source}: {Message}")]
     private static partial void LogPluginError(ILogger logger, string source, string message);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "TLS is off ({Urls}): logins and data travel unencrypted. Use an https:// listen URL except for tests.")]
+    private static partial void LogPlainHttp(ILogger logger, string urls);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "gRPC listening on {Urls}")]
     private static partial void LogListening(ILogger logger, string urls);

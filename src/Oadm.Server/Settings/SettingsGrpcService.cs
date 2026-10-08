@@ -1,5 +1,6 @@
 using Grpc.Core;
 
+using Oadm.Core.Auth;
 using Oadm.Core.Security;
 using Oadm.Core.Settings;
 using Oadm.Server.Common;
@@ -18,6 +19,7 @@ namespace Oadm.Server.Settings;
 public sealed partial class SettingsGrpcService(
     ServerSettingsStore store,
     CredentialListStore credentials,
+    AuditLog audit,
     ILogger<SettingsGrpcService> logger) : Proto.SettingsService.SettingsServiceBase
 {
     public override async Task<Proto.ServerSettings> Get(Proto.Empty request, ServerCallContext context) =>
@@ -29,6 +31,7 @@ public sealed partial class SettingsGrpcService(
         try
         {
             var saved = await store.SetServerSettingsAsync(Mappers.FromProto(request, current), context.CancellationToken).ConfigureAwait(false);
+            await audit.WriteAsync(AuditActions.SettingsChanged, "Server settings", Changes(current, saved), context.CancellationToken).ConfigureAwait(false);
             return Mappers.ToProto(saved);
         }
         catch (ArgumentException ex)
@@ -48,7 +51,9 @@ public sealed partial class SettingsGrpcService(
     {
         try
         {
-            return Mappers.ToProto(await credentials.AddAsync(request.UserName, request.Password, context.CancellationToken).ConfigureAwait(false));
+            var added = await credentials.AddAsync(request.UserName, request.Password, context.CancellationToken).ConfigureAwait(false);
+            await audit.WriteAsync(AuditActions.CredentialAdded, added.UserName, null, context.CancellationToken).ConfigureAwait(false);
+            return Mappers.ToProto(added);
         }
         catch (ArgumentException ex)
         {
@@ -62,11 +67,15 @@ public sealed partial class SettingsGrpcService(
 
     public override async Task<Proto.Empty> RemoveCredential(Proto.CredentialEntryId request, ServerCallContext context)
     {
-        if (!Guid.TryParse(request.Id, out var id) || !await credentials.RemoveAsync(id, context.CancellationToken).ConfigureAwait(false))
+        var entry = Guid.TryParse(request.Id, out var id)
+            ? (await credentials.ListAsync(context.CancellationToken).ConfigureAwait(false)).FirstOrDefault(e => e.Id == id)
+            : null;
+        if (entry is null || !await credentials.RemoveAsync(id, context.CancellationToken).ConfigureAwait(false))
         {
             throw GrpcGuard.NotFound($"Credential '{request.Id}' not found.");
         }
 
+        await audit.WriteAsync(AuditActions.CredentialRemoved, entry.UserName, null, context.CancellationToken).ConfigureAwait(false);
         return new Proto.Empty();
     }
 
@@ -85,7 +94,32 @@ public sealed partial class SettingsGrpcService(
         }
 
         LogRevealed(logger, entry.UserName);
+        await audit.WriteAsync(AuditActions.CredentialRevealed, entry.UserName, null, context.CancellationToken).ConfigureAwait(false);
         return new Proto.RevealedCredential { Password = entry.Password };
+    }
+
+    /// <summary>"Polling interval 60 -> 30 s, Server name a -> b" (no secrets in settings).</summary>
+    internal static string Changes(ServerSettings before, ServerSettings after)
+    {
+        var changes = new List<string>();
+        void Add<T>(string name, T a, T b)
+        {
+            if (!EqualityComparer<T>.Default.Equals(a, b))
+            {
+                changes.Add(System.FormattableString.Invariant($"{name} {a} -> {b}"));
+            }
+        }
+
+        Add("Polling interval (s)", before.PollingIntervalSeconds, after.PollingIntervalSeconds);
+        Add("Full refresh (min)", before.FullRefreshMinutes, after.FullRefreshMinutes);
+        Add("Scan parallelism", before.ScanParallelism, after.ScanParallelism);
+        Add("Scan timeout (ms)", before.ScanTimeoutMs, after.ScanTimeoutMs);
+        Add("Zero-conf scan (s)", before.ZeroConfSeconds, after.ZeroConfSeconds);
+        Add("Parallel tasks per plugin", before.MaxParallelTasksPerPlugin, after.MaxParallelTasksPerPlugin);
+        Add("Server name", before.ServerName, after.ServerName);
+        Add("Listen URL", before.ListenUrl, after.ListenUrl);
+        Add("Use host name", before.UseHostName, after.UseHostName);
+        return changes.Count == 0 ? "No change" : string.Join(", ", changes);
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Credential list password of {UserName} revealed")]

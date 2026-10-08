@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Oadm.Core.Auth;
 using Oadm.Core.Devices;
 using Oadm.Core.Plugins;
 using Oadm.Core.Security;
@@ -53,6 +54,14 @@ public static class PersistenceServiceCollectionExtensions
 
         services.AddSingleton<ServerSettingsStore>();
         services.AddSingleton<IPluginSettingsProvider, DbPluginSettingsProvider>();
+
+        // Users, sessions and the audit log (Production hardening: access)
+        services.TryAddSingleton(_ => new PasswordHasher());
+        services.AddSingleton<LoginThrottle>();
+        services.AddSingleton<AuthTokenStore>();
+        services.AddSingleton<UserStore>();
+        services.AddSingleton<AuditLog>();
+        services.AddSingleton<AuthManager>();
 
         services.AddSingleton<DatabaseInitializer>();
         return services;

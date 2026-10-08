@@ -87,11 +87,13 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     /// One task per device, all with a new shared batch id; the payload is shared in memory by the
     /// batch and never persisted. <paramref name="ct"/> only cancels the submission, not the tasks.
     /// Use <see cref="Cancel"/>. Throws <see cref="ArgumentException"/> for an unknown plugin id or an
-    /// empty device list.
+    /// empty device list. Inside an authenticated call the owner is the caller ("user@machine",
+    /// <see cref="Auth.CallerContext"/>), whatever <paramref name="owner"/> says.
     /// </remarks>
     public async Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
+        owner = Auth.CallerContext.Current?.Owner ?? owner;
         ArgumentNullException.ThrowIfNull(deviceIds);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 

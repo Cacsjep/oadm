@@ -22,6 +22,9 @@ public enum CorePluginState
 
 public sealed record CorePluginStatus(string PluginId, CorePluginState State, string? Error);
 
+/// <summary>Who may call a core plugin page method and whether the call goes to the audit log.</summary>
+public sealed record CorePluginMethodAccess(UserRole RequiredRole, bool Audited, string PluginName);
+
 /// <summary>
 /// Starts and stops the registered core plugins and routes UI-page calls (<see cref="InvokeAsync"/>).
 /// A plugin that throws on start is marked <see cref="CorePluginState.Faulted"/>; the others keep running.
@@ -211,6 +214,32 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         {
             LogInvokeFailed(ex, pluginId, method);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// The access rule of a page method: the role it needs (<see cref="ICorePlugin.RequiredRole"/>), whether calls are
+    /// audited (<see cref="ICorePlugin.IsAudited"/>) and the plugin's display name. A plugin that throws while
+    /// answering needs <see cref="UserRole.Admin"/> (fail closed). Null for an unknown plugin.
+    /// </summary>
+    public CorePluginMethodAccess? AccessOf(string pluginId, string method)
+    {
+        if (!_registry.TryGetCorePlugin(pluginId, out var registered))
+        {
+            return null;
+        }
+
+        var plugin = registered.Plugin;
+        try
+        {
+            return new CorePluginMethodAccess(plugin.RequiredRole(method), plugin.IsAudited(method), plugin.DisplayName ?? registered.Id);
+        }
+#pragma warning disable CA1031 // A broken plugin answer must not open the method.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogInvokeFailed(ex, pluginId, method);
+            return new CorePluginMethodAccess(UserRole.Admin, true, registered.Id);
         }
     }
 

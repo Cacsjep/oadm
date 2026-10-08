@@ -1,5 +1,6 @@
 using Grpc.Core;
 
+using Oadm.Core.Auth;
 using Oadm.Core.Plugins;
 using Oadm.Core.Tasks;
 using Oadm.Server.Common;
@@ -14,6 +15,8 @@ public sealed partial class TaskGrpcService(
     TaskEngine engine,
     TaskPluginRunnableCache runnable,
     TaskPluginQueries queries,
+    PluginRegistry registry,
+    AuditLog audit,
     IHostApplicationLifetime lifetime,
     ILogger<TaskGrpcService> logger) : Proto.TaskService.TaskServiceBase
 {
@@ -94,6 +97,11 @@ public sealed partial class TaskGrpcService(
                 ids,
                 string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson,
                 GrpcGuard.Owner(context, request.Owner),
+                context.CancellationToken).ConfigureAwait(false);
+            await audit.WriteAsync(
+                AuditActions.TaskRun,
+                registry.TryGetTaskPlugin(request.PluginId, out var plugin) ? plugin.DisplayName : request.PluginId,
+                taskIds.Count == 1 ? "1 device" : $"{taskIds.Count} devices",
                 context.CancellationToken).ConfigureAwait(false);
             var reply = new Proto.RunTaskReply();
             reply.TaskIds.AddRange(taskIds.Select(t => t.ToString()));
@@ -190,6 +198,7 @@ public sealed partial class TaskGrpcService(
     {
         var deleted = await engine.DeleteAllAsync(context.CancellationToken).ConfigureAwait(false);
         LogDeletedAll(deleted);
+        await audit.WriteAsync(AuditActions.TasksDeletedAll, "Task history", deleted == 1 ? "1 task" : $"{deleted} tasks", context.CancellationToken).ConfigureAwait(false);
         return new Proto.DeleteAllReply { Deleted = deleted };
     }
 

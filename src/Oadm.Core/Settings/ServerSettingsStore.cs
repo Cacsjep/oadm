@@ -69,7 +69,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             Read(rows, SettingKeys.ScanParallelism, defaults.ScanParallelism),
             Read(rows, SettingKeys.ScanTimeoutMs, defaults.ScanTimeoutMs),
             Read(rows, SettingKeys.ServerName, defaults.ServerName),
-            Read(rows, SettingKeys.ListenUrl, defaults.ListenUrl),
+            ListenUrlOf(Read(rows, SettingKeys.ListenUrl, defaults.ListenUrl)),
             Read(rows, SettingKeys.PollingFullRefreshMinutes, defaults.FullRefreshMinutes),
             Read(rows, SettingKeys.DevicesUseHostName, defaults.UseHostName),
             Read(rows, SettingKeys.DiscoveryZeroConfSeconds, defaults.ZeroConfSeconds),
@@ -115,6 +115,10 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
 
         return settings;
     }
+
+    /// <summary>The old default (plain http, saved by every Settings page save before TLS) means the new https default.</summary>
+    private static string ListenUrlOf(string stored) =>
+        string.Equals(stored.TrimEnd('/'), ServerSettings.LegacyDefaultListenUrl, StringComparison.OrdinalIgnoreCase) ? ServerSettings.DefaultListenUrl : stored;
 
     private static T Read<T>(Dictionary<string, string> rows, string key, T fallback)
     {

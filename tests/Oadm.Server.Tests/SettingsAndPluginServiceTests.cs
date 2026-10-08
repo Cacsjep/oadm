@@ -32,7 +32,7 @@ public sealed class SettingsAndPluginServiceTests
         Assert.Equal(60, defaults.PollingIntervalSeconds);
         Assert.Equal(32, defaults.ScanParallelism);
         Assert.Equal(1500, defaults.ScanTimeoutMs);
-        Assert.Equal("http://0.0.0.0:5080", defaults.ListenUrl);
+        Assert.Equal("https://0.0.0.0:5080", defaults.ListenUrl);
         Assert.Equal(30, defaults.ZeroConfSeconds);
         Assert.True(defaults.HasMaxParallelTasksPerPlugin);
         Assert.Equal(16, defaults.MaxParallelTasksPerPlugin);

@@ -1,5 +1,6 @@
 using Grpc.Core;
 
+using Oadm.Core.Auth;
 using Oadm.Core.Devices;
 using Oadm.Core.Security;
 using Oadm.Core.Vapix;
@@ -16,6 +17,7 @@ public sealed class DeviceGrpcService(
     CredentialStore credentials,
     VapixClientFactory clients,
     DevicePollingService polling,
+    AuditLog audit,
     IHostApplicationLifetime lifetime) : Proto.DeviceService.DeviceServiceBase
 {
     public override async Task<Proto.DeviceList> List(Proto.Empty request, ServerCallContext context)
@@ -89,7 +91,17 @@ public sealed class DeviceGrpcService(
     /// <summary>Removes the devices in one transaction (unknown ids are ignored).</summary>
     public override async Task<Proto.Empty> Remove(Proto.DeviceIds request, ServerCallContext context)
     {
-        await devices.RemoveManyAsync(GrpcGuard.ParseIds(request.Ids, "device id"), context.CancellationToken).ConfigureAwait(false);
+        var ids = GrpcGuard.ParseIds(request.Ids, "device id");
+        var wanted = ids.ToHashSet();
+        var addresses = (await devices.ListDevicesAsync(context.CancellationToken).ConfigureAwait(false))
+            .Where(d => wanted.Contains(d.Id)).Select(d => d.Address).ToList();
+        await devices.RemoveManyAsync(ids, context.CancellationToken).ConfigureAwait(false);
+        if (addresses.Count > 0)
+        {
+            var target = string.Join(", ", addresses.Take(5)) + (addresses.Count > 5 ? $" +{addresses.Count - 5} more" : string.Empty);
+            await audit.WriteAsync(AuditActions.DevicesRemoved, target, addresses.Count == 1 ? "1 device" : $"{addresses.Count} devices", context.CancellationToken).ConfigureAwait(false);
+        }
+
         return new Proto.Empty();
     }
 

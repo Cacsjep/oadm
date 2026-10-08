@@ -1,6 +1,8 @@
 using Grpc.Core;
 
+using Oadm.Core.Auth;
 using Oadm.Core.Plugins;
+using Oadm.Sdk.Plugins;
 using Oadm.Server.Common;
 using Oadm.Server.Mapping;
 
@@ -8,8 +10,11 @@ using Proto = Oadm.Contracts.V1;
 
 namespace Oadm.Server.Plugins;
 
-/// <summary>gRPC PluginService: core plugin pages and their backend calls.</summary>
-public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost host) : Proto.PluginService.PluginServiceBase
+/// <summary>
+/// gRPC PluginService: core plugin pages and their backend calls. Invoke checks the role the plugin requires for the
+/// method (<see cref="ICorePlugin.RequiredRole"/>, PERMISSION_DENIED) and writes audited calls to the audit log.
+/// </summary>
+public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost host, AuditLog audit) : Proto.PluginService.PluginServiceBase
 {
     public override Task<Proto.CorePluginList> ListCorePlugins(Proto.Empty request, ServerCallContext context)
     {
@@ -55,6 +60,12 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
             throw GrpcGuard.InvalidArgument("plugin_id and method are required.");
         }
 
+        var access = host.AccessOf(request.PluginId, request.Method);
+        if (access is not null && access.RequiredRole == UserRole.Admin && CallerContext.Current is { IsAdmin: false })
+        {
+            throw new RpcException(new Status(StatusCode.PermissionDenied, Auth.AuthInterceptor.AdminOnlyMessage));
+        }
+
         try
         {
             var result = await host.InvokeAsync(
@@ -62,6 +73,11 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
                 request.Method,
                 string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson,
                 context.CancellationToken).ConfigureAwait(false);
+            if (access is { Audited: true })
+            {
+                await audit.WriteAsync(AuditActions.PluginCall, access.PluginName, request.Method, context.CancellationToken).ConfigureAwait(false);
+            }
+
             return new Proto.InvokeReply { PayloadJson = result ?? string.Empty };
         }
         catch (KeyNotFoundException ex)

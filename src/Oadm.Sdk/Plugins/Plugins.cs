@@ -80,6 +80,27 @@ public interface ICorePlugin : IPlugin
     Task StopAsync(CancellationToken ct);
     /// <summary>Backend for the plugin's UI page.</summary>
     Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct);
+
+    /// <summary>
+    /// The role a user needs to call <paramref name="method"/> through the plugin's page (PluginService.Invoke). The host
+    /// checks it before <see cref="InvokeAsync"/> and answers PERMISSION_DENIED for a missing role. Methods that change
+    /// the server's configuration (settings, keys, services) return <see cref="UserRole.Admin"/>; reads and device
+    /// work stay <see cref="UserRole.Operator"/> (the default).
+    /// </summary>
+    UserRole RequiredRole(string method) => UserRole.Operator;
+
+    /// <summary>
+    /// Whether a call of <paramref name="method"/> is written to the server's audit log (user, client, plugin, method).
+    /// Default: the methods that need <see cref="UserRole.Admin"/>.
+    /// </summary>
+    bool IsAudited(string method) => RequiredRole(method) == UserRole.Admin;
+}
+
+/// <summary>Role of an OADM user. Admin may do everything; Operator works with devices and tasks.</summary>
+public enum UserRole
+{
+    Operator = 0,
+    Admin = 1,
 }
 
 public interface ITaskExecutionContext

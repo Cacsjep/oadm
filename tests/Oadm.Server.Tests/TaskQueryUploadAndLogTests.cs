@@ -65,7 +65,7 @@ public sealed class TaskQueryUploadAndLogTests
         await using var host = await TestServerHost.StartAsync(network);
         Register(host, new SamplePlugin());
         var device = await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.1", 1);
-        var files = new Proto.FileService.FileServiceClient(host.Channel);
+        var files = new Proto.FileService.FileServiceClient(host.Invoker);
         var content = RandomNumberGenerator.GetBytes(700_000);
 
         var uploaded = await UploadAsync(files, "AXIS_P3265-V_12_11_77.bin", content);
@@ -107,7 +107,7 @@ public sealed class TaskQueryUploadAndLogTests
     {
         await using var host = await TestServerHost.StartAsync();
         await host.Get<ServerSettingsStore>().SetAsync(SettingKeys.UploadsMaxMegabytes, 1, CancellationToken.None);
-        var files = new Proto.FileService.FileServiceClient(host.Channel);
+        var files = new Proto.FileService.FileServiceClient(host.Invoker);
 
         var tooLarge = await Assert.ThrowsAsync<RpcException>(() => UploadAsync(files, "big.bin", new byte[(1024 * 1024) + 1]));
         Assert.Equal(StatusCode.ResourceExhausted, tooLarge.StatusCode);

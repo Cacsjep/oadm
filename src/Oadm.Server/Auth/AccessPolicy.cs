@@ -1,0 +1,52 @@
+namespace Oadm.Server.Auth;
+
+/// <summary>Who may call a gRPC method.</summary>
+public enum Access
+{
+    /// <summary>Without a token: AuthService Status, Login and CreateFirstAdmin.</summary>
+    Open,
+
+    /// <summary>Any logged-in user (Operator or Admin).</summary>
+    Operator,
+
+    /// <summary>Administrators only.</summary>
+    Admin,
+}
+
+/// <summary>
+/// The role table of the gRPC API (CLAUDE.md "Production hardening", Roles). Everything not listed needs a login
+/// (Operator); core plugin methods are checked again per method (<c>ICorePlugin.RequiredRole</c>).
+/// </summary>
+public static class AccessPolicy
+{
+    private static readonly Dictionary<string, Access> Methods = new(StringComparer.Ordinal)
+    {
+        ["/oadm.v1.AuthService/Status"] = Access.Open,
+        ["/oadm.v1.AuthService/Login"] = Access.Open,
+        ["/oadm.v1.AuthService/CreateFirstAdmin"] = Access.Open,
+
+        ["/oadm.v1.SettingsService/Set"] = Access.Admin,
+        ["/oadm.v1.SettingsService/AddCredential"] = Access.Admin,
+        ["/oadm.v1.SettingsService/RemoveCredential"] = Access.Admin,
+        ["/oadm.v1.SettingsService/RevealCredential"] = Access.Admin,
+        ["/oadm.v1.TaskService/DeleteAll"] = Access.Admin,
+    };
+
+    /// <summary>Services that are Admin only as a whole.</summary>
+    private static readonly string[] AdminServices = ["/oadm.v1.UserService/", "/oadm.v1.AuditService/"];
+
+    /// <summary>The methods with an explicit entry (tests check them against the contracts).</summary>
+    public static IReadOnlyCollection<string> ListedMethods => Methods.Keys;
+
+    /// <param name="method">gRPC method path, "/oadm.v1.SettingsService/Set".</param>
+    public static Access For(string method)
+    {
+        ArgumentNullException.ThrowIfNull(method);
+        if (Methods.TryGetValue(method, out var access))
+        {
+            return access;
+        }
+
+        return AdminServices.Any(s => method.StartsWith(s, StringComparison.Ordinal)) ? Access.Admin : Access.Operator;
+    }
+}

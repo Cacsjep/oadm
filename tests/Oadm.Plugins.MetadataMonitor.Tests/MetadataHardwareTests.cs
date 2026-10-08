@@ -54,7 +54,10 @@ public sealed class MetadataHardwareTests
         {
             var server = app.GetTestServer();
             using var channel = GrpcChannel.ForAddress(server.BaseAddress, new GrpcChannelOptions { HttpHandler = server.CreateHandler(), MaxReceiveMessageSize = 32 * 1024 * 1024 });
-            var plugins = new Proto.PluginService.PluginServiceClient(channel);
+            // The in-process server needs a login like every client: a token of the administrator.
+            var token = await Oadm.Server.Auth.InProcessAccess.CreateTokenAsync(app.Services);
+            var invoker = Grpc.Core.Interceptors.ChannelExtensions.Intercept(channel, new Oadm.Contracts.Security.AuthHeaderInterceptor(() => token));
+            var plugins = new Proto.PluginService.PluginServiceClient(invoker);
             Assert.Contains((await plugins.ListCorePluginsAsync(new Proto.Empty())).Plugins, p => p.Id == MetadataMonitorPluginInfo.PluginId);
 
             var device = await app.Services.GetRequiredService<DeviceRepository>().AddAsync(new Device

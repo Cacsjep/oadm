@@ -1,3 +1,5 @@
+using Grpc.Core;
+using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
 
 using Microsoft.AspNetCore.Builder;
@@ -6,9 +8,12 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
+using Oadm.Contracts.Security;
+using Oadm.Core.Auth;
 using Oadm.Core.Discovery;
 using Oadm.Core.Discovery.Mdns;
 using Oadm.Core.Vapix;
+using Oadm.Server.Auth;
 using Oadm.Server.Hosting;
 
 using Proto = Oadm.Contracts.V1;
@@ -18,27 +23,55 @@ namespace Oadm.Server.Tests.Support;
 /// <summary>
 /// The real server (all services, real SQLite in a temp data folder) on an in-process TestServer,
 /// with VAPIX and discovery wired to a <see cref="FakeAxisNetwork"/>. No plugin folders are scanned.
+/// Every client calls as the logged-in administrator "admin" (<see cref="Invoker"/>); <see cref="InvokerFor"/> gives
+/// other users or no login. Password hashing uses few iterations to keep the tests fast.
 /// </summary>
 internal sealed class TestServerHost : IAsyncDisposable
 {
-    private TestServerHost(WebApplication app, GrpcChannel channel, string dataDirectory, FakeAxisNetwork network)
+    public const string AdminUserName = "admin";
+
+    private TestServerHost(WebApplication app, GrpcChannel channel, string adminToken, string dataDirectory, FakeAxisNetwork network)
     {
         App = app;
         Channel = channel;
+        AdminToken = adminToken;
+        Invoker = InvokerFor(adminToken);
         DataDirectory = dataDirectory;
         Network = network;
-        Devices = new Proto.DeviceService.DeviceServiceClient(channel);
-        Tasks = new Proto.TaskService.TaskServiceClient(channel);
-        Settings = new Proto.SettingsService.SettingsServiceClient(channel);
-        Plugins = new Proto.PluginService.PluginServiceClient(channel);
-        Discovery = new Proto.DiscoveryService.DiscoveryServiceClient(channel);
-        AddDevices = new Proto.AddDevicesService.AddDevicesServiceClient(channel);
-        LiveView = new Proto.LiveViewService.LiveViewServiceClient(channel);
+        Devices = new Proto.DeviceService.DeviceServiceClient(Invoker);
+        Tasks = new Proto.TaskService.TaskServiceClient(Invoker);
+        Settings = new Proto.SettingsService.SettingsServiceClient(Invoker);
+        Plugins = new Proto.PluginService.PluginServiceClient(Invoker);
+        Discovery = new Proto.DiscoveryService.DiscoveryServiceClient(Invoker);
+        AddDevices = new Proto.AddDevicesService.AddDevicesServiceClient(Invoker);
+        LiveView = new Proto.LiveViewService.LiveViewServiceClient(Invoker);
+        Auth = new Proto.AuthService.AuthServiceClient(Invoker);
+        Users = new Proto.UserService.UserServiceClient(Invoker);
+        Audit = new Proto.AuditService.AuditServiceClient(Invoker);
     }
 
     public WebApplication App { get; }
 
+    /// <summary>The raw channel: calls without a token (use <see cref="Invoker"/> for the administrator).</summary>
     public GrpcChannel Channel { get; }
+
+    /// <summary>Calls as the administrator "admin".</summary>
+    public CallInvoker Invoker { get; }
+
+    public string AdminToken { get; }
+
+    public Proto.AuthService.AuthServiceClient Auth { get; }
+
+    public Proto.UserService.UserServiceClient Users { get; }
+
+    public Proto.AuditService.AuditServiceClient Audit { get; }
+
+    /// <summary>Calls with <paramref name="token"/> (null: without a login) and the client machine name "testpc".</summary>
+    public CallInvoker InvokerFor(string? token) => Channel.Intercept(new AuthHeaderInterceptor(() => token, "testpc"));
+
+    /// <summary>Creates (if needed) a user with the role and returns an invoker that calls as that user.</summary>
+    public async Task<CallInvoker> InvokerForUserAsync(string userName, Oadm.Sdk.Plugins.UserRole role) =>
+        InvokerFor(await InProcessAccess.CreateTokenAsync(App.Services, userName, role));
 
     public string DataDirectory { get; }
 
@@ -67,7 +100,8 @@ internal sealed class TestServerHost : IAsyncDisposable
     /// <param name="network">Fake devices; null for an empty network.</param>
     /// <param name="useRealNetwork">Keep the real VAPIX connector and probes (hardware tests).</param>
     /// <param name="configureServices">Extra replacements after the defaults (e.g. a fake live video source).</param>
-    public static async Task<TestServerHost> StartAsync(FakeAxisNetwork? network = null, bool useRealNetwork = false, Action<IServiceCollection>? configureServices = null)
+    /// <param name="createAdmin">False: no user exists (first-administrator tests); the clients call without a token.</param>
+    public static async Task<TestServerHost> StartAsync(FakeAxisNetwork? network = null, bool useRealNetwork = false, Action<IServiceCollection>? configureServices = null, bool createAdmin = true)
     {
         network ??= new FakeAxisNetwork();
         var dataDirectory = NewDataDirectory();
@@ -79,6 +113,8 @@ internal sealed class TestServerHost : IAsyncDisposable
             ConfigureBuilder = b => b.WebHost.UseTestServer(),
             ConfigureServices = services =>
             {
+                services.RemoveAll<PasswordHasher>();
+                services.AddSingleton(new PasswordHasher(1_000));
                 services.RemoveAll<IMdnsBrowser>();
                 services.AddSingleton<IMdnsBrowser, SilentMdnsBrowser>();
                 if (!useRealNetwork)
@@ -98,7 +134,8 @@ internal sealed class TestServerHost : IAsyncDisposable
         await OadmServerHost.StartAsync(app);
         var server = app.GetTestServer();
         var channel = GrpcChannel.ForAddress(server.BaseAddress, new GrpcChannelOptions { HttpHandler = server.CreateHandler() });
-        return new TestServerHost(app, channel, dataDirectory, network);
+        var token = createAdmin ? await InProcessAccess.CreateTokenAsync(app.Services, AdminUserName) : "";
+        return new TestServerHost(app, channel, token, dataDirectory, network);
     }
 
     public async ValueTask DisposeAsync()

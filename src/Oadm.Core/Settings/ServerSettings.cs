@@ -92,7 +92,10 @@ public sealed record ServerSettings(
     public const int MaxFullRefreshMinutes = 1440;
     public const int DefaultScanParallelism = 32;
     public const int DefaultScanTimeoutMs = 1500;
-    public const string DefaultListenUrl = "http://0.0.0.0:5080";
+    public const string DefaultListenUrl = "https://0.0.0.0:5080";
+
+    /// <summary>The default before TLS (Production hardening); a stored value equal to it reads as <see cref="DefaultListenUrl"/>.</summary>
+    public const string LegacyDefaultListenUrl = "http://0.0.0.0:5080";
     public const int DefaultUploadsMaxMegabytes = 2048;
     public const int MaxUploadsMaxMegabytes = 65_536;
     public const int DefaultUploadsRetentionHours = 24;

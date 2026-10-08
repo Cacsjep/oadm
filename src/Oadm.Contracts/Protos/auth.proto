@@ -1,0 +1,116 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// Login, logout and the first administrator. The token travels as "authorization: Bearer <token>" in the gRPC
+// metadata of every other call (never in messages); the client also sends "oadm-client-machine: <machine name>".
+// Open without a token: Status, Login, CreateFirstAdmin. Everything else needs a valid token (UNAUTHENTICATED), the
+// admin-only calls the Admin role (PERMISSION_DENIED).
+service AuthService {
+  // Server name, version and whether the first administrator still has to be created.
+  rpc Status (Empty) returns (AuthStatus);
+  // UNAUTHENTICATED for a wrong user name or password or a disabled user (one message for all three),
+  // RESOURCE_EXHAUSTED while the user is locked after too many failed logins.
+  rpc Login (LoginRequest) returns (LoginReply);
+  // Only while no user exists, from a loopback client or with the setup code (<datafolder>/setup-code.txt).
+  // FAILED_PRECONDITION users exist, PERMISSION_DENIED wrong setup code, INVALID_ARGUMENT name or password.
+  rpc CreateFirstAdmin (CreateFirstAdminRequest) returns (LoginReply);
+  // Revokes the token of the call.
+  rpc Logout (Empty) returns (Empty);
+  // The user of the token (a remembered token is checked with this at client start).
+  rpc Me (Empty) returns (UserInfo);
+}
+
+// Users and roles (Admin only). Never the last enabled administrator, never the caller's own account
+// (FAILED_PRECONDITION with the reason); INVALID_ARGUMENT for names and passwords; NOT_FOUND.
+service UserService {
+  rpc List (Empty) returns (UserList);
+  rpc Add (AddUserRequest) returns (UserInfo);
+  rpc Update (UpdateUserRequest) returns (UserInfo);
+  rpc Delete (UserIdRequest) returns (Empty);
+}
+
+// Audit log (Admin only), newest first.
+service AuditService {
+  rpc List (ListAuditRequest) returns (AuditList);
+}
+
+enum UserRole {
+  USER_ROLE_OPERATOR = 0;
+  USER_ROLE_ADMIN = 1;
+}
+
+message AuthStatus {
+  string server_name = 1;
+  string version = 2;
+  bool needs_first_admin = 3;     // no user exists yet
+  bool setup_code_required = 4;   // this client is not on the server computer: CreateFirstAdmin needs the setup code
+}
+
+message LoginRequest {
+  string user_name = 1;
+  string password = 2;
+  bool remember = 3;              // 30 days sliding instead of 8 hours
+}
+
+message LoginReply {
+  string token = 1;
+  UserInfo user = 2;
+}
+
+message CreateFirstAdminRequest {
+  string user_name = 1;
+  string password = 2;
+  string setup_code = 3;
+  bool remember = 4;
+}
+
+message UserInfo {
+  string id = 1;
+  string user_name = 2;
+  UserRole role = 3;
+  bool disabled = 4;
+  google.protobuf.Timestamp created = 5;
+  google.protobuf.Timestamp last_login = 6;   // unset: never logged in
+}
+
+message UserList { repeated UserInfo users = 1; }
+
+message AddUserRequest {
+  string user_name = 1;
+  string password = 2;
+  UserRole role = 3;
+}
+
+// Partial update: unset fields keep their value; an empty new_password keeps the password. A changed password, role
+// or a disabled user ends the user's sessions.
+message UpdateUserRequest {
+  string id = 1;
+  optional UserRole role = 2;
+  optional bool disabled = 3;
+  string new_password = 4;
+}
+
+message UserIdRequest { string id = 1; }
+
+message ListAuditRequest {
+  int32 limit = 1;    // 0 = 10,000
+  int32 offset = 2;
+}
+
+message AuditEntry {
+  int64 id = 1;
+  google.protobuf.Timestamp time = 2;
+  string user_name = 3;
+  string client_address = 4;
+  string action = 5;
+  string target = 6;
+  string detail = 7;
+}
+
+message AuditList {
+  repeated AuditEntry entries = 1;
+  int32 total_count = 2;
+}

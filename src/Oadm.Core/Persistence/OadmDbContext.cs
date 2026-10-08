@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Oadm.Core.Auth;
 using Oadm.Core.Devices;
 using Oadm.Core.Security;
 using Oadm.Core.Settings;
@@ -22,6 +23,9 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
     /// <summary>Longer task log messages are cut to this length.</summary>
     public const int TaskLogEntryMaxLength = 2000;
     public DbSet<Setting> Settings => Set<Setting>();
+    public DbSet<UserEntity> Users => Set<UserEntity>();
+    public DbSet<AuthTokenEntity> AuthTokens => Set<AuthTokenEntity>();
+    public DbSet<AuditEntryEntity> AuditEntries => Set<AuditEntryEntity>();
 
     private static readonly ValueConverter<DateTime, DateTime> UtcConverter =
         new(v => v.Kind == DateTimeKind.Utc ? v : v.ToUniversalTime(), v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
@@ -153,6 +157,46 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(l => l.Message).IsRequired().HasMaxLength(TaskLogEntryMaxLength);
             e.HasIndex(l => l.TaskId);
             e.HasOne<TaskEntity>().WithMany().HasForeignKey(l => l.TaskId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserEntity>(e =>
+        {
+            e.ToTable("Users");
+            e.HasKey(u => u.Id);
+            e.Property(u => u.Id).ValueGeneratedNever();
+            e.Property(u => u.UserName).IsRequired().HasMaxLength(UserStore.MaxUserNameLength);
+            e.Property(u => u.NormalizedName).IsRequired().HasMaxLength(UserStore.MaxUserNameLength);
+            e.HasIndex(u => u.NormalizedName).IsUnique();
+            e.Property(u => u.PasswordHash).IsRequired().HasMaxLength(256);
+            e.Property(u => u.Role).HasConversion<string>().HasMaxLength(16);
+            e.Property(u => u.CreatedUtc).HasConversion(UtcConverter);
+            e.Property(u => u.LastLoginUtc).HasConversion(NullableUtcConverter);
+        });
+
+        modelBuilder.Entity<AuthTokenEntity>(e =>
+        {
+            e.ToTable("AuthTokens");
+            e.HasKey(t => t.TokenHash);
+            e.Property(t => t.TokenHash).HasMaxLength(64);
+            e.Property(t => t.ClientAddress).IsRequired().HasMaxLength(64);
+            e.Property(t => t.CreatedUtc).HasConversion(UtcConverter);
+            e.Property(t => t.ExpiresUtc).HasConversion(UtcConverter);
+            e.HasIndex(t => t.UserId);
+            e.HasOne<UserEntity>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AuditEntryEntity>(e =>
+        {
+            e.ToTable("AuditEntries");
+            e.HasKey(a => a.Id);
+            e.Property(a => a.Id).ValueGeneratedOnAdd();
+            e.Property(a => a.TimeUtc).HasConversion(UtcConverter);
+            e.Property(a => a.UserName).IsRequired().HasMaxLength(AuditLog.MaxTextLength);
+            e.Property(a => a.ClientAddress).IsRequired().HasMaxLength(AuditLog.MaxTextLength);
+            e.Property(a => a.Action).IsRequired().HasMaxLength(AuditLog.MaxTextLength);
+            e.Property(a => a.Target).IsRequired().HasMaxLength(AuditLog.MaxTextLength);
+            e.Property(a => a.Detail).IsRequired().HasMaxLength(AuditLog.MaxTextLength);
+            e.HasIndex(a => a.TimeUtc);
         });
 
         modelBuilder.Entity<Setting>(e =>
