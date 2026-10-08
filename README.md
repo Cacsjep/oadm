@@ -2,33 +2,12 @@
 
 Open source, cross-platform alternative to AXIS Device Manager. Runs on Windows, Linux and macOS.
 
-OADM (Open AXIS Device Management) is an independent, open-source project for managing AXIS network devices.
-OADM is not affiliated with, sponsored by, or endorsed by Axis Communications.
+**Its an independent, open-source project for managing AXIS network devices.
+OADM is not affiliated with, sponsored by, or endorsed by Axis Communications.**
 
-- [About](#about)
 - [For users](#for-users)
 - [For developers](#for-developers)
 - [License](#license)
-
-# About
-
-OADM manages AXIS cameras and other AXIS devices on a site, the way AXIS Device Manager (ADM) does: same
-workflows and information, so switching is easy, but cross-platform and extensible with plugins.
-
-| Area | What OADM does |
-|---|---|
-| Add devices | Find devices by zero-conf (mDNS), IP range or address; logs in automatically with your credential list, sets the first password on factory-default devices |
-| Device list | MAC address, status, address, model, firmware, DHCP, HTTPS, certificate and IEEE 802.1X columns, live status, search, column chooser, live video panel |
-| Tasks | Restart, firmware upgrade, users, network settings and IP addresses, date and time, applications (ACAP), HTTPS and IEEE 802.1X certificates; one task per device with named steps and a log |
-| Built-in services | NTP server, DHCP server, PKI (certificate authority for HTTPS and 802.1X), VAPIX Commander (send VAPIX commands to many devices), snapshot report (PDF maintenance report) |
-| Scale | Built and tested for 5,000 devices and 50,000 tasks in the history |
-
-OADM has two parts:
-
-- **OADM Server** keeps the device list, the stored credentials (encrypted), the tasks and the plugins. It runs as
-  a background service.
-- **OADM Client** is the desktop app (dark UI). It connects to the server over the network, so several clients can
-  share one server.
 
 > **Security note:** the server has no user login yet. Run it on a trusted LAN only.
 
@@ -230,15 +209,14 @@ it never stops server or client.
 
 ### Working with an AI assistant
 
-OADM is developed with an AI coding assistant ([Claude Code](https://claude.com/claude-code)), and the repository is
-set up for it:
+OADM is co-developed with Claude, and the repository is set up for it:
 
 - [`CLAUDE.md`](CLAUDE.md) is the single source of truth for the spec and the coding rules. Claude Code reads it
   automatically; for other assistants, give it to them first. Keep it current: a changed decision goes into
   `CLAUDE.md` in the same change.
 - Describe the feature like a user story and let the assistant ask questions before it writes code, for example:
   *"Read CLAUDE.md and plugins/README.md. I want a task plugin 'Set host name' in the Network group, with a dialog
-  for one or many devices. Ask me what is unclear, write the spec into CLAUDE.md, then build it with tests and
+  for one or many devices. Ask me what is unclear, write the spec, then build it with tests and
   headless screenshots."*
 - The assistant checks its UI work only with headless screenshots (`OADM_SCREENSHOT_DIR`), never by clicking on
   your desktop.
