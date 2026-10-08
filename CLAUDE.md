@@ -1046,7 +1046,7 @@ pane shows `GetTaskName` (see Tasks). The server registry (`RegisteredTaskPlugin
 warning for either; empty groups become `General`, groups are shortened the same way. The task name in
 the tasks pane, `TaskPluginInfo` and the client menu and toolbar use the normalized name. Bundled plugins:
 Restart, Upgrade firmware and Date and time (Maintenance), Applications (ACAP) (Applications), Users (Users), Network
-settings and Assign IP address (Network), the eight PKI tasks (Security, contributed by `oadm.pki`); `TaskPluginNamesTests` checks every plugin deployed to
+settings and Assign IP address (Network), the nine PKI tasks (Security, contributed by `oadm.pki`); `TaskPluginNamesTests` checks every plugin deployed to
 `artifacts/plugins`.
 
 ## Client SDK (Oadm.Sdk.Client)
@@ -1754,15 +1754,34 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   certificates, Install certificate, Set 802.1X configuration, Verify 802.1X settings; CA only: Install CA certificates.
   A device without a file ends Done with warnings, nothing sent. Name "Install certificate <file>" / "Install N
   certificates".
+- **Install CA certificates** (`oadm.pki.install-ca`, icon `upload`, user request 2026-10-08: install one or more CA
+  certificates on many devices, no OADM CA needed): `InstallCaCertificatesWindow` (`InstallCaCertificatesViewModel`):
+  **Add files** (several at once, again for more; PEM .crt / .pem / .cer incl. bundles with several certificates, DER
+  .cer / .crt / .der, at most 1 MB each, read by the shared `CaCertificateFiles`), a virtualized table with one row per
+  certificate (Name = subject CN, Issued by, Valid to, SHA-256 (first 8 bytes, tooltip the whole one), File, Status chip,
+  Remove icon): the same certificate in several files is one row with both file names; a row's problem stays in its Status
+  column ("Not a CA certificate": no BasicConstraints CA or no keyCertSign when KeyUsage is present, "Expired", "Not valid
+  yet", "Cannot be read" / "No certificate" for a file). Rows with a problem are left out; Install is disabled with the
+  reason as tooltip while no usable certificate is listed or more than 150 (`CaCertificateFiles.MaxCertificates`, one
+  step each within the 200 steps of a task; the reason also directly below the table), confirms in `ui:MessageWindow`
+  ("Install 3 CA certificates on 12 devices? ...") and returns `InstallCaPayload` {certificates [{name, pem}]} (public
+  data in memory, no upload). Steps: Check compatibility (the payload is checked again first: every certificate a CA,
+  valid now, duplicates merged, else Failed "<name>: <reason> Nothing was changed." without a request; then cert v1 from a
+  fresh `config/discover`), Read installed CA certificates, Install CA certificate <name> (one each, "(2)" for an equal
+  name; Skipped "Already installed" when the device has the fingerprint under any alias; alias "OADM CA <8 hex>" like
+  the enable flows, "-2" when another certificate holds that alias), Verify CA certificates (every fingerprint listed,
+  else Warning). Name "Install CA certificate <name>" / "Install N CA certificates".
 - Not done: the device grid's "Trusted (OADM CA)" / "Issued by a previous CA" texts and `expiryWarningDays` in the
   Certificate expires column (OADM certificates already rate **Trusted** through the trust anchors). Task names do not
   distinguish Enable from Update or one renewed purpose (the name is fixed per run, before the device is read).
 - Tests (`tests/Oadm.Plugins.Pki.Tests`): parsers and request bodies against the recorded 10.0.0.48 answers (linked from
   `tests/Oadm.Plugins.Pki.Tests/Fixtures`), every task against `FakeCamera` (stateful REST cert v1 with real keys and CSRs, SOAP web
   server, network_settings.cgi, time.cgi) incl. compatibility failures with no writes, clock, chain, cleanup, renew,
-  delete refusals, manual install; registry batching; dialog view models (5,000 devices: unit check plus a Perf test with
-  190,000 certificates); headless screenshots `pki-view-certificates.png`, `pki-delete-certificates.png`,
-  `pki-install-manual.png`, `pki-dot1x-confirm.png`; `tests/Oadm.Client.Tests/SecurityMenuTests` (`pki-security-menu.png`);
+  delete refusals, manual install, Install CA certificates (`InstallCaTests`: PEM bundles, DER, non-CA, expired,
+  garbage, installs / skips existing / no writes on an old device or an invalid payload); registry batching; dialog view
+  models (5,000 devices: unit check plus a Perf test with 190,000 certificates; Install CA certificates with 5,000
+  devices); headless screenshots `pki-view-certificates.png`, `pki-delete-certificates.png`,
+  `pki-install-manual.png`, `pki-install-ca.png`, `pki-dot1x-confirm.png`; `tests/Oadm.Client.Tests/SecurityMenuTests` (`pki-security-menu.png`);
   `tests/Oadm.Server.Tests/DeviceTlsTests` (UpdateDeviceTlsAsync with the fake network presenting real certificates).
   `HardwareWriteTests` is an opt-in skeleton (`OADM_PKI_HARDWARE_WRITE=1`, `Category=HardwareWrite`), not written yet.
 

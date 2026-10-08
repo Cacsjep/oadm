@@ -9,6 +9,11 @@ workflow copies the section into the GitHub release.
 
 ### Added
 
+- PKI: **Install CA certificates** in the Security menu installs one or more CA certificates on all selected devices,
+  so they trust certificates those CAs issued (e.g. of a RADIUS server or a video management system). Choose several
+  files at once (PEM, also bundles, or DER), add more or remove rows; each certificate is checked (a CA, not expired)
+  and shown with name, issuer, validity and fingerprint, duplicates are merged. Certificates a device already has are
+  skipped.
 - **Unsupported tasks stay visible**: the device context menu always lists every task in its group; a task the
   selection cannot run is greyed out with the reason as tooltip ("Needs AXIS OS 11.11 or later (this device has
   11.9.65)", or "...: 3 of 5 selected devices" for several), also on toolbar task buttons. Plugin SDK:
