@@ -54,6 +54,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     private readonly ILogger<DevicesViewModel> _logger;
     private readonly Shell.UserSession? _session;
     private bool _selectionNeedsLogin;
+    private bool _selectionNeedsPassword;
 
     public DevicesViewModel(
         DeviceStore store,
@@ -183,6 +184,24 @@ public sealed partial class DevicesViewModel : ObservableObject
             await _dialogs.ShowMessageAsync("Log in", login.CredentialListNote).ConfigureAwait(true);
         }
     }
+
+    /// <summary>
+    /// Context menu "Set password": the first root password for the devices of the selection in factory default (status
+    /// Password not set, nothing else). One server call for all of them.
+    /// </summary>
+    [RelayCommand]
+    private async Task SetPasswordAsync()
+    {
+        List<DeviceRowViewModel> devices = SetPasswordTargets();
+        if (devices.Count > 0)
+        {
+            await _dialogs.ShowDeviceSetPasswordAsync(new DeviceSetPasswordViewModel(_api, devices)).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>The selected devices without a password yet (O(selection)).</summary>
+    internal List<DeviceRowViewModel> SetPasswordTargets() =>
+        SelectedDevices.Where(d => d.ContractStatus == DeviceStatus.PasswordNotSet).ToList();
 
     /// <summary>The selected devices that reject their stored credentials (O(selection)).</summary>
     internal List<DeviceRowViewModel> LoginTargets() =>
@@ -447,6 +466,12 @@ public sealed partial class DevicesViewModel : ObservableObject
             ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Log in", IconKey = "key", Command = LogInCommand });
         }
 
+        _selectionNeedsPassword = SelectionNeedsPassword();
+        if (_selectionNeedsPassword)
+        {
+            ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Set password", IconKey = "lock", Command = SetPasswordCommand });
+        }
+
         ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Remove", IconKey = "remove", Command = RemoveCommand });
 
         var runnable = TaskPluginCatalog.RunnableFor(_catalog.Plugins, SelectedIds()).ToList();
@@ -462,10 +487,12 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     private bool SelectionNeedsLogin() => SelectedDevices.Any(d => d.ContractStatus == DeviceStatus.CredentialsRequired);
 
+    private bool SelectionNeedsPassword() => SelectedDevices.Any(d => d.ContractStatus == DeviceStatus.PasswordNotSet);
+
     /// <summary>A device changed: the "Log in" entry follows the status of the selected devices (O(selection), rebuilt only on a change).</summary>
     private void OnSelectedStatusMayHaveChanged()
     {
-        if (SelectedDevices.Count > 0 && SelectionNeedsLogin() != _selectionNeedsLogin)
+        if (SelectedDevices.Count > 0 && (SelectionNeedsLogin() != _selectionNeedsLogin || SelectionNeedsPassword() != _selectionNeedsPassword))
         {
             RebuildContextMenu();
         }

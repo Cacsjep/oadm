@@ -63,6 +63,19 @@ public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLa
         return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
     }
 
+    public async Task<bool> ShowDeviceSetPasswordAsync(Devices.DeviceSetPasswordViewModel setPassword)
+    {
+        ArgumentNullException.ThrowIfNull(setPassword);
+        if (CurrentOwner() is not { } owner)
+        {
+            return false;
+        }
+
+        var window = new Devices.DeviceSetPasswordWindow();
+        window.Attach(setPassword);
+        return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
+    }
+
     public async Task<string?> ShowTaskPluginDialogAsync(ITaskPluginDialog dialog, IReadOnlyList<IDeviceInfo> devices)
     {
         ArgumentNullException.ThrowIfNull(dialog);

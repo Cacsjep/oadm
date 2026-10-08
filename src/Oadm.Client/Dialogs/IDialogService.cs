@@ -18,6 +18,9 @@ public interface IDialogService
     /// <summary>Shows the "Log in" dialog of devices that reject their stored credentials; true when all accepted the login.</summary>
     Task<bool> ShowDeviceLoginAsync(Oadm.Client.Devices.DeviceLoginViewModel login);
 
+    /// <summary>Shows the "Set password" dialog of factory-default devices; true when all took the password.</summary>
+    Task<bool> ShowDeviceSetPasswordAsync(Oadm.Client.Devices.DeviceSetPasswordViewModel setPassword);
+
     /// <summary>The window dialogs open on (active window, else the main window); null without a desktop.</summary>
     Avalonia.Controls.Window? Owner { get; }
 

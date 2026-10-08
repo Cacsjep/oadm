@@ -55,6 +55,12 @@ public interface IOadmApi
     /// <summary>The user name stored for all these devices when they share one; empty otherwise.</summary>
     Task<string> GetCredentialUserNameAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct);
 
+    /// <summary>"Set password" for factory-default devices: the first root password; one call for the selection, one result per device.</summary>
+    Task<SetFirstPasswordReply> SetFirstPasswordAsync(IReadOnlyCollection<string> deviceIds, string password, CancellationToken ct);
+
+    /// <summary>Device id -> passphrase policy ("none", "length", "complex"; empty when unknown) for the Set password hint.</summary>
+    Task<IReadOnlyDictionary<string, string>> GetPassphrasePoliciesAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct);
+
     // DiscoveryService
     Task<string> StartZeroConfAsync(CancellationToken ct);
     Task<string> StartRangeScanAsync(string firstAddress, string lastAddress, CancellationToken ct);

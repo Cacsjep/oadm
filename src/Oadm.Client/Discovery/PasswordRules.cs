@@ -81,5 +81,34 @@ public static class PasswordRules
             : confirm != password ? "The passwords do not match." : null;
     }
 
+    /// <summary>
+    /// The hint for several devices with possibly different policies: the strictest rule wins, "length" and "complex"
+    /// together need both (at least 15 characters with every character class).
+    /// </summary>
+    public static string Hint(IEnumerable<string?> policies)
+    {
+        ArgumentNullException.ThrowIfNull(policies);
+        var set = policies.Select(Normalize).ToHashSet(StringComparer.Ordinal);
+        if (set.Contains("length") && set.Contains("complex"))
+        {
+            return $"1-64 printable ASCII characters; the device policies \"length\" and \"complex\": at least {LengthPolicyMinimum} characters with upper- and lower-case letters, a digit and a special character.";
+        }
+
+        return Hint(set.Contains("complex") ? "complex" : set.Contains("length") ? "length" : null);
+    }
+
+    /// <summary>Error of the password field against every policy (first failing one); null when valid.</summary>
+    public static string? PasswordError(string password, IEnumerable<string?> policies)
+    {
+        ArgumentNullException.ThrowIfNull(policies);
+        var distinct = policies.Select(Normalize).Distinct(StringComparer.Ordinal).ToList();
+        if (distinct.Count == 0)
+        {
+            distinct.Add("");
+        }
+
+        return distinct.Select(p => PasswordError(password, p)).FirstOrDefault(e => e is not null);
+    }
+
     private static string Normalize(string? policy) => (policy ?? "").Trim().ToLowerInvariant();
 }
