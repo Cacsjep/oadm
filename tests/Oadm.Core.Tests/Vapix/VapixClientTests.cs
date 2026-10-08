@@ -234,6 +234,19 @@ public class VapixClientTests
     }
 
     [Fact]
+    public void BasicOverHttpOnlyWhenTheAddPageAllowsItForAVerifiedAxisDevice()
+    {
+        var credentials = new NetworkCredential("root", "pw");
+        using var http = VapixClient.CreateHandler(new Uri("http://10.0.0.48/"), credentials, new CertificatePinning(), allowBasicOverHttp: true);
+
+        var cache = Assert.IsType<CredentialCache>(http.Credentials);
+        var target = new Uri("http://10.0.0.48/axis-cgi/basicdeviceinfo.cgi");
+        Assert.NotNull(cache.GetCredential(target, "Digest")); // preferred when the device offers it
+        Assert.NotNull(cache.GetCredential(target, "Basic"));
+        Assert.False(new VapixConnectionOptions { Address = "10.0.0.48" }.AllowBasicOverHttp);
+    }
+
+    [Fact]
     public async Task PinMismatchBecomesCertificateChangedException()
     {
         using var pinned = CertificatePinningTests.CreateCertificate("CN=pinned");

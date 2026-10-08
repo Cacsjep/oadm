@@ -105,7 +105,7 @@ public sealed class CommanderViewHeadlessTests
                 vm.Raw.SaveName = "ab";
                 vm.Raw.ShowProblems();
                 Dispatcher.UIThread.RunJobs();
-                Assert.Equal("The path must be relative to the device, start with / and must not contain \"..\".", vm.Raw.ErrorOf(nameof(vm.Raw.Path)));
+                Assert.Equal(CommandValidator.PathProblem, vm.Raw.ErrorOf(nameof(vm.Raw.Path)));
                 Assert.StartsWith("The JSON body is not valid", vm.Raw.ErrorOf(nameof(vm.Raw.BodyText)), StringComparison.Ordinal);
                 Assert.Equal("Name must have 3 to 80 characters.", vm.Raw.ErrorOf(nameof(vm.Raw.SaveName)));
                 var pathBox = view.GetVisualDescendants().OfType<TextBox>().Single(t => t.IsEffectivelyVisible && t.Text == "axis-cgi/param.cgi");

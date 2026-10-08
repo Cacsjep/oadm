@@ -88,7 +88,9 @@ public sealed partial class DeviceToolbar
                 }
                 catch (Exception ex)
                 {
+                    // The entry is left out; the client keeps running (production hardening 4).
                     LogCreateFailed(_logger, ex, plugin.Id);
+                    _ = ReportAsync(context, plugin.Id, ex);
                 }
             }
 
@@ -134,6 +136,20 @@ public sealed partial class DeviceToolbar
             }
 
             anyBefore |= visible;
+        }
+    }
+
+    private async Task ReportAsync(IToolbarContext context, string id, Exception ex)
+    {
+        try
+        {
+            await context.ShowMessageAsync("Toolbar", $"The toolbar entry {id} failed: {ex.Message}").ConfigureAwait(true);
+        }
+#pragma warning disable CA1031 // Reporting a broken plugin must never break the toolbar.
+        catch (Exception showFailed)
+#pragma warning restore CA1031
+        {
+            LogCreateFailed(_logger, showFailed, id);
         }
     }
 

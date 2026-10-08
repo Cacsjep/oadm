@@ -12,6 +12,29 @@ public static partial class CommandValidator
 {
     private static readonly string[] ForbiddenHeaders = ["Authorization", "Proxy-Authorization", "Cookie", "Host", "Content-Length"];
 
+    /// <summary>Field error of a path that could leave the device.</summary>
+    public const string PathProblem = "The path must start with / and stay on the device: no \"..\", \"//\", \"\\\" or host name.";
+
+    /// <summary>
+    /// Whether a path template stays on the device's own address: starts with one "/", no backslash, no "//" anywhere,
+    /// no scheme or authority ("://", "@" before the query), no ".." segment and no control characters or spaces.
+    /// </summary>
+    public static bool IsDevicePath(string? path)
+    {
+        if (string.IsNullOrEmpty(path) || path[0] != '/')
+        {
+            return false;
+        }
+
+        var q = path.IndexOf('?', StringComparison.Ordinal);
+        var pathPart = q < 0 ? path : path[..q];
+        return !path.Contains('\\', StringComparison.Ordinal)
+            && !path.Contains("//", StringComparison.Ordinal)
+            && !pathPart.Contains('@', StringComparison.Ordinal)
+            && !path.Any(c => char.IsControl(c) || char.IsWhiteSpace(c))
+            && !path.Split('/', '?').Contains("..");
+    }
+
     [GeneratedRegex("^[a-z0-9]+(\\.[a-z0-9-]+)+$", RegexOptions.CultureInvariant)]
     private static partial Regex IdRegex();
 
@@ -169,10 +192,9 @@ public static partial class CommandValidator
             problems.Add($"Unknown method \"{request.Method}\" (GET, POST, PUT, PATCH, DELETE).");
         }
 
-        if (string.IsNullOrEmpty(request.Path) || request.Path[0] != '/' || request.Path.Contains("://", StringComparison.Ordinal)
-            || request.Path.StartsWith("//", StringComparison.Ordinal) || request.Path.Split('/', '?').Contains(".."))
+        if (!IsDevicePath(request.Path))
         {
-            problems.Add("The path must be relative to the device, start with / and must not contain \"..\".");
+            problems.Add(PathProblem);
         }
 
         foreach (var key in request.Query?.Keys ?? Enumerable.Empty<string>())

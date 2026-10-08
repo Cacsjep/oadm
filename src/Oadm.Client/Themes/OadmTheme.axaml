@@ -966,13 +966,13 @@
     <Setter Property="Padding" Value="12,8" />
     <Setter Property="Background" Value="{StaticResource Oadm.StatusErrorBackgroundBrush}" />
   </Style>
-  <Style Selector="Border.banner TextBlock">
+  <Style Selector="Border.banner > TextBlock, Border.banner > DockPanel > TextBlock">
     <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
   </Style>
-  <Style Selector="Border.banner.connecting">
+  <Style Selector="Border.banner.connecting, Border.banner.warning">
     <Setter Property="Background" Value="{StaticResource Oadm.StatusWarningBackgroundBrush}" />
   </Style>
-  <Style Selector="Border.banner.connecting TextBlock">
+  <Style Selector="Border.banner.connecting > TextBlock, Border.banner.warning > DockPanel > TextBlock">
     <Setter Property="Foreground" Value="{StaticResource Oadm.StatusWarningBrush}" />
   </Style>
 </Styles>

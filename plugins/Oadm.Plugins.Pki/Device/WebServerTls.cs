@@ -121,7 +121,7 @@ public static class WebServerTls
         XDocument document;
         try
         {
-            document = XDocument.Parse(xml);
+            document = DeviceXml.Parse(xml);
         }
         catch (XmlException ex)
         {

@@ -54,8 +54,8 @@ message DiscoveredDevice {
   DeviceCategory category = 13;
   AuthState auth_state = 14;
   string auth_user_name = 15;    // user of the credential that worked (never a password)
-  // Which known credential worked: "list:<id>" (credential list), "device:<id>" (credentials of a
-  // managed device) or "entered" (RetryAuth, kept in server memory only). Passwords never leave the server.
+  // Which known credential worked: "list:<id>" (credential list) or "entered" (RetryAuth, kept in server
+  // memory only). Passwords of managed devices are never tried on new devices. Passwords never leave the server.
   string credential_id = 16;
   string auth_detail = 17;       // reason for LOGIN_FAILED / UNREACHABLE, user facing
   string passphrase_policy = 18; // factory default only: systemready passphrasepolicy (none, length, complex)

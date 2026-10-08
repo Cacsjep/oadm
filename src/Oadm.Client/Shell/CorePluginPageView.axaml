@@ -22,7 +22,7 @@
             <Panel>
               <ContentControl Content="{Binding CardView}" IsVisible="{Binding HasView}" />
               <TextBlock Classes="secondary" IsVisible="{Binding !HasView}"
-                         Text="The page of this plugin is not installed on this client." />
+                         Text="{Binding NoViewText}" TextWrapping="Wrap" />
             </Panel>
           </Border>
           <!-- Pages with several panels (ICorePluginPage.HasOwnCards) bring their own cards. -->

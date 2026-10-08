@@ -85,3 +85,29 @@ public sealed class CertificateChangedException : VapixException
 
     public string? ActualFingerprint { get; }
 }
+
+/// <summary>The device answered with more than <see cref="VapixClient.MaxResponseBytes"/> (16 MB); the answer was dropped.</summary>
+public sealed class VapixResponseTooLargeException : VapixException
+{
+    public VapixResponseTooLargeException()
+        : base(DefaultMessage)
+    {
+    }
+
+    public VapixResponseTooLargeException(string message)
+        : base(message)
+    {
+    }
+
+    public VapixResponseTooLargeException(Exception innerException)
+        : base(DefaultMessage, innerException)
+    {
+    }
+
+    public VapixResponseTooLargeException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+
+    private const string DefaultMessage = "The device answer is larger than 16 MB and was not read.";
+}

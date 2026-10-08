@@ -150,7 +150,7 @@ Two processes, like ADM:
   entered IP or host name, optional port/scheme; INVALID_ARGUMENT for an unusable or unresolvable
   address), `WatchDiscovered` (stream; every device with its automatic login result
   `auth_state = 14` (PENDING, AUTHENTICATED, PASSWORD_NOT_SET, LOGIN_FAILED, UNREACHABLE,
-  ALREADY_ADDED), `auth_user_name = 15`, `credential_id = 16` ("list:<id>", "device:<id>",
+  ALREADY_ADDED), `auth_user_name = 15`, `credential_id = 16` ("list:<id>",
   "entered"), `auth_detail = 17`, `passphrase_policy = 18`, `entered_address = 19`; every scan
   (zero-conf after `Discovery.ZeroConfSeconds`, range scans, address probes, or `StopScan`) ends with
   scan_finished and the stream ends once every login of the session finished; watching a finished
@@ -182,7 +182,8 @@ Two processes, like ADM:
   changed certificate or rejected credentials, UNAVAILABLE, DEADLINE_EXCEEDED, INVALID_ARGUMENT;
   the status detail is the user message).
 - `FileService`: `Upload` (client stream: header {name, size} then 256 KB data chunks; returns
-  id, name, size, SHA-256; INVALID_ARGUMENT, RESOURCE_EXHAUSTED over `Uploads.MaxMegabytes`),
+  id, name, size, SHA-256; INVALID_ARGUMENT, RESOURCE_EXHAUSTED over `Uploads.MaxMegabytes`, over the 10 GB of
+  all uploads together or when less than 1 GB of disk would stay free, see "Production hardening" 4),
   `Delete(fileId)`. Uploads live in `<datafolder>/uploads/<id>.bin` + `<id>.json`, are deleted
   after `Uploads.RetentionHours` (checked every 15 min) and reach tasks through `IUploadedFiles`.
 - `PluginService`: `ListCorePlugins` (navigation pages), per-plugin generic
@@ -308,7 +309,9 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
 
 - Auth: AXIS OS 12 uses Digest on port 80 and Basic on port 443 (seen in
   `/config/rest/virtualhost/v1` and the 401 headers). The client offers Digest only over
-  HTTP and Basic or Digest over HTTPS. Basic is never sent over plain HTTP.
+  HTTP and Basic or Digest over HTTPS. Basic is never sent over plain HTTP, with one exception: the add
+  page's automatic login to a device that passed the anonymous Axis check (`AllowBasicOverHttp`, see
+  "Production hardening" 2).
 - Factory-default check without credentials: `systemready.cgi` returns `needsetup` (yes =
   no admin user yet) and `passphrasepolicy` (none, length, complex).
 - Prefer HTTPS, fall back to HTTP if 443 is closed. Store which scheme worked.
@@ -391,10 +394,19 @@ Server: `DiscoveryAuthenticator` (Oadm.Server/AddDevices). For every device even
 session it starts the automatic login once per device state: managed serial = ALREADY_ADDED, probe
 said factory default = PASSWORD_NOT_SET (plus the passphrase policy read anonymously), unreachable =
 UNREACHABLE, otherwise it tries the known credentials one at a time, at most 10 per device (no
-lockout risk): first the credential list in the order added, then the distinct credentials stored
-for managed devices (most used first). One try = `basicdeviceinfo getAllProperties` with the
-credential (plus `param.cgi` network parameters when the device allows anonymous access); 401 = next,
-transport failure = UNREACHABLE, another serial at the address = UNREACHABLE. At most 8 devices log
+lockout risk): the credentials typed on the page (RetryAuth), then the credential list in the order
+added. Passwords of managed devices are never tried on new devices. Before the first credential goes to
+a scheme the device must pass the **Axis check** on it: anonymous `basicdeviceinfo
+getAllUnrestrictedProperties` answering a 12-hex `SerialNumber` equal to the discovered serial and a
+`ProdNbr` (once per scheme and login run). Logins go to HTTPS first, then HTTP ("Add manually" with an
+entered scheme: only that one); the handler answers Digest when offered, else Basic, also over plain HTTP
+for such a verified device. A device that fails the check gets no credential and shows UNREACHABLE "The
+device did not identify itself as an Axis device. No password was sent." (logged as a warning). One try
+= `basicdeviceinfo getAllProperties` with the credential (plus `param.cgi` network parameters when the
+device allows anonymous access); 401 = next, a scheme that does not answer = the next scheme, no scheme
+answering = UNREACHABLE, another serial at the address = UNREACHABLE. A device that logged in over HTTP
+with Basic only is stored with scheme http and then needs Digest like every managed device (Basic stays
+HTTPS only outside the add page's login). At most 8 devices log
 in at the same time. Results live per (session, serial) for 30 min after the last use together with
 the credential that worked (server memory); `Commit` stores that credential for the new device
 (explicit `credentials` in the request still win, legacy). Passwords never leave the server once
@@ -411,7 +423,7 @@ returns (the devices show PENDING); (b) a credential added to the credential lis
 "Save to credential list") reloads the candidates of every session. The follow-up uses the normal login
 loop: one login at a time per device, at most 8 devices at once, at most 10 rejected credentials per
 device in total (typed credentials of `RetryAuth` are remembered as rejected but not counted), entered
-credentials first, then list, then managed-device credentials; credentials added while it runs are
+credentials first, then the list; credentials added while it runs are
 tried in the same run. Unreachable attempts count neither as attempt nor as rejected.
 
 # Visual Style
@@ -1600,7 +1612,8 @@ the server address is set with `--server` or in the client settings file (user d
 # Security
 
 - Device passwords: AES-256-GCM, key in `<datafolder>/master.key` (0600 on Unix), random
-  nonce per record, stored as `nonce|ciphertext|tag`. OS keyring integration is a later goal.
+  nonce per record, stored as `nonce|ciphertext|tag`. OS keyring integration is a later goal. A missing or different
+  key is replaced at startup (warn and continue, `Security.KeyCheck`, see "Production hardening" 3).
 - Device credentials never leave the server; gRPC returns only "has credentials". The credential list
   (same AES-256-GCM, entry id as associated data) lists only ids and user names; the one exception is the
   explicit reveal of a credential list entry (`SettingsService.RevealCredential`, Settings page eye / copy
@@ -1668,6 +1681,12 @@ marked *(default)* were filled in and can be changed. This section wins over old
   request): a device that imitates the anonymous answer passes the check.
 - **Candidates: credential list only** (+ credentials typed in the session). Passwords of managed devices are never
   tried on new devices. At most 10 rejected credentials per device (unchanged).
+- Implemented in `DiscoveryAuthenticator` (`Judge`, `LoginSchemes`) and `VapixConnectionOptions.AllowBasicOverHttp`
+  (set only there); details in "Add Devices Page". Tests: `AxisCheckTests` (every failing answer: 404, no serial, no
+  ProdNbr, other serial, 401: no credential request at all, also for RetryAuth; HTTPS first with the check before the
+  first credential; HTTP only with Basic allowed), `FastAddTests.PasswordsOfManagedDevicesAreNeverTriedOnNewDevices`,
+  read-only hardware test `FastAddHardwareTests.TheRealCameraPassesTheAnonymousAxisCheck` (10.0.0.48 passes on both
+  schemes).
 
 ## 3. Data safety
 
@@ -1676,6 +1695,24 @@ marked *(default)* were filled in and can be changed. This section wins over old
   credentials and credential list entries became unreadable, deletes those unreadable rows, sets the affected devices to
   CredentialsRequired, and the client shows a banner "The server's key was replaced: N devices need their credentials
   again" until dismissed. The PKI shows its existing "CA key cannot be read" state.
+- Implemented in `Oadm.Core.Security.MasterKeyCheck`, run by `DatabaseInitializer` after the migrations (before
+  anything is served). Key check = base64 HMAC-SHA256 of "OADM master key check v1" with the key
+  (`CredentialProtector.ComputeKeyCheck`), stored as JSON string. Replaced when: master.key is missing, has the wrong
+  size, or does not match the stored value; without a stored value (data of older versions) when encrypted rows exist
+  and none of them decrypts. An existing file is never deleted: it is renamed to `master.key.replaced-<UTC time>` before
+  the new key is written (`MasterKeyFile.Replace`); the running `CredentialProtector` switches to the new key. One
+  transaction deletes the unreadable `DeviceCredentials` and `CredentialListEntries` rows, sets those devices to
+  CredentialsRequired, stores the new check value and the notice `Security.KeyReplaced` ({id, replacedUtc, devices,
+  credentialListEntries}); the error log names the counts and that plugin secrets of the old key (saved command
+  passwords, CA keys, the TLS key) cannot be read either. Server -> client: `ServerSettings.key_replaced = 20`
+  (`KeyReplacedNotice` id, message, devices, credential_list_entries, replaced) in every `SettingsService.Get`/`Set`
+  reply. The client reads it on every connect and shows it as a warning banner (`Border.banner.warning`, the shared
+  banner style, text + "Dismiss" link) below the connection banner; dismissed ids are kept in the client settings
+  (`DismissedKeyNotices`), so a later replacement shows again. Banner text: "The server's key was replaced: 3 devices
+  need their credentials again." (+ ", 1 credential list entry was removed."). Tests: `MasterKeyCheckTests` (same key,
+  missing / different / wrong-size key: counts, rows removed, statuses, backup file, new key checked on the next
+  start; legacy data without check value), `MasterKeyFileTests`, `KeyReplacedNoticeTests` (gRPC),
+  `CrashHandlingTests.The_key_replaced_banner_shows_until_dismissed_on_this_client`.
 
 ## 4. Robustness
 
@@ -1683,11 +1720,38 @@ marked *(default)* were filled in and can be changed. This section wins over old
   ("The <plugin> dialog failed: <message>") and the client keeps running. Global handlers
   (`AppDomain.UnhandledException`, `TaskScheduler.UnobservedTaskException`, `Dispatcher.UIThread.UnhandledException`)
   log every error with the log file path; only truly fatal errors end the app, after logging.
+  Implemented: `TaskPluginRunner` (dialog: "The <name> dialog failed: <message>", nothing runs),
+  `MainWindowViewModel.SyncCorePluginPages` (page: the rail entry stays, the page shows "The <name> page failed:
+  <message>" and the message window says the same; the other pages load), `DeviceToolbar` (entry left out, "The
+  toolbar entry <id> failed: <message>"). `Infrastructure/CrashHandling` holds the three handlers, installed by Program
+  only (the process handlers before Avalonia starts, the UI handler in `AfterSetup`; tests see their exceptions): every
+  error is logged with today's client log file (`<datafolder>/logs/client-yyyyMMdd.log`); a UI thread error is marked
+  handled and shown once at a time in `MessageWindow` ("Something went wrong", the message, "OADM keeps running. Details
+  are in the client log: <path>"); fatal errors (out of memory, access violation, invalid program, bad image) are logged
+  as Critical and end the app; unobserved task errors are logged and observed. Tests: `CrashHandlingTests`.
 - **Limits**: HTTP answers from devices at most 16 MB (firmware and ACAP uploads exempt from the request side only), XML
-  documents at most 1 MB with DTD processing prohibited, RTSP / video access units at most 8 MB, uploads: total quota
-  10 GB of disk for all uploads together (user decision) and at least 1 GB free disk, oldest uploads removed first, RESOURCE_EXHAUSTED otherwise.
+  documents at most 1 MB with DTD processing prohibited, RTSP / video access units at most 8 MB, uploads: 10 GB of disk
+  for all uploads together (user decision) and at least 1 GB free disk, oldest uploads removed first, RESOURCE_EXHAUSTED
+  otherwise.
+  Implemented: `VapixClient.MaxResponseBytes` (HttpClient `MaxResponseContentBufferSize`; over it
+  `VapixResponseTooLargeException` "The device answer is larger than 16 MB and was not read."); every XML from a device
+  goes through the SDK `Oadm.Sdk.Vapix.DeviceXml.Parse` / `ParseElement` (1 MB of characters, DTD prohibited, no
+  resolver; callers' settings cannot lift the limits; ACAP, PKI, Metadata Monitor, VAPIX Commander; `CodeView` keeps
+  its own 512 K plain-text limit with DTD prohibited); `NalDepacketizer.MaxAccessUnitBytes` (8 MB: a larger access
+  unit is discarded at once and dropped like a damaged one, the stream resumes at the next keyframe,
+  `OversizedAccessUnits`); `UploadStore.QuotaBytes` / `MinFreeDiskBytes`: a new upload reserves its declared size
+  (uploads in progress count), removes the oldest finished uploads (by file time) until the quota and the free disk
+  space fit, else `UploadRejectedException { TooLarge }` = RESOURCE_EXHAUSTED; a single upload may still be up to
+  `Uploads.MaxMegabytes`, so a large one removes older ones. Free space unknown (network share): only the quota applies.
 - **VAPIX Commander**: every request must go to the device's own address: paths with `\`, `//` or an authority are
   rejected; `VapixClient.SendAsync` refuses absolute URIs to another host.
+  Implemented: `CommandValidator.IsDevicePath` (starts with one "/", no "\", no "//" anywhere, no "@" before the query,
+  no "..", no spaces or control characters; field error `CommandValidator.PathProblem` "The path must start with / and
+  stay on the device: no "..", "//", "\" or host name."), checked again by `CommandRenderer` after the field values
+  are filled in. `VapixClient.SendAsync` throws `ArgumentException` before sending when the resolved URI has another
+  scheme, host or port, user info, or a relative URI contains "\" (relative "/path" parsed as an implicit file URI on
+  Unix counts as relative, like HttpClient). Tests: `DeviceLimitsTests`, `DepacketizerTests`, `UploadStoreTests`,
+  `RendererTests` (paths `/\/host`, `//host/x`, absolute URL, and the client refusing other hosts).
 
 ## 5. Installation and release
 

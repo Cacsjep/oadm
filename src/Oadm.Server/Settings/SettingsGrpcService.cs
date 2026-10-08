@@ -21,7 +21,7 @@ public sealed partial class SettingsGrpcService(
     ILogger<SettingsGrpcService> logger) : Proto.SettingsService.SettingsServiceBase
 {
     public override async Task<Proto.ServerSettings> Get(Proto.Empty request, ServerCallContext context) =>
-        Mappers.ToProto(await store.GetServerSettingsAsync(context.CancellationToken).ConfigureAwait(false));
+        await WithNoticeAsync(Mappers.ToProto(await store.GetServerSettingsAsync(context.CancellationToken).ConfigureAwait(false)), context.CancellationToken).ConfigureAwait(false);
 
     public override async Task<Proto.ServerSettings> Set(Proto.ServerSettings request, ServerCallContext context)
     {
@@ -29,12 +29,30 @@ public sealed partial class SettingsGrpcService(
         try
         {
             var saved = await store.SetServerSettingsAsync(Mappers.FromProto(request, current), context.CancellationToken).ConfigureAwait(false);
-            return Mappers.ToProto(saved);
+            return await WithNoticeAsync(Mappers.ToProto(saved), context.CancellationToken).ConfigureAwait(false);
         }
         catch (ArgumentException ex)
         {
             throw GrpcGuard.InvalidArgument(ex.Message);
         }
+    }
+
+    /// <summary>Adds the key replacement notice (production hardening 3) when the server had to replace its master key.</summary>
+    private async Task<Proto.ServerSettings> WithNoticeAsync(Proto.ServerSettings settings, CancellationToken ct)
+    {
+        if (await MasterKeyCheck.ReadNoticeAsync(store, ct).ConfigureAwait(false) is { } notice)
+        {
+            settings.KeyReplaced = new Proto.KeyReplacedNotice
+            {
+                Id = notice.Id,
+                Message = notice.Message,
+                Devices = notice.Devices,
+                CredentialListEntries = notice.CredentialListEntries,
+                Replaced = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTime(DateTime.SpecifyKind(notice.ReplacedUtc, DateTimeKind.Utc)),
+            };
+        }
+
+        return settings;
     }
 
     public override async Task<Proto.CredentialList> ListCredentials(Proto.Empty request, ServerCallContext context)

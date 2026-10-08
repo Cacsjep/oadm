@@ -6,6 +6,8 @@ using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 
+using Oadm.Sdk.Vapix;
+
 namespace Oadm.Plugins.VapixCommander;
 
 /// <summary>A value shown after success (<c>response.extract</c>) or a parameter of a param.cgi list.</summary>
@@ -523,8 +525,7 @@ public static partial class ResponseInterpreter
     {
         try
         {
-            using var reader = XmlReader.Create(new StringReader(text), new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null });
-            return XDocument.Load(reader);
+            return DeviceXml.Parse(text);
         }
         catch (XmlException)
         {

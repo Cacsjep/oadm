@@ -1,4 +1,6 @@
 using Oadm.Core.Tests.Hardware;
+using Oadm.Core.Vapix;
+using Oadm.Server.AddDevices;
 using Oadm.Server.Tests.Support;
 
 using Proto = Oadm.Contracts.V1;
@@ -39,5 +41,20 @@ public sealed class FastAddHardwareTests
         var device = await TestHelpers.GetDeviceAsync(host, result.DeviceId);
         Assert.True(device.HasCredentials);
         Assert.Equal(found.Serial, device.Serial);
+    }
+
+    /// <summary>The anonymous Axis check (production hardening 2) passes on the real camera on HTTPS and HTTP. Read-only.</summary>
+    [HardwareFact]
+    public async Task TheRealCameraPassesTheAnonymousAxisCheck()
+    {
+        var camera = Camera;
+        foreach (var scheme in (string[])["https", "http"])
+        {
+            using var client = VapixClient.Create(new VapixConnectionOptions { Address = camera.Address, Scheme = scheme });
+            var properties = await client.GetUnrestrictedPropertiesAsync(CancellationToken.None);
+            var serial = properties["SerialNumber"];
+            Assert.Equal(DiscoveryAuthenticator.AxisVerdictKind.Verified, DiscoveryAuthenticator.Judge(properties, serial).Kind);
+            Assert.NotEqual(DiscoveryAuthenticator.AxisVerdictKind.Verified, DiscoveryAuthenticator.Judge(properties, "ACCC8E000000").Kind);
+        }
     }
 }

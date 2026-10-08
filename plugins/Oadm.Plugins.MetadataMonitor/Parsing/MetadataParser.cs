@@ -3,6 +3,8 @@ using System.Text;
 using System.Xml;
 using System.Xml.Linq;
 
+using Oadm.Sdk.Vapix;
+
 namespace Oadm.Plugins.MetadataMonitor.Parsing;
 
 /// <summary>A parsed notification before it gets its sequence number.</summary>
@@ -37,13 +39,14 @@ internal static class MetadataParser
         "http://www.axis.com/2009/event/topics",
     };
 
-    private static readonly XmlReaderSettings ReaderSettings = new()
+    private static readonly XmlReaderSettings ReaderSettings = CreateReaderSettings();
+
+    private static XmlReaderSettings CreateReaderSettings()
     {
-        DtdProcessing = DtdProcessing.Prohibit,
-        XmlResolver = null,
-        MaxCharactersInDocument = 4L * 1024 * 1024,
-        IgnoreComments = true,
-    };
+        var settings = DeviceXml.CreateReaderSettings();
+        settings.IgnoreComments = true;
+        return settings;
+    }
 
     public static IReadOnlyList<ParsedMessage> Parse(string xml)
     {
@@ -51,9 +54,7 @@ internal static class MetadataParser
         XDocument document;
         try
         {
-            using var text = new StringReader(xml);
-            using var reader = XmlReader.Create(text, ReaderSettings);
-            document = XDocument.Load(reader, LoadOptions.None);
+            document = DeviceXml.Parse(xml, ReaderSettings);
         }
         catch (XmlException ex)
         {

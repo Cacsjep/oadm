@@ -169,4 +169,62 @@ public sealed class RendererTests
         using var request = rendered.ToHttpRequest();
         return request.Content!.Headers.ContentType!.MediaType;
     }
+
+    [Theory]
+    [InlineData("/\\/evil.example/x")]
+    [InlineData("//evil.example/x")]
+    [InlineData("/axis-cgi//evil")]
+    [InlineData("/axis-cgi\\param.cgi")]
+    [InlineData("http://evil.example/axis-cgi/param.cgi")]
+    [InlineData("/http://evil.example/x")]
+    [InlineData("/user@evil.example/x")]
+    [InlineData("/../x")]
+    [InlineData("axis-cgi/param.cgi")]
+    [InlineData("/axis cgi")]
+    public void Paths_that_could_leave_the_device_are_rejected(string path)
+    {
+        Assert.False(CommandValidator.IsDevicePath(path));
+        var command = Command("""{ "name": "on", "label": "On", "type": "boolean" }""", JsonSerializer.Serialize(new { method = "GET", path }));
+        Assert.Contains(CommandValidator.PathProblem, CommandValidator.Validate(command));
+        Assert.Throws<CommandValidationException>(() => CommandRenderer.Render(command, Samples.Values(("on", true))));
+    }
+
+    [Theory]
+    [InlineData("/axis-cgi/param.cgi")]
+    [InlineData("/config/rest/virtualhost/v1")]
+    [InlineData("/axis-cgi/param.cgi?action=list&group=root.Brand")]
+    [InlineData("/axis-cgi/x.cgi?mail=a@b")]
+    public void Device_paths_are_accepted(string path) => Assert.True(CommandValidator.IsDevicePath(path));
+
+    [Fact]
+    public async Task The_client_refuses_absolute_uris_to_another_host()
+    {
+        using var handler = new CountingHandler();
+        using var client = new Oadm.Core.Vapix.VapixClient(new Uri("https://10.0.0.48/"), handler, disposeHandler: false);
+        foreach (var uri in (string[])["https://evil.example/axis-cgi/param.cgi", "//evil.example/x", "/\\evil.example/x", "http://10.0.0.48/x", "https://10.0.0.48:8443/x", "https://user@10.0.0.48/x"])
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(uri, UriKind.RelativeOrAbsolute));
+            var error = await Record.ExceptionAsync(() => client.SendAsync(request, CancellationToken.None));
+            Assert.True(error is ArgumentException, uri + " was not refused (" + handler.LastUri + ")");
+        }
+
+        Assert.Equal(0, handler.Calls);
+        using var own = new HttpRequestMessage(HttpMethod.Get, "https://10.0.0.48/axis-cgi/param.cgi");
+        using var response = await client.SendAsync(own, CancellationToken.None);
+        Assert.Equal(1, handler.Calls);
+    }
+
+    private sealed class CountingHandler : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+
+        public Uri? LastUri { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Calls++;
+            LastUri = request.RequestUri;
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK));
+        }
+    }
 }

@@ -38,7 +38,7 @@ public enum DeviceAuthState
 /// <summary>What the add page shows for a discovered device. Never contains a password.</summary>
 /// <param name="State">Login outcome.</param>
 /// <param name="UserName">User of the credential that worked.</param>
-/// <param name="CredentialId">"list:&lt;id&gt;", "device:&lt;id&gt;" or "entered".</param>
+/// <param name="CredentialId">"list:&lt;id&gt;" or "entered".</param>
 /// <param name="Detail">User facing reason for LoginFailed and Unreachable.</param>
 /// <param name="PassphrasePolicy">Factory default only: systemready passphrasepolicy.</param>
 public sealed record DeviceAuthResult(
@@ -52,11 +52,16 @@ public sealed record DeviceAuthResult(
 }
 
 /// <summary>
-/// Logs in to discovered devices automatically, server side, with the technician's known
-/// credentials: first the encrypted credential list (Settings page, in the order added), then the
-/// distinct credentials stored for managed devices (most used first), at most
-/// <see cref="MaxAttemptsPerDevice"/> per device and one attempt at a time per device so a
-/// brute-force protection on the device is never triggered by OADM. One attempt is
+/// Logs in to discovered devices automatically, server side, with the technician's credentials:
+/// the credentials typed on the add page (RetryAuth) and the encrypted credential list (Settings
+/// page, in the order added); passwords of managed devices are never tried on new devices. At most
+/// <see cref="MaxAttemptsPerDevice"/> rejected credentials per device and one attempt at a time per
+/// device, so a brute-force protection on the device is never triggered by OADM.
+/// Before any credential is sent the device must pass the anonymous Axis check
+/// (<c>basicdeviceinfo getAllUnrestrictedProperties</c> with a 12-hex serial number equal to the
+/// discovered one and a ProdNbr) on the scheme the credential goes to. Logins go to HTTPS first,
+/// then HTTP, Digest preferred over Basic; Basic over plain HTTP only to such a verified device
+/// (<see cref="VapixConnectionOptions.AllowBasicOverHttp"/>). One attempt is
 /// <c>basicdeviceinfo getAllProperties</c> with the credential (plus <c>param.cgi</c> network
 /// parameters on devices with anonymous access, where the first call proves nothing); a different
 /// serial at the address counts as unreachable. Results are kept per discovery session and serial
@@ -75,7 +80,6 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     /// <summary>Credential id of credentials the technician typed (RetryAuth) and did not save.</summary>
     public const string EnteredCredentialId = "entered";
 
-    private readonly CredentialStore _deviceCredentials;
     private readonly CredentialListStore _credentialList;
     private readonly IVapixConnector _connector;
     private readonly TimeProvider _time;
@@ -85,13 +89,11 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     private readonly CancellationTokenSource _stopping = new();
 
     public DiscoveryAuthenticator(
-        CredentialStore deviceCredentials,
         CredentialListStore credentialList,
         IVapixConnector connector,
         TimeProvider time,
         ILogger<DiscoveryAuthenticator> logger)
     {
-        _deviceCredentials = deviceCredentials;
         _credentialList = credentialList;
         _connector = connector;
         _time = time;
@@ -210,7 +212,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         session.Notify(device.Serial);
         var user = userName.Trim();
         var credentials = new DeviceCredentials(user, password);
-        var outcome = await TryOneAsync(device, user, password, ct).ConfigureAwait(false);
+        var outcome = await TryOneAsync(device, user, password, new AxisCheck(), ct).ConfigureAwait(false);
         DeviceAuthResult result;
         if (outcome.Kind == AttemptKind.Ok)
         {
@@ -236,6 +238,11 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
             result = outcome.Kind == AttemptKind.Rejected
                 ? new DeviceAuthResult(DeviceAuthState.LoginFailed, Detail: "The user name or password is wrong.")
                 : new DeviceAuthResult(DeviceAuthState.Unreachable, Detail: outcome.Detail);
+            if (outcome.Kind == AttemptKind.NotAxis)
+            {
+                LogNotAxis(device.Serial, device.ConnectAddress);
+            }
+
             if (outcome.Kind == AttemptKind.Rejected)
             {
                 // Typed by the technician: not counted against the automatic attempts, but never tried again automatically.
@@ -401,8 +408,8 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     }
 
     /// <summary>
-    /// Tries the credentials the device has not rejected yet, in order (entered ones, credential list,
-    /// credentials of managed devices), until one works, the device does not answer or it rejected
+    /// Tries the credentials the device has not rejected yet, in order (entered ones, then the credential
+    /// list), until one works, the device does not answer or it rejected
     /// <see cref="MaxAttemptsPerDevice"/> of them. Candidates are read again before every attempt, so a
     /// credential added meanwhile is tried in the same run.
     /// </summary>
@@ -413,6 +420,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
             await _parallel.WaitAsync(ct).ConfigureAwait(false);
             try
             {
+                var axis = new AxisCheck(); // anonymous Axis check, once per scheme and run
                 while (true)
                 {
                     var entry = session.Get(device.Serial);
@@ -438,7 +446,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
                         return;
                     }
 
-                    var outcome = await TryOneAsync(device, candidate.Credentials.UserName, candidate.Credentials.Password, ct).ConfigureAwait(false);
+                    var outcome = await TryOneAsync(device, candidate.Credentials.UserName, candidate.Credentials.Password, axis, ct).ConfigureAwait(false);
                     if (outcome.Kind == AttemptKind.Ok)
                     {
                         Apply(session, device.Serial, version, new DeviceAuthResult(DeviceAuthState.Authenticated, candidate.Credentials.UserName, candidate.Id), candidate.Credentials);
@@ -446,8 +454,13 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
                         return;
                     }
 
-                    if (outcome.Kind == AttemptKind.Unreachable)
+                    if (outcome.Kind is AttemptKind.Unreachable or AttemptKind.NotAxis)
                     {
+                        if (outcome.Kind == AttemptKind.NotAxis)
+                        {
+                            LogNotAxis(device.Serial, device.ConnectAddress);
+                        }
+
                         Apply(session, device.Serial, version, new DeviceAuthResult(DeviceAuthState.Unreachable, Detail: outcome.Detail), null);
                         return;
                     }
@@ -497,7 +510,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         }
     }
 
-    /// <summary>Credential list first (in the order added), then the distinct credentials of managed devices.</summary>
+    /// <summary>The credential list in the order added. Passwords of managed devices are never candidates.</summary>
     private async Task<IReadOnlyList<Candidate>> LoadCandidatesAsync()
     {
         var ct = _stopping.Token;
@@ -511,28 +524,106 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
             }
         }
 
-        foreach (var (deviceId, credentials) in await _deviceCredentials.ListDistinctAsync(ct).ConfigureAwait(false))
-        {
-            if (seen.Add((credentials.UserName, credentials.Password)))
-            {
-                result.Add(new Candidate("device:" + deviceId.ToString("N"), credentials));
-            }
-        }
-
         return result;
     }
 
-    /// <summary>One login: basicdeviceinfo with the credential, plus network parameters on devices with anonymous access.</summary>
-    private async Task<Attempt> TryOneAsync(DiscoveredDevice device, string userName, string password, CancellationToken ct)
+    /// <summary>
+    /// One login with one credential: HTTPS first, then HTTP (only the entered scheme for "Add manually" with a
+    /// scheme). A scheme gets the credential only after the device passed the anonymous Axis check on it; a
+    /// transport failure moves on to the next scheme, a rejection ends the attempt (one rejected credential).
+    /// </summary>
+    private async Task<Attempt> TryOneAsync(DiscoveredDevice device, string userName, string password, AxisCheck axis, CancellationToken ct)
+    {
+        string? noAnswer = null;
+        foreach (var scheme in LoginSchemes(device))
+        {
+            var verdict = await axis.GetAsync(scheme, () => CheckAxisAsync(device, scheme, ct)).ConfigureAwait(false);
+            if (verdict.Kind != AxisVerdictKind.Verified)
+            {
+                if (verdict.Kind == AxisVerdictKind.NoAnswer)
+                {
+                    noAnswer ??= verdict.Detail;
+                }
+
+                continue;
+            }
+
+            var outcome = await TryOneOnSchemeAsync(device, scheme, userName, password, ct).ConfigureAwait(false);
+            if (!outcome.Transport)
+            {
+                return outcome;
+            }
+
+            axis.MarkUnreachable(scheme, outcome.Detail);
+            noAnswer ??= outcome.Detail;
+        }
+
+        return axis.NotAxisDetail() is { } notAxis
+            ? new Attempt(AttemptKind.NotAxis, notAxis)
+            : new Attempt(AttemptKind.Unreachable, noAnswer ?? "The device did not answer on HTTPS or HTTP.");
+    }
+
+    /// <summary>HTTPS then HTTP; "Add manually" with an entered scheme ("https://cam:8443") uses only that one.</summary>
+    internal static IReadOnlyList<string> LoginSchemes(DiscoveredDevice device) =>
+        device.EnteredAddress is not null && device.Scheme is not null
+            ? [device.Scheme]
+            : [Uri.UriSchemeHttps, Uri.UriSchemeHttp];
+
+    /// <summary>
+    /// The anonymous Axis check on one scheme: <c>basicdeviceinfo getAllUnrestrictedProperties</c> must answer
+    /// with a 12-hex serial number equal to the discovered one and a product number. Never sends a credential.
+    /// </summary>
+    private async Task<AxisVerdict> CheckAxisAsync(DiscoveredDevice device, string scheme, CancellationToken ct)
     {
         try
         {
             using var client = _connector.Connect(new VapixConnectionOptions
             {
                 Address = device.ConnectAddress,
-                Scheme = device.Scheme ?? Uri.UriSchemeHttps,
+                Scheme = scheme,
+                Timeout = AttemptTimeout,
+            });
+            var properties = await client.GetUnrestrictedPropertiesAsync(ct).ConfigureAwait(false);
+            return Judge(properties, device.Serial);
+        }
+        catch (VapixException)
+        {
+            // It answered, but not like an Axis device (HTTP error, login required, no property list).
+            return new AxisVerdict(AxisVerdictKind.NotAxis, NotAxisText);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            return new AxisVerdict(AxisVerdictKind.NoAnswer, "The device did not answer: " + ex.Message);
+        }
+    }
+
+    /// <summary>Whether anonymous basicdeviceinfo properties are a valid Axis answer for the expected serial.</summary>
+    internal static AxisVerdict Judge(IReadOnlyDictionary<string, string> properties, string expectedSerial)
+    {
+        ArgumentNullException.ThrowIfNull(properties);
+        var serial = SerialNumber.Normalize(properties.GetValueOrDefault("SerialNumber"));
+        if (serial is null || string.IsNullOrWhiteSpace(properties.GetValueOrDefault("ProdNbr")))
+        {
+            return new AxisVerdict(AxisVerdictKind.NotAxis, NotAxisText);
+        }
+
+        return string.Equals(serial, SerialNumber.Normalize(expectedSerial), StringComparison.Ordinal)
+            ? new AxisVerdict(AxisVerdictKind.Verified, null)
+            : new AxisVerdict(AxisVerdictKind.NotAxis, $"The address now answers as another device ({serial}). No password was sent.");
+    }
+
+    /// <summary>One login on one scheme: basicdeviceinfo with the credential, plus network parameters on devices with anonymous access.</summary>
+    private async Task<Attempt> TryOneOnSchemeAsync(DiscoveredDevice device, string scheme, string userName, string password, CancellationToken ct)
+    {
+        try
+        {
+            using var client = _connector.Connect(new VapixConnectionOptions
+            {
+                Address = device.ConnectAddress,
+                Scheme = scheme,
                 Credentials = new NetworkCredential(userName, password),
                 Timeout = AttemptTimeout,
+                AllowBasicOverHttp = true, // the device passed the Axis check on this scheme (user decision)
             });
             var info = await client.GetBasicDeviceInfoAsync(ct).ConfigureAwait(false);
             if (!string.Equals(info.SerialNumber, device.Serial, StringComparison.OrdinalIgnoreCase))
@@ -556,7 +647,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
             return DeviceStatusClassifier.FromException(ex) switch
             {
                 SdkDeviceStatus.CredentialsRequired => new Attempt(AttemptKind.Rejected, null),
-                SdkDeviceStatus.Unreachable => new Attempt(AttemptKind.Unreachable, "The device did not answer: " + ex.Message),
+                SdkDeviceStatus.Unreachable => new Attempt(AttemptKind.Unreachable, "The device did not answer: " + ex.Message, Transport: true),
                 _ => new Attempt(AttemptKind.Unreachable, "The login failed: " + ex.Message),
             };
         }
@@ -615,14 +706,56 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "Discovered device {Serial}: automatic login failed")]
     private partial void LogAuthError(Exception ex, string serial);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Discovered device {Serial} at {Address} did not pass the Axis check; no credential was sent")]
+    private partial void LogNotAxis(string serial, string address);
+
+    private const string NotAxisText = "The device did not identify itself as an Axis device. No password was sent.";
+
     private enum AttemptKind
     {
         Ok,
         Rejected,
         Unreachable,
+
+        /// <summary>The device did not pass the anonymous Axis check: no credential was sent.</summary>
+        NotAxis,
     }
 
-    private sealed record Attempt(AttemptKind Kind, string? Detail);
+    /// <param name="Kind">Outcome.</param>
+    /// <param name="Detail">User facing reason.</param>
+    /// <param name="Transport">The device did not answer on that scheme (the next scheme may).</param>
+    private sealed record Attempt(AttemptKind Kind, string? Detail, bool Transport = false);
+
+    internal enum AxisVerdictKind
+    {
+        Verified,
+        NotAxis,
+        NoAnswer,
+    }
+
+    internal sealed record AxisVerdict(AxisVerdictKind Kind, string? Detail);
+
+    /// <summary>Axis check results of one login run per scheme (checked lazily, at most once per scheme and run).</summary>
+    private sealed class AxisCheck
+    {
+        private readonly Dictionary<string, AxisVerdict> _verdicts = new(StringComparer.Ordinal);
+
+        public async Task<AxisVerdict> GetAsync(string scheme, Func<Task<AxisVerdict>> check)
+        {
+            if (!_verdicts.TryGetValue(scheme, out var verdict))
+            {
+                verdict = await check().ConfigureAwait(false);
+                _verdicts[scheme] = verdict;
+            }
+
+            return verdict;
+        }
+
+        public void MarkUnreachable(string scheme, string? detail) => _verdicts[scheme] = new AxisVerdict(AxisVerdictKind.NoAnswer, detail);
+
+        public string? NotAxisDetail() => _verdicts.Values.FirstOrDefault(v => v.Kind == AxisVerdictKind.NotAxis)?.Detail;
+    }
+
 
     private sealed record Candidate(string Id, DeviceCredentials Credentials);
 
