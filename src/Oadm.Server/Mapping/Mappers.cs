@@ -308,13 +308,40 @@ public static class Mappers
         ArgumentNullException.ThrowIfNull(entry);
         if (!compact || entry.Runnable.Count <= entry.NotRunnable.Count)
         {
-            return ToProto(entry.Plugin, entry.Runnable);
+            var listed = ToProto(entry.Plugin, entry.Runnable);
+            AddReasonsWithIds(listed, entry.Reasons);
+            return listed;
         }
 
         var proto = ToProto(entry.Plugin, []);
         proto.RunnableOnAllExcept = true;
+
+        // NotRunnable is sorted by reason group: each group takes the next `count` ids, none are sent twice.
         proto.NotRunnableDeviceIds.AddRange(entry.NotRunnable.Select(id => id.ToString()));
+        foreach (var reason in entry.Reasons)
+        {
+            proto.NotRunnableGroups.Add(new Proto.NotRunnableGroup { Reason = reason.Reason, Count = reason.DeviceIds.Count });
+        }
+
         return proto;
+    }
+
+    /// <summary>
+    /// The reasons when the not-runnable devices are not listed: the most common reason (the first) covers every
+    /// device that is neither runnable nor in another group, the others list their ids.
+    /// </summary>
+    private static void AddReasonsWithIds(Proto.TaskPluginInfo proto, IReadOnlyList<Tasks.NotRunnableReason> reasons)
+    {
+        for (var i = 0; i < reasons.Count; i++)
+        {
+            var group = new Proto.NotRunnableGroup { Reason = reasons[i].Reason, Count = reasons[i].DeviceIds.Count, OtherDevices = i == 0 };
+            if (i > 0)
+            {
+                group.DeviceIds.AddRange(reasons[i].DeviceIds.Select(id => id.ToString()));
+            }
+
+            proto.NotRunnableGroups.Add(group);
+        }
     }
 
     /// <summary>A plugin's rail group; an unknown value or a throwing plugin counts as Extensions.</summary>

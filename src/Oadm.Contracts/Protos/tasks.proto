@@ -38,6 +38,21 @@ message TaskPluginInfo {
   // not_runnable_device_ids. 5,000 devices x 10 plugins are otherwise 50,000 ids per call.
   bool runnable_on_all_except = 9;
   repeated string not_runnable_device_ids = 10;
+  // Why the plugin cannot run on the not-runnable devices (ITaskPlugin.NotSupportedReason), grouped by reason,
+  // most devices first. Every not-runnable device belongs to exactly one group; device ids are never sent twice:
+  // - runnable_on_all_except: not_runnable_device_ids are sorted by group in this order, each group takes the next
+  //   `count` of them and lists no ids itself.
+  // - otherwise: each group lists its device_ids, except the one group with other_devices (the most common reason),
+  //   which covers every device that is neither runnable nor listed in another group.
+  // Empty from older servers: the client shows "Not supported on this device".
+  repeated NotRunnableGroup not_runnable_groups = 11;
+}
+
+message NotRunnableGroup {
+  string reason = 1;                  // plain language, at most 160 characters; may end with " (this device ...)"
+  repeated string device_ids = 2;     // see TaskPluginInfo.not_runnable_groups
+  int32 count = 3;                    // devices with this reason (always set)
+  bool other_devices = 4;             // see TaskPluginInfo.not_runnable_groups
 }
 
 message ListTaskPluginsRequest {
