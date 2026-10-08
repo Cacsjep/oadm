@@ -136,6 +136,33 @@ public sealed class ShellNavigationTests
     }
 
     [Fact]
+    public void Core_plugin_pages_are_grouped_with_a_header_and_empty_groups_are_left_out()
+    {
+        using var f = new DevicesFixture();
+        using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
+        MainWindowViewModel vm = CreateShell(f, connection);
+
+        vm.SyncCorePluginPages(
+        [
+            new CorePluginInfo { Id = "oadm.snapshot-report", DisplayName = "Snapshot report", Group = "Reporting" },
+            new CorePluginInfo { Id = "oadm.pki", DisplayName = "PKI", Group = "Security" },
+            new CorePluginInfo { Id = "oadm.ntp", DisplayName = "NTP server", Group = "Servers" },
+            new CorePluginInfo { Id = "third.party", DisplayName = "Something", Group = "NoSuchGroup" },
+            new CorePluginInfo { Id = "oadm.dhcp", DisplayName = "DHCP server", Group = "Servers" },
+            new CorePluginInfo { Id = "oadm.hardening", DisplayName = "Hardening scan", Group = "Security" },
+        ]);
+
+        NavItemViewModel[] pages = [.. vm.NavItems.Skip(1)];
+        Assert.Equal(["NTP server", "DHCP server", "PKI", "Hardening scan", "Snapshot report", "Something"], pages.Select(p => p.Title).ToArray());
+        Assert.Equal(["Servers", "Security", "Reporting", "Extensions"], pages.Where(p => p.ShowGroupHeader).Select(p => p.GroupTitle!).ToArray());
+        Assert.Equal([true, false, false, false, false, false], pages.Select(p => p.HasSeparatorBefore).ToArray()); // expanded: headers
+
+        vm.IsNavExpanded = false; // collapsed: a separator at every group start, no headers
+        Assert.Equal([true, false, true, false, true, true], pages.Select(p => p.HasSeparatorBefore).ToArray());
+        Assert.All(pages, p => Assert.False(p.ShowGroupHeader));
+    }
+
+    [Fact]
     public void Rail_is_expanded_by_default_and_the_toggle_is_persisted()
     {
         using var f = new DevicesFixture();

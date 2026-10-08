@@ -12,7 +12,7 @@ service PluginService {
 }
 
 // no_page: the plugin has no rail page (ICorePlugin.HasPage false), e.g. a toolbar-only plugin; clients add no rail entry.
-message CorePluginInfo { string id = 1; string display_name = 2; string icon_key = 3; bool no_page = 4; }
+message CorePluginInfo { string id = 1; string display_name = 2; string icon_key = 3; bool no_page = 4; string group = 5; } // group: CorePluginGroup name
 message CorePluginList { repeated CorePluginInfo plugins = 1; }
 message InvokeRequest { string plugin_id = 1; string method = 2; string payload_json = 3; }
 message InvokeReply { string payload_json = 1; }

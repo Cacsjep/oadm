@@ -42,6 +42,7 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin
     public string DisplayName => "VAPIX Commander";
 
     public string? IconKey => "command";
+    public CorePluginGroup Group => CorePluginGroup.Automation;
 
     public IReadOnlyList<ITaskPlugin> TaskPlugins { get; }
 

@@ -317,6 +317,22 @@ public static class Mappers
         return proto;
     }
 
+    /// <summary>A plugin's rail group; an unknown value or a throwing plugin counts as Extensions.</summary>
+    private static Oadm.Sdk.Plugins.CorePluginGroup SafeGroup(Oadm.Sdk.Plugins.ICorePlugin plugin)
+    {
+        try
+        {
+            var group = plugin.Group;
+            return System.Enum.IsDefined(group) ? group : Oadm.Sdk.Plugins.CorePluginGroup.Extensions;
+        }
+#pragma warning disable CA1031 // a broken plugin never breaks the plugin list
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return Oadm.Sdk.Plugins.CorePluginGroup.Extensions;
+        }
+    }
+
     public static Proto.CorePluginInfo ToProto(RegisteredCorePlugin plugin)
     {
         ArgumentNullException.ThrowIfNull(plugin);
@@ -326,6 +342,7 @@ public static class Mappers
             DisplayName = plugin.Plugin.DisplayName,
             IconKey = plugin.Plugin.IconKey ?? string.Empty,
             NoPage = !plugin.Plugin.HasPage,
+            Group = SafeGroup(plugin.Plugin).ToString(),
         };
     }
 

@@ -350,6 +350,8 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
   server certificate, read-only queries for a grouped certificate list, confirmation-only dialogs (an `ITaskPluginDialog`
   whose `ShowAsync` shows `MessageWindow.ConfirmAsync` and returns "{}"), and a stateful fake camera for the tests
   (`tests/Oadm.Plugins.Pki.Tests/FakeCamera.cs`).
+- Rail group: `CorePluginGroup Group` (default `Extensions`) puts the page under a group header in the navigation rail:
+  Servers, Automation, Security, Monitoring, Reporting, Maintenance, Integrations, Utilities or Extensions (in this order).
 - Without a page: `HasPage => false` lists the plugin with `CorePluginInfo.no_page`, the client adds no rail entry; its
   client part is e.g. a toolbar plugin (see "Toolbar plugins"). Seventh sample: the System report (`oadm.system-report`,
   spec in `CLAUDE.md` "System report plugin"): background jobs with status deltas by version, files in

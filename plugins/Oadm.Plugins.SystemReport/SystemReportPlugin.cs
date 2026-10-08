@@ -19,6 +19,7 @@ public sealed class SystemReportPlugin : ICorePlugin, IDisposable
     public string DisplayName => SystemReportPluginInfo.DisplayName;
 
     public string? IconKey => SystemReportPluginInfo.IconKey;
+    public CorePluginGroup Group => CorePluginGroup.Reporting;
 
     public IReadOnlyList<ITaskPlugin> TaskPlugins => [];
 

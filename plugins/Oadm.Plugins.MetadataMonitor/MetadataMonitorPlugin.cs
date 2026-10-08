@@ -39,6 +39,7 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
     public string DisplayName => MetadataMonitorPluginInfo.DisplayName;
 
     public string? IconKey => MetadataMonitorPluginInfo.IconKey;
+    public CorePluginGroup Group => CorePluginGroup.Monitoring;
 
     public IReadOnlyList<ITaskPlugin> TaskPlugins => [];
 

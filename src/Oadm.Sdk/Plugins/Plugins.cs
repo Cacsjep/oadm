@@ -89,6 +89,12 @@ public interface ICorePlugin : IPlugin
     bool HasPage => true;
 
     /// <summary>
+    /// The group of the plugin's page in the client's navigation rail (a small group header; empty groups are not shown).
+    /// Default <see cref="CorePluginGroup.Extensions"/>.
+    /// </summary>
+    CorePluginGroup Group => CorePluginGroup.Extensions;
+
+    /// <summary>
     /// The role a user needs to call <paramref name="method"/> through the plugin's page (PluginService.Invoke). The host
     /// checks it before <see cref="InvokeAsync"/> and answers PERMISSION_DENIED for a missing role. Methods that change
     /// the server's configuration (settings, keys, services) return <see cref="UserRole.Admin"/>; reads and device
@@ -303,6 +309,37 @@ public sealed record PluginManifest(string Id, string Version, string MinSdkVers
 /// Well-known context menu groups (<see cref="ITaskPlugin.Group"/>). Plugins reuse these so related
 /// tasks of different plugins share one submenu; any other non-empty name creates its own submenu.
 /// </summary>
+/// <summary>Groups of the core plugin pages in the client's navigation rail, shown in this order (user decision 2026-10-08).</summary>
+public enum CorePluginGroup
+{
+    /// <summary>Network services OADM runs for the devices: NTP server, DHCP server.</summary>
+    Servers = 0,
+
+    /// <summary>Running work on many devices: VAPIX Commander.</summary>
+    Automation = 1,
+
+    /// <summary>Certificates and hardening: PKI, Hardening scan.</summary>
+    Security = 2,
+
+    /// <summary>Watching devices live: Metadata Monitor.</summary>
+    Monitoring = 3,
+
+    /// <summary>Reports for customers and support: Snapshot report.</summary>
+    Reporting = 4,
+
+    /// <summary>Upkeep of the installation, e.g. backups and scheduled checks.</summary>
+    Maintenance = 5,
+
+    /// <summary>Connections to other systems, e.g. a video management system or a ticket system.</summary>
+    Integrations = 6,
+
+    /// <summary>Small helpers and tools.</summary>
+    Utilities = 7,
+
+    /// <summary>Everything else, the default for third-party plugins.</summary>
+    Extensions = 8,
+}
+
 public static class TaskGroups
 {
     public const string Applications = "Applications";

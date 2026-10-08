@@ -30,6 +30,7 @@ public sealed class HardeningScanPlugin : ICorePlugin, IAsyncDisposable
     public string DisplayName => HardeningScanPluginInfo.DisplayName;
 
     public string? IconKey => HardeningScanPluginInfo.IconKey;
+    public CorePluginGroup Group => CorePluginGroup.Security;
 
     public IReadOnlyList<ITaskPlugin> TaskPlugins => [];
 

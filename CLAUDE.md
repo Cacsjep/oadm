@@ -535,7 +535,11 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
 - Left navigation rail: expanded by default (user decision 2026-10-08; collapsed: icons only, ~56 px, tooltips with the label),
   expand/collapse toggle at the bottom of the rail; expanded ~220 px with icon + label.
   Selected item as rounded pill `#2A2A2A`. Entries top: Devices, then one per Core plugin
-  page. Pinned bottom, top to bottom: Users and Credentials (Admin only: hidden for operators, follow the session
+  page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (VAPIX
+  Commander), Security (PKI, Hardening scan), Monitoring (Metadata Monitor), Reporting (Snapshot report; System report has
+  no page), Maintenance, Integrations, Utilities, Extensions (default, third-party); user decision 2026-10-08): only groups
+  with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
+  each group, collapsed = a separator at each group start. Pinned bottom, top to bottom: Users and Credentials (Admin only: hidden for operators, follow the session
   role live), Logs, Settings, About (icons `users`, `key`, `logs`, `settings`, `info`), then the logged-in user with
   Log out and the expand toggle. Keys = `HostPages` (`users`, `credentials`, `logs`, `settings`, `about`); opening an
   admin page as operator does nothing, a hidden page that was open falls back to Devices. No Tasks page. Every page
@@ -813,6 +817,8 @@ public interface ICorePlugin : IPlugin
     Task StopAsync(CancellationToken ct);
     Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct); // UI page backend
     bool HasPage => true;              // false: no rail entry (CorePluginInfo.no_page), e.g. a toolbar-only plugin
+    CorePluginGroup Group => CorePluginGroup.Extensions; // rail group: Servers, Automation, Security, Monitoring, Reporting,
+                                       // Maintenance, Integrations, Utilities, Extensions (CorePluginInfo.group = 5)
 }
 
 public interface ITaskExecutionContext

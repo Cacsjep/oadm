@@ -28,6 +28,7 @@ public sealed class DhcpServerPlugin : ICorePlugin, IAsyncDisposable
     public string DisplayName => DhcpServerPluginInfo.DisplayName;
 
     public string? IconKey => DhcpServerPluginInfo.IconKey;
+    public CorePluginGroup Group => CorePluginGroup.Servers;
 
     public IReadOnlyList<ITaskPlugin> TaskPlugins { get; } = [];
 

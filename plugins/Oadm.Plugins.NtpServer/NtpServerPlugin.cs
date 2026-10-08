@@ -30,6 +30,7 @@ public sealed class NtpServerPlugin : ICorePlugin, IAsyncDisposable
     public string DisplayName => NtpServerPluginInfo.DisplayName;
 
     public string? IconKey => NtpServerPluginInfo.IconKey;
+    public CorePluginGroup Group => CorePluginGroup.Servers;
 
     public IReadOnlyList<ITaskPlugin> TaskPlugins { get; }
 

@@ -94,6 +94,7 @@
             <DataTemplate x:DataType="shell:NavItemViewModel">
               <StackPanel>
                 <Border Classes="separator" Margin="4,6" IsVisible="{Binding HasSeparatorBefore}" />
+                <TextBlock Classes="navGroup" Text="{Binding GroupTitle}" IsVisible="{Binding ShowGroupHeader}" />
                 <Button Classes="nav" Classes.selected="{Binding IsSelected}" Margin="0,2"
                         Command="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).NavigateCommand}"
                         CommandParameter="{Binding}"

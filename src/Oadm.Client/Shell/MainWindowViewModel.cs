@@ -13,6 +13,7 @@ using Oadm.Client.Plugins;
 using Oadm.Client.Settings;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Client.Shell;
 
@@ -149,6 +150,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         _settings.Current.NavRailExpanded = value;
         _settings.Save();
+        UpdateNavGroups();
     }
 
     [RelayCommand]
@@ -252,7 +254,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
             }
         }
 
-        bool first = !NavItems.Any(n => n.Page is CorePluginPageViewModel);
         foreach (CorePluginInfo plugin in corePlugins.Where(p => NavItems.All(n => n.Key != "plugin:" + p.Id)))
         {
             object? view = null;
@@ -273,13 +274,57 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 }
             }
 
+            CorePluginGroup group = Enum.TryParse(plugin.Group, ignoreCase: true, out CorePluginGroup parsed) && Enum.IsDefined(parsed)
+                ? parsed
+                : CorePluginGroup.Extensions;
             NavItems.Add(new NavItemViewModel("plugin:" + plugin.Id, plugin.DisplayName,
                 string.IsNullOrEmpty(plugin.IconKey) ? "plugin" : plugin.IconKey,
                 new CorePluginPageViewModel(plugin.Id, plugin.DisplayName, view, page?.HasOwnCards == true,
                     page?.ShowTasksPane == true && view is not null ? Devices.Tasks : null, error))
             {
-                HasSeparatorBefore = first,
+                GroupTitle = group.ToString(),
+                GroupOrder = (int)group,
             });
+        }
+
+        OrderCorePluginPages();
+    }
+
+    /// <summary>Core plugin pages sorted by group (<see cref="CorePluginGroup"/> order), the server's order inside a group.</summary>
+    private void OrderCorePluginPages()
+    {
+        var pages = NavItems.Where(n => n.Page is CorePluginPageViewModel).ToList();
+        var ordered = pages.OrderBy(n => n.GroupOrder).ToList(); // stable
+        if (!pages.SequenceEqual(ordered))
+        {
+            foreach (NavItemViewModel page in pages)
+            {
+                NavItems.Remove(page);
+            }
+
+            foreach (NavItemViewModel page in ordered)
+            {
+                NavItems.Add(page);
+            }
+        }
+
+        UpdateNavGroups();
+    }
+
+    /// <summary>
+    /// Group starts of the core plugin pages (user decision 2026-10-08): only groups with pages appear; expanded rail = a
+    /// small header above the first page of each group (and the separator under Devices), collapsed rail = a separator.
+    /// </summary>
+    private void UpdateNavGroups()
+    {
+        string? previous = null;
+        var first = true;
+        foreach (NavItemViewModel item in NavItems.Where(n => n.Page is CorePluginPageViewModel))
+        {
+            bool start = !string.Equals(item.GroupTitle, previous, StringComparison.Ordinal);
+            item.ShowGroupHeader = start && IsNavExpanded;
+            item.HasSeparatorBefore = first || (start && !IsNavExpanded);
+            previous = item.GroupTitle;
             first = false;
         }
     }

@@ -41,6 +41,7 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
     public string DisplayName => PkiPluginInfo.DisplayName;
 
     public string? IconKey => PkiPluginInfo.IconKey;
+    public CorePluginGroup Group => CorePluginGroup.Security;
 
     /// <summary>The Security tasks (part 2): HTTPS and IEEE 802.1X enable / disable, view, delete, manual install, renew.</summary>
     public IReadOnlyList<ITaskPlugin> TaskPlugins { get; }

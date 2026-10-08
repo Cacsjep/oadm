@@ -20,6 +20,15 @@ public sealed partial class NavItemViewModel(string key, string title, string ic
 
     /// <summary>Draw a thin separator above this entry (start of a new group).</summary>
     [ObservableProperty] public partial bool HasSeparatorBefore { get; set; }
+
+    /// <summary>Core plugin pages: the rail group (<c>CorePluginGroup</c> name, e.g. "Servers"); null for host pages.</summary>
+    public string? GroupTitle { get; init; }
+
+    /// <summary>Position of the group in the rail (<c>CorePluginGroup</c> value).</summary>
+    public int GroupOrder { get; init; }
+
+    /// <summary>First entry of its group while the rail is expanded: the small group header above it.</summary>
+    [ObservableProperty] public partial bool ShowGroupHeader { get; set; }
 }
 
 /// <summary>Navigation page of a core plugin. <see cref="View"/> comes from the plugin's client assembly, if installed.</summary>

@@ -859,10 +859,10 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
     /// <summary>Core plugins simulated in fake mode (FakeOadmApi.SnapshotReport.cs, FakeOadmApi.Pki.cs, FakeOadmApi.MetadataMonitor.cs, FakeOadmApi.HardeningScan.cs).</summary>
     private static IEnumerable<CorePluginInfo> FakeCorePlugins =>
     [
-        new CorePluginInfo { Id = SnapshotReportPluginId, DisplayName = "Snapshot report", IconKey = "snapshot" },
-        new CorePluginInfo { Id = PkiPluginId, DisplayName = "PKI", IconKey = "shield" },
-        new CorePluginInfo { Id = MetadataMonitorPluginId, DisplayName = "Metadata Monitor", IconKey = "activity" },
-        new CorePluginInfo { Id = HardeningScanPluginId, DisplayName = "Hardening scan", IconKey = "clipboardCheck" },
+        new CorePluginInfo { Id = SnapshotReportPluginId, DisplayName = "Snapshot report", IconKey = "snapshot", Group = "Reporting" },
+        new CorePluginInfo { Id = PkiPluginId, DisplayName = "PKI", IconKey = "shield", Group = "Security" },
+        new CorePluginInfo { Id = MetadataMonitorPluginId, DisplayName = "Metadata Monitor", IconKey = "activity", Group = "Monitoring" },
+        new CorePluginInfo { Id = HardeningScanPluginId, DisplayName = "Hardening scan", IconKey = "clipboardCheck", Group = "Security" },
     ];
 
     public Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) => pluginId switch

@@ -300,6 +300,13 @@
       </Transitions>
     </Setter>
   </Style>
+  <!-- Group header of the core plugin pages in the expanded navigation rail ("Servers", "Security", ...) -->
+  <Style Selector="TextBlock.navGroup">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="Margin" Value="12,8,0,4" />
+  </Style>
   <!-- Side subheader next to a page title: small, grey, bottom aligned (margin = measured baseline offset). -->
   <Style Selector="TextBlock.pageSubtitle">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
