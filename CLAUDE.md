@@ -1604,12 +1604,114 @@ the server address is set with `--server` or in the client settings file (user d
 - Device credentials never leave the server; gRPC returns only "has credentials". The credential list
   (same AES-256-GCM, entry id as associated data) lists only ids and user names; the one exception is the
   explicit reveal of a credential list entry (`SettingsService.RevealCredential`, Settings page eye / copy
-  button; user decision 2026-10-08, logged without the password; to be restricted to administrators once
-  client login exists). Credentials the technician types for a login (RetryAuth) or a first password travel
+  button; user decision 2026-10-08; Admin only and in the audit log, see "Production hardening"). Credentials the
+  technician types for a login (RetryAuth) or a first password travel
   only client -> server.
-- No client authentication in Goal 1. Server binds to all interfaces so a client on another
-  machine can connect; README documents this as LAN-only.
+- Clients log in over TLS with users and roles (see "Production hardening"); the server binds to all interfaces so a client on another
+  machine can connect.
 - Never log passwords or digest headers.
+
+# Production hardening (decided with the user on 2026-10-08)
+
+Source: the overall and security audits of 2026-10-08 (local, not in git). Every point below is a user decision; details
+marked *(default)* were filled in and can be changed. This section wins over older text in this file where they differ.
+
+## 1. Access: TLS, users, roles, login (replaces "No authentication in Goal 1")
+
+- **TLS on the gRPC endpoint.** On first start the server creates a self-signed certificate (ECDSA P-256, CN = server
+  name, SAN = host name + all interface addresses + localhost, 20 years) and keeps it in the data folder
+  (`server-tls.json`: certificate PEM + private key encrypted with the master key). Kestrel serves HTTP/2 over TLS on the
+  listen URL (default `https://0.0.0.0:5080`; an `http://` URL is still accepted for tests and logs a warning). The
+  client pins the certificate's SHA-256 per server on first connect (trust on first use, the fingerprint is shown and
+  confirmed in the login window) and refuses a changed certificate with "The server certificate changed" (Forget server
+  re-pins). *(default)* Regenerating the certificate is a server command line option `--Oadm:RegenerateTlsCertificate`.
+- **Users and roles.** Table `Users` (Id, UserName unique case-insensitive 1..64, PasswordHash = PBKDF2-SHA256 with
+  210,000 iterations and a 16-byte salt, Role Admin | Operator, Disabled, CreatedUtc, LastLoginUtc). Password rules: at
+  least 10 characters *(default)*. **First administrator**: while no user exists, the login window offers "Create the
+  first administrator"; the server accepts this only from a loopback client, or from a remote client that enters the
+  one-time setup code the server writes to `<datafolder>/setup-code.txt` (admin-only file) and logs at startup *(default)*.
+- **Tokens.** `AuthService.Login(user, password, remember)` returns an opaque random token (32 bytes, base64url); the server
+  stores only its SHA-256 with user, client address, expiry (8 h sliding, 30 days with "Remember me") *(default)*. Clients
+  send `authorization: Bearer <token>` in gRPC metadata (the contracts stay unchanged, see Architecture). A server
+  interceptor answers UNAUTHENTICATED without a valid token (only `AuthService.Login`, `AuthService.Status` (server name,
+  version, "no users yet") and first-admin setup are open) and PERMISSION_DENIED for a missing role. `Logout` revokes.
+  Failed logins: 5 per user per 5 minutes, then 5 minutes locked, logged *(default)*. Task `Owner` = authenticated user
+  name + "@" + the client machine name the client sends (no longer whatever the client claims).
+- **Roles.** **Admin**: everything. **Operator**: devices (watch, add, remove, refresh, credentials of a device, web UI
+  link), discovery, tasks (run, cancel, delete own and others; not Delete all), live view, uploads, plugin pages that do
+  not change server configuration (Snapshot report, VAPIX Commander, Metadata Monitor, PKI read and device
+  certificate tasks). **Admin only**: `SettingsService.Set`, credential list (add, remove, reveal), users, `TaskService.DeleteAll`,
+  PKI (generate, import, backup, export, install in the server root store, PKI settings), DHCP and NTP save / static
+  leases / release. Core plugins declare their method roles through a new SDK member
+  `ICorePlugin.RequiredRole(string method)` (DIM default Operator); the host checks it before `InvokeAsync`.
+- **Credential reveal**: Admin only, every reveal in the audit log; without a login (no users yet) it is refused.
+- **PKI "Install in trusted root store" on the server**: Admin only; the confirmation shows the CA's SHA-256 fingerprint;
+  logged in the audit log. The client-side install is unchanged.
+- **Login window (client).** Shown at start: Server (default `localhost:5080`, remembered, list of recent servers), User
+  name, Password (`ui:PasswordBox`), "Remember me" (keeps the token in the client settings, never the password), Log in.
+  First connect to a server: fingerprint confirmation. No users yet: "Create the first administrator" (+ setup code for
+  remote servers). The rail shows the logged-in user with Log out at the bottom. Replaces the removed "This client"
+  card: the server address is chosen here. `--server` still preselects it. Fake mode has no login (user "admin").
+- **Users page** (Settings page card **Users**, Admin only): list (user, role, last login, disabled), add, change role,
+  reset password, disable, delete; never the last enabled admin, never yourself.
+- **Audit log.** Table `AuditEntries` (TimeUtc, UserName, ClientAddress, Action, Target, Detail; retention 365 days or
+  200,000 entries *(default)*). Logged: login ok/failed, logout, user changes, settings changes, credential list
+  add/remove/reveal, PKI actions, DHCP/NTP save, task runs (plugin, device count), Delete all, device remove, VAPIX
+  Commander send / rollout. Logs page gets an **Audit** tab (Admin only, virtualized, SearchBox).
+
+## 2. Automatic login on the add page
+
+- **Axis check first** (user decision): before any credential is sent, the device must answer the anonymous VAPIX
+  `basicdeviceinfo.cgi` `getAllUnrestrictedProperties` with a valid Axis answer (12-hex serial number, ProdNbr). Only
+  then OADM logs in: **HTTPS first** (Digest, then Basic), then HTTP (Digest, then Basic). User decision: such a verified
+  Axis device may get Basic over plain HTTP when it offers nothing else. Known residual risk (recorded on the user's
+  request): a device that imitates the anonymous answer passes the check.
+- **Candidates: credential list only** (+ credentials typed in the session). Passwords of managed devices are never
+  tried on new devices. At most 10 rejected credentials per device (unchanged).
+
+## 3. Data safety
+
+- `master.key` missing or not matching (a key check value is stored in `Setting` `Security.KeyCheck` = HMAC of a fixed
+  label): **warn and continue** (user decision). The server creates a new key, logs an error naming how many device
+  credentials and credential list entries became unreadable, deletes those unreadable rows, sets the affected devices to
+  CredentialsRequired, and the client shows a banner "The server's key was replaced: N devices need their credentials
+  again" until dismissed. The PKI shows its existing "CA key cannot be read" state.
+
+## 4. Robustness
+
+- **Client crashes**: plugin dialogs, pages and toolbar plugins run inside try/catch; an error shows in `ui:MessageWindow`
+  ("The <plugin> dialog failed: <message>") and the client keeps running. Global handlers
+  (`AppDomain.UnhandledException`, `TaskScheduler.UnobservedTaskException`, `Dispatcher.UIThread.UnhandledException`)
+  log every error with the log file path; only truly fatal errors end the app, after logging.
+- **Limits**: HTTP answers from devices at most 16 MB (firmware and ACAP uploads exempt from the request side only), XML
+  documents at most 1 MB with DTD processing prohibited, RTSP / video access units at most 8 MB, uploads: total quota
+  10 GB *(default)* and at least 1 GB free disk, oldest uploads removed first, RESOURCE_EXHAUSTED otherwise.
+- **VAPIX Commander**: every request must go to the device's own address: paths with `\`, `//` or an authority are
+  rejected; `VapixClient.SendAsync` refuses absolute URIs to another host.
+
+## 5. Installation and release
+
+- **Firewall (Windows)**: the MSI opens only TCP 5080, profiles Domain and Private. The NTP and DHCP plugins add their UDP
+  rule (123 / 67, Domain and Private) when enabled and remove it when disabled (`netsh advfirewall`, the server runs as
+  SYSTEM); Linux and macOS unchanged.
+- **Folders** (user decision: service account stays SYSTEM / root): the server checks at start that its data folder,
+  runtime extraction folder and every plugin folder it loads are writable only by admins / root (Windows ACL, Unix owner
+  root and no group/world write); a folder that is not is fixed when possible (Windows: ACL reset by SYSTEM) or skipped
+  with an error (plugins) / refused (data folder). The development plugin folder (`artifacts/plugins`) is only used when
+  the server does not run as an installed service.
+- **Installer choice**: each installer offers "Server and client" (default) or "Client only": MSI features (Server
+  optional), `.deb` split into `oadm-server` and `oadm-client` (+ metapackage `oadm` depending on both), `.pkg`
+  choices.
+- **Licenses**: at publish a complete notices file is generated from every NuGet package (license expression or file
+  from the package) and the bundled assets (FFmpeg LGPL-2.1 full text, Inter OFL, .NET runtime notices); `LICENSE`,
+  `THIRD-PARTY-NOTICES.txt` and the LGPL text ship in all three installers. The client gets **About and licenses**
+  (Settings page): version, server version, license texts.
+- **One release workflow** (`release.yml`, on tags `v*.*.*` only, replaces ci.yml and package.yml): tests on Windows,
+  Linux, macOS (timeout 30 min, hang detection) -> the three installers -> the GitHub release, only when everything
+  passed. v0.0.1 stays a normal release (user decision).
+- **Not now** (user decisions): installer signing (SHA-256 checksums are published with each release instead),
+  least-privilege service accounts, database backup before migrations.
+- **Hardware write tests**: done by the user by hand on a spare camera.
 
 # Coding Rules
 
