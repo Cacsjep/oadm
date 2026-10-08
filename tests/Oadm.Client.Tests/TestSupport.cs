@@ -67,6 +67,8 @@ internal sealed class DevicesFixture : IDisposable
         Tasks = new TaskStore(Store);
         Dialogs = Substitute.For<IDialogService>();
         Launcher = Substitute.For<IUrlLauncher>();
+        Clipboard = Substitute.For<IClipboardService>();
+        Clipboard.SetTextAsync(Arg.Any<string>()).Returns(true);
         if (registry is null)
         {
             registry = Substitute.For<IClientPluginRegistry>();
@@ -93,6 +95,7 @@ internal sealed class DevicesFixture : IDisposable
     public TaskStore Tasks { get; }
     public IDialogService Dialogs { get; }
     public IUrlLauncher Launcher { get; }
+    public IClipboardService Clipboard { get; }
     public IClientPluginRegistry Registry { get; }
     public TaskPluginCatalog Catalog { get; }
     public TaskPluginRunner Runner { get; }

@@ -78,7 +78,7 @@ the server project for shared payload types (it then ships in the same folder).
   `ctx.SkipStep(name, "Keep unchanged")`. Planned steps never reached end Skipped. Names are short
   imperatives ("Set DNS", "Wait for the device to come back"); never secrets in names or details.
   When the task succeeds (Done or Done with warnings) the engine appends a final step **Completed**
-  (Done), so the tasks pane shows "Step 8/8 · Completed"; failed and cancelled tasks get none (the
+  (Done), so the tasks pane shows just "Completed"; failed and cancelled tasks get none (the
   failed step stays current). Plugins never add it themselves.
   Test with `TaskStepList` + `tests/Shared/StepRun.cs` (same end rules as the server, including
   "Completed: Done" at the end of a successful run).
@@ -202,7 +202,7 @@ an error of a whole table (e.g. "Not enough addresses") directly below that tabl
   `Icon.devices`, `Icon.tasks`, `Icon.settings`, `Icon.plugin`, `Icon.add`, `Icon.range`,
   `Icon.remove`, `Icon.refresh`, `Icon.restart`, `Icon.identify`, `Icon.columns`, `Icon.search`,
   `Icon.details`, `Icon.cancel`, `Icon.chevronDown`, `Icon.chevronUp`, `Icon.close`, `Icon.check`,
-  `Icon.server`, `Icon.externalLink`, `Icon.key`, `Icon.eye`, `Icon.eyeOff`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
+  `Icon.server`, `Icon.externalLink`, `Icon.key`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
   `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.network`, `Icon.firmware`, `Icon.users`,
   `Icon.user`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
   `Icon.snapshot`, `Icon.export`, `Icon.clock`,

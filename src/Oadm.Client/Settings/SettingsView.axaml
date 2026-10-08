@@ -60,15 +60,27 @@
       <Border Classes="card">
         <StackPanel Spacing="16">
           <TextBlock Classes="cardTitle" Text="Credential list" />
-          <TextBlock Classes="secondary" TextWrapping="Wrap"
-                     Text="When adding devices, the server logs in to every device it finds with these credentials (and with the credentials of devices already added). Passwords are stored encrypted on the server and never shown again." />
           <ItemsControl ItemsSource="{Binding Credentials}">
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="settings:CredentialItemViewModel">
-                <Grid ColumnDefinitions="220,*,Auto" ColumnSpacing="16" Margin="0,0,0,6">
+                <Grid ColumnDefinitions="180,160,Auto,Auto,*,Auto" ColumnSpacing="16" Margin="0,0,0,6">
                   <ui:IconLabel Icon="{StaticResource Icon.key}" Text="{Binding UserName}" />
-                  <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding AddedText}" VerticalAlignment="Center" />
-                  <ui:ToolbarButton Grid.Column="2" Text="Remove" IconKey="remove"
+                  <TextBlock Grid.Column="1" Text="{Binding PasswordText}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                  <Button Grid.Column="2" Classes="toolbar iconOnly" ToolTip.Tip="{Binding RevealTooltip}"
+                          Command="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ToggleRevealCredentialCommand}"
+                          CommandParameter="{Binding}">
+                    <Panel>
+                      <ui:OadmIcon Data="{StaticResource Icon.eye}" IsVisible="{Binding !IsRevealed}" />
+                      <ui:OadmIcon Data="{StaticResource Icon.eyeOff}" IsVisible="{Binding IsRevealed}" />
+                    </Panel>
+                  </Button>
+                  <Button Grid.Column="3" Classes="toolbar iconOnly" ToolTip.Tip="Copy password"
+                          Command="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).CopyCredentialPasswordCommand}"
+                          CommandParameter="{Binding}">
+                    <ui:OadmIcon Data="{StaticResource Icon.copy}" />
+                  </Button>
+                  <TextBlock Grid.Column="4" Classes="secondary" Text="{Binding AddedText}" VerticalAlignment="Center" />
+                  <ui:ToolbarButton Grid.Column="5" Text="Remove" IconKey="remove"
                                     Command="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).RemoveCredentialCommand}"
                                     CommandParameter="{Binding}" />
                 </Grid>
@@ -94,23 +106,6 @@
           </StackPanel>
           <TextBlock Text="{Binding CredentialMessage}" Classes.error="{Binding CredentialMessageIsError}" Classes.secondary="{Binding !CredentialMessageIsError}"
                      TextWrapping="Wrap" IsVisible="{Binding CredentialMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-        </StackPanel>
-      </Border>
-
-      <Border Classes="card">
-        <StackPanel Spacing="16">
-          <TextBlock Classes="cardTitle" Text="This client" />
-          <StackPanel Classes="inputRow">
-            <ui:FormField Label="Server address" Hint="{Binding ClientMessage}">
-              <TextBox Text="{Binding ServerAddress}" PlaceholderText="http://localhost:5080">
-                <TextBox.KeyBindings>
-                  <KeyBinding Gesture="Enter" Command="{Binding ApplyServerAddressCommand}" />
-                </TextBox.KeyBindings>
-              </TextBox>
-            </ui:FormField>
-            <Button Classes="secondary" Content="Connect" Command="{Binding ApplyServerAddressCommand}"
-                    ToolTip.Tip="{Binding ConnectBlockedReason}" ToolTip.ShowOnDisabled="True" />
-          </StackPanel>
         </StackPanel>
       </Border>
     </StackPanel>

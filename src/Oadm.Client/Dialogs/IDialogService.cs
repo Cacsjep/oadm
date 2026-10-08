@@ -24,6 +24,13 @@ public interface IDialogService
     Task ShowTaskDetailsAsync(TaskDetailsViewModel details);
 }
 
+/// <summary>Puts text on the system clipboard (Avalonia clipboard of the current window).</summary>
+public interface IClipboardService
+{
+    /// <returns>False without a window or clipboard.</returns>
+    Task<bool> SetTextAsync(string text);
+}
+
 /// <summary>Opens URLs (device web UI) in the default browser.</summary>
 public interface IUrlLauncher
 {

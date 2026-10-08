@@ -14,7 +14,7 @@ public sealed class ShellNavigationTests
         connection,
         f.Devices,
         new LogsViewModel(new LogStore(f.Ui)),
-        new SettingsViewModel(f.Api, f.Settings, connection, NullLogger<SettingsViewModel>.Instance),
+        new SettingsViewModel(f.Api, connection, f.Clipboard, NullLogger<SettingsViewModel>.Instance),
         f.Catalog,
         f.Registry,
         f.Api,
@@ -46,7 +46,7 @@ public sealed class ShellNavigationTests
         var api = new Oadm.Client.Api.FakeOadmApi(TimeSpan.FromMilliseconds(5)); // disposed by the fixture
         using var f = new DevicesFixture(api);
         using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
-        var settings = new SettingsViewModel(f.Api, f.Settings, connection, NullLogger<SettingsViewModel>.Instance);
+        var settings = new SettingsViewModel(f.Api, connection, f.Clipboard, NullLogger<SettingsViewModel>.Instance);
 
         await settings.LoadAsync();
         Assert.False(settings.UseHostName);

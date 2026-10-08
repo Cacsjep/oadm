@@ -190,8 +190,10 @@ Two processes, like ADM:
 - `SettingsService`: `Get`, `Set` (`ServerSettings.zero_conf_seconds = 8`, 0 keeps the stored value),
   `ListCredentials`, `AddCredential(user_name, password)`
   (INVALID_ARGUMENT, RESOURCE_EXHAUSTED over 20 entries; an identical pair returns the existing
-  entry; a new entry is tried on the failed devices of every open add session), `RemoveCredential(id)` (NOT_FOUND). Credential entries carry id, user name and created
-  time, never a password.
+  entry; a new entry is tried on the failed devices of every open add session), `RemoveCredential(id)` (NOT_FOUND), `RevealCredential(id)` (reply `RevealedCredential { password = 1 }`:
+  the stored password of one credential list entry for the Settings page eye and copy buttons; NOT_FOUND;
+  logged as "Credential list password of <user> revealed", never the password). Credential entries carry id,
+  user name and created time, never a password.
 - `LiveViewService`: `Watch(device_id, max_width, max_height, fps, accepted_codecs, camera)`
   (stream of encoded access units), `ListSources(device_id)` (view areas / sensors / channels).
   See "Live view".
@@ -463,9 +465,9 @@ Layout, top to bottom:
    `TaskPluginNames.Normalize`). Menus and submenus are at least `Oadm.MenuMinWidth` (240) wide (theme).
    The toolbar task buttons are unchanged (no groups).
 5. Resizable, collapsible bottom pane **Tasks** (no tabs), one row per task (= per device).
-   Columns: Name, Device, Status, Current step, Start time, Owner, Progress (bar). **Current step** is
+   Columns: Name, Device (130 px), Status (widest, 5*, min 280 px: icon plus message), Current step, Start time, Owner, Progress (bar). **Current step** is
    "Step 3/6 · Upload firmware" plus " · 45 %" while the running step reports progress (tooltip: the text
-   and the step detail); a failed task shows its failed step; empty for plugins without steps. **Device** is the task's
+   and the step detail); a failed task shows its failed step, a successful one just "Completed"; empty for plugins without steps. **Device** is the task's
    device by its device grid address (IP or host name, resolved through the client device store
    and updated live); a device removed since shows as "removed device 1a2b3c4d" (id shortened).
    Tooltip: "10.0.0.200: Failed - Connection refused". Sortable by the text. Status chips:
@@ -584,7 +586,7 @@ client).
   running step is Failed "Cancelled."). The running step is also the device message ("Upload firmware -
   12 of 80 MB"). When the task succeeds (Done or Done with warnings) the engine appends a final step
   **Completed** (Done, `TaskStepList.CompletedStepName`, also for plugins without own steps), so the
-  tasks pane reads "Step 8/8 · Completed"; Failed and Cancelled tasks get none (the failed step stays
+  tasks pane reads just "Completed"; Failed and Cancelled tasks get none (the failed step stays
   current). Overall progress = steps with equal weights, the running one with its own progress,
   unless the plugin calls `ReportProgress` (then that value wins). Step changes go to the change feed
   immediately and are persisted with the throttled writes (max 1/s per device) plus every state
@@ -1344,8 +1346,8 @@ part 2: the contributed Security tasks (below), the only writers of the `issued`
   <date>" ok / "CA expires in N days" warning (within `expiryWarningDays`) / "CA expired", "CA key cannot be read" error):
   cards Certificate authority (name, validity, key, fingerprint selectable, chain of an intermediate, "Trusted root store"
   chips for the server and this computer, toolbar buttons Install in trusted root store, Export public certificate (PEM /
-  DER menu), Back up, Generate new CA, Import CA), Device certificates (two fields + "Issued: 120 devices · 3
-  expire within 30 days · 4 from a previous CA"), IEEE 802.1X (EAPOL version, EAP identity + custom field, RADIUS server CA
+  DER menu), Back up, Generate new CA, Import CA), Device certificates (the two fields; no issued-devices summary line,
+  user decision 2026-10-08), IEEE 802.1X (EAPOL version, EAP identity + custom field, RADIUS server CA
   with Import... / View, one Save for both cards), Previous certificate authorities (only when there are any: Name, Valid
   until, Replaced, Export / Remove links, Remove confirmed). Dialogs `GenerateCaWindow`, `ImportCaWindow` (FileRow, key
   FileRow only for a certificate without key), `BackupWindow`: `ValidatingViewModel`, errors under the fields, the
@@ -1495,18 +1497,24 @@ firmware updates."), `Devices.UseHostName` (bool, false: add devices by host nam
 known, otherwise by IP address; proto `optional bool use_host_name = 7` so a partial `Set`
 keeps it). Settings page in the client exposes them; `Devices.UseHostName` is the checkbox
 "Use host name when available, otherwise IP address". Settings page card **Credential list**:
-entries (key icon, user name, added time, Remove), add form (user name, password, "Add
-credential"); stored encrypted on the server (`CredentialListStore`, table CredentialListEntries),
-never shown again, tried on every discovered device (see "Add Devices Page"). Client-side (local JSON in
-LocalApplicationData): server address, grid column layout, bottom pane state.
+no hint text; entries (key icon, user name, password masked as 8 bullets, eye icon button "Show password" /
+"Hide password" that loads it with `RevealCredential` and masks (and forgets) it on the second click, copy icon
+button "Copy password" (clipboard of the window, loaded on demand, not shown), added time, Remove), add form (user
+name, password, "Add credential"); stored encrypted on the server (`CredentialListStore`, table
+CredentialListEntries), tried on every discovered device (see "Add Devices Page"). There is no "This client" card:
+the server address is set with `--server` or in the client settings file (user decision 2026-10-08). Client-side
+(local JSON in LocalApplicationData): server address, device grid column layout, bottom pane state.
 
 # Security
 
 - Device passwords: AES-256-GCM, key in `<datafolder>/master.key` (0600 on Unix), random
   nonce per record, stored as `nonce|ciphertext|tag`. OS keyring integration is a later goal.
-- Credentials never leave the server; gRPC returns only "has credentials". The credential list
-  (same AES-256-GCM, entry id as associated data) returns only ids and user names; credentials the
-  technician types for a login (RetryAuth) or a first password travel only client -> server.
+- Device credentials never leave the server; gRPC returns only "has credentials". The credential list
+  (same AES-256-GCM, entry id as associated data) lists only ids and user names; the one exception is the
+  explicit reveal of a credential list entry (`SettingsService.RevealCredential`, Settings page eye / copy
+  button; user decision 2026-10-08, logged without the password; to be restricted to administrators once
+  client login exists). Credentials the technician types for a login (RetryAuth) or a first password travel
+  only client -> server.
 - No client authentication in Goal 1. Server binds to all interfaces so a client on another
   machine can connect; README documents this as LAN-only.
 - Never log passwords or digest headers.

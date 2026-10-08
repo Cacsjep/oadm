@@ -68,10 +68,13 @@ public interface IOadmApi
     Task<ServerSettings> GetSettingsAsync(CancellationToken ct);
     Task<ServerSettings> SetSettingsAsync(ServerSettings settings, CancellationToken ct);
 
-    /// <summary>The credential list (ids and user names only; passwords never come back).</summary>
+    /// <summary>The credential list (ids and user names only; a password comes back only through <see cref="RevealCredentialAsync"/>).</summary>
     Task<IReadOnlyList<CredentialEntry>> ListCredentialsAsync(CancellationToken ct);
     Task<CredentialEntry> AddCredentialAsync(string userName, string password, CancellationToken ct);
     Task RemoveCredentialAsync(string id, CancellationToken ct);
+
+    /// <summary>The stored password of one credential list entry, on explicit request (eye button). NOT_FOUND for an unknown id.</summary>
+    Task<string> RevealCredentialAsync(string id, CancellationToken ct);
 
     // LiveViewService
     /// <summary>Encoded access units of a device's camera, relayed by the server.</summary>
