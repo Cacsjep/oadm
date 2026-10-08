@@ -59,5 +59,6 @@ def write_icns(path: str) -> None:
 if __name__ == "__main__":
     logo(512).save(os.path.join(HERE, "oadm.png"), optimize=True)
     logo(256).save(os.path.join(HERE, "oadm-256.png"), optimize=True)
-    write_ico(os.path.join(HERE, "oadm.ico"), [16, 24, 32, 48, 64, 128, 256])
+    # 20, 30, 36 and 40 px: taskbar and title bar at 125 % and 150 % display scaling.
+    write_ico(os.path.join(HERE, "oadm.ico"), [16, 20, 24, 30, 32, 36, 40, 48, 64, 128, 256])
     write_icns(os.path.join(HERE, "oadm.icns"))

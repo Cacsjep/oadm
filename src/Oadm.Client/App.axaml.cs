@@ -53,14 +53,17 @@ public partial class App : Application
         });
 
     /// <summary>
-    /// The OADM logo (packaging/icons/oadm-256.png, built from /icon) as window icon of every window: taskbar,
+    /// The OADM logo (packaging/icons/oadm.ico on Windows, oadm-256.png elsewhere; built from /icon) as window icon of every window: taskbar,
     /// Alt+Tab and the Linux window list. The exe icon alone is not enough (dotnet exec, Linux, macOS).
     /// </summary>
     private static readonly Lazy<Avalonia.Controls.WindowIcon?> AppIcon = new(() =>
     {
         try
         {
-            using var stream = Avalonia.Platform.AssetLoader.Open(new Uri("avares://Oadm.Client/Assets/oadm-256.png"));
+            // Windows: the .ico, so the taskbar and title use the hand-made 16-48 px images instead of a 256 px PNG
+            // the OS scales down (blurry). Linux and macOS take the PNG.
+            string asset = OperatingSystem.IsWindows() ? "oadm.ico" : "oadm-256.png";
+            using var stream = Avalonia.Platform.AssetLoader.Open(new Uri("avares://Oadm.Client/Assets/" + asset));
             return new Avalonia.Controls.WindowIcon(stream);
         }
 #pragma warning disable CA1031 // A missing icon must never stop a window from opening.
