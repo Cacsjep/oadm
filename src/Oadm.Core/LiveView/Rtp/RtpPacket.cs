@@ -84,8 +84,18 @@ public abstract class NalDepacketizer : IRtpDepacketizer
     private bool _waitForKeyframe = true;
     private bool _inFragment;
     private int _fragmentStart;
+    private bool _oversized;
+
+    /// <summary>Largest access unit kept (8 MB); a larger one is dropped like a damaged one.</summary>
+    public const int DefaultMaxAccessUnitBytes = 8 * 1024 * 1024;
 
     public int DroppedAccessUnits { get; private set; }
+
+    /// <summary>Largest access unit kept; the rest of a larger one is discarded and it is dropped (default 8 MB).</summary>
+    public int MaxAccessUnitBytes { get; init; } = DefaultMaxAccessUnitBytes;
+
+    /// <summary>Access units dropped because they were larger than <see cref="MaxAccessUnitBytes"/>.</summary>
+    public int OversizedAccessUnits { get; private set; }
 
     /// <summary>Parameter set NAL types in decoder order (H.264: SPS, PPS; H.265: VPS, SPS, PPS).</summary>
     protected abstract IReadOnlyList<int> ParameterSetTypes { get; }
@@ -135,7 +145,7 @@ public abstract class NalDepacketizer : IRtpDepacketizer
         }
 
         _lastSequence = packet.SequenceNumber;
-        if (_timestamp is { } ts && ts != packet.Timestamp && _unit.WrittenCount > 0)
+        if (_timestamp is { } ts && ts != packet.Timestamp && (_unit.WrittenCount > 0 || _oversized))
         {
             Complete(completed); // previous access unit had no marker
         }
@@ -181,6 +191,11 @@ public abstract class NalDepacketizer : IRtpDepacketizer
         }
 
         _inFragment = false;
+        if (!Fits(StartCode.Length + nal.Length))
+        {
+            return;
+        }
+
         Record(NalType(nal), nal);
         _unit.Write(StartCode);
         _unit.Write(nal);
@@ -192,6 +207,11 @@ public abstract class NalDepacketizer : IRtpDepacketizer
         if (_inFragment)
         {
             _damaged = true;
+        }
+
+        if (!Fits(StartCode.Length + header.Length + data.Length))
+        {
+            return;
         }
 
         _inFragment = true;
@@ -209,6 +229,11 @@ public abstract class NalDepacketizer : IRtpDepacketizer
             return;
         }
 
+        if (!Fits(data.Length))
+        {
+            return;
+        }
+
         _unit.Write(data);
         if (end)
         {
@@ -216,6 +241,29 @@ public abstract class NalDepacketizer : IRtpDepacketizer
             var nal = _unit.WrittenSpan[_fragmentStart..];
             Record(NalType(nal), nal);
         }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="extra"/> more bytes fit into the access unit. An oversized unit discards its data at
+    /// once, takes no more data and is dropped when it completes (the next keyframe resumes the stream).
+    /// </summary>
+    private bool Fits(int extra)
+    {
+        if (_oversized)
+        {
+            return false;
+        }
+
+        if ((long)_unit.WrittenCount + extra <= MaxAccessUnitBytes)
+        {
+            return true;
+        }
+
+        _oversized = true;
+        _damaged = true;
+        _inFragment = false;
+        _unit.ResetWrittenCount();
+        return false;
     }
 
     private void Record(int type, ReadOnlySpan<byte> nal)
@@ -231,7 +279,12 @@ public abstract class NalDepacketizer : IRtpDepacketizer
     {
         var keyframe = _nalTypes.Any(IsKeyframeType);
         var damaged = _damaged || _inFragment;
-        if (_unit.WrittenCount > 0)
+        if (_oversized)
+        {
+            OversizedAccessUnits++;
+        }
+
+        if (_unit.WrittenCount > 0 || _oversized)
         {
             if (damaged)
             {
@@ -253,6 +306,7 @@ public abstract class NalDepacketizer : IRtpDepacketizer
         _nalTypes.Clear();
         _damaged = false;
         _inFragment = false;
+        _oversized = false;
     }
 
     private AccessUnit Build(bool keyframe)

@@ -151,7 +151,7 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
         XElement root;
         try
         {
-            root = XElement.Parse(xml.Trim());
+            root = DeviceXml.ParseElement(xml.Trim());
         }
         catch (XmlException ex)
         {
@@ -192,7 +192,7 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
     {
         try
         {
-            var root = XElement.Parse(xml.Trim());
+            var root = DeviceXml.ParseElement(xml.Trim());
             if (!string.Equals((string?)root.Attribute("result"), "ok", StringComparison.OrdinalIgnoreCase))
             {
                 return null;

@@ -63,6 +63,9 @@ public sealed class VapixClient : IVapixClient, IDisposable
     internal const string ApiDiscoveryPath = "axis-cgi/apidiscovery.cgi";
     internal const string RestartPath = "axis-cgi/restart.cgi";
 
+    /// <summary>Largest answer accepted from a device (16 MB); uploads are limited on the request side only.</summary>
+    public const long MaxResponseBytes = 16L * 1024 * 1024;
+
     private const string JsonMediaType = "application/json";
 
     private readonly HttpClient _http;
@@ -82,6 +85,7 @@ public sealed class VapixClient : IVapixClient, IDisposable
         {
             BaseAddress = baseAddress,
             Timeout = System.Threading.Timeout.InfiniteTimeSpan,
+            MaxResponseContentBufferSize = MaxResponseBytes,
         };
     }
 
@@ -301,9 +305,11 @@ public sealed class VapixClient : IVapixClient, IDisposable
     /// sending the body and reading the response, and surfaces like an HttpClient timeout
     /// (<see cref="TaskCanceledException"/> with an inner <see cref="TimeoutException"/>).
     /// </remarks>
+    /// <exception cref="ArgumentException">The request would go to another host, port or scheme than the device's.</exception>
     public async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
+        EnsureSameDevice(request.RequestUri);
         var timeout = request.Options.TryGetValue(VapixRequestOptions.Timeout, out var requested) ? requested : _timeout;
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         if (timeout != System.Threading.Timeout.InfiniteTimeSpan)
@@ -321,6 +327,10 @@ public sealed class VapixClient : IVapixClient, IDisposable
                 string.Create(System.Globalization.CultureInfo.InvariantCulture, $"The device did not answer within {timeout.TotalSeconds:0} seconds."),
                 new TimeoutException(ex.Message, ex));
         }
+        catch (HttpRequestException ex) when (IsTooLarge(ex))
+        {
+            throw new VapixResponseTooLargeException(ex);
+        }
         catch (HttpRequestException ex) when (Pinning?.MismatchFingerprint is { } actual)
         {
             throw new CertificateChangedException(Pinning.PinnedFingerprint ?? string.Empty, actual.Length == 0 ? null : actual, ex);
@@ -331,6 +341,36 @@ public sealed class VapixClient : IVapixClient, IDisposable
     {
         _http.Dispose();
     }
+
+    /// <summary>
+    /// Every request goes to the device itself: an absolute URI, or a relative one that resolves to another
+    /// authority ("//host/x", "/\host/x"), is refused before anything is sent.
+    /// </summary>
+    private void EnsureSameDevice(Uri? uri)
+    {
+        if (uri is null)
+        {
+            return;
+        }
+
+        // Like HttpClient: "/path" parsed as an implicit file URI (Unix) is a path relative to the base address.
+        var relative = !uri.IsAbsoluteUri || (uri.IsFile && uri.OriginalString.StartsWith('/'));
+        var target = relative ? new Uri(BaseAddress, uri.OriginalString) : uri;
+        if ((relative && uri.OriginalString.Contains('\\', StringComparison.Ordinal))
+            || !string.Equals(target.Scheme, BaseAddress.Scheme, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(target.IdnHost, BaseAddress.IdnHost, StringComparison.OrdinalIgnoreCase)
+            || target.Port != BaseAddress.Port
+            || !string.IsNullOrEmpty(target.UserInfo))
+        {
+            throw new ArgumentException(
+                $"Refused: the request must go to the device {BaseAddress.Authority} itself, not to {target.GetLeftPart(UriPartial.Authority)}.",
+                nameof(uri));
+        }
+    }
+
+    private static bool IsTooLarge(HttpRequestException ex) =>
+        ex.HttpRequestError == HttpRequestError.ConfigurationLimitExceeded
+        || ex.InnerException is HttpRequestException { HttpRequestError: HttpRequestError.ConfigurationLimitExceeded };
 
     private async Task<string> PostJsonAsync(string path, string json, CancellationToken ct)
     {
