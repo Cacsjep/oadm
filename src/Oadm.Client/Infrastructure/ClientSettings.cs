@@ -39,6 +39,9 @@ public sealed class ClientSettings
 
     /// <summary>Navigation rail shows labels (expanded, the default; user decision 2026-10-08) or icons only (collapsed).</summary>
     public bool NavRailExpanded { get; set; } = true;
+
+    /// <summary>Ids of "server key replaced" notices the user dismissed on this client.</summary>
+    public List<string> DismissedKeyNotices { get; set; } = [];
 }
 
 /// <summary>A remembered session of one server.</summary>

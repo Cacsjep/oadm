@@ -180,6 +180,41 @@ public sealed class DepacketizerTests
         Assert.Equal("rtsp://cam/axis-media/media.amp/trackID=1", track.ResolveControl(new Uri("rtsp://cam/axis-media/media.amp")).AbsoluteUri);
     }
 
+    [Fact]
+    public void AnAccessUnitLargerThan8MegabytesIsDroppedAndTheNextKeyframeResumes()
+    {
+        Assert.Equal(8 * 1024 * 1024, NalDepacketizer.DefaultMaxAccessUnitBytes);
+        var depacketizer = new H264Depacketizer();
+        ushort seq = 0;
+        var units = new List<AccessUnit>();
+
+        void Frame(uint ts, int size)
+        {
+            units.AddRange(depacketizer.Push(Packet(seq++, ts, false, [0x67, 1, 2, 3]))); // SPS
+            units.AddRange(depacketizer.Push(Packet(seq++, ts, false, [0x68, 4]))); // PPS
+            const int chunk = 60_000;
+            for (var offset = 0; offset < size; offset += chunk)
+            {
+                var start = offset == 0;
+                var end = offset + chunk >= size;
+                var payload = new byte[2 + Math.Min(chunk, size - offset)];
+                payload[0] = 0x60 | 28; // FU-A
+                payload[1] = (byte)((start ? 0x80 : 0) | (end ? 0x40 : 0) | 5); // IDR
+                units.AddRange(depacketizer.Push(Packet(seq++, ts, end, payload)));
+            }
+        }
+
+        Frame(1000, 9 * 1024 * 1024); // oversized keyframe
+        Assert.Empty(units);
+        Assert.Equal(1, depacketizer.OversizedAccessUnits);
+        Assert.Equal(1, depacketizer.DroppedAccessUnits);
+
+        Frame(4000, 100_000); // the next keyframe
+        var unit = Assert.Single(units);
+        Assert.True(unit.IsKeyframe);
+        Assert.InRange(unit.Data.Length, 100_000, 101_000);
+    }
+
     private static RtpPacket Packet(ushort seq, uint ts, bool marker, byte[] payload) => new(marker, 96, seq, ts, 1, payload);
 
     private static List<int> NalTypes(byte[] annexB, bool h265)

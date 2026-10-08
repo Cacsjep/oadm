@@ -104,13 +104,20 @@
         </ItemsControl>
       </DockPanel>
 
-      <!-- Page; the banner shows only while the server is unreachable -->
-      <Grid Grid.Column="1" RowDefinitions="Auto,*" Margin="{StaticResource Oadm.PagePadding}">
+      <!-- Page; the connection banner shows only while the server is unreachable, the key banner after the
+           server replaced its master key until dismissed -->
+      <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*" Margin="{StaticResource Oadm.PagePadding}">
         <Border Grid.Row="0" Classes="banner" Classes.connecting="{Binding Connection.IsConnecting}" Margin="0,0,0,12"
                 IsVisible="{Binding !Connection.IsConnected}">
           <TextBlock Text="{Binding Connection.StatusText}" />
         </Border>
-        <ContentControl Grid.Row="1" Content="{Binding CurrentPage}" />
+        <Border Grid.Row="1" Classes="banner warning" Margin="0,0,0,12" IsVisible="{Binding HasKeyNotice}">
+          <DockPanel>
+            <Button DockPanel.Dock="Right" Classes="link" Content="Dismiss" Command="{Binding DismissKeyNoticeCommand}" Margin="12,0,0,0" />
+            <TextBlock Text="{Binding KeyNoticeText}" VerticalAlignment="Center" TextWrapping="Wrap" />
+          </DockPanel>
+        </Border>
+        <ContentControl Grid.Row="2" Content="{Binding CurrentPage}" />
       </Grid>
     </Grid>
   </Grid>

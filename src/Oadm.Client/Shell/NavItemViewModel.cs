@@ -23,8 +23,13 @@ public sealed partial class NavItemViewModel(string key, string title, string ic
 }
 
 /// <summary>Navigation page of a core plugin. <see cref="View"/> comes from the plugin's client assembly, if installed.</summary>
-public sealed class CorePluginPageViewModel(string pluginId, string title, object? view, bool hasOwnCards = false, Oadm.Client.Tasks.TasksViewModel? tasks = null)
+public sealed class CorePluginPageViewModel(string pluginId, string title, object? view, bool hasOwnCards = false, Oadm.Client.Tasks.TasksViewModel? tasks = null, string? error = null)
 {
+    /// <summary>Shown instead of the view: the page is not installed on this client, or it failed to open.</summary>
+    public string NoViewText { get; } = error is null
+        ? "The page of this plugin is not installed on this client."
+        : $"The {title} page failed: {error}";
+
     public string PluginId { get; } = pluginId;
     public string Title { get; } = title;
     public object? View { get; } = view;

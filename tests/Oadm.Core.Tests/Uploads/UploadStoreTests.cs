@@ -150,6 +150,62 @@ public sealed class UploadStoreTests : IAsyncLifetime
         Assert.Equal(0, await new UploadStore(new OadmPaths(TestDatabase.NewTempDirectory())).DeleteExpiredAsync(CancellationToken.None));
     }
 
+    [Fact]
+    public async Task TheQuotaRemovesTheOldestUploadsFirst()
+    {
+        Assert.Equal(10L * 1024 * 1024 * 1024, UploadStore.DefaultQuotaBytes);
+        _store.QuotaBytes = 1000;
+        _store.FreeDiskSpace = () => 100L * 1024 * 1024 * 1024;
+        var first = await AgedUploadAsync("a.bin", 400, minutesAgo: 30);
+        var second = await AgedUploadAsync("b.bin", 400, minutesAgo: 20);
+
+        var third = await UploadAsync("c.bin", new byte[400]);
+
+        Assert.Null(await _store.FindAsync(first.Id, CancellationToken.None));
+        Assert.NotNull(await _store.FindAsync(second.Id, CancellationToken.None));
+        Assert.NotNull(await _store.FindAsync(third.Id, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task UploadsInProgressCountAndAFullQuotaIsRefused()
+    {
+        _store.QuotaBytes = 1000;
+        _store.FreeDiskSpace = () => 100L * 1024 * 1024 * 1024;
+        await using var running = await _store.BeginAsync("big.bin", 900, CancellationToken.None);
+
+        var ex = await Assert.ThrowsAsync<UploadRejectedException>(() => _store.BeginAsync("more.bin", 200, CancellationToken.None));
+
+        Assert.True(ex.TooLarge); // RESOURCE_EXHAUSTED
+        await running.DisposeAsync(); // aborted: its reservation ends
+        await using var next = await _store.BeginAsync("more.bin", 200, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task OneGigabyteOfFreeDiskStaysFree()
+    {
+        const long gb = 1024L * 1024 * 1024;
+        var free = gb + 500;
+        _store.FreeDiskSpace = () => free;
+        var old = await AgedUploadAsync("old.bin", 300, minutesAgo: 10);
+
+        // 600 bytes need the 300 of the old upload: 1 GB + 500 + 300 - 600 >= 1 GB.
+        var fresh = await UploadAsync("new.bin", new byte[600]);
+        Assert.Null(await _store.FindAsync(old.Id, CancellationToken.None));
+        Assert.NotNull(await _store.FindAsync(fresh.Id, CancellationToken.None));
+
+        free = gb + 100;
+        var ex = await Assert.ThrowsAsync<UploadRejectedException>(() => _store.BeginAsync("too-big.bin", 800, CancellationToken.None));
+        Assert.True(ex.TooLarge);
+        Assert.Contains("1 GB must stay free", ex.Message, StringComparison.Ordinal);
+    }
+
+    private async Task<Oadm.Sdk.Plugins.UploadedFile> AgedUploadAsync(string name, int size, int minutesAgo)
+    {
+        var file = await UploadAsync(name, new byte[size]);
+        File.SetLastWriteTimeUtc(Path.Combine(_store.Directory, file.Id + ".bin"), DateTime.UtcNow.AddMinutes(-minutesAgo));
+        return file;
+    }
+
     private async Task<Oadm.Sdk.Plugins.UploadedFile> UploadAsync(string name, byte[] content, int chunk = 1000)
     {
         await using var writer = await _store.BeginAsync(name, content.Length, CancellationToken.None);

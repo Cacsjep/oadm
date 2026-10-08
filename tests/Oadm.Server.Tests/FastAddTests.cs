@@ -62,7 +62,7 @@ public sealed class FastAddTests
     }
 
     [Fact]
-    public async Task CredentialsOfManagedDevicesAreTriedOnNewDevices()
+    public async Task PasswordsOfManagedDevicesAreNeverTriedOnNewDevices()
     {
         var network = Network();
         network.Add("10.9.0.5", FakeSerials.Make(5), Password);
@@ -74,19 +74,20 @@ public sealed class FastAddTests
         Assert.StartsWith("No known credentials", scanned["10.9.0.1"].AuthDetail, StringComparison.Ordinal);
         Assert.Equal(0, network["10.9.0.1"].RejectedLogins);
 
-        // Legacy explicit credentials add the first device ...
+        // Legacy explicit credentials add the first device; its password is stored for it ...
         var added = await host.AddDevices.CommitAsync(new Proto.CommitRequest
         {
             SessionId = first,
             DiscoveredIds = { FakeSerials.Make(1) },
             Credentials = { new Proto.DeviceCredentials { UserName = "root", Password = Password } },
         });
-        var deviceId = Guid.Parse(Assert.Single(added.DeviceIds));
+        Assert.Single(added.DeviceIds);
 
-        // ... and its stored credential logs in to the next one.
+        // ... but never sent to a new device (production hardening: credential list only).
         var (_, next) = await TestHelpers.ScanWithLoginAsync(host, "10.9.0.5", "10.9.0.5");
-        Assert.Equal(Proto.AuthState.Authenticated, next["10.9.0.5"].AuthState);
-        Assert.Equal("device:" + deviceId.ToString("N"), next["10.9.0.5"].CredentialId);
+        Assert.Equal(Proto.AuthState.LoginFailed, next["10.9.0.5"].AuthState);
+        Assert.StartsWith("No known credentials", next["10.9.0.5"].AuthDetail, StringComparison.Ordinal);
+        Assert.Empty(network["10.9.0.5"].CredentialRequests);
     }
 
     [Fact]

@@ -89,6 +89,42 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public string NavToggleText => IsNavExpanded ? "Collapse" : "Expand";
 
+    /// <summary>Banner text after the server replaced its master key (production hardening 3); null = no banner.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasKeyNotice))]
+    public partial string? KeyNoticeText { get; private set; }
+
+    public bool HasKeyNotice => KeyNoticeText is not null;
+
+    private string? _keyNoticeId;
+
+    /// <summary>Hides the key notice on this client for good.</summary>
+    [RelayCommand]
+    private void DismissKeyNotice()
+    {
+        if (_keyNoticeId is { } id && !_settings.Current.DismissedKeyNotices.Contains(id))
+        {
+            _settings.Current.DismissedKeyNotices.Add(id);
+            _settings.Save();
+        }
+
+        KeyNoticeText = null;
+    }
+
+    /// <summary>Shows the server's key replacement notice unless this client dismissed it.</summary>
+    internal void ApplyKeyNotice(KeyReplacedNotice? notice)
+    {
+        if (notice is null || string.IsNullOrEmpty(notice.Id) || _settings.Current.DismissedKeyNotices.Contains(notice.Id))
+        {
+            _keyNoticeId = null;
+            KeyNoticeText = null;
+            return;
+        }
+
+        _keyNoticeId = notice.Id;
+        KeyNoticeText = notice.Message;
+    }
+
     partial void OnIsNavExpandedChanged(bool value)
     {
         _settings.Current.NavRailExpanded = value;
@@ -144,6 +180,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             LogCorePluginsFailed(_logger, ex.Message);
         }
+
+        try
+        {
+            ServerSettings settings = await _api.GetSettingsAsync(CancellationToken.None).ConfigureAwait(true);
+            ApplyKeyNotice(settings.KeyReplaced);
+        }
+        catch (Exception ex)
+        {
+            LogKeyNoticeFailed(_logger, ex.Message);
+        }
     }
 
     /// <summary>One navigation entry per core plugin, below "Devices".</summary>
@@ -162,6 +208,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         foreach (CorePluginInfo plugin in corePlugins.Where(p => NavItems.All(n => n.Key != "plugin:" + p.Id)))
         {
             object? view = null;
+            string? error = null;
             ICorePluginPage? page = _plugins.FindPage(plugin.Id);
             if (page is not null)
             {
@@ -171,14 +218,17 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 }
                 catch (Exception ex)
                 {
+                    // The page shows the error instead of its view; the client keeps running (production hardening 4).
                     LogPageFailed(_logger, ex, plugin.Id);
+                    error = ex.Message;
+                    _ = ReportPageFailureAsync(plugin.DisplayName, ex);
                 }
             }
 
             NavItems.Add(new NavItemViewModel("plugin:" + plugin.Id, plugin.DisplayName,
                 string.IsNullOrEmpty(plugin.IconKey) ? "plugin" : plugin.IconKey,
                 new CorePluginPageViewModel(plugin.Id, plugin.DisplayName, view, page?.HasOwnCards == true,
-                    page?.ShowTasksPane == true && view is not null ? Devices.Tasks : null))
+                    page?.ShowTasksPane == true && view is not null ? Devices.Tasks : null, error))
             {
                 HasSeparatorBefore = first,
             });
@@ -186,8 +236,23 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    private async Task ReportPageFailureAsync(string pageName, Exception ex)
+    {
+        try
+        {
+            await Devices.ToolbarContext.ShowMessageAsync(pageName, $"The {pageName} page failed: {ex.Message}").ConfigureAwait(true);
+        }
+        catch (Exception showFailed)
+        {
+            LogPageFailed(_logger, showFailed, pageName);
+        }
+    }
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not list core plugins: {Reason}")]
     private static partial void LogCorePluginsFailed(ILogger logger, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not read the server settings: {Reason}")]
+    private static partial void LogKeyNoticeFailed(ILogger logger, string reason);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Core plugin page {PluginId} failed to create its view")]
     private static partial void LogPageFailed(ILogger logger, Exception ex, string pluginId);

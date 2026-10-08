@@ -37,14 +37,19 @@ public sealed class MasterKeyFileTests : IDisposable
     }
 
     [Fact]
-    public void CorruptKeyFileIsNotOverwritten()
+    public void CorruptKeyFileIsKeptAsABackupAndReplaced()
     {
         Directory.CreateDirectory(_dir);
         var path = Path.Combine(_dir, "master.key");
         File.WriteAllBytes(path, new byte[7]);
 
-        Assert.Throws<InvalidOperationException>(() => MasterKeyFile.LoadOrCreate(path));
-        Assert.Equal(7, new FileInfo(path).Length);
+        var key = MasterKeyFile.LoadOrCreate(path, out var origin);
+
+        Assert.Equal(MasterKeyOrigin.ReplacedUnreadable, origin);
+        Assert.Equal(CredentialProtector.KeySize, key.Length);
+        Assert.Equal(key, File.ReadAllBytes(path));
+        var backup = Assert.Single(Directory.GetFiles(_dir, "master.key.replaced-*"));
+        Assert.Equal(7, new FileInfo(backup).Length);
     }
 
     [Fact]

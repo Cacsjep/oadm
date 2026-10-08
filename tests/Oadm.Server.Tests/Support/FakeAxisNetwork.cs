@@ -51,6 +51,18 @@ internal sealed class FakeAxisDevice
     /// <summary>Requests that carried credentials the device rejected.</summary>
     public int RejectedLogins { get; private set; }
 
+    /// <summary>
+    /// What the device answers to the anonymous <c>getAllUnrestrictedProperties</c> (the add page's Axis check).
+    /// Default: a valid Axis answer with its serial number.
+    /// </summary>
+    public FakeAxisAnswer AnonymousAnswer { get; set; } = FakeAxisAnswer.Axis;
+
+    /// <summary>Serves HTTP (80). False: plain HTTP connections are refused.</summary>
+    public bool ServesHttp { get; set; } = true;
+
+    /// <summary>Every request that carried credentials: URL scheme and user name, in order.</summary>
+    public List<(string Scheme, string User)> CredentialRequests { get; } = [];
+
     /// <summary>Requests with a password in the URL query (must never happen).</summary>
     public int PasswordInUrl { get; private set; }
 
@@ -79,6 +91,11 @@ internal sealed class FakeAxisDevice
             PasswordInUrl++;
         }
 
+        if (credentials is not null)
+        {
+            CredentialRequests.Add((request.RequestUri.Scheme, credentials.UserName));
+        }
+
         var authorized = !NeedSetup && credentials is not null
             && credentials.UserName == User && credentials.Password == Password;
         if (credentials is not null && !authorized && !NeedSetup)
@@ -91,7 +108,15 @@ internal sealed class FakeAxisDevice
             case "axis-cgi/basicdeviceinfo.cgi":
                 if (body.Contains("getAllUnrestrictedProperties", StringComparison.Ordinal))
                 {
-                    return Json(Serialize(new { apiVersion = "1.3", data = new { propertyList = new { ProdNbr = Model, Version = Firmware, Brand = "AXIS" } } }));
+                    return AnonymousAnswer switch
+                    {
+                        FakeAxisAnswer.Axis => Json(Serialize(new { apiVersion = "1.3", data = new { propertyList = new { SerialNumber = Serial, ProdNbr = Model, Version = Firmware, Brand = "AXIS" } } })),
+                        FakeAxisAnswer.OtherSerial => Json(Serialize(new { apiVersion = "1.3", data = new { propertyList = new { SerialNumber = "ACCC8EFFFFFF", ProdNbr = Model, Brand = "AXIS" } } })),
+                        FakeAxisAnswer.NoSerial => Json(Serialize(new { apiVersion = "1.3", data = new { propertyList = new { ProdNbr = Model, Brand = "AXIS" } } })),
+                        FakeAxisAnswer.NoModel => Json(Serialize(new { apiVersion = "1.3", data = new { propertyList = new { SerialNumber = Serial, Brand = "AXIS" } } })),
+                        FakeAxisAnswer.Unauthorized => Unauthorized(),
+                        _ => new HttpResponseMessage(HttpStatusCode.NotFound),
+                    };
                 }
 
                 return authorized ? Json(BasicDeviceInfoJson()) : Unauthorized();
@@ -212,6 +237,9 @@ internal sealed class FakeAxisNetwork
     /// <summary><see cref="IVapixConnector"/> that sends the connection's credentials to the fake device.</summary>
     public IVapixConnector CreateConnector() => new Connector(this);
 
+    /// <summary>Every connection opened through <see cref="CreateConnector"/>, in order.</summary>
+    public ConcurrentQueue<VapixConnectionOptions> Connections { get; } = new();
+
     /// <summary>The anonymous probe used by AddDevices, wired to this network.</summary>
     public VapixProbe CreateProbe() => new(TimeSpan.FromSeconds(2), (_, _) => CreateHandler());
 
@@ -222,7 +250,7 @@ internal sealed class FakeAxisNetwork
             cancellationToken.ThrowIfCancellationRequested();
             var uri = request.RequestUri!;
             var device = network.Find(uri.Host);
-            if (device is null || (uri.Scheme == Uri.UriSchemeHttps && !device.ServesHttps))
+            if (device is null || (uri.Scheme == Uri.UriSchemeHttps && !device.ServesHttps) || (uri.Scheme == Uri.UriSchemeHttp && !device.ServesHttp))
             {
                 throw FakeAxisDevice.Refused();
             }
@@ -247,10 +275,33 @@ internal sealed class FakeAxisNetwork
     {
         public VapixClient Connect(VapixConnectionOptions options)
         {
+            network.Connections.Enqueue(options);
             var pinning = options.Scheme == Uri.UriSchemeHttps ? new CertificatePinning(options.PinnedCertificateFingerprint) : null;
             return new(VapixClient.BuildBaseAddress(options.Scheme, options.Address), network.CreateHandler(options.Credentials, pinning), pinning, TimeSpan.FromSeconds(5));
         }
     }
+}
+
+/// <summary>Answers of a fake device to the anonymous Axis check.</summary>
+internal enum FakeAxisAnswer
+{
+    /// <summary>Valid: serial number and product number.</summary>
+    Axis,
+
+    /// <summary>Not found (HTTP 404): an imitation that only copies the 401 realm.</summary>
+    NotFound,
+
+    /// <summary>A property list without a serial number.</summary>
+    NoSerial,
+
+    /// <summary>A property list without a product number.</summary>
+    NoModel,
+
+    /// <summary>Another serial number than the discovered one.</summary>
+    OtherSerial,
+
+    /// <summary>HTTP 401 for the anonymous request.</summary>
+    Unauthorized,
 }
 
 internal static class FakeSerials

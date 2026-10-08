@@ -105,6 +105,10 @@ the server project for shared payload types (it then ships in the same folder).
   setting `Tasks.MaxParallelPerPlugin` (default 16, Settings page), the engine uses the smaller value.
 - Long requests: `request.Options.Set(VapixRequestOptions.Timeout, TimeSpan.FromMinutes(20))`
   before `ctx.Vapix.SendAsync(request, ct)`; use `StreamContent` for large bodies.
+- Limits: `SendAsync` reads at most 16 MB of an answer (larger ones throw, "The device answer is larger than 16 MB") and refuses a URI
+  that leaves the device (another host, port or scheme, `//host/...`, a backslash): always pass paths relative to the
+  device. Parse XML from a device only with `DeviceXml.Parse` / `DeviceXml.ParseElement` (`Oadm.Sdk.Vapix`): at most
+  1 MB, DTDs prohibited; never `XDocument.Parse` / `XElement.Parse` directly.
 - `ITaskPluginQuery.QueryAsync` serves the dialog (read-only, 30 s timeout on the server).
   `ITaskQueryContext.Devices` (may be null on other hosts) lists all managed devices, e.g. to flag an
   address another managed device has.

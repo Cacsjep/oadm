@@ -16,10 +16,13 @@ public sealed class CredentialProtector : IDisposable
     public const int NonceSize = 12;
     public const int TagSize = 16;
 
-    private readonly byte[] _key;
+    /// <summary>Label of the key check value (<see cref="ComputeKeyCheck"/>).</summary>
+    private static readonly byte[] KeyCheckLabel = Encoding.UTF8.GetBytes("OADM master key check v1");
+
+    private byte[] _key;
     private bool _disposed;
 
-    public CredentialProtector(ReadOnlySpan<byte> key)
+    public CredentialProtector(ReadOnlySpan<byte> key, MasterKeyOrigin origin = MasterKeyOrigin.Loaded)
     {
         if (key.Length != KeySize)
         {
@@ -27,11 +30,47 @@ public sealed class CredentialProtector : IDisposable
         }
 
         _key = key.ToArray();
+        Origin = origin;
     }
 
+    /// <summary>Where the key came from (a new key means stored credentials may be unreadable).</summary>
+    public MasterKeyOrigin Origin { get; }
+
+    /// <summary>Path of the key file, when loaded from one.</summary>
+    public string? KeyFilePath { get; private init; }
+
     /// <summary>Loads the master key from <paramref name="masterKeyPath"/>, creating it on first start.</summary>
-    public static CredentialProtector FromKeyFile(string masterKeyPath) =>
-        new(MasterKeyFile.LoadOrCreate(masterKeyPath));
+    public static CredentialProtector FromKeyFile(string masterKeyPath)
+    {
+        var key = MasterKeyFile.LoadOrCreate(masterKeyPath, out var origin);
+        try
+        {
+            return new CredentialProtector(key, origin) { KeyFilePath = masterKeyPath };
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(key);
+        }
+    }
+
+    /// <summary>HMAC-SHA256 of a fixed label with the key (base64): stored as <c>Security.KeyCheck</c> to detect another key.</summary>
+    public string ComputeKeyCheck()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return Convert.ToBase64String(HMACSHA256.HashData(Volatile.Read(ref _key), KeyCheckLabel));
+    }
+
+    /// <summary>Switches to a new key (startup, after the key file was replaced). Blobs of the old key become unreadable.</summary>
+    internal void ReplaceKey(ReadOnlySpan<byte> key)
+    {
+        if (key.Length != KeySize)
+        {
+            throw new ArgumentException($"Master key must be {KeySize} bytes.", nameof(key));
+        }
+
+        var old = Interlocked.Exchange(ref _key, key.ToArray());
+        CryptographicOperations.ZeroMemory(old);
+    }
 
     public byte[] Protect(string plaintext, ReadOnlySpan<byte> associatedData = default)
     {
@@ -47,7 +86,7 @@ public sealed class CredentialProtector : IDisposable
             var tag = blob.AsSpan(NonceSize + plainBytes.Length, TagSize);
 
             RandomNumberGenerator.Fill(nonce);
-            using var aes = new AesGcm(_key, TagSize);
+            using var aes = new AesGcm(Volatile.Read(ref _key), TagSize);
             aes.Encrypt(nonce, plainBytes, cipher, tag, associatedData);
             return blob;
         }
@@ -75,7 +114,7 @@ public sealed class CredentialProtector : IDisposable
         var plainBytes = new byte[cipherLength];
         try
         {
-            using var aes = new AesGcm(_key, TagSize);
+            using var aes = new AesGcm(Volatile.Read(ref _key), TagSize);
             aes.Decrypt(nonce, cipher, tag, plainBytes, associatedData);
             return Encoding.UTF8.GetString(plainBytes);
         }

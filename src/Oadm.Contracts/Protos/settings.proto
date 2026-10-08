@@ -37,6 +37,20 @@ message ServerSettings {
   // Default 16, 1..256; a plugin's MaxParallelDevices can only lower it. Applies to tasks started after
   // the change. optional so a partial Set without it keeps the stored value.
   optional int32 max_parallel_tasks_per_plugin = 9;
+  // Read only (Get and Set replies), production hardening 3: set after the server had to replace its master key.
+  // Clients show it as a banner until the user dismisses it (remembered per client by id). Field number kept high
+  // on purpose (other settings use the low numbers).
+  KeyReplacedNotice key_replaced = 20;
+}
+
+// The server replaced its master key: stored device credentials and credential list entries it could not read
+// anymore were removed. message is the banner text.
+message KeyReplacedNotice {
+  string id = 1;
+  string message = 2;
+  int32 devices = 3;
+  int32 credential_list_entries = 4;
+  google.protobuf.Timestamp replaced = 5;
 }
 
 message CredentialEntry {

@@ -7,15 +7,20 @@ namespace Oadm.Core.Persistence;
 
 /// <summary>
 /// Startup step: creates the data folders, applies EF migrations (creating the database on first
-/// start), switches SQLite to WAL and makes sure the master key exists. Call once before serving.
+/// start), switches SQLite to WAL and checks the master key (<see cref="MasterKeyCheck"/>: a missing or
+/// different key is replaced and the unreadable credentials removed). Call once before serving.
 /// </summary>
 public sealed partial class DatabaseInitializer(
     OadmPaths paths,
     IDbContextFactory<OadmDbContext> dbFactory,
     CredentialProtector protector,
-    ILogger<DatabaseInitializer>? logger = null)
+    ILogger<DatabaseInitializer>? logger = null,
+    TimeProvider? time = null)
 {
     private readonly ILogger _logger = logger ?? NullLogger<DatabaseInitializer>.Instance;
+
+    /// <summary>Set when this start had to replace the master key.</summary>
+    public KeyReplacedNotice? KeyReplaced { get; private set; }
 
     public async Task InitializeAsync(CancellationToken ct)
     {
@@ -32,8 +37,8 @@ public sealed partial class DatabaseInitializer(
         // WAL is persistent in the database file; lets readers run while the poller writes.
         await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;", ct).ConfigureAwait(false);
 
-        // Resolving the protector loaded or created master.key; nothing else to do with it here.
-        GC.KeepAlive(protector);
+        // The protector loaded or created master.key; check it against the stored key check value.
+        KeyReplaced = await MasterKeyCheck.RunAsync(dbFactory, protector, time ?? TimeProvider.System, _logger, ct).ConfigureAwait(false);
         LogReady(paths.DataDirectory);
     }
 

@@ -127,7 +127,13 @@ public static class CommandRenderer
                 return escape is null ? text : escape(text);
             });
 
-        var path = Text(request.Path, Uri.EscapeDataString).TrimStart('/');
+        var renderedPath = Text(request.Path, Uri.EscapeDataString);
+        if (!CommandValidator.IsDevicePath(renderedPath))
+        {
+            throw new CommandValidationException(CommandValidator.PathProblem); // every request goes to the device itself
+        }
+
+        var path = renderedPath.TrimStart('/');
         var query = new StringBuilder();
         foreach (var (key, value) in request.Query ?? [])
         {

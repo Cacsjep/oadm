@@ -128,39 +128,6 @@ public sealed class CredentialStore(
         return ids.ToHashSet();
     }
 
-    /// <summary>
-    /// The distinct user name + password pairs stored for managed devices, each with one device
-    /// that uses it, most used first. Server side only: the add page tries them on new devices.
-    /// Rows that cannot be decrypted are skipped.
-    /// </summary>
-    public async Task<IReadOnlyList<(Guid DeviceId, DeviceCredentials Credentials)>> ListDistinctAsync(CancellationToken ct)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-        var rows = await db.DeviceCredentials.AsNoTracking().ToListAsync(ct).ConfigureAwait(false);
-        var groups = new Dictionary<(string User, string Password), (Guid DeviceId, int Count)>();
-        foreach (var row in rows)
-        {
-            string password;
-            try
-            {
-                password = protector.Unprotect(row.EncryptedPassword, row.DeviceId.ToByteArray());
-            }
-            catch (System.Security.Cryptography.CryptographicException)
-            {
-                continue;
-            }
-
-            var key = (row.UserName, password);
-            groups[key] = groups.TryGetValue(key, out var seen) ? (seen.DeviceId, seen.Count + 1) : (row.DeviceId, 1);
-        }
-
-        return groups
-            .OrderByDescending(g => g.Value.Count)
-            .ThenBy(g => g.Value.DeviceId)
-            .Select(g => (g.Value.DeviceId, new DeviceCredentials(g.Key.User, g.Key.Password)))
-            .ToList();
-    }
-
     public async Task<bool> RemoveAsync(Guid deviceId, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);

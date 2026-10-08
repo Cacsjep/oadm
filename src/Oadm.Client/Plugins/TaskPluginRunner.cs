@@ -38,7 +38,18 @@ public sealed partial class TaskPluginRunner(
                 return null;
             }
 
-            payload = await dialogs.ShowTaskPluginDialogAsync(dialog, devices).ConfigureAwait(true);
+            try
+            {
+                payload = await dialogs.ShowTaskPluginDialogAsync(dialog, devices).ConfigureAwait(true);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                // A broken plugin dialog never takes the client down (production hardening 4).
+                LogDialogFailed(logger, ex, plugin.Id);
+                await dialogs.ShowMessageAsync(plugin.DisplayName, $"The {plugin.DisplayName} dialog failed: {ex.Message}").ConfigureAwait(true);
+                return null;
+            }
+
             if (payload is null)
             {
                 return null;
@@ -64,6 +75,9 @@ public sealed partial class TaskPluginRunner(
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Task {Name} could not be started")]
     private static partial void LogRunFailed(ILogger logger, Exception ex, string name);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "The dialog of task plugin {PluginId} failed")]
+    private static partial void LogDialogFailed(ILogger logger, Exception ex, string pluginId);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "No client dialog installed for task plugin {PluginId}")]
     private static partial void LogDialogMissing(ILogger logger, string pluginId);
