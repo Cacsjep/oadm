@@ -51,7 +51,16 @@ public sealed class OadmServerHostOptions
 
     /// <summary>Writes logs to the console (off in tests).</summary>
     public bool LogToConsole { get; init; } = true;
+
+    /// <summary>
+    /// Runs as the installed service: admin-only folder checks, Windows firewall rules for plugins, no development
+    /// plugin folder. Null: detected (<see cref="ServiceHosting.IsRunningAsService"/>), so tests and console runs are off.
+    /// </summary>
+    public bool? ServiceMode { get; init; }
 }
+
+/// <summary>Whether this server runs as the installed service (see <see cref="OadmServerHostOptions.ServiceMode"/>).</summary>
+public sealed record ServerRunMode(bool IsService);
 
 /// <summary>
 /// Composition root of the OADM server. Startup order: database (and master key), plugins, task
@@ -138,6 +147,19 @@ public static partial class OadmServerHost
         services.AddOadmPersistence(_ => new OadmPaths(options.DataDirectory ?? configuration["Oadm:DataDir"]));
         services.AddSingleton(options);
 
+        // Installed service (SYSTEM / root): admin-only folders, firewall rules of the NTP and DHCP plugins (Windows).
+        var serviceMode = options.ServiceMode ?? ServiceHosting.IsRunningAsService();
+        services.AddSingleton(new ServerRunMode(serviceMode));
+        if (serviceMode)
+        {
+            services.AddSingleton(_ => ServiceHosting.CreateFolderPermissions());
+            services.AddSingleton<FolderGuard>();
+            if (OperatingSystem.IsWindows())
+            {
+                services.AddSingleton<Sdk.Network.IFirewallRules>(_ => new NetshFirewallRules(new ProcessCommandRunner(), Sdk.Network.HostOsInfo.ExecutablePath()));
+            }
+        }
+
         // VAPIX
         // Extra trust anchors of core plugins (PKI CA): device certificates chaining to them are rated Trusted.
         services.AddSingleton<TrustAnchorRegistry>();
@@ -210,7 +232,8 @@ public static partial class OadmServerHost
             sp.GetRequiredService<ILoggerFactory>(),
             new Core.Security.PluginSecretProtector(sp.GetRequiredService<Core.Security.CredentialProtector>()),
             trustAnchors: sp.GetRequiredService<TrustAnchorRegistry>(),
-            eventStreams: sp.GetRequiredService<Sdk.Devices.IDeviceEventStreams>()));
+            eventStreams: sp.GetRequiredService<Sdk.Devices.IDeviceEventStreams>(),
+            firewall: sp.GetService<Sdk.Network.IFirewallRules>()));
 
         // Polling
         services.AddSingleton<DevicePollingService>();
@@ -245,13 +268,23 @@ public static partial class OadmServerHost
         var paths = sp.GetRequiredService<OadmPaths>();
         LogStarting(logger, typeof(OadmServerHost).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "?", paths.DataDirectory);
 
+        // 0. Installed service: the data and extraction folders must be admin-only (fixed, else the server does not start).
+        var folderGuard = sp.GetService<FolderGuard>();
+        if (folderGuard is not null)
+        {
+            await folderGuard.EnsureServerFoldersAsync(ServiceHosting.ServerFolders(paths.DataDirectory), ct).ConfigureAwait(false);
+        }
+
         // 1. Database and master key.
         await sp.GetRequiredService<DatabaseInitializer>().InitializeAsync(ct).ConfigureAwait(false);
 
         // 2. Plugins: built-in first (their ids are reserved), then installed and development folders.
         var registry = sp.GetRequiredService<PluginRegistry>();
-        var roots = options.PluginRoots ?? DefaultPluginRoots(paths);
-        sp.GetRequiredService<PluginLoader>().LoadFromRoots(roots);
+        // As a service every plugin folder must be admin-only, and the repository's artifacts/plugins is never used.
+        var loader = sp.GetRequiredService<PluginLoader>();
+        loader.FolderCheck = folderGuard is null ? null : folderGuard.CheckPluginFolder;
+        var roots = options.PluginRoots ?? DefaultPluginRoots(paths, includeDevelopment: !sp.GetRequiredService<ServerRunMode>().IsService);
+        loader.LoadFromRoots(roots);
         foreach (var plugin in registry.TaskPlugins)
         {
             LogTaskPlugin(logger, plugin.Id, plugin.Origin.Directory ?? "built-in");
@@ -305,11 +338,12 @@ public static partial class OadmServerHost
         await StopAsync(app).ConfigureAwait(false);
     }
 
-    public static IReadOnlyList<string> DefaultPluginRoots(OadmPaths paths)
+    /// <summary>Bundled (app folder), installed (data folder) and, unless running as a service, the repository's artifacts/plugins.</summary>
+    public static IReadOnlyList<string> DefaultPluginRoots(OadmPaths paths, bool includeDevelopment = true)
     {
         ArgumentNullException.ThrowIfNull(paths);
         var roots = new List<string> { PluginPaths.Bundled(), PluginPaths.Installed(paths.DataDirectory) };
-        if (PluginPaths.Development() is { } development)
+        if (includeDevelopment && PluginPaths.Development() is { } development)
         {
             roots.Add(development);
         }

@@ -50,6 +50,12 @@ public sealed partial class PluginLoader
         _logger = (ILogger?)logger ?? NullLogger.Instance;
     }
 
+    /// <summary>
+    /// Checked before a plugin folder is loaded: null loads it, a message skips it (recorded as a load error). The server
+    /// sets it when it runs as a service: plugin folders must be writable only by administrators / root.
+    /// </summary>
+    public Func<string, string?>? FolderCheck { get; set; }
+
     public IReadOnlyList<LoadedPluginPackage> Packages
     {
         get
@@ -112,6 +118,11 @@ public sealed partial class PluginLoader
         PluginLoadContext? context = null;
         try
         {
+            if (FolderCheck?.Invoke(directory) is { } refused)
+            {
+                throw new PluginLoadException(refused);
+            }
+
             var manifest = ReadManifest(Path.Combine(directory, ManifestFileName));
             if (!IsSdkCompatible(manifest.MinSdkVersion))
             {
