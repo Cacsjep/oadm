@@ -62,7 +62,9 @@ PRs touching packaging, which also installs, checks and removes the native packa
   only the service account can write (`%ProgramData%\OADM\runtime`, `/var/cache/oadm`,
   `/Library/Application Support/OADM/runtime`), never a shared temp folder.
 - Version from the tag (`v1.2.0` -> `1.2.0`), else `0.1.0-dev`; MSI and .pkg use the numeric part.
-- Icons: `packaging/icons/` (drawn by `make-icons.py`); `oadm.ico` is also the client exe icon.
+- Icons: the logo is `icon/` (violet for app and installers, white for dark backgrounds); `packaging/icons/make-icons.py`
+  builds `oadm.ico` (client exe, MSI, shortcuts), `oadm.icns` (macOS), `oadm.png` / `oadm-256.png` (Linux, window icon of
+  every client window) from it.
 
 Developer commands: one entry point per shell at the repo root, `./manage.sh` (bash) and
 `.\manage.ps1` (PowerShell 5.1/7), verb + target (`build`, `run`, `test`, `publish`, `package`, `clean`,

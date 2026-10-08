@@ -12,6 +12,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Window icon of every client window (App.ApplyCrispTextToAllWindows); built from /icon by packaging/icons/make-icons.py. -->
+    <AvaloniaResource Include="..\..\packaging\icons\oadm-256.png" Link="Assets\oadm-256.png" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.0.4" />
     <PackageReference Include="Avalonia.Desktop" Version="12.0.4" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.4" />

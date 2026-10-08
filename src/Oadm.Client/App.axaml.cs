@@ -46,7 +46,30 @@ public partial class App : Application
     /// only as methods, so they are applied when each window is created.
     /// </summary>
     public static void ApplyCrispTextToAllWindows() =>
-        Avalonia.Controls.Window.WindowOpenedEvent.AddClassHandler<Avalonia.Controls.Window>((window, _) => ApplyCrispText(window));
+        Avalonia.Controls.Window.WindowOpenedEvent.AddClassHandler<Avalonia.Controls.Window>((window, _) =>
+        {
+            ApplyCrispText(window);
+            window.Icon ??= AppIcon.Value;
+        });
+
+    /// <summary>
+    /// The OADM logo (packaging/icons/oadm-256.png, built from /icon) as window icon of every window: taskbar,
+    /// Alt+Tab and the Linux window list. The exe icon alone is not enough (dotnet exec, Linux, macOS).
+    /// </summary>
+    private static readonly Lazy<Avalonia.Controls.WindowIcon?> AppIcon = new(() =>
+    {
+        try
+        {
+            using var stream = Avalonia.Platform.AssetLoader.Open(new Uri("avares://Oadm.Client/Assets/oadm-256.png"));
+            return new Avalonia.Controls.WindowIcon(stream);
+        }
+#pragma warning disable CA1031 // A missing icon must never stop a window from opening.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return null;
+        }
+    });
 
     public static void ApplyCrispText(Avalonia.Visual visual)
     {

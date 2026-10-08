@@ -1,33 +1,27 @@
-"""Draws the OADM app icon and writes oadm.png (512), oadm-256.png, oadm.ico and oadm.icns.
+"""Builds the app and installer icon files from the OADM logo in /icon.
 
-The icon files are committed; run this only to change the icon: python make-icons.py (needs Pillow).
-Design: violet rounded square (accent #6C5CE7), white lens ring, teal center (#7FC8D0).
+Writes oadm.png (512), oadm-256.png, oadm.ico (Windows exe, MSI, shortcuts) and oadm.icns (macOS app) from the
+violet logo PNGs `icon/oadm-icon-transparent-purple-<size>.png` (16, 24, 32, 48, 64, 128, 256, 512, 1024). The
+output files are committed; run this only after the logo changed: python make-icons.py (needs Pillow).
+The white variant in /icon is the logo for dark backgrounds inside the app.
 """
 import io
 import os
 import struct
 
-from PIL import Image, ImageDraw
+from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ACCENT = (0x6C, 0x5C, 0xE7, 255)
-TEAL = (0x7F, 0xC8, 0xD0, 255)
-WHITE = (0xF2, 0xF2, 0xF2, 255)
+SOURCE = os.path.join(HERE, "..", "..", "icon")
 
 
-def draw(size: int) -> Image.Image:
-    scale = 4  # supersampling for smooth edges
-    s = size * scale
-    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    margin = round(s * 0.06)
-    d.rounded_rectangle([margin, margin, s - margin, s - margin], radius=round(s * 0.22), fill=ACCENT)
-    c = s / 2
-    r_out, r_in, r_dot = s * 0.29, s * 0.19, s * 0.09
-    d.ellipse([c - r_out, c - r_out, c + r_out, c + r_out], fill=WHITE)
-    d.ellipse([c - r_in, c - r_in, c + r_in, c + r_in], fill=ACCENT)
-    d.ellipse([c - r_dot, c - r_dot, c + r_dot, c + r_dot], fill=TEAL)
-    return img.resize((size, size), Image.LANCZOS)
+def logo(size: int) -> Image.Image:
+    """The hand-made PNG of that size when there is one, else the next larger one scaled down."""
+    path = os.path.join(SOURCE, f"oadm-icon-transparent-purple-{size}.png")
+    if os.path.exists(path):
+        return Image.open(path).convert("RGBA")
+    larger = min(n for n in (16, 24, 32, 48, 64, 128, 256, 512, 1024) if n > size)
+    return logo(larger).resize((size, size), Image.LANCZOS)
 
 
 def png_bytes(img: Image.Image) -> bytes:
@@ -38,7 +32,7 @@ def png_bytes(img: Image.Image) -> bytes:
 
 def write_ico(path: str, sizes: list[int]) -> None:
     # ICO with PNG-compressed entries (Windows Vista and later).
-    images = [png_bytes(draw(n)) for n in sizes]
+    images = [png_bytes(logo(n)) for n in sizes]
     header = struct.pack("<HHH", 0, 1, len(sizes))
     offset = 6 + 16 * len(sizes)
     entries = b""
@@ -57,14 +51,14 @@ def write_icns(path: str) -> None:
              ("ic10", 1024), ("ic11", 32), ("ic12", 64), ("ic13", 256), ("ic14", 512)]
     body = b""
     for kind, n in types:
-        data = png_bytes(draw(n))
+        data = png_bytes(logo(n))
         body += kind.encode("ascii") + struct.pack(">I", len(data) + 8) + data
     with open(path, "wb") as f:
         f.write(b"icns" + struct.pack(">I", len(body) + 8) + body)
 
 
 if __name__ == "__main__":
-    draw(512).save(os.path.join(HERE, "oadm.png"), optimize=True)
-    draw(256).save(os.path.join(HERE, "oadm-256.png"), optimize=True)
+    logo(512).save(os.path.join(HERE, "oadm.png"), optimize=True)
+    logo(256).save(os.path.join(HERE, "oadm-256.png"), optimize=True)
     write_ico(os.path.join(HERE, "oadm.ico"), [16, 24, 32, 48, 64, 128, 256])
     write_icns(os.path.join(HERE, "oadm.icns"))

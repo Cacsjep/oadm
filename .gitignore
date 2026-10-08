@@ -432,6 +432,9 @@ test-results/
 
 # Icon must end with two \r
 Icon
+# ...but not the OADM logo folder (the rule above also matches "icon" on case-insensitive file systems)
+!/icon/
+!/icon/**
 
 
 # Thumbnails
