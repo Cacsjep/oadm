@@ -40,18 +40,18 @@ Installers (`manage package <windows|linux|macos> [--rid] [--version]` into `art
 table and notes in `packaging/README.md`; CI `.github/workflows/package.yml` only on release tags `v*.*.*`
 (e.g. `v0.0.1`), which also installs, checks and removes the native package on each runner):
 - **Windows MSI** (WiX Toolset 6 via the `WixToolset.Sdk` MSBuild SDK, `packaging/windows/`, not in
-  Oadm.sln; WiX 7 not used, it requires the OSMF EULA), x64 and arm64, per machine: `Program Files\OADM\Server`
+  Oadm.sln; WiX 7 not used, it requires the OSMF EULA), x64 only (no ARM, user decision 2026-10-08), per machine: `Program Files\OADM\Server`
   and `\Client`, Windows service "OADM Server" (`OadmServer`, automatic, LocalSystem, restart on failure,
   `--Oadm:DataDir="%ProgramData%\OADM"`), Start menu shortcut, firewall rules TCP 5080 and UDP 123/67 for
   `Oadm.Server.exe`, fixed UpgradeCode + MajorUpgrade (same version reinstall allowed). `%ProgramData%\OADM` is
   created for SYSTEM and Administrators only and never removed. Files are harvested from the publish folders.
-- **Linux .deb** (`dpkg-deb`, `packaging/linux/build-deb.sh`, amd64 and arm64, built on Linux or in a container):
+- **Linux .deb** (`dpkg-deb`, `packaging/linux/build-deb.sh`, amd64 only, built on Linux or in a container):
   `/opt/oadm/server`, `/opt/oadm/client`, `/usr/bin/oadm-client`, `oadm.desktop` + hicolor icon, systemd unit
   `oadm-server.service` (root, `Type=notify`, `Restart=on-failure`, `OADM_DATA_DIR=/var/lib/oadm`,
   StateDirectory 0700, optional `/etc/default/oadm-server`); postinst enables and starts it like
   dh_installsystemd and works without systemd; prerm stops it; data kept even on purge. Pre-release versions
   are written `1.2.0~rc.1`. No .rpm.
-- **macOS .pkg** (`pkgbuild` + `productbuild`, `packaging/macos/build-pkg.sh`, x64 and arm64, built on macOS
+- **macOS .pkg** (`pkgbuild` + `productbuild`, `packaging/macos/build-pkg.sh`, x64 (Intel) only, built on macOS
   only): `/Applications/OADM.app` (Info.plist, icns), server in `/Library/Application Support/OADM/server`,
   LaunchDaemon `com.oadm.server` (root, `OADM_DATA_DIR=/Library/Application Support/OADM`, folder 0700),
   `uninstall-oadm.sh` next to the server. Unsigned (executables ad hoc signed); Developer ID signing and

@@ -12,7 +12,7 @@ Version: `--version` (a tag `v1.2.0` gives `1.2.0`), default `0.1.0-dev`. It goe
 
 | | Windows (MSI) | Linux (.deb) | macOS (.pkg) |
 |---|---|---|---|
-| File | `OADM-<version>-win-<arch>.msi` | `oadm_<version>_<amd64\|arm64>.deb` | `OADM-<version>-osx-<arch>.pkg` |
+| File | `OADM-<version>-win-x64.msi` | `oadm_<version>_amd64.deb` | `OADM-<version>-osx-x64.pkg` |
 | Built with | WiX Toolset 6 (`WixToolset.Sdk` from NuGet, `windows/Oadm.Installer.wixproj`), on Windows | `dpkg-deb` (`linux/build-deb.sh`), on Linux or in a container | `pkgbuild` + `productbuild` (`macos/build-pkg.sh`), on macOS |
 | Server | `C:\Program Files\OADM\Server` | `/opt/oadm/server` | `/Library/Application Support/OADM/server` |
 | Client | `C:\Program Files\OADM\Client`, Start menu "OADM" | `/opt/oadm/client`, `/usr/bin/oadm-client`, `oadm.desktop` + icon | `/Applications/OADM.app` |

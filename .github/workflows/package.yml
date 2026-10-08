@@ -1,8 +1,8 @@
 name: package
 
-# Installers: MSI (Windows), .deb (Linux amd64/arm64), .pkg (macOS arm64/x64), built with "manage package".
+# Installers for x64 only (user decision: no ARM devices): MSI (Windows), .deb (Linux amd64), .pkg (macOS Intel), built with "manage package".
 # Runs only for release tags (v0.0.1, v1.2.0, ...) and uploads the installers as workflow artifacts.
-# The native x64/arm64 package of each runner is installed, checked (service running, gRPC answering on 5080,
+# The Windows and Linux package is installed, checked (service running, gRPC answering on 5080,
 # data folder and master key) and removed again.
 on:
   push:
@@ -18,10 +18,7 @@ jobs:
       matrix:
         include:
           - { os: windows-latest, target: windows, rid: win-x64, smoke: true }
-          - { os: windows-latest, target: windows, rid: win-arm64, smoke: false }
           - { os: ubuntu-latest, target: linux, rid: linux-x64, smoke: true }
-          - { os: ubuntu-latest, target: linux, rid: linux-arm64, smoke: false }
-          - { os: macos-latest, target: macos, rid: osx-arm64, smoke: true }
           - { os: macos-latest, target: macos, rid: osx-x64, smoke: false }
     name: ${{ matrix.target }} ${{ matrix.rid }}
     runs-on: ${{ matrix.os }}
