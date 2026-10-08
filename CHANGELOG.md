@@ -34,6 +34,13 @@ version and date, and the release workflow copies it into the GitHub release.
 ### Changed
 
 - Shorter, plainer texts across the app.
+- Clearer layout: Address first in the device grid, colour only for warnings and errors, red buttons for delete and
+  remove, longer task names, readable failure reasons, and a More menu when the toolbar does not fit.
+
+### Fixed
+
+- Hardening scan: the result list no longer covers the toolbar when the window is smaller than when the detail pane
+  was last resized.
 
 ## [1.1.0] - 2026-10-08
 

@@ -498,9 +498,13 @@ controls: title bar, one card, footer) in four modes:
   credential list"). Then the technician reviews and clicks Add as usual. Scale: 10,000 lines are listed,
   filtered and selected in one reset each (test).
 
-List: checkbox (40 px), category icon (36 px), Address (140), MAC address (150), Model (160), Login
-(status, star: takes the rest so status and detail sit right after Model), Action (auto, min 160, at
-the right edge); checked headless at 1040 px window width. Above it
+List: checkbox (40 px; shown only for rows that can be added), category icon (36 px), Address (140), MAC address (150),
+Model (160), Login (status, star: takes the rest so status and detail sit right after Model; rows grow so the reason
+shows on up to two lines, grid class `wrapRows`), Action (auto, at the right edge); checked headless at 1040 px window
+width. An empty list says what to do first ("Enter a range and press Scan.", "Enter an address and press Find."). Scan
+and Find are filled secondary buttons. A page error (Add or discovery failed) stands directly below the list. The scan
+progress bar disappears once a scan or import ended; its text stays. Problems of file lines ("Not added") use the
+warning chip, devices that do not answer the error chip. Above it
 "Select all authenticated", a summary ("10 found · 3 ready to add · 1 need a login · 2 need a
 password · 3 selected"), search box and the scan progress row. Login status per device
 (`ui:StatusChip`): Checking... (accent), Authenticated (user) (ok), Password not set (warning),
@@ -512,7 +516,8 @@ in one click and the page always closes (user decision: no "Keep open" option).
 Every password field (login editor, first password + confirm) is `ui:PasswordBox` with the eye button.
 
 - **Login failed**: a click on the row or the "Log in" link opens the inline editor below the list
-  (user name, password, "Save to credential list" checked by default, Retry, Cancel). Retry calls
+  (user name, password, "Save to credential list" checked by default on its own row, Retry, Cancel; while an inline
+  editor is open its Retry / Apply is the only accent button, the footer's Add turns secondary). Retry calls
   `RetryAuth` right away (with every other session of the page as `related_session_ids`) and updates
   the row; success checks the row and closes the editor, a wrong password shows "The user name or
   password is wrong.". After a successful Retry the server tries the same credential on every other
@@ -603,8 +608,8 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   no page), Maintenance, Integrations, Utilities, Extensions (default, third-party); user decision 2026-10-08): only groups
   with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
   each group, collapsed = a separator at each group start. Pinned bottom, top to bottom: Users and Credentials (Admin only: hidden for operators, follow the session
-  role live), Logs, Settings, About (icons `users`, `key`, `logs`, `settings`, `info`), then the logged-in user with
-  Log out and the expand toggle. Keys = `HostPages` (`users`, `credentials`, `logs`, `settings`, `about`); opening an
+  role live), Logs, Settings, About (icons `users`, `key`, `logs`, `settings`, `info`), then the logged-in user (an initial
+  avatar and the name in primary text, not a navigation entry) with Log out and the expand toggle. Keys = `HostPages` (`users`, `credentials`, `logs`, `settings`, `about`); opening an
   admin page as operator does nothing, a hidden page that was open falls back to Devices. No Tasks page. Every page
   header (core plugin pages, Users, Credentials, About, Settings) is the shared `Controls/PageTitleBar` (title, grey
   side subtitle, trailing content); host pages never repeat the page title in a card heading.
@@ -620,8 +625,9 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   tasks, task steps, logs, add page, plugin dialogs) use `ui:StatusChip` = a small icon colored
   by the status (check ok green, warning amber, error red, running violet and spinning, neutral
   grey) with plain text in the normal text color to its right, plus optional detail text
-  (e.g. the error message). Device grid: the first-column device icon is colored by the device
-  status and the Status column is plain text. Tasks pane: the Status column shows only the
+  (e.g. the error message). Colour marks exceptions (layout review 2026-10-08): the device grid's first-column
+  device icon is neutral for OK and colored only for warning and error statuses, the Status column is plain text, and
+  certificates that are fine (more than 30 days left, Trusted) are plain text without an icon. Tasks pane: the Status column shows only the
   colored icon, with the error or warning message right of it when there is one; finished tasks
   show no progress bar. Count badges stay a small solid violet pill.
 - Window chrome: title bar and caption buttons are 32 px high (caption buttons 46x32), exactly
@@ -640,15 +646,18 @@ density, styled as described in Visual Style.
 Layout, top to bottom:
 1. Title "Devices". Left navigation rail as described in Visual Style.
 2. Toolbar: toolbar plugins (**Add** menu | Remove, Refresh, Export | task plugin actions that declare `ShowInToolbar`,
-   then System report (plugin) | plugin entries, last AXIS OS - Release Notes), **Group by tag** icon button (icon
-   `groupBy`, class `active` while on), Columns icon button (tooltip "Choose columns") and search box right-aligned
-   (host parts); one line at the 1800 px minimum window width with the rail
-   expanded. User decisions 2026-10-08: one primary **Add** button with a menu Discovery (zero-conf scan), Network range,
-   Manual, Import from file instead of four buttons; every toolbar entry is a button with text (only Columns is an icon).
+   then System report (plugin) | plugin entries) in `Controls/ToolbarOverflowPanel`: entries that do not fit (narrow
+   window, live view open) move into a **More** menu (icon `more`, right of the toolbar). Right-aligned: the AXIS OS
+   release notes link (icon only, toolbar controls with the class `trailing` go here), **Group by tag** icon button (icon
+   `groupBy`, class `active` while on), Columns icon button (tooltip "Choose columns") and search box (host parts);
+   everything fits on one line at the 1800 px minimum window width with the rail expanded and the live view closed. User decisions 2026-10-08: one primary **Add** button with a menu Discovery (zero-conf scan), Network range,
+   Manual, Import from file instead of four buttons; every toolbar entry is a button with text (only Columns, Group by tag
+   and the release notes link are icons). The empty Devices page shows a primary **Add devices** button with the same
+   menu.
 3. Status line: "N devices, M selected".
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
    client, horizontal scroll, multi-select, right-click context menu: the core actions (Open web
-   interface, Refresh, **Log in**, **Set password**, **Tags**, Remove), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
+   interface, Refresh, **Log in**, **Set password**, **Tags**), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
    by name, with a group icon: Applications app, Maintenance settings, Network network, Security key,
    Users users, Video video, others plugin; a group is a submenu even with one entry, user decision)
    holding **every** menu Task plugin (`ShowInMenus`), sorted by name, with their icons. A plugin whose `CanRun` is
@@ -657,7 +666,8 @@ Layout, top to bottom:
    later (this device has 11.9.65)"; several devices the most common reason without the device detail and how many of
    the selected devices it concerns, plus the number of other reasons ("Needs AXIS OS 11.11 or later: 3 of 5 selected
    devices (+1 other reason)", `TaskPluginCatalog.NotRunnableReason`, O(selection)); a group whose entries are all
-   disabled is still shown. Entries never end with "..." (the host appends none and strips "..." / "…" defensively,
+   disabled is still shown. **Remove** comes last, after its own separator (away from the everyday entries); the entry
+   of an open submenu stays highlighted. Entries never end with "..." (the host appends none and strips "..." / "…" defensively,
    `TaskPluginNames.Normalize`). Menus and submenus are at least `Oadm.MenuMinWidth` (240) wide (theme).
    The toolbar task buttons have no groups; one the selection cannot run is disabled with the same reason as tooltip
    (`IToolbarContext.CannotRunTaskReason`; no tooltip without a selection). Headless screenshot
@@ -692,21 +702,23 @@ Layout, top to bottom:
    `client-set-password.png`).
    **Tags** (icon `tag`, one or many devices) opens the Tags dialog, see "Device tags".
 5. Resizable, collapsible bottom pane **Tasks** (no tabs), one row per task (= per device).
-   Columns: Name, Device (130 px), Status (widest, 5*, min 280 px: icon plus message), Current step, Start time, Owner, Progress (bar). **Current step** is
+   Columns: Name (3*, min 260 px), Device (110 px), Status (3*, min 280 px: icon plus message), Current step, Start time, Owner, Progress (bar).
+   An empty history says "No tasks yet. Right-click devices to run one." **Current step** is
    "Step 3/6 · Upload firmware" plus " · 45 %" while the running step reports progress (tooltip: the text
    and the step detail); a failed task shows its failed step, a successful one just "Completed"; empty for plugins without steps. **Device** is the task's
    device by its device grid address (IP or host name, resolved through the client device store
    and updated live); a device removed since shows as "Removed device 1a2b3c4d" (id shortened).
    Tooltip: "10.0.0.200: Failed - Connection refused". Sortable by the text. Status chips:
    Queued/Cancelled neutral, Running violet, Done green, **Done with warnings** amber (warn
-   chip), Failed red. **Details** opens the task details window, live while it is open: a Device card
-   (device, MAC address, model, status chip, message), a **Steps** card ("3 of 9 steps finished"; per
+   chip), Failed red. **Details** opens the task details window, live while it is open: one header line with the
+   device (address, MAC address, model, status chip with the message), a **Steps** card (scrolls to the step the task
+   is on) ("3 of 9 steps finished"; per
    step #, state chip (Pending/Skipped neutral, Running violet, Done green, Warning amber, Failed red),
    name, detail, duration, progress bar + percent only for the running step; rows updated in place) and a
    Log card (level chip, time, device address, message; `TaskService.GetLog`, re-read when the current
-   step or the task state changes, new entries appended), built from the shared grid and chip styles.
-   Buttons: details, cancel, delete, **delete all** (with confirmation; running tasks are
-   cancelled first); all work per task.
+   step or the task state changes, new entries appended), built from the shared grid and chip styles; **Cancel task**
+   in its footer while the task runs. Pane buttons: details, cancel, delete, a separator, **delete all** (red, with
+   confirmation; running tasks are cancelled first); all work per task.
 
 **Logs page** (rail, bottom): live client log with level filter and search. Server log
 streaming comes later.
@@ -717,9 +729,9 @@ Clicking the device icon (first grid column) of a video device opens the live vi
 on the right of the device card, inside the main window, so nobody has to log in to the camera
 web UI. Reference screenshot: headless `client-liveview.png`.
 
-- Panel: reusable `Controls/LiveViewPanel` in a card next to the device card (about 60 : 40,
-  resizable with the vertical `paneSplitter`; the device card keeps at least 900 px so its toolbar
-  stays on one line, the panel at least 320 px). Slides in from the right (250 ms, cubic ease-out).
+- Panel: reusable `Controls/LiveViewPanel` in a card next to the device card (about 65 : 35,
+  resizable with the vertical `paneSplitter`; the device card keeps at least 900 px, toolbar entries that do not fit go
+  into the More menu, Address and Status keep minimum widths so they stay readable; the panel at least 320 px). Slides in from the right (250 ms, cubic ease-out).
   Header: `IconLabel` with video icon and model, subtitle address, serial and (with several
   sources) the source name, source switch, close button. Below: state chip (Connecting, Live,
   Reconnecting, Error) and detail text (codec, resolution, fps, or the reason). Picture
@@ -764,21 +776,22 @@ web UI. Reference screenshot: headless `client-liveview.png`.
 - Measured on 10.0.0.48 at 640x360, 10 fps: first frame 0.3-0.6 s after the request through the
   server; about 160-250 kbit/s for both H.264 and H.265 (scene dependent, keyframe every second).
 
-Device grid columns, default order:
+Device grid columns, default order (Address first: installers find a device by address and model; the column chooser
+and the saved per-client order cover other preferences):
 
 | Column | Source |
 |---|---|
 | (icon) | category icon (camera, encoder, speaker, audio, intercom, radar, I/O module, door controller, generic), tooltip "Camera (Dome Camera)" |
-| MAC address | SerialNumber from basicdeviceinfo |
-| Status | computed, see enum |
 | Address | IP or host name, hyperlink opens device web UI in default browser |
-| Tags | the device's tags as chips (`c:TagChipList`, `Border.tagChip`: the name in the tag color on a subtle pill), "+N" when they do not fit, tooltip with every tag; sorted by "Building A; PTZ" |
 | Model | ProdNbr |
+| Status | computed, see enum |
+| MAC address | SerialNumber from basicdeviceinfo |
 | Firmware | Version |
+| Tags | the device's tags as chips (`c:TagChipList`, `Border.tagChip`: the name in the tag color on a subtle pill), "+N" when they do not fit, tooltip with every tag; sorted by "Building A; PTZ" |
 | DHCP | Network.BootProto == dhcp -> Yes/No |
 | HTTPS | HTTPS enabled -> Enabled/Disabled |
-| Certificate expires | CertNotAfterUtc as days left: "245 days", "1 day", "Today", "Expired 3 days ago", "Never" for NotAfter 9999-12-31 (RFC 5280, e.g. the Axis device ID certificate). Chip: ok > 30 days, warn <= 30 days, error expired. Over HTTP read through VAPIX; empty when HTTPS is off or unreadable |
-| Certificate | CertTrust: Trusted (ok), Self-signed (warn), Untrusted / Expired (error). Empty when HTTPS is off or unreadable. Both certificate cells have a tooltip with subject, issuer and valid-until date |
+| Certificate expires | CertNotAfterUtc as days left: "245 days", "1 day", "Today", "Expired 3 days ago", "Never" for NotAfter 9999-12-31 (RFC 5280, e.g. the Axis device ID certificate). More than 30 days: plain text, warn chip <= 30 days, error chip expired; right-aligned (numeric column). Over HTTP read through VAPIX; empty when HTTPS is off or unreadable |
+| Certificate | CertTrust: Trusted (plain text), Self-signed (warn chip), Untrusted / Expired (error chip). Empty when HTTPS is off or unreadable. Both certificate cells have a tooltip with subject, issuer and valid-until date |
 | IEEE 802.1X | dot1x.Enabled -> Enabled/Disabled |
 
 Polling: server refreshes status (basicdeviceinfo) for every device every **60 s** by
@@ -819,7 +832,8 @@ with the labels in the grid, the search, the export and the import; plugins read
   **OK**: the changed check boxes as one `SetDeviceTags` call for the whole selection; nothing changed = no call.
 - **Group mode** (toolbar "Group by tag", persisted per client): the grid shows a collapsible group per tag in tag
   name order and "No tag" last, header "● Building A · 42 devices" in the tag color (theme style
-  `DataGrid.tagGroups DataGridRowGroupHeader`, chevron expander `ToggleButton.groupExpander`). **A device with several tags
+  `DataGrid.tagGroups DataGridRowGroupHeader`, chevron expander `ToggleButton.groupExpander`); the Tags column is hidden
+  while grouping (the group header names the tag). **A device with several tags
   appears under every one of them** (user decision): the rows are `DeviceTagRow` wrappers (device x tag, `Tags/
   DeviceTagGrouping`), grouped by Avalonia's `DataGridCollectionView` with the groups as explicit `GroupKeys` (so the group
   order stays when the user sorts a column; sorting works within the groups). Every grid column binds through
@@ -1133,7 +1147,8 @@ BOM, a cell starting with = + - @ gets a leading `'` (no formula injection), no 
 save picker `IDialogService.SaveFileAsync`, default name `oadm-devices-<yyyy-MM-dd>.csv`; nothing to export or a
 failed save = `ui:MessageWindow`; O(n), 5,000 devices tested), one generic plugin with a button per task plugin that declares
 `ShowInToolbar` (Tasks; enabled when it can run on the whole selection, otherwise disabled with the reason as tooltip) and **AXIS OS - Release Notes** (Plugins,
-order 1000 = last, `ui:ToolbarButton` with text, icon `externalLink`: opens https://help.axis.com/en-us/axis-os-release-notes in the default browser). External ones come from
+order 1000, an icon-only `ui:ToolbarButton` (icon `externalLink`, class `trailing`: right of the toolbar next to Group by
+tag and Columns), opens https://help.axis.com/en-us/axis-os-release-notes in the default browser). External ones come from
 `*.Client.dll` like dialogs and pages. `DeviceToolbar` orders them by group, order, id, creates each
 control once (failures logged, entry left out), keeps a `ToolbarSeparator` only between groups that
 show something and moves the same controls into a new page view. Buttons are `ui:ToolbarButton`
@@ -1214,7 +1229,9 @@ Steps of the other task plugins (details in each plugin README):
   all validated before the first one), Verify users. Names: "Add user joe", "Change password joe",
   "Change role joe", "Change user joe", "Remove user joe", "Remove users joe, ann". Dialog: Remove picks
   the users in the Existing users list (multi-select, no user name field; the OADM account and the last
-  administrator are greyed with a tooltip and cannot be selected), no general lock-out warning text.
+  administrator are greyed with a tooltip and cannot be selected), no general lock-out warning text; the left card lists
+  the chosen users ("Users to remove") with a one-line note on the protected accounts; Remove users is the red danger
+  button.
 - Network: Check compatibility, Read current settings, Read IPv6 address mode, Validate settings, Check
   address is free, Set host name, Set DNS, Set IPv6 (+ Enable IPv6), Set IPv4 (order as written), Wait for the
   settings to apply, Check reachability, Wait for the device at the new address, Verify device identity, Update
@@ -1282,7 +1299,8 @@ ADM's "Assign IP address to selected devices" (research and sources in the Netwo
   address editable in the cell, Status chip), devices in the grid order the host passes. Suggestions skip
   network/broadcast addresses, the router, other managed devices' addresses and addresses in use (query
   `checkAddresses`: managed devices plus ping and a TCP connect to 80/443 from the server, rows "In use (answers
-  ping)"; also a **Check addresses** button). "Not enough addresses: ..." below the table when the range is too
+  ping)"; **Check addresses** is a secondary button left above the table next to a summary "4 ready, 1 conflict").
+  Status is the widest column (2.5*, rows grow to two lines), MAC address and Model have fixed widths. "Not enough addresses: ..." below the table when the range is too
   small; conflicts (duplicate, outside the subnet, used by a managed device, in use) are red chips only in the
   Status column and block Finish. Field errors (IP range, subnet mask, default router, DNS) below their field; no
   error list, no current-values info line. Finish asks in the shared `ui:MessageWindow` with the reachability
@@ -1321,10 +1339,10 @@ Read-only for devices (param.cgi reads and image.cgi snapshots).
   PDF) and returns its status; `reportStatus` ({jobId}) -> state running/done/failed, done/total,
   message, size, pages, failed; `readReport` ({jobId, offset}) -> 2 MB base64 chunks (a report is larger
   than one gRPC message); `deleteReport`. Jobs live in server memory, 30 minutes after last use.
-- Page: toolbar Refresh all, "Select all" check box, **Export PDF** (primary); picture size slider
-  (200-720 px) and `ui:SearchBox` on the right; status line "14 pictures from 9 cameras · 13 selected
+- Page: toolbar Refresh all, "Select all" check box, **Export PDF** (primary); picture size slider labeled "Size"
+  with its px value (200-720 px) and `ui:SearchBox` on the right; status line "14 pictures from 9 cameras · 13 selected
   · 3 failed"; `ui:ProgressRow` while loading ("Loading snapshots 5 of 14", 4 at a time). Tiles
-  (`Border.tile`, accent outline when selected) in a wrap panel: picture (`Button.picture` on
+  (`Border.tile`, accent outline on hover or keyboard focus; selection is the check box only) in a wrap panel: picture (`Button.picture` on
   `Border.liveViewSurface`, Stretch Uniform; click = large preview window with facts and "Take new
   snapshot"), check box + title + refresh icon button, facts line (model · firmware · MAC), then the
   capture time and size, or a `ui:StatusChip` (Loading accent, error red with the message). A failed
@@ -1410,7 +1428,8 @@ JSON schema: `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md` + `c
   API, Version too old, API list not read yet, Needs a video device), `rollout`. User-level problems come
   back as `error` in the reply, not as gRPC errors.
 - Page (`HasOwnCards`: three cards, shared controls only, compact icon buttons = `Button.toolbar.iconOnly`
-  + `ui:OadmIcon` with a tooltip): **Library** card (Import icon right of the title, SearchBox, TreeView
+  + `ui:OadmIcon` with a tooltip): **Library** card (Import icon right of the title, library messages (import, export, save, delete) in a status chip
+  under the title, SearchBox filling the card width (`ui|SearchBox.stretch`, also in Target devices), TreeView
   Built-in / Saved by category without any badges (no counts, no write / dangerous: the tooltip, the Kind
   column of the rollout set, the header of the selected command ("Write · dangerous · <description>") and
   the run confirmation say it). A single click on a command adds it to the rollout set, a click on a group
@@ -1435,7 +1454,7 @@ JSON schema: `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md` + `c
   pretty body), content type and "Cut at 256 KB." next to it. **Target devices** card (Devices page
   selection preselected; buttons Devices page selection, All (matching the search), Compatible, None;
   SearchBox; compatibility summary "4,812 compatible · 188 not compatible · 12 not checked"; per device
-  a check box and one status chip: "Compatible" or the first problem "<command>: Missing API x (+N
+  a check box and one status chip (up to two lines): "Compatible" or the first problem "<command>: Missing API x (+N
   more)", tooltip = every command). The run controls are docked at the bottom of this card (no separate
   Run bar card): status chip of the last action only for errors (a started rollout shows no message: its tasks appear
   in the Tasks pane below the page, user decision 2026-10-08), summary "3
@@ -1594,10 +1613,10 @@ Own RFC 2131 / 2132 implementation, IPv4 only, one interface, no relay agents (r
   DHCP server; Listen on (`InterfaceSelection`, IPv4 interfaces only, "Ethernet - 10.0.0.17/24 (Intel I219)"); Start
   address / End address (`ui:FormField`, errors under the fields while typing: "Must be inside the subnet 10.0.0.0/24.",
   "Must be after the start address.", network/broadcast/server address, at most 65,536 addresses); the derived
-  line; Save (disabled with the reason as tooltip; status "Checking for other DHCP servers" while saving). Leases:
+  line directly under End address, the auto-add check box below it aligned with the inputs; Save (disabled with the reason as tooltip; status "Checking for other DHCP servers" while saving). Leases:
   summary "6 leases, 2 static", shared `SearchBox`, "+ Static lease"; one virtualized DataGrid (MAC address, IP address
   sorted numerically, Host name / device, Type, Expires "in 23 h" / "Expired" / "Released" / "-", row actions as link
-  buttons: Edit, Delete for static; Make static, Release for dynamic; Delete and Release are confirmed). Managed devices
+  buttons: Edit, Delete for static; Make static, Release for dynamic; Delete and Release are red and confirmed). Managed devices
   by MAC = serial number (else by address) show "P3265-V (managed)". Rows update in place; search and structural changes
   rebuild the list with one reset (O(n), 5,000 leases tested).
 - **Automatically add Axis devices that get an address** (user decision 2026-10-08; check box below End address, config
@@ -1677,11 +1696,11 @@ part 2: the contributed Security tasks (below), the only writers of the `issued`
 - Page (`HasOwnCards`, subtitle "Issues device certificates for HTTPS and IEEE 802.1X.", header chip "CA valid until
   <date>" ok / "CA expires in N days" warning (within `expiryWarningDays`) / "CA expired", "CA key cannot be read" error):
   cards Certificate authority (name, validity, key, fingerprint selectable, chain of an intermediate, "Trusted root store"
-  chips for the server and this computer, toolbar buttons Install in trusted root store, Export public certificate (PEM /
-  DER menu), Back up, Generate new CA, Import CA), Device certificates (the two fields; no issued-devices summary line,
+  chips for the server and this computer, the source (Generated / Imported) as a "Source" row, buttons Install in trusted
+  root store, Export public certificate (PEM / DER menu), Back up, a separator, then Generate new CA, Import CA), Device certificates (the two fields; no issued-devices summary line,
   user decision 2026-10-08), IEEE 802.1X (EAPOL version, EAP identity + custom field, RADIUS server CA
-  with Import... / View, one Save for both cards), Previous certificate authorities (only when there are any: Name, Valid
-  until, Replaced, Export / Remove links, Remove confirmed). Dialogs `GenerateCaWindow`, `ImportCaWindow` (FileRow, key
+  with Import... / View, one Save for both cards at the end of the IEEE 802.1X card, inputs 460 px wide), Previous certificate authorities (only when there are any: Name, Valid
+  until, Replaced, Export / Remove links, Remove red and confirmed). Dialogs `GenerateCaWindow`, `ImportCaWindow` (FileRow, key
   FileRow only for a certificate without key), `BackupWindow`: `ValidatingViewModel`, errors under the fields, the
   confirmation popups owned by the dialog. Last export folder per client in
   `LocalApplicationData/Oadm/plugins/oadm.pki/client.json`. Fake mode (`FakeOadmApi.Pki.cs`): in-memory CA + one previous
@@ -1820,15 +1839,16 @@ Read-only for devices. Decided with the user on 2026-10-08:
   and a `state` event (Connecting, Live, Reconnecting, Stopped, Error + text, message count, lost count).
 - **Page (client, `HasOwnCards` false: one card):** `ui:PageHeader.Subtitle` "Shows the events a camera sends, live.".
   One toolbar row (fits the 1280 px minimum window with the rail expanded; user decision): camera select (managed video
-  and I/O devices, sorted by IPv4, type to jump, "P3265-V (10.0.0.48)"), `ui:SearchBox` filter (live, case-insensitive
+  and I/O devices, sorted by IPv4, type to jump, "P3265-V (10.0.0.48)") with the primary **Start** / **Stop** directly
+  right of it, `ui:SearchBox` filter (live, case-insensitive
   over topic, info and raw XML; "Filter events"), **Clear** (empties the list, the stream keeps running), **Autoscroll**
   toggle (on: the newest row stays visible; scrolling up turns it off, scrolling to the end turns it on again) and the
   count ("134 messages", "5 of 15 messages"); on the right the status chip (Connecting accent, Live ok "Live", plus
-  " · 3 messages lost" when documents were lost, Reconnecting warning, Error red with the text) and one primary
-  **Start** / **Stop** button.
+  " · 3 messages lost" when documents were lost, Reconnecting warning, Error red with the text). The empty list says
+  "Choose a camera and press Start."; the detail pane and its splitter appear only while a message is selected.
   List (virtualized DataGrid, `RangeObservableCollection`, batches appended in one step): Seq# (per stream, from 1),
-  Timestamp (UTC, the message's UtcTime, `yyyy-MM-dd HH:mm:ss.fff`), Category, Event topic, Capture time (UTC), Property
-  operation, Info (star width). No raw Data column (it is in the detail view). The client keeps the newest **10,000**
+  Timestamp (UTC, the message's UtcTime, `yyyy-MM-dd HH:mm:ss.fff`), Event topic, Capture time (UTC, `HH:mm:ss.fff`),
+  Property operation, Info (star width); Category is hidden (always "Event"). No raw Data column (it is in the detail view). The client keeps the newest **10,000**
   messages (oldest removed in one step).
   Detail (below the list, splitter, height persisted per client): the selected message's XML in `ui:CodeView` (Xml,
   always pretty-printed and highlighted, no Raw switch: user decision) with a copy button (copies the pretty XML).
@@ -1856,7 +1876,7 @@ Read-only for devices. Decided with the user on 2026-10-08:
   texts ("Credentials required - the device rejects the stored credentials", ...). A page's stream also ends without its
   keep-alive: the page calls `keepAlive` ({streamId}) every 5 s while a stream runs, the server stops streams without one
   for 20 s (client closed or gone; switching pages stops the stream at once). Page layout: two rows (camera search,
-  camera select, then status chip + one primary **Start** / **Stop** toggle on the right; below: filter, Clear,
+  camera select with the primary **Start** / **Stop** right of it, the status chip on the right; below: filter, Clear,
   Autoscroll, message count on the right) because one row does not fit the 1280 px minimum window. Autoscroll follows the
   grid's vertical scroll bar (wheel and bar: at the end on, above off); the selection is kept through the grid's Reset of
   each batch. Detail height in `LocalApplicationData/Oadm/plugins/oadm.metadata-monitor/client.json`; copy = the shown
@@ -1930,9 +1950,12 @@ error / does not apply); the items that cannot be checked remotely are not shown
   is returned), `cancelScan`, `getDetail`; events `progress` and `results` (500 ms, at most 1,000 rows each).
 - Page: Basic / Extended switch, Scan all, Scan selected (Devices page selection), Stop, Export CSV (UTF-8 BOM, two columns per
   check: result and value), status filter, search, progress row, summary "N devices · scanned · pass · with warnings · failed ·
-  not reachable", virtualized grid (frozen icon, Address, Model, AXIS OS, Score, Last scan; one column per check, sortable by
+  not reachable", virtualized grid (frozen icon (red only for a device that could not be scanned; Score and the check columns show the
+  results), Address, Model, AXIS OS, Score (right-aligned), Last scan; one column per check (B2 "Latest OS"), sortable by
   state, tooltips built when they open, column order / widths / level / detail height per client), detail pane "Selected
-  device" (its checks; Result sortable by severity, failed first). Fake mode: `FakeOadmApi.HardeningScan.cs`.
+  device" (its checks; Result sortable by severity, failed first; Found and Recommendation wrap to two lines). The
+  remembered detail height is fitted to the page, so the result grid always keeps at least 160 px (a height dragged on a
+  tall screen once pushed the grid over the toolbar at 1800x900). Fake mode: `FakeOadmApi.HardeningScan.cs`.
 - Tests: `tests/Oadm.Plugins.HardeningScan.Tests` (every rule from the recorded answers and variants, read-only fake camera,
   scan jobs, 5,000-device view model, CSV, method roles, fake mode, headless `hardening-scan-basic.png` / `-extended.png`,
   read-only hardware test against 10.0.0.48).
@@ -1943,9 +1966,10 @@ error / does not apply); the items that cannot be checked remotely are not shown
 **Date and time**: a clone of the ADM / AXIS Camera Station "Set date and time" dialog (the ADM manual has no date and
 time chapter; wording from the ACS 5 manual, sources in the plugin `README.md`), for any number of devices.
 - Dialog "Set date and time" behaves **exactly like ADM** (user decision): no "Keep unchanged" anywhere, OK always
-  writes the time zone and the selected time mode to every selected device. **Device time** card for the first selected
-  device (read-only query `getTimeSettings`: device time and offset, time zone, time mode with sync state, server time and
-  difference); **Time zone** card: the 313 IANA zones of AXIS OS 12.11 (bundled list, offsets from the OS time zone
+  writes the time zone and the selected time mode to every selected device. **Device time** strip across the top for
+  the first selected device (one line, read-only query `getTimeSettings`: device time and offset, time zone, time mode
+  with sync state, server time and difference); below it the **Time mode** card (left) and the **Time zone** card
+  (right), so every time mode shows at the default size. **Time zone** card: the 313 IANA zones of AXIS OS 12.11 (bundled list, offsets from the OS time zone
   database, read from this year's offset change instants so all three OS agree (`ZoneYear`); a zone the OS does not
   know, e.g. Antarctica/Troll on Windows Server 2025, is listed last without offset and set by IANA id only) in a DataGrid (UTC offset, City, Time zone, DST) with `ui:SearchBox`, "Automatically adjust for daylight
   saving time changes"; **Time mode** card: Synchronize with server computer time (NTP off, the OADM server's UTC sent
@@ -1999,16 +2023,16 @@ time, read live by the task engine, plugin `MaxParallelDevices` can only lower i
 tasks per plugin" with the hint "How many devices a task runs on at the same time, e.g. restarts or
 firmware updates."), `Devices.UseHostName` (bool, false: add devices by host name when one is
 known, otherwise by IP address; proto `optional bool use_host_name = 7` so a partial `Set`
-keeps it). Settings page in the client exposes them (one card **Server**, the only card of the page; operators see it
-read-only); `Devices.UseHostName` is the checkbox
+keeps it). Settings page in the client exposes them (one card, fields grouped under the headings Polling, Discovery,
+Tasks, Server; Save and Reload in the input column; operators see the values as plain text without Save and Reload); `Devices.UseHostName` is the checkbox
 "Use host name when available, otherwise IP address". Rail page **Credentials** (Admin only, subtitle "Passwords OADM
 tries when it adds devices.", `Settings/CredentialsViewModel` + `CredentialsView`, one card without title): entries (key icon, user name, password masked as 8 bullets, eye icon button "Show password" /
 "Hide password" that loads it with `RevealCredential` and masks (and forgets) it on the second click, copy icon
-button "Copy password" (clipboard of the window, loaded on demand, not shown), added time, Remove), add form (user
+button "Copy password" (clipboard of the window, loaded on demand, not shown), added time, Remove as a red icon button), a separator, then the add form under the heading "Add credential" (user
 name, password, "Add credential"); stored encrypted on the server (`CredentialListStore`, table
 CredentialListEntries), tried on every discovered device (see "Add Devices Page"). Rail page **About** (everyone,
 subtitle "Version and licenses.", `Settings/AboutPageView` around the card `Settings/AboutView`, `AboutViewModel`):
-terms of use, client version, server version (`ServerSettings.server_version`), the
+terms of use (card title, a scrollable block with wider line spacing), client version, server version (`ServerSettings.server_version`), the
 sentence on the Apache-2.0 license, "Show licenses" shows `THIRD-PARTY-NOTICES.txt` (next to the exe, the macOS app's
 `Contents/Resources`, or `THIRD-PARTY-NOTICES.md` in a checkout) in a read-only `ui:CodeView` (Plain). There is no "This client" card:
 the server address is set with `--server` or in the client settings file (user decision 2026-10-08). Client-side
@@ -2068,7 +2092,9 @@ marked *(default)* were filled in and can be changed. This section wins over old
 - **PKI "Install in trusted root store" on the server**: Admin only; the confirmation shows the CA's SHA-256 fingerprint;
   logged in the audit log. The client-side install is unchanged.
 - **Login window (client).** Shown at start: Server (default `localhost:5080`, remembered, list of recent servers), User
-  name, Password (`ui:PasswordBox`), "Remember me" (keeps the token in the client settings, never the password), Log in.
+  name, Password (`ui:PasswordBox`), "Remember me" (keeps the token in the client settings, never the password), Log in;
+  the app icon and "OADM" above the form, a narrower label column (`StackPanel.compactForm`), and **Quit** on the left
+  (it ends the app when nobody logged in).
   First connect to a server: fingerprint confirmation. No users yet: "Create the first administrator" (+ setup code for
   remote servers). The rail shows the logged-in user with Log out at the bottom. Replaces the removed "This client"
   card: the server address is chosen here. `--server` still preselects it. Fake mode has no login (user "admin").
@@ -2106,11 +2132,12 @@ marked *(default)* were filled in and can be changed. This section wins over old
     token); the fingerprint is confirmed in the shared confirmation window ("Trust this server?", two lines of 16 pairs);
     a changed certificate shows "The server certificate changed ..." with **Forget server**. Remember me keeps
     {user, token} per server in `RememberedLogins` and resumes with `AuthService.Me` at start. An address without scheme
-    means https; `http://` stays possible for tests. Rail bottom: user (tooltip "Logged in as ... (role) on ...") and
-    Log out. `UserSession.IsAdmin` hides the Users and Credentials rail pages, disables the server settings form (with the
+    means https; `http://` stays possible for tests. Rail bottom: user (initial avatar + name, tooltip "Logged in as ... (role) on ...") and
+    Log out. `UserSession.IsAdmin` hides the Users and Credentials rail pages, shows the server settings as plain text (with the
     sentence "Only administrators can change server settings.") and hides the Audit tab for operators; the server checks again.
-    Users page `Settings/UsersPageView` around the card `Settings/UsersCardView` (loaded on every connect; DataGrid; Make administrator / operator, Reset password (inline editor), Disable
-    / Enable, Delete with confirmations; the own row offers only Reset password). Audit tab `Logging/AuditLogViewModel`
+    Users page `Settings/UsersPageView` around the card `Settings/UsersCardView` (loaded on every connect; DataGrid; row actions as icon buttons in fixed places: Make administrator / operator, Reset
+    password (inline editor directly below the list), Disable / Enable, Delete (red), with confirmations; the own row
+    offers only Reset password; the headings "New password for <user>" and "Add user" use the section title style). Audit tab `Logging/AuditLogViewModel`
     (newest 10,000, O(n) search, Refresh). Fake mode signs in as "admin" (Administrator) without a login window.
   - Tests: `tests/Oadm.Server.Tests/AuthTests` (unauthenticated / operator / admin per service, role table against the
     contracts, plugin method roles + audit, first administrator loopback and setup code, login / logout / owner,
@@ -2346,6 +2373,19 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
 - Button and menu labels never end with "..." / "…", also when they open a dialog or a file picker ("Back up", "Import CA",
   "Choose file"). Actions inside a card are filled buttons (`Button.secondary` with `ui:IconLabel`, primary for the main
   one); the flat `ui:ToolbarButton` is only for toolbars.
+- One accent button per view: while an inline editor is open, its button (Retry, Create tag) is the primary one and the
+  footer's main button turns secondary. A disabled primary keeps its role: the accent at about 35 % with dimmed text.
+- **Destructive actions are red** (layout review 2026-10-08): `Button.danger` (red fill, white text) instead of primary for
+  buttons that delete or remove (Remove users, Delete certificates), `Button.toolbar.danger` for flat toolbar and icon
+  buttons (Delete all, Delete tag, credential Remove, user Delete), `Button.link.danger` for row links (DHCP Delete and
+  Release, PKI Remove). `ui:MessageWindow` makes its confirm button red when the confirm text starts with Delete, Remove
+  or Release (`MessageWindow.IsDestructive`, `IsDanger` overrides). Destructive entries sit apart from everyday ones
+  (separator, last in a menu).
+- `ui:DialogFooter` with no visible action puts its lone Close / Cancel on the right.
+- Grids whose status text explains a problem (add page, address tables, firmware, certificate install, system report,
+  hardening detail) have the class `wrapRows`: rows grow and `ui:StatusChip` shows up to two lines (`MaxLines`).
+  Numeric columns (days, offsets, scores, durations) are right-aligned: `CellStyleClasses="number"` plus a header
+  `TextBlock.numberHeader`. Empty lists say in one line what to do first.
 - **HARD RULE, no style differences.** Same kind of element, same look, everywhere: one
   style per element type in `Themes/OadmTheme.axaml`, no local overrides of font size,
   weight, color, padding or alignment in views. No special cases such as a bold selected rail
