@@ -68,7 +68,7 @@ public sealed class HeadlessTests
                     new() { DeviceId = devices[0].Id, State = DeviceReportStates.Done, Size = 315_870 },
                     new() { DeviceId = devices[1].Id, State = DeviceReportStates.Done, Size = 402_113 },
                     new() { DeviceId = devices[2].Id, State = DeviceReportStates.Downloading },
-                    new() { DeviceId = devices[3].Id, State = DeviceReportStates.Failed, Error = "Forbidden - HTTP 403 (the server report needs an administrator account)" },
+                    new() { DeviceId = devices[3].Id, State = DeviceReportStates.Failed, Error = "Forbidden - HTTP 403 (administrator rights are required)" },
                     new() { DeviceId = devices[4].Id, State = DeviceReportStates.Downloading },
                 ],
             });

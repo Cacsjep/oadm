@@ -217,7 +217,7 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
 
     public string NtsHint => NtsDeviceCount == _devices.Count
         ? "Network Time Security: the servers must be NTS KE servers."
-        : $"Network Time Security: supported by {Count(NtsDeviceCount)} of {Count(_devices.Count)} devices (ntp 1.5 or later); the others fail without changes.";
+        : $"NTS works on {Count(NtsDeviceCount)} of {Count(_devices.Count)} devices; the others are not changed.";
 
     [ObservableProperty]
     public partial string ManualDate { get; set; }
@@ -251,8 +251,8 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
     public bool HasModeNote => ModeNote is not null;
 
     public string ModeDescription => DeviceTimeModeText.Length == 0
-        ? "Written to every selected device."
-        : "Written to every selected device. Device: " + DeviceTimeModeText;
+        ? string.Empty
+        : "Current: " + DeviceTimeModeText;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ApplyBlockedReason))]

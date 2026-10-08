@@ -6,7 +6,7 @@ using Oadm.Sdk.Vapix;
 namespace Oadm.Plugins.Pki.Tasks;
 
 /// <summary>
-/// "IEEE 802.1X: Enable/Update" (EAP-TLS with a client certificate from the OADM CA). Safety: fails before any write when the
+/// "Enable IEEE 802.1X" (EAP-TLS with a client certificate from the OADM CA). Safety: fails before any write when the
 /// device clock is more than 5 minutes off, the CA chain is incomplete or 802.1X is not offered; the client asks for
 /// confirmation first. Steps: Check compatibility, Check device clock, Install CA certificates, Create key on the device, Get
 /// certificate request, Sign certificate, Install certificate, Set 802.1X configuration, Verify 802.1X settings, Remove
@@ -146,7 +146,7 @@ public sealed class Dot1xEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
     }
 }
 
-/// <summary>"IEEE 802.1X: Disable": 802.1X off, certificates stay. Steps: Check compatibility, Set 802.1X off, Verify.</summary>
+/// <summary>"Disable IEEE 802.1X": 802.1X off, certificates stay. Steps: Check compatibility, Set 802.1X off, Verify.</summary>
 public sealed class Dot1xDisableTask(Func<PkiService?> service) : PkiTaskBase(service)
 {
     public override string Id => PkiTaskIds.Dot1xDisable;

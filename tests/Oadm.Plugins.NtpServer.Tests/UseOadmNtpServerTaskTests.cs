@@ -55,7 +55,7 @@ public sealed class UseOadmNtpServerTaskTests : IAsyncLifetime
         Assert.True(TaskPlugin.CanRun(new FakeDevice(Guid.NewGuid())));
         Assert.True(TaskPlugin.CanRun(new FakeDevice(Guid.NewGuid()) { Apis = Fixture.LegacyOnly }));
         Assert.False(TaskPlugin.CanRun(new FakeDevice(Guid.NewGuid()) { Apis = [] }));
-        Assert.Equal("OADM has not read what this device supports yet: refresh the device", TaskPlugin.NotSupportedReason(new FakeDevice(Guid.NewGuid()) { Apis = [] }));
+        Assert.Equal("Not read yet: refresh the device", TaskPlugin.NotSupportedReason(new FakeDevice(Guid.NewGuid()) { Apis = [] }));
         Assert.Equal("Needs the NTP API (this device has 12.11.77)", TaskPlugin.NotSupportedReason(new FakeDevice(Guid.NewGuid()) { Apis = [new("basic-device-info", "1.3")] }));
         Assert.Equal("Use OADM NTP server", TaskPlugin.GetTaskName(null)); // not running
     }

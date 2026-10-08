@@ -78,8 +78,8 @@ public sealed class JobTests : IDisposable
             [DeviceReportStates.Done, DeviceReportStates.Done, DeviceReportStates.Failed, DeviceReportStates.Failed, DeviceReportStates.Failed],
             status.Devices.Select(d => d.State).ToArray());
         Assert.Equal("Credentials required - the device rejects the stored credentials", status.Devices[2].Error);
-        Assert.Equal("Unauthorized - HTTP 401", status.Devices[3].Error);
-        Assert.Equal("The device is no longer managed", status.Devices[4].Error);
+        Assert.Equal("Unauthorized - HTTP 401 (check the credentials)", status.Devices[3].Error);
+        Assert.Equal("The device was removed from OADM.", status.Devices[4].Error);
         Assert.Empty(_vapix.Cameras[locked.Id].Requests);
 
         var bytes = await ReadAllAsync(jobs, status.JobId);
@@ -103,7 +103,7 @@ public sealed class JobTests : IDisposable
         Assert.Contains("10.0.0.48_B8A44F631339_P3265-V_20261008-095856.zip  10.0.0.48  B8A44F631339  AXIS P3265-V", summary, StringComparison.Ordinal);
         Assert.Contains("mode zip_with_image", summary, StringComparison.Ordinal);
         Assert.Contains("mode zip\r\n", summary, StringComparison.Ordinal);
-        Assert.Contains("fe80::1  ACCC8E000003  AXIS P3265-V  Unauthorized - HTTP 401", summary, StringComparison.Ordinal);
+        Assert.Contains("fe80::1  ACCC8E000003  AXIS P3265-V  Unauthorized - HTTP 401 (check the credentials)", summary, StringComparison.Ordinal);
 
         // The per-device files are gone once bundled.
         Assert.Equal(["bundle.zip"], Directory.GetFiles(Path.Combine(_folder.Path, status.JobId)).Select(f => Path.GetFileName(f)!).ToArray());

@@ -167,7 +167,7 @@ public sealed partial class AboutViewModel : ObservableObject
                 else
                 {
                     NoticesText = string.Empty;
-                    NoticesSource = $"{ThirdPartyNotices.FileName} was not found next to the client. It is created by \"manage publish\" and installed with OADM.";
+                    NoticesSource = $"{ThirdPartyNotices.FileName} was not found.";
                 }
             }
             catch (IOException ex)

@@ -150,12 +150,12 @@ not even DNS. Skipped "DHCP: no static address is set" / "No static address is s
 | Case | Check reachability | Wait for the device at the new address | Verify device identity | Update OADM device address |
 |---|---|---|---|---|
 | New static address (IPv4, or IPv6 when OADM connects over IPv6) | Skipped "The device moves to B." | polls B every 3 s with `ctx.CreateClientForAsync(B)` for up to 90 s; Done "The device answers at B" | serial number at B equals the device's: Done | `ctx.UpdateDeviceAddressAsync(B)`: Done "A -> B" |
-| ... not answering at B | Skipped | **Warning** "No answer at B within 90 s. Check the subnet mask and router. OADM keeps A.", or that it still answers at A, so the new address may not be active (the device rolls back failed changes) | Skipped "The device was not found at the new address." | Skipped (same) |
+| ... not answering at B | Skipped | **Warning**: "No answer at B within 90 s. Check the subnet mask and default router. OADM keeps A." or "No answer at B within 90 s; the device still answers at A. Check its system log. OADM keeps A." (the device rolls back failed changes) | Skipped "The device was not found at the new address." | Skipped (same) |
 | ... another serial at B | Skipped | Done | **Warning** "Another device answers at B (serial ..., expected ...). The address may be in use." | Skipped "The device at the new address is not this device." |
 | ... OADM uses the host name (`Devices.UseHostName`) | Skipped | Done | Done | Skipped "OADM reaches the device by host name H; the host name is kept." |
-| ... the server refuses (serial check on the server) | Skipped | Done | Done | **Warning** with the server's message |
-| DHCP (new address unknown) | watches A for 45 s; **Warning** when A stops answering ("OADM finds the device again at its new address.") | Skipped | Skipped | Skipped "OADM finds the device again at its new address." |
-| Same address | watches A; Done, or **Warning** "check the subnet mask and router" | Skipped "The address does not change." | Skipped | Skipped |
+| ... server refuses (serial check on the server) | Skipped | Done | Done | **Warning** with the server's message |
+| DHCP (new address unknown) | watches A for 45 s; **Warning** when A stops answering ("... OADM finds the device again at its new address.") | Skipped | Skipped | Skipped "OADM finds the device again at its new address." |
+| Same address | watches A; Done, or **Warning** "check the subnet mask and default router" | Skipped "The address does not change." | Skipped | Skipped |
 | Change does not affect OADM's connection | Skipped | Skipped | Skipped | Skipped |
 
 Re-finding moved devices (server, `DeviceRelocationHostedService`): every 5 minutes (first run 30 s after start), while

@@ -84,9 +84,7 @@ public sealed partial class AssignIpViewModel : ValidatingViewModel, IDisposable
     public string RangePlaceholder => IsMultiDevice ? "192.168.0.10-20" : "192.168.0.90";
 
     public string RangeHint => IsMultiDevice
-        ? "Use wildcards (192.168.0.* or 10.*.1.*), first and last address (192.168.0.10-192.168.0.20, shortened 192.168.0.10-20), " +
-          "a range in any part (10.10-30.1.*) and commas for several ranges (192.168.0.*,192.168.1.10-20). " +
-          "A single address is the first of consecutive addresses."
+        ? "e.g. 192.168.0.10-20, 192.168.0.* or 10.10-30.1.*"
         : "The address may also be a range; the first free address is used.";
 
     /// <summary>True: DHCP. False: "Assign the following IP address range".</summary>
@@ -128,7 +126,7 @@ public sealed partial class AssignIpViewModel : ValidatingViewModel, IDisposable
     public string PrimaryText => IsSettingsPage && !UseDhcp ? "Next" : "Finish";
 
     public string PageDescription => IsReviewPage
-        ? "Step 2 of 2. Review the current IP addresses and the new IP addresses. Click a new IP address to edit it."
+        ? "Step 2 of 2. Click a new address to change it."
         : UseDhcp
             ? (IsMultiDevice ? $"{_devices.Count} devices selected. The devices get their addresses from a DHCP server." : "1 device selected. The device gets its address from a DHCP server.")
             : (IsMultiDevice ? $"Step 1 of 2. {_devices.Count} devices selected, addresses are suggested in the order of the device list." : "Step 1 of 2.");

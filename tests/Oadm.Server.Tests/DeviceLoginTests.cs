@@ -50,7 +50,7 @@ public sealed class DeviceLoginTests
         Assert.False(reply.Results[2].Rejected);
         Assert.StartsWith("Unreachable - ", reply.Results[2].Message, StringComparison.Ordinal);
         Assert.Equal("Another device answers at this address.", reply.Results[3].Message);
-        Assert.Equal("Certificate changed - accept the new certificate first", reply.Results[4].Message);
+        Assert.Equal("Certificate changed. Remove the device and add it again to trust the new certificate.", reply.Results[4].Message);
         Assert.Equal("", reply.CredentialListNote);
 
         // Stored only for the device that accepted it; the refresh brings it back to Ok and the polling uses it.

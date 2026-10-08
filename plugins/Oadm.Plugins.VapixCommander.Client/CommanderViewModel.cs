@@ -289,7 +289,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
             return;
         }
 
-        if (!await _host.ConfirmAsync("Delete saved command", $"Delete \"{item.Command.Name}\" for all OADM clients?", "Delete").ConfigureAwait(true))
+        if (!await _host.ConfirmAsync("Delete saved command", $"Delete \"{item.Command.Name}\"?", "Delete").ConfigureAwait(true))
         {
             return;
         }
@@ -510,7 +510,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
                 return false;
             }
 
-            SetStatus($"Saved \"{reply.Saved!.Command.Name}\" for all OADM clients.", error: false);
+            SetStatus($"Saved \"{reply.Saved!.Command.Name}\".", error: false);
             await ReloadSavedAsync().ConfigureAwait(true);
             return true;
         }

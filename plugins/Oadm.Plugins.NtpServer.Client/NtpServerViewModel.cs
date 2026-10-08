@@ -83,7 +83,7 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
     [ObservableProperty]
     public partial string Upstream { get; set; } = string.Empty;
 
-    /// <summary>Result of the last upstream check under the field ("Stratum 2, offset +3 ms, round trip 12 ms").</summary>
+    /// <summary>Result of the last upstream check under the field ("Answered: 3 ms off, 12 ms round trip").</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasUpstreamResult))]
     public partial string? UpstreamResult { get; set; }

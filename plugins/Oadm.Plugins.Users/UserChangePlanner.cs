@@ -55,10 +55,10 @@ public static class UserChangePlanner
             case UsersMode.Add:
                 if (existing is not null)
                 {
-                    return new UserChangePlan(PlanKind.Skip, $"User '{name}' already exists ({UserRoles.Describe(existing.Role, existing.Ptz)}); nothing was changed. Use Change to update it.", IsWarning: true);
+                    return new UserChangePlan(PlanKind.Skip, $"User {name} already exists ({UserRoles.Describe(existing.Role, existing.Ptz)}); nothing was changed. Use Change to update it.", IsWarning: true);
                 }
 
-                return new UserChangePlan(PlanKind.Write, $"Add user '{name}' as {UserRoles.Describe(payload.Role, payload.Ptz)}")
+                return new UserChangePlan(PlanKind.Write, $"Add user {name} as {UserRoles.Describe(payload.Role, payload.Ptz)}")
                 {
                     Expected = new DeviceUser(name, payload.Role, payload.Ptz),
                     SetsPassword = true,
@@ -68,30 +68,30 @@ public static class UserChangePlanner
             case UsersMode.Change:
                 if (existing is null)
                 {
-                    return new UserChangePlan(PlanKind.Skip, $"User '{name}' does not exist on this device; nothing was changed.", IsWarning: true);
+                    return new UserChangePlan(PlanKind.Skip, $"User {name} does not exist on this device; nothing was changed.", IsWarning: true);
                 }
 
                 RequireKnownAccount(currentAccount, "change");
                 if (isCurrent && payload.ChangePassword)
                 {
-                    throw new UserManagementException($"'{name}' is the account OADM uses for this device. Changing its password here would lock OADM out; change it with the device credentials instead. Nothing was changed.");
+                    throw new UserManagementException($"{name} is the account OADM uses for this device. Changing its password here would lock OADM out; change it with the device credentials instead. Nothing was changed.");
                 }
 
                 var demotes = payload.ChangeRole && existing.Role == UserRole.Administrator && payload.Role != UserRole.Administrator;
                 if (demotes && isCurrent)
                 {
-                    throw new UserManagementException($"'{name}' is the account OADM uses for this device and must stay Administrator. Nothing was changed.");
+                    throw new UserManagementException($"{name} is the account OADM uses for this device and must stay Administrator. Nothing was changed.");
                 }
 
                 if (demotes && adminCount <= 1)
                 {
-                    throw new UserManagementException($"'{name}' is the last administrator on this device and must stay Administrator. Nothing was changed.");
+                    throw new UserManagementException($"{name} is the last administrator on this device and must stay Administrator. Nothing was changed.");
                 }
 
                 var roleChanges = payload.ChangeRole && (existing.Role != payload.Role || existing.Ptz != payload.Ptz);
                 if (!payload.ChangePassword && !roleChanges)
                 {
-                    return new UserChangePlan(PlanKind.Skip, $"User '{name}' already is {UserRoles.Describe(existing.Role, existing.Ptz)}; nothing to change.");
+                    return new UserChangePlan(PlanKind.Skip, $"User {name} already is {UserRoles.Describe(existing.Role, existing.Ptz)}; nothing to change.");
                 }
 
                 var parts = new List<string>();
@@ -105,7 +105,7 @@ public static class UserChangePlanner
                     parts.Add($"change role from {UserRoles.Describe(existing.Role, existing.Ptz)} to {UserRoles.Describe(payload.Role, payload.Ptz)}");
                 }
 
-                return new UserChangePlan(PlanKind.Write, $"User '{name}': {string.Join(" and ", parts)}")
+                return new UserChangePlan(PlanKind.Write, $"User {name}: {string.Join(" and ", parts)}")
                 {
                     Expected = roleChanges ? new DeviceUser(name, payload.Role, payload.Ptz) : existing,
                     SetsPassword = payload.ChangePassword,
@@ -142,19 +142,19 @@ public static class UserChangePlanner
             var existing = users.FirstOrDefault(u => string.Equals(u.Name, name, StringComparison.Ordinal));
             if (existing is null)
             {
-                result.Add(new UserRemoval(name, new UserChangePlan(PlanKind.Skip, $"User '{name}' does not exist on this device; nothing was changed.", IsWarning: true)));
+                result.Add(new UserRemoval(name, new UserChangePlan(PlanKind.Skip, $"User {name} does not exist on this device; nothing was changed.", IsWarning: true)));
                 continue;
             }
 
             RequireKnownAccount(currentAccount, "remove");
             if (string.Equals(name, currentAccount, StringComparison.OrdinalIgnoreCase))
             {
-                throw new UserManagementException($"'{name}' is the account OADM uses for this device and cannot be removed. Nothing was changed.");
+                throw new UserManagementException($"{name} is the account OADM uses for this device and cannot be removed. Nothing was changed.");
             }
 
             if (existing.Role == UserRole.Administrator && adminsLeft <= 1)
             {
-                throw new UserManagementException($"'{name}' is the last administrator on this device and cannot be removed. Nothing was changed.");
+                throw new UserManagementException($"{name} is the last administrator on this device and cannot be removed. Nothing was changed.");
             }
 
             if (string.Equals(name, "root", StringComparison.Ordinal) && IsOlderThan(firmwareVersion, RootRemovableSince))
@@ -167,7 +167,7 @@ public static class UserChangePlanner
                 adminsLeft--;
             }
 
-            result.Add(new UserRemoval(name, new UserChangePlan(PlanKind.Write, $"Remove user '{name}'")));
+            result.Add(new UserRemoval(name, new UserChangePlan(PlanKind.Write, $"Remove user {name}")));
         }
 
         return result;
@@ -183,7 +183,7 @@ public static class UserChangePlanner
             return new UserChangePlan(PlanKind.Skip, string.Join(" ", skips.Select(r => r.Plan.Message)), skips.Exists(r => r.Plan.IsWarning));
         }
 
-        var message = $"Remove users '{string.Join("', '", writes)}'";
+        var message = $"Remove users {string.Join(", ", writes)}";
         return new UserChangePlan(PlanKind.Write, skips.Count == 0 ? message : message + "; " + string.Join(" ", skips.Select(r => r.Plan.Message)));
     }
 

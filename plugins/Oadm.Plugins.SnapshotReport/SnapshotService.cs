@@ -127,7 +127,7 @@ public sealed partial class SnapshotService : IDisposable
     {
         if (device is null)
         {
-            return Failed("The device is no longer managed");
+            return Failed(DeviceMessages.Removed);
         }
 
         var deviceId = device.Id;

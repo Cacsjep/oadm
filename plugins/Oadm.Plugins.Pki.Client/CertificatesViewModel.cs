@@ -120,7 +120,7 @@ public sealed partial class CertificateRow : ObservableObject
 }
 
 /// <summary>
-/// "View installed certificates" and "Delete certificates": reads every selected device through the read-only query
+/// "View certificates" and "Delete certificates": reads every selected device through the read-only query
 /// <see cref="PkiQueries.ListCertificates"/>, at most 4 devices at a time, and shows the rows grouped Client / Server / CA as
 /// they arrive (the visible list is replaced as a whole, at most every <see cref="RebuildInterval"/>). Search and select
 /// all are O(n). The delete mode adds check boxes; certificates in use or from the factory cannot be checked.

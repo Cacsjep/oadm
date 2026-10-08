@@ -64,7 +64,7 @@ public static partial class ServerReportRequests
     {
         DeviceStatus.CredentialsRequired => "Credentials required - the device rejects the stored credentials",
         DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
-        DeviceStatus.CertificateChanged => "Certificate changed - accept the new certificate first",
+        DeviceStatus.CertificateChanged => DeviceMessages.CertificateChanged,
         _ => null,
     };
 
@@ -83,9 +83,9 @@ public static partial class ServerReportRequests
         switch (status)
         {
             case HttpStatusCode.Unauthorized:
-                return "Unauthorized - HTTP 401";
+                return DeviceMessages.Unauthorized;
             case HttpStatusCode.Forbidden:
-                return "Forbidden - HTTP 403 (the server report needs an administrator account)";
+                return DeviceMessages.Forbidden;
             case HttpStatusCode.NotFound:
                 return "No server report API (serverreport.cgi) - HTTP 404";
             case HttpStatusCode.OK:
@@ -111,12 +111,12 @@ public static partial class ServerReportRequests
 
         if (Find<TimeoutException>(ex) is not null || ex is OperationCanceledException)
         {
-            return string.Create(CultureInfo.InvariantCulture, $"Timeout after {timeout.TotalSeconds:0.#} s");
+            return DeviceMessages.Timeout(timeout);
         }
 
         if (ex is KeyNotFoundException)
         {
-            return "The device is no longer managed";
+            return DeviceMessages.Removed;
         }
 
         if (ex is IOException && Find<HttpRequestException>(ex) is null && Find<SocketException>(ex) is null)
@@ -132,13 +132,13 @@ public static partial class ServerReportRequests
 
         if (Find<SocketException>(ex) is { } socket)
         {
-            return "Unreachable - " + socket.Message.TrimEnd('.');
+            return DeviceMessages.Unreachable(socket.Message);
         }
 
         if (Find<HttpRequestException>(ex) is { } request)
         {
             var inner = request.InnerException?.Message ?? request.Message;
-            return "Unreachable - " + inner.TrimEnd('.');
+            return DeviceMessages.Unreachable(inner);
         }
 
         return ex.Message;

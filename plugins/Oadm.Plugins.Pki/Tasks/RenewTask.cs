@@ -6,7 +6,7 @@ using Oadm.Sdk.Vapix;
 namespace Oadm.Plugins.Pki.Tasks;
 
 /// <summary>
-/// "Renew certificates now": renews what OADM issued on the device. Per purpose (the certificate the web server presents, the
+/// "Renew certificates": renews what OADM issued on the device. Per purpose (the certificate the web server presents, the
 /// 802.1X client certificate) when it is an OADM certificate: a new key and certificate on a new alias, switch, verify, remove
 /// the old one ("HTTPS: ..." / "IEEE 802.1X: ..." steps). Purposes that do not apply are one Skipped step with the reason.
 /// Steps before: Check compatibility, Read certificates, Read web server settings, Read network settings.

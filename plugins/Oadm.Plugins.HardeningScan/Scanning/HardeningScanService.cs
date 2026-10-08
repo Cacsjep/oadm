@@ -278,7 +278,7 @@ public sealed partial class HardeningScanService : IAsyncDisposable
 #pragma warning restore CA1031
         {
             var text = ex is OperationCanceledException
-                ? string.Create(CultureInfo.InvariantCulture, $"Timeout after {_options.DeviceTimeout.TotalSeconds:0.#} s")
+                ? DeviceMessages.Timeout(_options.DeviceTimeout)
                 : DeviceFactsReader.ErrorText(ex, _options.RequestTimeout);
             return Detail(device.Id, level, now, text, HardeningChecks.CacheOnly(device, level, text, now));
         }

@@ -31,6 +31,10 @@ version and date, and the release workflow copies it into the GitHub release.
 - **Set password** in the device context menu for devices in factory default: sets the first password like the add
   page, checked against the device's password rules.
 
+### Changed
+
+- Shorter, plainer texts across the app.
+
 ## [1.1.0] - 2026-10-08
 
 ### Added

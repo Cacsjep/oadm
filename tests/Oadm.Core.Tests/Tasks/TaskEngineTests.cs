@@ -323,7 +323,7 @@ public sealed class TaskEngineTests : IAsyncLifetime
         var records = await WaitAllAsync(await Engine.RunAsync("t.pre", [missing, certChanged, unreachable, noCredentials, ok], null, "o", CancellationToken.None));
 
         string? Message(Guid id) => records.Single(r => r.DeviceId == id).Devices[0].Message;
-        Assert.Equal("Device not found.", Message(missing));
+        Assert.Equal("The device was removed from OADM.", Message(missing));
         Assert.Contains("certificate", Message(certChanged), StringComparison.OrdinalIgnoreCase);
         Assert.Contains("cannot run", Message(unreachable), StringComparison.Ordinal);
         Assert.Equal("No credentials stored for device.", Message(noCredentials));

@@ -105,11 +105,11 @@ public static partial class PayloadValidator
             {
                 if (!Ipv4.SameSubnet(address, gateway, prefix))
                 {
-                    errors.Add($"IPv4: {text} and gateway {v4.Gateway} are not in the same /{prefix} subnet.");
+                    errors.Add($"IPv4: {text} and default router {v4.Gateway} are not in the same /{prefix} subnet.");
                 }
                 else if (address == gateway)
                 {
-                    errors.Add($"IPv4: {text} is the gateway address.");
+                    errors.Add($"IPv4: {text} is the default router address.");
                 }
             }
 
@@ -127,7 +127,7 @@ public static partial class PayloadValidator
         }
     }
 
-    /// <summary>The settings shared by all devices of a static IPv4 change: subnet mask (/1 to /30) and default gateway.</summary>
+    /// <summary>The settings shared by all devices of a static IPv4 change: subnet mask (/1 to /30) and default router.</summary>
     public static IReadOnlyList<string> ValidateIpv4Network(int? prefixLength, string? gateway)
     {
         var errors = new List<string>();
@@ -139,11 +139,11 @@ public static partial class PayloadValidator
 
         if (string.IsNullOrWhiteSpace(gateway) || !Ipv4.TryParse(gateway, out var address))
         {
-            errors.Add("IPv4: enter a valid default gateway.");
+            errors.Add("IPv4: enter a valid default router.");
         }
         else if (Ipv4.HostAddressProblem(address, prefix) is { } problem)
         {
-            errors.Add($"IPv4: gateway {gateway} {problem}.");
+            errors.Add($"IPv4: default router {gateway} {problem}.");
         }
 
         return errors;
@@ -229,11 +229,11 @@ public static partial class PayloadValidator
         {
             if (!TryParseIpv6(gateway, out var address))
             {
-                errors.Add("IPv6: the gateway is not a valid IPv6 address.");
+                errors.Add("IPv6: the default router is not a valid IPv6 address.");
             }
             else if (Ipv6AddressProblem(address) is { } gatewayProblem)
             {
-                errors.Add($"IPv6: gateway {gateway} {gatewayProblem}.");
+                errors.Add($"IPv6: default router {gateway} {gatewayProblem}.");
             }
         }
 

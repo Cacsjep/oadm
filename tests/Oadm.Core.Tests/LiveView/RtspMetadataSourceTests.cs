@@ -37,7 +37,7 @@ public sealed class RtspMetadataSourceTests
         await using var server = new FakeEventRtspServer();
         var ex = await Assert.ThrowsAsync<DeviceStreamException>(() => RtspMetadataSource.OpenAsync(Options(server.Port, "wrong"), CancellationToken.None));
         Assert.Equal(DeviceStreamError.Unauthorized, ex.Error);
-        Assert.Equal("Unauthorized - HTTP 401", ex.Message);
+        Assert.Equal("Unauthorized - HTTP 401 (check the credentials)", ex.Message);
     }
 
     [Fact]

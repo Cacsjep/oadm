@@ -54,19 +54,19 @@ public static class CredentialRules
         {
             if (c < (char)0x20 || c > (char)0x7E)
             {
-                return "The password may only contain printable ASCII characters (letters, digits, space and !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~).";
+                return "Use only letters, digits, spaces and standard symbols.";
             }
         }
 
         switch (policy)
         {
             case PassphrasePolicy.Length when password.Length < LengthPolicyMinimum:
-                return $"The device passphrase policy requires at least {LengthPolicyMinimum} characters.";
+                return $"This device needs at least {LengthPolicyMinimum} characters.";
             case PassphrasePolicy.Complex when password.Length < ComplexPolicyMinimum:
-                return $"The device passphrase policy requires at least {ComplexPolicyMinimum} characters.";
+                return $"This device needs at least {ComplexPolicyMinimum} characters.";
             case PassphrasePolicy.Complex when !(password.Any(char.IsAsciiLetterUpper) && password.Any(char.IsAsciiLetterLower)
                 && password.Any(char.IsAsciiDigit) && password.Any(c => !char.IsAsciiLetterOrDigit(c))):
-                return "The device passphrase policy requires an upper-case letter, a lower-case letter, a digit and a special character.";
+                return "This device needs upper and lower case, a digit and a symbol.";
             default:
                 return null;
         }
@@ -75,9 +75,9 @@ public static class CredentialRules
     /// <summary>Text shown next to the password fields.</summary>
     public static string Hint(PassphrasePolicy policy) => policy switch
     {
-        PassphrasePolicy.Length => $"1-64 printable ASCII characters; device policy \"length\": at least {LengthPolicyMinimum} characters.",
-        PassphrasePolicy.Complex => $"1-64 printable ASCII characters; device policy \"complex\": at least {ComplexPolicyMinimum} characters with upper- and lower-case letters, a digit and a special character.",
-        _ => "1-64 printable ASCII characters.",
+        PassphrasePolicy.Length => $"1-64 characters, no accented letters. At least {LengthPolicyMinimum} characters (device rule).",
+        PassphrasePolicy.Complex => $"1-64 characters, no accented letters. At least {ComplexPolicyMinimum} characters with upper and lower case, a digit and a symbol (device rule).",
+        _ => "1-64 characters, no accented letters.",
     };
 
     /// <summary>Maps the systemready <c>passphrasepolicy</c> value. Unknown values map to None: the device still enforces its own policy.</summary>

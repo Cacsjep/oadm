@@ -68,8 +68,8 @@ public sealed class DownloaderTests : IDisposable
     }
 
     [Theory]
-    [InlineData(HttpStatusCode.Unauthorized, "Unauthorized - HTTP 401")]
-    [InlineData(HttpStatusCode.Forbidden, "Forbidden - HTTP 403 (the server report needs an administrator account)")]
+    [InlineData(HttpStatusCode.Unauthorized, "Unauthorized - HTTP 401 (check the credentials)")]
+    [InlineData(HttpStatusCode.Forbidden, "Forbidden - HTTP 403 (administrator rights are required)")]
     public async Task Rejected_credentials_are_not_retried(HttpStatusCode status, string expected)
     {
         var device = new FakeDevice();
@@ -100,7 +100,7 @@ public sealed class DownloaderTests : IDisposable
     [Theory]
     [InlineData(DeviceStatus.CredentialsRequired, "Credentials required - the device rejects the stored credentials")]
     [InlineData(DeviceStatus.PasswordNotSet, "Password not set - the device is in factory default")]
-    [InlineData(DeviceStatus.CertificateChanged, "Certificate changed - accept the new certificate first")]
+    [InlineData(DeviceStatus.CertificateChanged, "Certificate changed. Remove the device and add it again to trust the new certificate.")]
     public async Task Refused_statuses_send_nothing(DeviceStatus status, string expected)
     {
         var device = new FakeDevice { Status = status };
@@ -174,8 +174,8 @@ public sealed class DownloaderTests : IDisposable
         Assert.Equal("No server report API (serverreport.cgi) - HTTP 404", ServerReportRequests.HttpError(HttpStatusCode.NotFound, null, null));
         Assert.Equal("Error: busy - HTTP 503", ServerReportRequests.HttpError(HttpStatusCode.ServiceUnavailable, "text/plain", "Error: busy\nmore"));
         Assert.Equal("Request failed - HTTP 500", ServerReportRequests.HttpError(HttpStatusCode.InternalServerError, null, ""));
-        Assert.Equal("The device is no longer managed", ServerReportRequests.ExceptionError(new KeyNotFoundException(), TimeSpan.FromSeconds(1)));
-        Assert.Equal("Unauthorized - HTTP 401", ServerReportRequests.ExceptionError(new InvalidOperationException("serverreport.cgi: HTTP 401"), TimeSpan.FromSeconds(1)));
+        Assert.Equal("The device was removed from OADM.", ServerReportRequests.ExceptionError(new KeyNotFoundException(), TimeSpan.FromSeconds(1)));
+        Assert.Equal("Unauthorized - HTTP 401 (check the credentials)", ServerReportRequests.ExceptionError(new InvalidOperationException("serverreport.cgi: HTTP 401"), TimeSpan.FromSeconds(1)));
         Assert.Equal("axis-cgi/serverreport.cgi?mode=zip_with_image", ServerReportRequests.BuildUri(ServerReportRequests.ModeZipWithImage));
     }
 }

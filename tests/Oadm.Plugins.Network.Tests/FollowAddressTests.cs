@@ -62,8 +62,8 @@ public sealed class FollowAddressTests
             Expect("Check reachability: Skipped", "Wait for the device at the new address: Warning", "Verify device identity: Skipped", "Update OADM device address: Skipped"),
             StepRun.Lines(ctx.Steps));
         var warning = Assert.Single(ctx.Warnings);
-        Assert.Contains("does not answer at 10.0.0.60", warning, StringComparison.Ordinal);
-        Assert.Contains("nor at 10.0.0.48", warning, StringComparison.Ordinal);
+        Assert.Contains("No answer at 10.0.0.60", warning, StringComparison.Ordinal);
+        Assert.Contains("Check the subnet mask and default router", warning, StringComparison.Ordinal);
         Assert.Contains("keeps 10.0.0.48", warning, StringComparison.Ordinal);
         Assert.Equal("The device was not found at the new address.", StepRun.Detail(ctx.Steps, "Update OADM device address"));
         Assert.Empty(ctx.AddressUpdates);
@@ -167,9 +167,9 @@ public sealed class FollowAddressTests
              "Wait for the device at the new address: Skipped", "Verify device identity: Skipped", "Update OADM device address: Skipped", "Completed: Done"],
             StepRun.Lines(ctx.Steps));
         Assert.Equal(
-            "DHCP: address assigned by the network, the device will be found again by the next scan",
+            "OADM finds the device again at its new address.",
             StepRun.Detail(ctx.Steps, "Update OADM device address"));
-        Assert.Contains("next mDNS scan", Assert.Single(ctx.Warnings), StringComparison.Ordinal);
+        Assert.Contains("OADM finds the device again", Assert.Single(ctx.Warnings), StringComparison.Ordinal);
         Assert.Empty(ctx.ClientsCreated);
         Assert.Empty(ctx.AddressUpdates);
     }

@@ -70,7 +70,7 @@ public sealed class TaskPluginTests
         foreach (ITaskPlugin plugin in new ITaskPlugin[] { new NetworkSettingsTaskPlugin(), new AssignIpTaskPlugin() })
         {
             Assert.Equal("The device does not answer", plugin.NotSupportedReason(new FakeDevice(Guid.NewGuid(), Status: DeviceStatus.Unreachable)));
-            Assert.Equal("OADM has not read what this device supports yet: refresh the device", plugin.NotSupportedReason(new FakeDevice(Guid.NewGuid()) { Apis = [] }));
+            Assert.Equal("Not read yet: refresh the device", plugin.NotSupportedReason(new FakeDevice(Guid.NewGuid()) { Apis = [] }));
             Assert.Equal("Needs the network settings API (this device has 12.11.77)", plugin.NotSupportedReason(new FakeDevice(Guid.NewGuid()) { Apis = [new DeviceApi("network-settings", "2.0")] }));
         }
     }
@@ -161,7 +161,7 @@ public sealed class TaskPluginTests
 
         await RunAsync(ctx, id, StaticPayload(id, "10.0.0.48"));
 
-        Assert.Contains("subnet mask and gateway", Assert.Single(ctx.Warnings), StringComparison.Ordinal);
+        Assert.Contains("subnet mask and default router", Assert.Single(ctx.Warnings), StringComparison.Ordinal);
     }
 
     [Fact]

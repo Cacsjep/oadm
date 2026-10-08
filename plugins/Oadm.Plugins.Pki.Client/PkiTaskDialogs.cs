@@ -25,7 +25,7 @@ public static class PkiConfirmations
         devices == 1 ? "1 device" : string.Create(CultureInfo.InvariantCulture, $"{devices:N0} devices");
 }
 
-/// <summary>"HTTPS: Disable": the shared confirmation popup only; the payload is empty.</summary>
+/// <summary>"Disable HTTPS": the shared confirmation popup only; the payload is empty.</summary>
 public sealed class HttpsDisableDialog : ITaskPluginDialog
 {
     public string PluginId => PkiTaskIds.HttpsDisable;
@@ -38,7 +38,7 @@ public sealed class HttpsDisableDialog : ITaskPluginDialog
     }
 }
 
-/// <summary>"IEEE 802.1X: Enable/Update": the shared confirmation popup only; the settings come from the PKI page.</summary>
+/// <summary>"Enable IEEE 802.1X": the shared confirmation popup only; the settings come from the PKI page.</summary>
 public sealed class Dot1xEnableDialog : ITaskPluginDialog
 {
     public string PluginId => PkiTaskIds.Dot1xEnable;
@@ -51,7 +51,7 @@ public sealed class Dot1xEnableDialog : ITaskPluginDialog
     }
 }
 
-/// <summary>"View installed certificates": read-only window, never starts a task.</summary>
+/// <summary>"View certificates": read-only window, never starts a task.</summary>
 public sealed class ViewCertificatesDialog : ITaskPluginDialog
 {
     public string PluginId => PkiTaskIds.View;
@@ -84,7 +84,7 @@ public sealed class DeleteCertificatesDialog : ITaskPluginDialog
     }
 }
 
-/// <summary>"Install certificates manually": files, password, purpose; uploads and returns the payload.</summary>
+/// <summary>"Install certificates": files, password, purpose; uploads and returns the payload.</summary>
 public sealed class InstallCertificatesDialog : ITaskPluginDialog
 {
     public string PluginId => PkiTaskIds.Install;

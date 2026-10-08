@@ -166,7 +166,7 @@ public sealed partial class FakeOadmApi
         {
             DeviceStatus.CredentialsRequired => "Credentials required - the device rejects the stored credentials",
             DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
-            DeviceStatus.CertificateChanged => "Certificate changed - accept the new certificate first",
+            DeviceStatus.CertificateChanged => Oadm.Sdk.Devices.DeviceMessages.CertificateChanged,
             DeviceStatus.Unreachable => "Unreachable - the device did not answer the last status check",
             _ => null,
         };

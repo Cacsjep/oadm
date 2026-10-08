@@ -205,7 +205,7 @@ public sealed class DeviceFactsReader
         || error.StartsWith("Timeout", StringComparison.Ordinal)
         || error.StartsWith("Unauthorized", StringComparison.Ordinal)
         || error.StartsWith("Forbidden", StringComparison.Ordinal)
-        || error.StartsWith("The device is no longer managed", StringComparison.Ordinal);
+        || error.StartsWith(DeviceMessages.Removed, StringComparison.Ordinal);
 
     private async Task<Fact<T>> ReadAsync<T>(Func<CancellationToken, Task<T>> read, CancellationToken ct)
     {
@@ -238,8 +238,8 @@ public sealed class DeviceFactsReader
         return ex switch
         {
             DeviceAnswerException answer => answer.Message,
-            UnauthorizedAccessException => "Unauthorized - HTTP 401",
-            PkiDeviceException { HttpStatus: 401 } => "Unauthorized - HTTP 401",
+            UnauthorizedAccessException => DeviceMessages.Unauthorized,
+            PkiDeviceException { HttpStatus: 401 } => DeviceMessages.Unauthorized,
             FormatException or UserManagementException or AcapDeviceException or TimeApiException or PkiDeviceException => ex.Message,
             _ => SnapshotRequests.ExceptionError(ex, timeout),
         };

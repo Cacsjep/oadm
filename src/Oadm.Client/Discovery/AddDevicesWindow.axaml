@@ -54,7 +54,7 @@
 
         <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,10">
           <ui:ToolbarButton Text="Select all authenticated" IconKey="check" Command="{Binding SelectAllAuthenticatedCommand}"
-                            ToolTip.Tip="Check every device OADM is logged in to (and factory-default devices with a password)" />
+                            ToolTip.Tip="Check every device that is ready to add" />
           <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding SummaryText}" VerticalAlignment="Center" Margin="12,0,0,0" />
           <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" />
         </Grid>
@@ -64,9 +64,9 @@
               IsVisible="{Binding ScanStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
           <ui:ProgressRow Value="{Binding ScanProgress}" Text="{Binding ScanStatusText}" IsActive="{Binding IsScanning}" />
           <ui:ToolbarButton x:Name="StopScanButton" Grid.Column="1" Margin="12,0,0,0" Text="Stop" IconKey="stop" Command="{Binding StopScanCommand}"
-                            IsVisible="{Binding ShowStop}" ToolTip.Tip="Stop scanning; the devices found stay in the list" />
+                            IsVisible="{Binding ShowStop}" ToolTip.Tip="Found devices stay in the list" />
           <ui:ToolbarButton x:Name="ScanAgainButton" Grid.Column="1" Margin="12,0,0,0" Text="Scan again" IconKey="refresh" Command="{Binding ScanAgainCommand}"
-                            IsVisible="{Binding ShowScanAgain}" ToolTip.Tip="Scan again; the devices found so far stay in the list" />
+                            IsVisible="{Binding ShowScanAgain}" ToolTip.Tip="Found devices stay in the list" />
         </Grid>
 
         <DataGrid x:Name="DeviceList" Grid.Row="4" ItemsSource="{Binding FilteredRows}" SelectedItem="{Binding FocusedRow}"
@@ -147,7 +147,7 @@
             <ui:FormField Classes="wide">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <CheckBox Content="Save to credential list" IsChecked="{Binding SaveToCredentialList}" VerticalAlignment="Center"
-                          ToolTip.Tip="Store the credential encrypted on the server; OADM then tries it on every device it finds" />
+                          ToolTip.Tip="OADM tries it on devices it finds later" />
                 <Button Classes="primary" Content="Retry" Command="{Binding RetryCommand}"
                         ToolTip.Tip="{Binding RetryBlockedReason}" ToolTip.ShowOnDisabled="True" />
                 <Button Classes="secondary" Content="Cancel" Command="{Binding CancelEditorCommand}" />

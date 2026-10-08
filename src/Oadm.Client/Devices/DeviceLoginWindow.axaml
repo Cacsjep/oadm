@@ -25,7 +25,7 @@
         </ui:FormField>
         <ui:FormField IsVisible="{Binding CanSaveToCredentialList}" Hint="{Binding CredentialListNote}">
           <CheckBox Content="Save to credential list" IsChecked="{Binding SaveToCredentialList}" IsEnabled="{Binding IsIdle}"
-                    ToolTip.Tip="OADM also tries this login on devices it adds later." />
+                    ToolTip.Tip="OADM tries it on devices it finds later" />
         </ui:FormField>
         <ui:ProgressRow IsActive="{Binding IsBusy}" Text="{Binding BusyText}" IsVisible="{Binding IsBusy}" />
       </StackPanel>

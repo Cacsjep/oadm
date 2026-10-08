@@ -16,13 +16,13 @@
 
     <Border Grid.Row="1" Classes="dialogBody">
       <StackPanel Classes="form">
-        <ui:FormField Label="MAC address" Hint="The device's MAC address (on AXIS devices the serial number).">
+        <ui:FormField Label="MAC address" Hint="On Axis devices: the serial number.">
           <TextBox Text="{Binding Mac}" PlaceholderText="e.g. B8:A4:4F:63:13:39" />
         </ui:FormField>
         <ui:FormField Label="IP address" Hint="{Binding SubnetHint}">
           <TextBox Text="{Binding Address}" PlaceholderText="e.g. 10.0.0.48" />
         </ui:FormField>
-        <ui:FormField Label="Name" Hint="Optional, e.g. the camera's location.">
+        <ui:FormField Label="Name">
           <TextBox Text="{Binding Name}" PlaceholderText="Optional" />
         </ui:FormField>
       </StackPanel>

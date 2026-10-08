@@ -111,7 +111,7 @@ public sealed class DeviceSetPasswordTests
         Assert.Equal(PasswordRules.Hint((string?)null), vm.PolicyHint);
 
         vm.Password = "pässword";
-        Assert.Equal("The password may only contain printable ASCII characters.", vm.ErrorOf(nameof(vm.Password)));
+        Assert.Equal("Use only letters, digits, spaces and standard symbols.", vm.ErrorOf(nameof(vm.Password)));
         vm.Password = Good;
         vm.ConfirmPassword = "other";
         Assert.Equal("The passwords do not match.", vm.ErrorOf(nameof(vm.ConfirmPassword)));
@@ -129,11 +129,11 @@ public sealed class DeviceSetPasswordTests
         var vm = new DeviceSetPasswordViewModel(api, Rows(3));
         await vm.LoadAsync(CancellationToken.None);
 
-        Assert.Contains("\"length\" and \"complex\"", vm.PolicyHint, StringComparison.Ordinal);
+        Assert.Contains("At least 15 characters with upper and lower case", vm.PolicyHint, StringComparison.Ordinal);
         vm.Password = "Abcdefgh1234!"; // complex, but 13 < 15
-        Assert.Equal("The device passphrase policy requires at least 15 characters.", vm.ErrorOf(nameof(vm.Password)));
+        Assert.Equal("This device needs at least 15 characters.", vm.ErrorOf(nameof(vm.Password)));
         vm.Password = "abcdefghijklmnopq"; // long enough, not complex
-        Assert.Equal("The device passphrase policy requires an upper-case letter, a lower-case letter, a digit and a special character.", vm.ErrorOf(nameof(vm.Password)));
+        Assert.Equal("This device needs upper and lower case, a digit and a symbol.", vm.ErrorOf(nameof(vm.Password)));
         vm.Password = Good;
         Assert.Null(vm.ErrorOf(nameof(vm.Password)));
 

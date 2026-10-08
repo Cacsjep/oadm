@@ -187,7 +187,7 @@ public sealed partial class PkiService : IAsyncDisposable
     {
         if (unavailable)
         {
-            return new ServiceStatus(ServiceStatus.Error, "CA cannot be stored on this server", "The OADM server offers plugins no protection for secrets, so the CA key cannot be kept safe.");
+            return new ServiceStatus(ServiceStatus.Error, "CA cannot be stored on this server", "This server cannot store the CA key safely.");
         }
 
         if (generating)

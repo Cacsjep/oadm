@@ -109,7 +109,7 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
     /// <summary>The refusal text for a device status, or null when the stream may be opened.</summary>
     internal static string? RefusalFor(DeviceStatus status) => status switch
     {
-        DeviceStatus.CertificateChanged => "Certificate changed - accept the new certificate first",
+        DeviceStatus.CertificateChanged => DeviceMessages.CertificateChanged,
         DeviceStatus.CredentialsRequired => "Credentials required - the device rejects the stored credentials",
         DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
         _ => null,
@@ -126,7 +126,7 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
         var device = deviceId == Guid.Empty ? null : await ctx.Devices.FindAsync(deviceId, ct).ConfigureAwait(false);
         if (device is null)
         {
-            return new StartReply(null, "The device is no longer managed by OADM");
+            return new StartReply(null, DeviceMessages.Removed);
         }
 
         if (RefusalFor(device.Status) is { } refusal)

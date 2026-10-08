@@ -17,7 +17,7 @@ public sealed class AcapTaskPluginTests
     }
 
     private static readonly string[] Prepared =
-        ["Check compatibility: Done", "Read package: Done", "Read device info: Done", "Read embedded development version: Done", "Read unsigned application setting: Done", "Read installed applications: Done", "Check compatibility of package: Done"];
+        ["Check compatibility: Done", "Read package: Done", "Read device info: Done", "Read SDK version: Done", "Read unsigned application setting: Done", "Read installed applications: Done", "Check package: Done"];
 
     /// <summary>Runs the task the way the server does (fresh steps per run), so its steps end like in the task engine.</summary>
     private static Task Run(RecordingContext ctx, string? payload) =>
@@ -53,7 +53,7 @@ public sealed class AcapTaskPluginTests
     {
         Assert.Equal("The device does not answer", Plugin.NotSupportedReason(new FakeDevice { Status = DeviceStatus.Unreachable }));
         Assert.Equal("OADM cannot log in to the device: use Log in", Plugin.NotSupportedReason(new FakeDevice { Status = DeviceStatus.CredentialsRequired }));
-        Assert.Equal("OADM has not read what this device supports yet: refresh the device", Plugin.NotSupportedReason(new FakeDevice { Apis = [] }));
+        Assert.Equal("Not read yet: refresh the device", Plugin.NotSupportedReason(new FakeDevice { Apis = [] }));
         Assert.Equal("Needs the application API (this device has 12.11.77)", Plugin.NotSupportedReason(new FakeDevice { Apis = [new("application", "2.0")] }));
     }
 
@@ -146,9 +146,9 @@ public sealed class AcapTaskPluginTests
         Assert.Empty(device.Writes);
         Assert.Equal("2.0.0", device.Apps["hello"].Version);
         Assert.Equal(
-            ["Check compatibility: Done", "Read package: Done", "Read device info: Done", "Read embedded development version: Done", "Read unsigned application setting: Done", "Read installed applications: Done", "Check compatibility of package: Failed", "Upload package: Skipped", "Verify installation: Skipped"],
+            ["Check compatibility: Done", "Read package: Done", "Read device info: Done", "Read SDK version: Done", "Read unsigned application setting: Done", "Read installed applications: Done", "Check package: Failed", "Upload package: Skipped", "Verify installation: Skipped"],
             StepRun.Lines(ctx.Steps));
-        Assert.Equal(ex.Message, StepRun.Detail(ctx.Steps, "Check compatibility of package"));
+        Assert.Equal(ex.Message, StepRun.Detail(ctx.Steps, "Check package"));
     }
 
     [Fact]

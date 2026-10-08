@@ -129,7 +129,7 @@ public static class CertificateInventory
 }
 
 /// <summary>
-/// "View installed certificates": a read-only dialog (no task). The dialog reads every device through the query
+/// "View certificates": a read-only dialog (no task). The dialog reads every device through the query
 /// <see cref="PkiQueries.ListCertificates"/>, at most 4 devices at a time.
 /// </summary>
 public sealed class ViewCertificatesTask(Func<PkiService?> service) : PkiTaskBase(service), ITaskPluginQuery
@@ -143,7 +143,7 @@ public sealed class ViewCertificatesTask(Func<PkiService?> service) : PkiTaskBas
     public override bool RequiresDialog => true;
 
     public override Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct) =>
-        throw new InvalidOperationException("\"View installed certificates\" only reads; it never runs as a task.");
+        throw new InvalidOperationException("\"View certificates\" only reads; it never runs as a task.");
 
     public Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
         CertificateQuery.QueryAsync(ctx, device, method, Service, Time, ct);
@@ -304,7 +304,7 @@ public sealed class DeleteCertificatesTask(Func<PkiService?> service) : PkiTaskB
 }
 
 /// <summary>
-/// "Install certificates manually" (dialog): installs the PKCS#12 file matched to this device (<c>install_from_pkcs12</c>, the
+/// "Install certificates" (dialog): installs the PKCS#12 file matched to this device (<c>install_from_pkcs12</c>, the
 /// password in memory only), then switches HTTPS or 802.1X to it like Enable/Update, or installs the file's certificates as
 /// CA certificates only. Steps: Check compatibility, Read certificate file, then HTTPS: Read web server settings, Install
 /// certificate, Switch web server to the new certificate, Verify HTTPS; 802.1X: Check device clock, Install CA certificates,

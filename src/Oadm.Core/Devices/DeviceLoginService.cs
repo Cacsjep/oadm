@@ -29,9 +29,9 @@ public sealed partial class DeviceLoginService
 
     public const string OtherDeviceMessage = "Another device answers at this address.";
 
-    public const string CertificateChangedMessage = "Certificate changed - accept the new certificate first";
+    public const string CertificateChangedMessage = DeviceMessages.CertificateChanged;
 
-    public const string NotManagedMessage = "The device is no longer managed by OADM.";
+    public const string NotManagedMessage = DeviceMessages.Removed;
 
     private readonly DeviceRepository _devices;
     private readonly CredentialStore _credentials;

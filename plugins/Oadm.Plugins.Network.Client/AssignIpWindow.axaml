@@ -50,7 +50,7 @@
             </MultiBinding>
           </Border.IsVisible>
           <StackPanel>
-            <ui:CardHeader Title="DNS servers" Description="Optional. Leave empty to keep the current DNS settings; domain name and search domains are always kept." />
+            <ui:CardHeader Title="DNS servers" Description="Optional. Empty keeps the current DNS servers." />
             <StackPanel Classes="form">
               <ui:FormField Label="Primary DNS server">
                 <TextBox Text="{Binding DnsPrimary}" PlaceholderText="optional" />

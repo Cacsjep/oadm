@@ -29,7 +29,7 @@ public sealed partial class FakeOadmApi
                 var result = new SetFirstPasswordResult { DeviceId = id };
                 if (!byId.TryGetValue(id, out Device? device))
                 {
-                    result.Message = "The device is no longer managed by OADM.";
+                    result.Message = Oadm.Sdk.Devices.DeviceMessages.Removed;
                 }
                 else if (device.Status == DeviceStatus.Unreachable)
                 {

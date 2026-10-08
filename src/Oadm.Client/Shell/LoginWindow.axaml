@@ -47,7 +47,7 @@
 
     <ui:DialogFooter Grid.Row="2" x:Name="Footer" CancelText="Close">
       <Button Classes="secondary" Content="Forget server" Command="{Binding ForgetServerCommand}" IsVisible="{Binding CanForgetServer}"
-              ToolTip.Tip="Removes the stored certificate of this server; the next connection asks to confirm the new one." />
+              ToolTip.Tip="Forget this server's certificate" />
       <Button Classes="primary" IsDefault="True" Content="{Binding SubmitText}" Command="{Binding SubmitCommand}"
               ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>

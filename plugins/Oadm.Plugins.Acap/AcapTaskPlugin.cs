@@ -103,10 +103,10 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
         public const string CheckCompatibility = "Check compatibility";
         public const string ReadPackage = "Read package";
         public const string ReadDeviceInfo = "Read device info";
-        public const string ReadDevelopmentVersion = "Read embedded development version";
+        public const string ReadDevelopmentVersion = "Read SDK version";
         public const string ReadUnsignedSetting = "Read unsigned application setting";
         public const string ReadApplications = "Read installed applications";
-        public const string CheckPackage = "Check compatibility of package";
+        public const string CheckPackage = "Check package";
         public const string Upload = "Upload package";
         public const string VerifyInstallation = "Verify installation";
         public const string Start = "Start application";

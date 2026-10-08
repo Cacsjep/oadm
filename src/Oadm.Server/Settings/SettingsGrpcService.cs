@@ -130,9 +130,9 @@ public sealed partial class SettingsGrpcService(
 
         Add("Polling interval (s)", before.PollingIntervalSeconds, after.PollingIntervalSeconds);
         Add("Full refresh (min)", before.FullRefreshMinutes, after.FullRefreshMinutes);
-        Add("Scan parallelism", before.ScanParallelism, after.ScanParallelism);
+        Add("Addresses scanned at once", before.ScanParallelism, after.ScanParallelism);
         Add("Scan timeout (ms)", before.ScanTimeoutMs, after.ScanTimeoutMs);
-        Add("Zero-conf scan (s)", before.ZeroConfSeconds, after.ZeroConfSeconds);
+        Add("Discovery duration (s)", before.ZeroConfSeconds, after.ZeroConfSeconds);
         Add("Parallel tasks per plugin", before.MaxParallelTasksPerPlugin, after.MaxParallelTasksPerPlugin);
         Add("Server name", before.ServerName, after.ServerName);
         Add("Listen URL", before.ListenUrl, after.ListenUrl);

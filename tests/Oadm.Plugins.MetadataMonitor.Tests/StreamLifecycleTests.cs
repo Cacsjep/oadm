@@ -94,7 +94,7 @@ public sealed class StreamLifecycleTests
     }
 
     [Theory]
-    [InlineData(DeviceStatus.CertificateChanged, "Certificate changed - accept the new certificate first")]
+    [InlineData(DeviceStatus.CertificateChanged, "Certificate changed. Remove the device and add it again to trust the new certificate.")]
     [InlineData(DeviceStatus.CredentialsRequired, "Credentials required - the device rejects the stored credentials")]
     [InlineData(DeviceStatus.PasswordNotSet, "Password not set - the device is in factory default")]
     public async Task Devices_with_a_bad_status_are_refused_without_connecting(DeviceStatus status, string text)
@@ -114,7 +114,7 @@ public sealed class StreamLifecycleTests
     {
         await using (var rig = await new Rig().StartAsync())
         {
-            Assert.Equal("The device is no longer managed by OADM", (await rig.StartStreamAsync(Guid.NewGuid())).Error);
+            Assert.Equal("The device was removed from OADM.", (await rig.StartStreamAsync(Guid.NewGuid())).Error);
         }
 
         await using var old = await new Rig().StartAsync(withStreams: false);

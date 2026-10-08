@@ -56,7 +56,7 @@ public sealed partial class InstallFileRow(string path, byte[] data) : Observabl
 }
 
 /// <summary>
-/// "Install certificates manually" (like ADM): choose .pfx / .p12 files (one password for all) and the purpose. Each file is
+/// "Install certificates" (like ADM): choose .pfx / .p12 files (one password for all) and the purpose. Each file is
 /// matched to one selected device by MAC address, IP address or host name / FQDN in its common name or alternative names; a
 /// file must match exactly one device and a device gets at most one file. "CA certificates only" sends every file to every
 /// selected device (no matching). Rows that cannot be installed show the reason in
@@ -79,7 +79,7 @@ public sealed partial class InstallCertificatesViewModel : ObservableObject
         SelectedPurpose = Purposes[0];
     }
 
-    public const string Title = "Install certificates manually";
+    public const string Title = "Install certificates";
 
     public IReadOnlyList<PurposeChoice> Purposes { get; } =
     [

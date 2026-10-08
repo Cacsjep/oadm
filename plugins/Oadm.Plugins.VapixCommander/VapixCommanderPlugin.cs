@@ -184,12 +184,12 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin
         var device = await Context.Devices.FindAsync(request.DeviceId, ct).ConfigureAwait(false);
         if (device is null)
         {
-            return new TryCommandReply { Error = "Device not found." };
+            return new TryCommandReply { Error = DeviceMessages.Removed };
         }
 
         if (device.Status == DeviceStatus.CertificateChanged)
         {
-            return new TryCommandReply { Error = "The device certificate changed. Accept the new certificate before sending commands." };
+            return new TryCommandReply { Error = DeviceMessages.CertificateChanged };
         }
 
         var cached = Compatibility.Check(command, device.Apis, device.HasVideo);

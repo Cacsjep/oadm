@@ -100,7 +100,7 @@ public sealed class PageViewModelTests
         camera.Handler = (_, _) => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized));
         await tile.RefreshCommand.ExecuteAsync(null);
         Assert.Equal(TileState.Error, tile.State);
-        Assert.Equal("Unauthorized - HTTP 401", tile.StatusText);
+        Assert.Equal("Unauthorized - HTTP 401 (check the credentials)", tile.StatusText);
         Assert.NotNull(tile.Jpeg); // the older picture stays
 
         tile.PreviewCommand.Execute(null);

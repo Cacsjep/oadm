@@ -46,7 +46,7 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
     internal const string StepVerifyIdentity = "Verify device identity";
     internal const string StepUpdateAddress = "Update OADM device address";
     internal const string KeepUnchanged = "Keep unchanged";
-    internal const string DhcpReason = "DHCP: address assigned by the network, the device will be found again by the next scan";
+    internal const string DhcpReason = "OADM finds the device again at its new address.";
 
     /// <summary>Runs the task. <paramref name="sections"/> limits the planned write steps (Assign IP address: DNS and IPv4 only).</summary>
     public async Task RunAsync(ITaskExecutionContext ctx, IDeviceInfo device, NetworkPayload payload, IReadOnlyList<StepKind> sections, CancellationToken ct)
@@ -194,7 +194,7 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
             ? "The address does not change."
             : payload.Ipv4 is { Mode: Ipv4Mode.Dhcp } && IsIpv4(impact.OldAddress)
                 ? DhcpReason
-                : "The new address is assigned by the network; the device will be found again by the next scan";
+                : DhcpReason;
         SkipAll(ctx, followReason, StepWaitNewAddress, StepVerifyIdentity, StepUpdateAddress);
     }
 
@@ -321,10 +321,8 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
                 var stillOld = await TryPingAsync(ctx.Vapix, ct).ConfigureAwait(false) is not null;
                 var seconds = options.NewAddressTimeout.TotalSeconds.ToString("0", CultureInfo.InvariantCulture);
                 step.Warn(stillOld
-                    ? $"The device does not answer at {newAddress} within {seconds} s but still answers at {oldAddress}, so the new address may not be active. " +
-                      "The device returns to its previous settings when a change fails; check its system log. The OADM device record is unchanged."
-                    : $"The device does not answer at {newAddress} within {seconds} s, nor at {oldAddress}. Check the subnet mask and default router. " +
-                      $"The OADM device record keeps {oldAddress}.");
+                    ? $"No answer at {newAddress} within {seconds} s; the device still answers at {oldAddress}. Check its system log. OADM keeps {oldAddress}."
+                    : $"No answer at {newAddress} within {seconds} s. Check the subnet mask and default router. OADM keeps {oldAddress}.");
                 SkipAll(ctx, "The device was not found at the new address.", StepVerifyIdentity, StepUpdateAddress);
                 return;
             }
@@ -337,7 +335,7 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
             if (!SameSerial(info.SerialNumber, device.Serial))
             {
                 verify.Warn($"Another device answers at {newAddress} (serial number {info.SerialNumber}, expected {device.Serial}). " +
-                    "The address may be in use. The OADM device record is unchanged.");
+                    $"The address may be in use. OADM keeps {oldAddress}.");
                 ctx.SkipStep(StepUpdateAddress, "The device at the new address is not this device.");
                 return;
             }
@@ -402,11 +400,11 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
                 if (impact.Readdressed)
                 {
                     step.Warn($"The device no longer answers at {impact.OldAddress}. It now uses an address assigned by DHCP or router advertisement. " +
-                        "OADM keeps the old address until the next mDNS scan finds the device again (only while it is unreachable).");
+                        DhcpReason);
                 }
                 else
                 {
-                    step.Warn($"The device does not answer at {impact.OldAddress} after the change. Check the subnet mask and gateway; " +
+                    step.Warn($"The device does not answer at {impact.OldAddress} after the change. Check the subnet mask and default router; " +
                         "the device keeps the new settings.");
                 }
 

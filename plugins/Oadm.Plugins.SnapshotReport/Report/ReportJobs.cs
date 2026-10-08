@@ -246,7 +246,7 @@ public sealed partial class ReportJobs : IDisposable
             Device = new DeviceFacts { DeviceId = Guid.Empty, Address = item.DeviceId.ToString("N")[..8] },
             Camera = item.Camera,
             Title = "Removed device " + item.DeviceId.ToString("N")[..8],
-            Error = "The device is no longer managed or has no video",
+            Error = "The device was removed from OADM or has no video.",
         };
     }
 

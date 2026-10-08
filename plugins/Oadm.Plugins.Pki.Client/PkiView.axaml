@@ -43,7 +43,7 @@
               <TextBlock Text="{Binding ChainText}" TextWrapping="Wrap" />
             </ui:FormField>
             <ui:FormField Label="Trusted root store" Classes="wide">
-              <StackPanel Orientation="Horizontal" Spacing="24" ToolTip.Tip="{x:Static vm:PkiViewModel.TrustTooltip}">
+              <StackPanel Orientation="Horizontal" Spacing="24">
                 <ui:StatusChip Text="{Binding ServerTrustText}" IsOk="{Binding IsServerTrustOk}" IsError="{Binding IsServerTrustError}"
                                IsAccent="{Binding IsServerTrustAccent}" ToolTip.Tip="{Binding ServerTrustTip}" />
                 <ui:StatusChip Text="{Binding ClientTrustText}" IsOk="{Binding IsClientTrustOk}" IsError="{Binding IsClientTrustError}"
@@ -58,7 +58,7 @@
               <ui:IconLabel Icon="{DynamicResource Icon.check}" Text="Install in trusted root store" />
             </Button>
             <Button Classes="secondary" IsEnabled="{Binding HasCa}"
-                    ToolTip.Tip="Save the CA certificate (public, without key) for browsers, RADIUS servers and other systems">
+                    ToolTip.Tip="Save the CA certificate without its key">
               <ui:IconLabel Icon="{DynamicResource Icon.export}" Text="Export public certificate" />
               <Button.Flyout>
                 <MenuFlyout Placement="BottomEdgeAlignedLeft">
@@ -68,11 +68,11 @@
               </Button.Flyout>
             </Button>
             <Button Classes="secondary" Command="{Binding BackupCommand}"
-                    ToolTip.Tip="Save the CA with its private key in a password-protected file (restore it on another server with Import CA)">
+                    ToolTip.Tip="Save the CA with its private key in a password-protected file">
               <ui:IconLabel Icon="{DynamicResource Icon.save}" Text="Back up" />
             </Button>
             <Button Classes="secondary" Command="{Binding GenerateCommand}"
-                    ToolTip.Tip="Create a new certificate authority; the current one stays trusted by the server as a previous CA">
+                    ToolTip.Tip="Create a new certificate authority">
               <ui:IconLabel Icon="{DynamicResource Icon.refresh}" Text="Generate new CA" />
             </Button>
             <Button Classes="secondary" Command="{Binding ImportCommand}"

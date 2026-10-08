@@ -14,7 +14,7 @@
     <Border Grid.Column="0" Classes="card">
       <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
         <ui:CardHeader Title="Library" Description="{Binding LibrarySummary}">
-          <Button Classes="toolbar iconOnly" Command="{Binding ImportCommand}" ToolTip.Tip="Import commands from a file (saved for all OADM clients)">
+          <Button Classes="toolbar iconOnly" Command="{Binding ImportCommand}" ToolTip.Tip="Import commands from a file">
             <ui:OadmIcon Data="{DynamicResource Icon.upload}" />
           </Button>
         </ui:CardHeader>
@@ -43,7 +43,7 @@
                           Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).ExportSavedCommand}" CommandParameter="{Binding}">
                     <ui:OadmIcon Data="{DynamicResource Icon.export}" />
                   </Button>
-                  <Button Classes="toolbar iconOnly" ToolTip.Tip="Delete this saved command for all OADM clients"
+                  <Button Classes="toolbar iconOnly" ToolTip.Tip="Delete this saved command"
                           Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).DeleteSavedCommand}" CommandParameter="{Binding}">
                     <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
                   </Button>
@@ -113,7 +113,7 @@
                               Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).MoveDownCommand}">
                         <ui:OadmIcon Data="{DynamicResource Icon.chevronDown}" />
                       </Button>
-                      <Button Classes="toolbar iconOnly" ToolTip.Tip="Save with values: a new saved command with the entered values, for all OADM clients" CommandParameter="{Binding}"
+                      <Button Classes="toolbar iconOnly" ToolTip.Tip="Save a copy with these values" CommandParameter="{Binding}"
                               Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).SavePresetCommand}">
                         <ui:OadmIcon Data="{DynamicResource Icon.save}" />
                       </Button>
@@ -131,7 +131,7 @@
           <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Spacing="12">
               <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding !HasRolloutItems}"
-                         Text="Click commands in the library to add them, fill their values, choose the target devices and run. Every command becomes a named step of the task on each device." />
+                         Text="Click commands in the library to add them." />
 
               <Border Classes="inlineEditor" IsVisible="{Binding IsPresetOpen}">
                 <StackPanel Classes="form">
@@ -370,7 +370,7 @@
                          HorizontalAlignment="Left" IsVisible="{Binding HasStatus}" />
           <TextBlock Classes="secondary" Text="{Binding RunSummary}" TextWrapping="Wrap" />
           <CheckBox Content="Stop on first error" IsChecked="{Binding StopOnFirstError}"
-                    ToolTip.Tip="The first failure stops the whole rollout: the failing device skips its remaining commands, devices not started yet are cancelled, running devices stop after their current command." />
+                    ToolTip.Tip="Stop all devices after the first failure" />
           <Button Classes="primary" HorizontalAlignment="Right" Command="{Binding RunCommand}">
             <ui:IconLabel Icon="{DynamicResource Icon.start}" Text="{Binding RunText}" />
           </Button>

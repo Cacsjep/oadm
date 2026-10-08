@@ -602,7 +602,7 @@ public sealed class TaskPluginInfoTests
         var tasks = pki.Plugin.TaskPlugins;
 
         Assert.Equal(
-            ["HTTPS: Enable/Update", "HTTPS: Disable", "IEEE 802.1X: Enable/Update", "IEEE 802.1X: Disable", "View installed certificates", "Delete certificates", "Install certificates manually", "Install CA certificates", "Renew certificates now"],
+            ["Enable HTTPS", "Disable HTTPS", "Enable IEEE 802.1X", "Disable IEEE 802.1X", "View certificates", "Delete certificates", "Install certificates", "Install CA certificates", "Renew certificates"],
             tasks.Select(t => t.DisplayName));
         Assert.All(tasks, t => Assert.Equal(TaskGroups.Security, t.Group));
         Assert.All(tasks, t => Assert.True(t.DisplayName.Length <= TaskPluginNames.MaxDisplayNameLength));

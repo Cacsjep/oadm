@@ -173,7 +173,7 @@ public static class HardeningChecks
         {
             true => Result(id, CheckState.Warn, "DHCP", "The guide recommends static IP addresses."),
             false => Result(id, CheckState.Pass, "Static IP address"),
-            null => Result(id, CheckState.NotApplicable, "Not known yet (the next full refresh reads it)"),
+            null => Result(id, CheckState.NotApplicable, Oadm.Sdk.Plugins.TaskSupportReasons.ApisNotRead),
         };
     }
 
@@ -678,7 +678,7 @@ public static class HardeningChecks
         {
             true => Result(id, CheckState.Pass, "IEEE 802.1X on"),
             false => Result(id, CheckState.Warn, "IEEE 802.1X off"),
-            null => facts.Params.Error is { } error ? Error(id, error) : Result(id, CheckState.NotApplicable, "Not known yet (the next full refresh reads it)"),
+            null => facts.Params.Error is { } error ? Error(id, error) : Result(id, CheckState.NotApplicable, Oadm.Sdk.Plugins.TaskSupportReasons.ApisNotRead),
         };
     }
 

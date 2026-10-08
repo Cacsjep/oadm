@@ -64,11 +64,10 @@ public sealed partial class TaskPluginQueries
         try
         {
             var device = await _devices.FindAsync(deviceId, token).ConfigureAwait(false)
-                ?? throw new TaskQueryException(TaskQueryError.NotFound, $"Device {deviceId} not found.");
+                ?? throw new TaskQueryException(TaskQueryError.NotFound, DeviceMessages.Removed);
             if (device.Status == DeviceStatus.CertificateChanged)
             {
-                throw new TaskQueryException(TaskQueryError.FailedPrecondition,
-                    "The device certificate changed. Accept the new certificate first.");
+                throw new TaskQueryException(TaskQueryError.FailedPrecondition, DeviceMessages.CertificateChanged);
             }
 
             var vapix = await _vapix.CreateAsync(deviceId, token).ConfigureAwait(false);

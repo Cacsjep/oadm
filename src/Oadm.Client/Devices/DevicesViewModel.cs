@@ -391,7 +391,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         DeviceImportFile file;
         try
         {
-            PickedFile? picked = await _dialogs.OpenFileAsync("Import devices", CsvFile, DeviceImportFile.MaxBytes).ConfigureAwait(true);
+            PickedFile? picked = await _dialogs.OpenFileAsync("Import from file", CsvFile, DeviceImportFile.MaxBytes).ConfigureAwait(true);
             if (picked is null)
             {
                 return;
@@ -401,12 +401,12 @@ public sealed partial class DevicesViewModel : ObservableObject
         }
         catch (DeviceImportException ex)
         {
-            await _dialogs.ShowMessageAsync("Import devices", ex.Message).ConfigureAwait(true);
+            await _dialogs.ShowMessageAsync("Import from file", ex.Message).ConfigureAwait(true);
             return;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            await _dialogs.ShowMessageAsync("Import devices", "The file could not be read: " + ex.Message).ConfigureAwait(true);
+            await _dialogs.ShowMessageAsync("Import from file", "The file could not be read: " + ex.Message).ConfigureAwait(true);
             return;
         }
 

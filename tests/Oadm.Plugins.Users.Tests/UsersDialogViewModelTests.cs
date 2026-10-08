@@ -42,7 +42,7 @@ public sealed class UsersDialogViewModelTests
         Assert.Equal("pw", payload.Password);
         Assert.Equal(UserRole.Operator, payload.Role);
         Assert.True(payload.Ptz);
-        Assert.Equal("Add user 'joe' as Operator with PTZ on 3 devices. Devices where the user already exists are skipped with a warning.", vm.Summary);
+        Assert.Equal("Add user joe as Operator with PTZ on 3 devices.", vm.Summary);
     }
 
     [Fact]
@@ -95,13 +95,13 @@ public sealed class UsersDialogViewModelTests
         Assert.Equal(UsersMode.Remove, payload.Mode);
         Assert.Equal(["acs"], payload.RemoveNames);
         Assert.Null(payload.Password);
-        Assert.Equal("Remove user 'acs' from 1 device. Devices without this user are skipped with a warning.", vm.Summary);
+        Assert.Equal("Remove user acs from 1 device.", vm.Summary);
 
         vm.SetSelectedUsers([vm.ExistingUsers[1], vm.ExistingUsers[3]]);
         payload = UsersJson.ParsePayload(vm.BuildPayload());
         Assert.Equal(["fakeroot", "acs"], payload.UserNames);
         Assert.Equal("Remove users", vm.ApplyText);
-        Assert.StartsWith("Remove users 'fakeroot', 'acs' from 1 device.", vm.Summary, StringComparison.Ordinal);
+        Assert.StartsWith("Remove users fakeroot, acs from 1 device.", vm.Summary, StringComparison.Ordinal);
         Assert.Equal("Remove users fakeroot, acs", UsersTaskPlugin.TaskName(payload));
     }
 
@@ -182,7 +182,7 @@ public sealed class UsersDialogViewModelTests
         Assert.Equal("Administrator with PTZ (used by OADM)", vm.ExistingUsers[0].RoleText);
         Assert.Equal("4 user(s).", vm.UsersStatus);
         Assert.Contains("first of 3 selected devices", vm.UsersTitle, StringComparison.Ordinal);
-        Assert.EndsWith("the first of 3 selected devices. 4 user(s).", vm.UsersDescription, StringComparison.Ordinal);
+        Assert.Equal("4 user(s).", vm.UsersDescription);
     }
 
     [Fact]
@@ -204,7 +204,7 @@ public sealed class UsersDialogViewModelTests
         vm.Apply(RecordedResult());
         vm.IsChange = true;
         vm.UserName = "root";
-        Assert.Contains("'root' is the account OADM uses", vm.LockOutWarning, StringComparison.Ordinal);
+        Assert.Contains("root is the account OADM uses", vm.LockOutWarning, StringComparison.Ordinal);
 
         // No generic warning text: the protection itself is unchanged and enforced by the server.
         vm.UserName = "acs";

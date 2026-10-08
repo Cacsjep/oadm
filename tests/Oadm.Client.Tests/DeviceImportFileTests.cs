@@ -143,7 +143,7 @@ public sealed class DeviceImportFileTests
 
         await fx.Devices.OpenHostPageAsync(HostPages.AddImport);
 
-        await fx.Dialogs.Received(1).OpenFileAsync("Import devices", Arg.Is<FileType>(t => t.Extension == "csv"), DeviceImportFile.MaxBytes);
+        await fx.Dialogs.Received(1).OpenFileAsync("Import from file", Arg.Is<FileType>(t => t.Extension == "csv"), DeviceImportFile.MaxBytes);
         Assert.NotNull(shown);
         Assert.True(shown.IsImportMode);
         Assert.Equal(["10.0.0.48", "10.0.0.49", "bad address"], shown.FilteredRows.Select(r => r.Address));
@@ -155,7 +155,7 @@ public sealed class DeviceImportFileTests
             .Returns(new PickedFile("big.csv", new byte[16], true));
         await fx.Devices.OpenHostPageAsync(HostPages.AddImport);
         Assert.Null(shown);
-        await fx.Dialogs.Received(1).ShowMessageAsync("Import devices", "The file is larger than 2 MB. Split it into smaller files.");
+        await fx.Dialogs.Received(1).ShowMessageAsync("Import from file", "The file is larger than 2 MB. Split it into smaller files.");
 
         // Cancelled picker: nothing happens.
         fx.Dialogs.OpenFileAsync(Arg.Any<string>(), Arg.Any<FileType>(), Arg.Any<int>()).Returns((PickedFile?)null);

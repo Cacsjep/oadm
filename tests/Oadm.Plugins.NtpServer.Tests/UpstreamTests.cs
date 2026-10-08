@@ -24,7 +24,7 @@ public sealed class UpstreamClientTests
         Assert.Equal(0.002, sample.RootDelaySeconds, 3);
         Assert.Equal(3, sample.ToState("x").Stratum);
         // Same tolerance as the offset above: a slow CI round trip shifts the measured offset by up to 0.1 s.
-        Assert.Matches(@"^Stratum 2, offset \+(2\.9|3\.0|3\.1) s, round trip ", sample.Describe());
+        Assert.Matches(@"^(2\.9|3\.0|3\.1) s off, \d+ ms round trip$", sample.Describe());
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public sealed class UpstreamClientTests
         var ex = await Assert.ThrowsAsync<UpstreamException>(() => UpstreamClient.QueryAsync(upstream.EndPoint, AnswerTimeout, TimeProvider.System, CancellationToken.None));
         Assert.Equal(UpstreamFailure.KissOfDeath, ex.Failure);
         Assert.Equal(code, ex.KissCode);
-        Assert.Contains(code, ex.Message, StringComparison.Ordinal);
+        Assert.Equal(code == "RATE" ? "The server refused the request (too many requests)" : "The server refused the request (access denied)", ex.Message);
     }
 
     [Fact]
@@ -227,7 +227,7 @@ public sealed class UpstreamMonitorTests
 
         // A plain failure would retry after 20, 40, 80 ... ms; RATE waits the (doubled) poll interval.
         Assert.Equal(1, upstream.Requests);
-        Assert.Contains("RATE", monitor.Snapshot.LastError, StringComparison.Ordinal);
+        Assert.Contains("too many requests", monitor.Snapshot.LastError, StringComparison.Ordinal);
     }
 
     [Fact]

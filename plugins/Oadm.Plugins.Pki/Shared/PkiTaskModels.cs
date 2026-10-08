@@ -13,14 +13,14 @@ public static class PkiTaskIds
     public const string Install = "oadm.pki.install";
     public const string InstallCa = "oadm.pki.install-ca";
 
-    public const string HttpsEnableName = "HTTPS: Enable/Update";
-    public const string HttpsDisableName = "HTTPS: Disable";
-    public const string Dot1xEnableName = "IEEE 802.1X: Enable/Update";
-    public const string Dot1xDisableName = "IEEE 802.1X: Disable";
-    public const string RenewName = "Renew certificates now";
-    public const string ViewName = "View installed certificates";
+    public const string HttpsEnableName = "Enable HTTPS";
+    public const string HttpsDisableName = "Disable HTTPS";
+    public const string Dot1xEnableName = "Enable IEEE 802.1X";
+    public const string Dot1xDisableName = "Disable IEEE 802.1X";
+    public const string RenewName = "Renew certificates";
+    public const string ViewName = "View certificates";
     public const string DeleteName = "Delete certificates";
-    public const string InstallName = "Install certificates manually";
+    public const string InstallName = "Install certificates";
     public const string InstallCaName = "Install CA certificates";
 
     /// <summary>Text of the HTTPS Disable confirmation.</summary>
@@ -92,7 +92,7 @@ public sealed record DeletePayload
     public IReadOnlyDictionary<Guid, IReadOnlyList<CertificateRef>> Devices { get; init; } = new Dictionary<Guid, IReadOnlyList<CertificateRef>>();
 }
 
-/// <summary>What "Install certificates manually" sets up with the installed certificate.</summary>
+/// <summary>What "Install certificates" sets up with the installed certificate.</summary>
 public static class InstallPurpose
 {
     public const string Https = "https";
@@ -102,10 +102,10 @@ public static class InstallPurpose
     public const string CaOnly = "ca";
 }
 
-/// <summary>One file of "Install certificates manually", matched to one device.</summary>
+/// <summary>One file of "Install certificates", matched to one device.</summary>
 public sealed record InstallFile(Guid DeviceId, string FileId, string FileName);
 
-/// <summary>Payload of "Install certificates manually". The password stays in memory (payloads are never persisted).</summary>
+/// <summary>Payload of "Install certificates". The password stays in memory (payloads are never persisted).</summary>
 public sealed record InstallPayload
 {
     /// <summary><see cref="InstallPurpose"/>.</summary>

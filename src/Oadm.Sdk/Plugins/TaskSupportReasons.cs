@@ -17,7 +17,7 @@ public static class TaskSupportReasons
     public const int MaxLength = 160;
 
     /// <summary>The device's API list was not read yet (a device added a moment ago, or never reached).</summary>
-    public const string ApisNotRead = "OADM has not read what this device supports yet: refresh the device";
+    public const string ApisNotRead = "Not read yet: refresh the device";
 
     /// <summary>Start of a device-specific detail at the end of a reason, see <see cref="ThisDevice"/>.</summary>
     public const string ThisDevicePrefix = " (this device ";
@@ -29,7 +29,7 @@ public static class TaskSupportReasons
     public static string? ForStatus(DeviceStatus status, bool requireOk = false) => status switch
     {
         DeviceStatus.Ok => null,
-        DeviceStatus.Unknown => requireOk ? "OADM has not checked the device yet: refresh the device" : null,
+        DeviceStatus.Unknown => requireOk ? ApisNotRead : null,
         DeviceStatus.Unreachable => "The device does not answer",
         DeviceStatus.CredentialsRequired => "OADM cannot log in to the device: use Log in",
         DeviceStatus.PasswordNotSet => "The device has no password yet: use Set password",

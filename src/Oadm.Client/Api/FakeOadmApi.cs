@@ -246,11 +246,11 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 var result = new DeviceLogInResult { DeviceId = id };
                 if (!byId.TryGetValue(id, out Device? device))
                 {
-                    result.Message = "The device is no longer managed by OADM.";
+                    result.Message = Oadm.Sdk.Devices.DeviceMessages.Removed;
                 }
                 else if (device.Status == DeviceStatus.CertificateChanged)
                 {
-                    result.Message = "Certificate changed - accept the new certificate first";
+                    result.Message = Oadm.Sdk.Devices.DeviceMessages.CertificateChanged;
                 }
                 else if (device.Status == DeviceStatus.Unreachable)
                 {
@@ -1654,7 +1654,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
     private static readonly string[] FirmwareSteps =
     [
         "Check compatibility", "Read device info", "Validate file", "Read firmware status", "Upload firmware",
-        "Install firmware", "Wait for device to come back", "Verify version", "Read commit state", "Commit firmware",
+        "Install firmware", "Wait for the device to come back", "Verify version", "Read commit state", "Commit firmware",
     ];
 
     private static readonly string[] GenericSteps = ["Check compatibility", "Read current settings", "Apply change", "Verify device"];

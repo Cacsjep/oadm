@@ -283,7 +283,7 @@ public sealed class FirmwareDialogViewModelTests
         Assert.Equal("Rollback to 11.11.160 possible", vm.Devices[0].FirmwareState);
         Assert.Equal(ClientVerdict.AlreadyUpToDate, vm.Devices[0].Check!.Verdict);
         Assert.False(vm.Devices[1].WillInstall);
-        Assert.Contains("fwmgr", vm.Devices[1].Message, StringComparison.Ordinal);
+        Assert.Equal("This device's firmware cannot be updated from OADM.", vm.Devices[1].Message);
         Assert.Equal("Not committed, rolls back to 11.11.100 in 120 s", vm.Devices[2].FirmwareState);
         Assert.Equal("Status not available", vm.Devices[3].FirmwareState);
         Assert.Equal("12.20.10", vm.Devices[3].CurrentVersion);

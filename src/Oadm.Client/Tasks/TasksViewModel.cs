@@ -158,7 +158,7 @@ public sealed partial class TasksViewModel : ObservableObject
     {
         int active = ActiveCount;
         string message = active > 0
-            ? $"Delete all {Tasks.Count} tasks? {active} running task(s) will be cancelled first. This cannot be undone."
+            ? $"Delete all {Tasks.Count} tasks? Running tasks are cancelled first."
             : $"Delete all {Tasks.Count} tasks from the history? This cannot be undone.";
         if (!await _dialogs.ConfirmAsync("Delete all tasks", message, "Delete all").ConfigureAwait(true))
         {

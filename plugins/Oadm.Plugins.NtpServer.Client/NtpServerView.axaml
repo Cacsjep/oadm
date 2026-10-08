@@ -5,7 +5,7 @@
              xmlns:vm="using:Oadm.Plugins.NtpServer.Client"
              x:Class="Oadm.Plugins.NtpServer.Client.NtpServerView"
              x:DataType="vm:NtpServerViewModel"
-             ui:PageHeader.Subtitle="Answers the time requests of the cameras (NTP, UDP port 123).">
+             ui:PageHeader.Subtitle="Answers the time requests of the cameras.">
   <!-- The description lives in the host page header (ui:PageHeader); the status sits left of the Save button. -->
   <!-- One card (the host's page card): header with the status line, settings form, last requests. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,Auto,*">
@@ -27,7 +27,7 @@
       <ui:FormField Label="Upstream server" InputWidth="460">
         <StackPanel>
           <TextBox Text="{Binding Upstream}" PlaceholderText="Optional, e.g. pool.ntp.org"
-                   ToolTip.Tip="Optional. Empty: the cameras get this computer's time. With an upstream server, this computer follows it." />
+                   ToolTip.Tip="Empty: cameras get this computer's time." />
           <ui:StatusChip Text="{Binding CheckingText}" IsAccent="True" IsVisible="{Binding IsCheckingUpstream}" Margin="0,6,0,0" />
           <ui:StatusChip Text="{Binding UpstreamResult}" IsOk="True" IsVisible="{Binding HasUpstreamResult}" Margin="0,6,0,0" />
         </StackPanel>

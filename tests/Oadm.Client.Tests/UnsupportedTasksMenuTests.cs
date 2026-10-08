@@ -30,7 +30,7 @@ public sealed class UnsupportedTasksMenuTests(ITestOutputHelper output)
     [Fact]
     public void One_device_shows_its_full_reason_several_the_most_common_reason_without_device_details()
     {
-        TaskPluginInfo plugin = TestSupport.Plugin("oadm.pki.https-enable", "HTTPS: Enable/Update", toolbar: false, dialog: false, "ok1", "ok2");
+        TaskPluginInfo plugin = TestSupport.Plugin("oadm.pki.https-enable", "Enable HTTPS", toolbar: false, dialog: false, "ok1", "ok2");
         AddOther(plugin, OldFirmware, 4);
         TestSupport.WithReason(plugin, OlderFirmware, "old9");
         TestSupport.WithReason(plugin, NoAnswer, "down");
@@ -145,7 +145,7 @@ public sealed class UnsupportedTasksMenuTests(ITestOutputHelper output)
             };
             window.Show();
             Dispatcher.UIThread.RunJobs();
-            MenuItem renew = sub.GetVisualDescendants().OfType<MenuItem>().Single(i => (i.Header as string) == "Renew certificates now");
+            MenuItem renew = sub.GetVisualDescendants().OfType<MenuItem>().Single(i => (i.Header as string) == "Renew certificates");
             Point anchor = renew.TranslatePoint(new Point(renew.Bounds.Width / 3, renew.Bounds.Height + 2), overlay) ?? default;
             Canvas.SetLeft(tip, anchor.X);
             Canvas.SetTop(tip, anchor.Y);
@@ -226,14 +226,14 @@ public sealed class UnsupportedTasksMenuTests(ITestOutputHelper output)
 
         return
         [
-            Pki("oadm.pki.https-enable", "HTTPS: Enable/Update", "key"),
-            Pki("oadm.pki.https-disable", "HTTPS: Disable", "cancel"),
-            Pki("oadm.pki.dot1x-enable", "IEEE 802.1X: Enable/Update", "key"),
-            Pki("oadm.pki.dot1x-disable", "IEEE 802.1X: Disable", "cancel"),
-            Pki("oadm.pki.view", "View installed certificates", "details"),
+            Pki("oadm.pki.https-enable", "Enable HTTPS", "key"),
+            Pki("oadm.pki.https-disable", "Disable HTTPS", "cancel"),
+            Pki("oadm.pki.dot1x-enable", "Enable IEEE 802.1X", "key"),
+            Pki("oadm.pki.dot1x-disable", "Disable IEEE 802.1X", "cancel"),
+            Pki("oadm.pki.view", "View certificates", "details"),
             Pki("oadm.pki.delete", "Delete certificates", "remove"),
-            Pki("oadm.pki.install", "Install certificates manually", "upload"),
-            Pki("oadm.pki.renew", "Renew certificates now", "refresh"),
+            Pki("oadm.pki.install", "Install certificates", "upload"),
+            Pki("oadm.pki.renew", "Renew certificates", "refresh"),
         ];
     }
 

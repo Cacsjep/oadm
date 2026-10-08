@@ -5,7 +5,7 @@ using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.Pki.Client;
 
-/// <summary>"Install certificates manually" window. View only: wiring to the view model and the platform file picker.</summary>
+/// <summary>"Install certificates" window. View only: wiring to the view model and the platform file picker.</summary>
 public partial class InstallCertificatesWindow : Window, ICertificateFilePicker
 {
     private static readonly FilePickerFileType Pkcs12Files = new("Certificates with key (*.pfx, *.p12)") { Patterns = ["*.pfx", "*.p12"], MimeTypes = ["application/x-pkcs12"] };

@@ -42,7 +42,7 @@
               <ui:FormField Label="Subnet mask" IsVisible="{Binding IsIpv4Static}">
                 <TextBox Text="{Binding Ipv4Mask}" PlaceholderText="255.255.255.0 or 24" />
               </ui:FormField>
-              <ui:FormField Label="Default gateway" IsVisible="{Binding IsIpv4Static}">
+              <ui:FormField Label="Default router" IsVisible="{Binding IsIpv4Static}">
                 <TextBox Text="{Binding Ipv4Gateway}" PlaceholderText="192.168.0.1" />
               </ui:FormField>
             </StackPanel>
@@ -63,7 +63,7 @@
               <ui:FormField Label="Prefix length" IsVisible="{Binding IsIpv6Static}">
                 <TextBox Text="{Binding Ipv6Prefix}" PlaceholderText="64" />
               </ui:FormField>
-              <ui:FormField Label="Default gateway" IsVisible="{Binding IsIpv6Static}">
+              <ui:FormField Label="Default router" IsVisible="{Binding IsIpv6Static}">
                 <TextBox Text="{Binding Ipv6Gateway}" PlaceholderText="fe80::1 (optional)" />
               </ui:FormField>
             </StackPanel>

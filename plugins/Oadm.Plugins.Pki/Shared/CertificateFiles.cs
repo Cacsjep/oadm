@@ -6,7 +6,7 @@ using Oadm.Plugins.Pki.Ca;
 
 namespace Oadm.Plugins.Pki;
 
-/// <summary>What a PKCS#12 file of "Install certificates manually" holds.</summary>
+/// <summary>What a PKCS#12 file of "Install certificates" holds.</summary>
 public sealed record Pkcs12Contents(
     string? LeafFingerprint,
     string? LeafSubject,

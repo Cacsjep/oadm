@@ -283,6 +283,6 @@ public sealed class ViewModelTests
         vm.IsNtp = true;
         Assert.StartsWith("500 of the selected devices take only one NTP server", vm.ModeNote, StringComparison.Ordinal);
         vm.UseNts = true;
-        Assert.Equal("Network Time Security: supported by 4,000 of 5,000 devices (ntp 1.5 or later); the others fail without changes.", vm.NtsHint);
+        Assert.Equal("NTS works on 4,000 of 5,000 devices; the others are not changed.", vm.NtsHint);
     }
 }

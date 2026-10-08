@@ -137,8 +137,8 @@ public sealed class InterpreterTests
 
     [Theory]
     [InlineData(400, "Bad Request - HTTP 400")]
-    [InlineData(401, "Unauthorized - HTTP 401 (check credentials)")]
-    [InlineData(403, "Forbidden - HTTP 403 (user lacks permission)")]
+    [InlineData(401, "Unauthorized - HTTP 401 (check the credentials)")]
+    [InlineData(403, "Forbidden - HTTP 403 (administrator rights are required)")]
     [InlineData(404, "Not Found - HTTP 404 (API not available on this firmware)")]
     [InlineData(500, "Server error - HTTP 500")]
     [InlineData(503, "Server error - HTTP 503")]
@@ -154,7 +154,7 @@ public sealed class InterpreterTests
         Assert.Equal("Bad Request - HTTP 400: Error: invalid group", Run(Spec(ResponseKinds.ParamCgi), "# Error: invalid group", 400).Summary);
         Assert.Equal("Not Found - HTTP 404 (API not available on this firmware): 404 Not Found",
             Run(Spec(ResponseKinds.Raw), "<html><head><title>404 Not Found</title></head><body>x</body></html>", 404, "text/html").Summary);
-        Assert.Equal("Unauthorized - HTTP 401 (check credentials)",
+        Assert.Equal("Unauthorized - HTTP 401 (check the credentials)",
             Run(Spec(ResponseKinds.Raw), "<html><body>no</body></html>", 401, "text/html").Summary);
     }
 
@@ -163,9 +163,9 @@ public sealed class InterpreterTests
     {
         var timeout = TimeSpan.FromSeconds(15);
         Assert.Equal("Timeout after 15 s", TransportErrors.Describe(new TaskCanceledException("x", new TimeoutException()), timeout));
-        Assert.Equal("Connection refused", TransportErrors.Describe(
+        Assert.Equal("Unreachable - Connection refused", TransportErrors.Describe(
             new HttpRequestException(HttpRequestError.ConnectionError, "x", new SocketException((int)SocketError.ConnectionRefused)), timeout));
-        Assert.Equal("Host unreachable", TransportErrors.Describe(
+        Assert.Equal("Unreachable - no route to the device", TransportErrors.Describe(
             new HttpRequestException(HttpRequestError.ConnectionError, "x", new SocketException((int)SocketError.HostUnreachable)), timeout));
         Assert.Equal("TLS/certificate error: The remote certificate is invalid", TransportErrors.Describe(
             new HttpRequestException(HttpRequestError.SecureConnectionError, "x", new AuthenticationException("The remote certificate is invalid")), timeout));
@@ -182,7 +182,7 @@ public sealed class InterpreterTests
         var outcome = await CommandExecutor.ExecuteAsync(vapix, command, rendered, CancellationToken.None);
 
         Assert.False(outcome.Success);
-        Assert.Equal("Connection refused", outcome.Summary);
+        Assert.Equal("Unreachable - Connection refused", outcome.Summary);
         Assert.Null(outcome.StatusCode);
 
         vapix.Handler = _ => throw new TaskCanceledException("t", new TimeoutException());

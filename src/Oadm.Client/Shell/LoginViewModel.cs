@@ -124,7 +124,7 @@ public sealed partial class LoginViewModel : ValidatingViewModel
     public string? Intro => !IsFirstAdminMode ? null
         : SetupCodeRequired
             ? "This server has no users yet. Create the first administrator. As this computer is not the server, the setup code is needed too."
-            : "This server has no users yet. Create the first administrator; it can add more users on the Settings page.";
+            : "This server has no users yet. Create the first administrator; it can add more users on the Users page.";
 
     private string[] Fields => IsFirstAdminMode
         ? [nameof(ServerAddress), nameof(UserName), nameof(Password), nameof(ConfirmPassword), nameof(SetupCode)]

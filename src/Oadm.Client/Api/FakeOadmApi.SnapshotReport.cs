@@ -97,7 +97,7 @@ public sealed partial class FakeOadmApi
             {
                 DeviceStatus.CredentialsRequired => "Credentials required - the device rejects the stored credentials",
                 DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
-                DeviceStatus.CertificateChanged => "Certificate changed - accept the new certificate first",
+                DeviceStatus.CertificateChanged => Oadm.Sdk.Devices.DeviceMessages.CertificateChanged,
                 DeviceStatus.Unreachable => "Timeout after 10 s",
                 _ => null,
             };
@@ -167,7 +167,7 @@ public sealed partial class FakeOadmApi
 
         if (device is null)
         {
-            return JsonSerializer.Serialize(new { error = "The device is no longer managed" }, FakeJson);
+            return JsonSerializer.Serialize(new { error = Oadm.Sdk.Devices.DeviceMessages.Removed }, FakeJson);
         }
 
         // Multisensor sensors are 4:3 (2592x1944), everything else 16:9.
