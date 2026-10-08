@@ -97,3 +97,17 @@ public sealed class InstallCertificatesDialog : ITaskPluginDialog
         return await window.ShowDialog<string?>(owner).ConfigureAwait(true);
     }
 }
+
+/// <summary>"Install CA certificates": CA certificate files (PEM, bundles, DER); returns the certificates as the payload.</summary>
+public sealed class InstallCaCertificatesDialog : ITaskPluginDialog
+{
+    public string PluginId => PkiTaskIds.InstallCa;
+
+    public async Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner)
+    {
+        ArgumentNullException.ThrowIfNull(devices);
+        var window = new InstallCaCertificatesWindow();
+        window.Attach(new InstallCaCertificatesViewModel(devices));
+        return await window.ShowDialog<string?>(owner).ConfigureAwait(true);
+    }
+}

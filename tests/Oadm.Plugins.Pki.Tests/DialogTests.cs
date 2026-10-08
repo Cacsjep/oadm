@@ -246,6 +246,111 @@ public sealed class InstallViewModelTests
     }
 }
 
+public sealed class InstallCaViewModelTests(ITestOutputHelper output)
+{
+    [Fact]
+    public void Files_become_one_row_per_certificate_with_duplicates_merged_and_problems_in_the_row()
+    {
+        using var root = TestCa.Root("Acme Root CA");
+        using var issuing = TestCa.Intermediate(root);
+        using var expired = TestCa.Root("Old CA", years: 1, notBefore: DateTimeOffset.UtcNow.AddYears(-3));
+        using var leaf = TestCa.Leaf(issuing);
+        var files = new Dictionary<string, byte[]>
+        {
+            ["c:/certs/acme-bundle.pem"] = TestCa.Pem(root, issuing),
+            ["c:/certs/acme-root.cer"] = root.RawData, // DER, same as the bundle's root
+            ["c:/certs/old.crt"] = TestCa.Pem(expired, leaf),
+            ["c:/certs/notes.txt"] = TestCa.Ascii("not a certificate"),
+        };
+        var vm = new InstallCaCertificatesViewModel([new PkiFakeDevice(Guid.NewGuid())], path => files[path]);
+        Assert.False(vm.CanInstall);
+        Assert.Equal("Choose CA certificate files.", vm.InstallBlockedReason);
+
+        vm.Add(["c:/certs/acme-bundle.pem", "c:/certs/acme-root.cer"]);
+        Assert.Equal(2, vm.Rows.Count);
+        Assert.Equal("acme-bundle.pem, acme-root.cer", vm.Rows[0].Files);
+        Assert.Equal("Acme Root CA", vm.Rows[1].IssuedBy);
+        Assert.All(vm.Rows, r => Assert.Equal("Ready", r.Status));
+        Assert.True(vm.CanInstall);
+
+        vm.Add(["c:/certs/old.crt", "c:/certs/notes.txt"]);
+        Assert.Equal(["Acme Root CA", "Acme Issuing CA", "Old CA", "10.0.0.48", ""], vm.Rows.Select(r => r.Name));
+        Assert.Equal(["Ready", "Ready", "Expired", "Not a CA certificate", "Cannot be read"], vm.Rows.Select(r => r.Status));
+        Assert.Equal(CaCertificateFiles.NotACertificate, vm.Rows[4].StatusDetail);
+        Assert.Equal("notes.txt", vm.Rows[4].Files);
+        Assert.Equal("2 CA certificates ready · 3 with a problem (left out)", vm.Summary);
+        Assert.True(vm.CanInstall); // rows with a problem are left out, they do not block
+
+        // Choosing the same files again adds nothing; removing rows works for certificates and file errors.
+        vm.Add(["c:/certs/acme-bundle.pem", "c:/certs/notes.txt"]);
+        Assert.Equal(5, vm.Rows.Count);
+        vm.RemoveCommand.Execute(vm.Rows[0]);
+        vm.RemoveCommand.Execute(vm.Rows[0]);
+        Assert.False(vm.CanInstall);
+        Assert.Equal("None of the certificates can be installed; see the Status column.", vm.InstallBlockedReason);
+        vm.Add(["c:/certs/acme-root.cer"]); // a removed certificate can be added again
+        Assert.True(vm.CanInstall);
+        Assert.Equal("Acme Root CA", Assert.Single(vm.UsableCertificates).Name);
+    }
+
+    [Fact]
+    public async Task Install_confirms_and_returns_the_usable_certificates_for_5000_devices()
+    {
+        using var root = TestCa.Root("Acme Root CA");
+        using var issuing = TestCa.Intermediate(root);
+        using var plain = TestCa.Root("Plain", ca: false);
+        var devices = DialogData.Devices(5000);
+        var watch = Stopwatch.StartNew();
+        var vm = new InstallCaCertificatesViewModel(devices, _ => TestCa.Pem(root, issuing, plain));
+        string? payload = null;
+        (string Title, string Message, string Confirm)? asked = null;
+        var answer = false;
+        vm.Confirm = (t, m, c) =>
+        {
+            asked = (t, m, c);
+            return Task.FromResult(answer);
+        };
+        vm.CloseRequested += (_, p) => payload = p;
+        vm.Add(["c:/certs/bundle.pem"]);
+        Assert.Equal("5,000 selected devices", vm.Scope);
+
+        await vm.InstallCommand.ExecuteAsync(null);
+        Assert.Null(payload); // cancelled in the confirmation
+        Assert.Equal(("Install CA certificates", "Install 2 CA certificates on 5,000 devices? The devices then trust certificates these CAs issued. 1 row with a problem is left out.", "Install"), asked);
+
+        answer = true;
+        await vm.InstallCommand.ExecuteAsync(null);
+        watch.Stop();
+        var result = PkiJson.Deserialize<InstallCaPayload>(payload);
+        Assert.Equal(["Acme Root CA", "Acme Issuing CA"], result.Certificates.Select(c => c.Name));
+        Assert.Equal(Oadm.Plugins.Pki.Ca.CaCertificates.ToPem(root), result.Certificates[0].Pem);
+        Assert.True(payload!.Length < 10_000); // the payload does not grow with the device count
+        output.WriteLine($"5000 devices: add, confirm and payload {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 2000);
+    }
+
+    [Fact]
+    public void More_than_the_maximum_blocks_install_with_the_reason_below_the_table()
+    {
+        var certificates = Enumerable.Range(0, CaCertificateFiles.MaxCertificates + 2).Select(i => TestCa.Root("CA " + i)).ToList();
+        try
+        {
+            var vm = new InstallCaCertificatesViewModel([new PkiFakeDevice(Guid.NewGuid())], _ => TestCa.Pem([.. certificates]));
+            vm.Add(["c:/certs/many.pem"]);
+            Assert.Equal("At most 150 CA certificates at once; remove 2.", vm.TableError);
+            Assert.Equal(vm.TableError, vm.InstallBlockedReason);
+            vm.RemoveCommand.Execute(vm.Rows[0]);
+            vm.RemoveCommand.Execute(vm.Rows[0]);
+            Assert.True(vm.CanInstall);
+            Assert.False(vm.HasTableError);
+        }
+        finally
+        {
+            certificates.ForEach(c => c.Dispose());
+        }
+    }
+}
+
 /// <summary>The Security dialogs rendered offscreen with the host theme. OADM_SCREENSHOT_DIR writes PNGs.</summary>
 [Collection(HeadlessSessions.Name)]
 public sealed class HeadlessDialogTests
@@ -321,6 +426,31 @@ public sealed class HeadlessDialogTests
                 Capture(installWindow, outDir, "pki-install-manual.png");
                 Assert.False(installVm.CanInstall);
                 installWindow.Close();
+
+                // Install CA certificates: a bundle, a DER file with the same root (merged), an expired CA and a file that is no certificate.
+                using var bundleRoot = TestCa.Root("Customer Root CA");
+                using var bundleIssuing = TestCa.Intermediate(bundleRoot, "Customer Issuing CA");
+                using var oldCa = TestCa.Root("Old Site CA", years: 1, notBefore: DateTimeOffset.UtcNow.AddYears(-3));
+                var caFiles = new Dictionary<string, byte[]>
+                {
+                    ["c:/certs/customer-bundle.pem"] = TestCa.Pem(bundleRoot, bundleIssuing),
+                    ["c:/certs/customer-root.cer"] = bundleRoot.RawData,
+                    ["c:/certs/radius-ca.crt"] = TestCa.Pem(radiusCa),
+                    ["c:/certs/old-site.crt"] = TestCa.Pem(oldCa),
+                    ["c:/certs/readme.txt"] = TestCa.Ascii("Install these on every camera."),
+                };
+                var caVm = new InstallCaCertificatesViewModel(devices, path => caFiles[path]);
+                var caWindow = new InstallCaCertificatesWindow { Width = 1100, Height = 620 };
+                caWindow.Attach(caVm);
+                Oadm.Client.App.ApplyCrispText(caWindow);
+                caWindow.Show();
+                caVm.Add([.. caFiles.Keys]);
+                Pump();
+                Capture(caWindow, outDir, "pki-install-ca.png");
+                Assert.True(caVm.CanInstall);
+                Assert.Equal(5, caVm.Rows.Count);
+                Assert.Equal(2, caVm.Rows.Count(r => r.IsError));
+                caWindow.Close();
 
                 // The 802.1X confirmation (the shared popup).
                 var (title, message, confirm) = PkiConfirmations.Dot1xEnable(3);

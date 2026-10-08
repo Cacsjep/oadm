@@ -37,6 +37,7 @@ public sealed class SecurityMenuTests
                 Plugin("oadm.pki.view", "View installed certificates", "Security", "details"),
                 Plugin("oadm.pki.delete", "Delete certificates", "Security", "remove"),
                 Plugin("oadm.pki.install", "Install certificates manually", "Security", "upload"),
+                Plugin("oadm.pki.install-ca", "Install CA certificates", "Security", "upload"),
                 Plugin("oadm.pki.renew", "Renew certificates now", "Security", "refresh"),
             ];
             List<MenuEntryViewModel> entries =
@@ -69,7 +70,7 @@ public sealed class SecurityMenuTests
 
             Assert.Equal(
                 ["Delete certificates", "HTTPS: Disable", "HTTPS: Enable/Update", "IEEE 802.1X: Disable", "IEEE 802.1X: Enable/Update",
-                 "Install certificates manually", "Renew certificates now", "View installed certificates"],
+                 "Install CA certificates", "Install certificates manually", "Renew certificates now", "View installed certificates"],
                 sub.GetVisualDescendants().OfType<MenuItem>().Select(i => i.Header as string ?? "").ToArray());
 
             WriteableBitmap? frame = window.CaptureRenderedFrame();

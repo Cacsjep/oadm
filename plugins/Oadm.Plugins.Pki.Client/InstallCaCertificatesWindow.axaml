@@ -1,0 +1,75 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Pki.Client"
+        x:Class="Oadm.Plugins.Pki.Client.InstallCaCertificatesWindow"
+        x:DataType="vm:InstallCaCertificatesViewModel"
+        Title="{x:Static vm:InstallCaCertificatesViewModel.Title}"
+        Width="1100" Height="620" MinWidth="860" MinHeight="460"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+  <!-- Title bar, one card (Add files, summary, certificate table with the error directly below it), footer. Shared controls only. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:InstallCaCertificatesViewModel.Title}" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+        <ui:CardHeader Grid.Row="0" Title="CA certificates" Description="{Binding Scope}">
+          <Button Classes="secondary" Command="{Binding AddFilesCommand}"
+                  ToolTip.Tip="Choose one or more CA certificate files (.crt, .pem, .cer, .der; PEM bundles with several certificates too)">
+            <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add files" />
+          </Button>
+        </ui:CardHeader>
+        <TextBlock Grid.Row="1" Classes="secondary" TextWrapping="Wrap"
+                   Text="The selected devices get these CA certificates and then trust certificates the CAs issued, e.g. of a RADIUS server or a video management system. Certificates a device already has are skipped." />
+        <TextBlock Grid.Row="2" Classes="secondary" Text="{Binding Summary}" Margin="0,8,0,8" />
+        <DataGrid x:Name="CertificateGrid" Grid.Row="3" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="1.2*" x:DataType="vm:CaCertificateRow" />
+            <DataGridTextColumn Header="Issued by" Binding="{Binding IssuedBy}" Width="1*" x:DataType="vm:CaCertificateRow" />
+            <DataGridTextColumn Header="Valid to" Binding="{Binding ValidTo}" Width="100" SortMemberPath="NotAfterUtc" x:DataType="vm:CaCertificateRow" />
+            <DataGridTemplateColumn Header="SHA-256" Width="220" SortMemberPath="Fingerprint">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:CaCertificateRow">
+                  <TextBlock Text="{Binding Fingerprint}" ToolTip.Tip="{Binding FullFingerprint}" VerticalAlignment="Center" Margin="10,0" TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="File" Width="1.2*" SortMemberPath="Files">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:CaCertificateRow">
+                  <TextBlock Text="{Binding Files}" ToolTip.Tip="{Binding Files}" VerticalAlignment="Center" Margin="10,0" TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Status" Width="1.6*" SortMemberPath="Status">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:CaCertificateRow">
+                  <ui:StatusChip Margin="10,0" Text="{Binding Status}" Detail="{Binding StatusDetail}" IsOk="{Binding IsOk}" IsError="{Binding IsError}" ToolTip.Tip="{Binding StatusDetail}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Width="56" CanUserSort="False">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:CaCertificateRow">
+                  <Button Classes="toolbar iconOnly" HorizontalAlignment="Center" ToolTip.Tip="Remove from the list" CommandParameter="{Binding}"
+                          Command="{Binding $parent[Window].((vm:InstallCaCertificatesViewModel)DataContext).RemoveCommand}">
+                    <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
+                  </Button>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Grid.Row="4" Classes="error" Text="{Binding TableError}" IsVisible="{Binding HasTableError}" Margin="0,4,0,0" TextWrapping="Wrap" />
+      </Grid>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Install" Command="{Binding InstallCommand}" IsDefault="True"
+              ToolTip.Tip="{Binding InstallBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>
