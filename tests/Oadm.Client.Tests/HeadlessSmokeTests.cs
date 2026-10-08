@@ -177,7 +177,7 @@ public sealed class HeadlessSmokeTests
             // Stop, then a scan that ends on its own (short fake time limit): "Scan finished" with Scan again.
             await scanVm.StopScanCommand.ExecuteAsync(null);
             await PumpUntilAsync(() => !scanVm.IsScanning);
-            Assert.Equal("Scan stopped, 11 devices found", scanVm.ScanStatusText);
+            Assert.Equal("Scan stopped, 8 devices found, 3 already added", scanVm.ScanStatusText);
             Capture(scanWindow, outDir, "client-add-scan-stopped.png");
             if (app.Services!.GetRequiredService<IOadmApi>() is FakeOadmApi fakeApi)
             {
@@ -185,7 +185,7 @@ public sealed class HeadlessSmokeTests
                 await scanVm.ScanAgainCommand.ExecuteAsync(null);
                 await PumpUntilAsync(() => !scanVm.IsScanning);
                 fakeApi.ZeroConfDuration = null;
-                Assert.Equal("Scan finished, 11 devices found", scanVm.ScanStatusText);
+                Assert.Equal("Scan finished, 8 devices found, 3 already added", scanVm.ScanStatusText);
                 Button again = scanWindow.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "ScanAgainButton");
                 Assert.True(again.IsEffectivelyVisible);
                 Assert.False(stop.IsEffectivelyVisible);

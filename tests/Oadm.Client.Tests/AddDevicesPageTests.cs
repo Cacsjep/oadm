@@ -46,7 +46,10 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.True(Row(page, "10.0.0.90").ShowSetPassword);
         Assert.Equal("Unreachable", Row(page, "10.0.0.95").ChipText);
         Assert.Equal(3, page.Rows.Count(r => r.ChipText == "Already added" && r.IsMuted));
-        Assert.Equal("11 found · 3 ready to add · 2 need a login · 2 need a password · 0 selected", page.SummaryText);
+        // Already added devices are not listed at all (user decision), only counted.
+        Assert.DoesNotContain(page.FilteredRows, r => r.IsAlreadyManaged);
+        Assert.Equal(8, page.FilteredRows.Count);
+        Assert.Equal("8 found · 3 ready to add · 2 need a login · 2 need a password · 0 selected", page.SummaryText);
         Assert.False(page.AddCommand.CanExecute(null));
     }
 
@@ -111,7 +114,7 @@ public sealed class AddDevicesPageTests : IDisposable
 
         // The server tries the working login on the other device whose login failed; the open scan stream reports it.
         await TestSupport.WaitUntilAsync(() => Row(page, "10.0.0.97").ChipText == "Authenticated (admin)");
-        Assert.Equal("11 found · 5 ready to add · 2 need a password · 1 selected", page.SummaryText);
+        Assert.Equal("8 found · 5 ready to add · 2 need a password · 1 selected", page.SummaryText);
     }
 
     [Fact]
@@ -234,7 +237,7 @@ public sealed class AddDevicesPageTests : IDisposable
         await using AddDevicesViewModel page = await OpenScanAsync();
 
         await TestSupport.WaitUntilAsync(() => !page.IsScanning);
-        Assert.Equal("Scan finished, 11 devices found", page.ScanStatusText);
+        Assert.Equal("Scan finished, 8 devices found, 3 already added", page.ScanStatusText);
         Assert.Equal(100, page.ScanProgress);
         Assert.False(page.ShowStop);
         Assert.True(page.ShowScanAgain);
@@ -249,7 +252,7 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.Equal("Searching the network...", page.ScanStatusText);
         Assert.Equal(11, page.Rows.Count);
         await TestSupport.WaitUntilAsync(() => !page.IsScanning);
-        Assert.Equal("Scan finished, 11 devices found", page.ScanStatusText);
+        Assert.Equal("Scan finished, 8 devices found, 3 already added", page.ScanStatusText);
         Assert.Equal(11, page.Rows.Count);
         Assert.True(Row(page, "10.0.0.92").IsSelected); // the new search did not reset the known login or the selection
         Assert.Equal("Authenticated (root)", Row(page, "10.0.0.92").ChipText);
@@ -266,7 +269,7 @@ public sealed class AddDevicesPageTests : IDisposable
         await page.StopScanCommand.ExecuteAsync(null);
 
         await TestSupport.WaitUntilAsync(() => !page.IsScanning);
-        Assert.Equal("Scan stopped, 11 devices found", page.ScanStatusText);
+        Assert.Equal("Scan stopped, 8 devices found, 3 already added", page.ScanStatusText);
         Assert.Equal(11, page.Rows.Count);
         Assert.True(page.ShowScanAgain);
         Assert.False(page.ShowStop);

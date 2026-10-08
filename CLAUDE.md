@@ -349,7 +349,8 @@ bar, one card, footer) in three modes:
   session; the devices found stay) and **Scan again** (icon refresh) after it finished or was stopped
   (zero-conf: a new session; range: the same range again; found devices stay, deduplicated by serial; a
   "Checking" of the new search never hides the result or selection of an earlier one). The text then
-  says "Scan finished, N devices found" or "Scan stopped, N devices found" ("1 device found").
+  says "Scan finished, N devices found" or "Scan stopped, N devices found" ("1 device found"), plus ", M already added" when
+  devices OADM already manages answered: those are not listed at all (user decision 2026-10-08) and not in the summary.
   Add manually has neither button.
 - **Add manually**: Address input (IP or host name, optional port and scheme,
   `https://camera.example.com:8443`); Enter or Find probes that address (`ProbeAddress`); every
@@ -362,8 +363,9 @@ the right edge); checked headless at 1040 px window width. Above it
 "Select all authenticated", a summary ("10 found · 3 ready to add · 1 need a login · 2 need a
 password · 3 selected"), search box and the scan progress row. Login status per device
 (`ui:StatusChip`): Checking... (accent), Authenticated (user) (ok), Password not set (warning),
-Login failed (error, reason as tooltip), Unreachable (error), Already added / Added (neutral / ok,
-row greyed). Only addable devices can be checked: authenticated ones, and factory-default ones
+Login failed (error, reason as tooltip), Unreachable (error), Added (ok, row greyed; already managed devices are not
+listed, see above).
+Only addable devices can be checked: authenticated ones, and factory-default ones
 once a first password is entered. **Add** (footer, "Add 3 devices") commits the checked devices
 in one click and the page always closes (user decision: no "Keep open" option).
 Every password field (login editor, first password + confirm) is `ui:PasswordBox` with the eye button.

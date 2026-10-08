@@ -666,7 +666,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                 row.PropertyChanged += OnRowPropertyChanged;
                 _rowsById.TryAdd(row.DiscoveredId, row);
                 Rows.Add(row);
-                if (row.Matches(SearchText))
+                if (IsListed(row, SearchText))
                 {
                     FilteredRows.Add(row);
                 }
@@ -714,7 +714,12 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             // Text first, then IsScanning: whoever reacts to IsScanning sees the final text.
             ScanProgress = 100;
             IsProgressIndeterminate = false;
-            string found = Rows.Count == 1 ? "1 device found" : string.Create(CultureInfo.CurrentCulture, $"{Rows.Count} devices found");
+            int listed = Rows.Count - _hidden;
+            string found = listed == 1 ? "1 device found" : string.Create(CultureInfo.CurrentCulture, $"{listed} devices found");
+            if (_hidden > 0)
+            {
+                found += string.Create(CultureInfo.CurrentCulture, $", {_hidden} already added");
+            }
             ScanStatusText = (_anyStopped ? "Scan stopped, " : "Scan finished, ") + found;
         }
 
@@ -726,6 +731,16 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         if (e.PropertyName == nameof(DiscoveredRowViewModel.Serial) && sender is DiscoveredRowViewModel { Serial.Length: > 0 } withSerial)
         {
             _rowsBySerial.TryAdd(withSerial.Serial, withSerial);
+        }
+
+        if (e.PropertyName == nameof(DiscoveredRowViewModel.IsAlreadyManaged) && sender is DiscoveredRowViewModel { IsAlreadyManaged: true } managed)
+        {
+            // A device found as "Checking" turned out to be managed already: it leaves the list.
+            FilteredRows.Remove(managed);
+            if (FocusedRow == managed)
+            {
+                FocusedRow = null;
+            }
         }
 
         bool countsChanged = sender is DiscoveredRowViewModel row && Recount(row);
@@ -759,7 +774,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     /// <summary>Updates the summary counters for one row in O(1); true when they changed.</summary>
     private bool Recount(DiscoveredRowViewModel row)
     {
-        var now = new RowCounts(row.CanAdd, row.ShowLogIn, row.ShowSetPassword, row.IsSelected && row.CanAdd);
+        var now = new RowCounts(row.CanAdd, row.ShowLogIn, row.ShowSetPassword, row.IsSelected && row.CanAdd, row.IsAlreadyManaged);
         if (_counted.TryGetValue(row, out RowCounts old))
         {
             if (old == now)
@@ -781,10 +796,11 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         _failed += counts.NeedsLogin ? delta : 0;
         _factory += counts.NeedsPassword ? delta : 0;
         _selected += counts.Selected ? delta : 0;
+        _hidden += counts.Hidden ? delta : 0;
     }
 
     /// <summary>What a row adds to the summary ("ready to add", "need a login", "need a password", "selected").</summary>
-    private readonly record struct RowCounts(bool Ready, bool NeedsLogin, bool NeedsPassword, bool Selected);
+    private readonly record struct RowCounts(bool Ready, bool NeedsLogin, bool NeedsPassword, bool Selected, bool Hidden);
 
     // Scale: per-row bookkeeping so a discovered device, a login result or a checkbox costs O(1), not a
     // scan of every row (4 counts over 5,000 rows per change made "select all" O(n^2)).
@@ -795,11 +811,19 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     private int _failed;
     private int _factory;
     private int _selected;
+    private int _hidden;
+
+    /// <summary>
+    /// Devices OADM already manages are not listed at all (user decision); only the scan status
+    /// line counts them ("Scan finished, 8 devices found, 3 already added"). They stay in <see cref="Rows"/> so a later
+    /// answer of the same device is merged, not added.
+    /// </summary>
+    private static bool IsListed(DiscoveredRowViewModel row, string? search) => !row.IsAlreadyManaged && row.Matches(search);
 
     partial void OnSearchTextChanged(string value)
     {
         // One Reset instead of one event per row.
-        FilteredRows.ReplaceAll(Rows.Where(r => r.Matches(value)).ToList());
+        FilteredRows.ReplaceAll(Rows.Where(r => IsListed(r, value)).ToList());
     }
 
     partial void OnFocusedRowChanged(DiscoveredRowViewModel? value)
@@ -816,7 +840,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         int failed = _failed;
         int factory = _factory;
         SelectedCount = _selected;
-        var parts = new List<string> { string.Create(CultureInfo.CurrentCulture, $"{Rows.Count} found"), string.Create(CultureInfo.CurrentCulture, $"{ready} ready to add") };
+        var parts = new List<string> { string.Create(CultureInfo.CurrentCulture, $"{Rows.Count - _hidden} found"), string.Create(CultureInfo.CurrentCulture, $"{ready} ready to add") };
         if (failed > 0)
         {
             parts.Add(string.Create(CultureInfo.CurrentCulture, $"{failed} need a login"));
