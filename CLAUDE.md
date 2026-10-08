@@ -195,9 +195,11 @@ Two processes, like ADM:
   ADDED per device, then with `snapshot_end_marker = 1` one `SNAPSHOT_END` (kind 4, no device), then live
   changes; the request is wire compatible with the former Empty), `Remove` and `SetCredentials` (one
   transaction for all ids), `Refresh`, `GetWebUiUrl`.
-- `DiscoveryService`: `StartZeroConf`, `StartRangeScan(from, to)`, `ProbeAddress(address)` (one
-  entered IP or host name, optional port/scheme; INVALID_ARGUMENT for an unusable or unresolvable
-  address), `WatchDiscovered` (stream; every device with its automatic login result
+- `DiscoveryService`: `StartZeroConf`, `StartRangeScan(from, to)`, `ProbeAddress(address, user_name = 2,
+  password = 3)` (one entered IP or host name, optional port/scheme; INVALID_ARGUMENT for an unusable or
+  unresolvable address, or only one of user name (1..64) and password (1..256); the optional credentials of an
+  imported line belong to that session only: tried first, then the credential list, server memory only, never
+  saved to the list, never logged; `DiscoveryAuthenticator.AddSessionCredential`), `WatchDiscovered` (stream; every device with its automatic login result
   `auth_state = 14` (PENDING, AUTHENTICATED, PASSWORD_NOT_SET, LOGIN_FAILED, UNREACHABLE,
   ALREADY_ADDED), `auth_user_name = 15`, `credential_id = 16` ("list:<id>",
   "entered"), `auth_detail = 17`, `passphrase_policy = 18`, `entered_address = 19`; every scan
@@ -394,8 +396,8 @@ User decision: maximum technician satisfaction. Adding devices is one page, no s
 logs in to every device it finds with the credentials the technician already has.
 
 Toolbar (toolbar plugins, see "Toolbar plugins"): **Scan** (primary), **Scan IP range**, **Add
-manually** open the same dialog window (`Discovery/AddDevicesWindow`, shared dialog controls: title
-bar, one card, footer) in three modes:
+manually** and **Import devices** open the same dialog window (`Discovery/AddDevicesWindow`, shared dialog
+controls: title bar, one card, footer) in four modes:
 - **Scan**: zero-conf (mDNS) discovery starts immediately; devices appear live. The scan ends after
   `Discovery.ZeroConfSeconds` (Settings page, default 30 s, 5..300).
 - **Scan IP range**: From / To inputs on top; Enter or the Scan button starts (several ranges add to
@@ -412,6 +414,29 @@ bar, one card, footer) in three modes:
   `https://camera.example.com:8443`); Enter or Find probes that address (`ProbeAddress`); every
   address adds a row; "No Axis device answered at X." when nothing answers. The entered address
   (host[:port]) becomes the device address on add, regardless of `Devices.UseHostName`.
+- **Import devices** (user decision 2026-10-08, built-in icon button after Add manually, icon download): the
+  client asks for a CSV file (open picker through `IDialogService.OpenFileAsync`) and reads it with
+  `Discovery/DeviceImportFile` (O(n)): the Export devices CSV or any CSV with an address column (header names
+  case-insensitive: Address, IP address, IP, Host name; optional **User name** and **Password**; other columns
+  ignored), or a plain file with one address per line; comma or semicolon, UTF-8 (BOM optional), UTF-16 with BOM,
+  else Latin-1; a formula guard `'` of the export is removed. A password without a user name is for `root`; a user
+  name alone is no credential. The whole file is refused in `ui:MessageWindow` ("Import devices") when it is larger
+  than 2 MB, has more than 10,000 addresses, no address at all, no Address column (with a header) or is not text.
+  Problems of single lines stay in their row (chip "Not added" + detail): no address, not an IP address or host
+  name (http/https, port, no path), "Listed before in line N." (same address), line longer than 1,024
+  characters, unclosed quote, user name > 64 / password > 256. The page (header "Import devices", "Addresses from
+  <file>, 16 checked at a time. ...") shows one row per line at once in file order ("Waiting"), then probes the
+  addresses with `ProbeAddress(address, user, password)`, at most `MaxImportProbes` = 16 at a time (a probe holds
+  its slot until its watch stream ended, i.e. its logins finished): the row becomes "Checking...", then shows
+  the device it found (`DiscoveredRowViewModel.Adopt`, the line's row keeps its place) with the login result;
+  "Not found: No Axis device answered at X." (also for a host name that does not resolve), "Not added: Same
+  device as <address> (<MAC>)." when another line found the device; managed devices leave the list like
+  everywhere. Progress row "Checking addresses: 120 of 5,000" (percent), **Stop** (lines not probed yet: "Not
+  checked", neutral), then "Import finished|stopped, N devices found" (+ ", M already added"); no Scan again.
+  Summary adds "N not added". Credentials of the file stay in client memory until their probe, go to the server
+  only, are never logged and never saved to the credential list (the inline login editor keeps its own "Save to
+  credential list"). Then the technician reviews and clicks Add as usual. Scale: 10,000 lines are listed,
+  filtered and selected in one reset each (test).
 
 List: checkbox (40 px), category icon (36 px), Address (140), MAC address (150), Model (160), Login
 (status, star: takes the rest so status and detail sit right after Model), Action (auto, min 160, at
@@ -526,7 +551,7 @@ density, styled as described in Visual Style.
 
 Layout, top to bottom:
 1. Title "Devices". Left navigation rail as described in Visual Style.
-2. Toolbar: toolbar plugins (Scan, Scan IP range, Add manually | Remove | task plugin actions that
+2. Toolbar: toolbar plugins (Scan, Scan IP range, Add manually, Import devices | Remove, Export devices | task plugin actions that
    declare `ShowInToolbar` | plugin entries, last the icon button AXIS OS - Release Notes), Columns icon button (tooltip
    "Choose columns") and search box right-aligned (host parts); compact icon buttons keep it on one line at 1280 px with
    the rail expanded (user decision 2026-10-08).
@@ -898,8 +923,16 @@ public interface IToolbarContext         // UI thread
 
 The Devices page toolbar is made of toolbar plugins. Built in (compiled into the client,
 `Devices/Toolbar/BuiltInToolbarPlugins.cs`, registered in the container like plugin parts): Scan
-(primary), Scan IP range, Add manually (group Add), Remove (Manage; confirmation, the context menu
-uses the same flow), one generic plugin with a button per task plugin that declares
+(primary), Scan IP range, Add manually, **Import devices** (group Add, order 30, icon-only, icon `download`,
+`HostPages.AddImport`: see "Add Devices Page"), Remove (Manage; confirmation, the context menu
+uses the same flow), **Export devices** (Manage, order 10, icon-only, icon `export`, `HostPages.ExportDevices`,
+user decision 2026-10-08: the selected devices, or every device the search shows when none is selected, the
+tooltip says which; `Devices/DeviceListCsv`: header + every grid column as text (MAC address, Status, Address,
+Host name, Model, Firmware, Category, Product type, DHCP, HTTPS, Certificate expires as ISO date yyyy-MM-dd,
+Certificate, IEEE 802.1X) in the grid's unsorted order, RFC 4180 quoting (`Infrastructure/Csv`), CRLF, UTF-8 with
+BOM, a cell starting with = + - @ gets a leading `'` (no formula injection), no password (the client has none);
+save picker `IDialogService.SaveFileAsync`, default name `oadm-devices-<yyyy-MM-dd>.csv`; nothing to export or a
+failed save = `ui:MessageWindow`; O(n), 5,000 devices tested), one generic plugin with a button per task plugin that declares
 `ShowInToolbar` (Tasks; enabled when it can run on the whole selection) and **AXIS OS - Release Notes** (Plugins,
 order 1000 = last, icon-only `ui:ToolbarButton` (`IsIconOnly`, the name as tooltip), icon `externalLink`: opens https://help.axis.com/en-us/axis-os-release-notes in the default browser). External ones come from
 `*.Client.dll` like dialogs and pages. `DeviceToolbar` orders them by group, order, id, creates each

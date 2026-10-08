@@ -241,7 +241,7 @@ public interface IToolbarContext           // UI thread only; events are raised 
     IReadOnlyList<ToolbarTaskPlugin> TaskPlugins { get; } event EventHandler? TaskPluginsChanged;
     bool CanRunTask(string pluginId);                     // CanRun for the whole selection
     Task<IReadOnlyList<string>?> RunTaskAsync(string pluginId, CancellationToken ct); // dialog first when needed
-    Task OpenAsync(string hostPage);                      // HostPages.AddScan / AddIpRange / AddManually / Devices / Logs / Settings
+    Task OpenAsync(string hostPage);                      // HostPages.AddScan / AddIpRange / AddManually / AddImport / ExportDevices / Devices / Logs / Settings
     Task RemoveDevicesAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
     Task ShowMessageAsync(string title, string message);
     Task<bool> ConfirmAsync(string title, string message, string confirmText);
