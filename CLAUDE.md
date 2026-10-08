@@ -35,31 +35,56 @@ Server and client publish as one self-contained single-file exe per platform
 (`<OadmPluginId>`, server and client part together) and copied next to both exes in
 `plugins/<plugin id>/`, so a new plugin project is packaged without further changes.
 `--version` (default `0.1.0-dev`, a leading `v` is removed) goes to every assembly (`-p:Version`).
+After the publish `manage publish` runs `tools/Oadm.Notices` (generator, never shipped): it reads the published
+`*.deps.json` files (server and client from `obj/Release/<tfm>/<rid>/`, every plugin folder) and writes
+`THIRD-PARTY-NOTICES.txt` next to each exe: the hand-written `THIRD-PARTY-NOTICES.md` (FFmpeg, Inter, .NET), every NuGet
+package and runtime pack with license, copyright, project and where it is used (server, client, plugin x), the full
+license texts from `packaging/notices/licenses/` (MIT, Apache-2.0, BSD-2/3-Clause, OFL-1.1, LGPL-2.1; Apache-2.0,
+LGPL-2.1 and OFL-1.1 always) and the license and notice files the packages ship (root `LICENSE*`/`NOTICE*`/
+`THIRD-PARTY-NOTICES*`, the nuspec license file, `legal/**`), deduplicated by content; a license without a text is a
+warning. `LICENSE.txt` and `LGPL-2.1.txt` are written next to each exe too.
 
 Installers (`manage package <windows|linux|macos> [--rid] [--version]` into `artifacts/packages/`; layout
-table and notes in `packaging/README.md`; CI `.github/workflows/package.yml` only on release tags `v*.*.*`
-(e.g. `v0.0.1`), which also installs, checks and removes the native package on each runner, then publishes the three
-installers as the GitHub release of the tag, job `release`):
+table and notes in `packaging/README.md`). Every installer offers **"Server and client"** (default) or **"Client
+only"** and ships `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt` and `LGPL-2.1.txt` with each app. CI is one workflow,
+`.github/workflows/release.yml`, only on release tags `v*.*.*` (e.g. `v0.0.1`): job `tests` (Windows, Linux, macOS,
+`dotnet test` with the unit filter and `--blame-hang-timeout 5m`, 30 min timeout) -> job `installers` (needs tests;
+builds the three installers; installs, checks and removes the MSI and the .deb packages as "Server and client" and as
+"Client only"; checks the .pkg's choices and payload without installing) -> job `release` (needs both; the GitHub
+release of the tag with the installers and `SHA256SUMS.txt`):
 - **Windows MSI** (WiX Toolset 6 via the `WixToolset.Sdk` MSBuild SDK, `packaging/windows/`, not in
   Oadm.sln; WiX 7 not used, it requires the OSMF EULA), x64 only (no ARM, user decision 2026-10-08), per machine: `Program Files\OADM\Server`
   and `\Client`, Windows service "OADM Server" (`OadmServer`, automatic, LocalSystem, restart on failure,
-  `--Oadm:DataDir="%ProgramData%\OADM"`), Start menu shortcut, firewall rules TCP 5080 and UDP 123/67 for
-  `Oadm.Server.exe`, fixed UpgradeCode + MajorUpgrade (same version reinstall allowed). `%ProgramData%\OADM` is
+  `--Oadm:DataDir="%ProgramData%\OADM"`), Start menu shortcut, one firewall rule TCP 5080 for `Oadm.Server.exe`, profiles
+  Domain and Private (`Profile="[OADM_FW_PROFILE]"` = 3), fixed UpgradeCode + MajorUpgrade (same version reinstall
+  allowed). Features `Client` (always) and `Server` (service, firewall rule, data folder); own UI `WixUI_Oadm`
+  (welcome, license, page "Choose what to install" with the radio buttons "Server and client" / "Client only" =
+  AddLocal / Remove of `Server`, ready, progress, finish; Change in Apps and Features opens the same page, upgrades keep
+  the choice through MigrateFeatureStates); silent `ADDLOCAL=Client` = client only. `%ProgramData%\OADM` is
   created for SYSTEM and Administrators only and never removed. Files are harvested from the publish folders.
-- **Linux .deb** (`dpkg-deb`, `packaging/linux/build-deb.sh`, amd64 only, built on Linux or in a container):
-  `/opt/oadm/server`, `/opt/oadm/client`, `/usr/bin/oadm-client`, `oadm.desktop` + hicolor icon, systemd unit
-  `oadm-server.service` (root, `Type=notify`, `Restart=on-failure`, `OADM_DATA_DIR=/var/lib/oadm`,
-  StateDirectory 0700, optional `/etc/default/oadm-server`); postinst enables and starts it like
-  dh_installsystemd and works without systemd; prerm stops it; data kept even on purge. Pre-release versions
-  are written `1.2.0~rc.1`. No .rpm.
+- **Linux .deb** (`dpkg-deb`, `packaging/linux/build-deb.sh`, amd64 only, built on Linux or in a container), three
+  packages: `oadm-server` (`/opt/oadm/server`, systemd unit `oadm-server.service` (root, `Type=notify`,
+  `Restart=on-failure`, `OADM_DATA_DIR=/var/lib/oadm`, StateDirectory 0700, optional `/etc/default/oadm-server`),
+  maintainer scripts: postinst enables and starts it like dh_installsystemd and works without systemd; prerm stops it;
+  data kept even on purge), `oadm-client` (`/opt/oadm/client`, `/usr/bin/oadm-client`, `oadm.desktop` + hicolor icon,
+  X11 libraries as Depends) and the metapackage `oadm` (depends on both, same version) = "Server and client";
+  `oadm-client` alone = "Client only". Both take over the files of the former single package `oadm`
+  (`Replaces`/`Breaks: oadm (<< 0.0.3~)`). Each has `/usr/share/doc/<package>/{copyright,THIRD-PARTY-NOTICES.txt,
+  LGPL-2.1.txt}`. Pre-release versions are written `1.2.0~rc.1`. No .rpm.
 - **macOS .pkg** (`pkgbuild` + `productbuild`, `packaging/macos/build-pkg.sh`, x64 (Intel) only, built on macOS
-  only): `/Applications/OADM.app` (Info.plist, icns), server in `/Library/Application Support/OADM/server`,
-  LaunchDaemon `com.oadm.server` (root, `OADM_DATA_DIR=/Library/Application Support/OADM`, folder 0700),
-  `uninstall-oadm.sh` next to the server. Unsigned (executables ad hoc signed); Developer ID signing and
-  notarization are a later step.
+  only): `/Applications/OADM.app` (Info.plist, icns, license texts and plugins in `Contents/Resources`), server in
+  `/Library/Application Support/OADM/server`, LaunchDaemon `com.oadm.server` (root, `OADM_DATA_DIR=/Library/Application
+  Support/OADM`, `OADM_SERVICE=launchd`, folder 0700), `uninstall-oadm.sh` next to the server and in the app's
+  Resources. Choices (`customize="allow"`): `com.oadm.choice.client` "OADM client" (always) and
+  `com.oadm.choice.server` "OADM server" (LaunchDaemon + server; uncheck for "Client only", or
+  `installer -applyChoiceChangesXML`). Unsigned (executables ad hoc signed); Developer ID signing and notarization are a
+  later step.
 - The server runs as root / LocalSystem (NTP and DHCP plugins need UDP 123 and 67). As a service the host
   integrates with the SCM and systemd (`Oadm.Server.Hosting.ServiceHosting`: `AddWindowsService`, `AddSystemd`,
-  content root = app folder; no-ops on a console). Services set `DOTNET_BUNDLE_EXTRACT_BASE_DIR` to a folder
+  content root = app folder; no-ops on a console). `ServiceHosting.IsRunningAsService()` (Windows service, systemd, or
+  macOS with `OADM_SERVICE=launchd`; `OadmServerHostOptions.ServiceMode` overrides it, tests) switches on the service
+  hardening of "Production hardening / 5": folder checks (`FolderGuard`), netsh firewall rules for plugins, no
+  development plugin folder. Services set `DOTNET_BUNDLE_EXTRACT_BASE_DIR` to a folder
   only the service account can write (`%ProgramData%\OADM\runtime`, `/var/cache/oadm`,
   `/Library/Application Support/OADM/runtime`), never a shared temp folder.
 - Version from the tag (`v1.2.0` -> `1.2.0`), else `0.1.0-dev`; MSI and .pkg use the numeric part.
@@ -82,8 +107,8 @@ LGPL-2.1 build from the `DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.<rid>` package, 
 by the .NET host at startup (`DOTNET_BUNDLE_EXTRACT_BASE_DIR`); the publish folder contains only
 the exe. They add about 57 MB to the win-x64 exe. `OADM_FFMPEG_DIR` loads a user-supplied build
 instead (LGPL replaceability), `Oadm.Client --check-decoder` verifies the decoder without a
-window. Licenses and source offer: `THIRD-PARTY-NOTICES.md`. Never add GPL or nonfree FFmpeg
-builds.
+window. Licenses and source offer: `THIRD-PARTY-NOTICES.md` (hand-written part of the generated
+`THIRD-PARTY-NOTICES.txt`, see above). Never add GPL or nonfree FFmpeg builds.
 
 # Solution Layout
 
@@ -116,6 +141,8 @@ tests/
   Oadm.Core.Tests/
   Oadm.Server.Tests/
   Oadm.Client.Tests/
+tools/                 Oadm.DiscoveryProbe (manual discovery tests), Oadm.Notices (THIRD-PARTY-NOTICES.txt generator)
+packaging/             installers (windows/, linux/, macos/), icons/, notices/licenses/ (license text templates)
 docs/                  ADM reference screenshots, protocol notes
 ```
 
@@ -192,7 +219,8 @@ Two processes, like ADM:
   {plugin_id, topic, payload_json} the plugin publishes through `ICorePluginContext.Events` from the call on; NOT_FOUND
   unknown plugin; `Oadm.Core.Plugins.PluginEventHub` fans out with 256 events buffered per watcher, oldest dropped).
   Users: "Snapshot report", "VAPIX Commander", "NTP server", "DHCP server", "PKI", "Metadata Monitor".
-- `SettingsService`: `Get`, `Set` (`ServerSettings.zero_conf_seconds = 8`, 0 keeps the stored value),
+- `SettingsService`: `Get`, `Set` (`ServerSettings.zero_conf_seconds = 8`, 0 keeps the stored value; read-only
+  `server_version = 20` in both replies for "About and licenses"),
   `ListCredentials`, `AddCredential(user_name, password)`
   (INVALID_ARGUMENT, RESOURCE_EXHAUSTED over 20 entries; an identical pair returns the existing
   entry; a new entry is tried on the failed devices of every open add session), `RemoveCredential(id)` (NOT_FOUND), `RevealCredential(id)` (reply `RevealedCredential { password = 1 }`:
@@ -747,6 +775,9 @@ public interface ICorePluginContext
     ITrustAnchors? TrustAnchors => null; // Set(der[]): CAs the server trusts when rating device certificates (per plugin)
     IDeviceEventStreams? EventStreams => null; // OpenAsync(deviceId): the device's RTSP event stream with the stored
                                        // credentials (never handed out): XML documents, LostDocuments, dispose = TEARDOWN
+    IFirewallRules? Firewall => null;  // Open/CloseAsync(FirewallRule): inbound allow rule for the server exe, Domain +
+                                       // Private; only the Windows service offers it (netsh), else null. Helper:
+                                       // FirewallRuleKeeper.SyncAsync(enabled) (Oadm.Sdk.Network)
 }
 ```
 
@@ -1593,7 +1624,10 @@ no hint text; entries (key icon, user name, password masked as 8 bullets, eye ic
 "Hide password" that loads it with `RevealCredential` and masks (and forgets) it on the second click, copy icon
 button "Copy password" (clipboard of the window, loaded on demand, not shown), added time, Remove), add form (user
 name, password, "Add credential"); stored encrypted on the server (`CredentialListStore`, table
-CredentialListEntries), tried on every discovered device (see "Add Devices Page"). There is no "This client" card:
+CredentialListEntries), tried on every discovered device (see "Add Devices Page"). Last card **About and licenses**
+(`Settings/AboutView`, own view model): client version, server version (`ServerSettings.server_version`), the
+sentence on the Apache-2.0 license, "Show licenses" shows `THIRD-PARTY-NOTICES.txt` (next to the exe, the macOS app's
+`Contents/Resources`, or `THIRD-PARTY-NOTICES.md` in a checkout) in a read-only `ui:CodeView` (Plain). There is no "This client" card:
 the server address is set with `--server` or in the client settings file (user decision 2026-10-08). Client-side
 (local JSON in LocalApplicationData): server address, device grid column layout, bottom pane state.
 
@@ -1693,22 +1727,37 @@ marked *(default)* were filled in and can be changed. This section wins over old
 
 - **Firewall (Windows)**: the MSI opens only TCP 5080, profiles Domain and Private. The NTP and DHCP plugins add their UDP
   rule (123 / 67, Domain and Private) when enabled and remove it when disabled (`netsh advfirewall`, the server runs as
-  SYSTEM); Linux and macOS unchanged.
+  SYSTEM); Linux and macOS unchanged. *Implemented:* SDK `ICorePluginContext.Firewall` (`IFirewallRules`, null unless
+  the server runs as the Windows service) and `FirewallRuleKeeper` (first sync always applies, so a rule left by a crash
+  is removed at start; later only changes; errors logged, never fatal, retried on the next change). Rules
+  `FirewallRule.ForService("NTP", Udp, 123)` = "OADM Server (NTP, UDP 123)" and "OADM Server (DHCP, UDP 67)", synced in
+  the services' ApplyAsync and closed on stop. Server: `NetshFirewallRules` (`delete rule name=...` then `add rule
+  name=... dir=in action=allow protocol=UDP localport=123 program=<exe> profile=domain,private enable=yes`; delete
+  ignores "No rules match"), commands through `ICommandRunner` (fake in tests).
 - **Folders** (user decision: service account stays SYSTEM / root): the server checks at start that its data folder,
   runtime extraction folder and every plugin folder it loads are writable only by admins / root (Windows ACL, Unix owner
   root and no group/world write); a folder that is not is fixed when possible (Windows: ACL reset by SYSTEM) or skipped
   with an error (plugins) / refused (data folder). The development plugin folder (`artifacts/plugins`) is only used when
-  the server does not run as an installed service.
+  the server does not run as an installed service. *Implemented:* `Oadm.Server.Hosting.FolderGuard` over
+  `IFolderPermissions` (fake in tests): `WindowsFolderPermissions` (System.Security.AccessControl; owner and every
+  entry below must be SYSTEM / Administrators / TrustedInstaller, no allow entry with write, append, delete, change
+  permissions, take ownership or generic write/all for anyone else, CREATOR OWNER allowed; fix: owner Administrators,
+  protected ACL SYSTEM + Administrators full control (+ Users read and execute for plugin folders), children reset to
+  inherit) and `UnixFolderPermissions` (`find <dir> ! -type l ( ! -user 0 -o -perm -0020 -o -perm -0002 )`; fix
+  `chown -R 0:0`, `chmod -R go-w`). Step 0 of `OadmServerHost.StartAsync`: data folder and
+  `DOTNET_BUNDLE_EXTRACT_BASE_DIR` (unless inside it), an unfixable one throws; `PluginLoader.FolderCheck` skips an
+  unfixable plugin folder with a load error. Only in service mode.
 - **Installer choice**: each installer offers "Server and client" (default) or "Client only": MSI features (Server
   optional), `.deb` split into `oadm-server` and `oadm-client` (+ metapackage `oadm` depending on both), `.pkg`
-  choices.
+  choices. *Implemented*, details in "Packaging".
 - **Licenses**: at publish a complete notices file is generated from every NuGet package (license expression or file
   from the package) and the bundled assets (FFmpeg LGPL-2.1 full text, Inter OFL, .NET runtime notices); `LICENSE`,
   `THIRD-PARTY-NOTICES.txt` and the LGPL text ship in all three installers. The client gets **About and licenses**
-  (Settings page): version, server version, license texts.
+  (Settings page): version, server version, license texts. *Implemented* (`tools/Oadm.Notices`, see "Packaging";
+  Settings page card, see "Settings").
 - **One release workflow** (`release.yml`, on tags `v*.*.*` only, replaces ci.yml and package.yml): tests on Windows,
   Linux, macOS (timeout 30 min, hang detection) -> the three installers -> the GitHub release, only when everything
-  passed. v0.0.1 stays a normal release (user decision).
+  passed. v0.0.1 stays a normal release (user decision). *Implemented*, plus `SHA256SUMS.txt` in the release.
 - **Not now** (user decisions): installer signing (SHA-256 checksums are published with each release instead),
   least-privilege service accounts, database backup before migrations.
 - **Hardware write tests**: done by the user by hand on a spare camera.
