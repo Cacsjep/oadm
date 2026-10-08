@@ -23,7 +23,8 @@ public sealed class UpstreamClientTests
         Assert.InRange(sample.DelaySeconds, 0, 0.3);
         Assert.Equal(0.002, sample.RootDelaySeconds, 3);
         Assert.Equal(3, sample.ToState("x").Stratum);
-        Assert.StartsWith("Stratum 2, offset +3.0 s", sample.Describe(), StringComparison.Ordinal);
+        // Same tolerance as the offset above: a slow CI round trip shifts the measured offset by up to 0.1 s.
+        Assert.Matches(@"^Stratum 2, offset \+(2\.9|3\.0|3\.1) s, round trip ", sample.Describe());
     }
 
     [Fact]
