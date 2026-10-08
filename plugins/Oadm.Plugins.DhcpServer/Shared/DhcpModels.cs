@@ -59,6 +59,12 @@ public sealed record DhcpConfig
     public string? RangeStart { get; init; }
 
     public string? RangeEnd { get; init; }
+
+    /// <summary>
+    /// Other DHCP servers the user confirmed with "Enable anyway" for this interface: they no longer turn the status
+    /// into a warning (a server not in this list still does).
+    /// </summary>
+    public IReadOnlyList<string> AcceptedOtherServers { get; init; } = [];
 }
 
 /// <summary>What clients get on an interface (everything derived, nothing asked).</summary>

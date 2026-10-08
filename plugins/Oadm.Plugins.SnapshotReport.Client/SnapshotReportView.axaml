@@ -14,7 +14,7 @@
         <CheckBox Content="Select all" IsChecked="{Binding IsAllSelected}" VerticalAlignment="Center" Margin="8,0"
                   ToolTip.Tip="Select or clear every shown picture for the report" />
         <ui:ToolbarSeparator />
-        <ui:ToolbarButton IconKey="export" Text="Export PDF..." IsPrimary="True" Command="{Binding ExportPdfCommand}"
+        <ui:ToolbarButton IconKey="export" Text="Export PDF" IsPrimary="True" Command="{Binding ExportPdfCommand}"
                           ToolTip.Tip="Create the maintenance report of the selected pictures" />
       </StackPanel>
 

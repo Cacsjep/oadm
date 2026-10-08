@@ -5,16 +5,16 @@
         x:Class="Oadm.Plugins.DhcpServer.Client.StaticLeaseWindow"
         x:DataType="vm:StaticLeaseDialogViewModel"
         Title="{Binding Title}"
-        Width="640" Height="400" MinWidth="560" MinHeight="380"
+        Width="640" MinWidth="560" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
   <!-- Title bar, one card (form), footer. Shared controls and theme classes only. -->
-  <Grid RowDefinitions="Auto,*,Auto">
+  <Grid RowDefinitions="Auto,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
 
-    <Border Grid.Row="1" Classes="card" Margin="16,0">
+    <Border Grid.Row="1" Classes="dialogBody">
       <StackPanel Classes="form">
         <ui:FormField Label="MAC address" Hint="The device's MAC address (on AXIS devices the serial number).">
           <TextBox Text="{Binding Mac}" PlaceholderText="e.g. B8:A4:4F:63:13:39" />

@@ -245,7 +245,7 @@
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-    <Setter Property="Margin" Value="0,0,0,2" />
+    <Setter Property="Margin" Value="0,2,0,0" />
   </Style>
   <Style Selector="TextBlock.cardTitle">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeCardTitle}" />
@@ -274,6 +274,10 @@
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.CardCornerRadius}" />
     <Setter Property="Padding" Value="{StaticResource Oadm.CardPadding}" />
     <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <!-- Body of a single-operation dialog (one form, no card), padded like ui:MessageWindow. -->
+  <Style Selector="Border.dialogBody">
+    <Setter Property="Padding" Value="24,4,24,16" />
   </Style>
   <Style Selector="Border.separator">
     <Setter Property="Height" Value="1" />

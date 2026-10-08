@@ -73,13 +73,16 @@ public static class WebServerTls
         _ = Body(answer, "Set web server settings");
     }
 
-    /// <summary>The SetWebServerTlsConfiguration body (Axis doc layout).</summary>
+    /// <summary>
+    /// The SetWebServerTlsConfiguration body. Every element is namespace qualified like the device's own Get answer
+    /// (aweb:Configuration name="WebServer", aweb:Tls): AXIS OS 12.11 refuses unqualified ones with ter:TagMismatch.
+    /// </summary>
     public static string BuildSet(WebServerTlsConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         var builder = new StringBuilder();
-        builder.Append($"<aweb:SetWebServerTlsConfiguration xmlns:aweb=\"{WebNs}\" xmlns:acert=\"{CertNs}\"><Configuration>");
-        builder.Append("<Tls>").Append(configuration.Tls ? "true" : "false").Append("</Tls>");
+        builder.Append($"<aweb:SetWebServerTlsConfiguration xmlns:aweb=\"{WebNs}\" xmlns:acert=\"{CertNs}\"><aweb:Configuration name=\"WebServer\">");
+        builder.Append("<aweb:Tls>").Append(configuration.Tls ? "true" : "false").Append("</aweb:Tls>");
         builder.Append("<aweb:ConnectionPolicies><aweb:Admin>").Append(Escape(configuration.Policy ?? ConnectionPolicy.HttpAndHttps)).Append("</aweb:Admin></aweb:ConnectionPolicies>");
         builder.Append("<aweb:Ciphers>");
         foreach (var cipher in configuration.Ciphers)
@@ -91,7 +94,7 @@ public static class WebServerTls
         AppendIds(builder, "Certificates", configuration.Certificates);
         AppendIds(builder, "CACertificates", configuration.CaCertificates);
         AppendIds(builder, "TrustedCertificates", configuration.TrustedCertificates);
-        builder.Append("</aweb:CertificateSet></Configuration></aweb:SetWebServerTlsConfiguration>");
+        builder.Append("</aweb:CertificateSet></aweb:Configuration></aweb:SetWebServerTlsConfiguration>");
         return builder.ToString();
     }
 

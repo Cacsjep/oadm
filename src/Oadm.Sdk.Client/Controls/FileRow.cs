@@ -9,7 +9,7 @@ namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>
 /// A chosen local file: file icon, file name, secondary details (size, what it is for), an error
-/// line when the file was rejected, and the "Choose file..." button on the right. Used by every
+/// line when the file was rejected, and the "Choose file" button on the right. Used by every
 /// dialog that uploads a file (firmware, ACAP packages, ...).
 /// </summary>
 public sealed class FileRow : Grid
@@ -24,7 +24,7 @@ public sealed class FileRow : Grid
         AvaloniaProperty.Register<FileRow, string?>(nameof(Error));
 
     public static readonly StyledProperty<string?> ButtonTextProperty =
-        AvaloniaProperty.Register<FileRow, string?>(nameof(ButtonText), "Choose file...");
+        AvaloniaProperty.Register<FileRow, string?>(nameof(ButtonText), "Choose file");
 
     public static readonly StyledProperty<ICommand?> CommandProperty =
         AvaloniaProperty.Register<FileRow, ICommand?>(nameof(Command));

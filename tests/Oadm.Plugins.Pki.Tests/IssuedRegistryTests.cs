@@ -44,7 +44,14 @@ public sealed class IssuedRegistryTests
         await registry.AddAsync(new IssuedCertificate { SerialNumber = "01", DeviceId = Guid.NewGuid(), NotAfterUtc = DateTime.UtcNow.AddDays(10) }, CancellationToken.None);
         Assert.Empty(await store.LoadIssuedAsync(CancellationToken.None));
 
-        time.Advance(TimeSpan.FromSeconds(3));
-        await Wait.UntilAsync(() => store.LoadIssuedAsync(CancellationToken.None).GetAwaiter().GetResult().Count == 1);
+        // The flush loop may start its delay after this line: advance until the write happened (no race on a busy machine).
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while ((await store.LoadIssuedAsync(CancellationToken.None)).Count == 0 && DateTime.UtcNow < deadline)
+        {
+            time.Advance(TimeSpan.FromSeconds(3));
+            await Task.Delay(20);
+        }
+
+        Assert.Single(await store.LoadIssuedAsync(CancellationToken.None));
     }
 }

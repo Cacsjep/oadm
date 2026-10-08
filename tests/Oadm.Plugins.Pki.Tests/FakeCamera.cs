@@ -334,6 +334,14 @@ internal sealed class FakeCamera : IVapixClient
             var xml = XDocument.Parse(body);
             XNamespace web = WebServerTls.WebNs;
             XNamespace cert = WebServerTls.CertNs;
+
+            // Like AXIS OS 12.11 (gSOAP): the configuration elements must be in the web server namespace.
+            var configuration = xml.Descendants(web + "SetWebServerTlsConfiguration").Single().Elements().SingleOrDefault();
+            if (configuration?.Name != web + "Configuration" || configuration.Element(web + "Tls") is null)
+            {
+                return (HttpStatusCode.InternalServerError, Envelope("<SOAP-ENV:Fault><SOAP-ENV:Code><SOAP-ENV:Value>SOAP-ENV:Sender</SOAP-ENV:Value><SOAP-ENV:Subcode><SOAP-ENV:Value>ter:TagMismatch</SOAP-ENV:Value></SOAP-ENV:Subcode></SOAP-ENV:Code><SOAP-ENV:Reason><SOAP-ENV:Text xml:lang=\"en\">Tag mismatch</SOAP-ENV:Text></SOAP-ENV:Reason></SOAP-ENV:Fault>"), "application/soap+xml");
+            }
+
             var alias = xml.Descendants(cert + "Certificates").Single().Elements(cert + "Id").Single().Value;
             Assert.True(_certificates.ContainsKey(alias), "The web server certificate must exist: " + alias);
             Assert.Equal(Ciphers, xml.Descendants(cert + "Cipher").Select(c => c.Value).ToList()); // ciphers sent back as read

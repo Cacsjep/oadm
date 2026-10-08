@@ -24,7 +24,7 @@
             <ComboBox ItemsSource="{Binding Purposes}" SelectedItem="{Binding SelectedPurpose}" />
           </ui:FormField>
           <ui:FormField Label="Files" Classes="wide" Error="{Binding FilesError}">
-            <ui:FileRow FileName="{Binding FilesText}" ButtonText="Choose files..." Command="{Binding ChooseFilesCommand}" />
+            <ui:FileRow FileName="{Binding FilesText}" ButtonText="Choose files" Command="{Binding ChooseFilesCommand}" />
           </ui:FormField>
           <ui:FormField Label="Password" Hint="One password for all files." Error="{Binding PasswordError}">
             <ui:PasswordBox Text="{Binding Password}" />

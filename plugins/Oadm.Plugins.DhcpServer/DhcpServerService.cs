@@ -200,17 +200,21 @@ public sealed partial class DhcpServerService : IAsyncDisposable
             return new DhcpSaveReply(false, errors, null, GetState(full: false));
         }
 
-        var alreadyServing = _listener is not null && string.Equals(_config.InterfaceId, interfaceId, StringComparison.Ordinal);
+        var sameInterface = string.Equals(_config.InterfaceId, interfaceId, StringComparison.Ordinal);
+        var accepted = sameInterface ? _config.AcceptedOtherServers : [];
+        var alreadyServing = _listener is not null && sameInterface;
         if (request.Enabled && !alreadyServing && DhcpBindings.For(nic!) is { } binding)
         {
             var result = await _check.RunAsync(binding, ct).ConfigureAwait(false);
             _otherServers = result.Servers;
             _lastCheck = _options.Time.GetTimestamp();
             var confirmed = request.ConfirmedOtherServers ?? [];
-            if (result.Servers.Any(s => !confirmed.Contains(s, StringComparer.Ordinal)))
+            if (result.Servers.Any(s => !confirmed.Contains(s, StringComparer.Ordinal) && !accepted.Contains(s, StringComparer.Ordinal)))
             {
                 return new DhcpSaveReply(false, null, result.Servers, GetState(full: false));
             }
+
+            accepted = [.. accepted.Union(confirmed.Intersect(result.Servers, StringComparer.Ordinal), StringComparer.Ordinal)];
         }
 
         var config = new DhcpConfig
@@ -220,6 +224,7 @@ public sealed partial class DhcpServerService : IAsyncDisposable
             InterfaceName = nic?.Name ?? (string.Equals(interfaceId, _config.InterfaceId, StringComparison.Ordinal) ? _config.InterfaceName : interfaceId),
             RangeStart = string.IsNullOrEmpty(start) ? null : start,
             RangeEnd = string.IsNullOrEmpty(end) ? null : end,
+            AcceptedOtherServers = accepted,
         };
         if (!config.Enabled)
         {
@@ -388,7 +393,8 @@ public sealed partial class DhcpServerService : IAsyncDisposable
             return DhcpStatusTexts.Stopped;
         }
 
-        if (_otherServers is { Count: > 0 } others)
+        var accepted = _config.AcceptedOtherServers;
+        if (_otherServers.Where(s => !accepted.Contains(s, StringComparer.Ordinal)).ToList() is { Count: > 0 } others)
         {
             return DhcpStatusTexts.OtherServer(others);
         }

@@ -50,7 +50,10 @@ public sealed class ServerTests : IAsyncLifetime
         Assert.False(reply.FieldErrors.ContainsKey("RangeEnd"));
 
         reply = await Save(new DhcpSaveRequest(true, "eth-id", "10.0.0.100", "10.0.0.50"));
-        Assert.Equal("Must not be before the start address.", reply.FieldErrors!["RangeEnd"]);
+        Assert.Equal("Must be after the start address.", reply.FieldErrors!["RangeEnd"]);
+
+        reply = await Save(new DhcpSaveRequest(true, "eth-id", "10.0.0.100", "10.0.0.100"));
+        Assert.Equal("Must be after the start address.", reply.FieldErrors!["RangeEnd"]);
 
         reply = await Save(new DhcpSaveRequest(true, "eth-id", "10.0.0.0", "10.0.0.255"));
         Assert.Equal("Must not be the network address of the subnet.", reply.FieldErrors!["RangeStart"]);
@@ -177,7 +180,7 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Another_DHCP_server_needs_a_confirmation_and_shows_a_warning()
+    public async Task Another_DHCP_server_needs_a_confirmation_then_the_status_says_running()
     {
         await using var router = new FakeOtherServer(_network);
         var reply = await Save(Options.Enable());
@@ -187,11 +190,19 @@ public sealed class ServerTests : IAsyncLifetime
         Assert.False(Service.Config.Enabled);
         Assert.True(router.Discovers >= 1);
 
+        // "Enable anyway": the confirmed server no longer turns the status into a warning.
         reply = await Save(Options.Enable(confirmed: ["10.0.0.1"]));
         Assert.True(reply.Saved);
         Assert.True(Service.IsRunning);
-        Assert.Equal(ServiceStatus.Warning, reply.State.Status.Kind);
-        Assert.Equal("Another DHCP server answers on this network (10.0.0.1)", reply.State.Status.Text);
+        Assert.Equal(ServiceStatus.Ok, reply.State.Status.Kind);
+        Assert.StartsWith("Running on ", reply.State.Status.Text, StringComparison.Ordinal);
+        Assert.Equal(["10.0.0.1"], Service.Config.AcceptedOtherServers);
+
+        // Disable and enable again on the same interface: no second question for the accepted server.
+        Assert.True((await Save(Options.Enable() with { Enabled = false })).Saved);
+        reply = await Save(Options.Enable());
+        Assert.True(reply.Saved);
+        Assert.Equal(ServiceStatus.Ok, reply.State.Status.Kind);
     }
 
     [Fact]

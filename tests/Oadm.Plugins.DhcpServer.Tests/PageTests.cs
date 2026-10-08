@@ -64,7 +64,9 @@ public sealed class PageViewModelTests : IAsyncLifetime
         Assert.Equal("Must be inside the subnet 10.0.0.0/24.", vm.SaveTip);
 
         vm.RangeStart = "10.0.0.100";
-        Assert.Equal("Must not be before the start address.", vm.ErrorOf(nameof(vm.RangeEnd)));
+        Assert.Equal("Must be after the start address.", vm.ErrorOf(nameof(vm.RangeEnd)));
+        vm.RangeEnd = "10.0.0.100";
+        Assert.Equal("Must be after the start address.", vm.ErrorOf(nameof(vm.RangeEnd)));
         vm.RangeEnd = "10.0.0.199";
         Assert.False(vm.HasErrors);
         Assert.True(vm.SaveCommand.CanExecute(null));
@@ -95,8 +97,8 @@ public sealed class PageViewModelTests : IAsyncLifetime
         _ctx.Confirm = (_, _) => true;
         await vm.SaveCommand.ExecuteAsync(null);
         Assert.True(_plugin.Service!.IsRunning);
-        Assert.True(vm.IsStatusWarning);
-        Assert.Equal("Another DHCP server answers on this network (10.0.0.1)", vm.StatusText);
+        Assert.True(vm.IsStatusOk); // confirmed with "Enable anyway": the status says it runs
+        Assert.StartsWith("Running on ", vm.StatusText, StringComparison.Ordinal);
     }
 
     [Fact]

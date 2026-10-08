@@ -23,9 +23,9 @@ public static class DhcpValidation
         var endError = Address(end, network, "Enter the last address clients can get.");
         if (startError is null && endError is null && Ipv4.TryParse(start, out var s) && Ipv4.TryParse(end, out var e))
         {
-            if (e < s)
+            if (e <= s)
             {
-                endError = "Must not be before the start address.";
+                endError = "Must be after the start address.";
             }
             else if ((ulong)e - s + 1 > MaxRangeSize)
             {

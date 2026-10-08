@@ -254,7 +254,7 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
               <Button Classes="secondary" Content="Add to rollout" Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).AddRawToRolloutCommand}"
                       ToolTip.Tip="{Binding BlockedReason}" ToolTip.ShowOnDisabled="True" />
-              <Button Classes="secondary" Command="{Binding OpenSaveCommand}"><ui:IconLabel Icon="{DynamicResource Icon.save}" Text="Save as command..." /></Button>
+              <Button Classes="secondary" Command="{Binding OpenSaveCommand}"><ui:IconLabel Icon="{DynamicResource Icon.save}" Text="Save as command" /></Button>
             </StackPanel>
 
             <Border Classes="inlineEditor" IsVisible="{Binding IsSaveOpen}">

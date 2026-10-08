@@ -29,6 +29,7 @@ public sealed class FirmwareScaleTests
             i % 3 == 0 ? "12.11.77" : "11.11.160"))];
 
     [Fact]
+    [Trait("Category", "Perf")] // about 2 s; flaky on its time budget when the whole unit suite runs in parallel
     public async Task Dialog_with_5000_devices_reads_a_bounded_number_of_statuses_and_evaluates_fast()
     {
         var devices = Devices();

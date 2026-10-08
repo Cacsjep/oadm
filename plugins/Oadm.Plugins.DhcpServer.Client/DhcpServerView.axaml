@@ -6,12 +6,7 @@
              x:Class="Oadm.Plugins.DhcpServer.Client.DhcpServerView"
              x:DataType="vm:DhcpServerViewModel"
              ui:PageHeader.Subtitle="Gives the cameras their IP addresses (DHCP, UDP port 67).">
-  <!-- Description and status live in the host page header (ui:PageHeader); the card starts with the form. -->
-  <ui:PageHeader.Trailing>
-    <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"
-                   IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}"
-                   ToolTip.Tip="{Binding StatusDetail}" x:DataType="vm:DhcpServerViewModel" />
-  </ui:PageHeader.Trailing>
+  <!-- The description lives in the host page header (ui:PageHeader); the status sits left of the Save button. -->
   <!-- One card (the host's page card): settings form, then the lease list. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,*">
     <StackPanel Grid.Row="0" Classes="form">
@@ -41,8 +36,14 @@
       </ui:FormField>
 
       <ui:FormField InputWidth="460">
-        <Button Classes="primary" HorizontalAlignment="Right" Content="Save" Command="{Binding SaveCommand}"
-                ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
+        <DockPanel>
+          <Button DockPanel.Dock="Right" Classes="primary" Content="Save" Command="{Binding SaveCommand}"
+                  ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
+          <ui:StatusChip HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0"
+                         Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"
+                         IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}"
+                         ToolTip.Tip="{Binding StatusDetail}" />
+        </DockPanel>
       </ui:FormField>
     </StackPanel>
 

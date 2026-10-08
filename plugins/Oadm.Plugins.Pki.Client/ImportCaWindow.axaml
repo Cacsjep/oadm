@@ -5,16 +5,16 @@
         x:Class="Oadm.Plugins.Pki.Client.ImportCaWindow"
         x:DataType="vm:ImportCaViewModel"
         Title="{x:Static vm:ImportCaViewModel.Title}"
-        Width="720" Height="480" MinWidth="600" MinHeight="420"
+        Width="720" MinWidth="600" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
   <!-- Title bar, one card (file, password, optional key file), footer. Shared controls and theme classes only. -->
-  <Grid RowDefinitions="Auto,*,Auto">
+  <Grid RowDefinitions="Auto,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:ImportCaViewModel.Title}" />
 
-    <Border Grid.Row="1" Classes="card" Margin="16,0">
+    <Border Grid.Row="1" Classes="dialogBody">
       <StackPanel Classes="form">
         <TextBlock Classes="secondary" TextWrapping="Wrap"
                    Text="Your own CA (root or intermediate) with its private key: a .pfx / .p12 file, or a PEM certificate and its key. A backup made with Back up can be imported here too." />

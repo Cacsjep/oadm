@@ -5,16 +5,16 @@
         x:Class="Oadm.Plugins.SnapshotReport.Client.ExportReportWindow"
         x:DataType="vm:ExportReportViewModel"
         Title="{x:Static vm:ExportReportViewModel.Title}"
-        Width="760" Height="460" MinWidth="640" MinHeight="420"
+        Width="760" MinWidth="640" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
   <!-- Title bar, one card (form + progress), footer. Shared controls and theme classes only. -->
-  <Grid RowDefinitions="Auto,*,Auto">
+  <Grid RowDefinitions="Auto,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:ExportReportViewModel.Title}" />
 
-    <Border Grid.Row="1" Classes="card" Margin="16,0">
+    <Border Grid.Row="1" Classes="dialogBody">
       <Grid RowDefinitions="Auto,Auto,*,Auto">
         <ui:CardHeader Grid.Row="0" Title="Report" Description="{Binding Summary}" />
 
@@ -42,7 +42,7 @@
     </Border>
 
     <ui:DialogFooter Grid.Row="2" CancelText="{Binding CancelText}" CancelCommand="{Binding CancelCommand}">
-      <ui:ToolbarButton IconKey="export" Text="Export PDF..." IsPrimary="True" Command="{Binding ExportCommand}"
+      <ui:ToolbarButton IconKey="export" Text="Export PDF" IsPrimary="True" Command="{Binding ExportCommand}"
                         ToolTip.Tip="{Binding ExportBlockedReason}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>
   </Grid>

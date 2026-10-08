@@ -1001,7 +1001,7 @@ Read-only for devices (param.cgi reads and image.cgi snapshots).
   PDF) and returns its status; `reportStatus` ({jobId}) -> state running/done/failed, done/total,
   message, size, pages, failed; `readReport` ({jobId, offset}) -> 2 MB base64 chunks (a report is larger
   than one gRPC message); `deleteReport`. Jobs live in server memory, 30 minutes after last use.
-- Page: toolbar Refresh all, "Select all" check box, **Export PDF...** (primary); picture size slider
+- Page: toolbar Refresh all, "Select all" check box, **Export PDF** (primary); picture size slider
   (200-720 px) and `ui:SearchBox` on the right; status line "14 pictures from 9 cameras · 13 selected
   · 3 failed"; `ui:ProgressRow` while loading ("Loading snapshots 5 of 14", 4 at a time). Tiles
   (`Border.tile`, accent outline when selected) in a wrap panel: picture (`Button.picture` on
@@ -1104,7 +1104,7 @@ JSON schema: `docs/vapix-commander/command-format.md` + `command.schema.json` (t
   selected row, Ctrl+Up / Ctrl+Down move it. Selecting a row shows its field form below, checked like
   the server while typing; `ui:PasswordBox` for passwords) / **Raw request** (method, path, query and
   header tables with Make field, body type + body, timeout, response kind, fields from `{{placeholders}}`
-  typed by hand, "Add to rollout", "Save as command..." with name, category, description, requires
+  typed by hand, "Add to rollout", "Save as command" with name, category, description, requires
   prefilled from the path (param.cgi -> param-cgi 1.0, `/config/rest/<api>/v<n>` -> `<api> n.0`, known
   CGIs), changes-the-device (prefilled from method/action) and dangerous); "Send to <device>" + **Send**
   shows the result card (status chip, "HTTP 200 OK · 84 ms · address", interpreted result, request
@@ -1190,7 +1190,7 @@ decisions: `docs/specs/ntp-server.md`. Own RFC 5905 server-mode implementation (
   port); `save` ({enabled, interfaceId, upstream}) validates the upstream with one query (same timeouts; the running
   server keeps serving) and replies {saved, upstreamError, upstreamResult, state}; an upstream that does not answer is
   not saved (error under the field). Events: `state` (status/upstream changed), `requests` (new entries).
-- Page (one card in the host card): `ui:CardHeader` "NTP server" with the status chip on the right; Enable NTP server;
+- Page (one card in the host card, subtitle in the host page header, status chip left of the Save button); Enable NTP server;
   Listen on (select, refreshed when the page opens); Upstream server (optional, checked while typing, field errors under
   the field, "Checking <host>" accent chip while Save runs, "Answered: Stratum 2, offset +3 ms, round trip 12 ms" after
   it, a line "Serving stratum 3 from ..." / "Serving the server clock ..."); Save (primary); "Last requests" DataGrid
@@ -1253,8 +1253,9 @@ Own RFC 2131 / 2132 implementation, IPv4 only, one interface, no relay agents (r
   counted. Runs on Save when enabling (not when already serving on that interface), every 10 min while running and at
   server start. Found on Save: nothing saved, the page asks with the shared confirmation popup "Another DHCP server
   (10.0.0.1) answers on this network. Running two DHCP servers causes address conflicts. Enable anyway?" and saves again
-  with the servers confirmed. While running only a warning.
-- Status line (`DhcpStatusTexts`, `ui:StatusChip` in the page header, detail as tooltip; plain language, protocol details
+  with the servers confirmed; confirmed servers are stored per interface (`config.acceptedOtherServers`) and never warn
+  again: after "Enable anyway" the status says `Running on ...`. Only a server that was not confirmed turns it into a warning.
+- Status line (`DhcpStatusTexts`, `ui:StatusChip` left of the Save button, detail as tooltip; plain language, protocol details
   only in the server log): `Running on Ethernet (10.0.0.17/24)`, `Stopped`, `Port 67 is in use by another program`
   (Windows tooltip names the running DHCP Server role or Internet Connection Sharing, via `sc query DHCPServer` /
   `SharedAccess`; AccessDenied on Windows also means in use; Linux: dnsmasq, isc-dhcp-server, NetworkManager + `ss`;
@@ -1268,10 +1269,10 @@ Own RFC 2131 / 2132 implementation, IPv4 only, one interface, no relay agents (r
   needed), `saveStatic` (add/edit, field errors "Mac", "Address", "Name"), `makeStatic`, `deleteStatic`, `release`
   (forgets a dynamic lease). Events: `state` (status changed), `leases` (changed + removed leases with the lease version,
   batched every 500 ms, split above 2,000 entries; the page ignores versions it already has).
-- Page (`DhcpServerView`, subtitle + status chip in the host page header via `ui:PageHeader`, no card title): Enable
+- Page (`DhcpServerView`, subtitle in the host page header via `ui:PageHeader`, status chip left of Save, no card title): Enable
   DHCP server; Listen on (`InterfaceSelection`, IPv4 interfaces only, "Ethernet - 10.0.0.17/24 (Intel I219)"); Start
   address / End address (`ui:FormField`, errors under the fields while typing: "Must be inside the subnet 10.0.0.0/24.",
-  "Must not be before the start address.", network/broadcast/server address, at most 65,536 addresses); the derived
+  "Must be after the start address.", network/broadcast/server address, at most 65,536 addresses); the derived
   line; Save (disabled with the reason as tooltip; status "Checking for other DHCP servers" while saving). Leases:
   summary "6 leases, 2 static", shared `SearchBox`, "+ Static lease"; one virtualized DataGrid (MAC address, IP address
   sorted numerically, Host name / device, Type, Expires "in 23 h" / "Expired" / "Released" / "-", row actions as link
@@ -1343,7 +1344,7 @@ part 2: the contributed Security tasks (below), the only writers of the `issued`
   <date>" ok / "CA expires in N days" warning (within `expiryWarningDays`) / "CA expired", "CA key cannot be read" error):
   cards Certificate authority (name, validity, key, fingerprint selectable, chain of an intermediate, "Trusted root store"
   chips for the server and this computer, toolbar buttons Install in trusted root store, Export public certificate (PEM /
-  DER menu), Back up..., Generate new CA..., Import CA...), Device certificates (two fields + "Issued: 120 devices · 3
+  DER menu), Back up, Generate new CA, Import CA), Device certificates (two fields + "Issued: 120 devices · 3
   expire within 30 days · 4 from a previous CA"), IEEE 802.1X (EAPOL version, EAP identity + custom field, RADIUS server CA
   with Import... / View, one Save for both cards), Previous certificate authorities (only when there are any: Name, Valid
   until, Replaced, Export / Remove links, Remove confirmed). Dialogs `GenerateCaWindow`, `ImportCaWindow` (FileRow, key
@@ -1528,7 +1529,7 @@ LocalApplicationData): server address, grid column layout, bottom pane state.
   rail, dialogs), `ToolbarButton` (every toolbar button) and `ToolbarSeparator`, `SearchBox`
   (every search field), `OadmIcon`, and for
   dialogs `DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip` (status chip),
-  `FileRow` (chosen file + "Choose file..."), `ProgressRow` (progress bar + status text),
+  `FileRow` (chosen file + "Choose file"), `ProgressRow` (progress bar + status text),
   `MessageWindow` (every message box and confirmation popup, host and plugins; dialogs never show
   inline "I understand" risk sections), `PasswordBox` (every password field: TextBox with bullet mask and eye button "Show password" /
   "Hide password", icons `Icon.eye` / `Icon.eyeOff`; never a `TextBox` with `PasswordChar`), `CodeView`
@@ -1583,9 +1584,17 @@ LocalApplicationData): server address, grid column layout, bottom pane state.
   - Tests: `[Trait("Category", "Perf")]` for scale tests that take longer than about a second; they run
     with `manage test perf` (not in `manage test unit`), each with a generous but meaningful time
     budget, and write their measured times to the test output.
-- Core plugin pages never repeat the page title in a card heading: description and status go into
-  the host page header via `ui:PageHeader.Subtitle` / `ui:PageHeader.Trailing`; the card starts with
+- Core plugin pages never repeat the page title in a card heading: the description goes into
+  the host page header via `ui:PageHeader.Subtitle` (2 px top margin, theme); the status never sits top right in the page
+  header but directly left of the Save button it reports on (or next to the value it describes, e.g. the CA validity on the
+  PKI page); the card starts with
   the form. User-facing texts use plain language (no protocol jargon such as stratum, DISCOVER/OFFER).
+- Dialogs with a single operation (one form: back up, import, generate, static lease, export) have no card: the form sits
+  in `Border.dialogBody` (theme, padded like `ui:MessageWindow`) between title bar and footer, and the window sizes to its
+  content (`SizeToContent="Height"`, fixed width). Cards only in dialogs with several sections or a list.
+- Button and menu labels never end with "..." / "…", also when they open a dialog or a file picker ("Back up", "Import CA",
+  "Choose file"). Actions inside a card are filled buttons (`Button.secondary` with `ui:IconLabel`, primary for the main
+  one); the flat `ui:ToolbarButton` is only for toolbars.
 - **HARD RULE, no style differences.** Same kind of element, same look, everywhere: one
   style per element type in `Themes/OadmTheme.axaml`, no local overrides of font size,
   weight, color, padding or alignment in views. No special cases such as a bold selected rail

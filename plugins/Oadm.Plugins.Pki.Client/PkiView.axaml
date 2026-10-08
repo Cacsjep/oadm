@@ -5,12 +5,7 @@
              x:Class="Oadm.Plugins.Pki.Client.PkiView"
              x:DataType="vm:PkiViewModel"
              ui:PageHeader.Subtitle="Issues device certificates for HTTPS and IEEE 802.1X.">
-  <!-- Description and status live in the host page header (ui:PageHeader); the cards start with their content. -->
-  <ui:PageHeader.Trailing>
-    <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"
-                   IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}"
-                   ToolTip.Tip="{Binding StatusDetail}" x:DataType="vm:PkiViewModel" />
-  </ui:PageHeader.Trailing>
+  <!-- The description lives in the host page header (ui:PageHeader); the CA status sits next to its validity. -->
 
   <!-- Own cards (ICorePluginPage.HasOwnCards). Shared controls and theme classes only. -->
   <ScrollViewer HorizontalScrollBarVisibility="Disabled">
@@ -31,7 +26,12 @@
               <TextBlock Text="{Binding CaName}" TextTrimming="CharacterEllipsis" />
             </ui:FormField>
             <ui:FormField Label="Valid" Classes="wide">
-              <TextBlock Text="{Binding ValidText}" />
+              <StackPanel Orientation="Horizontal" Spacing="16">
+                <TextBlock Text="{Binding ValidText}" VerticalAlignment="Center" />
+                <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"
+                               IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}"
+                               ToolTip.Tip="{Binding StatusDetail}" VerticalAlignment="Center" />
+              </StackPanel>
             </ui:FormField>
             <ui:FormField Label="Key" Classes="wide">
               <TextBlock Text="{Binding KeyText}" />
@@ -53,24 +53,32 @@
           </StackPanel>
 
           <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8" Margin="{DynamicResource Oadm.GapTop}">
-            <ui:ToolbarButton IconKey="check" Text="Install in trusted root store" Command="{Binding InstallTrustCommand}"
-                              ToolTip.Tip="Install the CA certificate as trusted root on the server and on this computer (asks for administrator rights)" />
-            <ui:ToolbarButton IconKey="export" Text="Export public certificate"
-                              IsEnabled="{Binding HasCa}"
-                              ToolTip.Tip="Save the CA certificate (public, without key) for browsers, RADIUS servers and other systems">
-              <ui:ToolbarButton.Flyout>
+            <Button Classes="secondary" Command="{Binding InstallTrustCommand}"
+                    ToolTip.Tip="Install the CA certificate as trusted root on the server and on this computer (asks for administrator rights)">
+              <ui:IconLabel Icon="{DynamicResource Icon.check}" Text="Install in trusted root store" />
+            </Button>
+            <Button Classes="secondary" IsEnabled="{Binding HasCa}"
+                    ToolTip.Tip="Save the CA certificate (public, without key) for browsers, RADIUS servers and other systems">
+              <ui:IconLabel Icon="{DynamicResource Icon.export}" Text="Export public certificate" />
+              <Button.Flyout>
                 <MenuFlyout Placement="BottomEdgeAlignedLeft">
                   <MenuItem Header="PEM (.crt)" Command="{Binding ExportCommand}" CommandParameter="pem" />
                   <MenuItem Header="DER (.cer)" Command="{Binding ExportCommand}" CommandParameter="der" />
                 </MenuFlyout>
-              </ui:ToolbarButton.Flyout>
-            </ui:ToolbarButton>
-            <ui:ToolbarButton IconKey="save" Text="Back up..." Command="{Binding BackupCommand}"
-                              ToolTip.Tip="Save the CA with its private key in a password-protected file (restore it on another server with Import CA)" />
-            <ui:ToolbarButton IconKey="refresh" Text="Generate new CA..." Command="{Binding GenerateCommand}"
-                              ToolTip.Tip="Create a new certificate authority; the current one stays trusted by the server as a previous CA" />
-            <ui:ToolbarButton IconKey="upload" Text="Import CA..." Command="{Binding ImportCommand}"
-                              ToolTip.Tip="Use your own CA (root or intermediate) from a .pfx / .p12 file or PEM files" />
+              </Button.Flyout>
+            </Button>
+            <Button Classes="secondary" Command="{Binding BackupCommand}"
+                    ToolTip.Tip="Save the CA with its private key in a password-protected file (restore it on another server with Import CA)">
+              <ui:IconLabel Icon="{DynamicResource Icon.save}" Text="Back up" />
+            </Button>
+            <Button Classes="secondary" Command="{Binding GenerateCommand}"
+                    ToolTip.Tip="Create a new certificate authority; the current one stays trusted by the server as a previous CA">
+              <ui:IconLabel Icon="{DynamicResource Icon.refresh}" Text="Generate new CA" />
+            </Button>
+            <Button Classes="secondary" Command="{Binding ImportCommand}"
+                    ToolTip.Tip="Use your own CA (root or intermediate) from a .pfx / .p12 file or PEM files">
+              <ui:IconLabel Icon="{DynamicResource Icon.upload}" Text="Import CA" />
+            </Button>
           </WrapPanel>
         </StackPanel>
       </Border>
@@ -129,7 +137,7 @@
                   </DataTemplate>
                 </ComboBox.ItemTemplate>
               </ComboBox>
-              <Button Classes="secondary" Content="Import..." Command="{Binding ImportRadiusCaCommand}" IsVisible="{Binding IsRadiusImported}"
+              <Button Classes="secondary" Content="Import" Command="{Binding ImportRadiusCaCommand}" IsVisible="{Binding IsRadiusImported}"
                       ToolTip.Tip="Choose the CA certificate (.crt or .cer) that issued the RADIUS server's certificate" />
               <Button Classes="secondary" Content="View" Command="{Binding ViewRadiusCaCommand}" IsVisible="{Binding IsRadiusImported}" />
             </StackPanel>

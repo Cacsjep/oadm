@@ -35,6 +35,7 @@ public sealed class DeviceApiTests
         var body = WebServerTls.BuildSet(configuration);
 
         Assert.StartsWith("<aweb:SetWebServerTlsConfiguration", body, StringComparison.Ordinal);
+        Assert.Contains("<aweb:Configuration name=\"WebServer\"><aweb:Tls>true</aweb:Tls>", body, StringComparison.Ordinal); // unqualified = ter:TagMismatch on 12.11
         Assert.Contains("<aweb:Admin>Http</aweb:Admin>", body, StringComparison.Ordinal);
         Assert.Contains("<acert:Id>OADM &lt;HTTPS&gt; &amp; co</acert:Id>", body, StringComparison.Ordinal);
         Assert.Contains("<acert:Cipher>ECDHE-RSA-CHACHA20-POLY1305</acert:Cipher>", body, StringComparison.Ordinal);

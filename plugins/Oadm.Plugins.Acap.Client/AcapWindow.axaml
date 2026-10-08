@@ -43,7 +43,7 @@
             <ui:IconLabel Icon="{DynamicResource Icon.refresh}" Text="Refresh" />
           </Button>
           <Button Classes="toolbar" Command="{Binding PickPackageCommand}" ToolTip.Tip="Choose an ACAP package (.eap) to install on the selected devices">
-            <ui:IconLabel Icon="{DynamicResource Icon.upload}" Text="Install or upgrade..." />
+            <ui:IconLabel Icon="{DynamicResource Icon.upload}" Text="Install or upgrade" />
           </Button>
         </StackPanel>
 

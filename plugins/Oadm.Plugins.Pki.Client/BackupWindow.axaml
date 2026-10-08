@@ -5,16 +5,16 @@
         x:Class="Oadm.Plugins.Pki.Client.BackupWindow"
         x:DataType="vm:BackupViewModel"
         Title="{x:Static vm:BackupViewModel.Title}"
-        Width="640" Height="380" MinWidth="560" MinHeight="360"
+        Width="640" MinWidth="560" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
   <!-- Title bar, one card (password twice), footer. Shared controls and theme classes only. -->
-  <Grid RowDefinitions="Auto,*,Auto">
+  <Grid RowDefinitions="Auto,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:BackupViewModel.Title}" />
 
-    <Border Grid.Row="1" Classes="card" Margin="16,0">
+    <Border Grid.Row="1" Classes="dialogBody">
       <StackPanel Classes="form">
         <TextBlock Classes="secondary" TextWrapping="Wrap"
                    Text="The backup holds the CA with its private key, protected by this password. Import it on another OADM server to move the CA." />

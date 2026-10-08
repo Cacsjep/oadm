@@ -157,7 +157,7 @@ Certificate authority                                                           
   Fingerprint     3F:A2:...  (SHA-256, selectable)
   Chain           (only for an imported intermediate: "Issued by Acme Root CA")
   Trusted root store   ✓ Installed on the server   ○ Not installed on this computer
-  [Install in trusted root store]  [Export public certificate v]  [Back up...]  [Generate new CA...]  [Import CA...]
+  [Install in trusted root store]  [Export public certificate v]  [Back up]  [Generate new CA]  [Import CA]
 
 Device certificates                                                             (card)
   Device certificate validity (days)   [ 365 ]
@@ -184,7 +184,7 @@ Previous certificate authorities  (card, only when there are any)
   sees "already installed" and skips.
 - Generate dialog (`ValidatingViewModel`): Common name (required, 1..64), Organization (optional, max 64),
   Validity (years, 1..30, default 10); RSA 4096 shown as a fixed info line. Then the replace confirmation.
-- Import dialog: shared `FileRow` ("Choose file..." `.pfx`, `.p12`, `.pem`, `.crt`, `.key`), password
+- Import dialog: shared `FileRow` ("Choose file" `.pfx`, `.p12`, `.pem`, `.crt`, `.key`), password
   (`ui:PasswordBox`); for a PEM certificate without a key a second `FileRow` "Private key" + key password. Server
   field errors under the fields. Then the replace confirmation.
 - Export: menu button PEM (.crt) / DER (.cer), save dialog, last folder remembered per client.
