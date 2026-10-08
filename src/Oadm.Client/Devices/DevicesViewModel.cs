@@ -164,6 +164,8 @@ public sealed partial class DevicesViewModel : ObservableObject
                 return RunAddPageAsync(AddDevicesMode.Manual);
             case HostPages.ExportDevices:
                 return ExportDevicesAsync();
+            case HostPages.AddImport:
+                return ImportDevicesAsync();
             default:
                 NavigateRequested?.Invoke(this, hostPage);
                 return Task.CompletedTask;
@@ -254,6 +256,44 @@ public sealed partial class DevicesViewModel : ObservableObject
         {
             LogActionFailed(_logger, ex, "export");
             await _dialogs.ShowMessageAsync("Export devices", "The file could not be saved: " + ex.Message).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>
+    /// Import devices: asks for a CSV file (<see cref="DeviceImportFile"/>) and opens the add page with
+    /// every address of it. A file that cannot be used at all is explained in the message window; problems
+    /// of single lines show in their rows.
+    /// </summary>
+    internal async Task ImportDevicesAsync()
+    {
+        DeviceImportFile file;
+        try
+        {
+            PickedFile? picked = await _dialogs.OpenFileAsync("Import devices", CsvFile, DeviceImportFile.MaxBytes).ConfigureAwait(true);
+            if (picked is null)
+            {
+                return;
+            }
+
+            file = DeviceImportFile.Parse(picked.Name, picked.Content, picked.IsTooLarge);
+        }
+        catch (DeviceImportException ex)
+        {
+            await _dialogs.ShowMessageAsync("Import devices", ex.Message).ConfigureAwait(true);
+            return;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            await _dialogs.ShowMessageAsync("Import devices", "The file could not be read: " + ex.Message).ConfigureAwait(true);
+            return;
+        }
+
+        LogImporting(_logger, file.Lines.Count, file.FileName);
+        AddDevicesViewModel page = _addPageFactory(AddDevicesMode.Import);
+        page.SetImport(file);
+        await using (page.ConfigureAwait(true))
+        {
+            await _dialogs.ShowAddDevicesAsync(page).ConfigureAwait(true);
         }
     }
 
@@ -414,6 +454,9 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Removed {Count} device(s)")]
     private static partial void LogRemoved(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Importing {Count} address line(s) from {FileName}")]
+    private static partial void LogImporting(ILogger logger, int count, string fileName);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Exported {Count} device(s) to {FileName}")]
     private static partial void LogExported(ILogger logger, int count, string fileName);

@@ -52,6 +52,12 @@ public interface IOadmApi
 
     /// <summary>Probes one entered address (IP or host name, optional port and scheme); returns the session id.</summary>
     Task<string> ProbeAddressAsync(string address, CancellationToken ct);
+
+    /// <summary>
+    /// Probes one address with credentials for that device only (a line of an imported device list): the
+    /// server tries them first, then the credential list; they stay in server memory. Null = none.
+    /// </summary>
+    Task<string> ProbeAddressAsync(string address, string? userName, string? password, CancellationToken ct);
     IAsyncEnumerable<DiscoveredDevice> WatchDiscoveredAsync(string sessionId, CancellationToken ct);
     Task StopDiscoveryAsync(string sessionId, CancellationToken ct);
 

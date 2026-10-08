@@ -325,6 +325,118 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.Equal(2, page.Rows.Count(r => r.CanAdd));
     }
 
+    private async Task<AddDevicesViewModel> OpenImportAsync(string csv)
+    {
+        AddDevicesViewModel page = Create(AddDevicesMode.Import);
+        page.SetImport(DeviceImportFile.Parse("site.csv", csv));
+        await page.OpenAsync();
+        return page;
+    }
+
+    [Fact]
+    public async Task Import_lists_every_line_and_probes_the_addresses_with_their_credentials()
+    {
+        string managed = (await _api.ListDevicesAsync(CancellationToken.None))[0].Address;
+        string csv = string.Join("\n",
+            "Address,User name,Password,Notes",
+            "10.0.0.93,admin,right-Pass1,login failed with the list: the file's credentials work",
+            "10.0.0.97,,,login failed",
+            "camera7.example.com:8443,,,new device",
+            "10.0.0.199,,,nothing answers",
+            "not an address,,,invalid",
+            "10.0.0.97,,,listed twice",
+            managed + ",,,already managed");
+
+        await using AddDevicesViewModel page = await OpenImportAsync(csv);
+
+        Assert.True(page.IsImportMode);
+        Assert.Equal("Import devices", page.HeaderTitle);
+        Assert.StartsWith("Addresses from site.csv, 16 checked at a time.", page.HeaderDescription, StringComparison.Ordinal);
+        Assert.Equal(7, page.Rows.Count); // every line is a row from the start, in file order
+        Assert.True(page.IsScanning);
+        Assert.True(page.ShowStop);
+        await page.ImportCompletion!;
+        await TestSupport.WaitUntilAsync(() => !page.IsScanning && page.Rows.All(r => r.IsImportPlaceholder || r.AuthState != AuthState.Pending));
+
+        Assert.Equal("Authenticated (admin)", Row(page, "10.0.0.93").ChipText);
+        Assert.Equal("Login failed", page.Rows[1].ChipText);
+        Assert.Equal("Authenticated (root)", Row(page, "camera7.example.com:8443").ChipText);
+        DiscoveredRowViewModel nothing = Row(page, "10.0.0.199");
+        Assert.Equal(("Not found", "No Axis device answered at 10.0.0.199."), (nothing.ChipText, nothing.StatusDetail));
+        Assert.True(nothing.IsStatusError);
+        Assert.Equal(("Not added", "\"not an address\" is not an IP address or host name."), (page.Rows[4].ChipText, page.Rows[4].StatusDetail));
+        Assert.Equal("Listed before in line 3.", page.Rows[5].StatusDetail);
+        Assert.True(page.Rows[6].IsAlreadyManaged);
+        Assert.DoesNotContain(page.Rows[6], page.FilteredRows); // already added devices are not listed
+        Assert.Equal(["10.0.0.93", "10.0.0.97", "camera7.example.com:8443", "10.0.0.199", "not an address", "10.0.0.97"], page.FilteredRows.Select(r => r.Address));
+        Assert.Equal("3 found · 2 ready to add · 1 need a login · 3 not added · 0 selected", page.SummaryText);
+        Assert.Equal("Import finished, 3 devices found, 1 already added", page.ScanStatusText);
+        Assert.False(page.ShowScanAgain);
+
+        // Rows with a problem cannot be selected; the found ones are added as usual, with the file's credentials.
+        page.Rows[4].IsSelected = true;
+        page.SelectAllAuthenticatedCommand.Execute(null);
+        Assert.Equal("Add 2 devices", page.AddButtonText);
+        await page.AddCommand.ExecuteAsync(null);
+        IReadOnlyList<Device> devices = await _api.ListDevicesAsync(CancellationToken.None);
+        Assert.True(devices.Single(d => d.Address == "10.0.0.93").HasCredentials);
+        Assert.Contains(devices, d => d.Address == "camera7.example.com:8443");
+    }
+
+    [Fact]
+    public async Task Import_probes_at_most_sixteen_addresses_at_a_time()
+    {
+        string csv = string.Join("\n", Enumerable.Range(1, 80).Select(i => $"10.0.2.{i}"));
+
+        await using AddDevicesViewModel page = await OpenImportAsync(csv);
+        await page.ImportCompletion!;
+        await TestSupport.WaitUntilAsync(() => !page.IsScanning && page.Rows.All(r => r.IsImportPlaceholder || r.AuthState != AuthState.Pending), 20000);
+
+        Assert.InRange(_api.MaxOpenProbeWatches, 2, AddDevicesViewModel.MaxImportProbes);
+        Assert.Equal(80, page.Rows.Count(r => r.ChipText == "Authenticated (root)"));
+        Assert.Equal("Import finished, 80 devices found", page.ScanStatusText);
+        Assert.Equal(100, page.ScanProgress);
+    }
+
+    [Fact]
+    public async Task An_import_of_ten_thousand_lines_lists_and_filters_fast()
+    {
+        string csv = "Address,User name,Password\n" + string.Join("\n", Enumerable.Range(0, DeviceImportFile.MaxLines).Select(i => $"10.1.{i / 256}.{i % 256},root,pass{i}"));
+        DeviceImportFile file = DeviceImportFile.Parse("big.csv", csv);
+        await using AddDevicesViewModel page = Create(AddDevicesMode.Import);
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        page.SetImport(file);
+        long listed = watch.ElapsedMilliseconds;
+        page.SearchText = "10.1.3.";
+        long filtered = watch.ElapsedMilliseconds - listed;
+        page.SelectAllAuthenticatedCommand.Execute(null);
+        long all = watch.ElapsedMilliseconds;
+
+        Assert.Equal(DeviceImportFile.MaxLines, page.Rows.Count);
+        Assert.Equal(256, page.FilteredRows.Count);
+        Assert.Equal("0 found · 0 ready to add · 0 selected", page.SummaryText);
+        Assert.True(all < 1500, $"10,000 lines: listed in {listed} ms, filtered in {filtered} ms, total {all} ms");
+    }
+
+    [Fact]
+    public async Task Stop_ends_an_import_and_leaves_the_rest_unchecked()
+    {
+        string csv = string.Join("\n", Enumerable.Range(1, 200).Select(i => $"10.0.3.{i}"));
+        await using AddDevicesViewModel page = await OpenImportAsync(csv);
+        await TestSupport.WaitUntilAsync(() => page.Rows.Any(r => r.ChipText == "Authenticated (root)"));
+
+        await page.StopScanCommand.ExecuteAsync(null);
+        await page.ImportCompletion!;
+        await TestSupport.WaitUntilAsync(() => !page.IsScanning, 20000);
+
+        Assert.StartsWith("Import stopped, ", page.ScanStatusText, StringComparison.Ordinal);
+        DiscoveredRowViewModel unchecked_ = page.Rows[^1];
+        Assert.Equal(("Not checked", "Stopped before this address was checked."), (unchecked_.ChipText, unchecked_.StatusDetail));
+        Assert.False(unchecked_.IsStatusError);
+        Assert.False(page.ShowStop);
+    }
+
     [Fact]
     public async Task The_page_always_closes_after_adding()
     {

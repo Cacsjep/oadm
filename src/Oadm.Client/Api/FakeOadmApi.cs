@@ -252,7 +252,10 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         return Task.FromResult(NewSession(FakeSessionKind.Range, first, last, null));
     }
 
-    public Task<string> ProbeAddressAsync(string address, CancellationToken ct)
+    public Task<string> ProbeAddressAsync(string address, CancellationToken ct) => ProbeAddressAsync(address, null, null, ct);
+
+    /// <summary>Like the server: credentials of the line are tried first; an accepted password logs in as that user ("entered").</summary>
+    public Task<string> ProbeAddressAsync(string address, string? userName, string? password, CancellationToken ct)
     {
         string entered = (address ?? "").Trim();
         if (entered.Length == 0 || entered.Contains(' ', StringComparison.Ordinal) || entered.StartsWith("ftp:", StringComparison.OrdinalIgnoreCase))
@@ -260,8 +263,26 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
             throw new RpcException(new Status(StatusCode.InvalidArgument, $"'{entered}' is not a valid IP address or host name."));
         }
 
-        return Task.FromResult(NewSession(FakeSessionKind.Manual, null, null, entered));
+        string id = NewSession(FakeSessionKind.Manual, null, null, entered);
+        if (!string.IsNullOrWhiteSpace(userName) && !string.IsNullOrEmpty(password))
+        {
+            lock (_gate)
+            {
+                _sessions[id].Credentials = (userName.Trim(), password);
+            }
+        }
+
+        return Task.FromResult(id);
     }
+
+    /// <summary>Address probe sessions whose watch stream is open right now, and the most at the same time (bounded import).</summary>
+    public int OpenProbeWatches => Volatile.Read(ref _openProbeWatches);
+
+    /// <inheritdoc cref="OpenProbeWatches"/>
+    public int MaxOpenProbeWatches => Volatile.Read(ref _maxOpenProbeWatches);
+
+    private int _openProbeWatches;
+    private int _maxOpenProbeWatches;
 
     /// <summary>
     /// Like the server: every device first arrives "checking" (auth pending), the automatic login
@@ -269,6 +290,39 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
     /// unreachable and already added devices.
     /// </summary>
     public async IAsyncEnumerable<DiscoveredDevice> WatchDiscoveredAsync(string sessionId, [EnumeratorCancellation] CancellationToken ct)
+    {
+        bool probe;
+        lock (_gate)
+        {
+            probe = _sessions.GetValueOrDefault(sessionId)?.Kind == FakeSessionKind.Manual;
+        }
+
+        if (probe)
+        {
+            int open = Interlocked.Increment(ref _openProbeWatches);
+            int max;
+            while (open > (max = Volatile.Read(ref _maxOpenProbeWatches)) && Interlocked.CompareExchange(ref _maxOpenProbeWatches, open, max) != max)
+            {
+            }
+        }
+
+        try
+        {
+            await foreach (DiscoveredDevice device in WatchDiscoveredCoreAsync(sessionId, ct).ConfigureAwait(false))
+            {
+                yield return device;
+            }
+        }
+        finally
+        {
+            if (probe)
+            {
+                Interlocked.Decrement(ref _openProbeWatches);
+            }
+        }
+    }
+
+    private async IAsyncEnumerable<DiscoveredDevice> WatchDiscoveredCoreAsync(string sessionId, [EnumeratorCancellation] CancellationToken ct)
     {
         FakeSession session;
         lock (_gate)
@@ -1154,6 +1208,14 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                         DeviceStatus.CredentialsRequired, AuthState.Authenticated, user: "root");
                 }
 
+                if (session.Credentials is { } credentials && known.Status == DeviceStatus.CredentialsRequired && IsAcceptedPassword(credentials.Password))
+                {
+                    known.AuthState = AuthState.Authenticated;
+                    known.AuthUserName = credentials.UserName;
+                    known.AuthDetail = "";
+                    known.CredentialId = "entered";
+                }
+
                 known.Source = DiscoverySource.Manual;
                 known.EnteredAddress = host;
                 known.HostName = IPAddress.TryParse(host.Split(':')[0], out _) ? "" : host;
@@ -1627,6 +1689,9 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         public string? Entered { get; } = entered;
         public bool Stopped { get; set; }
         public Dictionary<string, DiscoveredDevice> Found { get; } = [];
+
+        /// <summary>Credentials of an imported line (address probe only), tried first.</summary>
+        public (string UserName, string Password)? Credentials { get; set; }
     }
 
     private sealed class Broadcast<T>
