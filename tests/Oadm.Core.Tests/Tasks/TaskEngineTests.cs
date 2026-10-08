@@ -219,6 +219,27 @@ public sealed class TaskEngineTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task TasksOfARunStartInTheOrderOfTheDevices()
+    {
+        // One at a time: the order of the starts is the queue order. Before the fix every task asked for its slot on its
+        // own pool thread, so the devices of a run started in a random order.
+        var order = new System.Collections.Concurrent.ConcurrentQueue<Guid>();
+        var plugin = new DelegateTaskPlugin("t.order", (_, device, _) =>
+        {
+            order.Enqueue(device.Id);
+            return Task.CompletedTask;
+        })
+        { Limit = 1 };
+        Assert.True(_registry.RegisterTaskPlugin(plugin, new PluginOrigin("test", "1.0.0", null)));
+        var devices = _devices.AddMany(40);
+
+        var taskIds = await Engine.RunAsync("t.order", devices, null, "o", CancellationToken.None);
+        await WaitAllAsync(taskIds);
+
+        Assert.Equal(devices, order.ToArray());
+    }
+
+    [Fact]
     public async Task CancelStopsARunningTaskAndAQueuedOne()
     {
         _engine = new TaskEngine(_store, _registry, _devices, _vapix, options: new TaskEngineOptions { MaxParallelTasksPerPlugin = 2 });

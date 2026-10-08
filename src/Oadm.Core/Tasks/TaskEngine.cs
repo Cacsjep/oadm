@@ -171,7 +171,9 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         LogBatchQueued(batchId, registration.Id, tasks.Count, owner ?? string.Empty);
         foreach (var task in tasks)
         {
-            _ = Task.Run(() => ExecuteTaskAsync(task), CancellationToken.None);
+            // The slot is requested here, in the order of the run (FIFO per plugin), not on the pool thread.
+            var slot = RequestSlot(task);
+            _ = Task.Run(() => ExecuteTaskAsync(task, slot), CancellationToken.None);
         }
 
         return [.. tasks.Select(t => t.Id)];
@@ -246,7 +248,8 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         }
 
         LogTaskQueued(task.Id, registration.Id, deviceId, task.Owner);
-        _ = Task.Run(() => ExecuteTaskAsync(task), CancellationToken.None);
+        var slot = RequestSlot(task);
+        _ = Task.Run(() => ExecuteTaskAsync(task, slot), CancellationToken.None);
         return task.Id;
     }
 
@@ -589,18 +592,35 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         _shutdown.Dispose();
     }
 
-    private async Task ExecuteTaskAsync(RunningTask task)
+    /// <summary>
+    /// Puts the task in its plugin's queue right away, on the caller's thread: tasks of a run get their slots in the
+    /// order they were created (the devices' order), not in the order the thread pool happens to start them.
+    /// </summary>
+    private (PluginSlots Gate, Task Slot) RequestSlot(RunningTask task)
     {
         var registration = task.Registration;
         var gate = _gates.GetOrAdd(registration.Id, id => new PluginSlots(
             () => ParallelLimit(_plugins.TryGetTaskPlugin(id, out var current) ? current : registration)));
+        try
+        {
+            return (gate, gate.WaitAsync(task.Token));
+        }
+        catch (OperationCanceledException) when (task.Token.IsCancellationRequested)
+        {
+            return (gate, Task.FromCanceled(task.Token));
+        }
+    }
+
+    private async Task ExecuteTaskAsync(RunningTask task, (PluginSlots Gate, Task Slot) slot)
+    {
+        var gate = slot.Gate;
         var entered = false;
         try
         {
             // Queued until the plugin has a free slot; a cancel while waiting ends it as Cancelled.
             try
             {
-                await gate.WaitAsync(task.Token).ConfigureAwait(false);
+                await slot.Slot.ConfigureAwait(false);
                 entered = true;
             }
             catch (OperationCanceledException) when (task.Token.IsCancellationRequested)
