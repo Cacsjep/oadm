@@ -148,6 +148,28 @@ public sealed partial class VapixClientFactory : IVapixClientFactory, IDisposabl
         return client;
     }
 
+    /// <summary>
+    /// A new, uncached client for the device (stored address, scheme and pinned certificate) with credentials that are
+    /// not stored yet, e.g. to check a login the technician typed before it replaces the stored one. The caller disposes it.
+    /// </summary>
+    public VapixClient CreateWithCredentials(Device device, string userName, string password)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        ArgumentException.ThrowIfNullOrEmpty(userName);
+        ArgumentNullException.ThrowIfNull(password);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var client = _connector.Connect(new VapixConnectionOptions
+        {
+            Address = device.Address,
+            Scheme = device.Scheme == DeviceScheme.Http ? Uri.UriSchemeHttp : Uri.UriSchemeHttps,
+            Credentials = new NetworkCredential(userName, password),
+            PinnedCertificateFingerprint = device.CertFingerprintSha256,
+            Timeout = RequestTimeout,
+        });
+        LogClientCreated(device.Id, client.BaseAddress, true);
+        return client;
+    }
+
     /// <summary>Drops and disposes the cached client of a device (e.g. after its credentials changed).</summary>
     public void Invalidate(Guid deviceId)
     {

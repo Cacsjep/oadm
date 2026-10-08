@@ -237,6 +237,7 @@ public static partial class OadmServerHost
         services.AddSingleton<ITaskDeviceCredentials, TaskDeviceCredentials>();
         services.AddSingleton<DeviceAddressService>();
         services.AddSingleton<ITaskDeviceAddresses>(sp => sp.GetRequiredService<DeviceAddressService>());
+        services.AddSingleton<DeviceLoginService>();
         services.AddSingleton(sp => new TaskPluginQueries(
             sp.GetRequiredService<PluginRegistry>(),
             sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),

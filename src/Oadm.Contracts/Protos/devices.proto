@@ -14,6 +14,11 @@ service DeviceService {
   rpc Refresh (DeviceIds) returns (Empty);
   rpc SetCredentials (SetCredentialsRequest) returns (Empty);   // one transaction for all ids
   rpc GetWebUiUrl (DeviceId) returns (UrlReply);
+  // "Log in" for managed devices whose stored credentials are rejected: tries one credential on every device
+  // (bounded parallelism), stores it for those that accept it and queues their refresh. One call for the selection.
+  rpc LogIn (DeviceLogInRequest) returns (DeviceLogInReply);
+  // The user name OADM stores for these devices when they all share one (prefill of the Log in dialog); empty otherwise.
+  rpc GetCredentialUserName (DeviceIds) returns (CredentialUserNameReply);
 }
 
 message DeviceId { string id = 1; }
@@ -39,3 +44,29 @@ message DeviceChanged {
   Kind kind = 1;
   Device device = 2;   // for REMOVED only id is set; unset for SNAPSHOT_END
 }
+
+message DeviceLogInRequest {
+  repeated string device_ids = 1;
+  string user_name = 2;
+  string password = 3;
+  // Also add the credential to the credential list (administrators only; ignored for operators).
+  bool save_to_credential_list = 4;
+}
+
+message DeviceLogInResult {
+  string device_id = 1;
+  bool ok = 2;
+  // The device answered and rejected the user name or password (401/403).
+  bool rejected = 3;
+  // User facing reason when not ok: "The user name or password is wrong.", "Unreachable - ...".
+  string message = 4;
+}
+
+message DeviceLogInReply {
+  repeated DeviceLogInResult results = 1;   // one per requested device, in request order
+  // Set when save_to_credential_list was asked but the credential could not be saved there
+  // ("The credential list is full (20 entries); the login was not saved there."). Never fails the login.
+  string credential_list_note = 2;
+}
+
+message CredentialUserNameReply { string user_name = 1; }

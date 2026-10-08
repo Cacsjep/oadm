@@ -17,6 +17,8 @@ public sealed class DeviceGrpcService(
     CredentialStore credentials,
     VapixClientFactory clients,
     DevicePollingService polling,
+    DeviceLoginService logins,
+    CredentialListStore credentialList,
     AuditLog audit,
     IHostApplicationLifetime lifetime) : Proto.DeviceService.DeviceServiceBase
 {
@@ -143,6 +145,76 @@ public sealed class DeviceGrpcService(
 
         polling.QueueRefresh(ids);
         return new Proto.Empty();
+    }
+
+    /// <summary>
+    /// "Log in" (device context menu) for devices whose stored credentials are rejected: tries the credential on every
+    /// device (bounded parallelism, one call for the selection), stores it for those that accept it and queues their
+    /// refresh. "Save to credential list" only for administrators; a full list is a note, never a failed login.
+    /// </summary>
+    public override async Task<Proto.DeviceLogInReply> LogIn(Proto.DeviceLogInRequest request, ServerCallContext context)
+    {
+        var ct = context.CancellationToken;
+        var ids = GrpcGuard.ParseIds(request.DeviceIds, "device id");
+        if (ids.Length == 0)
+        {
+            throw GrpcGuard.InvalidArgument("Select at least one device.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.UserName))
+        {
+            throw GrpcGuard.InvalidArgument("Enter a user name.");
+        }
+
+        if (string.IsNullOrEmpty(request.Password))
+        {
+            throw GrpcGuard.InvalidArgument("Enter a password.");
+        }
+
+        var results = await logins.LogInAsync(ids, request.UserName, request.Password, ct).ConfigureAwait(false);
+        var reply = new Proto.DeviceLogInReply();
+        foreach (var result in results)
+        {
+            reply.Results.Add(new Proto.DeviceLogInResult
+            {
+                DeviceId = result.DeviceId.ToString(),
+                Ok = result.Ok,
+                Rejected = result.Rejected,
+                Message = result.Message ?? string.Empty,
+            });
+        }
+
+        var okCount = results.Count(r => r.Ok);
+
+        // The credential list is Admin only: an operator's request to save is ignored (the client hides the option).
+        if (request.SaveToCredentialList && okCount > 0 && CallerContext.Current is not { IsAdmin: false })
+        {
+            try
+            {
+                var added = await credentialList.AddAsync(request.UserName, request.Password, ct).ConfigureAwait(false);
+                await audit.WriteAsync(AuditActions.CredentialAdded, added.UserName, null, ct).ConfigureAwait(false);
+            }
+            catch (InvalidOperationException)
+            {
+                reply.CredentialListNote = $"The credential list is full ({CredentialListStore.MaxEntries} entries); the login was not saved there.";
+            }
+            catch (ArgumentException ex)
+            {
+                reply.CredentialListNote = "The login was not saved in the credential list: " + ex.Message;
+            }
+        }
+
+        var devicesText = results.Count == 1 ? "1 device" : $"{results.Count} devices";
+        await audit.WriteAsync(AuditActions.DeviceLogin, request.UserName.Trim(), $"{devicesText}, {okCount} logged in", ct).ConfigureAwait(false);
+        return reply;
+    }
+
+    /// <summary>The user name stored for all of these devices when they share one (prefill of the Log in dialog).</summary>
+    public override async Task<Proto.CredentialUserNameReply> GetCredentialUserName(Proto.DeviceIds request, ServerCallContext context)
+    {
+        var ids = GrpcGuard.ParseIds(request.Ids, "device id");
+        var name = await logins.SharedUserNameAsync(ids, context.CancellationToken).ConfigureAwait(false);
+        return new Proto.CredentialUserNameReply { UserName = name ?? string.Empty };
     }
 
     public override async Task<Proto.UrlReply> GetWebUiUrl(Proto.DeviceId request, ServerCallContext context)

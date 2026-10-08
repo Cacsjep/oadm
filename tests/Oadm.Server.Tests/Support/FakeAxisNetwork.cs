@@ -237,6 +237,9 @@ internal sealed class FakeAxisNetwork
     /// <summary><see cref="IVapixConnector"/> that sends the connection's credentials to the fake device.</summary>
     public IVapixConnector CreateConnector() => new Connector(this);
 
+    /// <summary>Delay before every device answer (parallelism tests). Default none.</summary>
+    public TimeSpan Latency { get; set; }
+
     /// <summary>Every connection opened through <see cref="CreateConnector"/>, in order.</summary>
     public ConcurrentQueue<VapixConnectionOptions> Connections { get; } = new();
 
@@ -259,6 +262,11 @@ internal sealed class FakeAxisNetwork
                 && !pinning.Validate(certificate, null, uri.Host))
             {
                 throw new HttpRequestException("The SSL connection could not be established (certificate pin mismatch).");
+            }
+
+            if (network.Latency > TimeSpan.Zero)
+            {
+                await Task.Delay(network.Latency, cancellationToken).ConfigureAwait(false);
             }
 
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);

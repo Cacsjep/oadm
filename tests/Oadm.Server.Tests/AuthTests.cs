@@ -103,6 +103,8 @@ public sealed class AuthTests
         Assert.Equal(Access.Admin, AccessPolicy.For("/oadm.v1.UserService/Delete"));
         Assert.Equal(Access.Admin, AccessPolicy.For("/oadm.v1.AuditService/List"));
         Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.DeviceService/Remove"));
+        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.DeviceService/LogIn"));
+        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.DeviceService/GetCredentialUserName"));
         Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.TaskService/Delete"));
     }
 

@@ -128,6 +128,25 @@ public sealed class CredentialStore(
         return ids.ToHashSet();
     }
 
+    /// <summary>The stored user names of the given devices (devices without credentials are missing). Never a password.</summary>
+    public async Task<IReadOnlyDictionary<Guid, string>> ListUserNamesAsync(IReadOnlyCollection<Guid> deviceIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        var names = new Dictionary<Guid, string>();
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        foreach (var chunk in deviceIds.Distinct().Chunk(500))
+        {
+            var rows = await db.DeviceCredentials.AsNoTracking().Where(c => chunk.Contains(c.DeviceId))
+                .Select(c => new { c.DeviceId, c.UserName }).ToListAsync(ct).ConfigureAwait(false);
+            foreach (var row in rows)
+            {
+                names[row.DeviceId] = row.UserName;
+            }
+        }
+
+        return names;
+    }
+
     public async Task<bool> RemoveAsync(Guid deviceId, CancellationToken ct)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);

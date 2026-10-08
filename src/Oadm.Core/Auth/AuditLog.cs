@@ -28,6 +28,7 @@ public static class AuditActions
     public const string TasksDeletedAll = "Deleted all tasks";
     public const string DevicesRemoved = "Removed devices";
     public const string PluginCall = "Plugin action";
+    public const string DeviceLogin = "Device login";
 }
 
 /// <summary>

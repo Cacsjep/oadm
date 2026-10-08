@@ -30,6 +30,10 @@ public static class AccessPolicy
         ["/oadm.v1.SettingsService/RemoveCredential"] = Access.Admin,
         ["/oadm.v1.SettingsService/RevealCredential"] = Access.Admin,
         ["/oadm.v1.TaskService/DeleteAll"] = Access.Admin,
+
+        // Like SetCredentials: operators log in to devices; saving to the credential list is checked in the call.
+        ["/oadm.v1.DeviceService/LogIn"] = Access.Operator,
+        ["/oadm.v1.DeviceService/GetCredentialUserName"] = Access.Operator,
     };
 
     /// <summary>Services that are Admin only as a whole.</summary>
