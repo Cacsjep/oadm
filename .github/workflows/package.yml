@@ -83,10 +83,18 @@ jobs:
             try { $c = New-Object Net.Sockets.TcpClient('127.0.0.1', 5080); $c.Close(); $ok = $true } catch { Start-Sleep 1 }
           }
           if (-not $ok) { Get-ChildItem C:\ProgramData\OADM\logs -ErrorAction SilentlyContinue | Get-Content -Tail 50; throw 'port 5080 not open' }
-          # The curl.exe of Windows has no HTTP/2; Git for Windows ships one with nghttp2.
-          $headers = & 'C:\Program Files\Git\mingw64\bin\curl.exe' -s --http2-prior-knowledge -X POST -H 'content-type: application/grpc' -H 'te: trailers' -D - -o NUL http://127.0.0.1:5080/oadm.Smoke/Test
-          $headers
-          if (-not ($headers -match 'grpc-status')) { throw 'no gRPC answer' }
+          # gRPC needs HTTP/2 without TLS (h2c); the curl builds on the runner lack it, .NET's HttpClient has it.
+          $client = [System.Net.Http.HttpClient]::new()
+          $req = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post, 'http://127.0.0.1:5080/oadm.Smoke/Test')
+          $req.Version = [Version]'2.0'
+          $req.VersionPolicy = [System.Net.Http.HttpVersionPolicy]::RequestVersionExact
+          $req.Content = [System.Net.Http.ByteArrayContent]::new([byte[]]@())
+          $req.Content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::new('application/grpc')
+          $resp = $client.SendAsync($req).GetAwaiter().GetResult()
+          $null = $resp.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
+          $status = @(@($resp.Headers) + @($resp.TrailingHeaders) | Where-Object { $_.Key -eq 'grpc-status' })
+          "HTTP/$($resp.Version) $([int]$resp.StatusCode), grpc-status: $($status.Value)"
+          if ($status.Count -eq 0) { throw 'no gRPC answer' }
           foreach ($f in 'oadm.db', 'master.key') { if (-not (Test-Path "C:\ProgramData\OADM\$f")) { throw "$f missing" } }
           if (-not (Test-Path 'C:\Program Files\OADM\Server\plugins\oadm.restart')) { throw 'server plugins missing' }
           if (-not (Test-Path 'C:\Program Files\OADM\Client\plugins\oadm.restart')) { throw 'client plugins missing' }
