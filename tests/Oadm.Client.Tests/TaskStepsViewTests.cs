@@ -75,7 +75,8 @@ public sealed class TaskStepsViewTests
             Step(3, "Completed", TaskStepState.Done, progress: 100, startedSec: 61, finishedSec: 61));
         done.State = TaskState.Done;
         row.Update(done);
-        Assert.Equal("Step 4/4 · Completed", row.CurrentStepText);
+        Assert.Equal("Completed", row.CurrentStepText);
+        Assert.Equal("Completed", row.CurrentStepTooltip);
         Assert.Equal(3, row.CurrentStepIndex);
 
         // Plugins without steps (and older servers) leave the column empty.
@@ -171,7 +172,7 @@ public sealed class TaskStepsViewTests
             done.Steps.Select(s => s.Name).ToArray());
         Assert.All(done.Steps, s => Assert.Equal(TaskStepState.Done, s.State));
         Assert.Equal(done.Steps.Count - 1, done.CurrentStepIndex);
-        Assert.Equal("Step 6/6 · Completed", TaskRowViewModel.FormatCurrentStep(done.Steps[done.CurrentStepIndex], done.Steps.Count));
+        Assert.Equal("Completed", TaskRowViewModel.FormatCurrentStep(done.Steps[done.CurrentStepIndex], done.Steps.Count));
     }
 
     private sealed class FixedTime(DateTime utc) : TimeProvider
