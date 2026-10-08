@@ -245,7 +245,12 @@ Two processes, like ADM:
   plugins; `TaskPluginInfo.display_name` normalized by the server, `group = 8` never empty; runnable sets
   cached by `TaskPluginRunnableCache` per device-table version, at most 10 s old; with `compact = 1` a
   plugin carries the shorter of `runnable_device_ids` or `runnable_on_all_except = 9` +
-  `not_runnable_device_ids = 10`: 74 KB instead of 1.8 MB for 5,000 devices x 10 plugins), `Run(pluginId, deviceIds, payloadJson)` (one task per device, reply `task_ids`;
+  `not_runnable_device_ids = 10`: 74 KB instead of 1.8 MB for 5,000 devices x 10 plugins; `not_runnable_groups = 11`
+  (`NotRunnableGroup` {reason, device_ids, count, other_devices}): why the plugin cannot run on the other devices
+  (`ITaskPlugin.NotSupportedReason`, computed in the same cache), grouped by reason, most devices first, every id sent
+  once: with `runnable_on_all_except` the not-runnable ids are sorted by group and each group takes its `count` of them,
+  otherwise the most common reason is `other_devices` (no ids) and the rarer ones list their ids; 5,000 devices x 15
+  plugins: compact reply 109 KB, the reasons of the "all except" plugins 833 bytes), `Run(pluginId, deviceIds, payloadJson)` (one task per device, reply `task_ids`;
   `task_id` is deprecated = first id; all tasks of a Run written in one transaction), `List(ListTasksRequest)`
   (newest first; `limit`/`offset` paging, `TaskList.total_count = 2`; limit 0 = all, legacy),
   `Watch(WatchTasksRequest)` (stream: snapshot of every active task plus the newest `snapshot_limit`
@@ -646,10 +651,17 @@ Layout, top to bottom:
    interface, Refresh, **Log in**, **Set password**, **Tags**, Remove), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
    by name, with a group icon: Applications app, Maintenance settings, Network network, Security key,
    Users users, Video video, others plugin; a group is a submenu even with one entry, user decision)
-   holding its Task plugins whose `CanRun` is true for the whole selection, sorted by name, with their
-   icons. Entries never end with "..." (the host appends none and strips "..." / "…" defensively,
+   holding **every** menu Task plugin (`ShowInMenus`), sorted by name, with their icons. A plugin whose `CanRun` is
+   false for any selected device stays visible but **disabled** (theme's disabled menu look) with the reason as tooltip
+   (`ToolTip.ShowOnDisabled`; user decision 2026-10-08): one device the plugin's text, e.g. "Needs AXIS OS 11.11 or
+   later (this device has 11.9.65)"; several devices the most common reason without the device detail and how many of
+   the selected devices it concerns, plus the number of other reasons ("Needs AXIS OS 11.11 or later: 3 of 5 selected
+   devices (+1 other reason)", `TaskPluginCatalog.NotRunnableReason`, O(selection)); a group whose entries are all
+   disabled is still shown. Entries never end with "..." (the host appends none and strips "..." / "…" defensively,
    `TaskPluginNames.Normalize`). Menus and submenus are at least `Oadm.MenuMinWidth` (240) wide (theme).
-   The toolbar task buttons are unchanged (no groups).
+   The toolbar task buttons have no groups; one the selection cannot run is disabled with the same reason as tooltip
+   (`IToolbarContext.CannotRunTaskReason`; no tooltip without a selection). Headless screenshot
+   `client-context-menu-unsupported.png`.
    **Log in** (icon `key`, user decision 2026-10-08) is shown only while the selection holds a device with status
    Credentials required (not Password not set: "Set password" below) and follows the status live; it
    applies to those devices of the selection. A rejected stored credential only shows as that status (polling), there
@@ -937,6 +949,11 @@ public interface ITaskPlugin : IPlugin
     bool ShowInToolbar { get; }
     bool RequiresDialog { get; }       // client opens the matching ITaskPluginDialog first
     bool CanRun(IDeviceInfo device);
+    string? NotSupportedReason(IDeviceInfo device) => null; // only when CanRun is false: plain language, what is missing
+                                       // and what to do ("Needs AXIS OS 11.11 or later (this device has 11.9.65)",
+                                       // "Needs the Time API"); a device detail goes last as " (this device ...)", left
+                                       // out in summaries; null/empty/throwing = "Not supported on this device" (logged
+                                       // once). Helpers: TaskSupportReasons (ForStatus, NeedsFirmware, NeedsApi, Of)
     int? MaxParallelDevices => null;   // concurrent tasks of this plugin, only lowers Tasks.MaxParallelPerPlugin; null = the setting (16)
     bool ShowInMenus => true;          // false: not in context menu/toolbar (ListTaskPlugins skips it); started by its core plugin
     string GetTaskName(string? payloadJson) => DisplayName;  // task list name: exactly what this task does, max 48, no secrets
@@ -1083,6 +1100,7 @@ public interface IToolbarContext         // UI thread
     IReadOnlyList<IDeviceInfo> Devices { get; }          // + DevicesChanged
     IReadOnlyList<ToolbarTaskPlugin> TaskPlugins { get; } // + TaskPluginsChanged
     bool CanRunTask(string pluginId);
+    string? CannotRunTaskReason(string pluginId);  // DIM null: the context menu tooltip text for the selection
     Task<IReadOnlyList<string>?> RunTaskAsync(string pluginId, CancellationToken ct); // like the context menu
     Task OpenAsync(string hostPage);     // HostPages.AddScan, AddIpRange, AddManually, Devices, Logs, Settings
     Task RemoveDevicesAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
@@ -1114,7 +1132,7 @@ Certificate, IEEE 802.1X) in the grid's unsorted order, RFC 4180 quoting (`Infra
 BOM, a cell starting with = + - @ gets a leading `'` (no formula injection), no password (the client has none);
 save picker `IDialogService.SaveFileAsync`, default name `oadm-devices-<yyyy-MM-dd>.csv`; nothing to export or a
 failed save = `ui:MessageWindow`; O(n), 5,000 devices tested), one generic plugin with a button per task plugin that declares
-`ShowInToolbar` (Tasks; enabled when it can run on the whole selection) and **AXIS OS - Release Notes** (Plugins,
+`ShowInToolbar` (Tasks; enabled when it can run on the whole selection, otherwise disabled with the reason as tooltip) and **AXIS OS - Release Notes** (Plugins,
 order 1000 = last, `ui:ToolbarButton` with text, icon `externalLink`: opens https://help.axis.com/en-us/axis-os-release-notes in the default browser). External ones come from
 `*.Client.dll` like dialogs and pages. `DeviceToolbar` orders them by group, order, id, creates each
 control once (failures logged, entry left out), keeps a `ToolbarSeparator` only between groups that
