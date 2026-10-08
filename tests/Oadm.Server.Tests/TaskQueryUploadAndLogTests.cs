@@ -113,23 +113,43 @@ public sealed class TaskQueryUploadAndLogTests
         Assert.Equal(StatusCode.ResourceExhausted, tooLarge.StatusCode);
         Assert.Contains("1 MB", tooLarge.Status.Detail, StringComparison.Ordinal);
 
-        using (var call = files.Upload())
-        {
-            await call.RequestStream.WriteAsync(new Proto.UploadChunk { Data = ByteString.CopyFrom(1, 2, 3) });
-            await call.RequestStream.CompleteAsync();
-            Assert.Equal(StatusCode.InvalidArgument, (await Assert.ThrowsAsync<RpcException>(() => call.ResponseAsync)).StatusCode);
-        }
+        Assert.Equal(StatusCode.InvalidArgument, (await RejectedAsync(files, new Proto.UploadChunk { Data = ByteString.CopyFrom(1, 2, 3) })).StatusCode);
 
-        using (var call = files.Upload())
-        {
-            await call.RequestStream.WriteAsync(new Proto.UploadChunk { Header = new Proto.UploadHeader { Name = "short.bin", Size = 10 } });
-            await call.RequestStream.WriteAsync(new Proto.UploadChunk { Data = ByteString.CopyFrom(1, 2, 3) });
-            await call.RequestStream.CompleteAsync();
-            var incomplete = await Assert.ThrowsAsync<RpcException>(() => call.ResponseAsync);
-            Assert.Equal(StatusCode.InvalidArgument, incomplete.StatusCode);
-        }
+        var incomplete = await RejectedAsync(
+            files,
+            new Proto.UploadChunk { Header = new Proto.UploadHeader { Name = "short.bin", Size = 10 } },
+            new Proto.UploadChunk { Data = ByteString.CopyFrom(1, 2, 3) });
+        Assert.Equal(StatusCode.InvalidArgument, incomplete.StatusCode);
 
         Assert.Empty(Directory.GetFiles(Path.Combine(host.DataDirectory, "uploads")));
+    }
+
+    /// <summary>
+    /// Sends the chunks and returns the server's rejection. The server may reject while the client still writes (a busy
+    /// machine): then the write fails instead of the reply, which is the same rejection.
+    /// </summary>
+    private static async Task<RpcException> RejectedAsync(Proto.FileService.FileServiceClient files, params Proto.UploadChunk[] chunks)
+    {
+        using var call = files.Upload();
+        try
+        {
+            foreach (var chunk in chunks)
+            {
+                await call.RequestStream.WriteAsync(chunk);
+            }
+
+            await call.RequestStream.CompleteAsync();
+        }
+        catch (RpcException)
+        {
+            // rejected early; the reply carries the status
+        }
+        catch (InvalidOperationException)
+        {
+            // the call already ended; the reply carries the status
+        }
+
+        return await Assert.ThrowsAsync<RpcException>(() => call.ResponseAsync);
     }
 
     [Fact]
