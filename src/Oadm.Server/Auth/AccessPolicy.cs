@@ -34,6 +34,8 @@ public static class AccessPolicy
         // Like SetCredentials: operators log in to devices; saving to the credential list is checked in the call.
         ["/oadm.v1.DeviceService/LogIn"] = Access.Operator,
         ["/oadm.v1.DeviceService/GetCredentialUserName"] = Access.Operator,
+        ["/oadm.v1.DeviceService/SetFirstPassword"] = Access.Operator,
+        ["/oadm.v1.DeviceService/GetPassphrasePolicies"] = Access.Operator,
     };
 
     /// <summary>Services that are Admin only as a whole.</summary>

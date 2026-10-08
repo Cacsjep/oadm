@@ -18,6 +18,7 @@ public sealed class DeviceGrpcService(
     VapixClientFactory clients,
     DevicePollingService polling,
     DeviceLoginService logins,
+    DeviceFirstPasswordService firstPasswords,
     CredentialListStore credentialList,
     AuditLog audit,
     IHostApplicationLifetime lifetime) : Proto.DeviceService.DeviceServiceBase
@@ -215,6 +216,54 @@ public sealed class DeviceGrpcService(
         var ids = GrpcGuard.ParseIds(request.Ids, "device id");
         var name = await logins.SharedUserNameAsync(ids, context.CancellationToken).ConfigureAwait(false);
         return new Proto.CredentialUserNameReply { UserName = name ?? string.Empty };
+    }
+
+    /// <summary>
+    /// "Set password" (device context menu) for devices in factory default: the first root password on every device
+    /// (bounded parallelism, needsetup re-checked right before writing), stored for those that took it. Never logged.
+    /// </summary>
+    public override async Task<Proto.SetFirstPasswordReply> SetFirstPassword(Proto.SetFirstPasswordRequest request, ServerCallContext context)
+    {
+        var ct = context.CancellationToken;
+        var ids = GrpcGuard.ParseIds(request.DeviceIds, "device id");
+        if (ids.Length == 0)
+        {
+            throw GrpcGuard.InvalidArgument("Select at least one device.");
+        }
+
+        IReadOnlyList<DeviceFirstPasswordResult> results;
+        try
+        {
+            results = await firstPasswords.SetAsync(ids, request.Password ?? string.Empty, ct).ConfigureAwait(false);
+        }
+        catch (ArgumentException ex)
+        {
+            throw GrpcGuard.InvalidArgument(ex.Message.Split(" (Parameter", 2)[0]);
+        }
+
+        var reply = new Proto.SetFirstPasswordReply();
+        foreach (var result in results)
+        {
+            reply.Results.Add(new Proto.SetFirstPasswordResult { DeviceId = result.DeviceId.ToString(), Ok = result.Ok, Message = result.Message ?? string.Empty });
+        }
+
+        var okCount = results.Count(r => r.Ok);
+        var devicesText = results.Count == 1 ? "1 device" : $"{results.Count} devices";
+        await audit.WriteAsync(AuditActions.FirstPasswordSet, "root", $"{devicesText}, {okCount} set", ct).ConfigureAwait(false);
+        return reply;
+    }
+
+    /// <summary>The passphrase policy each device reports (anonymous systemready), for the hint of the Set password dialog.</summary>
+    public override async Task<Proto.PassphrasePoliciesReply> GetPassphrasePolicies(Proto.DeviceIds request, ServerCallContext context)
+    {
+        var ids = GrpcGuard.ParseIds(request.Ids, "device id");
+        var reply = new Proto.PassphrasePoliciesReply();
+        foreach (var policy in await firstPasswords.ReadPoliciesAsync(ids, context.CancellationToken).ConfigureAwait(false))
+        {
+            reply.Policies.Add(new Proto.DevicePassphrasePolicy { DeviceId = policy.DeviceId.ToString(), Policy = policy.Policy ?? string.Empty });
+        }
+
+        return reply;
     }
 
     public override async Task<Proto.UrlReply> GetWebUiUrl(Proto.DeviceId request, ServerCallContext context)

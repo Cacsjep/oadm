@@ -48,6 +48,15 @@ internal sealed class FakeAxisDevice
 
     public int PwdgrpCalls { get; private set; }
 
+    /// <summary>systemready passphrasepolicy ("none", "length", "complex").</summary>
+    public string PassphrasePolicy { get; set; } = "none";
+
+    /// <summary>pwdgrp.cgi refuses shorter first passwords (the device's passphrase policy).</summary>
+    public int MinimumPasswordLength { get; set; }
+
+    /// <summary>Every pwdgrp.cgi request: URL scheme, HTTP method and whether the URL carried a query.</summary>
+    public List<(string Scheme, string Method, bool QueryInUrl)> PwdgrpRequests { get; } = [];
+
     /// <summary>Requests that carried credentials the device rejected.</summary>
     public int RejectedLogins { get; private set; }
 
@@ -122,10 +131,11 @@ internal sealed class FakeAxisDevice
                 return authorized ? Json(BasicDeviceInfoJson()) : Unauthorized();
 
             case "axis-cgi/systemready.cgi":
-                return Json(Serialize(new { apiVersion = "1.5", method = "systemready", data = new { systemready = "yes", needsetup = NeedSetup ? "yes" : "no", uptime = "100", bootid = "b1", passphrasepolicy = "none" } }));
+                return Json(Serialize(new { apiVersion = "1.5", method = "systemready", data = new { systemready = "yes", needsetup = NeedSetup ? "yes" : "no", uptime = "100", bootid = "b1", passphrasepolicy = PassphrasePolicy } }));
 
             case "axis-cgi/pwdgrp.cgi":
                 PwdgrpCalls++;
+                PwdgrpRequests.Add((request.RequestUri.Scheme, request.Method.Method, query.Length > 0));
                 if (!NeedSetup)
                 {
                     return Text("Error: account root already exists");
@@ -135,6 +145,11 @@ internal sealed class FakeAxisDevice
                 if (form.GetValueOrDefault("action") != "add" || !form.TryGetValue("pwd", out var pwd))
                 {
                     return Text("Error: bad request");
+                }
+
+                if (pwd.Length < MinimumPasswordLength)
+                {
+                    return Text("Error: the password does not meet the passphrase policy");
                 }
 
                 User = form.GetValueOrDefault("user") ?? "root";

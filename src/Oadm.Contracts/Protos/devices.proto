@@ -19,6 +19,12 @@ service DeviceService {
   rpc LogIn (DeviceLogInRequest) returns (DeviceLogInReply);
   // The user name OADM stores for these devices when they all share one (prefill of the Log in dialog); empty otherwise.
   rpc GetCredentialUserName (DeviceIds) returns (CredentialUserNameReply);
+  // "Set password" for managed devices in factory default (status Password not set): the first root password over
+  // pwdgrp.cgi like the add page (HTTPS when offered, POST body only), only on devices that report needsetup=yes right
+  // before; stored as their credential and their refresh queued. One call for the selection.
+  rpc SetFirstPassword (SetFirstPasswordRequest) returns (SetFirstPasswordReply);
+  // The passphrase policy (systemready: none, length, complex) of each device, for the hint of the Set password dialog.
+  rpc GetPassphrasePolicies (DeviceIds) returns (PassphrasePoliciesReply);
 }
 
 message DeviceId { string id = 1; }
@@ -70,3 +76,29 @@ message DeviceLogInReply {
 }
 
 message CredentialUserNameReply { string user_name = 1; }
+
+message SetFirstPasswordRequest {
+  repeated string device_ids = 1;
+  string password = 2;   // 1-64 printable ASCII; user is always root
+}
+
+message SetFirstPasswordResult {
+  string device_id = 1;
+  bool ok = 2;
+  // User facing reason when not ok: "The device already has a password. Nothing was changed.", "The device rejected
+  // the password: ...", "Unreachable - ...".
+  string message = 3;
+}
+
+message SetFirstPasswordReply {
+  repeated SetFirstPasswordResult results = 1;   // one per requested device, in request order
+}
+
+message DevicePassphrasePolicy {
+  string device_id = 1;
+  string policy = 2;   // "none", "length", "complex"; empty when it could not be read
+}
+
+message PassphrasePoliciesReply {
+  repeated DevicePassphrasePolicy policies = 1;
+}
