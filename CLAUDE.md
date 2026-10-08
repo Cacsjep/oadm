@@ -95,7 +95,8 @@ src/
                        IToolbarContext, shared controls (Controls/: IconLabel, SearchBox, OadmIcon,
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, FileRow, ProgressRow,
                        ToolbarButton, ToolbarSeparator, PasswordBox, MessageWindow, FormField),
-                       form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection
+                       form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection,
+                       Collections/RangeObservableCollection (bulk list of the host grids and plugin pages)
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)
   Oadm.Server/         host: gRPC services, plugin loader, polling, Serilog setup
   Oadm.Client/         Avalonia app: views, view models, gRPC client, plugin loader
@@ -105,7 +106,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.VapixCommander(.Client)/   core plugin: VAPIX command library, raw requests, rollouts
   Oadm.Plugins.NtpServer(.Client)/        core plugin: NTP server (RFC 5905 server mode) + "Use OADM as NTP server"
   Oadm.Plugins.DhcpServer(.Client)/       core plugin: DHCP server (RFC 2131) with static leases and lease list
-  Oadm.Plugins.MetadataMonitor(.Client)/  core plugin: live event stream of one camera (RTSP metadata, port of AXIS Metadata Monitor; spec only)
+  Oadm.Plugins.MetadataMonitor(.Client)/  core plugin: live event stream of one camera (RTSP metadata, port of AXIS Metadata Monitor)
   Oadm.Plugins.Pki(.Client)/              core plugin: PKI (one CA for device certificates, trusted root store)
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
@@ -189,7 +190,7 @@ Two processes, like ADM:
   plugin, INTERNAL otherwise; the status detail is the message), `Watch(plugin_id)` (stream of `PluginEvent`
   {plugin_id, topic, payload_json} the plugin publishes through `ICorePluginContext.Events` from the call on; NOT_FOUND
   unknown plugin; `Oadm.Core.Plugins.PluginEventHub` fans out with 256 events buffered per watcher, oldest dropped).
-  Users: "Snapshot report", "VAPIX Commander", "NTP server", "DHCP server", "PKI".
+  Users: "Snapshot report", "VAPIX Commander", "NTP server", "DHCP server", "PKI", "Metadata Monitor".
 - `SettingsService`: `Get`, `Set` (`ServerSettings.zero_conf_seconds = 8`, 0 keeps the stored value),
   `ListCredentials`, `AddCredential(user_name, password)`
   (INVALID_ARGUMENT, RESOURCE_EXHAUSTED over 20 entries; an identical pair returns the existing
@@ -743,6 +744,8 @@ public interface ICorePluginContext
     ISecretProtector? Secrets => null; // Protect/Unprotect(value, purpose): AES-256-GCM with the master key
     IPluginEvents? Events => null;     // Publish(topic, payloadJson): live events to the plugin's page (PluginService.Watch)
     ITrustAnchors? TrustAnchors => null; // Set(der[]): CAs the server trusts when rating device certificates (per plugin)
+    IDeviceEventStreams? EventStreams => null; // OpenAsync(deviceId): the device's RTSP event stream with the stored
+                                       // credentials (never handed out): XML documents, LostDocuments, dispose = TEARDOWN
 }
 ```
 
@@ -1469,7 +1472,7 @@ Read-only for devices. Decided with the user on 2026-10-08:
 - **Info text** (like the AXIS tool's Info column): `[INIT] port = 33; active = 0;` = `[INIT]` / `[CHANGED]` / `[DELETED]`
   from the property operation, then every Source, Key and Data item as `name = value;` in document order.
 - **Page methods / events (`MetadataMethods`):** `start` ({deviceId}) -> {streamId} or `error` ("The device has no event
-  stream", "Unauthorized - HTTP 401", "Unreachable - ..."), `stop`. Messages are pushed through `ICorePluginContext.Events`
+  stream", "Unauthorized - HTTP 401", "Unreachable - ..."), `stop`, `keepAlive` (every 5 s while running). Messages are pushed through `ICorePluginContext.Events`
   (topic `messages`, batched every 250 ms, at most 500 per batch; above that the oldest of the batch are dropped and counted)
   and a `state` event (Connecting, Live, Reconnecting, Stopped, Error + text, message count, lost count).
 - **Page (client, `HasOwnCards` false: one card):** `ui:PageHeader.Subtitle` "Shows the events a camera sends, live.".
@@ -1492,6 +1495,32 @@ Read-only for devices. Decided with the user on 2026-10-08:
   fake RTSP source (start, stop, reconnect, refused statuses, watch ended); page view model (filter, clear, autoscroll,
   10,000 cap, selection survives batches); headless screenshots `metadata-monitor-page.png` (live list + detail),
   `-error.png`; read-only hardware test against 10.0.0.48 (Start, at least one Initialized message, Stop).
+- **Implementation:** SDK `IDeviceEventStreams` on `ICorePluginContext.EventStreams` (DIM null; `IDeviceEventSource`,
+  `DeviceMetadataDocument`, `DeviceStreamException` with Unreachable / Unauthorized / NotSupported / Protocol), implemented
+  by `Oadm.Core.LiveView.DeviceEventStreams` (device address + `CredentialStore`) on `RtspMetadataSource` (Core
+  `LiveView/Rtsp`: the live view's `RtspClient`, `SdpMetadataTrack` for the `m=application ... vnd.onvif.metadata` media,
+  OPTIONS keep-alive on a timer every half session timeout (at most 10 s), a silence watchdog (no packet and no keep-alive
+  answer for 2 x keep-alive + 5 s = connection lost; event streams can be quiet for minutes, `RtspClient.SinceLastReceive`))
+  and `Rtp/MetadataDepacketizer` (a gap drops the document it hits; a packet after a gap is kept only when it starts a new
+  XML document). 10.0.0.48 (AXIS OS 12.11) sends one document per RTP packet, one notification per document, an empty
+  `tt:MetadataStream` first and 128 Initialized messages at PLAY (64 virtual inputs, PTZ, storage, temperature, ...),
+  the first about 2.6 s after Start through the server. Plugin: `MetadataMonitorPlugin` (sessions per page,
+  `MetadataMonitorOptions`), `Streaming/MonitorSession` (read loop, reconnect, batches split below the 1 M character event
+  limit, raw XML per message cut at 256 K characters), `Parsing/MetadataParser` (XDocument without DTDs, prefixes resolved
+  by namespace: `tns1:` / `tnsaxis:` dropped, other prefixes kept). Device refusals use the snapshot report's status
+  texts ("Credentials required - the device rejects the stored credentials", ...). A page's stream also ends without its
+  keep-alive: the page calls `keepAlive` ({streamId}) every 5 s while a stream runs, the server stops streams without one
+  for 20 s (client closed or gone; switching pages stops the stream at once). Page layout: two rows (camera search,
+  camera select, then status chip + one primary **Start** / **Stop** toggle on the right; below: filter, Clear,
+  Autoscroll, message count on the right) because one row does not fit the 1280 px minimum window. Autoscroll follows the
+  grid's vertical scroll bar (wheel and bar: at the end on, above off); the selection is kept through the grid's Reset of
+  each batch. Detail height in `LocalApplicationData/Oadm/plugins/oadm.metadata-monitor/client.json`; copy = the shown
+  text (pretty or raw) through the TopLevel clipboard. Fake mode (`FakeOadmApi.MetadataMonitor.cs`): generated burst
+  (64 virtual inputs, digital input, storage, temperature) then a change every 1.5 s, statuses refused like the server.
+  Test project `tests/Oadm.Plugins.MetadataMonitor.Tests` (parser, lifecycle with `FakeEventStreams`, view model, fake
+  mode, headless screenshots, Perf `ScaleTests`, hardware `MetadataHardwareTests` through the in-process server and gRPC
+  Watch); Core: `MetadataDepacketizerTests`, `RtspMetadataSourceTests` (scripted RTSP server), `DeviceEventStreamsTests`,
+  `MetadataRecorderTests` (Hardware; re-records `Fixtures/LiveView/events.sdp` + `.rtp` with `OADM_RECORD_RTP_DIR`).
 
 ## Date and time plugin
 
@@ -1632,7 +1661,7 @@ the server address is set with `--server` or in the client settings file (user d
   tiles. Every feature with a device list has a test with at least 5000 fake devices that keeps
   filtering/selection/summary fast. Target size: **5,000 devices and 50,000 tasks in the history**
   (audit, numbers and fixes: `docs/scale-audit.md`). Concretely:
-  - Collections bound to a grid are `RangeObservableCollection` (`Oadm.Client.Infrastructure`): a
+  - Collections bound to a grid are `RangeObservableCollection` (`Oadm.Sdk.Client.Collections`, plugin pages too): a
     filter, select-all, snapshot or batch is one `ReplaceAll`/`AddRange`/`InsertRange`/`RemoveAll`
     (one Reset), never one event per item. `GridSelection` hands a multi-item selection change to the
     view model collection in one step (`IResettableList`).

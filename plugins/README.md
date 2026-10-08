@@ -297,7 +297,7 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
   `reportStatus`).
 - More context: `ctx.PluginDirectory` (the plugin folder, for data files such as the VAPIX Commander
   `Library/*.json`), `ctx.Secrets` (`ISecretProtector`, encrypt secrets you store in `Settings`; null =
-  do not store them), `ctx.Tasks.Cancel(taskId)`. A contributed task plugin that only the page starts
+  do not store them), `ctx.EventStreams` (device event streams, see below), `ctx.Tasks.Cancel(taskId)`. A contributed task plugin that only the page starts
   sets `ShowInMenus => false` and has no public constructor (the loader then never registers it alone).
   Never dispose clients from `Vapix.CreateAsync`: the factory caches them.
 - Video sources: `IVapixClient.GetVideoSourcesAsync()` returns the same sources the live view offers
@@ -331,6 +331,12 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
   server certificate, read-only queries for a grouped certificate list, confirmation-only dialogs (an `ITaskPluginDialog`
   whose `ShowAsync` shows `MessageWindow.ConfirmAsync` and returns "{}"), and a stateful fake camera for the tests
   (`tests/Oadm.Plugins.Pki.Tests/FakeCamera.cs`).
+- Sixth sample: the Metadata Monitor (`plugins/Oadm.Plugins.MetadataMonitor` + `.Client`, id `oadm.metadata-monitor`, spec
+  in `CLAUDE.md` "Metadata Monitor (core plugin)"): a read-only live view of one camera's event stream. The server part
+  opens the stream through `ctx.EventStreams` (below), parses the XML and pushes batched messages; the page keeps the
+  newest 10,000 in a `RangeObservableCollection` (one collection change per batch), filters them live and shows the
+  selected message in `ui:CodeView`. Per-page streams end on Stop, on page change and, for a closed client, when the
+  page's keep-alives stop (lease pattern for any per-page server resource).
 
 ### Host support for service plugins (NTP, DHCP, ...)
 
@@ -365,6 +371,18 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
   self-signed one stays Self-signed, pinning is never affected. The host keeps one set per plugin (the union counts) and
   removes it when the plugin stops; devices show the new rating with their next full refresh. The PKI plugin sets its
   active CA, its chain and the previous CAs on start and on every change.
+- **Device event streams**: `ctx.EventStreams?.OpenAsync(deviceId, ct)` (SDK `IDeviceEventStreams`, null on hosts without
+  it) opens the device's RTSP event stream (`rtsp://<device>/axis-media/media.amp?video=0&audio=0&event=on`, port 554,
+  Digest with the stored credentials, which never reach the plugin) and returns an `IDeviceEventSource`:
+  `ReadAsync(ct)` yields one complete `tt:MetadataStream` XML document per RTP marker (`DeviceMetadataDocument` with the
+  server receive time), `LostDocuments` counts documents dropped for packet loss or size (over 1 MB); dispose = TEARDOWN.
+  Failures are `DeviceStreamException` with `Error` (Unreachable: retry with backoff; Unauthorized, NotSupported:
+  permanent) and a message for the user ("Unauthorized - HTTP 401", "The device has no event stream", "Unreachable -
+  ..."). Check `IDeviceInfo.Status` first (CertificateChanged, CredentialsRequired, PasswordNotSet). The host sends
+  keep-alives and detects a silent connection itself.
+- **Bulk lists on pages**: `Oadm.Sdk.Client.Collections.RangeObservableCollection<T>` (`ReplaceAll`, `AddRange`,
+  `InsertRange`, `RemoveAll`, `RemoveFirst`: one Reset instead of one event per item), the same collection the host
+  grids use.
 - **Status line**: `Oadm.Sdk.Network.ServiceStatus` (kind ok / neutral / warning / error, plain text for technicians,
   detail = the fix, shown as tooltip); protocol details go to the server log only.
 - **Rate limits**: `Oadm.Sdk.Network.KeyedRateLimiter<TKey>` (token bucket per key such as a client address or MAC,
