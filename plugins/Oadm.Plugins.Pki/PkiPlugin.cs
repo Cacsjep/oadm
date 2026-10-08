@@ -66,6 +66,12 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Reading the state is for everyone; generate, import, export, backup, install in the server root store and the
+    /// settings are Admin only (and audited). The Security tasks are task plugins and need no more than Operator.
+    /// </summary>
+    public UserRole RequiredRole(string method) => method == PkiMethods.GetState ? UserRole.Operator : UserRole.Admin;
+
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
         var service = _service ?? throw new InvalidOperationException("The PKI plugin is not running.");

@@ -54,6 +54,9 @@ public sealed class NtpServerPlugin : ICorePlugin, IAsyncDisposable
         }
     }
 
+    /// <summary>Reading the state is for everyone; Save changes the server (Admin, audited).</summary>
+    public UserRole RequiredRole(string method) => method == NtpServerMethods.GetState ? UserRole.Operator : UserRole.Admin;
+
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
         var service = _service ?? throw new InvalidOperationException("The NTP server plugin is not running.");

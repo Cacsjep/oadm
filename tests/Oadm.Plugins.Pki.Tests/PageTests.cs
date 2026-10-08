@@ -167,6 +167,24 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
+    public async Task Install_in_trusted_root_store_asks_with_the_ca_fingerprint_first()
+    {
+        using var vm = CreateViewModel();
+        await vm.LoadAsync();
+        var fingerprint = vm.State!.Ca!.Fingerprint;
+        _ctx.ConfirmAnswer = false;
+
+        await vm.InstallTrustCommand.ExecuteAsync(null);
+
+        var (title, message, confirm) = Assert.Single(_ctx.Confirmations);
+        Assert.Equal("Install in trusted root store", title);
+        Assert.Equal("Install", confirm);
+        Assert.Contains(fingerprint, message, StringComparison.Ordinal);
+        Assert.Empty(_clientTrust.Installed);
+        Assert.NotEqual("Installed on the server", vm.ServerTrustText);
+    }
+
+    [Fact]
     public async Task Generate_asks_with_the_device_count_and_replaces_the_ca()
     {
         using var vm = CreateViewModel();

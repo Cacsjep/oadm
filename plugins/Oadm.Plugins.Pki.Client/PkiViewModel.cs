@@ -357,9 +357,20 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
 
     // ---------------------------------------------------------------- commands
 
+    /// <summary>Text of the confirmation before the install: the CA's SHA-256 fingerprint, to compare with the page.</summary>
+    internal static string InstallTrustMessage(CaInfo ca) =>
+        $"The OADM server and this computer will trust every certificate {ca.CommonName} issues. Install only when the "
+        + $"fingerprint is the one shown on this page.\n\nSHA-256 fingerprint:\n{ca.Fingerprint}";
+
     [RelayCommand(CanExecute = nameof(CanInstallTrust))]
     private async Task InstallTrustAsync()
     {
+        if (State?.Ca is { } toInstall
+            && !await _ctx.ConfirmAsync("Install in trusted root store", InstallTrustMessage(toInstall), "Install").ConfigureAwait(true))
+        {
+            return;
+        }
+
         IsInstalling = true;
         try
         {

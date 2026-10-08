@@ -78,5 +78,7 @@ public sealed class FakeModeTests : IDisposable
     {
         public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
             api.InvokeCorePluginAsync(PkiPluginInfo.PluginId, method, payloadJson, ct);
+
+        public Task<bool> ConfirmAsync(string title, string message, string confirmText) => Task.FromResult(true);
     }
 }

@@ -76,6 +76,9 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin
 
     public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
 
+    /// <summary>Sending a request and rolling out commands reach devices: both go to the audit log.</summary>
+    public bool IsAudited(string method) => method is CommanderMethods.TryRequest or CommanderMethods.Rollout;
+
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(method);

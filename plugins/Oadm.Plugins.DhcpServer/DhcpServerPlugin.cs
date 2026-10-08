@@ -52,6 +52,9 @@ public sealed class DhcpServerPlugin : ICorePlugin, IAsyncDisposable
         }
     }
 
+    /// <summary>Reading the state is for everyone; saving, static leases and release change the server (Admin, audited).</summary>
+    public UserRole RequiredRole(string method) => method == DhcpServerMethods.GetState ? UserRole.Operator : UserRole.Admin;
+
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
         var service = _service ?? throw new InvalidOperationException("The DHCP server plugin is not running.");
