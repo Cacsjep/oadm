@@ -85,7 +85,7 @@ Version: $DEB_VERSION
 Architecture: $ARCH
 Section: net
 Priority: optional
-Maintainer: OADM contributors <noreply@oadm.invalid>
+Maintainer: OADM contributors <oadm@acs-dev.org>
 Installed-Size: $INSTALLED_SIZE
 Depends: libc6, libgcc-s1 | libgcc1, libstdc++6, zlib1g, libssl3t64 | libssl3 | libssl1.1, $ICU
 Recommends: libfontconfig1, libx11-6, libice6, libsm6, libxrandr2, libxi6, libxcursor1
