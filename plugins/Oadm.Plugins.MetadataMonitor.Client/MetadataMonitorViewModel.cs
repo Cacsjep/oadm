@@ -78,11 +78,6 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
     public partial bool Autoscroll { get; set; } = true;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsRaw))]
-    [NotifyPropertyChangedFor(nameof(DetailText))]
-    public partial bool IsPretty { get; set; } = true;
-
-    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StartStopText))]
     [NotifyPropertyChangedFor(nameof(StartStopTip))]
     [NotifyCanExecuteChangedFor(nameof(StartStopCommand))]
@@ -118,8 +113,6 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
     public bool IsStatusAccent => StatusKind == "accent";
 
     public bool HasStatus => StatusText.Length > 0;
-
-    public bool IsRaw => !IsPretty;
 
     public string StartStopText => IsRunning ? "Stop" : "Start";
 
@@ -330,12 +323,6 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
         UpdateSummary();
     }
 
-    [RelayCommand]
-    private void ShowPretty() => IsPretty = true;
-
-    [RelayCommand]
-    private void ShowRaw() => IsPretty = false;
-
     [RelayCommand(CanExecute = nameof(HasDetail))]
     private async Task CopyAsync()
     {
@@ -344,7 +331,7 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
             return;
         }
 
-        var text = IsPretty ? CodeText.FormatXml(row.Xml) ?? row.Xml : row.Xml;
+        var text = CodeText.FormatXml(row.Xml) ?? row.Xml;
         await copy(text).ConfigureAwait(true);
     }
 
@@ -488,7 +475,7 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
                 SetStatus("accent", "Connecting", null);
                 break;
             case MonitorStates.Live:
-                SetStatus("ok", string.Create(CultureInfo.InvariantCulture, $"Live · {state.Messages:N0} {(state.Messages == 1 ? "message" : "messages")}{lost}"), null);
+                SetStatus("ok", string.Create(CultureInfo.InvariantCulture, $"Live{lost}"), null);
                 break;
             case MonitorStates.Reconnecting:
                 SetStatus("warning", "Reconnecting" + lost, state.Text);

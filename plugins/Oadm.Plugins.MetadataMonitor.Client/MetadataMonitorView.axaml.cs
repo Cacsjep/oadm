@@ -27,7 +27,7 @@ public partial class MetadataMonitorView : UserControl
         {
             if (_vm is not null)
             {
-                _vm.DetailHeight = Root.RowDefinitions[4].ActualHeight;
+                _vm.DetailHeight = Root.RowDefinitions[3].ActualHeight;
             }
         };
     }
@@ -46,7 +46,7 @@ public partial class MetadataMonitorView : UserControl
         {
             _vm.MessagesAppended += OnMessagesAppended;
             _vm.CopyText = CopyAsync;
-            Root.RowDefinitions[4].Height = new GridLength(_vm.DetailHeight);
+            Root.RowDefinitions[3].Height = new GridLength(_vm.DetailHeight);
         }
     }
 

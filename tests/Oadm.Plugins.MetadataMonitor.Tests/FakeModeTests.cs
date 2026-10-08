@@ -29,7 +29,7 @@ public sealed class FakeModeTests : IDisposable
         await vm.StartStopCommand.ExecuteAsync(null);
         await Wait.UntilAsync(() => vm.Messages.Count > 80);
         Assert.True(vm.IsRunning);
-        await Wait.UntilAsync(() => vm.StatusText.StartsWith("Live · ", StringComparison.Ordinal));
+        await Wait.UntilAsync(() => vm.StatusText.StartsWith("Live", StringComparison.Ordinal));
 
         // Stop first: without a UI thread the events arrive on the thread pool, so read the list once it is final.
         await vm.StartStopCommand.ExecuteAsync(null);

@@ -1477,17 +1477,19 @@ Read-only for devices. Decided with the user on 2026-10-08:
   (topic `messages`, batched every 250 ms, at most 500 per batch; above that the oldest of the batch are dropped and counted)
   and a `state` event (Connecting, Live, Reconnecting, Stopped, Error + text, message count, lost count).
 - **Page (client, `HasOwnCards` false: one card):** `ui:PageHeader.Subtitle` "Shows the events a camera sends, live.".
-  Top row: camera select (managed video and I/O devices, sorted by IPv4, `ui:SearchBox`-filtered combo, "P3265-V (10.0.0.48)"),
-  **Start** / **Stop** (primary), the status chip left of the buttons (Connecting accent, Live ok "Live · 127 messages",
-  Reconnecting warning, Error red with the text), `ui:SearchBox` filter (live, case-insensitive over topic, info and raw
-  XML; "Filter events"), **Clear** (empties the list, the stream keeps running) and **Autoscroll** toggle (on: the newest
-  row stays visible; scrolling up turns it off, scrolling to the end turns it on again).
+  One toolbar row (fits the 1280 px minimum window with the rail expanded; user decision): camera select (managed video
+  and I/O devices, sorted by IPv4, type to jump, "P3265-V (10.0.0.48)"), `ui:SearchBox` filter (live, case-insensitive
+  over topic, info and raw XML; "Filter events"), **Clear** (empties the list, the stream keeps running), **Autoscroll**
+  toggle (on: the newest row stays visible; scrolling up turns it off, scrolling to the end turns it on again) and the
+  count ("134 messages", "5 of 15 messages"); on the right the status chip (Connecting accent, Live ok "Live", plus
+  " · 3 messages lost" when documents were lost, Reconnecting warning, Error red with the text) and one primary
+  **Start** / **Stop** button.
   List (virtualized DataGrid, `RangeObservableCollection`, batches appended in one step): Seq# (per stream, from 1),
   Timestamp (UTC, the message's UtcTime, `yyyy-MM-dd HH:mm:ss.fff`), Category, Event topic, Capture time (UTC), Property
   operation, Info (star width). No raw Data column (it is in the detail view). The client keeps the newest **10,000**
   messages (oldest removed in one step).
   Detail (below the list, splitter, height persisted per client): the selected message's XML in `ui:CodeView` (Xml,
-  pretty, highlighted, Pretty / Raw switch like the VAPIX Commander) with a copy button.
+  always pretty-printed and highlighted, no Raw switch: user decision) with a copy button (copies the pretty XML).
 - **Scale:** a camera can send hundreds of Initialized messages at Start (every virtual input); batching, one collection
   change per batch and the virtualized grid keep the UI responsive; filter is O(n) over at most 10,000 rows. Test with
   10,000 messages and a burst of 2,000 in one batch.

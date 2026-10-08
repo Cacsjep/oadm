@@ -73,7 +73,7 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         }
 
         await Wait.UntilAsync(() => vm.Messages.Count == RecordedEvents.Documents.Count - 1);
-        await Wait.UntilAsync(() => vm.StatusText == $"Live · {vm.Messages.Count} messages");
+        await Wait.UntilAsync(() => vm.StatusText == "Live" && vm.SummaryText == $"{vm.Messages.Count} messages");
         Assert.True(vm.IsStatusOk);
         var row = vm.Messages.First(r => r.Topic == "Device/IO/VirtualInput");
         Assert.Equal("Event", row.Category);
@@ -246,14 +246,8 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
 
         vm.SelectedMessage = vm.Messages[0];
         Assert.Equal("#1 · Device/IO/VirtualInput", vm.DetailTitle);
-        Assert.True(vm.IsPretty);
         await vm.CopyCommand.ExecuteAsync(null);
         Assert.Contains("\n  <wsnt:Topic", copied, StringComparison.Ordinal);
-
-        vm.ShowRawCommand.Execute(null);
-        Assert.True(vm.IsRaw);
-        await vm.CopyCommand.ExecuteAsync(null);
-        Assert.Equal(vm.SelectedMessage.Xml, copied);
     }
 
     [Fact]
