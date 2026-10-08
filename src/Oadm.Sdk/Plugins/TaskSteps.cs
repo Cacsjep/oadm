@@ -144,7 +144,7 @@ public sealed class TaskStepList
 
     /// <summary>
     /// Name of the step <see cref="Close"/> appends when a task succeeds (Done or Done with warnings), so the
-    /// current step of a finished task reads "Step 8/8 · Completed". Failed and cancelled tasks get none.
+    /// current step of a finished task reads "Completed". Failed and cancelled tasks get none.
     /// </summary>
     public const string CompletedStepName = "Completed";
 

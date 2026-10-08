@@ -104,12 +104,21 @@ public sealed partial class TaskRowViewModel : ObservableObject
         ResolveDevices();
     }
 
-    /// <summary>"Step 3/6 · Upload firmware", plus " · 45 %" while a running step reports progress.</summary>
+    /// <summary>
+    /// "Step 3/6 · Upload firmware", plus " · 45 %" while a running step reports progress; a successful task
+    /// (its last step is the engine's Done step "Completed") shows just "Completed".
+    /// </summary>
     public static string FormatCurrentStep(TaskStep? step, int count)
     {
         if (step is null || count == 0)
         {
             return count == 0 ? "" : string.Create(CultureInfo.CurrentCulture, $"{count} steps planned");
+        }
+
+        if (step.Index == count - 1 && step.State == TaskStepState.Done
+            && string.Equals(step.Name, Oadm.Sdk.Plugins.TaskStepList.CompletedStepName, StringComparison.Ordinal))
+        {
+            return step.Name;
         }
 
         string text = string.Create(CultureInfo.CurrentCulture, $"Step {step.Index + 1}/{count} \u00B7 {step.Name}");

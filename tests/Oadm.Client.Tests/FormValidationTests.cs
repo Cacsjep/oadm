@@ -235,7 +235,7 @@ public sealed class FormValidationTests
             using var f = new DevicesFixture(api);
             using var connection = new Oadm.Client.Shell.ServerConnection(f.Api, f.Store, f.Tasks, f.Ui,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Shell.ServerConnection>.Instance);
-            var vm = new Oadm.Client.Settings.SettingsViewModel(f.Api, f.Settings, connection,
+            var vm = new Oadm.Client.Settings.SettingsViewModel(f.Api, connection, f.Clipboard,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Settings.SettingsViewModel>.Instance);
             await vm.LoadAsync();
             Assert.False(vm.HasErrors); // loaded values: nothing shown
@@ -250,17 +250,14 @@ public sealed class FormValidationTests
             vm.ListenUrl = "ftp://server";
             vm.NewCredentialPassword = "x";
             vm.NewCredentialPassword = "";
-            vm.ServerAddress = "http://bad host";
             Dispatcher.UIThread.RunJobs();
 
             Assert.Equal("Enter a whole number from 5 to 3600.", vm.ErrorOf(nameof(vm.PollingIntervalSeconds)));
             Assert.Equal("Enter a server name.", vm.ErrorOf(nameof(vm.ServerName)));
             Assert.Equal("Enter a URL like http://0.0.0.0:5080.", vm.ErrorOf(nameof(vm.ListenUrl)));
             Assert.Equal("Enter the password.", vm.ErrorOf(nameof(vm.NewCredentialPassword)));
-            Assert.Equal("Enter an address like http://server:5080.", vm.ErrorOf(nameof(vm.ServerAddress)));
             Assert.False(vm.SaveCommand.CanExecute(null));
             Assert.Equal("Enter a whole number from 5 to 3600.", vm.SaveBlockedReason);
-            Assert.False(vm.ApplyServerAddressCommand.CanExecute(null));
 
             List<FormField> fields = window.GetVisualDescendants().OfType<FormField>().ToList();
             Assert.True(fields.Single(x => x.Label == "Listen URL").HasError);
@@ -286,7 +283,7 @@ public sealed class FormValidationTests
             using var f = new DevicesFixture(api);
             using var connection = new Oadm.Client.Shell.ServerConnection(f.Api, f.Store, f.Tasks, f.Ui,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Shell.ServerConnection>.Instance);
-            var vm = new Oadm.Client.Settings.SettingsViewModel(f.Api, f.Settings, connection,
+            var vm = new Oadm.Client.Settings.SettingsViewModel(f.Api, connection, f.Clipboard,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Settings.SettingsViewModel>.Instance);
             await vm.LoadAsync();
             Assert.Equal(16m, vm.MaxParallelTasksPerPlugin);

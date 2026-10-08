@@ -211,9 +211,6 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     public partial string ExpiryWarningDays { get; set; } = "30";
 
     [ObservableProperty]
-    public partial string IssuedSummary { get; set; } = string.Empty;
-
-    [ObservableProperty]
     public partial Choice EapolVersion { get; set; }
 
     [ObservableProperty]
@@ -341,7 +338,6 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         }
 
         ApplyServerTrust(state.ServerTrustInstalled, state.ServerTrustError);
-        IssuedSummary = Summary(state);
 
         PreviousCas.Clear();
         foreach (var previous in state.PreviousCas)
@@ -886,27 +882,6 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         }
 
         return certificates[0];
-    }
-
-    private static string Summary(PkiState state)
-    {
-        if (state.IssuedDevices == 0)
-        {
-            return "No device certificates issued yet.";
-        }
-
-        var parts = new List<string> { state.IssuedDevices == 1 ? "Issued: 1 device" : $"Issued: {state.IssuedDevices} devices" };
-        if (state.ExpiringSoon > 0)
-        {
-            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{state.ExpiringSoon} expire within {state.Config.ExpiryWarningDays} days"));
-        }
-
-        if (state.DevicesWithPreviousCa > 0)
-        {
-            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{state.DevicesWithPreviousCa} from a previous CA"));
-        }
-
-        return string.Join(" · ", parts);
     }
 
     partial void OnRadiusSummaryChanged(CertificateSummary? value) => OnPropertyChanged(nameof(RadiusCaLine));

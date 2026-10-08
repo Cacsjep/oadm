@@ -28,6 +28,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
     private readonly Dictionary<string, FakeJob> _jobs = [];
     private readonly Dictionary<string, FakeSession> _sessions = [];
     private readonly List<CredentialEntry> _credentials = [];
+    private readonly Dictionary<string, string> _credentialPasswords = [];
     private readonly Broadcast<DeviceChanged> _deviceEvents = new();
     private readonly Broadcast<TaskChanged> _taskEvents = new();
     private readonly List<TaskPluginInfo> _pluginTemplates;
@@ -60,8 +61,8 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         if (seedSampleData)
         {
             Seed();
-            AddCredentialLocked("root");
-            AddCredentialLocked("operator");
+            AddCredentialLocked("root", "Fake-root-pass1");
+            AddCredentialLocked("operator", "Fake-operator-pass1");
         }
 
         _ = Task.Run(() => SimulationLoopAsync(_cts.Token));
@@ -431,7 +432,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 result.CredentialId = "entered";
                 if (request.SaveToCredentialList)
                 {
-                    CredentialEntry entry = AddCredentialLocked(user);
+                    CredentialEntry entry = AddCredentialLocked(user, request.Password);
                     result.CredentialId = "list:" + entry.Id;
                 }
 
@@ -1221,7 +1222,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 throw new RpcException(new Status(StatusCode.InvalidArgument, "Password must be 1-64 printable ASCII characters."));
             }
 
-            return Task.FromResult(AddCredentialLocked(userName.Trim()).Clone());
+            return Task.FromResult(AddCredentialLocked(userName.Trim(), password).Clone());
         }
     }
 
@@ -1235,11 +1236,23 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 throw new RpcException(new Status(StatusCode.NotFound, $"Credential '{id}' not found."));
             }
 
+            _credentialPasswords.Remove(id);
             return Task.CompletedTask;
         }
     }
 
-    private CredentialEntry AddCredentialLocked(string userName)
+    public Task<string> RevealCredentialAsync(string id, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            return _credentialPasswords.TryGetValue(id, out string? password)
+                ? Task.FromResult(password)
+                : throw new RpcException(new Status(StatusCode.NotFound, $"Credential '{id}' not found."));
+        }
+    }
+
+    private CredentialEntry AddCredentialLocked(string userName, string password)
     {
         var entry = new CredentialEntry
         {
@@ -1248,6 +1261,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
             Created = Timestamp.FromDateTime(DateTime.UtcNow),
         };
         _credentials.Add(entry);
+        _credentialPasswords[entry.Id] = password;
         return entry;
     }
 

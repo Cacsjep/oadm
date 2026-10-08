@@ -8,11 +8,17 @@ service SettingsService {
   rpc Get (Empty) returns (ServerSettings);
   rpc Set (ServerSettings) returns (ServerSettings);
   // Credential list: user name + password pairs the server tries on discovered devices. Passwords
-  // are stored encrypted and never returned.
+  // are stored encrypted and returned only by RevealCredential.
   rpc ListCredentials (Empty) returns (CredentialList);
   rpc AddCredential (AddCredentialRequest) returns (CredentialEntry);   // INVALID_ARGUMENT, RESOURCE_EXHAUSTED (list full)
   rpc RemoveCredential (CredentialEntryId) returns (Empty);              // NOT_FOUND
+  // The stored password of one credential list entry, on the technician's explicit request (Settings page eye
+  // and copy buttons; user decision 2026-10-08, to be restricted to administrators once client login exists).
+  // Logged without the password. Device passwords are never returned. NOT_FOUND.
+  rpc RevealCredential (CredentialEntryId) returns (RevealedCredential);
 }
+
+message RevealedCredential { string password = 1; }
 
 message ServerSettings {
   int32 polling_interval_seconds = 1;   // default 60

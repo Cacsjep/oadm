@@ -49,6 +49,7 @@ public static class ServiceRegistration
         services.AddSingleton<AvaloniaDialogService>();
         services.AddSingleton<IDialogService>(sp => sp.GetRequiredService<AvaloniaDialogService>());
         services.AddSingleton<IUrlLauncher>(sp => sp.GetRequiredService<AvaloniaDialogService>());
+        services.AddSingleton<IClipboardService>(sp => sp.GetRequiredService<AvaloniaDialogService>());
         services.AddSingleton<TaskPluginRunner>();
 
         services.AddSingleton<ColumnLayoutViewModel>();

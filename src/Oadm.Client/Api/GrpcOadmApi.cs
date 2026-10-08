@@ -185,6 +185,9 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task RemoveCredentialAsync(string id, CancellationToken ct) =>
         await C.Settings.RemoveCredentialAsync(new CredentialEntryId { Id = id }, cancellationToken: ct);
 
+    public async Task<string> RevealCredentialAsync(string id, CancellationToken ct) =>
+        (await C.Settings.RevealCredentialAsync(new CredentialEntryId { Id = id }, cancellationToken: ct)).Password;
+
     public IAsyncEnumerable<LiveViewFrame> WatchLiveViewAsync(LiveViewRequest request, CancellationToken ct) =>
         ReadAll(C.LiveView.Watch(request, cancellationToken: ct), ct);
 

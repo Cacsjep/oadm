@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.Platform;
 
 using Oadm.Client.Api;
 using Oadm.Client.Discovery;
@@ -12,7 +13,7 @@ using Oadm.Sdk.Devices;
 
 namespace Oadm.Client.Dialogs;
 
-public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLauncher
+public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLauncher, IClipboardService
 {
     public async Task ShowMessageAsync(string title, string message)
     {
@@ -78,6 +79,17 @@ public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLa
         }
 
         return await owner.Launcher.LaunchUriAsync(uri).ConfigureAwait(true);
+    }
+
+    public async Task<bool> SetTextAsync(string text)
+    {
+        if (CurrentOwner()?.Clipboard is not { } clipboard)
+        {
+            return false;
+        }
+
+        await clipboard.SetTextAsync(text).ConfigureAwait(true);
+        return true;
     }
 
     /// <summary>The active window (so dialogs opened from dialogs stack correctly), else the main window.</summary>

@@ -12,10 +12,13 @@ namespace Oadm.Server.Settings;
 /// <summary>
 /// gRPC SettingsService. <c>Set</c> is a partial update: zero or empty fields keep their value.
 /// Polling changes apply live; a new listen URL applies after a server restart. The credential
-/// list RPCs manage the encrypted <see cref="CredentialListStore"/>; passwords only travel from
-/// the client to the server, replies carry ids and user names.
+/// list RPCs manage the encrypted <see cref="CredentialListStore"/>; replies carry ids and user names,
+/// a password only on the explicit <see cref="RevealCredential"/> (logged without the password).
 /// </summary>
-public sealed class SettingsGrpcService(ServerSettingsStore store, CredentialListStore credentials) : Proto.SettingsService.SettingsServiceBase
+public sealed partial class SettingsGrpcService(
+    ServerSettingsStore store,
+    CredentialListStore credentials,
+    ILogger<SettingsGrpcService> logger) : Proto.SettingsService.SettingsServiceBase
 {
     public override async Task<Proto.ServerSettings> Get(Proto.Empty request, ServerCallContext context) =>
         Mappers.ToProto(await store.GetServerSettingsAsync(context.CancellationToken).ConfigureAwait(false));
@@ -66,4 +69,25 @@ public sealed class SettingsGrpcService(ServerSettingsStore store, CredentialLis
 
         return new Proto.Empty();
     }
+
+    /// <summary>
+    /// The stored password of one credential list entry (Settings page eye / copy button; user decision
+    /// 2026-10-08). Device passwords are never returned. Logged as Information without the password.
+    /// </summary>
+    public override async Task<Proto.RevealedCredential> RevealCredential(Proto.CredentialEntryId request, ServerCallContext context)
+    {
+        var entry = Guid.TryParse(request.Id, out var id)
+            ? await credentials.RevealAsync(id, context.CancellationToken).ConfigureAwait(false)
+            : null;
+        if (entry is null)
+        {
+            throw GrpcGuard.NotFound($"Credential '{request.Id}' not found.");
+        }
+
+        LogRevealed(logger, entry.UserName);
+        return new Proto.RevealedCredential { Password = entry.Password };
+    }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Credential list password of {UserName} revealed")]
+    private static partial void LogRevealed(ILogger logger, string userName);
 }

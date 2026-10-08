@@ -33,7 +33,8 @@ public sealed record DecryptedCredential(Guid Id, string UserName, string Passwo
 /// <summary>
 /// The encrypted credential list (Settings page): user name + password pairs the server tries on
 /// discovered devices when adding them. Passwords are encrypted with the master key (AES-256-GCM,
-/// entry id as associated data) and never leave the server; clients only see ids and user names.
+/// entry id as associated data); clients see ids and user names, a password only through the explicit
+/// <see cref="RevealAsync"/> (Settings page eye button, user decision 2026-10-08).
 /// </summary>
 public sealed class CredentialListStore(IDbContextFactory<OadmDbContext> dbFactory, CredentialProtector protector, TimeProvider time)
 {
@@ -108,6 +109,29 @@ public sealed class CredentialListStore(IDbContextFactory<OadmDbContext> dbFacto
         }
 
         return removed > 0;
+    }
+
+    /// <summary>
+    /// One entry decrypted, for the explicit reveal on the Settings page (SettingsService.RevealCredential).
+    /// Null when no entry has this id or it cannot be decrypted (other master key).
+    /// </summary>
+    public async Task<DecryptedCredential?> RevealAsync(Guid id, CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var row = await db.CredentialListEntries.AsNoTracking().FirstOrDefaultAsync(e => e.Id == id, ct).ConfigureAwait(false);
+        if (row is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return new DecryptedCredential(row.Id, row.UserName, protector.Unprotect(row.EncryptedPassword, row.Id.ToByteArray()));
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            return null;
+        }
     }
 
     /// <summary>All entries decrypted, oldest first. Server side only (automatic login).</summary>

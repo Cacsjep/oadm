@@ -7,6 +7,7 @@ using Avalonia.Headless;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 using Oadm.Plugins.Pki.Ca;
 using Oadm.Plugins.Pki.Client;
@@ -136,7 +137,6 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         Assert.StartsWith("CA valid until ", vm.StatusText, StringComparison.Ordinal);
         Assert.Equal("Not installed on the server", vm.ServerTrustText);
         await Wait.UntilAsync(() => vm.ClientTrustText == "Not installed on this computer");
-        Assert.Equal("No device certificates issued yet.", vm.IssuedSummary);
         Assert.Equal("365", vm.DeviceCertValidityDays);
         Assert.Equal("MAC address", vm.Identity.Label);
         Assert.False(vm.HasPreviousCas);
@@ -205,7 +205,6 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         var row = Assert.Single(vm.PreviousCas);
         Assert.Equal(oldId, row.Id);
         Assert.Contains("2 devices", row.Tooltip, StringComparison.Ordinal);
-        Assert.Equal("Issued: 2 devices · 2 from a previous CA", vm.IssuedSummary);
     }
 
     [Fact]
@@ -437,7 +436,8 @@ public sealed class HeadlessPageTests
                 await vm.LoadAsync();
                 Pump();
                 Capture(window, outDir, "pki-page.png");
-                var firstSummary = vm.IssuedSummary;
+                // The Device certificates card shows no "Issued: N devices" summary line (user decision).
+                var firstSummary = window.GetVisualDescendants().OfType<TextBlock>().Any(t => (t.Text ?? "").StartsWith("Issued:", StringComparison.Ordinal));
 
                 // Imported intermediate, previous CA, imported RADIUS CA with a custom identity.
                 await pki.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest(Convert.ToBase64String(pfx), "acme.pfx", "secret", null, null, true));
@@ -493,7 +493,7 @@ public sealed class HeadlessPageTests
                 return (firstSummary, vm2.HasChain, vm2.ChainText, vm2.HasPreviousCas, keyPasswordError, backupError);
             }, CancellationToken.None);
 
-            Assert.Equal("Issued: 120 devices · 3 expire within 30 days", checks.firstSummary);
+            Assert.False(checks.firstSummary);
             Assert.True(checks.HasChain);
             Assert.Equal("Issued by Acme Root CA", checks.ChainText);
             Assert.True(checks.HasPreviousCas);

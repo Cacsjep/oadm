@@ -7,7 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 
 using Oadm.Client.Api;
-using Oadm.Client.Infrastructure;
+using Oadm.Client.Dialogs;
 using Oadm.Client.Shell;
 using Grpc.Core;
 
@@ -16,30 +16,53 @@ using Oadm.Sdk.Client.Validation;
 
 namespace Oadm.Client.Settings;
 
-/// <summary>One credential list entry: user name and when it was added (never a password).</summary>
-public sealed record CredentialItemViewModel(string Id, string UserName, string AddedText);
+/// <summary>
+/// One credential list entry: user name, when it was added and, only after the eye button asked the server
+/// (<see cref="IOadmApi.RevealCredentialAsync"/>), its password. Masked again (and forgotten) on the second click.
+/// </summary>
+public sealed partial class CredentialItemViewModel(string id, string userName, string addedText) : ObservableObject
+{
+    /// <summary>Shown while the password is hidden; always the same length so it says nothing about the password.</summary>
+    public const string MaskedText = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
+
+    public string Id { get; } = id;
+    public string UserName { get; } = userName;
+    public string AddedText { get; } = addedText;
+
+    /// <summary>The revealed password; null while hidden.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRevealed), nameof(PasswordText), nameof(RevealTooltip))]
+    public partial string? Password { get; private set; }
+
+    public bool IsRevealed => Password is not null;
+
+    public string PasswordText => Password ?? MaskedText;
+
+    public string RevealTooltip => IsRevealed ? "Hide password" : "Show password";
+
+    internal void Reveal(string password) => Password = password;
+
+    internal void Hide() => Password = null;
+}
 
 /// <summary>
-/// Server settings (SettingsService), the credential list, plus the client-side server address. Every field
-/// reports its error below itself (<see cref="ValidatingViewModel"/>); Save, Add credential and Connect stay
-/// disabled while their fields have errors.
+/// Server settings (SettingsService) and the credential list. Every field reports its error below itself
+/// (<see cref="ValidatingViewModel"/>); Save and Add credential stay disabled while their fields have errors.
+/// The server address of this client is set with <c>--server</c> or the client settings file.
 /// </summary>
 public sealed partial class SettingsViewModel : ValidatingViewModel
 {
     private readonly IOadmApi _api;
-    private readonly IClientSettingsStore _clientSettings;
-    private readonly ServerConnection _connection;
+    private readonly IClipboardService _clipboard;
     private readonly ILogger<SettingsViewModel> _logger;
 
-    public SettingsViewModel(IOadmApi api, IClientSettingsStore clientSettings, ServerConnection connection, ILogger<SettingsViewModel> logger)
+    public SettingsViewModel(IOadmApi api, ServerConnection connection, IClipboardService clipboard, ILogger<SettingsViewModel> logger)
     {
-        ArgumentNullException.ThrowIfNull(clientSettings);
         ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(clipboard);
         _api = api;
-        _clientSettings = clientSettings;
-        _connection = connection;
+        _clipboard = clipboard;
         _logger = logger;
-        ServerAddress = clientSettings.Current.ServerAddress;
         connection.Connected += (_, _) => _ = LoadAsync();
 
         Validation
@@ -52,8 +75,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             .Rule(nameof(ServerName), () => ServerName.Trim().Length == 0 ? "Enter a server name." : null)
             .Rule(nameof(ListenUrl), () => ListenUrlError(ListenUrl))
             .Rule(nameof(NewCredentialUserName), () => NewCredentialUserName.Trim().Length == 0 ? "Enter a user name." : null)
-            .Rule(nameof(NewCredentialPassword), () => NewCredentialPassword.Length == 0 ? "Enter the password." : null)
-            .Rule(nameof(ServerAddress), () => ServerAddressError(ServerAddress));
+            .Rule(nameof(NewCredentialPassword), () => NewCredentialPassword.Length == 0 ? "Enter the password." : null);
         Validation.Validate();
         Validation.Reset();
     }
@@ -77,17 +99,12 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     /// <summary>Why Add credential is disabled (tooltip).</summary>
     public string? AddCredentialBlockedReason => Validation.FirstErrorOf(CredentialFields);
 
-    /// <summary>Why Connect is disabled (tooltip).</summary>
-    public string? ConnectBlockedReason => Validation.FirstErrorOf([nameof(ServerAddress)]);
-
     protected override void OnValidationChanged()
     {
         OnPropertyChanged(nameof(SaveBlockedReason));
         OnPropertyChanged(nameof(AddCredentialBlockedReason));
-        OnPropertyChanged(nameof(ConnectBlockedReason));
         SaveCommand.NotifyCanExecuteChanged();
         AddCredentialCommand.NotifyCanExecuteChanged();
-        ApplyServerAddressCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>"Enter a value from 5 to 3600." for an empty or out-of-range number field.</summary>
@@ -110,24 +127,6 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             ? null
             : "Enter a URL like http://0.0.0.0:5080.";
     }
-
-    /// <summary>The server address of this client: http(s) URL (a bare host gets http:// and the default port).</summary>
-    public static string? ServerAddressError(string? address)
-    {
-        if ((address ?? "").Trim().Length == 0)
-        {
-            return "Enter the server address, e.g. http://server:5080.";
-        }
-
-        string normalized = GrpcOadmApi.Normalize(address!);
-        return Uri.TryCreate(normalized, UriKind.Absolute, out Uri? uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
-            ? null
-            : "Enter an address like http://server:5080.";
-    }
-
-    // client side
-    [ObservableProperty] public partial string ServerAddress { get; set; }
-    [ObservableProperty] public partial string? ClientMessage { get; private set; }
 
     // server side
     [ObservableProperty] public partial decimal? PollingIntervalSeconds { get; set; } = 60;
@@ -300,25 +299,55 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         OnPropertyChanged(nameof(HasNoCredentials));
     }
 
-    [RelayCommand(CanExecute = nameof(CanApplyServerAddress))]
-    private void ApplyServerAddress()
+    /// <summary>Eye button: loads the stored password from the server and shows it; a second click masks it again.</summary>
+    [RelayCommand]
+    private async Task ToggleRevealCredentialAsync(CredentialItemViewModel? item)
     {
-        if (!Validation.IsValidFor(nameof(ServerAddress)))
+        if (item is null)
         {
-            Validation.ShowAll(nameof(ServerAddress));
             return;
         }
 
-        string address = GrpcOadmApi.Normalize(ServerAddress);
+        if (item.IsRevealed)
+        {
+            item.Hide();
+            return;
+        }
 
-        ServerAddress = address;
-        _clientSettings.Current.ServerAddress = address;
-        _clientSettings.Save();
-        _connection.Reconnect(address);
-        ClientMessage = "Connecting to " + _connection.ServerAddress;
+        try
+        {
+            item.Reveal(await _api.RevealCredentialAsync(item.Id, CancellationToken.None).ConfigureAwait(true));
+            CredentialMessage = null;
+        }
+        catch (Exception ex)
+        {
+            CredentialMessageIsError = true;
+            CredentialMessage = "Showing the password failed: " + (ex is RpcException rpc ? rpc.Status.Detail : ex.Message);
+        }
     }
 
-    private bool CanApplyServerAddress() => Validation.IsValidFor(nameof(ServerAddress));
+    /// <summary>Copy button: copies the stored password to the clipboard (loaded from the server unless shown already).</summary>
+    [RelayCommand]
+    private async Task CopyCredentialPasswordAsync(CredentialItemViewModel? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        try
+        {
+            string password = item.Password ?? await _api.RevealCredentialAsync(item.Id, CancellationToken.None).ConfigureAwait(true);
+            bool copied = await _clipboard.SetTextAsync(password).ConfigureAwait(true);
+            CredentialMessageIsError = !copied;
+            CredentialMessage = copied ? $"Password of {item.UserName} copied to the clipboard." : "The clipboard is not available.";
+        }
+        catch (Exception ex)
+        {
+            CredentialMessageIsError = true;
+            CredentialMessage = "Copying the password failed: " + (ex is RpcException rpc ? rpc.Status.Detail : ex.Message);
+        }
+    }
 
     private void Apply(ServerSettings settings)
     {

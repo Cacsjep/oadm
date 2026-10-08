@@ -3,6 +3,8 @@ using System.Text;
 using Grpc.Core;
 
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 using Oadm.Core.Security;
 using Oadm.Server.Discovery;
@@ -382,6 +384,46 @@ public sealed class FastAddTests
         Assert.Equal(["operator"], (await host.Settings.ListCredentialsAsync(new Proto.Empty())).Entries.Select(e => e.UserName));
         var gone = await Assert.ThrowsAsync<RpcException>(() => host.Settings.RemoveCredentialAsync(new Proto.CredentialEntryId { Id = first.Id }).ResponseAsync);
         Assert.Equal(StatusCode.NotFound, gone.StatusCode);
+    }
+
+    [Fact]
+    public async Task RevealCredentialReturnsTheStoredPasswordAndLogsOnlyTheUserName()
+    {
+        var log = new CapturingLogger<Oadm.Server.Settings.SettingsGrpcService>();
+        await using var host = await TestServerHost.StartAsync(configureServices: s => s.AddSingleton<ILogger<Oadm.Server.Settings.SettingsGrpcService>>(log));
+        var entry = await host.Settings.AddCredentialAsync(new Proto.AddCredentialRequest { UserName = "service", Password = "reveal-Secret-9" });
+
+        var revealed = await host.Settings.RevealCredentialAsync(new Proto.CredentialEntryId { Id = entry.Id });
+        Assert.Equal("reveal-Secret-9", revealed.Password);
+
+        var unknown = await Assert.ThrowsAsync<RpcException>(() => host.Settings.RevealCredentialAsync(new Proto.CredentialEntryId { Id = Guid.NewGuid().ToString() }).ResponseAsync);
+        Assert.Equal(StatusCode.NotFound, unknown.StatusCode);
+        var invalid = await Assert.ThrowsAsync<RpcException>(() => host.Settings.RevealCredentialAsync(new Proto.CredentialEntryId { Id = "not-a-guid" }).ResponseAsync);
+        Assert.Equal(StatusCode.NotFound, invalid.StatusCode);
+
+        await host.Settings.RemoveCredentialAsync(new Proto.CredentialEntryId { Id = entry.Id });
+        var removed = await Assert.ThrowsAsync<RpcException>(() => host.Settings.RevealCredentialAsync(new Proto.CredentialEntryId { Id = entry.Id }).ResponseAsync);
+        Assert.Equal(StatusCode.NotFound, removed.StatusCode);
+
+        // The server log names the user, never the password.
+        var revealedEntry = Assert.Single(log.Entries, e => e.Message.Contains("revealed", StringComparison.Ordinal));
+        Assert.Equal(LogLevel.Information, revealedEntry.Level);
+        Assert.Equal("Credential list password of service revealed", revealedEntry.Message);
+        Assert.DoesNotContain(log.Entries, e => e.Message.Contains("reveal-Secret-9", StringComparison.Ordinal));
+    }
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<(LogLevel Level, string Message)> _entries = new();
+
+        public IReadOnlyList<(LogLevel Level, string Message)> Entries => [.. _entries];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            _entries.Enqueue((logLevel, formatter(state, exception)));
     }
 
     [Theory]
