@@ -79,8 +79,14 @@ public interface ICorePlugin : IPlugin
     IReadOnlyList<ITaskPlugin> TaskPlugins { get; }
     Task StartAsync(ICorePluginContext ctx, CancellationToken ct);
     Task StopAsync(CancellationToken ct);
-    /// <summary>Backend for the plugin's UI page.</summary>
+    /// <summary>Backend for the plugin's UI page (or, without a page, for its client parts such as a toolbar button).</summary>
     Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct);
+
+    /// <summary>
+    /// False: the plugin has no page in the client's navigation rail (no rail entry at all); its client part is e.g. a
+    /// toolbar plugin that calls <see cref="InvokeAsync"/> through <c>IToolbarContext.InvokePluginAsync</c>. Default true.
+    /// </summary>
+    bool HasPage => true;
 
     /// <summary>
     /// The role a user needs to call <paramref name="method"/> through the plugin's page (PluginService.Invoke). The host
@@ -264,6 +270,13 @@ public interface ICorePluginContext
     /// running as the installed service; null elsewhere (Linux, macOS, console runs, tests).
     /// </summary>
     IFirewallRules? Firewall => null;
+
+    /// <summary>
+    /// A private folder for the plugin's working files (temporary downloads, built archives) inside the server's data
+    /// folder (<c>&lt;datafolder&gt;/plugin-data/&lt;plugin id&gt;</c>), created by the host on first use and protected like
+    /// the data folder. The plugin cleans up what it writes. Null on hosts without one (use a folder of your own then).
+    /// </summary>
+    string? DataDirectory => null;
 }
 
 /// <summary>Server-side encryption for secrets a plugin persists. Values never leave the server.</summary>

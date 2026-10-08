@@ -147,6 +147,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.DhcpServer(.Client)/       core plugin: DHCP server (RFC 2131) with static leases and lease list
   Oadm.Plugins.MetadataMonitor(.Client)/  core plugin: live event stream of one camera (RTSP metadata, port of AXIS Metadata Monitor)
   Oadm.Plugins.Pki(.Client)/              core plugin: PKI (one CA for device certificates, trusted root store)
+  Oadm.Plugins.SystemReport(.Client)/     core plugin without a page: toolbar "System report" (server reports in one ZIP)
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
                                 (both copy their output to artifacts/plugins/<plugin id>/)
@@ -238,13 +239,15 @@ Two processes, like ADM:
   all uploads together or when less than 1 GB of disk would stay free, see "Production hardening" 4),
   `Delete(fileId)`. Uploads live in `<datafolder>/uploads/<id>.bin` + `<id>.json`, are deleted
   after `Uploads.RetentionHours` (checked every 15 min) and reach tasks through `IUploadedFiles`.
-- `PluginService`: `ListCorePlugins` (navigation pages), per-plugin generic
+- `PluginService`: `ListCorePlugins` (navigation pages; `CorePluginInfo.no_page = 4` for a core plugin without a page,
+  `ICorePlugin.HasPage` false: the client adds no rail entry), per-plugin generic
   `Invoke(pluginId, method, payloadJson)` for Core plugin UI pages (NOT_FOUND unknown plugin or
   object, FAILED_PRECONDITION not running, INVALID_ARGUMENT for an `ArgumentException` of the
   plugin, INTERNAL otherwise; the status detail is the message), `Watch(plugin_id)` (stream of `PluginEvent`
   {plugin_id, topic, payload_json} the plugin publishes through `ICorePluginContext.Events` from the call on; NOT_FOUND
   unknown plugin; `Oadm.Core.Plugins.PluginEventHub` fans out with 256 events buffered per watcher, oldest dropped).
-  Users: "Snapshot report", "VAPIX Commander", "NTP server", "DHCP server", "PKI", "Metadata Monitor".
+  Users: "Snapshot report", "VAPIX Commander", "NTP server", "DHCP server", "PKI", "Metadata Monitor", "System report"
+  (from its toolbar button through `IToolbarContext.InvokePluginAsync`).
 - `SettingsService`: `Get`, `Set` (`ServerSettings.zero_conf_seconds = 8`, 0 keeps the stored value; read-only
   `server_version = 21` in both replies for the About page),
   `ListCredentials`, `AddCredential(user_name, password)`
@@ -552,8 +555,9 @@ density, styled as described in Visual Style.
 
 Layout, top to bottom:
 1. Title "Devices". Left navigation rail as described in Visual Style.
-2. Toolbar: toolbar plugins (Scan, Scan IP range, Add manually, Import devices | Remove, Export devices | task plugin actions that
-   declare `ShowInToolbar` | plugin entries, last the icon button AXIS OS - Release Notes), Columns icon button (tooltip
+2. Toolbar: toolbar plugins (Scan, Scan IP range, Add manually, Import devices | Remove, Export devices | task plugin
+   actions that declare `ShowInToolbar`, then the icon button System report (plugin) | plugin entries, last the icon
+   button AXIS OS - Release Notes), Columns icon button (tooltip
    "Choose columns") and search box right-aligned (host parts); compact icon buttons keep it on one line at 1280 px with
    the rail expanded (user decision 2026-10-08).
 3. Status line: "N devices, M selected".
@@ -788,6 +792,7 @@ public interface ICorePlugin : IPlugin
     Task StartAsync(ICorePluginContext ctx, CancellationToken ct);
     Task StopAsync(CancellationToken ct);
     Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct); // UI page backend
+    bool HasPage => true;              // false: no rail entry (CorePluginInfo.no_page), e.g. a toolbar-only plugin
 }
 
 public interface ITaskExecutionContext
@@ -845,6 +850,8 @@ public interface ICorePluginContext
     IFirewallRules? Firewall => null;  // Open/CloseAsync(FirewallRule): inbound allow rule for the server exe, Domain +
                                        // Private; only the Windows service offers it (netsh), else null. Helper:
                                        // FirewallRuleKeeper.SyncAsync(enabled) (Oadm.Sdk.Network)
+    string? DataDirectory => null;     // <datafolder>/plugin-data/<id>, created on first use: working files (downloads,
+                                       // archives) in the admin-only data folder, never a shared temp folder; plugin cleans up
 }
 ```
 
@@ -916,6 +923,8 @@ public interface IToolbarContext         // UI thread
     Task<bool> ConfirmAsync(string title, string message, string confirmText);
     Task<string?> QueryAsync(string pluginId, Guid deviceId, string method, string? payloadJson, CancellationToken ct);
     Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct);
+    Task<string?> InvokePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct);
+                                         // DIM (default NotSupportedException): a core plugin's InvokeAsync (PluginService.Invoke)
     Window? Owner { get; }
 }
 ```
@@ -956,7 +965,11 @@ the server. gRPC errors reach the dialog as `RpcException` (Status.Detail is the
 `VapixRequestOptions.Timeout` (`HttpRequestOptionsKey<TimeSpan>` "Oadm.RequestTimeout") on a
 request passed to `IVapixClient.SendAsync` overrides the default 15 s timeout for that request
 (firmware and ACAP uploads use minutes; plugins use the SDK constant, never their own key); request
-bodies are streamed, never buffered.
+bodies are streamed, never buffered. `VapixRequestOptions.StreamResponse` (`HttpRequestOptionsKey<bool>`
+"Oadm.StreamResponse") returns the answer after its headers without buffering it (`HttpCompletionOption.ResponseHeadersRead`):
+the caller reads the body as a stream (e.g. into a file in `ICorePluginContext.DataDirectory`), enforces its own size
+limit and bounds the body read with its own token (the timeout covers the headers only); the 16 MB limit of buffered
+answers is unchanged. Used by the System report for server reports.
 
 ## Loading and packaging
 
@@ -1633,6 +1646,46 @@ Read-only for devices. Decided with the user on 2026-10-08:
   Watch); Core: `MetadataDepacketizerTests`, `RtspMetadataSourceTests` (scripted RTSP server), `DeviceEventStreamsTests`,
   `MetadataRecorderTests` (Hardware; re-records `Fixtures/LiveView/events.sdp` + `.rtp` with `OADM_RECORD_RTP_DIR`).
 
+## System report plugin (core plugin without a page)
+
+`plugins/Oadm.Plugins.SystemReport` (+ `.Client`), id `oadm.system-report`, like ADM's "Get system report" (user decision
+2026-10-08: a toolbar button, no rail page). The server downloads the server report of every selected device and the
+client saves one ZIP for Axis support. Read-only for devices.
+- Device request: `GET /axis-cgi/serverreport.cgi?mode=zip_with_image` (report + snapshot, what Axis support asks for;
+  video devices) else `mode=zip`; zip_with_image answering 400/404/500/501 or 200 without a ZIP is retried as zip. Stored
+  credentials, the account must be an administrator (403 = "Forbidden - HTTP 403 (the server report needs an administrator
+  account)"). Answer streamed to disk (`VapixRequestOptions.StreamResponse`), must start with a ZIP signature, at most 256
+  MB, 5 minutes per device, at most 4 devices at a time (all jobs together). Verified read-only on 10.0.0.48 (P3265-V, AXIS
+  OS 12.11): `application/zip`, chunked, zip_with_image about 0.3 MB in 34-37 s (`serverreport_cgi.txt` 1.3 MB unpacked +
+  `serverreport_image.jpg`), zip about 0.16 MB in 31 s; `Content-Disposition: attachment; filename=Axis_SR_<date>_<time>_<MAC>.zip`.
+  Devices with CertificateChanged / CredentialsRequired / PasswordNotSet are refused without a request (snapshot report
+  texts); unknown ids "The device is no longer managed".
+- Jobs (`SystemReportJobs`, server memory, files in `ICorePluginContext.DataDirectory/jobs/<job id>/`, leftovers deleted at
+  start): one file per device, then `bundle.zip` = every report stored unchanged (no compression) as
+  `<address>_<MAC>_<model without "AXIS ">_<yyyyMMdd-HHmmss UTC>.zip` (other characters than letters, digits, '.', '-' become
+  '-', a name used twice gets "-2") plus `summary.txt` (created time, OADM version, counts, one line per report with
+  address, MAC, model, size and mode, then the failures with their reason). Dropped 30 minutes after the last use (checked
+  every minute and on each call), on `delete` and when the plugin stops. 1..5,000 devices per job.
+- Methods (`SystemReportMethods`, camelCase, models in `Shared/`): `start` ({deviceIds}) -> status with every device;
+  `status` ({jobId, sinceVersion}) -> state running/packing/done/failed, total, finished, failed, size, version and only the
+  devices changed after `sinceVersion` (5,000 devices: no full list per poll); `read` ({jobId, offset}) -> 2 MB base64
+  chunks; `delete`. All Operator; `start` is audited ("Plugin action", "System report", "start").
+- Client (`SystemReportToolbarPlugin`, group Tasks, order 100, icon-only `ui:ToolbarButton` "System report", icon `file`,
+  enabled with a selection, tooltip "System report: download the system reports of the selected devices for Axis support,
+  in one ZIP file"): save dialog first (`oadm-system-reports-<yyyy-MM-dd>.zip`), then `SystemReportWindow` (title bar, card
+  "Devices" with the summary "6 devices · 2 done · 1 failed", `ui:ProgressRow` "Downloading system reports 4 of 6" /
+  "Putting the reports into one file" / "Saving the file 40 %" / "Saved <path>", result chip "N system reports saved, M
+  failed. summary.txt in the file lists the failures.", virtualized DataGrid Address, MAC address, Model, Status chip
+  (Waiting, Downloading accent, Done ok + size, Failed red + reason)); polls every 500 ms, rows updated in place by id;
+  Cancel (or closing the window) deletes the server job ("Cancelled. The file is incomplete; delete it."), then Close.
+  Fake mode (`FakeOadmApi.SystemReport.cs`): 600 ms per device, four at a time, bad statuses fail, small generated ZIPs.
+- Tests: `tests/Oadm.Plugins.SystemReport.Tests` (downloader: modes, fallback, 401/403 not retried, refused statuses,
+  timeout, unreachable, a 20 MB answer streamed past the 16 MB limit, the 256 MB cap; jobs: bundle content and summary,
+  failures, 4 at a time, status deltas, chunked read, delete, 30 min expiry, stop and crash leftovers, 5,000 devices;
+  client view model against the real plugin and fake mode, cancel, toolbar flow; headless `system-report-dialog.png`;
+  read-only hardware test `SystemReportHardwareTests` through the in-process server), `tests/Oadm.Server.Tests/
+  SystemReportServerTests` (no_page, operator call, audit, data folder).
+
 ## Date and time plugin
 
 `plugins/Oadm.Plugins.DateTime` (+ `.Client`), id `oadm.datetime`, context menu (group Maintenance, icon `clock`)
@@ -1753,7 +1806,7 @@ marked *(default)* were filled in and can be changed. This section wins over old
   name + "@" + the client machine name the client sends (no longer whatever the client claims).
 - **Roles.** **Admin**: everything. **Operator**: devices (watch, add, remove, refresh, credentials of a device, web UI
   link), discovery, tasks (run, cancel, delete own and others; not Delete all), live view, uploads, plugin pages that do
-  not change server configuration (Snapshot report, VAPIX Commander, Metadata Monitor, PKI read and device
+  not change server configuration (Snapshot report, VAPIX Commander, Metadata Monitor, System report, PKI read and device
   certificate tasks). **Admin only**: `SettingsService.Set`, credential list (add, remove, reveal), users, `TaskService.DeleteAll`,
   PKI (generate, import, backup, export, install in the server root store, PKI settings), DHCP and NTP save / static
   leases / release. Core plugins declare their method roles through a new SDK member
@@ -1875,7 +1928,8 @@ marked *(default)* were filled in and can be changed. This section wins over old
 - **Limits**: HTTP answers from devices at most 16 MB (firmware and ACAP uploads exempt from the request side only), XML
   documents at most 1 MB with DTD processing prohibited, RTSP / video access units at most 8 MB, uploads: 10 GB of disk
   for all uploads together (user decision) and at least 1 GB free disk, oldest uploads removed first, RESOURCE_EXHAUSTED
-  otherwise.
+  otherwise. Streamed answers (`VapixRequestOptions.StreamResponse`, server reports) go to disk with the caller's own
+  limit (System report: 256 MB per device).
   Implemented: `VapixClient.MaxResponseBytes` (HttpClient `MaxResponseContentBufferSize`; over it
   `VapixResponseTooLargeException` "The device answer is larger than 16 MB and was not read."); every XML from a device
   goes through the SDK `Oadm.Sdk.Vapix.DeviceXml.Parse` / `ParseElement` (1 MB of characters, DTD prohibited, no

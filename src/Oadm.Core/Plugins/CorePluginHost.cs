@@ -41,6 +41,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     private readonly TrustAnchorRegistry? _trustAnchors;
     private readonly IDeviceEventStreams? _eventStreams;
     private readonly IFirewallRules? _firewall;
+    private readonly string? _pluginDataRoot;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.OrdinalIgnoreCase);
@@ -58,7 +59,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         PluginEventHub? events = null,
         TrustAnchorRegistry? trustAnchors = null,
         IDeviceEventStreams? eventStreams = null,
-        IFirewallRules? firewall = null)
+        IFirewallRules? firewall = null,
+        string? pluginDataRoot = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(devices);
@@ -74,6 +76,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         _trustAnchors = trustAnchors;
         _eventStreams = eventStreams;
         _firewall = firewall;
+        _pluginDataRoot = pluginDataRoot;
         Events = events ?? new PluginEventHub();
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _logger = _loggerFactory.CreateLogger<CorePluginHost>();
@@ -120,7 +123,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     Events.For(registered.Id),
                     _trustAnchors?.For(registered.Id),
                     _eventStreams,
-                    _firewall);
+                    _firewall,
+                    _pluginDataRoot is null ? null : Path.Combine(_pluginDataRoot, SafeFolderName(registered.Id)));
                 try
                 {
                     await registered.Plugin.StartAsync(context, ct).ConfigureAwait(false);
@@ -269,6 +273,14 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "Core plugin {PluginId} failed on {Method}")]
     private partial void LogInvokeFailed(Exception ex, string pluginId, string method);
 
+    /// <summary>A plugin id as one folder name: characters that are not allowed in file names become '_'.</summary>
+    internal static string SafeFolderName(string pluginId)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var name = new string([.. pluginId.Select(c => invalid.Contains(c) || c is '/' or '\\' or ':' ? '_' : c)]);
+        return name is "" or "." or ".." ? "_" : name;
+    }
+
     private sealed class Entry(ICorePlugin plugin)
     {
         public ICorePlugin Plugin { get; } = plugin;
@@ -290,8 +302,19 @@ internal sealed class CorePluginContext(
     IPluginEvents? events = null,
     ITrustAnchors? trustAnchors = null,
     IDeviceEventStreams? eventStreams = null,
-    IFirewallRules? firewall = null) : ICorePluginContext
+    IFirewallRules? firewall = null,
+    string? dataDirectory = null) : ICorePluginContext
 {
+    private readonly Lazy<string?> _dataDirectory = new(() =>
+    {
+        if (dataDirectory is not null)
+        {
+            Directory.CreateDirectory(dataDirectory);
+        }
+
+        return dataDirectory;
+    });
+
     public IDeviceRepository Devices { get; } = devices;
 
     public IVapixClientFactory Vapix { get; } = vapix;
@@ -313,4 +336,7 @@ internal sealed class CorePluginContext(
     public IDeviceEventStreams? EventStreams { get; } = eventStreams;
 
     public IFirewallRules? Firewall { get; } = firewall;
+
+    /// <summary>Created on first use, so plugins that never ask leave no empty folder behind.</summary>
+    public string? DataDirectory => _dataDirectory.Value;
 }

@@ -17,4 +17,16 @@ public static class VapixRequestOptions
     /// <see cref="System.Threading.Timeout.InfiniteTimeSpan"/> disables it.
     /// </summary>
     public static readonly HttpRequestOptionsKey<TimeSpan> Timeout = new(TimeoutKey);
+
+    /// <summary>Name of the <see cref="StreamResponse"/> option.</summary>
+    public const string StreamResponseKey = "Oadm.StreamResponse";
+
+    /// <summary>
+    /// True returns the response as soon as its headers arrived, without buffering the body: read it with
+    /// <see cref="HttpContent.ReadAsStreamAsync(CancellationToken)"/> (e.g. straight into a file) and dispose the response.
+    /// The 16 MB answer limit of the buffered mode does not apply, so the caller enforces its own limit while it reads,
+    /// and <see cref="Timeout"/> covers only the time until the headers: bound the body read with your own token.
+    /// For large read-only downloads such as server reports: <c>request.Options.Set(VapixRequestOptions.StreamResponse, true)</c>.
+    /// </summary>
+    public static readonly HttpRequestOptionsKey<bool> StreamResponse = new(StreamResponseKey);
 }

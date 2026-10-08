@@ -1,18 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- test method names use underscores -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1861;CA2000;CA1849</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
-    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.12" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="Avalonia.Headless" Version="12.0.4" />
+    <PackageReference Include="Avalonia.Skia" Version="12.0.4" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.0.0" />
+    <!-- In-process server for the hardware test, dev-cameras.yaml loader. -->
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.12" />
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
 
@@ -21,10 +24,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Oadm.Client supplies the host theme (OadmTheme.axaml), the fake API and the shared runtime assemblies
+         (Avalonia, CommunityToolkit, SDK) that the plugin projects compile against only. -->
+    <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />
     <ProjectReference Include="..\..\src\Oadm.Server\Oadm.Server.csproj" />
-    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Restart\Oadm.Plugins.Restart.csproj" />
-    <ProjectReference Include="..\..\plugins\Oadm.Plugins.VapixCommander\Oadm.Plugins.VapixCommander.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.SystemReport\Oadm.Plugins.SystemReport.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.SystemReport.Client\Oadm.Plugins.SystemReport.Client.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -32,5 +37,4 @@
     <Compile Include="..\Oadm.Core.Tests\Hardware\DevCameras.cs" Link="Hardware\DevCameras.cs" />
     <Compile Include="..\Oadm.Core.Tests\Hardware\HardwareFactAttribute.cs" Link="Hardware\HardwareFactAttribute.cs" />
   </ItemGroup>
-
 </Project>

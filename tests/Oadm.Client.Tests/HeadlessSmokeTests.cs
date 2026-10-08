@@ -147,8 +147,12 @@ public sealed class HeadlessSmokeTests
 
             // The Devices page toolbar: toolbar plugins with a separator between groups.
             StackPanel toolbarPanel = window.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Name == "ToolbarPanel");
-            Assert.Equal(["Scan", "Scan IP range", "Add manually", "Import devices", "Remove", "Export devices", "Restart", "AXIS OS - Release Notes"],
-                toolbarPanel.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.ToolbarButton>().Select(b => b.Text ?? "").ToArray());
+            // The System report button comes from its plugin (artifacts/plugins/oadm.system-report after a full build).
+            string[] toolbarTexts = toolbarPanel.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.ToolbarButton>().Select(b => b.Text ?? "").ToArray();
+            string[] expectedToolbar = toolbarTexts.Contains("System report")
+                ? ["Scan", "Scan IP range", "Add manually", "Import devices", "Remove", "Export devices", "Restart", "System report", "AXIS OS - Release Notes"]
+                : ["Scan", "Scan IP range", "Add manually", "Import devices", "Remove", "Export devices", "Restart", "AXIS OS - Release Notes"];
+            Assert.Equal(expectedToolbar, toolbarTexts);
             Capture(window, outDir, "client-toolbar.png");
 
             // At the minimum window width with the rail expanded the toolbar still fits on one line.

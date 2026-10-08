@@ -1,0 +1,49 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.SystemReport.Client"
+        x:Class="Oadm.Plugins.SystemReport.Client.SystemReportWindow"
+        x:DataType="vm:SystemReportViewModel"
+        Title="{x:Static vm:SystemReportViewModel.Title}"
+        Width="900" Height="600" MinWidth="720" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+  <!-- Like ADM's "Get system report": progress, one row per device with its state, Cancel / Close. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:SystemReportViewModel.Title}" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <Grid RowDefinitions="Auto,Auto,Auto,*">
+        <ui:CardHeader Grid.Row="0" Title="Devices" Description="{Binding Summary}" />
+
+        <ui:ProgressRow Grid.Row="1" Value="{Binding Progress}" Text="{Binding ProgressText}" IsActive="{Binding IsBusy}" Margin="0,0,0,10" />
+
+        <StackPanel Grid.Row="2" Spacing="6" Margin="0,0,0,10">
+          <ui:StatusChip Text="{Binding ResultText}" IsOk="{Binding !HasFailures}" IsWarning="{Binding HasFailures}" IsVisible="{Binding HasResult}" />
+          <ui:StatusChip Text="{Binding ErrorMessage}" IsError="True" IsVisible="{Binding HasError}" />
+        </StackPanel>
+
+        <DataGrid Grid.Row="3" x:Name="DeviceGrid" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single"
+                  CanUserReorderColumns="False" HeadersVisibility="Column">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Address" Binding="{Binding Address}" Width="140" x:DataType="vm:DeviceReportRow" />
+            <DataGridTextColumn Header="MAC address" Binding="{Binding Serial}" Width="140" x:DataType="vm:DeviceReportRow" />
+            <DataGridTextColumn Header="Model" Binding="{Binding Model}" Width="160" x:DataType="vm:DeviceReportRow" />
+            <DataGridTemplateColumn Header="Status" Width="*" SortMemberPath="StateText">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:DeviceReportRow">
+                  <ui:StatusChip Margin="10,0" Text="{Binding StateText}" Detail="{Binding Detail}" IsOk="{Binding IsOk}"
+                                 IsError="{Binding IsError}" IsAccent="{Binding IsAccent}" ToolTip.Tip="{Binding Detail}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+      </Grid>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelText="{Binding CancelText}" CancelCommand="{Binding CancelCommand}" />
+  </Grid>
+</Window>

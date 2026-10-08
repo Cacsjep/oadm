@@ -319,7 +319,12 @@ public sealed class VapixClient : IVapixClient, IDisposable
 
         try
         {
-            var response = await _http.SendAsync(request, HttpCompletionOption.ResponseContentRead, timeoutCts.Token).ConfigureAwait(false);
+            // Streamed answers (VapixRequestOptions.StreamResponse) are not buffered, so MaxResponseBytes does not apply:
+            // the caller reads the body itself and enforces its own limit.
+            var completion = request.Options.TryGetValue(VapixRequestOptions.StreamResponse, out var stream) && stream
+                ? HttpCompletionOption.ResponseHeadersRead
+                : HttpCompletionOption.ResponseContentRead;
+            var response = await _http.SendAsync(request, completion, timeoutCts.Token).ConfigureAwait(false);
             NormalizeCharset(response.Content);
             return response;
         }

@@ -127,7 +127,8 @@ public sealed class ShellNavigationTests
         using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
         MainWindowViewModel vm = CreateShell(f, connection);
 
-        vm.SyncCorePluginPages([new CorePluginInfo { Id = "oadm.ntp", DisplayName = "NTP server" }]);
+        // A core plugin without a page (toolbar only, e.g. System report) gets no rail entry.
+        vm.SyncCorePluginPages([new CorePluginInfo { Id = "oadm.ntp", DisplayName = "NTP server" }, new CorePluginInfo { Id = "oadm.system-report", DisplayName = "System report", NoPage = true }]);
 
         Assert.Equal(["devices", "plugin:oadm.ntp"], vm.NavItems.Select(n => n.Key).ToArray());
         Assert.True(vm.NavItems[1].HasSeparatorBefore);

@@ -22,6 +22,9 @@ public sealed class OadmPaths
 
     public string MasterKeyPath => Path.Combine(DataDirectory, MasterKeyFileName);
 
+    /// <summary>Working folders of the core plugins (<c>ICorePluginContext.DataDirectory</c>), one per plugin id.</summary>
+    public string PluginDataDirectory => Path.Combine(DataDirectory, "plugin-data");
+
     public string PluginsDirectory => Path.Combine(DataDirectory, "plugins");
 
     public string LogsDirectory => Path.Combine(DataDirectory, "logs");
