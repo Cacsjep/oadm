@@ -1,19 +1,13 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:shell="using:Oadm.Client.Shell"
+             xmlns:c="using:Oadm.Client.Controls"
              xmlns:tasks="using:Oadm.Client.Tasks"
              x:Class="Oadm.Client.Shell.CorePluginPageView"
              x:DataType="shell:CorePluginPageViewModel">
   <Grid RowDefinitions="Auto,*" RowSpacing="16">
     <!-- Page header: title, optional subtitle and trailing content from the plugin page (ui:PageHeader). -->
-    <Grid ColumnDefinitions="*,Auto">
-      <!-- Classic side subheader: smaller grey subtitle right of the title, bottom aligned with it. -->
-      <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-        <TextBlock Classes="pageTitle" Text="{Binding Title}" VerticalAlignment="Bottom" />
-        <TextBlock Classes="pageSubtitle" Text="{Binding Subtitle}" IsVisible="{Binding HasSubtitle}" VerticalAlignment="Bottom" />
-      </StackPanel>
-      <ContentControl Grid.Column="1" Content="{Binding HeaderTrailing}" VerticalAlignment="Center" />
-    </Grid>
+    <c:PageTitleBar Title="{Binding Title}" Subtitle="{Binding Subtitle}" Trailing="{Binding HeaderTrailing}" />
     <!-- Page content above; with ShowTasksPane the shared tasks pane below (same as the Devices page). -->
     <tasks:TasksPaneLayout Grid.Row="1" Tasks="{Binding Tasks}" ShowTasks="{Binding ShowTasksPane}">
       <tasks:TasksPaneLayout.MainContent>

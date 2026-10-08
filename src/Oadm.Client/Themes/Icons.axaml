@@ -52,6 +52,7 @@
   <StreamGeometry x:Key="Icon.export">M15 2H6a2 2 0 0 0 -2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2V7z M14 2v4a2 2 0 0 0 2 2h4 M12 18v-6 M9 15l3 3 3 -3</StreamGeometry>
   <StreamGeometry x:Key="Icon.clock">M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0z M12 6v6l4 2</StreamGeometry>
   <StreamGeometry x:Key="Icon.activity">M22 12h-4l-3 9L9 3l-3 9H2</StreamGeometry>
+  <StreamGeometry x:Key="Icon.info">M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0z M12 16v-4 M12 8h0.01</StreamGeometry>
   <!-- Device categories (first grid column, add wizard). Same 24x24 stroke style. -->
   <StreamGeometry x:Key="Icon.device.camera">M16.75 12h3.632a1 1 0 0 1 0.894 1.447l-2.034 4.069a1 1 0 0 1 -1.708 0.134l-2.124 -2.97 M17.106 9.053a1 1 0 0 1 0.447 1.341l-3.106 6.211a1 1 0 0 1 -1.342 0.447L3.61 12.3a2.92 2.92 0 0 1 -1.3 -3.91L3.69 5.6a2.92 2.92 0 0 1 3.92 -1.3z M2 19h3.76a2 2 0 0 0 1.8 -1.1L9 15 M2 21v-4 M7 9h0.01</StreamGeometry>
   <StreamGeometry x:Key="Icon.device.encoder">M16 13l5.223 3.482a0.5 0.5 0 0 0 0.777 -0.416V7.87a0.5 0.5 0 0 0 -0.752 -0.432L16 10.5 M4 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2H4a2 2 0 0 1 -2 -2V8a2 2 0 0 1 2 -2z</StreamGeometry>
