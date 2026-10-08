@@ -7,31 +7,31 @@
   <DataGrid ItemsSource="{Binding Tasks}" SelectedItem="{Binding SelectedTask}" SelectionMode="Single" IsReadOnly="True"
             CanUserReorderColumns="False">
     <DataGrid.Columns>
-      <DataGridTextColumn Header="Name" Width="3*" MinWidth="200" Binding="{Binding Name}" x:DataType="tasks:TaskRowViewModel" />
-      <DataGridTemplateColumn Header="Device" Width="130" SortMemberPath="DeviceText">
+      <DataGridTextColumn Header="Name" Width="2*" MinWidth="180" Binding="{Binding Name}" x:DataType="tasks:TaskRowViewModel" />
+      <DataGridTemplateColumn Header="Device" Width="110" SortMemberPath="DeviceText">
         <DataGridTemplateColumn.CellTemplate>
           <DataTemplate x:DataType="tasks:TaskRowViewModel">
             <TextBlock Text="{Binding DeviceText}" ToolTip.Tip="{Binding DeviceTooltip}" />
           </DataTemplate>
         </DataGridTemplateColumn.CellTemplate>
       </DataGridTemplateColumn>
-      <DataGridTemplateColumn Header="Status" Width="5*" MinWidth="280" SortMemberPath="StateText">
+      <DataGridTemplateColumn Header="Status" Width="8*" MinWidth="420" SortMemberPath="StateText">
         <DataGridTemplateColumn.CellTemplate>
           <DataTemplate x:DataType="tasks:TaskRowViewModel">
             <ui:StatusChip Text="{Binding StatusMessage}" ToolTip.Tip="{Binding StatusTooltip}" IsOk="{Binding IsStateOk}" IsWarning="{Binding IsStateWarning}" IsError="{Binding IsStateError}" IsAccent="{Binding IsStateAccent}" />
           </DataTemplate>
         </DataGridTemplateColumn.CellTemplate>
       </DataGridTemplateColumn>
-      <DataGridTemplateColumn Header="Current step" Width="3*" MinWidth="200" SortMemberPath="CurrentStepText">
+      <DataGridTemplateColumn Header="Current step" Width="2*" MinWidth="180" SortMemberPath="CurrentStepText">
         <DataGridTemplateColumn.CellTemplate>
           <DataTemplate x:DataType="tasks:TaskRowViewModel">
             <TextBlock Text="{Binding CurrentStepText}" ToolTip.Tip="{Binding CurrentStepTooltip}" />
           </DataTemplate>
         </DataGridTemplateColumn.CellTemplate>
       </DataGridTemplateColumn>
-      <DataGridTextColumn Header="Start time" Width="170" Binding="{Binding StartTimeText}" x:DataType="tasks:TaskRowViewModel" />
-      <DataGridTextColumn Header="Owner" Width="180" Binding="{Binding Owner}" x:DataType="tasks:TaskRowViewModel" />
-      <DataGridTemplateColumn Header="Progress" Width="2*" MinWidth="180" SortMemberPath="Progress">
+      <DataGridTextColumn Header="Start time" Width="150" Binding="{Binding StartTimeText}" x:DataType="tasks:TaskRowViewModel" />
+      <DataGridTextColumn Header="Owner" Width="140" Binding="{Binding Owner}" x:DataType="tasks:TaskRowViewModel" />
+      <DataGridTemplateColumn Header="Progress" Width="*" MinWidth="120" SortMemberPath="Progress">
         <DataGridTemplateColumn.CellTemplate>
           <DataTemplate x:DataType="tasks:TaskRowViewModel">
             <Grid ColumnDefinitions="*,52" Margin="10,0,12,0" VerticalAlignment="Center" IsVisible="{Binding IsActive}">
