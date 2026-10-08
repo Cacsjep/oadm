@@ -149,6 +149,10 @@ internal sealed class FakeCamera : IVapixClient
 
     public void AddCertificate(string alias, string pem) => _certificates[alias] = (pem, null);
 
+    public void AddCaCertificate(string alias, string pem) => _cas[alias] = pem;
+
+    public string CaCertificatePem(string alias) => _cas[alias];
+
     public Task<IReadOnlyList<DeviceApi>> GetApiListAsync(CancellationToken ct) => Task.FromResult(ApiList);
 
     public Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct) =>

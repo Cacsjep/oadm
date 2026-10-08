@@ -32,6 +32,7 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
             new ViewCertificatesTask(Current),
             new DeleteCertificatesTask(Current),
             new InstallCertificatesTask(Current),
+            new InstallCaTask(Current),
             new RenewTask(Current),
         ];
     }
@@ -43,7 +44,7 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
     public string? IconKey => PkiPluginInfo.IconKey;
     public CorePluginGroup Group => CorePluginGroup.Security;
 
-    /// <summary>The Security tasks (part 2): HTTPS and IEEE 802.1X enable / disable, view, delete, manual install, renew.</summary>
+    /// <summary>The Security tasks (part 2): HTTPS and IEEE 802.1X enable / disable, view, delete, manual install, install CA certificates, renew.</summary>
     public IReadOnlyList<ITaskPlugin> TaskPlugins { get; }
 
     /// <summary>The running service (null while stopped).</summary>

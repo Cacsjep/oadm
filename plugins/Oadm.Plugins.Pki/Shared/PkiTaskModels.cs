@@ -11,6 +11,7 @@ public static class PkiTaskIds
     public const string View = "oadm.pki.view";
     public const string Delete = "oadm.pki.delete";
     public const string Install = "oadm.pki.install";
+    public const string InstallCa = "oadm.pki.install-ca";
 
     public const string HttpsEnableName = "HTTPS: Enable/Update";
     public const string HttpsDisableName = "HTTPS: Disable";
@@ -20,6 +21,7 @@ public static class PkiTaskIds
     public const string ViewName = "View installed certificates";
     public const string DeleteName = "Delete certificates";
     public const string InstallName = "Install certificates manually";
+    public const string InstallCaName = "Install CA certificates";
 
     /// <summary>Text of the HTTPS Disable confirmation.</summary>
     public const string HttpsDisableWarning = "Video systems that use HTTPS lose the connection to these devices.";
@@ -113,4 +115,16 @@ public sealed record InstallPayload
     public string? Password { get; init; }
 
     public IReadOnlyList<InstallFile> Files { get; init; } = [];
+}
+
+/// <summary>One CA certificate of "Install CA certificates": the name for the step and the PEM.</summary>
+public sealed record CaCertificatePayload(string Name, string Pem);
+
+/// <summary>
+/// Payload of "Install CA certificates": the CA certificates for every selected device (public data only, a few KB each,
+/// so no upload). The task checks every one again before the first write.
+/// </summary>
+public sealed record InstallCaPayload
+{
+    public IReadOnlyList<CaCertificatePayload> Certificates { get; init; } = [];
 }

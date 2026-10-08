@@ -596,23 +596,23 @@ public sealed class RenewDeleteInstallTests
 public sealed class TaskPluginInfoTests
 {
     [Fact]
-    public async Task Eight_security_tasks_with_short_names_and_cached_can_run()
+    public async Task Nine_security_tasks_with_short_names_and_cached_can_run()
     {
         await using var pki = await PkiHarness.StartAsync();
         var tasks = pki.Plugin.TaskPlugins;
 
         Assert.Equal(
-            ["HTTPS: Enable/Update", "HTTPS: Disable", "IEEE 802.1X: Enable/Update", "IEEE 802.1X: Disable", "View installed certificates", "Delete certificates", "Install certificates manually", "Renew certificates now"],
+            ["HTTPS: Enable/Update", "HTTPS: Disable", "IEEE 802.1X: Enable/Update", "IEEE 802.1X: Disable", "View installed certificates", "Delete certificates", "Install certificates manually", "Install CA certificates", "Renew certificates now"],
             tasks.Select(t => t.DisplayName));
         Assert.All(tasks, t => Assert.Equal(TaskGroups.Security, t.Group));
         Assert.All(tasks, t => Assert.True(t.DisplayName.Length <= TaskPluginNames.MaxDisplayNameLength));
         Assert.All(tasks, t => Assert.False(t.ShowInToolbar));
         Assert.All(tasks, t => Assert.True(t.ShowInMenus));
         Assert.Equal(
-            [PkiTaskIds.HttpsDisable, PkiTaskIds.Dot1xEnable, PkiTaskIds.View, PkiTaskIds.Delete, PkiTaskIds.Install],
+            [PkiTaskIds.HttpsDisable, PkiTaskIds.Dot1xEnable, PkiTaskIds.View, PkiTaskIds.Delete, PkiTaskIds.Install, PkiTaskIds.InstallCa],
             tasks.Where(t => t.RequiresDialog).Select(t => t.Id));
         Assert.Equal(["Enable HTTPS", "Disable HTTPS", "Enable IEEE 802.1X", "Disable IEEE 802.1X", "Renew certificates"],
-            tasks.Where(t => t.Id is not (PkiTaskIds.View or PkiTaskIds.Delete or PkiTaskIds.Install)).Select(t => t.GetTaskName(null)));
+            tasks.Where(t => t.Id is not (PkiTaskIds.View or PkiTaskIds.Delete or PkiTaskIds.Install or PkiTaskIds.InstallCa)).Select(t => t.GetTaskName(null)));
 
         var device = new PkiFakeDevice(Guid.NewGuid());
         Assert.All(tasks, t => Assert.True(t.CanRun(device)));
