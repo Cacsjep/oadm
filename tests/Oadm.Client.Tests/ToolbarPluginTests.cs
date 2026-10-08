@@ -30,7 +30,7 @@ public sealed class ToolbarPluginTests
         var toolbar = new DeviceToolbar(BuiltInToolbarPlugins.All, registry, NullLogger<DeviceToolbar>.Instance);
 
         Assert.Equal(
-            ["a.first", "oadm.toolbar.scan", "oadm.toolbar.range", "oadm.toolbar.manual", "oadm.toolbar.remove", "oadm.toolbar.tasks", "z.plugin"],
+            ["a.first", "oadm.toolbar.scan", "oadm.toolbar.range", "oadm.toolbar.manual", "oadm.toolbar.remove", "oadm.toolbar.tasks", "z.plugin", "oadm.toolbar.release-notes"],
             toolbar.Plugins.Select(p => p.Id).ToArray());
     }
 
@@ -60,9 +60,9 @@ public sealed class ToolbarPluginTests
             f.Devices.Toolbar.AttachTo(panel, f.Devices.ToolbarContext);
             Dispatcher.UIThread.RunJobs();
 
-            // Scan Scan-IP-range Add-manually | Remove | (tasks: none yet, separator hidden) | Sample
+            // Scan Scan-IP-range Add-manually | Remove | (tasks: none yet, separator hidden) | Sample, AXIS OS - Release Notes
             ToolbarButton[] buttons = panel.Children.OfType<ToolbarButton>().ToArray();
-            Assert.Equal(["Scan", "Scan IP range", "Add manually", "Remove", "Sample (0)"], buttons.Select(b => b.Text ?? "").ToArray());
+            Assert.Equal(["Scan", "Scan IP range", "Add manually", "Remove", "Sample (0)", "AXIS OS - Release Notes"], buttons.Select(b => b.Text ?? "").ToArray());
             Assert.Contains("primary", buttons[0].Classes);
             Assert.Contains("toolbar", buttons[1].Classes);
             Assert.NotNull(buttons[0].Label.Icon);

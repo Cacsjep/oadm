@@ -25,6 +25,9 @@ public class ToolbarButton : Button
     public static readonly StyledProperty<bool> IsPrimaryProperty =
         AvaloniaProperty.Register<ToolbarButton, bool>(nameof(IsPrimary));
 
+    public static readonly StyledProperty<bool> IsIconOnlyProperty =
+        AvaloniaProperty.Register<ToolbarButton, bool>(nameof(IsIconOnly));
+
     private readonly IconLabel _label = new() { Spacing = 8 };
 
     public ToolbarButton()
@@ -57,6 +60,16 @@ public class ToolbarButton : Button
     {
         get => GetValue(IsPrimaryProperty);
         set => SetValue(IsPrimaryProperty, value);
+    }
+
+    /// <summary>
+    /// Compact: only the icon (theme class <c>iconOnly</c>), <see cref="Text"/> becomes the tooltip unless one is set.
+    /// For entries that would not fit the toolbar at the minimum window width.
+    /// </summary>
+    public bool IsIconOnly
+    {
+        get => GetValue(IsIconOnlyProperty);
+        set => SetValue(IsIconOnlyProperty, value);
     }
 
     /// <summary>The icon + text content (for tests).</summary>
@@ -98,11 +111,26 @@ public class ToolbarButton : Button
         else if (change.Property == TextProperty)
         {
             _label.Text = Text;
+            UpdateIconOnlyTip();
+        }
+        else if (change.Property == IsIconOnlyProperty)
+        {
+            Classes.Set("iconOnly", IsIconOnly);
+            _label.IsTextVisible = !IsIconOnly;
+            UpdateIconOnlyTip();
         }
         else if (change.Property == IsPrimaryProperty)
         {
             Classes.Set("primary", IsPrimary);
             Classes.Set("toolbar", !IsPrimary);
+        }
+    }
+
+    private void UpdateIconOnlyTip()
+    {
+        if (IsIconOnly && ToolTip.GetTip(this) is null or string)
+        {
+            ToolTip.SetTip(this, Text);
         }
     }
 

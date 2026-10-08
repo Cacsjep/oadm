@@ -527,7 +527,9 @@ density, styled as described in Visual Style.
 Layout, top to bottom:
 1. Title "Devices". Left navigation rail as described in Visual Style.
 2. Toolbar: toolbar plugins (Scan, Scan IP range, Add manually | Remove | task plugin actions that
-   declare `ShowInToolbar` | plugin entries), Columns button and search box right-aligned (host parts).
+   declare `ShowInToolbar` | plugin entries, last the icon button AXIS OS - Release Notes), Columns icon button (tooltip
+   "Choose columns") and search box right-aligned (host parts); compact icon buttons keep it on one line at 1280 px with
+   the rail expanded (user decision 2026-10-08).
 3. Status line: "N devices, M selected".
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
    client, horizontal scroll, multi-select, right-click context menu: the core actions (Open web
@@ -897,8 +899,9 @@ public interface IToolbarContext         // UI thread
 The Devices page toolbar is made of toolbar plugins. Built in (compiled into the client,
 `Devices/Toolbar/BuiltInToolbarPlugins.cs`, registered in the container like plugin parts): Scan
 (primary), Scan IP range, Add manually (group Add), Remove (Manage; confirmation, the context menu
-uses the same flow) and one generic plugin with a button per task plugin that declares
-`ShowInToolbar` (Tasks; enabled when it can run on the whole selection). External ones come from
+uses the same flow), one generic plugin with a button per task plugin that declares
+`ShowInToolbar` (Tasks; enabled when it can run on the whole selection) and **AXIS OS - Release Notes** (Plugins,
+order 1000 = last, icon-only `ui:ToolbarButton` (`IsIconOnly`, the name as tooltip), icon `externalLink`: opens https://help.axis.com/en-us/axis-os-release-notes in the default browser). External ones come from
 `*.Client.dll` like dialogs and pages. `DeviceToolbar` orders them by group, order, id, creates each
 control once (failures logged, entry left out), keeps a `ToolbarSeparator` only between groups that
 show something and moves the same controls into a new page view. Buttons are `ui:ToolbarButton`

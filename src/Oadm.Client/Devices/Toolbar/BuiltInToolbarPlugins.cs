@@ -154,6 +154,31 @@ public sealed class TaskActionsToolbarPlugin : IToolbarPlugin
     }
 }
 
+/// <summary>"AXIS OS - Release Notes" (icon button, the name as tooltip): opens the AXIS OS release notes on help.axis.com in the default browser. Last on the toolbar.</summary>
+public sealed class ReleaseNotesToolbarPlugin : IToolbarPlugin
+{
+    public static readonly Uri ReleaseNotesUri = new("https://help.axis.com/en-us/axis-os-release-notes");
+
+    public string Id => "oadm.toolbar.release-notes";
+    public int Order => 1000;
+    public ToolbarGroup Group => ToolbarGroup.Plugins;
+
+    public Control CreateControl(IToolbarContext ctx)
+    {
+        ArgumentNullException.ThrowIfNull(ctx);
+        // Icon only (tooltip = the text): the toolbar must fit the 1280 px minimum window with the rail expanded.
+        var button = new ToolbarButton { Text = "AXIS OS - Release Notes", IconKey = "externalLink", IsIconOnly = true };
+        button.Click += async (_, _) =>
+        {
+            if (TopLevel.GetTopLevel(button)?.Launcher is { } launcher && !await launcher.LaunchUriAsync(ReleaseNotesUri).ConfigureAwait(true))
+            {
+                await ctx.ShowMessageAsync("AXIS OS - Release Notes", "The browser could not be opened. The release notes are at " + ReleaseNotesUri).ConfigureAwait(true);
+            }
+        };
+        return button;
+    }
+}
+
 /// <summary>The built-in toolbar plugins, registered like plugin ones.</summary>
 public static class BuiltInToolbarPlugins
 {
@@ -164,5 +189,6 @@ public static class BuiltInToolbarPlugins
         new AddManuallyToolbarPlugin(),
         new RemoveToolbarPlugin(),
         new TaskActionsToolbarPlugin(),
+        new ReleaseNotesToolbarPlugin(),
     ];
 }

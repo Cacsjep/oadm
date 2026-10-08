@@ -147,9 +147,18 @@ public sealed class HeadlessSmokeTests
 
             // The Devices page toolbar: toolbar plugins with a separator between groups.
             StackPanel toolbarPanel = window.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Name == "ToolbarPanel");
-            Assert.Equal(["Scan", "Scan IP range", "Add manually", "Remove", "Restart"],
+            Assert.Equal(["Scan", "Scan IP range", "Add manually", "Remove", "Restart", "AXIS OS - Release Notes"],
                 toolbarPanel.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.ToolbarButton>().Select(b => b.Text ?? "").ToArray());
             Capture(window, outDir, "client-toolbar.png");
+
+            // At the minimum window width with the rail expanded the toolbar still fits on one line.
+            window.Width = 1280;
+            vm.IsNavExpanded = true;
+            await PumpUntilAsync(() => true);
+            Capture(window, outDir, "client-toolbar-1280.png");
+            window.Width = 1440;
+            vm.IsNavExpanded = false;
+            await PumpUntilAsync(() => true);
 
             // The add page in its three modes, with mixed automatic login results.
             var factory = app.Services!.GetRequiredService<Func<AddDevicesMode, AddDevicesViewModel>>();

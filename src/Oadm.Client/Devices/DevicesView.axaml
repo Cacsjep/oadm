@@ -23,8 +23,8 @@
           <StackPanel x:Name="ToolbarPanel" Grid.Column="0" Orientation="Horizontal" Spacing="4" />
 
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-            <Button Classes="toolbar" ToolTip.Tip="Choose columns">
-              <ui:IconLabel Icon="{StaticResource Icon.columns}" Text="Columns" Spacing="8" />
+            <Button Classes="toolbar iconOnly" ToolTip.Tip="Choose columns">
+              <ui:OadmIcon Data="{StaticResource Icon.columns}" />
               <Button.Flyout>
                 <Flyout Placement="BottomEdgeAlignedRight">
                   <StackPanel Spacing="4" MinWidth="220">
