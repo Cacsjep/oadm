@@ -29,6 +29,9 @@ public static class AuditActions
     public const string DevicesRemoved = "Removed devices";
     public const string PluginCall = "Plugin action";
     public const string DeviceLogin = "Device login";
+    public const string FirstPasswordSet = "First password set";
+    public const string DeviceAddedAutomatically = "Device added automatically";
+    public const string DeviceMoved = "Device moved";
 }
 
 /// <summary>

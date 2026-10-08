@@ -283,6 +283,12 @@ public interface ICorePluginContext
     /// the data folder. The plugin cleans up what it writes. Null on hosts without one (use a folder of your own then).
     /// </summary>
     string? DataDirectory => null;
+
+    /// <summary>
+    /// Adds Axis devices the plugin saw on the network (DHCP leases) through the add page's pipeline and follows managed
+    /// devices to new addresses (<see cref="IDeviceAutoAdd"/>). Null when the host does not offer it.
+    /// </summary>
+    IDeviceAutoAdd? AutoAdd => null;
 }
 
 /// <summary>Server-side encryption for secrets a plugin persists. Values never leave the server.</summary>

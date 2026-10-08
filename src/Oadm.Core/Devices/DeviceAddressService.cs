@@ -148,7 +148,16 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
     /// mDNS saw <paramref name="serial"/> at <paramref name="announcedAddress"/>: when that is a managed device which
     /// is unreachable at its stored address, verify it there and move the record. Never throws for device errors.
     /// </summary>
-    public async Task<DeviceAddressChangeResult> TryRelocateAsync(string serial, string announcedAddress, CancellationToken ct)
+    public Task<DeviceAddressChangeResult> TryRelocateAsync(string serial, string announcedAddress, CancellationToken ct) =>
+        TryRelocateAsync(serial, announcedAddress, "found again by mDNS", requireUnreachable: true, ct);
+
+    /// <summary>
+    /// <paramref name="serial"/> was seen at <paramref name="address"/> by <paramref name="reason"/> (mDNS, a DHCP lease):
+    /// when that is a managed device addressed by IP with another address, verify it there and move the record. With
+    /// <paramref name="requireUnreachable"/> only devices that are unreachable at their stored address move (mDNS); a DHCP
+    /// lease is proof enough that the address changed, so it moves a device right away. Never throws for device errors.
+    /// </summary>
+    public async Task<DeviceAddressChangeResult> TryRelocateAsync(string serial, string announcedAddress, string reason, bool requireUnreachable, CancellationToken ct)
     {
         var device = await _devices.FindBySerialAsync(serial, ct).ConfigureAwait(false);
         if (device is null)
@@ -176,14 +185,14 @@ public sealed partial class DeviceAddressService : ITaskDeviceAddresses
             return DeviceAddressChangeResult.Unchanged;
         }
 
-        if (device.Status != DeviceStatus.Unreachable)
+        if (requireUnreachable && device.Status != DeviceStatus.Unreachable)
         {
             return DeviceAddressChangeResult.StillReachable;
         }
 
         try
         {
-            return await MoveAsync(device, address, "found again by mDNS", ct).ConfigureAwait(false);
+            return await MoveAsync(device, address, reason, ct).ConfigureAwait(false);
         }
         catch (DeviceIdentityException ex)
         {

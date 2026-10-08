@@ -42,6 +42,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     private readonly IDeviceEventStreams? _eventStreams;
     private readonly IFirewallRules? _firewall;
     private readonly string? _pluginDataRoot;
+    private readonly IDeviceAutoAdd? _autoAdd;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.OrdinalIgnoreCase);
@@ -60,7 +61,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         TrustAnchorRegistry? trustAnchors = null,
         IDeviceEventStreams? eventStreams = null,
         IFirewallRules? firewall = null,
-        string? pluginDataRoot = null)
+        string? pluginDataRoot = null,
+        IDeviceAutoAdd? autoAdd = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(devices);
@@ -77,6 +79,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         _eventStreams = eventStreams;
         _firewall = firewall;
         _pluginDataRoot = pluginDataRoot;
+        _autoAdd = autoAdd;
         Events = events ?? new PluginEventHub();
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _logger = _loggerFactory.CreateLogger<CorePluginHost>();
@@ -124,7 +127,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     _trustAnchors?.For(registered.Id),
                     _eventStreams,
                     _firewall,
-                    _pluginDataRoot is null ? null : Path.Combine(_pluginDataRoot, SafeFolderName(registered.Id)));
+                    _pluginDataRoot is null ? null : Path.Combine(_pluginDataRoot, SafeFolderName(registered.Id)),
+                    _autoAdd);
                 try
                 {
                     await registered.Plugin.StartAsync(context, ct).ConfigureAwait(false);
@@ -303,7 +307,8 @@ internal sealed class CorePluginContext(
     ITrustAnchors? trustAnchors = null,
     IDeviceEventStreams? eventStreams = null,
     IFirewallRules? firewall = null,
-    string? dataDirectory = null) : ICorePluginContext
+    string? dataDirectory = null,
+    IDeviceAutoAdd? autoAdd = null) : ICorePluginContext
 {
     private readonly Lazy<string?> _dataDirectory = new(() =>
     {
@@ -336,6 +341,8 @@ internal sealed class CorePluginContext(
     public IDeviceEventStreams? EventStreams { get; } = eventStreams;
 
     public IFirewallRules? Firewall { get; } = firewall;
+
+    public IDeviceAutoAdd? AutoAdd { get; } = autoAdd;
 
     /// <summary>Created on first use, so plugins that never ask leave no empty folder behind.</summary>
     public string? DataDirectory => _dataDirectory.Value;

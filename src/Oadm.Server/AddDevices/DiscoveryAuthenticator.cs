@@ -609,6 +609,38 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         }
     }
 
+    /// <summary>
+    /// The anonymous Axis check on the device's login schemes (HTTPS, then HTTP) without any credential: Verified on the
+    /// first scheme that passes, else NotAxis when a scheme answered like something else, else NoAnswer. Used by the
+    /// automatic add before it decides anything (also for factory-default devices, which get no login).
+    /// </summary>
+    internal async Task<AxisVerdict> CheckAxisAsync(DiscoveredDevice device, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        AxisVerdict? notAxis = null;
+        AxisVerdict? noAnswer = null;
+        foreach (var scheme in LoginSchemes(device))
+        {
+            var verdict = await CheckAxisAsync(device, scheme, ct).ConfigureAwait(false);
+            switch (verdict.Kind)
+            {
+                case AxisVerdictKind.Verified:
+                    return verdict;
+                case AxisVerdictKind.NotAxis:
+                    notAxis ??= verdict;
+                    break;
+                default:
+                    noAnswer ??= verdict;
+                    break;
+            }
+        }
+
+        return notAxis ?? noAnswer ?? new AxisVerdict(AxisVerdictKind.NoAnswer, "The device did not answer on HTTPS or HTTP.");
+    }
+
+    /// <summary>Forgets a session at once (the automatic add uses one session per device).</summary>
+    public void Forget(string sessionId) => _sessions.TryRemove(sessionId, out _);
+
     /// <summary>Whether anonymous basicdeviceinfo properties are a valid Axis answer for the expected serial.</summary>
     internal static AxisVerdict Judge(IReadOnlyDictionary<string, string> properties, string expectedSerial)
     {

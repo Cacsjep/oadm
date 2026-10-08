@@ -238,6 +238,7 @@ public static partial class OadmServerHost
         services.AddSingleton<DeviceAddressService>();
         services.AddSingleton<ITaskDeviceAddresses>(sp => sp.GetRequiredService<DeviceAddressService>());
         services.AddSingleton<DeviceLoginService>();
+        services.AddSingleton<DeviceFirstPasswordService>();
         services.AddSingleton(sp => new TaskPluginQueries(
             sp.GetRequiredService<PluginRegistry>(),
             sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
@@ -256,7 +257,8 @@ public static partial class OadmServerHost
             trustAnchors: sp.GetRequiredService<TrustAnchorRegistry>(),
             eventStreams: sp.GetRequiredService<Sdk.Devices.IDeviceEventStreams>(),
             firewall: sp.GetService<Sdk.Network.IFirewallRules>(),
-            pluginDataRoot: sp.GetRequiredService<OadmPaths>().PluginDataDirectory));
+            pluginDataRoot: sp.GetRequiredService<OadmPaths>().PluginDataDirectory,
+            autoAdd: sp.GetRequiredService<Sdk.Devices.IDeviceAutoAdd>()));
 
         // Polling
         services.AddSingleton<DevicePollingService>();
@@ -278,6 +280,10 @@ public static partial class OadmServerHost
             sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<IDiscoveryBackend, CoreDiscoveryBackend>();
         services.AddSingleton<DiscoveryAuthenticator>();
+        // Adding devices: the add page's Commit and the automatic add of core plugins (DHCP server) share DeviceAdder.
+        services.AddSingleton<DeviceAdder>();
+        services.AddSingleton<DeviceAutoAddService>();
+        services.AddSingleton<Sdk.Devices.IDeviceAutoAdd>(sp => sp.GetRequiredService<DeviceAutoAddService>());
         return services;
     }
 
