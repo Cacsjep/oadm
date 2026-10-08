@@ -238,7 +238,7 @@ function Get-AppDll([string]$Name) {
 # Arguments for the server from --port and --data.
 function Get-ServerArgs {
     $a = @()
-    if ($script:OptPort) { $a += "--Oadm:ListenUrl=http://0.0.0.0:$($script:OptPort)" }
+    if ($script:OptPort) { $a += "--Oadm:ListenUrl=https://0.0.0.0:$($script:OptPort)" }
     if ($script:OptData) { $a += "--Oadm:DataDir=$(Get-AbsoluteDir $script:OptData)" }
     return , $a
 }
@@ -368,7 +368,7 @@ function Invoke-Run {
                     Start-Sleep -Milliseconds 500; $waited++
                 }
                 $clientArgs = @()
-                if ($script:OptPort) { $clientArgs += '--server', "http://localhost:$($script:OptPort)" }
+                if ($script:OptPort) { $clientArgs += '--server', "localhost:$($script:OptPort)" }
                 & $script:Dotnet exec $clientDll @clientArgs @appArgs
                 $code = $LASTEXITCODE
             } finally {

@@ -31,17 +31,21 @@ Uninstalling keeps the data folder (devices, credentials, settings, the PKI). De
 ## First start
 
 1. Install OADM on the computer that should run the server; the service starts on its own.
-2. Start the client. It connects to `http://localhost:5080`. For a server on another computer set `ServerAddress`
-   in `client-settings.json` in the client data folder (`%LOCALAPPDATA%\Oadm`, `~/.local/share/Oadm`,
-   `~/Library/Application Support/Oadm`), or start the client with `--server http://<server>:5080` for one run.
-3. Add your devices with **Scan**, **Scan IP range** or **Add manually** on the Devices page. Add the passwords you
+2. Start the client. The login window connects to `localhost:5080` over TLS; for a server on another computer enter
+   `<server>:5080` (the list keeps the recent servers, `--server <server>:5080` preselects one). On the first
+   connection the client shows the server certificate's SHA-256 fingerprint: compare it with the line
+   "Server TLS certificate fingerprint" in the server log and confirm it.
+3. While the server has no users, the login window creates the **first administrator**. On the server computer this
+   needs nothing more; from another computer enter the setup code the server logs at startup and keeps in
+   `setup-code.txt` in its data folder. Administrators add more users (Administrator or Operator) on the Settings page.
+4. Add your devices with **Scan**, **Scan IP range** or **Add manually** on the Devices page. Add the passwords you
    use to the credential list on the Settings page first: OADM then logs in to every device it finds.
 
 ## Ports and permissions
 
 | Port | Used by |
 |---|---|
-| TCP 5080 | Client to server (gRPC) |
+| TCP 5080 | Client to server (gRPC over TLS, login required) |
 | UDP 123 | NTP server (only when enabled on its page) |
 | UDP 67 | DHCP server (only when enabled on its page) |
 
@@ -77,7 +81,7 @@ Plain dotnet works too:
 
 ```sh
 dotnet build Oadm.sln
-dotnet run --project src/Oadm.Server   # gRPC server on http://0.0.0.0:5080
+dotnet run --project src/Oadm.Server   # gRPC server on https://0.0.0.0:5080 (own certificate, login required)
 dotnet run --project src/Oadm.Client   # Avalonia desktop client
 dotnet test Oadm.sln --filter "Category!=Hardware&Category!=Perf&Category!=HardwareWrite"   # unit tests
 ```
@@ -101,9 +105,9 @@ shows targets, options, defaults and examples. Both shells print the help texts 
 | Command | What it does |
 |---|---|
 | `manage build [all\|server\|client\|plugins] [--release]` | Build the solution (default), the server plus bundled plugins, the client, or only the plugins |
-| `manage run server [--port N] [--data DIR] [--release] [--no-plugin-build]` | Build and run the server in the foreground (default `http://0.0.0.0:5080`) |
+| `manage run server [--port N] [--data DIR] [--release] [--no-plugin-build]` | Build and run the server in the foreground (default `https://0.0.0.0:5080`) |
 | `manage run client [--fake] [--server URL] [--data DIR] [--release] [--no-plugin-build]` | Build the client and all plugins, then run the client; `--fake` runs on sample data without a server |
-| `manage run dev [--port N] [--data DIR] [--release] [--no-plugin-build]` | Server in the background (log in `artifacts/logs/server-dev.log`), then the client; closing the client stops the server |
+| `manage run dev [--port N] [--data DIR] [--release] [--no-plugin-build]` | Server in the background (log in `artifacts/logs/server-dev.log`), then the client; closing the client stops the server. First run: confirm the server fingerprint, then create the first administrator in the login window (no setup code on the same computer) |
 | `manage test [unit\|perf\|hardware\|all] [--filter EXPR] [--release]` | Unit tests (default, fast, what CI runs), scale tests with 5,000 devices and 50,000 tasks (`Category=Perf`, a few minutes, see [`docs/scale-audit.md`](docs/scale-audit.md)), read-only hardware tests against `dev-cameras.yaml`, or all of them |
 | `manage publish [all\|server\|client] [--rid RID] [--version V]` | Self-contained single-file apps in `artifacts/publish/<app>/<rid>`, plugins next to each exe |
 | `manage package <windows\|linux\|macos> [--rid RID] [--version V]` | Installer (MSI, .deb, .pkg) in `artifacts/packages/`, see [`packaging/README.md`](packaging/README.md) |

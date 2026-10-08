@@ -224,7 +224,7 @@ app_dll() {
 SERVER_ARGS=()
 set_server_args() {
   SERVER_ARGS=()
-  if [ -n "$OPT_PORT" ]; then SERVER_ARGS+=("--Oadm:ListenUrl=http://0.0.0.0:$OPT_PORT"); fi
+  if [ -n "$OPT_PORT" ]; then SERVER_ARGS+=("--Oadm:ListenUrl=https://0.0.0.0:$OPT_PORT"); fi
   if [ -n "$OPT_DATA" ]; then SERVER_ARGS+=("--Oadm:DataDir=$(abs_dir "$OPT_DATA")"); fi
   return 0
 }
@@ -345,7 +345,7 @@ cmd_run() {
         sleep 0.5; waited=$((waited + 1))
       done
       local client_args=()
-      if [ -n "$OPT_PORT" ]; then client_args+=(--server "http://localhost:$OPT_PORT"); fi
+      if [ -n "$OPT_PORT" ]; then client_args+=(--server "localhost:$OPT_PORT"); fi
       local code=0
       "$DOTNET" exec "$client_dll" ${client_args[@]+"${client_args[@]}"} ${app_args[@]+"${app_args[@]}"} || code=$?
       exit $code

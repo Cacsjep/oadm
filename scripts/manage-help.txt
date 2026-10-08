@@ -69,7 +69,7 @@ Targets:
 
 Options:
   --port N       server, dev: listen on http://0.0.0.0:N (default: the server setting, 5080).
-                 dev also points the client at http://localhost:N
+                 dev also points the client at localhost:N (TLS)
   --data DIR     server, dev: server data folder (default: OADM_DATA_DIR, else
                  LocalApplicationData/Oadm). client: client settings and log folder
   --server URL   client: server address for this run (default: the client setting)

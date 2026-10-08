@@ -141,6 +141,16 @@ Two processes, like ADM:
 
 ## gRPC services (Oadm.Contracts)
 
+- Every call needs `authorization: Bearer <token>` in the metadata (plus `oadm-client-machine`), except
+  `AuthService.Status`, `Login`, `CreateFirstAdmin`; UNAUTHENTICATED without a valid token, PERMISSION_DENIED for a
+  missing role (`Oadm.Server.Auth.AccessPolicy`, see "Production hardening" 1).
+- `AuthService` (`auth.proto`): `Status` (server name, version, `needs_first_admin`, `setup_code_required` when the
+  caller is not loopback), `Login(user, password, remember)` -> {token, UserInfo} (UNAUTHENTICATED one message for
+  wrong password / unknown / disabled user, RESOURCE_EXHAUSTED while locked), `CreateFirstAdmin(user, password,
+  setup_code, remember)` (FAILED_PRECONDITION users exist, PERMISSION_DENIED setup code, INVALID_ARGUMENT), `Logout`
+  (revokes the call's token), `Me`. `UserService` (Admin): `List`, `Add`, `Update` (optional role / disabled, new
+  password; ends the user's sessions), `Delete`; FAILED_PRECONDITION for the own account or the last enabled
+  administrator. `AuditService` (Admin): `List(limit, offset)` newest first + `total_count` (limit 0 = 10,000).
 - `DeviceService`: `List` (legacy: one message with every device, 23 MB for 5,000 devices with their
   API lists; clients do not use it), `Watch(WatchDevicesRequest)` (stream of DeviceChanged events: one
   ADDED per device, then with `snapshot_end_marker = 1` one `SNAPSHOT_END` (kind 4, no device), then live
@@ -1658,6 +1668,48 @@ marked *(default)* were filled in and can be changed. This section wins over old
   200,000 entries *(default)*). Logged: login ok/failed, logout, user changes, settings changes, credential list
   add/remove/reveal, PKI actions, DHCP/NTP save, task runs (plugin, device count), Delete all, device remove, VAPIX
   Commander send / rollout. Logs page gets an **Audit** tab (Admin only, virtualized, SearchBox).
+- **Implementation** (done 2026-10-08):
+  - Server: `Oadm.Server.Auth` (`AuthInterceptor` on every call sets `Oadm.Core.Auth.CallerContext` for the call, so
+    `TaskEngine.RunAsync` and core plugin task runs take the owner "user@machine" from it; `AccessPolicy` role table;
+    `AuthGrpcService`, `UserGrpcService`, `AuditGrpcService`; `ServerTlsCertificate` (`server-tls.json`, key AES-GCM
+    with the master key, purpose `oadm:server-tls`; a key that cannot be decrypted, e.g. after a master key
+    replacement, creates a new certificate and logs that clients must use Forget server); `AuthMaintenanceHostedService`
+    hourly: audit retention, expired sessions; `InProcessAccess.CreateTokenAsync` for in-process hosts (tests, hardware
+    tests)). Core: `Oadm.Core.Auth` (`UserStore`, `PasswordHasher`, `AuthTokenStore` (table AuthTokens: token SHA-256,
+    user, client address, remember, expiry; sliding expiry cached in memory, written at most once per minute),
+    `LoginThrottle`, `AuthManager` (login, first administrator, setup code), `AuditLog`); migration `UsersAndAudit`
+    (Users, AuthTokens, AuditEntries). A stored listen URL equal to the old default `http://0.0.0.0:5080` reads as the
+    new https default.
+  - Plugin methods: the host checks `ICorePlugin.RequiredRole(method)` in `PluginService.Invoke` (a throwing plugin
+    counts as Admin) and audits calls where `ICorePlugin.IsAudited(method)` (DIM: the Admin methods) as action "Plugin
+    action", target the plugin name, detail the method. Admin: PKI everything except `getState`, DHCP `save` /
+    `saveStatic` / `deleteStatic` / `makeStatic` / `release`, NTP `save`. VAPIX Commander stays Operator; `tryRequest`
+    and `rollout` are audited. The PKI page asks before "Install in trusted root store" with the CA's SHA-256
+    fingerprint (`ui:MessageWindow`).
+  - Client: `Shell/AppShell` shows `LoginWindow` (`LoginViewModel`: server as editable select with the recent servers,
+    user name, password, confirm password + setup code in first-administrator mode, Remember me; errors below the fields,
+    connection problems below the server field) before the main window, and again after Log out or when a call answers
+    UNAUTHENTICATED ("Your session has ended. Log in again."). TLS trust: `Oadm.Contracts.Security.ServerCertificatePinning`
+    (pins in `client-settings.json` `PinnedServers` by "host:port"; `OadmChannel` creates the pinned channel and adds the
+    token); the fingerprint is confirmed in the shared confirmation window ("Trust this server?", two lines of 16 pairs);
+    a changed certificate shows "The server certificate changed ..." with **Forget server**. Remember me keeps
+    {user, token} per server in `RememberedLogins` and resumes with `AuthService.Me` at start. An address without scheme
+    means https; `http://` stays possible for tests. Rail bottom: user (tooltip "Logged in as ... (role) on ...") and
+    Log out. `UserSession.IsAdmin` hides the credential list and Users card, disables the server settings form (with the
+    sentence "Only administrators can change ...") and hides the Audit tab for operators; the server checks again.
+    Users card `Settings/UsersCardView` (DataGrid; Make administrator / operator, Reset password (inline editor), Disable
+    / Enable, Delete with confirmations; the own row offers only Reset password). Audit tab `Logging/AuditLogViewModel`
+    (newest 10,000, O(n) search, Refresh). Fake mode signs in as "admin" (Administrator) without a login window.
+  - Tests: `tests/Oadm.Server.Tests/AuthTests` (unauthenticated / operator / admin per service, role table against the
+    contracts, plugin method roles + audit, first administrator loopback and setup code, login / logout / owner,
+    throttling, session expiry, user rules, audit entries and retention), `TlsPinningTests` (real Kestrel with TLS:
+    TOFU, restart keeps the certificate, changed certificate, regenerate); `MethodRoleTests` in the DHCP, NTP, PKI and
+    VAPIX Commander test projects; `tests/Oadm.Client.Tests/LoginTests` (login, wrong password, first administrator,
+    fingerprint trust / refusal / changed / Forget server, remembered session, pin store, Users card, Audit tab with
+    5,000 entries; headless screenshots `login-window.png`, `login-first-admin.png`, `login-fingerprint-confirm.png`,
+    `settings-users-card.png`, `logs-audit-tab.png`). `TestServerHost` calls as the administrator "admin"
+    (`InvokerFor(token)` / `InvokerForUserAsync(name, role)` for others, `createAdmin: false` for an empty user table,
+    PBKDF2 with 1,000 iterations for speed).
 
 ## 2. Automatic login on the add page
 
