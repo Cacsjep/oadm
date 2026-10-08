@@ -12,6 +12,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- RangeObservableCollection / IResettableList live in the client SDK so plugin pages use the same bulk collection. -->
+    <Using Include="Oadm.Sdk.Client.Collections" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Window icon of every client window (App.ApplyCrispTextToAllWindows); built from /icon by packaging/icons/make-icons.py. -->
     <AvaloniaResource Include="..\..\packaging\icons\oadm-256.png" Link="Assets\oadm-256.png" />
     <AvaloniaResource Include="..\..\packaging\icons\oadm.ico" Link="Assets\oadm.ico" />

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
@@ -80,6 +81,7 @@ public sealed class RtspClient : IAsyncDisposable
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private DigestAuthenticator? _digest;
     private int _cseq;
+    private long _lastReceive = Stopwatch.GetTimestamp();
 
     public RtspClient(Stream stream, NetworkCredential? credentials, IDisposable? owner = null)
     {
@@ -92,6 +94,9 @@ public sealed class RtspClient : IAsyncDisposable
 
     /// <summary>Session id from the SETUP response (without the timeout parameter).</summary>
     public string? Session { get; private set; }
+
+    /// <summary>Time since the last interleaved packet or RTSP response arrived (liveness of quiet streams).</summary>
+    public TimeSpan SinceLastReceive => Stopwatch.GetElapsedTime(Interlocked.Read(ref _lastReceive));
 
     /// <summary>Session timeout from the SETUP response (default 60 s).</summary>
     public TimeSpan SessionTimeout { get; private set; } = TimeSpan.FromSeconds(60);
@@ -181,7 +186,13 @@ public sealed class RtspClient : IAsyncDisposable
                 var length = (header[2] << 8) | header[3];
                 _reader.Skip(4);
                 var data = await _reader.ReadExactAsync(length, ct).ConfigureAwait(false);
-                return data is null ? null : new InterleavedPacket(channel, data);
+                if (data is null)
+                {
+                    return null;
+                }
+
+                Interlocked.Exchange(ref _lastReceive, Stopwatch.GetTimestamp());
+                return new InterleavedPacket(channel, data);
             }
 
             if (await ReadResponseAsync(ct).ConfigureAwait(false) is null)
@@ -325,6 +336,7 @@ public sealed class RtspClient : IAsyncDisposable
             body = Encoding.UTF8.GetString(bytes);
         }
 
+        Interlocked.Exchange(ref _lastReceive, Stopwatch.GetTimestamp());
         return new RtspResponse(code, parts.Length > 2 ? parts[2] : string.Empty, headers, body);
     }
 }

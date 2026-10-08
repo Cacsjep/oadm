@@ -1,0 +1,74 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.MetadataMonitor.Client"
+             x:Class="Oadm.Plugins.MetadataMonitor.Client.MetadataMonitorView"
+             x:DataType="vm:MetadataMonitorViewModel"
+             ui:PageHeader.Subtitle="Shows the events a camera sends, live.">
+  <!-- One card (the host's page card): camera and stream controls, filter, the message list, the selected message's XML.
+       The description lives in the host page header; the status chip sits left of the Start / Stop button.
+       Shared controls and theme classes only. -->
+  <Grid x:Name="Root" RowDefinitions="Auto,Auto,*,Auto,260">
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto">
+      <ui:FormField Grid.Column="0" Classes="inline" Label="Camera">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <ui:SearchBox Text="{Binding CameraSearch}" Placeholder="Find camera" />
+          <ComboBox Width="300" ItemsSource="{Binding Cameras}" SelectedItem="{Binding SelectedCamera}" PlaceholderText="Choose a camera"
+                    ToolTip.Tip="Video and I/O devices managed by OADM, by IP address">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:CameraOption">
+                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </StackPanel>
+      </ui:FormField>
+      <ui:StatusChip Grid.Column="2" VerticalAlignment="Center" Margin="0,0,12,0" IsVisible="{Binding HasStatus}"
+                     Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"
+                     IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}" ToolTip.Tip="{Binding StatusDetail}" />
+      <Button Grid.Column="3" Classes="primary" VerticalAlignment="Top" MinWidth="80" Content="{Binding StartStopText}"
+              Command="{Binding StartStopCommand}" ToolTip.Tip="{Binding StartStopTip}" ToolTip.ShowOnDisabled="True" />
+    </Grid>
+
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="12" Margin="{DynamicResource Oadm.GapTop}">
+      <ui:SearchBox Grid.Column="0" Text="{Binding FilterText}" Placeholder="Filter events" />
+      <Button Grid.Column="1" Classes="secondary" Content="Clear" Command="{Binding ClearCommand}"
+              ToolTip.Tip="Empty the list; the stream keeps running" />
+      <CheckBox Grid.Column="2" Content="Autoscroll" IsChecked="{Binding Autoscroll}"
+                ToolTip.Tip="Keep the newest message visible. Scrolling up turns it off, scrolling to the end turns it on." />
+      <TextBlock Grid.Column="3" Classes="secondary" HorizontalAlignment="Right" VerticalAlignment="Center" Text="{Binding SummaryText}" />
+    </Grid>
+
+    <!-- Up to 10,000 rows: virtualized, batches arrive as one collection change. -->
+    <DataGrid x:Name="MessageGrid" Grid.Row="2" Margin="0,8,0,0" ItemsSource="{Binding Messages}" SelectedItem="{Binding SelectedMessage}"
+              IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False" SelectionMode="Single" MinHeight="160">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Seq#" Width="70" Binding="{Binding Seq}" x:DataType="vm:MessageRow" />
+        <DataGridTextColumn Header="Timestamp" Width="180" Binding="{Binding Timestamp}" x:DataType="vm:MessageRow" />
+        <DataGridTextColumn Header="Category" Width="100" Binding="{Binding Category}" x:DataType="vm:MessageRow" />
+        <DataGridTextColumn Header="Event topic" Width="260" Binding="{Binding Topic}" x:DataType="vm:MessageRow" />
+        <DataGridTextColumn Header="Capture time" Width="180" Binding="{Binding CaptureTime}" x:DataType="vm:MessageRow" />
+        <DataGridTextColumn Header="Property operation" Width="160" Binding="{Binding Operation}" x:DataType="vm:MessageRow" />
+        <DataGridTextColumn Header="Info" Width="*" Binding="{Binding Info}" x:DataType="vm:MessageRow" />
+      </DataGrid.Columns>
+    </DataGrid>
+
+    <GridSplitter x:Name="DetailSplitter" Grid.Row="3" Classes="paneSplitter" />
+
+    <Grid Grid.Row="4" RowDefinitions="Auto,*" RowSpacing="8">
+      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+        <TextBlock Classes="secondary" Text="{Binding DetailTitle}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+        <Border Grid.Column="1" Classes="segmented">
+          <StackPanel Orientation="Horizontal">
+            <Button Classes="segment" Classes.selected="{Binding IsPretty}" Content="Pretty" Command="{Binding ShowPrettyCommand}" ToolTip.Tip="Indented and highlighted" />
+            <Button Classes="segment" Classes.selected="{Binding IsRaw}" Content="Raw" Command="{Binding ShowRawCommand}" ToolTip.Tip="Exactly as the device sent it" />
+          </StackPanel>
+        </Border>
+        <Button Grid.Column="2" Classes="toolbar iconOnly" Command="{Binding CopyCommand}" ToolTip.Tip="Copy the XML of this message">
+          <ui:OadmIcon Data="{DynamicResource Icon.copy}" />
+        </Button>
+      </Grid>
+      <ui:CodeView Grid.Row="1" Text="{Binding DetailText}" Language="Xml" IsFormatted="{Binding IsPretty}" />
+    </Grid>
+  </Grid>
+</UserControl>

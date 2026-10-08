@@ -131,15 +131,18 @@ public sealed record SdpVideoTrack(
     }
 
     /// <summary>Resolves the track control URL against Content-Base (or the request URL), RFC 2326 C.1.1.</summary>
-    public Uri ResolveControl(Uri baseUri)
+    public Uri ResolveControl(Uri baseUri) => ResolveControl(baseUri, Control);
+
+    /// <summary>Resolves a media control attribute against Content-Base (or the request URL), RFC 2326 C.1.1.</summary>
+    internal static Uri ResolveControl(Uri baseUri, string? control)
     {
         ArgumentNullException.ThrowIfNull(baseUri);
-        if (string.IsNullOrEmpty(Control) || Control == "*")
+        if (string.IsNullOrEmpty(control) || control == "*")
         {
             return baseUri;
         }
 
-        if (Uri.TryCreate(Control, UriKind.Absolute, out var absolute))
+        if (Uri.TryCreate(control, UriKind.Absolute, out var absolute))
         {
             return absolute;
         }
@@ -150,6 +153,6 @@ public sealed record SdpVideoTrack(
             text += "/";
         }
 
-        return new Uri(text + Control, UriKind.Absolute);
+        return new Uri(text + control, UriKind.Absolute);
     }
 }
