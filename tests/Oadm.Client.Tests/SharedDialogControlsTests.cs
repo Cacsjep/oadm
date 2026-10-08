@@ -38,9 +38,7 @@ public sealed class SharedDialogControlsTests
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
-            Assert.Equal(32, title.Height); // same as the Windows caption height
             Assert.Equal(WindowDecorationsElementRole.TitleBar, WindowDecorationProperties.GetElementRole(title));
-            Assert.Equal(new Avalonia.Thickness(0, 0, 0, 16), header.Margin);
             Assert.False(header.Children.OfType<TextBlock>().Single(t => t.Classes.Contains("secondary")).IsVisible);
 
             // Status = colored icon + plain text, no chip border.

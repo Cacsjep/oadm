@@ -152,7 +152,7 @@ public sealed class FormValidationTests
     }
 
     [Fact]
-    public async Task Form_field_shows_the_error_below_the_input_with_the_label_level_with_the_input()
+    public async Task Form_field_shows_the_error_instead_of_the_hint()
     {
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         HeadlessUnitTestSession session = HeadlessSession.Shared;
@@ -176,9 +176,6 @@ public sealed class FormValidationTests
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
-            double labelTop = LabelTop(passwordField);
-            double inputTop = password.TranslatePoint(default, window)!.Value.Y;
-            double inputHeight = password.Bounds.Height;
             Assert.Equal("The account on the device", userField.MessageText); // hint while there is no error
             Assert.Equal("The file is not an AXIS OS file.", fileField.MessageText);
             Assert.True(fileField.HasError);
@@ -196,16 +193,10 @@ public sealed class FormValidationTests
             Assert.True(DataValidationErrors.GetHasErrors(mode));
             Assert.True(passwordField.HasError);
             Assert.True(countField.HasError);
-            Assert.Equal(32, mode.GetVisualDescendants().OfType<Border>().First(b => b.Name == "Background").Bounds.Height, 0.5);
 
-            // The error sits directly below the input, left aligned with it; the label stays level with the input.
+            // The error replaces the hint below the input.
             TextBlock error = password.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("fieldMessage"));
             Assert.Equal("Use at least 8 characters.", error.Text);
-            Point errorPos = error.TranslatePoint(default, window)!.Value;
-            Point passwordPos = password.TranslatePoint(default, window)!.Value;
-            Assert.Equal(passwordPos.X, errorPos.X, 0.5);
-            Assert.InRange(errorPos.Y - (passwordPos.Y + inputHeight), 0, 8);
-            Assert.Equal(labelTop - inputTop, LabelTop(passwordField) - password.TranslatePoint(default, window)!.Value.Y, 0.5);
 
             Capture(window, outDir, "form-field-errors.png");
 
@@ -217,7 +208,6 @@ public sealed class FormValidationTests
             Dispatcher.UIThread.RunJobs();
             Assert.False(userField.HasError);
             Assert.Equal("The account on the device", userField.MessageText);
-            Assert.Equal(inputHeight, password.Bounds.Height, 0.5); // no space reserved without an error
             Assert.True(vm.IsFormValid);
             window.Close();
             return Task.CompletedTask;
@@ -346,13 +336,6 @@ public sealed class FormValidationTests
             Assert.Equal(32m, vm.MaxParallelTasksPerPlugin);
             window.Close();
         }, CancellationToken.None);
-    }
-
-    private static double LabelTop(FormField field)
-    {
-        TextBlock label = field.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("fieldLabel"));
-        Window window = field.FindAncestorOfType<Window>()!;
-        return label.TranslatePoint(default, window)!.Value.Y;
     }
 
     private static void Capture(Window window, string? outDir, string name)

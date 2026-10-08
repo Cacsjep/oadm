@@ -247,7 +247,6 @@ public sealed class DeviceSetPasswordTests
             Assert.Contains("The passwords do not match.", texts);
             Assert.DoesNotContain(texts, t => t.EndsWith("...", StringComparison.Ordinal));
             Assert.Equal(2, window.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.PasswordBox>().Count());
-            Assert.Equal(460, window.Bounds.Width);
 
             Dispatcher.UIThread.RunJobs();
             WriteableBitmap? frame = window.CaptureRenderedFrame();

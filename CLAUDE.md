@@ -500,8 +500,7 @@ controls: title bar, one card, footer) in four modes:
 
 List: checkbox (40 px; shown only for rows that can be added), category icon (36 px), Address (140), MAC address (150),
 Model (160), Login (status, star: takes the rest so status and detail sit right after Model; rows grow so the reason
-shows on up to two lines, grid class `wrapRows`), Action (auto, at the right edge); checked headless at 1040 px window
-width. An empty list says what to do first ("Enter a range and press Scan.", "Enter an address and press Find."). Scan
+shows on up to two lines, grid class `wrapRows`), Action (auto, at the right edge). An empty list says what to do first ("Enter a range and press Scan.", "Enter an address and press Find."). Scan
 and Find are filled secondary buttons. A page error (Add or discovery failed) stands directly below the list. The scan
 progress bar disappears once a scan or import ended; its text stays. Problems of file lines ("Not added") use the
 warning chip, devices that do not answer the error chip. Above it
@@ -2391,6 +2390,8 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   weight, color, padding or alignment in views. No special cases such as a bold selected rail
   item or a greyed toggle unless the spec says so. When a mismatch is found, fix the shared
   style or control, not the single view.
+- Tests never assert exact positions, sizes, pixel offsets or column widths of controls (user decision 2026-10-08:
+  overkill); headless screenshots are for looking, assertions check behaviour, content and rules.
 - UI is verified only with Avalonia headless tests rendering offscreen (screenshots via
   `OADM_SCREENSHOT_DIR`). Never automate the real desktop: no simulated clicks or drags, no
   capturing real windows on a developer machine.

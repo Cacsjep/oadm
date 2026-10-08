@@ -178,10 +178,6 @@ public sealed class HeadlessSmokeTests
             await PumpUntilAsync(() => true);
             Capture(scanWindow, outDir, "client-add-scan.png");
 
-            // Compact columns at 1040 px: Login (star) starts right after Model, Action is auto-sized after it.
-            DataGrid list = scanWindow.GetVisualDescendants().OfType<DataGrid>().Single();
-            Assert.Equal([40, 36, 140, 150, 160], list.Columns.Take(5).Select(c => c.ActualWidth).ToArray());
-            Assert.True(list.Columns[6].ActualWidth < 200, "Action column is auto-sized");
             Button stop = scanWindow.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "StopScanButton");
             Assert.True(stop.IsEffectivelyVisible);
 

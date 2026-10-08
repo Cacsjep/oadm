@@ -304,7 +304,6 @@ public sealed class DeviceLoginTests
             List<string> texts = Texts(window);
             Assert.Contains("10.0.0.48 (AXIS P3265-V) rejects the stored credentials.", texts);
             Assert.Contains(window.GetVisualDescendants().OfType<CheckBox>(), c => c.IsEffectivelyVisible && Equals(c.Content, "Save to credential list"));
-            Assert.Equal(460, window.Bounds.Width);
             Capture(window, outDir, "client-device-login.png");
             window.Close();
 

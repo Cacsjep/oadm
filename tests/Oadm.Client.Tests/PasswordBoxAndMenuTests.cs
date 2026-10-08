@@ -108,8 +108,6 @@ public sealed class PasswordBoxAndMenuTests
             Assert.Equal(["Open web interface", "Remove", "-", "Applications", "Maintenance", "Network", "Users"],
                 items.Select(i => i.Header as string ?? "").ToArray());
             Assert.All(items.Skip(3), i => Assert.True(i.HasSubMenu));
-            Assert.All(items.Where(i => (string?)i.Header != "-"), i => Assert.True(i.Bounds.Width >= 240, $"{i.Header} is {i.Bounds.Width} px wide"));
-            Assert.True(top.Bounds.Width >= 240);
             Assert.DoesNotContain(items, i => ((string?)i.Header ?? "").EndsWith("...", StringComparison.Ordinal));
             Assert.All(items.Where(i => (string?)i.Header != "-"), i => Assert.IsType<OadmIcon>(i.Icon));
             Assert.Equal(["Assign IP address", "Network settings"],

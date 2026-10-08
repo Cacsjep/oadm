@@ -65,7 +65,6 @@ public sealed class CommanderViewHeadlessTests
                 var window = new Window { Width = 1600, Height = 940, Content = new Border { Padding = new Thickness(16), Child = host } };
                 window.Show();
                 Dispatcher.UIThread.RunJobs();
-                Assert.True(view.Bounds.Width > 1000);
 
                 // No count badges and no library or rollout button rows: per-row icon buttons with tooltips.
                 Assert.DoesNotContain(view.GetVisualDescendants().OfType<Border>(), b => b.Classes.Contains("badge") && b.IsEffectivelyVisible);
