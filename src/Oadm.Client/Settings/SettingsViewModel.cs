@@ -121,7 +121,12 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     [ObservableProperty] public partial string ListenUrl { get; set; } = "";
 
     /// <summary>Devices.UseHostName: newly added devices are addressed by host name when one is known.</summary>
-    [ObservableProperty] public partial bool UseHostName { get; set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DeviceAddressText))]
+    public partial bool UseHostName { get; set; }
+
+    /// <summary>The device address choice as text (operators see the settings read-only).</summary>
+    public string DeviceAddressText => UseHostName ? "Host name when available, otherwise IP address" : "IP address";
     [ObservableProperty] public partial string? ServerMessage { get; private set; }
     [ObservableProperty] public partial bool ServerMessageIsError { get; private set; }
 

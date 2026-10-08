@@ -41,11 +41,11 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
         SessionId = sessionId;
         ImportLine = line;
         IsImportPlaceholder = true;
-        _importChip = line.Problem is null ? ("Waiting", PillKind.Neutral) : ("Not added", PillKind.Error);
+        _importChip = line.Problem is null ? ("Waiting", PillKind.Neutral) : ("Not added", PillKind.Warning);
         Update(device);
         if (line.Problem is not null)
         {
-            SetImportProblem("Not added", line.Problem);
+            SetImportProblem("Not added", line.Problem, PillKind.Warning);
         }
     }
 

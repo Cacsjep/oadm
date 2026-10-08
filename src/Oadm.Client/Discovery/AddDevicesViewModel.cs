@@ -82,6 +82,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         _logger = logger;
         Mode = mode;
         Rows.CollectionChanged += OnRowsChanged;
+        FilteredRows.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ShowEmptyText));
 
         // Field errors below their field: IP range, address, login and first password editors.
         Validation
@@ -156,6 +157,18 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         AddDevicesMode.Import => $"Addresses from {ImportFileName}. Logins in the file are tried first.",
         _ => "Axis devices found on the local network.",
     };
+
+    /// <summary>The hint in the empty list: what to do first in this mode.</summary>
+    public string EmptyText => Mode switch
+    {
+        AddDevicesMode.IpRange => "Enter a range and press Scan.",
+        AddDevicesMode.Manual => "Enter an address and press Find.",
+        AddDevicesMode.Import => "No addresses in the file.",
+        _ => "No devices found yet.",
+    };
+
+    /// <summary>Nothing in the list yet.</summary>
+    public bool ShowEmptyText => FilteredRows.Count == 0 && Rows.Count == 0;
 
     public ObservableCollection<DiscoveredRowViewModel> Rows { get; } = [];
     public RangeObservableCollection<DiscoveredRowViewModel> FilteredRows { get; } = [];
@@ -884,7 +897,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             if (line is not null && row is not null && row != line)
             {
                 // Import: another line (another address) already found this device.
-                line.SetImportProblem("Not added", $"Same device as {row.Address} ({row.Serial}).");
+                line.SetImportProblem("Not added", $"Same device as {row.Address} ({row.Serial}).", PillKind.Warning);
                 _duplicateSessions.Add(sessionId);
             }
             else if (line is not null && row is null)

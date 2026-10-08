@@ -10,7 +10,7 @@ namespace Oadm.Client.Logging;
 
 public sealed record LogEntry(DateTime Time, string Level, string Message)
 {
-    public string TimeText => Time.ToString("HH:mm:ss", CultureInfo.CurrentCulture);
+    public string TimeText => Time.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture);
     public bool IsError => Level is "Error" or "Fatal";
     public bool IsWarning => Level == "Warning";
 }

@@ -31,7 +31,7 @@
         <DataGrid Grid.Row="2" ItemsSource="{Binding Entries}" IsReadOnly="True" SelectionMode="Extended"
                   CanUserSortColumns="False" CanUserReorderColumns="False">
           <DataGrid.Columns>
-            <DataGridTextColumn Header="Time" Width="100" Binding="{Binding TimeText}" x:DataType="log:LogEntry" />
+            <DataGridTextColumn Header="Time" Width="150" Binding="{Binding TimeText}" x:DataType="log:LogEntry" />
             <DataGridTemplateColumn Header="Level" Width="120">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="log:LogEntry">
@@ -71,7 +71,11 @@
             <DataGridTemplateColumn Header="Action" Width="230">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="log:AuditRowViewModel">
-                  <ui:StatusChip Text="{Binding Action}" IsWarning="{Binding IsProblem}" />
+                  <!-- An icon only for problem rows (failed logins); everything else is plain text -->
+                  <Panel>
+                    <TextBlock Classes="besideChips" Text="{Binding Action}" IsVisible="{Binding !IsProblem}" />
+                    <ui:StatusChip Text="{Binding Action}" IsWarning="True" IsVisible="{Binding IsProblem}" />
+                  </Panel>
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>

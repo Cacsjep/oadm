@@ -14,7 +14,11 @@
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
 
     <Border Grid.Row="1" Classes="dialogBody">
-      <StackPanel Classes="form">
+      <StackPanel Classes="form compactForm">
+        <StackPanel Classes="productMark" Orientation="Horizontal" Spacing="12" Margin="0,4,0,8">
+          <Image Source="avares://Oadm.Client/Assets/oadm-256.png" Width="40" Height="40" />
+          <TextBlock Text="OADM" />
+        </StackPanel>
         <ui:StatusChip IsWarning="True" Text="{Binding Notice}"
                        IsVisible="{Binding Notice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Intro}"
@@ -45,7 +49,7 @@
       </StackPanel>
     </Border>
 
-    <ui:DialogFooter Grid.Row="2" x:Name="Footer" CancelText="Close">
+    <ui:DialogFooter Grid.Row="2" x:Name="Footer" CancelText="Quit">
       <Button Classes="secondary" Content="Forget server" Command="{Binding ForgetServerCommand}" IsVisible="{Binding CanForgetServer}"
               ToolTip.Tip="Forget this server's certificate" />
       <Button Classes="primary" IsDefault="True" Content="{Binding SubmitText}" Command="{Binding SubmitCommand}"

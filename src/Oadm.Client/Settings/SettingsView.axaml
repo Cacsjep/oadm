@@ -5,17 +5,17 @@
              xmlns:c="using:Oadm.Client.Controls"
              x:Class="Oadm.Client.Settings.SettingsView"
              x:DataType="settings:SettingsViewModel">
-  <!-- Every labeled input is a ui:FormField: its error appears directly below the input. -->
+  <!-- Every labeled input is a ui:FormField: its error appears directly below the input. Fields are grouped under
+       small headings; Save sits in the input column. Operators see the values as plain text, without Save. -->
   <Grid RowDefinitions="Auto,*" RowSpacing="16">
     <c:PageTitleBar Title="Settings" Subtitle="How the server polls, scans and runs tasks." />
     <ScrollViewer Grid.Row="1">
       <StackPanel Spacing="16" MaxWidth="760" HorizontalAlignment="Left">
         <Border Classes="card">
           <StackPanel Spacing="16">
-            <TextBlock Classes="cardTitle" Text="Server" />
-            <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding IsOperator}"
-                       Text="Only administrators can change server settings." />
-            <StackPanel Classes="form" IsEnabled="{Binding IsAdmin}">
+            <!-- Administrators: the form -->
+            <StackPanel Classes="form" IsVisible="{Binding IsAdmin}">
+              <TextBlock Classes="sectionTitle" Text="Polling" />
               <ui:FormField Label="Status polling interval (s)">
                 <NumericUpDown Minimum="5" Maximum="3600" Increment="5" FormatString="0" Value="{Binding PollingIntervalSeconds}" />
               </ui:FormField>
@@ -23,6 +23,8 @@
                             Hint="How often network settings and certificates are read">
                 <NumericUpDown Minimum="1" Maximum="1440" Increment="1" FormatString="0" Value="{Binding FullRefreshMinutes}" />
               </ui:FormField>
+
+              <TextBlock Classes="sectionTitle subsection" Text="Discovery" />
               <ui:FormField Label="Addresses scanned at once">
                 <NumericUpDown Minimum="1" Maximum="256" FormatString="0" Value="{Binding ScanParallelism}" />
               </ui:FormField>
@@ -33,26 +35,70 @@
                             Hint="Discovery on the add devices page ends after this time; Scan again starts it again">
                 <NumericUpDown Minimum="5" Maximum="300" Increment="5" FormatString="0" Value="{Binding ZeroConfSeconds}" />
               </ui:FormField>
+              <ui:FormField Classes="wide" Label="Device address">
+                <CheckBox IsChecked="{Binding UseHostName}" Content="Use host name when available, otherwise IP address"
+                          ToolTip.Tip="Applies to devices added from now on. Host names keep devices reachable when DHCP changes their address, but need working DNS" />
+              </ui:FormField>
+
+              <TextBlock Classes="sectionTitle subsection" Text="Tasks" />
               <ui:FormField Label="Parallel tasks per plugin"
                             Hint="How many devices a task runs on at the same time, e.g. restarts or firmware updates.">
                 <NumericUpDown Minimum="1" Maximum="256" Increment="1" FormatString="0" Value="{Binding MaxParallelTasksPerPlugin}" />
               </ui:FormField>
+
+              <TextBlock Classes="sectionTitle subsection" Text="Server" />
               <ui:FormField Label="Server name">
                 <TextBox Text="{Binding ServerName}" />
               </ui:FormField>
               <ui:FormField Label="Listen URL" Hint="Takes effect after the server restarts">
                 <TextBox Text="{Binding ListenUrl}" PlaceholderText="https://0.0.0.0:5080" />
               </ui:FormField>
-              <ui:FormField Classes="wide" Label="Device address">
-                <CheckBox IsChecked="{Binding UseHostName}" Content="Use host name when available, otherwise IP address"
-                          ToolTip.Tip="Applies to devices added from now on. Host names keep devices reachable when DHCP changes their address, but need working DNS" />
+
+              <ui:FormField Classes="wide">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}"
+                          ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
+                  <Button Classes="secondary" Content="Reload" Command="{Binding LoadCommand}" />
+                </StackPanel>
               </ui:FormField>
             </StackPanel>
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}"
-                      ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
-              <Button Classes="secondary" Content="Reload" Command="{Binding LoadCommand}" />
+
+            <!-- Operators: the same values as plain text -->
+            <StackPanel Classes="form" IsVisible="{Binding IsOperator}">
+              <TextBlock Classes="secondary" TextWrapping="Wrap" Text="Only administrators can change server settings." />
+              <TextBlock Classes="sectionTitle subsection" Text="Polling" />
+              <ui:FormField Label="Status polling interval (s)">
+                <TextBlock Text="{Binding PollingIntervalSeconds}" />
+              </ui:FormField>
+              <ui:FormField Label="Full refresh interval (min)">
+                <TextBlock Text="{Binding FullRefreshMinutes}" />
+              </ui:FormField>
+              <TextBlock Classes="sectionTitle subsection" Text="Discovery" />
+              <ui:FormField Label="Addresses scanned at once">
+                <TextBlock Text="{Binding ScanParallelism}" />
+              </ui:FormField>
+              <ui:FormField Label="IP range scan timeout (ms)">
+                <TextBlock Text="{Binding ScanTimeoutMs}" />
+              </ui:FormField>
+              <ui:FormField Label="Discovery duration (s)">
+                <TextBlock Text="{Binding ZeroConfSeconds}" />
+              </ui:FormField>
+              <ui:FormField Classes="wide" Label="Device address">
+                <TextBlock Text="{Binding DeviceAddressText}" />
+              </ui:FormField>
+              <TextBlock Classes="sectionTitle subsection" Text="Tasks" />
+              <ui:FormField Label="Parallel tasks per plugin">
+                <TextBlock Text="{Binding MaxParallelTasksPerPlugin}" />
+              </ui:FormField>
+              <TextBlock Classes="sectionTitle subsection" Text="Server" />
+              <ui:FormField Label="Server name">
+                <TextBlock Text="{Binding ServerName}" />
+              </ui:FormField>
+              <ui:FormField Label="Listen URL">
+                <TextBlock Text="{Binding ListenUrl}" />
+              </ui:FormField>
             </StackPanel>
+
             <TextBlock Text="{Binding ServerMessage}" Classes.error="{Binding ServerMessageIsError}" Classes.secondary="{Binding !ServerMessageIsError}"
                        TextWrapping="Wrap" IsVisible="{Binding ServerMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           </StackPanel>

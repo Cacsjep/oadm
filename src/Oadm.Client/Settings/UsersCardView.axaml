@@ -27,28 +27,38 @@
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
+          <!-- Row actions: icon buttons in fixed places (a hidden one leaves its place), Delete in red -->
           <DataGridTemplateColumn Width="*" CanUserSort="False" x:DataType="settings:UserRowViewModel">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate x:DataType="settings:UserRowViewModel">
-                <StackPanel Orientation="Horizontal" Spacing="16" Margin="10,0" ToolTip.Tip="{Binding SelfTooltip}">
-                  <Button Classes="link" Content="{Binding RoleActionText}" IsVisible="{Binding CanChange}"
-                          Command="{Binding $parent[UserControl].((settings:UsersViewModel)DataContext).ToggleRoleCommand}" CommandParameter="{Binding}" />
-                  <Button Classes="link" Content="Reset password"
-                          Command="{Binding $parent[UserControl].((settings:UsersViewModel)DataContext).OpenResetCommand}" CommandParameter="{Binding}" />
-                  <Button Classes="link" Content="{Binding StateActionText}" IsVisible="{Binding CanChange}"
-                          Command="{Binding $parent[UserControl].((settings:UsersViewModel)DataContext).ToggleDisabledCommand}" CommandParameter="{Binding}" />
-                  <Button Classes="link" Content="Delete" IsVisible="{Binding CanChange}"
-                          Command="{Binding $parent[UserControl].((settings:UsersViewModel)DataContext).DeleteCommand}" CommandParameter="{Binding}" />
-                </StackPanel>
+                <Grid ColumnDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="2" Margin="6,0" HorizontalAlignment="Left" ToolTip.Tip="{Binding SelfTooltip}">
+                  <Button Grid.Column="0" Classes="toolbar iconOnly" ToolTip.Tip="{Binding RoleActionText}" IsVisible="{Binding CanChange}"
+                          Command="{Binding $parent[UserControl].((settings:UsersViewModel)DataContext).ToggleRoleCommand}" CommandParameter="{Binding}">
+                    <ui:OadmIcon Data="{StaticResource Icon.shield}" />
+                  </Button>
+                  <Button Grid.Column="1" Classes="toolbar iconOnly" ToolTip.Tip="Reset password"
+                          Command="{Binding $parent[UserControl].((settings:UsersViewModel)DataContext).OpenResetCommand}" CommandParameter="{Binding}">
+                    <ui:OadmIcon Data="{StaticResource Icon.key}" />
+                  </Button>
+                  <Button Grid.Column="2" Classes="toolbar iconOnly" ToolTip.Tip="{Binding StateActionText}" IsVisible="{Binding CanChange}"
+                          Command="{Binding $parent[UserControl].((settings:UsersViewModel)DataContext).ToggleDisabledCommand}" CommandParameter="{Binding}">
+                    <ui:OadmIcon Data="{StaticResource Icon.lock}" />
+                  </Button>
+                  <Button Grid.Column="3" Classes="toolbar iconOnly danger" ToolTip.Tip="Delete" IsVisible="{Binding CanChange}"
+                          Command="{Binding $parent[UserControl].((settings:UsersViewModel)DataContext).DeleteCommand}" CommandParameter="{Binding}">
+                    <ui:OadmIcon Data="{StaticResource Icon.remove}" />
+                  </Button>
+                </Grid>
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
         </DataGrid.Columns>
       </DataGrid>
 
-      <!-- Reset password of one user (inline editor) -->
-      <StackPanel Classes="form" IsVisible="{Binding IsResetOpen}">
-        <TextBlock Classes="fieldLabel" Text="{Binding ResetTitle}" />
+      <!-- Reset password of one user: inline editor directly below the list -->
+      <Border Classes="inlineEditor" Margin="0" IsVisible="{Binding IsResetOpen}">
+      <StackPanel Classes="form">
+        <TextBlock Classes="sectionTitle" Text="{Binding ResetTitle}" />
         <ui:FormField Label="New password">
           <ui:PasswordBox Text="{Binding ResetPassword}" />
         </ui:FormField>
@@ -63,10 +73,11 @@
           </StackPanel>
         </ui:FormField>
       </StackPanel>
+      </Border>
 
       <!-- Add a user -->
       <StackPanel Classes="form">
-        <TextBlock Classes="fieldLabel" Text="Add user" />
+        <TextBlock Classes="sectionTitle" Text="Add user" />
         <ui:FormField Label="User name">
           <TextBox Text="{Binding NewUserName}" />
         </ui:FormField>

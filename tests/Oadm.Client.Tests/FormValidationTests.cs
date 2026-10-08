@@ -254,7 +254,7 @@ public sealed class FormValidationTests
             Assert.False(vm.SaveCommand.CanExecute(null));
             Assert.Equal("Enter a whole number from 5 to 3600.", vm.SaveBlockedReason);
 
-            List<FormField> fields = window.GetVisualDescendants().OfType<FormField>().ToList();
+            List<FormField> fields = window.GetVisualDescendants().OfType<FormField>().Where(x => x.IsEffectivelyVisible).ToList(); // the admin form
             Assert.True(fields.Single(x => x.Label == "Listen URL").HasError);
             Assert.False(fields.Single(x => x.Label == "Full refresh interval (min)").HasError);
             Capture(window, outDir, "client-settings-errors.png");
@@ -293,7 +293,7 @@ public sealed class FormValidationTests
             Assert.Equal("Enter the password.", vm.ErrorOf(nameof(vm.NewCredentialPassword)));
             Assert.Equal("Enter a user name.", vm.ErrorOf(nameof(vm.NewCredentialUserName)));
             Assert.Equal("Enter a user name.", vm.AddCredentialBlockedReason);
-            List<FormField> fields = window.GetVisualDescendants().OfType<FormField>().ToList();
+            List<FormField> fields = window.GetVisualDescendants().OfType<FormField>().Where(x => x.IsEffectivelyVisible).ToList(); // the admin form
             Assert.True(fields.Single(x => x.Label == "Password").HasError);
             Assert.True(fields.Single(x => x.Label == "User name").HasError);
 
@@ -321,7 +321,7 @@ public sealed class FormValidationTests
 
             var window = new Window { Width = 900, Height = 1100, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
             window.Show();
-            FormField field = window.GetVisualDescendants().OfType<FormField>().Single(x => x.Label == "Parallel tasks per plugin");
+            FormField field = window.GetVisualDescendants().OfType<FormField>().Single(x => x.Label == "Parallel tasks per plugin" && x.IsEffectivelyVisible);
             Assert.Equal("How many devices a task runs on at the same time, e.g. restarts or firmware updates.", field.Hint);
 
             foreach (decimal? bad in new decimal?[] { null, 0m, 257m, 2.5m })

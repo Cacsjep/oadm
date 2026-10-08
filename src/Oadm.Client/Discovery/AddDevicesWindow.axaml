@@ -17,6 +17,7 @@
 
     <Border Grid.Row="1" Classes="card" Margin="16,0">
       <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
+        <!-- Rows: header, input, summary, progress, list, page error (directly below the list), inline editor -->
         <ui:CardHeader Grid.Row="0" Title="{Binding HeaderTitle}" Description="{Binding HeaderDescription}" />
 
         <!-- IP range: Enter or Scan starts -->
@@ -35,8 +36,10 @@
               </TextBox.KeyBindings>
             </TextBox>
           </ui:FormField>
-          <ui:ToolbarButton Text="Scan" IconKey="search" Command="{Binding StartRangeCommand}"
-                            ToolTip.Tip="{Binding RangeBlockedReason}" ToolTip.ShowOnDisabled="True" />
+          <Button Classes="secondary" Command="{Binding StartRangeCommand}"
+                  ToolTip.Tip="{Binding RangeBlockedReason}" ToolTip.ShowOnDisabled="True">
+            <ui:IconLabel Icon="{StaticResource Icon.search}" Text="Scan" />
+          </Button>
         </StackPanel>
 
         <!-- Add manually: Enter or Find probes one address -->
@@ -48,8 +51,10 @@
               </TextBox.KeyBindings>
             </TextBox>
           </ui:FormField>
-          <ui:ToolbarButton Text="Find" IconKey="search" Command="{Binding ProbeAddressCommand}"
-                            ToolTip.Tip="{Binding AddressBlockedReason}" ToolTip.ShowOnDisabled="True" />
+          <Button Classes="secondary" Command="{Binding ProbeAddressCommand}"
+                  ToolTip.Tip="{Binding AddressBlockedReason}" ToolTip.ShowOnDisabled="True">
+            <ui:IconLabel Icon="{StaticResource Icon.search}" Text="Find" />
+          </Button>
         </StackPanel>
 
         <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,10">
@@ -62,14 +67,14 @@
         <!-- Scan progress; Stop while a zero-conf or range scan runs, Scan again once it finished or was stopped -->
         <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,0,0,10"
               IsVisible="{Binding ScanStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-          <ui:ProgressRow Value="{Binding ScanProgress}" Text="{Binding ScanStatusText}" IsActive="{Binding IsScanning}" />
+          <ui:ProgressRow Value="{Binding ScanProgress}" Text="{Binding ScanStatusText}" IsActive="{Binding IsScanning}" ShowBar="{Binding IsScanning}" />
           <ui:ToolbarButton x:Name="StopScanButton" Grid.Column="1" Margin="12,0,0,0" Text="Stop" IconKey="stop" Command="{Binding StopScanCommand}"
                             IsVisible="{Binding ShowStop}" ToolTip.Tip="Found devices stay in the list" />
           <ui:ToolbarButton x:Name="ScanAgainButton" Grid.Column="1" Margin="12,0,0,0" Text="Scan again" IconKey="refresh" Command="{Binding ScanAgainCommand}"
                             IsVisible="{Binding ShowScanAgain}" ToolTip.Tip="Found devices stay in the list" />
         </Grid>
 
-        <DataGrid x:Name="DeviceList" Grid.Row="4" ItemsSource="{Binding FilteredRows}" SelectedItem="{Binding FocusedRow}"
+        <DataGrid x:Name="DeviceList" Grid.Row="4" Classes="wrapRows" ItemsSource="{Binding FilteredRows}" SelectedItem="{Binding FocusedRow}"
                   SelectionMode="Single" IsReadOnly="True" CanUserReorderColumns="False">
           <DataGrid.Styles>
             <Style Selector="DataGridRow" x:DataType="disc:DiscoveredRowViewModel">
@@ -80,7 +85,7 @@
             <DataGridTemplateColumn Width="40" CanUserSort="False" CanUserResize="False">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="disc:DiscoveredRowViewModel">
-                  <CheckBox IsChecked="{Binding IsSelected}" IsEnabled="{Binding CanAdd}" HorizontalAlignment="Center" MinWidth="0" Padding="0" />
+                  <CheckBox IsChecked="{Binding IsSelected}" IsVisible="{Binding CanAdd}" HorizontalAlignment="Center" MinWidth="0" Padding="0" />
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
@@ -104,7 +109,7 @@
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
-            <DataGridTemplateColumn Header="Action" Width="Auto" MinWidth="160" CanUserSort="False">
+            <DataGridTemplateColumn Header="Action" Width="Auto" CanUserSort="False">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="disc:DiscoveredRowViewModel">
                   <Panel Margin="10,0">
@@ -128,9 +133,14 @@
             </DataGridTemplateColumn>
           </DataGrid.Columns>
         </DataGrid>
+        <TextBlock Grid.Row="4" Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding ShowEmptyText}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+        <TextBlock Grid.Row="5" Classes="error" Text="{Binding ErrorText}" TextWrapping="Wrap" Margin="0,8,0,0"
+                   IsVisible="{Binding ErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
         <!-- Inline editor: log in -->
-        <Border Grid.Row="5" Classes="inlineEditor" IsVisible="{Binding IsLoginEditorOpen}">
+        <Border Grid.Row="6" Classes="inlineEditor" IsVisible="{Binding IsLoginEditorOpen}">
           <StackPanel Classes="form">
             <TextBlock Classes="sectionTitle" Text="{Binding EditorTitle}" />
             <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding EditorRow.AuthDetail, FallbackValue=''}" />
@@ -144,10 +154,12 @@
                 </ui:PasswordBox.KeyBindings>
               </ui:PasswordBox>
             </ui:FormField>
-            <ui:FormField Classes="wide">
+            <ui:FormField>
+              <CheckBox Content="Save to credential list" IsChecked="{Binding SaveToCredentialList}"
+                        ToolTip.Tip="OADM tries it on devices it finds later" />
+            </ui:FormField>
+            <ui:FormField>
               <StackPanel Orientation="Horizontal" Spacing="8">
-                <CheckBox Content="Save to credential list" IsChecked="{Binding SaveToCredentialList}" VerticalAlignment="Center"
-                          ToolTip.Tip="OADM tries it on devices it finds later" />
                 <Button Classes="primary" Content="Retry" Command="{Binding RetryCommand}"
                         ToolTip.Tip="{Binding RetryBlockedReason}" ToolTip.ShowOnDisabled="True" />
                 <Button Classes="secondary" Content="Cancel" Command="{Binding CancelEditorCommand}" />
@@ -157,7 +169,7 @@
         </Border>
 
         <!-- Inline editor: first password of a factory-default device -->
-        <Border Grid.Row="5" Classes="inlineEditor" IsVisible="{Binding IsPasswordEditorOpen}">
+        <Border Grid.Row="6" Classes="inlineEditor" IsVisible="{Binding IsPasswordEditorOpen}">
           <StackPanel Classes="form">
             <TextBlock Classes="sectionTitle" Text="{Binding EditorTitle}" />
             <ui:FormField Label="New password" Hint="{Binding PolicyHint}">
@@ -170,9 +182,11 @@
                 </ui:PasswordBox.KeyBindings>
               </ui:PasswordBox>
             </ui:FormField>
-            <ui:FormField Classes="wide">
+            <ui:FormField>
+              <CheckBox Content="Use for all factory-default devices" IsChecked="{Binding UseForAllFactoryDefault}" />
+            </ui:FormField>
+            <ui:FormField>
               <StackPanel Orientation="Horizontal" Spacing="8">
-                <CheckBox Content="Use for all factory-default devices" IsChecked="{Binding UseForAllFactoryDefault}" VerticalAlignment="Center" />
                 <Button Classes="primary" Content="Apply" Command="{Binding ApplyPasswordCommand}"
                         ToolTip.Tip="{Binding ApplyPasswordBlockedReason}" ToolTip.ShowOnDisabled="True" />
                 <Button Classes="secondary" Content="Cancel" Command="{Binding CancelEditorCommand}" />
@@ -181,13 +195,13 @@
           </StackPanel>
         </Border>
 
-        <TextBlock Grid.Row="6" Classes="error" Text="{Binding ErrorText}" TextWrapping="Wrap" Margin="{StaticResource Oadm.GapTop}"
-                   IsVisible="{Binding ErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       </Grid>
     </Border>
 
     <ui:DialogFooter Grid.Row="2" CancelText="Close" CancelCommand="{Binding CloseCommand}">
-      <Button Classes="primary" Content="{Binding AddButtonText}" Command="{Binding AddCommand}" />
+      <!-- While an inline editor is open its Retry / Apply is the one accent button of the page -->
+      <Button Classes.primary="{Binding !IsEditorOpen}" Classes.secondary="{Binding IsEditorOpen}"
+              Content="{Binding AddButtonText}" Command="{Binding AddCommand}" />
     </ui:DialogFooter>
   </Grid>
 </Window>

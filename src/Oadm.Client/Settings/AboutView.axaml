@@ -8,9 +8,12 @@
   <Border Classes="card">
     <StackPanel Spacing="16">
       <!-- Terms of use first, then the license (same order as the installers' license page). -->
+      <!-- The terms in a scrollable block, so the versions below stay in view -->
       <StackPanel Spacing="8">
-        <TextBlock Classes="sectionTitle" Text="{Binding TermsTitle}" />
-        <TextBlock TextWrapping="Wrap" Text="{Binding TermsText}" />
+        <TextBlock Classes="cardTitle" Text="{Binding TermsTitle}" />
+        <ScrollViewer MaxHeight="{StaticResource Oadm.ProseMaxHeight}" HorizontalScrollBarVisibility="Disabled">
+          <TextBlock Classes="prose" TextWrapping="Wrap" Text="{Binding TermsText}" />
+        </ScrollViewer>
       </StackPanel>
       <StackPanel Classes="form">
         <ui:FormField Classes="wide" Label="Client version">
