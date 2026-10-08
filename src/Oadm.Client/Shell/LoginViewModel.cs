@@ -54,16 +54,13 @@ public sealed partial class LoginViewModel : ValidatingViewModel
             .Rule(nameof(ServerAddress), () => ServerAddressError(ServerAddress))
             .Rule(nameof(UserName), () => UserName.Trim().Length == 0 ? "Enter your user name."
                 : UserName.Trim().Length > 64 ? "The user name has at most 64 characters." : null)
-            .Rule(nameof(Password), () => Password.Length == 0 ? "Enter your password."
-                : IsFirstAdminMode && Password.Length < MinPasswordLength ? $"Use at least {MinPasswordLength} characters." : null)
+            .Rule(nameof(Password), () => Password.Length == 0 ? "Enter your password." : null)
             .Rule(nameof(ConfirmPassword), () => IsFirstAdminMode && ConfirmPassword != Password ? "The passwords do not match." : null)
             .Rule(nameof(SetupCode), () => IsFirstAdminMode && SetupCodeRequired && SetupCode.Trim().Length == 0
                 ? "Enter the setup code from the server." : null);
         Validation.Validate();
     }
 
-    /// <summary>Password rule of the server (UserStore.MinPasswordLength).</summary>
-    public const int MinPasswordLength = 10;
 
     /// <summary>Raised on the UI thread after a successful login; the app opens the main window.</summary>
     public event EventHandler? LoggedIn;

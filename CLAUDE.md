@@ -1689,8 +1689,8 @@ marked *(default)* were filled in and can be changed. This section wins over old
   confirmed in the login window) and refuses a changed certificate with "The server certificate changed" (Forget server
   re-pins). *(default)* Regenerating the certificate is a server command line option `--Oadm:RegenerateTlsCertificate`.
 - **Users and roles.** Table `Users` (Id, UserName unique case-insensitive 1..64, PasswordHash = PBKDF2-SHA256 with
-  210,000 iterations and a 16-byte salt, Role Admin | Operator, Disabled, CreatedUtc, LastLoginUtc). Password rules: at
-  least 10 characters *(default)*. **First administrator**: while no user exists, the login window offers "Create the
+  210,000 iterations and a 16-byte salt, Role Admin | Operator, Disabled, CreatedUtc, LastLoginUtc). Passwords: no
+  strength rule, only not empty (user decision). **First administrator**: while no user exists, the login window offers "Create the
   first administrator"; the server accepts this only from a loopback client, or from a remote client that enters the
   one-time setup code the server writes to `<datafolder>/setup-code.txt` (admin-only file) and logs at startup *(default)*.
 - **Tokens.** `AuthService.Login(user, password, remember)` returns an opaque random token (32 bytes, base64url); the server

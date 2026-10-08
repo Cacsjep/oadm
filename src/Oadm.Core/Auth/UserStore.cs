@@ -17,14 +17,13 @@ public sealed record UserRecord(Guid Id, string UserName, UserRole Role, bool Di
 
 /// <summary>
 /// The users table (Settings page card Users, Admin only). Names are unique case-insensitively, 1..64 characters;
-/// passwords at least <see cref="MinPasswordLength"/> characters. The last enabled administrator can never be demoted,
+/// passwords any length up to <see cref="MaxPasswordLength"/> (no strength rule, user decision 2026-10-08). The last enabled administrator can never be demoted,
 /// disabled or deleted, and nobody can change the role, the state or the existence of their own account. A changed
 /// password, role or state ends the user's sessions.
 /// </summary>
 public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, PasswordHasher hasher, AuthTokenStore tokens, TimeProvider time) : IDisposable
 {
     public const int MaxUserNameLength = 64;
-    public const int MinPasswordLength = 10;
     public const int MaxPasswordLength = 256;
 
     private readonly SemaphoreSlim _write = new(1, 1);
@@ -53,7 +52,6 @@ public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, Passwo
     /// <summary>Null when the password is acceptable, else the reason.</summary>
     public static string? PasswordError(string? password) =>
         string.IsNullOrEmpty(password) ? "Enter a password."
-        : password.Length < MinPasswordLength ? $"The password must have at least {MinPasswordLength} characters."
         : password.Length > MaxPasswordLength ? $"The password must have at most {MaxPasswordLength} characters."
         : null;
 

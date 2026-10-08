@@ -75,9 +75,9 @@ public sealed partial class FakeOadmApi
                 throw new RpcException(new Status(StatusCode.InvalidArgument, "The user name must be 1-64 characters without control characters."));
             }
 
-            if ((password ?? "").Length < 10)
+            if (string.IsNullOrEmpty(password))
             {
-                throw new RpcException(new Status(StatusCode.InvalidArgument, "The password must have at least 10 characters."));
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "Enter a password."));
             }
 
             if (_users.Any(u => string.Equals(u.UserName, name, StringComparison.OrdinalIgnoreCase)))
@@ -111,11 +111,6 @@ public sealed partial class FakeOadmApi
             if (((roleChanges && request.Role != UserRole.Admin) || (stateChanges && request.Disabled)) && IsLastAdminLocked(user))
             {
                 throw new RpcException(new Status(StatusCode.FailedPrecondition, $"{user.UserName} is the last enabled administrator. Add or enable another administrator first."));
-            }
-
-            if (request.NewPassword.Length is > 0 and < 10)
-            {
-                throw new RpcException(new Status(StatusCode.InvalidArgument, "The password must have at least 10 characters."));
             }
 
             if (roleChanges)

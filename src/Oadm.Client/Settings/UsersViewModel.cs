@@ -83,7 +83,6 @@ public sealed partial class UsersViewModel : ValidatingViewModel
         Validation.Validate();
     }
 
-    public const int MinPasswordLength = 10;
 
     public static IReadOnlyList<RoleOption> Roles { get; } =
     [
@@ -134,8 +133,7 @@ public sealed partial class UsersViewModel : ValidatingViewModel
     }
 
     private static string? PasswordError(string password) =>
-        password.Length == 0 ? "Enter a password."
-        : password.Length < MinPasswordLength ? $"Use at least {MinPasswordLength} characters." : null;
+        password.Length == 0 ? "Enter a password." : null;
 
     [RelayCommand]
     public async Task LoadAsync()
