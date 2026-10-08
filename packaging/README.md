@@ -36,6 +36,6 @@ Notes:
   `codesign --options runtime`) and notarization (`notarytool`) are a later step; until then open the .pkg with
   right click > Open.
 - Icons: `icons/make-icons.py` builds `oadm.ico` (also the client exe icon), `oadm.icns` and the PNGs from the logo in
-  `/icon` (violet variant); the client uses `oadm-256.png` as window icon.
+  `/icon` (`oadm-app-icon-<size>.png`); the client uses `oadm-256.png` as window icon.
 - Building the .deb on Windows: in Docker, e.g. `docker run` with `mcr.microsoft.com/dotnet/sdk:10.0` and
   `./manage.sh package linux --rid linux-x64` inside (the image has `dpkg-deb`).

@@ -1,9 +1,8 @@
 """Builds the app and installer icon files from the OADM logo in /icon.
 
 Writes oadm.png (512), oadm-256.png, oadm.ico (Windows exe, MSI, shortcuts) and oadm.icns (macOS app) from the
-violet logo PNGs `icon/oadm-icon-transparent-purple-<size>.png` (16, 24, 32, 48, 64, 128, 256, 512, 1024). The
+app icon PNGs `icon/oadm-app-icon-<size>.png` (16, 24, 32, 48, 64, 128, 256, 512, 1024). The
 output files are committed; run this only after the logo changed: python make-icons.py (needs Pillow).
-The white variant in /icon is the logo for dark backgrounds inside the app.
 """
 import io
 import os
@@ -17,7 +16,7 @@ SOURCE = os.path.join(HERE, "..", "..", "icon")
 
 def logo(size: int) -> Image.Image:
     """The hand-made PNG of that size when there is one, else the next larger one scaled down."""
-    path = os.path.join(SOURCE, f"oadm-icon-transparent-purple-{size}.png")
+    path = os.path.join(SOURCE, f"oadm-app-icon-{size}.png")
     if os.path.exists(path):
         return Image.open(path).convert("RGBA")
     larger = min(n for n in (16, 24, 32, 48, 64, 128, 256, 512, 1024) if n > size)

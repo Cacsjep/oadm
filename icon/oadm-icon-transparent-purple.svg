@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <title>OADM</title>
-  <g fill="#5C2E91" fill-rule="evenodd">
-    <path d="M72 160a88 88 0 1 0 176 0a88 88 0 1 0-176 0ZM124 160a36 36 0 1 1 72 0a36 36 0 1 1-72 0Z"/>
-    <path d="M264 440V248L330 72H374L440 248V440H388V350L352 424L316 350V440ZM352 152L388 248L352 322L316 248Z"/>
-    <path d="M72 264H160a88 88 0 0 1 0 176H72ZM124 316V388H160a36 36 0 0 0 0-72Z"/>
-  </g>
-</svg>
