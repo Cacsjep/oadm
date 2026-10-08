@@ -125,7 +125,7 @@ public sealed class SplashLogo : Panel
         Tween(ring, OpacityProperty, 0, 1, 1.55, 0.6, new CubicEaseOut());
         TweenScale(ring, 1.8, 1, 1.55, 0.6, new CubicEaseOut());
 
-        var lens = new Ellipse { Width = 29, Height = 29, Fill = Brush("Oadm.BrandBrush") };
+        var lens = new Ellipse { Width = 30, Height = 30, Fill = Brush("Oadm.BrandBrush") }; // even sizes: centered on whole pixels
         Scale(lens, 0);
         Place(canvas, lens, 0, 0);
         TweenScale(lens, 0, 1, 1.7, 0.55, new BackEaseOut());
