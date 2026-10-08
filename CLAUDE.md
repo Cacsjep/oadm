@@ -1685,7 +1685,7 @@ marked *(default)* were filled in and can be changed. This section wins over old
   log every error with the log file path; only truly fatal errors end the app, after logging.
 - **Limits**: HTTP answers from devices at most 16 MB (firmware and ACAP uploads exempt from the request side only), XML
   documents at most 1 MB with DTD processing prohibited, RTSP / video access units at most 8 MB, uploads: total quota
-  2 GB (user decision) and at least 1 GB free disk, oldest uploads removed first, RESOURCE_EXHAUSTED otherwise.
+  10 GB of disk for all uploads together (user decision) and at least 1 GB free disk, oldest uploads removed first, RESOURCE_EXHAUSTED otherwise.
 - **VAPIX Commander**: every request must go to the device's own address: paths with `\`, `//` or an authority are
   rejected; `VapixClient.SendAsync` refuses absolute URIs to another host.
 
