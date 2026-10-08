@@ -9,7 +9,8 @@ OADM is not affiliated with, sponsored by, or endorsed by Axis Communications.**
 - [For developers](#for-developers)
 - [License](#license)
 
-> **Security note:** the server has no user login yet. Run it on a trusted LAN only.
+> **Security note:** clients log in over TLS (users with the roles Admin and Operator). Still run the server on a trusted
+> network: the cameras themselves are reached over the LAN.
 
 # For users
 
@@ -62,6 +63,22 @@ Time service on 123) is shown on the plugin's page with a hint how to stop it.
 The data folder holds the database, the master key (`master.key`) that encrypts all stored passwords, and the
 plugin settings, including the PKI's certificate authority. Back up the whole folder; the passwords in the database
 cannot be read without `master.key`. The PKI page can also export the CA as a password-protected backup.
+
+## Logs and troubleshooting
+
+When the server does not start or stops, look at its log first. Log files roll daily or at 20 MB (server) / 10 MB
+(client); the last 14 days and at most 30 files are kept, so they never fill the disk.
+
+| | Server log (`oadm-server-<date>.log`) | If the server fails before its log starts |
+|---|---|---|
+| Windows (service) | `%ProgramData%\OADM\logs\` | Event Viewer, Windows Logs > Application (source ".NET Runtime") and System (Service Control Manager) |
+| Linux (service) | `/var/lib/oadm/logs/` | `journalctl -u oadm-server` |
+| macOS (service) | `/Library/Application Support/OADM/logs/` | `/Library/Logs/OADM/oadm-server.err.log` |
+| Started by hand or with `manage` | `<data folder>/logs/` (default `%LOCALAPPDATA%\Oadm\logs`, `~/.local/share/Oadm/logs`, `~/Library/Application Support/Oadm/logs`) | the console window |
+
+The client writes `client-<date>.log` to the `logs` folder of its data folder (`%LOCALAPPDATA%\Oadm\logs`,
+`~/.local/share/Oadm/logs`, `~/Library/Application Support/Oadm/logs`). The Logs page shows the client log live and,
+for administrators, the server's audit log (who changed what). Error messages in the client name the log file.
 
 # For developers
 
