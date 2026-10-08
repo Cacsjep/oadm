@@ -18,6 +18,9 @@ namespace Oadm.Core.Uploads;
 /// file without metadata is never visible. Size limit <c>Uploads.MaxMegabytes</c>, removed after
 /// <c>Uploads.RetentionHours</c> by <see cref="DeleteExpiredAsync"/>. Ids are 32 lower-case hex chars;
 /// anything else is rejected, so an id can never escape the folder.
+/// All uploads together use at most <see cref="QuotaBytes"/> (10 GB, user decision) and at least
+/// <see cref="MinFreeDiskBytes"/> (1 GB) of the disk stay free: a new upload first removes the oldest finished
+/// uploads until it fits, otherwise it is refused (<see cref="UploadRejectedException.TooLarge"/>, RESOURCE_EXHAUSTED).
 /// </summary>
 public sealed partial class UploadStore : IUploadedFiles
 {
@@ -26,11 +29,19 @@ public sealed partial class UploadStore : IUploadedFiles
     private const string PartialExtension = ".part";
     private const int MaxNameLength = 255;
 
+    /// <summary>Disk space all uploads together may use (10 GB, user decision).</summary>
+    public const long DefaultQuotaBytes = 10L * 1024 * 1024 * 1024;
+
+    /// <summary>Free disk space that must remain after an upload (1 GB).</summary>
+    public const long MinFreeDiskBytes = 1L * 1024 * 1024 * 1024;
+
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     private readonly ServerSettingsStore? _settings;
     private readonly TimeProvider _time;
     private readonly ILogger _logger;
+    private readonly Lock _quotaGate = new();
+    private readonly Dictionary<string, long> _reserved = new(StringComparer.Ordinal);
 
     public UploadStore(OadmPaths paths, ServerSettingsStore? settings = null, TimeProvider? timeProvider = null, ILogger<UploadStore>? logger = null)
     {
@@ -39,6 +50,7 @@ public sealed partial class UploadStore : IUploadedFiles
         _settings = settings;
         _time = timeProvider ?? TimeProvider.System;
         _logger = logger ?? (ILogger)NullLogger.Instance;
+        FreeDiskSpace = ReadFreeDiskSpace;
     }
 
     /// <summary><c>&lt;datafolder&gt;/uploads</c>.</summary>
@@ -46,6 +58,12 @@ public sealed partial class UploadStore : IUploadedFiles
 
     /// <summary>Overrides the <c>Uploads.MaxMegabytes</c> setting (tests).</summary>
     public long? MaxBytesOverride { get; set; }
+
+    /// <summary>Disk space all uploads together may use; default <see cref="DefaultQuotaBytes"/>.</summary>
+    public long QuotaBytes { get; set; } = DefaultQuotaBytes;
+
+    /// <summary>Free bytes on the upload disk (tests replace it); default: the drive of <see cref="Directory"/>.</summary>
+    public Func<long?> FreeDiskSpace { get; set; }
 
     public static bool IsValidId(string? id) =>
         id is { Length: 32 } && id.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'));
@@ -84,7 +102,16 @@ public sealed partial class UploadStore : IUploadedFiles
 
         System.IO.Directory.CreateDirectory(Directory);
         var id = Guid.NewGuid().ToString("N");
-        return new UploadWriter(this, id, safeName, size, Path.Combine(Directory, id + PartialExtension));
+        Reserve(id, size);
+        try
+        {
+            return new UploadWriter(this, id, safeName, size, Path.Combine(Directory, id + PartialExtension));
+        }
+        catch
+        {
+            Release(id);
+            throw;
+        }
     }
 
     public async Task<UploadedFile?> FindAsync(string fileId, CancellationToken ct)
@@ -181,6 +208,100 @@ public sealed partial class UploadStore : IUploadedFiles
         return meta.ToUploadedFile();
     }
 
+    /// <summary>
+    /// Makes room for an upload of <paramref name="size"/> bytes and reserves it until the writer is disposed:
+    /// removes the oldest finished uploads while the quota or the free disk space would be exceeded.
+    /// </summary>
+    /// <exception cref="UploadRejectedException">Still no room after removing every finished upload.</exception>
+    private void Reserve(string id, long size)
+    {
+        lock (_quotaGate)
+        {
+            var finished = ListFinished();
+            var used = finished.Sum(f => f.Size) + _reserved.Values.Sum();
+            var freeAtStart = FreeDiskSpace();
+            long freed = 0;
+            var next = 0;
+            bool QuotaOk() => used + size <= QuotaBytes;
+            bool DiskOk() => freeAtStart is not { } free || free + freed - size >= MinFreeDiskBytes;
+            while ((!QuotaOk() || !DiskOk()) && next < finished.Count)
+            {
+                var oldest = finished[next++];
+                TryDelete(MetadataPath(oldest.Id));
+                TryDelete(ContentPath(oldest.Id));
+                used -= oldest.Size;
+                freed += oldest.Size;
+                LogRemovedForRoom(oldest.Id, oldest.Size);
+            }
+
+            if (!QuotaOk())
+            {
+                throw new UploadRejectedException(string.Create(CultureInfo.InvariantCulture,
+                    $"There is no room for this upload: all uploads together may use {QuotaBytes / (1024 * 1024)} MB and the uploads still in progress need the rest. Try again later."))
+                { TooLarge = true };
+            }
+
+            if (!DiskOk())
+            {
+                throw new UploadRejectedException("There is not enough free disk space on the server for this upload: at least 1 GB must stay free.") { TooLarge = true };
+            }
+
+            _reserved[id] = size;
+        }
+    }
+
+    /// <summary>Ends the reservation of an upload (finished uploads count by their file from now on).</summary>
+    internal void Release(string id)
+    {
+        lock (_quotaGate)
+        {
+            _reserved.Remove(id);
+        }
+    }
+
+    /// <summary>Finished uploads (content + metadata), oldest first.</summary>
+    private List<(string Id, long Size, DateTime CreatedUtc)> ListFinished()
+    {
+        var result = new List<(string Id, long Size, DateTime CreatedUtc)>();
+        if (!System.IO.Directory.Exists(Directory))
+        {
+            return result;
+        }
+
+        foreach (var file in System.IO.Directory.GetFiles(Directory, "*" + ContentExtension))
+        {
+            var id = Path.GetFileNameWithoutExtension(file);
+            if (!IsValidId(id) || !File.Exists(MetadataPath(id)))
+            {
+                continue;
+            }
+
+            try
+            {
+                var info = new FileInfo(file);
+                result.Add((id, info.Length, info.LastWriteTimeUtc));
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        result.Sort((a, b) => a.CreatedUtc.CompareTo(b.CreatedUtc));
+        return result;
+    }
+
+    private long? ReadFreeDiskSpace()
+    {
+        try
+        {
+            return new DriveInfo(Path.GetFullPath(Directory)).AvailableFreeSpace;
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            return null; // unknown (e.g. a network share): only the quota applies
+        }
+    }
+
     internal static void TryDelete(string path)
     {
         try
@@ -248,6 +369,9 @@ public sealed partial class UploadStore : IUploadedFiles
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Upload {FileId} stored ({Size} bytes)")]
     private partial void LogStored(string fileId, long size);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Upload {FileId} ({Size} bytes) removed to make room for a new upload")]
+    private partial void LogRemovedForRoom(string fileId, long size);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Upload {FileId} expired and was deleted")]
     private partial void LogExpired(string fileId);
@@ -330,6 +454,7 @@ public sealed class UploadWriter : IAsyncDisposable
         _disposed = true;
         await _stream.DisposeAsync().ConfigureAwait(false);
         _hash.Dispose();
+        _store.Release(Id);
         if (!_completed)
         {
             UploadStore.TryDelete(_partialPath);
@@ -354,7 +479,7 @@ public sealed class UploadRejectedException : Exception
     {
     }
 
-    /// <summary>The file exceeds <c>Uploads.MaxMegabytes</c>.</summary>
+    /// <summary>The file exceeds <c>Uploads.MaxMegabytes</c>, the upload quota or the free disk space (RESOURCE_EXHAUSTED).</summary>
     public bool TooLarge { get; init; }
 }
 
