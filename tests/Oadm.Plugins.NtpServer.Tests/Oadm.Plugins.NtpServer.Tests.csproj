@@ -35,4 +35,10 @@
     <Compile Include="..\Oadm.Plugins.DateTime.Tests\Fakes.cs" Link="DateTime\Fakes.cs" />
     <None Include="..\Oadm.Plugins.DateTime.Tests\Fixtures\*" Link="Fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- Fake host firewall (NTP / DHCP firewall rules). -->
+    <Compile Include="..\Shared\RecordingFirewall.cs" Link="Shared\RecordingFirewall.cs" />
+  </ItemGroup>
+
 </Project>

@@ -17,6 +17,9 @@
         <string>/Library/Application Support/OADM</string>
         <key>DOTNET_BUNDLE_EXTRACT_BASE_DIR</key>
         <string>/Library/Application Support/OADM/runtime</string>
+        <!-- Tells the server it runs as the installed service (admin-only folder checks, no development plugins). -->
+        <key>OADM_SERVICE</key>
+        <string>launchd</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>

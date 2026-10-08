@@ -121,6 +121,8 @@ Self-contained single-file Release builds (ReadyToRun, embedded symbols, no .NET
 needed on the target machine). Every plugin project is published once into
 artifacts/publish/plugins/<plugin id>/ and copied next to each exe in plugins/<plugin id>/
 (the server loads the *.Server.dll, the client the *.Client.dll of each folder).
+Next to each exe: LICENSE.txt, LGPL-2.1.txt and THIRD-PARTY-NOTICES.txt, generated from every
+published NuGet package and the bundled components (tools/Oadm.Notices).
 
 Targets:
   all      Server and client (default)
@@ -144,13 +146,18 @@ Usage: manage package <windows|linux|macos> [--rid RID] [--version V]
 Publishes server and client for the RID (same as "manage publish all"), then builds the
 installer into artifacts/packages. Layout, services and data folders: packaging/README.md.
 
+Every installer offers "Server and client" (default) or "Client only".
+
 Targets:
   windows   OADM-<version>-<rid>.msi (WiX Toolset, restored from NuGet). Needs Windows.
-            Program Files\OADM, Windows service "OADM Server", Start menu entry
-  linux     oadm_<version>_<amd64|arm64>.deb (dpkg-deb). Needs dpkg-deb: Debian, Ubuntu or
-            a container. /opt/oadm, systemd unit oadm-server.service
+            Program Files\OADM, Windows service "OADM Server", Start menu entry;
+            features Server and Client (msiexec ... ADDLOCAL=Client for the client only)
+  linux     oadm-server_, oadm-client_ and oadm_<version>_<amd64|arm64>.deb (dpkg-deb;
+            oadm = both). Needs dpkg-deb: Debian, Ubuntu or a container.
+            /opt/oadm, systemd unit oadm-server.service
   macos     OADM-<version>-<rid>.pkg (pkgbuild, productbuild). Needs macOS.
-            /Applications/OADM.app, LaunchDaemon com.oadm.server; unsigned
+            /Applications/OADM.app, LaunchDaemon com.oadm.server (choice "OADM server");
+            unsigned
 
 Options:
   --rid RID     <os>-x64 or <os>-arm64 of the target (default: this machine's architecture)

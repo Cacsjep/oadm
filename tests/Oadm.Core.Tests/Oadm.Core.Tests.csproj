@@ -23,6 +23,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Oadm.Core\Oadm.Core.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.Restart\Oadm.Plugins.Restart.csproj" />
+    <!-- THIRD-PARTY-NOTICES.txt generator of manage publish. -->
+    <ProjectReference Include="..\..\tools\Oadm.Notices\Oadm.Notices.csproj" />
     <!-- Built (and deployed to artifacts/test-plugins) but loaded at runtime by the PluginLoader tests. -->
     <ProjectReference Include="..\TestPlugins\Oadm.TestPlugins.Sample\Oadm.TestPlugins.Sample.csproj" ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
@@ -35,4 +37,10 @@
     <!-- Runs plugins against a step list the way the task engine does. -->
     <Compile Include="..\Shared\StepRun.cs" Link="Shared\StepRun.cs" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- Fake host firewall (NTP / DHCP firewall rules). -->
+    <Compile Include="..\Shared\RecordingFirewall.cs" Link="Shared\RecordingFirewall.cs" />
+  </ItemGroup>
+
 </Project>

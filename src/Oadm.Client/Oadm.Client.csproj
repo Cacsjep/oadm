@@ -81,5 +81,7 @@
   <ItemGroup>
     <!-- Recorded camera video replayed by the fake server (fake mode). -->
     <EmbeddedResource Include="Api\FakeLiveView.*.au" LogicalName="Oadm.Client.Api.%(Filename)%(Extension)" />
+    <!-- Terms of use, shown at the top of Settings > About and licenses (same text as the installers' license page). -->
+    <EmbeddedResource Include="..\..\TERMS.md" LogicalName="Oadm.Client.TERMS.md" Link="Settings\TERMS.md" />
   </ItemGroup>
 </Project>

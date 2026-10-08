@@ -27,6 +27,7 @@ public sealed partial class NtpServerService : IAsyncDisposable
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly RequestLog _log = new();
     private readonly NtpRateLimiter _limiter;
+    private readonly FirewallRuleKeeper _firewallRule;
     private readonly CancellationTokenSource _cts = new();
     private Task? _background;
     private volatile NtpConfig _config = new();
@@ -37,14 +38,19 @@ public sealed partial class NtpServerService : IAsyncDisposable
     private long _publishedSeq;
     private string? _publishedState;
 
-    public NtpServerService(NtpServerOptions? options = null, IPluginSettings? settings = null, IPluginEvents? events = null, ILogger? logger = null)
+    /// <param name="firewall">Host firewall (Windows service only): UDP rule for the port while enabled.</param>
+    public NtpServerService(NtpServerOptions? options = null, IPluginSettings? settings = null, IPluginEvents? events = null, ILogger? logger = null, IFirewallRules? firewall = null)
     {
         _options = options ?? new NtpServerOptions();
         _settings = settings;
         _events = events;
         _logger = logger ?? NullLogger.Instance;
         _limiter = new NtpRateLimiter(_options.RateLimit, _options.Time);
+        _firewallRule = new FirewallRuleKeeper(Sdk.Network.FirewallRule.ForService("NTP", FirewallProtocol.Udp, _options.Port), firewall, _logger);
     }
+
+    /// <summary>The firewall rule of the NTP port (open while enabled).</summary>
+    public FirewallRuleKeeper Firewall => _firewallRule;
 
     public NtpConfig Config => _config;
 
@@ -104,6 +110,7 @@ public sealed partial class NtpServerService : IAsyncDisposable
         {
             await StopServerAsync().ConfigureAwait(false);
             await StopUpstreamAsync().ConfigureAwait(false);
+            await _firewallRule.SyncAsync(false, CancellationToken.None).ConfigureAwait(false);
         }
         finally
         {
@@ -250,6 +257,7 @@ public sealed partial class NtpServerService : IAsyncDisposable
                 await StopUpstreamAsync().ConfigureAwait(false);
             }
 
+            await _firewallRule.SyncAsync(config.Enabled, ct).ConfigureAwait(false);
             if (!config.Enabled)
             {
                 _bindError = null;

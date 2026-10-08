@@ -113,6 +113,9 @@
 
       <!-- Users (Admin only) -->
       <settings:UsersCardView DataContext="{Binding Users}" IsVisible="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowUsers}" />
+
+      <!-- About and licenses -->
+      <settings:AboutView DataContext="{Binding About}" />
     </StackPanel>
   </ScrollViewer>
 </UserControl>

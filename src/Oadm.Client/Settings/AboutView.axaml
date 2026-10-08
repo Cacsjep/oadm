@@ -1,0 +1,35 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:settings="using:Oadm.Client.Settings"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             x:Class="Oadm.Client.Settings.AboutView"
+             x:DataType="settings:AboutViewModel">
+  <!-- Card "About and licenses" of the Settings page: versions, the OADM license and the third-party notices. -->
+  <Border Classes="card">
+    <StackPanel Spacing="16">
+      <TextBlock Classes="cardTitle" Text="About and licenses" />
+      <!-- Terms of use first, then the license (same order as the installers' license page). -->
+      <StackPanel Spacing="8">
+        <TextBlock Classes="sectionTitle" Text="{Binding TermsTitle}" />
+        <TextBlock TextWrapping="Wrap" Text="{Binding TermsText}" />
+      </StackPanel>
+      <StackPanel Classes="form">
+        <ui:FormField Classes="wide" Label="Client version">
+          <TextBlock Text="{Binding ClientVersion}" />
+        </ui:FormField>
+        <ui:FormField Classes="wide" Label="Server version">
+          <TextBlock Text="{Binding ServerVersion}" />
+        </ui:FormField>
+      </StackPanel>
+      <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{x:Static settings:AboutViewModel.LicenseText}" />
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Classes="secondary" Content="{Binding LicensesButtonText}" Command="{Binding ToggleLicensesCommand}" />
+      </StackPanel>
+      <StackPanel Spacing="8" IsVisible="{Binding IsShowingLicenses}">
+        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding NoticesSource}" />
+        <ui:CodeView Language="Plain" Text="{Binding NoticesText}" Height="480"
+                     IsVisible="{Binding NoticesText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</UserControl>

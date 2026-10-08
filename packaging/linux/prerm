@@ -1,5 +1,5 @@
 #!/bin/sh
-# oadm prerm: stop the server on removal (an upgrade restarts it in postinst instead).
+# oadm-server prerm: stop the server on removal (an upgrade restarts it in postinst instead).
 set -e
 
 UNIT=oadm-server.service

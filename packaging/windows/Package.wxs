@@ -1,14 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  OADM for Windows: per-machine MSI.
-  - Program Files\OADM\Server: Oadm.Server.exe + plugins\, Windows service "OADM Server" (OadmServer), automatic
-    start, LocalSystem (NTP UDP 123 and DHCP UDP 67 need it), data folder %ProgramData%\OADM passed as the
+  OADM for Windows: per-machine MSI with two features, chosen on the page "Choose what to install":
+  "Server and client" (default) or "Client only" (feature Server absent). Silent installs get everything by default;
+  ADDLOCAL=Client installs the client only.
+  - Feature Server: Program Files\OADM\Server: Oadm.Server.exe + plugins\, Windows service "OADM Server" (OadmServer),
+    automatic start, LocalSystem (NTP UDP 123 and DHCP UDP 67 need it), data folder %ProgramData%\OADM passed as the
     Oadm:DataDir argument. The single-file host extracts its native libraries to %ProgramData%\OADM\runtime (service
-    environment) instead of C:\Windows\Temp, which every user can write to.
-  - Program Files\OADM\Client: Oadm.Client.exe + plugins\, Start menu shortcut "OADM".
-  - Firewall rules for Oadm.Server.exe: TCP 5080 (gRPC), UDP 123 (NTP server plugin), UDP 67 (DHCP server plugin).
-  - %ProgramData%\OADM is created with access for SYSTEM and Administrators only and is never removed (database,
+    environment) instead of C:\Windows\Temp, which every user can write to. One firewall rule: TCP 5080 (gRPC) for
+    Oadm.Server.exe, profiles Domain and Private; the NTP and DHCP plugins add their UDP rule themselves while enabled.
+    %ProgramData%\OADM is created with access for SYSTEM and Administrators only and is never removed (database,
     master key, logs survive uninstall and upgrades).
+  - Feature Client (always): Program Files\OADM\Client: Oadm.Client.exe + plugins\, Start menu shortcut "OADM".
+  - Both folders carry LICENSE.txt, THIRD-PARTY-NOTICES.txt and LGPL-2.1.txt (written by manage publish).
   - Every file below the published folders is harvested at build time (Files), so plugins added later are
     picked up without editing this file.
 -->
@@ -32,6 +35,7 @@
 
     <Icon Id="OadmIcon.ico" SourceFile="$(var.IconsDir)\oadm.ico" />
     <Property Id="ARPPRODUCTICON" Value="OadmIcon.ico" />
+    <Property Id="OADM_FW_PROFILE" Value="3" />
     <Property Id="ARPCOMMENTS" Value="Open AXIS Device Management. The data folder %ProgramData%\OADM is kept on uninstall." />
 
     <StandardDirectory Id="ProgramFiles6432Folder">
@@ -45,13 +49,12 @@
       <Directory Id="DataFolder" Name="OADM" />
     </StandardDirectory>
 
-    <!-- Server: the exe with service and firewall rules, everything else harvested. -->
+    <!-- Server: the exe with service and firewall rule, everything else harvested. -->
     <ComponentGroup Id="Server" Directory="ServerFolder">
       <Component Id="ServerExe">
         <File Id="ServerExe" Source="$(var.ServerDir)\Oadm.Server.exe" KeyPath="yes">
-          <fw:FirewallException Id="FwGrpc" Name="OADM Server (gRPC, TCP 5080)" Port="5080" Protocol="tcp" Scope="any" Profile="all" />
-          <fw:FirewallException Id="FwNtp" Name="OADM Server (NTP, UDP 123)" Port="123" Protocol="udp" Scope="any" Profile="all" />
-          <fw:FirewallException Id="FwDhcp" Name="OADM Server (DHCP, UDP 67)" Port="67" Protocol="udp" Scope="any" Profile="all" />
+          <!-- Profile Domain (1) + Private (2) = 3, never Public; the attribute takes one name or a formatted value. -->
+          <fw:FirewallException Id="FwGrpc" Name="OADM Server (gRPC, TCP 5080)" Port="5080" Protocol="tcp" Scope="any" Profile="[OADM_FW_PROFILE]" />
         </File>
         <ServiceInstall Id="OadmServer"
                         Name="OadmServer"
@@ -80,7 +83,7 @@
       </Files>
     </ComponentGroup>
 
-    <!-- Client: the exe with the Start menu shortcut, everything else (plugins) harvested. -->
+    <!-- Client: the exe with the Start menu shortcut, everything else (plugins, license texts) harvested. -->
     <ComponentGroup Id="Client" Directory="ClientFolder">
       <Component Id="ClientExe">
         <File Id="ClientExe" Source="$(var.ClientDir)\Oadm.Client.exe" KeyPath="yes">
@@ -101,17 +104,19 @@
       </CreateFolder>
     </Component>
 
-    <Feature Id="Main" Title="OADM" Level="1">
-      <ComponentGroupRef Id="Server" />
+    <Feature Id="Client" Title="OADM client" Description="The OADM desktop application." Level="1" AllowAbsent="no" AllowAdvertise="no">
       <ComponentGroupRef Id="Client" />
+    </Feature>
+    <Feature Id="Server" Title="OADM server" Description="The OADM server as the Windows service OADM Server (TCP 5080)." Level="1" AllowAdvertise="no">
+      <ComponentGroupRef Id="Server" />
       <ComponentRef Id="DataFolder" />
     </Feature>
 
-    <!-- Setup wizard: welcome with the license (Apache-2.0), progress, finish with "Launch OADM". No install folder
-         choice on purpose: a custom folder (e.g. C:OADM) inherits user write access, and the service runs the exe as
-         SYSTEM (security audit H4); Program Files is admin-only.
+    <!-- Setup wizard (WixUI_Oadm below): welcome, license (Apache-2.0), "Choose what to install", ready, progress, finish
+         with "Launch OADM". No install folder choice on purpose: a custom folder (e.g. C:OADM) inherits user write
+         access, and the service runs the exe as SYSTEM (security audit H4); Program Files is admin-only.
          Assets from make-ui-assets.py. A silent install (msiexec /qn, CI) skips all dialogs. -->
-    <ui:WixUI Id="WixUI_Minimal" />
+    <UIRef Id="WixUI_Oadm" />
     <WixVariable Id="WixUILicenseRtf" Value="$(sys.SOURCEFILEDIR)License.rtf" />
     <WixVariable Id="WixUIBannerBmp" Value="$(sys.SOURCEFILEDIR)Banner.bmp" />
     <WixVariable Id="WixUIDialogBmp" Value="$(sys.SOURCEFILEDIR)Dialog.bmp" />
@@ -124,4 +129,78 @@
                Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed" />
     </UI>
   </Package>
+
+  <!-- Setup type "Server and client" / "Client only". The page preselects what is installed (Change) or what an upgrade
+       keeps (MigrateFeatureStates: a client-only installation stays client-only). -->
+  <Fragment>
+    <Property Id="OADM_SETUP" Value="ServerAndClient" />
+    <SetProperty Id="OADM_SETUP" Value="ClientOnly" After="MigrateFeatureStates" Sequence="ui"
+                 Condition="(Installed AND !Server = 2) OR (NOT Installed AND &amp;Server = 2)" />
+
+    <UI Id="WixUI_Oadm">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="!(loc.Advanced_Font_FaceName)" Size="!(loc.Advanced_Font_Normal_Size)" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="!(loc.Advanced_Font_FaceName)" Size="!(loc.Advanced_Font_Bigger_Size)" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="!(loc.Advanced_Font_FaceName)" Size="!(loc.Advanced_Font_Title_Size)" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+
+      <Dialog Id="OadmSetupTypeDlg" Width="370" Height="270" Title="!(loc.WelcomeDlg_Title)">
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
+          <Publish Event="Remove" Value="Server" Condition="OADM_SETUP = &quot;ClientOnly&quot;" Order="1" />
+          <Publish Event="AddLocal" Value="Server" Condition="OADM_SETUP = &quot;ServerAndClient&quot;" Order="2" />
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" Order="3" />
+        </Control>
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
+          <Publish Event="NewDialog" Value="MaintenanceTypeDlg" Condition="Installed" Order="1" />
+          <Publish Event="NewDialog" Value="LicenseAgreementDlg" Condition="NOT Installed" Order="2" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="!(loc.CustomizeDlgBannerBitmap)" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="210" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Choose what to install" />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes" Text="Install the OADM server on this computer, or only the client." />
+        <!-- Each choice is one radio button whose text wraps over three lines (no separate text controls on top of the group). -->
+        <Control Id="SetupType" Type="RadioButtonGroup" X="25" Y="60" Width="325" Height="130" Property="OADM_SETUP">
+          <RadioButtonGroup Property="OADM_SETUP">
+            <RadioButton Value="ServerAndClient" X="0" Y="0" Width="325" Height="50"
+                         Text="Server and client (recommended). The OADM server runs on this computer as the Windows service OADM Server (TCP 5080, opened for Domain and Private networks) and manages the devices." />
+            <RadioButton Value="ClientOnly" X="0" Y="70" Width="325" Height="50"
+                         Text="Client only. The OADM desktop client connects to an OADM server on another computer. No service and no firewall rule." />
+          </RadioButtonGroup>
+        </Control>
+      </Dialog>
+
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" />
+
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseAgreementDlg" Condition="NOT Installed" />
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Condition="Installed AND PATCH" />
+
+      <Publish Dialog="LicenseAgreementDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" />
+      <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="OadmSetupTypeDlg" Condition="LicenseAccepted = &quot;1&quot;" />
+
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="OadmSetupTypeDlg" Order="1" Condition="NOT Installed OR WixUI_InstallMode = &quot;Change&quot;" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2" Condition="Installed AND NOT PATCH" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="3" Condition="Installed AND PATCH" />
+
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg" />
+
+      <Publish Dialog="MaintenanceTypeDlg" Control="ChangeButton" Event="NewDialog" Value="OadmSetupTypeDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg" />
+    </UI>
+
+    <UIRef Id="WixUI_Common" />
+  </Fragment>
 </Wix>

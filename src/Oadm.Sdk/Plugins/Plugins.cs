@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Network;
 using Oadm.Sdk.Tasks;
 using Oadm.Sdk.Vapix;
 
@@ -256,6 +257,13 @@ public interface ICorePluginContext
     /// reach the plugin). Null when the host does not offer them.
     /// </summary>
     IDeviceEventStreams? EventStreams => null;
+
+    /// <summary>
+    /// The host firewall for the ports the plugin serves (NTP UDP 123, DHCP UDP 67): open the rule while the service is
+    /// enabled, close it when disabled or stopped (<see cref="FirewallRuleKeeper"/>). Only offered by the Windows server
+    /// running as the installed service; null elsewhere (Linux, macOS, console runs, tests).
+    /// </summary>
+    IFirewallRules? Firewall => null;
 }
 
 /// <summary>Server-side encryption for secrets a plugin persists. Values never leave the server.</summary>

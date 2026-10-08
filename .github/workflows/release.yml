@@ -1,0 +1,297 @@
+name: release
+
+# The one CI workflow (replaces ci.yml and package.yml). Runs only for release tags (v0.0.1, v1.2.0, ...):
+#   1. tests      build and unit tests on Windows, Linux and macOS (like "manage test unit"; hang detection 5 min)
+#   2. installers MSI (Windows), .deb packages (Linux amd64), .pkg (macOS Intel), built with "manage package"; the MSI
+#                 and the .deb packages are installed, checked and removed again, both as "Server and client" and as
+#                 "Client only"; the .pkg is checked without installing it
+#   3. release    the GitHub release of the tag with the installers and SHA256SUMS.txt (installers are not signed;
+#                 the checksums are published instead)
+# A job starts only when the jobs before it passed, so a release exists only when everything passed.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    name: tests ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet build Oadm.sln -c Release
+      # Unit tests only (like manage test unit): Perf tests have time budgets made for a developer machine and run with
+      # manage test perf; hardware tests need real devices.
+      - run: dotnet test Oadm.sln -c Release --no-build --filter "Category!=Hardware&Category!=Perf&Category!=HardwareWrite" --blame-hang-timeout 5m
+
+  installers:
+    name: installer ${{ matrix.target }} ${{ matrix.rid }}
+    needs: tests
+    strategy:
+      fail-fast: false
+      matrix:
+        # x64 only (user decision: no ARM installers). macOS: the .pkg is checked without installing it.
+        include:
+          - { os: windows-latest, target: windows, rid: win-x64, smoke: true }
+          - { os: ubuntu-latest, target: linux, rid: linux-x64, smoke: true }
+          - { os: macos-latest, target: macos, rid: osx-x64, smoke: false }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Version
+        id: version
+        shell: bash
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "OADM version $v"
+
+      - name: Build package (Windows)
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: ./manage.ps1 package windows --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
+
+      - name: Build package (Linux, macOS)
+        if: matrix.target != 'windows'
+        shell: bash
+        run: ./manage.sh package ${{ matrix.target }} --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
+
+      - name: License texts next to the published exes
+        shell: bash
+        run: |
+          for app in server client; do
+            for f in TERMS.md LICENSE.txt THIRD-PARTY-NOTICES.txt LGPL-2.1.txt; do
+              test -s "artifacts/publish/$app/${{ matrix.rid }}/$f" || { echo "$app: $f missing"; exit 1; }
+            done
+          done
+          grep -q "GNU LESSER GENERAL PUBLIC LICENSE" "artifacts/publish/client/${{ matrix.rid }}/THIRD-PARTY-NOTICES.txt"
+          grep -q "^Avalonia " "artifacts/publish/client/${{ matrix.rid }}/THIRD-PARTY-NOTICES.txt"
+
+      - name: Validate MSI
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem artifacts/packages/*.msi | Select-Object -First 1
+          $wi = New-Object -ComObject WindowsInstaller.Installer
+          $db = $wi.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $wi, @($msi.FullName, 0))
+          function Query([string]$q) {
+            $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @($q))
+            $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null) | Out-Null
+            while ($rec = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)) {
+              $n = $rec.GetType().InvokeMember('FieldCount', 'GetProperty', $null, $rec, $null)
+              (1..$n | ForEach-Object { $rec.GetType().InvokeMember('StringData', 'GetProperty', $null, $rec, @([int]$_)) }) -join ' | '
+            }
+          }
+          $features = @(Query 'SELECT Feature FROM Feature') | Sort-Object
+          "features: $($features -join ', ')"
+          if (($features -join ',') -ne 'Client,Server') { throw 'features Client and Server expected' }
+          Query 'SELECT Name, DisplayName, StartType, Arguments FROM ServiceInstall'
+          $fw = @(Query 'SELECT Name, Port, Protocol, Profile FROM Wix5FirewallException')
+          $fw
+          if ($fw.Count -ne 1 -or $fw[0] -notmatch '^OADM Server \(gRPC, TCP 5080\) \| 5080 \| 6 \| \[OADM_FW_PROFILE\]$') { throw 'only the TCP 5080 rule expected' }
+          if ((Query "SELECT Value FROM Property WHERE Property='OADM_FW_PROFILE'") -ne '3') { throw 'firewall profile must be Domain + Private (3)' }
+          $licenses = @(Query 'SELECT FileName FROM File') | Where-Object { $_ -match 'LICENSE\.txt|THIRD-PARTY-NOTICES\.txt|LGPL-2\.1\.txt' }
+          if ($licenses.Count -ne 6) { throw "license texts in both folders expected, found $($licenses.Count)" }
+          if (@(@(Query 'SELECT FileName FROM File') -match 'TERMS\.md').Count -ne 2) { throw 'TERMS.md in both folders expected' }
+          Query "SELECT Property, Value FROM Property WHERE Property='ProductVersion'"
+
+      - name: Inspect .deb packages
+        if: matrix.target == 'linux'
+        run: |
+          ls -l artifacts/packages
+          for p in oadm oadm-server oadm-client; do
+            deb=$(ls artifacts/packages/${p}_*_amd64.deb)
+            dpkg-deb --info "$deb"
+            dpkg-deb --contents "$deb" | grep -E 'Oadm.Server$|Oadm.Client$|oadm-server.service|plugins/[^/]+/$|/doc/' || true
+          done
+          dpkg-deb --field artifacts/packages/oadm_*_amd64.deb Depends | grep -q 'oadm-server (='
+          dpkg-deb --contents artifacts/packages/oadm-server_*_amd64.deb | grep -q 'usr/share/doc/oadm-server/THIRD-PARTY-NOTICES.txt'
+          dpkg-deb --contents artifacts/packages/oadm-client_*_amd64.deb | grep -q 'usr/share/doc/oadm-client/LGPL-2.1.txt'
+          for p in oadm oadm-server oadm-client; do dpkg-deb --contents artifacts/packages/${p}_*_amd64.deb | grep -q "usr/share/doc/$p/TERMS.md"; done
+          ! dpkg-deb --contents artifacts/packages/oadm-client_*_amd64.deb | grep -q 'oadm-server.service'
+
+      - name: Check .pkg choices (macOS, not installed)
+        if: matrix.target == 'macos'
+        run: |
+          pkg=$(ls artifacts/packages/*.pkg)
+          pkgutil --check-signature "$pkg" || true
+          sudo installer -pkg "$pkg" -target / -showChoicesXML > choices.xml
+          cat choices.xml
+          grep -q com.oadm.choice.server choices.xml
+          grep -q com.oadm.choice.client choices.xml
+          pkgutil --expand-full "$pkg" expanded
+          test -f expanded/oadm-client.pkg/Payload/OADM.app/Contents/Resources/THIRD-PARTY-NOTICES.txt
+          test -f expanded/oadm-client.pkg/Payload/OADM.app/Contents/Resources/LGPL-2.1.txt
+          test -f expanded/oadm-server.pkg/Payload/THIRD-PARTY-NOTICES.txt
+          test -x expanded/oadm-client.pkg/Payload/OADM.app/Contents/Resources/uninstall-oadm.sh
+          test -f expanded/oadm-client.pkg/Payload/OADM.app/Contents/Resources/TERMS.md
+          # License page: the terms of use first, then the Apache-2.0 text.
+          grep -q '<license file="license.txt"' expanded/Distribution
+          head -1 expanded/Resources/license.txt | grep -q '^Terms of use'
+
+      - name: Smoke test (Windows MSI, server and client)
+        if: matrix.target == 'windows' && matrix.smoke
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem artifacts/packages/*.msi | Select-Object -First 1).FullName
+          $p = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /l*v install.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 80; throw "install failed: $($p.ExitCode)" }
+          $svc = Get-Service OadmServer
+          "service: $($svc.Status) $($svc.StartType)"
+          $ok = $false
+          for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
+            try { $c = New-Object Net.Sockets.TcpClient('127.0.0.1', 5080); $c.Close(); $ok = $true } catch { Start-Sleep 1 }
+          }
+          if (-not $ok) { Get-ChildItem C:\ProgramData\OADM\logs -ErrorAction SilentlyContinue | Get-Content -Tail 50; throw 'port 5080 not open' }
+          # gRPC over HTTP/2 with TLS; the server's certificate is self-signed (clients pin it), so the check accepts it.
+          $handler = [System.Net.Http.HttpClientHandler]::new()
+          $handler.ServerCertificateCustomValidationCallback = [System.Net.Http.HttpClientHandler]::DangerousAcceptAnyServerCertificateValidator
+          $client = [System.Net.Http.HttpClient]::new($handler)
+          $req = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post, 'https://127.0.0.1:5080/oadm.Smoke/Test')
+          $req.Version = [Version]'2.0'
+          $req.VersionPolicy = [System.Net.Http.HttpVersionPolicy]::RequestVersionExact
+          $req.Content = [System.Net.Http.ByteArrayContent]::new([byte[]]@())
+          $req.Content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::new('application/grpc')
+          $resp = $client.SendAsync($req).GetAwaiter().GetResult()
+          $null = $resp.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
+          $status = @(@($resp.Headers) + @($resp.TrailingHeaders) | Where-Object { $_.Key -eq 'grpc-status' })
+          "HTTP/$($resp.Version) $([int]$resp.StatusCode), grpc-status: $($status.Value)"
+          if ($status.Count -eq 0) { throw 'no gRPC answer' }
+          foreach ($f in 'oadm.db', 'master.key') { if (-not (Test-Path "C:\ProgramData\OADM\$f")) { throw "$f missing" } }
+          foreach ($app in 'Server', 'Client') {
+            if (-not (Test-Path "C:\Program Files\OADM\$app\plugins\oadm.restart")) { throw "$app plugins missing" }
+            foreach ($f in 'TERMS.md', 'LICENSE.txt', 'THIRD-PARTY-NOTICES.txt', 'LGPL-2.1.txt') { if (-not (Test-Path "C:\Program Files\OADM\$app\$f")) { throw "$app $f missing" } }
+          }
+          (Get-Acl C:\ProgramData\OADM).Access | Format-Table IdentityReference, FileSystemRights -AutoSize
+          # Only TCP 5080 for Domain and Private; the NTP and DHCP plugins add their UDP rules only while enabled.
+          $rules = @(Get-NetFirewallRule -DisplayName 'OADM Server*')
+          $rules | Format-Table DisplayName, Enabled, Direction, Profile -AutoSize
+          if ($rules.Count -ne 1 -or $rules[0].DisplayName -ne 'OADM Server (gRPC, TCP 5080)') { throw 'only the gRPC firewall rule expected' }
+          if (($rules[0].Profile.ToString() -replace ' ', '') -ne 'Domain,Private') { throw "profile Domain, Private expected, not $($rules[0].Profile)" }
+          # The server checked its folders at start (service mode) and did not refuse them.
+          if (Select-String -Path C:\ProgramData\OADM\logs\*.log -Pattern 'could not be fixed' -Quiet) { throw 'folder check failed' }
+          # WinExe: Start-Process waits and returns the exit code.
+          $d = Start-Process 'C:\Program Files\OADM\Client\Oadm.Client.exe' -ArgumentList '--check-decoder' -Wait -PassThru
+          if ($d.ExitCode -ne 0) { throw "decoder check failed: $($d.ExitCode)" }
+          $p = Start-Process msiexec.exe -ArgumentList "/x `"$msi`" /qn /l*v uninstall.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content uninstall.log -Tail 80; throw "uninstall failed: $($p.ExitCode)" }
+          if (Get-Service OadmServer -ErrorAction SilentlyContinue) { throw 'service still installed' }
+          if (Get-NetFirewallRule -DisplayName 'OADM Server*' -ErrorAction SilentlyContinue) { throw 'firewall rule left behind' }
+          if (-not (Test-Path C:\ProgramData\OADM\master.key)) { throw 'data folder was removed' }
+          'server and client: install, service, gRPC, firewall, uninstall ok'
+
+      - name: Smoke test (Windows MSI, client only)
+        if: matrix.target == 'windows' && matrix.smoke
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem artifacts/packages/*.msi | Select-Object -First 1).FullName
+          $p = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" ADDLOCAL=Client /qn /l*v install-client.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content install-client.log -Tail 80; throw "install failed: $($p.ExitCode)" }
+          if (Get-Service OadmServer -ErrorAction SilentlyContinue) { throw 'client only must not install the service' }
+          if (Test-Path 'C:\Program Files\OADM\Server') { throw 'client only must not install the server' }
+          if (Get-NetFirewallRule -DisplayName 'OADM Server*' -ErrorAction SilentlyContinue) { throw 'client only must not add a firewall rule' }
+          if (-not (Test-Path 'C:\Program Files\OADM\Client\THIRD-PARTY-NOTICES.txt')) { throw 'client license texts missing' }
+          $d = Start-Process 'C:\Program Files\OADM\Client\Oadm.Client.exe' -ArgumentList '--check-decoder' -Wait -PassThru
+          if ($d.ExitCode -ne 0) { throw "decoder check failed: $($d.ExitCode)" }
+          $p = Start-Process msiexec.exe -ArgumentList "/x `"$msi`" /qn /l*v uninstall-client.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content uninstall-client.log -Tail 80; throw "uninstall failed: $($p.ExitCode)" }
+          if (Test-Path 'C:\Program Files\OADM\Client\Oadm.Client.exe') { throw 'client still installed' }
+          'client only: install, decoder, uninstall ok'
+
+      - name: Smoke test (Linux .deb, server and client)
+        if: matrix.target == 'linux' && matrix.smoke
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ./artifacts/packages/oadm_*_amd64.deb ./artifacts/packages/oadm-server_*_amd64.deb ./artifacts/packages/oadm-client_*_amd64.deb
+          systemctl status oadm-server --no-pager || true
+          for i in $(seq 60); do (exec 3<>/dev/tcp/127.0.0.1/5080) 2>/dev/null && break; sleep 1; done
+          # gRPC over HTTP/2 with TLS (self-signed server certificate, pinned by clients; the check accepts it).
+          headers=$(curl -sk --http2 -X POST -H 'content-type: application/grpc' -H 'te: trailers' -D - -o /dev/null https://127.0.0.1:5080/oadm.Smoke/Test)
+          echo "$headers"
+          echo "$headers" | grep -qi grpc-status
+          systemctl is-active oadm-server
+          sudo ls -la /var/lib/oadm
+          test "$(sudo stat -c %a /var/lib/oadm/master.key)" = 600
+          test "$(sudo stat -c %a /var/lib/oadm)" = 700
+          test -L /usr/bin/oadm-client
+          test -d /opt/oadm/server/plugins/oadm.restart && test -d /opt/oadm/client/plugins/oadm.restart
+          test -s /opt/oadm/server/THIRD-PARTY-NOTICES.txt && test -s /usr/share/doc/oadm-client/THIRD-PARTY-NOTICES.txt
+          ! sudo journalctl -u oadm-server --no-pager | grep -q 'could not be fixed'
+          oadm-client --check-decoder
+          sudo apt-get remove -y oadm oadm-server oadm-client
+          ! systemctl is-active oadm-server
+          sudo test -f /var/lib/oadm/master.key
+          echo "server and client: install, service, gRPC, remove ok"
+
+      - name: Smoke test (Linux .deb, client only)
+        if: matrix.target == 'linux' && matrix.smoke
+        run: |
+          sudo apt-get install -y ./artifacts/packages/oadm-client_*_amd64.deb
+          ! systemctl cat oadm-server >/dev/null 2>&1
+          test ! -e /opt/oadm/server/Oadm.Server
+          oadm-client --check-decoder
+          sudo apt-get remove -y oadm-client
+          test ! -e /usr/bin/oadm-client
+          echo "client only: install, decoder, remove ok"
+
+      - name: Upload
+        uses: actions/upload-artifact@v5
+        with:
+          name: oadm-${{ steps.version.outputs.version }}-${{ matrix.rid }}
+          path: artifacts/packages/*
+          if-no-files-found: error
+
+  # Classic GitHub release for the tag with the installers and their SHA-256 checksums, only when the tests and every
+  # installer job succeeded. A moved tag (re-run of the same version) replaces the files of the existing release.
+  release:
+    needs: [tests, installers]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v5
+        with:
+          path: installers
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: installers
+        run: |
+          sha256sum -- * > ../SHA256SUMS.txt
+          mv ../SHA256SUMS.txt .
+          cat SHA256SUMS.txt
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          version="${tag#v}"
+          ls -l installers
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" installers/* --clobber
+          else
+            gh release create "$tag" installers/* --title "OADM $version" --generate-notes --verify-tag
+          fi

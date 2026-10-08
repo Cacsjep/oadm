@@ -29,4 +29,9 @@
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.DhcpServer.Client\Oadm.Plugins.DhcpServer.Client.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Fake host firewall (NTP / DHCP firewall rules). -->
+    <Compile Include="..\Shared\RecordingFirewall.cs" Link="Shared\RecordingFirewall.cs" />
+  </ItemGroup>
+
 </Project>

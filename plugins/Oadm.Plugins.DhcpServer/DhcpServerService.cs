@@ -30,6 +30,7 @@ public sealed partial class DhcpServerService : IAsyncDisposable
     private readonly DhcpEngine _engine;
     private readonly KeyedRateLimiter<ulong> _limiter;
     private readonly OtherServerCheck _check;
+    private readonly FirewallRuleKeeper _firewallRule;
     private readonly CancellationTokenSource _cts = new();
     private Task? _background;
     private volatile DhcpConfig _config = new();
@@ -43,13 +44,15 @@ public sealed partial class DhcpServerService : IAsyncDisposable
     private int _checkRunning;
     private string? _publishedState;
 
-    public DhcpServerService(DhcpServerOptions? options = null, IPluginSettings? settings = null, IPluginEvents? events = null, ILogger? logger = null)
+    /// <param name="firewall">Host firewall (Windows service only): UDP rule for the server port while enabled.</param>
+    public DhcpServerService(DhcpServerOptions? options = null, IPluginSettings? settings = null, IPluginEvents? events = null, ILogger? logger = null, IFirewallRules? firewall = null)
     {
         _options = options ?? new DhcpServerOptions();
         _settings = settings;
         _events = events;
         _logger = logger ?? NullLogger.Instance;
         _limiter = new KeyedRateLimiter<ulong>(_options.RateLimits.PerMac, _options.Time);
+        _firewallRule = new FirewallRuleKeeper(Sdk.Network.FirewallRule.ForService("DHCP", FirewallProtocol.Udp, _options.ServerPort), firewall, _logger);
         _check = new OtherServerCheck(_options.Sockets, _options.ServerPort, _options.ClientPort, _logger) { Wait = _options.OtherServerWait };
         _engine = new DhcpEngine(_store, _options.Probe, _options.Engine with { ClientPort = _options.ClientPort }, _options.Time, _logger)
         {
@@ -66,6 +69,9 @@ public sealed partial class DhcpServerService : IAsyncDisposable
     public KeyedRateLimiter<ulong> Limiter => _limiter;
 
     public bool IsRunning => _listener is not null;
+
+    /// <summary>The firewall rule of the DHCP server port (open while enabled).</summary>
+    public FirewallRuleKeeper Firewall => _firewallRule;
 
     /// <summary>Loads the stored settings and leases and applies them (server start). Never waits for the network.</summary>
     public async Task StartAsync(CancellationToken ct)
@@ -110,6 +116,7 @@ public sealed partial class DhcpServerService : IAsyncDisposable
         try
         {
             await StopListenerAsync().ConfigureAwait(false);
+            await _firewallRule.SyncAsync(false, CancellationToken.None).ConfigureAwait(false);
         }
         finally
         {
@@ -298,6 +305,7 @@ public sealed partial class DhcpServerService : IAsyncDisposable
         {
             _config = config;
             await StopListenerAsync().ConfigureAwait(false);
+            await _firewallRule.SyncAsync(config.Enabled, ct).ConfigureAwait(false);
             if (!config.Enabled)
             {
                 _bindError = null;

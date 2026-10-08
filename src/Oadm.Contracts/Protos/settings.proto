@@ -41,6 +41,8 @@ message ServerSettings {
   // Clients show it as a banner until the user dismisses it (remembered per client by id). Field number kept high
   // on purpose (other settings use the low numbers).
   KeyReplacedNotice key_replaced = 20;
+  // Read only: the server's version ("1.2.0"), filled in Get and Set replies, ignored in a Set (About and licenses).
+  string server_version = 21;
 }
 
 // The server replaced its master key: stored device credentials and credential list entries it could not read

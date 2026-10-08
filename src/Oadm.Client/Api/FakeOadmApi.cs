@@ -45,8 +45,12 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         ServerName = "acs",
         ListenUrl = "https://0.0.0.0:5080",
         UseHostName = false,
+        ServerVersion = FakeServerVersion,
     };
     private bool _online = true;
+
+    /// <summary>Version the fake server reports (About and licenses).</summary>
+    public const string FakeServerVersion = "0.0.0-fake";
 
     /// <param name="tick">Simulation step. Tests pass a few milliseconds.</param>
     /// <param name="seedSampleData">False starts with an empty device and task table.</param>
@@ -784,6 +788,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
             _settings = settings.Clone();
             _settings.UseHostName = useHostName;
             _settings.MaxParallelTasksPerPlugin = maxParallel;
+            _settings.ServerVersion = FakeServerVersion;
             return Task.FromResult(_settings.Clone());
         }
     }

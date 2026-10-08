@@ -111,6 +111,22 @@ public sealed class CorePluginHostTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ContextCarriesTheHostFirewallOnlyWhenOffered()
+    {
+        var firewall = new Oadm.Tests.Shared.RecordingFirewall();
+        await using var host = new CorePluginHost(_registry, _devices, _vapix, _engine, _settings, firewall: firewall);
+        var core = new TestCorePlugin("core.fw", []);
+        Register(core);
+
+        await host.StartAllAsync(CancellationToken.None);
+        Assert.Same(firewall, core.Context!.Firewall);
+        await host.StopAllAsync(CancellationToken.None);
+
+        await _host.StartAllAsync(CancellationToken.None);
+        Assert.Null(core.Context!.Firewall); // console runs and tests: no firewall changes
+    }
+
+    [Fact]
     public async Task ContextCarriesPluginFolderSecretsAndTaskCancel()
     {
         using var protector = new Oadm.Core.Security.CredentialProtector(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
