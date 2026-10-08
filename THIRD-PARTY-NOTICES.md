@@ -1,10 +1,10 @@
 # Third-party notices
 
-OADM is licensed under Apache-2.0 (see `LICENSE`). This file is the hand-written part of the notices: components
-with notice or source obligations beyond their NuGet package license. `manage publish` generates the complete
-`THIRD-PARTY-NOTICES.txt` next to the published exes (and in every installer) with this text, every NuGet package
-actually published (license, copyright, project), the full license texts (MIT, Apache-2.0, BSD, OFL-1.1, LGPL-2.1)
-and the license and notice files shipped in the packages (tool `tools/Oadm.Notices`).
+OADM is licensed under Apache-2.0 (see `LICENSE`). This is the hand-written part of the notices: components with
+notice or source obligations beyond their NuGet package license. `manage publish` (tool `tools/Oadm.Notices`) writes
+the complete `THIRD-PARTY-NOTICES.txt` next to the published exes and into every installer: this text, every published
+NuGet package (license, copyright, project), the full license texts (MIT, Apache-2.0, BSD, OFL-1.1, LGPL-2.1) and the
+license and notice files the packages ship.
 
 ## FFmpeg (live view video decoder, client only)
 
