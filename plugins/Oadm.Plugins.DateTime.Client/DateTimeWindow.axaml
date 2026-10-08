@@ -6,7 +6,7 @@
         x:Class="Oadm.Plugins.DateAndTime.Client.DateTimeWindow"
         x:DataType="vm:DateTimeDialogViewModel"
         Title="{Binding Title}"
-        Width="1100" Height="760" MinWidth="960" MinHeight="600"
+        Width="2200" Height="760" MinWidth="960" MinHeight="600"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         ExtendClientAreaToDecorationsHint="True"
