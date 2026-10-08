@@ -3,17 +3,18 @@
 # Usage: build-deb.sh <linux-x64|linux-arm64> <version> <server-dir> <client-dir> <out-dir>
 # Needs dpkg-deb only (Debian, Ubuntu or a container); no root, file owners are set with --root-owner-group.
 #
-# Three packages (installer choice "Server and client" = oadm, "Client only" = oadm-client):
+# Two packages (installer choice "Server and client" = both files in one apt install, "Client only" = oadm-client):
 #   oadm-server_<version>_<arch>.deb  /opt/oadm/server/Oadm.Server (+ plugins/, license texts),
 #                                     /usr/lib/systemd/system/oadm-server.service, maintainer scripts
 #   oadm-client_<version>_<arch>.deb  /opt/oadm/client/Oadm.Client (+ plugins/, license texts),
 #                                     /usr/bin/oadm-client -> /opt/oadm/client/Oadm.Client,
 #                                     /usr/share/applications/oadm.desktop, /usr/share/icons/hicolor/{256x256,512x512}/apps/oadm.png
-#   oadm_<version>_<arch>.deb         metapackage: depends on oadm-server and oadm-client of the same version
 # Each has /usr/share/doc/<package>/{copyright,TERMS.md,THIRD-PARTY-NOTICES.txt,LGPL-2.1.txt} (TERMS.md: terms of use,
 # shown before the license everywhere; Debian has no interactive acceptance).
 # Data folder /var/lib/oadm (systemd StateDirectory, 0700), created by the server's postinst too.
-# The former single package "oadm" (before 0.0.3) is replaced: oadm-server and oadm-client take over its files.
+# The former single package "oadm" (before 0.0.3) is replaced: oadm-server and oadm-client take over its files. The
+# metapackage "oadm" of 0.0.3..1.0.0 is gone (no apt repository, so it only added a third file); both packages break it,
+# so apt removes an installed one on the next upgrade.
 set -euo pipefail
 
 if [ $# -ne 5 ]; then
@@ -97,9 +98,10 @@ build_package() {
   echo "built $deb"
 }
 
-# Files of the former all-in-one package "oadm" move to oadm-server / oadm-client.
+# Files of the former all-in-one package "oadm" (< 0.0.3) move to oadm-server / oadm-client; any "oadm" (also the former
+# metapackage, which pinned both to its own version) is removed by apt on upgrade.
 TAKES_OVER="Replaces: oadm (<< 0.0.3~)
-Breaks: oadm (<< 0.0.3~)"
+Breaks: oadm"
 
 # --- oadm-server
 ROOT="$WORK/oadm-server"
@@ -132,13 +134,3 @@ build_package "$ROOT" oadm-client "$CLIENT_DEPENDS" "Description: Open AXIS Devi
  connects to an OADM server on this or another computer. Start it from the
  application menu or as oadm-client." "$TAKES_OVER" \
   opt/oadm/client/Oadm.Client
-
-# --- oadm (metapackage: server and client)
-ROOT="$WORK/oadm"
-mkdir -p "$ROOT/DEBIAN"
-write_docs "$ROOT" oadm "$SERVER_DIR"
-build_package "$ROOT" oadm "oadm-server (= $DEB_VERSION), oadm-client (= $DEB_VERSION)" "Description: Open AXIS Device Management (server and client)
- OADM manages Axis network devices: discovery, credentials, firmware, users,
- network settings and more. This metapackage installs the server
- (oadm-server) and the desktop client (oadm-client); install oadm-client
- alone for a client that connects to a server elsewhere." ""

@@ -122,15 +122,16 @@ jobs:
         if: matrix.target == 'linux'
         run: |
           ls -l artifacts/packages
-          for p in oadm oadm-server oadm-client; do
+          test -z "$(ls artifacts/packages/oadm_*.deb 2>/dev/null)" # no metapackage any more
+          for p in oadm-server oadm-client; do
             deb=$(ls artifacts/packages/${p}_*_amd64.deb)
             dpkg-deb --info "$deb"
             dpkg-deb --contents "$deb" | grep -E 'Oadm.Server$|Oadm.Client$|oadm-server.service|plugins/[^/]+/$|/doc/' || true
           done
-          dpkg-deb --field artifacts/packages/oadm_*_amd64.deb Depends | grep -q 'oadm-server (='
+          dpkg-deb --field artifacts/packages/oadm-server_*_amd64.deb Breaks | grep -qx 'oadm'
           dpkg-deb --contents artifacts/packages/oadm-server_*_amd64.deb | grep -q 'usr/share/doc/oadm-server/THIRD-PARTY-NOTICES.txt'
           dpkg-deb --contents artifacts/packages/oadm-client_*_amd64.deb | grep -q 'usr/share/doc/oadm-client/LGPL-2.1.txt'
-          for p in oadm oadm-server oadm-client; do dpkg-deb --contents artifacts/packages/${p}_*_amd64.deb | grep -q "usr/share/doc/$p/TERMS.md"; done
+          for p in oadm-server oadm-client; do dpkg-deb --contents artifacts/packages/${p}_*_amd64.deb | grep -q "usr/share/doc/$p/TERMS.md"; done
           ! dpkg-deb --contents artifacts/packages/oadm-client_*_amd64.deb | grep -q 'oadm-server.service'
 
       - name: Check .pkg choices (macOS, not installed)
@@ -225,7 +226,7 @@ jobs:
         if: matrix.target == 'linux' && matrix.smoke
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ./artifacts/packages/oadm_*_amd64.deb ./artifacts/packages/oadm-server_*_amd64.deb ./artifacts/packages/oadm-client_*_amd64.deb
+          sudo apt-get install -y ./artifacts/packages/oadm-server_*_amd64.deb ./artifacts/packages/oadm-client_*_amd64.deb
           systemctl status oadm-server --no-pager || true
           for i in $(seq 60); do (exec 3<>/dev/tcp/127.0.0.1/5080) 2>/dev/null && break; sleep 1; done
           # gRPC over HTTP/2 with TLS (self-signed server certificate, pinned by clients; the check accepts it).
@@ -241,7 +242,7 @@ jobs:
           test -s /opt/oadm/server/THIRD-PARTY-NOTICES.txt && test -s /usr/share/doc/oadm-client/THIRD-PARTY-NOTICES.txt
           ! sudo journalctl -u oadm-server --no-pager | grep -q 'could not be fixed'
           oadm-client --check-decoder
-          sudo apt-get remove -y oadm oadm-server oadm-client
+          sudo apt-get remove -y oadm-server oadm-client
           ! systemctl is-active oadm-server
           sudo test -f /var/lib/oadm/master.key
           echo "server and client: install, service, gRPC, remove ok"

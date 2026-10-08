@@ -76,9 +76,10 @@ release of the tag with the installers and `SHA256SUMS.txt`):
   `Restart=on-failure`, `OADM_DATA_DIR=/var/lib/oadm`, StateDirectory 0700, optional `/etc/default/oadm-server`),
   maintainer scripts: postinst enables and starts it like dh_installsystemd and works without systemd; prerm stops it;
   data kept even on purge), `oadm-client` (`/opt/oadm/client`, `/usr/bin/oadm-client`, `oadm.desktop` + hicolor icon,
-  X11 libraries as Depends) and the metapackage `oadm` (depends on both, same version) = "Server and client";
-  `oadm-client` alone = "Client only". Both take over the files of the former single package `oadm`
-  (`Replaces`/`Breaks: oadm (<< 0.0.3~)`). Each has `/usr/share/doc/<package>/{copyright,THIRD-PARTY-NOTICES.txt,
+  X11 libraries as Depends); both files in one `apt install` = "Server and client", `oadm-client` alone = "Client
+  only". No metapackage (user decision 2026-10-08: without an apt repository it only added a third file; the `oadm` of
+  0.0.3..1.0.0 is removed on upgrade through `Breaks: oadm`). Both take over the files of the former single package `oadm`
+  (`Replaces: oadm (<< 0.0.3~)`, `Breaks: oadm`). Each has `/usr/share/doc/<package>/{copyright,THIRD-PARTY-NOTICES.txt,
   LGPL-2.1.txt}`. Pre-release versions are written `1.2.0~rc.1`. No .rpm.
 - **macOS .pkg** (`pkgbuild` + `productbuild`, `packaging/macos/build-pkg.sh`, x64 (Intel) only, built on macOS
   only): `/Applications/OADM.app` (Info.plist, icns, license texts and plugins in `Contents/Resources`), server in
@@ -1887,7 +1888,7 @@ marked *(default)* were filled in and can be changed. This section wins over old
   `DOTNET_BUNDLE_EXTRACT_BASE_DIR` (unless inside it), an unfixable one throws; `PluginLoader.FolderCheck` skips an
   unfixable plugin folder with a load error. Only in service mode.
 - **Installer choice**: each installer offers "Server and client" (default) or "Client only": MSI features (Server
-  optional), `.deb` split into `oadm-server` and `oadm-client` (+ metapackage `oadm` depending on both), `.pkg`
+  optional), `.deb` split into `oadm-server` and `oadm-client` (no metapackage), `.pkg`
   choices. *Implemented*, details in "Packaging".
 - **Licenses**: at publish a complete notices file is generated from every NuGet package (license expression or file
   from the package) and the bundled assets (FFmpeg LGPL-2.1 full text, Inter OFL, .NET runtime notices); `LICENSE`,

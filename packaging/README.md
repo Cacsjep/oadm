@@ -16,8 +16,9 @@ Every installer offers **"Server and client"** (default) or **"Client only"**:
 - MSI: page "Choose what to install" (features `Server` and `Client`; the client is always installed). Silent:
   `msiexec /i OADM-<version>-win-x64.msi /qn` installs both, `... ADDLOCAL=Client /qn` the client only. Change in Apps
   and Features switches between the two.
-- Linux: three packages, `oadm-server`, `oadm-client` and the metapackage `oadm` (depends on both, same version):
-  `sudo apt install ./oadm_*.deb ./oadm-server_*.deb ./oadm-client_*.deb` or `sudo apt install ./oadm-client_*.deb`.
+- Linux: two packages, `oadm-server` and `oadm-client`: `sudo apt install ./oadm-server_*.deb ./oadm-client_*.deb`
+  (server and client), `sudo apt install ./oadm-server_*.deb` (server only) or `sudo apt install ./oadm-client_*.deb`
+  (client only). The metapackage `oadm` of 0.0.3..1.0.0 is gone; apt removes an installed one on the next upgrade.
   They replace the former single package `oadm` (before 0.0.3).
 - macOS: "Customize" in the installer lists "OADM client" (always) and "OADM server" (uncheck for the client only);
   `installer -applyChoiceChangesXML` with `com.oadm.choice.server` deselected does the same from the command line.
@@ -37,7 +38,7 @@ Version: `--version` (a tag `v1.2.0` gives `1.2.0`), default `0.1.0-dev`. It goe
 | Native lib extraction | `%ProgramData%\OADM\runtime` | `/var/cache/oadm` | `/Library/Application Support/OADM/runtime` |
 | Firewall | TCP 5080 for `Oadm.Server.exe`, profiles Domain and Private (MSI); the NTP / DHCP plugins add UDP 123 / 67 (Domain, Private) while enabled and remove it when disabled or stopped | not touched | not touched (application firewall asks) |
 | License texts | `TERMS.md`, `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt`, `LGPL-2.1.txt` in `Server` and `Client`; license page of the wizard = terms of use + Apache-2.0 (`License.rtf`, accepted as before) | same in `/opt/oadm/server`, `/opt/oadm/client` and `/usr/share/doc/<package>/` (no interactive acceptance on Debian) | same in the server folder and `OADM.app/Contents/Resources`; the installer's license page (`<license>`) = terms of use + Apache-2.0 |
-| Uninstall | Apps and Features / `msiexec /x`; data kept | `apt remove oadm oadm-server oadm-client` (data kept, also on purge) | `sudo "/Library/Application Support/OADM/server/uninstall-oadm.sh"` (client only: `OADM.app/Contents/Resources/uninstall-oadm.sh`); data kept |
+| Uninstall | Apps and Features / `msiexec /x`; data kept | `apt remove oadm-server oadm-client` (data kept, also on purge) | `sudo "/Library/Application Support/OADM/server/uninstall-oadm.sh"` (client only: `OADM.app/Contents/Resources/uninstall-oadm.sh`); data kept |
 
 Notes:
 - The server runs as root / LocalSystem because the NTP (UDP 123) and DHCP (UDP 67) server plugins need
