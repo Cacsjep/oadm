@@ -1,11 +1,10 @@
 # Oadm.Plugins.Acap
 
-Task plugin `oadm.acap`, context menu entry **Applications (ACAP)** in the group Applications (dialog, not in the toolbar).
-The dialog lists the applications installed on the first selected device (device picker when
-several are selected) and lets the user start, stop or remove one, or install/upgrade an `.eap`
-package. Every action is applied to all selected devices as one task. With thousands of selected devices the
-package preview reads at most 25 devices (the first device of every model and firmware first, 4 queries at
-a time); the other rows say "Checked at install" and the task checks every device before it writes.
+Task plugin `oadm.acap`: **Applications (ACAP)** in the context menu group Applications (dialog, no toolbar entry).
+The dialog lists the applications on the first selected device (device picker for several devices). The user starts,
+stops or removes one, or installs / upgrades an `.eap` package. Each action runs on all selected devices, one task per
+device. The package preview reads at most 25 devices (first the first device of every model and firmware, 4 queries at
+a time); the other rows say "Checked at install", and the task checks every device before it writes.
 
 | Part | Assembly | Contents |
 |---|---|---|
@@ -13,9 +12,9 @@ a time); the other rows say "Checked at install" and the task checks every devic
 | `plugins/Oadm.Plugins.Acap.Client` | `Oadm.Plugins.Acap.Client` | `AcapTaskDialog` (`ITaskPluginDialog`), `AcapWindow` + `AcapDialogViewModel` |
 | `tests/Oadm.Plugins.Acap.Tests` | | unit tests, fake device, headless screenshot |
 
-Both build into `artifacts/plugins/oadm.acap/`. The client part references the server assembly for
-the shared models only (both live in the same plugin folder); it never talks to devices. The SDK,
-Avalonia, DataGrid and CommunityToolkit.Mvvm are compile-only references, shared from the host.
+Both build into `artifacts/plugins/oadm.acap/`. The client part references the server assembly only for the shared
+models (same plugin folder) and never talks to devices. The SDK, Avalonia, DataGrid and CommunityToolkit.Mvvm are
+compile-only references, shared from the host.
 
 ## VAPIX research
 
@@ -32,8 +31,8 @@ Device used (read-only): AXIS P3265-V, AXIS OS 12.11.77, `aarch64`, Artpec-8.
 | `packagemanager.cgi getSupportedVersions` | `1.4` only; the API is not documented publicly (`listPackages` -> "Unknown method") |
 
 Application API (developer.axis.com/vapix/applications/application-api):
-- `upload.cgi` POST multipart, field `file`, `application/octet-stream`. Installs (or upgrades)
-  and answers `OK` or `Error: <code>` after the installation. Codes: 1 invalid package,
+- `upload.cgi` POST multipart, field `file`, `application/octet-stream`. Installs or upgrades, then answers `OK` or
+  `Error: <code>`. Codes: 1 invalid package,
   2 signature missing/invalid, 3 too large/disk full, 5 incompatible, 10 unspecified, 12 upload
   unavailable, 13 invalid user/group, 14 already exists, 15 timeout, 27 vendor mismatch on
   upgrade, 29 invalid manifest.json/package.conf. Signed packages need about 2x the file size in RAM.
@@ -78,24 +77,21 @@ Manifest schema -> minimum AXIS OS: 1.0-1.2 10.7, 1.3 10.9, 1.3.1 11.0, 1.4.0 11
 
 ## Task steps
 
-Every device request and every wait is a named task step (`AcapTaskPlugin.Steps`, planned up front);
-the task progress is derived from the steps. Steps that do not apply end Skipped with the reason.
+Every device request and every wait is a named step (`AcapTaskPlugin.Steps`, planned up front); task progress comes
+from the steps. Steps that do not apply end Skipped with the reason.
 
 | Action | Steps |
 |---|---|
-| Install / upgrade | Check compatibility, Read package, Read device info (basicdeviceinfo), Read embedded development version (param.cgi, "Not reported" when absent), Read unsigned application setting (config.cgi `AllowUnsigned`), Read installed applications, Check compatibility of package, Upload package (byte progress, then "The device installs the package"), Verify installation (Warning when the upload answer was lost but the version is listed); with "Start after install": Start application, Verify application state (Warning if not running; both Skipped when already running) |
+| Install / upgrade | Check compatibility, Read package, Read device info (basicdeviceinfo), Read SDK version (param.cgi, "Not reported" when absent), Read unsigned application setting (config.cgi `AllowUnsigned`), Read installed applications, Check package, Upload package (byte progress, then "The device installs the package"), Verify installation (Warning when the upload answer was lost but the version is listed); with "Start after install": Start application, Verify application state (Warning if not running; both Skipped when already running) |
 | Remove | Check compatibility, Read installed applications (Warning when not installed, Failed for bundled apps), Remove application, Verify removal |
 | Start / Stop | Check compatibility, Read installed applications (Warning when not installed), Start application / Stop application, Verify application state (both Skipped when already in the requested state) |
 
 ## Known SDK gaps
 
-- Resolved: `upload.cgi` answers only after the installation; the upload sets
-  `VapixRequestOptions.Timeout` to 10 minutes (`ApplicationApiClient.UploadTimeout`). A lost answer
-  is still recovered by verifying through `list.cgi`.
-- `IProgress<double>` of `ITaskDialogContext.UploadAsync` has no documented unit; the dialog
-  accepts both 0..1 and 0..100.
-- `CanRun` depends on `IDeviceInfo.Apis`; until the API list is persisted and refreshed the menu
-  entry does not appear.
-- Dialogs cannot use the shared OADM controls (`IconLabel`, `SearchBox`) yet; plain controls with
-  the theme classes are used until they move to `Oadm.Sdk.Client.Controls`.
-- No SDK way for the dialog to know the server-side task result or to refresh after the task.
+- Resolved: `upload.cgi` answers only after the installation, so the upload sets `VapixRequestOptions.Timeout` to 10
+  minutes (`ApplicationApiClient.UploadTimeout`). A lost answer is still recovered through `list.cgi`.
+- `ITaskDialogContext.UploadAsync` does not document the unit of `IProgress<double>`; the dialog accepts 0..1 and 0..100.
+- `CanRun` depends on `IDeviceInfo.Apis`: without a stored API list the menu entry does not appear.
+- Dialogs cannot use the shared controls (`IconLabel`, `SearchBox`) yet; they use plain controls with the theme classes
+  until these move to `Oadm.Sdk.Client.Controls`.
+- The dialog cannot learn the server-side task result or refresh after the task.

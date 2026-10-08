@@ -3,10 +3,10 @@
 Plugin id `oadm.hardening-scan`, rail page **Hardening scan** (icon `clipboardCheck`; `shield` already draws Lucide
 shield-check for the PKI). Server part `Oadm.Plugins.HardeningScan.Server.dll`, page `Oadm.Plugins.HardeningScan.Client.dll`.
 
-Purpose: one read-only scan of every managed device against the **AXIS OS Hardening Guide**
-(https://help.axis.com/en-us/axis-os-hardening-guide), shown as a grid with one column per check and a pass / warn / fail
-icon per device, in the guide's two levels **Basic hardening** and **Extended hardening**. Read-only for devices: only
-`param.cgi action=list`, VAPIX `get*` / `list` methods, `config/rest` GETs and the SOAP `Get*` read. Never a write.
+Scans every managed device against the **AXIS OS Hardening Guide**
+(https://help.axis.com/en-us/axis-os-hardening-guide) in its two levels, **Basic hardening** and **Extended hardening**.
+The grid has one column per check and a pass / warn / fail icon per device. Read-only: `param.cgi action=list`, VAPIX
+`get*` / `list` methods, `config/rest` GETs and the SOAP `Get*` read. Never a write.
 
 ## Decisions (user, 2026-10-08)
 
@@ -15,13 +15,12 @@ icon per device, in the guide's two levels **Basic hardening** and **Extended ha
 2. The extras **X1-X6** (HTTPS only, IEEE 802.1X, brute-force protection, access log, signed video, NTS) are columns of
    **Extended only**; Basic is exactly the guide's Basic list.
 3. **SSH on = fail**; web interface, discovery protocols and DHCP = warn.
-4. **Bonjour on = warn** like the guide; the tooltip says that OADM's Scan and the re-find of moved devices use it, so turning
-   it off is a trade-off.
+4. **Bonjour on = warn** like the guide; the tooltip says that OADM's Discovery and the re-find of moved devices use it.
 5. **No audit entry** for a scan (read-only, like the Snapshot report).
-6. **SDK change**: `IDeviceInfo` has `DhcpEnabled`, `HttpsEnabled`, `Dot1xEnabled` (DIM null), filled by the server from the
-   device table (and by the client's device rows); the scan uses them and reads the parameters only as a fallback when null.
-7. **The last results are kept** per device and level server side (plugin setting `results`), shown with their scan time
-   after a restart.
+6. **SDK change**: `IDeviceInfo` has `DhcpEnabled`, `HttpsEnabled`, `Dot1xEnabled` (DIM null), filled from the server's
+   device table and the client's device rows. The scan reads the parameters only when they are null.
+7. **The last results are kept** per device and level on the server (plugin setting `results`) and shown with their scan
+   time after a restart.
 8. **Scheduled scans later** (with the general scheduling goal); v1 scans on demand.
 
 ## Evidence (10.0.0.48, AXIS P3265-V, AXIS OS 12.11.77, read-only, 2026-10-08)
@@ -44,19 +43,19 @@ neighbors trimmed) in `tests/Oadm.Plugins.HardeningScan.Tests/Fixtures/` (`confi
 | `apidiscovery-getApiList.json` | `apidiscovery.cgi getApiList` | ntp 1.5, signed-video 1.0, application 1.0, disk-management 1.0, remote-syslog 1.2, ... |
 
 Findings that shaped the design:
-- One `param.cgi action=list` with every group answers half of the checks. A group the firmware does not have does not fail
-  the request: the answer contains `# Error: Error -1 getting param in group 'Network.Filter'` and the other groups still come
-  back, but the group right after the error line came back without the `root.` prefix (`System.WebInterfaceDisabled=no`).
-  `ParamList` accepts both forms and treats an error line as "not available".
+- One `param.cgi action=list` with every group answers half of the checks. A group the firmware lacks does not fail the
+  request: the answer has `# Error: Error -1 getting param in group 'Network.Filter'` and the other groups, but the group
+  right after the error line lacks the `root.` prefix (`System.WebInterfaceDisabled=no`). `ParamList` accepts both forms
+  and reads an error line as "not available".
 - `System.HTTPServerHeaderComments` does not exist on 12.11 (B11 is information only).
 - `config/discover` lists the REST APIs per firmware; the REST reads use it to decide "not available" instead of probing.
 
 ## Checks
 
-Every grid cell is an icon-only `ui:StatusChip` (pass green, warning amber, fail red, read error red, does not apply / info
-neutral, empty = not scanned at that level); its tooltip (made when it opens) says the state and value found, the rule, the
-guide's recommendation with the section, and a note (Bonjour). "Does not apply" = the feature or API is missing on that model
-or firmware. Info rows are not shown on the page (user decision 2026-10-08).
+Every grid cell is an icon-only `ui:StatusChip`: pass green, warning amber, fail red, read error red, does not apply / info
+neutral, empty = not scanned at that level. Its tooltip (built when it opens) gives the state and value found, the rule,
+the guide's recommendation with its section, and a note (Bonjour). "Does not apply" = the model or firmware lacks the
+feature or API. Info rows are not shown on the page (user decision 2026-10-08).
 
 ### Basic
 
@@ -110,9 +109,9 @@ of the level is Warn or Fail.
 - `Device/DeviceFactsReader.cs`: param.cgi (one call, all groups of both levels), pwdgrp get, `config/discover` once, then the
   REST GETs it lists (user-management v2, firewall v1, lldp v1; Extended: snmp v1, oidcsetup v1), `getNTPInfo` (ntp API) or
   the Time parameters, `disks/list.cgi` (disk-management API or an SD slot), applications list + AllowUnsigned (application
-  API), Extended: the SOAP web server read. 15 s per request, no retries, 2 min per device. A failed read makes only its
-  checks Error ("Timeout after 15 s", "Unauthorized - HTTP 401": the snapshot report's texts); when param.cgi cannot reach the
-  device or is refused, the other reads are skipped with the same text (row status). Readers compiled in from other plugins
+  API), Extended: the SOAP web server read. 15 s per request, no retries, 2 min per device. A failed read sets only its
+  checks to Error ("Timeout after 15 s", "Unauthorized - HTTP 401": the snapshot report's texts). When param.cgi gets no
+  answer or is refused, the other reads are skipped with the same text (row status). Readers compiled in from other plugins
   (`<Compile Include ... Link>`, never a project reference): Users `PwdgrpApi`, Date and time `Model/` + `Vapix/`, ACAP
   `ApplicationApiClient` + `Shared/`, PKI `WebServerTls` + `DeviceHttp`, Snapshot report `SnapshotRequests` (error texts and
   refused statuses). Every device XML through `DeviceXml`.
@@ -131,8 +130,8 @@ of the level is Warn or Fail.
 ## Page
 
 - `ui:PageHeader.Subtitle` "Checks every device against the AXIS OS hardening guide. Read-only." One card.
-- Toolbar: segmented **Basic** / **Extended** (switching only changes the columns and the summary; per column the newest result
-  that scanned it is shown, so an Extended scan covers Basic), **Scan all** (primary), **Scan selected (N)** (the Devices page
+- Toolbar: segmented **Basic** / **Extended** (changes only the columns and the summary; each column shows its newest result,
+  so an Extended scan covers Basic), **Scan all** (primary), **Scan selected (N)** (the Devices page
   selection), **Stop**, **Export CSV**, status filter (All devices, Failed, Warnings, Not scanned) and `ui:SearchBox`.
   `ui:ProgressRow` while scanning ("Scanning 812 of 5,000 devices (Basic)").
 - Summary: "5,000 devices · 4,812 scanned · 1,120 pass · 3,104 with warnings · 588 failed · 188 not reachable". Column header
@@ -172,9 +171,9 @@ in-process server, read-only).
 
 ## Outlook (not v1): Fix
 
-Later, contributed task plugins (group Security), each following the device-safety HARD RULE: "Disable SSH", "Disable
-discovery protocols" (warns: OADM's re-find uses Bonjour), "Disable web interface", "Set recommended HTTPS ciphers", "Set
-password policy", "Enable remote syslog over TLS", "Disable SNMP v1/v2c", "Enable RTSPS". Existing tasks already fix some: PKI
-"HTTPS: Enable" (E3, X1) and "IEEE 802.1X: Enable" (X2), Date and time / "Use OADM as NTP server" (B6), Network settings static
-IP (B5), Upgrade firmware (B2), Applications remove / stop (B8). A "Fix" action on a column would open the matching task for the
-failing devices.
+Later: contributed task plugins (group Security) under the device-safety HARD RULE: "Disable SSH", "Disable discovery
+protocols" (warns: OADM's re-find uses Bonjour), "Disable web interface", "Set recommended HTTPS ciphers", "Set password
+policy", "Enable remote syslog over TLS", "Disable SNMP v1/v2c", "Enable RTSPS". Existing tasks already fix some: PKI
+"Enable HTTPS" (E3, X1) and "Enable IEEE 802.1X" (X2), Date and time / "Use OADM as NTP server" (B6), Network settings static
+IP (B5), Upgrade firmware (B2), Applications remove / stop (B8). A "Fix" action on a column would open the matching task
+for the failing devices.
