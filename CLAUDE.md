@@ -197,7 +197,18 @@ Two processes, like ADM:
   API lists; clients do not use it), `Watch(WatchDevicesRequest)` (stream of DeviceChanged events: one
   ADDED per device, then with `snapshot_end_marker = 1` one `SNAPSHOT_END` (kind 4, no device), then live
   changes; the request is wire compatible with the former Empty), `Remove` and `SetCredentials` (one
-  transaction for all ids), `Refresh`, `GetWebUiUrl`.
+  transaction for all ids), `Refresh`, `GetWebUiUrl`, `LogIn(device_ids, user_name, password,
+  save_to_credential_list)` (the context menu's "Log in", see "Main Window"; Operator: per device
+  (`Oadm.Core.Devices.DeviceLoginService`, 8 at a time, 15 s each) the stored address, scheme and pinned certificate with the
+  new credential, authenticated `basicdeviceinfo`, the serial must be the record's; CertificateChanged devices are refused
+  without a request; the accepting devices get the credential in one transaction, their cached client dropped and a full
+  refresh queued (that sets Ok); reply `results` {device_id, ok, rejected, message: "The user name or password is
+  wrong.", "Unreachable - ...", "Another device answers at this address.", "Certificate changed - accept the new
+  certificate first"} in request order + `credential_list_note`; save to the credential list only for an Admin caller
+  and only when a device accepted it, a full list is the note "The credential list is full (20 entries); the login was
+  not saved there.", never a failed login; audit "Device login" {user name, "5 devices, 3 logged in"}; INVALID_ARGUMENT
+  without devices, user name or password), `GetCredentialUserName(DeviceIds)` (the stored user name the devices share,
+  else empty: prefill of the dialog).
 - `DiscoveryService`: `StartZeroConf`, `StartRangeScan(from, to)`, `ProbeAddress(address, user_name = 2,
   password = 3)` (one entered IP or host name, optional port/scheme; INVALID_ARGUMENT for an unusable or
   unresolvable address, or only one of user name (1..64) and password (1..256); the optional credentials of an
@@ -584,13 +595,28 @@ Layout, top to bottom:
 3. Status line: "N devices, M selected".
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
    client, horizontal scroll, multi-select, right-click context menu: the core actions (Open web
-   interface, Refresh, Remove), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
+   interface, Refresh, **Log in**, Remove), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
    by name, with a group icon: Applications app, Maintenance settings, Network network, Security key,
    Users users, Video video, others plugin; a group is a submenu even with one entry, user decision)
    holding its Task plugins whose `CanRun` is true for the whole selection, sorted by name, with their
    icons. Entries never end with "..." (the host appends none and strips "..." / "…" defensively,
    `TaskPluginNames.Normalize`). Menus and submenus are at least `Oadm.MenuMinWidth` (240) wide (theme).
    The toolbar task buttons are unchanged (no groups).
+   **Log in** (icon `key`, user decision 2026-10-08) is shown only while the selection holds a device with status
+   Credentials required (not Password not set: the add page sets first passwords) and follows the status live; it
+   applies to those devices of the selection. A rejected stored credential only shows as that status (polling), there
+   are no automatic retries. Dialog `Devices/DeviceLoginWindow` (`DeviceLoginViewModel`, single operation:
+   `Border.dialogBody`, 460 px, no card): "10.0.0.48 (P3265-V) rejects the stored credentials." / "5 devices reject the
+   stored credentials.", User name (prefilled with the stored one the devices share, `GetCredentialUserName`, else
+   "root"), Password (`ui:PasswordBox`), "Save to credential list" (checked; administrators only, hidden for
+   operators), Cancel / **Log in** (disabled with the reason as tooltip). One `DeviceService.LogIn` call for all of them
+   with the shared `ui:ProgressRow`; all accepted: the dialog closes (a credential list note then shows in the message
+   window); otherwise the accepted devices are done and leave the dialog, the result stands directly below the password
+   field: one device its reason ("The user name or password is wrong."), several "2 of 5 devices rejected it:
+   10.0.0.48, 10.0.0.49" (other reasons: "2 of 3 devices failed: 10.0.0.48 (wrong user name or password), 10.0.0.49
+   (Unreachable - ...)", at most 5 named, "+N more"). Fake mode accepts every password except "wrong" (10.0.0.23 is
+   Credentials required). Tests: `tests/Oadm.Server.Tests/DeviceLoginTests` (+ Perf 5,000 devices in one call),
+   `tests/Oadm.Client.Tests/DeviceLoginTests` (headless `client-device-login.png`, `client-device-login-failed.png`).
 5. Resizable, collapsible bottom pane **Tasks** (no tabs), one row per task (= per device).
    Columns: Name, Device (130 px), Status (widest, 5*, min 280 px: icon plus message), Current step, Start time, Owner, Progress (bar). **Current step** is
    "Step 3/6 · Upload firmware" plus " · 45 %" while the running step reports progress (tooltip: the text
@@ -1828,11 +1854,12 @@ the server address is set with `--server` or in the client settings file (user d
 - Device passwords: AES-256-GCM, key in `<datafolder>/master.key` (0600 on Unix), random
   nonce per record, stored as `nonce|ciphertext|tag`. OS keyring integration is a later goal. A missing or different
   key is replaced at startup (warn and continue, `Security.KeyCheck`, see "Production hardening" 3).
-- Device credentials never leave the server; gRPC returns only "has credentials". The credential list
+- Device credentials never leave the server; gRPC returns only "has credentials" (and, for the prefill of the "Log in"
+  dialog, the stored user name the selected devices share; never a password). The credential list
   (same AES-256-GCM, entry id as associated data) lists only ids and user names; the one exception is the
   explicit reveal of a credential list entry (`SettingsService.RevealCredential`, Credentials page eye / copy
   button; user decision 2026-10-08; Admin only and in the audit log, see "Production hardening"). Credentials the
-  technician types for a login (RetryAuth) or a first password travel
+  technician types for a login (RetryAuth, the device context menu's "Log in") or a first password travel
   only client -> server.
 - Clients log in over TLS with users and roles (see "Production hardening"); the server binds to all interfaces so a client on another
   machine can connect.
@@ -1864,7 +1891,7 @@ marked *(default)* were filled in and can be changed. This section wins over old
   version, "no users yet") and first-admin setup are open) and PERMISSION_DENIED for a missing role. `Logout` revokes.
   Failed logins: 5 per user per 5 minutes, then 5 minutes locked, logged *(default)*. Task `Owner` = authenticated user
   name + "@" + the client machine name the client sends (no longer whatever the client claims).
-- **Roles.** **Admin**: everything. **Operator**: devices (watch, add, remove, refresh, credentials of a device, web UI
+- **Roles.** **Admin**: everything. **Operator**: devices (watch, add, remove, refresh, credentials of a device, "Log in", web UI
   link), discovery, tasks (run, cancel, delete own and others; not Delete all), live view, uploads, plugin pages that do
   not change server configuration (Snapshot report, VAPIX Commander, Metadata Monitor, System report, PKI read and device
   certificate tasks). **Admin only**: `SettingsService.Set`, credential list (add, remove, reveal), users, `TaskService.DeleteAll`,
@@ -1883,8 +1910,8 @@ marked *(default)* were filled in and can be changed. This section wins over old
   reset password, disable, delete; never the last enabled admin, never yourself.
 - **Audit log.** Table `AuditEntries` (TimeUtc, UserName, ClientAddress, Action, Target, Detail; retention 365 days or
   200,000 entries *(default)*). Logged: login ok/failed, logout, user changes, settings changes, credential list
-  add/remove/reveal, PKI actions, DHCP/NTP save, task runs (plugin, device count), Delete all, device remove, VAPIX
-  Commander send / rollout. Logs page gets an **Audit** tab (Admin only, virtualized, SearchBox).
+  add/remove/reveal, PKI actions, DHCP/NTP save, task runs (plugin, device count), Delete all, device remove, device login
+  ("Log in": user name, device and success counts), VAPIX Commander send / rollout. Logs page gets an **Audit** tab (Admin only, virtualized, SearchBox).
 - **Implementation** (done 2026-10-08):
   - Server: `Oadm.Server.Auth` (`AuthInterceptor` on every call sets `Oadm.Core.Auth.CallerContext` for the call, so
     `TaskEngine.RunAsync` and core plugin task runs take the owner "user@machine" from it; `AccessPolicy` role table;
