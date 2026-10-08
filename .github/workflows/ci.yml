@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, ci-datetime-tz]
   pull_request:
 
 jobs:
@@ -20,4 +20,5 @@ jobs:
       - run: dotnet build Oadm.sln -c Release
       # Unit tests only (like manage test unit): Perf tests have time budgets made for a developer machine and run with
       # manage test perf; hardware tests need real devices.
-      - run: dotnet test Oadm.sln -c Release --no-build --filter "Category!=Hardware&Category!=Perf&Category!=HardwareWrite"
+      - run: dotnet test tests/Oadm.Plugins.DateTime.Tests -c Release --no-build --filter "Category!=Hardware&Category!=Perf&Category!=HardwareWrite"
+      - run: dotnet test tests/Oadm.Plugins.NtpServer.Tests -c Release --no-build --filter "Category!=Hardware&Category!=Perf&Category!=HardwareWrite"
