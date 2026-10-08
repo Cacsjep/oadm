@@ -9,16 +9,16 @@ toolbar button). A clone of the ADM / AXIS Camera Station **Set date and time** 
 | Client (Avalonia dialog) | `plugins/Oadm.Plugins.DateTime.Client` | `Oadm.Plugins.DateTime.Client.dll` |
 | Tests | `tests/Oadm.Plugins.DateTime.Tests` | |
 
-Both parts deploy to `artifacts/plugins/oadm.datetime/`. Root namespace `Oadm.Plugins.DateAndTime` (a namespace
-segment `DateTime` would hide `System.DateTime`). The client references the server project for the payload, the
-validation rules and the time zone list.
+Both parts deploy to `artifacts/plugins/oadm.datetime/`. Root namespace `Oadm.Plugins.DateAndTime`: a segment
+`DateTime` would hide `System.DateTime`. The client references the server project for the payload, the validation rules
+and the time zone list.
 
 ## ADM behavior (research)
 
-- The ADM user manual (https://help.axis.com/en-us/axis-device-manager) has no date and time chapter; its only time
-  related text is "Select **Set NTP servers** in the drop-down menu" in the "Configure devices > Advanced > Set
-  configuration" example. The dialog ADM and AXIS Camera Station share is documented in the **AXIS Camera Station 5**
-  manual (https://help.axis.com/en-us/axis-camera-station-5, "Set date and time"):
+- The ADM user manual (https://help.axis.com/en-us/axis-device-manager) has no date and time chapter. Its only time
+  text is "Select **Set NTP servers** in the drop-down menu" in the "Configure devices > Advanced > Set configuration"
+  example. The dialog ADM and AXIS Camera Station share is documented in the **AXIS Camera Station 5** manual
+  (https://help.axis.com/en-us/axis-camera-station-5, "Set date and time"):
   - "The date and time settings for your Axis devices can be synchronized with the server computer time, with an NTP
     server, or set manually." Right-click the device and select **Set date and time**.
   - "**Device time** lists the current date and time for your Axis device. When selecting multiple devices, Device time
@@ -29,8 +29,8 @@ validation rules and the time zone list.
   - "Time zone can be set when selecting the Synchronize with NTP server or Set manually time mode."
   - **Time mode**: "**Synchronize with server computer time**", "**Synchronize with NTP server** ... Enter the IP address,
     DNS or hostname of the NTP server", "**Set manually**". Then OK.
-- Older AXIS Camera Station manual (https://www.manualslib.com/manual/814746/Axis-Camera-Station.html?page=54): under
-  Synchronize with NTP server "**Obtain from DHCP** - use an NTP server whose IP address was discovered using DHCP" and
+- Older AXIS Camera Station manual (https://www.manualslib.com/manual/814746/Axis-Camera-Station.html?page=54), under
+  Synchronize with NTP server: "**Obtain from DHCP** - use an NTP server whose IP address was discovered using DHCP" and
   "**Use server** - manually fill in the correct IP address".
 - ACS 5 / ACS Pro "Time synchronization" page: NTP source Static / DHCP, primary and secondary NTP server, Synced
   (firmware 9.1+), and "Send alarm when the time difference between server and device is more than 2 seconds".
@@ -42,15 +42,15 @@ How OADM clones it (`DateTimeWindow`):
 
 | ADM / ACS | OADM |
 |---|---|
-| Device time (single device only) | **Device time** card for the first selected device (read-only query): device time with offset, time zone, time mode with sync state and NTP offset, server time and the difference ("device and server agree", "device is 3.2 s ahead"). With several devices the card says which device it shows. |
-| Time zone drop-down | **Time zone** card: the 313 IANA zones of AXIS OS 12.11 in a DataGrid (UTC offset, City, Time zone, DST) sorted by offset like the Windows list, `ui:SearchBox` (city, id or "UTC+05:30"). Preselected: the first device's IANA zone, or the OADM server's zone when the device has none (POSIX zone). |
+| Device time (single device only) | **Device time** card for the first selected device (read-only query): device time with offset, time zone, time mode with sync state and NTP offset, server time and the difference ("device and server agree", "device is 3.2 s ahead"). With several devices the card names the device it shows. |
+| Time zone drop-down | **Time zone** card: the 313 IANA zones of AXIS OS 12.11 in a DataGrid (UTC offset, City, Time zone, DST), sorted by offset like the Windows list, `ui:SearchBox` (city, id or "UTC+05:30"). Preselected: the first device's IANA zone, or the OADM server's zone when the device has none (POSIX zone). |
 | Automatically adjust for daylight saving time changes | Same check box. Off = the zone's standard-time POSIX rule with daylight saving off (`setPosixTimeZone enableDst=false`). |
 | Time zone only with NTP / manual | Server time mode disables the zone: the devices get the OADM server's time zone (shown). |
-| Synchronize with server computer time | NTP off, the OADM server's UTC time sent once per device when its task runs (one-shot, like ACS). |
-| Synchronize with NTP server: Obtain from DHCP / Use server | Same radio buttons; "Use servers" takes up to 5 host names or addresses, one per line; **Use NTS (Network Time Security)** when the devices support it (NTS KE servers). |
+| Synchronize with server computer time | NTP off; the OADM server's UTC time is sent once per device when its task runs (like ACS). |
+| Synchronize with NTP server: Obtain from DHCP / Use server | Same radio buttons. "Use servers" takes up to 5 host names or addresses, one per line. **Use NTS (Network Time Security)** when the devices support it (NTS KE servers). |
 | Set manually | Date + Time in the device's time zone, "Use this computer's time"; NTP off. |
-| (always writes everything) | Same, **exactly like ADM** (user decision): no "Keep unchanged"; OK writes the time zone and the selected time mode to every selected device. The time mode starts at the first device's mode (NTP if enabled, otherwise Set manually). The steps skip values a device already has ("Already ..."). |
-| OK | OK (disabled with the reason as tooltip until a time zone is chosen and every field is valid; each error directly below its input, the time zone error directly below the list). |
+| (always writes everything) | Same, **exactly like ADM** (user decision): no "Keep unchanged"; OK writes the time zone and the selected time mode to every selected device. The time mode starts at the first device's mode (NTP if enabled, else Set manually). The steps skip values a device already has ("Already ..."). |
+| OK | OK, disabled with the reason as tooltip until a time zone is chosen and every field is valid. Each error sits below its input; the time zone error below the list. |
 
 ## VAPIX research
 
@@ -58,26 +58,26 @@ How OADM clones it (`DateTimeWindow`):
   https://developer.axis.com/vapix/network-video/time-api/): `getDateTimeInfo`, `getAll` (+ IANA zone list),
   `setDateTime` (`dateTime` "YYYY-MM-DDThh:mm:ssZ", UTC), `setTimeZone` (`timeZone` IANA), `setPosixTimeZone`
   (`posixTimeZone`, `enableDst`), `resetTimeZone` (DHCP zone), `getSupportedVersions`. 1.1 added `dhcpTimeZone` /
-  `dhcpTimeZoneUtilized`. Deprecated as of AXIS OS 12.4 in favor of the device-config REST Time API, still listed on
+  `dhcpTimeZoneUtilized`. Deprecated since AXIS OS 12.4 in favor of the device-config REST Time API; still listed on
   12.11.
 - **NTP API** `ntp` (`/axis-cgi/ntp.cgi`, AXIS OS 9.10+, https://developer.axis.com/vapix/network-video/ntp-api/):
   `getNTPInfo`, `setNTPClientConfiguration` (`enabled`, `serversSource` "DHCP"/"static", `staticServers`, `NTSEnabled`,
-  `staticNTSKEServers`, `NTSKEServerCACerts`), `getSupportedVersions`. No per-version history is published; `timeOffset`
-  is in milliseconds, DHCP "falls back to static if none were obtained".
+  `staticNTSKEServers`, `NTSKEServerCACerts`), `getSupportedVersions`. No version history is published. `timeOffset` is
+  in milliseconds; DHCP "falls back to static if none were obtained".
 - **param.cgi** `Time.*` (https://developer.axis.com/vapix/network-video/system-settings/): `Time.SyncSource` (PC, NTP,
   None), `Time.ObtainFromDHCP` (NTP server from DHCP), `Time.NTP.Server` (one server), `Time.NTP.VolatileServer`
   (read-only, from DHCP), `Time.POSIXTimeZone`, `Time.DST.Enabled` (removed in AXIS OS 13.0).
-- **date.cgi** (`/axis-cgi/admin/date.cgi?action=set&year=...`): removed in AXIS OS 11.0, semantics of its time zone
-  argument unverified. **Not used**: devices without the Time API cannot take a date and time from OADM.
-- **Device-config REST** `/config/rest/time/v2` and `/config/rest/network-time-sync/v1` (listed only in
-  `/config/discover`, not in `apidiscovery.cgi`, so `CanRun` cannot see them): not used yet; the successor when
-  time.cgi disappears (AXIS OS 13). Recorded for reference in the fixtures.
+- **date.cgi** (`/axis-cgi/admin/date.cgi?action=set&year=...`): removed in AXIS OS 11.0; the meaning of its time zone
+  argument is unverified. **Not used**: devices without the Time API cannot take a date and time from OADM.
+- **Device-config REST** `/config/rest/time/v2` and `/config/rest/network-time-sync/v1`: listed only in
+  `/config/discover`, not in `apidiscovery.cgi`, so `CanRun` cannot see them. Not used yet; the successor when time.cgi
+  goes away (AXIS OS 13). Recorded in the fixtures for reference.
 
 ## What 10.0.0.48 reports (AXIS P3265-V, AXIS OS 12.11.77, read-only)
 
-- `apidiscovery`: `time-service 1.1`, `ntp 1.5`, `param-cgi 1.0`; `getSupportedVersions` lists only 1.1 / 1.5, but a
+- `apidiscovery`: `time-service 1.1`, `ntp 1.5`, `param-cgi 1.0`. `getSupportedVersions` lists only 1.1 / 1.5, but a
   request with apiVersion 1.0 is answered (as 1.1 / 1.5). apiVersion 2.0 = error 4001 "The specified version is not
-  supported", unknown method = 4000 "Method does not exist". Requests need `Content-Type: application/json`, otherwise
+  supported", unknown method = 4000 "Method does not exist". Requests need `Content-Type: application/json`, else
   2000 "Invalid request".
 - `getDateTimeInfo`: `dateTime` 2026-10-07T16:24:01Z, `localDateTime` +02:00, `maxYearSupported` 2069, a POSIX zone
   `<UTC1>-1<UTC2>-2,M3.5.0/2:00:00,M10.5.0/3:00:00` with `dstEnabled` true and **no** `timeZone` (no IANA zone set).
@@ -104,10 +104,10 @@ How OADM clones it (`DateTimeWindow`):
 | Date and time (server time, manual) | `time-service` 1.0+ | `setDateTime {dateTime: UTC}` | refused (`DeviceNotCompatibleException`), nothing changed |
 | anything | only a different major (e.g. 2.x) or nothing | none | `DeviceNotCompatibleException` at Check compatibility |
 
-`CanRun` needs status Ok/Unknown and `time-service` 1.0 or `param-cgi` 1.0 in the cached list. NTS is required from
-1.5 because that is the version verified with NTS fields (no history published). All `Require(...)` calls happen in
-the Validate step, before the first write. Like ADM the time zone and the time mode are always planned; values the
-device already has are not written ("Already Europe/Vienna", "Already set").
+`CanRun` needs status Ok/Unknown and `time-service` 1.0 or `param-cgi` 1.0 in the cached list. NTS needs 1.5, the
+version verified with NTS fields (no history is published). All `Require(...)` calls run in the Validate step, before
+the first write. Like ADM the time zone and the time mode are always planned; values the device already has are not
+written ("Already Europe/Vienna", "Already set").
 
 ## Per-device steps
 
@@ -117,54 +117,56 @@ device already has are not written ("Already Europe/Vienna", "Already set").
 4. **Validate settings**: payload rules again, the device limits (max static servers, max year, one server on
    param.cgi), NTS support, the manual time converted to UTC in the target zone (a time in the spring gap is refused),
    then the plan. Any problem fails here with "Nothing was changed".
-5. **Set time zone** (always; the server's zone in server time mode; Skipped "Already ..." when the device has it;
-   Warning when the server's zone is not an AXIS zone).
+5. **Set time zone** (always; the server's zone in server time mode). Skipped "Already ..." when the device has it;
+   Warning when the server's zone is not an AXIS zone.
 6. **Set NTP configuration** (NTP mode) or **Turn off NTP** (server time, manual); Skipped "Already set" when unchanged.
 7. **Set date and time** (server time: the server's UTC at that moment; manual: the converted UTC).
-8. **Verify time settings**: reads again; zone / POSIX / DST must match and the clock must be within 3 s of the time
-   set (+ elapsed); otherwise Warning "Check failed: ...". Skipped when neither zone nor time changed.
-9. **Verify NTP settings**: enabled, source, servers, NTS must match; detail adds "the device synchronizes within a few
-   minutes" while not yet synced. Skipped "NTP was not changed." when nothing was written there.
+8. **Verify time settings**: reads again. Zone, POSIX and DST must match and the clock must be within 3 s of the time
+   set (+ elapsed), else Warning "Check failed: ...". Skipped when neither zone nor time changed.
+9. **Verify NTP settings**: enabled, source, servers and NTS must match. While not synced yet the detail adds "the
+   device synchronizes within a few minutes". Skipped "NTP was not changed." when nothing was written there.
 
-A failing write fails its step with the device text ("setTimeZone failed (2002): Invalid time zone.") or the HTTP /
-transport mapping ("Forbidden - HTTP 403 (administrator rights are required)", "Connection refused", "Timeout: the
-device did not answer"), plus "Nothing was changed." or "Already applied: Time zone Europe/Vienna.".
+A failing write fails its step with the device text ("setTimeZone failed (2002): Invalid time zone.") or the shared
+HTTP / transport text ("Connection refused", ...), plus "Nothing was changed." or "Already applied: Time zone
+Europe/Vienna.".
 
 ## Payload and task names
 
-`DateTimePayload` (camelCase JSON), no optional sections: `timeZone` (IANA, required except in server time mode, where
-the OADM server's zone is used), `daylightSaving` (default true), `mode` (`Ntp`, `ServerTime`, `Manual`; required, a
-payload without it is refused), `ntp` {`source` Dhcp/Static, `servers`, `nts`}, `manualDateTime` ("yyyy-MM-ddTHH:mm:ss",
-device local time), `timeZoneUnchanged` (name hint from the dialog: one device whose zone and DST stay as they are).
-No secrets. `GetTaskName(payloadJson)` on the plugin class gives the exact task name: "Change date and time", or the
+`DateTimePayload` (camelCase JSON), no optional sections:
+- `timeZone`: IANA, required except in server time mode (the OADM server's zone is used);
+- `daylightSaving`: default true;
+- `mode`: `Ntp`, `ServerTime`, `Manual`; required, a payload without it is refused;
+- `ntp`: {`source` Dhcp/Static, `servers`, `nts`};
+- `manualDateTime`: "yyyy-MM-ddTHH:mm:ss", device local time;
+- `timeZoneUnchanged`: name hint from the dialog (one device whose zone and DST stay as they are).
+
+No secrets. `GetTaskName(payloadJson)` (`ITaskPlugin.GetTaskName`) gives the task name: "Change date and time", or the
 most specific name when only the time mode differs from the device (`timeZoneUnchanged`): "Set NTP servers 10.0.0.17,
 pool.ntp.org" ("a, b, c +2"), "Set NTP servers from DHCP", "Set NTS KE servers ...", "Set date and time 2026-10-07
-18:00"; "Sync with server time" in server time mode. It has the signature of the optional SDK hook
-`ITaskPlugin.GetTaskName(string? payloadJson)` that is being added in parallel; once that hook is on the interface the
-method implements it without changes.
+18:00"; "Sync with server time" in server time mode.
 
 ## Query
 
 `getTimeSettings` (read-only, `ITaskPluginQuery`): `CurrentTimeSettings` of the device (getDateTimeInfo + getNTPInfo or
-param.cgi) plus `serverUtc`, `serverTimeZone` (IANA id of the OADM server's zone, null when AXIS devices do not know
-it) and `serverTimeZoneName`.
+param.cgi) plus `serverUtc`, `serverTimeZone` (IANA id of the OADM server's zone; null when Axis devices do not know it)
+and `serverTimeZoneName`.
 
 ## Time zones
 
 `Model/TimeZones.txt` = the device's 313 IANA ids. Labels and offsets come from the OS time zone database
-(`TimeZoneInfo`, IANA ids on Windows through ICU). Old ICU data (Windows 10 1809) lacks a few new ids; same-rules
-aliases cover them (Europe/Kyiv -> Europe/Kiev, Pacific/Kanton -> Pacific/Enderbury, America/Ciudad_Juarez ->
+(`TimeZoneInfo`; IANA ids on Windows through ICU). Old ICU data (Windows 10 1809) lacks a few new ids; aliases with the
+same rules cover them (Europe/Kyiv -> Europe/Kiev, Pacific/Kanton -> Pacific/Enderbury, America/Ciudad_Juarez ->
 America/Denver, America/Coyhaique -> America/Punta_Arenas, Asia/Urumqi -> Asia/Dhaka, Antarctica/Vostok ->
 Asia/Tashkent; Windows Server 2025 lacks Vostok and Troll). A zone the OS does not know at all (Antarctica/Troll) stays
-in the list without an offset ("Troll - Antarctica/Troll", offset column "Unknown", sorted last, no daylight saving
-option): devices with the Time API get it by IANA id and apply their own rules; a POSIX string (daylight saving off,
-legacy firmware) cannot be built and the task fails "... not known to this server ... Nothing was changed.".
+in the list without an offset: "Troll - Antarctica/Troll", offset column "Unknown", sorted last, no daylight saving
+option. Devices with the Time API get it by IANA id and apply their own rules. A POSIX string (daylight saving off,
+legacy firmware) cannot be built, so the task fails "... not known to this server ... Nothing was changed.".
 
-Standard offset, "observes daylight saving" and the POSIX rule are read from the instants at which the OS changes the
+Standard offset, "observes daylight saving" and the POSIX rule come from the instants at which the OS changes the
 offset in the current year (`ZoneYear`: day-by-day scan, each change pinned to the second), not from
-`TimeZoneInfo.AdjustmentRule`s: Windows describes floating rules, Linux and macOS build one fixed-date rule per year from
-tzdata (with end times like 1:59:59.999) and keep history (Asia/Kolkata's 1940s daylight saving), so only the instants
-are the same on every OS. Each transition becomes `Mm.w.d/time` in the local time in force before it (start in standard,
-end in daylight saving time); a fourth weekday that is also the last one of the month is "last" (week 5) unless the next
-six years match "fourth" more often. POSIX strings use the device's own style: Europe/Vienna =
+`TimeZoneInfo.AdjustmentRule`s. Windows describes floating rules; Linux and macOS build one fixed-date rule per year
+from tzdata (with end times like 1:59:59.999) and keep history (Asia/Kolkata's 1940s daylight saving). Only the
+instants agree on every OS. Each transition becomes `Mm.w.d/time` in the local time in force before it (start in
+standard, end in daylight saving time). A fourth weekday that is also the last of the month is "last" (week 5) unless
+the next six years match "fourth" more often. POSIX strings follow the device's style: Europe/Vienna =
 `<UTC1>-1<UTC2>-2,M3.5.0/2:00:00,M10.5.0/3:00:00` (exactly what 10.0.0.48 reports), Asia/Kolkata = `<UTC530>-5:30`.
