@@ -1201,7 +1201,8 @@ JSON schema: `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md` + `c
   SearchBox; compatibility summary "4,812 compatible · 188 not compatible · 12 not checked"; per device
   a check box and one status chip: "Compatible" or the first problem "<command>: Missing API x (+N
   more)", tooltip = every command). The run controls are docked at the bottom of this card (no separate
-  Run bar card): status chip of the last action (+ "Show tasks" opens the Devices page), summary "3
+  Run bar card): status chip of the last action only for errors (a started rollout shows no message: its tasks appear
+  in the Tasks pane below the page, user decision 2026-10-08), summary "3
   commands × 2 devices · 1 write", **Stop on first error** (default on), **Run on N devices**: a
   confirmation lists every command with its kind, incompatible devices and the stop mode when a command
   writes; dangerous commands need a second explicit confirmation.

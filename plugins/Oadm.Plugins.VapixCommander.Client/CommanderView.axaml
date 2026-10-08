@@ -366,10 +366,8 @@
 
         <Border Grid.Row="5" Classes="separator" />
         <StackPanel Grid.Row="6" Spacing="10">
-          <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding HasStatus}">
-            <ui:StatusChip Text="{Binding Status}" IsOk="{Binding IsStatusOk}" IsError="{Binding IsStatusError}" ToolTip.Tip="{Binding Status}" MaxWidth="300" />
-            <Button Classes="link" Content="Show tasks" Command="{Binding ShowTasksCommand}" IsVisible="{Binding CanShowTasks}" />
-          </StackPanel>
+          <ui:StatusChip Text="{Binding Status}" IsOk="{Binding IsStatusOk}" IsError="{Binding IsStatusError}" ToolTip.Tip="{Binding Status}" MaxWidth="300"
+                         HorizontalAlignment="Left" IsVisible="{Binding HasStatus}" />
           <TextBlock Classes="secondary" Text="{Binding RunSummary}" TextWrapping="Wrap" />
           <CheckBox Content="Stop on first error" IsChecked="{Binding StopOnFirstError}"
                     ToolTip.Tip="The first failure stops the whole rollout: the failing device skips its remaining commands, devices not started yet are cancelled, running devices stop after their current command." />

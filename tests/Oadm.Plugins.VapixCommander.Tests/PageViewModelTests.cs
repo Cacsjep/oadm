@@ -325,9 +325,7 @@ public sealed class PageViewModelTests
         Assert.Contains("\"stopOnFirstError\":false", run.Payload!, StringComparison.Ordinal);
         Assert.Contains("\"level\":\"65\"", run.Payload!, StringComparison.Ordinal);
         Assert.False(vm.IsStatusError);
-        Assert.StartsWith("Started 1 task", vm.Status, StringComparison.Ordinal);
-        await vm.ShowTasksCommand.ExecuteAsync(null);
-        Assert.Equal([HostPages.Devices], page.Client.Opened);
+        Assert.False(vm.HasStatus); // no message on success: the tasks show up in the Tasks pane below the page
     }
 
     [Fact]

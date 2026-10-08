@@ -205,9 +205,6 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
 
     public bool HasStatus => Status is not null;
 
-    [ObservableProperty]
-    public partial bool CanShowTasks { get; private set; }
-
     // ================================================================ loading
 
     /// <summary>Loads library and saved commands. Errors are shown in the status line.</summary>
@@ -871,10 +868,8 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
                 return;
             }
 
-            SetStatus(
-                string.Create(CultureInfo.InvariantCulture, $"Started {reply.TaskIds.Count} {(reply.TaskIds.Count == 1 ? "task" : "tasks")}: progress and results in the Tasks pane of the Devices page."),
-                error: false);
-            CanShowTasks = true;
+            // No message on success: the tasks appear in the Tasks pane below the page right away.
+            ClearStatus();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -887,9 +882,6 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
     }
 
     private bool CanRun() => !IsBusy;
-
-    [RelayCommand]
-    private Task ShowTasksAsync() => _host.OpenAsync(HostPages.Devices);
 
     /// <summary>The confirmation summary: N commands × M devices, then every command with its kind.</summary>
     public string ConfirmationText(IReadOnlyList<TargetDeviceViewModel> targets)
@@ -925,6 +917,12 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         Status = text;
         IsStatusError = error;
         IsStatusOk = !error;
-        CanShowTasks = false;
+    }
+
+    private void ClearStatus()
+    {
+        Status = null;
+        IsStatusError = false;
+        IsStatusOk = false;
     }
 }
