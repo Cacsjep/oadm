@@ -82,7 +82,7 @@ public sealed partial class AboutViewModel : ObservableObject
         }
     }
 
-    public const string LicenseText = "OADM is open source software under the Apache License 2.0. It contains third-party software under its own licenses, listed below.";
+    public const string LicenseText = "Copyright 2026 The OADM contributors. OADM is open source software under the Apache License 2.0. It contains third-party software under its own licenses, listed below.";
 
     /// <summary>Title of the terms of use (first line of TERMS.md).</summary>
     public string TermsTitle { get; } = Terms.Title;

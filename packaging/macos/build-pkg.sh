@@ -8,7 +8,7 @@
 # both, the default; "Client only" = the server choice unchecked, or installer -applyChoiceChangesXML):
 #   choice com.oadm.choice.client (always)
 #     com.oadm.pkg.client   /Applications/OADM.app (Contents/MacOS/Oadm.Client, Resources/plugins/, OADM.icns,
-#                           TERMS.md, LICENSE.txt, THIRD-PARTY-NOTICES.txt, LGPL-2.1.txt, uninstall-oadm.sh)
+#                           TERMS.md, LICENSE.txt, NOTICE.txt, THIRD-PARTY-NOTICES.txt, LGPL-2.1.txt, uninstall-oadm.sh)
 # The installer's license page shows TERMS.md followed by LICENSE (productbuild --resources, <license>).
 #   choice com.oadm.choice.server
 #     com.oadm.pkg.launchd  /Library/LaunchDaemons/com.oadm.server.plist
@@ -60,7 +60,7 @@ if [ -d "$APP/Contents/MacOS/plugins" ]; then
   mv "$APP/Contents/MacOS/plugins" "$APP/Contents/Resources/plugins"
 fi
 # License texts are resources, not code (the client's About page also looks in Contents/Resources).
-for f in LICENSE.txt THIRD-PARTY-NOTICES.txt LGPL-2.1.txt TERMS.md; do
+for f in LICENSE.txt NOTICE.txt THIRD-PARTY-NOTICES.txt LGPL-2.1.txt TERMS.md; do
   if [ -f "$APP/Contents/MacOS/$f" ]; then mv "$APP/Contents/MacOS/$f" "$APP/Contents/Resources/$f"; fi
 done
 cp "$HERE/uninstall-oadm.sh" "$APP/Contents/Resources/uninstall-oadm.sh"

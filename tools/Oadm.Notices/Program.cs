@@ -2,7 +2,7 @@ using System.Text.Json;
 
 using Oadm.Notices;
 
-// Writes THIRD-PARTY-NOTICES.txt, LICENSE.txt, LGPL-2.1.txt and TERMS.md (terms of use) into every --out folder (run by "manage publish").
+// Writes THIRD-PARTY-NOTICES.txt, LICENSE.txt, NOTICE.txt (copyright), LGPL-2.1.txt and TERMS.md (terms of use) into every --out folder (run by "manage publish").
 //
 //   Oadm.Notices --rid win-x64 --version 1.2.0 --app src/Oadm.Server --app src/Oadm.Client
 //                --plugins artifacts/publish/plugins --out <server publish folder> --out <client publish folder>
@@ -76,12 +76,14 @@ foreach (var warning in result.Warnings)
 
 var license = PackageReader.Normalize(File.ReadAllText(Path.Combine(options.Repo, "LICENSE")));
 var terms = PackageReader.Normalize(File.ReadAllText(Path.Combine(options.Repo, "TERMS.md")));
+var notice = PackageReader.Normalize(File.ReadAllText(Path.Combine(options.Repo, "NOTICE")));
 var lgpl = templates.Get("LGPL-2.1") ?? throw new InvalidOperationException("packaging/notices/licenses/LGPL-2.1.txt missing");
 foreach (var output in options.Outputs)
 {
     Directory.CreateDirectory(output);
     File.WriteAllText(Path.Combine(output, NoticesWriter.FileName), result.Text);
     File.WriteAllText(Path.Combine(output, "LICENSE.txt"), license);
+    File.WriteAllText(Path.Combine(output, "NOTICE.txt"), notice);
     File.WriteAllText(Path.Combine(output, "LGPL-2.1.txt"), lgpl);
     File.WriteAllText(Path.Combine(output, "TERMS.md"), terms);
     Console.WriteLine($"notices: {result.PackageCount} packages, {result.Text.Length / 1024} KB -> {Path.Combine(output, NoticesWriter.FileName)}");

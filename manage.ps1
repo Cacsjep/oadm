@@ -397,7 +397,7 @@ function Invoke-Test {
     Invoke-Dotnet (@('test', $Solution, '-c', $script:Configuration, '--filter', $filter) + $script:Extra)
 }
 
-# THIRD-PARTY-NOTICES.txt (every published NuGet package, license texts), LICENSE.txt and LGPL-2.1.txt next to each
+# THIRD-PARTY-NOTICES.txt (every published NuGet package, license texts), LICENSE.txt, NOTICE.txt and LGPL-2.1.txt next to each
 # published exe (tools/Oadm.Notices; reads the deps.json files the publish wrote).
 function Write-Notices([string[]]$Apps, [string[]]$Outs) {
     $a = @('run', '--project', (Join-Path $RepoRoot 'tools/Oadm.Notices/Oadm.Notices.csproj'), '-c', 'Release', '--',

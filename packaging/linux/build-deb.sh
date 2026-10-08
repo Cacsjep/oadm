@@ -58,7 +58,7 @@ write_docs() {
     echo "Source: Open AXIS Device Management"
     echo
     echo "Files: *"
-    echo "Copyright: OADM contributors"
+    echo "Copyright: 2026 The OADM contributors"
     echo "License: Apache-2.0"
     echo " Terms of use (no warranty, use at your own risk, not affiliated with Axis):"
     echo " /usr/share/doc/$package/TERMS.md."
@@ -67,7 +67,7 @@ write_docs() {
     echo " ."
     tr -d '\r' < "$REPO_ROOT/LICENSE" | sed -e 's/^$/./' -e 's/^/ /'
   } > "$doc/copyright"
-  cp "$from/TERMS.md" "$from/THIRD-PARTY-NOTICES.txt" "$from/LGPL-2.1.txt" "$doc/"
+  cp "$from/TERMS.md" "$from/NOTICE.txt" "$from/THIRD-PARTY-NOTICES.txt" "$from/LGPL-2.1.txt" "$doc/"
 }
 
 # Permissions (directories 0755, files 0644, the given executables 0755), Installed-Size, control file, build.

@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           for app in server client; do
-            for f in TERMS.md LICENSE.txt THIRD-PARTY-NOTICES.txt LGPL-2.1.txt; do
+            for f in TERMS.md LICENSE.txt NOTICE.txt THIRD-PARTY-NOTICES.txt LGPL-2.1.txt; do
               test -s "artifacts/publish/$app/${{ matrix.rid }}/$f" || { echo "$app: $f missing"; exit 1; }
             done
           done
@@ -183,7 +183,7 @@ jobs:
           foreach ($f in 'oadm.db', 'master.key') { if (-not (Test-Path "C:\ProgramData\OADM\$f")) { throw "$f missing" } }
           foreach ($app in 'Server', 'Client') {
             if (-not (Test-Path "C:\Program Files\OADM\$app\plugins\oadm.restart")) { throw "$app plugins missing" }
-            foreach ($f in 'TERMS.md', 'LICENSE.txt', 'THIRD-PARTY-NOTICES.txt', 'LGPL-2.1.txt') { if (-not (Test-Path "C:\Program Files\OADM\$app\$f")) { throw "$app $f missing" } }
+            foreach ($f in 'TERMS.md', 'LICENSE.txt', 'NOTICE.txt', 'THIRD-PARTY-NOTICES.txt', 'LGPL-2.1.txt') { if (-not (Test-Path "C:\Program Files\OADM\$app\$f")) { throw "$app $f missing" } }
           }
           (Get-Acl C:\ProgramData\OADM).Access | Format-Table IdentityReference, FileSystemRights -AutoSize
           # Only TCP 5080 for Domain and Private; the NTP and DHCP plugins add their UDP rules only while enabled.

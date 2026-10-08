@@ -11,7 +11,7 @@
     %ProgramData%\OADM is created with access for SYSTEM and Administrators only and is never removed (database,
     master key, logs survive uninstall and upgrades).
   - Feature Client (always): Program Files\OADM\Client: Oadm.Client.exe + plugins\, Start menu shortcut "OADM".
-  - Both folders carry LICENSE.txt, THIRD-PARTY-NOTICES.txt and LGPL-2.1.txt (written by manage publish).
+  - Both folders carry LICENSE.txt, NOTICE.txt, THIRD-PARTY-NOTICES.txt and LGPL-2.1.txt (written by manage publish).
   - Every file below the published folders is harvested at build time (Files), so plugins added later are
     picked up without editing this file.
 -->

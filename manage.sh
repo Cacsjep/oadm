@@ -371,7 +371,7 @@ cmd_test() {
   "$DOTNET" test "$SOLUTION" -c "$CONFIGURATION" --filter "$filter" ${EXTRA[@]+"${EXTRA[@]}"}
 }
 
-# THIRD-PARTY-NOTICES.txt (every published NuGet package, license texts), LICENSE.txt and LGPL-2.1.txt next to each
+# THIRD-PARTY-NOTICES.txt (every published NuGet package, license texts), LICENSE.txt, NOTICE.txt and LGPL-2.1.txt next to each
 # published exe (tools/Oadm.Notices; reads the deps.json files the publish wrote). Arguments: --app/--out pairs.
 write_notices() {
   "$DOTNET" run --project "$REPO_ROOT/tools/Oadm.Notices/Oadm.Notices.csproj" -c Release --     --repo "$REPO_ROOT" --rid "$RID" --version "$(app_version)" --plugins "$PLUGIN_STAGE" "$@"
