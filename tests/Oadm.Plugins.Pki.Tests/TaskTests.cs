@@ -12,7 +12,7 @@ using Oadm.Tests.Shared;
 
 namespace Oadm.Plugins.Pki.Tests;
 
-/// <summary>Parsers and request bodies against the recorded 10.0.0.48 answers (docs/specs/pki-research).</summary>
+/// <summary>Parsers and request bodies against the recorded 10.0.0.48 answers (tests/Oadm.Plugins.Pki.Tests/Fixtures).</summary>
 public sealed class DeviceApiTests
 {
     [Fact]

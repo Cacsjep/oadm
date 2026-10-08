@@ -22,7 +22,7 @@
 
   <ItemGroup>
     <!-- Recorded read-only answers of 10.0.0.48 (AXIS OS 12.11) from the PKI research, plus the time-service answer. -->
-    <None Include="..\..\docs\specs\pki-research\*.json;..\..\docs\specs\pki-research\*.xml;..\..\docs\specs\pki-research\*.txt" Link="Fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fixtures\*.json;Fixtures\*.xml;Fixtures\*.txt" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\Oadm.Plugins.DateTime.Tests\Fixtures\time-service-getDateTimeInfo-P3265-V-12.11.json" Link="Fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- Runs plugins against a step list the way the task engine does. -->
     <Compile Include="..\Shared\StepRun.cs" Link="Shared\StepRun.cs" />

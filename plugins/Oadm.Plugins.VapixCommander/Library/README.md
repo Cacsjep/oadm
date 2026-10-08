@@ -2,7 +2,7 @@
 
 The battery-included commands of the VAPIX Commander plugin. One file per category,
 `<Category>.json` = `{ "formatVersion": 1, "category": "...", "commands": [ ... ] }`, in the format
-of `docs/vapix-commander/command-format.md`, validated against `docs/vapix-commander/command.schema.json`.
+of `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md`, validated against `plugins/Oadm.Plugins.VapixCommander/Schema/command.schema.json`.
 `I/O` lives in `IO.json` because `/` cannot be part of a file name.
 
 161 commands: 58 readers (`writes: false`) and 103 setters/actions (`writes: true`, 17 of them `dangerous`).

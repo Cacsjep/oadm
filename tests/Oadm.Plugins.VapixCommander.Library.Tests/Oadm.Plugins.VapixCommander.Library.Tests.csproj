@@ -2,7 +2,7 @@
 
   <!--
     Validates the battery-included VAPIX Commander command library (plugins/Oadm.Plugins.VapixCommander/Library)
-    against docs/vapix-commander/command.schema.json and the format rules in command-format.md.
+    against plugins/Oadm.Plugins.VapixCommander/Schema/command.schema.json and the format rules in command-format.md.
     Deliberately has no reference to the commander plugin projects: the library is pure data.
   -->
   <PropertyGroup>
@@ -27,7 +27,7 @@
 
   <ItemGroup>
     <None Include="..\..\plugins\Oadm.Plugins.VapixCommander\Library\*.json" Link="Library\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\docs\vapix-commander\command.schema.json" Link="Schema\command.schema.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\plugins\Oadm.Plugins.VapixCommander\Schema\command.schema.json" Link="Schema\command.schema.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

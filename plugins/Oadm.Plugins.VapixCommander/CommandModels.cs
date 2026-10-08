@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 namespace Oadm.Plugins.VapixCommander;
 
 /// <summary>
-/// One VAPIX Commander command, format v1 (docs/vapix-commander/command-format.md, command.schema.json).
+/// One VAPIX Commander command, format v1 (plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md, command.schema.json).
 /// Library files and saved commands use the same shape.
 /// </summary>
 public sealed class CommandDefinition

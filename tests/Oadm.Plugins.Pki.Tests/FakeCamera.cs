@@ -16,7 +16,7 @@ using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.Pki.Tests;
 
-/// <summary>The recorded read-only answers of 10.0.0.48 (AXIS P3265-V, AXIS OS 12.11.77), linked from docs/specs/pki-research.</summary>
+/// <summary>The recorded read-only answers of 10.0.0.48 (AXIS P3265-V, AXIS OS 12.11.77), linked from tests/Oadm.Plugins.Pki.Tests/Fixtures.</summary>
 internal static class PkiFixture
 {
     public static string Read(string name) => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", name));

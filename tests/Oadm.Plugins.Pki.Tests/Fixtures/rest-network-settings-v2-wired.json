@@ -1,0 +1,49 @@
+{
+  "status": "success",
+  "data": {
+    "auth": {
+      "configs": {
+        "eapTls": {
+          "caCerts": [],
+          "clientCertId": "Axis device ID ECC-P256 (802.1AR)",
+          "eapolVersion": 3,
+          "identity": "48"
+        },
+        "macsecPsk": {
+          "ckn": null
+        },
+        "mschapv2": {
+          "caCerts": [],
+          "eapolVersion": 3,
+          "identity": null,
+          "peap": {
+            "label": "CLIENT_EAP_ENCRYPTION",
+            "version": 1
+          }
+        }
+      },
+      "macsecStatus": "STOPPED",
+      "mode": "EAP_TLS",
+      "status": "STOPPED"
+    },
+    "ipConfigId": "2",
+    "linkMode": "100FD",
+    "lowerState": "UP",
+    "macAddress": "b8:a4:4f:63:13:39",
+    "managesSfp": false,
+    "maxMtu": 1500,
+    "maxNumberOfVlans": 1,
+    "minMtu": 68,
+    "mtu": 1500,
+    "staticLinkMode": "AUTO",
+    "staticMtu": 1500,
+    "supportedLinkModes": [
+      "AUTO",
+      "10HD",
+      "10FD",
+      "100HD",
+      "100FD"
+    ],
+    "vlans": []
+  }
+}

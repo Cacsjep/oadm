@@ -1041,7 +1041,7 @@ Read-only for devices (param.cgi reads and image.cgi snapshots).
 `plugins/Oadm.Plugins.VapixCommander` (+ `.Client`), id `oadm.vapix-commander`, rail page **VAPIX
 Commander** (icon `command`). A technician picks one or more VAPIX commands, fills their fields and rolls
 them out to any number of devices, or sends one now to one device (Postman-like). Command format v1 and
-JSON schema: `docs/vapix-commander/command-format.md` + `command.schema.json` (the contract; category
+JSON schema: `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md` + `command.schema.json` (the contract; category
 `Custom` for saved commands, optional `response.errorPattern`).
 
 - Library: every `Library/*.json` next to the plugin assembly (`ICorePluginContext.PluginDirectory`,
@@ -1300,7 +1300,7 @@ Own RFC 2131 / 2132 implementation, IPv4 only, one interface, no relay agents (r
 ## PKI plugin (core plugin)
 
 `plugins/Oadm.Plugins.Pki` (+ `.Client`), id `oadm.pki`, rail page **PKI** (icon `key`). Spec and decisions:
-`docs/specs/pki.md`, device API research `docs/specs/pki-research/`. Part 1: the CA, its page and the server's trust;
+`docs/specs/pki.md`, device API research `tests/Oadm.Plugins.Pki.Tests/Fixtures/`. Part 1: the CA, its page and the server's trust;
 part 2: the contributed Security tasks (below), the only writers of the `issued` registry.
 - CA store (plugin settings): `ca` (id = SHA-256 of the certificate, source generated/imported, certificate and chain PEM,
   key as PKCS#8 PEM encrypted with `ICorePluginContext.Secrets`, purpose `pki:ca:<id>`), `previousCas` (public parts, at
@@ -1430,7 +1430,7 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   Certificate expires column (OADM certificates already rate **Trusted** through the trust anchors). Task names do not
   distinguish Enable from Update or one renewed purpose (the name is fixed per run, before the device is read).
 - Tests (`tests/Oadm.Plugins.Pki.Tests`): parsers and request bodies against the recorded 10.0.0.48 answers (linked from
-  `docs/specs/pki-research`), every task against `FakeCamera` (stateful REST cert v1 with real keys and CSRs, SOAP web
+  `tests/Oadm.Plugins.Pki.Tests/Fixtures`), every task against `FakeCamera` (stateful REST cert v1 with real keys and CSRs, SOAP web
   server, network_settings.cgi, time.cgi) incl. compatibility failures with no writes, clock, chain, cleanup, renew,
   delete refusals, manual install; registry batching; dialog view models (5,000 devices: unit check plus a Perf test with
   190,000 certificates); headless screenshots `pki-view-certificates.png`, `pki-delete-certificates.png`,

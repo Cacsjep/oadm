@@ -19,7 +19,7 @@
 
   <ItemGroup>
     <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
-    <!-- Battery-included command library: every Library/*.json is loaded at start (format: docs/vapix-commander). -->
+    <!-- Battery-included command library: every Library/*.json is loaded at start (format: plugins/Oadm.Plugins.VapixCommander/Schema). -->
     <None Update="Library\*.json" CopyToOutputDirectory="PreserveNewest" />
     <InternalsVisibleTo Include="Oadm.Plugins.VapixCommander.Tests" />
     <InternalsVisibleTo Include="Oadm.Plugins.VapixCommander.Client" />

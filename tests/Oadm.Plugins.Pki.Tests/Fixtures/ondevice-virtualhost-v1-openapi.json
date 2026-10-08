@@ -1,0 +1,2020 @@
+{
+  "components": {
+    "parameters": {
+      "importType": {
+        "description": "This option determines how the import should be handled",
+        "in": "query",
+        "name": "importType",
+        "schema": {
+          "enum": [
+            "merge",
+            "default"
+          ],
+          "type": "string"
+        }
+      },
+      "recursive": {
+        "description": "This option determines if the sub-entities shall be fetched recursively",
+        "in": "query",
+        "name": "recursive",
+        "schema": {
+          "type": "boolean"
+        }
+      },
+      "strict": {
+        "description": "This option determines if additional properties are allowed",
+        "in": "query",
+        "name": "strict",
+        "schema": {
+          "type": "boolean"
+        }
+      },
+      "traceId": {
+        "description": "This options sets the traceparent used for tracing request",
+        "in": "header",
+        "name": "traceparent",
+        "schema": {
+          "pattern": "^00-([0-9a-fA-F]{32})-([0-9a-fA-F]{16})-([0-9a-fA-F]{2})$",
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "properties": {
+                "information": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "warnings": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            }
+          }
+        },
+        "description": "OK"
+      },
+      "201": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "properties": {
+                "information": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "warnings": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            }
+          }
+        },
+        "description": "Created"
+      },
+      "400": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          },
+          "text/html": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "description": "Bad Request"
+      },
+      "401": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          },
+          "text/html": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "description": "Unauthorized"
+      },
+      "404": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "Not Found"
+      },
+      "409": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "Conflict"
+      },
+      "413": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "Payload Too Large"
+      },
+      "414": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/error"
+            }
+          }
+        },
+        "description": "URI Too Long"
+      }
+    },
+    "schemas": {
+      "datatype.auth_type": {
+        "maxLength": 32,
+        "minLength": 1,
+        "pattern": "^(basic|digest|oidc|oauth-ccgrant)$",
+        "type": "string"
+      },
+      "datatype.auth_type_default": {
+        "maxLength": 32,
+        "minLength": 1,
+        "pattern": "^(basic|digest)$",
+        "type": "string"
+      },
+      "datatype.boolean_type": {
+        "type": "boolean"
+      },
+      "datatype.create_virtualhost_input": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "$ref": "#/components/schemas/datatype.boolean_type"
+          },
+          "auth_type": {
+            "$ref": "#/components/schemas/datatype.auth_type"
+          },
+          "port": {
+            "$ref": "#/components/schemas/datatype.port_type"
+          },
+          "secure": {
+            "$ref": "#/components/schemas/datatype.boolean_type"
+          },
+          "server_name": {
+            "$ref": "#/components/schemas/datatype.server_name_type"
+          }
+        },
+        "required": [
+          "active",
+          "auth_type",
+          "port",
+          "secure",
+          "server_name"
+        ],
+        "type": "object"
+      },
+      "datatype.create_virtualhost_input-set": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "$ref": "#/components/schemas/datatype.boolean_type"
+          },
+          "auth_type": {
+            "$ref": "#/components/schemas/datatype.auth_type"
+          },
+          "port": {
+            "$ref": "#/components/schemas/datatype.port_type"
+          },
+          "secure": {
+            "$ref": "#/components/schemas/datatype.boolean_type"
+          },
+          "server_name": {
+            "$ref": "#/components/schemas/datatype.server_name_type"
+          }
+        },
+        "type": "object"
+      },
+      "datatype.port_type": {
+        "maximum": 65535,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "datatype.server_name_type": {
+        "maxLength": 64,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9-.]+$",
+        "type": "string"
+      },
+      "error": {
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "virtualhost.v1": {
+        "additionalProperties": false,
+        "properties": {
+          "defaulthosts": {
+            "$ref": "#/components/schemas/virtualhost.v1.defaulthosts"
+          },
+          "virtualhosts": {
+            "$ref": "#/components/schemas/virtualhost.v1.virtualhosts"
+          }
+        },
+        "type": "object"
+      },
+      "virtualhost.v1.defaulthosts": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "active": {
+              "$ref": "#/components/schemas/datatype.boolean_type"
+            },
+            "auth_type": {
+              "$ref": "#/components/schemas/datatype.auth_type_default"
+            },
+            "port": {
+              "$ref": "#/components/schemas/datatype.port_type"
+            },
+            "secure": {
+              "$ref": "#/components/schemas/datatype.boolean_type"
+            },
+            "server_name": {
+              "$ref": "#/components/schemas/datatype.server_name_type"
+            }
+          },
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "virtualhost.v1.defaulthosts-item": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "$ref": "#/components/schemas/datatype.boolean_type"
+          },
+          "auth_type": {
+            "$ref": "#/components/schemas/datatype.auth_type_default"
+          },
+          "port": {
+            "$ref": "#/components/schemas/datatype.port_type"
+          },
+          "secure": {
+            "$ref": "#/components/schemas/datatype.boolean_type"
+          },
+          "server_name": {
+            "$ref": "#/components/schemas/datatype.server_name_type"
+          }
+        },
+        "type": "object"
+      },
+      "virtualhost.v1.defaulthosts-set-item": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "$ref": "#/components/schemas/datatype.boolean_type"
+          },
+          "auth_type": {
+            "$ref": "#/components/schemas/datatype.auth_type_default"
+          },
+          "port": {
+            "$ref": "#/components/schemas/datatype.port_type"
+          }
+        },
+        "type": "object"
+      },
+      "virtualhost.v1.virtualhosts": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "active": {
+              "$ref": "#/components/schemas/datatype.boolean_type"
+            },
+            "auth_type": {
+              "$ref": "#/components/schemas/datatype.auth_type"
+            },
+            "port": {
+              "$ref": "#/components/schemas/datatype.port_type"
+            },
+            "secure": {
+              "$ref": "#/components/schemas/datatype.boolean_type"
+            },
+            "server_name": {
+              "$ref": "#/components/schemas/datatype.server_name_type"
+            }
+          },
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "virtualhost.v1.virtualhosts-item": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "$ref": "#/components/schemas/datatype.boolean_type"
+          },
+          "auth_type": {
+            "$ref": "#/components/schemas/datatype.auth_type"
+          },
+          "port": {
+            "$ref": "#/components/schemas/datatype.port_type"
+          },
+          "secure": {
+            "$ref": "#/components/schemas/datatype.boolean_type"
+          },
+          "server_name": {
+            "$ref": "#/components/schemas/datatype.server_name_type"
+          }
+        },
+        "type": "object"
+      },
+      "virtualhost.v1.virtualhosts-set-item": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "$ref": "#/components/schemas/datatype.boolean_type"
+          },
+          "auth_type": {
+            "$ref": "#/components/schemas/datatype.auth_type"
+          },
+          "port": {
+            "$ref": "#/components/schemas/datatype.port_type"
+          },
+          "secure": {
+            "$ref": "#/components/schemas/datatype.boolean_type"
+          },
+          "server_name": {
+            "$ref": "#/components/schemas/datatype.server_name_type"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Multiple simultaneous authentication schemes.",
+    "title": "virtualhost",
+    "version": "1.2.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/virtualhost/v1": {
+      "description": "This is the path for 'virtualhost.v1'. Description: Management of web server virtual hosts.",
+      "get": {
+        "description": "Use this operation to get the value of 'virtualhost.v1'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/virtualhost.v1"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1"
+        ]
+      }
+    },
+    "/virtualhost/v1/create_virtualHost": {
+      "description": "This is the path for 'create_virtualHost'. Description: Create a virtual host.",
+      "post": {
+        "description": "Use this operation to trigger the action 'create_virtualHost'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/datatype.create_virtualhost_input-set"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1"
+        ]
+      }
+    },
+    "/virtualhost/v1/defaulthosts": {
+      "description": "This is the path for 'defaulthosts'. Description: Default virtual hosts.",
+      "get": {
+        "description": "Use this operation to get the value of 'defaulthosts'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/virtualhost.v1.defaulthosts"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.defaulthosts"
+        ]
+      }
+    },
+    "/virtualhost/v1/defaulthosts/{server_name}": {
+      "description": "This is the path for an individual item in the collection 'defaulthosts'",
+      "get": {
+        "description": "Use this operation to get the value of an item in the collection 'defaulthosts'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/virtualhost.v1.defaulthosts-item"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.defaulthosts"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "server_name",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.server_name_type"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Use this operation to set an item in the collection 'defaulthosts' to a certain value",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/virtualhost.v1.defaulthosts-set-item"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.defaulthosts"
+        ]
+      }
+    },
+    "/virtualhost/v1/defaulthosts/{server_name}/active": {
+      "description": "This is the path for 'active'. Description: If host is active or not. Unaccessible if inactive.",
+      "get": {
+        "description": "Use this operation to get the value of 'active'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/datatype.boolean_type"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.defaulthosts"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "server_name",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.server_name_type"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Use this operation to set 'active' to a certain value",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/datatype.boolean_type"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.defaulthosts"
+        ]
+      }
+    },
+    "/virtualhost/v1/defaulthosts/{server_name}/auth_type": {
+      "description": "This is the path for 'auth_type'. Description: The name of the authentication schema.",
+      "get": {
+        "description": "Use this operation to get the value of 'auth_type'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/datatype.auth_type_default"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.defaulthosts"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "server_name",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.server_name_type"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Use this operation to set 'auth_type' to a certain value",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/datatype.auth_type_default"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.defaulthosts"
+        ]
+      }
+    },
+    "/virtualhost/v1/defaulthosts/{server_name}/port": {
+      "description": "This is the path for 'port'. Description: The port that the host will use.",
+      "get": {
+        "description": "Use this operation to get the value of 'port'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/datatype.port_type"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.defaulthosts"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "server_name",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.server_name_type"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Use this operation to set 'port' to a certain value",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/datatype.port_type"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.defaulthosts"
+        ]
+      }
+    },
+    "/virtualhost/v1/defaulthosts/{server_name}/secure": {
+      "description": "This is the path for 'secure'. Description: If the host use secure TLS connection or not.",
+      "get": {
+        "description": "Use this operation to get the value of 'secure'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/datatype.boolean_type"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.defaulthosts"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "server_name",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.server_name_type"
+          }
+        }
+      ]
+    },
+    "/virtualhost/v1/defaulthosts/{server_name}/server_name": {
+      "description": "This is the path for 'server_name'. Description: Server name for host.",
+      "get": {
+        "description": "Use this operation to get the value of 'server_name'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/datatype.server_name_type"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.defaulthosts"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "server_name",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.server_name_type"
+          }
+        }
+      ]
+    },
+    "/virtualhost/v1/virtualhosts": {
+      "description": "This is the path for 'virtualhosts'. Description: Dynamically added virtual hosts.",
+      "get": {
+        "description": "Use this operation to get the value of 'virtualhosts'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/virtualhost.v1.virtualhosts"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.virtualhosts"
+        ]
+      }
+    },
+    "/virtualhost/v1/virtualhosts/{server_name}": {
+      "delete": {
+        "description": "Use this operation to remove an item from the collection 'virtualhosts'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.virtualhosts"
+        ]
+      },
+      "description": "This is the path for an individual item in the collection 'virtualhosts'",
+      "get": {
+        "description": "Use this operation to get the value of an item in the collection 'virtualhosts'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/virtualhost.v1.virtualhosts-item"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.virtualhosts"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "server_name",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.server_name_type"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Use this operation to set an item in the collection 'virtualhosts' to a certain value",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/virtualhost.v1.virtualhosts-set-item"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.virtualhosts"
+        ]
+      }
+    },
+    "/virtualhost/v1/virtualhosts/{server_name}/active": {
+      "description": "This is the path for 'active'. Description: If host is active or not. Unaccessible if inactive.",
+      "get": {
+        "description": "Use this operation to get the value of 'active'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/datatype.boolean_type"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.virtualhosts"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "server_name",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.server_name_type"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Use this operation to set 'active' to a certain value",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/datatype.boolean_type"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.virtualhosts"
+        ]
+      }
+    },
+    "/virtualhost/v1/virtualhosts/{server_name}/auth_type": {
+      "description": "This is the path for 'auth_type'. Description: The name of the authentication schema.",
+      "get": {
+        "description": "Use this operation to get the value of 'auth_type'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/datatype.auth_type"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.virtualhosts"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "server_name",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.server_name_type"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Use this operation to set 'auth_type' to a certain value",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/datatype.auth_type"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.virtualhosts"
+        ]
+      }
+    },
+    "/virtualhost/v1/virtualhosts/{server_name}/port": {
+      "description": "This is the path for 'port'. Description: The port that the host will use.",
+      "get": {
+        "description": "Use this operation to get the value of 'port'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/datatype.port_type"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.virtualhosts"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "server_name",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.server_name_type"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Use this operation to set 'port' to a certain value",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/datatype.port_type"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.virtualhosts"
+        ]
+      }
+    },
+    "/virtualhost/v1/virtualhosts/{server_name}/secure": {
+      "description": "This is the path for 'secure'. Description: If the host use secure TLS connection or not.",
+      "get": {
+        "description": "Use this operation to get the value of 'secure'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/datatype.boolean_type"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.virtualhosts"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "server_name",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.server_name_type"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Use this operation to set 'secure' to a certain value",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/datatype.boolean_type"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.virtualhosts"
+        ]
+      }
+    },
+    "/virtualhost/v1/virtualhosts/{server_name}/server_name": {
+      "description": "This is the path for 'server_name'. Description: Server name for host.",
+      "get": {
+        "description": "Use this operation to get the value of 'server_name'",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/datatype.server_name_type"
+                    },
+                    "information": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "warnings": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.virtualhosts"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "This parameter specifies an individual item in a collection",
+          "in": "path",
+          "name": "server_name",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/datatype.server_name_type"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Use this operation to set 'server_name' to a certain value",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/strict"
+          },
+          {
+            "$ref": "#/components/parameters/traceId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "$ref": "#/components/schemas/datatype.server_name_type"
+                  }
+                },
+                "required": [
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "description": "The request body has to be specified in JSON format",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/200"
+          },
+          "400": {
+            "$ref": "#/components/responses/400"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "413": {
+            "$ref": "#/components/responses/413"
+          },
+          "414": {
+            "$ref": "#/components/responses/414"
+          }
+        },
+        "tags": [
+          "virtualhost.v1.virtualhosts"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/config/rest"
+    }
+  ]
+}

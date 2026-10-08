@@ -21,7 +21,7 @@ public sealed record CertApiSupport(string? Version, string? State)
 }
 
 /// <summary>
-/// REST certificate management <c>/config/rest/cert/v1</c> (AXIS OS 11.11+; research: docs/specs/pki-research). JSON envelope
+/// REST certificate management <c>/config/rest/cert/v1</c> (AXIS OS 11.11+; research: tests/Oadm.Plugins.Pki.Tests/Fixtures). JSON envelope
 /// <c>{"data": ...}</c>, replies <c>{"status":"success"|"error","data"?,"error":{code,message}}</c>. Aliases are percent-encoded
 /// in the path. Keys are created on the device; no operation ever returns a private key.
 /// </summary>
