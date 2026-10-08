@@ -143,17 +143,7 @@ public sealed class CrashHandlingTests
         Assert.True(again.HasKeyNotice);
     }
 
-    private static MainWindowViewModel Shell(DevicesFixture f, ServerConnection connection) => new(
-        connection,
-        f.Devices,
-        new LogsViewModel(new LogStore(f.Ui)),
-        new SettingsViewModel(f.Api, connection, f.Clipboard, NullLogger<SettingsViewModel>.Instance),
-        f.Catalog,
-        f.Registry,
-        f.Api,
-        f.Settings,
-        new UserSession(),
-        NullLogger<MainWindowViewModel>.Instance);
+    private static MainWindowViewModel Shell(DevicesFixture f, ServerConnection connection) => f.CreateShell(connection);
 
     private sealed class ThrowingToolbarPlugin : IToolbarPlugin
     {

@@ -4,10 +4,9 @@
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              x:Class="Oadm.Client.Settings.UsersCardView"
              x:DataType="settings:UsersViewModel">
-  <!-- Settings page card Users (Admin only). Errors appear below their fields; refusals of the server in the message window. -->
+  <!-- Card of the Users page (Admin only). Errors appear below their fields; refusals of the server in the message window. -->
   <Border Classes="card">
     <StackPanel Spacing="16">
-      <TextBlock Classes="cardTitle" Text="Users" />
       <TextBlock Classes="secondary" Text="{Binding Summary}" />
       <DataGrid x:Name="UsersGrid" ItemsSource="{Binding Users}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
                 SelectionMode="Single" MaxHeight="360">

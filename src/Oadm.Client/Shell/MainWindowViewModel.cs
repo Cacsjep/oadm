@@ -25,12 +25,20 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly ILogger<MainWindowViewModel> _logger;
     private readonly IClientSettingsStore _settings;
     private readonly NavItemViewModel _devicesItem;
+    private readonly NavItemViewModel _usersItem;
+    private readonly NavItemViewModel _credentialsItem;
+    private readonly NavItemViewModel _logsItem;
+    private readonly NavItemViewModel _settingsItem;
+    private readonly NavItemViewModel _aboutItem;
 
     public MainWindowViewModel(
         ServerConnection connection,
         DevicesViewModel devices,
         LogsViewModel logs,
         SettingsViewModel settings,
+        UsersViewModel users,
+        CredentialsViewModel credentials,
+        AboutViewModel about,
         TaskPluginCatalog catalog,
         IClientPluginRegistry plugins,
         IOadmApi api,
@@ -43,7 +51,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Connection = connection;
         Devices = devices;
         Session = session;
-        session.PropertyChanged += (_, _) => OnPropertyChanged(nameof(UserTooltip));
+        session.PropertyChanged += (_, e) =>
+        {
+            OnPropertyChanged(nameof(UserTooltip));
+            if (e.PropertyName == nameof(UserSession.IsAdmin))
+            {
+                SyncBottomNavItems();
+            }
+        };
         _api = api;
         _plugins = plugins;
         _catalog = catalog;
@@ -51,11 +66,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _logger = logger;
         IsNavExpanded = clientSettings.Current.NavRailExpanded;
 
-        // Top: Devices, then one entry per core plugin page (added on connect). Bottom: Logs, Settings.
-        _devicesItem = new NavItemViewModel("devices", "Devices", "devices", devices);
+        // Top: Devices, then one entry per core plugin page (added on connect).
+        // Bottom: Users and Credentials (administrators only), Logs, Settings, About.
+        _devicesItem = new NavItemViewModel(HostPages.Devices, "Devices", "devices", devices);
         NavItems.Add(_devicesItem);
-        BottomNavItems.Add(new NavItemViewModel("logs", "Logs", "logs", logs));
-        BottomNavItems.Add(new NavItemViewModel("settings", "Settings", "settings", settings));
+        _usersItem = new NavItemViewModel(HostPages.Users, "Users", "users", users);
+        _credentialsItem = new NavItemViewModel(HostPages.Credentials, "Credentials", "key", credentials);
+        _logsItem = new NavItemViewModel(HostPages.Logs, "Logs", "logs", logs);
+        _settingsItem = new NavItemViewModel(HostPages.Settings, "Settings", "settings", settings);
+        _aboutItem = new NavItemViewModel(HostPages.About, "About", "info", about);
+        SyncBottomNavItems();
 
         connection.Connected += (_, _) => _ = OnConnectedAsync();
         devices.NavigateRequested += (_, key) => Navigate(NavItems.Concat(BottomNavItems).FirstOrDefault(n => n.Key == key));
@@ -166,6 +186,33 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         CurrentItem = item;
         CurrentPage = item.Page;
+    }
+
+    /// <summary>
+    /// The bottom group follows the role of the logged-in user: administrators see Users and Credentials, operators
+    /// do not (the server refuses those calls for them). A hidden page that was open falls back to Devices.
+    /// </summary>
+    private void SyncBottomNavItems()
+    {
+        NavItemViewModel[] wanted = Session.IsAdmin
+            ? [_usersItem, _credentialsItem, _logsItem, _settingsItem, _aboutItem]
+            : [_logsItem, _settingsItem, _aboutItem];
+        if (BottomNavItems.SequenceEqual(wanted))
+        {
+            return;
+        }
+
+        bool lostCurrent = CurrentItem is not null && BottomNavItems.Contains(CurrentItem) && !wanted.Contains(CurrentItem);
+        BottomNavItems.Clear();
+        foreach (NavItemViewModel item in wanted)
+        {
+            BottomNavItems.Add(item);
+        }
+
+        if (lostCurrent)
+        {
+            Navigate(_devicesItem);
+        }
     }
 
     private async Task OnConnectedAsync()

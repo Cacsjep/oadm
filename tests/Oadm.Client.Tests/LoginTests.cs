@@ -389,7 +389,7 @@ public sealed class LoginTests
             confirmWindow.Close();
             owner.Close();
 
-            // Users card on the Settings page.
+            // Users page (Admin only): page header, then the users card.
             var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
             var dialogs = Substitute.For<IDialogService>();
             var user = new UserSession();
@@ -399,11 +399,14 @@ public sealed class LoginTests
             users.OpenResetCommand.Execute(users.Users.Single(u => u.UserName == "tech2"));
             users.NewUserName = "tech3";
             users.NewPassword = "short";
-            var usersWindow = new Window { Width = 1000, Height = 900, Content = new ScrollViewer { Content = new UsersCardView { DataContext = users, Margin = new Avalonia.Thickness(16) } } };
+            var usersWindow = new Window { Width = 1000, Height = 900, Content = new UsersPageView { DataContext = users, Margin = new Avalonia.Thickness(16) } };
             usersWindow.Show();
             Dispatcher.UIThread.RunJobs();
             Assert.Contains(usersWindow.GetVisualDescendants().OfType<DataGrid>().Single().GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "anna.berg");
-            Capture(usersWindow, outDir, "settings-users-card.png");
+            List<string> pageTexts = usersWindow.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? "").ToList();
+            Assert.Contains("Who can log in to this server and what they may do.", pageTexts);
+            Assert.Equal(1, pageTexts.Count(t => t == "Users")); // the page title only, no card title repeating it
+            Capture(usersWindow, outDir, "client-users-page.png");
             usersWindow.Close();
 
             // Audit tab of the Logs page.

@@ -47,7 +47,7 @@ warning. `LICENSE.txt`, `LGPL-2.1.txt` and `TERMS.md` are written next to each e
 changes, not affiliated with Axis; text fixed by the user) come before the license everywhere the license is shown:
 MSI license page (`packaging/windows/License.rtf` = TERMS.md then LICENSE, built by `make-ui-assets.py`, accepted as
 before), .pkg license page (productbuild `<license>` from `--resources`, TERMS.md then LICENSE), .deb
-`/usr/share/doc/<package>/TERMS.md` (no interactive acceptance), the top of the client's About and licenses card
+`/usr/share/doc/<package>/TERMS.md` (no interactive acceptance), the top of the client's About page
 (embedded resource `Oadm.Client.TERMS.md`), and every publish folder / installed app folder.
 
 Installers (`manage package <windows|linux|macos> [--rid] [--version]` into `artifacts/packages/`; layout
@@ -237,11 +237,11 @@ Two processes, like ADM:
   unknown plugin; `Oadm.Core.Plugins.PluginEventHub` fans out with 256 events buffered per watcher, oldest dropped).
   Users: "Snapshot report", "VAPIX Commander", "NTP server", "DHCP server", "PKI", "Metadata Monitor".
 - `SettingsService`: `Get`, `Set` (`ServerSettings.zero_conf_seconds = 8`, 0 keeps the stored value; read-only
-  `server_version = 21` in both replies for "About and licenses"),
+  `server_version = 21` in both replies for the About page),
   `ListCredentials`, `AddCredential(user_name, password)`
   (INVALID_ARGUMENT, RESOURCE_EXHAUSTED over 20 entries; an identical pair returns the existing
   entry; a new entry is tried on the failed devices of every open add session), `RemoveCredential(id)` (NOT_FOUND), `RevealCredential(id)` (reply `RevealedCredential { password = 1 }`:
-  the stored password of one credential list entry for the Settings page eye and copy buttons; NOT_FOUND;
+  the stored password of one credential list entry for the Credentials page eye and copy buttons; NOT_FOUND;
   logged as "Credential list password of <user> revealed", never the password). Credential entries carry id,
   user name and created time, never a password.
 - `LiveViewService`: `Watch(device_id, max_width, max_height, fps, accepted_codecs, camera)`
@@ -269,7 +269,7 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
 - `DeviceCredential`: DeviceId, UserName, EncryptedPassword (AES-GCM, see Security).
 - `CredentialListEntry` (table CredentialListEntries, migration `CredentialList`): Id (Guid),
   UserName (max 64), EncryptedPassword (AES-GCM with the entry id as associated data), CreatedUtc.
-  The technician's credential list (Settings page), at most 20 entries, tried in the order added.
+  The technician's credential list (Credentials page), at most 20 entries, tried in the order added.
 - `Task`: Id, BatchId (shared by the tasks of one Run; proto `batch_id`), PluginId, Name, Status
   (Queued, Running, Done, Failed, Cancelled, DoneWithWarnings), Owner (client machine/user name),
   CreatedUtc, StartedUtc, FinishedUtc, Progress (0-100), PayloadJson (column kept but always NULL:
@@ -463,7 +463,7 @@ number of rejected automatic attempts and which credentials (SHA-256 of user + p
 rejected. When a new credential becomes known it is tried on every LOGIN_FAILED device that has
 attempts left and has not rejected it: (a) a successful `RetryAuth` adds it ("entered", or the list
 entry when saved) to the session and its `related_session_ids` and starts those logins before the reply
-returns (the devices show PENDING); (b) a credential added to the credential list (Settings page or
+returns (the devices show PENDING); (b) a credential added to the credential list (Credentials page or
 "Save to credential list") reloads the candidates of every session. The follow-up uses the normal login
 loop: one login at a time per device, at most 8 devices at once, at most 10 rejected credentials per
 device in total (typed credentials of `RetryAuth` are remembered as rejected but not counted), entered
@@ -483,7 +483,12 @@ Dark only, calm and spacious, no gradients inside the app.
 - Left navigation rail: expanded by default (user decision 2026-10-08; collapsed: icons only, ~56 px, tooltips with the label),
   expand/collapse toggle at the bottom of the rail; expanded ~220 px with icon + label.
   Selected item as rounded pill `#2A2A2A`. Entries top: Devices, then one per Core plugin
-  page. Pinned bottom: Logs, Settings, then the expand toggle. No Tasks page, no About page.
+  page. Pinned bottom, top to bottom: Users and Credentials (Admin only: hidden for operators, follow the session
+  role live), Logs, Settings, About (icons `users`, `key`, `logs`, `settings`, `info`), then the logged-in user with
+  Log out and the expand toggle. Keys = `HostPages` (`users`, `credentials`, `logs`, `settings`, `about`); opening an
+  admin page as operator does nothing, a hidden page that was open falls back to Devices. No Tasks page. Every page
+  header (core plugin pages, Users, Credentials, About, Settings) is the shared `Controls/PageTitleBar` (title, grey
+  side subtitle, trailing content); host pages never repeat the page title in a card heading.
 - Content in rounded cards: background `#181818` (only slightly lighter than the window),
   corner radius 16, padding 20-24, 16 px gap. The device grid sits in one card, the tasks
   pane in a second card below it, separated by a draggable splitter so the user can resize
@@ -1646,14 +1651,16 @@ time, read live by the task engine, plugin `MaxParallelDevices` can only lower i
 tasks per plugin" with the hint "How many devices a task runs on at the same time, e.g. restarts or
 firmware updates."), `Devices.UseHostName` (bool, false: add devices by host name when one is
 known, otherwise by IP address; proto `optional bool use_host_name = 7` so a partial `Set`
-keeps it). Settings page in the client exposes them; `Devices.UseHostName` is the checkbox
-"Use host name when available, otherwise IP address". Settings page card **Credential list**:
-no hint text; entries (key icon, user name, password masked as 8 bullets, eye icon button "Show password" /
+keeps it). Settings page in the client exposes them (one card **Server**, the only card of the page; operators see it
+read-only); `Devices.UseHostName` is the checkbox
+"Use host name when available, otherwise IP address". Rail page **Credentials** (Admin only, subtitle "Passwords OADM
+tries when it adds devices.", `Settings/CredentialsViewModel` + `CredentialsView`, one card without title): entries (key icon, user name, password masked as 8 bullets, eye icon button "Show password" /
 "Hide password" that loads it with `RevealCredential` and masks (and forgets) it on the second click, copy icon
 button "Copy password" (clipboard of the window, loaded on demand, not shown), added time, Remove), add form (user
 name, password, "Add credential"); stored encrypted on the server (`CredentialListStore`, table
-CredentialListEntries), tried on every discovered device (see "Add Devices Page"). Last card **About and licenses**
-(`Settings/AboutView`, own view model): client version, server version (`ServerSettings.server_version`), the
+CredentialListEntries), tried on every discovered device (see "Add Devices Page"). Rail page **About** (everyone,
+subtitle "Version and licenses.", `Settings/AboutPageView` around the card `Settings/AboutView`, `AboutViewModel`):
+terms of use, client version, server version (`ServerSettings.server_version`), the
 sentence on the Apache-2.0 license, "Show licenses" shows `THIRD-PARTY-NOTICES.txt` (next to the exe, the macOS app's
 `Contents/Resources`, or `THIRD-PARTY-NOTICES.md` in a checkout) in a read-only `ui:CodeView` (Plain). There is no "This client" card:
 the server address is set with `--server` or in the client settings file (user decision 2026-10-08). Client-side
@@ -1666,7 +1673,7 @@ the server address is set with `--server` or in the client settings file (user d
   key is replaced at startup (warn and continue, `Security.KeyCheck`, see "Production hardening" 3).
 - Device credentials never leave the server; gRPC returns only "has credentials". The credential list
   (same AES-256-GCM, entry id as associated data) lists only ids and user names; the one exception is the
-  explicit reveal of a credential list entry (`SettingsService.RevealCredential`, Settings page eye / copy
+  explicit reveal of a credential list entry (`SettingsService.RevealCredential`, Credentials page eye / copy
   button; user decision 2026-10-08; Admin only and in the audit log, see "Production hardening"). Credentials the
   technician types for a login (RetryAuth) or a first password travel
   only client -> server.
@@ -1715,7 +1722,7 @@ marked *(default)* were filled in and can be changed. This section wins over old
   First connect to a server: fingerprint confirmation. No users yet: "Create the first administrator" (+ setup code for
   remote servers). The rail shows the logged-in user with Log out at the bottom. Replaces the removed "This client"
   card: the server address is chosen here. `--server` still preselects it. Fake mode has no login (user "admin").
-- **Users page** (Settings page card **Users**, Admin only): list (user, role, last login, disabled), add, change role,
+- **Users page** (rail page **Users**, Admin only, subtitle "Who can log in to this server and what they may do."): list (user, role, last login, disabled), add, change role,
   reset password, disable, delete; never the last enabled admin, never yourself.
 - **Audit log.** Table `AuditEntries` (TimeUtc, UserName, ClientAddress, Action, Target, Detail; retention 365 days or
   200,000 entries *(default)*). Logged: login ok/failed, logout, user changes, settings changes, credential list
@@ -1748,9 +1755,9 @@ marked *(default)* were filled in and can be changed. This section wins over old
     a changed certificate shows "The server certificate changed ..." with **Forget server**. Remember me keeps
     {user, token} per server in `RememberedLogins` and resumes with `AuthService.Me` at start. An address without scheme
     means https; `http://` stays possible for tests. Rail bottom: user (tooltip "Logged in as ... (role) on ...") and
-    Log out. `UserSession.IsAdmin` hides the credential list and Users card, disables the server settings form (with the
-    sentence "Only administrators can change ...") and hides the Audit tab for operators; the server checks again.
-    Users card `Settings/UsersCardView` (DataGrid; Make administrator / operator, Reset password (inline editor), Disable
+    Log out. `UserSession.IsAdmin` hides the Users and Credentials rail pages, disables the server settings form (with the
+    sentence "Only administrators can change server settings.") and hides the Audit tab for operators; the server checks again.
+    Users page `Settings/UsersPageView` around the card `Settings/UsersCardView` (loaded on every connect; DataGrid; Make administrator / operator, Reset password (inline editor), Disable
     / Enable, Delete with confirmations; the own row offers only Reset password). Audit tab `Logging/AuditLogViewModel`
     (newest 10,000, O(n) search, Refresh). Fake mode signs in as "admin" (Administrator) without a login window.
   - Tests: `tests/Oadm.Server.Tests/AuthTests` (unauthenticated / operator / admin per service, role table against the
@@ -1758,9 +1765,9 @@ marked *(default)* were filled in and can be changed. This section wins over old
     throttling, session expiry, user rules, audit entries and retention), `TlsPinningTests` (real Kestrel with TLS:
     TOFU, restart keeps the certificate, changed certificate, regenerate); `MethodRoleTests` in the DHCP, NTP, PKI and
     VAPIX Commander test projects; `tests/Oadm.Client.Tests/LoginTests` (login, wrong password, first administrator,
-    fingerprint trust / refusal / changed / Forget server, remembered session, pin store, Users card, Audit tab with
+    fingerprint trust / refusal / changed / Forget server, remembered session, pin store, Users page, Audit tab with
     5,000 entries; headless screenshots `login-window.png`, `login-first-admin.png`, `login-fingerprint-confirm.png`,
-    `settings-users-card.png`, `logs-audit-tab.png`). `TestServerHost` calls as the administrator "admin"
+    `client-users-page.png`, `logs-audit-tab.png`). `TestServerHost` calls as the administrator "admin"
     (`InvokerFor(token)` / `InvokerForUserAsync(name, role)` for others, `createAdmin: false` for an empty user table,
     PBKDF2 with 1,000 iterations for speed).
 
@@ -1874,9 +1881,9 @@ marked *(default)* were filled in and can be changed. This section wins over old
   choices. *Implemented*, details in "Packaging".
 - **Licenses**: at publish a complete notices file is generated from every NuGet package (license expression or file
   from the package) and the bundled assets (FFmpeg LGPL-2.1 full text, Inter OFL, .NET runtime notices); `LICENSE`,
-  `THIRD-PARTY-NOTICES.txt` and the LGPL text ship in all three installers. The client gets **About and licenses**
-  (Settings page): version, server version, license texts. *Implemented* (`tools/Oadm.Notices`, see "Packaging";
-  Settings page card, see "Settings").
+  `THIRD-PARTY-NOTICES.txt` and the LGPL text ship in all three installers. The client gets an **About**
+  page (rail): terms of use, version, server version, license texts. *Implemented* (`tools/Oadm.Notices`, see
+  "Packaging"; About page, see "Settings").
 - **One release workflow** (`release.yml`, on tags `v*.*.*` only, replaces ci.yml and package.yml): tests on Windows,
   Linux, macOS (timeout 30 min, hang detection) -> the three installers -> the GitHub release, only when everything
   passed. v0.0.1 stays a normal release (user decision). *Implemented*, plus `SHA256SUMS.txt` in the release.

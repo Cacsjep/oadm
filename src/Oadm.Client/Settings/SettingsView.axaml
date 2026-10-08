@@ -2,120 +2,64 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:settings="using:Oadm.Client.Settings"
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:c="using:Oadm.Client.Controls"
              x:Class="Oadm.Client.Settings.SettingsView"
              x:DataType="settings:SettingsViewModel">
   <!-- Every labeled input is a ui:FormField: its error appears directly below the input. -->
-  <ScrollViewer>
-    <StackPanel Spacing="16" MaxWidth="760" HorizontalAlignment="Left">
-      <TextBlock Classes="pageTitle" Text="Settings" Margin="4,0,0,0" />
-
-      <Border Classes="card">
-        <StackPanel Spacing="16">
-          <TextBlock Classes="cardTitle" Text="Server" />
-          <TextBlock Classes="secondary" TextWrapping="Wrap"
-                     Text="Stored on the OADM server and shared by every client." />
-          <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding IsOperator}"
-                     Text="Only administrators can change server settings, the credential list and users." />
-          <StackPanel Classes="form" IsEnabled="{Binding IsAdmin}">
-            <ui:FormField Label="Status polling interval (s)">
-              <NumericUpDown Minimum="5" Maximum="3600" Increment="5" FormatString="0" Value="{Binding PollingIntervalSeconds}" />
-            </ui:FormField>
-            <ui:FormField Label="Full refresh interval (min)"
-                          Hint="Network parameters and certificate info are re-read this often, and when a device comes back online">
-              <NumericUpDown Minimum="1" Maximum="1440" Increment="1" FormatString="0" Value="{Binding FullRefreshMinutes}" />
-            </ui:FormField>
-            <ui:FormField Label="IP range scan parallelism">
-              <NumericUpDown Minimum="1" Maximum="256" FormatString="0" Value="{Binding ScanParallelism}" />
-            </ui:FormField>
-            <ui:FormField Label="IP range scan timeout (ms)">
-              <NumericUpDown Minimum="100" Maximum="30000" Increment="100" FormatString="0" Value="{Binding ScanTimeoutMs}" />
-            </ui:FormField>
-            <ui:FormField Label="Zero-conf scan duration (s)"
-                          Hint="A scan on the add devices page ends after this time; Scan again starts a new one">
-              <NumericUpDown Minimum="5" Maximum="300" Increment="5" FormatString="0" Value="{Binding ZeroConfSeconds}" />
-            </ui:FormField>
-            <ui:FormField Label="Parallel tasks per plugin"
-                          Hint="How many devices a task runs on at the same time, e.g. restarts or firmware updates.">
-              <NumericUpDown Minimum="1" Maximum="256" Increment="1" FormatString="0" Value="{Binding MaxParallelTasksPerPlugin}" />
-            </ui:FormField>
-            <ui:FormField Label="Server name">
-              <TextBox Text="{Binding ServerName}" />
-            </ui:FormField>
-            <ui:FormField Label="Listen URL" Hint="Takes effect after the server restarts">
-              <TextBox Text="{Binding ListenUrl}" PlaceholderText="https://0.0.0.0:5080" />
-            </ui:FormField>
-            <ui:FormField Classes="wide" Label="Device address">
-              <CheckBox IsChecked="{Binding UseHostName}" Content="Use host name when available, otherwise IP address"
-                        ToolTip.Tip="Applies to devices added from now on. Host names keep devices reachable when DHCP changes their address, but need working DNS" />
-            </ui:FormField>
+  <Grid RowDefinitions="Auto,*" RowSpacing="16">
+    <c:PageTitleBar Title="Settings" />
+    <ScrollViewer Grid.Row="1">
+      <StackPanel Spacing="16" MaxWidth="760" HorizontalAlignment="Left">
+        <Border Classes="card">
+          <StackPanel Spacing="16">
+            <TextBlock Classes="cardTitle" Text="Server" />
+            <TextBlock Classes="secondary" TextWrapping="Wrap"
+                       Text="Stored on the OADM server and shared by every client." />
+            <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding IsOperator}"
+                       Text="Only administrators can change server settings." />
+            <StackPanel Classes="form" IsEnabled="{Binding IsAdmin}">
+              <ui:FormField Label="Status polling interval (s)">
+                <NumericUpDown Minimum="5" Maximum="3600" Increment="5" FormatString="0" Value="{Binding PollingIntervalSeconds}" />
+              </ui:FormField>
+              <ui:FormField Label="Full refresh interval (min)"
+                            Hint="Network parameters and certificate info are re-read this often, and when a device comes back online">
+                <NumericUpDown Minimum="1" Maximum="1440" Increment="1" FormatString="0" Value="{Binding FullRefreshMinutes}" />
+              </ui:FormField>
+              <ui:FormField Label="IP range scan parallelism">
+                <NumericUpDown Minimum="1" Maximum="256" FormatString="0" Value="{Binding ScanParallelism}" />
+              </ui:FormField>
+              <ui:FormField Label="IP range scan timeout (ms)">
+                <NumericUpDown Minimum="100" Maximum="30000" Increment="100" FormatString="0" Value="{Binding ScanTimeoutMs}" />
+              </ui:FormField>
+              <ui:FormField Label="Zero-conf scan duration (s)"
+                            Hint="A scan on the add devices page ends after this time; Scan again starts a new one">
+                <NumericUpDown Minimum="5" Maximum="300" Increment="5" FormatString="0" Value="{Binding ZeroConfSeconds}" />
+              </ui:FormField>
+              <ui:FormField Label="Parallel tasks per plugin"
+                            Hint="How many devices a task runs on at the same time, e.g. restarts or firmware updates.">
+                <NumericUpDown Minimum="1" Maximum="256" Increment="1" FormatString="0" Value="{Binding MaxParallelTasksPerPlugin}" />
+              </ui:FormField>
+              <ui:FormField Label="Server name">
+                <TextBox Text="{Binding ServerName}" />
+              </ui:FormField>
+              <ui:FormField Label="Listen URL" Hint="Takes effect after the server restarts">
+                <TextBox Text="{Binding ListenUrl}" PlaceholderText="https://0.0.0.0:5080" />
+              </ui:FormField>
+              <ui:FormField Classes="wide" Label="Device address">
+                <CheckBox IsChecked="{Binding UseHostName}" Content="Use host name when available, otherwise IP address"
+                          ToolTip.Tip="Applies to devices added from now on. Host names keep devices reachable when DHCP changes their address, but need working DNS" />
+              </ui:FormField>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}"
+                      ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
+              <Button Classes="secondary" Content="Reload" Command="{Binding LoadCommand}" />
+            </StackPanel>
+            <TextBlock Text="{Binding ServerMessage}" Classes.error="{Binding ServerMessageIsError}" Classes.secondary="{Binding !ServerMessageIsError}"
+                       TextWrapping="Wrap" IsVisible="{Binding ServerMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           </StackPanel>
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}"
-                    ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
-            <Button Classes="secondary" Content="Reload" Command="{Binding LoadCommand}" />
-          </StackPanel>
-          <TextBlock Text="{Binding ServerMessage}" Classes.error="{Binding ServerMessageIsError}" Classes.secondary="{Binding !ServerMessageIsError}"
-                     TextWrapping="Wrap" IsVisible="{Binding ServerMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-        </StackPanel>
-      </Border>
-
-      <Border Classes="card" IsVisible="{Binding IsAdmin}">
-        <StackPanel Spacing="16">
-          <TextBlock Classes="cardTitle" Text="Credential list" />
-          <ItemsControl ItemsSource="{Binding Credentials}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="settings:CredentialItemViewModel">
-                <Grid ColumnDefinitions="180,160,Auto,Auto,*,Auto" ColumnSpacing="16" Margin="0,0,0,6">
-                  <ui:IconLabel Icon="{StaticResource Icon.key}" Text="{Binding UserName}" />
-                  <TextBlock Grid.Column="1" Text="{Binding PasswordText}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                  <Button Grid.Column="2" Classes="toolbar iconOnly" ToolTip.Tip="{Binding RevealTooltip}"
-                          Command="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ToggleRevealCredentialCommand}"
-                          CommandParameter="{Binding}">
-                    <Panel>
-                      <ui:OadmIcon Data="{StaticResource Icon.eye}" IsVisible="{Binding !IsRevealed}" />
-                      <ui:OadmIcon Data="{StaticResource Icon.eyeOff}" IsVisible="{Binding IsRevealed}" />
-                    </Panel>
-                  </Button>
-                  <Button Grid.Column="3" Classes="toolbar iconOnly" ToolTip.Tip="Copy password"
-                          Command="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).CopyCredentialPasswordCommand}"
-                          CommandParameter="{Binding}">
-                    <ui:OadmIcon Data="{StaticResource Icon.copy}" />
-                  </Button>
-                  <TextBlock Grid.Column="4" Classes="secondary" Text="{Binding AddedText}" VerticalAlignment="Center" />
-                  <ui:ToolbarButton Grid.Column="5" Text="Remove" IconKey="remove"
-                                    Command="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).RemoveCredentialCommand}"
-                                    CommandParameter="{Binding}" />
-                </Grid>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-          <TextBlock Classes="secondary" Text="No credentials yet." IsVisible="{Binding HasNoCredentials}" />
-          <StackPanel Classes="form">
-            <ui:FormField Label="User name">
-              <TextBox Text="{Binding NewCredentialUserName}" />
-            </ui:FormField>
-            <ui:FormField Label="Password">
-              <ui:PasswordBox Text="{Binding NewCredentialPassword}">
-                <ui:PasswordBox.KeyBindings>
-                  <KeyBinding Gesture="Enter" Command="{Binding AddCredentialCommand}" />
-                </ui:PasswordBox.KeyBindings>
-              </ui:PasswordBox>
-            </ui:FormField>
-            <ui:FormField>
-              <Button Classes="primary" Content="Add credential" Command="{Binding AddCredentialCommand}"
-                      ToolTip.Tip="{Binding AddCredentialBlockedReason}" ToolTip.ShowOnDisabled="True" />
-            </ui:FormField>
-          </StackPanel>
-          <TextBlock Text="{Binding CredentialMessage}" Classes.error="{Binding CredentialMessageIsError}" Classes.secondary="{Binding !CredentialMessageIsError}"
-                     TextWrapping="Wrap" IsVisible="{Binding CredentialMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-        </StackPanel>
-      </Border>
-
-      <!-- Users (Admin only) -->
-      <settings:UsersCardView DataContext="{Binding Users}" IsVisible="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowUsers}" />
-
-      <!-- About and licenses -->
-      <settings:AboutView DataContext="{Binding About}" />
-    </StackPanel>
-  </ScrollViewer>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
 </UserControl>

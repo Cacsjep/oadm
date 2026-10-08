@@ -235,27 +235,22 @@ public sealed class FormValidationTests
             using var f = new DevicesFixture(api);
             using var connection = new Oadm.Client.Shell.ServerConnection(f.Api, f.Store, f.Tasks, f.Ui,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Shell.ServerConnection>.Instance);
-            var vm = new Oadm.Client.Settings.SettingsViewModel(f.Api, connection, f.Clipboard,
+            var vm = new Oadm.Client.Settings.SettingsViewModel(f.Api, connection,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Settings.SettingsViewModel>.Instance);
             await vm.LoadAsync();
             Assert.False(vm.HasErrors); // loaded values: nothing shown
             Assert.True(vm.SaveCommand.CanExecute(null));
-            Assert.False(vm.AddCredentialCommand.CanExecute(null)); // no password yet, not shown either
-            Assert.Null(vm.ErrorOf(nameof(vm.NewCredentialPassword)));
 
             var window = new Window { Width = 900, Height = 1100, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
             window.Show();
             vm.PollingIntervalSeconds = null;
             vm.ServerName = " ";
             vm.ListenUrl = "ftp://server";
-            vm.NewCredentialPassword = "x";
-            vm.NewCredentialPassword = "";
             Dispatcher.UIThread.RunJobs();
 
             Assert.Equal("Enter a whole number from 5 to 3600.", vm.ErrorOf(nameof(vm.PollingIntervalSeconds)));
             Assert.Equal("Enter a server name.", vm.ErrorOf(nameof(vm.ServerName)));
             Assert.Equal("Enter a URL like https://0.0.0.0:5080.", vm.ErrorOf(nameof(vm.ListenUrl)));
-            Assert.Equal("Enter the password.", vm.ErrorOf(nameof(vm.NewCredentialPassword)));
             Assert.False(vm.SaveCommand.CanExecute(null));
             Assert.Equal("Enter a whole number from 5 to 3600.", vm.SaveBlockedReason);
 
@@ -274,6 +269,42 @@ public sealed class FormValidationTests
     }
 
     [Fact]
+    public async Task Credential_fields_report_their_errors_below_themselves_and_block_add()
+    {
+        HeadlessUnitTestSession session = HeadlessSession.Shared;
+        await session.Dispatch(async () =>
+        {
+            var api = new Oadm.Client.Api.FakeOadmApi(TimeSpan.FromMilliseconds(5));
+            using var f = new DevicesFixture(api);
+            using var connection = new Oadm.Client.Shell.ServerConnection(f.Api, f.Store, f.Tasks, f.Ui,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Shell.ServerConnection>.Instance);
+            var vm = new Oadm.Client.Settings.CredentialsViewModel(f.Api, connection, f.Clipboard);
+            await vm.LoadAsync();
+            Assert.False(vm.AddCredentialCommand.CanExecute(null)); // no password yet, not shown either
+            Assert.Null(vm.ErrorOf(nameof(vm.NewCredentialPassword)));
+
+            var window = new Window { Width = 900, Height = 900, Content = new Oadm.Client.Settings.CredentialsView { DataContext = vm } };
+            window.Show();
+            vm.NewCredentialPassword = "x";
+            vm.NewCredentialPassword = "";
+            vm.NewCredentialUserName = " ";
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("Enter the password.", vm.ErrorOf(nameof(vm.NewCredentialPassword)));
+            Assert.Equal("Enter a user name.", vm.ErrorOf(nameof(vm.NewCredentialUserName)));
+            Assert.Equal("Enter a user name.", vm.AddCredentialBlockedReason);
+            List<FormField> fields = window.GetVisualDescendants().OfType<FormField>().ToList();
+            Assert.True(fields.Single(x => x.Label == "Password").HasError);
+            Assert.True(fields.Single(x => x.Label == "User name").HasError);
+
+            vm.NewCredentialUserName = "root";
+            vm.NewCredentialPassword = "secret";
+            Assert.True(vm.AddCredentialCommand.CanExecute(null));
+            window.Close();
+        }, CancellationToken.None);
+    }
+
+    [Fact]
     public async Task Parallel_tasks_per_plugin_loads_validates_below_itself_and_saves()
     {
         HeadlessUnitTestSession session = HeadlessSession.Shared;
@@ -283,7 +314,7 @@ public sealed class FormValidationTests
             using var f = new DevicesFixture(api);
             using var connection = new Oadm.Client.Shell.ServerConnection(f.Api, f.Store, f.Tasks, f.Ui,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Shell.ServerConnection>.Instance);
-            var vm = new Oadm.Client.Settings.SettingsViewModel(f.Api, connection, f.Clipboard,
+            var vm = new Oadm.Client.Settings.SettingsViewModel(f.Api, connection,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Settings.SettingsViewModel>.Instance);
             await vm.LoadAsync();
             Assert.Equal(16m, vm.MaxParallelTasksPerPlugin);

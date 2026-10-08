@@ -4,10 +4,9 @@
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              x:Class="Oadm.Client.Settings.AboutView"
              x:DataType="settings:AboutViewModel">
-  <!-- Card "About and licenses" of the Settings page: versions, the OADM license and the third-party notices. -->
+  <!-- Card of the About page: versions, the OADM license and the third-party notices. -->
   <Border Classes="card">
     <StackPanel Spacing="16">
-      <TextBlock Classes="cardTitle" Text="About and licenses" />
       <!-- Terms of use first, then the license (same order as the installers' license page). -->
       <StackPanel Spacing="8">
         <TextBlock Classes="sectionTitle" Text="{Binding TermsTitle}" />

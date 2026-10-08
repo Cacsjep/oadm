@@ -29,6 +29,15 @@
     <DataTemplate DataType="settings:SettingsViewModel">
       <settings:SettingsView />
     </DataTemplate>
+    <DataTemplate DataType="settings:UsersViewModel">
+      <settings:UsersPageView />
+    </DataTemplate>
+    <DataTemplate DataType="settings:CredentialsViewModel">
+      <settings:CredentialsView />
+    </DataTemplate>
+    <DataTemplate DataType="settings:AboutViewModel">
+      <settings:AboutPageView />
+    </DataTemplate>
     <DataTemplate DataType="shell:CorePluginPageViewModel">
       <shell:CorePluginPageView />
     </DataTemplate>
