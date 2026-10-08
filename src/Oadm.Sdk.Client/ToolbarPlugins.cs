@@ -58,6 +58,15 @@ public static class HostPages
     /// <summary>Add page with the address input (IP or host name, optional port and scheme).</summary>
     public const string AddManually = "add.manual";
 
+    /// <summary>
+    /// Import devices: the host asks for a CSV file (the export format, or one address per line, optional
+    /// "User name" and "Password" columns) and opens the add page with every address of it.
+    /// </summary>
+    public const string AddImport = "add.import";
+
+    /// <summary>Export devices: the host saves the selected devices (or every device the search shows) as a CSV file.</summary>
+    public const string ExportDevices = "devices.export";
+
     /// <summary>Navigation pages.</summary>
     public const string Devices = "devices";
     public const string Logs = "logs";

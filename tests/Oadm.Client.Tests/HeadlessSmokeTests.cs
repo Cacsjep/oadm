@@ -147,7 +147,7 @@ public sealed class HeadlessSmokeTests
 
             // The Devices page toolbar: toolbar plugins with a separator between groups.
             StackPanel toolbarPanel = window.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Name == "ToolbarPanel");
-            Assert.Equal(["Scan", "Scan IP range", "Add manually", "Remove", "Restart", "AXIS OS - Release Notes"],
+            Assert.Equal(["Scan", "Scan IP range", "Add manually", "Remove", "Export devices", "Restart", "AXIS OS - Release Notes"],
                 toolbarPanel.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.ToolbarButton>().Select(b => b.Text ?? "").ToArray());
             Capture(window, outDir, "client-toolbar.png");
 

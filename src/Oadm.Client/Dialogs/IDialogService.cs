@@ -22,7 +22,22 @@ public interface IDialogService
     Task<string?> ShowTaskPluginDialogAsync(ITaskPluginDialog dialog, IReadOnlyList<IDeviceInfo> devices);
 
     Task ShowTaskDetailsAsync(TaskDetailsViewModel details);
+
+    /// <summary>Save file picker (overwrite asked); writes <paramref name="content"/>. Returns the file name, null when cancelled.</summary>
+    Task<string?> SaveFileAsync(string title, string suggestedFileName, FileType type, byte[] content);
+
+    /// <summary>Open file picker; reads at most <paramref name="maxBytes"/> + 1 bytes (more = <see cref="PickedFile.IsTooLarge"/>). Null when cancelled.</summary>
+    Task<PickedFile?> OpenFileAsync(string title, FileType type, int maxBytes);
 }
+
+/// <summary>A file type of the pickers: "CSV file", extension "csv".</summary>
+public sealed record FileType(string Name, string Extension, string MimeType);
+
+/// <summary>A file chosen in the open file picker.</summary>
+/// <param name="Name">File name without folder.</param>
+/// <param name="Content">The first bytes, at most the limit asked for.</param>
+/// <param name="IsTooLarge">The file is larger than the limit; <paramref name="Content"/> is cut.</param>
+public sealed record PickedFile(string Name, byte[] Content, bool IsTooLarge);
 
 /// <summary>Puts text on the system clipboard (Avalonia clipboard of the current window).</summary>
 public interface IClipboardService

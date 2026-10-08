@@ -107,6 +107,38 @@ public sealed class RemoveToolbarPlugin : IToolbarPlugin
 }
 
 /// <summary>
+/// "Export devices" (icon button, next to Remove): saves the selected devices, or every device the search
+/// shows when none is selected, as a CSV file (<see cref="HostPages.ExportDevices"/>). The tooltip says which.
+/// </summary>
+public sealed class ExportToolbarPlugin : IToolbarPlugin
+{
+    public const string Text = "Export devices";
+
+    public string Id => "oadm.toolbar.export";
+    public int Order => 10;
+    public ToolbarGroup Group => ToolbarGroup.Manage;
+
+    public Control CreateControl(IToolbarContext ctx)
+    {
+        ArgumentNullException.ThrowIfNull(ctx);
+        // Icon only: the toolbar must fit the 1280 px minimum window with the rail expanded.
+        var button = new ToolbarButton { Text = Text, IconKey = "export", IsIconOnly = true, Name = "ExportButton" };
+        ToolTip.SetTip(button, Tooltip(ctx.SelectedDevices.Count));
+        ctx.SelectionChanged += (_, _) => ToolTip.SetTip(button, Tooltip(ctx.SelectedDevices.Count));
+        button.Click += async (_, _) => await ctx.OpenAsync(HostPages.ExportDevices).ConfigureAwait(true);
+        return button;
+    }
+
+    /// <summary>Says which devices the export writes.</summary>
+    public static string Tooltip(int selected) => selected switch
+    {
+        0 => "Export devices: save every device shown as a CSV file",
+        1 => "Export devices: save the selected device as a CSV file",
+        _ => string.Create(System.Globalization.CultureInfo.CurrentCulture, $"Export devices: save the {selected} selected devices as a CSV file"),
+    };
+}
+
+/// <summary>
 /// The task plugin actions: one button per task plugin that declares <c>ShowInToolbar</c>, enabled
 /// when it can run on the whole selection, rebuilt when the server's task plugins change.
 /// </summary>
@@ -188,6 +220,7 @@ public static class BuiltInToolbarPlugins
         new ScanRangeToolbarPlugin(),
         new AddManuallyToolbarPlugin(),
         new RemoveToolbarPlugin(),
+        new ExportToolbarPlugin(),
         new TaskActionsToolbarPlugin(),
         new ReleaseNotesToolbarPlugin(),
     ];

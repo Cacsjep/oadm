@@ -30,7 +30,7 @@ public sealed class ToolbarPluginTests
         var toolbar = new DeviceToolbar(BuiltInToolbarPlugins.All, registry, NullLogger<DeviceToolbar>.Instance);
 
         Assert.Equal(
-            ["a.first", "oadm.toolbar.scan", "oadm.toolbar.range", "oadm.toolbar.manual", "oadm.toolbar.remove", "oadm.toolbar.tasks", "z.plugin", "oadm.toolbar.release-notes"],
+            ["a.first", "oadm.toolbar.scan", "oadm.toolbar.range", "oadm.toolbar.manual", "oadm.toolbar.remove", "oadm.toolbar.export", "oadm.toolbar.tasks", "z.plugin", "oadm.toolbar.release-notes"],
             toolbar.Plugins.Select(p => p.Id).ToArray());
     }
 

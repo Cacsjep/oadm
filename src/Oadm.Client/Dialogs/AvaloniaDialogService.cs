@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input.Platform;
+using Avalonia.Platform.Storage;
 
 using Oadm.Client.Api;
 using Oadm.Client.Discovery;
@@ -91,6 +92,71 @@ public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLa
         await clipboard.SetTextAsync(text).ConfigureAwait(true);
         return true;
     }
+
+    public async Task<string?> SaveFileAsync(string title, string suggestedFileName, FileType type, byte[] content)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        ArgumentNullException.ThrowIfNull(content);
+        if (CurrentOwner()?.StorageProvider is not { } storage)
+        {
+            return null;
+        }
+
+        IStorageFile? file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = title,
+            SuggestedFileName = suggestedFileName,
+            DefaultExtension = type.Extension,
+            FileTypeChoices = [Filter(type)],
+            ShowOverwritePrompt = true,
+        }).ConfigureAwait(true);
+        if (file is null)
+        {
+            return null;
+        }
+
+        await using (Stream stream = await file.OpenWriteAsync().ConfigureAwait(true))
+        {
+            stream.SetLength(0);
+            await stream.WriteAsync(content).ConfigureAwait(true);
+        }
+
+        return file.Name;
+    }
+
+    public async Task<PickedFile?> OpenFileAsync(string title, FileType type, int maxBytes)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        if (CurrentOwner()?.StorageProvider is not { } storage)
+        {
+            return null;
+        }
+
+        IReadOnlyList<IStorageFile> files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = false,
+            FileTypeFilter = [Filter(type), FilePickerFileTypes.All],
+        }).ConfigureAwait(true);
+        if (files.Count == 0)
+        {
+            return null;
+        }
+
+        await using Stream stream = await files[0].OpenReadAsync().ConfigureAwait(true);
+        byte[] buffer = new byte[maxBytes + 1];
+        int length = 0;
+        int read;
+        while (length < buffer.Length && (read = await stream.ReadAsync(buffer.AsMemory(length)).ConfigureAwait(true)) > 0)
+        {
+            length += read;
+        }
+
+        return length > maxBytes ? new PickedFile(files[0].Name, buffer[..maxBytes], true) : new PickedFile(files[0].Name, buffer[..length], false);
+    }
+
+    private static FilePickerFileType Filter(FileType type) =>
+        new($"{type.Name} (*.{type.Extension})") { Patterns = ["*." + type.Extension], MimeTypes = [type.MimeType] };
 
     /// <summary>The active window (so dialogs opened from dialogs stack correctly), else the main window.</summary>
     private static Window? CurrentOwner()
