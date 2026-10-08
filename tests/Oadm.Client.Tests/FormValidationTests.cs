@@ -254,7 +254,7 @@ public sealed class FormValidationTests
 
             Assert.Equal("Enter a whole number from 5 to 3600.", vm.ErrorOf(nameof(vm.PollingIntervalSeconds)));
             Assert.Equal("Enter a server name.", vm.ErrorOf(nameof(vm.ServerName)));
-            Assert.Equal("Enter a URL like http://0.0.0.0:5080.", vm.ErrorOf(nameof(vm.ListenUrl)));
+            Assert.Equal("Enter a URL like https://0.0.0.0:5080.", vm.ErrorOf(nameof(vm.ListenUrl)));
             Assert.Equal("Enter the password.", vm.ErrorOf(nameof(vm.NewCredentialPassword)));
             Assert.False(vm.SaveCommand.CanExecute(null));
             Assert.Equal("Enter a whole number from 5 to 3600.", vm.SaveBlockedReason);

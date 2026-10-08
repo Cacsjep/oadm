@@ -1,0 +1,55 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:shell="using:Oadm.Client.Shell"
+        x:Class="Oadm.Client.Shell.LoginWindow"
+        x:DataType="shell:LoginViewModel"
+        Title="{Binding Title}"
+        Width="580" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+  <!-- Title bar, one form, footer: shared controls and theme classes only. Errors appear below their fields. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <ui:StatusChip IsWarning="True" Text="{Binding Notice}"
+                       IsVisible="{Binding Notice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Intro}"
+                   IsVisible="{Binding Intro, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+        <ui:FormField Label="Server" Error="{Binding ServerProblem}">
+          <ComboBox x:Name="ServerBox" IsEditable="True" Text="{Binding ServerAddress}" ItemsSource="{Binding RecentServers}"
+                    PlaceholderText="localhost:5080" IsEnabled="{Binding !IsBusy}" />
+        </ui:FormField>
+        <ui:FormField Label="User name">
+          <TextBox x:Name="UserNameBox" Text="{Binding UserName}" IsEnabled="{Binding !IsBusy}" />
+        </ui:FormField>
+        <ui:FormField Label="Password">
+          <ui:PasswordBox Text="{Binding Password}" IsEnabled="{Binding !IsBusy}" />
+        </ui:FormField>
+        <ui:FormField Label="Confirm password" IsVisible="{Binding IsFirstAdminMode}">
+          <ui:PasswordBox Text="{Binding ConfirmPassword}" IsEnabled="{Binding !IsBusy}" />
+        </ui:FormField>
+        <ui:FormField Label="Setup code" Hint="Shown by the server at startup; also in setup-code.txt in its data folder."
+                      IsVisible="{Binding SetupCodeRequired}">
+          <TextBox Text="{Binding SetupCode}" PlaceholderText="ABCD-EFGH-JKLM" IsEnabled="{Binding !IsBusy}" />
+        </ui:FormField>
+        <ui:FormField>
+          <CheckBox Content="Remember me" IsChecked="{Binding RememberMe}" IsEnabled="{Binding !IsBusy}"
+                    ToolTip.Tip="Stay logged in on this computer for 30 days. The password is never stored." />
+        </ui:FormField>
+        <ui:ProgressRow IsActive="{Binding IsBusy}" Text="{Binding BusyText}" IsVisible="{Binding IsBusy}" />
+      </StackPanel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" x:Name="Footer" CancelText="Close">
+      <Button Classes="secondary" Content="Forget server" Command="{Binding ForgetServerCommand}" IsVisible="{Binding CanForgetServer}"
+              ToolTip.Tip="Removes the stored certificate of this server; the next connection asks to confirm the new one." />
+      <Button Classes="primary" IsDefault="True" Content="{Binding SubmitText}" Command="{Binding SubmitCommand}"
+              ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

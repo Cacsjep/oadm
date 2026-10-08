@@ -8,11 +8,34 @@ namespace Oadm.Client.Api;
 /// </summary>
 public interface IOadmApi
 {
-    /// <summary>Address shown in the UI, e.g. "http://localhost:5080" or "fake".</summary>
+    /// <summary>Address shown in the UI, e.g. "https://localhost:5080" or "fake".</summary>
     string ServerAddress { get; }
 
     /// <summary>Points the API at a different server. Running streams fail and are re-established by the caller.</summary>
     void SetServerAddress(string address);
+
+    /// <summary>The session token sent as "authorization: Bearer" with every call; null before login.</summary>
+    string? AccessToken { get; set; }
+
+    /// <summary>A call outside AuthService was answered UNAUTHENTICATED: the session ended (expired, revoked, user disabled).</summary>
+    event EventHandler? SessionEnded;
+
+    // AuthService (open: status, login, first administrator)
+    Task<AuthStatus> GetAuthStatusAsync(CancellationToken ct);
+    Task<LoginReply> LoginAsync(string userName, string password, bool remember, CancellationToken ct);
+    Task<LoginReply> CreateFirstAdminAsync(string userName, string password, string? setupCode, bool remember, CancellationToken ct);
+    Task LogoutAsync(CancellationToken ct);
+    Task<UserInfo> GetCurrentUserAsync(CancellationToken ct);
+
+    // UserService (Admin only)
+    Task<IReadOnlyList<UserInfo>> ListUsersAsync(CancellationToken ct);
+    Task<UserInfo> AddUserAsync(string userName, string password, UserRole role, CancellationToken ct);
+    Task<UserInfo> UpdateUserAsync(UpdateUserRequest request, CancellationToken ct);
+    Task DeleteUserAsync(string id, CancellationToken ct);
+
+    // AuditService (Admin only)
+    /// <summary>The newest <paramref name="limit"/> audit entries, newest first, and the total count.</summary>
+    Task<AuditList> ListAuditAsync(int limit, CancellationToken ct);
 
     // DeviceService
     Task<IReadOnlyList<Device>> ListDevicesAsync(CancellationToken ct);

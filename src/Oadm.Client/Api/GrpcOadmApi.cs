@@ -1,30 +1,56 @@
 using System.Runtime.CompilerServices;
 
 using Grpc.Core;
+using Grpc.Core.Interceptors;
 using Grpc.Net.Client;
 
+using Oadm.Contracts.Security;
 using Oadm.Contracts.V1;
 
 namespace Oadm.Client.Api;
 
-/// <summary>Real <see cref="IOadmApi"/> over gRPC (h2c by default, http://localhost:5080).</summary>
+/// <summary>
+/// Real <see cref="IOadmApi"/> over gRPC: HTTP/2 over TLS with the pinned server certificate
+/// (<see cref="ServerCertificatePinning"/>; https://localhost:5080 by default, http:// addresses without TLS for
+/// development), the session token on every call.
+/// </summary>
 public sealed class GrpcOadmApi : IOadmApi, IDisposable
 {
     /// <summary>Data chunk size of <see cref="UploadFileAsync"/>.</summary>
     public const int UploadChunkSize = 256 * 1024;
 
     private readonly Lock _gate = new();
+    private readonly ServerCertificatePinning _pinning;
+    private readonly HttpMessageHandler? _handler;
     private GrpcChannel _channel;
     private Clients _clients;
+    private volatile string? _token;
 
-    public GrpcOadmApi(string address)
+    /// <param name="address">"localhost:5080", "https://server:5080" or "http://..." (no TLS).</param>
+    /// <param name="pinning">Pinned server certificates; null keeps them in memory only.</param>
+    /// <param name="handler">Test hook: HTTP handler of an in-process server.</param>
+    public GrpcOadmApi(string address, ServerCertificatePinning? pinning = null, HttpMessageHandler? handler = null)
     {
+        _pinning = pinning ?? new ServerCertificatePinning(new InMemoryPinStore());
+        _handler = handler;
         ServerAddress = Normalize(address);
-        _channel = CreateChannel(ServerAddress);
-        _clients = new Clients(_channel);
+        (_channel, _clients) = Open(ServerAddress);
     }
 
     public string ServerAddress { get; private set; }
+
+    /// <summary>The address as a URI (key of the pinned certificate).</summary>
+    public Uri ServerUri => new(ServerAddress);
+
+    public ServerCertificatePinning Pinning => _pinning;
+
+    public string? AccessToken
+    {
+        get => _token;
+        set => _token = value;
+    }
+
+    public event EventHandler? SessionEnded;
 
     public void SetServerAddress(string address)
     {
@@ -39,14 +65,70 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
 
             old = _channel;
             ServerAddress = normalized;
-            _channel = CreateChannel(normalized);
-            _clients = new Clients(_channel);
+            (_channel, _clients) = Open(normalized);
         }
 
         old.Dispose();
     }
 
+    /// <summary>A new connection to the same server (after the user trusted its certificate the old one stays refused).</summary>
+    public void Reconnect()
+    {
+        GrpcChannel old;
+        lock (_gate)
+        {
+            old = _channel;
+            (_channel, _clients) = Open(ServerAddress);
+        }
+
+        old.Dispose();
+    }
+
+    public async Task<AuthStatus> GetAuthStatusAsync(CancellationToken ct) =>
+        await C.Auth.StatusAsync(new Empty(), cancellationToken: ct);
+
+    public async Task<LoginReply> LoginAsync(string userName, string password, bool remember, CancellationToken ct) =>
+        await C.Auth.LoginAsync(new LoginRequest { UserName = userName, Password = password, Remember = remember }, cancellationToken: ct);
+
+    public async Task<LoginReply> CreateFirstAdminAsync(string userName, string password, string? setupCode, bool remember, CancellationToken ct) =>
+        await C.Auth.CreateFirstAdminAsync(
+            new CreateFirstAdminRequest { UserName = userName, Password = password, SetupCode = setupCode ?? "", Remember = remember },
+            cancellationToken: ct);
+
+    public async Task LogoutAsync(CancellationToken ct) => await C.Auth.LogoutAsync(new Empty(), cancellationToken: ct);
+
+    public async Task<UserInfo> GetCurrentUserAsync(CancellationToken ct) => await C.Auth.MeAsync(new Empty(), cancellationToken: ct);
+
+    public async Task<IReadOnlyList<UserInfo>> ListUsersAsync(CancellationToken ct) =>
+        (await C.Users.ListAsync(new Empty(), cancellationToken: ct)).Users;
+
+    public async Task<UserInfo> AddUserAsync(string userName, string password, UserRole role, CancellationToken ct) =>
+        await C.Users.AddAsync(new AddUserRequest { UserName = userName, Password = password, Role = role }, cancellationToken: ct);
+
+    public async Task<UserInfo> UpdateUserAsync(UpdateUserRequest request, CancellationToken ct) =>
+        await C.Users.UpdateAsync(request, cancellationToken: ct);
+
+    public async Task DeleteUserAsync(string id, CancellationToken ct) =>
+        await C.Users.DeleteAsync(new UserIdRequest { Id = id }, cancellationToken: ct);
+
+    public async Task<AuditList> ListAuditAsync(int limit, CancellationToken ct) =>
+        await C.Audit.ListAsync(new ListAuditRequest { Limit = limit }, cancellationToken: ct);
+
     public void Dispose() => _channel.Dispose();
+
+    private (GrpcChannel Channel, Clients Clients) Open(string address)
+    {
+        var (channel, invoker) = OadmChannel.Create(new Uri(address), _pinning, () => _token, _handler);
+        return (channel, new Clients(invoker.Intercept(new SessionWatcher(this))));
+    }
+
+    private void OnUnauthenticated(string method)
+    {
+        if (!method.StartsWith("/oadm.v1.AuthService/", StringComparison.Ordinal) && _token is not null)
+        {
+            SessionEnded?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     private Clients C
     {
@@ -215,39 +297,79 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         return message;
     }
 
-    private static async IAsyncEnumerable<T> ReadAll<T>(AsyncServerStreamingCall<T> call, [EnumeratorCancellation] CancellationToken ct)
+    private async IAsyncEnumerable<T> ReadAll<T>(AsyncServerStreamingCall<T> call, [EnumeratorCancellation] CancellationToken ct)
     {
         using (call)
         {
-            await foreach (T item in call.ResponseStream.ReadAllAsync(ct))
+            IAsyncEnumerator<T> items = call.ResponseStream.ReadAllAsync(ct).GetAsyncEnumerator(ct);
+            try
             {
-                yield return item;
+                while (true)
+                {
+                    try
+                    {
+                        if (!await items.MoveNextAsync())
+                        {
+                            break;
+                        }
+                    }
+                    catch (RpcException ex) when (ex.StatusCode == StatusCode.Unauthenticated)
+                    {
+                        OnUnauthenticated("stream");
+                        throw;
+                    }
+
+                    yield return items.Current;
+                }
+            }
+            finally
+            {
+                await items.DisposeAsync();
             }
         }
     }
 
-    /// <summary>Keyframes of high resolution video can exceed the 4 MB default message limit.</summary>
-    private static GrpcChannel CreateChannel(string address) =>
-        GrpcChannel.ForAddress(address, new GrpcChannelOptions { MaxReceiveMessageSize = 32 * 1024 * 1024 });
+    /// <summary>"localhost:5080" -> "https://localhost:5080" (TLS); explicit http:// stays (no TLS, development).</summary>
+    internal static string Normalize(string address) =>
+        OadmChannel.NormalizeAddress(address, "https://" + Infrastructure.ClientSettings.DefaultServerAddress).ToString().TrimEnd('/');
 
-    internal static string Normalize(string address)
+    /// <summary>Reports UNAUTHENTICATED answers of unary calls (session ended).</summary>
+    private sealed class SessionWatcher(GrpcOadmApi owner) : Interceptor
     {
-        string trimmed = (address ?? "").Trim();
-        if (trimmed.Length == 0)
+        public override AsyncUnaryCall<TResponse> AsyncUnaryCall<TRequest, TResponse>(
+            TRequest request, ClientInterceptorContext<TRequest, TResponse> context, AsyncUnaryCallContinuation<TRequest, TResponse> continuation)
         {
-            return Infrastructure.ClientSettings.DefaultServerAddress;
+            AsyncUnaryCall<TResponse> call = continuation(request, context);
+            return new AsyncUnaryCall<TResponse>(Watch(call.ResponseAsync, context.Method.FullName), call.ResponseHeadersAsync, call.GetStatus, call.GetTrailers, call.Dispose);
         }
 
-        if (!trimmed.Contains("://", StringComparison.Ordinal))
+        public override AsyncClientStreamingCall<TRequest, TResponse> AsyncClientStreamingCall<TRequest, TResponse>(
+            ClientInterceptorContext<TRequest, TResponse> context, AsyncClientStreamingCallContinuation<TRequest, TResponse> continuation)
         {
-            trimmed = "http://" + trimmed;
+            AsyncClientStreamingCall<TRequest, TResponse> call = continuation(context);
+            return new AsyncClientStreamingCall<TRequest, TResponse>(call.RequestStream, Watch(call.ResponseAsync, context.Method.FullName),
+                call.ResponseHeadersAsync, call.GetStatus, call.GetTrailers, call.Dispose);
         }
 
-        return trimmed.TrimEnd('/');
+        private async Task<TResponse> Watch<TResponse>(Task<TResponse> response, string method)
+        {
+            try
+            {
+                return await response.ConfigureAwait(false);
+            }
+            catch (RpcException ex) when (ex.StatusCode == StatusCode.Unauthenticated)
+            {
+                owner.OnUnauthenticated(method);
+                throw;
+            }
+        }
     }
 
-    private sealed class Clients(GrpcChannel channel)
+    private sealed class Clients(CallInvoker channel)
     {
+        public AuthService.AuthServiceClient Auth { get; } = new(channel);
+        public UserService.UserServiceClient Users { get; } = new(channel);
+        public AuditService.AuditServiceClient Audit { get; } = new(channel);
         public DeviceService.DeviceServiceClient Devices { get; } = new(channel);
         public DiscoveryService.DiscoveryServiceClient Discovery { get; } = new(channel);
         public AddDevicesService.AddDevicesServiceClient AddDevices { get; } = new(channel);

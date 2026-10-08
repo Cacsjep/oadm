@@ -204,7 +204,7 @@ an error of a whole table (e.g. "Not enough addresses") directly below that tabl
   `Icon.details`, `Icon.cancel`, `Icon.chevronDown`, `Icon.chevronUp`, `Icon.close`, `Icon.check`,
   `Icon.server`, `Icon.externalLink`, `Icon.key`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
   `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.network`, `Icon.firmware`, `Icon.users`,
-  `Icon.user`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
+  `Icon.user`, `Icon.logout`, `Icon.audit`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
   `Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`,
   `Icon.device.camera`, `Icon.device.encoder`,
   `Icon.device.speaker`, `Icon.device.audio`, `Icon.device.intercom`, `Icon.device.radar`,

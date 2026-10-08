@@ -14,7 +14,9 @@
           <TextBlock Classes="cardTitle" Text="Server" />
           <TextBlock Classes="secondary" TextWrapping="Wrap"
                      Text="Stored on the OADM server and shared by every client." />
-          <StackPanel Classes="form">
+          <TextBlock Classes="secondary" TextWrapping="Wrap" IsVisible="{Binding IsOperator}"
+                     Text="Only administrators can change server settings, the credential list and users." />
+          <StackPanel Classes="form" IsEnabled="{Binding IsAdmin}">
             <ui:FormField Label="Status polling interval (s)">
               <NumericUpDown Minimum="5" Maximum="3600" Increment="5" FormatString="0" Value="{Binding PollingIntervalSeconds}" />
             </ui:FormField>
@@ -40,7 +42,7 @@
               <TextBox Text="{Binding ServerName}" />
             </ui:FormField>
             <ui:FormField Label="Listen URL" Hint="Takes effect after the server restarts">
-              <TextBox Text="{Binding ListenUrl}" PlaceholderText="http://0.0.0.0:5080" />
+              <TextBox Text="{Binding ListenUrl}" PlaceholderText="https://0.0.0.0:5080" />
             </ui:FormField>
             <ui:FormField Classes="wide" Label="Device address">
               <CheckBox IsChecked="{Binding UseHostName}" Content="Use host name when available, otherwise IP address"
@@ -57,7 +59,7 @@
         </StackPanel>
       </Border>
 
-      <Border Classes="card">
+      <Border Classes="card" IsVisible="{Binding IsAdmin}">
         <StackPanel Spacing="16">
           <TextBlock Classes="cardTitle" Text="Credential list" />
           <ItemsControl ItemsSource="{Binding Credentials}">
@@ -108,6 +110,9 @@
                      TextWrapping="Wrap" IsVisible="{Binding CredentialMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         </StackPanel>
       </Border>
+
+      <!-- Users (Admin only) -->
+      <settings:UsersCardView DataContext="{Binding Users}" IsVisible="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowUsers}" />
     </StackPanel>
   </ScrollViewer>
 </UserControl>

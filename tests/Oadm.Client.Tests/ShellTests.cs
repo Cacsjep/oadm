@@ -19,6 +19,7 @@ public sealed class ShellNavigationTests
         f.Registry,
         f.Api,
         f.Settings,
+        new UserSession(),
         NullLogger<MainWindowViewModel>.Instance);
 
     [Fact]

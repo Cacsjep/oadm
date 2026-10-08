@@ -1,0 +1,87 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:settings="using:Oadm.Client.Settings"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             x:Class="Oadm.Client.Settings.UsersCardView"
+             x:DataType="settings:UsersViewModel">
+  <!-- Settings page card Users (Admin only). Errors appear below their fields; refusals of the server in the message window. -->
+  <Border Classes="card">
+    <StackPanel Spacing="16">
+      <TextBlock Classes="cardTitle" Text="Users" />
+      <TextBlock Classes="secondary" Text="{Binding Summary}" />
+      <DataGrid x:Name="UsersGrid" ItemsSource="{Binding Users}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
+                SelectionMode="Single" MaxHeight="360">
+        <DataGrid.Columns>
+          <DataGridTemplateColumn Header="User" Width="180" SortMemberPath="UserName" x:DataType="settings:UserRowViewModel">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="settings:UserRowViewModel">
+                <ui:IconLabel Icon="{StaticResource Icon.user}" Text="{Binding UserName}" Margin="10,0" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTextColumn Header="Role" Width="120" Binding="{Binding RoleText}" x:DataType="settings:UserRowViewModel" />
+          <DataGridTextColumn Header="Last login" Width="140" Binding="{Binding LastLoginText}" x:DataType="settings:UserRowViewModel" />
+          <DataGridTemplateColumn Header="State" Width="100" SortMemberPath="StateText" x:DataType="settings:UserRowViewModel">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="settings:UserRowViewModel">
+                <ui:StatusChip Text="{Binding StateText}" IsOk="{Binding !IsDisabled}" Margin="10,0" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Width="*" CanUserSort="False" x:DataType="settings:UserRowViewModel">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="settings:UserRowViewModel">
+                <StackPanel Orientation="Horizontal" Spacing="16" Margin="10,0" ToolTip.Tip="{Binding SelfTooltip}">
+                  <Button Classes="link" Content="{Binding RoleActionText}" IsVisible="{Binding CanChange}"
+                          Command="{Binding $parent[UserControl].((settings:UsersViewModel)DataContext).ToggleRoleCommand}" CommandParameter="{Binding}" />
+                  <Button Classes="link" Content="Reset password"
+                          Command="{Binding $parent[UserControl].((settings:UsersViewModel)DataContext).OpenResetCommand}" CommandParameter="{Binding}" />
+                  <Button Classes="link" Content="{Binding StateActionText}" IsVisible="{Binding CanChange}"
+                          Command="{Binding $parent[UserControl].((settings:UsersViewModel)DataContext).ToggleDisabledCommand}" CommandParameter="{Binding}" />
+                  <Button Classes="link" Content="Delete" IsVisible="{Binding CanChange}"
+                          Command="{Binding $parent[UserControl].((settings:UsersViewModel)DataContext).DeleteCommand}" CommandParameter="{Binding}" />
+                </StackPanel>
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+        </DataGrid.Columns>
+      </DataGrid>
+
+      <!-- Reset password of one user (inline editor) -->
+      <StackPanel Classes="form" IsVisible="{Binding IsResetOpen}">
+        <TextBlock Classes="fieldLabel" Text="{Binding ResetTitle}" />
+        <ui:FormField Label="New password">
+          <ui:PasswordBox Text="{Binding ResetPassword}" />
+        </ui:FormField>
+        <ui:FormField Label="Confirm password">
+          <ui:PasswordBox Text="{Binding ResetConfirm}" />
+        </ui:FormField>
+        <ui:FormField>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Classes="primary" Content="Save password" Command="{Binding SaveResetCommand}"
+                    ToolTip.Tip="{Binding ResetBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            <Button Classes="secondary" Content="Cancel" Command="{Binding CancelResetCommand}" />
+          </StackPanel>
+        </ui:FormField>
+      </StackPanel>
+
+      <!-- Add a user -->
+      <StackPanel Classes="form">
+        <TextBlock Classes="fieldLabel" Text="Add user" />
+        <ui:FormField Label="User name">
+          <TextBox Text="{Binding NewUserName}" />
+        </ui:FormField>
+        <ui:FormField Label="Password" Hint="At least 10 characters.">
+          <ui:PasswordBox Text="{Binding NewPassword}" />
+        </ui:FormField>
+        <ui:FormField Label="Role" Hint="Operators work with devices and tasks; administrators also change settings, users and credentials.">
+          <ComboBox ItemsSource="{x:Static settings:UsersViewModel.Roles}" SelectedItem="{Binding NewRole}" />
+        </ui:FormField>
+        <ui:FormField>
+          <Button Classes="primary" Content="Add user" Command="{Binding AddUserCommand}"
+                  ToolTip.Tip="{Binding AddBlockedReason}" ToolTip.ShowOnDisabled="True" />
+        </ui:FormField>
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</UserControl>

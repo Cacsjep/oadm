@@ -33,13 +33,34 @@ public static class ServiceRegistration
         {
             services.AddSingleton<IClientSettingsStore, InMemoryClientSettingsStore>();
             services.AddSingleton<IOadmApi>(_ => new FakeOadmApi());
+            services.AddSingleton<IServerTrust, NoServerTrust>();
         }
         else
         {
             services.AddSingleton<IClientSettingsStore, JsonClientSettingsStore>();
-            services.AddSingleton<IOadmApi>(sp =>
-                new GrpcOadmApi(options.ServerAddress ?? sp.GetRequiredService<IClientSettingsStore>().Current.ServerAddress));
+            // TLS with the pinned server certificate (client settings), the login token on every call.
+            services.AddSingleton(sp => new Oadm.Contracts.Security.ServerCertificatePinning(new ClientPinStore(sp.GetRequiredService<IClientSettingsStore>())));
+            services.AddSingleton(sp => new GrpcOadmApi(
+                options.ServerAddress ?? sp.GetRequiredService<IClientSettingsStore>().Current.ServerAddress,
+                sp.GetRequiredService<Oadm.Contracts.Security.ServerCertificatePinning>()));
+            services.AddSingleton<IOadmApi>(sp => sp.GetRequiredService<GrpcOadmApi>());
+            services.AddSingleton<IServerTrust>(sp => new GrpcServerTrust(sp.GetRequiredService<GrpcOadmApi>()));
         }
+
+        services.AddSingleton(_ =>
+        {
+            var session = new UserSession();
+            if (options.UseFake)
+            {
+                // Fake mode has no login: the administrator "admin".
+                session.SignIn(new Contracts.V1.UserInfo { UserName = FakeOadmApi.FakeUserName, Role = Contracts.V1.UserRole.Admin }, "fake");
+            }
+
+            return session;
+        });
+        services.AddTransient<LoginViewModel>();
+        services.AddSingleton<Func<LoginViewModel>>(sp => () => sp.GetRequiredService<LoginViewModel>());
+        services.AddSingleton<AppShell>();
 
         services.AddSingleton<DeviceStore>();
         services.AddSingleton<TaskStore>();
@@ -56,6 +77,8 @@ public static class ServiceRegistration
         services.AddSingleton<TasksViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<LogsViewModel>();
+        services.AddSingleton<AuditLogViewModel>();
+        services.AddSingleton<UsersViewModel>();
         services.AddSingleton<Func<AddDevicesMode, AddDevicesViewModel>>(sp => mode => new AddDevicesViewModel(
             sp.GetRequiredService<IOadmApi>(),
             sp.GetRequiredService<IUiDispatcher>(),

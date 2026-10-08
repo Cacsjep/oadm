@@ -43,7 +43,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         ZeroConfSeconds = 30,
         MaxParallelTasksPerPlugin = 16,
         ServerName = "acs",
-        ListenUrl = "http://0.0.0.0:5080",
+        ListenUrl = "https://0.0.0.0:5080",
         UseHostName = false,
     };
     private bool _online = true;

@@ -8,9 +8,26 @@ namespace Oadm.Client.Infrastructure;
 /// <summary>Client-side settings, stored as JSON in the client data folder.</summary>
 public sealed class ClientSettings
 {
-    public const string DefaultServerAddress = "http://localhost:5080";
+    /// <summary>Server of a new client; without a scheme the client connects over TLS (https).</summary>
+    public const string DefaultServerAddress = "localhost:5080";
 
+    /// <summary>The client's address before TLS; read as <see cref="DefaultServerAddress"/>.</summary>
+    public const string LegacyDefaultServerAddress = "http://localhost:5080";
+
+    /// <summary>Most entries of <see cref="RecentServers"/>.</summary>
+    public const int MaxRecentServers = 10;
+
+    /// <summary>Server of the last login (the login window preselects it; <c>--server</c> overrides it).</summary>
     public string ServerAddress { get; set; } = DefaultServerAddress;
+
+    /// <summary>Servers logged in to, newest first (login window list).</summary>
+    public List<string> RecentServers { get; set; } = [];
+
+    /// <summary>Pinned server certificates: "host:port" -> SHA-256 fingerprint (trust on first use).</summary>
+    public Dictionary<string, string> PinnedServers { get; set; } = [];
+
+    /// <summary>"Remember me": "host:port" -> user name and session token (never the password).</summary>
+    public Dictionary<string, RememberedLogin> RememberedLogins { get; set; } = [];
 
     /// <summary>Device grid column layout, in display order.</summary>
     public List<ColumnLayoutEntry> DeviceColumns { get; set; } = [];
@@ -22,6 +39,49 @@ public sealed class ClientSettings
 
     /// <summary>Navigation rail shows labels (expanded, the default; user decision 2026-10-08) or icons only (collapsed).</summary>
     public bool NavRailExpanded { get; set; } = true;
+}
+
+/// <summary>A remembered session of one server.</summary>
+public sealed class RememberedLogin
+{
+    public string UserName { get; set; } = "";
+
+    public string Token { get; set; } = "";
+}
+
+/// <summary>Pinned server certificates in the client settings file.</summary>
+public sealed class ClientPinStore(IClientSettingsStore settings) : Oadm.Contracts.Security.IServerPinStore
+{
+    private readonly Lock _gate = new();
+
+    public string? GetPin(string serverKey)
+    {
+        lock (_gate)
+        {
+            return settings.Current.PinnedServers.TryGetValue(serverKey, out string? pin) ? pin : null;
+        }
+    }
+
+    public void SetPin(string serverKey, string fingerprint)
+    {
+        lock (_gate)
+        {
+            settings.Current.PinnedServers[serverKey] = fingerprint;
+        }
+
+        settings.Save();
+    }
+
+    public void RemovePin(string serverKey)
+    {
+        lock (_gate)
+        {
+            settings.Current.PinnedServers.Remove(serverKey);
+            settings.Current.RememberedLogins.Remove(serverKey);
+        }
+
+        settings.Save();
+    }
 }
 
 public sealed class ColumnLayoutEntry
@@ -82,8 +142,14 @@ public sealed partial class JsonClientSettingsStore : IClientSettingsStore
         {
             if (File.Exists(_path))
             {
-                return JsonSerializer.Deserialize(File.ReadAllText(_path), ClientSettingsJsonContext.Default.ClientSettings)
+                ClientSettings loaded = JsonSerializer.Deserialize(File.ReadAllText(_path), ClientSettingsJsonContext.Default.ClientSettings)
                     ?? new ClientSettings();
+                if (string.Equals(loaded.ServerAddress, ClientSettings.LegacyDefaultServerAddress, StringComparison.OrdinalIgnoreCase))
+                {
+                    loaded.ServerAddress = ClientSettings.DefaultServerAddress;
+                }
+
+                return loaded;
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)

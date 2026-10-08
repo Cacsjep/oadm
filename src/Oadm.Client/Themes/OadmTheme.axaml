@@ -363,6 +363,15 @@
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
   </Style>
+  <!-- The logged-in user at the bottom of the rail: laid out like a nav entry, not clickable, secondary text -->
+  <Style Selector="Border.railUser">
+    <Setter Property="Padding" Value="{StaticResource Oadm.NavItemPadding}" />
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="Border.railUser TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
   <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />

@@ -35,12 +35,15 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IClientPluginRegistry plugins,
         IOadmApi api,
         IClientSettingsStore clientSettings,
+        UserSession session,
         ILogger<MainWindowViewModel> logger)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(clientSettings);
         Connection = connection;
         Devices = devices;
+        Session = session;
+        session.PropertyChanged += (_, _) => OnPropertyChanged(nameof(UserTooltip));
         _api = api;
         _plugins = plugins;
         _catalog = catalog;
@@ -61,6 +64,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public ServerConnection Connection { get; }
     public DevicesViewModel Devices { get; }
+
+    /// <summary>The logged-in user (bottom of the rail, with Log out).</summary>
+    public UserSession Session { get; }
+
+    /// <summary>"Logged in as anna (Administrator) on https://localhost:5080".</summary>
+    public string UserTooltip => Session.IsLoggedIn
+        ? $"Logged in as {Session.UserName} ({Session.RoleText}) on {Session.ServerAddress}"
+        : "Not logged in";
 
     public static string AppName => "OADM";
 
@@ -87,8 +98,22 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void ToggleNav() => IsNavExpanded = !IsNavExpanded;
 
-    /// <summary>Starts the server streams. Call once after the window is shown.</summary>
-    public void Start() => Connection.Start();
+    /// <summary>Starts the server streams. Call after the window is shown (again after every login).</summary>
+    public void Start()
+    {
+        Navigate(_devicesItem);
+        Connection.Start();
+    }
+
+    /// <summary>Logout: stops the streams and closes the live view.</summary>
+    public void Stop()
+    {
+        Connection.Stop();
+        Devices.LiveView.CloseCommand.Execute(null);
+    }
+
+    [RelayCommand]
+    private void Logout() => Session.RequestLogout(null);
 
     [RelayCommand]
     private void Navigate(NavItemViewModel? item)

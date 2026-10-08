@@ -7,14 +7,22 @@
   <Grid RowDefinitions="Auto,*">
     <TextBlock Grid.Row="0" Classes="pageTitle" Text="Logs" Margin="4,0,0,16" />
 
-    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}">
+    <!-- Client log -->
+    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" IsVisible="{Binding IsClientTab}">
       <Grid RowDefinitions="Auto,Auto,*">
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
-          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="16">
+          <Border Grid.Column="0" Classes="segmented" IsVisible="{Binding CanSeeAudit}">
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="segment" Classes.selected="{Binding IsClientTab}" Content="Client log" Command="{Binding ShowClientLogCommand}" />
+              <Button Classes="segment" Classes.selected="{Binding IsAuditTab}" Content="Audit" Command="{Binding ShowAuditCommand}"
+                      ToolTip.Tip="Who did what on the server: logins, user and settings changes, task runs" />
+            </StackPanel>
+          </Border>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
             <TextBlock Classes="fieldLabel" Text="Level" />
             <ComboBox ItemsSource="{x:Static log:LogsViewModel.Levels}" SelectedItem="{Binding SelectedLevel}" MinWidth="200" />
           </StackPanel>
-          <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" />
+          <ui:SearchBox Grid.Column="3" Text="{Binding SearchText}" />
         </Grid>
 
         <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding StatusLine}" Margin="2,14,0,8" />
@@ -31,6 +39,43 @@
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
             <DataGridTextColumn Header="Message" Width="*" Binding="{Binding Message}" x:DataType="log:LogEntry" />
+          </DataGrid.Columns>
+        </DataGrid>
+      </Grid>
+    </Border>
+
+    <!-- Audit log of the server (Admin only) -->
+    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" IsVisible="{Binding IsAuditTab}">
+      <Grid RowDefinitions="Auto,Auto,*">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="16">
+          <Border Grid.Column="0" Classes="segmented">
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="segment" Classes.selected="{Binding IsClientTab}" Content="Client log" Command="{Binding ShowClientLogCommand}" />
+              <Button Classes="segment" Classes.selected="{Binding IsAuditTab}" Content="Audit" Command="{Binding ShowAuditCommand}"
+                      ToolTip.Tip="Who did what on the server: logins, user and settings changes, task runs" />
+            </StackPanel>
+          </Border>
+          <ui:ToolbarButton Grid.Column="1" Text="Refresh" IconKey="refresh" Command="{Binding Audit.RefreshCommand}" />
+          <ui:SearchBox Grid.Column="3" Text="{Binding Audit.SearchText}" />
+        </Grid>
+
+        <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding Audit.StatusLine}" Margin="2,14,0,8" />
+
+        <DataGrid Grid.Row="2" x:Name="AuditGrid" ItemsSource="{Binding Audit.Entries}" IsReadOnly="True" SelectionMode="Extended"
+                  CanUserSortColumns="False" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Time" Width="150" Binding="{Binding TimeText}" x:DataType="log:AuditRowViewModel" />
+            <DataGridTextColumn Header="User" Width="130" Binding="{Binding UserName}" x:DataType="log:AuditRowViewModel" />
+            <DataGridTextColumn Header="Client" Width="130" Binding="{Binding ClientAddress}" x:DataType="log:AuditRowViewModel" />
+            <DataGridTemplateColumn Header="Action" Width="230">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="log:AuditRowViewModel">
+                  <ui:StatusChip Text="{Binding Action}" IsWarning="{Binding IsProblem}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Target" Width="200" Binding="{Binding Target}" x:DataType="log:AuditRowViewModel" />
+            <DataGridTextColumn Header="Detail" Width="*" Binding="{Binding Detail}" x:DataType="log:AuditRowViewModel" />
           </DataGrid.Columns>
         </DataGrid>
       </Grid>

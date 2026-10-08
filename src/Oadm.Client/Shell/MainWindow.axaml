@@ -55,6 +55,17 @@
           </Panel>
         </Button>
         <Border DockPanel.Dock="Bottom" Classes="separator" Margin="4,6" />
+        <!-- Logged-in user and Log out, above the expand toggle -->
+        <Button DockPanel.Dock="Bottom" Classes="nav" Margin="0,2" Command="{Binding LogoutCommand}"
+                ToolTip.Tip="Log out" ToolTip.Placement="Right"
+                ToolTip.ServiceEnabled="{Binding !IsNavExpanded}">
+          <ui:IconLabel Icon="{StaticResource Icon.logout}" Text="Log out" Spacing="12" IsTextVisible="{Binding IsNavExpanded}" />
+        </Button>
+        <Border DockPanel.Dock="Bottom" x:Name="RailUser" Classes="railUser" Margin="0,2"
+                ToolTip.Tip="{Binding UserTooltip}" ToolTip.Placement="Right">
+          <ui:IconLabel Icon="{StaticResource Icon.user}" Text="{Binding Session.UserName}" Spacing="12" IsTextVisible="{Binding IsNavExpanded}" />
+        </Border>
+        <Border DockPanel.Dock="Bottom" Classes="separator" Margin="4,6" />
         <ItemsControl DockPanel.Dock="Bottom" ItemsSource="{Binding BottomNavItems}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="shell:NavItemViewModel">

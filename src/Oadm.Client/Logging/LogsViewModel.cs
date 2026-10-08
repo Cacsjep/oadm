@@ -14,18 +14,64 @@ public sealed record LogLevelOption(string Title, int MinimumRank)
     public override string ToString() => Title;
 }
 
-/// <summary>Logs page: live client log with level filter and search.</summary>
+/// <summary>Logs page: live client log with level filter and search; administrators also get the server's Audit tab.</summary>
 public sealed partial class LogsViewModel : ObservableObject
 {
     private readonly ObservableCollection<LogEntry> _source;
+    private readonly Shell.UserSession? _session;
 
-    public LogsViewModel(LogStore store)
+    public LogsViewModel(LogStore store, AuditLogViewModel? audit = null, Shell.UserSession? session = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         _source = store.Entries;
+        Audit = audit;
+        _session = session;
         SelectedLevel = Levels[0];
         _source.CollectionChanged += OnSourceChanged;
+        if (session is not null)
+        {
+            session.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(Shell.UserSession.IsAdmin))
+                {
+                    OnPropertyChanged(nameof(CanSeeAudit));
+                    if (!CanSeeAudit)
+                    {
+                        IsAuditTab = false;
+                        Audit?.Clear();
+                    }
+                }
+            };
+        }
+
         Rebuild();
+    }
+
+    /// <summary>The server's audit log (Admin only); null in tests without it.</summary>
+    public AuditLogViewModel? Audit { get; }
+
+    /// <summary>The Audit tab is offered to administrators.</summary>
+    public bool CanSeeAudit => Audit is not null && (_session?.IsAdmin ?? false);
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsClientTab))]
+    public partial bool IsAuditTab { get; private set; }
+
+    public bool IsClientTab => !IsAuditTab;
+
+    [RelayCommand]
+    private void ShowClientLog() => IsAuditTab = false;
+
+    [RelayCommand]
+    private async Task ShowAuditAsync()
+    {
+        if (!CanSeeAudit || Audit is null)
+        {
+            return;
+        }
+
+        IsAuditTab = true;
+        await Audit.RefreshAsync().ConfigureAwait(true);
     }
 
     public static IReadOnlyList<LogLevelOption> Levels { get; } =

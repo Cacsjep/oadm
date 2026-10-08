@@ -55,15 +55,43 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     private readonly IOadmApi _api;
     private readonly IClipboardService _clipboard;
     private readonly ILogger<SettingsViewModel> _logger;
+    private readonly UserSession? _session;
 
-    public SettingsViewModel(IOadmApi api, ServerConnection connection, IClipboardService clipboard, ILogger<SettingsViewModel> logger)
+    /// <summary>The Users card (Admin only); null in tests that do not need it.</summary>
+    public UsersViewModel? Users { get; }
+
+    /// <summary>Server settings, credential list and users can only be changed by administrators (the server checks it too).</summary>
+    public bool IsAdmin => _session?.IsAdmin ?? true;
+
+    public bool IsOperator => !IsAdmin;
+
+    /// <summary>The Users card is shown to administrators.</summary>
+    public bool ShowUsers => Users is not null && IsAdmin;
+
+    public SettingsViewModel(IOadmApi api, ServerConnection connection, IClipboardService clipboard, ILogger<SettingsViewModel> logger,
+        UserSession? session = null, UsersViewModel? users = null)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(clipboard);
         _api = api;
         _clipboard = clipboard;
         _logger = logger;
+        _session = session;
+        Users = users;
         connection.Connected += (_, _) => _ = LoadAsync();
+        if (session is not null)
+        {
+            session.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(UserSession.IsAdmin))
+                {
+                    OnPropertyChanged(nameof(IsAdmin));
+                    OnPropertyChanged(nameof(IsOperator));
+                    OnPropertyChanged(nameof(ShowUsers));
+                    SaveCommand.NotifyCanExecuteChanged();
+                }
+            };
+        }
 
         Validation
             .Rule(nameof(PollingIntervalSeconds), () => RangeError(PollingIntervalSeconds, 5, 3600))
@@ -119,13 +147,13 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         string text = (url ?? "").Trim();
         if (text.Length == 0)
         {
-            return "Enter a listen URL, e.g. http://0.0.0.0:5080.";
+            return "Enter a listen URL, e.g. https://0.0.0.0:5080.";
         }
 
         string probe = text.Replace("://*", "://localhost", StringComparison.Ordinal).Replace("://+", "://localhost", StringComparison.Ordinal);
         return Uri.TryCreate(probe, UriKind.Absolute, out Uri? uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
             ? null
-            : "Enter a URL like http://0.0.0.0:5080.";
+            : "Enter a URL like https://0.0.0.0:5080.";
     }
 
     // server side
@@ -168,7 +196,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     public partial bool IsBusy { get; private set; }
 
-    private bool CanSave => IsLoaded && !IsBusy && Validation.IsValidFor(ServerFields);
+    private bool CanSave => IsLoaded && !IsBusy && IsAdmin && Validation.IsValidFor(ServerFields);
 
     [RelayCommand]
     public async Task LoadAsync()
@@ -180,7 +208,15 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             Validation.Reset(ServerFields); // loaded values: nothing edited yet
             IsLoaded = true;
             ServerMessage = null;
-            await LoadCredentialsAsync().ConfigureAwait(true);
+            if (IsAdmin)
+            {
+                await LoadCredentialsAsync().ConfigureAwait(true);
+            }
+
+            if (Users is not null)
+            {
+                await Users.LoadAsync().ConfigureAwait(true);
+            }
         }
         catch (Exception ex)
         {

@@ -31,9 +31,8 @@ public partial class App : Application
         Services = ServiceRegistration.Build(Options, LogStore);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            MainWindowViewModel vm = Services.GetRequiredService<MainWindowViewModel>();
-            desktop.MainWindow = new MainWindow { DataContext = vm };
-            vm.Start();
+            // Login window first (fake mode: straight to the main window as "admin").
+            Services.GetRequiredService<AppShell>().Start(desktop);
             desktop.ShutdownRequested += (_, _) => Services.GetRequiredService<ServerConnection>().Stop();
         }
 

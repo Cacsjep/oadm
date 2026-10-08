@@ -319,9 +319,10 @@ public sealed class ServerConnectionTests
     [Fact]
     public void Server_address_is_normalized()
     {
-        Assert.Equal("http://server:5080", GrpcOadmApi.Normalize("server:5080"));
+        Assert.Equal("https://server:5080", GrpcOadmApi.Normalize("server:5080"));
+        Assert.Equal("http://server:5080", GrpcOadmApi.Normalize("http://server:5080"));
         Assert.Equal("https://server:5081", GrpcOadmApi.Normalize(" https://server:5081/ "));
-        Assert.Equal(ClientSettings.DefaultServerAddress, GrpcOadmApi.Normalize(""));
+        Assert.Equal("https://" + ClientSettings.DefaultServerAddress, GrpcOadmApi.Normalize(""));
     }
 
     [Fact]
