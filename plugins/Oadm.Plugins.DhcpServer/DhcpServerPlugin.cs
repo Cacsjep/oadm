@@ -39,7 +39,7 @@ public sealed class DhcpServerPlugin : ICorePlugin, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(ctx);
         await StopAsync(ct).ConfigureAwait(false);
-        var service = new DhcpServerService(_options, ctx.Settings, ctx.Events, ctx.Logger, ctx.Firewall);
+        var service = new DhcpServerService(_options, ctx.Settings, ctx.Events, ctx.Logger, ctx.Firewall, ctx.AutoAdd);
         await service.StartAsync(ct).ConfigureAwait(false);
         _service = service;
     }

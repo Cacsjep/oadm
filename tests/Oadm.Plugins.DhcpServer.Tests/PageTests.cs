@@ -7,6 +7,7 @@ using Avalonia.Headless;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 using Oadm.Core.Plugins;
 using Oadm.Plugins.DhcpServer.Client;
@@ -74,6 +75,25 @@ public sealed class PageViewModelTests : IAsyncLifetime
         // The same range on Wi-Fi is outside its subnet.
         vm.Listen.Selected = vm.Listen.Items[1];
         Assert.Equal("Must be inside the subnet 192.168.1.0/24.", vm.ErrorOf(nameof(vm.RangeStart)));
+    }
+
+    [Fact]
+    public async Task Automatic_add_is_saved_with_save_and_loaded_again()
+    {
+        using var vm = new DhcpServerViewModel(_ctx);
+        await vm.LoadAsync();
+        Assert.False(vm.AutoAddAxisDevices); // off by default
+        vm.IsEnabled = true;
+        vm.RangeStart = "10.0.0.100";
+        vm.RangeEnd = "10.0.0.199";
+        vm.AutoAddAxisDevices = true;
+
+        await vm.SaveCommand.ExecuteAsync(null);
+
+        Assert.True(_plugin.Service!.Config.AutoAddAxisDevices);
+        using var again = new DhcpServerViewModel(_ctx);
+        await again.LoadAsync();
+        Assert.True(again.AutoAddAxisDevices);
     }
 
     [Fact]
@@ -310,6 +330,15 @@ public sealed class HeadlessPageTests
             await vm.LoadAsync();
             Pump();
             Capture(window, outDir, "dhcp-server-page.png");
+
+            // "Automatically add Axis devices that get an address", checked (saved with Save like the other settings).
+            vm.AutoAddAxisDevices = true;
+            Pump();
+            var autoAdd = window.GetVisualDescendants().OfType<CheckBox>().Single(c => Equals(c.Content, "Automatically add Axis devices that get an address"));
+            Assert.True(autoAdd.IsChecked);
+            Assert.True(autoAdd.IsEffectivelyVisible);
+            Capture(window, outDir, "dhcp-server-auto-add.png");
+            vm.AutoAddAxisDevices = false;
 
             vm.RangeStart = "10.0.1.100";
             vm.RangeEnd = "10.0.0.50";

@@ -65,6 +65,12 @@ public sealed record DhcpConfig
     /// into a warning (a server not in this list still does).
     /// </summary>
     public IReadOnlyList<string> AcceptedOtherServers { get; init; } = [];
+
+    /// <summary>
+    /// "Automatically add Axis devices that get an address": after an ACK to an Axis MAC address that OADM does not manage,
+    /// the server adds the device like the add page (Axis check, factory default check, login with the credential list).
+    /// </summary>
+    public bool AutoAddAxisDevices { get; init; }
 }
 
 /// <summary>What clients get on an interface (everything derived, nothing asked).</summary>
@@ -152,7 +158,8 @@ public sealed record DhcpState
 /// <param name="RangeStart">First address.</param>
 /// <param name="RangeEnd">Last address.</param>
 /// <param name="ConfirmedOtherServers">The user confirmed enabling although these servers answer (from the popup).</param>
-public sealed record DhcpSaveRequest(bool Enabled, string? InterfaceId, string? RangeStart, string? RangeEnd, IReadOnlyList<string>? ConfirmedOtherServers = null);
+/// <param name="AutoAddAxisDevices">Automatically add Axis devices that get an address.</param>
+public sealed record DhcpSaveRequest(bool Enabled, string? InterfaceId, string? RangeStart, string? RangeEnd, IReadOnlyList<string>? ConfirmedOtherServers = null, bool AutoAddAxisDevices = false);
 
 /// <param name="Saved">False: nothing changed (field errors, or another server answers and needs a confirmation).</param>
 /// <param name="FieldErrors">Property ("RangeStart", "RangeEnd", "Interface") -> message, shown under the field.</param>

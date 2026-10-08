@@ -93,6 +93,12 @@ public sealed partial class DhcpEngine : IDisposable
     /// <summary>MAC addresses never answered (the server's own check for other DHCP servers).</summary>
     public Func<ulong, bool> IgnoreMac { get; set; } = _ => false;
 
+    /// <summary>
+    /// Called after every ACK of a lease (new or renewed) with the MAC and the address, on the receive path: must return at
+    /// once (the automatic add queues the work). A throwing handler is logged and never stops the reply.
+    /// </summary>
+    public Action<ulong, uint>? Leased { get; set; }
+
     /// <summary>The pool had no free address within <paramref name="window"/>.</summary>
     public bool ExhaustedWithin(TimeSpan window)
     {
@@ -286,6 +292,20 @@ public sealed partial class DhcpEngine : IDisposable
             LogLeased(MacAddress.Format(mac), Ip4.Format(address));
         }
 
+        if (Leased is { } leased)
+        {
+            try
+            {
+                leased(mac, address);
+            }
+#pragma warning disable CA1031 // The reply goes out whatever the listener does.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                LogLeasedHandlerFailed(ex);
+            }
+        }
+
         return new DhcpReply(ack, Destination(request, ack));
     }
 
@@ -384,6 +404,9 @@ public sealed partial class DhcpEngine : IDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "DHCP: {Mac} got {Address}")]
     private partial void LogLeased(string mac, string address);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "DHCP: the lease listener failed")]
+    private partial void LogLeasedHandlerFailed(Exception ex);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "DHCP: NAK to {Mac}: {Reason}")]
     private partial void LogNak(string mac, string reason);

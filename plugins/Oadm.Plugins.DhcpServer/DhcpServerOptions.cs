@@ -53,4 +53,7 @@ public sealed record DhcpServerOptions
 
     /// <summary>An exhausted pool keeps the warning for this long.</summary>
     public TimeSpan ExhaustedWarning { get; init; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>Automatic add and following of Axis devices that get a lease.</summary>
+    public DeviceAutoAddOptions AutoAdd { get; init; } = new();
 }

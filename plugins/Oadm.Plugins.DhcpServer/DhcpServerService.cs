@@ -31,6 +31,7 @@ public sealed partial class DhcpServerService : IAsyncDisposable
     private readonly KeyedRateLimiter<ulong> _limiter;
     private readonly OtherServerCheck _check;
     private readonly FirewallRuleKeeper _firewallRule;
+    private readonly DhcpDeviceAutoAdd? _autoAdd;
     private readonly CancellationTokenSource _cts = new();
     private Task? _background;
     private volatile DhcpConfig _config = new();
@@ -45,7 +46,11 @@ public sealed partial class DhcpServerService : IAsyncDisposable
     private string? _publishedState;
 
     /// <param name="firewall">Host firewall (Windows service only): UDP rule for the server port while enabled.</param>
-    public DhcpServerService(DhcpServerOptions? options = null, IPluginSettings? settings = null, IPluginEvents? events = null, ILogger? logger = null, IFirewallRules? firewall = null)
+    /// <param name="autoAdd">
+    /// The server's automatic add (<see cref="ICorePluginContext.AutoAdd"/>): leases of Axis devices are handed to it, so
+    /// managed devices are followed to their new address and, with <see cref="DhcpConfig.AutoAddAxisDevices"/>, new ones added.
+    /// </param>
+    public DhcpServerService(DhcpServerOptions? options = null, IPluginSettings? settings = null, IPluginEvents? events = null, ILogger? logger = null, IFirewallRules? firewall = null, Sdk.Devices.IDeviceAutoAdd? autoAdd = null)
     {
         _options = options ?? new DhcpServerOptions();
         _settings = settings;
@@ -58,7 +63,16 @@ public sealed partial class DhcpServerService : IAsyncDisposable
         {
             IgnoreMac = _check.IsProbeMac,
         };
+        if (autoAdd is not null)
+        {
+            var queue = new DhcpDeviceAutoAdd(autoAdd, () => _config is { Enabled: true, AutoAddAxisDevices: true }, _options.AutoAdd, _options.Time, _logger);
+            _autoAdd = queue;
+            _engine.Leased = (mac, address) => queue.OnLeased(mac, address);
+        }
     }
+
+    /// <summary>The automatic add of Axis devices (null when the host offers none).</summary>
+    public DhcpDeviceAutoAdd? AutoAdd => _autoAdd;
 
     public DhcpConfig Config => _config;
 
@@ -132,6 +146,11 @@ public sealed partial class DhcpServerService : IAsyncDisposable
 #pragma warning restore CA1031
         {
             LogPersistFailed(ex);
+        }
+
+        if (_autoAdd is not null)
+        {
+            await _autoAdd.DisposeAsync().ConfigureAwait(false);
         }
 
         _engine.Dispose();
@@ -232,6 +251,7 @@ public sealed partial class DhcpServerService : IAsyncDisposable
             RangeStart = string.IsNullOrEmpty(start) ? null : start,
             RangeEnd = string.IsNullOrEmpty(end) ? null : end,
             AcceptedOtherServers = accepted,
+            AutoAddAxisDevices = request.AutoAddAxisDevices,
         };
         if (!config.Enabled)
         {

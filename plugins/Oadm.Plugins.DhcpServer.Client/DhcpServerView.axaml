@@ -30,6 +30,9 @@
         <TextBox Text="{Binding RangeEnd}" PlaceholderText="e.g. 10.0.0.199" />
       </ui:FormField>
 
+      <CheckBox Content="Automatically add Axis devices that get an address" IsChecked="{Binding AutoAddAxisDevices}"
+                ToolTip.Tip="OADM adds an Axis device as soon as it gets its address here and logs in with the credential list. Devices OADM already manages are followed to their new address either way." />
+
       <ui:FormField Classes="wide">
         <TextBlock Classes="secondary" Text="{Binding ClientsGetText}" IsVisible="{Binding ClientsGetText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                    TextWrapping="Wrap" />

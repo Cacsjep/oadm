@@ -393,8 +393,10 @@ internal static class Options
 }
 
 /// <summary>Minimal core plugin context: in-memory settings, the real event hub.</summary>
-internal sealed class TestCoreContext(IPluginSettings settings, IPluginEvents? events, IFirewallRules? firewall = null) : ICorePluginContext
+internal sealed class TestCoreContext(IPluginSettings settings, IPluginEvents? events, IFirewallRules? firewall = null, IDeviceAutoAdd? autoAdd = null) : ICorePluginContext
 {
+    public IDeviceAutoAdd? AutoAdd { get; } = autoAdd;
+
     public IFirewallRules? Firewall { get; } = firewall;
 
     public IDeviceRepository Devices => throw new NotSupportedException();

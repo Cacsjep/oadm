@@ -9,10 +9,29 @@ Spec: `docs/specs/dhcp-server.md`, summary in `CLAUDE.md` "DHCP server plugin". 
 |---|---|
 | `Protocol/` | `DhcpMessage` codec (header, magic cookie, options 1, 3, 6, 12, 15, 50-59, 61; overload 52; RFC 3396 concatenation; unknown options ignored; malformed input rejected), `MacAddress`, `Ip4` |
 | `Leases/` | `LeaseStore`: leases by MAC and by address, conflicts, pending offers, static priority, versioned changes for the page, stored form (`StoredLease`) |
-| `Serving/` | `DhcpEngine` (state machine), `DhcpListener` (receive loop, rate limits, pooled buffers), `DhcpSockets` (per-OS UDP binding, injectable `IDhcpSocketFactory`), `OtherServerCheck` |
+| `Serving/` | `DhcpEngine` (state machine, `Leased` callback after every ACK), `DhcpListener` (receive loop, rate limits, pooled buffers), `DhcpSockets` (per-OS UDP binding, injectable `IDhcpSocketFactory`), `OtherServerCheck`, `AxisOui` (the Axis MAC blocks), `DhcpDeviceAutoAdd` (queue to the server's `IDeviceAutoAdd`) |
 | `Status/` | `DhcpStatusTexts` (status line, bind error per OS) |
 | `Shared/` | page contract (`DhcpServerMethods`, `DhcpState`, requests/replies) and `DhcpValidation` (shared with the page) |
 | `../Oadm.Plugins.Network/AddressProbe.cs`, `Model/Ipv4.cs` | compiled in (the Network plugin's in-use probe and IPv4 math; a project reference would register the Network tasks twice) |
+
+## Automatically add Axis devices
+
+Check box "Automatically add Axis devices that get an address" (config `autoAddAxisDevices`, default off, saved with
+Save). After every ACK the engine hands MAC and address to `DhcpDeviceAutoAdd`, which only queues (the receive loop never
+waits). Only MAC addresses of the Axis blocks in `AxisOui` (00:40:8C, AC:CC:8E, B8:A4:4F, E8:27:25, IEEE registry
+2026-10-08) are handled, once per MAC and lease change, 4 at a time:
+
+1. `ctx.AutoAdd.FollowAsync(serial = MAC, address)`: a managed device at another address is verified there by the server
+   (serial with the stored credentials) and its record moved, whether the check box is on or not; devices reached by
+   host name keep it.
+2. Unmanaged and the check box on: `ctx.AutoAdd.AddAsync(address, serial, "DHCP server")`, the add page's pipeline on
+   the server: anonymous Axis check, factory default -> added as "Password not set" (context menu "Set password"),
+   credential list login -> added as Ok, or "Credentials required" when no credential fits (context menu "Log in"); not
+   an Axis device, another serial or no answer -> not added (server log).
+3. No answer yet (cameras answer HTTP a few seconds after DHCP) or a moved device not verified yet: one retry after 30 s,
+   dropped when the lease changed meanwhile.
+
+The server writes the audit entries ("Device added automatically", "Device moved", user "system").
 
 ## Port 67 per OS
 
@@ -52,7 +71,12 @@ Never run these on a production network: a second DHCP server hands out wrong ad
     "Port 67 is in use by another program" with the hint in the tooltip; stop the other program: OADM starts within 30 s.
 12. **Restart**: restart the OADM server: the server comes back enabled with the same leases; the cameras keep their
     addresses at the next renewal.
-13. **Interface change**: change the server's address to another subnet: status "Range is not inside the interface
+13. **Automatic add**: add a credential of the cameras on the Credentials page, check "Automatically add Axis devices
+    that get an address", Save, restart a camera that OADM does not manage: within a minute it appears on the Devices
+    page (status Ok), the audit log shows "Device added automatically". A factory-default camera appears as "Password
+    not set"; "Set password" in its context menu sets the first password. Remove a managed camera's static lease and give
+    it a new address from the range: its record follows the new address ("Device moved" in the audit log).
+14. **Interface change**: change the server's address to another subnet: status "Range is not inside the interface
     subnet"; pull the cable: "Interface Ethernet is not available".
 
 Automated tests (`tests/Oadm.Plugins.DhcpServer.Tests`) cover all of this on an in-memory network (`FakeDhcpNetwork`) and

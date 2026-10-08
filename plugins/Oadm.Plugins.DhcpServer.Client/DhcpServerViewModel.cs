@@ -76,6 +76,10 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
     [ObservableProperty]
     public partial bool IsEnabled { get; set; }
 
+    /// <summary>"Automatically add Axis devices that get an address" (saved with Save).</summary>
+    [ObservableProperty]
+    public partial bool AutoAddAxisDevices { get; set; }
+
     [ObservableProperty]
     public partial string RangeStart { get; set; } = string.Empty;
 
@@ -269,7 +273,7 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
             IReadOnlyList<string>? confirmed = null;
             while (true)
             {
-                var request = new DhcpSaveRequest(IsEnabled, Listen.SelectedId, RangeStart.Trim(), RangeEnd.Trim(), confirmed);
+                var request = new DhcpSaveRequest(IsEnabled, Listen.SelectedId, RangeStart.Trim(), RangeEnd.Trim(), confirmed, AutoAddAxisDevices);
                 var json = await _ctx.InvokeAsync(DhcpServerMethods.Save, DhcpJson.Serialize(request), CancellationToken.None).ConfigureAwait(true);
                 var reply = DhcpJson.Deserialize<DhcpSaveReply>(json);
                 if (reply.OtherServers is { Count: > 0 } others && !reply.Saved)
@@ -465,6 +469,7 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
     {
         _formLoaded = true;
         IsEnabled = config.Enabled;
+        AutoAddAxisDevices = config.AutoAddAxisDevices;
         RangeStart = config.RangeStart ?? string.Empty;
         RangeEnd = config.RangeEnd ?? string.Empty;
         InterfaceError = null;
