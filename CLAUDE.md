@@ -1371,7 +1371,7 @@ Own RFC 2131 / 2132 implementation, IPv4 only, one interface, no relay agents (r
 
 ## PKI plugin (core plugin)
 
-`plugins/Oadm.Plugins.Pki` (+ `.Client`), id `oadm.pki`, rail page **PKI** (icon `key`). Spec and decisions:
+`plugins/Oadm.Plugins.Pki` (+ `.Client`), id `oadm.pki`, rail page **PKI** (icon `shield`). Spec and decisions:
 `docs/specs/pki.md`, device API research `tests/Oadm.Plugins.Pki.Tests/Fixtures/`. Part 1: the CA, its page and the server's trust;
 part 2: the contributed Security tasks (below), the only writers of the `issued` registry.
 - CA store (plugin settings): `ca` (id = SHA-256 of the certificate, source generated/imported, certificate and chain PEM,

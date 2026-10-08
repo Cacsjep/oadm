@@ -109,7 +109,13 @@ public sealed class TaskQueryUploadAndLogTests
         await host.Get<ServerSettingsStore>().SetAsync(SettingKeys.UploadsMaxMegabytes, 1, CancellationToken.None);
         var files = new Proto.FileService.FileServiceClient(host.Invoker);
 
-        var tooLarge = await Assert.ThrowsAsync<RpcException>(() => UploadAsync(files, "big.bin", new byte[(1024 * 1024) + 1]));
+        // Rejected right after the header; RejectedAsync tolerates the race with the data chunks still being written.
+        var big = new byte[(1024 * 1024) + 1];
+        var tooLarge = await RejectedAsync(
+            files,
+            new Proto.UploadChunk { Header = new Proto.UploadHeader { Name = "big.bin", Size = big.Length } },
+            new Proto.UploadChunk { Data = ByteString.CopyFrom(big, 0, 256 * 1024) },
+            new Proto.UploadChunk { Data = ByteString.CopyFrom(big, 256 * 1024, big.Length - (256 * 1024)) });
         Assert.Equal(StatusCode.ResourceExhausted, tooLarge.StatusCode);
         Assert.Contains("1 MB", tooLarge.Status.Detail, StringComparison.Ordinal);
 

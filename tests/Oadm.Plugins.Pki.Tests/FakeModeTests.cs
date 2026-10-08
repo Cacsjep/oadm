@@ -16,7 +16,7 @@ public sealed class FakeModeTests : IDisposable
     [Fact]
     public async Task Fake_backend_is_listed_and_its_state_reads_as_the_plugin_models()
     {
-        Assert.Contains(await _api.ListCorePluginsAsync(CancellationToken.None), p => p.Id == PkiPluginInfo.PluginId && p.IconKey == "key");
+        Assert.Contains(await _api.ListCorePluginsAsync(CancellationToken.None), p => p.Id == PkiPluginInfo.PluginId && p.IconKey == "shield");
 
         var state = PkiJson.Deserialize<PkiState>(await _api.InvokeCorePluginAsync(PkiPluginInfo.PluginId, PkiMethods.GetState, null, CancellationToken.None));
         Assert.True(state.Simulated);

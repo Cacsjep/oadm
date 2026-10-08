@@ -806,7 +806,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
     private static IEnumerable<CorePluginInfo> FakeCorePlugins =>
     [
         new CorePluginInfo { Id = SnapshotReportPluginId, DisplayName = "Snapshot report", IconKey = "snapshot" },
-        new CorePluginInfo { Id = PkiPluginId, DisplayName = "PKI", IconKey = "key" },
+        new CorePluginInfo { Id = PkiPluginId, DisplayName = "PKI", IconKey = "shield" },
         new CorePluginInfo { Id = MetadataMonitorPluginId, DisplayName = "Metadata Monitor", IconKey = "activity" },
     ];
 

@@ -10,7 +10,7 @@ public static class PkiPluginInfo
 {
     public const string PluginId = "oadm.pki";
     public const string DisplayName = "PKI";
-    public const string IconKey = "key";
+    public const string IconKey = "shield";
 
     /// <summary>Previous CAs kept (newest first).</summary>
     public const int MaxPreviousCas = 10;
