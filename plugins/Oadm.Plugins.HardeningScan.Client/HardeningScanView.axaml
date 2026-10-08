@@ -1,0 +1,133 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:hs="using:Oadm.Plugins.HardeningScan"
+             xmlns:vm="using:Oadm.Plugins.HardeningScan.Client"
+             x:Class="Oadm.Plugins.HardeningScan.Client.HardeningScanView"
+             x:DataType="vm:HardeningScanViewModel"
+             ui:PageHeader.Subtitle="Checks every device against the AXIS OS hardening guide. Read-only.">
+  <!-- One card (the host's page card): level switch and scan controls, progress and summary, the result grid (one icon
+       column per check, built by the code-behind from the catalog), the selected device's checks or the items that cannot be
+       checked automatically. Shared controls and theme classes only. -->
+  <Grid x:Name="Root" RowDefinitions="Auto,Auto,Auto,*,Auto,240">
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="10">
+      <Border Grid.Column="0" Classes="segmented" VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal">
+          <Button Classes="segment" Classes.selected="{Binding IsBasic}" Content="Basic" Command="{Binding ShowBasicCommand}"
+                  ToolTip.Tip="The guide's Basic hardening checks" />
+          <Button Classes="segment" Classes.selected="{Binding IsExtended}" Content="Extended" Command="{Binding ShowExtendedCommand}"
+                  ToolTip.Tip="Basic plus the Extended hardening checks" />
+        </StackPanel>
+      </Border>
+      <ui:ToolbarButton Grid.Column="1" IsPrimary="True" IconKey="start" Text="Scan all" Command="{Binding ScanAllCommand}"
+                        ToolTip.Tip="{Binding ScanTip}" ToolTip.ShowOnDisabled="True" />
+      <ui:ToolbarButton Grid.Column="2" IconKey="devices" Text="{Binding ScanSelectedText}" Command="{Binding ScanSelectedCommand}"
+                        ToolTip.Tip="{Binding ScanSelectedTip}" ToolTip.ShowOnDisabled="True" />
+      <ui:ToolbarButton Grid.Column="3" IconKey="stop" Text="Stop" Command="{Binding StopCommand}"
+                        ToolTip.Tip="Stop the scan; the devices scanned so far keep their results" ToolTip.ShowOnDisabled="True" />
+      <ui:ToolbarButton Grid.Column="4" IconKey="export" Text="Export CSV" Command="{Binding ExportCommand}"
+                        ToolTip.Tip="Save the shown rows with every check of this level as a CSV file" />
+      <ComboBox Grid.Column="6" Width="150" VerticalAlignment="Center" ItemsSource="{Binding Filters}" SelectedItem="{Binding SelectedFilter}"
+                ToolTip.Tip="Show only devices with this result" />
+      <ui:SearchBox Grid.Column="7" Width="220" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="Search devices" />
+    </Grid>
+
+    <ui:ProgressRow Grid.Row="1" Margin="0,10,0,0" Value="{Binding ProgressValue}" Text="{Binding ProgressText}" IsActive="{Binding IsScanning}"
+                    IsVisible="{Binding IsScanning}" />
+
+    <StackPanel Grid.Row="2" Margin="0,10,0,0" Spacing="4">
+      <TextBlock Classes="secondary" Text="{Binding SummaryText}" />
+      <TextBlock Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+    </StackPanel>
+
+    <!-- 5,000 rows: virtualized; the check columns are added by the code-behind (one per check of the level). -->
+    <DataGrid x:Name="ResultGrid" Grid.Row="3" Margin="0,8,0,0" ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow}"
+              IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="True" CanUserResizeColumns="True"
+              SelectionMode="Single" FrozenColumnCount="6" MinHeight="160">
+      <DataGrid.Columns>
+        <DataGridTemplateColumn Tag="icon" Width="40" CanUserSort="True" SortMemberPath="Kind" CanUserReorder="False" CanUserResize="False">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate x:DataType="vm:HardeningRow">
+              <Panel Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Background="Transparent" ToolTip.Tip="{Binding Status}">
+                <ui:OadmIcon Data="{Binding IconKey, Converter={x:Static vm:IconKeyConverter.Instance}}" Width="18" Height="18"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             Classes.ok="{Binding IsPass}" Classes.warn="{Binding IsWarn}" Classes.error="{Binding IsFail}" />
+              </Panel>
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+        <DataGridTextColumn Tag="address" Header="Address" Width="120" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:HardeningRow" />
+        <DataGridTextColumn Tag="model" Header="Model" Width="110" Binding="{Binding Model}" x:DataType="vm:HardeningRow" />
+        <DataGridTextColumn Tag="firmware" Header="AXIS OS" Width="80" Binding="{Binding Firmware}" x:DataType="vm:HardeningRow" />
+        <DataGridTextColumn Tag="score" Header="Score" Width="64" Binding="{Binding ScoreText}" SortMemberPath="ScoreSortKey" x:DataType="vm:HardeningRow" />
+        <DataGridTextColumn Tag="lastScan" Header="Last scan" Width="96" Binding="{Binding LastScanText}" SortMemberPath="ScannedUtc" x:DataType="vm:HardeningRow" />
+      </DataGrid.Columns>
+    </DataGrid>
+
+    <GridSplitter x:Name="DetailSplitter" Grid.Row="4" Classes="paneSplitter" />
+
+    <Grid Grid.Row="5" RowDefinitions="Auto,*" RowSpacing="8">
+      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+        <Border Classes="segmented" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal">
+            <Button Classes="segment" Classes.selected="{Binding ShowDevice}" Content="Selected device" Command="{Binding ShowDeviceDetailCommand}" />
+            <Button Classes="segment" Classes.selected="{Binding ShowInfo}" Content="Not checked automatically" Command="{Binding ShowInfoItemsCommand}" />
+          </StackPanel>
+        </Border>
+        <TextBlock Grid.Column="1" Classes="secondary" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                   Text="{Binding DetailTitle}" IsVisible="{Binding ShowDevice}" />
+        <Button Grid.Column="1" Classes="link" HorizontalAlignment="Left" VerticalAlignment="Center" Content="Open the AXIS OS hardening guide"
+                Command="{Binding OpenGuideCommand}" IsVisible="{Binding ShowInfo}" />
+      </Grid>
+
+      <DataGrid x:Name="DetailGrid" Grid.Row="1" ItemsSource="{Binding DetailItems}" IsVisible="{Binding ShowDevice}"
+                IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False" SelectionMode="Single">
+        <DataGrid.Columns>
+          <DataGridTemplateColumn Header="Result" Width="150">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="vm:DetailItem">
+                <ui:StatusChip Text="{Binding StateText}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="Check" Width="200">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="vm:DetailItem">
+                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Section}" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="Found" Width="2*">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="vm:DetailItem">
+                <TextBlock Text="{Binding Found}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Found}" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="Recommendation" Width="3*">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="vm:DetailItem">
+                <TextBlock Text="{Binding Recommendation}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Recommendation}" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+        </DataGrid.Columns>
+      </DataGrid>
+
+      <!-- At most nine guide items: a plain list. -->
+      <ScrollViewer Grid.Row="1" IsVisible="{Binding ShowInfo}">
+        <ItemsControl ItemsSource="{Binding InfoItems}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="hs:CheckInfo">
+              <StackPanel Margin="0,0,0,10" Spacing="2">
+                <TextBlock Classes="sectionTitle" Text="{Binding Title}" />
+                <TextBlock Classes="secondary" Text="{Binding Section}" />
+                <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" />
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </Grid>
+  </Grid>
+</UserControl>

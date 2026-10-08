@@ -8,7 +8,7 @@ public static class HardeningScanPluginInfo
 {
     public const string PluginId = "oadm.hardening-scan";
     public const string DisplayName = "Hardening scan";
-    public const string IconKey = "shieldCheck";
+    public const string IconKey = "clipboardCheck";
 
     /// <summary>The AXIS OS Hardening Guide the checks follow.</summary>
     public const string GuideUrl = "https://help.axis.com/en-us/axis-os-hardening-guide";
