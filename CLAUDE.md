@@ -2244,6 +2244,24 @@ marked *(default)* were filled in and can be changed. This section wins over old
   least-privilege service accounts, database backup before migrations.
 - **Hardware write tests**: done by the user by hand on a spare camera.
 
+# Wording
+
+HARD RULE for every UI text and every doc. We write for installers who know Axis devices and come from ADM.
+
+- Short and plain. Intros and subtitles: one short sentence, or none. Never explain what a visible control already shows.
+- Tooltips only when they add something, at most about 8 words. Never repeat the label.
+- No protocol, API or internal names in UI text (mDNS, Bonjour, zero-conf, fwmgr 1.x, stratum, ASCII, passphrase
+  policy, full refresh, device record, ports, internal limits). Say what the user can do instead.
+- One phrase per concept, everywhere, kept as a shared constant: statuses, refusal and HTTP error texts, the removed
+  device, "Default router", "Discovery".
+- Only point to actions that exist, by their real name.
+- "Optional" once per field. No "(s)" plurals: write the count or rephrase.
+- Step names follow one pattern: imperative, with the article ("Wait for the device to come back").
+- No filler: no "easily", "seamlessly", "simply", "this allows you to", "please note", em-dash asides, "not X but Y".
+- Docs use the same style. README and user docs are for users. Developer docs (CONTRIBUTING, plugins/README, plugin
+  READMEs, specs) keep the technical detail developers need, in short sentences, without repetition. TERMS.md is fixed
+  by the user and is never edited.
+
 # Coding Rules
 
 - `Directory.Build.props`: Nullable enable, ImplicitUsings enable, TreatWarningsAsErrors,
