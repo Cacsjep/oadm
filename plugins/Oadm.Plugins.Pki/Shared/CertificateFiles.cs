@@ -39,7 +39,9 @@ public static class CertificateFiles
         X509Certificate2Collection collection;
         try
         {
-            collection = X509CertificateLoader.LoadPkcs12Collection(bytes, password ?? string.Empty, X509KeyStorageFlags.EphemeralKeySet);
+            // Keys never touch the OS key store; macOS does not support ephemeral keys (PlatformNotSupportedException).
+            var flags = OperatingSystem.IsMacOS() ? X509KeyStorageFlags.DefaultKeySet : X509KeyStorageFlags.EphemeralKeySet;
+            collection = X509CertificateLoader.LoadPkcs12Collection(bytes, password ?? string.Empty, flags);
         }
         catch (CryptographicException)
         {

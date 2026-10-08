@@ -107,9 +107,11 @@
       <ComponentRef Id="DataFolder" />
     </Feature>
 
-    <!-- Setup wizard: welcome, license (Apache-2.0), install folder, progress, finish with "Launch OADM".
+    <!-- Setup wizard: welcome with the license (Apache-2.0), progress, finish with "Launch OADM". No install folder
+         choice on purpose: a custom folder (e.g. C:OADM) inherits user write access, and the service runs the exe as
+         SYSTEM (security audit H4); Program Files is admin-only.
          Assets from make-ui-assets.py. A silent install (msiexec /qn, CI) skips all dialogs. -->
-    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <ui:WixUI Id="WixUI_Minimal" />
     <WixVariable Id="WixUILicenseRtf" Value="$(sys.SOURCEFILEDIR)License.rtf" />
     <WixVariable Id="WixUIBannerBmp" Value="$(sys.SOURCEFILEDIR)Banner.bmp" />
     <WixVariable Id="WixUIDialogBmp" Value="$(sys.SOURCEFILEDIR)Dialog.bmp" />

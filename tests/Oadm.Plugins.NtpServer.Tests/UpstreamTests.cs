@@ -9,11 +9,14 @@ public sealed class UpstreamClientTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMilliseconds(300);
 
+    // Tests that expect an answer wait longer: a busy CI runner (macOS) took more than 300 ms for a loopback answer.
+    private static readonly TimeSpan AnswerTimeout = TimeSpan.FromSeconds(3);
+
     [Fact]
     public async Task Good_answer_gives_stratum_offset_and_round_trip()
     {
         await using var upstream = new FakeUpstream { ClockOffset = TimeSpan.FromSeconds(3) };
-        var sample = await UpstreamClient.QueryAsync(upstream.EndPoint, Timeout, TimeProvider.System, CancellationToken.None);
+        var sample = await UpstreamClient.QueryAsync(upstream.EndPoint, AnswerTimeout, TimeProvider.System, CancellationToken.None);
 
         Assert.Equal(2, sample.Stratum);
         Assert.InRange(sample.OffsetSeconds, 2.9, 3.1);
@@ -43,7 +46,7 @@ public sealed class UpstreamClientTests
 
         // The next query (new socket, new origin) is answered fast; the late answer of the first never counts.
         upstream.Delay = TimeSpan.Zero;
-        var sample = await UpstreamClient.QueryAsync(upstream.EndPoint, Timeout, TimeProvider.System, CancellationToken.None);
+        var sample = await UpstreamClient.QueryAsync(upstream.EndPoint, AnswerTimeout, TimeProvider.System, CancellationToken.None);
         Assert.InRange(sample.DelaySeconds, 0, 0.3);
         await Task.Delay(500); // the late answer arrives at the closed socket
         Assert.Equal(2, upstream.Requests);
@@ -57,7 +60,7 @@ public sealed class UpstreamClientTests
         Assert.Equal(UpstreamFailure.Timeout, ex.Failure);
 
         upstream.Behavior = UpstreamBehavior.WrongOriginThenAnswer;
-        var sample = await UpstreamClient.QueryAsync(upstream.EndPoint, Timeout, TimeProvider.System, CancellationToken.None);
+        var sample = await UpstreamClient.QueryAsync(upstream.EndPoint, AnswerTimeout, TimeProvider.System, CancellationToken.None);
         Assert.Equal(2, sample.Stratum);
     }
 
@@ -75,7 +78,7 @@ public sealed class UpstreamClientTests
     public async Task Kiss_of_death_is_rejected_with_its_code(UpstreamBehavior behavior, string code)
     {
         await using var upstream = new FakeUpstream(behavior);
-        var ex = await Assert.ThrowsAsync<UpstreamException>(() => UpstreamClient.QueryAsync(upstream.EndPoint, Timeout, TimeProvider.System, CancellationToken.None));
+        var ex = await Assert.ThrowsAsync<UpstreamException>(() => UpstreamClient.QueryAsync(upstream.EndPoint, AnswerTimeout, TimeProvider.System, CancellationToken.None));
         Assert.Equal(UpstreamFailure.KissOfDeath, ex.Failure);
         Assert.Equal(code, ex.KissCode);
         Assert.Contains(code, ex.Message, StringComparison.Ordinal);
@@ -85,7 +88,7 @@ public sealed class UpstreamClientTests
     public async Task Unsynchronized_upstream_is_rejected()
     {
         await using var upstream = new FakeUpstream(UpstreamBehavior.Unsynchronized);
-        var ex = await Assert.ThrowsAsync<UpstreamException>(() => UpstreamClient.QueryAsync(upstream.EndPoint, Timeout, TimeProvider.System, CancellationToken.None));
+        var ex = await Assert.ThrowsAsync<UpstreamException>(() => UpstreamClient.QueryAsync(upstream.EndPoint, AnswerTimeout, TimeProvider.System, CancellationToken.None));
         Assert.Equal(UpstreamFailure.InvalidAnswer, ex.Failure);
     }
 

@@ -15,6 +15,9 @@ internal sealed class RolloutRegistry(TimeProvider? time = null)
 
     public int Count => _rollouts.Count;
 
+    /// <summary>Every rollout currently known (tests wait on <see cref="Rollout.IsAborted"/>).</summary>
+    internal ICollection<Rollout> All => _rollouts.Values;
+
     /// <summary>The rollout with this id, created on first use (a task started without the page knows only its payload).</summary>
     public Rollout Get(Guid rolloutId, bool stopOnFirstError)
     {
