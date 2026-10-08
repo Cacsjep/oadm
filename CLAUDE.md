@@ -422,7 +422,7 @@ Dark only, calm and spacious, no gradients inside the app.
   is a neutral grey slightly lighter than the title bar (never the system blue/accent); the
   close button hovers red like Windows. No connection indicator in the title bar; a banner
   appears only while the server is unreachable.
-- Left navigation rail: collapsed by default (icons only, ~56 px, tooltips with the label),
+- Left navigation rail: expanded by default (user decision 2026-10-08; collapsed: icons only, ~56 px, tooltips with the label),
   expand/collapse toggle at the bottom of the rail; expanded ~220 px with icon + label.
   Selected item as rounded pill `#2A2A2A`. Entries top: Devices, then one per Core plugin
   page. Pinned bottom: Logs, Settings, then the expand toggle. No Tasks page, no About page.

@@ -20,8 +20,8 @@ public sealed class ClientSettings
     /// <summary>Height of the tasks pane set with the splitter, in pixels. 0 = default.</summary>
     public double TasksPaneHeight { get; set; }
 
-    /// <summary>Navigation rail shows labels (expanded) or icons only (collapsed, the default).</summary>
-    public bool NavRailExpanded { get; set; }
+    /// <summary>Navigation rail shows labels (expanded, the default; user decision 2026-10-08) or icons only (collapsed).</summary>
+    public bool NavRailExpanded { get; set; } = true;
 }
 
 public sealed class ColumnLayoutEntry

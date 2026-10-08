@@ -75,21 +75,21 @@ public sealed class ShellNavigationTests
     }
 
     [Fact]
-    public void Rail_is_collapsed_by_default_and_the_toggle_is_persisted()
+    public void Rail_is_expanded_by_default_and_the_toggle_is_persisted()
     {
         using var f = new DevicesFixture();
         using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
         MainWindowViewModel vm = CreateShell(f, connection);
 
-        Assert.False(vm.IsNavExpanded);
-        Assert.Equal("Expand", vm.NavToggleText);
+        Assert.True(vm.IsNavExpanded);
+        Assert.Equal("Collapse", vm.NavToggleText);
 
         vm.ToggleNavCommand.Execute(null);
 
-        Assert.True(vm.IsNavExpanded);
-        Assert.Equal("Collapse", vm.NavToggleText);
-        Assert.True(f.Settings.Current.NavRailExpanded);
-        Assert.True(CreateShell(f, connection).IsNavExpanded);
+        Assert.False(vm.IsNavExpanded);
+        Assert.Equal("Expand", vm.NavToggleText);
+        Assert.False(f.Settings.Current.NavRailExpanded);
+        Assert.False(CreateShell(f, connection).IsNavExpanded);
     }
 }
 
