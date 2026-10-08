@@ -4,7 +4,8 @@
              xmlns:c="using:Oadm.Plugins.VapixCommander.Client"
              xmlns:v="using:Oadm.Plugins.VapixCommander"
              x:Class="Oadm.Plugins.VapixCommander.Client.CommanderView"
-             x:DataType="c:CommanderViewModel">
+             x:DataType="c:CommanderViewModel"
+             ui:PageHeader.Subtitle="Send VAPIX commands to one camera, or roll them out to many.">
   <!-- VAPIX Commander page: library | rollout set or raw request (+ result) | target devices with the run controls at its bottom.
        Shared controls and theme classes only (CLAUDE.md "reuse UI components", "no style differences"). -->
   <Grid ColumnDefinitions="430,*,340" ColumnSpacing="{DynamicResource Oadm.Gap}">

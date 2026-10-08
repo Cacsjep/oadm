@@ -71,6 +71,56 @@ public sealed class ButtonAlignmentTests(ITestOutputHelper output)
         }, CancellationToken.None);
     }
 
+    [Fact]
+    public async Task Page_subtitle_sits_on_the_title_baseline()
+    {
+        HeadlessUnitTestSession session = HeadlessSession.Shared;
+        await session.Dispatch(() =>
+        {
+            // No descenders in either text: the lowest ink row of each is its baseline.
+            var bar = new Oadm.Client.Controls.PageTitleBar { Title = "Users", Subtitle = "Who can do this" };
+            var window = new Window { Width = 500, Height = 120, Content = new Border { Padding = new Thickness(24), Child = bar } };
+            App.ApplyCrispText(window);
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            WriteableBitmap frame = window.CaptureRenderedFrame()!;
+            Save(frame, "page-title-baseline.png");
+
+            var texts = bar.GetVisualDescendants().OfType<TextBlock>().ToList();
+            TextBlock title = texts.Single(t => t.Text == "Users");
+            TextBlock subtitle = texts.Single(t => t.Text == "Who can do this");
+            // The subtitle is moved by a render offset: measure the rendered pixels, not the layout bounds.
+            int titleBottom = InkBottom(frame, Bounds(title, window));
+            int subtitleBottom = InkBottom(frame, Bounds(subtitle, window).Translate(new Vector(0, (subtitle.RenderTransform as TranslateTransform)?.Y ?? 0)));
+            output.WriteLine($"title baseline row {titleBottom}, subtitle baseline row {subtitleBottom}");
+            Assert.InRange(subtitleBottom - titleBottom, -1, 1);
+        }, CancellationToken.None);
+    }
+
+    /// <summary>The last pixel row with ink (differs from the corner pixel) in <paramref name="area"/>.</summary>
+    private static int InkBottom(WriteableBitmap frame, Rect area)
+    {
+        using ILockedFramebuffer fb = frame.Lock();
+        int x0 = Math.Max(0, (int)Math.Floor(area.X));
+        int x1 = Math.Min(fb.Size.Width - 1, (int)Math.Ceiling(area.Right));
+        int y0 = Math.Max(0, (int)Math.Floor(area.Y) - 2);
+        int y1 = Math.Min(fb.Size.Height - 1, (int)Math.Ceiling(area.Bottom) + 2);
+        int background = Pixel(fb, x0, y0);
+        for (int y = y1; y >= y0; y--)
+        {
+            for (int x = x0; x <= x1; x++)
+            {
+                if (Distance(Pixel(fb, x, y), background) > 90)
+                {
+                    return y;
+                }
+            }
+        }
+
+        Assert.Fail("no ink found");
+        return -1;
+    }
+
     private static Rect Bounds(Visual visual, Window window)
     {
         Point topLeft = visual.TranslatePoint(default, window)!.Value;

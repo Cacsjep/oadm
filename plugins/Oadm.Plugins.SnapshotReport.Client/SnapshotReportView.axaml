@@ -3,7 +3,8 @@
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:vm="using:Oadm.Plugins.SnapshotReport.Client"
              x:Class="Oadm.Plugins.SnapshotReport.Client.SnapshotReportView"
-             x:DataType="vm:SnapshotReportViewModel">
+             x:DataType="vm:SnapshotReportViewModel"
+             ui:PageHeader.Subtitle="Current pictures of every camera for the maintenance report.">
   <!-- Inside the host's page card: toolbar, status line, progress, tile grid. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,Auto,*">
     <Grid Grid.Row="0" ColumnDefinitions="*,Auto">

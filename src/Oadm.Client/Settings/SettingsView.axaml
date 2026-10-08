@@ -7,7 +7,7 @@
              x:DataType="settings:SettingsViewModel">
   <!-- Every labeled input is a ui:FormField: its error appears directly below the input. -->
   <Grid RowDefinitions="Auto,*" RowSpacing="16">
-    <c:PageTitleBar Title="Settings" />
+    <c:PageTitleBar Title="Settings" Subtitle="How the server polls, scans and runs tasks." />
     <ScrollViewer Grid.Row="1">
       <StackPanel Spacing="16" MaxWidth="760" HorizontalAlignment="Left">
         <Border Classes="card">

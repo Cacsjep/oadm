@@ -245,7 +245,6 @@
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-    <Setter Property="Margin" Value="0,2,0,0" />
   </Style>
   <Style Selector="TextBlock.cardTitle">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeCardTitle}" />

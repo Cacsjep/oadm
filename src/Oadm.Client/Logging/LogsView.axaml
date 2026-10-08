@@ -1,11 +1,12 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="using:Oadm.Client.Controls"
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:log="using:Oadm.Client.Logging"
              x:Class="Oadm.Client.Logging.LogsView"
              x:DataType="log:LogsViewModel">
   <Grid RowDefinitions="Auto,*">
-    <TextBlock Grid.Row="0" Classes="pageTitle" Text="Logs" Margin="4,0,0,16" />
+    <c:PageTitleBar Grid.Row="0" Title="Logs" Subtitle="What this client did, and who changed what on the server." Margin="0,0,0,16" />
 
     <!-- Client log -->
     <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" IsVisible="{Binding IsClientTab}">
