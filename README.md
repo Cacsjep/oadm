@@ -9,8 +9,7 @@ OADM is not affiliated with, sponsored by, or endorsed by Axis Communications.**
 - [For developers](#for-developers)
 - [License](#license)
 
-> **Security note:** clients log in over TLS (users with the roles Admin and Operator). Still run the server on a trusted
-> network: the cameras themselves are reached over the LAN.
+> **Security note:** the server has no user login yet. Run it on a trusted LAN only.
 
 # For users
 
