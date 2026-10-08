@@ -150,7 +150,7 @@ Two processes, like ADM:
   entered IP or host name, optional port/scheme; INVALID_ARGUMENT for an unusable or unresolvable
   address), `WatchDiscovered` (stream; every device with its automatic login result
   `auth_state = 14` (PENDING, AUTHENTICATED, PASSWORD_NOT_SET, LOGIN_FAILED, UNREACHABLE,
-  ALREADY_ADDED), `auth_user_name = 15`, `credential_id = 16` ("list:<id>", "device:<id>",
+  ALREADY_ADDED), `auth_user_name = 15`, `credential_id = 16` ("list:<id>",
   "entered"), `auth_detail = 17`, `passphrase_policy = 18`, `entered_address = 19`; every scan
   (zero-conf after `Discovery.ZeroConfSeconds`, range scans, address probes, or `StopScan`) ends with
   scan_finished and the stream ends once every login of the session finished; watching a finished
@@ -308,7 +308,9 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
 
 - Auth: AXIS OS 12 uses Digest on port 80 and Basic on port 443 (seen in
   `/config/rest/virtualhost/v1` and the 401 headers). The client offers Digest only over
-  HTTP and Basic or Digest over HTTPS. Basic is never sent over plain HTTP.
+  HTTP and Basic or Digest over HTTPS. Basic is never sent over plain HTTP, with one exception: the add
+  page's automatic login to a device that passed the anonymous Axis check (`AllowBasicOverHttp`, see
+  "Production hardening" 2).
 - Factory-default check without credentials: `systemready.cgi` returns `needsetup` (yes =
   no admin user yet) and `passphrasepolicy` (none, length, complex).
 - Prefer HTTPS, fall back to HTTP if 443 is closed. Store which scheme worked.
@@ -391,10 +393,19 @@ Server: `DiscoveryAuthenticator` (Oadm.Server/AddDevices). For every device even
 session it starts the automatic login once per device state: managed serial = ALREADY_ADDED, probe
 said factory default = PASSWORD_NOT_SET (plus the passphrase policy read anonymously), unreachable =
 UNREACHABLE, otherwise it tries the known credentials one at a time, at most 10 per device (no
-lockout risk): first the credential list in the order added, then the distinct credentials stored
-for managed devices (most used first). One try = `basicdeviceinfo getAllProperties` with the
-credential (plus `param.cgi` network parameters when the device allows anonymous access); 401 = next,
-transport failure = UNREACHABLE, another serial at the address = UNREACHABLE. At most 8 devices log
+lockout risk): the credentials typed on the page (RetryAuth), then the credential list in the order
+added. Passwords of managed devices are never tried on new devices. Before the first credential goes to
+a scheme the device must pass the **Axis check** on it: anonymous `basicdeviceinfo
+getAllUnrestrictedProperties` answering a 12-hex `SerialNumber` equal to the discovered serial and a
+`ProdNbr` (once per scheme and login run). Logins go to HTTPS first, then HTTP ("Add manually" with an
+entered scheme: only that one); the handler answers Digest when offered, else Basic, also over plain HTTP
+for such a verified device. A device that fails the check gets no credential and shows UNREACHABLE "The
+device did not identify itself as an Axis device. No password was sent." (logged as a warning). One try
+= `basicdeviceinfo getAllProperties` with the credential (plus `param.cgi` network parameters when the
+device allows anonymous access); 401 = next, a scheme that does not answer = the next scheme, no scheme
+answering = UNREACHABLE, another serial at the address = UNREACHABLE. A device that logged in over HTTP
+with Basic only is stored with scheme http and then needs Digest like every managed device (Basic stays
+HTTPS only outside the add page's login). At most 8 devices log
 in at the same time. Results live per (session, serial) for 30 min after the last use together with
 the credential that worked (server memory); `Commit` stores that credential for the new device
 (explicit `credentials` in the request still win, legacy). Passwords never leave the server once
@@ -411,7 +422,7 @@ returns (the devices show PENDING); (b) a credential added to the credential lis
 "Save to credential list") reloads the candidates of every session. The follow-up uses the normal login
 loop: one login at a time per device, at most 8 devices at once, at most 10 rejected credentials per
 device in total (typed credentials of `RetryAuth` are remembered as rejected but not counted), entered
-credentials first, then list, then managed-device credentials; credentials added while it runs are
+credentials first, then the list; credentials added while it runs are
 tried in the same run. Unreachable attempts count neither as attempt nor as rejected.
 
 # Visual Style
@@ -1668,6 +1679,12 @@ marked *(default)* were filled in and can be changed. This section wins over old
   request): a device that imitates the anonymous answer passes the check.
 - **Candidates: credential list only** (+ credentials typed in the session). Passwords of managed devices are never
   tried on new devices. At most 10 rejected credentials per device (unchanged).
+- Implemented in `DiscoveryAuthenticator` (`Judge`, `LoginSchemes`) and `VapixConnectionOptions.AllowBasicOverHttp`
+  (set only there); details in "Add Devices Page". Tests: `AxisCheckTests` (every failing answer: 404, no serial, no
+  ProdNbr, other serial, 401: no credential request at all, also for RetryAuth; HTTPS first with the check before the
+  first credential; HTTP only with Basic allowed), `FastAddTests.PasswordsOfManagedDevicesAreNeverTriedOnNewDevices`,
+  read-only hardware test `FastAddHardwareTests.TheRealCameraPassesTheAnonymousAxisCheck` (10.0.0.48 passes on both
+  schemes).
 
 ## 3. Data safety
 

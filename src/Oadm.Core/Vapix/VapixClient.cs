@@ -26,6 +26,13 @@ public sealed record VapixConnectionOptions
 
     /// <summary>Extra trust anchors for rating the device certificate (<see cref="VapixClient.ObservedCertificate"/>); null = OS store only.</summary>
     public TrustAnchorRegistry? TrustAnchors { get; init; }
+
+    /// <summary>
+    /// Also offer Basic authentication over plain HTTP (Digest stays preferred when the device offers it).
+    /// Only the add page's automatic login sets this, and only for a device that passed the anonymous
+    /// Axis check (user decision, see "Production hardening" in CLAUDE.md); everything else keeps Basic HTTPS only.
+    /// </summary>
+    public bool AllowBasicOverHttp { get; init; }
 }
 
 /// <summary>
@@ -35,7 +42,8 @@ public sealed record VapixConnectionOptions
 /// <remarks>
 /// Authentication: AXIS OS 12 offers Digest on HTTP and Basic on HTTPS by default
 /// (Network.HTTP.AuthenticationPolicy=recommended). The credential cache therefore offers
-/// Digest only for http:// and Basic or Digest for https://, so Basic never travels in clear text.
+/// Digest only for http:// and Basic or Digest for https://, so Basic never travels in clear text,
+/// except for the add page's login to a verified Axis device (<see cref="VapixConnectionOptions.AllowBasicOverHttp"/>).
 /// </remarks>
 public sealed class VapixClient : IVapixClient, IDisposable
 {
@@ -101,15 +109,16 @@ public sealed class VapixClient : IVapixClient, IDisposable
         ArgumentNullException.ThrowIfNull(options);
         var baseAddress = BuildBaseAddress(options.Scheme, options.Address);
         var pinning = new CertificatePinning(options.PinnedCertificateFingerprint) { TrustAnchors = options.TrustAnchors };
-        var handler = CreateHandler(baseAddress, options.Credentials, pinning);
+        var handler = CreateHandler(baseAddress, options.Credentials, pinning, options.AllowBasicOverHttp);
         return new VapixClient(baseAddress, handler, pinning, options.Timeout);
     }
 
     /// <summary>
-    /// Builds the HTTP handler: Digest for http, Basic or Digest for https, TOFU certificate
-    /// pinning, no redirects, no cookies.
+    /// Builds the HTTP handler: Digest for http (plus Basic when <paramref name="allowBasicOverHttp"/>), Basic or
+    /// Digest for https, TOFU certificate pinning, no redirects, no cookies. With both schemes cached the handler
+    /// answers the strongest challenge the device offers (Digest before Basic).
     /// </summary>
-    public static HttpClientHandler CreateHandler(Uri baseAddress, NetworkCredential? credentials, CertificatePinning pinning)
+    public static HttpClientHandler CreateHandler(Uri baseAddress, NetworkCredential? credentials, CertificatePinning pinning, bool allowBasicOverHttp = false)
     {
         ArgumentNullException.ThrowIfNull(baseAddress);
         ArgumentNullException.ThrowIfNull(pinning);
@@ -128,7 +137,7 @@ public sealed class VapixClient : IVapixClient, IDisposable
             var cache = new CredentialCache();
             var prefix = new Uri(baseAddress.GetLeftPart(UriPartial.Authority) + "/");
             cache.Add(prefix, "Digest", credentials);
-            if (baseAddress.Scheme == Uri.UriSchemeHttps)
+            if (baseAddress.Scheme == Uri.UriSchemeHttps || allowBasicOverHttp)
             {
                 cache.Add(prefix, "Basic", credentials);
             }
