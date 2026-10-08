@@ -11,6 +11,7 @@ using Oadm.Contracts.Security;
 using Oadm.Core.Persistence;
 using Oadm.Core.Security;
 using Oadm.Core.Settings;
+using Oadm.Server.Hosting;
 
 namespace Oadm.Server.Auth;
 
@@ -20,6 +21,13 @@ namespace Oadm.Server.Auth;
 /// (certificate PEM + PKCS#8 private key encrypted with the master key). Created on first start, or again with
 /// <c>--Oadm:RegenerateTlsCertificate=true</c> or when the stored key cannot be decrypted (other master key). Clients pin
 /// its SHA-256 fingerprint on first connect; the server logs it at startup so the user can compare.
+/// <para>
+/// Windows: SChannel needs the private key in a key container. The key is one persisted, named CNG key
+/// (<see cref="KeyName"/>, Microsoft Software Key Storage Provider; machine key store when the server runs as a service,
+/// else the user's), created once with the certificate, opened by name on every later start and overwritten when the
+/// certificate is regenerated. The JSON file then holds the key name instead of the encrypted key, so no start leaves
+/// another key file behind. Linux and macOS keep the encrypted PKCS#8 key in the file and load it in memory.
+/// </para>
 /// </summary>
 public sealed partial class ServerTlsCertificate(OadmPaths paths, CredentialProtector protector, ServerSettingsStore settings, TimeProvider time, ILogger<ServerTlsCertificate> logger) : IDisposable
 {
@@ -30,6 +38,16 @@ public sealed partial class ServerTlsCertificate(OadmPaths paths, CredentialProt
     private X509Certificate2? _certificate;
 
     public string FilePath => Path.Combine(paths.DataDirectory, FileName);
+
+    /// <summary>
+    /// Windows: name of the persisted CNG key, "OADM Server TLS &lt;first 16 hex digits of the SHA-256 of the data folder&gt;"
+    /// (one key per server data folder).
+    /// </summary>
+    public string KeyName =>
+        "OADM Server TLS " + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(paths.DataDirectory.ToUpperInvariant())))[..16];
+
+    /// <summary>Windows: the key lives in the machine key store (installed service, SYSTEM) instead of the user's.</summary>
+    public bool UseMachineKeyStore { get; init; } = ServiceHosting.IsRunningAsService();
 
     /// <summary>The certificate with its private key (after <see cref="LoadOrCreateAsync"/>).</summary>
     public X509Certificate2 Certificate => _certificate ?? throw new InvalidOperationException("The TLS certificate is not loaded yet.");
@@ -71,7 +89,18 @@ public sealed partial class ServerTlsCertificate(OadmPaths paths, CredentialProt
         try
         {
             var stored = JsonSerializer.Deserialize(File.ReadAllText(FilePath), TlsFileJsonContext.Default.TlsFile);
-            if (stored is null || string.IsNullOrEmpty(stored.CertificatePem) || string.IsNullOrEmpty(stored.EncryptedKey))
+            if (stored is null || string.IsNullOrEmpty(stored.CertificatePem))
+            {
+                return null;
+            }
+
+            if (OperatingSystem.IsWindows())
+            {
+                // Only the named key; a file of an older build (encrypted key) gets a new certificate with a named key.
+                return string.Equals(stored.KeyName, KeyName, StringComparison.Ordinal) ? OpenWithNamedKey(stored.CertificatePem) : null;
+            }
+
+            if (string.IsNullOrEmpty(stored.EncryptedKey))
             {
                 return null;
             }
@@ -87,9 +116,42 @@ public sealed partial class ServerTlsCertificate(OadmPaths paths, CredentialProt
         }
     }
 
+    /// <summary>Windows: the stored certificate with the persisted named key (null when the key is gone).</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private X509Certificate2? OpenWithNamedKey(string certificatePem)
+    {
+        if (!CngKey.Exists(KeyName, CngProvider.MicrosoftSoftwareKeyStorageProvider, KeyOpenOptions))
+        {
+            return null;
+        }
+
+        using var publicOnly = X509Certificate2.CreateFromPem(certificatePem);
+        using var cngKey = CngKey.Open(KeyName, CngProvider.MicrosoftSoftwareKeyStorageProvider, KeyOpenOptions);
+        using var key = new ECDsaCng(cngKey);
+        return publicOnly.CopyWithPrivateKey(key); // throws for a key that does not match: a new certificate is made
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private CngKeyOpenOptions KeyOpenOptions => UseMachineKeyStore ? CngKeyOpenOptions.MachineKey : CngKeyOpenOptions.None;
+
+    /// <summary>Windows: creates (or overwrites) the persisted named key; not exportable.</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private ECDsaCng CreateNamedKey()
+    {
+        var parameters = new CngKeyCreationParameters
+        {
+            Provider = CngProvider.MicrosoftSoftwareKeyStorageProvider,
+            KeyCreationOptions = CngKeyCreationOptions.OverwriteExistingKey | (UseMachineKeyStore ? CngKeyCreationOptions.MachineKey : CngKeyCreationOptions.None),
+            ExportPolicy = CngExportPolicies.None,
+            KeyUsage = CngKeyUsages.AllUsages,
+        };
+        using var cngKey = CngKey.Create(CngAlgorithm.ECDsaP256, KeyName, parameters);
+        return new ECDsaCng(cngKey);
+    }
+
     private X509Certificate2 Create(string serverName)
     {
-        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using ECDsa key = OperatingSystem.IsWindows() ? CreateNamedKey() : ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var name = string.IsNullOrWhiteSpace(serverName) ? Environment.MachineName : serverName.Trim();
         var subject = new X500DistinguishedNameBuilder();
         subject.AddCommonName(name);
@@ -118,7 +180,10 @@ public sealed partial class ServerTlsCertificate(OadmPaths paths, CredentialProt
         var file = new TlsFile
         {
             CertificatePem = cert.ExportCertificatePem(),
-            EncryptedKey = Convert.ToBase64String(protector.Protect(key.ExportPkcs8PrivateKeyPem(), Encoding.UTF8.GetBytes(KeyPurpose))),
+            EncryptedKey = OperatingSystem.IsWindows()
+                ? string.Empty
+                : Convert.ToBase64String(protector.Protect(key.ExportPkcs8PrivateKeyPem(), Encoding.UTF8.GetBytes(KeyPurpose))),
+            KeyName = OperatingSystem.IsWindows() ? KeyName : null,
             CreatedUtc = now.UtcDateTime,
         };
         Directory.CreateDirectory(paths.DataDirectory);
@@ -128,19 +193,20 @@ public sealed partial class ServerTlsCertificate(OadmPaths paths, CredentialProt
             File.SetUnixFileMode(FilePath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
 
-        return Usable(cert);
+        // Windows: the certificate is already bound to the persisted named key, which SChannel accepts as it is.
+        return OperatingSystem.IsWindows() ? new X509Certificate2(cert) : Usable(cert);
     }
 
     /// <summary>
-    /// A copy SslStream can use on every OS: Windows SChannel needs the key in a key container, so the certificate goes
-    /// through a PKCS#12 round trip (an in-memory ECDsa key is refused there).
+    /// Linux and macOS: a copy SslStream can use, through a PKCS#12 round trip of the in-memory key (never on Windows,
+    /// where an imported PKCS#12 key would be written to the key store on every start).
     /// </summary>
     private static X509Certificate2 Usable(X509Certificate2 cert)
     {
         var pfx = cert.Export(X509ContentType.Pkcs12);
         try
         {
-            return X509CertificateLoader.LoadPkcs12(pfx, null, OperatingSystem.IsWindows() ? X509KeyStorageFlags.UserKeySet : X509KeyStorageFlags.DefaultKeySet);
+            return X509CertificateLoader.LoadPkcs12(pfx, null, X509KeyStorageFlags.DefaultKeySet);
         }
         finally
         {
@@ -210,8 +276,11 @@ internal sealed class TlsFile
 {
     public string CertificatePem { get; set; } = string.Empty;
 
-    /// <summary>PKCS#8 PEM of the private key, encrypted with the master key (AES-256-GCM), base64.</summary>
+    /// <summary>Linux, macOS: PKCS#8 PEM of the private key, encrypted with the master key (AES-256-GCM), base64.</summary>
     public string EncryptedKey { get; set; } = string.Empty;
+
+    /// <summary>Windows: name of the persisted CNG key (the key never leaves the key store).</summary>
+    public string? KeyName { get; set; }
 
     public DateTime CreatedUtc { get; set; }
 }

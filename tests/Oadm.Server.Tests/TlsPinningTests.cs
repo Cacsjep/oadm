@@ -45,6 +45,14 @@ public sealed class TlsPinningTests
 
     private static async Task StopAsync(WebApplication app, string dataDirectory, bool deleteData = true)
     {
+        var keyName = app.Services.GetRequiredService<ServerTlsCertificate>().KeyName;
+        if (deleteData && OperatingSystem.IsWindows() && System.Security.Cryptography.CngKey.Exists(keyName))
+        {
+            // The test's named key in the user key store goes with its data folder.
+            using var key = System.Security.Cryptography.CngKey.Open(keyName);
+            key.Delete();
+        }
+
         await OadmServerHost.StopAsync(app);
         await app.DisposeAsync();
         SqliteConnection.ClearAllPools();
@@ -159,6 +167,73 @@ public sealed class TlsPinningTests
         {
             await StopAsync(app, data);
         }
+    }
+
+    [Fact]
+    public async Task OnWindowsEveryStartUsesTheSameNamedKeyAndLeavesNoNewKeyFile()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return; // Linux and macOS keep the key in memory (encrypted in server-tls.json): nothing is written to a key store.
+        }
+
+        var data = TestServerHost.NewDataDirectory();
+        string? keyName = null;
+        try
+        {
+            var (first, _, _) = await StartTlsServerAsync(data);
+            string uniqueName;
+            string fingerprint;
+            try
+            {
+                var tls = first.Services.GetRequiredService<ServerTlsCertificate>();
+                keyName = tls.KeyName;
+                fingerprint = tls.Fingerprint;
+                uniqueName = PersistedKeyFile(tls, keyName);
+                Assert.DoesNotContain("encryptedKey\": \"M", await File.ReadAllTextAsync(Path.Combine(data, ServerTlsCertificate.FileName)), StringComparison.Ordinal);
+            }
+            finally
+            {
+                await StopAsync(first, data, deleteData: false);
+            }
+
+            // Second start: the same certificate with the same key file (no new key per start).
+            var (second, _, _) = await StartTlsServerAsync(data);
+            try
+            {
+                var tls = second.Services.GetRequiredService<ServerTlsCertificate>();
+                Assert.Equal(fingerprint, tls.Fingerprint);
+                Assert.Equal(uniqueName, PersistedKeyFile(tls, keyName));
+
+                // Regenerating overwrites the named key: still one key of that name, a new certificate.
+                await tls.LoadOrCreateAsync(regenerate: true, CancellationToken.None);
+                Assert.NotEqual(fingerprint, tls.Fingerprint);
+                PersistedKeyFile(tls, keyName);
+            }
+            finally
+            {
+                await StopAsync(second, data);
+            }
+        }
+        finally
+        {
+            if (keyName is not null && System.Security.Cryptography.CngKey.Exists(keyName))
+            {
+                using var key = System.Security.Cryptography.CngKey.Open(keyName);
+                key.Delete();
+            }
+        }
+    }
+
+    /// <summary>The certificate's private key is the persisted named CNG key; returns its key file name.</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static string PersistedKeyFile(ServerTlsCertificate tls, string keyName)
+    {
+        using var key = System.Security.Cryptography.X509Certificates.ECDsaCertificateExtensions.GetECDsaPrivateKey(tls.Certificate);
+        var cng = Assert.IsType<System.Security.Cryptography.ECDsaCng>(key);
+        Assert.False(cng.Key.IsEphemeral);
+        Assert.Equal(keyName, cng.Key.KeyName);
+        return cng.Key.UniqueName!;
     }
 
     private sealed class SilentBrowser : IMdnsBrowser

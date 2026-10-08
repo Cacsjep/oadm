@@ -1685,7 +1685,7 @@ marked *(default)* were filled in and can be changed. This section wins over old
   - Server: `Oadm.Server.Auth` (`AuthInterceptor` on every call sets `Oadm.Core.Auth.CallerContext` for the call, so
     `TaskEngine.RunAsync` and core plugin task runs take the owner "user@machine" from it; `AccessPolicy` role table;
     `AuthGrpcService`, `UserGrpcService`, `AuditGrpcService`; `ServerTlsCertificate` (`server-tls.json`, key AES-GCM
-    with the master key, purpose `oadm:server-tls`; a key that cannot be decrypted, e.g. after a master key
+    with the master key, purpose `oadm:server-tls`; on Windows instead one persisted named CNG key "OADM Server TLS <hash of the data folder>" (machine key store as a service, else the user store; not exportable; opened by name on every start, overwritten on regenerate, so no start leaves a key file behind) and the file holds its name; a key that cannot be decrypted or opened, e.g. after a master key
     replacement, creates a new certificate and logs that clients must use Forget server); `AuthMaintenanceHostedService`
     hourly: audit retention, expired sessions; `InProcessAccess.CreateTokenAsync` for in-process hosts (tests, hardware
     tests)). Core: `Oadm.Core.Auth` (`UserStore`, `PasswordHasher`, `AuthTokenStore` (table AuthTokens: token SHA-256,
