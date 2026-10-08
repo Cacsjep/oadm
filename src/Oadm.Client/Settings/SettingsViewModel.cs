@@ -56,10 +56,11 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     private readonly IClipboardService _clipboard;
     private readonly ILogger<SettingsViewModel> _logger;
 
-    public SettingsViewModel(IOadmApi api, ServerConnection connection, IClipboardService clipboard, ILogger<SettingsViewModel> logger)
+    public SettingsViewModel(IOadmApi api, ServerConnection connection, IClipboardService clipboard, ILogger<SettingsViewModel> logger, AboutViewModel? about = null)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(clipboard);
+        About = about ?? new AboutViewModel(api, connection);
         _api = api;
         _clipboard = clipboard;
         _logger = logger;
@@ -79,6 +80,9 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         Validation.Validate();
         Validation.Reset();
     }
+
+    /// <summary>Card "About and licenses" (versions, license texts).</summary>
+    public AboutViewModel About { get; }
 
     private static readonly string[] ServerFields =
     [

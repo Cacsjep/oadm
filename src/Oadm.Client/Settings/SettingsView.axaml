@@ -108,6 +108,8 @@
                      TextWrapping="Wrap" IsVisible="{Binding CredentialMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         </StackPanel>
       </Border>
+
+      <settings:AboutView DataContext="{Binding About}" />
     </StackPanel>
   </ScrollViewer>
 </UserControl>

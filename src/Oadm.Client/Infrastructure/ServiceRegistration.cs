@@ -54,6 +54,7 @@ public static class ServiceRegistration
 
         services.AddSingleton<ColumnLayoutViewModel>();
         services.AddSingleton<TasksViewModel>();
+        services.AddSingleton<AboutViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<LogsViewModel>();
         services.AddSingleton<Func<AddDevicesMode, AddDevicesViewModel>>(sp => mode => new AddDevicesViewModel(

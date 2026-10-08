@@ -342,8 +342,14 @@ public static class Mappers
             UseHostName = settings.UseHostName,
             ZeroConfSeconds = settings.ZeroConfSeconds,
             MaxParallelTasksPerPlugin = settings.MaxParallelTasksPerPlugin,
+            ServerVersion = ServerVersion,
         };
     }
+
+    /// <summary>Informational version of the server without the source revision ("1.2.0", "0.1.0-dev").</summary>
+    public static string ServerVersion { get; } =
+        (System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(Mappers).Assembly)?.InformationalVersion ?? "?")
+        .Split('+')[0];
 
     /// <summary>Proto to Core. Zero, empty or unset fields keep the <paramref name="current"/> value (partial update).</summary>
     public static ServerSettings FromProto(Proto.ServerSettings proto, ServerSettings current)

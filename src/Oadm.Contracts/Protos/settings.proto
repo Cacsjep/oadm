@@ -37,6 +37,8 @@ message ServerSettings {
   // Default 16, 1..256; a plugin's MaxParallelDevices can only lower it. Applies to tasks started after
   // the change. optional so a partial Set without it keeps the stored value.
   optional int32 max_parallel_tasks_per_plugin = 9;
+  // Read only: the server's version ("1.2.0"), filled in Get and Set replies, ignored in a Set (About and licenses).
+  string server_version = 20;
 }
 
 message CredentialEntry {
