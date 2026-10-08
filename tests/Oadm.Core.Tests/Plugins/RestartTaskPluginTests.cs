@@ -130,10 +130,22 @@ public sealed class RestartTaskPluginTests
     [Fact]
     public async Task HonoursCancellation()
     {
-        var vapix = new FakeVapixClient { Answers = n => n == 1 };
+        // Cancelled while the device is down (a later poll), not after a fixed time: under load a timer fired too early.
+        using var cts = new CancellationTokenSource();
+        var vapix = new FakeVapixClient
+        {
+            Answers = n =>
+            {
+                if (n >= 4)
+                {
+                    cts.Cancel();
+                }
+
+                return n == 1;
+            },
+        };
         var ctx = new RecordingContext(vapix);
         var plugin = new RestartTaskPlugin(Poll, TimeSpan.FromMinutes(3), TimeSpan.FromSeconds(1), TimeProvider.System);
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             StepRun.RunAsync(ctx.Steps, () => plugin.ExecuteAsync(ctx, new FakeDevice(Guid.NewGuid()), null, cts.Token)));
