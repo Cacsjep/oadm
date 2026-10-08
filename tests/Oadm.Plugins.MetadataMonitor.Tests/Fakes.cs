@@ -227,6 +227,17 @@ internal sealed class Rig : IAsyncDisposable
     {
         BatchInterval = TimeSpan.FromMilliseconds(20),
         ReconnectDelays = [TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(20)],
+        // Long lease: these tests send no keep-alive, and a slow CI runner (macOS) took longer than a short lease, so the
+        // server ended the stream as designed and the test waited for a reconnect. ShortLease() is for the lease test.
+        LeaseTimeout = TimeSpan.FromMinutes(1),
+        LeaseCheckInterval = TimeSpan.FromMilliseconds(50),
+    };
+
+    /// <summary><see cref="Fast"/> with a 300 ms lease: for the test that a stream without keep-alive ends.</summary>
+    public static MetadataMonitorOptions ShortLease() => new()
+    {
+        BatchInterval = TimeSpan.FromMilliseconds(20),
+        ReconnectDelays = [TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(20)],
         LeaseTimeout = TimeSpan.FromMilliseconds(300),
         LeaseCheckInterval = TimeSpan.FromMilliseconds(50),
     };

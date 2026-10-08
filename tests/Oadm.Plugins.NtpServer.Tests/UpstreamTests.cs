@@ -218,7 +218,8 @@ public sealed class UpstreamMonitorTests
     {
         await using var upstream = new FakeUpstream(UpstreamBehavior.KissRate);
         var host = UpstreamHost.TryParse(upstream.HostText, out _)!;
-        var options = Options.FastUpstream with { MinPoll = TimeSpan.FromSeconds(1), MaxPoll = TimeSpan.FromSeconds(4) };
+        // The upstream always answers (RATE): a 3 s query timeout, so a slow runner never sees a timeout instead of RATE.
+        var options = Options.FastUpstream with { MinPoll = TimeSpan.FromSeconds(1), MaxPoll = TimeSpan.FromSeconds(4), QueryTimeout = TimeSpan.FromSeconds(3) };
         await using var monitor = new UpstreamMonitor(host, options, new FakeResolver(), TimeProvider.System);
         monitor.Start();
         await Wait.UntilAsync(() => monitor.Snapshot.LastError is not null);
@@ -245,7 +246,8 @@ public sealed class UpstreamMonitorTests
     {
         await using var upstream = new FakeUpstream();
         var host = UpstreamHost.TryParse(upstream.HostText, out _)!;
-        var seed = await UpstreamMonitor.QueryOnceAsync(host, Options.FastUpstream, new FakeResolver(), TimeProvider.System, CancellationToken.None);
+        // The seed query must get its answer: 3 s, not the 300 ms of FastUpstream (too short on a busy CI runner).
+        var seed = await UpstreamMonitor.QueryOnceAsync(host, Options.FastUpstream with { QueryTimeout = TimeSpan.FromSeconds(3) }, new FakeResolver(), TimeProvider.System, CancellationToken.None);
         await using var monitor = new UpstreamMonitor(host, Options.FastUpstream with { MinPoll = TimeSpan.FromMinutes(5) }, new FakeResolver(), TimeProvider.System);
         monitor.Start(seed);
 

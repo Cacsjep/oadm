@@ -124,7 +124,7 @@ public sealed class StreamLifecycleTests
     [Fact]
     public async Task A_stream_without_keep_alive_ends_when_its_page_is_gone()
     {
-        await using var rig = await new Rig().StartAsync();
+        await using var rig = await new Rig(Rig.ShortLease()).StartAsync();
         await using var log = new EventLog(rig.Hub);
         var reply = await rig.StartStreamAsync();
 
