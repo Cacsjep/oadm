@@ -5,7 +5,7 @@ All notable changes to OADM are listed here, newest first. The format follows
 New changes go under **Unreleased**; a release renames that section to its version and date, and the release
 workflow copies the section into the GitHub release.
 
-## [Unreleased]
+## [1.1.0] - 2026-10-08
 
 ### Added
 
@@ -43,21 +43,4 @@ workflow copies the section into the GitHub release.
 - The splash logo's lens is centered in its ring.
 - The server publish no longer contains an IIS `web.config` and other unused web files.
 
-## [1.0.0] - 2026-10-08
-
-First release: an open source, cross-platform alternative to AXIS Device Manager.
-
-### Added
-
-- Server (Windows service, systemd, launchd) and desktop client for Windows, Linux and macOS; installers: MSI, .deb, .pkg.
-- Fast add page: zero-configuration discovery, IP range scan and manual addresses, automatic login with the credential
-  list, first password for factory-default devices.
-- Device grid with live status, firmware, network and certificate columns, live view (H.264 / H.265), web interface link.
-- Tasks with named steps and per-task logs: Restart, Upgrade firmware, Date and time, Applications (ACAP), Users,
-  Network settings, Assign IP address and the PKI certificate tasks.
-- Core plugins: Snapshot report (PDF maintenance report), VAPIX Commander, NTP server, DHCP server, PKI, Metadata Monitor.
-- Users and roles (administrator, operator), TLS between client and server, audit log, credential list.
-- Plugin SDK for task, core and toolbar plugins.
-
-[Unreleased]: https://github.com/Cacsjep/oadm/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.0.0
+[1.1.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.1.0
