@@ -44,6 +44,12 @@ public interface IDeviceInfo
 
     /// <summary>IEEE 802.1X is enabled on the wired interface (param <c>Network.Interface.I0.dot1x.Enabled</c>); null when not known. Filled by the server.</summary>
     bool? Dot1xEnabled => null;
+
+    /// <summary>
+    /// The device's tags (names, sorted, case-insensitive distinct), e.g. "Building A", "PTZ"; empty when none. Tags are
+    /// set by the user in the Devices page (Tags dialog); colors are not part of the SDK. Filled on server and client.
+    /// </summary>
+    IReadOnlyList<string> Tags => [];
 }
 
 /// <summary>Kind of Axis device. Mapped from basicdeviceinfo ProdType ("Dome Camera", "Network Speaker", ...).</summary>

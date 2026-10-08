@@ -282,6 +282,16 @@ Two processes, like ADM:
 - `LiveViewService`: `Watch(device_id, max_width, max_height, fps, accepted_codecs, camera)`
   (stream of encoded access units), `ListSources(device_id)` (view areas / sensors / channels).
   See "Live view".
+- `TagService` (`tags.proto`, device tags, see "Device tags"): `List` (every definition sorted by name with its
+  `device_count`, then names used on devices without a definition, `defined = false`), `Watch` (the whole `TagList` on
+  subscribe and after every change of the definitions; small, no ChangeBatcher needed), `Create(name, color)`
+  (ALREADY_EXISTS, INVALID_ARGUMENT, RESOURCE_EXHAUSTED over 500 definitions; `TAG_COLOR_UNSPECIFIED` = next palette
+  color), `Update(name, new_name, color)` (Admin; rename and / or recolor, empty / UNSPECIFIED keep; a rename rewrites
+  every device's tag in one transaction; an undefined name gets a definition), `Delete(name)` (Admin; removes the tag
+  from every device in one transaction, reply `devices_changed`), `SetDeviceTags(device_ids, add, remove)` (one call
+  and one transaction for the whole selection, names in `add` without a definition are created with the next palette
+  color, unknown ids ignored, RESOURCE_EXHAUSTED when a device would get more than 20 tags; reply `devices_changed`,
+  `created`). Every write publishes one Updated device change per changed device.
 
 # Data Model (EF Core, SQLite)
 
@@ -296,12 +306,19 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   HasVideo (derived from Category, not stored),
   CertFingerprintSha256 (nullable), CertNotAfterUtc (nullable), CertTrust (enum below),
   CertSubject, CertIssuer, CertNameMatches (nullable bool, address in SAN; stored, not shown
-  yet), LastSeenUtc, WarrantyExpiry (nullable, later), ReplacementModel (nullable, later), Tags,
+  yet), LastSeenUtc, WarrantyExpiry (nullable, later), ReplacementModel (nullable, later), Tags (JSON array of tag
+  names, distinct case-insensitive and sorted, with the spelling of the definition; written only by `DeviceTagStore`;
+  proto `repeated string tags = 19`; SDK `IDeviceInfo.Tags`),
   Apis (JSON column `[{id, version, name, status}]` from `apidiscovery.cgi getApiList`, written on
   every full refresh incl. the first one after add; proto `repeated DeviceApi apis = 28`),
   CredentialUserName (not stored: user name of the DeviceCredential, filled by repository reads
   for plugins; never the password).
 - `DeviceCredential`: DeviceId, UserName, EncryptedPassword (AES-GCM, see Security).
+- `TagDefinition` (table TagDefinitions, migration `DeviceTags`): Id (Guid), Name (1..32, trimmed, no ";" or control
+  characters), NormalizedName (upper invariant, unique: names are unique case-insensitive), Color (Blue, Green, Teal,
+  Amber, Orange, Red, Pink, Violet; stored as string), CreatedUtc. At most 500 definitions; a device has at most 20 tags.
+  `Oadm.Core.Devices.DeviceTagStore` owns both (serialized writes, one transaction per call, rewrites read only the Tags
+  column and load just the changed rows), `TagNames` the rules.
 - `CredentialListEntry` (table CredentialListEntries, migration `CredentialList`): Id (Guid),
   UserName (max 64), EncryptedPassword (AES-GCM with the entry id as associated data), CreatedUtc.
   The technician's credential list (Credentials page), at most 20 entries, tried in the order added.
@@ -618,14 +635,15 @@ density, styled as described in Visual Style.
 Layout, top to bottom:
 1. Title "Devices". Left navigation rail as described in Visual Style.
 2. Toolbar: toolbar plugins (**Add** menu | Remove, Refresh, Export | task plugin actions that declare `ShowInToolbar`,
-   then System report (plugin) | plugin entries, last AXIS OS - Release Notes), Columns icon button (tooltip "Choose
-   columns") and search box right-aligned (host parts); one line at the 1800 px minimum window width with the rail
+   then System report (plugin) | plugin entries, last AXIS OS - Release Notes), **Group by tag** icon button (icon
+   `groupBy`, class `active` while on), Columns icon button (tooltip "Choose columns") and search box right-aligned
+   (host parts); one line at the 1800 px minimum window width with the rail
    expanded. User decisions 2026-10-08: one primary **Add** button with a menu Discovery (zero-conf scan), Network range,
    Manual, Import from file instead of four buttons; every toolbar entry is a button with text (only Columns is an icon).
 3. Status line: "N devices, M selected".
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
    client, horizontal scroll, multi-select, right-click context menu: the core actions (Open web
-   interface, Refresh, **Log in**, **Set password**, Remove), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
+   interface, Refresh, **Log in**, **Set password**, **Tags**, Remove), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
    by name, with a group icon: Applications app, Maintenance settings, Network network, Security key,
    Users users, Video video, others plugin; a group is a submenu even with one entry, user decision)
    holding its Task plugins whose `CanRun` is true for the whole selection, sorted by name, with their
@@ -660,6 +678,7 @@ Layout, top to bottom:
    changed)"). Fake mode sets it in memory (10.0.0.40 is Password not set, policy "complex"). Tests:
    `tests/Oadm.Server.Tests/SetFirstPasswordTests`, `tests/Oadm.Client.Tests/DeviceSetPasswordTests` (headless
    `client-set-password.png`).
+   **Tags** (icon `tag`, one or many devices) opens the Tags dialog, see "Device tags".
 5. Resizable, collapsible bottom pane **Tasks** (no tabs), one row per task (= per device).
    Columns: Name, Device (130 px), Status (widest, 5*, min 280 px: icon plus message), Current step, Start time, Owner, Progress (bar). **Current step** is
    "Step 3/6 · Upload firmware" plus " · 45 %" while the running step reports progress (tooltip: the text
@@ -741,6 +760,7 @@ Device grid columns, default order:
 | MAC address | SerialNumber from basicdeviceinfo |
 | Status | computed, see enum |
 | Address | IP or host name, hyperlink opens device web UI in default browser |
+| Tags | the device's tags as chips (`c:TagChipList`, `Border.tagChip`: the name in the tag color on a subtle pill), "+N" when they do not fit, tooltip with every tag; sorted by "Building A; PTZ" |
 | Model | ProdNbr |
 | Firmware | Version |
 | DHCP | Network.BootProto == dhcp -> Yes/No |
@@ -761,6 +781,54 @@ device row is read right before its poll. After a server start the first schedul
 staggered: the n-th of N devices is due n/N of an interval later. A poll that changes nothing but
 LastSeenUtc is written but not published to watchers (no 5,000 identical updates per minute to every
 client).
+
+# Device tags
+
+Built-in feature (not a plugin), user decisions 2026-10-08. Technicians label devices ("Building A", "PTZ") and work
+with the labels in the grid, the search, the export and the import; plugins read them through `IDeviceInfo.Tags`.
+
+- **Definitions**: a name (1..32 characters, trimmed, unique case-insensitive, no ";" and no control characters) and a
+  color of the fixed palette of eight: Blue, Green, Teal, Amber, Orange, Red, Pink, Violet (theme brushes
+  `Oadm.Tag.<Name>Brush`, readable as text on the dark cards; `Oadm.Tag.NeutralBrush` grey for names on devices without
+  a definition, e.g. older data). A tag created without a color gets the next palette color (definition count modulo 8).
+  Server: `TagDefinition` / `DeviceTagStore`, gRPC `TagService` (see "gRPC services"). Roles: operators tag devices and
+  create tags; rename, recolor and delete are Admin only. Every change is audited.
+- **Client store**: `Tags/TagStore` (fed by `TagService.Watch` in `ServerConnection`, owned by `DeviceStore.Tags`) keeps
+  one shared `TagInfo` per name (case-insensitive); device rows hold `TagChips` of those shared objects, so a recolor
+  updates every chip and group header without touching 5,000 rows. `DeviceRowViewModel.Tags` / `TagsText`
+  ("Building A; PTZ", sort key and export text); the device search also matches tag names.
+- **Tags dialog** (`Tags/DeviceTagsWindow`, `DeviceTagsViewModel`; context menu "Tags"): title bar, one card with the
+  intro ("Tags of 12 selected devices. ..."), `ui:SearchBox` + **New tag** (inline editor: Name in `ui:FormField` with the
+  error below the field, Color with `c:TagColorPicker` = eight round swatches, Create tag / Cancel; created at once on the
+  server and checked), the virtualized tag list (three-state check box: all / some / none of the selected devices, a
+  click makes some or none all and all none; color dot, name in the tag color, "42 devices" = all devices with the tag;
+  administrators also get Rename or recolor (inline editor below the list, saved at once) and Delete tag (confirmation in
+  `ui:MessageWindow`: "Remove tag X from 42 devices?"), a failed server call directly below the list, footer Cancel /
+  **OK**: the changed check boxes as one `SetDeviceTags` call for the whole selection; nothing changed = no call.
+- **Group mode** (toolbar "Group by tag", persisted per client): the grid shows a collapsible group per tag in tag
+  name order and "No tag" last, header "● Building A · 42 devices" in the tag color (theme style
+  `DataGrid.tagGroups DataGridRowGroupHeader`, chevron expander `ToggleButton.groupExpander`). **A device with several tags
+  appears under every one of them** (user decision): the rows are `DeviceTagRow` wrappers (device x tag, `Tags/
+  DeviceTagGrouping`), grouped by Avalonia's `DataGridCollectionView` with the groups as explicit `GroupKeys` (so the group
+  order stays when the user sorts a column; sorting works within the groups). Every grid column binds through
+  `IDeviceGridItem.Row`, so device rows and wrappers share the columns. The grid selection goes to `SelectedGridItems`;
+  `SelectedDevices` holds each device once (status line, context menu, toolbar, actions). The wrappers are rebuilt
+  (one reset, rows reused) only when the shown devices, a device's tags or the tag names change; status updates reach
+  the grid through bindings. Measured with 5,000 devices x up to 3 tags (8,750 rows): build 24 ms, search + clear 18 ms,
+  select all 8 ms, 1,000 tag changes 92 ms (view model); headless grid: group mode on + render 0.5 s, select all 0.5 s,
+  1,000 tag changes while grouped and sorted 1.9 s (DataGridCollectionView regroups).
+- **Export / import**: the device export has a "Tags" column ("Building A; PTZ"); the import (add page, Import from
+  file) reads an optional "Tags" (or "Tag") column, ";"-separated, and assigns those tags to the devices that get added,
+  one `SetDeviceTags` call per distinct tag set; missing definitions are created by the server with the next palette
+  color. A tag longer than 32 characters is the line's problem.
+- **Fake mode**: Building A (blue), Building C (green), PTZ (amber), Outdoor (teal) on the sample devices; every
+  `TagService` call works in memory (`FakeOadmApi.Tags.cs`).
+- **Tests**: `tests/Oadm.Server.Tests/TagServiceTests` (create, validation, uniqueness, SetDeviceTags add / remove /
+  created definitions / 20-tag limit with rollback, rename and delete rewrite devices, legacy names, Watch, roles,
+  audit) + Perf `TagScaleTests` (5,000 devices: SetDeviceTags 4.4 s, rename 2.2 s, delete 2.0 s, list 35 ms);
+  `tests/Oadm.Client.Tests/DeviceTagsTests` (store, rows, search, dialog three states, validation, admin-only actions,
+  group mode rows and distinct selection, export / import, fake mode), `DeviceTagsHeadlessTests` (headless
+  `client-tags-column.png`, `client-tags-group-mode.png`, `client-tags-dialog.png`), Perf `TagGroupScaleTests`.
 
 # Tasks
 
@@ -859,6 +927,7 @@ public interface IDeviceInfo          // read-only device view for plugins
     bool? DhcpEnabled => null;               // device table values (server and client rows); null = not known
     bool? HttpsEnabled => null;
     bool? Dot1xEnabled => null;
+    IReadOnlyList<string> Tags => [];        // the device's tag names (sorted), server and client; colors are not in the SDK
 }
 
 public interface ITaskPlugin : IPlugin
@@ -1906,7 +1975,8 @@ terms of use, client version, server version (`ServerSettings.server_version`), 
 sentence on the Apache-2.0 license, "Show licenses" shows `THIRD-PARTY-NOTICES.txt` (next to the exe, the macOS app's
 `Contents/Resources`, or `THIRD-PARTY-NOTICES.md` in a checkout) in a read-only `ui:CodeView` (Plain). There is no "This client" card:
 the server address is set with `--server` or in the client settings file (user decision 2026-10-08). Client-side
-(local JSON in LocalApplicationData): server address, device grid column layout, bottom pane state.
+(local JSON in LocalApplicationData): server address, device grid column layout and group mode
+(`GroupDevicesByTag`), bottom pane state.
 
 # Security
 
@@ -1951,11 +2021,11 @@ marked *(default)* were filled in and can be changed. This section wins over old
   Failed logins: 5 per user per 5 minutes, then 5 minutes locked, logged *(default)*. Task `Owner` = authenticated user
   name + "@" + the client machine name the client sends (no longer whatever the client claims).
 - **Roles.** **Admin**: everything. **Operator**: devices (watch, add, remove, refresh, credentials of a device, "Log in", "Set password", web UI
-  link), discovery, tasks (run, cancel, delete own and others; not Delete all), live view, uploads, plugin pages that do
+  link, tagging devices and creating tags), discovery, tasks (run, cancel, delete own and others; not Delete all), live view, uploads, plugin pages that do
   not change server configuration (Snapshot report, VAPIX Commander, Metadata Monitor, System report, PKI read and device
   certificate tasks). **Admin only**: `SettingsService.Set`, credential list (add, remove, reveal), users, `TaskService.DeleteAll`,
   PKI (generate, import, backup, export, install in the server root store, PKI settings), DHCP and NTP save / static
-  leases / release. Core plugins declare their method roles through a new SDK member
+  leases / release, renaming, recoloring and deleting a tag definition (`TagService.Update` / `Delete`). Core plugins declare their method roles through a new SDK member
   `ICorePlugin.RequiredRole(string method)` (DIM default Operator); the host checks it before `InvokeAsync`.
 - **Credential reveal**: Admin only, every reveal in the audit log; without a login (no users yet) it is refused.
 - **PKI "Install in trusted root store" on the server**: Admin only; the confirmation shows the CA's SHA-256 fingerprint;
@@ -1971,7 +2041,8 @@ marked *(default)* were filled in and can be changed. This section wins over old
   200,000 entries *(default)*). Logged: login ok/failed, logout, user changes, settings changes, credential list
   add/remove/reveal, PKI actions, DHCP/NTP save, task runs (plugin, device count), Delete all, device remove, device login
   ("Log in": user name, device and success counts), first password set ("Set password": counts), device added
-  automatically / device moved (user "system", DHCP server), VAPIX Commander send / rollout. Logs page gets an **Audit** tab (Admin only, virtualized, SearchBox).
+  automatically / device moved (user "system", DHCP server), tags (created, renamed, color changed, deleted; tagging:
+  "Tagged 12 devices: +Building A -PTZ"), VAPIX Commander send / rollout. Logs page gets an **Audit** tab (Admin only, virtualized, SearchBox).
 - **Implementation** (done 2026-10-08):
   - Server: `Oadm.Server.Auth` (`AuthInterceptor` on every call sets `Oadm.Core.Auth.CallerContext` for the call, so
     `TaskEngine.RunAsync` and core plugin task runs take the owner "user@machine" from it; `AccessPolicy` role table;

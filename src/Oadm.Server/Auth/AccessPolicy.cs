@@ -36,6 +36,10 @@ public static class AccessPolicy
         ["/oadm.v1.DeviceService/GetCredentialUserName"] = Access.Operator,
         ["/oadm.v1.DeviceService/SetFirstPassword"] = Access.Operator,
         ["/oadm.v1.DeviceService/GetPassphrasePolicies"] = Access.Operator,
+
+        // Tags: operators tag devices and create tags; renaming, recoloring and deleting a tag definition is Admin only.
+        ["/oadm.v1.TagService/Update"] = Access.Admin,
+        ["/oadm.v1.TagService/Delete"] = Access.Admin,
     };
 
     /// <summary>Services that are Admin only as a whole.</summary>

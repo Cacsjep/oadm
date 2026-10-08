@@ -60,7 +60,7 @@ public sealed class DeviceSetPasswordTests
         Assert.DoesNotContain("Set password", f.Devices.ContextMenuEntries.Select(e => e.Header));
 
         f.Select("1", "2", "3", "4");
-        Assert.Equal(["Open web interface", "Refresh", "Log in", "Set password", "Remove"], f.Devices.ContextMenuEntries.Select(e => e.Header).Take(5).ToArray());
+        Assert.Equal(["Open web interface", "Refresh", "Log in", "Set password", "Tags", "Remove"], f.Devices.ContextMenuEntries.Select(e => e.Header).Take(6).ToArray());
         MenuEntryViewModel entry = f.Devices.ContextMenuEntries[3];
         Assert.Equal("lock", entry.IconKey);
         Assert.Same(f.Devices.SetPasswordCommand, entry.Command);

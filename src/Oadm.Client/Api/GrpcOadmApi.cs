@@ -147,6 +147,30 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public IAsyncEnumerable<DeviceChanged> WatchDevicesAsync(CancellationToken ct) =>
         ReadAll(C.Devices.Watch(new WatchDevicesRequest { SnapshotEndMarker = true }, cancellationToken: ct), ct);
 
+    public async Task<IReadOnlyList<DeviceTag>> ListTagsAsync(CancellationToken ct) =>
+        (await C.Tags.ListAsync(new Empty(), cancellationToken: ct)).Tags;
+
+    public IAsyncEnumerable<TagList> WatchTagsAsync(CancellationToken ct) =>
+        ReadAll(C.Tags.Watch(new Empty(), cancellationToken: ct), ct);
+
+    public async Task<DeviceTag> CreateTagAsync(string name, TagColor color, CancellationToken ct) =>
+        await C.Tags.CreateAsync(new CreateTagRequest { Name = name, Color = color }, cancellationToken: ct);
+
+    public async Task<DeviceTag> UpdateTagAsync(string name, string? newName, TagColor color, CancellationToken ct) =>
+        await C.Tags.UpdateAsync(new UpdateTagRequest { Name = name, NewName = newName ?? "", Color = color }, cancellationToken: ct);
+
+    public async Task<int> DeleteTagAsync(string name, CancellationToken ct) =>
+        (await C.Tags.DeleteAsync(new TagName { Name = name }, cancellationToken: ct)).DevicesChanged;
+
+    public async Task<SetDeviceTagsReply> SetDeviceTagsAsync(IReadOnlyCollection<string> deviceIds, IReadOnlyCollection<string> add, IReadOnlyCollection<string> remove, CancellationToken ct)
+    {
+        var request = new SetDeviceTagsRequest();
+        request.DeviceIds.AddRange(deviceIds);
+        request.Add.AddRange(add);
+        request.Remove.AddRange(remove);
+        return await C.Tags.SetDeviceTagsAsync(request, cancellationToken: ct);
+    }
+
     public async Task RemoveDevicesAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct) =>
         await C.Devices.RemoveAsync(ToIds(deviceIds), cancellationToken: ct);
 
@@ -405,5 +429,6 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public PluginService.PluginServiceClient Plugins { get; } = new(channel);
         public FileService.FileServiceClient Files { get; } = new(channel);
         public LiveViewService.LiveViewServiceClient LiveView { get; } = new(channel);
+        public TagService.TagServiceClient Tags { get; } = new(channel);
     }
 }

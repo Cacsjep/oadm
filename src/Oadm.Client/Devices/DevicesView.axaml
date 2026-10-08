@@ -23,6 +23,10 @@
           <StackPanel x:Name="ToolbarPanel" Grid.Column="0" Orientation="Horizontal" Spacing="4" />
 
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+            <Button x:Name="GroupByTagButton" Classes="toolbar iconOnly" Classes.active="{Binding GroupByTag}" ToolTip.Tip="Group by tag"
+                    Command="{Binding ToggleGroupByTagCommand}">
+              <ui:OadmIcon Data="{StaticResource Icon.groupBy}" />
+            </Button>
             <Button Classes="toolbar iconOnly" ToolTip.Tip="Choose columns">
               <ui:OadmIcon Data="{StaticResource Icon.columns}" />
               <Button.Flyout>
@@ -47,9 +51,9 @@
         <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding StatusLine}" Margin="2,14,0,8" />
 
         <Panel Grid.Row="2">
+          <!-- ItemsSource: the device rows, or in group mode the (device x tag) rows grouped by tag (DevicesView.axaml.cs) -->
           <DataGrid x:Name="DeviceGrid"
-                    ItemsSource="{Binding FilteredDevices}"
-                    c:GridSelection.SelectedItems="{Binding SelectedDevices}"
+                    c:GridSelection.SelectedItems="{Binding SelectedGridItems}"
                     SelectionMode="Extended"
                     IsReadOnly="True">
             <DataGrid.ContextMenu>
@@ -73,58 +77,65 @@
             <DataGrid.Columns>
               <DataGridTemplateColumn Tag="icon" Width="44" CanUserResize="False" CanUserSort="False" CanUserReorder="False">
                 <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="dev:DeviceRowViewModel">
+                  <DataTemplate x:DataType="dev:IDeviceGridItem">
                     <!-- Click: live view (video devices only) -->
                     <Button Classes="liveViewIcon" ToolTip.Tip="Live view"
-                            IsEnabled="{Binding Converter={x:Static lv:LiveViewSupport.IsSupportedConverter}}"
+                            IsEnabled="{Binding Row, Converter={x:Static lv:LiveViewSupport.IsSupportedConverter}}"
                             Command="{Binding $parent[UserControl].((dev:DevicesViewModel)DataContext).LiveView.ToggleCommand}"
-                            CommandParameter="{Binding}">
-                    <Panel Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Background="Transparent" ToolTip.Tip="{Binding CategoryTooltip}">
-                      <ui:OadmIcon Data="{Binding CategoryIconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   Classes.ok="{Binding IsStatusOk}" Classes.warn="{Binding IsStatusWarning}" Classes.error="{Binding IsStatusError}" />
+                            CommandParameter="{Binding Row}">
+                    <Panel Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Background="Transparent" ToolTip.Tip="{Binding Row.CategoryTooltip}">
+                      <ui:OadmIcon Data="{Binding Row.CategoryIconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Classes.ok="{Binding Row.IsStatusOk}" Classes.warn="{Binding Row.IsStatusWarning}" Classes.error="{Binding Row.IsStatusError}" />
                     </Panel>
                     </Button>
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Tag="mac" Header="MAC address" Width="140*" MinWidth="70" Binding="{Binding Serial}" x:DataType="dev:DeviceRowViewModel" />
-              <DataGridTemplateColumn Tag="status" Header="Status" Width="160*" MinWidth="70" SortMemberPath="StatusText">
+              <DataGridTextColumn Tag="mac" Header="MAC address" Width="140*" MinWidth="70" Binding="{Binding Row.Serial}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTemplateColumn Tag="status" Header="Status" Width="160*" MinWidth="70" SortMemberPath="Row.StatusText">
                 <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="dev:DeviceRowViewModel">
-                    <TextBlock Text="{Binding StatusText}" />
+                  <DataTemplate x:DataType="dev:IDeviceGridItem">
+                    <TextBlock Text="{Binding Row.StatusText}" />
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTemplateColumn Tag="address" Header="Address" Width="120*" MinWidth="70" SortMemberPath="DisplayAddress">
+              <DataGridTemplateColumn Tag="address" Header="Address" Width="120*" MinWidth="70" SortMemberPath="Row.DisplayAddress">
                 <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="dev:DeviceRowViewModel">
+                  <DataTemplate x:DataType="dev:IDeviceGridItem">
                     <Button Classes="link" Margin="10,0" HorizontalAlignment="Left" ToolTip.Tip="Open the web interface of the device"
                             Command="{Binding $parent[UserControl].((dev:DevicesViewModel)DataContext).OpenWebUiCommand}"
-                            CommandParameter="{Binding}">
-                      <TextBlock Text="{Binding DisplayAddress}" />
+                            CommandParameter="{Binding Row}">
+                      <TextBlock Text="{Binding Row.DisplayAddress}" />
                     </Button>
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Tag="model" Header="Model" Width="160*" MinWidth="70" Binding="{Binding Model}" x:DataType="dev:DeviceRowViewModel" />
-              <DataGridTextColumn Tag="firmware" Header="Firmware" Width="100*" MinWidth="70" Binding="{Binding FirmwareVersion}" x:DataType="dev:DeviceRowViewModel" />
-              <DataGridTextColumn Tag="dhcp" Header="DHCP" Width="86*" MinWidth="70" Binding="{Binding DhcpText}" x:DataType="dev:DeviceRowViewModel" />
-              <DataGridTextColumn Tag="https" Header="HTTPS" Width="96*" MinWidth="70" Binding="{Binding HttpsText}" x:DataType="dev:DeviceRowViewModel" />
-              <DataGridTemplateColumn Tag="certExpires" Header="Certificate expires" Width="156*" MinWidth="70" SortMemberPath="CertExpiresSortKey">
+              <DataGridTemplateColumn Tag="tags" Header="Tags" Width="150*" MinWidth="70" SortMemberPath="Row.TagsText">
                 <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="dev:DeviceRowViewModel">
-                    <ui:StatusChip Text="{Binding CertExpires.Text}" IsVisible="{Binding CertExpires.HasText}" ToolTip.Tip="{Binding CertTooltip}" IsOk="{Binding CertExpires.IsOk}" IsWarning="{Binding CertExpires.IsWarning}" IsError="{Binding CertExpires.IsError}" />
+                  <DataTemplate x:DataType="dev:IDeviceGridItem">
+                    <c:TagChipList Tags="{Binding Row.TagChips}" />
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTemplateColumn Tag="certTrust" Header="Certificate" Width="110*" MinWidth="70" SortMemberPath="CertTrust.Text">
+              <DataGridTextColumn Tag="model" Header="Model" Width="160*" MinWidth="70" Binding="{Binding Row.Model}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTextColumn Tag="firmware" Header="Firmware" Width="100*" MinWidth="70" Binding="{Binding Row.FirmwareVersion}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTextColumn Tag="dhcp" Header="DHCP" Width="86*" MinWidth="70" Binding="{Binding Row.DhcpText}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTextColumn Tag="https" Header="HTTPS" Width="96*" MinWidth="70" Binding="{Binding Row.HttpsText}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTemplateColumn Tag="certExpires" Header="Certificate expires" Width="156*" MinWidth="70" SortMemberPath="Row.CertExpiresSortKey">
                 <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="dev:DeviceRowViewModel">
-                    <ui:StatusChip Text="{Binding CertTrust.Text}" IsVisible="{Binding CertTrust.HasText}" ToolTip.Tip="{Binding CertTooltip}" IsOk="{Binding CertTrust.IsOk}" IsWarning="{Binding CertTrust.IsWarning}" IsError="{Binding CertTrust.IsError}" />
+                  <DataTemplate x:DataType="dev:IDeviceGridItem">
+                    <ui:StatusChip Text="{Binding Row.CertExpires.Text}" IsVisible="{Binding Row.CertExpires.HasText}" ToolTip.Tip="{Binding Row.CertTooltip}" IsOk="{Binding Row.CertExpires.IsOk}" IsWarning="{Binding Row.CertExpires.IsWarning}" IsError="{Binding Row.CertExpires.IsError}" />
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Tag="dot1x" Header="IEEE 802.1X" Width="124*" MinWidth="70" Binding="{Binding Dot1xText}" x:DataType="dev:DeviceRowViewModel" />
+              <DataGridTemplateColumn Tag="certTrust" Header="Certificate" Width="110*" MinWidth="70" SortMemberPath="Row.CertTrust.Text">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="dev:IDeviceGridItem">
+                    <ui:StatusChip Text="{Binding Row.CertTrust.Text}" IsVisible="{Binding Row.CertTrust.HasText}" ToolTip.Tip="{Binding Row.CertTooltip}" IsOk="{Binding Row.CertTrust.IsOk}" IsWarning="{Binding Row.CertTrust.IsWarning}" IsError="{Binding Row.CertTrust.IsError}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Tag="dot1x" Header="IEEE 802.1X" Width="124*" MinWidth="70" Binding="{Binding Row.Dot1xText}" x:DataType="dev:IDeviceGridItem" />
             </DataGrid.Columns>
           </DataGrid>
 

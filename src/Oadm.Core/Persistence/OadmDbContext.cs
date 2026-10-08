@@ -26,6 +26,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
     public DbSet<UserEntity> Users => Set<UserEntity>();
     public DbSet<AuthTokenEntity> AuthTokens => Set<AuthTokenEntity>();
     public DbSet<AuditEntryEntity> AuditEntries => Set<AuditEntryEntity>();
+    public DbSet<TagDefinition> TagDefinitions => Set<TagDefinition>();
 
     private static readonly ValueConverter<DateTime, DateTime> UtcConverter =
         new(v => v.Kind == DateTimeKind.Utc ? v : v.ToUniversalTime(), v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
@@ -197,6 +198,18 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(a => a.Target).IsRequired().HasMaxLength(AuditLog.MaxTextLength);
             e.Property(a => a.Detail).IsRequired().HasMaxLength(AuditLog.MaxTextLength);
             e.HasIndex(a => a.TimeUtc);
+        });
+
+        modelBuilder.Entity<TagDefinition>(e =>
+        {
+            e.ToTable("TagDefinitions");
+            e.HasKey(t => t.Id);
+            e.Property(t => t.Id).ValueGeneratedNever();
+            e.Property(t => t.Name).IsRequired().HasMaxLength(TagNames.MaxLength);
+            e.Property(t => t.NormalizedName).IsRequired().HasMaxLength(TagNames.MaxLength);
+            e.HasIndex(t => t.NormalizedName).IsUnique();
+            e.Property(t => t.Color).HasConversion<string>().HasMaxLength(16);
+            e.Property(t => t.CreatedUtc).HasConversion(UtcConverter);
         });
 
         modelBuilder.Entity<Setting>(e =>

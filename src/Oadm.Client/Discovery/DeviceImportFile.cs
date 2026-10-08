@@ -16,6 +16,9 @@ public sealed record ImportLine(int Line, string Address, string? UserName, stri
 {
     public bool HasCredentials => UserName is not null && Password is not null;
 
+    /// <summary>From the optional "Tags" column ("Building A; PTZ"): assigned to the device when it is added.</summary>
+    public IReadOnlyList<string> Tags { get; init; } = [];
+
     /// <summary>Never prints the password.</summary>
     public override string ToString() => $"Line {Line}: {Address}";
 }
@@ -41,8 +44,8 @@ public sealed class DeviceImportException : Exception
 
 /// <summary>
 /// Reads a device list for "Import devices": the CSV of Export devices or any CSV with an address column
-/// (header names case-insensitive: Address, IP address, IP, Host name; optional User name and Password;
-/// other columns ignored), or a plain file with one address per line. Comma or semicolon separated
+/// (header names case-insensitive: Address, IP address, IP, Host name; optional User name, Password and Tags
+/// ("Building A; PTZ", assigned to the devices that get added; missing tags are created); other columns ignored), or a plain file with one address per line. Comma or semicolon separated
 /// (Excel in many locales), UTF-8 (with or without BOM), UTF-16 with BOM, else Windows Latin-1.
 /// Problems of single lines (invalid address, duplicate, too long) stay with their line; only an
 /// unusable file throws <see cref="DeviceImportException"/>. O(n).
@@ -67,9 +70,13 @@ public sealed class DeviceImportFile
     private static readonly string[] AddressHeaders = ["address", "ip address", "ipaddress", "ip", "host name", "hostname", "host"];
     private static readonly string[] UserHeaders = ["user name", "username", "user"];
     private static readonly string[] PasswordHeaders = ["password", "pass"];
+    private static readonly string[] TagHeaders = ["tags", "tag"];
+
+    /// <summary>Longest tag name (the server's limit).</summary>
+    public const int MaxTagLength = 32;
 
     private static readonly string[] KnownHeaders =
-        [.. AddressHeaders, .. UserHeaders, .. PasswordHeaders, .. DeviceListCsv.Columns.Select(c => c.ToLowerInvariant())];
+        [.. AddressHeaders, .. UserHeaders, .. PasswordHeaders, .. TagHeaders, .. DeviceListCsv.Columns.Select(c => c.ToLowerInvariant())];
 
     private DeviceImportFile(string fileName, IReadOnlyList<ImportLine> lines)
     {
@@ -113,6 +120,7 @@ public sealed class DeviceImportFile
         int addressColumn = 0;
         int userColumn = -1;
         int passwordColumn = -1;
+        int tagsColumn = -1;
         bool first = true;
         var lines = new List<ImportLine>();
         var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -127,6 +135,7 @@ public sealed class DeviceImportFile
                     addressColumn = IndexOf(names, AddressHeaders);
                     userColumn = IndexOf(names, UserHeaders);
                     passwordColumn = IndexOf(names, PasswordHeaders);
+                    tagsColumn = IndexOf(names, TagHeaders);
                     if (addressColumn < 0)
                     {
                         throw new DeviceImportException("The file has no Address column. Name the column with the IP addresses or host names \"Address\".");
@@ -147,7 +156,7 @@ public sealed class DeviceImportFile
                     $"The file has more than {MaxLines:N0} addresses. Split it into smaller files."));
             }
 
-            lines.Add(ReadLine(record, addressColumn, userColumn, passwordColumn, seen));
+            lines.Add(ReadLine(record, addressColumn, userColumn, passwordColumn, tagsColumn, seen));
         }
 
         if (lines.Count == 0)
@@ -182,7 +191,7 @@ public sealed class DeviceImportFile
         return null;
     }
 
-    private static ImportLine ReadLine(CsvRecord record, int addressColumn, int userColumn, int passwordColumn, Dictionary<string, int> seen)
+    private static ImportLine ReadLine(CsvRecord record, int addressColumn, int userColumn, int passwordColumn, int tagsColumn, Dictionary<string, int> seen)
     {
         string Cell(int index) => index >= 0 && index < record.Cells.Count ? Csv.Unguard(record.Cells[index].Trim()) : "";
 
@@ -211,6 +220,14 @@ public sealed class DeviceImportFile
             problem = string.Create(CultureInfo.InvariantCulture, $"The password is longer than {MaxPasswordLength} characters.");
         }
 
+        List<string> tags = ReadTags(Cell(tagsColumn));
+        if (problem is null && tags.Find(t => t.Length > MaxTagLength || t.Any(char.IsControl)) is { } badTag)
+        {
+            problem = badTag.Length > MaxTagLength
+                ? string.Create(CultureInfo.InvariantCulture, $"The tag \"{Shorten(badTag)}\" is longer than {MaxTagLength} characters.")
+                : $"The tag \"{Shorten(badTag)}\" contains control characters.";
+        }
+
         string key = Normalize(address);
         if (problem is null)
         {
@@ -226,7 +243,27 @@ public sealed class DeviceImportFile
 
         // A password alone is for the default administrator; a user name alone is no credential.
         bool credentials = password.Length > 0;
-        return new ImportLine(record.Line, address, credentials ? (user.Length > 0 ? user : DefaultUserName) : null, credentials ? password : null, problem);
+        return new ImportLine(record.Line, address, credentials ? (user.Length > 0 ? user : DefaultUserName) : null, credentials ? password : null, problem)
+        {
+            Tags = tags,
+        };
+    }
+
+    /// <summary>"Building A; PTZ" (the export's format): trimmed, distinct (case-insensitive), empty ones dropped.</summary>
+    public static List<string> ReadTags(string cell)
+    {
+        ArgumentNullException.ThrowIfNull(cell);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var tags = new List<string>();
+        foreach (string part in cell.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (seen.Add(part))
+            {
+                tags.Add(part);
+            }
+        }
+
+        return tags;
     }
 
     private static int IndexOf(string[] names, string[] candidates)

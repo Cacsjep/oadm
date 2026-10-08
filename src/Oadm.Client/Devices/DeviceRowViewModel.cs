@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 
+using Oadm.Client.Tags;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Devices;
 
@@ -9,19 +10,46 @@ using SdkStatus = Oadm.Sdk.Devices.DeviceStatus;
 
 namespace Oadm.Client.Devices;
 
+/// <summary>
+/// An item of the device grid: the device row itself, or (group mode) a device under one of its tags. The grid's
+/// columns bind through <see cref="Row"/>, so both kinds show the same cells.
+/// </summary>
+public interface IDeviceGridItem
+{
+    DeviceRowViewModel Row { get; }
+}
+
 /// <summary>One row of the device grid. Updated in place from DeviceService.Watch events.</summary>
-public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo
+public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, IDeviceGridItem
 {
     public const string NotSynchronized = "Not synchronized";
 
-    public DeviceRowViewModel(Device device)
+    /// <summary>Separator of <see cref="TagsText"/> and of the "Tags" column of the device export and import.</summary>
+    public const string TagSeparator = "; ";
+
+    private readonly TagStore? _tagStore;
+
+    public DeviceRowViewModel(Device device, TagStore? tags = null)
     {
         ArgumentNullException.ThrowIfNull(device);
         Id = device.Id;
+        _tagStore = tags;
         Update(device);
     }
 
     public string Id { get; }
+
+    /// <inheritdoc />
+    public DeviceRowViewModel Row => this;
+
+    /// <summary>The device's tag names as the server sends them (sorted, distinct). A new list only when they changed.</summary>
+    public IReadOnlyList<string> Tags { get; private set; } = [];
+
+    /// <summary>The tags for the chips of the Tags column (shared <see cref="TagInfo"/>: a recolor needs no row update).</summary>
+    [ObservableProperty] public partial IReadOnlyList<TagInfo> TagChips { get; private set; } = [];
+
+    /// <summary>"Building A; PTZ": sort key of the Tags column, tooltip, export text.</summary>
+    [ObservableProperty] public partial string TagsText { get; private set; } = "";
 
     [ObservableProperty] public partial string Serial { get; private set; } = "";
     [ObservableProperty] public partial string Address { get; private set; } = "";
@@ -100,6 +128,15 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo
         CategoryIconKey = DeviceCategoryInfo.ToIconKey(device.Category);
         CategoryTooltip = DeviceCategoryInfo.ToTooltip(device.Category, ProductType);
         HasVideo = device.HasVideo;
+        if (!Tags.SequenceEqual(device.Tags, StringComparer.Ordinal))
+        {
+            List<string> tags = [.. device.Tags];
+            Tags = tags;
+            TagChips = tags.Select(t => _tagStore?.Resolve(t) ?? TagInfo.Detached(t)).ToList();
+            TagsText = string.Join(TagSeparator, tags);
+            _changed = true;
+        }
+
         IReadOnlyList<Oadm.Sdk.Vapix.DeviceApi> apis = DeviceApiLists.Intern(device.Apis);
         if (!ReferenceEquals(apis, Apis))
         {
@@ -133,7 +170,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo
         base.OnPropertyChanged(e);
     }
 
-    /// <summary>Case-insensitive search across the visible text columns.</summary>
+    /// <summary>Case-insensitive search across the visible text columns and the tag names.</summary>
     public bool Matches(string? search)
     {
         if (string.IsNullOrWhiteSpace(search))
@@ -143,7 +180,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo
 
         string term = search.Trim();
         return Contains(Serial) || Contains(Address) || Contains(HostName) || Contains(Model) || Contains(FirmwareVersion)
-            || Contains(StatusText);
+            || Contains(StatusText) || Tags.Any(Contains);
 
         bool Contains(string? value) => value?.Contains(term, StringComparison.OrdinalIgnoreCase) == true;
     }

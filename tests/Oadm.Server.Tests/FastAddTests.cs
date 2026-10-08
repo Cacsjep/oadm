@@ -400,10 +400,16 @@ public sealed class FastAddTests
         var list = await host.Settings.ListCredentialsAsync(new Proto.Empty());
         Assert.Equal(["root", "operator"], list.Entries.Select(e => e.UserName));
 
-        // Encrypted at rest: the plaintext is nowhere in the database file.
+        // Encrypted at rest: the plaintext is nowhere in the database files (the database and its WAL). Read with the sharing
+        // SQLite uses: background services of the running server may hold a connection open at this moment.
         SqliteConnection.ClearAllPools();
-        var bytes = await File.ReadAllBytesAsync(Path.Combine(host.DataDirectory, "oadm.db"));
-        Assert.DoesNotContain("list-Secret-1", Encoding.UTF8.GetString(bytes), StringComparison.Ordinal);
+        string[] files = [Path.Combine(host.DataDirectory, "oadm.db"), Path.Combine(host.DataDirectory, "oadm.db-wal")];
+        foreach (var file in files.Where(File.Exists))
+        {
+            await using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            Assert.DoesNotContain("list-Secret-1", await reader.ReadToEndAsync(), StringComparison.Ordinal);
+        }
         var decrypted = await host.Get<CredentialListStore>().GetAllAsync(CancellationToken.None);
         Assert.Equal("list-Secret-1", decrypted[0].Password);
         Assert.DoesNotContain("list-Secret-1", decrypted[0].ToString(), StringComparison.Ordinal);

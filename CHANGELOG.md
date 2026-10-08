@@ -9,6 +9,13 @@ workflow copies the section into the GitHub release.
 
 ### Added
 
+- **Device tags** with colors: a Tags column with colored chips (sortable, searchable, in the column chooser), a
+  **Tags** entry in the device context menu for one or many devices (check tags for all / some / none of the selection,
+  create tags with one of eight colors; administrators rename, recolor and delete them), applied in one server call.
+- **Group by tag** on the Devices toolbar: one collapsible group per tag, a device with several tags under each of
+  them, "No tag" last; remembered per client.
+- The device export has a **Tags** column; the import reads it and tags the devices it adds.
+- Plugins read a device's tags through `IDeviceInfo.Tags`.
 - DHCP server: **Automatically add Axis devices that get an address**. When an Axis camera gets its address from
   OADM's DHCP server, OADM adds it like the add page does: it checks that it is an Axis device and logs in with the
   credential list. Cameras without a password yet are added as "Password not set", cameras no credential fits as

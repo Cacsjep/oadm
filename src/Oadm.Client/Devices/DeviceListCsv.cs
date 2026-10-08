@@ -15,9 +15,12 @@ public static class DeviceListCsv
 {
     public const string AddressColumn = "Address";
 
+    /// <summary>The device's tags, "Building A; PTZ" (the import reads it back).</summary>
+    public const string TagsColumn = "Tags";
+
     public static IReadOnlyList<string> Columns { get; } =
     [
-        "MAC address", "Status", AddressColumn, "Host name", "Model", "Firmware", "Category", "Product type",
+        "MAC address", "Status", AddressColumn, TagsColumn, "Host name", "Model", "Firmware", "Category", "Product type",
         "DHCP", "HTTPS", "Certificate expires", "Certificate", "IEEE 802.1X",
     ];
 
@@ -38,6 +41,7 @@ public static class DeviceListCsv
                 d.Serial,
                 d.StatusText,
                 d.DisplayAddress,
+                d.TagsText,
                 d.HostName,
                 d.Model,
                 d.FirmwareVersion,

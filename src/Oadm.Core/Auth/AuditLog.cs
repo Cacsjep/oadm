@@ -32,6 +32,11 @@ public static class AuditActions
     public const string FirstPasswordSet = "First password set";
     public const string DeviceAddedAutomatically = "Device added automatically";
     public const string DeviceMoved = "Device moved";
+    public const string TagCreated = "Created tag";
+    public const string TagRenamed = "Renamed tag";
+    public const string TagRecolored = "Changed tag color";
+    public const string TagDeleted = "Deleted tag";
+    public const string DevicesTagged = "Tagged devices";
 }
 
 /// <summary>

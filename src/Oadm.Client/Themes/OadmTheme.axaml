@@ -1,7 +1,11 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:chrome="using:Avalonia.Controls.Chrome"
-        xmlns:ui="using:Oadm.Sdk.Client.Controls">
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:c="using:Oadm.Client.Controls"
+        xmlns:tags="using:Oadm.Client.Tags"
+        xmlns:collections="using:Avalonia.Collections"
+        xmlns:dgp="using:Avalonia.Controls.Primitives">
   <!--
     OADM visual style (see CLAUDE.md "Visual Style"). Dark only, MultiDrive look.
     Every color and size used by the views is defined here; views reference these keys only.
@@ -67,6 +71,17 @@
       <Color x:Key="Oadm.Code.AttributeColor">#7FC8D0</Color>
       <Color x:Key="Oadm.Code.CommentColor">#7E957F</Color>
       <Color x:Key="Oadm.Code.ErrorColor">#F0776F</Color>
+      <!-- Tag palette (device tags): readable as text on the dark cards and the chip background -->
+      <Color x:Key="Oadm.Tag.BlueColor">#6FA8F5</Color>
+      <Color x:Key="Oadm.Tag.GreenColor">#5CC98B</Color>
+      <Color x:Key="Oadm.Tag.TealColor">#5FC6CF</Color>
+      <Color x:Key="Oadm.Tag.AmberColor">#E8B84A</Color>
+      <Color x:Key="Oadm.Tag.OrangeColor">#F2914E</Color>
+      <Color x:Key="Oadm.Tag.RedColor">#F07171</Color>
+      <Color x:Key="Oadm.Tag.PinkColor">#EE7DC2</Color>
+      <Color x:Key="Oadm.Tag.VioletColor">#A898FA</Color>
+      <Color x:Key="Oadm.Tag.NeutralColor">#9A9A9A</Color>
+      <Color x:Key="Oadm.Tag.ChipBackgroundColor">#262626</Color>
       <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="{StaticResource Oadm.WindowBackgroundColor}" />
       <!-- Drawn caption buttons (Fluent WindowDrawnDecorations): hover is the Background, pressed the BorderBrush.
            Minimize/maximize use these neutral greys instead of the accent; close keeps its red from the theme. -->
@@ -132,6 +147,16 @@
       <SolidColorBrush x:Key="Oadm.Code.AttributeBrush" Color="{StaticResource Oadm.Code.AttributeColor}" />
       <SolidColorBrush x:Key="Oadm.Code.CommentBrush" Color="{StaticResource Oadm.Code.CommentColor}" />
       <SolidColorBrush x:Key="Oadm.Code.ErrorBrush" Color="{StaticResource Oadm.Code.ErrorColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.BlueBrush" Color="{StaticResource Oadm.Tag.BlueColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.GreenBrush" Color="{StaticResource Oadm.Tag.GreenColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.TealBrush" Color="{StaticResource Oadm.Tag.TealColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.AmberBrush" Color="{StaticResource Oadm.Tag.AmberColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.OrangeBrush" Color="{StaticResource Oadm.Tag.OrangeColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.RedBrush" Color="{StaticResource Oadm.Tag.RedColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.PinkBrush" Color="{StaticResource Oadm.Tag.PinkColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.VioletBrush" Color="{StaticResource Oadm.Tag.VioletColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.NeutralBrush" Color="{StaticResource Oadm.Tag.NeutralColor}" />
+      <SolidColorBrush x:Key="Oadm.Tag.ChipBackgroundBrush" Color="{StaticResource Oadm.Tag.ChipBackgroundColor}" />
 
       <!-- Sizes -->
       <!-- Rail: total ~56 px collapsed / ~220 px expanded including its 8 px side margins -->
@@ -157,6 +182,7 @@
       <!-- Device card keeps its toolbar on one line next to the live view; the live view never gets narrower than this -->
       <x:Double x:Key="Oadm.DevicesCardMinWidth">900</x:Double>
       <x:Double x:Key="Oadm.LiveViewMinWidth">320</x:Double>
+      <x:Double x:Key="Oadm.TagListMaxHeight">300</x:Double>
       <x:Double x:Key="Oadm.ProgressHeight">6</x:Double>
       <x:Double x:Key="Oadm.Gap">16</x:Double>
       <!-- Form rows (ui:FormField): label column, input column, gap between input and its error or hint -->
@@ -1049,5 +1075,113 @@
   </Style>
   <Style Selector="Border.banner.connecting > TextBlock, Border.banner.warning > DockPanel > TextBlock">
     <Setter Property="Foreground" Value="{StaticResource Oadm.StatusWarningBrush}" />
+  </Style>
+
+  <!-- Device tags: chips of the Tags column (name in the tag color on a subtle pill), "+N", color dots, the palette picker -->
+  <Style Selector="Border.tagChip">
+    <Setter Property="Background" Value="{StaticResource Oadm.Tag.ChipBackgroundBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.PillCornerRadius}" />
+    <Setter Property="Padding" Value="8,2" />
+    <Setter Property="Margin" Value="0,0,4,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.tagChip TextBlock, DataGridCell Border.tagChip TextBlock">
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="TextTrimming" Value="None" />
+  </Style>
+  <Style Selector="TextBlock.tagMore, DataGridCell TextBlock.tagMore">
+    <Setter Property="Margin" Value="2,0,0,0" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="TextTrimming" Value="None" />
+  </Style>
+  <Style Selector="DataGridCell c|TagChipList">
+    <Setter Property="Margin" Value="10,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Ellipse.tagDot">
+    <Setter Property="Width" Value="10" />
+    <Setter Property="Height" Value="10" />
+    <Setter Property="Margin" Value="8,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Grid.tagRow">
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+  </Style>
+  <Style Selector="Grid.tagRow > TextBlock">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="c|TagColorPicker">
+    <Setter Property="Spacing" Value="6" />
+  </Style>
+  <Style Selector="Button.colorSwatch">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="CornerRadius" Value="14" />
+    <Setter Property="Padding" Value="3" />
+    <Setter Property="Width" Value="28" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.colorSwatch:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
+  </Style>
+  <Style Selector="Button.colorSwatch.selected /template/ ContentPresenter#PART_ContentPresenter, Button.colorSwatch.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Ellipse.tagSwatch">
+    <Setter Property="Width" Value="18" />
+    <Setter Property="Height" Value="18" />
+  </Style>
+  <!-- A toolbar toggle that is on (Group by tag): the pressed look stays -->
+  <Style Selector="Button.toolbar.active /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+  </Style>
+  <Style Selector="Button.toolbar.active ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentHoverBrush}" />
+  </Style>
+
+  <!-- Group mode of the device grid: dot + "Building A · 42 devices" in the tag color, collapsible -->
+  <Style Selector="DataGrid.tagGroups DataGridRowGroupHeader">
+    <Setter Property="Background" Value="{StaticResource Oadm.CardBackgroundBrush}" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.GridRowHeight}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="Template">
+      <ControlTemplate x:DataType="collections:DataGridCollectionViewGroup">
+        <dgp:DataGridFrozenGrid Name="PART_Root" Background="{TemplateBinding Background}" MinHeight="{TemplateBinding MinHeight}"
+                                ColumnDefinitions="Auto,Auto,Auto,Auto,*" RowDefinitions="*,Auto">
+          <Rectangle Name="PART_IndentSpacer" Grid.Column="1" />
+          <ToggleButton Name="PART_ExpanderButton" Grid.Column="2" Classes="groupExpander" Margin="8,0,0,0" Focusable="False" />
+          <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0,0,0">
+            <Ellipse Classes="tagDot" Fill="{Binding ((tags:TagGroupKey)Key).Color, Converter={x:Static tags:TagColorBrushConverter.Instance}}" />
+            <TextBlock Classes="groupHeader" Text="{Binding ((tags:TagGroupKey)Key).HeaderText}"
+                       Foreground="{Binding ((tags:TagGroupKey)Key).Color, Converter={x:Static tags:TagColorBrushConverter.Instance}}" />
+            <TextBlock Name="PART_PropertyNameElement" IsVisible="False" />
+            <TextBlock Name="PART_ItemCountElement" IsVisible="False" />
+          </StackPanel>
+          <DataGridRowHeader Name="PART_RowHeader" Grid.RowSpan="2" dgp:DataGridFrozenGrid.IsFrozen="True" />
+        </dgp:DataGridFrozenGrid>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <!-- Expand / collapse of a group: chevron right (collapsed) or down (expanded) -->
+  <Style Selector="ToggleButton.groupExpander">
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="{StaticResource Oadm.TransparentBrush}" Padding="4">
+          <ui:OadmIcon Name="PART_Chevron" Data="{StaticResource Icon.chevronRight}" Width="14" Height="14" Foreground="{StaticResource Oadm.TextSecondaryBrush}" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ToggleButton.groupExpander:checked /template/ ui|OadmIcon#PART_Chevron">
+    <Setter Property="Data" Value="{StaticResource Icon.chevronDown}" />
+  </Style>
+  <Style Selector="TextBlock.groupHeader">
+    <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
 </Styles>

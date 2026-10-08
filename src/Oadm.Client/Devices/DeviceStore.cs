@@ -1,4 +1,4 @@
-using Oadm.Client.Infrastructure;
+using Oadm.Client.Tags;
 using Oadm.Contracts.V1;
 
 namespace Oadm.Client.Devices;
@@ -29,6 +29,15 @@ public sealed class DeviceStoreChangedEventArgs : EventArgs
 public sealed class DeviceStore
 {
     private readonly Dictionary<string, DeviceRowViewModel> _byId = new(StringComparer.Ordinal);
+
+    /// <param name="tags">The tag definitions the rows resolve their tag names with (one shared store per client).</param>
+    public DeviceStore(TagStore? tags = null)
+    {
+        Tags = tags ?? new TagStore();
+    }
+
+    /// <summary>The client's tag definitions (TagService.Watch), shared by every row's chips.</summary>
+    public TagStore Tags { get; }
 
     public RangeObservableCollection<DeviceRowViewModel> Devices { get; } = [];
 
@@ -62,7 +71,7 @@ public sealed class DeviceStore
             }
             else
             {
-                row = new DeviceRowViewModel(device);
+                row = new DeviceRowViewModel(device, Tags);
                 _byId[device.Id] = row;
                 added.Add(row);
             }
@@ -133,7 +142,7 @@ public sealed class DeviceStore
             }
             else
             {
-                row = new DeviceRowViewModel(change.Device);
+                row = new DeviceRowViewModel(change.Device, Tags);
                 _byId[id] = row;
                 added.Add(row);
                 changedIds.Add(id);

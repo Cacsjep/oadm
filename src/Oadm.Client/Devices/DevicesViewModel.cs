@@ -14,6 +14,7 @@ using Oadm.Client.Discovery;
 using Oadm.Client.Infrastructure;
 using Oadm.Client.LiveView;
 using Oadm.Client.Plugins;
+using Oadm.Client.Tags;
 using Oadm.Client.Tasks;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Client;
@@ -89,14 +90,34 @@ public sealed partial class DevicesViewModel : ObservableObject
         LiveView = liveView;
 
         store.Devices.CollectionChanged += OnDevicesChanged;
-        store.Changed += (_, _) =>
+        store.Changed += (_, e) =>
         {
             catalog.RequestRefresh();
             OnSelectedStatusMayHaveChanged();
+            if (GroupByTag && (e.IsReset || TagGrouping.TagsChanged(e.DeviceIds, store.Find)))
+            {
+                TagGrouping.Rebuild(FilteredDevices);
+            }
+        };
+        store.Tags.Changed += (_, _) =>
+        {
+            if (GroupByTag)
+            {
+                TagGrouping.OnTagsRenamed();
+            }
         };
         catalog.Changed += (_, _) => RebuildPluginActions();
         SelectedDevices.CollectionChanged += (_, _) => OnSelectionChanged();
+        SelectedGridItems.CollectionChanged += (_, _) => SelectedDevices.ReplaceAll(DeviceTagGrouping.DistinctDevices(SelectedGridItems));
         FilteredDevices.ReplaceAll(store.Devices);
+        FilteredDevices.CollectionChanged += (_, _) =>
+        {
+            if (GroupByTag)
+            {
+                TagGrouping.Rebuild(FilteredDevices);
+            }
+        };
+        GroupByTag = columns.GroupByTag;
 
         RebuildPluginActions();
     }
@@ -119,8 +140,34 @@ public sealed partial class DevicesViewModel : ObservableObject
     /// <summary>Rows shown in the grid (search applied). Sorting is done by the grid.</summary>
     public RangeObservableCollection<DeviceRowViewModel> FilteredDevices { get; } = [];
 
-    /// <summary>Kept in sync with the grid selection by the view.</summary>
+    /// <summary>
+    /// The selected devices, each once (in group mode a device selected under two tags counts once). Follows
+    /// <see cref="SelectedGridItems"/>; tests and view models may set it directly.
+    /// </summary>
     public RangeObservableCollection<DeviceRowViewModel> SelectedDevices { get; } = [];
+
+    /// <summary>Kept in sync with the grid selection by the view: device rows, or (group mode) device x tag rows.</summary>
+    public RangeObservableCollection<object> SelectedGridItems { get; } = [];
+
+    /// <summary>The (device x tag) rows and groups of group mode.</summary>
+    public DeviceTagGrouping TagGrouping { get; } = new();
+
+    /// <summary>Group mode: the grid shows a group per tag (a device under each of its tags) and "No tag" last. Persisted per client.</summary>
+    [ObservableProperty]
+    public partial bool GroupByTag { get; set; }
+
+    partial void OnGroupByTagChanged(bool value)
+    {
+        Columns.GroupByTag = value;
+        if (value)
+        {
+            TagGrouping.Rebuild(FilteredDevices);
+        }
+    }
+
+    /// <summary>The toolbar's "Group by tag" button.</summary>
+    [RelayCommand]
+    private void ToggleGroupByTag() => GroupByTag = !GroupByTag;
 
     /// <summary>Context menu for the current selection: core actions plus runnable task plugins.</summary>
     public ObservableCollection<MenuEntryViewModel> ContextMenuEntries { get; } = [];
@@ -202,6 +249,22 @@ public sealed partial class DevicesViewModel : ObservableObject
     /// <summary>The selected devices without a password yet (O(selection)).</summary>
     internal List<DeviceRowViewModel> SetPasswordTargets() =>
         SelectedDevices.Where(d => d.ContractStatus == DeviceStatus.PasswordNotSet).ToList();
+
+    /// <summary>
+    /// Context menu "Tags": the Tags dialog for the selection (tag check boxes for all / some / none of the devices, new
+    /// tags, and for administrators rename, recolor and delete). OK applies the changes in one server call.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(HasSelection))]
+    private async Task EditTagsAsync()
+    {
+        if (SelectedDevices.Count == 0)
+        {
+            return;
+        }
+
+        var dialog = new DeviceTagsViewModel(_api, _store.Tags, [.. SelectedDevices], _store.Devices, _session?.IsAdmin ?? false, _dialogs.ConfirmAsync);
+        await _dialogs.ShowDeviceTagsAsync(dialog).ConfigureAwait(true);
+    }
 
     /// <summary>The selected devices that reject their stored credentials (O(selection)).</summary>
     internal List<DeviceRowViewModel> LoginTargets() =>
@@ -432,6 +495,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         OnPropertyChanged(nameof(StatusLine));
         RemoveCommand.NotifyCanExecuteChanged();
         RefreshCommand.NotifyCanExecuteChanged();
+        EditTagsCommand.NotifyCanExecuteChanged();
         RunPluginCommand.NotifyCanExecuteChanged();
         RebuildContextMenu();
     }
@@ -472,6 +536,7 @@ public sealed partial class DevicesViewModel : ObservableObject
             ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Set password", IconKey = "lock", Command = SetPasswordCommand });
         }
 
+        ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Tags", IconKey = "tag", Command = EditTagsCommand });
         ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Remove", IconKey = "remove", Command = RemoveCommand });
 
         var runnable = TaskPluginCatalog.RunnableFor(_catalog.Plugins, SelectedIds()).ToList();
