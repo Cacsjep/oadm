@@ -38,7 +38,8 @@ Server and client publish as one self-contained single-file exe per platform
 
 Installers (`manage package <windows|linux|macos> [--rid] [--version]` into `artifacts/packages/`; layout
 table and notes in `packaging/README.md`; CI `.github/workflows/package.yml` only on release tags `v*.*.*`
-(e.g. `v0.0.1`), which also installs, checks and removes the native package on each runner):
+(e.g. `v0.0.1`), which also installs, checks and removes the native package on each runner, then publishes the three
+installers as the GitHub release of the tag, job `release`):
 - **Windows MSI** (WiX Toolset 6 via the `WixToolset.Sdk` MSBuild SDK, `packaging/windows/`, not in
   Oadm.sln; WiX 7 not used, it requires the OSMF EULA), x64 only (no ARM, user decision 2026-10-08), per machine: `Program Files\OADM\Server`
   and `\Client`, Windows service "OADM Server" (`OadmServer`, automatic, LocalSystem, restart on failure,

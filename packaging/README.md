@@ -3,7 +3,7 @@
 `manage package <windows|linux|macos> [--rid RID] [--version V]` publishes server and client for the RID
 (`manage publish all`: self-contained single-file exes, every plugin project in `plugins/<plugin id>/` next to
 each exe) and builds the installer into `artifacts/packages/`. CI: `.github/workflows/package.yml` (only release
-tags `v*.*.*`, e.g. `v0.0.1`) builds all six packages and installs, checks and removes the
+tags `v*.*.*`, e.g. `v0.0.1`) builds the three x64 packages, publishes them as the GitHub release of the tag and installs, checks and removes the
 native one on each runner.
 
 Version: `--version` (a tag `v1.2.0` gives `1.2.0`), default `0.1.0-dev`. It goes to every assembly

@@ -1,7 +1,8 @@
 name: package
 
 # Installers for x64 only (user decision: no ARM devices): MSI (Windows), .deb (Linux amd64), .pkg (macOS Intel), built with "manage package".
-# Runs only for release tags (v0.0.1, v1.2.0, ...) and uploads the installers as workflow artifacts.
+# Runs only for release tags (v0.0.1, v1.2.0, ...): uploads the installers as workflow artifacts and, when all
+# three succeed, publishes them as the GitHub release of the tag (job release).
 # The Windows and Linux package is installed, checked (service running, gRPC answering on 5080,
 # data folder and master key) and removed again.
 on:
@@ -157,3 +158,31 @@ jobs:
           name: oadm-${{ steps.version.outputs.version }}-${{ matrix.rid }}
           path: artifacts/packages/*
           if-no-files-found: error
+
+  # Classic GitHub release for the tag with the three installers, only when every package job succeeded.
+  # A moved tag (re-run of the same version) replaces the files of the existing release.
+  release:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v5
+        with:
+          path: installers
+          merge-multiple: true
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          version="${tag#v}"
+          ls -l installers
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" installers/* --clobber
+          else
+            gh release create "$tag" installers/* --title "OADM $version" --generate-notes --verify-tag
+          fi
