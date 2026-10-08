@@ -5,7 +5,7 @@ namespace Oadm.Client.Tasks;
 
 /// <summary>
 /// How the device of a task is named, shared by the tasks grid and the task details window: the
-/// address shown in the device grid (IP or host name), or "removed device 1a2b3c4d" for a device
+/// address shown in the device grid (IP or host name), or "Removed device 1a2b3c4d" for a device
 /// that is no longer managed. A task always targets exactly one device.
 /// </summary>
 public static class TaskDeviceLabels
@@ -13,7 +13,7 @@ public static class TaskDeviceLabels
     /// <summary>Length of the shortened device id of a removed device.</summary>
     public const int ShortIdLength = 8;
 
-    /// <summary>The device grid address of <paramref name="deviceId"/>, or "removed device &lt;short id&gt;".</summary>
+    /// <summary>The device grid address of <paramref name="deviceId"/>, or "Removed device &lt;short id&gt;".</summary>
     public static string Label(string deviceId, DeviceStore devices)
     {
         ArgumentNullException.ThrowIfNull(deviceId);
@@ -26,7 +26,7 @@ public static class TaskDeviceLabels
     {
         ArgumentNullException.ThrowIfNull(deviceId);
         string shortId = deviceId.Length > ShortIdLength ? deviceId[..ShortIdLength] : deviceId;
-        return "removed device " + shortId;
+        return "Removed device " + shortId;
     }
 
     /// <summary>"10.0.0.48: Failed - Connection refused". Null without a device result.</summary>

@@ -145,8 +145,8 @@ public sealed partial class DeviceTagsViewModel : ValidatingViewModel
 
     /// <summary>"Tags of 10.0.0.21 (AXIS M3106-L Mk II)" / "Tags of 12 selected devices".</summary>
     public string Intro => _devices.Count == 1
-        ? $"Tags of {Label(_devices[0])}. Check a tag to add it, clear it to remove it."
-        : string.Create(CultureInfo.CurrentCulture, $"Tags of {_devices.Count:N0} selected devices. Check a tag to add it to all of them, clear it to remove it from all.");
+        ? $"Tags of {Label(_devices[0])}."
+        : string.Create(CultureInfo.CurrentCulture, $"Tags of {_devices.Count:N0} selected devices.");
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEmpty))]
@@ -155,7 +155,7 @@ public sealed partial class DeviceTagsViewModel : ValidatingViewModel
     /// <summary>No tag (matches the search).</summary>
     public bool IsEmpty => Choices.Count == 0;
 
-    public string EmptyText => _all.Count == 0 ? "No tags yet. Create the first one with New tag." : "No tag matches the search.";
+    public string EmptyText => _all.Count == 0 ? "No tags yet." : "No tag matches the search.";
 
     // ---------------------------------------------------------------- new tag
 

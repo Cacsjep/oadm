@@ -30,15 +30,15 @@ public sealed class SecurityMenuTests
                 Plugin("oadm.restart", "Restart", "Maintenance", "restart"),
                 Plugin("oadm.network", "Network settings", "Network", "network"),
                 Plugin("oadm.users", "Users", "Users", "users"),
-                Plugin("oadm.pki.https-enable", "HTTPS: Enable/Update", "Security", "key"),
-                Plugin("oadm.pki.https-disable", "HTTPS: Disable", "Security", "cancel"),
-                Plugin("oadm.pki.dot1x-enable", "IEEE 802.1X: Enable/Update", "Security", "key"),
-                Plugin("oadm.pki.dot1x-disable", "IEEE 802.1X: Disable", "Security", "cancel"),
-                Plugin("oadm.pki.view", "View installed certificates", "Security", "details"),
+                Plugin("oadm.pki.https-enable", "Enable HTTPS", "Security", "key"),
+                Plugin("oadm.pki.https-disable", "Disable HTTPS", "Security", "cancel"),
+                Plugin("oadm.pki.dot1x-enable", "Enable IEEE 802.1X", "Security", "key"),
+                Plugin("oadm.pki.dot1x-disable", "Disable IEEE 802.1X", "Security", "cancel"),
+                Plugin("oadm.pki.view", "View certificates", "Security", "details"),
                 Plugin("oadm.pki.delete", "Delete certificates", "Security", "remove"),
-                Plugin("oadm.pki.install", "Install certificates manually", "Security", "upload"),
+                Plugin("oadm.pki.install", "Install certificates", "Security", "upload"),
                 Plugin("oadm.pki.install-ca", "Install CA certificates", "Security", "upload"),
-                Plugin("oadm.pki.renew", "Renew certificates now", "Security", "refresh"),
+                Plugin("oadm.pki.renew", "Renew certificates", "Security", "refresh"),
             ];
             List<MenuEntryViewModel> entries =
             [
@@ -69,8 +69,8 @@ public sealed class SecurityMenuTests
             Dispatcher.UIThread.RunJobs();
 
             Assert.Equal(
-                ["Delete certificates", "HTTPS: Disable", "HTTPS: Enable/Update", "IEEE 802.1X: Disable", "IEEE 802.1X: Enable/Update",
-                 "Install CA certificates", "Install certificates manually", "Renew certificates now", "View installed certificates"],
+                ["Delete certificates", "Disable HTTPS", "Disable IEEE 802.1X", "Enable HTTPS", "Enable IEEE 802.1X",
+                 "Install CA certificates", "Install certificates", "Renew certificates", "View certificates"],
                 sub.GetVisualDescendants().OfType<MenuItem>().Select(i => i.Header as string ?? "").ToArray());
 
             WriteableBitmap? frame = window.CaptureRenderedFrame();

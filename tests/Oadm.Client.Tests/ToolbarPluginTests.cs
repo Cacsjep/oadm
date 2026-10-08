@@ -67,7 +67,7 @@ public sealed class ToolbarPluginTests
             Assert.Contains("toolbar", buttons[1].Classes);
             Assert.NotNull(buttons[0].Label.Icon);
             var addMenu = Assert.IsType<MenuFlyout>(buttons[0].Flyout); // Add: one menu with the four ways to add devices
-            Assert.Equal(["Discovery", "Network range", "Manual", "Import from file"], addMenu.Items.OfType<MenuItem>().Select(i => i.Header as string ?? string.Empty).ToArray());
+            Assert.Equal(["Discovery", "Network range", "Add manually", "Import from file"], addMenu.Items.OfType<MenuItem>().Select(i => i.Header as string ?? string.Empty).ToArray());
             ToolbarSeparator[] separators = panel.Children.OfType<ToolbarSeparator>().ToArray();
             Assert.Equal(3, separators.Length);
             Assert.Equal([true, false, true], separators.Select(s => s.IsVisible).ToArray());

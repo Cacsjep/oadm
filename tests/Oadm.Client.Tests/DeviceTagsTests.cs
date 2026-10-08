@@ -109,7 +109,7 @@ public sealed class DeviceTagsTests
         Assert.True(dialog.Find("PTZ")!.IsChecked);         // all
         Assert.False(dialog.Find("Outdoor")!.IsChecked);    // none
         Assert.Equal("1 device", dialog.Find("Building A")!.CountText);
-        Assert.Equal("Tags of 2 selected devices. Check a tag to add it to all of them, clear it to remove it from all.", dialog.Intro);
+        Assert.Equal("Tags of 2 selected devices.", dialog.Intro);
 
         // A click: some -> all, all -> none, none -> all; a second click goes back.
         dialog.Find("Building A")!.ToggleCommand.Execute(null);

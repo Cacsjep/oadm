@@ -9,7 +9,7 @@
              x:DataType="dev:DevicesViewModel">
   <!-- Rows: title, then the shared TasksPaneLayout (device card above, splitter, tasks pane below). -->
   <Grid x:Name="LayoutRoot" RowDefinitions="Auto,*">
-    <c:PageTitleBar Grid.Row="0" Title="Devices" Subtitle="The cameras and other devices this server manages." Margin="0,0,0,16" />
+    <c:PageTitleBar Grid.Row="0" Title="Devices" Margin="0,0,0,16" />
 
     <tasks:TasksPaneLayout Grid.Row="1" Tasks="{Binding Tasks}" MainMinHeight="{StaticResource Oadm.DevicesCardMinHeight}">
     <tasks:TasksPaneLayout.MainContent>
@@ -144,7 +144,7 @@
           <StackPanel IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
             <ui:OadmIcon Data="{StaticResource Icon.devices}" Width="32" Height="32" HorizontalAlignment="Center" />
             <TextBlock Classes="sectionTitle" Text="No devices yet" HorizontalAlignment="Center" />
-            <TextBlock Classes="secondary" Text="Click Scan to find devices on the network, or Scan IP range or Add manually." HorizontalAlignment="Center" />
+            <TextBlock Classes="secondary" Text="Use Add to find devices, scan a range or import a file." HorizontalAlignment="Center" />
           </StackPanel>
         </Panel>
       </Grid>

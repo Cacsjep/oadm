@@ -120,7 +120,7 @@ public sealed class HeadlessSmokeTests
             {
                 ["users"] = "Who can log in to this server and what they may do.",
                 ["credentials"] = "Passwords OADM tries when it adds devices.",
-                ["settings"] = "Stored on the OADM server and shared by every client.",
+                ["settings"] = "Discovery duration (s)",
                 ["about"] = "Version and licenses.",
             };
             foreach (NavItemViewModel item in vm.NavItems.Concat(vm.BottomNavItems).ToList())

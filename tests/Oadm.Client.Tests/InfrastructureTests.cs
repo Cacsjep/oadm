@@ -151,8 +151,8 @@ public sealed class StoreTests
         devices.Apply(new DeviceChanged { Kind = DeviceChanged.Types.Kind.Updated, Device = renamed });
         devices.Apply(new DeviceChanged { Kind = DeviceChanged.Types.Kind.Removed, Device = new Device { Id = removedId } });
 
-        Assert.Equal("removed device 1a2b3c4d", removed.DeviceText);
-        Assert.Equal("removed device 1a2b3c4d: Done", removed.DeviceTooltip);
+        Assert.Equal("Removed device 1a2b3c4d", removed.DeviceText);
+        Assert.Equal("Removed device 1a2b3c4d: Done", removed.DeviceTooltip);
         Assert.Equal("10.0.0.201", renamedRow.DeviceText);
         Assert.Equal("10.0.0.201: Done - ok", renamedRow.DeviceTooltip);
 

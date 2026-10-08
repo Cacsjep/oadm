@@ -143,20 +143,19 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     public string HeaderTitle => Mode switch
     {
-        AddDevicesMode.IpRange => "Scan IP range",
+        AddDevicesMode.IpRange => "Network range",
         AddDevicesMode.Manual => "Add manually",
-        AddDevicesMode.Import => "Import devices",
-        _ => "Devices on the network",
+        AddDevicesMode.Import => "Import from file",
+        _ => "Discovery",
     };
 
     public string HeaderDescription => Mode switch
     {
-        AddDevicesMode.IpRange => "Enter the first and last IPv4 address and press Enter. Every address is probed on HTTPS (443) and HTTP (80).",
-        AddDevicesMode.Manual => "Enter an IP address or host name, optionally with port or scheme (https://camera.example.com:8443), and press Enter.",
-        AddDevicesMode.Import => string.Create(CultureInfo.CurrentCulture,
-            $"Addresses from {ImportFileName}, {MaxImportProbes} checked at a time. User names and passwords in the file are tried first for their device."),
-        _ => "Found with zero-configuration (Bonjour). The scan ends after the time set on the Settings page, or with Stop.",
-    } + " OADM logs in with your known credentials; authenticated devices can be added right away.";
+        AddDevicesMode.IpRange => "Enter the first and last address, then press Enter.",
+        AddDevicesMode.Manual => string.Empty,
+        AddDevicesMode.Import => $"Addresses from {ImportFileName}. Logins in the file are tried first.",
+        _ => "Axis devices found on the local network.",
+    };
 
     public ObservableCollection<DiscoveredRowViewModel> Rows { get; } = [];
     public RangeObservableCollection<DiscoveredRowViewModel> FilteredRows { get; } = [];

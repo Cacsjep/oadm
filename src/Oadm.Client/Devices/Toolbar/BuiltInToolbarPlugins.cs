@@ -10,17 +10,17 @@ namespace Oadm.Client.Devices.Toolbar;
 
 /// <summary>
 /// "Add" (the primary button): a menu with the ways to add devices, each opening the add page in its mode: Discovery
-/// (zero-configuration scan), Network range (IPv4 range scan), Manual (an address) and Import from file (CSV).
+/// (zero-configuration scan), Network range (IPv4 range scan), Add manually (an address) and Import from file (CSV).
 /// </summary>
 public sealed class AddToolbarPlugin : IToolbarPlugin
 {
     /// <summary>The menu entries: header, icon key, host page and tooltip.</summary>
     public static IReadOnlyList<(string Header, string IconKey, string HostPage, string Tooltip)> Entries { get; } =
     [
-        ("Discovery", "search", HostPages.AddScan, "Find devices on the network with zero-configuration (Bonjour) and log in with your known credentials"),
+        ("Discovery", "search", HostPages.AddScan, "Find Axis devices on the local network"),
         ("Network range", "range", HostPages.AddIpRange, "Scan an IPv4 address range"),
-        ("Manual", "add", HostPages.AddManually, "Add a device by IP address or host name"),
-        ("Import from file", "download", HostPages.AddImport, "Add the addresses of a CSV file (an export, or one address per line; optional User name and Password columns)"),
+        ("Add manually", "add", HostPages.AddManually, "Add a device by IP address or host name"),
+        ("Import from file", "download", HostPages.AddImport, "Add devices from a CSV or address list"),
     ];
 
     public string Id => "oadm.toolbar.add";
@@ -40,7 +40,7 @@ public sealed class AddToolbarPlugin : IToolbarPlugin
         }
 
         var button = new ToolbarButton { Text = "Add", IconKey = "add", IsPrimary = true, Name = "AddButton", Flyout = menu };
-        ToolTip.SetTip(button, "Add devices: discovery, network range, manual or from a file");
+        ToolTip.SetTip(button, "Add devices: discovery, network range, manually or from a file");
         return button;
     }
 }
@@ -48,7 +48,7 @@ public sealed class AddToolbarPlugin : IToolbarPlugin
 /// <summary>"Refresh": reads the selected devices again now (one call for the whole selection). Disabled without a selection.</summary>
 public sealed class RefreshToolbarPlugin : IToolbarPlugin
 {
-    public const string Tooltip = "Read the selected devices again now: status, firmware, network settings and certificate";
+    public const string Tooltip = "Read the selected devices again";
 
     public string Id => "oadm.toolbar.refresh";
     public int Order => 5;
@@ -159,9 +159,8 @@ public sealed class ExportToolbarPlugin : IToolbarPlugin
     /// <summary>Says which devices the export writes.</summary>
     public static string Tooltip(int selected) => selected switch
     {
-        0 => "Export devices: save every device shown as a CSV file",
-        1 => "Export devices: save the selected device as a CSV file",
-        _ => string.Create(System.Globalization.CultureInfo.CurrentCulture, $"Export devices: save the {selected} selected devices as a CSV file"),
+        0 => "Save the shown devices as CSV",
+        _ => "Save the selected devices as CSV",
     };
 }
 

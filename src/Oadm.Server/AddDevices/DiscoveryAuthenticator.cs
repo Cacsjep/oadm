@@ -449,7 +449,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
                     {
                         var detail = entry.Attempts switch
                         {
-                            0 => "No known credentials. Log in once, or add credentials on the Settings page.",
+                            0 => "No known credentials. Log in once, or add credentials on the Credentials page.",
                             1 => "The known credential did not work.",
                             _ => string.Create(CultureInfo.InvariantCulture, $"None of the {entry.Attempts} known credentials worked."),
                         };

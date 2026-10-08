@@ -127,10 +127,10 @@ public sealed class AddDevicesPageTests : IDisposable
 
         page.OpenEditorCommand.Execute(complex);
         Assert.True(page.IsPasswordEditorOpen);
-        Assert.Contains("device policy \"complex\"", page.PolicyHint, StringComparison.Ordinal);
+        Assert.Contains("At least 12 characters with upper and lower case", page.PolicyHint, StringComparison.Ordinal);
         page.NewPassword = "simple";
         page.ConfirmPassword = "simple";
-        Assert.Equal("The device passphrase policy requires at least 12 characters.", page.ErrorOf(nameof(page.NewPassword)));
+        Assert.Equal("This device needs at least 12 characters.", page.ErrorOf(nameof(page.NewPassword)));
         Assert.Null(page.ErrorOf(nameof(page.ConfirmPassword)));
         Assert.False(page.ApplyPasswordCommand.CanExecute(null));
 
@@ -350,8 +350,8 @@ public sealed class AddDevicesPageTests : IDisposable
         await using AddDevicesViewModel page = await OpenImportAsync(csv);
 
         Assert.True(page.IsImportMode);
-        Assert.Equal("Import devices", page.HeaderTitle);
-        Assert.StartsWith("Addresses from site.csv, 16 checked at a time.", page.HeaderDescription, StringComparison.Ordinal);
+        Assert.Equal("Import from file", page.HeaderTitle);
+        Assert.Equal("Addresses from site.csv. Logins in the file are tried first.", page.HeaderDescription);
         Assert.Equal(7, page.Rows.Count); // every line is a row from the start, in file order
         Assert.True(page.IsScanning);
         Assert.True(page.ShowStop);
@@ -456,11 +456,11 @@ public sealed class AddDevicesPageTests : IDisposable
     [InlineData("abc", "", null, "")]
     [InlineData("abc", "abd", null, "The passwords do not match.")]
     [InlineData("abc", "abc", null, null)]
-    [InlineData("short-password", "short-password", "length", "The device passphrase policy requires at least 15 characters.")]
+    [InlineData("short-password", "short-password", "length", "This device needs at least 15 characters.")]
     [InlineData("longenough-pass", "longenough-pass", "length", null)]
-    [InlineData("alllowercase-1", "alllowercase-1", "complex", "The device passphrase policy requires an upper-case letter, a lower-case letter, a digit and a special character.")]
+    [InlineData("alllowercase-1", "alllowercase-1", "complex", "This device needs upper and lower case, a digit and a symbol.")]
     [InlineData("Mixed-Case-12", "Mixed-Case-12", "complex", null)]
-    [InlineData("café", "café", null, "The password may only contain printable ASCII characters.")]
+    [InlineData("café", "café", null, "Use only letters, digits, spaces and standard symbols.")]
     public void Password_rules_follow_the_device_policy(string password, string confirm, string? policy, string? expected) =>
         Assert.Equal(expected, PasswordRules.Validate(password, confirm, policy));
 }

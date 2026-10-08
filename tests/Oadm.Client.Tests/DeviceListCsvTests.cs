@@ -112,8 +112,8 @@ public sealed class DeviceListCsvTests
         fx.Select("3", "2"); // written in grid order, not in click order
         await fx.Devices.OpenHostPageAsync(HostPages.ExportDevices);
         Assert.Equal(["ACCC8E000002", "ACCC8E000003"], Serials(saved!));
-        Assert.Equal("Export devices: save the 2 selected devices as a CSV file", ExportToolbarPlugin.Tooltip(2));
-        Assert.Equal("Export devices: save every device shown as a CSV file", ExportToolbarPlugin.Tooltip(0));
+        Assert.Equal("Save the selected devices as CSV", ExportToolbarPlugin.Tooltip(2));
+        Assert.Equal("Save the shown devices as CSV", ExportToolbarPlugin.Tooltip(0));
 
         // Nothing to export: a message, no file.
         fx.Devices.SelectedDevices.Clear();

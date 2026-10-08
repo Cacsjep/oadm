@@ -43,7 +43,7 @@ public sealed class DeviceImportException : Exception
 }
 
 /// <summary>
-/// Reads a device list for "Import devices": the CSV of Export devices or any CSV with an address column
+/// Reads a device list for "Import from file": the CSV of Export devices or any CSV with an address column
 /// (header names case-insensitive: Address, IP address, IP, Host name; optional User name, Password and Tags
 /// ("Building A; PTZ", assigned to the devices that get added; missing tags are created); other columns ignored), or a plain file with one address per line. Comma or semicolon separated
 /// (Excel in many locales), UTF-8 (with or without BOM), UTF-16 with BOM, else Windows Latin-1.
