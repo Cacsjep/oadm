@@ -95,10 +95,15 @@ public static partial class OadmServerHost
                 .MinimumLevel.Override("Grpc", LogEventLevel.Warning)
                 .ReadFrom.Configuration(sp.GetRequiredService<IConfiguration>())
                 .Enrich.FromLogContext()
+                // Capped (never fills the disk): a new file per day or at 20 MB, files of the last 14 days, at most 30
+                // files (at most about 600 MB).
                 .WriteTo.File(
                     Path.Combine(paths.LogsDirectory, "oadm-server-.log"),
                     rollingInterval: RollingInterval.Day,
-                    retainedFileCountLimit: 14,
+                    fileSizeLimitBytes: 20L * 1024 * 1024,
+                    rollOnFileSizeLimit: true,
+                    retainedFileCountLimit: 30,
+                    retainedFileTimeLimit: TimeSpan.FromDays(14),
                     formatProvider: System.Globalization.CultureInfo.InvariantCulture,
                     outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}");
             if (options.LogToConsole)

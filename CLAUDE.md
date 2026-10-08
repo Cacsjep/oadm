@@ -16,7 +16,7 @@ must feel at home: same workflows, same information, but our own modern dark Flu
 | Server | Generic Host worker service + Kestrel, gRPC (Grpc.AspNetCore), EF Core + SQLite |
 | Client | Avalonia 12, Fluent theme, dark only, CommunityToolkit.Mvvm |
 | Client <-> Server | gRPC with protobuf contracts. Server-streaming for live device and task updates |
-| Logging | Serilog (console + rolling file) behind Microsoft.Extensions.Logging |
+| Logging | Serilog (console + rolling file) behind Microsoft.Extensions.Logging; log files roll daily or at 20 MB (server) / 10 MB (client), only the last 14 days and at most 30 files are kept |
 | Tests | xUnit, NSubstitute for mocks |
 | Device API | VAPIX only (HTTP/HTTPS, digest auth). No ONVIF |
 | Live video | RTSP (server, own client) relayed as encoded H.265/H.264 over gRPC, decoded in the client with FFmpeg (LGPL, bundled) |

@@ -24,8 +24,12 @@ internal static class Program
         string logFolder = Path.Combine(options.DataFolder, "logs");
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
+            // Capped (never fills the disk): a new file per day or at 10 MB, files of the last 14 days, at most 30 files
+            // (at most about 300 MB).
             .WriteTo.File(Path.Combine(logFolder, "client-.log"), rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 14, formatProvider: System.Globalization.CultureInfo.InvariantCulture)
+                fileSizeLimitBytes: 10L * 1024 * 1024, rollOnFileSizeLimit: true,
+                retainedFileCountLimit: 30, retainedFileTimeLimit: TimeSpan.FromDays(14),
+                formatProvider: System.Globalization.CultureInfo.InvariantCulture)
             .WriteTo.Sink(new LogStoreSink(logStore))
             .CreateLogger();
 

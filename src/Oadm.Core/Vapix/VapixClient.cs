@@ -319,7 +319,9 @@ public sealed class VapixClient : IVapixClient, IDisposable
 
         try
         {
-            return await _http.SendAsync(request, HttpCompletionOption.ResponseContentRead, timeoutCts.Token).ConfigureAwait(false);
+            var response = await _http.SendAsync(request, HttpCompletionOption.ResponseContentRead, timeoutCts.Token).ConfigureAwait(false);
+            NormalizeCharset(response.Content);
+            return response;
         }
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
         {
@@ -402,6 +404,35 @@ public sealed class VapixClient : IVapixClient, IDisposable
         }
 
         return await ReadStringAsync(response.Content, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// AXIS OS sends <c>charset=utf8</c> (and older firmware other names .NET does not know), and
+    /// <see cref="HttpContent.ReadAsStringAsync()"/> then throws "The character set provided in ContentType is invalid".
+    /// Every response leaves <see cref="SendAsync"/> with a charset .NET can read: utf8 and unknown names become utf-8,
+    /// so plugins can read answers as text without their own workaround.
+    /// </summary>
+    public static void NormalizeCharset(HttpContent? content)
+    {
+        var contentType = content?.Headers.ContentType;
+        var charset = contentType?.CharSet?.Trim('"', ' ');
+        if (contentType is null || string.IsNullOrEmpty(charset))
+        {
+            return;
+        }
+
+        try
+        {
+            _ = Encoding.GetEncoding(charset);
+            if (!string.Equals(charset, contentType.CharSet, StringComparison.Ordinal))
+            {
+                contentType.CharSet = charset; // quoted "utf-8" is not accepted by ReadAsStringAsync either
+            }
+        }
+        catch (ArgumentException)
+        {
+            contentType.CharSet = "utf-8";
+        }
     }
 
     /// <summary>
