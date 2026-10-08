@@ -1,0 +1,10 @@
+# Keeps the commit-pinned GitHub Actions current: a weekly pull request with the new commit hash and version comment.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

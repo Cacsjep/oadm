@@ -97,6 +97,9 @@ release of the tag with the installers and `SHA256SUMS.txt`):
 - Icons: the app icon is `icon/oadm-app-icon-<size>.png` (16-1024); `packaging/icons/make-icons.py`
   builds `oadm.ico` (client exe, MSI, shortcuts), `oadm.icns` (macOS), `oadm.png` / `oadm-256.png` (Linux, window icon of
   every client window) from it.
+Supply chain: every GitHub Action is pinned by its full commit hash (the version as a comment), `.github/dependabot.yml`
+opens a weekly pull request with updated hashes, checkout runs with `persist-credentials: false`, workflow permissions
+are `contents: read` except the release job (`contents: write`).
 
 Developer commands: one entry point per shell at the repo root, `./manage.sh` (bash) and
 `.\manage.ps1` (PowerShell 5.1/7), verb + target (`build`, `run`, `test`, `publish`, `package`, `clean`,
