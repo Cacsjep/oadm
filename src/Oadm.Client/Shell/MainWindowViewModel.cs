@@ -239,9 +239,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>One navigation entry per core plugin, below "Devices".</summary>
+    /// <summary>One navigation entry per core plugin with a page (<c>no_page</c> unset), below "Devices".</summary>
     internal void SyncCorePluginPages(IReadOnlyList<CorePluginInfo> corePlugins)
     {
+        corePlugins = [.. corePlugins.Where(p => !p.NoPage)];
         foreach (NavItemViewModel stale in NavItems.Where(n => n.Page is CorePluginPageViewModel && !corePlugins.Any(p => "plugin:" + p.Id == n.Key)).ToList())
         {
             NavItems.Remove(stale);

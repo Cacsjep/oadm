@@ -133,6 +133,14 @@ public interface IToolbarContext
     /// <summary>Uploads a local file to the server; <paramref name="progress"/> receives 0.0 to 1.0.</summary>
     Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct);
 
+    /// <summary>
+    /// Calls a core plugin's server part (<c>ICorePlugin.InvokeAsync</c> through gRPC PluginService.Invoke), e.g. the
+    /// backend of a toolbar-only core plugin (<c>ICorePlugin.HasPage</c> false). Failures are <c>Grpc.Core.RpcException</c>
+    /// (Status.Detail is the message). Hosts without it throw <see cref="NotSupportedException"/>.
+    /// </summary>
+    Task<string?> InvokePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) =>
+        throw new NotSupportedException("This host cannot call core plugins from the toolbar.");
+
     /// <summary>The main window, as owner for the plugin's own dialogs; null before it is shown.</summary>
     Window? Owner { get; }
 }

@@ -254,7 +254,8 @@ public static partial class OadmServerHost
             new Core.Security.PluginSecretProtector(sp.GetRequiredService<Core.Security.CredentialProtector>()),
             trustAnchors: sp.GetRequiredService<TrustAnchorRegistry>(),
             eventStreams: sp.GetRequiredService<Sdk.Devices.IDeviceEventStreams>(),
-            firewall: sp.GetService<Sdk.Network.IFirewallRules>()));
+            firewall: sp.GetService<Sdk.Network.IFirewallRules>(),
+            pluginDataRoot: sp.GetRequiredService<OadmPaths>().PluginDataDirectory));
 
         // Polling
         services.AddSingleton<DevicePollingService>();

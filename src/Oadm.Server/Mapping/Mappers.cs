@@ -325,6 +325,7 @@ public static class Mappers
             Id = plugin.Id,
             DisplayName = plugin.Plugin.DisplayName,
             IconKey = plugin.Plugin.IconKey ?? string.Empty,
+            NoPage = !plugin.Plugin.HasPage,
         };
     }
 

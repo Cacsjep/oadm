@@ -118,6 +118,13 @@ public sealed class ToolbarContext : IToolbarContext
     public Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct) =>
         new TaskDialogContext(_api, ToolbarUploadId).UploadAsync(localPath, progress, ct);
 
+    public Task<string?> InvokePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(method);
+        return _api.InvokeCorePluginAsync(pluginId, method, payloadJson, ct);
+    }
+
     private TaskPluginInfo? Find(string pluginId) =>
         _catalog.Plugins.FirstOrDefault(p => string.Equals(p.Id, pluginId, StringComparison.OrdinalIgnoreCase));
 }

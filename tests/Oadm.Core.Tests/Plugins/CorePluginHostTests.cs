@@ -152,6 +152,32 @@ public sealed class CorePluginHostTests : IAsyncLifetime
         Assert.Equal(TaskState.Cancelled, (await _engine.GetAsync(taskId, CancellationToken.None))!.State);
     }
 
+    [Fact]
+    public async Task ContextOffersAPrivateDataFolderPerPluginCreatedOnFirstUse()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "oadm-plugin-data-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            await using var host = new CorePluginHost(_registry, _devices, _vapix, _engine, _settings, pluginDataRoot: root);
+            var core = new TestCorePlugin("oadm.system-report", []);
+            Register(core);
+            await host.StartAllAsync(CancellationToken.None);
+
+            Assert.False(Directory.Exists(root));
+            Assert.Equal(Path.Combine(root, "oadm.system-report"), core.Context!.DataDirectory);
+            Assert.True(Directory.Exists(core.Context.DataDirectory));
+            Assert.Equal("a_b", CorePluginHost.SafeFolderName("a/b"));
+            Assert.Equal("_", CorePluginHost.SafeFolderName(".."));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
     private void Register(ICorePlugin plugin) =>
         Assert.True(_registry.RegisterCorePlugin(plugin, new PluginOrigin("test", "1.0.0", null)));
 

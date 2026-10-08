@@ -39,6 +39,38 @@ public sealed class DeviceLimitsTests
     }
 
     [Fact]
+    public async Task AStreamedAnswerIsNotBufferedAndMayExceedTheLimit()
+    {
+        var handler = new FakeHttpMessageHandler((_, _) => new HttpResponseMessage(HttpStatusCode.OK) { Content = Body(17 * 1024 * 1024, withLength: false) });
+        using var client = new VapixClient(Base, handler);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "axis-cgi/serverreport.cgi?mode=zip");
+        request.Options.Set(VapixRequestOptions.StreamResponse, true);
+        using var response = await client.SendAsync(request, CancellationToken.None);
+        await using var body = await response.Content.ReadAsStreamAsync();
+        var total = 0L;
+        var buffer = new byte[81920];
+        int read;
+        while ((read = await body.ReadAsync(buffer)) > 0)
+        {
+            total += read;
+        }
+
+        Assert.Equal(17L * 1024 * 1024, total);
+    }
+
+    [Fact]
+    public async Task AStreamedRequestStillStaysOnTheDevice()
+    {
+        var handler = new FakeHttpMessageHandler((_, _) => new HttpResponseMessage(HttpStatusCode.OK));
+        using var client = new VapixClient(Base, handler);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://evil.invalid/axis-cgi/serverreport.cgi");
+        request.Options.Set(VapixRequestOptions.StreamResponse, true);
+        await Assert.ThrowsAsync<ArgumentException>(() => client.SendAsync(request, CancellationToken.None));
+    }
+
+    [Fact]
     public void XmlWithADtdIsRefused()
     {
         const string bomb = """
