@@ -52,6 +52,8 @@ public sealed partial class DevicesViewModel : ObservableObject
     private readonly IUrlLauncher _launcher;
     private readonly Func<AddDevicesMode, AddDevicesViewModel> _addPageFactory;
     private readonly ILogger<DevicesViewModel> _logger;
+    private readonly Shell.UserSession? _session;
+    private bool _selectionNeedsLogin;
 
     public DevicesViewModel(
         DeviceStore store,
@@ -65,7 +67,8 @@ public sealed partial class DevicesViewModel : ObservableObject
         ColumnLayoutViewModel columns,
         TasksViewModel tasks,
         LiveViewViewModel liveView,
-        ILogger<DevicesViewModel> logger)
+        ILogger<DevicesViewModel> logger,
+        Shell.UserSession? session = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(catalog);
@@ -77,6 +80,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         _launcher = launcher;
         _addPageFactory = addPageFactory;
         _logger = logger;
+        _session = session;
         Toolbar = toolbar;
         ToolbarContext = new ToolbarContext(store, SelectedDevices, catalog, runner, api, dialogs, OpenHostPageAsync, () => tasks.ShowTasksCommand.Execute(null));
         Columns = columns;
@@ -84,7 +88,11 @@ public sealed partial class DevicesViewModel : ObservableObject
         LiveView = liveView;
 
         store.Devices.CollectionChanged += OnDevicesChanged;
-        store.Changed += (_, _) => catalog.RequestRefresh();
+        store.Changed += (_, _) =>
+        {
+            catalog.RequestRefresh();
+            OnSelectedStatusMayHaveChanged();
+        };
         catalog.Changed += (_, _) => RebuildPluginActions();
         SelectedDevices.CollectionChanged += (_, _) => OnSelectionChanged();
         FilteredDevices.ReplaceAll(store.Devices);
@@ -154,6 +162,31 @@ public sealed partial class DevicesViewModel : ObservableObject
     /// <summary>Context menu "Refresh": the same flow as the Refresh toolbar plugin (one call for the selection).</summary>
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private Task RefreshAsync() => RefreshToolbarPlugin.RefreshSelectionAsync(ToolbarContext);
+
+    /// <summary>
+    /// Context menu "Log in": for the devices of the selection whose stored credentials are rejected (status Credentials
+    /// required, nothing else). One server call for all of them; "Save to credential list" only for administrators.
+    /// </summary>
+    [RelayCommand]
+    private async Task LogInAsync()
+    {
+        List<DeviceRowViewModel> devices = LoginTargets();
+        if (devices.Count == 0)
+        {
+            return;
+        }
+
+        var login = new DeviceLoginViewModel(_api, devices, _session?.IsAdmin ?? false);
+        bool allLoggedIn = await _dialogs.ShowDeviceLoginAsync(login).ConfigureAwait(true);
+        if (allLoggedIn && !string.IsNullOrEmpty(login.CredentialListNote))
+        {
+            await _dialogs.ShowMessageAsync("Log in", login.CredentialListNote).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>The selected devices that reject their stored credentials (O(selection)).</summary>
+    internal List<DeviceRowViewModel> LoginTargets() =>
+        SelectedDevices.Where(d => d.ContractStatus == DeviceStatus.CredentialsRequired).ToList();
 
     /// <summary>Host pages for <see cref="IToolbarContext.OpenAsync"/>.</summary>
     internal Task OpenHostPageAsync(string hostPage)
@@ -408,6 +441,12 @@ public sealed partial class DevicesViewModel : ObservableObject
             IsEnabled = count == 1,
         });
         ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Refresh", IconKey = "refresh", Command = RefreshCommand });
+        _selectionNeedsLogin = SelectionNeedsLogin();
+        if (_selectionNeedsLogin)
+        {
+            ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Log in", IconKey = "key", Command = LogInCommand });
+        }
+
         ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Remove", IconKey = "remove", Command = RemoveCommand });
 
         var runnable = TaskPluginCatalog.RunnableFor(_catalog.Plugins, SelectedIds()).ToList();
@@ -418,6 +457,17 @@ public sealed partial class DevicesViewModel : ObservableObject
             {
                 ContextMenuEntries.Add(group);
             }
+        }
+    }
+
+    private bool SelectionNeedsLogin() => SelectedDevices.Any(d => d.ContractStatus == DeviceStatus.CredentialsRequired);
+
+    /// <summary>A device changed: the "Log in" entry follows the status of the selected devices (O(selection), rebuilt only on a change).</summary>
+    private void OnSelectedStatusMayHaveChanged()
+    {
+        if (SelectedDevices.Count > 0 && SelectionNeedsLogin() != _selectionNeedsLogin)
+        {
+            RebuildContextMenu();
         }
     }
 

@@ -226,6 +226,79 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         return Task.CompletedTask;
     }
 
+    /// <summary>Like the server: every non-empty password except "wrong" is accepted; unreachable and certificate changed refuse.</summary>
+    public async Task<DeviceLogInReply> LogInDevicesAsync(IReadOnlyCollection<string> deviceIds, string userName, string password, bool saveToCredentialList, CancellationToken ct)
+    {
+        await Task.Delay(TimeSpan.FromMilliseconds(300), ct).ConfigureAwait(false);
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            if (string.IsNullOrWhiteSpace(userName) || string.IsNullOrEmpty(password) || deviceIds.Count == 0)
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "Enter a user name and a password."));
+            }
+
+            var reply = new DeviceLogInReply();
+            var byId = _devices.ToDictionary(d => d.Id);
+            foreach (string id in deviceIds.Distinct())
+            {
+                var result = new DeviceLogInResult { DeviceId = id };
+                if (!byId.TryGetValue(id, out Device? device))
+                {
+                    result.Message = "The device is no longer managed by OADM.";
+                }
+                else if (device.Status == DeviceStatus.CertificateChanged)
+                {
+                    result.Message = "Certificate changed - accept the new certificate first";
+                }
+                else if (device.Status == DeviceStatus.Unreachable)
+                {
+                    result.Message = "Unreachable - No route to host";
+                }
+                else if (!IsAcceptedPassword(password))
+                {
+                    result.Rejected = true;
+                    result.Message = "The user name or password is wrong.";
+                }
+                else
+                {
+                    result.Ok = true;
+                    device.HasCredentials = true;
+                    device.Status = DeviceStatus.Ok;
+                    PublishUpdated(device);
+                }
+
+                reply.Results.Add(result);
+            }
+
+            if (saveToCredentialList && reply.Results.Any(r => r.Ok))
+            {
+                if (_credentials.Count >= 20 && !_credentials.Any(c => c.UserName == userName.Trim()))
+                {
+                    reply.CredentialListNote = "The credential list is full (20 entries); the login was not saved there.";
+                }
+                else
+                {
+                    AddCredentialLocked(userName.Trim(), password);
+                }
+            }
+
+            return reply;
+        }
+    }
+
+    /// <summary>The fake stores "root" for every device with credentials.</summary>
+    public Task<string> GetCredentialUserNameAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            var wanted = deviceIds.ToHashSet();
+            bool all = _devices.Where(d => wanted.Contains(d.Id)).All(d => d.HasCredentials);
+            return Task.FromResult(all && wanted.Count > 0 ? "root" : "");
+        }
+    }
+
     public Task<string> GetWebUiUrlAsync(string deviceId, CancellationToken ct)
     {
         lock (_gate)

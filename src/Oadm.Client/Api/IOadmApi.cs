@@ -46,6 +46,15 @@ public interface IOadmApi
     Task SetCredentialsAsync(IReadOnlyCollection<string> deviceIds, string userName, string password, CancellationToken ct);
     Task<string> GetWebUiUrlAsync(string deviceId, CancellationToken ct);
 
+    /// <summary>
+    /// "Log in" for devices whose stored credentials are rejected: the server tries the credential on every device and
+    /// stores it for those that accept it. One call for the selection; one result per device.
+    /// </summary>
+    Task<DeviceLogInReply> LogInDevicesAsync(IReadOnlyCollection<string> deviceIds, string userName, string password, bool saveToCredentialList, CancellationToken ct);
+
+    /// <summary>The user name stored for all these devices when they share one; empty otherwise.</summary>
+    Task<string> GetCredentialUserNameAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct);
+
     // DiscoveryService
     Task<string> StartZeroConfAsync(CancellationToken ct);
     Task<string> StartRangeScanAsync(string firstAddress, string lastAddress, CancellationToken ct);

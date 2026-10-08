@@ -58,7 +58,7 @@ internal static class TestSupport
 /// <summary>Builds a DevicesViewModel with its collaborators, all without Avalonia.</summary>
 internal sealed class DevicesFixture : IDisposable
 {
-    public DevicesFixture(IOadmApi? api = null, IClientPluginRegistry? registry = null)
+    public DevicesFixture(IOadmApi? api = null, IClientPluginRegistry? registry = null, Oadm.Client.Shell.UserSession? session = null)
     {
         Api = api ?? Substitute.For<IOadmApi>();
         Ui = new ImmediateUiDispatcher();
@@ -85,7 +85,7 @@ internal sealed class DevicesFixture : IDisposable
         Devices = new DevicesViewModel(Store, Catalog, Runner, Api, Dialogs, Launcher,
             mode => new AddDevicesViewModel(Api, Ui, NullLogger<AddDevicesViewModel>.Instance, mode),
             new Oadm.Client.Devices.Toolbar.DeviceToolbar(Oadm.Client.Devices.Toolbar.BuiltInToolbarPlugins.All, Registry, NullLogger<Oadm.Client.Devices.Toolbar.DeviceToolbar>.Instance),
-            new ColumnLayoutViewModel(Settings), TasksVm, LiveView, NullLogger<DevicesViewModel>.Instance);
+            new ColumnLayoutViewModel(Settings), TasksVm, LiveView, NullLogger<DevicesViewModel>.Instance, session);
     }
 
     public IOadmApi Api { get; }

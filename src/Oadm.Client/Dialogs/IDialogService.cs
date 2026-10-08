@@ -15,6 +15,9 @@ public interface IDialogService
     /// <summary>Shows the add devices page; true when devices were added.</summary>
     Task<bool> ShowAddDevicesAsync(AddDevicesViewModel page);
 
+    /// <summary>Shows the "Log in" dialog of devices that reject their stored credentials; true when all accepted the login.</summary>
+    Task<bool> ShowDeviceLoginAsync(Oadm.Client.Devices.DeviceLoginViewModel login);
+
     /// <summary>The window dialogs open on (active window, else the main window); null without a desktop.</summary>
     Avalonia.Controls.Window? Owner { get; }
 

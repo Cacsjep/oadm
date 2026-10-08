@@ -160,6 +160,16 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         await C.Devices.SetCredentialsAsync(request, cancellationToken: ct);
     }
 
+    public async Task<DeviceLogInReply> LogInDevicesAsync(IReadOnlyCollection<string> deviceIds, string userName, string password, bool saveToCredentialList, CancellationToken ct)
+    {
+        var request = new DeviceLogInRequest { UserName = userName, Password = password, SaveToCredentialList = saveToCredentialList };
+        request.DeviceIds.AddRange(deviceIds);
+        return await C.Devices.LogInAsync(request, cancellationToken: ct);
+    }
+
+    public async Task<string> GetCredentialUserNameAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct) =>
+        (await C.Devices.GetCredentialUserNameAsync(ToIds(deviceIds), cancellationToken: ct)).UserName;
+
     public async Task<string> GetWebUiUrlAsync(string deviceId, CancellationToken ct) =>
         (await C.Devices.GetWebUiUrlAsync(new DeviceId { Id = deviceId }, cancellationToken: ct)).Url;
 
