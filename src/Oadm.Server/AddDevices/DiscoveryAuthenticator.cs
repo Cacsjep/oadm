@@ -277,6 +277,18 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     }
 
     /// <summary>
+    /// Credentials for the devices of one session only (a line of an imported device list, "Add manually"
+    /// probe): the automatic login tries them first, then the credential list. Server memory only, never
+    /// saved to the credential list; a rejected one counts as an automatic attempt.
+    /// </summary>
+    public void AddSessionCredential(string sessionId, string userName, string password)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userName);
+        ArgumentException.ThrowIfNullOrEmpty(password);
+        Session(sessionId).AddEntered(new Candidate(EnteredCredentialId, new DeviceCredentials(userName.Trim(), password)));
+    }
+
+    /// <summary>
     /// Starts a login with the credentials not tried yet (credential list, entered ones) on every device
     /// of the session whose login failed and that has attempts left. Claimed devices show Pending.
     /// </summary>

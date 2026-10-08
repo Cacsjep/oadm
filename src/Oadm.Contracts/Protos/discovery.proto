@@ -19,12 +19,15 @@ service DiscoveryService {
   // Probes one address entered by the user ("Add manually"): IP or host name, optional port and
   // scheme ("https://cam.example.com:8443"). Watch the session like a range scan (one device at
   // most, then scan_finished). INVALID_ARGUMENT for an unusable or unresolvable address.
+  // Optional user_name + password (a line of an imported device list) belong to this session only:
+  // the automatic login tries them first, then the credential list. Server memory only, never stored
+  // in the credential list, never logged.
   rpc ProbeAddress (ProbeAddressRequest) returns (DiscoverySession);
 }
 
 message DiscoverySession { string session_id = 1; }
 message RangeScanRequest { string from = 1; string to = 2; }
-message ProbeAddressRequest { string address = 1; }
+message ProbeAddressRequest { string address = 1; string user_name = 2; string password = 3; }
 
 enum DiscoverySource { DISCOVERY_SOURCE_UNSPECIFIED = 0; MDNS = 1; RANGE_SCAN = 2; MANUAL = 3; }
 
