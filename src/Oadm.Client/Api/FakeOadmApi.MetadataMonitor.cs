@@ -26,10 +26,11 @@ public sealed partial class FakeOadmApi
     /// <summary>Pause between generated changes (tests shorten it).</summary>
     public TimeSpan MetadataChangeInterval { get; set; } = TimeSpan.FromMilliseconds(1500);
 
-    /// <summary>Live events of the simulated core plugins (only the Metadata Monitor publishes).</summary>
+    /// <summary>Live events of the simulated core plugins (the Metadata Monitor and the Hardening scan publish).</summary>
     public async IAsyncEnumerable<PluginEvent> WatchCorePluginAsync(string pluginId, [EnumeratorCancellation] CancellationToken ct)
     {
-        if (!string.Equals(pluginId, MetadataMonitorPluginId, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(pluginId, MetadataMonitorPluginId, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(pluginId, HardeningScanPluginId, StringComparison.OrdinalIgnoreCase))
         {
             yield break;
         }
@@ -41,7 +42,10 @@ public sealed partial class FakeOadmApi
             {
                 while (channel.Reader.TryRead(out var item))
                 {
-                    yield return item;
+                    if (string.Equals(item.PluginId, pluginId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        yield return item;
+                    }
                 }
             }
         }
