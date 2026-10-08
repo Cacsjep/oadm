@@ -37,4 +37,10 @@
     <!-- Runs plugins against a step list the way the task engine does. -->
     <Compile Include="..\Shared\StepRun.cs" Link="Shared\StepRun.cs" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- Fake host firewall (NTP / DHCP firewall rules). -->
+    <Compile Include="..\Shared\RecordingFirewall.cs" Link="Shared\RecordingFirewall.cs" />
+  </ItemGroup>
+
 </Project>

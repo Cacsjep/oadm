@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 using Oadm.Core.Vapix;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Tasks;
 using Oadm.Sdk.Vapix;
@@ -36,6 +37,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     private readonly ISecretProtector? _secrets;
     private readonly TrustAnchorRegistry? _trustAnchors;
     private readonly IDeviceEventStreams? _eventStreams;
+    private readonly IFirewallRules? _firewall;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.OrdinalIgnoreCase);
@@ -52,7 +54,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         ISecretProtector? secrets = null,
         PluginEventHub? events = null,
         TrustAnchorRegistry? trustAnchors = null,
-        IDeviceEventStreams? eventStreams = null)
+        IDeviceEventStreams? eventStreams = null,
+        IFirewallRules? firewall = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(devices);
@@ -67,6 +70,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         _secrets = secrets;
         _trustAnchors = trustAnchors;
         _eventStreams = eventStreams;
+        _firewall = firewall;
         Events = events ?? new PluginEventHub();
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _logger = _loggerFactory.CreateLogger<CorePluginHost>();
@@ -112,7 +116,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     _secrets,
                     Events.For(registered.Id),
                     _trustAnchors?.For(registered.Id),
-                    _eventStreams);
+                    _eventStreams,
+                    _firewall);
                 try
                 {
                     await registered.Plugin.StartAsync(context, ct).ConfigureAwait(false);
@@ -255,7 +260,8 @@ internal sealed class CorePluginContext(
     ISecretProtector? secrets = null,
     IPluginEvents? events = null,
     ITrustAnchors? trustAnchors = null,
-    IDeviceEventStreams? eventStreams = null) : ICorePluginContext
+    IDeviceEventStreams? eventStreams = null,
+    IFirewallRules? firewall = null) : ICorePluginContext
 {
     public IDeviceRepository Devices { get; } = devices;
 
@@ -276,4 +282,6 @@ internal sealed class CorePluginContext(
     public ITrustAnchors? TrustAnchors { get; } = trustAnchors;
 
     public IDeviceEventStreams? EventStreams { get; } = eventStreams;
+
+    public IFirewallRules? Firewall { get; } = firewall;
 }
