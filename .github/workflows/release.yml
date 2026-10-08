@@ -274,11 +274,35 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
+
       - name: Download installers
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           path: installers
           merge-multiple: true
+
+      # The release text is the section "## [X.Y.Z]" of CHANGELOG.md (up to the next "## [" heading); without one the
+      # release falls back to GitHub's generated notes.
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            index($0, "## [" v "]") == 1 { found = 1; next }
+            found && index($0, "## [") == 1 { exit }
+            found && substr($0, 1, 1) == "[" && index($0, "]: ") > 0 { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ -s release-notes.md ] && grep -q '[^[:space:]]' release-notes.md; then
+            echo "Release notes from CHANGELOG.md:"; cat release-notes.md
+          else
+            echo "CHANGELOG.md has no section for $version: GitHub's generated notes are used."
+            rm -f release-notes.md
+          fi
 
       - name: Checksums
         working-directory: installers
@@ -295,8 +319,10 @@ jobs:
           tag="$GITHUB_REF_NAME"
           version="${tag#v}"
           ls -l installers
+          if [ -f release-notes.md ]; then notes=(--notes-file release-notes.md); else notes=(--generate-notes); fi
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" installers/* --clobber
+            if [ -f release-notes.md ]; then gh release edit "$tag" --notes-file release-notes.md; fi
           else
-            gh release create "$tag" installers/* --title "OADM $version" --generate-notes --verify-tag
+            gh release create "$tag" installers/* --title "OADM $version" "${notes[@]}" --verify-tag
           fi
