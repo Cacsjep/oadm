@@ -318,7 +318,8 @@ internal static class Wait
 {
     public static async Task UntilAsync(Func<bool> condition, TimeSpan? timeout = null)
     {
-        var end = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(5));
+        // Generous: the condition usually holds within milliseconds; a busy CI runner (ubuntu, v1.0.0) needed more than 5 s.
+        var end = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(15));
         while (!condition())
         {
             if (DateTime.UtcNow > end)
