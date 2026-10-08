@@ -815,6 +815,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         SnapshotReportPluginId => InvokeSnapshotReportAsync(method, payloadJson, ct),
         PkiPluginId => InvokePkiAsync(method, payloadJson),
         MetadataMonitorPluginId => InvokeMetadataMonitorAsync(method, payloadJson),
+        SystemReportPluginId => InvokeSystemReportAsync(method, payloadJson),
         _ => throw new RpcException(new Status(StatusCode.NotFound, $"Unknown core plugin '{pluginId}'.")),
     };
 
