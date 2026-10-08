@@ -1,5 +1,5 @@
 #!/bin/sh
-# oadm postinst: data folder, then enable and (re)start oadm-server.service like dh_installsystemd.
+# oadm-server postinst: data folder, then enable and (re)start oadm-server.service like dh_installsystemd.
 # Works without systemd (containers): the unit is enabled for a later boot, nothing is started.
 set -e
 

@@ -4,11 +4,15 @@
 # Needs macOS (pkgbuild, productbuild, codesign, plutil). The package is unsigned; signing with a Developer ID
 # and notarization are a later step (packaging/README.md).
 #
-# Components (installed in this order):
-#   com.oadm.pkg.client   /Applications/OADM.app (Contents/MacOS/Oadm.Client, Resources/plugins/ + OADM.icns)
-#   com.oadm.pkg.launchd  /Library/LaunchDaemons/com.oadm.server.plist
-#   com.oadm.pkg.server   /Library/Application Support/OADM/server (Oadm.Server + plugins/, uninstall-oadm.sh);
-#                         preinstall stops, postinstall (re)loads the daemon
+# Components (installed in this order), offered as two choices in "Customize" (installer choice "Server and client" =
+# both, the default; "Client only" = the server choice unchecked, or installer -applyChoiceChangesXML):
+#   choice com.oadm.choice.client (always)
+#     com.oadm.pkg.client   /Applications/OADM.app (Contents/MacOS/Oadm.Client, Resources/plugins/, OADM.icns,
+#                           LICENSE.txt, THIRD-PARTY-NOTICES.txt, LGPL-2.1.txt, uninstall-oadm.sh)
+#   choice com.oadm.choice.server
+#     com.oadm.pkg.launchd  /Library/LaunchDaemons/com.oadm.server.plist
+#     com.oadm.pkg.server   /Library/Application Support/OADM/server (Oadm.Server + plugins/, license texts,
+#                           uninstall-oadm.sh); preinstall stops, postinstall (re)loads the daemon
 # Data folder: /Library/Application Support/OADM (root only, 0700).
 set -euo pipefail
 
@@ -27,7 +31,7 @@ case "$RID" in
 esac
 # Bundle and package versions are numeric (1.2.0-rc.1 -> 1.2.0).
 PKG_VERSION="$(printf '%s' "$VERSION" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
-for f in "$SERVER_DIR/Oadm.Server" "$CLIENT_DIR/Oadm.Client"; do
+for f in "$SERVER_DIR/Oadm.Server" "$CLIENT_DIR/Oadm.Client" "$CLIENT_DIR/THIRD-PARTY-NOTICES.txt"; do
   [ -f "$f" ] || { echo "error: $f not found (publish for $RID first)" >&2; exit 1; }
 done
 for tool in pkgbuild productbuild codesign plutil; do
@@ -54,6 +58,12 @@ cp -R "$CLIENT_DIR"/. "$APP/Contents/MacOS/"
 if [ -d "$APP/Contents/MacOS/plugins" ]; then
   mv "$APP/Contents/MacOS/plugins" "$APP/Contents/Resources/plugins"
 fi
+# License texts are resources, not code (the client's About page also looks in Contents/Resources).
+for f in LICENSE.txt THIRD-PARTY-NOTICES.txt LGPL-2.1.txt; do
+  if [ -f "$APP/Contents/MacOS/$f" ]; then mv "$APP/Contents/MacOS/$f" "$APP/Contents/Resources/$f"; fi
+done
+cp "$HERE/uninstall-oadm.sh" "$APP/Contents/Resources/uninstall-oadm.sh"
+chmod 0755 "$APP/Contents/Resources/uninstall-oadm.sh"
 sed "s/@VERSION@/$PKG_VERSION/g" "$HERE/Info.plist" > "$APP/Contents/Info.plist"
 plutil -lint "$APP/Contents/Info.plist"
 cp "$REPO_ROOT/packaging/icons/oadm.icns" "$APP/Contents/Resources/OADM.icns"
@@ -103,7 +113,7 @@ cat > "$WORK/distribution.xml" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
     <title>OADM $VERSION</title>
-    <options customize="never" require-scripts="true" rootVolumeOnly="true" hostArchitectures="$HOST_ARCHS"/>
+    <options customize="allow" require-scripts="true" rootVolumeOnly="true" hostArchitectures="$HOST_ARCHS"/>
     <domains enable_localSystem="true" enable_anywhere="false" enable_currentUserHome="false"/>
     <volume-check>
         <allowed-os-versions>
@@ -111,20 +121,16 @@ cat > "$WORK/distribution.xml" <<EOF
         </allowed-os-versions>
     </volume-check>
     <choices-outline>
-        <line choice="default">
-            <line choice="com.oadm.pkg.client"/>
-            <line choice="com.oadm.pkg.launchd"/>
-            <line choice="com.oadm.pkg.server"/>
-        </line>
+        <line choice="com.oadm.choice.client"/>
+        <line choice="com.oadm.choice.server"/>
     </choices-outline>
-    <choice id="default"/>
-    <choice id="com.oadm.pkg.client" visible="false">
+    <choice id="com.oadm.choice.client" title="OADM client" start_selected="true" start_enabled="false"
+            description="The OADM desktop application in /Applications. It connects to an OADM server on this or another computer.">
         <pkg-ref id="com.oadm.pkg.client"/>
     </choice>
-    <choice id="com.oadm.pkg.launchd" visible="false">
+    <choice id="com.oadm.choice.server" title="OADM server" start_selected="true"
+            description="The OADM server as the LaunchDaemon com.oadm.server (TCP 5080, data in /Library/Application Support/OADM). Uncheck it to install the client only.">
         <pkg-ref id="com.oadm.pkg.launchd"/>
-    </choice>
-    <choice id="com.oadm.pkg.server" visible="false">
         <pkg-ref id="com.oadm.pkg.server"/>
     </choice>
     <pkg-ref id="com.oadm.pkg.client" version="$PKG_VERSION" onConclusion="none">oadm-client.pkg</pkg-ref>

@@ -1,5 +1,5 @@
 #!/bin/sh
-# oadm postrm: systemd state clean-up like dh_installsystemd. The data folder /var/lib/oadm (database,
+# oadm-server postrm: systemd state clean-up like dh_installsystemd. The data folder /var/lib/oadm (database,
 # master key, logs) is kept even on purge; delete it by hand when it is no longer needed.
 set -e
 
