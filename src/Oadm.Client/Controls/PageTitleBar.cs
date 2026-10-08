@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 
@@ -29,7 +29,7 @@ public sealed class PageTitleBar : Grid
         ColumnDefinitions = new ColumnDefinitions("*,Auto");
         _title.Classes.Add("pageTitle");
         _subtitle.Classes.Add("pageSubtitle");
-        var left = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, VerticalAlignment = VerticalAlignment.Center };
+        var left = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7, VerticalAlignment = VerticalAlignment.Center };
         left.Children.Add(_title);
         left.Children.Add(_subtitle);
         SetColumn(_trailing, 1);
