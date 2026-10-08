@@ -70,7 +70,7 @@ public sealed class FirmwareTaskPluginTests
     public void NotSupportedReason_names_the_status_or_the_missing_firmware_api()
     {
         var plugin = new FirmwareTaskPlugin();
-        Assert.Equal("OADM has not checked the device yet: refresh the device", plugin.NotSupportedReason(new FakeDevice(DeviceStatus.Unknown)));
+        Assert.Equal("Not read yet: refresh the device", plugin.NotSupportedReason(new FakeDevice(DeviceStatus.Unknown)));
         Assert.Equal("The device has no password yet: use Set password", plugin.NotSupportedReason(new FakeDevice(DeviceStatus.PasswordNotSet)));
         Assert.Equal("Needs the firmware management API (this device has 9.80.3)", plugin.NotSupportedReason(new FakeDevice(DeviceStatus.Ok, version: "9.80.3", apis: new DeviceApi("basic-device-info", "1.3"))));
     }
@@ -97,12 +97,12 @@ public sealed class FirmwareTaskPluginTests
         Assert.Empty(ctx.Warnings);
         Assert.Empty(ctx.Reports); // progress is derived from the steps
         Assert.Equal(
-            Then("Upload firmware: Done", "Install firmware: Done", "Wait for device to come back: Done", "Verify version: Done", "Read commit state: Done", "Commit firmware: Done", "Completed: Done"),
+            Then("Upload firmware: Done", "Install firmware: Done", "Wait for the device to come back: Done", "Verify version: Done", "Read commit state: Done", "Commit firmware: Done", "Completed: Done"),
             StepRun.Lines(ctx.Steps));
         Assert.Equal("fwmgr 1.10", StepRun.Detail(ctx.Steps, "Check compatibility"));
         Assert.Equal("AXIS P3265-V, AXIS OS 11.11.160", StepRun.Detail(ctx.Steps, "Read device info"));
         Assert.Equal("2 MB, device accepted AXIS OS 12.11.77", StepRun.Detail(ctx.Steps, "Upload firmware"));
-        Assert.Equal("Answers with AXIS OS 12.11.77", StepRun.Detail(ctx.Steps, "Wait for device to come back"));
+        Assert.Equal("Answers with AXIS OS 12.11.77", StepRun.Detail(ctx.Steps, "Wait for the device to come back"));
         Assert.Equal("AXIS OS 12.11.77", StepRun.Detail(ctx.Steps, "Verify version"));
         Assert.Equal("Not committed yet", StepRun.Detail(ctx.Steps, "Read commit state"));
         Assert.Equal("AXIS OS 12.11.77", StepRun.Detail(ctx.Steps, "Commit firmware"));
@@ -124,7 +124,7 @@ public sealed class FirmwareTaskPluginTests
         Assert.Contains("Already up to date", ctx.Warnings[0], StringComparison.Ordinal);
         Assert.Equal(
             ["Check compatibility: Done", "Read device info: Done", "Validate file: Warning", "Read firmware status: Skipped", "Upload firmware: Skipped",
-             "Install firmware: Skipped", "Wait for device to come back: Skipped", "Verify version: Skipped", "Read commit state: Skipped", "Commit firmware: Skipped", "Completed: Done"],
+             "Install firmware: Skipped", "Wait for the device to come back: Skipped", "Verify version: Skipped", "Read commit state: Skipped", "Commit firmware: Skipped", "Completed: Done"],
             StepRun.Lines(ctx.Steps));
         Assert.Equal("Already up to date.", StepRun.Detail(ctx.Steps, "Upload firmware"));
     }
@@ -141,7 +141,7 @@ public sealed class FirmwareTaskPluginTests
         Assert.DoesNotContain("upgrade", device.Methods);
         Assert.Equal(
             ["Check compatibility: Done", "Read device info: Done", "Validate file: Failed", "Read firmware status: Skipped", "Upload firmware: Skipped",
-             "Install firmware: Skipped", "Wait for device to come back: Skipped", "Verify version: Skipped", "Read commit state: Skipped", "Commit firmware: Skipped"],
+             "Install firmware: Skipped", "Wait for the device to come back: Skipped", "Verify version: Skipped", "Read commit state: Skipped", "Commit firmware: Skipped"],
             StepRun.Lines(ctx.Steps));
         Assert.Equal(ex.Message, StepRun.Detail(ctx.Steps, "Validate file"));
     }
@@ -183,7 +183,7 @@ public sealed class FirmwareTaskPluginTests
         Assert.Equal(0, device.Commits);
         Assert.Contains(ctx.Warnings, w => w.Contains("Hard factory default", StringComparison.Ordinal));
         Assert.Equal(
-            Then("Upload firmware: Done", "Install firmware: Done", "Wait for device to come back: Done", "Verify version: Done", "Read commit state: Skipped", "Commit firmware: Skipped", "Completed: Done"),
+            Then("Upload firmware: Done", "Install firmware: Done", "Wait for the device to come back: Done", "Verify version: Done", "Read commit state: Skipped", "Commit firmware: Skipped", "Completed: Done"),
             StepRun.Lines(ctx.Steps));
         Assert.Equal("The device commits a factory default upgrade by itself.", StepRun.Detail(ctx.Steps, "Commit firmware"));
         Assert.Equal("10.12.236", device.Version);
@@ -320,7 +320,7 @@ public sealed class FirmwareTaskPluginTests
         Assert.Contains("still runs 11.11.160", ex.Message, StringComparison.Ordinal);
         Assert.Equal(0, device.Probes);
         Assert.Equal(
-            Then("Upload firmware: Failed", "Install firmware: Skipped", "Wait for device to come back: Skipped", "Verify version: Skipped", "Read commit state: Skipped", "Commit firmware: Skipped"),
+            Then("Upload firmware: Failed", "Install firmware: Skipped", "Wait for the device to come back: Skipped", "Verify version: Skipped", "Read commit state: Skipped", "Commit firmware: Skipped"),
             StepRun.Lines(ctx.Steps));
         Assert.Equal(ex.Message, StepRun.Detail(ctx.Steps, "Upload firmware"));
     }
@@ -351,7 +351,7 @@ public sealed class FirmwareTaskPluginTests
         Assert.Contains("came back with its previous firmware 11.11.160", ex.Message, StringComparison.Ordinal);
         Assert.Equal(0, device.Commits);
         Assert.Equal(
-            Then("Upload firmware: Done", "Install firmware: Done", "Wait for device to come back: Done", "Verify version: Failed", "Read commit state: Skipped", "Commit firmware: Skipped"),
+            Then("Upload firmware: Done", "Install firmware: Done", "Wait for the device to come back: Done", "Verify version: Failed", "Read commit state: Skipped", "Commit firmware: Skipped"),
             StepRun.Lines(ctx.Steps));
     }
 
@@ -367,7 +367,7 @@ public sealed class FirmwareTaskPluginTests
         Assert.Contains("did not come back", ex.Message, StringComparison.Ordinal);
         Assert.Contains("rolls back to 11.11.160 by itself 30 minutes", ex.Message, StringComparison.Ordinal);
         Assert.Equal(
-            Then("Upload firmware: Done", "Install firmware: Done", "Wait for device to come back: Failed", "Verify version: Skipped", "Read commit state: Skipped", "Commit firmware: Skipped"),
+            Then("Upload firmware: Done", "Install firmware: Done", "Wait for the device to come back: Failed", "Verify version: Skipped", "Read commit state: Skipped", "Commit firmware: Skipped"),
             StepRun.Lines(ctx.Steps));
         Assert.Equal("The device restarts", StepRun.Detail(ctx.Steps, "Install firmware"));
     }
@@ -383,7 +383,7 @@ public sealed class FirmwareTaskPluginTests
 
         Assert.Contains("did not restart", ex.Message, StringComparison.Ordinal);
         Assert.Equal("Install firmware: Failed", StepRun.Lines(ctx.Steps)[5]);
-        Assert.Equal("Wait for device to come back: Skipped", StepRun.Lines(ctx.Steps)[6]);
+        Assert.Equal("Wait for the device to come back: Skipped", StepRun.Lines(ctx.Steps)[6]);
     }
 
     [Fact]
@@ -406,7 +406,7 @@ public sealed class FirmwareTaskPluginTests
         Assert.Contains("could not be committed", ex.Message, StringComparison.Ordinal);
         Assert.Contains("rolls back to 11.11.160", ex.Message, StringComparison.Ordinal);
         Assert.Equal(
-            Then("Upload firmware: Done", "Install firmware: Done", "Wait for device to come back: Done", "Verify version: Done",
+            Then("Upload firmware: Done", "Install firmware: Done", "Wait for the device to come back: Done", "Verify version: Done",
                 "Read commit state: Done", "Commit firmware: Failed", "Wait before retrying the commit: Done",
                 "Read commit state (attempt 2): Done", "Commit firmware (attempt 2): Failed", "Wait before retrying the commit: Done",
                 "Read commit state (attempt 3): Done", "Commit firmware (attempt 3): Failed"),
@@ -438,8 +438,8 @@ public sealed class FirmwareTaskPluginTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             Run(ctx, payload, new FakeDevice(), Plugin(Fast with { RestartTimeout = TimeSpan.FromMinutes(1) }), cts.Token));
 
-        Assert.Equal("Wait for device to come back: Failed", StepRun.Lines(ctx.Steps)[6]);
-        Assert.Equal("Cancelled.", StepRun.Detail(ctx.Steps, "Wait for device to come back"));
+        Assert.Equal("Wait for the device to come back: Failed", StepRun.Lines(ctx.Steps)[6]);
+        Assert.Equal("Cancelled.", StepRun.Detail(ctx.Steps, "Wait for the device to come back"));
         Assert.Equal("Not run: the task was cancelled.", StepRun.Detail(ctx.Steps, "Verify version"));
     }
 

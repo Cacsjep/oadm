@@ -17,7 +17,7 @@
     <Border Grid.Row="1" Classes="dialogBody">
       <StackPanel Classes="form">
         <TextBlock Classes="secondary" TextWrapping="Wrap"
-                   Text="Your own CA (root or intermediate) with its private key: a .pfx / .p12 file, or a PEM certificate and its key. A backup made with Back up can be imported here too." />
+                   Text="A .pfx/.p12 file, or a PEM certificate with its key. OADM backups work too." />
         <ui:FormField Label="CA file" Classes="wide" Error="{Binding FileError}">
           <ui:FileRow FileName="{Binding FileText}" Details="{Binding FileDetails}" Command="{Binding ChooseFileCommand}" />
         </ui:FormField>

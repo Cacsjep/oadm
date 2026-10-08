@@ -122,7 +122,7 @@ public sealed class ViewModelTests
         vm.Assignment.Rows[2].NewAddress = "10.0.0.102";
         Assert.False(vm.HasErrors);
         Assert.True(vm.HasWarning);
-        Assert.Contains("2 of 3 devices get a new IPv4 address", vm.ReachabilityWarning, StringComparison.Ordinal);
+        Assert.Contains("2 of 3 devices get a new IP address", vm.ReachabilityWarning, StringComparison.Ordinal);
         Assert.True(vm.CanApply); // no inline acknowledgement any more
 
         // Declined confirmation: the dialog stays open.
@@ -234,7 +234,7 @@ public sealed class ViewModelTests
         Assert.Equal("Outside the subnet of the default router.", vm.ErrorOf(nameof(vm.Ipv4Address)));
 
         vm.Ipv4Gateway = "10.0.0.255";
-        Assert.Equal("Gateway 10.0.0.255 is the broadcast address of its subnet.", vm.ErrorOf(nameof(vm.Ipv4Gateway)));
+        Assert.Equal("Default router 10.0.0.255 is the broadcast address of its subnet.", vm.ErrorOf(nameof(vm.Ipv4Gateway)));
 
         vm.Ipv4Gateway = "10.0.0.1";
         Assert.False(vm.HasErrors);

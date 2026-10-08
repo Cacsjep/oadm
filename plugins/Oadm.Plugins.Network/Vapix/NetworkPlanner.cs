@@ -255,7 +255,7 @@ public static class NetworkPlanner
         var prefix = v4.PrefixLength ?? 0;
         var gateway = v4.Gateway?.Trim() ?? string.Empty;
         var description = isStatic
-            ? string.Create(CultureInfo.InvariantCulture, $"IPv4 static {address}/{prefix}, gateway {gateway}")
+            ? string.Create(CultureInfo.InvariantCulture, $"IPv4 static {address}/{prefix}, default router {gateway}")
             : "IPv4 from DHCP";
 
         if (ns is not null)

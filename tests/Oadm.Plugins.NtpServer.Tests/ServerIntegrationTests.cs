@@ -188,7 +188,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
         await using var upstream = new FakeUpstream();
         var reply = await SaveAsync(upstream: upstream.HostText);
         Assert.True(reply.Saved);
-        Assert.StartsWith("Stratum 2, offset", reply.UpstreamResult, StringComparison.Ordinal);
+        Assert.Matches(@"^.+ off, \d+ ms round trip$", reply.UpstreamResult);
         Assert.Equal(3, reply.State.Stratum);
         Assert.True(reply.State.Upstream!.Reachable);
 

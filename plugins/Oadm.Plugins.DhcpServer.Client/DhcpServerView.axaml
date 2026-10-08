@@ -5,7 +5,7 @@
              xmlns:vm="using:Oadm.Plugins.DhcpServer.Client"
              x:Class="Oadm.Plugins.DhcpServer.Client.DhcpServerView"
              x:DataType="vm:DhcpServerViewModel"
-             ui:PageHeader.Subtitle="Gives the cameras their IP addresses (DHCP, UDP port 67).">
+             ui:PageHeader.Subtitle="Gives the cameras their IP addresses.">
   <!-- The description lives in the host page header (ui:PageHeader); the status sits left of the Save button. -->
   <!-- One card (the host's page card): settings form, then the lease list. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,*">
@@ -31,7 +31,7 @@
       </ui:FormField>
 
       <CheckBox Content="Automatically add Axis devices that get an address" IsChecked="{Binding AutoAddAxisDevices}"
-                ToolTip.Tip="OADM adds an Axis device as soon as it gets its address here and logs in with the credential list. Devices OADM already manages are followed to their new address either way." />
+                ToolTip.Tip="Logs in with the credential list. Managed devices are always followed." />
 
       <ui:FormField Classes="wide">
         <TextBlock Classes="secondary" Text="{Binding ClientsGetText}" IsVisible="{Binding ClientsGetText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"

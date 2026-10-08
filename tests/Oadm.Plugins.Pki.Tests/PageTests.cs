@@ -211,7 +211,7 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         await vm.GenerateCommand.ExecuteAsync(null);
         var (title, message) = Assert.Single(_dialogs.Confirmations);
         Assert.Equal(PkiViewModel.ReplaceTitle, title);
-        Assert.Equal("2 devices have certificates from the current CA. They keep working, but show 'Issued by a previous CA' until they are renewed. Replace the CA?", message);
+        Assert.Equal("2 devices have certificates from the current CA. They keep working until they are renewed. Replace the CA?", message);
         Assert.False(_dialogs.Last!.Completed);
         Assert.Equal(oldId, _pki.Service.Ca!.Id); // cancelled: nothing changed
 

@@ -71,7 +71,7 @@ public static class HardeningCatalog
         Check(Discovery, ScanLevel.Basic, $"{Services} > Network discovery protocols", "Network discovery protocols", "Discovery",
             "Pass: Bonjour, UPnP, ZeroConf and WS-Discovery are off. Warning: one of them is on.",
             "Turn off discovery protocols that are not needed, so the device does not announce itself on the network.",
-            note: "OADM's Scan and the re-find of moved devices use Bonjour: turning Bonjour off is a trade-off."),
+            note: "OADM's Discovery and the re-find of moved devices use Bonjour: turning Bonjour off is a trade-off."),
         Info("B11", ScanLevel.Basic, $"{Services} > Information disclosure", "Information disclosure",
             "The guide describes which device information the web server discloses; it does not recommend changing it. AXIS OS 12 has no setting for it."),
         Check(Audio, ScanLevel.Basic, $"{Services} > Audio", "Audio", "Audio",

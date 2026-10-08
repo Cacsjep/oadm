@@ -122,7 +122,7 @@ public sealed class PageViewModelTests : IAsyncLifetime
         vm.Upstream = good.HostText;
         await vm.SaveCommand.ExecuteAsync(null);
         Assert.False(vm.HasErrors);
-        Assert.StartsWith("Answered: Stratum 2, offset", vm.UpstreamResult, StringComparison.Ordinal);
+        Assert.Matches(@"^Answered: .+ off, \d+ ms round trip$", vm.UpstreamResult);
         Assert.True(vm.HasUpstreamResult);
     }
 

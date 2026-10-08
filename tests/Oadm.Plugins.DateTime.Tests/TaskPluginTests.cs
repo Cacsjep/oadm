@@ -63,7 +63,7 @@ public sealed class TaskPluginTests
     public void NotSupportedReason_names_the_status_or_the_missing_time_api()
     {
         Assert.Equal("The device's certificate changed since it was added", _plugin.NotSupportedReason(new FakeDevice(Guid.NewGuid(), Status: DeviceStatus.CertificateChanged)));
-        Assert.Equal("OADM has not read what this device supports yet: refresh the device", _plugin.NotSupportedReason(new FakeDevice(Guid.NewGuid()) { Apis = [] }));
+        Assert.Equal("Not read yet: refresh the device", _plugin.NotSupportedReason(new FakeDevice(Guid.NewGuid()) { Apis = [] }));
         Assert.Equal("Needs the Time API (this device has 12.11.77)", _plugin.NotSupportedReason(new FakeDevice(Guid.NewGuid()) { Apis = Fixture.FutureMajor }));
     }
 
@@ -234,7 +234,7 @@ public sealed class TaskPluginTests
 
         var ex = await Assert.ThrowsAsync<Vapix.TimeApiException>(() => RunAsync(new DateTimePayload("Europe/Vienna", TimeMode.Ntp, SameNtp)));
 
-        Assert.Equal("getDateTimeInfo failed: Connection refused", ex.Message);
+        Assert.Equal("getDateTimeInfo failed: Unreachable - Connection refused", ex.Message);
         Assert.Equal("Read current time settings: Failed", Lines[1]);
     }
 

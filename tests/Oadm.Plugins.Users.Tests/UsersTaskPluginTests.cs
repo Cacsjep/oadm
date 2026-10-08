@@ -45,7 +45,7 @@ public sealed class UsersTaskPluginTests
     public void NotSupportedReason_names_the_status_or_the_missing_user_api()
     {
         Assert.Equal("OADM cannot log in to the device: use Log in", _plugin.NotSupportedReason(new FakeDevice { Status = DeviceStatus.CredentialsRequired }));
-        Assert.Equal("OADM has not read what this device supports yet: refresh the device", _plugin.NotSupportedReason(new FakeDevice { Apis = [] }));
+        Assert.Equal("Not read yet: refresh the device", _plugin.NotSupportedReason(new FakeDevice { Apis = [] }));
         Assert.Equal("Needs the user management API (this device has 12.11.77)", _plugin.NotSupportedReason(new FakeDevice { Apis = Fixtures.Apis(("user-management", "2.0")) }));
     }
 
@@ -107,9 +107,9 @@ public sealed class UsersTaskPluginTests
             StepRun.Lines(ctx.Steps));
         Assert.Equal("user-management 1.2", StepRun.Detail(ctx.Steps, "Check compatibility"));
         Assert.Equal("Passphrase policy: None", StepRun.Detail(ctx.Steps, "Read password policy"));
-        Assert.Equal("OADM uses 'root'", StepRun.Detail(ctx.Steps, "Identify OADM account"));
+        Assert.Equal("OADM uses root", StepRun.Detail(ctx.Steps, "Identify OADM account"));
         Assert.Equal("4 users", StepRun.Detail(ctx.Steps, "Read users"));
-        Assert.Equal("User 'joe' added as Operator with PTZ.", LastDetail(ctx));
+        Assert.Equal("User joe added as Operator with PTZ.", LastDetail(ctx));
         Assert.Empty(ctx.Progress); // progress is derived from the steps
         Assert.Empty(ctx.Warnings);
     }
@@ -120,7 +120,7 @@ public sealed class UsersTaskPluginTests
         var vapix = new FakeVapix();
         var ctx = await RunAsync(vapix, Payload(UsersMode.Change, "acs", Secret, changePassword: true));
         Assert.Equal("action=update&user=acs&pwd=S3cret-Passw0rd%21", Assert.Single(vapix.Writes).Body);
-        Assert.Equal("User 'acs': password changed (Operator).", LastDetail(ctx));
+        Assert.Equal("User acs: password changed (Operator).", LastDetail(ctx));
         Assert.Contains("Update user acs: Done", StepRun.Lines(ctx.Steps));
     }
 
@@ -130,7 +130,7 @@ public sealed class UsersTaskPluginTests
         var vapix = new FakeVapix();
         var ctx = await RunAsync(vapix, Payload(UsersMode.Change, "acs", role: UserRole.Viewer, ptz: true, changeRole: true));
         Assert.Equal("action=update&user=acs&sgrp=viewer%3Aptz", Assert.Single(vapix.Writes).Body);
-        Assert.Equal("User 'acs': role is now Viewer with PTZ.", LastDetail(ctx));
+        Assert.Equal("User acs: role is now Viewer with PTZ.", LastDetail(ctx));
     }
 
     [Fact]
@@ -154,7 +154,7 @@ public sealed class UsersTaskPluginTests
         var vapix = new FakeVapix();
         var ctx = await RunAsync(vapix, Payload(UsersMode.Remove, "acs"));
         Assert.Equal("action=remove&user=acs", Assert.Single(vapix.Writes).Body);
-        Assert.Equal("User 'acs' removed.", LastDetail(ctx));
+        Assert.Equal("User acs removed.", LastDetail(ctx));
         Assert.Contains("Remove user acs: Done", StepRun.Lines(ctx.Steps));
         Assert.DoesNotContain("acs", vapix.UsersBody(), StringComparison.Ordinal);
     }
@@ -172,7 +172,7 @@ public sealed class UsersTaskPluginTests
             ["Check compatibility: Done", "Read password policy: Done", "Identify OADM account: Done", "Read users: Done",
              "Validate change: Done", "Remove user fakeroot: Done", "Remove user acs: Done", "Verify users: Done", "Completed: Done"],
             StepRun.Lines(ctx.Steps));
-        Assert.Equal("Users 'fakeroot', 'acs' removed.", LastDetail(ctx));
+        Assert.Equal("Users fakeroot, acs removed.", LastDetail(ctx));
         Assert.Empty(ctx.Warnings);
     }
 
@@ -182,7 +182,7 @@ public sealed class UsersTaskPluginTests
         var vapix = new FakeVapix();
         var ctx = await RunAsync(vapix, RemovePayload("ghost", "acs"));
         Assert.Equal("action=remove&user=acs", Assert.Single(vapix.Writes).Body);
-        Assert.Contains("'ghost' does not exist", Assert.Single(ctx.Warnings), StringComparison.Ordinal);
+        Assert.Contains("ghost does not exist", Assert.Single(ctx.Warnings), StringComparison.Ordinal);
         Assert.Equal(
             ["Check compatibility: Done", "Read password policy: Done", "Identify OADM account: Done", "Read users: Done",
              "Validate change: Warning", "Remove user ghost: Skipped", "Remove user acs: Done", "Verify users: Done", "Completed: Done"],

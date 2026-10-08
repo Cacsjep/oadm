@@ -82,12 +82,6 @@ public sealed partial class UsersDialogViewModel : ValidatingViewModel
             1 => $"Existing users on {Describe(devices[0])}",
             _ => $"Existing users on {Describe(devices[0])} (first of {devices.Count} selected devices)",
         };
-        UsersSource = devices.Count switch
-        {
-            0 => string.Empty,
-            1 => $"On {Describe(devices[0])}.",
-            _ => $"On {Describe(devices[0])}, the first of {devices.Count} selected devices.",
-        };
         Update();
     }
 
@@ -107,11 +101,8 @@ public sealed partial class UsersDialogViewModel : ValidatingViewModel
 
     public string UsersTitle { get; }
 
-    /// <summary>Which device the existing users come from (card description).</summary>
-    public string UsersSource { get; }
-
-    /// <summary>Card description of the existing users: source device and load status.</summary>
-    public string UsersDescription => string.IsNullOrEmpty(UsersSource) ? UsersStatus : UsersSource + " " + UsersStatus;
+    /// <summary>Card description of the existing users: the load status (the title names the source device).</summary>
+    public string UsersDescription => UsersStatus;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAdd), nameof(IsChange), nameof(IsRemove), nameof(ShowUserName), nameof(ShowPassword), nameof(ShowRole), nameof(ApplyText), nameof(MultiSelect))]
@@ -446,7 +437,7 @@ public sealed partial class UsersDialogViewModel : ValidatingViewModel
 
         if (payload.Mode == UsersMode.Change && _currentAccount is not null && string.Equals(payload.UserName, _currentAccount, StringComparison.OrdinalIgnoreCase))
         {
-            return $"'{_currentAccount}' is the account OADM uses for {Describe(_devices[0])}. OADM will refuse to demote it or change its password there.";
+            return $"{_currentAccount} is the account OADM uses for {Describe(_devices[0])}. OADM will refuse to demote it or change its password there.";
         }
 
         return null;
@@ -454,18 +445,18 @@ public sealed partial class UsersDialogViewModel : ValidatingViewModel
 
     private string BuildSummary(UsersPayload p)
     {
-        var name = p.UserName.Length == 0 ? "<user name>" : $"'{p.UserName}'";
+        var name = p.UserName.Length == 0 ? "<user name>" : $"{p.UserName}";
         var removeNames = p.RemoveNames;
         var devices = DeviceCount == 1 ? "1 device" : $"{DeviceCount} devices";
         return p.Mode switch
         {
-            UsersMode.Add => $"Add user {name} as {UserRoles.Describe(p.Role, p.Ptz)} on {devices}. Devices where the user already exists are skipped with a warning.",
-            UsersMode.Change when p.ChangePassword && p.ChangeRole => $"Set a new password and the role {UserRoles.Describe(p.Role, p.Ptz)} for user {name} on {devices}. Devices without this user are skipped with a warning.",
-            UsersMode.Change when p.ChangeRole => $"Set the role {UserRoles.Describe(p.Role, p.Ptz)} for user {name} on {devices}. Devices without this user are skipped with a warning.",
-            UsersMode.Change => $"Set a new password for user {name} on {devices}. Devices without this user are skipped with a warning.",
+            UsersMode.Add => $"Add user {name} as {UserRoles.Describe(p.Role, p.Ptz)} on {devices}.",
+            UsersMode.Change when p.ChangePassword && p.ChangeRole => $"Set a new password and the role {UserRoles.Describe(p.Role, p.Ptz)} for user {name} on {devices}.",
+            UsersMode.Change when p.ChangeRole => $"Set the role {UserRoles.Describe(p.Role, p.Ptz)} for user {name} on {devices}.",
+            UsersMode.Change => $"Set a new password for user {name} on {devices}.",
             _ when removeNames.Count == 0 => "Select the users to remove in the Existing users list.",
-            _ when removeNames.Count == 1 => $"Remove user '{removeNames[0]}' from {devices}. Devices without this user are skipped with a warning.",
-            _ => $"Remove users '{string.Join("', '", removeNames)}' from {devices}. Devices without some of these users skip them with a warning.",
+            _ when removeNames.Count == 1 => $"Remove user {removeNames[0]} from {devices}.",
+            _ => $"Remove users {string.Join(", ", removeNames)} from {devices}.",
         };
     }
 

@@ -89,7 +89,7 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
             }
             else
             {
-                step.Complete($"OADM uses '{account}'");
+                step.Complete($"OADM uses {account}");
             }
 
             return account;
@@ -101,7 +101,7 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
             step.Complete(list.Count == 1 ? "1 user" : $"{list.Count} users");
             return list;
         }).ConfigureAwait(false);
-        ctx.Log(TaskLogLevel.Info, $"Passphrase policy {policy}; OADM account '{current ?? "unknown"}'; {users.Count} user(s) on the device.");
+        ctx.Log(TaskLogLevel.Info, $"Passphrase policy {policy}; OADM account {current ?? "unknown"}; {users.Count} user(s) on the device.");
 
         if (payload.Mode == UsersMode.Remove)
         {
@@ -182,7 +182,7 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
             removals = UserChangePlanner.PlanRemoval(payload.RemoveNames, users, current, device.FirmwareVersion);
             var missing = removals.Where(r => r.Plan.Kind == PlanKind.Skip).Select(r => r.Plan.Message).ToList();
             var writes = removals.Where(r => r.Plan.Kind == PlanKind.Write).Select(r => r.Name).ToList();
-            var summary = writes.Count == 0 ? null : writes.Count == 1 ? $"Remove user '{writes[0]}'" : $"Remove users '{string.Join("', '", writes)}'";
+            var summary = writes.Count == 0 ? null : writes.Count == 1 ? $"Remove user {writes[0]}" : $"Remove users {string.Join(", ", writes)}";
             if (missing.Count > 0)
             {
                 step.Warn(string.Join(" ", missing));
@@ -204,7 +204,7 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
             var name = RemoveStepName(removal.Name);
             if (removal.Plan.Kind == PlanKind.Skip)
             {
-                ctx.SkipStep(name, $"User '{removal.Name}' does not exist on this device.");
+                ctx.SkipStep(name, $"User {removal.Name} does not exist on this device.");
                 continue;
             }
 
@@ -232,10 +232,10 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
             var still = removed.Where(n => after.Any(u => string.Equals(u.Name, n, StringComparison.Ordinal))).ToList();
             if (still.Count > 0)
             {
-                throw new UserManagementException($"The device confirmed the removal, but user '{string.Join("', '", still)}' is still listed.");
+                throw new UserManagementException($"The device confirmed the removal, but user {string.Join(", ", still)} is still listed.");
             }
 
-            var done = removed.Count == 1 ? $"User '{removed[0]}' removed." : $"Users '{string.Join("', '", removed)}' removed.";
+            var done = removed.Count == 1 ? $"User {removed[0]} removed." : $"Users {string.Join(", ", removed)} removed.";
             ctx.Log(TaskLogLevel.Info, done);
             step.Complete(done);
         }).ConfigureAwait(false);
@@ -368,27 +368,27 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
         if (plan.Expected is null)
         {
             return actual is null
-                ? $"User '{userName}' removed."
-                : throw new UserManagementException($"The device confirmed the removal, but user '{userName}' is still listed.");
+                ? $"User {userName} removed."
+                : throw new UserManagementException($"The device confirmed the removal, but user {userName} is still listed.");
         }
 
         if (actual is null)
         {
-            throw new UserManagementException($"The device confirmed the change, but user '{userName}' is not listed.");
+            throw new UserManagementException($"The device confirmed the change, but user {userName} is not listed.");
         }
 
         if (actual.Role != plan.Expected.Role || actual.Ptz != plan.Expected.Ptz)
         {
-            throw new UserManagementException($"The device confirmed the change, but user '{userName}' is {UserRoles.Describe(actual.Role, actual.Ptz)} instead of {UserRoles.Describe(plan.Expected.Role, plan.Expected.Ptz)}.");
+            throw new UserManagementException($"The device confirmed the change, but user {userName} is {UserRoles.Describe(actual.Role, actual.Ptz)} instead of {UserRoles.Describe(plan.Expected.Role, plan.Expected.Ptz)}.");
         }
 
         var role = UserRoles.Describe(actual.Role, actual.Ptz);
         return mode switch
         {
-            UsersMode.Add => $"User '{userName}' added as {role}.",
-            _ when plan.SetsPassword && plan.SetsRole => $"User '{userName}': password changed, role is now {role}.",
-            _ when plan.SetsRole => $"User '{userName}': role is now {role}.",
-            _ => $"User '{userName}': password changed ({role}).",
+            UsersMode.Add => $"User {userName} added as {role}.",
+            _ when plan.SetsPassword && plan.SetsRole => $"User {userName}: password changed, role is now {role}.",
+            _ when plan.SetsRole => $"User {userName}: role is now {role}.",
+            _ => $"User {userName}: password changed ({role}).",
         };
     }
 

@@ -688,8 +688,8 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     public static string ReplaceMessage(int devices) => devices switch
     {
         0 => "Replace the CA?",
-        1 => "1 device has certificates from the current CA. It keeps working, but shows 'Issued by a previous CA' until it is renewed. Replace the CA?",
-        _ => string.Create(CultureInfo.InvariantCulture, $"{devices} devices have certificates from the current CA. They keep working, but show 'Issued by a previous CA' until they are renewed. Replace the CA?"),
+        1 => "1 device has certificates from the current CA. It keeps working until it is renewed. Replace the CA?",
+        _ => string.Create(CultureInfo.InvariantCulture, $"{devices} devices have certificates from the current CA. They keep working until they are renewed. Replace the CA?"),
     };
 
     // ---------------------------------------------------------------- helpers
@@ -807,7 +807,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     {
         if (installed == true)
         {
-            SetServerTrust(ServiceStatus.Ok, "Installed on the server", TrustTooltip);
+            SetServerTrust(ServiceStatus.Ok, "Installed on the server", null);
         }
         else if (!string.IsNullOrEmpty(error))
         {
@@ -815,7 +815,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         }
         else if (installed == false)
         {
-            SetServerTrust(ServiceStatus.Neutral, "Not installed on the server", TrustTooltip);
+            SetServerTrust(ServiceStatus.Neutral, "Not installed on the server", null);
         }
         else
         {

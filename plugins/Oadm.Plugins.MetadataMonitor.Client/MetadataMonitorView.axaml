@@ -14,7 +14,7 @@
     <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="12">
       <ComboBox Grid.Column="0" Width="260" VerticalAlignment="Center" ItemsSource="{Binding Cameras}" SelectedItem="{Binding SelectedCamera}"
                 PlaceholderText="Choose a camera" IsTextSearchEnabled="True"
-                ToolTip.Tip="Video and I/O devices managed by OADM, by IP address; type to jump to a camera">
+                ToolTip.Tip="Type to jump to a camera">
         <ComboBox.ItemTemplate>
           <DataTemplate x:DataType="vm:CameraOption">
             <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
@@ -25,7 +25,7 @@
       <Button Grid.Column="2" Classes="secondary" VerticalAlignment="Center" Content="Clear" Command="{Binding ClearCommand}"
               ToolTip.Tip="Empty the list; the stream keeps running" />
       <CheckBox Grid.Column="3" VerticalAlignment="Center" Content="Autoscroll" IsChecked="{Binding Autoscroll}"
-                ToolTip.Tip="Keep the newest message visible. Scrolling up turns it off, scrolling to the end turns it on." />
+                ToolTip.Tip="Keep the newest message visible" />
       <TextBlock Grid.Column="4" Classes="secondary" VerticalAlignment="Center" Text="{Binding SummaryText}" />
       <ui:StatusChip Grid.Column="6" VerticalAlignment="Center" IsVisible="{Binding HasStatus}"
                      Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"

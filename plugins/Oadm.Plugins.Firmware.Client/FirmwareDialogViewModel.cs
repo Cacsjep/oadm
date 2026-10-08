@@ -455,7 +455,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         }
         else if (!row.Supported)
         {
-            row.Check = new FirmwareCheck(FirmwareVerdict.InvalidFile, "The device does not offer the firmware management API (fwmgr 1.x).");
+            row.Check = new FirmwareCheck(FirmwareVerdict.InvalidFile, "This device's firmware cannot be updated from OADM.");
         }
         else
         {

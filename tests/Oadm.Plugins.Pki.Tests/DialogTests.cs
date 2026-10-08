@@ -381,7 +381,7 @@ public sealed class HeadlessDialogTests
         {
             await session.Dispatch(async () =>
             {
-                // View installed certificates: 3 devices, one on old firmware.
+                // View certificates: 3 devices, one on old firmware.
                 var viewWindow = new CertificatesWindow { Width = 1280, Height = 820 };
                 var viewVm = new CertificatesViewModel(ctx, devices, deleteMode: false);
                 viewWindow.Attach(viewVm);
@@ -414,7 +414,7 @@ public sealed class HeadlessDialogTests
                 Assert.True(deleteWindow.FindControl<DataGrid>("CertificateGrid")!.Columns[0].IsVisible); // check box column
                 deleteWindow.Close();
 
-                // Install certificates manually: one matched file, one without a device.
+                // Install certificates: one matched file, one without a device.
                 var installVm = new InstallCertificatesViewModel(ctx, devices, path => path.EndsWith("cam48.pfx", StringComparison.Ordinal) ? pfx : TestCa.Pfx("secret", RenewDeleteInstallTests.LeafWithKey(radiusCa, "10.0.0.77")));
                 var installWindow = new InstallCertificatesWindow { Width = 1040, Height = 680 };
                 installWindow.Attach(installVm);

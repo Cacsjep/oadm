@@ -20,7 +20,7 @@ public sealed class HardwareWriteFactAttribute : FactAttribute
 /// 1. POST /config/rest/cert/v1/create_certificate (RSA-2048, default keystore SE0) + get_csr + PATCH certificates/&lt;alias&gt;
 ///    with the OADM-signed PEM (also: does PATCH accept a PEM chain?), POST ca_certificates.
 /// 2. SOAP aweb:SetWebServerTlsConfiguration with the new alias (policy unchanged), the TLS handshake then presents it; and
-///    the policy value "Http" for "HTTPS: Disable" (inferred, no schema published), back to "HttpAndHttps".
+///    the policy value "Http" for "Disable HTTPS" (inferred, no schema published), back to "HttpAndHttps".
 /// 3. network_settings.cgi setWired8021XConfiguration enabled=true / EAP-TLS / certClient / certsCA, read back, then
 ///    enabled=false (on a port without 802.1X enforcement only).
 /// 4. install_from_pkcs12, DELETE certificates/&lt;alias&gt; and ca_certificates/&lt;alias&gt;.

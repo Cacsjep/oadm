@@ -25,7 +25,7 @@ public sealed class SystemReportToolbarPlugin : IToolbarPlugin
 {
     public const string Text = "System report";
 
-    public const string Tooltip = "System report: download the system reports of the selected devices for Axis support, in one ZIP file";
+    public const string Tooltip = "Download the system reports of the selected devices as one ZIP";
 
     public string Id => "oadm.system-report.toolbar";
 

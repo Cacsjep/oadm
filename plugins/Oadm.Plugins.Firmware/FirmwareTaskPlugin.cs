@@ -124,7 +124,7 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         public const string ReadFirmwareStatus = "Read firmware status";
         public const string Upload = "Upload firmware";
         public const string Install = "Install firmware";
-        public const string WaitForDevice = "Wait for device to come back";
+        public const string WaitForDevice = "Wait for the device to come back";
         public const string VerifyVersion = "Verify version";
         public const string ReadCommitState = "Read commit state";
         public const string Commit = "Commit firmware";
@@ -348,7 +348,7 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
     /// <summary>
     /// Two steps sharing one timeout: "Install firmware" waits until the device goes offline to restart
-    /// (or already answers with another version), "Wait for device to come back" until it answers again.
+    /// (or already answers with another version), "Wait for the device to come back" until it answers again.
     /// </summary>
     private async Task<string?> WaitForRestartAsync(ITaskExecutionContext ctx, string oldVersion, FactoryDefaultMode mode, CancellationToken ct)
     {

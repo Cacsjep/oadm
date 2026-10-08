@@ -6,7 +6,7 @@ using Oadm.Sdk.Vapix;
 namespace Oadm.Plugins.Pki.Tasks;
 
 /// <summary>
-/// "HTTPS: Enable/Update": a new key on the device, a certificate from the OADM CA, the web server switched to it (an
+/// "Enable HTTPS": a new key on the device, a certificate from the OADM CA, the web server switched to it (an
 /// HTTP-only policy becomes HTTP and HTTPS), OADM follows the new certificate (scheme https, new pin), the previous OADM
 /// certificate is removed. Steps: Check compatibility, Read web server settings, Read network settings, Install CA
 /// certificate, Create key on the device, Get certificate request, Sign certificate, Install certificate, Switch web server
@@ -74,7 +74,7 @@ public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
 }
 
 /// <summary>
-/// "HTTPS: Disable": connection policy HTTP only (like ADM), certificates stay, OADM switches its own connection to HTTP.
+/// "Disable HTTPS": connection policy HTTP only (like ADM), certificates stay, OADM switches its own connection to HTTP.
 /// Steps: Check compatibility (the device must accept Digest over HTTP, else OADM would lock itself out), Read web server
 /// settings, Set HTTP only, Verify.
 /// </summary>

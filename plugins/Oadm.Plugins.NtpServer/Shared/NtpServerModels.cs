@@ -100,7 +100,7 @@ public sealed record SaveRequest(bool Enabled, string? InterfaceId, string? Upst
 
 /// <param name="Saved">False when the upstream did not validate (nothing changed).</param>
 /// <param name="UpstreamError">Shown under the upstream field.</param>
-/// <param name="UpstreamResult">Shown under the field on success ("Stratum 2, offset +3 ms").</param>
+/// <param name="UpstreamResult">Shown under the field on success ("3 ms off, 12 ms round trip").</param>
 /// <param name="State">The state after saving.</param>
 public sealed record SaveReply(bool Saved, string? UpstreamError, string? UpstreamResult, NtpState State);
 

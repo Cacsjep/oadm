@@ -91,9 +91,9 @@ public sealed record UpstreamSample(
     double DelaySeconds,
     DateTime TimeUtc)
 {
-    /// <summary>"Stratum 2, offset +3 ms, round trip 12 ms".</summary>
+    /// <summary>"3 ms off, 12 ms round trip".</summary>
     public string Describe() => string.Create(CultureInfo.InvariantCulture,
-        $"Stratum {Stratum}, offset {Serving.RequestLog.FormatOffset(OffsetSeconds * 1000)}, round trip {DelaySeconds * 1000:0} ms");
+        $"{Serving.RequestLog.FormatOffset(Math.Abs(OffsetSeconds) * 1000).TrimStart('+')} off, {DelaySeconds * 1000:0} ms round trip");
 
     /// <summary>
     /// The state to serve: stratum + 1, reference id = upstream address (IPv4) or the first 4 bytes of the MD5 of the
@@ -204,7 +204,13 @@ public static class UpstreamClient
         if (answer.Stratum == 0)
         {
             var code = NtpPacket.AsciiCode(answer.ReferenceId) ?? "?";
-            throw new UpstreamException(UpstreamFailure.KissOfDeath, $"The server refused the request (Kiss-o'-Death {code})", code);
+            var why = code switch
+            {
+                "RATE" => " (too many requests)",
+                "DENY" or "RSTR" => " (access denied)",
+                _ => string.Empty,
+            };
+            throw new UpstreamException(UpstreamFailure.KissOfDeath, "The server refused the request" + why, code);
         }
 
         if (answer.Leap == NtpLeap.Unsynchronized || answer.Stratum > 15)

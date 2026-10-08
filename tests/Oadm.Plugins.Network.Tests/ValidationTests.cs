@@ -118,7 +118,7 @@ public sealed class PayloadValidatorTests
     public void Device_address_equal_to_gateway_is_rejected()
     {
         var errors = PayloadValidator.Validate(StaticV4("10.0.0.1", 24, "10.0.0.1"));
-        Assert.Contains(errors, e => e.Contains("is the gateway address", StringComparison.Ordinal));
+        Assert.Contains(errors, e => e.Contains("is the default router address", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -126,7 +126,7 @@ public sealed class PayloadValidatorTests
     {
         Assert.Contains(PayloadValidator.Validate(StaticV4("10.0.0.1", 24, "10.0.0.5", null)), e => e.Contains("one device has no address", StringComparison.Ordinal));
         Assert.Contains(PayloadValidator.Validate(StaticV4("10.0.0.1", 31, "10.0.0.5")), e => e.Contains("subnet mask", StringComparison.Ordinal));
-        Assert.Contains(PayloadValidator.Validate(StaticV4("", 24, "10.0.0.5")), e => e.Contains("default gateway", StringComparison.Ordinal));
+        Assert.Contains(PayloadValidator.Validate(StaticV4("", 24, "10.0.0.5")), e => e.Contains("default router", StringComparison.Ordinal));
     }
 
     [Theory]

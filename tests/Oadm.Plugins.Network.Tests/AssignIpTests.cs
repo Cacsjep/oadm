@@ -107,7 +107,7 @@ public sealed class AssignIpTests
              "Wait for the settings to apply: Done", "Check reachability: Done", "Wait for the device at the new address: Skipped",
              "Verify device identity: Skipped", "Update OADM device address: Skipped", "Completed: Done"],
             StepRun.Lines(ctx.Steps));
-        Assert.Equal("DHCP: address assigned by the network, the device will be found again by the next scan", StepRun.Detail(ctx.Steps, "Update OADM device address"));
+        Assert.Equal("OADM finds the device again at its new address.", StepRun.Detail(ctx.Steps, "Update OADM device address"));
     }
 
     [Fact]
@@ -290,7 +290,7 @@ public sealed class AssignIpTests
         Assert.Equal(["AC:CC:8E:00:00:01", "AC:CC:8E:00:00:02", "AC:CC:8E:00:00:03"], vm.Assignment.Rows.Select(r => r.MacAddress));
         Assert.All(vm.Assignment.Rows, r => Assert.Equal("Ready", r.StatusText));
         Assert.True(vm.HasWarning);
-        Assert.Contains("3 of 3 devices get a new IPv4 address", vm.Warning, StringComparison.Ordinal);
+        Assert.Contains("3 of 3 devices get a new IP address", vm.Warning, StringComparison.Ordinal);
         Assert.True(vm.CanContinue); // no inline acknowledgement: Finish asks
 
         vm.Assignment.Rows[1].NewAddress = "10.0.0.150"; // edit one row

@@ -9,7 +9,7 @@
   <StackPanel Spacing="10">
     <Grid ColumnDefinitions="*,Auto">
       <TextBlock Classes="secondary" Text="{Binding CheckStatus}" VerticalAlignment="Center" TextWrapping="Wrap" />
-      <Button Grid.Column="1" Classes="toolbar" Command="{Binding CheckCommand}" ToolTip.Tip="Look for addresses that other managed devices have or that answer ping or port 80/443">
+      <Button Grid.Column="1" Classes="toolbar" Command="{Binding CheckCommand}" ToolTip.Tip="Check whether the new addresses are in use">
         <ui:IconLabel Icon="{DynamicResource Icon.search}" Text="Check addresses" Spacing="8" />
       </Button>
     </Grid>

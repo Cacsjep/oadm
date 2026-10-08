@@ -12,7 +12,7 @@ public sealed class UserChangePlannerTests
         ];
 
         var ex = Assert.Throws<UserManagementException>(() => UserChangePlanner.PlanRemoval(["a", "b"], users, "oadm", "12.11.77"));
-        Assert.Contains("'b' is the last administrator", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("b is the last administrator", ex.Message, StringComparison.Ordinal);
 
         var plans = UserChangePlanner.PlanRemoval(["a", "ghost"], users, "oadm", "12.11.77");
         Assert.Equal([PlanKind.Write, PlanKind.Skip], plans.Select(p => p.Plan.Kind));
