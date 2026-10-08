@@ -308,6 +308,9 @@ public sealed partial class DevicePollingService : IDisposable
         var options = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, MaxParallelism / 2), CancellationToken = ct };
         await Parallel.ForEachAsync(_refreshQueue.Reader.ReadAllAsync(ct), options, async (id, token) =>
         {
+            // Stamp before the device leaves the pending set: otherwise the scheduler could see it due and not pending
+            // in the gap until UpdateDeviceAsync stamps it, and queue the same refresh a second time.
+            _lastFullRefresh[id] = _time.GetUtcNow();
             _pendingRefresh.TryRemove(id, out _);
             try
             {

@@ -254,7 +254,8 @@ public sealed class ServerTests : IAsyncLifetime
         Assert.True(Service.IsRunning);
 
         interfaces.Items[0] = FakeInterfaces.Ethernet("192.0.2.17");
-        await Wait.UntilAsync(() => !Service.IsRunning);
+        // The listener stops first and the range error is set right after it: wait for the error, not for the stop.
+        await Wait.UntilAsync(() => !Service.IsRunning && Service.GetState(false).Status.Text == "Range is not inside the interface subnet");
         var status = Service.GetState(false).Status;
         Assert.Equal("Range is not inside the interface subnet", status.Text);
         Assert.Equal(ServiceStatus.Error, status.Kind);

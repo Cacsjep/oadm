@@ -36,8 +36,8 @@ jobs:
     name: ${{ matrix.target }} ${{ matrix.rid }}
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
 
@@ -158,7 +158,7 @@ jobs:
 
       - name: Upload
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: oadm-${{ steps.version.outputs.version }}-${{ matrix.rid }}
           path: artifacts/packages/*

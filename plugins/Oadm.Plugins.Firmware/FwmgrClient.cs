@@ -246,7 +246,7 @@ public sealed class FwmgrClient(IVapixClient vapix)
 
     private static string SafeFileName(string? name)
     {
-        var file = System.IO.Path.GetFileName(name ?? string.Empty);
+        var file = FirmwareImageInspector.FileNameOf(name);
         var safe = new string([.. file.Where(c => c is >= ' ' and < (char)127 and not '"' and not '\\')]);
         return safe.Length == 0 ? "firmware.bin" : safe;
     }

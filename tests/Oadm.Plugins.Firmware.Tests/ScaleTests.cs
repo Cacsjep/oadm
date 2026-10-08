@@ -65,6 +65,7 @@ public sealed class FirmwareScaleTests
     }
 
     [Fact]
+    [Trait("Category", "Perf")] // time budget; a CI runner can take over a second
     public void CanRun_over_5000_devices_is_cheap()
     {
         DeviceApi[] apis = [.. Enumerable.Range(0, 120).Select(i => new DeviceApi("api-" + i, "1." + i)), new("fwmgr", "1.10")];

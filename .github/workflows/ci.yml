@@ -13,9 +13,11 @@ jobs:
         os: [windows-latest, ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
       - run: dotnet build Oadm.sln -c Release
-      - run: dotnet test Oadm.sln -c Release --no-build --filter "Category!=Hardware"
+      # Unit tests only (like manage test unit): Perf tests have time budgets made for a developer machine and run with
+      # manage test perf; hardware tests need real devices.
+      - run: dotnet test Oadm.sln -c Release --no-build --filter "Category!=Hardware&Category!=Perf&Category!=HardwareWrite"

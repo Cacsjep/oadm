@@ -3,6 +3,15 @@ namespace Oadm.Plugins.Firmware.Tests;
 public sealed class FirmwareImageTests
 {
     [Theory]
+    [InlineData("C:\\fw\\P3265-V_12_11_77.bin", "P3265-V_12_11_77.bin")]
+    [InlineData("/home/u/fw/P3265-V_12_11_77.bin", "P3265-V_12_11_77.bin")]
+    [InlineData("P3265-V_12_11_77.bin", "P3265-V_12_11_77.bin")]
+    [InlineData("", "")]
+    [InlineData(null, "")]
+    public void File_name_is_taken_from_windows_and_unix_paths_on_every_os(string? path, string expected) =>
+        Assert.Equal(expected, FirmwareImageInspector.FileNameOf(path));
+
+    [Theory]
     [InlineData("P3265-V_12_11_77.bin", "P3265-V", "12.11.77")]
     [InlineData("P3265-LV_12.0.89.bin", "P3265-LV", "12.0.89")]
     [InlineData("AXIS_Q6135-LE_10_12_236.bin", "Q6135-LE", "10.12.236")]

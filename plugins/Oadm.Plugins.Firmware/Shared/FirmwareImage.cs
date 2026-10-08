@@ -32,11 +32,26 @@ public static partial class FirmwareImageInspector
     /// <summary>Largest accepted image (the biggest current images are around 250 MB).</summary>
     public const long MaximumSize = 2L * 1024 * 1024 * 1024;
 
+    /// <summary>
+    /// The file name of a path written on any OS: the part after the last / or \ (a Windows path chosen on a Windows
+    /// client keeps its folder in <see cref="Path.GetFileName(string)"/> on a Linux server, and the other way round).
+    /// </summary>
+    public static string FileNameOf(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return string.Empty;
+        }
+
+        var cut = path.LastIndexOfAny(['/', '\\']);
+        return cut < 0 ? path : path[(cut + 1)..];
+    }
+
     /// <summary>Inspects a file by its name and size only; the content is never judged (see <see cref="FirmwareImageInfo"/>).</summary>
     public static FirmwareImageInfo Inspect(string fileName, long size)
     {
         ArgumentNullException.ThrowIfNull(fileName);
-        var name = Path.GetFileName(fileName);
+        var name = FileNameOf(fileName);
         var (product, version) = ParseFileName(name);
         return new FirmwareImageInfo(name, size, product, version, CheckFile(name, size));
     }
@@ -53,7 +68,7 @@ public static partial class FirmwareImageInspector
             return (null, null);
         }
 
-        var match = FileNamePattern().Match(Path.GetFileName(fileName));
+        var match = FileNamePattern().Match(FileNameOf(fileName));
         if (!match.Success)
         {
             return (null, null);

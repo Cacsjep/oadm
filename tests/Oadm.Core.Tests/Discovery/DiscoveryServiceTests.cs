@@ -192,7 +192,14 @@ public class DiscoveryServiceTests
         await using var service = new DiscoveryService(new FakeMdnsBrowser(), new RangeScanner(probe), probe);
         var session = service.StartRangeScan(IPAddress.Parse("10.0.0.1"), IPAddress.Parse("10.0.3.254"), new RangeScanOptions { Parallelism = 4 });
         var watch = Collect(service, session.Id);
-        await Task.Delay(500);
+
+        // Stop once the first address answered (a fixed delay raced on busy CI runners); 1,020 addresses at 4 x 200 ms
+        // take about 50 s, so the scan is still far from done here.
+        var deadline = DateTime.UtcNow + TestTimeout;
+        while (service.GetDevices(session.Id).Count == 0 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(20);
+        }
 
         service.StopScan(session.Id);
 

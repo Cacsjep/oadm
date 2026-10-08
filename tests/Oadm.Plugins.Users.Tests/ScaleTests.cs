@@ -34,6 +34,7 @@ public sealed class ScaleTests
     }
 
     [Fact]
+    [Trait("Category", "Perf")] // time budget; a CI runner can take over a second
     public void CanRun_over_5000_devices_is_cheap()
     {
         var apis = Fixtures.P3265ApiList();

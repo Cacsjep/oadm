@@ -281,6 +281,11 @@ internal static class NtpProbe
         {
             return (null, origin, t1, DateTime.UtcNow);
         }
+        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
+        {
+            // Windows reports the ICMP "port unreachable" of a closed port on the next receive: no server answered.
+            return (null, origin, t1, DateTime.UtcNow);
+        }
     }
 }
 

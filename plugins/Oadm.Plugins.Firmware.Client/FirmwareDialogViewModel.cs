@@ -298,7 +298,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         {
             _image = null;
             FilePath = null;
-            FileName = Path.GetFileName(path);
+            FileName = FirmwareImageInspector.FileNameOf(path);
             FileDetails = null;
             FileError = "The file could not be read: " + ex.Message;
         }
@@ -306,7 +306,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         {
             _image = null;
             FilePath = null;
-            FileName = Path.GetFileName(path);
+            FileName = FirmwareImageInspector.FileNameOf(path);
             FileDetails = null;
             FileError = "The file could not be read: " + ex.Message;
         }
