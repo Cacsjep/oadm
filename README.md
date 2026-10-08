@@ -261,14 +261,6 @@ set up for it:
 | `packaging/` | Installers (WiX, .deb, .pkg) |
 | `docs/` | Specs, research and reference screenshots |
 
-## Further reading
-
-- [`CLAUDE.md`](CLAUDE.md): the full specification (architecture, data model, UI rules, every plugin)
-- [`plugins/README.md`](plugins/README.md): writing plugins (SDK, shared controls, validation, icons)
-- [`docs/specs/`](docs/specs): specs of the NTP, DHCP and PKI plugins
-- [`docs/scale-audit.md`](docs/scale-audit.md): scale targets, measurements and fixes
-- [`packaging/README.md`](packaging/README.md): installers and services per OS
-
 # License
 
 Apache-2.0, see [LICENSE](LICENSE). Third-party components: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

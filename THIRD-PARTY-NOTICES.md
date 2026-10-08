@@ -41,10 +41,7 @@ usual NuGet package licenses (MIT/Apache/BSD), which are listed in each package.
   cross-platform "Core" build), https://github.com/empira/PDFsharp, MIT License,
   Copyright (c) 2005-2025 empira Software GmbH, Troisdorf (Cologne Area), Germany.
 - Shipped in `plugins/oadm.snapshot-report/` next to `Oadm.Plugins.SnapshotReport.Server.dll`; it
-  builds the maintenance report PDF. Chosen because it is MIT licensed and runs on Windows, Linux
-  and macOS without native dependencies. QuestPDF is deliberately not used: its Community license
-  is not an OSI license and requires a paid license above a revenue threshold, which does not fit an
-  Apache-2.0 project that companies of any size may ship.
+  builds the maintenance report PDF. 
 
 ## Roboto font (Snapshot report plugin, embedded)
 
