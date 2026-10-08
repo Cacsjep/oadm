@@ -64,7 +64,7 @@ Notes:
 - The single-file server extracts its native libraries (SQLite) at start. Services point
   `DOTNET_BUNDLE_EXTRACT_BASE_DIR` at a folder only the service account can write, never at a shared temp folder.
 - Linux overrides without editing the unit: `/etc/default/oadm-server` (`EnvironmentFile`), e.g.
-  `Oadm__ListenUrl=http://0.0.0.0:5090`. The package works without systemd (containers): postinst then prints
+  `Oadm__ListenUrl=https://0.0.0.0:5090`. The package works without systemd (containers): postinst then prints
   how to start the server by hand.
 - macOS packages are unsigned (executables ad hoc signed). Signing with a Developer ID (`productsign`,
   `codesign --options runtime`) and notarization (`notarytool`) are a later step; until then open the .pkg with

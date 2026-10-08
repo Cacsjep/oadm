@@ -13,7 +13,7 @@ User=root
 Environment=OADM_DATA_DIR=/var/lib/oadm
 # Native libraries of the single-file exe are extracted here instead of $HOME/.net or /var/tmp.
 Environment=DOTNET_BUNDLE_EXTRACT_BASE_DIR=/var/cache/oadm
-# Local overrides, e.g. OADM_DATA_DIR=... or Oadm__ListenUrl=http://0.0.0.0:5090 (not shipped by the package).
+# Local overrides, e.g. OADM_DATA_DIR=... or Oadm__ListenUrl=https://0.0.0.0:5090 (not shipped by the package).
 EnvironmentFile=-/etc/default/oadm-server
 StateDirectory=oadm
 StateDirectoryMode=0700
