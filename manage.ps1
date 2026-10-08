@@ -397,22 +397,36 @@ function Invoke-Test {
     Invoke-Dotnet (@('test', $Solution, '-c', $script:Configuration, '--filter', $filter) + $script:Extra)
 }
 
+# THIRD-PARTY-NOTICES.txt (every published NuGet package, license texts), LICENSE.txt and LGPL-2.1.txt next to each
+# published exe (tools/Oadm.Notices; reads the deps.json files the publish wrote).
+function Write-Notices([string[]]$Apps, [string[]]$Outs) {
+    $a = @('run', '--project', (Join-Path $RepoRoot 'tools/Oadm.Notices/Oadm.Notices.csproj'), '-c', 'Release', '--',
+        '--repo', $RepoRoot, '--rid', $script:Rid, '--version', (Get-Version), '--plugins', $PluginStage)
+    foreach ($app in $Apps) { $a += '--app', $app }
+    foreach ($o in $Outs) { $a += '--out', $o }
+    Invoke-Dotnet $a
+}
+
 function Invoke-Publish {
     Initialize-Dotnet
     if ($script:OptRid) { $script:Rid = $script:OptRid }
     Publish-Plugins
+    $apps = @(); $outs = @()
     if ($script:Target -in 'all', 'server') {
         $out = Join-Path $RepoRoot "artifacts/publish/server/$($script:Rid)"
         Publish-App $ServerProject $out
         Copy-Plugins $out
+        $apps += Split-Path -Parent $ServerProject; $outs += $out
         Write-Host "server published to $out"
     }
     if ($script:Target -in 'all', 'client') {
         $out = Join-Path $RepoRoot "artifacts/publish/client/$($script:Rid)"
         Publish-App $ClientProject $out
         Copy-Plugins $out
+        $apps += Split-Path -Parent $ClientProject; $outs += $out
         Write-Host "client published to $out"
     }
+    Write-Notices $apps $outs
 }
 
 function Test-Command([string]$Name) { return [bool](Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue) }

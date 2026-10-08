@@ -371,23 +371,32 @@ cmd_test() {
   "$DOTNET" test "$SOLUTION" -c "$CONFIGURATION" --filter "$filter" ${EXTRA[@]+"${EXTRA[@]}"}
 }
 
+# THIRD-PARTY-NOTICES.txt (every published NuGet package, license texts), LICENSE.txt and LGPL-2.1.txt next to each
+# published exe (tools/Oadm.Notices; reads the deps.json files the publish wrote). Arguments: --app/--out pairs.
+write_notices() {
+  "$DOTNET" run --project "$REPO_ROOT/tools/Oadm.Notices/Oadm.Notices.csproj" -c Release --     --repo "$REPO_ROOT" --rid "$RID" --version "$(app_version)" --plugins "$PLUGIN_STAGE" "$@"
+}
+
 cmd_publish() {
   require_dotnet
   if [ -n "$OPT_RID" ]; then RID="$OPT_RID"; fi
-  local out
+  local out notices=()
   publish_plugins
   if [ "$TARGET" = all ] || [ "$TARGET" = server ]; then
     out="$REPO_ROOT/artifacts/publish/server/$RID"
     publish_app "$SERVER_PROJECT" "$out"
     copy_plugins "$out"
+    notices+=(--app "$(dirname "$SERVER_PROJECT")" --out "$out")
     echo "server published to $out"
   fi
   if [ "$TARGET" = all ] || [ "$TARGET" = client ]; then
     out="$REPO_ROOT/artifacts/publish/client/$RID"
     publish_app "$CLIENT_PROJECT" "$out"
     copy_plugins "$out"
+    notices+=(--app "$(dirname "$CLIENT_PROJECT")" --out "$out")
     echo "client published to $out"
   fi
+  write_notices "${notices[@]}"
 }
 
 # Installer for one platform in artifacts/packages; publishes server and client for the RID first.

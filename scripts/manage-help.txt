@@ -121,6 +121,8 @@ Self-contained single-file Release builds (ReadyToRun, embedded symbols, no .NET
 needed on the target machine). Every plugin project is published once into
 artifacts/publish/plugins/<plugin id>/ and copied next to each exe in plugins/<plugin id>/
 (the server loads the *.Server.dll, the client the *.Client.dll of each folder).
+Next to each exe: LICENSE.txt, LGPL-2.1.txt and THIRD-PARTY-NOTICES.txt, generated from every
+published NuGet package and the bundled components (tools/Oadm.Notices).
 
 Targets:
   all      Server and client (default)

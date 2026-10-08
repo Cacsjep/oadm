@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Generates THIRD-PARTY-NOTICES.txt for a publish (run by "manage publish", see packaging/README.md): every NuGet
+    package in the deps.json files of the published server, client and plugins, the license texts from
+    packaging/notices/licenses and the license files shipped in the packages. Build helper only, never shipped.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+</Project>

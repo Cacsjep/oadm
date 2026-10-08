@@ -1,8 +1,10 @@
 # Third-party notices
 
-OADM is licensed under Apache-2.0 (see `LICENSE`). The published client additionally contains the
-components below. This file lists only components with notice or source obligations beyond the
-usual NuGet package licenses (MIT/Apache/BSD), which are listed in each package.
+OADM is licensed under Apache-2.0 (see `LICENSE`). This file is the hand-written part of the notices: components
+with notice or source obligations beyond their NuGet package license. `manage publish` generates the complete
+`THIRD-PARTY-NOTICES.txt` next to the published exes (and in every installer) with this text, every NuGet package
+actually published (license, copyright, project), the full license texts (MIT, Apache-2.0, BSD, OFL-1.1, LGPL-2.1)
+and the license and notice files shipped in the packages (tool `tools/Oadm.Notices`).
 
 ## FFmpeg (live view video decoder, client only)
 
@@ -49,3 +51,16 @@ usual NuGet package licenses (MIT/Apache/BSD), which are listed in each package.
   MaterialDesignThemes package) are embedded in `Oadm.Plugins.SnapshotReport.Server.dll` so the PDF
   report renders identically on every OS. Apache License 2.0, Copyright 2011 Google Inc.,
   https://github.com/googlefonts/roboto. The PDF embeds subsets of these fonts.
+
+## Inter font (client user interface)
+
+- The Inter typeface (`Avalonia.Fonts.Inter` package, MIT for the package code), embedded in the client.
+  The font files are licensed under the SIL Open Font License 1.1 (full text in section 3 of the generated notices),
+  Copyright (c) 2016 The Inter Project Authors, https://github.com/rsms/inter.
+
+## .NET runtime and ASP.NET Core (server and client)
+
+- The server and the client are self-contained: they contain the .NET runtime (`Microsoft.NETCore.App`) and the
+  server also ASP.NET Core (`Microsoft.AspNetCore.App`), MIT License, Copyright (c) .NET Foundation and Contributors,
+  https://github.com/dotnet/runtime, https://github.com/dotnet/aspnetcore. Their third-party notices
+  (`THIRD-PARTY-NOTICES.TXT` of the runtime packs) are reproduced in section 4 of the generated notices.
