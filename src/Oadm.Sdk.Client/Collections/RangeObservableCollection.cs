@@ -3,7 +3,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 
-namespace Oadm.Client.Infrastructure;
+namespace Oadm.Sdk.Client.Collections;
 
 /// <summary>A list whose whole content can be replaced in one step (one Reset notification).</summary>
 public interface IResettableList
@@ -149,6 +149,37 @@ public class RangeObservableCollection<T> : ObservableCollection<T>, IResettable
 
         RaiseReset();
         return count;
+    }
+
+    /// <summary>Removes the first <paramref name="count"/> items (e.g. the oldest of a capped log); one Remove event for a single item, else one Reset.</summary>
+    public void RemoveFirst(int count)
+    {
+        count = Math.Min(count, Items.Count);
+        if (count <= 0)
+        {
+            return;
+        }
+
+        if (count == 1)
+        {
+            RemoveAt(0);
+            return;
+        }
+
+        CheckReentrancy();
+        if (Items is List<T> backing)
+        {
+            backing.RemoveRange(0, count);
+        }
+        else
+        {
+            for (var i = 0; i < count; i++)
+            {
+                Items.RemoveAt(0);
+            }
+        }
+
+        RaiseReset();
     }
 
     void IResettableList.ResetTo(IEnumerable items)

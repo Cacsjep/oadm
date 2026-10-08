@@ -12,6 +12,7 @@ using Oadm.Client.Shell;
 using Oadm.Client.Tasks;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Client.Collections;
 
 namespace Oadm.Client.Tests;
 
@@ -377,5 +378,26 @@ public sealed class AppOptionsTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+}
+
+public sealed class RangeObservableCollectionTests
+{
+    [Fact]
+    public void RemoveFirstDropsTheOldestInOneReset()
+    {
+        var list = new RangeObservableCollection<int>(Enumerable.Range(1, 10));
+        var events = new List<System.Collections.Specialized.NotifyCollectionChangedAction>();
+        list.CollectionChanged += (_, e) => events.Add(e.Action);
+
+        list.RemoveFirst(4);
+        list.RemoveFirst(1);
+        list.RemoveFirst(0);
+        list.RemoveFirst(99);
+
+        Assert.Empty(list);
+        Assert.Equal(
+            [System.Collections.Specialized.NotifyCollectionChangedAction.Reset, System.Collections.Specialized.NotifyCollectionChangedAction.Remove, System.Collections.Specialized.NotifyCollectionChangedAction.Reset],
+            events);
     }
 }
