@@ -1042,7 +1042,7 @@ JSON schema: `docs/vapix-commander/command-format.md` + `command.schema.json` (t
   fallback `AppContext.BaseDirectory/Library`), loaded once at start with strict JSON (unknown
   properties are errors) and `CommandValidator`; broken files and invalid or duplicate commands are
   skipped, logged and listed on the page ("N library entries could not be loaded"). The bundled library
-  (163 commands, separate commit) is checked by `tests/Oadm.Plugins.VapixCommander.Library.Tests` and
+  (161 commands, separate commit) is checked by `tests/Oadm.Plugins.VapixCommander.Library.Tests` and
   `BundledLibraryTests` (every command loads and validates with this engine).
 - Saved commands: server side in plugin setting `savedCommands` (one JSON document, at most 500),
   shared by all clients, editable (renaming replaces), deletable, export/import as a library file
@@ -1103,7 +1103,7 @@ JSON schema: `docs/vapix-commander/command-format.md` + `command.schema.json` (t
   "Remove all" icon in that column's header; no button row. Keyboard on the grid: Delete removes the
   selected row, Ctrl+Up / Ctrl+Down move it. Selecting a row shows its field form below, checked like
   the server while typing; `ui:PasswordBox` for passwords) / **Raw request** (method, path, query and
-  header tables with Make field, body type + body, timeout, response kind, fields from `{{placeholders}}`
+  header tables with Make field (the header table is hidden for GET unless the command has headers), body type + body, timeout, response kind, fields from `{{placeholders}}`
   typed by hand, "Add to rollout", "Save as command" with name, category, description, requires
   prefilled from the path (param.cgi -> param-cgi 1.0, `/config/rest/<api>/v<n>` -> `<api> n.0`, known
   CGIs), changes-the-device (prefilled from method/action) and dangerous); "Send to <device>" + **Send**

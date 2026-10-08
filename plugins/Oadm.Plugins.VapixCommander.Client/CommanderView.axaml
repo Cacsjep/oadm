@@ -197,7 +197,7 @@
             <TextBlock Classes="fieldMessage error" Text="{Binding QueryRowsError}"
                        IsVisible="{Binding QueryRowsError, Converter={x:Static ObjectConverters.IsNotNull}}" />
 
-            <Grid ColumnDefinitions="*,Auto">
+            <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding ShowHeaders}">
               <TextBlock Classes="sectionTitle" Text="Headers" VerticalAlignment="Center" />
               <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                 <Button Classes="secondary" Content="Add" Command="{Binding AddHeaderRowCommand}" />
@@ -205,7 +205,7 @@
                 <Button Classes="secondary" Content="Make field" Command="{Binding MakeHeaderFieldCommand}" />
               </StackPanel>
             </Grid>
-            <DataGrid ItemsSource="{Binding HeaderRows}" SelectedItem="{Binding SelectedHeaderRow}" SelectionMode="Single" CanUserSortColumns="False" MinHeight="60" MaxHeight="160">
+            <DataGrid ItemsSource="{Binding HeaderRows}" IsVisible="{Binding ShowHeaders}" SelectedItem="{Binding SelectedHeaderRow}" SelectionMode="Single" CanUserSortColumns="False" MinHeight="60" MaxHeight="160">
               <DataGrid.Columns>
                 <DataGridTextColumn Header="Header" Width="*" Binding="{Binding Key}" x:DataType="c:KeyValueRowViewModel" />
                 <DataGridTextColumn Header="Value" Width="*" Binding="{Binding Value}" x:DataType="c:KeyValueRowViewModel" />

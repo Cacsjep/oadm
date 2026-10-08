@@ -5,12 +5,12 @@ The battery-included commands of the VAPIX Commander plugin. One file per catego
 of `docs/vapix-commander/command-format.md`, validated against `docs/vapix-commander/command.schema.json`.
 `I/O` lives in `IO.json` because `/` cannot be part of a file name.
 
-163 commands: 59 readers (`writes: false`) and 104 setters/actions (`writes: true`, 18 of them `dangerous`).
+161 commands: 58 readers (`writes: false`) and 103 setters/actions (`writes: true`, 17 of them `dangerous`).
 
 | Category | Commands | File |
 |---|---|---|
-| Common | 7 | `Common.json` |
-| System | 12 | `System.json` |
+| Common | 6 | `Common.json` |
+| System | 11 | `System.json` |
 | Network | 15 | `Network.json` |
 | Security | 9 | `Security.json` |
 | Users | 5 | `Users.json` |
@@ -157,7 +157,6 @@ Gaps in format v1 found while writing the library:
 | `common.firmware.status` | Get firmware status | Common | no | executed on 10.0.0.48 |
 | `common.identify.flash` | Identify device (flash status LED) | Common | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
 | `common.identify.get` | Get status LED setting | Common | no | executed on 10.0.0.48 |
-| `common.snapshot.check` | Check snapshot | Common | no | executed on 10.0.0.48 |
 | `common.statusled.set` | Set status LED | Common | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
 | `common.systemready.get` | Get system ready status | Common | no | executed on 10.0.0.48 |
 | `system.geolocation.get` | Get geolocation | System | no | executed on 10.0.0.48 |
@@ -170,7 +169,6 @@ Gaps in format v1 found while writing the library:
 | `system.remotesyslog.get` | Get remote syslog | System | no | executed on 10.0.0.48 |
 | `system.remotesyslog.setup` | Set remote syslog server | System | yes | docs only (API present on 10.0.0.48, never sent) |
 | `system.temperature.get` | Get temperatures | System | no | executed on 10.0.0.48 |
-| `system.webinterface.set` | Disable web interface | System | yes (dangerous) | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
 | `system.webserver.get` | Get web server settings | System | no | executed on 10.0.0.48 |
 | `network.bonjour.get` | Get Bonjour (mDNS) | Network | no | executed on 10.0.0.48 |
 | `network.bonjour.set` | Set Bonjour (mDNS) | Network | yes | docs only (API present on 10.0.0.48, never sent) |

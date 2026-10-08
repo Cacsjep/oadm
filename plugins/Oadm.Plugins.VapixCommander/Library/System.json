@@ -563,46 +563,6 @@
           }
         ]
       }
-    },
-    {
-      "id": "system.webinterface.set",
-      "version": 1,
-      "name": "Disable web interface",
-      "category": "System",
-      "description": "Disables (or re-enables) the built-in web interface. VAPIX keeps working.",
-      "docs": "https://developer.axis.com/vapix/network-video/parameter-management/",
-      "requires": [
-        {
-          "api": "param-cgi",
-          "minVersion": "1.0"
-        }
-      ],
-      "writes": true,
-      "dangerous": true,
-      "fields": [
-        {
-          "name": "disabled",
-          "label": "Web interface disabled",
-          "type": "boolean",
-          "default": true
-        }
-      ],
-      "request": {
-        "method": "GET",
-        "path": "/axis-cgi/param.cgi",
-        "query": {
-          "action": "update",
-          "System.WebInterfaceDisabled": "{{disabled}}"
-        },
-        "headers": {},
-        "bodyType": "none",
-        "body": null,
-        "timeoutSeconds": 15
-      },
-      "response": {
-        "kind": "param-cgi",
-        "success": "OK"
-      }
     }
   ]
 }

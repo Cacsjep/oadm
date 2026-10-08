@@ -103,7 +103,11 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
     public RawEditorViewModel()
     {
         QueryRows.CollectionChanged += (_, e) => RowsChanged(e.NewItems);
-        HeaderRows.CollectionChanged += (_, e) => RowsChanged(e.NewItems);
+        HeaderRows.CollectionChanged += (_, e) =>
+        {
+            RowsChanged(e.NewItems);
+            OnPropertyChanged(nameof(ShowHeaders));
+        };
         Fields.CollectionChanged += (_, e) =>
         {
             foreach (RawFieldViewModel field in e.NewItems ?? Array.Empty<RawFieldViewModel>())
@@ -225,6 +229,7 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
     public static IReadOnlyList<string> Categories => CommandCategories.All;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowHeaders))]
     public partial string Method { get; set; } = "GET";
 
     [ObservableProperty]
@@ -248,6 +253,12 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
     public partial string BodyText { get; set; } = string.Empty;
 
     public bool HasBody => BodyType != BodyTypes.None;
+
+    /// <summary>
+    /// The request headers section: not needed for GET (Axis GET requests carry everything in path and query), so it is
+    /// hidden there unless the command already has headers (never hide data).
+    /// </summary>
+    public bool ShowHeaders => !string.Equals(Method, "GET", StringComparison.OrdinalIgnoreCase) || HeaderRows.Count > 0;
 
     [ObservableProperty]
     public partial decimal? TimeoutSeconds { get; set; } = CommandLimits.DefaultTimeoutSeconds;
