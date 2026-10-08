@@ -53,6 +53,15 @@ public sealed class RequestBuildingTests
     }
 
     [Fact]
+    public void Time_zone_unknown_to_the_server_os_is_still_set_by_iana_id()
+    {
+        // The device applies its own rules; the server's time zone data is only needed for a POSIX string.
+        var plan = Plan(Zone("Antarctica/Troll"), Fixture.Modern);
+
+        Assert.Equal(["""{"apiVersion":"1.1","context":"oadm","method":"setTimeZone","params":{"timeZone":"Antarctica/Troll"}}"""], Bodies(plan));
+    }
+
+    [Fact]
     public void Time_zone_without_daylight_saving_uses_setPosixTimeZone()
     {
         var plan = Plan(Zone("America/New_York", dst: false), Fixture.NoNts);

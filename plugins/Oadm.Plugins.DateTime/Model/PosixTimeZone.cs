@@ -4,10 +4,43 @@ using System.Text;
 namespace Oadm.Plugins.DateAndTime.Model;
 
 /// <summary>
+/// A POSIX "Mm.w.d/time" transition rule: month, week 1-5 (5 = last), weekday (0 = Sunday) and the local wall time in
+/// force before the transition (standard time for the start, daylight saving time for the end).
+/// </summary>
+public readonly record struct PosixTransition(int Month, int Week, DayOfWeek Day, TimeSpan Time)
+{
+    /// <summary>
+    /// The rule for a transition at local wall time <paramref name="local"/>. A day in the last seven days of the month is
+    /// week 5 (last) unless <paramref name="lastWeek"/> is false (then a fourth occurrence stays week 4).
+    /// </summary>
+    public static PosixTransition FromLocal(System.DateTime local, bool lastWeek = true)
+    {
+        var week = WeekOfMonth(local);
+        if (IsInLastWeek(local) && (week == 5 || lastWeek))
+        {
+            week = 5;
+        }
+
+        return new PosixTransition(local.Month, week, local.DayOfWeek, local.TimeOfDay);
+    }
+
+    /// <summary>1 for days 1-7, 2 for days 8-14, ... 5 for days 29-31.</summary>
+    internal static int WeekOfMonth(System.DateTime local) => ((local.Day - 1) / 7) + 1;
+
+    /// <summary>No later day of the same weekday in this month.</summary>
+    internal static bool IsInLastWeek(System.DateTime local) => local.Day + 7 > System.DateTime.DaysInMonth(local.Year, local.Month);
+
+    /// <summary>"M3.5.0/2:00:00".</summary>
+    public override string ToString() => string.Create(CultureInfo.InvariantCulture,
+        $"M{Month}.{Week}.{(int)Day}/{(int)Time.TotalHours}:{Time.Minutes:00}:{Time.Seconds:00}");
+}
+
+/// <summary>
 /// Converts an IANA time zone into the POSIX TZ string legacy firmware takes in <c>param.cgi Time.POSIXTimeZone</c>
 /// (devices without time-service). Format as AXIS devices show it, e.g. Europe/Vienna =
 /// <c>&lt;UTC1&gt;-1&lt;UTC2&gt;-2,M3.5.0/2:00:00,M10.5.0/3:00:00</c> (the value 10.0.0.48 reports).
-/// The rule is the one in force for <c>year</c> (the current daylight saving rule of the OS time zone database).
+/// The rule is the one in force for <c>year</c>, derived from the instants at which the OS time zone database changes the
+/// offset (<see cref="ZoneYear"/>), so the result is the same on Windows, Linux and macOS.
 /// </summary>
 public static class PosixTimeZone
 {
@@ -21,40 +54,68 @@ public static class PosixTimeZone
     public static string FromTimeZone(TimeZoneInfo zone, int year)
     {
         ArgumentNullException.ThrowIfNull(zone);
-        var rule = RuleFor(zone, year);
-        var standard = zone.BaseUtcOffset + (rule?.BaseUtcOffsetDelta ?? TimeSpan.Zero);
-        var sb = new StringBuilder();
-        sb.Append('<').Append(Name(standard)).Append('>').Append(Offset(standard));
-        if (rule is null || rule.DaylightDelta == TimeSpan.Zero)
+        var rules = ZoneYear.Of(zone, year);
+        if (rules.Daylight is not { } daylight)
         {
-            return sb.ToString();
+            return Format(rules.Standard);
         }
 
-        var daylight = standard + rule.DaylightDelta;
-        sb.Append('<').Append(Name(daylight)).Append('>').Append(Offset(daylight));
-        sb.Append(',').Append(Transition(rule.DaylightTransitionStart)).Append(',').Append(Transition(rule.DaylightTransitionEnd));
-        return sb.ToString();
+        var startLocal = rules.DaylightStartUtc!.Value + rules.Standard;
+        var endLocal = rules.DaylightEndUtc!.Value + daylight;
+        var start = PosixTransition.FromLocal(startLocal, IsLastWeekRule(zone, year, startLocal, start: true));
+        var end = PosixTransition.FromLocal(endLocal, IsLastWeekRule(zone, year, endLocal, start: false));
+        return Format(rules.Standard, daylight, start, end);
     }
 
-    /// <summary>The adjustment rule covering 1 July of <paramref name="year"/> (else 1 January), null without daylight saving.</summary>
-    private static TimeZoneInfo.AdjustmentRule? RuleFor(TimeZoneInfo zone, int year)
+    /// <summary>
+    /// The string for daylight saving time from <paramref name="startUtc"/> to <paramref name="endUtc"/>; the start is
+    /// written in standard time, the end in daylight saving time (the wall time in force before each transition).
+    /// </summary>
+    public static string Format(TimeSpan standard, TimeSpan daylight, System.DateTime startUtc, System.DateTime endUtc) =>
+        Format(standard, daylight, PosixTransition.FromLocal(startUtc + standard), PosixTransition.FromLocal(endUtc + daylight));
+
+    /// <summary>"&lt;UTC-5&gt;5&lt;UTC-4&gt;4,M3.2.0/2:00:00,M11.1.0/2:00:00".</summary>
+    public static string Format(TimeSpan standard, TimeSpan daylight, PosixTransition start, PosixTransition end) =>
+        string.Create(CultureInfo.InvariantCulture, $"{Format(standard)}<{Name(daylight)}>{Offset(daylight)},{start},{end}");
+
+    /// <summary>"&lt;UTC530&gt;-5:30" (no daylight saving time).</summary>
+    public static string Format(TimeSpan standard) =>
+        new StringBuilder().Append('<').Append(Name(standard)).Append('>').Append(Offset(standard)).ToString();
+
+    /// <summary>
+    /// A transition on a fourth weekday that is also the last one of its month fits both "fourth" (week 4) and "last"
+    /// (week 5). The next six years decide (every weekday position of a date occurs within seven years): the rule that
+    /// matches the actual transition in more of them wins, "last" on a tie. Rules such as "Friday before the last Sunday"
+    /// fit neither exactly; this picks the closer one.
+    /// </summary>
+    private static bool IsLastWeekRule(TimeZoneInfo zone, int year, System.DateTime local, bool start)
     {
-        if (!zone.SupportsDaylightSavingTime)
+        if (PosixTransition.WeekOfMonth(local) != 4 || !PosixTransition.IsInLastWeek(local))
         {
-            return null;
+            return true;
         }
 
-        var rules = zone.GetAdjustmentRules();
-        foreach (var probe in new[] { new System.DateTime(year, 7, 1), new System.DateTime(year, 1, 1) })
+        var fourth = 0;
+        var last = 0;
+        for (var y = year + 1; y <= year + 6; y++)
         {
-            var match = rules.LastOrDefault(r => r.DateStart <= probe && r.DateEnd >= probe && r.DaylightDelta != TimeSpan.Zero);
-            if (match is not null)
+            var other = ZoneYear.Of(zone, y);
+            if (other.Daylight is not { } daylight)
             {
-                return match;
+                break;
             }
+
+            var otherLocal = start ? other.DaylightStartUtc!.Value + other.Standard : other.DaylightEndUtc!.Value + daylight;
+            if (otherLocal.Month != local.Month || otherLocal.DayOfWeek != local.DayOfWeek)
+            {
+                break;
+            }
+
+            fourth += PosixTransition.WeekOfMonth(otherLocal) == 4 ? 1 : 0;
+            last += PosixTransition.IsInLastWeek(otherLocal) ? 1 : 0;
         }
 
-        return null;
+        return last >= fourth;
     }
 
     /// <summary>"UTC1", "UTC-5", "UTC530" (quoted name: letters, digits, + and - only).</summary>
@@ -75,20 +136,5 @@ public static class PosixTimeZone
         return abs.Minutes == 0
             ? string.Create(CultureInfo.InvariantCulture, $"{sign}{abs.Hours}")
             : string.Create(CultureInfo.InvariantCulture, $"{sign}{abs.Hours}:{abs.Minutes:00}");
-    }
-
-    /// <summary>"M3.5.0/2:00:00" (month, week 1-5 with 5 = last, weekday 0 = Sunday) or "J60/2:00:00" for fixed dates.</summary>
-    private static string Transition(TimeZoneInfo.TransitionTime t)
-    {
-        var time = t.TimeOfDay.TimeOfDay;
-        var at = string.Create(CultureInfo.InvariantCulture, $"/{(int)time.TotalHours}:{time.Minutes:00}:{time.Seconds:00}");
-        if (t.IsFixedDateRule)
-        {
-            // Jn: day of a non-leap year (1-365), February 29 never counted.
-            var day = new System.DateTime(2001, t.Month, Math.Min(t.Day, System.DateTime.DaysInMonth(2001, t.Month))).DayOfYear;
-            return string.Create(CultureInfo.InvariantCulture, $"J{day}{at}");
-        }
-
-        return string.Create(CultureInfo.InvariantCulture, $"M{t.Month}.{t.Week}.{(int)t.DayOfWeek}{at}");
     }
 }

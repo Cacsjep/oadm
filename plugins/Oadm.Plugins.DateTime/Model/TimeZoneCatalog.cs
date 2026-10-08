@@ -6,11 +6,16 @@ namespace Oadm.Plugins.DateAndTime.Model;
 /// <param name="Id">IANA id the device receives, e.g. "Europe/Vienna".</param>
 /// <param name="Label">"(UTC+01:00) Vienna - Europe/Vienna".</param>
 /// <param name="BaseOffset">Standard (non daylight saving) offset from UTC.</param>
-/// <param name="ObservesDaylightSaving">The zone switches to daylight saving time.</param>
-public sealed record TimeZoneEntry(string Id, string Label, TimeSpan BaseOffset, bool ObservesDaylightSaving)
+/// <param name="ObservesDaylightSaving">The zone switches to daylight saving time this year.</param>
+/// <param name="HasOffset">
+/// False when the OS time zone database of this computer does not know the zone (e.g. Antarctica/Troll on Windows
+/// Server 2025): no offset in the label, sorted last, no daylight saving option. Devices with the Time API still get the
+/// IANA id and apply their own rules; converting it to a POSIX string for older firmware is refused.
+/// </param>
+public sealed record TimeZoneEntry(string Id, string Label, TimeSpan BaseOffset, bool ObservesDaylightSaving, bool HasOffset = true)
 {
-    /// <summary>"UTC+01:00" (grid column).</summary>
-    public string OffsetText => TimeZoneCatalog.FormatOffset(BaseOffset).Trim('(', ')');
+    /// <summary>"UTC+01:00", "Unknown" when the OS does not know the zone (grid column).</summary>
+    public string OffsetText => HasOffset ? TimeZoneCatalog.FormatOffset(BaseOffset).Trim('(', ')') : "Unknown";
 
     /// <summary>"Vienna" (grid column).</summary>
     public string City => string.Equals(Id, "UTC", StringComparison.Ordinal) ? "Coordinated Universal Time" : TimeZoneCatalog.City(Id);
@@ -25,14 +30,15 @@ public sealed record TimeZoneEntry(string Id, string Label, TimeSpan BaseOffset,
 /// The IANA time zones AXIS OS offers (the 313 entries of <c>getTimeZoneList</c> on AXIS OS 12.11, bundled), with
 /// readable labels "(UTC+01:00) Vienna - Europe/Vienna" sorted by offset like the ADM / Windows time zone list.
 /// Offsets come from the server or client OS time zone database (<see cref="TimeZoneInfo"/>, IANA ids on all
-/// three OS); ids the OS does not know keep the list entry without an offset ("(UTC) id").
+/// three OS; standard offset and daylight saving of the current year, <see cref="ZoneYear"/>); ids the OS does not
+/// know keep the list entry without an offset ("Troll - Antarctica/Troll"), sorted last.
 /// </summary>
 public static class TimeZoneCatalog
 {
     private static readonly Lazy<IReadOnlyList<TimeZoneEntry>> LazyAll = new(Load);
     private static readonly Lazy<HashSet<string>> LazyIds = new(() => new HashSet<string>(All.Select(z => z.Id), StringComparer.Ordinal));
 
-    /// <summary>All zones, sorted by base offset, then label.</summary>
+    /// <summary>All zones, sorted by base offset, then label; zones without a known offset last.</summary>
     public static IReadOnlyList<TimeZoneEntry> All => LazyAll.Value;
 
     /// <summary>True for an IANA id of the bundled list (case-sensitive, as the device expects it).</summary>
@@ -58,6 +64,7 @@ public static class TimeZoneCatalog
     /// <summary>
     /// Zones newer than some OS time zone databases (e.g. the ICU of Windows 10 1809), mapped to an older id with the
     /// same current rules. Antarctica/Troll has no equivalent and stays without an OS zone there.
+    /// Antarctica/Vostok is UTC+05 without daylight saving since December 2023, like Asia/Tashkent.
     /// </summary>
     private static readonly Dictionary<string, string> Aliases = new(StringComparer.Ordinal)
     {
@@ -66,6 +73,7 @@ public static class TimeZoneCatalog
         ["America/Ciudad_Juarez"] = "America/Denver",
         ["America/Coyhaique"] = "America/Punta_Arenas",
         ["Asia/Urumqi"] = "Asia/Dhaka",
+        ["Antarctica/Vostok"] = "Asia/Tashkent",
     };
 
     /// <summary>The OS time zone for an IANA id (or its same-rules alias), or null when the OS does not know it.</summary>
@@ -112,15 +120,26 @@ public static class TimeZoneCatalog
         return last.Replace('_', ' ');
     }
 
-    internal static TimeZoneEntry Describe(string id)
+    /// <summary>The list entry for <paramref name="id"/>; <paramref name="zone"/> null = the OS does not know it.</summary>
+    internal static TimeZoneEntry Describe(string id, TimeZoneInfo? zone, int year)
     {
-        var zone = TryGetSystemZone(id);
-        var offset = zone?.BaseUtcOffset ?? TimeSpan.Zero;
-        var label = string.Equals(id, "UTC", StringComparison.Ordinal)
-            ? "(UTC) Coordinated Universal Time - UTC"
-            : $"{FormatOffset(offset)} {City(id)} - {id}";
-        return new TimeZoneEntry(id, label, offset, zone?.SupportsDaylightSavingTime ?? false);
+        if (string.Equals(id, "UTC", StringComparison.Ordinal))
+        {
+            return new TimeZoneEntry(id, "(UTC) Coordinated Universal Time - UTC", TimeSpan.Zero, false);
+        }
+
+        if (zone is null)
+        {
+            return new TimeZoneEntry(id, $"{City(id)} - {id}", TimeSpan.Zero, false, HasOffset: false);
+        }
+
+        var rules = ZoneYear.Of(zone, year);
+        return new TimeZoneEntry(id, $"{FormatOffset(rules.Standard)} {City(id)} - {id}", rules.Standard, rules.ObservesDaylightSaving);
     }
+
+    /// <summary>Sorted like <see cref="All"/>: known offsets first by offset, then label.</summary>
+    internal static List<TimeZoneEntry> Sort(IEnumerable<TimeZoneEntry> zones) =>
+        [.. zones.OrderBy(z => !z.HasOffset).ThenBy(z => z.BaseOffset).ThenBy(z => z.Label, StringComparer.OrdinalIgnoreCase)];
 
     private static List<TimeZoneEntry> Load()
     {
@@ -136,6 +155,7 @@ public static class TimeZoneCatalog
             }
         }
 
-        return [.. ids.Select(Describe).OrderBy(z => z.BaseOffset).ThenBy(z => z.Label, StringComparer.OrdinalIgnoreCase)];
+        var year = System.DateTime.UtcNow.Year;
+        return Sort(ids.Select(id => Describe(id, TryGetSystemZone(id), year)));
     }
 }
