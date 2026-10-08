@@ -5,6 +5,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Oadm.Server</RootNamespace>
+    <!-- No web.config on publish: it only serves IIS hosting; OADM runs as its own service / console process (gRPC only, no web API). -->
+    <IsTransformWebConfigDisabled>true</IsTransformWebConfigDisabled>
+    <!-- No static web files either (gRPC only): no staticwebassets manifests in the publish folder. -->
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
   </PropertyGroup>
 
   <ItemGroup>
