@@ -208,7 +208,18 @@ Two processes, like ADM:
   and only when a device accepted it, a full list is the note "The credential list is full (20 entries); the login was
   not saved there.", never a failed login; audit "Device login" {user name, "5 devices, 3 logged in"}; INVALID_ARGUMENT
   without devices, user name or password), `GetCredentialUserName(DeviceIds)` (the stored user name the devices share,
-  else empty: prefill of the dialog).
+  else empty: prefill of the dialog), `SetFirstPassword(device_ids, password)` (the context menu's "Set password", see
+  "Main Window"; Operator: per device (`Oadm.Core.Devices.DeviceFirstPasswordService`, 8 at a time, 15 s per request)
+  anonymous HTTPS first (a device stored with HTTPS keeps its pin, one stored with HTTP is asked over HTTPS, then HTTP),
+  the anonymous `getAllUnrestrictedProperties` serial must be the record's ("Another device answers at this address.
+  Nothing was changed."), systemready must say `needsetup=yes` right before writing (else "The device already has a
+  password. Nothing was changed.", nothing sent), then pwdgrp.cgi add root exactly like the add page (POST body only);
+  a refusal is "The device rejected the password: <device text>."; CertificateChanged devices are refused without a
+  request; the devices that took it get root + password stored in one transaction, their client dropped and a full refresh
+  queued; reply `results` {device_id, ok, message} in request order; audit "First password set" {"root", "3 devices, 2
+  set"}, never the password; INVALID_ARGUMENT without devices or for a password that is not 1-64 printable ASCII),
+  `GetPassphrasePolicies(DeviceIds)` (anonymous systemready per device: `policies` {device_id, policy none / length /
+  complex, empty when unreadable}; the dialog's hint).
 - `DiscoveryService`: `StartZeroConf`, `StartRangeScan(from, to)`, `ProbeAddress(address, user_name = 2,
   password = 3)` (one entered IP or host name, optional port/scheme; INVALID_ARGUMENT for an unusable or
   unresolvable address, or only one of user name (1..64) and password (1..256); the optional credentials of an
@@ -361,6 +372,12 @@ OADM keeps a device managed when its address changes (`Oadm.Core.Devices.DeviceA
   every 5 minutes (first run 30 s after start), only while at least one device is Unreachable and addressed by
   IP, a 15 s zero-conf session looks for those serials; a device announced at another address is verified
   there the same way and moved (`TryRelocateAsync`). This covers DHCP changes, where the new address is unknown.
+- **By a DHCP lease** (user decision 2026-10-08): when the DHCP server plugin ACKs a lease to the MAC (= serial) of a
+  managed device and the address differs from the record, the plugin calls `IDeviceAutoAdd.FollowAsync`
+  (`ICorePluginContext.AutoAdd`, see "DHCP server plugin"): the server verifies the device at the leased address the same
+  way and moves it right away, also while the device still counts as reachable (`TryRelocateAsync(..., requireUnreachable:
+  false)`; a lease proves the change). Not verified yet (the device is still starting): one retry after 30 s. Logged
+  and audited ("Device moved", user "system", "DHCP server: from A to B"). Works whether or not the automatic add is on.
 - Devices addressed by host name (`Devices.UseHostName`) keep their host name; their record never moves.
 
 ## IP range scan
@@ -510,6 +527,19 @@ stored; RetryAuth credentials travel only client -> server and are kept in serve
 credential list when asked). Adding devices is not a task; the first full refresh is queued in the
 background as before.
 
+Automatic add by core plugins (user decision 2026-10-08; the DHCP server's "Automatically add Axis devices that get an
+address"): the SDK service `IDeviceAutoAdd` (`ICorePluginContext.AutoAdd`, DIM null) is implemented by
+`Oadm.Server.AddDevices.DeviceAutoAddService` on the same code as this page, no second pipeline: `AddAsync(address,
+expectedSerial, source)` runs the anonymous probe (`VapixProbe`; nothing = Unreachable, another serial = SerialMismatch),
+the Axis check of `DiscoveryAuthenticator` without any credential (fails = NotAxis, "No password was sent."), then for a
+factory-default device no login at all, else the automatic login in a session of its own (credential list only, at most
+10 rejected, HTTPS first; Unreachable = not added) and stores the device through `DeviceAdder` (shared with `Commit`:
+address = the IP, pin from the probe, the credential that worked, verified) with status Ok, Credentials required (no
+credential fits; the context menu's "Log in" fixes it) or Password not set (the context menu's "Set password"), queues the
+first full refresh and writes the audit entry "Device added automatically" (user "system", target "<ip> (<serial>)",
+detail "<source>: <result>"). Not added (not Axis, other serial, unreachable): logged only. `FollowAsync(serial, address,
+source)` follows managed devices (see "Following moved devices"). Passwords never reach the plugin.
+
 Follow-up logins: per (session, serial) the authenticator keeps the device as last observed, the
 number of rejected automatic attempts and which credentials (SHA-256 of user + password) the device
 rejected. When a new credential becomes known it is tried on every LOGIN_FAILED device that has
@@ -595,7 +625,7 @@ Layout, top to bottom:
 3. Status line: "N devices, M selected".
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
    client, horizontal scroll, multi-select, right-click context menu: the core actions (Open web
-   interface, Refresh, **Log in**, Remove), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
+   interface, Refresh, **Log in**, **Set password**, Remove), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
    by name, with a group icon: Applications app, Maintenance settings, Network network, Security key,
    Users users, Video video, others plugin; a group is a submenu even with one entry, user decision)
    holding its Task plugins whose `CanRun` is true for the whole selection, sorted by name, with their
@@ -603,7 +633,7 @@ Layout, top to bottom:
    `TaskPluginNames.Normalize`). Menus and submenus are at least `Oadm.MenuMinWidth` (240) wide (theme).
    The toolbar task buttons are unchanged (no groups).
    **Log in** (icon `key`, user decision 2026-10-08) is shown only while the selection holds a device with status
-   Credentials required (not Password not set: the add page sets first passwords) and follows the status live; it
+   Credentials required (not Password not set: "Set password" below) and follows the status live; it
    applies to those devices of the selection. A rejected stored credential only shows as that status (polling), there
    are no automatic retries. Dialog `Devices/DeviceLoginWindow` (`DeviceLoginViewModel`, single operation:
    `Border.dialogBody`, 460 px, no card): "10.0.0.48 (P3265-V) rejects the stored credentials." / "5 devices reject the
@@ -617,6 +647,19 @@ Layout, top to bottom:
    (Unreachable - ...)", at most 5 named, "+N more"). Fake mode accepts every password except "wrong" (10.0.0.23 is
    Credentials required). Tests: `tests/Oadm.Server.Tests/DeviceLoginTests` (+ Perf 5,000 devices in one call),
    `tests/Oadm.Client.Tests/DeviceLoginTests` (headless `client-device-login.png`, `client-device-login-failed.png`).
+   **Set password** (icon `lock`, user decision 2026-10-08) is shown only while the selection holds a device with status
+   Password not set (e.g. added by the DHCP server's automatic add) and follows the status live; it applies to those
+   devices. Dialog `Devices/DeviceSetPasswordWindow` (`DeviceSetPasswordViewModel`, single operation, 460 px, like the add
+   page's first-password editor): "10.0.0.40 (AXIS F9111) has no password yet (factory default)." / "3 devices have no
+   password yet (factory default).", User name "root" (fixed, read-only), New password + Confirm password
+   (`ui:PasswordBox`), hint with the passphrase policy from `GetPassphrasePolicies` (`PasswordRules`, the add page's
+   rules; several devices: every policy applies, "length" and "complex" together = at least 15 with every class), errors
+   below the fields, Cancel / **Set password** (disabled with the reason as tooltip). One `DeviceService.SetFirstPassword`
+   call with the `ui:ProgressRow`; all took it: the dialog closes; otherwise those devices leave the dialog and the result
+   stands below the password ("1 of 3 devices failed: 10.0.0.41 (The device already has a password. Nothing was
+   changed)"). Fake mode sets it in memory (10.0.0.40 is Password not set, policy "complex"). Tests:
+   `tests/Oadm.Server.Tests/SetFirstPasswordTests`, `tests/Oadm.Client.Tests/DeviceSetPasswordTests` (headless
+   `client-set-password.png`).
 5. Resizable, collapsible bottom pane **Tasks** (no tabs), one row per task (= per device).
    Columns: Name, Device (130 px), Status (widest, 5*, min 280 px: icon plus message), Current step, Start time, Owner, Progress (bar). **Current step** is
    "Step 3/6 · Upload firmware" plus " · 45 %" while the running step reports progress (tooltip: the text
@@ -904,6 +947,9 @@ public interface ICorePluginContext
                                        // FirewallRuleKeeper.SyncAsync(enabled) (Oadm.Sdk.Network)
     string? DataDirectory => null;     // <datafolder>/plugin-data/<id>, created on first use: working files (downloads,
                                        // archives) in the admin-only data folder, never a shared temp folder; plugin cleans up
+    IDeviceAutoAdd? AutoAdd => null;   // AddAsync(address, expectedSerial, source): add an Axis device like the add page
+                                       // (Axis check, factory default check, credential list login) -> DeviceAutoAddOutcome;
+                                       // FollowAsync(serial, address, source): move a managed device's record -> DeviceFollowResult
 }
 ```
 
@@ -1410,8 +1456,8 @@ decisions: `docs/specs/ntp-server.md`. Own RFC 5905 server-mode implementation (
 `plugins/Oadm.Plugins.DhcpServer` (+ `.Client`), id `oadm.dhcp-server`, rail page **DHCP server** (icon `network`). Spec and
 decisions: `docs/specs/dhcp-server.md`; layout, per-OS setup and the manual test plan: `plugins/Oadm.Plugins.DhcpServer/README.md`.
 Own RFC 2131 / 2132 implementation, IPv4 only, one interface, no relay agents (relayed messages are ignored and logged).
-- Settings (plugin setting `config`: enabled, interfaceId, interfaceName, rangeStart, rangeEnd) restored on server start;
-  the plugin starts disabled. Leases (plugin setting `leases`, a JSON list of static and bound/expired/released leases,
+- Settings (plugin setting `config`: enabled, interfaceId, interfaceName, rangeStart, rangeEnd, autoAddAxisDevices) restored
+  on server start; the plugin starts disabled. Leases (plugin setting `leases`, a JSON list of static and bound/expired/released leases,
   never offers) are written at most every 2 s when changed and on stop; they survive restarts.
 - Derived, never asked: mask from the interface prefix, router = the interface's IPv4 gateway when it is in the subnet,
   DNS = the interface's IPv4 DNS servers, domain = its DNS suffix, lease 24 h (T1 50 %, T2 87.5 %), server id = the
@@ -1467,6 +1513,16 @@ Own RFC 2131 / 2132 implementation, IPv4 only, one interface, no relay agents (r
   buttons: Edit, Delete for static; Make static, Release for dynamic; Delete and Release are confirmed). Managed devices
   by MAC = serial number (else by address) show "P3265-V (managed)". Rows update in place; search and structural changes
   rebuild the list with one reset (O(n), 5,000 leases tested).
+- **Automatically add Axis devices that get an address** (user decision 2026-10-08; check box below End address, config
+  `autoAddAxisDevices`, default off, saved with Save, Admin like the other settings): after every ACK (new or renewed lease)
+  the engine calls `DhcpEngine.Leased(mac, address)`, which only queues (`Serving/DhcpDeviceAutoAdd`, never blocks the
+  receive loop). Only MAC addresses of Axis blocks (`Serving/AxisOui`, the one list: 00:40:8C, AC:CC:8E, B8:A4:4F,
+  E8:27:25 from the IEEE registry) are handled, once per MAC and lease change (the same address again is skipped), at
+  most 4 at a time, at most 10,000 waiting: `IDeviceAutoAdd.FollowAsync` first (a managed device at another address is
+  moved, also with the setting off), then for an unmanaged device with the setting on `AddAsync(ip, serial = MAC, "DHCP
+  server")` (see "Add Devices Page"). Unreachable (the camera answers HTTP a few seconds after DHCP) or a moved device not
+  verified yet: one retry after 30 s, dropped when the lease changed meanwhile. Results are logged; the lease list shows
+  the managed device as before ("P3265-V (managed)").
 - Static lease dialog (`StaticLeaseWindow`, `ValidatingViewModel`): MAC address, IP address (inside the subnet, may be
   outside the range, not the server address, not reserved or actively leased by another device), optional name (max 63);
   errors under the fields while typing, the server's answer under the field too.
@@ -1476,7 +1532,10 @@ Own RFC 2131 / 2132 implementation, IPv4 only, one interface, no relay agents (r
   collisions, expiry, reclaim, persistence, 5,000 leases; rate limits; status texts per OS; the whole service on the
   in-memory network: full exchange, unicast renew, live events, restart persistence, page actions, other server +
   confirmation, port in use retried, Windows service named, interface address change, pool exhausted, flood, malformed
-  datagrams; real socket on loopback; page view model incl. 5,000 leases; headless screenshots `dhcp-server-page.png`,
+  datagrams; real socket on loopback; page view model incl. 5,000 leases; `AutoAddTests` with a fake `IDeviceAutoAdd`:
+  Axis blocks only, once per lease change, setting off adds nothing but follows, managed devices never added, one retry,
+  4 at a time, engine never blocked, the whole server on the in-memory network; headless screenshots `dhcp-server-page.png`,
+  `dhcp-server-auto-add.png`,
   `-page-errors.png`, `-page-other-server.png`, `dhcp-server-other-server-confirm.png`, `dhcp-server-static-lease-dialog.png`).
 
 ## PKI plugin (core plugin)
@@ -1891,7 +1950,7 @@ marked *(default)* were filled in and can be changed. This section wins over old
   version, "no users yet") and first-admin setup are open) and PERMISSION_DENIED for a missing role. `Logout` revokes.
   Failed logins: 5 per user per 5 minutes, then 5 minutes locked, logged *(default)*. Task `Owner` = authenticated user
   name + "@" + the client machine name the client sends (no longer whatever the client claims).
-- **Roles.** **Admin**: everything. **Operator**: devices (watch, add, remove, refresh, credentials of a device, "Log in", web UI
+- **Roles.** **Admin**: everything. **Operator**: devices (watch, add, remove, refresh, credentials of a device, "Log in", "Set password", web UI
   link), discovery, tasks (run, cancel, delete own and others; not Delete all), live view, uploads, plugin pages that do
   not change server configuration (Snapshot report, VAPIX Commander, Metadata Monitor, System report, PKI read and device
   certificate tasks). **Admin only**: `SettingsService.Set`, credential list (add, remove, reveal), users, `TaskService.DeleteAll`,
@@ -1911,7 +1970,8 @@ marked *(default)* were filled in and can be changed. This section wins over old
 - **Audit log.** Table `AuditEntries` (TimeUtc, UserName, ClientAddress, Action, Target, Detail; retention 365 days or
   200,000 entries *(default)*). Logged: login ok/failed, logout, user changes, settings changes, credential list
   add/remove/reveal, PKI actions, DHCP/NTP save, task runs (plugin, device count), Delete all, device remove, device login
-  ("Log in": user name, device and success counts), VAPIX Commander send / rollout. Logs page gets an **Audit** tab (Admin only, virtualized, SearchBox).
+  ("Log in": user name, device and success counts), first password set ("Set password": counts), device added
+  automatically / device moved (user "system", DHCP server), VAPIX Commander send / rollout. Logs page gets an **Audit** tab (Admin only, virtualized, SearchBox).
 - **Implementation** (done 2026-10-08):
   - Server: `Oadm.Server.Auth` (`AuthInterceptor` on every call sets `Oadm.Core.Auth.CallerContext` for the call, so
     `TaskEngine.RunAsync` and core plugin task runs take the owner "user@machine" from it; `AccessPolicy` role table;

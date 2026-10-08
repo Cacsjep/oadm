@@ -5,6 +5,19 @@ All notable changes to OADM are listed here, newest first. The format follows
 New changes go under **Unreleased**; a release renames that section to its version and date, and the release
 workflow copies the section into the GitHub release.
 
+## [Unreleased]
+
+### Added
+
+- DHCP server: **Automatically add Axis devices that get an address**. When an Axis camera gets its address from
+  OADM's DHCP server, OADM adds it like the add page does: it checks that it is an Axis device and logs in with the
+  credential list. Cameras without a password yet are added as "Password not set", cameras no credential fits as
+  "Credentials required".
+- DHCP server: managed devices that get a new address are followed right away (their record moves after OADM checked
+  the device at the new address).
+- **Set password** in the device context menu for devices in factory default: sets the first password like the add
+  page, checked against the device's password policy.
+
 ## [1.1.0] - 2026-10-08
 
 ### Added

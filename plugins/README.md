@@ -210,7 +210,7 @@ an error of a whole table (e.g. "Not enough addresses") directly below that tabl
   `Icon.devices`, `Icon.tasks`, `Icon.settings`, `Icon.plugin`, `Icon.add`, `Icon.range`,
   `Icon.remove`, `Icon.refresh`, `Icon.restart`, `Icon.identify`, `Icon.columns`, `Icon.search`,
   `Icon.details`, `Icon.cancel`, `Icon.chevronDown`, `Icon.chevronUp`, `Icon.close`, `Icon.check`,
-  `Icon.server`, `Icon.externalLink`, `Icon.key`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
+  `Icon.server`, `Icon.externalLink`, `Icon.key`, `Icon.lock`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
   `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.network`, `Icon.firmware`, `Icon.users`,
   `Icon.user`, `Icon.logout`, `Icon.audit`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
   `Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`,
@@ -316,7 +316,15 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
   folder, created on first use, for downloads and built archives; clean up what you write, never use a shared temp
   folder for device data), `ctx.PluginDirectory` (the plugin folder, for data files such as the VAPIX Commander
   `Library/*.json`), `ctx.Secrets` (`ISecretProtector`, encrypt secrets you store in `Settings`; null =
-  do not store them), `ctx.EventStreams` (device event streams, see below), `ctx.Tasks.Cancel(taskId)`. A contributed task plugin that only the page starts
+  do not store them), `ctx.EventStreams` (device event streams, see below), `ctx.Tasks.Cancel(taskId)`,
+  `ctx.AutoAdd` (`IDeviceAutoAdd`, null when the host has none): `AddAsync(ipAddress, expectedSerial, source, ct)` adds an
+  Axis device the plugin saw on the network through the add page's pipeline (anonymous Axis check, factory default
+  check, login with the credential list; passwords never reach the plugin) and returns a `DeviceAutoAddOutcome`
+  (`Added`, `AddedCredentialsRequired`, `AddedPasswordNotSet`, `AlreadyManaged`, `NotAxis`, `SerialMismatch`,
+  `Unreachable` + a plain-language message); `FollowAsync(serial, ipAddress, source, ct)` moves a managed device's
+  record to an address the plugin saw it at, after the server verified it there (`Moved`, `Unchanged`, `NotManaged`,
+  `KeptHostName`, `NotVerified`). Call both off your hot path (a queue with a few workers, like the DHCP server's
+  `DhcpDeviceAutoAdd`); the server writes the audit entries. A contributed task plugin that only the page starts
   sets `ShowInMenus => false` and has no public constructor (the loader then never registers it alone).
   Never dispose clients from `Vapix.CreateAsync`: the factory caches them.
 - Video sources: `IVapixClient.GetVideoSourcesAsync()` returns the same sources the live view offers
