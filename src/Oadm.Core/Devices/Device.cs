@@ -86,8 +86,14 @@ public sealed class Device : IDeviceInfo
     /// <summary>Later goal.</summary>
     public string? ReplacementModel { get; set; }
 
-    /// <summary>Free-form tags, stored as a JSON array.</summary>
+    /// <summary>
+    /// Tag names, stored as a JSON array, distinct and sorted (<see cref="TagNames.Canonical"/>). Colors live in the
+    /// tag definitions (<see cref="DeviceTagStore"/>); written only by <see cref="DeviceTagStore"/>.
+    /// </summary>
     public List<string> Tags { get; set; } = [];
+
+    /// <inheritdoc />
+    IReadOnlyList<string> IDeviceInfo.Tags => Tags;
 
     /// <summary>Detached deep copy, safe to hand to other threads.</summary>
     public Device Clone()

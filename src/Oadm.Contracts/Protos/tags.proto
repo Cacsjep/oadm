@@ -1,0 +1,74 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+
+// Device tags: tag definitions (name + color) and tagging many devices in one call. Devices carry their tag names
+// in Device.tags; a name used on devices without a definition (older data) is listed with defined = false.
+// Names are 1..32 characters, trimmed, unique case-insensitive, without ";" and control characters.
+service TagService {
+  // Every definition (sorted by name) with its device count, then the undefined names used on devices.
+  rpc List (Empty) returns (TagList);
+  // The list on subscribe and again after every change of the definitions (create, rename, recolor, delete,
+  // definitions created by SetDeviceTags). Device counts are those at the time of the message.
+  rpc Watch (Empty) returns (stream TagList);
+  // ALREADY_EXISTS for a name in use, INVALID_ARGUMENT for a bad name, RESOURCE_EXHAUSTED over 500 definitions.
+  rpc Create (CreateTagRequest) returns (DeviceTag);
+  // Admin only. Rename and / or recolor; a rename rewrites every device's tag in one transaction. An undefined name
+  // (only on devices) gets a definition. NOT_FOUND unknown name, ALREADY_EXISTS new name in use.
+  rpc Update (UpdateTagRequest) returns (DeviceTag);
+  // Admin only. Deletes the definition and removes the tag from every device in one transaction. NOT_FOUND unknown name.
+  rpc Delete (TagName) returns (DeleteTagReply);
+  // One call and one transaction for the whole selection: adds and removes tag names on every device. A name in add
+  // without a definition gets one with a default color. Unknown device ids are ignored.
+  rpc SetDeviceTags (SetDeviceTagsRequest) returns (SetDeviceTagsReply);
+}
+
+// The fixed palette; the client maps each to the theme brush Oadm.Tag.<Name>Brush.
+enum TagColor {
+  TAG_COLOR_UNSPECIFIED = 0;   // undefined tag (grey); in UpdateTagRequest: keep the color
+  TAG_COLOR_BLUE = 1;
+  TAG_COLOR_GREEN = 2;
+  TAG_COLOR_TEAL = 3;
+  TAG_COLOR_AMBER = 4;
+  TAG_COLOR_ORANGE = 5;
+  TAG_COLOR_RED = 6;
+  TAG_COLOR_PINK = 7;
+  TAG_COLOR_VIOLET = 8;
+}
+
+message DeviceTag {
+  string id = 1;          // Guid of the definition; empty when not defined
+  string name = 2;
+  TagColor color = 3;     // UNSPECIFIED when not defined
+  int32 device_count = 4;
+  bool defined = 5;
+}
+
+message TagList { repeated DeviceTag tags = 1; }
+
+message CreateTagRequest {
+  string name = 1;
+  TagColor color = 2;     // UNSPECIFIED = the next palette color
+}
+
+message UpdateTagRequest {
+  string name = 1;        // current name (case-insensitive)
+  string new_name = 2;    // empty = keep
+  TagColor color = 3;     // UNSPECIFIED = keep
+}
+
+message TagName { string name = 1; }
+
+message DeleteTagReply { int32 devices_changed = 1; }
+
+message SetDeviceTagsRequest {
+  repeated string device_ids = 1;
+  repeated string add = 2;
+  repeated string remove = 3;
+}
+
+message SetDeviceTagsReply {
+  int32 devices_changed = 1;
+  repeated DeviceTag created = 2;   // definitions created for names in add
+}

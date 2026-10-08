@@ -93,7 +93,7 @@ public sealed class AuthTests
         {
             Proto.AuthService.Descriptor, Proto.UserService.Descriptor, Proto.AuditService.Descriptor, Proto.SettingsService.Descriptor,
             Proto.TaskService.Descriptor, Proto.DeviceService.Descriptor, Proto.PluginService.Descriptor, Proto.DiscoveryService.Descriptor,
-            Proto.AddDevicesService.Descriptor, Proto.FileService.Descriptor, Proto.LiveViewService.Descriptor,
+            Proto.AddDevicesService.Descriptor, Proto.FileService.Descriptor, Proto.LiveViewService.Descriptor, Proto.TagService.Descriptor,
         }.SelectMany(s => s.Methods.Select(m => $"/{s.FullName}/{m.Name}")).ToHashSet();
 
         Assert.All(AccessPolicy.ListedMethods, m => Assert.Contains(m, methods));
@@ -106,6 +106,12 @@ public sealed class AuthTests
         Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.DeviceService/LogIn"));
         Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.DeviceService/GetCredentialUserName"));
         Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.TaskService/Delete"));
+        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.TagService/List"));
+        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.TagService/Watch"));
+        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.TagService/Create"));
+        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.TagService/SetDeviceTags"));
+        Assert.Equal(Access.Admin, AccessPolicy.For("/oadm.v1.TagService/Update"));
+        Assert.Equal(Access.Admin, AccessPolicy.For("/oadm.v1.TagService/Delete"));
     }
 
     [Fact]

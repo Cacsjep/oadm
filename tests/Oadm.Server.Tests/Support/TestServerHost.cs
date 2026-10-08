@@ -45,6 +45,7 @@ internal sealed class TestServerHost : IAsyncDisposable
         Discovery = new Proto.DiscoveryService.DiscoveryServiceClient(Invoker);
         AddDevices = new Proto.AddDevicesService.AddDevicesServiceClient(Invoker);
         LiveView = new Proto.LiveViewService.LiveViewServiceClient(Invoker);
+        Tags = new Proto.TagService.TagServiceClient(Invoker);
         Auth = new Proto.AuthService.AuthServiceClient(Invoker);
         Users = new Proto.UserService.UserServiceClient(Invoker);
         Audit = new Proto.AuditService.AuditServiceClient(Invoker);
@@ -92,6 +93,8 @@ internal sealed class TestServerHost : IAsyncDisposable
     public Proto.AddDevicesService.AddDevicesServiceClient AddDevices { get; }
 
     public Proto.LiveViewService.LiveViewServiceClient LiveView { get; }
+
+    public Proto.TagService.TagServiceClient Tags { get; }
 
     public T Get<T>() where T : notnull => App.Services.GetRequiredService<T>();
 

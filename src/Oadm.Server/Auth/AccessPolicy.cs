@@ -34,6 +34,10 @@ public static class AccessPolicy
         // Like SetCredentials: operators log in to devices; saving to the credential list is checked in the call.
         ["/oadm.v1.DeviceService/LogIn"] = Access.Operator,
         ["/oadm.v1.DeviceService/GetCredentialUserName"] = Access.Operator,
+
+        // Tags: operators tag devices and create tags; renaming, recoloring and deleting a tag definition is Admin only.
+        ["/oadm.v1.TagService/Update"] = Access.Admin,
+        ["/oadm.v1.TagService/Delete"] = Access.Admin,
     };
 
     /// <summary>Services that are Admin only as a whole.</summary>

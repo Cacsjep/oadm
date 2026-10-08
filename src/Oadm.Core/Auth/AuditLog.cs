@@ -29,6 +29,11 @@ public static class AuditActions
     public const string DevicesRemoved = "Removed devices";
     public const string PluginCall = "Plugin action";
     public const string DeviceLogin = "Device login";
+    public const string TagCreated = "Created tag";
+    public const string TagRenamed = "Renamed tag";
+    public const string TagRecolored = "Changed tag color";
+    public const string TagDeleted = "Deleted tag";
+    public const string DevicesTagged = "Tagged devices";
 }
 
 /// <summary>
