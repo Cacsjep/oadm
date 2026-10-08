@@ -1,22 +1,12 @@
 name: package
 
 # Installers: MSI (Windows), .deb (Linux amd64/arm64), .pkg (macOS arm64/x64), built with "manage package".
-# Tags v* and manual runs upload the installers as workflow artifacts; pull requests that touch packaging,
-# hosting or the manage scripts only build them (no upload). The native x64/arm64 package of each runner is
-# installed, checked (service running, gRPC answering on 5080, data folder and master key) and removed again.
+# Runs only for release tags (v0.0.1, v1.2.0, ...) and uploads the installers as workflow artifacts.
+# The native x64/arm64 package of each runner is installed, checked (service running, gRPC answering on 5080,
+# data folder and master key) and removed again.
 on:
   push:
-    tags: ['v*']
-  workflow_dispatch:
-  pull_request:
-    paths:
-      - 'packaging/**'
-      - 'manage.ps1'
-      - 'manage.sh'
-      - 'scripts/**'
-      - 'src/Oadm.Server/Hosting/**'
-      - 'src/Oadm.Server/Oadm.Server.csproj'
-      - '.github/workflows/package.yml'
+    tags: ['v*.*.*']
 
 permissions:
   contents: read
@@ -157,7 +147,6 @@ jobs:
           echo "install, daemon, gRPC, uninstall: ok"
 
       - name: Upload
-        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v5
         with:
           name: oadm-${{ steps.version.outputs.version }}-${{ matrix.rid }}

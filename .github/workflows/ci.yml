@@ -1,9 +1,9 @@
 name: ci
 
+# Runs only for release tags (v0.0.1, v1.2.0, ...): build and unit tests on Windows, Linux and macOS.
 on:
   push:
-    branches: [main]
-  pull_request:
+    tags: ['v*.*.*']
 
 jobs:
   build:

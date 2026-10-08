@@ -24,8 +24,8 @@ must feel at home: same workflows, same information, but our own modern dark Flu
 Cross-platform is a day-one requirement: Windows, Linux, macOS. No Windows-only APIs
 (no DPAPI, no registry, no WMI). Paths via `Path.Combine`, data folder via
 `Environment.SpecialFolder.LocalApplicationData/Oadm` unless `--Oadm:DataDir=<folder>` or env
-`OADM_DATA_DIR` sets it (the installed services always do, see Packaging). Every PR must build on all three
-(CI matrix) and the server must run as a plain console process on all three.
+`OADM_DATA_DIR` sets it (the installed services always do, see Packaging). Every release must build on all three
+(CI matrix: `ci.yml` and `package.yml` run only for release tags `v*.*.*`, user decision 2026-10-08) and the server must run as a plain console process on all three.
 
 # Packaging
 
@@ -37,8 +37,8 @@ Server and client publish as one self-contained single-file exe per platform
 `--version` (default `0.1.0-dev`, a leading `v` is removed) goes to every assembly (`-p:Version`).
 
 Installers (`manage package <windows|linux|macos> [--rid] [--version]` into `artifacts/packages/`; layout
-table and notes in `packaging/README.md`; CI `.github/workflows/package.yml` on tags `v*`, manual runs and
-PRs touching packaging, which also installs, checks and removes the native package on each runner):
+table and notes in `packaging/README.md`; CI `.github/workflows/package.yml` only on release tags `v*.*.*`
+(e.g. `v0.0.1`), which also installs, checks and removes the native package on each runner):
 - **Windows MSI** (WiX Toolset 6 via the `WixToolset.Sdk` MSBuild SDK, `packaging/windows/`, not in
   Oadm.sln; WiX 7 not used, it requires the OSMF EULA), x64 and arm64, per machine: `Program Files\OADM\Server`
   and `\Client`, Windows service "OADM Server" (`OadmServer`, automatic, LocalSystem, restart on failure,
