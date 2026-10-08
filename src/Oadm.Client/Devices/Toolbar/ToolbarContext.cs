@@ -108,6 +108,12 @@ public sealed class ToolbarContext : IToolbarContext
         return _api.RemoveDevicesAsync(deviceIds.Select(id => id.ToString()).ToList(), ct);
     }
 
+    public Task RefreshDevicesAsync(IReadOnlyCollection<Guid> deviceIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        return deviceIds.Count == 0 ? Task.CompletedTask : _api.RefreshDevicesAsync(deviceIds.Select(id => id.ToString()).ToList(), ct);
+    }
+
     public Task ShowMessageAsync(string title, string message) => _dialogs.ShowMessageAsync(title, message);
 
     public Task<bool> ConfirmAsync(string title, string message, string confirmText) => _dialogs.ConfirmAsync(title, message, confirmText);

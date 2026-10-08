@@ -118,9 +118,9 @@ public sealed class DevicesViewModelTests
 
         // Plugins without a group land in "General"; a group is always a submenu, the host appends no "...".
         string[] headers = f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray();
-        Assert.Equal(["Open web interface", "Remove", "-", "General"], headers);
+        Assert.Equal(["Open web interface", "Refresh", "Remove", "-", "General"], headers);
         Assert.False(f.Devices.ContextMenuEntries[0].IsEnabled); // web UI needs exactly one device
-        Assert.Equal(["Change password", "Restart"], f.Devices.ContextMenuEntries[3].Items!.Select(e => e.Header).ToArray());
+        Assert.Equal(["Change password", "Restart"], f.Devices.ContextMenuEntries[4].Items!.Select(e => e.Header).ToArray());
     }
 
     [Fact]
@@ -148,9 +148,9 @@ public sealed class DevicesViewModelTests
         f.Select("1", "2");
 
         IReadOnlyList<MenuEntryViewModel> entries = f.Devices.ContextMenuEntries;
-        Assert.Equal(["Open web interface", "Remove", "-", "Applications", "Custom tools", "General", "Maintenance", "Network", "Users"],
+        Assert.Equal(["Open web interface", "Refresh", "Remove", "-", "Applications", "Custom tools", "General", "Maintenance", "Network", "Users"],
             entries.Select(e => e.Header).ToArray());
-        Assert.All(entries.Skip(3), g => Assert.NotNull(g.Items)); // one submenu per group, even with one entry
+        Assert.All(entries.Skip(4), g => Assert.NotNull(g.Items)); // one submenu per group, even with one entry
         Assert.Equal("network", entries.Single(e => e.Header == "Network").IconKey);
         Assert.Equal("plugin", entries.Single(e => e.Header == "Custom tools").IconKey);
 
@@ -178,7 +178,7 @@ public sealed class DevicesViewModelTests
 
         f.Select("4");
 
-        Assert.Equal(["Open web interface", "Remove"], f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray());
+        Assert.Equal(["Open web interface", "Refresh", "Remove"], f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray());
         Assert.True(f.Devices.ContextMenuEntries[0].IsEnabled);
     }
 

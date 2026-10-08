@@ -151,6 +151,10 @@ public sealed partial class DevicesViewModel : ObservableObject
         }
     }
 
+    /// <summary>Context menu "Refresh": the same flow as the Refresh toolbar plugin (one call for the selection).</summary>
+    [RelayCommand(CanExecute = nameof(HasSelection))]
+    private Task RefreshAsync() => RefreshToolbarPlugin.RefreshSelectionAsync(ToolbarContext);
+
     /// <summary>Host pages for <see cref="IToolbarContext.OpenAsync"/>.</summary>
     internal Task OpenHostPageAsync(string hostPage)
     {
@@ -375,6 +379,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(StatusLine));
         RemoveCommand.NotifyCanExecuteChanged();
+        RefreshCommand.NotifyCanExecuteChanged();
         RunPluginCommand.NotifyCanExecuteChanged();
         RebuildContextMenu();
     }
@@ -402,6 +407,7 @@ public sealed partial class DevicesViewModel : ObservableObject
             Command = OpenWebUiCommand,
             IsEnabled = count == 1,
         });
+        ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Refresh", IconKey = "refresh", Command = RefreshCommand });
         ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Remove", IconKey = "remove", Command = RemoveCommand });
 
         var runnable = TaskPluginCatalog.RunnableFor(_catalog.Plugins, SelectedIds()).ToList();

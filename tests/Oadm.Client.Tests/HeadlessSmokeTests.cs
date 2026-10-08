@@ -150,8 +150,8 @@ public sealed class HeadlessSmokeTests
             // The System report button comes from its plugin (artifacts/plugins/oadm.system-report after a full build).
             string[] toolbarTexts = toolbarPanel.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.ToolbarButton>().Select(b => b.Text ?? "").ToArray();
             string[] expectedToolbar = toolbarTexts.Contains("System report")
-                ? ["Scan", "Scan IP range", "Add manually", "Import devices", "Remove", "Export devices", "Restart", "System report", "AXIS OS - Release Notes"]
-                : ["Scan", "Scan IP range", "Add manually", "Import devices", "Remove", "Export devices", "Restart", "AXIS OS - Release Notes"];
+                ? ["Add", "Remove", "Refresh", "Export", "Restart", "System report", "AXIS OS - Release Notes"]
+                : ["Add", "Remove", "Refresh", "Export", "Restart", "AXIS OS - Release Notes"];
             Assert.Equal(expectedToolbar, toolbarTexts);
             Capture(window, outDir, "client-toolbar.png");
 

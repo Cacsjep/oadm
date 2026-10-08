@@ -247,6 +247,7 @@ public interface IToolbarContext           // UI thread only; events are raised 
     Task<IReadOnlyList<string>?> RunTaskAsync(string pluginId, CancellationToken ct); // dialog first when needed
     Task OpenAsync(string hostPage);                      // HostPages.AddScan / AddIpRange / AddManually / AddImport / ExportDevices / Devices / Logs / Settings
     Task RemoveDevicesAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
+    Task RefreshDevicesAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct); // full refresh now (server), read-only
     Task ShowMessageAsync(string title, string message);
     Task<bool> ConfirmAsync(string title, string message, string confirmText);
     Task<string?> QueryAsync(string pluginId, Guid deviceId, string method, string? payloadJson, CancellationToken ct);

@@ -130,6 +130,12 @@ public interface IToolbarContext
     /// <summary>Removes devices from OADM (the devices themselves are not changed). No confirmation.</summary>
     Task RemoveDevicesAsync(IReadOnlyCollection<Guid> deviceIds, CancellationToken ct);
 
+    /// <summary>
+    /// Reads devices again now (full refresh on the server: status, firmware, network settings, API list, certificate);
+    /// returns when the refresh is queued, the grid updates as the results arrive. Read-only for the devices.
+    /// </summary>
+    Task RefreshDevicesAsync(IReadOnlyCollection<Guid> deviceIds, CancellationToken ct) => throw new NotSupportedException();
+
     /// <summary>The host's message dialog.</summary>
     Task ShowMessageAsync(string title, string message);
 

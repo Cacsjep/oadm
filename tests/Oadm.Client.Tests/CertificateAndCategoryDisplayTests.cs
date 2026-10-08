@@ -36,6 +36,8 @@ public sealed class CertificateAndCategoryDisplayTests
     public void No_certificate_shows_empty_cells()
     {
         Assert.Equal("", CertificateDisplay.ExpiryText(null, Now));
+        Assert.Equal("Never", CertificateDisplay.ExpiryText(new DateTime(9999, 12, 31, 23, 59, 59, DateTimeKind.Utc), Now)); // Axis device ID
+        Assert.Equal(PillKind.Ok, CertificateDisplay.ExpiryKind(new DateTime(9999, 12, 31, 23, 59, 59, DateTimeKind.Utc), Now));
         Assert.Same(ChipInfo.Empty, CertificateDisplay.Expiry(null, Now));
         Assert.Same(ChipInfo.Empty, CertificateDisplay.Trust(CertificateTrust.Unknown, null, Now));
         Assert.Null(CertificateDisplay.Tooltip(null, null, null));

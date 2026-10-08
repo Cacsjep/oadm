@@ -405,8 +405,8 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
 User decision: maximum technician satisfaction. Adding devices is one page, no steps; the server
 logs in to every device it finds with the credentials the technician already has.
 
-Toolbar (toolbar plugins, see "Toolbar plugins"): **Scan** (primary), **Scan IP range**, **Add
-manually** and **Import devices** open the same dialog window (`Discovery/AddDevicesWindow`, shared dialog
+Toolbar (toolbar plugins, see "Toolbar plugins"): the **Add** menu entries Discovery (= Scan), Network range (= Scan IP
+range), Manual (= Add manually) and Import from file (= Import devices) open the same dialog window (`Discovery/AddDevicesWindow`, shared dialog
 controls: title bar, one card, footer) in four modes:
 - **Scan**: zero-conf (mDNS) discovery starts immediately; devices appear live. The scan ends after
   `Discovery.ZeroConfSeconds` (Settings page, default 30 s, 5..300).
@@ -561,15 +561,15 @@ density, styled as described in Visual Style.
 
 Layout, top to bottom:
 1. Title "Devices". Left navigation rail as described in Visual Style.
-2. Toolbar: toolbar plugins (Scan, Scan IP range, Add manually, Import devices | Remove, Export devices | task plugin
-   actions that declare `ShowInToolbar`, then the button System report (plugin) | plugin entries, last the button AXIS
-   OS - Release Notes), Columns icon button (tooltip "Choose columns") and search box right-aligned (host parts); one line
-   at the 1800 px minimum window width with the rail expanded (user decision 2026-10-08: System report and AXIS OS -
-   Release Notes are buttons with text; Import, Export and Columns stay icon buttons).
+2. Toolbar: toolbar plugins (**Add** menu | Remove, Refresh, Export | task plugin actions that declare `ShowInToolbar`,
+   then System report (plugin) | plugin entries, last AXIS OS - Release Notes), Columns icon button (tooltip "Choose
+   columns") and search box right-aligned (host parts); one line at the 1800 px minimum window width with the rail
+   expanded. User decisions 2026-10-08: one primary **Add** button with a menu Discovery (zero-conf scan), Network range,
+   Manual, Import from file instead of four buttons; every toolbar entry is a button with text (only Columns is an icon).
 3. Status line: "N devices, M selected".
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
    client, horizontal scroll, multi-select, right-click context menu: the core actions (Open web
-   interface, Remove), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
+   interface, Refresh, Remove), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
    by name, with a group icon: Applications app, Maintenance settings, Network network, Security key,
    Users users, Video video, others plugin; a group is a submenu even with one entry, user decision)
    holding its Task plugins whose `CanRun` is true for the whole selection, sorted by name, with their
@@ -661,7 +661,7 @@ Device grid columns, default order:
 | Firmware | Version |
 | DHCP | Network.BootProto == dhcp -> Yes/No |
 | HTTPS | HTTPS enabled -> Enabled/Disabled |
-| Certificate expires | CertNotAfterUtc as days left: "245 days", "1 day", "Today", "Expired 3 days ago". Chip: ok > 30 days, warn <= 30 days, error expired. Over HTTP read through VAPIX; empty when HTTPS is off or unreadable |
+| Certificate expires | CertNotAfterUtc as days left: "245 days", "1 day", "Today", "Expired 3 days ago", "Never" for NotAfter 9999-12-31 (RFC 5280, e.g. the Axis device ID certificate). Chip: ok > 30 days, warn <= 30 days, error expired. Over HTTP read through VAPIX; empty when HTTPS is off or unreadable |
 | Certificate | CertTrust: Trusted (ok), Self-signed (warn), Untrusted / Expired (error). Empty when HTTPS is off or unreadable. Both certificate cells have a tooltip with subject, issuer and valid-until date |
 | IEEE 802.1X | dot1x.Enabled -> Enabled/Disabled |
 
@@ -928,6 +928,7 @@ public interface IToolbarContext         // UI thread
     Task<IReadOnlyList<string>?> RunTaskAsync(string pluginId, CancellationToken ct); // like the context menu
     Task OpenAsync(string hostPage);     // HostPages.AddScan, AddIpRange, AddManually, Devices, Logs, Settings
     Task RemoveDevicesAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
+    Task RefreshDevicesAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct); // DIM: full refresh now (DeviceService.Refresh)
     Task ShowMessageAsync(string title, string message);
     Task<bool> ConfirmAsync(string title, string message, string confirmText);
     Task<string?> QueryAsync(string pluginId, Guid deviceId, string method, string? payloadJson, CancellationToken ct);
@@ -941,10 +942,13 @@ public interface IToolbarContext         // UI thread
 ### Toolbar plugins
 
 The Devices page toolbar is made of toolbar plugins. Built in (compiled into the client,
-`Devices/Toolbar/BuiltInToolbarPlugins.cs`, registered in the container like plugin parts): Scan
-(primary), Scan IP range, Add manually, **Import devices** (group Add, order 30, icon-only, icon `download`,
-`HostPages.AddImport`: see "Add Devices Page"), Remove (Manage; confirmation, the context menu
-uses the same flow), **Export devices** (Manage, order 10, icon-only, icon `export`, `HostPages.ExportDevices`,
+`Devices/Toolbar/BuiltInToolbarPlugins.cs`, registered in the container like plugin parts): **Add** (`oadm.toolbar.add`,
+group Add, primary, icon `add`, a `MenuFlyout` with Discovery (`HostPages.AddScan`, icon `search`), Network range
+(`AddIpRange`, `range`), Manual (`AddManually`, `add`) and Import from file (`AddImport`, `download`: see "Add Devices
+Page")), Remove (Manage; confirmation, the context menu
+uses the same flow), **Refresh** (Manage, order 5, icon `refresh`, enabled with a selection; `IToolbarContext.RefreshDevicesAsync`
+= one `DeviceService.Refresh` for the whole selection: the server queues a full refresh per device; the context menu entry
+"Refresh" uses the same flow), **Export** (Manage, order 10, icon `export`, `HostPages.ExportDevices`,
 user decision 2026-10-08: the selected devices, or every device the search shows when none is selected, the
 tooltip says which; `Devices/DeviceListCsv`: header + every grid column as text (MAC address, Status, Address,
 Host name, Model, Firmware, Category, Product type, DHCP, HTTPS, Certificate expires as ISO date yyyy-MM-dd,

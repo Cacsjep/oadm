@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 
 using Oadm.Sdk.Client;
@@ -7,77 +8,81 @@ using Oadm.Sdk.Devices;
 
 namespace Oadm.Client.Devices.Toolbar;
 
-/// <summary>"Scan": opens the add page and starts zero-configuration (mDNS) discovery right away. The primary button.</summary>
-public sealed class ScanToolbarPlugin : IToolbarPlugin
+/// <summary>
+/// "Add" (the primary button): a menu with the ways to add devices, each opening the add page in its mode: Discovery
+/// (zero-configuration scan), Network range (IPv4 range scan), Manual (an address) and Import from file (CSV).
+/// </summary>
+public sealed class AddToolbarPlugin : IToolbarPlugin
 {
-    public string Id => "oadm.toolbar.scan";
+    /// <summary>The menu entries: header, icon key, host page and tooltip.</summary>
+    public static IReadOnlyList<(string Header, string IconKey, string HostPage, string Tooltip)> Entries { get; } =
+    [
+        ("Discovery", "search", HostPages.AddScan, "Find devices on the network with zero-configuration (Bonjour) and log in with your known credentials"),
+        ("Network range", "range", HostPages.AddIpRange, "Scan an IPv4 address range"),
+        ("Manual", "add", HostPages.AddManually, "Add a device by IP address or host name"),
+        ("Import from file", "download", HostPages.AddImport, "Add the addresses of a CSV file (an export, or one address per line; optional User name and Password columns)"),
+    ];
+
+    public string Id => "oadm.toolbar.add";
     public int Order => 0;
     public ToolbarGroup Group => ToolbarGroup.Add;
 
     public Control CreateControl(IToolbarContext ctx)
     {
         ArgumentNullException.ThrowIfNull(ctx);
-        var button = new ToolbarButton { Text = "Scan", IconKey = "search", IsPrimary = true };
-        ToolTip.SetTip(button, "Find devices on the network with zero-configuration (Bonjour) and log in with your known credentials");
-        button.Click += async (_, _) => await ctx.OpenAsync(HostPages.AddScan).ConfigureAwait(true);
+        var menu = new MenuFlyout { Placement = PlacementMode.BottomEdgeAlignedLeft };
+        foreach (var (header, iconKey, hostPage, tooltip) in Entries)
+        {
+            var item = new MenuItem { Header = header, Icon = new OadmIcon { Data = ToolbarButton.ResolveIcon(iconKey) } };
+            ToolTip.SetTip(item, tooltip);
+            item.Click += async (_, _) => await ctx.OpenAsync(hostPage).ConfigureAwait(true);
+            menu.Items.Add(item);
+        }
+
+        var button = new ToolbarButton { Text = "Add", IconKey = "add", IsPrimary = true, Name = "AddButton", Flyout = menu };
+        ToolTip.SetTip(button, "Add devices: discovery, network range, manual or from a file");
         return button;
     }
 }
 
-/// <summary>"Scan IP range": the add page with the range input.</summary>
-public sealed class ScanRangeToolbarPlugin : IToolbarPlugin
+/// <summary>"Refresh": reads the selected devices again now (one call for the whole selection). Disabled without a selection.</summary>
+public sealed class RefreshToolbarPlugin : IToolbarPlugin
 {
-    public string Id => "oadm.toolbar.range";
-    public int Order => 10;
-    public ToolbarGroup Group => ToolbarGroup.Add;
+    public const string Tooltip = "Read the selected devices again now: status, firmware, network settings and certificate";
+
+    public string Id => "oadm.toolbar.refresh";
+    public int Order => 5;
+    public ToolbarGroup Group => ToolbarGroup.Manage;
 
     public Control CreateControl(IToolbarContext ctx)
     {
         ArgumentNullException.ThrowIfNull(ctx);
-        var button = new ToolbarButton { Text = "Scan IP range", IconKey = "range" };
-        ToolTip.SetTip(button, "Scan an IPv4 address range");
-        button.Click += async (_, _) => await ctx.OpenAsync(HostPages.AddIpRange).ConfigureAwait(true);
+        var button = new ToolbarButton { Text = "Refresh", IconKey = "refresh", IsEnabled = ctx.SelectedDevices.Count > 0 };
+        ToolTip.SetTip(button, Tooltip);
+        ToolTip.SetShowOnDisabled(button, true);
+        ctx.SelectionChanged += (_, _) => button.IsEnabled = ctx.SelectedDevices.Count > 0;
+        button.Click += async (_, _) => await RefreshSelectionAsync(ctx).ConfigureAwait(true);
         return button;
     }
-}
 
-/// <summary>"Add manually": the add page with the address input.</summary>
-public sealed class AddManuallyToolbarPlugin : IToolbarPlugin
-{
-    public string Id => "oadm.toolbar.manual";
-    public int Order => 20;
-    public ToolbarGroup Group => ToolbarGroup.Add;
-
-    public Control CreateControl(IToolbarContext ctx)
+    /// <summary>The refresh flow shared by the toolbar button and the context menu.</summary>
+    public static async Task RefreshSelectionAsync(IToolbarContext ctx)
     {
         ArgumentNullException.ThrowIfNull(ctx);
-        var button = new ToolbarButton { Text = "Add manually", IconKey = "add" };
-        ToolTip.SetTip(button, "Add a device by IP address or host name");
-        button.Click += async (_, _) => await ctx.OpenAsync(HostPages.AddManually).ConfigureAwait(true);
-        return button;
-    }
-}
+        var ids = ctx.SelectedDevices.Select(d => d.Id).ToList();
+        if (ids.Count == 0)
+        {
+            return;
+        }
 
-/// <summary>
-/// "Import devices" (icon button after Add manually): a CSV file of addresses, optionally with user name
-/// and password per device, opens the add page with every address (<see cref="HostPages.AddImport"/>).
-/// </summary>
-public sealed class ImportToolbarPlugin : IToolbarPlugin
-{
-    public const string Text = "Import devices";
-
-    public string Id => "oadm.toolbar.import";
-    public int Order => 30;
-    public ToolbarGroup Group => ToolbarGroup.Add;
-
-    public Control CreateControl(IToolbarContext ctx)
-    {
-        ArgumentNullException.ThrowIfNull(ctx);
-        // Icon only: the toolbar must fit the 1280 px minimum window with the rail expanded.
-        var button = new ToolbarButton { Text = Text, IconKey = "download", IsIconOnly = true, Name = "ImportButton" };
-        ToolTip.SetTip(button, "Import devices: add the addresses of a CSV file (an export, or one address per line; optional User name and Password columns)");
-        button.Click += async (_, _) => await ctx.OpenAsync(HostPages.AddImport).ConfigureAwait(true);
-        return button;
+        try
+        {
+            await ctx.RefreshDevicesAsync(ids, CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            await ctx.ShowMessageAsync("Refresh", "The devices could not be refreshed: " + ex.Message).ConfigureAwait(true);
+        }
     }
 }
 
@@ -135,7 +140,7 @@ public sealed class RemoveToolbarPlugin : IToolbarPlugin
 /// </summary>
 public sealed class ExportToolbarPlugin : IToolbarPlugin
 {
-    public const string Text = "Export devices";
+    public const string Text = "Export";
 
     public string Id => "oadm.toolbar.export";
     public int Order => 10;
@@ -144,8 +149,7 @@ public sealed class ExportToolbarPlugin : IToolbarPlugin
     public Control CreateControl(IToolbarContext ctx)
     {
         ArgumentNullException.ThrowIfNull(ctx);
-        // Icon only: the toolbar must fit the 1280 px minimum window with the rail expanded.
-        var button = new ToolbarButton { Text = Text, IconKey = "export", IsIconOnly = true, Name = "ExportButton" };
+        var button = new ToolbarButton { Text = Text, IconKey = "export", Name = "ExportButton" };
         ToolTip.SetTip(button, Tooltip(ctx.SelectedDevices.Count));
         ctx.SelectionChanged += (_, _) => ToolTip.SetTip(button, Tooltip(ctx.SelectedDevices.Count));
         button.Click += async (_, _) => await ctx.OpenAsync(HostPages.ExportDevices).ConfigureAwait(true);
@@ -239,11 +243,9 @@ public static class BuiltInToolbarPlugins
 {
     public static IReadOnlyList<IToolbarPlugin> All { get; } =
     [
-        new ScanToolbarPlugin(),
-        new ScanRangeToolbarPlugin(),
-        new AddManuallyToolbarPlugin(),
-        new ImportToolbarPlugin(),
+        new AddToolbarPlugin(),
         new RemoveToolbarPlugin(),
+        new RefreshToolbarPlugin(),
         new ExportToolbarPlugin(),
         new TaskActionsToolbarPlugin(),
         new ReleaseNotesToolbarPlugin(),

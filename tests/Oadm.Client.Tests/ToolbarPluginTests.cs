@@ -25,12 +25,12 @@ public sealed class ToolbarPluginTests
     public void Plugins_are_ordered_by_group_order_and_id_and_built_in_ids_win()
     {
         IClientPluginRegistry registry = Substitute.For<IClientPluginRegistry>();
-        registry.ToolbarPlugins.Returns([new FakeToolbarPlugin("z.plugin", 0, ToolbarGroup.Plugins), new FakeToolbarPlugin("oadm.toolbar.scan", -5, ToolbarGroup.Plugins), new FakeToolbarPlugin("a.first", -1, ToolbarGroup.Add)]);
+        registry.ToolbarPlugins.Returns([new FakeToolbarPlugin("z.plugin", 0, ToolbarGroup.Plugins), new FakeToolbarPlugin("oadm.toolbar.add", -5, ToolbarGroup.Plugins), new FakeToolbarPlugin("a.first", -1, ToolbarGroup.Add)]);
 
         var toolbar = new DeviceToolbar(BuiltInToolbarPlugins.All, registry, NullLogger<DeviceToolbar>.Instance);
 
         Assert.Equal(
-            ["a.first", "oadm.toolbar.scan", "oadm.toolbar.range", "oadm.toolbar.manual", "oadm.toolbar.import", "oadm.toolbar.remove", "oadm.toolbar.export", "oadm.toolbar.tasks", "z.plugin", "oadm.toolbar.release-notes"],
+            ["a.first", "oadm.toolbar.add", "oadm.toolbar.remove", "oadm.toolbar.refresh", "oadm.toolbar.export", "oadm.toolbar.tasks", "z.plugin", "oadm.toolbar.release-notes"],
             toolbar.Plugins.Select(p => p.Id).ToArray());
     }
 
@@ -62,14 +62,16 @@ public sealed class ToolbarPluginTests
 
             // Scan Scan-IP-range Add-manually | Remove | (tasks: none yet, separator hidden) | Sample, AXIS OS - Release Notes
             ToolbarButton[] buttons = panel.Children.OfType<ToolbarButton>().ToArray();
-            Assert.Equal(["Scan", "Scan IP range", "Add manually", "Remove", "Sample (0)", "AXIS OS - Release Notes"], buttons.Select(b => b.Text ?? "").ToArray());
+            Assert.Equal(["Add", "Remove", "Refresh", "Export", "Sample (0)", "AXIS OS - Release Notes"], buttons.Select(b => b.Text ?? "").ToArray());
             Assert.Contains("primary", buttons[0].Classes);
             Assert.Contains("toolbar", buttons[1].Classes);
             Assert.NotNull(buttons[0].Label.Icon);
+            var addMenu = Assert.IsType<MenuFlyout>(buttons[0].Flyout); // Add: one menu with the four ways to add devices
+            Assert.Equal(["Discovery", "Network range", "Manual", "Import from file"], addMenu.Items.OfType<MenuItem>().Select(i => i.Header as string ?? string.Empty).ToArray());
             ToolbarSeparator[] separators = panel.Children.OfType<ToolbarSeparator>().ToArray();
             Assert.Equal(3, separators.Length);
             Assert.Equal([true, false, true], separators.Select(s => s.IsVisible).ToArray());
-            Assert.False(buttons[3].IsEnabled);
+            Assert.False(buttons[1].IsEnabled); // Remove needs a selection
 
             await f.SetPluginsAsync(
                 TestSupport.Plugin("oadm.restart", "Restart", toolbar: true, dialog: false, "1"),
@@ -81,7 +83,7 @@ public sealed class ToolbarPluginTests
 
             f.Select("1");
             Assert.True(restart.IsEnabled);
-            Assert.True(buttons[3].IsEnabled);
+            Assert.True(buttons[1].IsEnabled);
             Assert.Equal("Sample (1)", buttons[4].Text);
             f.Select("1", "2");
             Assert.False(restart.IsEnabled); // Restart cannot run on device 2

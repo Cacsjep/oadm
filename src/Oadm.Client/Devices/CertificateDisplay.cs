@@ -23,13 +23,19 @@ public static class CertificateDisplay
 
     /// <summary>
     /// "245 days", "1 day", "Today" (less than a day left), "Expired today", "Expired 1 day ago",
-    /// "Expired 3 days ago"; empty when there is no certificate (HTTP only or not checked).
+    /// "Expired 3 days ago", "Never" (RFC 5280 "no well-defined expiration", 9999-12-31, e.g. the Axis device ID
+    /// certificate); empty when there is no certificate (HTTP only or not checked).
     /// </summary>
     public static string ExpiryText(DateTime? notAfterUtc, DateTime nowUtc)
     {
         if (notAfterUtc is not { } notAfter)
         {
             return string.Empty;
+        }
+
+        if (NeverExpires(notAfter))
+        {
+            return "Never";
         }
 
         TimeSpan left = notAfter - nowUtc;
@@ -52,6 +58,9 @@ public static class CertificateDisplay
             _ => string.Create(CultureInfo.InvariantCulture, $"{days} days"),
         };
     }
+
+    /// <summary>RFC 5280 4.1.2.5: NotAfter 99991231235959Z means the certificate has no well-defined expiration date.</summary>
+    public static bool NeverExpires(DateTime notAfterUtc) => notAfterUtc.Year >= 9999;
 
     /// <summary>Ok when more than <see cref="WarningDays"/> days are left, warning up to that, error when expired.</summary>
     public static PillKind ExpiryKind(DateTime? notAfterUtc, DateTime nowUtc)
