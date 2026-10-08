@@ -34,6 +34,9 @@ public sealed class ClientSettings
 
     public bool BottomPaneExpanded { get; set; } = true;
 
+    /// <summary>Device grid group mode: a group per tag.</summary>
+    public bool GroupDevicesByTag { get; set; }
+
     /// <summary>Height of the tasks pane set with the splitter, in pixels. 0 = default.</summary>
     public double TasksPaneHeight { get; set; }
 

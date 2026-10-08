@@ -71,7 +71,7 @@ public sealed class DeviceLoginTests
         Assert.DoesNotContain("Log in", f.Devices.ContextMenuEntries.Select(e => e.Header));
 
         f.Select("2", "3");
-        Assert.Equal(["Open web interface", "Refresh", "Log in", "Remove"], f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray());
+        Assert.Equal(["Open web interface", "Refresh", "Log in", "Tags", "Remove"], f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray());
         MenuEntryViewModel login = f.Devices.ContextMenuEntries[2];
         Assert.Equal("key", login.IconKey);
         Assert.Same(f.Devices.LogInCommand, login.Command);

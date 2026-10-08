@@ -62,6 +62,7 @@ public static class ServiceRegistration
         services.AddSingleton<Func<LoginViewModel>>(sp => () => sp.GetRequiredService<LoginViewModel>());
         services.AddSingleton<AppShell>();
 
+        services.AddSingleton<Tags.TagStore>();
         services.AddSingleton<DeviceStore>();
         services.AddSingleton<TaskStore>();
         services.AddSingleton<ServerConnection>();

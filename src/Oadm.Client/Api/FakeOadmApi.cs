@@ -65,6 +65,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         if (seedSampleData)
         {
             Seed();
+            SeedTags();
             AddCredentialLocked("root", "Fake-root-pass1");
             AddCredentialLocked("operator", "Fake-operator-pass1");
         }

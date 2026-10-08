@@ -1,16 +1,19 @@
 using System.ComponentModel;
 
+using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 
 using Oadm.Client.LiveView;
+using Oadm.Client.Tags;
 
 namespace Oadm.Client.Devices;
 
 public partial class DevicesView : UserControl
 {
     private LiveViewViewModel? _liveView;
+    private DevicesViewModel? _viewModel;
 
     // Device card : live view split while the panel is open (about 60 : 40), kept when the user drags the splitter.
     private GridLength _deviceColumn = new(3, GridUnitType.Star);
@@ -32,14 +35,72 @@ public partial class DevicesView : UserControl
             _liveView = null;
         }
 
+        if (_viewModel is not null)
+        {
+            _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            _viewModel.TagGrouping.GroupsChanged -= OnGroupsChanged;
+            _viewModel = null;
+        }
+
         if (DataContext is DevicesViewModel vm)
         {
+            _viewModel = vm;
+            vm.PropertyChanged += OnViewModelPropertyChanged;
+            vm.TagGrouping.GroupsChanged += OnGroupsChanged;
+            ApplyItemsSource();
             vm.Toolbar.AttachTo(ToolbarPanel, vm.ToolbarContext);
             DeviceGridLayoutBinder.Attach(DeviceGrid, vm.Columns);
             _liveView = vm.LiveView;
             _liveView.PropertyChanged += OnLiveViewPropertyChanged;
             ApplyLiveViewColumns();
         }
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(DevicesViewModel.GroupByTag))
+        {
+            ApplyItemsSource();
+        }
+    }
+
+    /// <summary>Other groups (a tag appeared, was renamed or has no devices left): new group keys in tag name order.</summary>
+    private void OnGroupsChanged(object? sender, EventArgs e)
+    {
+        if (_viewModel?.GroupByTag == true)
+        {
+            ApplyItemsSource();
+        }
+    }
+
+    /// <summary>
+    /// Normal: the device rows. Group mode: the (device x tag) rows in a collection view grouped by tag, with the groups
+    /// as explicit keys so they keep the tag name order ("No tag" last) whatever column the user sorts by.
+    /// </summary>
+    private void ApplyItemsSource()
+    {
+        if (_viewModel is not { } vm)
+        {
+            return;
+        }
+
+        if (!vm.GroupByTag)
+        {
+            DeviceGrid.Classes.Remove("tagGroups");
+            DeviceGrid.ItemsSource = vm.FilteredDevices;
+            return;
+        }
+
+        var view = new DataGridCollectionView(vm.TagGrouping.Rows);
+        var byTag = new DataGridPathGroupDescription(nameof(DeviceTagRow.Group));
+        foreach (TagGroupKey key in vm.TagGrouping.Groups)
+        {
+            byTag.GroupKeys.Add(key);
+        }
+
+        view.GroupDescriptions.Add(byTag);
+        DeviceGrid.Classes.Add("tagGroups");
+        DeviceGrid.ItemsSource = view;
     }
 
     private void OnLiveViewPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -92,7 +153,7 @@ public partial class DevicesView : UserControl
     private void OnCellPointerPressed(object? sender, DataGridCellPointerPressedEventArgs e)
     {
         if (e.PointerPressedEventArgs.GetCurrentPoint(DeviceGrid).Properties.IsRightButtonPressed
-            && e.Row.DataContext is DeviceRowViewModel row
+            && e.Row.DataContext is IDeviceGridItem row
             && !DeviceGrid.SelectedItems.Contains(row))
         {
             DeviceGrid.SelectedItem = row;

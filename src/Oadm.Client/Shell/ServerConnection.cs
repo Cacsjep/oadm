@@ -65,6 +65,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
         CancellationToken ct = _cts.Token;
         _ = Task.Run(() => DeviceLoopAsync(ct), ct);
         _ = Task.Run(() => TaskLoopAsync(ct), ct);
+        _ = Task.Run(() => TagLoopAsync(ct), ct);
     }
 
     /// <summary>Re-points the API and restarts both streams.</summary>
@@ -180,6 +181,46 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
                     {
                         snapshot.Add(change.Task);
                     }
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception)
+            {
+                // the device loop reports the connection state; just retry
+            }
+
+            try
+            {
+                await Task.Delay(delay, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            delay = TimeSpan.FromTicks(Math.Min(MaxDelay.Ticks, delay.Ticks * 2));
+        }
+    }
+
+    /// <summary>
+    /// The tag definitions (TagService.Watch): every message is the whole list (small), applied on the UI thread; the
+    /// newest wins when several arrive at once. A server without tags (older version) is retried like the other streams.
+    /// </summary>
+    private async Task TagLoopAsync(CancellationToken ct)
+    {
+        TimeSpan delay = MinDelay;
+        var batcher = new ChangeBatcher<TagList>(_ui, lists => _devices.Tags.Reset(lists[^1].Tags));
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await foreach (TagList list in _api.WatchTagsAsync(ct).ConfigureAwait(false))
+                {
+                    batcher.Add(list);
+                    delay = MinDelay;
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)

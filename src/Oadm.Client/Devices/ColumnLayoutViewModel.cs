@@ -32,6 +32,7 @@ public sealed class ColumnLayoutViewModel
         ("mac", "MAC address"),
         ("status", "Status"),
         ("address", "Address"),
+        ("tags", "Tags"),
         ("model", "Model"),
         ("firmware", "Firmware"),
         ("dhcp", "DHCP"),
@@ -67,6 +68,20 @@ public sealed class ColumnLayoutViewModel
         }
 
         NormalizeOrder();
+    }
+
+    /// <summary>Group mode of the device grid (a group per tag), persisted with the layout.</summary>
+    public bool GroupByTag
+    {
+        get => _settings.Current.GroupDevicesByTag;
+        set
+        {
+            if (_settings.Current.GroupDevicesByTag != value)
+            {
+                _settings.Current.GroupDevicesByTag = value;
+                _settings.Save();
+            }
+        }
     }
 
     /// <summary>All columns in spec order; <see cref="ColumnOptionViewModel.DisplayIndex"/> holds the user order.</summary>

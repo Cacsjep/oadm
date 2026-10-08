@@ -28,12 +28,13 @@ public sealed class DeviceListCsvTests
         device.ProductType = "Dome Camera";
         device.CertNotAfter = Timestamp.FromDateTime(new DateTime(2027, 3, 4, 10, 0, 0, DateTimeKind.Utc));
         device.CertTrust = CertificateTrust.SelfSigned;
+        device.Tags.AddRange(["Building A", "PTZ"]);
 
         string csv = DeviceListCsv.Write([Row(device)]);
 
         string[] lines = csv.Split("\r\n");
-        Assert.Equal("MAC address,Status,Address,Host name,Model,Firmware,Category,Product type,DHCP,HTTPS,Certificate expires,Certificate,IEEE 802.1X", lines[0]);
-        Assert.Equal("ACCC8E5F6071,OK,10.0.0.48,cam-entrance,AXIS P3265-V,12.11.77,Camera,Dome Camera,Yes,Enabled,2027-03-04,Self-signed,Disabled", lines[1]);
+        Assert.Equal("MAC address,Status,Address,Tags,Host name,Model,Firmware,Category,Product type,DHCP,HTTPS,Certificate expires,Certificate,IEEE 802.1X", lines[0]);
+        Assert.Equal("ACCC8E5F6071,OK,10.0.0.48,Building A; PTZ,cam-entrance,AXIS P3265-V,12.11.77,Camera,Dome Camera,Yes,Enabled,2027-03-04,Self-signed,Disabled", lines[1]);
         Assert.Equal("", lines[2]); // CRLF after the last record
     }
 
@@ -62,7 +63,7 @@ public sealed class DeviceListCsvTests
         CsvRecord[] records = Csv.Read(text).ToArray();
         Assert.Equal(2, records.Length);
         Assert.Equal("MAC address", records[0].Cells[0]); // the BOM is not part of the first header
-        Assert.Equal("AXIS Q1656-BLE \"Größe\", =x", records[1].Cells[4]);
+        Assert.Equal("AXIS Q1656-BLE \"Größe\", =x", records[1].Cells[5]);
         Assert.DoesNotContain("assword", text, StringComparison.OrdinalIgnoreCase); // the client has no passwords to write
     }
 

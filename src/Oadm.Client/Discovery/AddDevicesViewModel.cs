@@ -552,6 +552,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
         ErrorText = null;
         int added = 0;
+        var importedTags = new List<(string DeviceId, IReadOnlyList<string> Tags)>();
         try
         {
             IsBusy = true;
@@ -571,7 +572,13 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                 foreach (CommitResult result in reply.Results.Where(r => r.DeviceId.Length > 0))
                 {
                     AddedDeviceIds.Add(result.DeviceId);
-                    _rowsById.GetValueOrDefault(result.DiscoveredId)?.MarkAdded();
+                    DiscoveredRowViewModel? row = _rowsById.GetValueOrDefault(result.DiscoveredId);
+                    row?.MarkAdded();
+                    if (row?.ImportLine is { Tags.Count: > 0 } line)
+                    {
+                        importedTags.Add((result.DeviceId, line.Tags));
+                    }
+
                     added++;
                 }
 
@@ -589,6 +596,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             }
 
             LogAdded(_logger, added);
+            await ApplyImportedTagsAsync(importedTags).ConfigureAwait(true);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -606,6 +614,26 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     }
 
     private bool CanAdd() => SelectedCount > 0 && !IsBusy;
+
+    /// <summary>
+    /// Import: the "Tags" column of the file for the devices that were added. One SetDeviceTags call per distinct tag set
+    /// (a file usually has a few); tags without a definition are created by the server with a default color. A failure
+    /// is logged: the devices are added, the user can tag them in the Tags dialog.
+    /// </summary>
+    private async Task ApplyImportedTagsAsync(List<(string DeviceId, IReadOnlyList<string> Tags)> imported)
+    {
+        foreach (var set in imported.GroupBy(i => string.Join('\n', i.Tags.Order(StringComparer.OrdinalIgnoreCase)), StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                await _api.SetDeviceTagsAsync(set.Select(i => i.DeviceId).ToList(), set.First().Tags, [], _cts.Token).ConfigureAwait(true);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                LogTagsFailed(_logger, set.Count(), Message(ex));
+            }
+        }
+    }
 
     [RelayCommand]
     private void Close() => CloseRequested?.Invoke(this, AddedDeviceIds.Count > 0);
@@ -1175,6 +1203,9 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Add devices page added {Count} device(s)")]
     private static partial void LogAdded(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Tagging {Count} imported device(s) failed: {Reason}")]
+    private static partial void LogTagsFailed(ILogger logger, int count, string reason);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Stopping discovery failed: {Reason}")]
     private static partial void LogStopFailed(ILogger logger, string reason);

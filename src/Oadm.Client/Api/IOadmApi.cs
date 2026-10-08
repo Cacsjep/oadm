@@ -55,6 +55,24 @@ public interface IOadmApi
     /// <summary>The user name stored for all these devices when they share one; empty otherwise.</summary>
     Task<string> GetCredentialUserNameAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct);
 
+    // TagService
+    /// <summary>Every tag definition with its device count, then the undefined names used on devices.</summary>
+    Task<IReadOnlyList<DeviceTag>> ListTagsAsync(CancellationToken ct);
+
+    /// <summary>The tag list now and after every change of the definitions.</summary>
+    IAsyncEnumerable<TagList> WatchTagsAsync(CancellationToken ct);
+
+    Task<DeviceTag> CreateTagAsync(string name, TagColor color, CancellationToken ct);
+
+    /// <summary>Administrators: rename (<paramref name="newName"/>, null keeps) and / or recolor (Unspecified keeps).</summary>
+    Task<DeviceTag> UpdateTagAsync(string name, string? newName, TagColor color, CancellationToken ct);
+
+    /// <summary>Administrators: deletes the tag and removes it from every device; returns the devices changed.</summary>
+    Task<int> DeleteTagAsync(string name, CancellationToken ct);
+
+    /// <summary>Adds and removes tags on many devices: one call, one server transaction.</summary>
+    Task<SetDeviceTagsReply> SetDeviceTagsAsync(IReadOnlyCollection<string> deviceIds, IReadOnlyCollection<string> add, IReadOnlyCollection<string> remove, CancellationToken ct);
+
     // DiscoveryService
     Task<string> StartZeroConfAsync(CancellationToken ct);
     Task<string> StartRangeScanAsync(string firstAddress, string lastAddress, CancellationToken ct);
