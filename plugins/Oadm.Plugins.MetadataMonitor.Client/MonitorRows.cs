@@ -19,7 +19,8 @@ public sealed class MessageRow(MetadataMessage message)
 
     public string Topic => Message.Topic;
 
-    public string CaptureTime { get; } = Format(message.CaptureUtc);
+    /// <summary>Time only (the date is in Timestamp): "09:30:01.000".</summary>
+    public string CaptureTime { get; } = message.CaptureUtc.UtcDateTime.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
 
     public string Operation => Message.Operation ?? string.Empty;
 

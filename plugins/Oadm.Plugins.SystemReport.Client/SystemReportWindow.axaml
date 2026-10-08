@@ -25,7 +25,7 @@
           <ui:StatusChip Text="{Binding ErrorMessage}" IsError="True" IsVisible="{Binding HasError}" />
         </StackPanel>
 
-        <DataGrid Grid.Row="3" x:Name="DeviceGrid" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single"
+        <DataGrid Grid.Row="3" x:Name="DeviceGrid" Classes="wrapRows" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single"
                   CanUserReorderColumns="False" HeadersVisibility="Column">
           <DataGrid.Columns>
             <DataGridTextColumn Header="Address" Binding="{Binding Address}" Width="140" x:DataType="vm:DeviceReportRow" />

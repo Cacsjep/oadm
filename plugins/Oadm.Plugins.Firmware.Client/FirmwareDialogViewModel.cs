@@ -252,7 +252,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         catch (Exception)
 #pragma warning restore CA1031
         {
-            row.FirmwareState = "Status not available";
+            row.FirmwareState = "-"; // unknown: the Rollback column stays quiet
         }
         finally
         {

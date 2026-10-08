@@ -69,6 +69,30 @@ public sealed partial class AddressAssignmentViewModel : ObservableObject
 
     public bool HasConflicts => Rows.Any(r => r.HasConflict);
 
+    /// <summary>"4 ready, 1 conflict" next to Check addresses (O(n) per change).</summary>
+    public string Summary
+    {
+        get
+        {
+            int ready = 0, conflicts = 0;
+            foreach (var row in Rows)
+            {
+                if (row.HasConflict)
+                {
+                    conflicts++;
+                }
+                else if (row.IsReady)
+                {
+                    ready++;
+                }
+            }
+
+            return conflicts == 0
+                ? $"{ready} ready"
+                : $"{ready} ready, {Plural(conflicts, "conflict", "conflicts")}";
+        }
+    }
+
     public bool CanCheck => _context is not null && !IsChecking && Rows.Any(r => r.IsEditable || r.IsIpv6Editable);
 
     /// <summary>New addresses in row order (empty strings while unassigned).</summary>
@@ -322,6 +346,7 @@ public sealed partial class AddressAssignmentViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(HasConflicts));
+        OnPropertyChanged(nameof(Summary));
         OnPropertyChanged(nameof(Addresses));
         OnPropertyChanged(nameof(Ipv6Addresses));
         CheckCommand.NotifyCanExecuteChanged();

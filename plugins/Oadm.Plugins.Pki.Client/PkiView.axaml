@@ -14,9 +14,7 @@
       <!-- ============================== Certificate authority ============================== -->
       <Border Classes="card">
         <StackPanel Classes="form">
-          <ui:CardHeader Title="Certificate authority">
-            <TextBlock Classes="secondary" Text="{Binding CaSourceText}" IsVisible="{Binding HasCa}" VerticalAlignment="Center" />
-          </ui:CardHeader>
+          <ui:CardHeader Title="Certificate authority" />
 
           <ui:ProgressRow Text="Creating the certificate authority. This takes a few seconds." IsVisible="{Binding IsGenerating}" />
           <TextBlock Classes="secondary" Text="{Binding NoCaText}" IsVisible="{Binding HasNoCa}" TextWrapping="Wrap" />
@@ -32,6 +30,9 @@
                                IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}"
                                ToolTip.Tip="{Binding StatusDetail}" VerticalAlignment="Center" />
               </StackPanel>
+            </ui:FormField>
+            <ui:FormField Label="Source" Classes="wide">
+              <TextBlock Text="{Binding CaSourceText}" />
             </ui:FormField>
             <ui:FormField Label="Key" Classes="wide">
               <TextBlock Text="{Binding KeyText}" />
@@ -71,6 +72,8 @@
                     ToolTip.Tip="Save the CA with its private key in a password-protected file">
               <ui:IconLabel Icon="{DynamicResource Icon.save}" Text="Back up" />
             </Button>
+            <!-- Everyday actions above, the two that replace the CA after the separator -->
+            <Border Classes="vseparator" />
             <Button Classes="secondary" Command="{Binding GenerateCommand}"
                     ToolTip.Tip="Create a new certificate authority">
               <ui:IconLabel Icon="{DynamicResource Icon.refresh}" Text="Generate new CA" />
@@ -93,10 +96,7 @@
           <ui:FormField Label="Warn before expiry (days)" InputWidth="460">
             <TextBox Text="{Binding ExpiryWarningDays}" />
           </ui:FormField>
-          <ui:FormField InputWidth="460">
-            <Button Classes="primary" HorizontalAlignment="Right" Content="Save" Command="{Binding SaveCommand}"
-                    ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
-          </ui:FormField>
+          <!-- Saved with the IEEE 802.1X settings: one Save at the end of the last settings card -->
         </StackPanel>
       </Border>
 
@@ -126,18 +126,18 @@
             <TextBox Text="{Binding CustomIdentity}" PlaceholderText="e.g. axis-{serial}" />
           </ui:FormField>
           <ui:FormField Label="RADIUS server CA" InputWidth="460">
-            <StackPanel Classes="inputRow">
-              <ComboBox ItemsSource="{Binding RadiusChoices}" SelectedItem="{Binding RadiusCa}" Width="280">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+              <ComboBox ItemsSource="{Binding RadiusChoices}" SelectedItem="{Binding RadiusCa}" HorizontalAlignment="Stretch">
                 <ComboBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:Choice">
                     <TextBlock Text="{Binding Label}" />
                   </DataTemplate>
                 </ComboBox.ItemTemplate>
               </ComboBox>
-              <Button Classes="secondary" Content="Import" Command="{Binding ImportRadiusCaCommand}" IsVisible="{Binding IsRadiusImported}"
+              <Button Grid.Column="1" Margin="10,0,0,0" Classes="secondary" Content="Import" Command="{Binding ImportRadiusCaCommand}" IsVisible="{Binding IsRadiusImported}"
                       ToolTip.Tip="Choose the CA certificate (.crt or .cer) that issued the RADIUS server's certificate" />
-              <Button Classes="secondary" Content="View" Command="{Binding ViewRadiusCaCommand}" IsVisible="{Binding IsRadiusImported}" />
-            </StackPanel>
+              <Button Grid.Column="2" Margin="10,0,0,0" Classes="secondary" Content="View" Command="{Binding ViewRadiusCaCommand}" IsVisible="{Binding IsRadiusImported}" />
+            </Grid>
           </ui:FormField>
           <ui:FormField Classes="wide" IsVisible="{Binding IsRadiusImported}">
             <TextBlock Classes="secondary" Text="{Binding RadiusCaLine}" TextWrapping="Wrap" />
@@ -176,7 +176,7 @@
                       <Button Classes="link" Content="Export"
                               Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).ExportPreviousCommand}" CommandParameter="{Binding}"
                               ToolTip.Tip="Save this CA certificate (PEM, public only)" />
-                      <Button Classes="link" Content="Remove"
+                      <Button Classes="link danger" Content="Remove"
                               Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).RemovePreviousCommand}" CommandParameter="{Binding}"
                               ToolTip.Tip="The server no longer trusts certificates of this CA" />
                     </StackPanel>

@@ -12,15 +12,18 @@
 
     <!-- ============================== Library ============================== -->
     <Border Grid.Column="0" Classes="card">
-      <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
+      <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="10">
         <ui:CardHeader Title="Library" Description="{Binding LibrarySummary}">
           <Button Classes="toolbar iconOnly" Command="{Binding ImportCommand}" ToolTip.Tip="Import commands from a file">
             <ui:OadmIcon Data="{DynamicResource Icon.upload}" />
           </Button>
         </ui:CardHeader>
-        <ui:SearchBox Grid.Row="1" Text="{Binding LibrarySearch}" Placeholder="Search commands" HorizontalAlignment="Left" />
+        <!-- Import, export, save and delete report here, next to where they were started -->
+        <ui:StatusChip Grid.Row="1" Text="{Binding LibraryStatus}" IsOk="{Binding IsLibraryStatusOk}" IsError="{Binding IsLibraryStatusError}"
+                       MaxLines="2" ToolTip.Tip="{Binding LibraryStatus}" IsVisible="{Binding HasLibraryStatus}" />
+        <ui:SearchBox Grid.Row="2" Classes="stretch" Text="{Binding LibrarySearch}" Placeholder="Search commands" />
         <!-- A click on a command adds it to the rollout set, a click on a group expands or collapses it (code-behind). -->
-        <TreeView x:Name="LibraryTreeView" Grid.Row="2" ItemsSource="{Binding LibraryTree}" SelectedItem="{Binding SelectedNode}">
+        <TreeView x:Name="LibraryTreeView" Grid.Row="3" ItemsSource="{Binding LibraryTree}" SelectedItem="{Binding SelectedNode}">
           <TreeView.Styles>
             <Style Selector="TreeViewItem" x:DataType="c:LibraryNodeViewModel">
               <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
@@ -52,7 +55,7 @@
             </TreeDataTemplate>
           </TreeView.ItemTemplate>
         </TreeView>
-        <TextBlock Grid.Row="3" Classes="warning small" Text="{Binding LibraryProblems}" TextWrapping="Wrap" IsVisible="{Binding HasLibraryProblems}" />
+        <TextBlock Grid.Row="4" Classes="warning small" Text="{Binding LibraryProblems}" TextWrapping="Wrap" IsVisible="{Binding HasLibraryProblems}" />
       </Grid>
     </Border>
 
@@ -336,7 +339,7 @@
           <Button Classes="secondary" Content="Compatible" Command="{Binding SelectCompatibleTargetsCommand}" />
           <Button Classes="secondary" Content="None" Command="{Binding ClearTargetsCommand}" />
         </WrapPanel>
-        <ui:SearchBox Grid.Row="2" Text="{Binding TargetSearch}" Placeholder="Search devices" HorizontalAlignment="Left" />
+        <ui:SearchBox Grid.Row="2" Classes="stretch" Text="{Binding TargetSearch}" Placeholder="Search devices" />
         <TextBlock Grid.Row="3" Classes="secondary small" Text="{Binding CompatibilitySummary}" TextWrapping="Wrap" IsVisible="{Binding HasCompatibilitySummary}" />
         <!-- Thousands of devices: virtualized, only the visible rows exist. -->
         <ScrollViewer Grid.Row="4" HorizontalScrollBarVisibility="Disabled">
@@ -355,7 +358,7 @@
                   </CheckBox>
                   <StackPanel Margin="28,0,0,0" Spacing="2">
                     <ui:StatusChip IsWarning="True" Text="{Binding StatusText}" IsVisible="{Binding !IsReachable}" />
-                    <ui:StatusChip Text="{Binding CompatibilityText}" IsOk="{Binding AllCompatible}" IsWarning="{Binding IsCompatibilityWarning}" IsError="{Binding IsCompatibilityError}"
+                    <ui:StatusChip Text="{Binding CompatibilityText}" MaxLines="2" IsOk="{Binding AllCompatible}" IsWarning="{Binding IsCompatibilityWarning}" IsError="{Binding IsCompatibilityError}"
                                    ToolTip.Tip="{Binding CompatibilityTooltip}" IsVisible="{Binding ShowCompatibility}" />
                   </StackPanel>
                 </StackPanel>

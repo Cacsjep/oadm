@@ -42,6 +42,7 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
         _settingsStore = settingsStore ?? new MetadataClientSettingsStore();
         _settings = _settingsStore.Load();
         _ctx.DevicesChanged += (_, _) => RefreshCameras();
+        Messages.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ShowEmptyHint));
         RefreshCameras();
     }
 
@@ -80,6 +81,7 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StartStopText))]
     [NotifyPropertyChangedFor(nameof(StartStopTip))]
+    [NotifyPropertyChangedFor(nameof(ShowEmptyHint))]
     [NotifyCanExecuteChangedFor(nameof(StartStopCommand))]
     public partial bool IsRunning { get; set; }
 
@@ -143,6 +145,9 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
     }
 
     public bool HasDetail => SelectedMessage is not null;
+
+    /// <summary>The hint over the empty list: no messages and no stream running.</summary>
+    public bool ShowEmptyHint => Messages.Count == 0 && !IsRunning;
 
     /// <summary>The XML of the selected message (the CodeView pretty-prints it unless Raw is chosen).</summary>
     public string? DetailText => SelectedMessage?.Xml;

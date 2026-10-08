@@ -9,9 +9,9 @@
        The description lives in the host page header; the status chip sits left of the Start / Stop button.
        Shared controls and theme classes only. -->
   <Grid x:Name="Root" RowDefinitions="Auto,*,Auto,260">
-    <!-- One row (fits the 1280 px minimum window with the rail expanded): camera (type to jump), filter, Clear,
-         Autoscroll and the message count on the left; status and Start / Stop on the right. -->
-    <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="12">
+    <!-- One row: camera (type to jump) with Start / Stop right of it, filter, Clear, Autoscroll and the message count;
+         the status on the right. -->
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="12">
       <ComboBox Grid.Column="0" Width="260" VerticalAlignment="Center" ItemsSource="{Binding Cameras}" SelectedItem="{Binding SelectedCamera}"
                 PlaceholderText="Choose a camera" IsTextSearchEnabled="True"
                 ToolTip.Tip="Type to jump to a camera">
@@ -21,16 +21,16 @@
           </DataTemplate>
         </ComboBox.ItemTemplate>
       </ComboBox>
-      <ui:SearchBox Grid.Column="1" Width="220" VerticalAlignment="Center" Text="{Binding FilterText}" Placeholder="Filter events" />
-      <Button Grid.Column="2" Classes="secondary" VerticalAlignment="Center" Content="Clear" Command="{Binding ClearCommand}"
+      <ui:SearchBox Grid.Column="2" Width="220" VerticalAlignment="Center" Text="{Binding FilterText}" Placeholder="Filter events" />
+      <Button Grid.Column="3" Classes="secondary" VerticalAlignment="Center" Content="Clear" Command="{Binding ClearCommand}"
               ToolTip.Tip="Empty the list; the stream keeps running" />
-      <CheckBox Grid.Column="3" VerticalAlignment="Center" Content="Autoscroll" IsChecked="{Binding Autoscroll}"
+      <CheckBox Grid.Column="4" VerticalAlignment="Center" Content="Autoscroll" IsChecked="{Binding Autoscroll}"
                 ToolTip.Tip="Keep the newest message visible" />
-      <TextBlock Grid.Column="4" Classes="secondary" VerticalAlignment="Center" Text="{Binding SummaryText}" />
-      <ui:StatusChip Grid.Column="6" VerticalAlignment="Center" IsVisible="{Binding HasStatus}"
+      <TextBlock Grid.Column="5" Classes="secondary" VerticalAlignment="Center" Text="{Binding SummaryText}" />
+      <ui:StatusChip Grid.Column="7" VerticalAlignment="Center" IsVisible="{Binding HasStatus}"
                      Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"
                      IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}" ToolTip.Tip="{Binding StatusDetail}" />
-      <Button Grid.Column="7" Classes="primary" VerticalAlignment="Center" MinWidth="72" HorizontalContentAlignment="Center"
+      <Button Grid.Column="1" Classes="primary" VerticalAlignment="Center" MinWidth="72" HorizontalContentAlignment="Center"
               Content="{Binding StartStopText}"
               Command="{Binding StartStopCommand}" ToolTip.Tip="{Binding StartStopTip}" ToolTip.ShowOnDisabled="True" />
     </Grid>
@@ -41,18 +41,22 @@
       <DataGrid.Columns>
         <DataGridTextColumn Header="Seq#" Width="70" Binding="{Binding Seq}" x:DataType="vm:MessageRow" />
         <DataGridTextColumn Header="Timestamp" Width="180" Binding="{Binding Timestamp}" x:DataType="vm:MessageRow" />
-        <DataGridTextColumn Header="Category" Width="100" Binding="{Binding Category}" x:DataType="vm:MessageRow" />
+        <!-- Hidden: every row says "Event" (the topic of a malformed message is empty and its XML shows the text) -->
+        <DataGridTextColumn Header="Category" Width="100" Binding="{Binding Category}" IsVisible="False" x:DataType="vm:MessageRow" />
         <DataGridTextColumn Header="Event topic" Width="260" Binding="{Binding Topic}" x:DataType="vm:MessageRow" />
-        <DataGridTextColumn Header="Capture time" Width="180" Binding="{Binding CaptureTime}" x:DataType="vm:MessageRow" />
+        <DataGridTextColumn Header="Capture time" Width="124" Binding="{Binding CaptureTime}" x:DataType="vm:MessageRow" />
         <DataGridTextColumn Header="Property operation" Width="160" Binding="{Binding Operation}" x:DataType="vm:MessageRow" />
         <DataGridTextColumn Header="Info" Width="*" Binding="{Binding Info}" x:DataType="vm:MessageRow" />
       </DataGrid.Columns>
     </DataGrid>
+    <TextBlock Grid.Row="1" Classes="secondary" Text="Choose a camera and press Start." IsVisible="{Binding ShowEmptyHint}"
+               HorizontalAlignment="Center" VerticalAlignment="Center" />
 
-    <GridSplitter x:Name="DetailSplitter" Grid.Row="2" Classes="paneSplitter" />
+    <!-- Splitter and detail only while a message is selected (code-behind collapses the row). -->
+    <GridSplitter x:Name="DetailSplitter" Grid.Row="2" Classes="paneSplitter" IsVisible="{Binding HasDetail}" />
 
     <!-- The selected message's XML, always pretty-printed and highlighted (user decision: no Raw switch). -->
-    <Grid Grid.Row="3" RowDefinitions="Auto,*" RowSpacing="8">
+    <Grid Grid.Row="3" RowDefinitions="Auto,*" RowSpacing="8" IsVisible="{Binding HasDetail}">
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
         <TextBlock Classes="secondary" Text="{Binding DetailTitle}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
         <Button Grid.Column="1" Classes="toolbar iconOnly" Command="{Binding CopyCommand}" ToolTip.Tip="Copy the XML of this message">

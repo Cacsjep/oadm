@@ -202,6 +202,12 @@ public sealed partial class UsersDialogViewModel : ValidatingViewModel
     /// <summary>The users Remove removes: the selected rows that are not protected, in list order.</summary>
     public IReadOnlyList<string> UsersToRemove => _selectedRows.Where(r => !r.IsProtected).Select(r => r.Name).ToList();
 
+    /// <summary>Remove mode, left card: the users chosen in the Existing users list, one per line.</summary>
+    public string UsersToRemoveText => UsersToRemove.Count == 0 ? "None selected yet." : string.Join(Environment.NewLine, UsersToRemove);
+
+    /// <summary>Remove mode: why some users cannot be chosen.</summary>
+    public static string RemoveNote => "The account OADM uses and the last administrator cannot be removed.";
+
     public bool ShowPassword => IsAdd || (IsChange && ChangePassword);
 
     public bool ShowRole => IsAdd || (IsChange && ChangeRole);
@@ -336,6 +342,7 @@ public sealed partial class UsersDialogViewModel : ValidatingViewModel
         }
 
         OnPropertyChanged(nameof(UsersToRemove));
+        OnPropertyChanged(nameof(UsersToRemoveText));
         OnPropertyChanged(nameof(ApplyText));
         Update();
     }

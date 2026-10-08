@@ -38,6 +38,7 @@ public partial class MetadataMonitorView : UserControl
         if (_vm is not null)
         {
             _vm.MessagesAppended -= OnMessagesAppended;
+            _vm.PropertyChanged -= OnViewModelChanged;
             _vm.CopyText = null;
         }
 
@@ -46,7 +47,30 @@ public partial class MetadataMonitorView : UserControl
         {
             _vm.MessagesAppended += OnMessagesAppended;
             _vm.CopyText = CopyAsync;
-            Root.RowDefinitions[3].Height = new GridLength(_vm.DetailHeight);
+            _vm.PropertyChanged += OnViewModelChanged;
+            ApplyDetailHeight();
+        }
+    }
+
+    private void OnViewModelChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MetadataMonitorViewModel.HasDetail))
+        {
+            ApplyDetailHeight();
+            if (_vm is { Autoscroll: true })
+            {
+                // The list got shorter (or taller): the newest row stays visible.
+                Dispatcher.UIThread.Post(ScrollToEnd, DispatcherPriority.Background);
+            }
+        }
+    }
+
+    /// <summary>The detail pane takes no space until a message is selected; then the remembered height.</summary>
+    private void ApplyDetailHeight()
+    {
+        if (_vm is not null)
+        {
+            Root.RowDefinitions[3].Height = new GridLength(_vm.HasDetail ? _vm.DetailHeight : 0);
         }
     }
 

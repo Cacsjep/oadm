@@ -33,8 +33,9 @@
         </StackPanel>
       </ui:FormField>
 
-      <ui:FormField Classes="wide">
-        <TextBlock Classes="secondary" Text="{Binding UpstreamInfoText}" IsVisible="{Binding HasUpstreamInfo}" TextWrapping="Wrap" />
+      <!-- Collapsed (no space kept) while there is nothing to say -->
+      <ui:FormField Classes="wide" IsVisible="{Binding HasUpstreamInfo}">
+        <TextBlock Classes="secondary" Text="{Binding UpstreamInfoText}" TextWrapping="Wrap" />
       </ui:FormField>
 
       <ui:FormField InputWidth="460">
@@ -58,7 +59,11 @@
           <DataGridTextColumn Header="Time" Width="100" Binding="{Binding Time}" x:DataType="vm:RequestRowViewModel" />
           <DataGridTextColumn Header="Client" Width="160" Binding="{Binding Client}" x:DataType="vm:RequestRowViewModel" />
           <DataGridTextColumn Header="Device" Width="*" Binding="{Binding Device}" x:DataType="vm:RequestRowViewModel" />
-          <DataGridTextColumn Header="Offset" Width="110" Binding="{Binding Offset}" x:DataType="vm:RequestRowViewModel" />
+          <DataGridTextColumn Width="110" CellStyleClasses="number" Binding="{Binding Offset}" x:DataType="vm:RequestRowViewModel">
+            <DataGridTextColumn.Header>
+              <TextBlock Classes="numberHeader" Text="Offset" />
+            </DataGridTextColumn.Header>
+          </DataGridTextColumn>
           <DataGridTemplateColumn Header="Result" Width="160" x:DataType="vm:RequestRowViewModel">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate x:DataType="vm:RequestRowViewModel">

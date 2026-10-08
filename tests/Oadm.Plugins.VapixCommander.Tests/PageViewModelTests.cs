@@ -467,7 +467,7 @@ public sealed class PageViewModelTests
 
         await page.Vm.ImportJsonAsync(json);
 
-        Assert.Equal("Imported 3 commands.", page.Vm.Status);
+        Assert.Equal("Imported 3 commands.", page.Vm.LibraryStatus);
         Assert.Equal(3, page.Vm.LibraryTree[1].CommandCount);
     }
 

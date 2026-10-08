@@ -79,7 +79,7 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         Assert.Equal("Event", row.Category);
         Assert.Equal("Initialized", row.Operation);
         Assert.StartsWith("[INIT] port = ", row.Info, StringComparison.Ordinal);
-        Assert.Equal("2026-10-08 09:30:01.000", row.CaptureTime);
+        Assert.Equal("09:30:01.000", row.CaptureTime); // time only: the date is in Timestamp
         Assert.Matches(@"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$", row.Timestamp);
         Assert.Equal(129 - 1, vm.Messages[^1].Seq);
 

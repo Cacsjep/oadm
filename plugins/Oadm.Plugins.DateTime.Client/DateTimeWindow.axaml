@@ -17,34 +17,36 @@
   <Grid RowDefinitions="Auto,*,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
 
-    <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource Oadm.Gap}" Margin="16,0">
-      <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Spacing="{DynamicResource Oadm.Gap}">
-          <!-- Device time: read-only, first selected device -->
-          <Border Classes="card">
-            <StackPanel>
-              <ui:CardHeader Title="Device time" Description="{Binding DeviceCardDescription}" />
-              <StackPanel Classes="form">
-                <ui:StatusChip Text="{Binding DeviceTimeStatus}" IsAccent="{Binding IsLoading}" IsError="{Binding DeviceTimeFailed}"
-                               IsVisible="{Binding HasDeviceTimeStatus}" ToolTip.Tip="{Binding DeviceTimeStatus}" />
-                <StackPanel Classes="form" IsVisible="{Binding HasDeviceTime}">
-                  <ui:FormField Classes="wide" Label="Device time">
-                    <TextBlock Text="{Binding DeviceTimeText}" TextWrapping="Wrap" />
-                  </ui:FormField>
-                  <ui:FormField Classes="wide" Label="Time zone">
-                    <TextBlock Text="{Binding DeviceTimeZoneText}" TextWrapping="Wrap" />
-                  </ui:FormField>
-                  <ui:FormField Classes="wide" Label="Time mode">
-                    <TextBlock Text="{Binding DeviceTimeModeText}" TextWrapping="Wrap" />
-                  </ui:FormField>
-                  <ui:FormField Classes="wide" Label="Server time">
-                    <TextBlock Text="{Binding ServerTimeText}" TextWrapping="Wrap" />
-                  </ui:FormField>
-                </StackPanel>
-              </StackPanel>
+    <Grid Grid.Row="1" RowDefinitions="Auto,*" ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource Oadm.Gap}" RowSpacing="{DynamicResource Oadm.Gap}" Margin="16,0">
+      <!-- Device time: read-only facts of the first selected device as one compact strip, so Time mode fits below -->
+      <Border Grid.ColumnSpan="2" Classes="card">
+        <StackPanel Spacing="10">
+          <ui:CardHeader Classes="flush" Title="Device time" Description="{Binding DeviceCardDescription}" />
+          <ui:StatusChip Text="{Binding DeviceTimeStatus}" IsAccent="{Binding IsLoading}" IsError="{Binding DeviceTimeFailed}"
+                         IsVisible="{Binding HasDeviceTimeStatus}" ToolTip.Tip="{Binding DeviceTimeStatus}" />
+          <WrapPanel Orientation="Horizontal" ItemSpacing="28" LineSpacing="6" IsVisible="{Binding HasDeviceTime}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Classes="secondary" Text="Device time" />
+              <TextBlock Text="{Binding DeviceTimeText}" />
             </StackPanel>
-          </Border>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Classes="secondary" Text="Time zone" />
+              <TextBlock Text="{Binding DeviceTimeZoneText}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Classes="secondary" Text="Time mode" />
+              <TextBlock Text="{Binding DeviceTimeModeText}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Classes="secondary" Text="Server time" />
+              <TextBlock Text="{Binding ServerTimeText}" />
+            </StackPanel>
+          </WrapPanel>
+        </StackPanel>
+      </Border>
 
+      <ScrollViewer Grid.Row="1" Grid.Column="0" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="{DynamicResource Oadm.Gap}">
           <!-- Time mode -->
           <Border Classes="card">
             <StackPanel>
@@ -86,7 +88,7 @@
       </ScrollViewer>
 
       <!-- Time zone: searchable IANA list -->
-      <Border Grid.Column="1" Classes="card">
+      <Border Grid.Row="1" Grid.Column="1" Classes="card">
         <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
           <ui:CardHeader Title="Time zone" Description="{Binding TimeZoneDescription}" />
           <ui:SearchBox Grid.Row="1" Text="{Binding ZoneSearch}" Placeholder="Search time zones" IsEnabled="{Binding CanEditTimeZone}" HorizontalAlignment="Left" />

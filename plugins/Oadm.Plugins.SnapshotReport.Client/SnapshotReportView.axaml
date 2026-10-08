@@ -20,11 +20,13 @@
       </StackPanel>
 
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12">
-        <ui:OadmIcon Data="{DynamicResource Icon.snapshot}" VerticalAlignment="Center" ToolTip.Tip="Picture size" />
-        <Slider Width="160" VerticalAlignment="Center" ToolTip.Tip="Picture size"
+        <TextBlock Classes="secondary" Text="Size" VerticalAlignment="Center" />
+        <Slider Width="160" VerticalAlignment="Center"
                 Minimum="{x:Static vm:SnapshotReportViewModel.MinTileWidth}" Maximum="{x:Static vm:SnapshotReportViewModel.MaxTileWidth}"
                 Value="{Binding TileWidth}" />
-        <ui:SearchBox Text="{Binding SearchText}" />
+        <TextBlock Classes="secondary" Text="{Binding TileWidth, StringFormat='{}{0:0} px'}" VerticalAlignment="Center" MinWidth="44" />
+        <!-- Centered: the Fluent slider is taller than a text field and would stretch the search box. -->
+        <ui:SearchBox Text="{Binding SearchText}" VerticalAlignment="Center" />
       </StackPanel>
     </Grid>
 

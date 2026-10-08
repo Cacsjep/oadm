@@ -54,6 +54,11 @@
                 <CheckBox Content="PTZ control" IsChecked="{Binding Ptz}" />
               </ui:FormField>
 
+              <!-- Remove: the users chosen in the Existing users list and what cannot be removed -->
+              <ui:FormField Label="Users to remove" IsVisible="{Binding IsRemove}" Hint="{x:Static u:UsersDialogViewModel.RemoveNote}">
+                <TextBlock Text="{Binding UsersToRemoveText}" TextWrapping="Wrap" />
+              </ui:FormField>
+
               <TextBlock Classes="warning" Text="{Binding LockOutWarning}" TextWrapping="Wrap" IsVisible="{Binding LockOutWarning, Converter={x:Static ObjectConverters.IsNotNull}}" />
             </StackPanel>
           </StackPanel>
@@ -85,7 +90,7 @@
     </Grid>
 
     <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
-      <Button Classes="primary" Content="{Binding ApplyText}" Command="{Binding ApplyCommand}" IsDefault="True"
+      <Button Classes.primary="{Binding !IsRemove}" Classes.danger="{Binding IsRemove}" Content="{Binding ApplyText}" Command="{Binding ApplyCommand}" IsDefault="True"
               ToolTip.Tip="{Binding ApplyBlockedReason}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>
   </Grid>

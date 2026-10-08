@@ -30,12 +30,14 @@
         <TextBox Text="{Binding RangeEnd}" PlaceholderText="e.g. 10.0.0.199" />
       </ui:FormField>
 
-      <CheckBox Content="Automatically add Axis devices that get an address" IsChecked="{Binding AutoAddAxisDevices}"
-                ToolTip.Tip="Logs in with the credential list. Managed devices are always followed." />
+      <!-- What the clients of this range get, directly under the range; then the auto-add option, aligned with the inputs -->
+      <ui:FormField Classes="wide" IsVisible="{Binding ClientsGetText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+        <TextBlock Classes="secondary" Text="{Binding ClientsGetText}" TextWrapping="Wrap" />
+      </ui:FormField>
 
       <ui:FormField Classes="wide">
-        <TextBlock Classes="secondary" Text="{Binding ClientsGetText}" IsVisible="{Binding ClientsGetText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                   TextWrapping="Wrap" />
+        <CheckBox Content="Automatically add Axis devices that get an address" IsChecked="{Binding AutoAddAxisDevices}"
+                  ToolTip.Tip="Logs in with the credential list. Managed devices are always followed." />
       </ui:FormField>
 
       <ui:FormField InputWidth="460">
@@ -74,13 +76,13 @@
                   <Button Classes="link" Content="Edit" IsVisible="{Binding IsStatic}"
                           Command="{Binding $parent[UserControl].((vm:DhcpServerViewModel)DataContext).EditStaticCommand}" CommandParameter="{Binding}"
                           ToolTip.Tip="Change the MAC address, IP address or name" />
-                  <Button Classes="link" Content="Delete" IsVisible="{Binding IsStatic}"
+                  <Button Classes="link danger" Content="Delete" IsVisible="{Binding IsStatic}"
                           Command="{Binding $parent[UserControl].((vm:DhcpServerViewModel)DataContext).DeleteStaticCommand}" CommandParameter="{Binding}"
                           ToolTip.Tip="Delete the static lease" />
                   <Button Classes="link" Content="Make static" IsVisible="{Binding IsDynamic}"
                           Command="{Binding $parent[UserControl].((vm:DhcpServerViewModel)DataContext).MakeStaticCommand}" CommandParameter="{Binding}"
                           ToolTip.Tip="The device always gets this address" />
-                  <Button Classes="link" Content="Release" IsVisible="{Binding IsDynamic}"
+                  <Button Classes="link danger" Content="Release" IsVisible="{Binding IsDynamic}"
                           Command="{Binding $parent[UserControl].((vm:DhcpServerViewModel)DataContext).ReleaseCommand}" CommandParameter="{Binding}"
                           ToolTip.Tip="Free the address; the device asks again at its next renewal" />
                 </StackPanel>

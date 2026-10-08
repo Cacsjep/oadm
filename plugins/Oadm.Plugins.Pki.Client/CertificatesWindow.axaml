@@ -78,7 +78,7 @@
     </Border>
 
     <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}" CancelText="Close">
-      <Button Classes="primary" Content="{Binding DeleteText}" Command="{Binding DeleteCommand}" IsVisible="{Binding DeleteMode}"
+      <Button Classes="danger" Content="{Binding DeleteText}" Command="{Binding DeleteCommand}" IsVisible="{Binding DeleteMode}"
               ToolTip.Tip="{Binding DeleteBlockedReason}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>
   </Grid>

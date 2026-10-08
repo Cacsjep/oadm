@@ -23,7 +23,8 @@
           <ui:FormField Label="Use for">
             <ComboBox ItemsSource="{Binding Purposes}" SelectedItem="{Binding SelectedPurpose}" />
           </ui:FormField>
-          <ui:FormField Label="Files" Classes="wide" Error="{Binding FilesError}">
+          <!-- Choose files right of the file text, inside the input width -->
+          <ui:FormField Label="Files" Error="{Binding FilesError}">
             <ui:FileRow FileName="{Binding FilesText}" ButtonText="Choose files" Command="{Binding ChooseFilesCommand}" />
           </ui:FormField>
           <ui:FormField Label="Password" Hint="One password for all files." Error="{Binding PasswordError}">
@@ -31,15 +32,15 @@
           </ui:FormField>
         </StackPanel>
         <TextBlock Grid.Row="2" Classes="secondary" Text="{Binding Summary}" Margin="0,4,0,8" />
-        <DataGrid Grid.Row="3" ItemsSource="{Binding Files}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
+        <DataGrid Grid.Row="3" Classes="wrapRows" ItemsSource="{Binding Files}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
           <DataGrid.Columns>
-            <DataGridTextColumn Header="File" Binding="{Binding FileName}" Width="1.2*" x:DataType="vm:InstallFileRow" />
-            <DataGridTextColumn Header="Certificate" Binding="{Binding Certificate}" Width="1.4*" x:DataType="vm:InstallFileRow" />
-            <DataGridTextColumn Header="Device" Binding="{Binding DeviceText}" Width="1.2*" x:DataType="vm:InstallFileRow" />
-            <DataGridTemplateColumn Header="Status" Width="1.4*" SortMemberPath="Status">
+            <DataGridTextColumn Header="File" Binding="{Binding FileName}" Width="*" x:DataType="vm:InstallFileRow" />
+            <DataGridTextColumn Header="Certificate" Binding="{Binding Certificate}" Width="1.2*" x:DataType="vm:InstallFileRow" />
+            <DataGridTextColumn Header="Device" Binding="{Binding DeviceText}" Width="*" x:DataType="vm:InstallFileRow" />
+            <DataGridTemplateColumn Header="Status" Width="2.2*" SortMemberPath="Status">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:InstallFileRow">
-                  <ui:StatusChip Margin="10,0" Text="{Binding Status}" Detail="{Binding StatusDetail}" IsOk="{Binding IsOk}" IsError="{Binding IsError}" ToolTip.Tip="{Binding StatusDetail}" />
+                  <ui:StatusChip Text="{Binding Status}" Detail="{Binding StatusDetail}" IsOk="{Binding IsOk}" IsError="{Binding IsError}" ToolTip.Tip="{Binding StatusDetail}" />
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>

@@ -205,6 +205,18 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
 
     public bool HasStatus => Status is not null;
 
+    /// <summary>Result of the last library action (import, export, save, delete), shown under the Library title.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasLibraryStatus))]
+    public partial string? LibraryStatus { get; private set; }
+
+    [ObservableProperty]
+    public partial bool IsLibraryStatusError { get; private set; }
+
+    public bool IsLibraryStatusOk => LibraryStatus is not null && !IsLibraryStatusError;
+
+    public bool HasLibraryStatus => LibraryStatus is not null;
+
     // ================================================================ loading
 
     /// <summary>Loads library and saved commands. Errors are shown in the status line.</summary>
@@ -224,7 +236,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LibrarySummary = "Not loaded";
-            SetStatus("Could not load the commands: " + ex.Message, error: true);
+            SetLibraryStatus("Could not load the commands: " + ex.Message, error: true);
         }
     }
 
@@ -295,7 +307,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         }
 
         var reply = await _backend.DeleteAsync(item.Command.Id, CancellationToken.None).ConfigureAwait(true);
-        SetStatus(reply.Ok ? $"Deleted \"{item.Command.Name}\"." : reply.Error ?? "Not deleted.", error: !reply.Ok);
+        SetLibraryStatus(reply.Ok ? $"Deleted \"{item.Command.Name}\"." : reply.Error ?? "Not deleted.", error: !reply.Ok);
         await ReloadSavedAsync().ConfigureAwait(true);
     }
 
@@ -313,18 +325,18 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
             var export = await _backend.ExportAsync(ids, CancellationToken.None).ConfigureAwait(true);
             if (export.Count == 0)
             {
-                SetStatus("There are no saved commands to export.", error: true);
+                SetLibraryStatus("There are no saved commands to export.", error: true);
                 return;
             }
 
             if (Files is not null && await Files.SaveJsonAsync(export.FileName, export.Json).ConfigureAwait(true))
             {
-                SetStatus(string.Create(CultureInfo.InvariantCulture, $"Exported {export.Count} {(export.Count == 1 ? "command" : "commands")} (passwords are never exported)."), error: false);
+                SetLibraryStatus(string.Create(CultureInfo.InvariantCulture, $"Exported {export.Count} {(export.Count == 1 ? "command" : "commands")} (passwords are never exported)."), error: false);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            SetStatus("Export failed: " + ex.Message, error: true);
+            SetLibraryStatus("Export failed: " + ex.Message, error: true);
         }
     }
 
@@ -348,7 +360,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            SetStatus("Import failed: " + ex.Message, error: true);
+            SetLibraryStatus("Import failed: " + ex.Message, error: true);
         }
     }
 
@@ -362,7 +374,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
             text += " Skipped: " + string.Join(" | ", reply.Problems);
         }
 
-        SetStatus(text, error: reply.Problems.Count > 0);
+        SetLibraryStatus(text, error: reply.Problems.Count > 0);
         await ReloadSavedAsync().ConfigureAwait(true);
     }
 
@@ -506,17 +518,17 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
             var reply = await _backend.SaveAsync(new SaveCommandRequest { Command = command, Owner = _host.OwnerName }, CancellationToken.None).ConfigureAwait(true);
             if (reply.Error is not null)
             {
-                SetStatus("Not saved: " + reply.Error, error: true);
+                SetLibraryStatus("Not saved: " + reply.Error, error: true);
                 return false;
             }
 
-            SetStatus($"Saved \"{reply.Saved!.Command.Name}\".", error: false);
+            SetLibraryStatus($"Saved \"{reply.Saved!.Command.Name}\".", error: false);
             await ReloadSavedAsync().ConfigureAwait(true);
             return true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            SetStatus("Not saved: " + ex.Message, error: true);
+            SetLibraryStatus("Not saved: " + ex.Message, error: true);
             return false;
         }
     }
@@ -917,6 +929,13 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         Status = text;
         IsStatusError = error;
         IsStatusOk = !error;
+    }
+
+    private void SetLibraryStatus(string text, bool error)
+    {
+        IsLibraryStatusError = error;
+        LibraryStatus = text;
+        OnPropertyChanged(nameof(IsLibraryStatusOk));
     }
 
     private void ClearStatus()
