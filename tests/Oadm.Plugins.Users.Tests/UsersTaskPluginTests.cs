@@ -42,6 +42,14 @@ public sealed class UsersTaskPluginTests
         Assert.False(_plugin.CanRun(new FakeDevice { Status = DeviceStatus.CredentialsRequired }));
 
     [Fact]
+    public void NotSupportedReason_names_the_status_or_the_missing_user_api()
+    {
+        Assert.Equal("OADM cannot log in to the device: use Log in", _plugin.NotSupportedReason(new FakeDevice { Status = DeviceStatus.CredentialsRequired }));
+        Assert.Equal("OADM has not read what this device supports yet: refresh the device", _plugin.NotSupportedReason(new FakeDevice { Apis = [] }));
+        Assert.Equal("Needs the user management API (this device has 12.11.77)", _plugin.NotSupportedReason(new FakeDevice { Apis = Fixtures.Apis(("user-management", "2.0")) }));
+    }
+
+    [Fact]
     public void Is_a_dialog_task_in_the_context_menu()
     {
         Assert.Equal("oadm.users", _plugin.Id);

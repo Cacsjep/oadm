@@ -24,6 +24,8 @@ public sealed class Dot1xEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
 
     public override bool CanRun(IDeviceInfo device) => base.CanRun(device) && PkiCompatibility.HasNetworkSettings(device.Apis);
 
+    public override string? NotSupportedReason(IDeviceInfo device) => PkiCompatibility.NotSupportedReason(device, needsNetworkSettings: true);
+
     public override string GetTaskName(string? payloadJson) => "Enable IEEE 802.1X";
 
     public override async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)
@@ -154,6 +156,8 @@ public sealed class Dot1xDisableTask(Func<PkiService?> service) : PkiTaskBase(se
     public override string? IconKey => "cancel";
 
     public override bool CanRun(IDeviceInfo device) => base.CanRun(device) && PkiCompatibility.HasNetworkSettings(device.Apis);
+
+    public override string? NotSupportedReason(IDeviceInfo device) => PkiCompatibility.NotSupportedReason(device, needsNetworkSettings: true);
 
     public override string GetTaskName(string? payloadJson) => "Disable IEEE 802.1X";
 

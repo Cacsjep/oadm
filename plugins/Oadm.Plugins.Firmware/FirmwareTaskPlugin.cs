@@ -108,6 +108,13 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         return device.Status == DeviceStatus.Ok && CachedApiCheck.Supports(device.Apis, FwmgrClient.ApiId, MinFwmgr);
     }
 
+    /// <summary>Plain-language reason for the greyed menu entry when <see cref="CanRun"/> is false (cached data only).</summary>
+    public string? NotSupportedReason(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return TaskSupportReasons.ForStatus(device.Status, requireOk: true) ?? TaskSupportReasons.NeedsApi("the firmware management API", device);
+    }
+
     /// <summary>Step names, in order (see README.md).</summary>
     public static class Steps
     {

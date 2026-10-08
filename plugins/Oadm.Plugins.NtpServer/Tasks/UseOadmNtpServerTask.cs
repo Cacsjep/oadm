@@ -47,6 +47,13 @@ public sealed class UseOadmNtpServerTask : ITaskPlugin
         return TimeApis.HasNtpApi(device.Apis) || device.Apis.Supports(TimeApis.ParamCgi, TimeApis.ParamCgiBase);
     }
 
+    /// <summary>Plain-language reason for the greyed menu entry when <see cref="CanRun"/> is false (cached data only).</summary>
+    public string? NotSupportedReason(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return TaskSupportReasons.NeedsApi("the NTP API", device);
+    }
+
     public string GetTaskName(string? payloadJson) =>
         _service()?.NameAddress is { } address ? $"Use OADM NTP server {address}" : "Use OADM NTP server";
 

@@ -41,6 +41,9 @@ public abstract class PkiTaskBase : ITaskPlugin
 
     public virtual bool CanRun(IDeviceInfo device) => PkiCompatibility.CanRunCertificateTask(device);
 
+    /// <summary>"Needs AXIS OS 11.11 or later (this device has 10.12.338)" when <see cref="CanRun"/> is false.</summary>
+    public virtual string? NotSupportedReason(IDeviceInfo device) => PkiCompatibility.NotSupportedReason(device, needsNetworkSettings: false);
+
     public virtual string GetTaskName(string? payloadJson) => DisplayName;
 
     public abstract Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct);

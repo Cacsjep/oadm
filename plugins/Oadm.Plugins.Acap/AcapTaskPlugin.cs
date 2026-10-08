@@ -73,6 +73,13 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
             && CachedApiCheck.Supports(device.Apis, AcapPlugin.ApplicationApiId, MinApplicationApi);
     }
 
+    /// <summary>Plain-language reason for the greyed menu entry when <see cref="CanRun"/> is false (cached data only).</summary>
+    public string? NotSupportedReason(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return TaskSupportReasons.ForStatus(device.Status) ?? TaskSupportReasons.NeedsApi("the application API", device);
+    }
+
     public async Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);

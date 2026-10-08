@@ -28,6 +28,8 @@ public sealed class RestartTaskPluginTests
         Assert.True(plugin.CanRun(new FakeDevice(Guid.NewGuid(), DeviceStatus.Ok)));
         Assert.False(plugin.CanRun(new FakeDevice(Guid.NewGuid(), DeviceStatus.Unreachable)));
         Assert.False(plugin.CanRun(new FakeDevice(Guid.NewGuid(), DeviceStatus.CredentialsRequired)));
+        Assert.Equal("The device does not answer", plugin.NotSupportedReason(new FakeDevice(Guid.NewGuid(), DeviceStatus.Unreachable)));
+        Assert.Equal("OADM cannot log in to the device: use Log in", plugin.NotSupportedReason(new FakeDevice(Guid.NewGuid(), DeviceStatus.CredentialsRequired)));
     }
 
     [Fact]

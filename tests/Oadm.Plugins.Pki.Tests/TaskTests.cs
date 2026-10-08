@@ -622,6 +622,13 @@ public sealed class TaskPluginInfoTests
         var noNetworkSettings = device with { Apis = [new("param-cgi", "1.0")] };
         Assert.False(tasks.Single(t => t.Id == PkiTaskIds.Dot1xEnable).CanRun(noNetworkSettings));
         Assert.True(tasks.Single(t => t.Id == PkiTaskIds.HttpsEnable).CanRun(noNetworkSettings));
+
+        // Reasons of the greyed menu entries (user decision 2026-10-08).
+        Assert.All(tasks, t => Assert.Equal("Needs AXIS OS 11.11 or later (this device has 11.9.65)", t.NotSupportedReason(device with { Firmware = "11.9.65" })));
+        Assert.All(tasks, t => Assert.Equal("Needs AXIS OS 11.11 or later", t.NotSupportedReason(device with { Firmware = "" })));
+        Assert.Equal("Needs the network settings API (this device has 12.11.77)", tasks.Single(t => t.Id == PkiTaskIds.Dot1xEnable).NotSupportedReason(noNetworkSettings with { Firmware = "12.11.77" }));
+        Assert.Equal("Needs the network settings API (this device has 12.11.77)", tasks.Single(t => t.Id == PkiTaskIds.Dot1xDisable).NotSupportedReason(noNetworkSettings with { Firmware = "12.11.77" }));
+        Assert.Null(tasks.Single(t => t.Id == PkiTaskIds.HttpsEnable).NotSupportedReason(noNetworkSettings));
     }
 
     [Fact]
