@@ -71,7 +71,7 @@
         <ui:FormField Label="User name">
           <TextBox Text="{Binding NewUserName}" />
         </ui:FormField>
-        <ui:FormField Label="Password" Hint="At least 10 characters.">
+        <ui:FormField Label="Password">
           <ui:PasswordBox Text="{Binding NewPassword}" />
         </ui:FormField>
         <ui:FormField Label="Role" Hint="Operators work with devices and tasks; administrators also change settings, users and credentials.">
