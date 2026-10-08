@@ -52,12 +52,31 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
             Path.Combine(baseDirectory, "plugins"),
             Path.Combine(options?.DataFolder ?? AppOptions.DefaultDataFolder, "plugins"),
         };
+        if (AppBundleResources(baseDirectory) is { } resources)
+        {
+            roots.Add(Path.Combine(resources, "plugins"));
+        }
+
         if (DevelopmentRoot(baseDirectory) is { } development)
         {
             roots.Add(development);
         }
 
         return roots;
+    }
+
+    /// <summary>
+    /// <c>OADM.app/Contents/Resources</c> when the client runs from <c>OADM.app/Contents/MacOS</c>: the macOS package
+    /// keeps the plugins there, because codesign treats a folder with a dot in <c>Contents/MacOS</c> ("oadm.network")
+    /// as a nested bundle and refuses to sign the app. Null elsewhere.
+    /// </summary>
+    public static string? AppBundleResources(string baseDirectory)
+    {
+        ArgumentNullException.ThrowIfNull(baseDirectory);
+        var macOs = new DirectoryInfo(Path.TrimEndingDirectorySeparator(baseDirectory));
+        return macOs.Name == "MacOS" && macOs.Parent is { Name: "Contents" } contents
+            ? Path.Combine(contents.FullName, "Resources")
+            : null;
     }
 
     /// <summary>

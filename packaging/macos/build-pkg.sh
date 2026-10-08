@@ -5,7 +5,7 @@
 # and notarization are a later step (packaging/README.md).
 #
 # Components (installed in this order):
-#   com.oadm.pkg.client   /Applications/OADM.app (Contents/MacOS/Oadm.Client + plugins/, Resources/OADM.icns)
+#   com.oadm.pkg.client   /Applications/OADM.app (Contents/MacOS/Oadm.Client, Resources/plugins/ + OADM.icns)
 #   com.oadm.pkg.launchd  /Library/LaunchDaemons/com.oadm.server.plist
 #   com.oadm.pkg.server   /Library/Application Support/OADM/server (Oadm.Server + plugins/, uninstall-oadm.sh);
 #                         preinstall stops, postinstall (re)loads the daemon
@@ -49,6 +49,11 @@ ensure_signed() {
 APP="$WORK/client/OADM.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp -R "$CLIENT_DIR"/. "$APP/Contents/MacOS/"
+# Plugins go to Contents/Resources/plugins (the client also looks there, ClientPluginLoader.AppBundleResources):
+# codesign treats a folder with a dot in Contents/MacOS ("oadm.network") as a nested bundle and refuses the app.
+if [ -d "$APP/Contents/MacOS/plugins" ]; then
+  mv "$APP/Contents/MacOS/plugins" "$APP/Contents/Resources/plugins"
+fi
 sed "s/@VERSION@/$PKG_VERSION/g" "$HERE/Info.plist" > "$APP/Contents/Info.plist"
 plutil -lint "$APP/Contents/Info.plist"
 cp "$REPO_ROOT/packaging/icons/oadm.icns" "$APP/Contents/Resources/OADM.icns"
