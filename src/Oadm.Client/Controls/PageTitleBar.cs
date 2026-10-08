@@ -66,10 +66,14 @@ public sealed class PageTitleBar : Grid
         }
     }
 
+    /// <summary>Pixels the subtitle sits above the title baseline.</summary>
+    public const double SubtitleRaise = 2;
+
     /// <summary>
     /// Puts the subtitle on the title's baseline. Both are bottom aligned, but a 22 px line has more space below the
     /// baseline than a 12 px line, so bottom alignment alone leaves the subtitle a few pixels too low. The difference is
-    /// applied as a whole-pixel render offset (no second layout pass, text stays crisp).
+    /// applied as a whole-pixel render offset (no second layout pass, text stays crisp), then the subtitle is raised by
+    /// <see cref="SubtitleRaise"/> (user decision: 2 px above the title baseline looks right).
     /// </summary>
     protected override Size ArrangeOverride(Size arrangeSize)
     {
@@ -78,7 +82,7 @@ public sealed class PageTitleBar : Grid
         {
             double titleBaseline = _title.Bounds.Y + _title.Padding.Top + _title.TextLayout.TextLines[0].Baseline;
             double subtitleBaseline = _subtitle.Bounds.Y + _subtitle.Padding.Top + _subtitle.TextLayout.TextLines[0].Baseline;
-            double shift = Math.Round(titleBaseline - subtitleBaseline);
+            double shift = Math.Round(titleBaseline - subtitleBaseline) - SubtitleRaise;
             _subtitle.RenderTransform = shift == 0 ? null : new Avalonia.Media.TranslateTransform(0, shift);
         }
 

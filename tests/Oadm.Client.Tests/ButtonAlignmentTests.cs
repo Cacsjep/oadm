@@ -72,7 +72,7 @@ public sealed class ButtonAlignmentTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task Page_subtitle_sits_on_the_title_baseline()
+    public async Task Page_subtitle_sits_two_pixels_above_the_title_baseline()
     {
         HeadlessUnitTestSession session = HeadlessSession.Shared;
         await session.Dispatch(() =>
@@ -93,7 +93,8 @@ public sealed class ButtonAlignmentTests(ITestOutputHelper output)
             int titleBottom = InkBottom(frame, Bounds(title, window));
             int subtitleBottom = InkBottom(frame, Bounds(subtitle, window).Translate(new Vector(0, (subtitle.RenderTransform as TranslateTransform)?.Y ?? 0)));
             output.WriteLine($"title baseline row {titleBottom}, subtitle baseline row {subtitleBottom}");
-            Assert.InRange(subtitleBottom - titleBottom, -1, 1);
+            // The subtitle sits PageTitleBar.SubtitleRaise (2) px above the title baseline (user decision).
+            Assert.InRange(titleBottom - subtitleBottom, Oadm.Client.Controls.PageTitleBar.SubtitleRaise - 1, Oadm.Client.Controls.PageTitleBar.SubtitleRaise + 1);
         }, CancellationToken.None);
     }
 
