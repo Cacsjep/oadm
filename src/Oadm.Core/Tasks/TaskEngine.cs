@@ -739,12 +739,12 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     {
         if (device is null)
         {
-            return "Device not found.";
+            return DeviceMessages.Removed;
         }
 
         if (device.Status == DeviceStatus.CertificateChanged)
         {
-            return "The device certificate changed. Accept the new certificate before running tasks.";
+            return DeviceMessages.CertificateChanged;
         }
 
         return task.Registration.Plugin.CanRun(device)

@@ -86,7 +86,7 @@ public sealed class SnapshotServiceTests
         var tiles = (await service.ListSourcesAsync(new ListSourcesRequest(), CancellationToken.None)).Tiles;
 
         Assert.Equal("Credentials required - the device rejects the stored credentials", tiles[0].Error);
-        Assert.Equal("Unauthorized - HTTP 401", tiles[1].Error);
+        Assert.Equal("Unauthorized - HTTP 401 (check the credentials)", tiles[1].Error);
         Assert.Empty(factory.Cameras[locked.Id].Requests);
     }
 
@@ -130,8 +130,8 @@ public sealed class SnapshotServiceTests
     }
 
     [Theory]
-    [InlineData(HttpStatusCode.Unauthorized, "text/html", "<html><title>401 Unauthorized</title></html>", "Unauthorized - HTTP 401")]
-    [InlineData(HttpStatusCode.Forbidden, null, "", "Forbidden - HTTP 403")]
+    [InlineData(HttpStatusCode.Unauthorized, "text/html", "<html><title>401 Unauthorized</title></html>", "Unauthorized - HTTP 401 (check the credentials)")]
+    [InlineData(HttpStatusCode.Forbidden, null, "", "Forbidden - HTTP 403 (administrator rights are required)")]
     // Recorded from 10.0.0.48 (AXIS OS 12.11) for camera=9.
     [InlineData(HttpStatusCode.BadRequest, "text/html", "<HTML><HEAD><TITLE>400 Bad Request, The request had bad syntax or was inherently impossible to be satisfied.</TITLE></HEAD>\n<BODY><H1>400 Bad Request</H1></BODY></HTML>", "Bad Request - HTTP 400")]
     [InlineData(HttpStatusCode.OK, "text/plain", "Error: Camera is disabled\r\n", "Error: Camera is disabled")]
@@ -177,8 +177,8 @@ public sealed class SnapshotServiceTests
     {
         var timeout = TimeSpan.FromSeconds(10);
         Assert.StartsWith("Unreachable - ", SnapshotRequests.ExceptionError(new HttpRequestException("x", new SocketException((int)SocketError.ConnectionRefused)), timeout), StringComparison.Ordinal);
-        Assert.Equal("Unauthorized - HTTP 401", SnapshotRequests.ExceptionError(new InvalidOperationException("basicdeviceinfo.cgi: HTTP 401"), timeout));
-        Assert.Equal("The device is no longer managed", SnapshotRequests.ExceptionError(new KeyNotFoundException("x"), timeout));
+        Assert.Equal("Unauthorized - HTTP 401 (check the credentials)", SnapshotRequests.ExceptionError(new InvalidOperationException("basicdeviceinfo.cgi: HTTP 401"), timeout));
+        Assert.Equal("The device was removed from OADM.", SnapshotRequests.ExceptionError(new KeyNotFoundException("x"), timeout));
         Assert.Equal("Unreachable - Name not resolved", SnapshotRequests.ExceptionError(new HttpRequestException("Name not resolved."), timeout));
     }
 
@@ -196,10 +196,10 @@ public sealed class SnapshotServiceTests
 
         using var service = new SnapshotService(new FakeRepository(certificate, factoryDefault, speaker), factory);
 
-        Assert.Equal("Certificate changed - accept the new certificate first", (await service.TakeAsync(certificate.Id, 1, 640, 360, CancellationToken.None)).Error);
+        Assert.Equal("Certificate changed. Remove the device and add it again to trust the new certificate.", (await service.TakeAsync(certificate.Id, 1, 640, 360, CancellationToken.None)).Error);
         Assert.Equal("Password not set - the device is in factory default", (await service.TakeAsync(factoryDefault.Id, 1, 640, 360, CancellationToken.None)).Error);
         Assert.Equal("The device has no video", (await service.TakeAsync(speaker.Id, 1, 640, 360, CancellationToken.None)).Error);
-        Assert.Equal("The device is no longer managed", (await service.TakeAsync(Guid.NewGuid(), 1, 640, 360, CancellationToken.None)).Error);
+        Assert.Equal("The device was removed from OADM.", (await service.TakeAsync(Guid.NewGuid(), 1, 640, 360, CancellationToken.None)).Error);
         Assert.Equal("The device has no video source 7", (await new SnapshotService(new FakeRepository(new FakeDevice { Id = certificate.Id }), factory).TakeAsync(certificate.Id, 7, 640, 360, CancellationToken.None)).Error);
         Assert.All(factory.Cameras.Values, c => Assert.Empty(c.Requests));
     }

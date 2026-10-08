@@ -107,7 +107,7 @@ public sealed class PluginTests
         });
 
         Assert.Equal("Shift level: must be at most 100.", bad.Error);
-        Assert.Equal("Device not found.", missing.Error);
+        Assert.Equal("The device was removed from OADM.", missing.Error);
         Assert.Empty(ctx.VapixFactory.For(device.Id).Requests);
     }
 

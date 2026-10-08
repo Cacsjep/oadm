@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Text;
 
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.Pki.Device;
@@ -53,13 +54,7 @@ public static class DeviceHttp
     /// <summary>Readable text for HTTP status codes (device answered, but not with 2xx).</summary>
     public static string DescribeHttp(HttpStatusCode status) => status switch
     {
-        HttpStatusCode.Unauthorized => "Unauthorized - HTTP 401 (check the credentials)",
-        HttpStatusCode.Forbidden => "Forbidden - HTTP 403 (administrator rights are required)",
-        HttpStatusCode.NotFound => "Not Found - HTTP 404 (API not available on this firmware)",
-        HttpStatusCode.BadRequest => "Bad Request - HTTP 400",
-        HttpStatusCode.InternalServerError => "Server error - HTTP 500",
-        HttpStatusCode.ServiceUnavailable => "Service unavailable - HTTP 503",
-        _ => string.Create(CultureInfo.InvariantCulture, $"HTTP {(int)status}"),
+        _ => DeviceMessages.ForHttpStatus((int)status) ?? string.Create(CultureInfo.InvariantCulture, $"HTTP {(int)status}"),
     };
 
     public static string FirstLine(string text)

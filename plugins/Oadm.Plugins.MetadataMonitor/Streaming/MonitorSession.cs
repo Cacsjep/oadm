@@ -87,7 +87,7 @@ internal sealed partial class MonitorSession : IAsyncDisposable
         }
         catch (KeyNotFoundException)
         {
-            const string text = "The device is no longer managed by OADM";
+            const string text = DeviceMessages.Removed;
             SetState(MonitorStates.Error, text);
             return text;
         }
@@ -311,7 +311,7 @@ internal sealed partial class MonitorSession : IAsyncDisposable
                 }
                 catch (KeyNotFoundException)
                 {
-                    SetState(MonitorStates.Error, "The device is no longer managed by OADM");
+                    SetState(MonitorStates.Error, DeviceMessages.Removed);
                     return false;
                 }
             }

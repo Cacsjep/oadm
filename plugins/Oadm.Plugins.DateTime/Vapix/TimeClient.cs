@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 
 using Oadm.Plugins.DateAndTime.Model;
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.DateAndTime.Vapix;
@@ -102,13 +103,7 @@ public static class TimeClient
     /// <summary>Readable text for HTTP status codes (device answered, but not with 2xx).</summary>
     public static string DescribeHttp(HttpStatusCode status) => status switch
     {
-        HttpStatusCode.Unauthorized => "Unauthorized - HTTP 401 (check the credentials)",
-        HttpStatusCode.Forbidden => "Forbidden - HTTP 403 (administrator rights are required)",
-        HttpStatusCode.NotFound => "Not Found - HTTP 404 (API not available on this firmware)",
-        HttpStatusCode.BadRequest => "Bad Request - HTTP 400",
-        HttpStatusCode.InternalServerError => "Server error - HTTP 500",
-        HttpStatusCode.ServiceUnavailable => "Service unavailable - HTTP 503",
-        _ => string.Create(CultureInfo.InvariantCulture, $"HTTP {(int)status}"),
+        _ => DeviceMessages.ForHttpStatus((int)status) ?? string.Create(CultureInfo.InvariantCulture, $"HTTP {(int)status}"),
     };
 
     /// <summary>Readable text for a transport failure ("Timeout after 15 s", "Connection refused").</summary>
@@ -117,7 +112,7 @@ public static class TimeClient
         ArgumentNullException.ThrowIfNull(ex);
         if (ex is TaskCanceledException or TimeoutException)
         {
-            return "Timeout: the device did not answer";
+            return DeviceMessages.TimedOut;
         }
 
         for (var inner = ex; inner is not null; inner = inner.InnerException)
@@ -126,10 +121,10 @@ public static class TimeClient
             {
                 return socket.SocketErrorCode switch
                 {
-                    SocketError.ConnectionRefused => "Connection refused",
-                    SocketError.HostUnreachable or SocketError.NetworkUnreachable => "Host unreachable",
-                    SocketError.TimedOut => "Timeout: the device did not answer",
-                    _ => "Unreachable - " + socket.Message,
+                    SocketError.ConnectionRefused => DeviceMessages.Unreachable("Connection refused"),
+                    SocketError.HostUnreachable or SocketError.NetworkUnreachable => DeviceMessages.HostUnreachable,
+                    SocketError.TimedOut => DeviceMessages.TimedOut,
+                    _ => DeviceMessages.Unreachable(socket.Message),
                 };
             }
         }

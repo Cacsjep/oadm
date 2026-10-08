@@ -224,10 +224,10 @@ public sealed partial class RtspMetadataSource : IDeviceEventSource
     /// <summary>The user text of a live view failure (start errors of the Metadata Monitor).</summary>
     internal static DeviceStreamException ToStreamException(LiveViewException ex) => ex.Error switch
     {
-        LiveViewError.Unauthorized => new DeviceStreamException(DeviceStreamError.Unauthorized, "Unauthorized - HTTP 401", ex),
+        LiveViewError.Unauthorized => new DeviceStreamException(DeviceStreamError.Unauthorized, DeviceMessages.Unauthorized, ex),
         LiveViewError.Unreachable => new DeviceStreamException(
             DeviceStreamError.Unreachable,
-            "Unreachable - " + (ex.InnerException is SocketException socket ? socket.Message : ex.Message.TrimEnd('.')),
+            DeviceMessages.Unreachable(ex.InnerException is SocketException socket ? socket.Message : ex.Message),
             ex),
         LiveViewError.NotSupported => new DeviceStreamException(DeviceStreamError.NotSupported, NoEventStream, ex),
         _ => new DeviceStreamException(DeviceStreamError.Protocol, ex.Message, ex),

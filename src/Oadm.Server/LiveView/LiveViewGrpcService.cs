@@ -70,7 +70,7 @@ public sealed class LiveViewGrpcService(
             ?? throw GrpcGuard.NotFound($"Device {id} not found.");
         if (device.Status == DeviceStatus.CertificateChanged)
         {
-            throw GrpcGuard.FailedPrecondition("The device certificate changed; accept the new certificate first.");
+            throw GrpcGuard.FailedPrecondition(DeviceMessages.CertificateChanged);
         }
 
         var codecs = request.AcceptedCodecs.Select(FromProto).OfType<VideoCodecKind>().ToList();
@@ -138,7 +138,7 @@ public sealed class LiveViewGrpcService(
         LiveViewException { Error: LiveViewError.Unauthorized } => new RpcException(new Status(StatusCode.PermissionDenied, ex.Message)),
         LiveViewException { Error: LiveViewError.NotSupported } => GrpcGuard.FailedPrecondition(ex.Message),
         VapixAuthenticationException => new RpcException(new Status(StatusCode.PermissionDenied, "The camera rejected the stored credentials.")),
-        CertificateChangedException => GrpcGuard.FailedPrecondition("The device certificate changed; accept the new certificate first."),
+        CertificateChangedException => GrpcGuard.FailedPrecondition(DeviceMessages.CertificateChanged),
         _ => new RpcException(new Status(StatusCode.Unavailable, ex.Message)),
     };
 }

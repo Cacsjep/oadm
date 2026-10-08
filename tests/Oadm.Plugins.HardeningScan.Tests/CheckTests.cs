@@ -274,8 +274,8 @@ public sealed class CheckTests
         var camera = new FakeCamera();
         camera.Statuses["axis-cgi/param.cgi"] = HttpStatusCode.Unauthorized;
         var facts = await new DeviceFactsReader().ReadAsync(camera, new TestDevice(), ScanLevel.Basic, CancellationToken.None);
-        Assert.Equal("Unauthorized - HTTP 401", facts.Params.Error);
-        Assert.Equal("Unauthorized - HTTP 401", facts.Users.Error);
+        Assert.Equal(DeviceMessages.Unauthorized, facts.Params.Error);
+        Assert.Equal(DeviceMessages.Unauthorized, facts.Users.Error);
         Assert.Single(camera.Requests);
     }
 

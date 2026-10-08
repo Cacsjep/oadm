@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.VapixCommander;
@@ -96,12 +97,8 @@ public static partial class ResponseInterpreter
     /// <summary>Readable text of a non-success HTTP status.</summary>
     public static string StatusText(int status, string? reason) => status switch
     {
-        400 => "Bad Request - HTTP 400",
-        401 => "Unauthorized - HTTP 401 (check credentials)",
-        403 => "Forbidden - HTTP 403 (user lacks permission)",
-        404 => "Not Found - HTTP 404 (API not available on this firmware)",
+        400 or 401 or 403 or 404 or (>= 500 and <= 599) => DeviceMessages.ForHttpStatus(status)!,
         405 => "Method Not Allowed - HTTP 405",
-        >= 500 and <= 599 => string.Create(CultureInfo.InvariantCulture, $"Server error - HTTP {status}"),
         _ => string.IsNullOrWhiteSpace(reason)
             ? string.Create(CultureInfo.InvariantCulture, $"HTTP {status}")
             : string.Create(CultureInfo.InvariantCulture, $"{reason} - HTTP {status}"),
@@ -540,22 +537,21 @@ public static class TransportErrors
     public static string Describe(Exception ex, TimeSpan timeout)
     {
         ArgumentNullException.ThrowIfNull(ex);
-        var seconds = string.Create(CultureInfo.InvariantCulture, $"{timeout.TotalSeconds:0}");
         switch (ex)
         {
             case OperationCanceledException:
             case TimeoutException:
-                return $"Timeout after {seconds} s";
+                return DeviceMessages.Timeout(timeout);
         }
 
         if (ex.GetType().Name == "CertificateChangedException")
         {
-            return "TLS/certificate error: the device certificate changed. Accept the new certificate on the Devices page first.";
+            return DeviceMessages.CertificateChanged;
         }
 
         if (ex.GetType().Name == "VapixAuthenticationException")
         {
-            return "Unauthorized - HTTP 401 (check credentials)";
+            return DeviceMessages.Unauthorized;
         }
 
         if (ex is AuthenticationException auth)
@@ -601,9 +597,9 @@ public static class TransportErrors
 
     private static string Socket(SocketException ex) => ex.SocketErrorCode switch
     {
-        SocketError.ConnectionRefused => "Connection refused",
-        SocketError.HostUnreachable or SocketError.NetworkUnreachable or SocketError.HostDown or SocketError.NetworkDown => "Host unreachable",
-        SocketError.TimedOut => "Host unreachable (connection timed out)",
+        SocketError.ConnectionRefused => DeviceMessages.Unreachable("Connection refused"),
+        SocketError.HostUnreachable or SocketError.NetworkUnreachable or SocketError.HostDown or SocketError.NetworkDown => DeviceMessages.HostUnreachable,
+        SocketError.TimedOut => DeviceMessages.Unreachable("connection timed out"),
         SocketError.HostNotFound or SocketError.NoData => "Host not found (name resolution failed)",
         SocketError.ConnectionReset => "Connection reset by the device",
         _ => "Connection failed: " + ex.Message,

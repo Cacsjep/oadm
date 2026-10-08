@@ -121,7 +121,7 @@ public sealed class TaskEngineWarningsAndLogTests : IAsyncLifetime
 
         var entry = Assert.Single(await _store.GetLogAsync(record.Id, CancellationToken.None));
         Assert.Equal(TaskLogLevel.Error, entry.Level);
-        Assert.Equal("Device not found.", entry.Message);
+        Assert.Equal("The device was removed from OADM.", entry.Message);
     }
 
     [Fact]

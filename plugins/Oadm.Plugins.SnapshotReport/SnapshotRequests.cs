@@ -88,7 +88,7 @@ public static partial class SnapshotRequests
     {
         DeviceStatus.CredentialsRequired => "Credentials required - the device rejects the stored credentials",
         DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
-        DeviceStatus.CertificateChanged => "Certificate changed - accept the new certificate first",
+        DeviceStatus.CertificateChanged => DeviceMessages.CertificateChanged,
         _ => null,
     };
 
@@ -103,9 +103,9 @@ public static partial class SnapshotRequests
         switch (status)
         {
             case HttpStatusCode.Unauthorized:
-                return "Unauthorized - HTTP 401";
+                return DeviceMessages.Unauthorized;
             case HttpStatusCode.Forbidden:
-                return "Forbidden - HTTP 403";
+                return DeviceMessages.Forbidden;
             case HttpStatusCode.NotFound:
                 return "No snapshot API (image.cgi) - HTTP 404";
             case HttpStatusCode.OK:
@@ -126,7 +126,7 @@ public static partial class SnapshotRequests
         ArgumentNullException.ThrowIfNull(ex);
         if (IsTimeout(ex))
         {
-            return string.Create(CultureInfo.InvariantCulture, $"Timeout after {timeout.TotalSeconds:0.#} s");
+            return DeviceMessages.Timeout(timeout);
         }
 
         if (ex is NotSupportedException)
@@ -136,7 +136,7 @@ public static partial class SnapshotRequests
 
         if (ex is KeyNotFoundException)
         {
-            return "The device is no longer managed";
+            return DeviceMessages.Removed;
         }
 
         // VAPIX client errors carry "HTTP <code>" in the message (e.g. "param.cgi: HTTP 401").
@@ -148,13 +148,13 @@ public static partial class SnapshotRequests
 
         if (Find<SocketException>(ex) is { } socket)
         {
-            return "Unreachable - " + socket.Message.TrimEnd('.');
+            return DeviceMessages.Unreachable(socket.Message);
         }
 
         if (Find<HttpRequestException>(ex) is { } request)
         {
             var inner = request.InnerException?.Message ?? request.Message;
-            return "Unreachable - " + inner.TrimEnd('.');
+            return DeviceMessages.Unreachable(inner);
         }
 
         return ex.Message;

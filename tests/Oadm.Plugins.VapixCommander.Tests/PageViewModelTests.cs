@@ -369,7 +369,7 @@ public sealed class PageViewModelTests
         vapix.Handler = _ => FakeVapix.Text("<html><head><title>401 Unauthorized</title></head></html>", HttpStatusCode.Unauthorized, "text/html");
         await vm.TryCommand.ExecuteAsync(null);
         Assert.False(vm.TryResult.Success);
-        Assert.Equal("Unauthorized - HTTP 401 (check credentials): 401 Unauthorized", vm.TryResult.Summary);
+        Assert.Equal("Unauthorized - HTTP 401 (check the credentials): 401 Unauthorized", vm.TryResult.Summary);
         Assert.Equal("Failed", vm.TryResult.StatusText);
     }
 

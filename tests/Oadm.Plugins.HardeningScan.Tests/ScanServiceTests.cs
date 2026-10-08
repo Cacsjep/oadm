@@ -113,7 +113,7 @@ public sealed class ScanServiceTests
 
         Assert.Equal(0, rig.Vapix.Created);
         var results = (await rig.StateAsync()).Results.ToDictionary(r => r.DeviceId);
-        Assert.Equal("Certificate changed - accept the new certificate first", results[refused[0].Id].Status);
+        Assert.Equal("Certificate changed. Remove the device and add it again to trust the new certificate.", results[refused[0].Id].Status);
         Assert.Equal("Credentials required - the device rejects the stored credentials", results[refused[1].Id].Status);
         Assert.Equal("Password not set - the device is in factory default", results[refused[2].Id].Status);
         Assert.StartsWith("Unreachable", results[refused[3].Id].Status, StringComparison.Ordinal);
