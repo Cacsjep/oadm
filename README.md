@@ -9,26 +9,51 @@ OADM is not affiliated with, sponsored by, or endorsed by Axis Communications.**
 - [For developers](#for-developers)
 - [License](#license)
 
-> **Security note:** the server has no user login yet. Run it on a trusted LAN only.
-
 # For users
 
 ## Install
 
-Installers are built for every release (GitHub Actions, workflow `release`; check downloads against `SHA256SUMS.txt`
-of the release, the installers are not signed). Each installer offers **Server and client** (default) or **Client
-only** (a client that connects to a server on another computer):
+Download the installer for your system from the [latest release](https://github.com/Cacsjep/oadm/releases/latest).
+The installers are not signed yet; you can check a download against `SHA256SUMS.txt` of the release. Every installer
+offers **Server and client** (default) or **Client only**, for a computer that connects to a server elsewhere.
+Uninstalling keeps the data folder (devices, credentials, settings, the PKI).
 
-| | Windows | Linux (Debian, Ubuntu) | macOS |
-|---|---|---|---|
-| Package | `OADM-<version>-win-x64.msi` | `oadm_`, `oadm-server_`, `oadm-client_<version>_amd64.deb` | `OADM-<version>-osx-x64.pkg` |
-| Install | Double-click the MSI, choose on "Choose what to install" | `sudo apt install ./oadm_*.deb ./oadm-server_*.deb ./oadm-client_*.deb`; client only: `sudo apt install ./oadm-client_*.deb` | Right click > Open (the package is not signed yet); client only: Customize, uncheck "OADM server" |
-| Server | Windows service "OADM Server", starts automatically | systemd service `oadm-server` | LaunchDaemon `com.oadm.server` |
-| Client | Start menu "OADM" | App menu "OADM" or `oadm-client` | `/Applications/OADM.app` |
-| Data | `%ProgramData%\OADM` | `/var/lib/oadm` | `/Library/Application Support/OADM` |
-| Uninstall | Apps and Features | `sudo apt remove oadm oadm-server oadm-client` | `sudo /Applications/OADM.app/Contents/Resources/uninstall-oadm.sh` |
+### Windows
 
-Uninstalling keeps the data folder (devices, credentials, settings, the PKI). Details: [`packaging/README.md`](packaging/README.md).
+1. Download `OADM-<version>-win-x64.msi` and double-click it.
+2. Accept the terms and the license, then choose **Server and client** or **Client only**.
+3. Finish. With the server, the Windows service **OADM Server** starts right away and on every boot.
+
+- Start the client from the Start menu: **OADM**.
+- Data folder: `%ProgramData%\OADM`.
+- Uninstall: Settings > Apps > OADM.
+
+### Linux (Debian, Ubuntu)
+
+Download the three `.deb` files (`oadm`, `oadm-server`, `oadm-client`) and install them:
+
+```sh
+sudo apt install ./oadm_*.deb ./oadm-server_*.deb ./oadm-client_*.deb   # server and client
+sudo apt install ./oadm-client_*.deb                                      # client only
+```
+
+- The server runs as the systemd service `oadm-server`: `sudo systemctl status oadm-server`.
+- Start the client from the app menu (**OADM**) or with `oadm-client`.
+- Data folder: `/var/lib/oadm`.
+- Uninstall: `sudo apt remove oadm oadm-server oadm-client`.
+
+### macOS
+
+1. Download `OADM-<version>-osx-x64.pkg`.
+2. The package is not signed yet: open it with right click > **Open**, then confirm.
+3. For a client-only install, click **Customize** and uncheck **OADM server**.
+
+- The server runs as the background service `com.oadm.server`.
+- Start the client from **Applications > OADM**.
+- Data folder: `/Library/Application Support/OADM`.
+- Uninstall: `sudo /Applications/OADM.app/Contents/Resources/uninstall-oadm.sh`.
+
+More details per system: [`packaging/README.md`](packaging/README.md).
 
 ## First start
 
