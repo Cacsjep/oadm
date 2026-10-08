@@ -167,7 +167,8 @@ public sealed class ExportToolbarPlugin : IToolbarPlugin
 
 /// <summary>
 /// The task plugin actions: one button per task plugin that declares <c>ShowInToolbar</c>, enabled
-/// when it can run on the whole selection, rebuilt when the server's task plugins change.
+/// when it can run on the whole selection (disabled with the reason as tooltip when the selection cannot run it),
+/// rebuilt when the server's task plugins change.
 /// </summary>
 public sealed class TaskActionsToolbarPlugin : IToolbarPlugin
 {
@@ -200,9 +201,13 @@ public sealed class TaskActionsToolbarPlugin : IToolbarPlugin
 
         void UpdateEnabled()
         {
+            bool selected = ctx.SelectedDevices.Count > 0;
             foreach ((string id, ToolbarButton button) in buttons)
             {
-                button.IsEnabled = ctx.CanRunTask(id);
+                bool canRun = ctx.CanRunTask(id);
+                button.IsEnabled = canRun;
+                ToolTip.SetTip(button, canRun || !selected ? null : ctx.CannotRunTaskReason(id));
+                ToolTip.SetShowOnDisabled(button, true);
             }
         }
 

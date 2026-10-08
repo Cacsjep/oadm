@@ -180,7 +180,9 @@ public sealed class DeviceListScaleTests(ITestOutputHelper output)
 
         ClientScale.Measure(output, "Select all 5,000 incl. unreachable (no plugin runnable)", TimeSpan.FromSeconds(1), () =>
             vm.SelectedDevices.ReplaceAll(vm.FilteredDevices));
-        Assert.DoesNotContain(vm.ContextMenuEntries, e => e.Header == "Maintenance");
+        MenuEntryViewModel greyed = Assert.Single(vm.ContextMenuEntries, e => e.Header == "Maintenance");
+        Assert.All(greyed.Items!, e => Assert.False(e.IsEnabled));
+        Assert.Equal("Not supported on this device: 100 of 5000 selected devices", greyed.Items![0].ToolTip);
         Assert.Contains("5000 selected", vm.StatusLine.Replace(",", "", StringComparison.Ordinal), StringComparison.Ordinal);
     }
 

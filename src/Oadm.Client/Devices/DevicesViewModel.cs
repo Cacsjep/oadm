@@ -31,6 +31,9 @@ public sealed class MenuEntryViewModel
     public object? CommandParameter { get; init; }
     public bool IsEnabled { get; init; } = true;
 
+    /// <summary>Tooltip, also shown while the entry is disabled: why a task cannot run on the selection.</summary>
+    public string? ToolTip { get; init; }
+
     /// <summary>Submenu entries (task groups); null for a plain entry.</summary>
     public IReadOnlyList<MenuEntryViewModel>? Items { get; init; }
 
@@ -506,7 +509,10 @@ public sealed partial class DevicesViewModel : ObservableObject
         RebuildContextMenu();
     }
 
-    /// <summary>Core actions, then every task plugin whose CanRun is true for the whole selection.</summary>
+    /// <summary>
+    /// Core actions, then every menu task plugin in its group; one that cannot run on the whole selection is disabled
+    /// with the reason as tooltip (user decision 2026-10-08: unsupported tasks stay visible, greyed out).
+    /// </summary>
     internal void RebuildContextMenu()
     {
         ContextMenuEntries.Clear();
@@ -539,11 +545,12 @@ public sealed partial class DevicesViewModel : ObservableObject
         ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Tags", IconKey = "tag", Command = EditTagsCommand });
         ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Remove", IconKey = "remove", Command = RemoveCommand });
 
-        var runnable = TaskPluginCatalog.RunnableFor(_catalog.Plugins, SelectedIds()).ToList();
-        if (runnable.Count > 0)
+        IReadOnlyList<TaskPluginInfo> plugins = _catalog.Plugins;
+        if (plugins.Count > 0)
         {
+            List<string> ids = SelectedIds();
             ContextMenuEntries.Add(MenuEntryViewModel.Separator());
-            foreach (MenuEntryViewModel group in TaskMenuGroups(runnable, RunPluginCommand))
+            foreach (MenuEntryViewModel group in TaskMenuGroups(plugins, RunPluginCommand, p => TaskPluginCatalog.NotRunnableReason(p, ids)))
             {
                 ContextMenuEntries.Add(group);
             }
@@ -566,23 +573,31 @@ public sealed partial class DevicesViewModel : ObservableObject
     /// <summary>
     /// One submenu per task group (sorted by name), even with a single entry (user decision); inside, the
     /// tasks sorted by name with their icons. Names never end with "..." (stripped defensively) and are
-    /// shortened to <see cref="TaskPluginNames.MaxDisplayNameLength"/> characters.
+    /// shortened to <see cref="TaskPluginNames.MaxDisplayNameLength"/> characters. <paramref name="notRunnableReason"/>
+    /// gives the reason a task cannot run on the selection (null = it can): such a task is disabled with the reason as
+    /// tooltip; a group whose tasks are all disabled stays.
     /// </summary>
-    internal static IEnumerable<MenuEntryViewModel> TaskMenuGroups(IEnumerable<TaskPluginInfo> plugins, System.Windows.Input.ICommand run) =>
+    internal static IEnumerable<MenuEntryViewModel> TaskMenuGroups(
+        IEnumerable<TaskPluginInfo> plugins,
+        System.Windows.Input.ICommand run,
+        Func<TaskPluginInfo, string?>? notRunnableReason = null) =>
         plugins
-            .GroupBy(p => TaskPluginNames.NormalizeGroup(p.Group), StringComparer.OrdinalIgnoreCase)
+            .Select(p => (Plugin: p, Reason: notRunnableReason?.Invoke(p)))
+            .GroupBy(e => TaskPluginNames.NormalizeGroup(e.Plugin.Group), StringComparer.OrdinalIgnoreCase)
             .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase)
             .Select(g => new MenuEntryViewModel
             {
                 Header = g.Key,
                 IconKey = GroupIconKey(g.Key),
                 Items = g
-                    .Select(p => new MenuEntryViewModel
+                    .Select(e => new MenuEntryViewModel
                     {
-                        Header = TaskPluginNames.Normalize(p.DisplayName),
-                        IconKey = string.IsNullOrEmpty(p.IconKey) ? "plugin" : p.IconKey,
+                        Header = TaskPluginNames.Normalize(e.Plugin.DisplayName),
+                        IconKey = string.IsNullOrEmpty(e.Plugin.IconKey) ? "plugin" : e.Plugin.IconKey,
                         Command = run,
-                        CommandParameter = p,
+                        CommandParameter = e.Plugin,
+                        IsEnabled = e.Reason is null,
+                        ToolTip = e.Reason,
                     })
                     .OrderBy(e => e.Header, StringComparer.CurrentCultureIgnoreCase)
                     .ToList(),
