@@ -434,7 +434,18 @@ public sealed partial class DevicePollingService : IDisposable
 
             if (device.Scheme == DeviceScheme.Http)
             {
-                observation.ClearCertificate = true;
+                // Reached over HTTP (e.g. a port forward of port 80 only): no TLS handshake to observe, so the web server's
+                // certificate is read over VAPIX instead (cert API, AXIS OS 11.11+); nothing when HTTPS is off or unreadable.
+                var certificate = observation.Network?.HttpsEnabled == false ? null : await ReadWebServerCertificateAsync(client, device.Id, ct).ConfigureAwait(false);
+                if (certificate is not null)
+                {
+                    observation.Certificate = certificate;
+                    observation.CertificateTrust = certificate.TrustAt(_time.GetUtcNow());
+                }
+                else
+                {
+                    observation.ClearCertificate = true;
+                }
             }
             else if (client.ObservedCertificate is { } certificate)
             {
@@ -444,6 +455,19 @@ public sealed partial class DevicePollingService : IDisposable
         }
 
         return observation;
+    }
+
+    private async Task<CertificateInfo?> ReadWebServerCertificateAsync(VapixClient client, Guid deviceId, CancellationToken ct)
+    {
+        try
+        {
+            return await WebServerCertificateReader.ReadAsync(client, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            LogWebServerCertificateFailed(deviceId, ex.Message);
+            return null;
+        }
     }
 
     private static async Task<bool> IsFactoryDefaultAsync(VapixClient client, CancellationToken ct)
@@ -550,6 +574,9 @@ public sealed partial class DevicePollingService : IDisposable
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Device {DeviceId}: API list not readable ({Reason})")]
     private partial void LogApiListFailed(Guid deviceId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Device {DeviceId}: web server certificate not readable over HTTP ({Reason})")]
+    private partial void LogWebServerCertificateFailed(Guid deviceId, string reason);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Polling interval changed to {Seconds} s")]
     private partial void LogIntervalChanged(int seconds);

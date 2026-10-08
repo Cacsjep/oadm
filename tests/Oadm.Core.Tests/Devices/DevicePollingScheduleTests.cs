@@ -196,6 +196,20 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
         Assert.Null(row.CertNameMatches);
     }
 
+    [Fact]
+    public async Task HttpDeviceGetsTheWebServerCertificateOverVapix()
+    {
+        _camera.ServesWebServerCertificate = true;
+        var device = await AddAsync(DeviceStatus.Ok, DeviceScheme.Http);
+
+        var row = await _polling.RefreshAsync(device.Id, CancellationToken.None);
+
+        Assert.Equal(CertificateTrust.SelfSigned, row!.CertTrust);
+        Assert.Equal(_camera.Certificate.NotAfter.ToUniversalTime(), row.CertNotAfterUtc!.Value, TimeSpan.FromSeconds(1));
+        Assert.Equal(_camera.Certificate.Subject, row.CertSubject);
+        Assert.Null(row.CertFingerprintSha256); // nothing is pinned: OADM still talks HTTP to it
+    }
+
     private async Task<Device> AddAsync(DeviceStatus status, DeviceScheme scheme = DeviceScheme.Https, bool staleCertificate = false)
     {
         var device = new Device
@@ -259,6 +273,21 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
                     return Fixtures.Text(Fixtures.Read("param-list-networkinfo.txt"));
                 }
 
+                if (ServesWebServerCertificate && path.EndsWith("/vapix/services", StringComparison.Ordinal))
+                {
+                    return Fixtures.Text(WebServerTlsAnswer, mediaType: "application/soap+xml");
+                }
+
+                if (ServesWebServerCertificate && path.EndsWith("/config/rest/cert/v1/certificates/Default%20HTTPS", StringComparison.Ordinal))
+                {
+                    var answer = new System.Text.Json.Nodes.JsonObject
+                    {
+                        ["status"] = "success",
+                        ["data"] = new System.Text.Json.Nodes.JsonObject { ["alias"] = "Default HTTPS", ["certificate"] = Certificate.ExportCertificatePem(), ["keystore"] = "SE0" },
+                    };
+                    return Fixtures.Json(answer.ToJsonString());
+                }
+
                 return Fixtures.Text("not found", System.Net.HttpStatusCode.NotFound);
             });
         }
@@ -266,6 +295,12 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
         public X509Certificate2 Certificate { get; } = TestCertificates.SelfSigned(ip: "10.0.0.48");
 
         public volatile bool Online = true;
+
+        /// <summary>Answers the SOAP web server settings and REST cert v1 like AXIS OS 12.11 (read over HTTP).</summary>
+        public volatile bool ServesWebServerCertificate;
+
+        private const string WebServerTlsAnswer =
+            """<?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope xmlns:SOAP-ENV="http://www.w3.org/2003/05/soap-envelope" xmlns:aweb="http://www.axis.com/vapix/ws/webserver" xmlns:acert="http://www.axis.com/vapix/ws/cert"><SOAP-ENV:Body><aweb:GetWebServerTlsConfigurationResponse><aweb:Configuration name="WebServer"><aweb:Tls>true</aweb:Tls><aweb:ConnectionPolicies><aweb:Admin>HttpAndHttps</aweb:Admin></aweb:ConnectionPolicies><aweb:CertificateSet><acert:Certificates><acert:Id>Default HTTPS</acert:Id></acert:Certificates><acert:CACertificates/><acert:TrustedCertificates/></aweb:CertificateSet></aweb:Configuration></aweb:GetWebServerTlsConfigurationResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>""";
 
         public System.Collections.Concurrent.ConcurrentBag<DateTimeOffset> FullRefreshTimes { get; } = [];
 

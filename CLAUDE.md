@@ -378,7 +378,12 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
   certificate with a separate `X509Chain` build (system trust store, `RevocationMode.NoCheck`,
   no downloads, validity dates ignored) into `VapixClient.ObservedCertificate`; pinning and
   TOFU decisions are unaffected. Expiry is applied at refresh time (`TrustAt(now)`). Captured
-  on add and on every full refresh; cleared for HTTP-only devices. Cross-platform APIs only.
+  on add and on every full refresh. Devices OADM reaches over HTTP (e.g. a port forward of port 80 only, HTTPS not reachable)
+  have no handshake to observe: the full refresh reads the web server certificate over VAPIX instead
+  (`WebServerCertificateReader`: SOAP `GetWebServerTlsConfiguration` at `/vapix/services` names it and its CA certificates,
+  REST cert v1 `certificates/<alias>` and `ca_certificates/<alias>` return the PEM; AXIS OS 11.11+, read-only, verified on
+  10.0.0.48) and rates it the same way (nothing is pinned); cleared when HTTPS is off or the API is missing (user decision
+  2026-10-08). Cross-platform APIs only.
 - Endpoints used in Goal 1:
   - `basicdeviceinfo.cgi` -> SerialNumber, ProdNbr, ProdShortName, Version, HardwareID
   - `param.cgi?action=list&group=Network.BootProto,Network.UPnP.FriendlyName,Network.Interface.I0.dot1x.Enabled,HTTPS.Enabled`
@@ -656,8 +661,8 @@ Device grid columns, default order:
 | Firmware | Version |
 | DHCP | Network.BootProto == dhcp -> Yes/No |
 | HTTPS | HTTPS enabled -> Enabled/Disabled |
-| Certificate expires | CertNotAfterUtc as days left: "245 days", "1 day", "Today", "Expired 3 days ago". Chip: ok > 30 days, warn <= 30 days, error expired. Empty for HTTP-only |
-| Certificate | CertTrust: Trusted (ok), Self-signed (warn), Untrusted / Expired (error). Empty for HTTP-only. Both certificate cells have a tooltip with subject, issuer and valid-until date |
+| Certificate expires | CertNotAfterUtc as days left: "245 days", "1 day", "Today", "Expired 3 days ago". Chip: ok > 30 days, warn <= 30 days, error expired. Over HTTP read through VAPIX; empty when HTTPS is off or unreadable |
+| Certificate | CertTrust: Trusted (ok), Self-signed (warn), Untrusted / Expired (error). Empty when HTTPS is off or unreadable. Both certificate cells have a tooltip with subject, issuer and valid-until date |
 | IEEE 802.1X | dot1x.Enabled -> Enabled/Disabled |
 
 Polling: server refreshes status (basicdeviceinfo) for every device every **60 s** by
