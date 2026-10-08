@@ -186,7 +186,7 @@ public sealed class ServiceSecurityTests : IDisposable
     }
 
     [Fact]
-    public void InsecurePluginFolderIsSkippedWithAnError()
+    public async Task InsecurePluginFolderIsSkippedWithAnError()
     {
         var plugin = Path.Combine(_dir, "plugins", "oadm.evil");
         Directory.CreateDirectory(plugin);
@@ -194,7 +194,9 @@ public sealed class ServiceSecurityTests : IDisposable
         var permissions = new FakePermissions { FixError = new UnauthorizedAccessException("Access denied") };
         permissions.Problems[plugin] = "Everyone can write it";
         var registry = new PluginRegistry();
-        var loader = new PluginLoader(registry) { FolderCheck = Guard(permissions).CheckPluginFolder };
+        var refused = await Guard(permissions).CheckPluginFoldersAsync([Path.Combine(_dir, "plugins"), Path.Combine(_dir, "missing")], CancellationToken.None);
+        Assert.Equal([Path.GetFullPath(plugin)], refused.Keys);
+        var loader = new PluginLoader(registry) { FolderCheck = folder => refused.GetValueOrDefault(Path.GetFullPath(folder)) };
 
         loader.LoadFromRoots([Path.Combine(_dir, "plugins")]);
 

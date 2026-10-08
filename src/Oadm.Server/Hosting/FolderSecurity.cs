@@ -95,14 +95,51 @@ public sealed partial class FolderGuard(IFolderPermissions permissions, ILogger<
         }
     }
 
-    /// <summary>A plugin folder: null when it may be loaded, else the reason it is skipped.</summary>
-    public string? CheckPluginFolder(string path)
+    /// <summary>
+    /// Checks (and fixes) every plugin folder below the roots (<c>&lt;root&gt;/&lt;plugin&gt;/plugin.json</c>, or a root that
+    /// is a plugin folder itself) before the loader runs. Returns full path -> reason for the folders that must be skipped.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, string>> CheckPluginFoldersAsync(IEnumerable<string> roots, CancellationToken ct)
     {
-        // Called by the synchronous plugin loader at startup, before the server listens.
-        var check = EnsureAsync(path, readableByUsers: true, CancellationToken.None).GetAwaiter().GetResult();
-        return check.Verdict == FolderVerdict.Insecure
-            ? $"Skipped: the plugin folder can be changed by users other than administrators ({check.Problem}) and could not be fixed ({check.FixError})."
-            : null;
+        ArgumentNullException.ThrowIfNull(roots);
+        var refused = new Dictionary<string, string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        foreach (var folder in PluginFolders(roots))
+        {
+            var check = await EnsureAsync(folder, readableByUsers: true, ct).ConfigureAwait(false);
+            if (check.Verdict == FolderVerdict.Insecure)
+            {
+                refused[folder] = $"Skipped: the plugin folder can be changed by users other than administrators ({check.Problem}) and could not be fixed ({check.FixError}).";
+            }
+        }
+
+        return refused;
+    }
+
+    /// <summary>The plugin folders the loader would load, as full paths.</summary>
+    public static IEnumerable<string> PluginFolders(IEnumerable<string> roots)
+    {
+        ArgumentNullException.ThrowIfNull(roots);
+        foreach (var root in roots)
+        {
+            if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+            {
+                continue;
+            }
+
+            if (File.Exists(Path.Combine(root, Core.Plugins.PluginLoader.ManifestFileName)))
+            {
+                yield return Path.GetFullPath(root);
+                continue;
+            }
+
+            foreach (var folder in Directory.GetDirectories(root).Order(StringComparer.OrdinalIgnoreCase))
+            {
+                if (File.Exists(Path.Combine(folder, Core.Plugins.PluginLoader.ManifestFileName)))
+                {
+                    yield return Path.GetFullPath(folder);
+                }
+            }
+        }
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Folder {Path} could be changed by users other than administrators ({Problem}); its permissions were reset")]

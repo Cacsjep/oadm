@@ -282,8 +282,13 @@ public static partial class OadmServerHost
         var registry = sp.GetRequiredService<PluginRegistry>();
         // As a service every plugin folder must be admin-only, and the repository's artifacts/plugins is never used.
         var loader = sp.GetRequiredService<PluginLoader>();
-        loader.FolderCheck = folderGuard is null ? null : folderGuard.CheckPluginFolder;
         var roots = options.PluginRoots ?? DefaultPluginRoots(paths, includeDevelopment: !sp.GetRequiredService<ServerRunMode>().IsService);
+        if (folderGuard is not null)
+        {
+            var refused = await folderGuard.CheckPluginFoldersAsync(roots, ct).ConfigureAwait(false);
+            loader.FolderCheck = folder => refused.GetValueOrDefault(Path.GetFullPath(folder));
+        }
+
         loader.LoadFromRoots(roots);
         foreach (var plugin in registry.TaskPlugins)
         {
