@@ -72,7 +72,7 @@ Task steps shown to the user (one per request, planned up front): **Check compat
 ("user-management 1.2"), **Read password policy** (Skipped without systemready), **Identify OADM
 account**, **Read users** ("4 users"), **Validate change**, the write **Add user joe** / **Update user
 joe** / **Remove user joe** (one per user: **Remove user joe**, **Remove user ann**), **Verify users**
-(detail: "User 'joe' added as Operator with PTZ.", "Users 'joe', 'ann' removed."), then the engine's
+(detail: "User joe added as Operator with PTZ.", "Users joe, ann removed."), then the engine's
 **Completed**.
 A failure marks its step Failed and the later steps Skipped. Skips that the user should notice end
 **Validate change** as Warning (Done with warnings): user to add already exists, user to change or

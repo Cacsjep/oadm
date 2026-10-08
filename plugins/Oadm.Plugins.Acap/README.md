@@ -83,7 +83,7 @@ the task progress is derived from the steps. Steps that do not apply end Skipped
 
 | Action | Steps |
 |---|---|
-| Install / upgrade | Check compatibility, Read package, Read device info (basicdeviceinfo), Read embedded development version (param.cgi, "Not reported" when absent), Read unsigned application setting (config.cgi `AllowUnsigned`), Read installed applications, Check compatibility of package, Upload package (byte progress, then "The device installs the package"), Verify installation (Warning when the upload answer was lost but the version is listed); with "Start after install": Start application, Verify application state (Warning if not running; both Skipped when already running) |
+| Install / upgrade | Check compatibility, Read package, Read device info (basicdeviceinfo), Read SDK version (param.cgi, "Not reported" when absent), Read unsigned application setting (config.cgi `AllowUnsigned`), Read installed applications, Check package, Upload package (byte progress, then "The device installs the package"), Verify installation (Warning when the upload answer was lost but the version is listed); with "Start after install": Start application, Verify application state (Warning if not running; both Skipped when already running) |
 | Remove | Check compatibility, Read installed applications (Warning when not installed, Failed for bundled apps), Remove application, Verify removal |
 | Start / Stop | Check compatibility, Read installed applications (Warning when not installed), Start application / Stop application, Verify application state (both Skipped when already in the requested state) |
 

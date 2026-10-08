@@ -455,8 +455,8 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
 User decision: maximum technician satisfaction. Adding devices is one page, no steps; the server
 logs in to every device it finds with the credentials the technician already has.
 
-Toolbar (toolbar plugins, see "Toolbar plugins"): the **Add** menu entries Discovery (= Scan), Network range (= Scan IP
-range), Manual (= Add manually) and Import from file (= Import devices) open the same dialog window (`Discovery/AddDevicesWindow`, shared dialog
+Toolbar (toolbar plugins, see "Toolbar plugins"): the **Add** menu entries Discovery, Network range, Add manually and
+Import from file open the same dialog window (header = the entry name) (`Discovery/AddDevicesWindow`, shared dialog
 controls: title bar, one card, footer) in four modes:
 - **Scan**: zero-conf (mDNS) discovery starts immediately; devices appear live. The scan ends after
   `Discovery.ZeroConfSeconds` (Settings page, default 30 s, 5..300).
@@ -480,12 +480,12 @@ controls: title bar, one card, footer) in four modes:
   case-insensitive: Address, IP address, IP, Host name; optional **User name** and **Password**; other columns
   ignored), or a plain file with one address per line; comma or semicolon, UTF-8 (BOM optional), UTF-16 with BOM,
   else Latin-1; a formula guard `'` of the export is removed. A password without a user name is for `root`; a user
-  name alone is no credential. The whole file is refused in `ui:MessageWindow` ("Import devices") when it is larger
+  name alone is no credential. The whole file is refused in `ui:MessageWindow` ("Import from file") when it is larger
   than 2 MB, has more than 10,000 addresses, no address at all, no Address column (with a header) or is not text.
   Problems of single lines stay in their row (chip "Not added" + detail): no address, not an IP address or host
   name (http/https, port, no path), "Listed before in line N." (same address), line longer than 1,024
-  characters, unclosed quote, user name > 64 / password > 256. The page (header "Import devices", "Addresses from
-  <file>, 16 checked at a time. ...") shows one row per line at once in file order ("Waiting"), then probes the
+  characters, unclosed quote, user name > 64 / password > 256. The page (header "Import from file", "Addresses from
+  <file>. Logins in the file are tried first.") shows one row per line at once in file order ("Waiting"), then probes the
   addresses with `ProbeAddress(address, user, password)`, at most `MaxImportProbes` = 16 at a time (a probe holds
   its slot until its watch stream ended, i.e. its logins finished): the row becomes "Checking...", then shows
   the device it found (`DiscoveredRowViewModel.Adopt`, the line's row keeps its place) with the login result;
@@ -696,7 +696,7 @@ Layout, top to bottom:
    "Step 3/6 · Upload firmware" plus " · 45 %" while the running step reports progress (tooltip: the text
    and the step detail); a failed task shows its failed step, a successful one just "Completed"; empty for plugins without steps. **Device** is the task's
    device by its device grid address (IP or host name, resolved through the client device store
-   and updated live); a device removed since shows as "removed device 1a2b3c4d" (id shortened).
+   and updated live); a device removed since shows as "Removed device 1a2b3c4d" (id shortened).
    Tooltip: "10.0.0.200: Failed - Connection refused". Sortable by the text. Status chips:
    Queued/Cancelled neutral, Running violet, Done green, **Done with warnings** amber (warn
    chip), Failed red. **Details** opens the task details window, live while it is open: a Device card
@@ -1120,7 +1120,7 @@ public interface IToolbarContext         // UI thread
 The Devices page toolbar is made of toolbar plugins. Built in (compiled into the client,
 `Devices/Toolbar/BuiltInToolbarPlugins.cs`, registered in the container like plugin parts): **Add** (`oadm.toolbar.add`,
 group Add, primary, icon `add`, a `MenuFlyout` with Discovery (`HostPages.AddScan`, icon `search`), Network range
-(`AddIpRange`, `range`), Manual (`AddManually`, `add`) and Import from file (`AddImport`, `download`: see "Add Devices
+(`AddIpRange`, `range`), Add manually (`AddManually`, `add`) and Import from file (`AddImport`, `download`: see "Add Devices
 Page")), Remove (Manage; confirmation, the context menu
 uses the same flow), **Refresh** (Manage, order 5, icon `refresh`, enabled with a selection; `IToolbarContext.RefreshDevicesAsync`
 = one `DeviceService.Refresh` for the whole selection: the server queues a full refresh per device; the context menu entry
@@ -1231,7 +1231,7 @@ Steps of the other task plugins (details in each plugin README):
   use (answers ping). Nothing was changed." and nothing is sent; Skipped for DHCP. The dialogs' query
   `checkAddresses` uses the same probe.
 - Firmware: Check compatibility, Read device info, Validate file, Read firmware status, Upload firmware
-  (byte progress), Install firmware (until offline), Wait for device to come back, Verify version, Read
+  (byte progress), Install firmware (until offline), Wait for the device to come back, Verify version, Read
   commit state, Commit firmware (retries add "Wait before retrying the commit" and "(attempt n)" steps).
   File checks never look at the content (real images start with gzip/tar-like bytes, e.g. AXIS OS 10.12
   `M3206-LVE_10_12_338.bin`): only `.bin`, 1 MB..2 GB and product/version from the download name when it
@@ -1241,8 +1241,8 @@ Steps of the other task plugins (details in each plugin README):
 - Date and time: Check compatibility, Read current time settings, Read NTP settings, Validate settings, Set time zone,
   Set NTP configuration / Turn off NTP, Set date and time, Verify time settings, Verify NTP settings (like ADM the time
   zone and the time mode are always planned; values the device already has are Skipped "Already ...").
-- ACAP install: Check compatibility, Read package, Read device info, Read embedded development version,
-  Read unsigned application setting, Read installed applications, Check compatibility of package, Upload
+- ACAP install: Check compatibility, Read package, Read device info, Read SDK version,
+  Read unsigned application setting, Read installed applications, Check package, Upload
   package (byte progress), Verify installation (+ Start application, Verify application state); remove,
   start, stop: Check compatibility, Read installed applications, <action> application, Verify ....
   Names: "Install <app> <version>", "Upgrade <app> to <version>", "Remove|Start|Stop <app>".
@@ -1265,7 +1265,7 @@ address family OADM connects with last. After a new static address (IPv4, or IPv
 IPv6) OADM follows the device: it polls the new address (90 s), verifies the serial number and moves the
 device record (`UpdateDeviceAddressAsync`); not answering, another serial or a refused move end as Warning
 with the record unchanged; host names are kept. DHCP keeps the record (step "Update OADM device address"
-Skipped "DHCP: address assigned by the network, the device will be found again by the next scan"), the
+Skipped "OADM finds the device again at its new address."), the
 periodic re-find moves it. Decision table and verified device behavior: plugin `README.md`.
 
 ## Assign IP address plugin
@@ -1311,7 +1311,7 @@ Read-only for devices (param.cgi reads and image.cgi snapshots).
   (`SnapshotReportPluginInfo`). Verified on 10.0.0.48 (AXIS OS 12.11): 1280x720 about 125 KB in
   0.1-0.3 s, camera=1/2 are the two view areas, a missing camera answers HTTP 400 with an HTML
   "400 Bad Request" page. At most 4 device requests at a time (all callers), 10 s timeout each.
-  Errors are short texts: "Timeout after 10 s", "Unauthorized - HTTP 401", "Forbidden - HTTP 403",
+  Errors are short texts (shared with every plugin: SDK `DeviceMessages`): "Timeout after 10 s", "Unauthorized - HTTP 401 (check the credentials)", "Forbidden - HTTP 403 (administrator rights are required)",
   "Bad Request - HTTP 400", "Unreachable - <socket error>", "The device has no video source 3", or the
   VAPIX text the device sent ("Error: ...").
 - `InvokeAsync` methods (`SnapshotReportMethods`, JSON camelCase, models in `Shared/`): `listSources`
@@ -1383,9 +1383,9 @@ JSON schema: `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md` + `c
   `charset=utf8`), shows binary answers as "image/jpeg, 123.4 KB", pretty-prints JSON/XML (cut at
   256 KB) and interprets per kind (`ResponseInterpreter`, table in command-format.md). Errors: device
   text (`# Error: ...` line, JSON `message (code N)`, REST error/problem+json, SOAP fault, Axis
-  `GeneralError`, first text line, HTML title) or transport text ("Timeout after 15 s", "Connection
-  refused", "Host unreachable", "TLS/certificate error: ...", "Unauthorized - HTTP 401 (check
-  credentials)", "Not Found - HTTP 404 (API not available on this firmware)", "Bad Request - HTTP 400:
+  `GeneralError`, first text line, HTML title) or transport text ("Timeout after 15 s", "Unreachable -
+  Connection refused", "Unreachable - no route to the device", "TLS/certificate error: ...", "Unauthorized - HTTP 401 (check
+  the credentials)", "Not Found - HTTP 404 (API not available on this firmware)", "Bad Request - HTTP 400:
   <device text>", "Server error - HTTP 500: <device text>"). HTTP 204 / empty 2xx is success.
 - Rollout: page method `rollout` validates every command and value first (nothing starts on an error),
   writes need `confirmed`, then `ITaskRunner.RunAsync` with the contributed, hidden task plugin
@@ -1513,7 +1513,7 @@ decisions: `docs/specs/ntp-server.md`. Own RFC 5905 server-mode implementation (
   not saved (error under the field). Events: `state` (status/upstream changed), `requests` (new entries).
 - Page (one card in the host card, subtitle in the host page header, status chip left of the Save button); Enable NTP server;
   Listen on (select, refreshed when the page opens); Upstream server (optional, checked while typing, field errors under
-  the field, "Checking <host>" accent chip while Save runs, "Answered: Stratum 2, offset +3 ms, round trip 12 ms" after
+  the field, "Checking <host>" accent chip while Save runs, "Answered: 3 ms off, 12 ms round trip" after
   it, a line "Serving stratum 3 from ..." / "Serving the server clock ..."); Save (primary); "Last requests" DataGrid
   (Time, Client, Device, Offset, Result chip). The view model watches the events while the view is attached; when the
   stream ends or fails (or the host has none: fake mode) it re-reads the state every 2 s.
@@ -1649,8 +1649,8 @@ part 2: the contributed Security tasks (below), the only writers of the `issued`
   the issuer path become the chain.
 - Replace (generate or import): without `confirmed` and with an existing CA the reply is `needsConfirmation` with
   `devicesWithCurrentCa` (also for 0 devices, and only after all checks passed, so the page asks after the field
-  checks); the page asks "N devices have certificates from the current CA. They keep working, but show 'Issued by a
-  previous CA' until they are renewed. Replace the CA?" (only "Replace the CA?" for 0). The old CA moves to
+  checks); the page asks "N devices have certificates from the current CA. They keep working until they are renewed.
+  Replace the CA?" (only "Replace the CA?" for 0). The old CA moves to
   `previousCas`, the anchors are updated, a `state` event is published.
 - Trust anchors: the active CA, its chain and the previous CAs (+ chains) go to `ctx.TrustAnchors`, so device
   certificates they issued are **Trusted** in the device grid without an OS change (lazy, next full refresh).
@@ -1711,31 +1711,31 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   hex>`, manual installs `OADM import <ts>`, percent-encoded in URLs. CA certificates are matched by fingerprint (an
   existing alias is reused). "Remove previous OADM certificate" deletes older OADM certificates of the purpose that
   nothing uses (alias prefix + registry serial or the CA as issuer), never others.
-- **HTTPS: Enable/Update** (`oadm.pki.https-enable`, no dialog, name "Enable HTTPS"): Check compatibility, Read web server
+- **Enable HTTPS** (`oadm.pki.https-enable`, no dialog, name "Enable HTTPS"): Check compatibility, Read web server
   settings, Read network settings (Skipped without network-settings), Install CA certificate (Skipped "Already
   installed"), Create key on the device, Get certificate request, Sign certificate, Install certificate, Switch web server
   to the new certificate (policy kept; HTTP only becomes HTTP and HTTPS), Verify HTTPS (`ctx.UpdateDeviceTlsAsync("https",
   fingerprint)`, retried up to 60 s while the web server restarts: OADM pins the new certificate, scheme https), Remove
   previous OADM certificate.
-- **HTTPS: Disable** (`oadm.pki.https-disable`, confirmation "Video systems that use HTTPS lose the connection to these
+- **Disable HTTPS** (`oadm.pki.https-disable`, confirmation "Video systems that use HTTPS lose the connection to these
   devices.", name "Disable HTTPS"): Check compatibility (fails when `Network.HTTP.AuthenticationPolicy=basic`: OADM sends no
   Basic over HTTP), Read web server settings, Set HTTP only (policy `Http`, certificates stay; Skipped "Already HTTP only"),
   Verify (`UpdateDeviceTlsAsync("http")`).
-- **IEEE 802.1X: Enable/Update** (`oadm.pki.dot1x-enable`, confirmation "Devices on ports that enforce 802.1X become
+- **Enable IEEE 802.1X** (`oadm.pki.dot1x-enable`, confirmation "Devices on ports that enforce 802.1X become
   unreachable if authentication fails.", name "Enable IEEE 802.1X"): Check compatibility (CA chain must end in a root, the
   RADIUS CA of the page, cert v1, network-settings with `wired.8021X`, identity 1..128), Check device clock (> 5 min off:
   "The device clock is 12 min off. Set the date and time first. Nothing was changed."), Install CA certificates (RADIUS
   server CA + the OADM CA chain), Create key / Get request / Sign / Install certificate, Set 802.1X configuration (enabled,
   EAP-TLS, identity MAC = serial / host name / custom with `{serial}` `{hostName}`, EAPoLv<n>, certClient, certsCA = RADIUS
   CA aliases), Verify 802.1X settings (read back, mismatch = Warning), Remove previous OADM certificate.
-- **IEEE 802.1X: Disable** (`oadm.pki.dot1x-disable`, name "Disable IEEE 802.1X"): Check compatibility, Set 802.1X off
+- **Disable IEEE 802.1X** (`oadm.pki.dot1x-disable`, name "Disable IEEE 802.1X"): Check compatibility, Set 802.1X off
   (Skipped "Already off"), Verify; certificates stay.
-- **Renew certificates now** (`oadm.pki.renew`, name "Renew certificates"): Check compatibility, Read certificates, Read web
+- **Renew certificates** (`oadm.pki.renew`, name "Renew certificates"): Check compatibility, Read certificates, Read web
   server settings, Read network settings, then per purpose whose current certificate is OADM's the enable flow with
   prefixed steps ("HTTPS: Create key on the device", "IEEE 802.1X: ..."; 802.1X adds Check device clock and runs only
   while 802.1X is on); otherwise one Skipped step "Renew HTTPS certificate" / "Renew IEEE 802.1X certificate" with the
   reason ("No OADM HTTPS certificate on this device").
-- **View installed certificates** (`oadm.pki.view`, dialog only, never a task) and **Delete certificates**
+- **View certificates** (`oadm.pki.view`, dialog only, never a task) and **Delete certificates**
   (`oadm.pki.delete`): `CertificatesWindow` (virtualized DataGrid grouped Client / Server / CA / devices that could not be
   read; MAC address, Address, Name, Issued by, Issued to, Valid to, In use (HTTPS, 802.1X), Source OADM / Other;
   SearchBox; Refresh), read through the query `listCertificates` (read-only, at most 4 devices at a time, progress row,
@@ -1744,7 +1744,7 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   device. Task steps: Check compatibility, Read certificates (validates every choice before the first delete: exists, not
   in use, not factory), Delete certificate <alias> (one each), Verify. Names "Delete certificate <alias>" / "Delete N
   certificates" (distinct aliases).
-- **Install certificates manually** (`oadm.pki.install`): `InstallCertificatesWindow`: Use for (HTTPS / IEEE 802.1X / CA
+- **Install certificates** (`oadm.pki.install`): `InstallCertificatesWindow`: Use for (HTTPS / IEEE 802.1X / CA
   certificates only), .pfx / .p12 files (one password for all, `CertificateFiles`: wrong password under the field), table
   File, Certificate, Device, Status chip; a file must match exactly one selected device by MAC (serial in any notation, also
   `axis-<serial>`), IP or host name / FQDN in CN or SAN, one file per device; problems block Install. Install confirms,
@@ -1815,7 +1815,7 @@ Read-only for devices. Decided with the user on 2026-10-08:
 - **Info text** (like the AXIS tool's Info column): `[INIT] port = 33; active = 0;` = `[INIT]` / `[CHANGED]` / `[DELETED]`
   from the property operation, then every Source, Key and Data item as `name = value;` in document order.
 - **Page methods / events (`MetadataMethods`):** `start` ({deviceId}) -> {streamId} or `error` ("The device has no event
-  stream", "Unauthorized - HTTP 401", "Unreachable - ..."), `stop`, `keepAlive` (every 5 s while running). Messages are pushed through `ICorePluginContext.Events`
+  stream", "Unauthorized - HTTP 401 (check the credentials)", "Unreachable - ..."), `stop`, `keepAlive` (every 5 s while running). Messages are pushed through `ICorePluginContext.Events`
   (topic `messages`, batched every 250 ms, at most 500 per batch; above that the oldest of the batch are dropped and counted)
   and a `state` event (Connecting, Live, Reconnecting, Stopped, Error + text, message count, lost count).
 - **Page (client, `HasOwnCards` false: one card):** `ui:PageHeader.Subtitle` "Shows the events a camera sends, live.".
@@ -1874,13 +1874,13 @@ Read-only for devices. Decided with the user on 2026-10-08:
 client saves one ZIP for Axis support. Read-only for devices.
 - Device request: `GET /axis-cgi/serverreport.cgi?mode=zip_with_image` (report + snapshot, what Axis support asks for;
   video devices) else `mode=zip`; zip_with_image answering 400/404/500/501 or 200 without a ZIP is retried as zip. Stored
-  credentials, the account must be an administrator (403 = "Forbidden - HTTP 403 (the server report needs an administrator
-  account)"). Answer streamed to disk (`VapixRequestOptions.StreamResponse`), must start with a ZIP signature, at most 256
+  credentials, the account must be an administrator (403 = "Forbidden - HTTP 403 (administrator rights are
+  required)"). Answer streamed to disk (`VapixRequestOptions.StreamResponse`), must start with a ZIP signature, at most 256
   MB, 5 minutes per device, at most 4 devices at a time (all jobs together). Verified read-only on 10.0.0.48 (P3265-V, AXIS
   OS 12.11): `application/zip`, chunked, zip_with_image about 0.3 MB in 34-37 s (`serverreport_cgi.txt` 1.3 MB unpacked +
   `serverreport_image.jpg`), zip about 0.16 MB in 31 s; `Content-Disposition: attachment; filename=Axis_SR_<date>_<time>_<MAC>.zip`.
   Devices with CertificateChanged / CredentialsRequired / PasswordNotSet are refused without a request (snapshot report
-  texts); unknown ids "The device is no longer managed".
+  texts); unknown ids "The device was removed from OADM.".
 - Jobs (`SystemReportJobs`, server memory, files in `ICorePluginContext.DataDirectory/jobs/<job id>/`, leftovers deleted at
   start): one file per device, then `bundle.zip` = every report stored unchanged (no compression) as
   `<address>_<MAC>_<model without "AXIS ">_<yyyyMMdd-HHmmss UTC>.zip` (other characters than letters, digits, '.', '-' become
@@ -1985,9 +1985,9 @@ without the explicit option. Decision table and research in `plugins/Oadm.Plugin
 # Settings
 
 Server-side in `Setting`. Goal 1 keys: `Polling.IntervalSeconds` (60, 5..86400),
-`Polling.FullRefreshMinutes` (10, 1..1440), `Scan.Parallelism` (32), `Scan.TimeoutMs` (1500),
+`Polling.FullRefreshMinutes` (10, 1..1440), `Scan.Parallelism` (32, Settings page "Addresses scanned at once"), `Scan.TimeoutMs` (1500),
 `Discovery.ZeroConfSeconds` (30, 5..300: a zero-conf scan of the add page ends after this time; Settings
-page "Zero-conf scan duration (s)"), `Server.Name` (hostname),
+page "Discovery duration (s)"), `Server.Name` (hostname),
 `Server.ListenUrl`, `Uploads.MaxMegabytes` (2048, 1..65536), `Uploads.RetentionHours` (24,
 1..8760; both server-only, not on the settings page yet), `Tasks.RetentionDays` (90, 0..3650, 0 = no age
 limit) and `Tasks.MaxHistory` (50000, 0 or 100..1000000, 0 = no limit): task history retention, applied

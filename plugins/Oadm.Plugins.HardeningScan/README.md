@@ -111,7 +111,7 @@ of the level is Warn or Fail.
   REST GETs it lists (user-management v2, firewall v1, lldp v1; Extended: snmp v1, oidcsetup v1), `getNTPInfo` (ntp API) or
   the Time parameters, `disks/list.cgi` (disk-management API or an SD slot), applications list + AllowUnsigned (application
   API), Extended: the SOAP web server read. 15 s per request, no retries, 2 min per device. A failed read makes only its
-  checks Error ("Timeout after 15 s", "Unauthorized - HTTP 401": the snapshot report's texts); when param.cgi cannot reach the
+  checks Error ("Timeout after 15 s", "Unauthorized - HTTP 401 (check the credentials)": the shared SDK `DeviceMessages` texts); when param.cgi cannot reach the
   device or is refused, the other reads are skipped with the same text (row status). Readers compiled in from other plugins
   (`<Compile Include ... Link>`, never a project reference): Users `PwdgrpApi`, Date and time `Model/` + `Vapix/`, ACAP
   `ApplicationApiClient` + `Shared/`, PKI `WebServerTls` + `DeviceHttp`, Snapshot report `SnapshotRequests` (error texts and

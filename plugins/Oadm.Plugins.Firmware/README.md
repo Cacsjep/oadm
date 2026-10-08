@@ -110,7 +110,7 @@ front, so the user sees them as Pending); the task progress is derived from the 
 | Read firmware status | fwmgr `status`: no uncommitted previous upgrade |
 | Upload firmware | `ctx.Files.OpenReadAsync` streamed in 80 KB chunks (`FirmwareStreamContent`), Content-Length set, never buffered; reopened if the HTTP stack resends after a Digest challenge; `Expect: 100-continue` so the 401 comes before the body. Step progress in bytes ("12 of 80 MB"). Request timeout 20 min via `VapixRequestOptions.Timeout`. Params: settings kept: `autoCommit=never`, `autoRollback=30` (minutes, longer than the 15 min wait) so the device reverts by itself if OADM never verifies. Factory default: `autoCommit=started`, `autoRollback=never`, because the reset removes OADM's credentials |
 | Install firmware | poll anonymous `basicdeviceinfo getAllUnrestrictedProperties` every 5 s (works after a factory default) until the device goes offline (or already answers with another version) |
-| Wait for device to come back | same probe until it answers again. Both waits share one timeout of **15 min** |
+| Wait for the device to come back | same probe until it answers again. Both waits share one timeout of **15 min** |
 | Verify version | version after restart == `firmwareVersion` from the upgrade answer (or the file name). Old version again = the device rolled back -> Failed |
 | Read commit state / Commit firmware | settings kept only: `status`, then `commit` unless already committed (Commit Skipped); 3 attempts, "Wait before retrying the commit" (10 s) between them, retries named "... (attempt 2)". Factory default: both Skipped ("The device commits a factory default upgrade by itself.") and Done with warning (set a password / check the address) |
 
