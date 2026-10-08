@@ -105,6 +105,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.VapixCommander(.Client)/   core plugin: VAPIX command library, raw requests, rollouts
   Oadm.Plugins.NtpServer(.Client)/        core plugin: NTP server (RFC 5905 server mode) + "Use OADM as NTP server"
   Oadm.Plugins.DhcpServer(.Client)/       core plugin: DHCP server (RFC 2131) with static leases and lease list
+  Oadm.Plugins.MetadataMonitor(.Client)/  core plugin: live event stream of one camera (RTSP metadata, port of AXIS Metadata Monitor; spec only)
   Oadm.Plugins.Pki(.Client)/              core plugin: PKI (one CA for device certificates, trusted root store)
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
@@ -1437,6 +1438,60 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   `pki-install-manual.png`, `pki-dot1x-confirm.png`; `tests/Oadm.Client.Tests/SecurityMenuTests` (`pki-security-menu.png`);
   `tests/Oadm.Server.Tests/DeviceTlsTests` (UpdateDeviceTlsAsync with the fake network presenting real certificates).
   `HardwareWriteTests` is an opt-in skeleton (`OADM_PKI_HARDWARE_WRITE=1`, `Category=HardwareWrite`), not written yet.
+
+## Metadata Monitor (core plugin)
+
+`plugins/Oadm.Plugins.MetadataMonitor` (+ `.Client`), id `oadm.metadata-monitor`, rail page **Metadata Monitor** (icon
+`activity`). A port of the AXIS Metadata Monitor tool: pick one camera, Start, and watch its event stream live, the way a
+technician checks which events a device sends (I/O ports, virtual inputs, storage, temperature, tampering, ACAP events).
+Read-only for devices. Decided with the user on 2026-10-08:
+
+| Topic | Decision |
+|---|---|
+| Who connects | The **server** opens the RTSP metadata stream with the stored credentials (like the live view); passwords never reach the client. |
+| Content | **Events only**: exactly `rtsp://<device>/axis-media/media.amp?video=0&audio=0&event=on` (no analytics scene data, no free address field). |
+| Cameras | **One camera at a time**; switching the camera stops the running stream. |
+| Saving | **No saving**: no export, no capture files. A single message can be copied from the detail view. |
+
+- **Transport (server, `Oadm.Core/LiveView` RTSP client reused):** RTSP/1.0 over TCP to port 554, RTP interleaved, Digest
+  with the stored credentials (Basic never on plain RTSP), DESCRIBE / SETUP of the one `application` media
+  (`vnd.onvif.metadata`) / PLAY, keep-alive (GET_PARAMETER or OPTIONS before the session timeout), TEARDOWN on Stop.
+  RTP payload: XML fragments of one `tt:MetadataStream` document per message, the RTP marker bit ends a document;
+  fragments are joined by sequence number, a gap drops the document (counted, "1 message lost"). At most 1 MB per
+  document. Devices with status CertificateChanged / CredentialsRequired / PasswordNotSet are refused with the device
+  status text. One stream per page session; the server ends it when the page's watch ends (client closed or switched
+  page) or after Stop. Reconnect with backoff 1, 2, 4, 8, 10 s on a broken connection, status "Reconnecting".
+- **Parsing (server):** every `wsnt:NotificationMessage` in a document becomes one message: topic (`wsnt:Topic`, namespace
+  prefixes resolved, `tns1:` / `tnsaxis:` dropped for the tree text: `Device/IO/VirtualInput`), UTC time and
+  `PropertyOperation` (Initialized, Changed, Deleted) of `tt:Message`, `Source` / `Key` / `Data` SimpleItems (name, value),
+  the raw XML of the notification (pretty-printed for the detail view), and the capture time (server receive time).
+  Category = "Event". Malformed XML becomes one message with Category "Invalid" and the raw text.
+- **Info text** (like the AXIS tool's Info column): `[INIT] port = 33; active = 0;` = `[INIT]` / `[CHANGED]` / `[DELETED]`
+  from the property operation, then every Source, Key and Data item as `name = value;` in document order.
+- **Page methods / events (`MetadataMethods`):** `start` ({deviceId}) -> {streamId} or `error` ("The device has no event
+  stream", "Unauthorized - HTTP 401", "Unreachable - ..."), `stop`. Messages are pushed through `ICorePluginContext.Events`
+  (topic `messages`, batched every 250 ms, at most 500 per batch; above that the oldest of the batch are dropped and counted)
+  and a `state` event (Connecting, Live, Reconnecting, Stopped, Error + text, message count, lost count).
+- **Page (client, `HasOwnCards` false: one card):** `ui:PageHeader.Subtitle` "Shows the events a camera sends, live.".
+  Top row: camera select (managed video and I/O devices, sorted by IPv4, `ui:SearchBox`-filtered combo, "P3265-V (10.0.0.48)"),
+  **Start** / **Stop** (primary), the status chip left of the buttons (Connecting accent, Live ok "Live · 127 messages",
+  Reconnecting warning, Error red with the text), `ui:SearchBox` filter (live, case-insensitive over topic, info and raw
+  XML; "Filter events"), **Clear** (empties the list, the stream keeps running) and **Autoscroll** toggle (on: the newest
+  row stays visible; scrolling up turns it off, scrolling to the end turns it on again).
+  List (virtualized DataGrid, `RangeObservableCollection`, batches appended in one step): Seq# (per stream, from 1),
+  Timestamp (UTC, the message's UtcTime, `yyyy-MM-dd HH:mm:ss.fff`), Category, Event topic, Capture time (UTC), Property
+  operation, Info (star width). No raw Data column (it is in the detail view). The client keeps the newest **10,000**
+  messages (oldest removed in one step).
+  Detail (below the list, splitter, height persisted per client): the selected message's XML in `ui:CodeView` (Xml,
+  pretty, highlighted, Pretty / Raw switch like the VAPIX Commander) with a copy button.
+- **Scale:** a camera can send hundreds of Initialized messages at Start (every virtual input); batching, one collection
+  change per batch and the virtualized grid keep the UI responsive; filter is O(n) over at most 10,000 rows. Test with
+  10,000 messages and a burst of 2,000 in one batch.
+- **Tests:** RTP metadata depacketizer from recorded packets of 10.0.0.48 (`OADM_RECORD_RTP_DIR`, read-only stream), XML
+  parsing incl. namespaces, multiple notifications per document, malformed XML, Info text; server stream lifecycle with a
+  fake RTSP source (start, stop, reconnect, refused statuses, watch ended); page view model (filter, clear, autoscroll,
+  10,000 cap, selection survives batches); headless screenshots `metadata-monitor-page.png` (live list + detail),
+  `-error.png`; read-only hardware test against 10.0.0.48 (Start, at least one Initialized message, Stop).
 
 ## Date and time plugin
 
