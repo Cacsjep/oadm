@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>Oadm.Plugins.HardeningScan.Server</AssemblyName>
+    <RootNamespace>Oadm.Plugins.HardeningScan</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <!-- Folder name under artifacts/plugins/, must equal the id in plugin.json. -->
+    <OadmPluginId>oadm.hardening-scan</OadmPluginId>
+    <OadmPluginOutputDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'artifacts', 'plugins', '$(OadmPluginId)'))</OadmPluginOutputDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The SDK is shared from the host: never copy it (or its dependencies) into the plugin folder. -->
+    <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <!-- Read requests of other plugins (one source, compiled into this assembly too). A project reference would copy their
+       *.Server.dll into this plugin folder, where the server loader would register their task plugins a second time. -->
+  <ItemGroup>
+    <!-- Users: pwdgrp.cgi action=get and its parser. -->
+    <Compile Include="..\Oadm.Plugins.Users\PwdgrpApi.cs" Link="Readers\Users\PwdgrpApi.cs" />
+    <Compile Include="..\Oadm.Plugins.Users\UsersContract.cs" Link="Readers\Users\UsersContract.cs" />
+    <Compile Include="..\Oadm.Plugins.Users\CredentialRules.cs" Link="Readers\Users\CredentialRules.cs" />
+    <!-- Date and time: getNTPInfo and the param.cgi Time fallback. -->
+    <Compile Include="..\Oadm.Plugins.DateTime\Model\*.cs" Link="Readers\DateTime\Model\%(Filename)%(Extension)" />
+    <Compile Include="..\Oadm.Plugins.DateTime\Vapix\*.cs" Link="Readers\DateTime\Vapix\%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\Oadm.Plugins.DateTime\Model\TimeZones.txt" LogicalName="Oadm.Plugins.DateAndTime.TimeZones.txt" Link="Readers\DateTime\Model\TimeZones.txt" />
+    <!-- Applications (ACAP): list.cgi and config.cgi AllowUnsigned. -->
+    <Compile Include="..\Oadm.Plugins.Acap\ApplicationApiClient.cs" Link="Readers\Acap\ApplicationApiClient.cs" />
+    <Compile Include="..\Oadm.Plugins.Acap\Shared\*.cs" Link="Readers\Acap\%(Filename)%(Extension)" />
+    <!-- PKI: SOAP GetWebServerTlsConfiguration. -->
+    <Compile Include="..\Oadm.Plugins.Pki\Device\WebServerTls.cs" Link="Readers\Pki\WebServerTls.cs" />
+    <Compile Include="..\Oadm.Plugins.Pki\Device\DeviceHttp.cs" Link="Readers\Pki\DeviceHttp.cs" />
+    <!-- Snapshot report: the short error texts ("Unauthorized - HTTP 401", "Timeout after 15 s") and the refused statuses. -->
+    <Compile Include="..\Oadm.Plugins.SnapshotReport\SnapshotRequests.cs" Link="Readers\SnapshotReport\SnapshotRequests.cs" />
+    <Compile Include="..\Oadm.Plugins.SnapshotReport\Shared\SnapshotReportModels.cs" Link="Readers\SnapshotReport\SnapshotReportModels.cs" />
+    <Compile Include="..\Shared\CachedApiCheck.cs" Link="Common\CachedApiCheck.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Oadm.Plugins.HardeningScan.Tests" />
+  </ItemGroup>
+
+  <!-- Development deployment: copy the output to artifacts/plugins/oadm.hardening-scan/.
+       The client part (Oadm.Plugins.HardeningScan.Client) deploys into the same folder. -->
+  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
+    <ItemGroup>
+      <_OadmPluginFiles Include="$(OutDir)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_OadmPluginFiles)" DestinationFiles="@(_OadmPluginFiles->'$(OadmPluginOutputDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Message Importance="normal" Text="OADM plugin $(OadmPluginId) deployed to $(OadmPluginOutputDir)" />
+  </Target>
+
+</Project>
