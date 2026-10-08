@@ -1,0 +1,24 @@
+{
+  "status": "success",
+  "data": {
+    "settings": {
+      "passphraseComplexity": {
+        "policies": [
+          {
+            "desc": "No passphrase complexity requirements",
+            "id": "none"
+          },
+          {
+            "desc": "Passwords must be at least 15 characters long. No additional complexity requirements are required. This policy follows U.S. NIST 800-638 and Hapan JC-Star.",
+            "id": "length"
+          },
+          {
+            "desc": "Passwords must be at least 12 characters long and include one uppercase letter, one lowercase letter, one numeric digit, and one special character. This policy follows South Korea NIS, German BSI, France ANSSI and Singapore CLS among others.",
+            "id": "complex"
+          }
+        ],
+        "policy": "none"
+      }
+    }
+  }
+}

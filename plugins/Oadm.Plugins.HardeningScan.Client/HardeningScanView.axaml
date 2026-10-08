@@ -57,10 +57,10 @@
           </DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>
         <DataGridTextColumn Tag="address" Header="Address" Width="120" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:HardeningRow" />
-        <DataGridTextColumn Tag="model" Header="Model" Width="110" Binding="{Binding Model}" x:DataType="vm:HardeningRow" />
-        <DataGridTextColumn Tag="firmware" Header="AXIS OS" Width="80" Binding="{Binding Firmware}" x:DataType="vm:HardeningRow" />
-        <DataGridTextColumn Tag="score" Header="Score" Width="64" Binding="{Binding ScoreText}" SortMemberPath="ScoreSortKey" x:DataType="vm:HardeningRow" />
-        <DataGridTextColumn Tag="lastScan" Header="Last scan" Width="96" Binding="{Binding LastScanText}" SortMemberPath="ScannedUtc" x:DataType="vm:HardeningRow" />
+        <DataGridTextColumn Tag="model" Header="Model" Width="104" Binding="{Binding Model}" x:DataType="vm:HardeningRow" />
+        <DataGridTextColumn Tag="firmware" Header="AXIS OS" Width="96" Binding="{Binding Firmware}" x:DataType="vm:HardeningRow" />
+        <DataGridTextColumn Tag="score" Header="Score" Width="80" Binding="{Binding ScoreText}" SortMemberPath="ScoreSortKey" x:DataType="vm:HardeningRow" />
+        <DataGridTextColumn Tag="lastScan" Header="Last scan" Width="104" Binding="{Binding LastScanText}" SortMemberPath="ScannedUtc" x:DataType="vm:HardeningRow" />
       </DataGrid.Columns>
     </DataGrid>
 

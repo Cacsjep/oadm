@@ -40,6 +40,15 @@ public partial class HardeningScanView : UserControl
     /// <summary>The check columns currently in the grid (tests).</summary>
     public IReadOnlyList<DataGridColumn> CheckColumns => _checkColumns;
 
+    /// <summary>Scrolls the grid so that a check column is visible (tests, screenshots).</summary>
+    public void ScrollToColumn(int index)
+    {
+        if (index >= 0 && index < _checkColumns.Count && ResultGrid.ItemsSource is System.Collections.IList { Count: > 0 } rows)
+        {
+            ResultGrid.ScrollIntoView(rows[0], _checkColumns[index]);
+        }
+    }
+
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
@@ -113,7 +122,7 @@ public partial class HardeningScanView : UserControl
         {
             Header = header,
             Tag = levelColumn.Check.Id,
-            Width = new DataGridLength(Math.Max(64, 14 + (levelColumn.Check.Header.Length * 7))),
+            Width = new DataGridLength(Math.Max(64, 50 + Math.Round(levelColumn.Check.Header.Length * 7.2))),
             MinWidth = 44,
             CanUserSort = true,
             CustomSortComparer = new StateComparer(index),

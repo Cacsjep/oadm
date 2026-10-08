@@ -1,0 +1,19 @@
+{
+  "status": "success",
+  "data": {
+    "BaseConfigEntity": {
+      "AuthEntity": {
+        "OIDC_AuthzAdminClaim": "\"\"",
+        "OIDC_AuthzOperatorClaim": "\"\"",
+        "OIDC_AuthzScopes": "\"\"",
+        "OIDC_AuthzViewerClaim": "\"\"",
+        "OIDC_ClientID": "\"\""
+      },
+      "OIDC_CACertificates": "yes",
+      "OIDC_OutgoingProxy": "\"\"",
+      "OIDC_ProviderMetadataURL": "\"\"",
+      "OIDC_RemoteUserClaim": "\"\"",
+      "OIDC_RequireClaim": "\"\""
+    }
+  }
+}
