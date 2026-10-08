@@ -56,7 +56,6 @@ public partial class HardeningScanView : UserControl
         {
             _vm.ColumnsChanged -= OnColumnsChanged;
             _vm.SaveCsv = null;
-            _vm.OpenLink = null;
         }
 
         _vm = DataContext as HardeningScanViewModel;
@@ -64,7 +63,6 @@ public partial class HardeningScanView : UserControl
         {
             _vm.ColumnsChanged += OnColumnsChanged;
             _vm.SaveCsv = SaveCsvAsync;
-            _vm.OpenLink = OpenLinkAsync;
             Root.RowDefinitions[5].Height = new GridLength(_vm.Settings.DetailHeight);
             BuildCheckColumns();
         }
@@ -228,14 +226,6 @@ public partial class HardeningScanView : UserControl
         await using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         await writer.WriteAsync(content).ConfigureAwait(true);
         return true;
-    }
-
-    private async Task OpenLinkAsync(Uri uri)
-    {
-        if (TopLevel.GetTopLevel(this)?.Launcher is { } launcher)
-        {
-            await launcher.LaunchUriAsync(uri).ConfigureAwait(true);
-        }
     }
 
     /// <summary>Sorts a check column by state: fail, error, warn, pass, n/a, info, not scanned.</summary>

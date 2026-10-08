@@ -1721,7 +1721,7 @@ client saves one ZIP for Axis support. Read-only for devices.
 `plugins/Oadm.Plugins.HardeningScan` (+ `.Client`), id `oadm.hardening-scan`, rail page **Hardening scan** (icon
 `clipboardCheck`). Spec, check table, evidence from 10.0.0.48 and the decisions: plugin `README.md`. One read-only scan of every
 managed device against the AXIS OS Hardening Guide in its two levels; one icon column per check (pass / warn / fail / read
-error / does not apply), the items that cannot be checked remotely listed once ("Not checked automatically").
+error / does not apply); the items that cannot be checked remotely are not shown on the page (user decision 2026-10-08).
 - Decisions (user, 2026-10-08): B2 latest AXIS OS = information only (version shown, not rated); the extras X1-X6 (HTTPS only,
   802.1X, brute-force protection, access log, signed video, NTS) only in Extended; SSH on = fail, web interface / discovery /
   DHCP = warn; Bonjour = warn with a tooltip that OADM's Scan and re-find use it; no audit entry (every method Operator); SDK
@@ -1741,7 +1741,7 @@ error / does not apply), the items that cannot be checked remotely listed once (
   check: result and value), status filter, search, progress row, summary "N devices · scanned · pass · with warnings · failed ·
   not reachable", virtualized grid (frozen icon, Address, Model, AXIS OS, Score, Last scan; one column per check, sortable by
   state, tooltips built when they open, column order / widths / level / detail height per client), detail pane "Selected
-  device" / "Not checked automatically". Fake mode: `FakeOadmApi.HardeningScan.cs`.
+  device" (its checks; Result sortable by severity, failed first). Fake mode: `FakeOadmApi.HardeningScan.cs`.
 - Tests: `tests/Oadm.Plugins.HardeningScan.Tests` (every rule from the recorded answers and variants, read-only fake camera,
   scan jobs, 5,000-device view model, CSV, method roles, fake mode, headless `hardening-scan-basic.png` / `-extended.png`,
   read-only hardware test against 10.0.0.48).

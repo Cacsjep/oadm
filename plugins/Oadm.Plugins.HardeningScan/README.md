@@ -56,7 +56,7 @@ Findings that shaped the design:
 Every grid cell is an icon-only `ui:StatusChip` (pass green, warning amber, fail red, read error red, does not apply / info
 neutral, empty = not scanned at that level); its tooltip (made when it opens) says the state and value found, the rule, the
 guide's recommendation with the section, and a note (Bonjour). "Does not apply" = the feature or API is missing on that model
-or firmware. Info rows are listed once under **Not checked automatically**.
+or firmware. Info rows are not shown on the page (user decision 2026-10-08).
 
 ### Basic
 

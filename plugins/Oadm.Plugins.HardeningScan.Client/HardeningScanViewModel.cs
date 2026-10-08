@@ -27,6 +27,17 @@ public sealed class DetailItem(LevelColumn column, CheckState state, string? val
 
     public bool IsError => state is CheckState.Fail or CheckState.Error;
 
+    /// <summary>Sort key of the Result column: failed, read error, warning, information / does not apply, passed, not scanned.</summary>
+    public int SortRank => state switch
+    {
+        CheckState.Fail => 0,
+        CheckState.Error => 1,
+        CheckState.Warn => 2,
+        CheckState.Pass => 4,
+        CheckState.NotScanned => 5,
+        _ => 3,
+    };
+
     /// <summary>The value found, plus the detail when the server sent one.</summary>
     public string Found => string.IsNullOrEmpty(detail) ? value ?? string.Empty : $"{value} · {detail}";
 }
@@ -65,7 +76,6 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
         Settings = SettingsStore.Load();
         Level = Settings.Level == ScanLevel.Extended ? ScanLevel.Extended : ScanLevel.Basic;
         Columns = BuildColumns(Level);
-        InfoItems = HardeningCatalog.InfoOf(Level);
         _columnCounts = new int[Columns.Count, 8];
         _ctx.DevicesChanged += OnDevicesChanged;
         SyncDevices();
@@ -90,8 +100,6 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
     /// <summary>The check columns of the shown level.</summary>
     public IReadOnlyList<LevelColumn> Columns { get; private set; }
 
-    /// <summary>The checks of the shown level that cannot be checked remotely.</summary>
-    public IReadOnlyList<CheckInfo> InfoItems { get; private set; }
 
     public IReadOnlyList<string> Filters { get; } = [FilterAll, FilterFailed, FilterWarnings, FilterNotScanned];
 
@@ -100,9 +108,6 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
 
     /// <summary>Saves the CSV export (set by the view: the save dialog). Returns false when cancelled.</summary>
     public Func<string, string, Task<bool>>? SaveCsv { get; set; }
-
-    /// <summary>Opens the hardening guide (set by the view: the launcher).</summary>
-    public Func<Uri, Task>? OpenLink { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBasic))]
@@ -141,11 +146,6 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
     public partial string ErrorText { get; set; } = string.Empty;
 
     public bool HasError => ErrorText.Length > 0;
-
-    [ObservableProperty]
-    public partial bool ShowInfo { get; set; }
-
-    public bool ShowDevice => !ShowInfo;
 
     public string ScanTip => IsScanning ? "A scan is running" : "Read the settings of every managed device and check them (read-only)";
 
@@ -351,12 +351,6 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
     [RelayCommand]
     private void ShowExtended() => Level = ScanLevel.Extended;
 
-    [RelayCommand]
-    private void ShowDeviceDetail() => ShowInfo = false;
-
-    [RelayCommand]
-    private void ShowInfoItems() => ShowInfo = true;
-
     [RelayCommand(CanExecute = nameof(CanScan))]
     private Task ScanAllAsync() => StartScanAsync([]);
 
@@ -408,20 +402,9 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
         }
     }
 
-    [RelayCommand]
-    private async Task OpenGuideAsync()
-    {
-        if (OpenLink is { } open)
-        {
-            await open(new Uri(HardeningScanPluginInfo.GuideUrl)).ConfigureAwait(true);
-        }
-    }
-
     partial void OnLevelChanged(ScanLevel value)
     {
         Columns = BuildColumns(value);
-        InfoItems = HardeningCatalog.InfoOf(value);
-        OnPropertyChanged(nameof(InfoItems));
         Settings.Level = value;
         SettingsStore.Save(Settings);
         RecomputeAll();
@@ -436,8 +419,6 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
         _search = value?.Trim().ToLowerInvariant() ?? string.Empty;
         ApplyFilter();
     }
-
-    partial void OnShowInfoChanged(bool value) => OnPropertyChanged(nameof(ShowDevice));
 
     private bool IsUnfiltered => SelectedFilter == FilterAll && _search.Length == 0;
 

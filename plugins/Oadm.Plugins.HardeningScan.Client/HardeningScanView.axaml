@@ -67,44 +67,34 @@
     <GridSplitter x:Name="DetailSplitter" Grid.Row="4" Classes="paneSplitter" />
 
     <Grid Grid.Row="5" RowDefinitions="Auto,*" RowSpacing="8">
-      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-        <Border Classes="segmented" VerticalAlignment="Center">
-          <StackPanel Orientation="Horizontal">
-            <Button Classes="segment" Classes.selected="{Binding ShowDevice}" Content="Selected device" Command="{Binding ShowDeviceDetailCommand}" />
-            <Button Classes="segment" Classes.selected="{Binding ShowInfo}" Content="Not checked automatically" Command="{Binding ShowInfoItemsCommand}" />
-          </StackPanel>
-        </Border>
-        <TextBlock Grid.Column="1" Classes="secondary" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                   Text="{Binding DetailTitle}" IsVisible="{Binding ShowDevice}" />
-        <Button Grid.Column="1" Classes="link" HorizontalAlignment="Left" VerticalAlignment="Center" Content="Open the AXIS OS hardening guide"
-                Command="{Binding OpenGuideCommand}" IsVisible="{Binding ShowInfo}" />
-      </Grid>
+      <TextBlock Classes="secondary" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="{Binding DetailTitle}" />
 
-      <DataGrid x:Name="DetailGrid" Grid.Row="1" ItemsSource="{Binding DetailItems}" IsVisible="{Binding ShowDevice}"
-                IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False" SelectionMode="Single">
+      <!-- The selected device's checks; the Result column sorts by severity (failed first). -->
+      <DataGrid x:Name="DetailGrid" Grid.Row="1" ItemsSource="{Binding DetailItems}"
+                IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False" SelectionMode="Single">
         <DataGrid.Columns>
-          <DataGridTemplateColumn Header="Result" Width="150">
+          <DataGridTemplateColumn Header="Result" Width="150" CanUserSort="True" SortMemberPath="SortRank">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate x:DataType="vm:DetailItem">
                 <ui:StatusChip Text="{Binding StateText}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" />
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="Check" Width="200">
+          <DataGridTemplateColumn Header="Check" Width="200" CanUserSort="False">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate x:DataType="vm:DetailItem">
                 <TextBlock Text="{Binding Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Section}" />
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="Found" Width="2*">
+          <DataGridTemplateColumn Header="Found" Width="2*" CanUserSort="False">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate x:DataType="vm:DetailItem">
                 <TextBlock Text="{Binding Found}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Found}" />
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="Recommendation" Width="3*">
+          <DataGridTemplateColumn Header="Recommendation" Width="3*" CanUserSort="False">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate x:DataType="vm:DetailItem">
                 <TextBlock Text="{Binding Recommendation}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Recommendation}" />
@@ -114,20 +104,6 @@
         </DataGrid.Columns>
       </DataGrid>
 
-      <!-- At most nine guide items: a plain list. -->
-      <ScrollViewer Grid.Row="1" IsVisible="{Binding ShowInfo}">
-        <ItemsControl ItemsSource="{Binding InfoItems}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="hs:CheckInfo">
-              <StackPanel Margin="0,0,0,10" Spacing="2">
-                <TextBlock Classes="sectionTitle" Text="{Binding Title}" />
-                <TextBlock Classes="secondary" Text="{Binding Section}" />
-                <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" />
-              </StackPanel>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-      </ScrollViewer>
     </Grid>
   </Grid>
 </UserControl>

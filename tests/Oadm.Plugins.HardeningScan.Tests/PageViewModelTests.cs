@@ -219,7 +219,20 @@ public sealed class PageViewModelTests(ITestOutputHelper output)
 
         using var again = new HardeningScanViewModel(ctx, store);
         Assert.True(again.IsExtended);
-        Assert.Equal(9, again.InfoItems.Count);
+    }
+
+    [Fact]
+    public void The_result_column_of_the_detail_sorts_failed_first()
+    {
+        var column = new LevelColumn(HardeningCatalog.ColumnsOf(ScanLevel.Basic)[0], 0);
+        CheckState[] states = [CheckState.Pass, CheckState.NotScanned, CheckState.Warn, CheckState.NotApplicable, CheckState.Error, CheckState.Fail];
+
+        var sorted = states.Select(s => new DetailItem(column, s, null, null)).OrderBy(d => d.SortRank).Select(d => d.StateText).ToArray();
+
+        Assert.Equal(states.OrderBy(s => s switch
+        {
+            CheckState.Fail => 0, CheckState.Error => 1, CheckState.Warn => 2, CheckState.NotApplicable => 3, CheckState.Pass => 4, _ => 5,
+        }).Select(CheckStateCodes.ToLabel).ToArray(), sorted);
     }
 
     [Fact]

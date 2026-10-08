@@ -62,7 +62,6 @@ public sealed class HeadlessPageTests
             Capture(window, outDir, "hardening-scan-basic.png");
 
             vm.Level = ScanLevel.Extended;
-            vm.ShowInfo = true;
             Pump();
             view.ScrollToColumn(view.CheckColumns.Count - 1); // the Extended columns are right of the Basic ones
             Pump();
