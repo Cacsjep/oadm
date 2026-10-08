@@ -1087,13 +1087,14 @@
   </Style>
   <Style Selector="Border.tagChip TextBlock, DataGridCell Border.tagChip TextBlock">
     <Setter Property="Margin" Value="0" />
-    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
     <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="TextTrimming" Value="None" />
   </Style>
   <Style Selector="TextBlock.tagMore, DataGridCell TextBlock.tagMore">
     <Setter Property="Margin" Value="2,0,0,0" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
     <Setter Property="TextTrimming" Value="None" />
   </Style>
   <Style Selector="DataGridCell c|TagChipList">
