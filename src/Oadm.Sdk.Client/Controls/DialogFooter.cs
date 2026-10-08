@@ -10,7 +10,8 @@ namespace Oadm.Sdk.Client.Controls;
 /// <summary>
 /// The button row at the bottom of every dialog, laid out like the add devices page: Cancel
 /// (secondary, Escape) on the left, the dialog's own buttons (<see cref="Actions"/>, e.g. a
-/// secondary Back and a primary Apply) on the right. Margin comes from the theme.
+/// secondary Back and a primary Apply) on the right. Without actions the Cancel / Close button alone sits on the right.
+/// Margin comes from the theme.
 /// </summary>
 public sealed class DialogFooter : Grid
 {
@@ -32,6 +33,31 @@ public sealed class DialogFooter : Grid
         SetColumn(_actions, 1);
         Children.Add(_cancel);
         Children.Add(_actions);
+        _actions.Children.CollectionChanged += (_, e) =>
+        {
+            foreach (Control added in e.NewItems?.OfType<Control>() ?? [])
+            {
+                added.PropertyChanged += (_, change) =>
+                {
+                    if (change.Property == IsVisibleProperty)
+                    {
+                        PlaceCancel();
+                    }
+                };
+            }
+
+            PlaceCancel();
+        };
+        PlaceCancel();
+    }
+
+    /// <summary>A lone Close / Cancel (no visible action) goes to the right, where the main button of a dialog sits.</summary>
+    private void PlaceCancel()
+    {
+        bool alone = !_actions.Children.Any(c => c.IsVisible);
+        SetColumn(_cancel, alone ? 1 : 0);
+        _cancel.HorizontalAlignment = alone ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        _actions.IsVisible = !alone;
     }
 
     public string? CancelText

@@ -28,6 +28,17 @@
       <Color x:Key="Oadm.AccentHoverColor">#7D6EF0</Color>
       <Color x:Key="Oadm.AccentPressedColor">#5B4BD6</Color>
       <Color x:Key="Oadm.AccentMutedColor">#3A3480</Color>
+      <!-- A disabled primary keeps its role: the accent at about 35 % on the card -->
+      <Color x:Key="Oadm.AccentDisabledColor">#596C5CE7</Color>
+      <Color x:Key="Oadm.TextOnAccentDisabledColor">#99FFFFFF</Color>
+      <!-- Danger buttons (delete, remove): red fill with white text -->
+      <Color x:Key="Oadm.DangerColor">#C73B34</Color>
+      <Color x:Key="Oadm.DangerHoverColor">#D9463F</Color>
+      <Color x:Key="Oadm.DangerPressedColor">#AE322C</Color>
+      <Color x:Key="Oadm.DangerDisabledColor">#59C73B34</Color>
+      <!-- Buttons placed on a raised surface (inline editors) need a lighter fill to read as buttons -->
+      <Color x:Key="Oadm.ButtonOnRaisedColor">#383838</Color>
+      <Color x:Key="Oadm.ButtonOnRaisedHoverColor">#444444</Color>
       <!-- The purple of the app icon (lens of the splash logo) -->
       <Color x:Key="Oadm.BrandColor">#5B2D8E</Color>
       <Color x:Key="Oadm.SelectionColor">#526C5CE7</Color>
@@ -103,6 +114,14 @@
       <SolidColorBrush x:Key="Oadm.AccentHoverBrush" Color="{StaticResource Oadm.AccentHoverColor}" />
       <SolidColorBrush x:Key="Oadm.AccentPressedBrush" Color="{StaticResource Oadm.AccentPressedColor}" />
       <SolidColorBrush x:Key="Oadm.AccentMutedBrush" Color="{StaticResource Oadm.AccentMutedColor}" />
+      <SolidColorBrush x:Key="Oadm.AccentDisabledBrush" Color="{StaticResource Oadm.AccentDisabledColor}" />
+      <SolidColorBrush x:Key="Oadm.TextOnAccentDisabledBrush" Color="{StaticResource Oadm.TextOnAccentDisabledColor}" />
+      <SolidColorBrush x:Key="Oadm.DangerBrush" Color="{StaticResource Oadm.DangerColor}" />
+      <SolidColorBrush x:Key="Oadm.DangerHoverBrush" Color="{StaticResource Oadm.DangerHoverColor}" />
+      <SolidColorBrush x:Key="Oadm.DangerPressedBrush" Color="{StaticResource Oadm.DangerPressedColor}" />
+      <SolidColorBrush x:Key="Oadm.DangerDisabledBrush" Color="{StaticResource Oadm.DangerDisabledColor}" />
+      <SolidColorBrush x:Key="Oadm.ButtonOnRaisedBrush" Color="{StaticResource Oadm.ButtonOnRaisedColor}" />
+      <SolidColorBrush x:Key="Oadm.ButtonOnRaisedHoverBrush" Color="{StaticResource Oadm.ButtonOnRaisedHoverColor}" />
       <SolidColorBrush x:Key="Oadm.BrandBrush" Color="{StaticResource Oadm.BrandColor}" />
       <!-- Start splash only (user decision 2026-10-08): the soft accent glow behind the logo, the one gradient of the app -->
       <RadialGradientBrush x:Key="Oadm.SplashGlowBrush">
@@ -183,10 +202,12 @@
       <x:Double x:Key="Oadm.DevicesCardMinWidth">900</x:Double>
       <x:Double x:Key="Oadm.LiveViewMinWidth">320</x:Double>
       <x:Double x:Key="Oadm.TagListMaxHeight">300</x:Double>
+      <x:Double x:Key="Oadm.ProseMaxHeight">220</x:Double>
       <x:Double x:Key="Oadm.ProgressHeight">6</x:Double>
       <x:Double x:Key="Oadm.Gap">16</x:Double>
       <!-- Form rows (ui:FormField): label column, input column, gap between input and its error or hint -->
       <x:Double x:Key="Oadm.FormLabelWidth">180</x:Double>
+      <x:Double x:Key="Oadm.FormLabelWidthCompact">120</x:Double>
       <x:Double x:Key="Oadm.FormInputWidth">280</x:Double>
       <Thickness x:Key="Oadm.FieldMessageMargin">0,4,0,0</Thickness>
       <CornerRadius x:Key="Oadm.CardCornerRadius">16</CornerRadius>
@@ -347,6 +368,15 @@
     <Setter Property="FontSize" Value="14" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
+  <!-- A group heading inside a form after earlier groups (Settings: Polling, Discovery, Tasks, Server) -->
+  <Style Selector="TextBlock.sectionTitle.subsection">
+    <Setter Property="Margin" Value="0,8,0,0" />
+  </Style>
+  <!-- Longer running text (terms of use): more line spacing -->
+  <Style Selector="TextBlock.prose">
+    <Setter Property="LineHeight" Value="19" />
+    <Setter Property="Margin" Value="0,0,12,0" />
+  </Style>
   <Style Selector="TextBlock.secondary">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
   </Style>
@@ -455,14 +485,27 @@
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
   </Style>
-  <!-- The logged-in user at the bottom of the rail: laid out like a nav entry, not clickable, secondary text -->
+  <!-- The logged-in user at the bottom of the rail: an initial avatar and the name in primary text, not clickable -->
   <Style Selector="Border.railUser">
-    <Setter Property="Padding" Value="{StaticResource Oadm.NavItemPadding}" />
+    <Setter Property="Padding" Value="10,7" />
     <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
   </Style>
   <Style Selector="Border.railUser TextBlock">
-    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <Style Selector="Border.avatar">
+    <Setter Property="Width" Value="20" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentMutedBrush}" />
+  </Style>
+  <Style Selector="Border.avatar TextBlock">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
   <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
@@ -539,10 +582,61 @@
     <Setter Property="Background" Value="{StaticResource Oadm.AccentPressedBrush}" />
   </Style>
   <Style Selector="Button.primary:disabled /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
-    <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentDisabledBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentDisabledBrush}" />
   </Style>
   <Style Selector="Button.primary:disabled ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentDisabledBrush}" />
+  </Style>
+
+  <!-- Danger button: every action and confirm button that deletes or removes something (red fill, white text).
+       Used instead of primary; MessageWindow uses it for confirm texts that start with Delete, Remove or Release. -->
+  <Style Selector="Button.danger">
+    <Setter Property="Background" Value="{StaticResource Oadm.DangerBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="14,7" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.danger ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+  </Style>
+  <Style Selector="Button.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.DangerHoverBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+  </Style>
+  <Style Selector="Button.danger:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.DangerPressedBrush}" />
+  </Style>
+  <Style Selector="Button.danger:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.DangerDisabledBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentDisabledBrush}" />
+  </Style>
+  <Style Selector="Button.danger:disabled ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentDisabledBrush}" />
+  </Style>
+  <!-- Flat danger entries: toolbar buttons (Delete all) and row links (Delete, Release) in red text, no fill -->
+  <Style Selector="Button.toolbar.danger">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+  <Style Selector="Button.toolbar.danger ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="Button.toolbar.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="Button.toolbar.danger:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+  </Style>
+  <Style Selector="Button.toolbar.danger:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  </Style>
+  <Style Selector="Button.toolbar.danger:disabled ui|OadmIcon">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
   </Style>
 
@@ -577,6 +671,12 @@
   </Style>
   <Style Selector="Button.link:pressed">
     <Setter Property="RenderTransform" Value="none" />
+  </Style>
+  <Style Selector="Button.link.danger">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="Button.link.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
   </Style>
 
   <!-- Inputs -->
@@ -676,6 +776,16 @@
   </Style>
   <Style Selector="ui|FormField.inline">
     <Setter Property="LabelWidth" Value="NaN" />
+  </Style>
+  <!-- Narrow windows with short labels (login): a smaller label column -->
+  <Style Selector="StackPanel.compactForm ui|FormField">
+    <Setter Property="LabelWidth" Value="{StaticResource Oadm.FormLabelWidthCompact}" />
+  </Style>
+  <!-- Product mark above the login form: app icon and "OADM" -->
+  <Style Selector="StackPanel.productMark TextBlock">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizePageTitle}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
   <Style Selector="ui|FormField > ComboBox, ui|FormField > NumericUpDown">
     <Setter Property="HorizontalAlignment" Value="Stretch" />
@@ -790,6 +900,26 @@
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
     <Setter Property="Padding" Value="10,0,0,0" />
     <Setter Property="SeparatorBrush" Value="{StaticResource Oadm.TransparentBrush}" />
+    <!-- Header content fills its cell, so a right-aligned header (TextBlock.numberHeader) lines up with its numbers -->
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+  </Style>
+  <!-- Numeric columns (days, offsets, scores, durations): cells with CellStyleClasses="number" and a header
+       <TextBlock Classes="numberHeader" Text="..." /> are right-aligned, so the values line up by digit -->
+  <Style Selector="DataGridCell.number TextBlock">
+    <Setter Property="TextAlignment" Value="Right" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+  </Style>
+  <Style Selector="DataGridCell.number ui|StatusChip">
+    <Setter Property="HorizontalAlignment" Value="Right" />
+  </Style>
+  <!-- Plain text in a left-aligned column whose other rows show chips: starts where the chip texts start
+       (cell margin 10 + icon 16 + gap 8) -->
+  <Style Selector="DataGridCell TextBlock.besideChips">
+    <Setter Property="Margin" Value="34,0,10,0" />
+  </Style>
+  <Style Selector="TextBlock.numberHeader">
+    <Setter Property="TextAlignment" Value="Right" />
+    <Setter Property="Margin" Value="0,0,10,0" />
   </Style>
   <Style Selector="DataGridCell">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
@@ -809,6 +939,16 @@
     <Setter Property="Margin" Value="4,2" />
     <Setter Property="MinHeight" Value="28" />
     <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- Grids whose status text matters (add page, reports, address tables): rows grow so a status chip shows two lines -->
+  <Style Selector="DataGrid.wrapRows">
+    <Setter Property="RowHeight" Value="NaN" />
+  </Style>
+  <Style Selector="DataGrid.wrapRows ui|StatusChip">
+    <Setter Property="MaxLines" Value="2" />
+  </Style>
+  <Style Selector="DataGrid.wrapRows DataGridCell ui|StatusChip">
+    <Setter Property="Margin" Value="10,6" />
   </Style>
   <Style Selector="DataGridRow.muted">
     <Setter Property="Opacity" Value="0.45" />
@@ -873,10 +1013,8 @@
     <Setter Property="Margin" Value="0,0,12,12" />
     <Setter Property="ClipToBounds" Value="True" />
   </Style>
-  <Style Selector="Border.tile:pointerover">
-    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
-  </Style>
-  <Style Selector="Border.tile.selected">
+  <!-- Selection shows by the tile's check box only; the accent outline marks the tile under the pointer or the keyboard focus -->
+  <Style Selector="Border.tile:pointerover, Border.tile:focus-within">
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
   </Style>
   <!-- Clickable picture (tile picture opens the large preview): no button chrome -->
@@ -970,6 +1108,15 @@
     <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="Margin" Value="0" />
   </Style>
+  <!-- The entry whose submenu is open stays highlighted, so the user sees where the submenu belongs -->
+  <Style Selector="MenuItem:open /template/ Border#PART_LayoutRoot">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+  </Style>
+
+  <!-- Toolbar entries moved into the More menu (ToolbarOverflowPanel): one per line, left-aligned -->
+  <Style Selector="StackPanel.toolbarOverflow > Button">
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+  </Style>
 
   <!-- Dialog windows (add devices page, task plugin dialogs): title bar, card headings, button row -->
   <Style Selector="ui|DialogTitleBar">
@@ -1038,6 +1185,11 @@
   <Style Selector="ui|SearchBox">
     <Setter Property="Width" Value="{StaticResource Oadm.SearchWidth}" />
   </Style>
+  <!-- A search box filling a narrow side card (VAPIX Commander library and targets) -->
+  <Style Selector="ui|SearchBox.stretch">
+    <Setter Property="Width" Value="NaN" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+  </Style>
 
   <!-- Inline editor below a list (add devices page: log in, set password) -->
   <Style Selector="Border.inlineEditor">
@@ -1045,6 +1197,13 @@
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
     <Setter Property="Padding" Value="16" />
     <Setter Property="Margin" Value="{StaticResource Oadm.GapTop}" />
+  </Style>
+  <!-- Secondary buttons on the raised editor get a lighter fill, so they keep their button shape -->
+  <Style Selector="Border.inlineEditor Button.secondary">
+    <Setter Property="Background" Value="{StaticResource Oadm.ButtonOnRaisedBrush}" />
+  </Style>
+  <Style Selector="Border.inlineEditor Button.secondary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.ButtonOnRaisedHoverBrush}" />
   </Style>
   <!-- Input row above a list (IP range, address) -->
   <Style Selector="StackPanel.inputRow">

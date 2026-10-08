@@ -9,6 +9,7 @@
   <StreamGeometry x:Key="Icon.send">M22 2L11 13 M22 2l-7 20 -4 -9 -9 -4z</StreamGeometry>
   <StreamGeometry x:Key="Icon.save">M19 21H5a2 2 0 0 1 -2 -2V5a2 2 0 0 1 2 -2h11l5 5v11a2 2 0 0 1 -2 2z M17 21v-8H7v8 M7 3v5h8</StreamGeometry>
   <StreamGeometry x:Key="Icon.download">M21 15v4a2 2 0 0 1 -2 2H5a2 2 0 0 1 -2 -2v-4 M7 10l5 5 5 -5 M12 15V3</StreamGeometry>
+  <StreamGeometry x:Key="Icon.more">M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0z M18 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0z M4 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0z</StreamGeometry>
   <StreamGeometry x:Key="Icon.add">M5 12h14 M12 5v14</StreamGeometry>
   <StreamGeometry x:Key="Icon.range">M17 16h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1z M3 16h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1H3a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1z M10 2h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1V3a1 1 0 0 1 1 -1z M5 16v-3a1 1 0 0 1 1 -1h12a1 1 0 0 1 1 1v3 M12 12V8</StreamGeometry>
   <StreamGeometry x:Key="Icon.remove">M3 6h18 M19 6v14c0 1 -1 2 -2 2H7c-1 0 -2 -1 -2 -2V6 M8 6V4c0 -1 1 -2 2 -2h4c1 0 2 1 2 2v2 M10 11v6 M14 11v6</StreamGeometry>

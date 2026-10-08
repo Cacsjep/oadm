@@ -19,6 +19,10 @@ public sealed class ProgressRow : Grid
     public static readonly StyledProperty<bool> IsActiveProperty =
         AvaloniaProperty.Register<ProgressRow, bool>(nameof(IsActive), true);
 
+    /// <summary>False hides the bar and leaves the status text alone on the left (e.g. "Import finished, ...").</summary>
+    public static readonly StyledProperty<bool> ShowBarProperty =
+        AvaloniaProperty.Register<ProgressRow, bool>(nameof(ShowBar), true);
+
     private readonly ProgressBar _bar = new() { Minimum = 0, Maximum = 100, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock _text = new() { Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
 
@@ -52,6 +56,12 @@ public sealed class ProgressRow : Grid
         set => SetValue(IsActiveProperty, value);
     }
 
+    public bool ShowBar
+    {
+        get => GetValue(ShowBarProperty);
+        set => SetValue(ShowBarProperty, value);
+    }
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -66,6 +76,12 @@ public sealed class ProgressRow : Grid
         else if (change.Property == IsActiveProperty)
         {
             _bar.Classes.Set("stream", IsActive);
+        }
+        else if (change.Property == ShowBarProperty)
+        {
+            _bar.IsVisible = ShowBar;
+            SetColumn(_text, ShowBar ? 1 : 0);
+            _text.Margin = new Thickness(ShowBar ? 12 : 0, 0, 0, 0);
         }
     }
 }

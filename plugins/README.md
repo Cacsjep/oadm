@@ -163,8 +163,11 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
 
 - Styles and classes from the host theme (`Themes/OadmTheme.axaml`), e.g. `Border.card`, `Border.dialogBody`,
   `TextBlock.secondary`, `TextBlock.fieldLabel`, `TextBlock.warning`, `TextBlock.error`, `Button.primary`,
-  `Button.secondary`, `Button.toolbar`, `Border.vseparator`, `TextBox.multiline` (one entry per line, e.g. NTP
-  servers), `Border.tile` (+ `selected`: a picture tile), `Border.liveViewSurface` (dark picture surface),
+  `Button.secondary`, `Button.toolbar`, `Button.danger` (red: delete or remove; `Button.toolbar.danger` and
+  `Button.link.danger` for flat buttons and row links), `Border.vseparator`, `TextBox.multiline` (one entry per line,
+  e.g. NTP servers), `DataGrid.wrapRows` (rows grow, status chips show two lines), numeric columns
+  (`CellStyleClasses="number"` + header `TextBlock.numberHeader`), `ui|SearchBox.stretch` (fills a narrow card),
+  `Border.tile` (a picture tile; selection is its check box), `Border.liveViewSurface` (dark picture surface),
   `Button.picture` (a clickable picture without button chrome). Stack `ui:FormField`s in `StackPanel Classes="form"`
   (row spacing); several inputs in one line go in `StackPanel Classes="inputRow"` (top-aligned, so an error below one
   input moves nothing else). Tables are `DataGrid`s. No local colors, font sizes, font weights or paddings.
@@ -224,7 +227,7 @@ resolve them at compile time, so use `DynamicResource` (`Icon="{DynamicResource 
 `Icon.remove`, `Icon.refresh`, `Icon.restart`, `Icon.identify`, `Icon.columns`, `Icon.search`,
 `Icon.details`, `Icon.cancel`, `Icon.chevronDown`, `Icon.chevronRight`, `Icon.chevronUp`, `Icon.close`, `Icon.check`,
 `Icon.tag`, `Icon.groupBy`, `Icon.edit`,
-`Icon.server`, `Icon.externalLink`, `Icon.key`, `Icon.lock`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
+`Icon.server`, `Icon.externalLink`, `Icon.more`, `Icon.key`, `Icon.lock`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
 `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.network`, `Icon.firmware`, `Icon.users`,
 `Icon.user`, `Icon.logout`, `Icon.audit`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
 `Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`,

@@ -35,14 +35,26 @@ public sealed class StatusChip : Grid
     public static readonly StyledProperty<bool> IsAccentProperty =
         AvaloniaProperty.Register<StatusChip, bool>(nameof(IsAccent));
 
+    /// <summary>
+    /// Lines the text may wrap to before it is trimmed (default 1). The theme sets 2 in grids with the class
+    /// <c>wrapRows</c>, so a failure reason stays readable instead of ending in "...".
+    /// </summary>
+    public static readonly StyledProperty<int> MaxLinesProperty =
+        AvaloniaProperty.Register<StatusChip, int>(nameof(MaxLines), 1);
+
     private readonly OadmIcon _icon = new() { VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock _text = new() { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+
+    static StatusChip()
+    {
+        // Defaults, not local values: theme styles (e.g. right-aligned numeric grid cells) can change them.
+        VerticalAlignmentProperty.OverrideDefaultValue<StatusChip>(VerticalAlignment.Center);
+        HorizontalAlignmentProperty.OverrideDefaultValue<StatusChip>(HorizontalAlignment.Left);
+    }
 
     public StatusChip()
     {
         ColumnDefinitions = new ColumnDefinitions("Auto,*");
-        VerticalAlignment = VerticalAlignment.Center;
-        HorizontalAlignment = HorizontalAlignment.Left;
         Classes.Add("status");
         _icon.Classes.Add("statusIcon");
         _text.Classes.Add("statusText");
@@ -97,6 +109,12 @@ public sealed class StatusChip : Grid
         set => SetValue(IsAccentProperty, value);
     }
 
+    public int MaxLines
+    {
+        get => GetValue(MaxLinesProperty);
+        set => SetValue(MaxLinesProperty, value);
+    }
+
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
@@ -113,6 +131,11 @@ public sealed class StatusChip : Grid
         else if (change.Property == IconProperty)
         {
             UpdateIcon();
+        }
+        else if (change.Property == MaxLinesProperty)
+        {
+            _text.TextWrapping = MaxLines > 1 ? TextWrapping.Wrap : TextWrapping.NoWrap;
+            _text.MaxLines = Math.Max(0, MaxLines);
         }
         else if (change.Property == IsOkProperty)
         {
