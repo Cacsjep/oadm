@@ -1,0 +1,37 @@
+{
+  "status": "success",
+  "data": {
+    "activated": true,
+    "conf": {
+      "rules": {
+        "activeDefaultPolicy": "ACCEPT",
+        "activeRules": [
+          {
+            "filter": null,
+            "ip": null,
+            "ipRange": null,
+            "limit": {
+              "amount": 3,
+              "burst": 3,
+              "period": "SECOND",
+              "unit": "NEWCONNECTIONS"
+            },
+            "mac": null,
+            "pktType": null,
+            "port": {
+              "portNum": 22,
+              "portType": "TCP"
+            },
+            "portRange": null,
+            "ruleType": "LIMIT",
+            "tcpPort": null,
+            "udpPort": null
+          }
+        ],
+        "pendingDefaultPolicy": null,
+        "pendingRules": [],
+        "testTimeLeft": 0
+      }
+    }
+  }
+}

@@ -35,6 +35,15 @@ public interface IDeviceInfo
     /// "Expired"; null when unknown or HTTP only. Filled by the server.
     /// </summary>
     string? CertTrustName => null;
+
+    /// <summary>The device gets its IPv4 address from DHCP (param <c>Network.BootProto</c>); null when not known. Filled by the server.</summary>
+    bool? DhcpEnabled => null;
+
+    /// <summary>HTTPS is enabled on the device (param <c>HTTPS.Enabled</c>); null when not known. Filled by the server.</summary>
+    bool? HttpsEnabled => null;
+
+    /// <summary>IEEE 802.1X is enabled on the wired interface (param <c>Network.Interface.I0.dot1x.Enabled</c>); null when not known. Filled by the server.</summary>
+    bool? Dot1xEnabled => null;
 }
 
 /// <summary>Kind of Axis device. Mapped from basicdeviceinfo ProdType ("Dome Camera", "Network Speaker", ...).</summary>

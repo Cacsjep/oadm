@@ -148,6 +148,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.MetadataMonitor(.Client)/  core plugin: live event stream of one camera (RTSP metadata, port of AXIS Metadata Monitor)
   Oadm.Plugins.Pki(.Client)/              core plugin: PKI (one CA for device certificates, trusted root store)
   Oadm.Plugins.SystemReport(.Client)/     core plugin without a page: toolbar "System report" (server reports in one ZIP)
+  Oadm.Plugins.HardeningScan(.Client)/    core plugin: read-only scan against the AXIS OS hardening guide
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
                                 (both copy their output to artifacts/plugins/<plugin id>/)
@@ -246,8 +247,8 @@ Two processes, like ADM:
   plugin, INTERNAL otherwise; the status detail is the message), `Watch(plugin_id)` (stream of `PluginEvent`
   {plugin_id, topic, payload_json} the plugin publishes through `ICorePluginContext.Events` from the call on; NOT_FOUND
   unknown plugin; `Oadm.Core.Plugins.PluginEventHub` fans out with 256 events buffered per watcher, oldest dropped).
-  Users: "Snapshot report", "VAPIX Commander", "NTP server", "DHCP server", "PKI", "Metadata Monitor", "System report"
-  (from its toolbar button through `IToolbarContext.InvokePluginAsync`).
+  Users: "Snapshot report", "VAPIX Commander", "NTP server", "DHCP server", "PKI", "Metadata Monitor", "Hardening scan",
+  "System report" (from its toolbar button through `IToolbarContext.InvokePluginAsync`).
 - `SettingsService`: `Get`, `Set` (`ServerSettings.zero_conf_seconds = 8`, 0 keeps the stored value; read-only
   `server_version = 21` in both replies for the About page),
   `ListCredentials`, `AddCredential(user_name, password)`
@@ -766,6 +767,9 @@ public interface IDeviceInfo          // read-only device view for plugins
     string? CredentialUserName => null;      // user OADM stores for the device (server side), never the password
     DateTime? CertNotAfterUtc => null;       // HTTPS certificate end of validity (server side)
     string? CertTrustName => null;           // "Trusted", "SelfSigned", "Untrusted", "Expired"; null unknown/HTTP
+    bool? DhcpEnabled => null;               // device table values (server and client rows); null = not known
+    bool? HttpsEnabled => null;
+    bool? Dot1xEnabled => null;
 }
 
 public interface ITaskPlugin : IPlugin
@@ -1685,6 +1689,36 @@ client saves one ZIP for Axis support. Read-only for devices.
   client view model against the real plugin and fake mode, cancel, toolbar flow; headless `system-report-dialog.png`;
   read-only hardware test `SystemReportHardwareTests` through the in-process server), `tests/Oadm.Server.Tests/
   SystemReportServerTests` (no_page, operator call, audit, data folder).
+
+## Hardening scan (core plugin)
+
+`plugins/Oadm.Plugins.HardeningScan` (+ `.Client`), id `oadm.hardening-scan`, rail page **Hardening scan** (icon
+`clipboardCheck`). Spec, check table, evidence from 10.0.0.48 and the decisions: plugin `README.md`. One read-only scan of every
+managed device against the AXIS OS Hardening Guide in its two levels; one icon column per check (pass / warn / fail / read
+error / does not apply), the items that cannot be checked remotely listed once ("Not checked automatically").
+- Decisions (user, 2026-10-08): B2 latest AXIS OS = information only (version shown, not rated); the extras X1-X6 (HTTPS only,
+  802.1X, brute-force protection, access log, signed video, NTS) only in Extended; SSH on = fail, web interface / discovery /
+  DHCP = warn; Bonjour = warn with a tooltip that OADM's Scan and re-find use it; no audit entry (every method Operator); SDK
+  `IDeviceInfo.DhcpEnabled` / `HttpsEnabled` / `Dot1xEnabled` (DIM null) from the device table; last results kept per device
+  and level (plugin setting `results`, at most 10,000 devices per level); scheduled scans later.
+- Reads (strictly read-only): one `param.cgi action=list` with every group (`# Error` lines = not available; the group after
+  one may lack `root.`), `pwdgrp.cgi action=get`, `GET /config/discover` and the REST GETs it lists (user-management v2,
+  firewall v1, lldp v1; Extended: snmp v1, oidcsetup v1), `getNTPInfo`, `disks/list.cgi`, `applications/list.cgi` +
+  `config.cgi action=get`, Extended: SOAP `GetWebServerTlsConfiguration`. Readers of the Users, Date and time, ACAP, PKI and
+  Snapshot report plugins compiled in (never project references). 15 s per request, 2 min per device, 16 devices at once
+  (plugin setting `config.parallelism` 1..64). One failed read marks only its checks; an unreachable or refusing device is read
+  once. CertificateChanged / CredentialsRequired / PasswordNotSet / Unreachable devices are not contacted (B2, B15, E3 from the
+  cache).
+- Methods `getState` (compact: one state character per column + short values), `startScan {level, deviceIds}` (a running scan
+  is returned), `cancelScan`, `getDetail`; events `progress` and `results` (500 ms, at most 1,000 rows each).
+- Page: Basic / Extended switch, Scan all, Scan selected (Devices page selection), Stop, Export CSV (UTF-8 BOM, two columns per
+  check: result and value), status filter, search, progress row, summary "N devices · scanned · pass · with warnings · failed ·
+  not reachable", virtualized grid (frozen icon, Address, Model, AXIS OS, Score, Last scan; one column per check, sortable by
+  state, tooltips built when they open, column order / widths / level / detail height per client), detail pane "Selected
+  device" / "Not checked automatically". Fake mode: `FakeOadmApi.HardeningScan.cs`.
+- Tests: `tests/Oadm.Plugins.HardeningScan.Tests` (every rule from the recorded answers and variants, read-only fake camera,
+  scan jobs, 5,000-device view model, CSV, method roles, fake mode, headless `hardening-scan-basic.png` / `-extended.png`,
+  read-only hardware test against 10.0.0.48).
 
 ## Date and time plugin
 

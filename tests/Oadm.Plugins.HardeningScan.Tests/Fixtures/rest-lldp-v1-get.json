@@ -1,0 +1,29 @@
+{
+  "status": "success",
+  "data": {
+    "activated": true,
+    "neighbors": [
+      {
+        "TTL": 120,
+        "age": 1791386816,
+        "chassisID": {
+          "subType": "MACAddress",
+          "value": "b8:a4:4f:91:4a:20"
+        },
+        "ifName": "eth0",
+        "mgmtIP": {
+          "subType": "IPv4",
+          "value": "10.0.0.202"
+        },
+        "portDescr": "eth0",
+        "portID": {
+          "subType": "MACAddress",
+          "value": "b8:a4:4f:91:4a:20"
+        },
+        "protocol": "LLDP",
+        "sysDescr": "AXIS M3215-LVE Dome Camera 12.11.77",
+        "sysName": "axis-b8a44f914a20"
+      }
+    ]
+  }
+}

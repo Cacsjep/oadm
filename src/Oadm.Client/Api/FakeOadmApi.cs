@@ -856,12 +856,13 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         }
     }
 
-    /// <summary>Core plugins simulated in fake mode (FakeOadmApi.SnapshotReport.cs, FakeOadmApi.Pki.cs, FakeOadmApi.MetadataMonitor.cs).</summary>
+    /// <summary>Core plugins simulated in fake mode (FakeOadmApi.SnapshotReport.cs, FakeOadmApi.Pki.cs, FakeOadmApi.MetadataMonitor.cs, FakeOadmApi.HardeningScan.cs).</summary>
     private static IEnumerable<CorePluginInfo> FakeCorePlugins =>
     [
         new CorePluginInfo { Id = SnapshotReportPluginId, DisplayName = "Snapshot report", IconKey = "snapshot" },
         new CorePluginInfo { Id = PkiPluginId, DisplayName = "PKI", IconKey = "shield" },
         new CorePluginInfo { Id = MetadataMonitorPluginId, DisplayName = "Metadata Monitor", IconKey = "activity" },
+        new CorePluginInfo { Id = HardeningScanPluginId, DisplayName = "Hardening scan", IconKey = "clipboardCheck" },
     ];
 
     public Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) => pluginId switch
@@ -870,6 +871,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         PkiPluginId => InvokePkiAsync(method, payloadJson),
         MetadataMonitorPluginId => InvokeMetadataMonitorAsync(method, payloadJson),
         SystemReportPluginId => InvokeSystemReportAsync(method, payloadJson),
+        HardeningScanPluginId => InvokeHardeningScanAsync(method, payloadJson),
         _ => throw new RpcException(new Status(StatusCode.NotFound, $"Unknown core plugin '{pluginId}'.")),
     };
 

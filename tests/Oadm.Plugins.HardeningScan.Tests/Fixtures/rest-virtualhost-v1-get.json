@@ -1,0 +1,22 @@
+{
+  "status": "success",
+  "data": {
+    "defaulthosts": [
+      {
+        "active": true,
+        "auth_type": "digest",
+        "port": 80,
+        "secure": false,
+        "server_name": "default-http"
+      },
+      {
+        "active": true,
+        "auth_type": "basic",
+        "port": 443,
+        "secure": true,
+        "server_name": "default-https"
+      }
+    ],
+    "virtualhosts": []
+  }
+}

@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- test method names use underscores -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1861;CA2000;CA1849;CA1001;CA5394</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="Avalonia.Headless" Version="12.0.4" />
+    <PackageReference Include="Avalonia.Skia" Version="12.0.4" />
+    <!-- In-process server for the hardware test, dev-cameras.yaml loader. -->
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.12" />
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Oadm.Client supplies the host theme (OadmTheme.axaml), the fake API and the shared runtime assemblies
+         (Avalonia, CommunityToolkit, SDK) the plugin projects compile against only; Oadm.Server the in-process server
+         (core plugin host, event hub) and Oadm.Core the device record. -->
+    <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />
+    <ProjectReference Include="..\..\src\Oadm.Server\Oadm.Server.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.HardeningScan\Oadm.Plugins.HardeningScan.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.HardeningScan.Client\Oadm.Plugins.HardeningScan.Client.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Shared dev-cameras.yaml loader of the core hardware tests. -->
+    <Compile Include="..\Oadm.Core.Tests\Hardware\DevCameras.cs" Link="Hardware\DevCameras.cs" />
+    <Compile Include="..\Oadm.Core.Tests\Hardware\HardwareFactAttribute.cs" Link="Hardware\HardwareFactAttribute.cs" />
+    <!-- Answers recorded read-only from 10.0.0.48 (AXIS P3265-V, AXIS OS 12.11.77); config/discover from the PKI research. -->
+    <None Include="Fixtures\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Oadm.Plugins.Pki.Tests\Fixtures\config-discover.json" Link="Fixtures\config-discover.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

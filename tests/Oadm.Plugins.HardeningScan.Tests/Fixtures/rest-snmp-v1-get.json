@@ -1,0 +1,38 @@
+{
+  "status": "success",
+  "data": {
+    "dscp": 0,
+    "enabled": false,
+    "engineBoots": 0,
+    "ntcip_supported": false,
+    "snmpV1": {
+      "enabled": false
+    },
+    "snmpV1V2Common": {
+      "address": "",
+      "readCommunity": "",
+      "trap": {
+        "authFailEnabled": false,
+        "coldStartEnabled": false,
+        "community": "",
+        "enabled": false,
+        "linkDownEnabled": false,
+        "linkUpEnabled": false
+      },
+      "writeCommunity": ""
+    },
+    "snmpV2": {
+      "enabled": false
+    },
+    "snmpV3": {
+      "enabled": false,
+      "supportedEncryption": [
+        "AES-128",
+        "AES-256"
+      ],
+      "userEncryption": "AES-256",
+      "userPasswdSet": false
+    },
+    "transportProtocol": "udp"
+  }
+}

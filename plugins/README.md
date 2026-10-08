@@ -213,7 +213,7 @@ an error of a whole table (e.g. "Not enough addresses") directly below that tabl
   `Icon.server`, `Icon.externalLink`, `Icon.key`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
   `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.network`, `Icon.firmware`, `Icon.users`,
   `Icon.user`, `Icon.logout`, `Icon.audit`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
-  `Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.info`, `Icon.shield`,
+  `Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`,
   `Icon.device.camera`, `Icon.device.encoder`,
   `Icon.device.speaker`, `Icon.device.audio`, `Icon.device.intercom`, `Icon.device.radar`,
   `Icon.device.io`, `Icon.device.door`, `Icon.device.generic`.
@@ -359,6 +359,10 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
   newest 10,000 in a `RangeObservableCollection` (one collection change per batch), filters them live and shows the
   selected message in `ui:CodeView`. Per-page streams end on Stop, on page change and, for a closed client, when the
   page's keep-alives stop (lease pattern for any per-page server resource).
+- Seventh sample: the Hardening scan (`plugins/Oadm.Plugins.HardeningScan` + `.Client`, id `oadm.hardening-scan`, spec in its
+  `README.md`): a read-only scan job over thousands of devices with bounded parallelism, results streamed as events and kept
+  in a plugin setting, read requests of other plugins compiled in as linked sources, and a grid whose columns the view builds
+  from a catalog (icon-only status cells bound to one byte per row, tooltips made when they open).
 
 ### Host support for service plugins (NTP, DHCP, ...)
 

@@ -59,6 +59,16 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo
 
     Oadm.Sdk.Devices.DeviceCategory IDeviceInfo.Category => DeviceCategoryInfo.ToSdk(Category);
 
+    bool? IDeviceInfo.DhcpEnabled => _dhcpEnabled;
+
+    bool? IDeviceInfo.HttpsEnabled => _httpsEnabled;
+
+    bool? IDeviceInfo.Dot1xEnabled => _dot1xEnabled;
+
+    private bool? _dhcpEnabled;
+    private bool? _httpsEnabled;
+    private bool? _dot1xEnabled;
+
     public bool IsStatusOk => StatusKind == PillKind.Ok;
     public bool IsStatusWarning => StatusKind == PillKind.Warning;
     public bool IsStatusError => StatusKind == PillKind.Error;
@@ -77,6 +87,9 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo
         DhcpText = device.HasDhcpEnabled ? (device.DhcpEnabled ? "Yes" : "No") : "";
         HttpsText = EnabledText(device.HasHttpsEnabled, device.HttpsEnabled);
         Dot1xText = EnabledText(device.HasDot1XEnabled, device.Dot1XEnabled);
+        _dhcpEnabled = device.HasDhcpEnabled ? device.DhcpEnabled : null;
+        _httpsEnabled = device.HasHttpsEnabled ? device.HttpsEnabled : null;
+        _dot1xEnabled = device.HasDot1XEnabled ? device.Dot1XEnabled : null;
         ContractStatus = device.Status;
         StatusText = DeviceStatusInfo.ToText(device.Status);
         StatusKind = DeviceStatusInfo.ToKind(device.Status);
