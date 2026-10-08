@@ -20,7 +20,79 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
         Update(device);
     }
 
-    public string DiscoveredId { get; }
+    /// <summary>
+    /// A row for one line of an imported device list, before its address was probed ("Waiting"), or with
+    /// the line's problem (invalid address, duplicate, too long). It shows the found device once the
+    /// probe answers (<see cref="Adopt"/>).
+    /// </summary>
+    public static DiscoveredRowViewModel ForImport(ImportLine line)
+    {
+        ArgumentNullException.ThrowIfNull(line);
+        var row = new DiscoveredRowViewModel(
+            new DiscoveredDevice { DiscoveredId = "import:" + line.Line.ToString(System.Globalization.CultureInfo.InvariantCulture), Address = line.Address },
+            string.Empty,
+            line);
+        return row;
+    }
+
+    private DiscoveredRowViewModel(DiscoveredDevice device, string sessionId, ImportLine line)
+    {
+        DiscoveredId = device.DiscoveredId;
+        SessionId = sessionId;
+        ImportLine = line;
+        IsImportPlaceholder = true;
+        _importChip = line.Problem is null ? ("Waiting", PillKind.Neutral) : ("Not added", PillKind.Error);
+        Update(device);
+        if (line.Problem is not null)
+        {
+            SetImportProblem("Not added", line.Problem);
+        }
+    }
+
+    /// <summary>Stable within the session; an import row takes the id of the device it found.</summary>
+    public string DiscoveredId { get; private set; }
+
+    /// <summary>The line of an imported device list this row belongs to; null for scan and manual rows.</summary>
+    public ImportLine? ImportLine { get; }
+
+    /// <summary>An import row without a device (waiting, checking, or with a problem).</summary>
+    [ObservableProperty] public partial bool IsImportPlaceholder { get; private set; }
+
+    /// <summary>An import row whose line cannot be added (invalid, duplicate, nothing answered, stopped).</summary>
+    [ObservableProperty] public partial bool HasImportProblem { get; private set; }
+
+    private (string Text, PillKind Kind)? _importChip;
+
+    /// <summary>Import: the address is being probed now.</summary>
+    public void MarkImportChecking()
+    {
+        if (IsImportPlaceholder && !HasImportProblem)
+        {
+            _importChip = null; // "Checking..." of a pending login
+            Refresh();
+        }
+    }
+
+    /// <summary>Import: the line cannot be added; <paramref name="detail"/> says why (next to the chip, tooltip).</summary>
+    public void SetImportProblem(string chip, string detail, PillKind kind = PillKind.Error)
+    {
+        _importChip = (chip, kind);
+        AuthDetail = detail;
+        HasImportProblem = true;
+        Refresh();
+    }
+
+    /// <summary>Import: the probe of this line found a device; the row shows it from now on.</summary>
+    public void Adopt(DiscoveredDevice device, string sessionId)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        DiscoveredId = device.DiscoveredId;
+        SessionId = sessionId;
+        _importChip = null;
+        IsImportPlaceholder = false;
+        HasImportProblem = false;
+        Update(device);
+    }
 
     /// <summary>The discovery session that reported the device last (RetryAuth and Commit use it).</summary>
     [ObservableProperty] public partial string SessionId { get; set; }
@@ -163,7 +235,8 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
 
     private void Refresh()
     {
-        (ChipText, ChipKind) = IsAdded ? ("Added", PillKind.Ok)
+        (ChipText, ChipKind) = _importChip is { } import ? import
+            : IsAdded ? ("Added", PillKind.Ok)
             : IsAlreadyManaged ? ("Already added", PillKind.Neutral)
             : AuthState switch
             {
@@ -173,8 +246,8 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
                 AuthState.Unreachable => ("Unreachable", PillKind.Error),
                 _ => ("Checking...", PillKind.Accent),
             };
-        StatusDetail = !IsAdded && !IsAlreadyManaged && AuthState is AuthState.LoginFailed or AuthState.Unreachable ? AuthDetail : "";
-        CanAdd = !IsMuted && (AuthState == AuthState.Authenticated || (AuthState == AuthState.PasswordNotSet && PendingPassword is not null));
+        StatusDetail = HasImportProblem || (!IsAdded && !IsAlreadyManaged && AuthState is AuthState.LoginFailed or AuthState.Unreachable) ? AuthDetail : "";
+        CanAdd = !IsImportPlaceholder && !IsMuted && (AuthState == AuthState.Authenticated || (AuthState == AuthState.PasswordNotSet && PendingPassword is not null));
         if (!CanAdd)
         {
             IsSelected = false;

@@ -169,8 +169,12 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<string> StartRangeScanAsync(string firstAddress, string lastAddress, CancellationToken ct) =>
         (await C.Discovery.StartRangeScanAsync(new RangeScanRequest { From = firstAddress, To = lastAddress }, cancellationToken: ct)).SessionId;
 
-    public async Task<string> ProbeAddressAsync(string address, CancellationToken ct) =>
-        (await C.Discovery.ProbeAddressAsync(new ProbeAddressRequest { Address = address }, cancellationToken: ct)).SessionId;
+    public Task<string> ProbeAddressAsync(string address, CancellationToken ct) => ProbeAddressAsync(address, null, null, ct);
+
+    public async Task<string> ProbeAddressAsync(string address, string? userName, string? password, CancellationToken ct) =>
+        (await C.Discovery.ProbeAddressAsync(
+            new ProbeAddressRequest { Address = address, UserName = userName ?? "", Password = password ?? "" },
+            cancellationToken: ct)).SessionId;
 
     public IAsyncEnumerable<DiscoveredDevice> WatchDiscoveredAsync(string sessionId, CancellationToken ct) =>
         ReadAll(C.Discovery.WatchDiscovered(new DiscoverySession { SessionId = sessionId }, cancellationToken: ct), ct);

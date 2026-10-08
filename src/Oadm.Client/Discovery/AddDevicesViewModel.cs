@@ -12,6 +12,7 @@ using Grpc.Core;
 using Microsoft.Extensions.Logging;
 
 using Oadm.Client.Api;
+using Oadm.Client.Devices;
 using Oadm.Client.Infrastructure;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Client.Validation;
@@ -29,6 +30,9 @@ public enum AddDevicesMode
 
     /// <summary>One entered address (IP or host name, optional port and scheme) per search.</summary>
     Manual,
+
+    /// <summary>Every address of an imported device list (<see cref="DeviceImportFile"/>), probed like "Add manually".</summary>
+    Import,
 }
 
 /// <summary>Which inline editor is open below the device list.</summary>
@@ -53,6 +57,9 @@ public enum AddEditor
 public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDisposable
 {
     public const int MaxRangeSize = 65536;
+
+    /// <summary>Import: addresses probed at the same time (a probe holds its slot until its logins finished).</summary>
+    public const int MaxImportProbes = 16;
 
     private readonly IOadmApi _api;
     private readonly IUiDispatcher _ui;
@@ -130,6 +137,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     public bool IsScanMode => Mode == AddDevicesMode.Scan;
     public bool IsRangeMode => Mode == AddDevicesMode.IpRange;
     public bool IsManualMode => Mode == AddDevicesMode.Manual;
+    public bool IsImportMode => Mode == AddDevicesMode.Import;
 
     public static string Title => "Add devices";
 
@@ -137,6 +145,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     {
         AddDevicesMode.IpRange => "Scan IP range",
         AddDevicesMode.Manual => "Add manually",
+        AddDevicesMode.Import => "Import devices",
         _ => "Devices on the network",
     };
 
@@ -144,6 +153,8 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     {
         AddDevicesMode.IpRange => "Enter the first and last IPv4 address and press Enter. Every address is probed on HTTPS (443) and HTTP (80).",
         AddDevicesMode.Manual => "Enter an IP address or host name, optionally with port or scheme (https://camera.example.com:8443), and press Enter.",
+        AddDevicesMode.Import => string.Create(CultureInfo.CurrentCulture,
+            $"Addresses from {ImportFileName}, {MaxImportProbes} checked at a time. User names and passwords in the file are tried first for their device."),
         _ => "Found with zero-configuration (Bonjour). The scan ends after the time set on the Settings page, or with Stop.",
     } + " OADM logs in with your known credentials; authenticated devices can be added right away.";
 
@@ -174,11 +185,11 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     [NotifyCanExecuteChangedFor(nameof(ScanAgainCommand))]
     public partial bool HasScanned { get; private set; }
 
-    /// <summary>Stop button: zero-conf and IP range scans while they run.</summary>
+    /// <summary>Stop button: zero-conf and IP range scans and an import while they run.</summary>
     public bool ShowStop => IsScanning && !IsManualMode;
 
     /// <summary>"Scan again" after a zero-conf or IP range scan finished or was stopped.</summary>
-    public bool ShowScanAgain => !IsScanning && HasScanned && !IsManualMode;
+    public bool ShowScanAgain => !IsScanning && HasScanned && !IsManualMode && !IsImportMode;
 
     [ObservableProperty] public partial bool IsProgressIndeterminate { get; private set; }
     [ObservableProperty] public partial int ScanProgress { get; private set; }
@@ -229,13 +240,183 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     // ------------------------------------------------------------ lifecycle
 
-    /// <summary>Called when the page opens. Scan mode starts discovery immediately.</summary>
+    /// <summary>Called when the page opens. Scan mode starts discovery immediately, import mode checks the addresses.</summary>
     public async Task OpenAsync()
     {
         if (IsScanMode)
         {
             await StartZeroConfAsync().ConfigureAwait(true);
         }
+        else if (IsImportMode && ImportCompletion is null)
+        {
+            ImportCompletion = RunImportAsync(); // runs in the background; the page stays responsive
+        }
+    }
+
+    // ------------------------------------------------------------ import
+
+    /// <summary>The imported file's name (header text).</summary>
+    public string ImportFileName { get; private set; } = "";
+
+    /// <summary>Completes when every address of the import was probed (or the import was stopped). Tests await it.</summary>
+    public Task? ImportCompletion { get; private set; }
+
+    // UI thread only: import rows waiting for their probe's device, sessions holding a probe slot,
+    // sessions whose device is another line's (duplicate), rows not probed yet.
+    private readonly Dictionary<string, DiscoveredRowViewModel> _importRows = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _importSlotHeld = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _duplicateSessions = new(StringComparer.Ordinal);
+    private readonly List<DiscoveredRowViewModel> _importQueue = [];
+    private SemaphoreSlim? _importSlots;
+    private CancellationTokenSource? _importStop;
+    private bool _importRunning;
+    private int _importTotal;
+    private int _importDone;
+
+    /// <summary>
+    /// Import mode, before the page opens: one row per line of the file, at once (one list reset), in file
+    /// order. Lines with a problem show it in their row; the others wait for their probe.
+    /// </summary>
+    public void SetImport(DeviceImportFile file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        if (!IsImportMode || ImportCompletion is not null)
+        {
+            throw new InvalidOperationException("The import is set once, on an import page that has not opened yet.");
+        }
+
+        ImportFileName = file.FileName;
+        OnPropertyChanged(nameof(HeaderDescription));
+        Rows.CollectionChanged -= OnRowsChanged;
+        foreach (ImportLine line in file.Lines)
+        {
+            DiscoveredRowViewModel row = DiscoveredRowViewModel.ForImport(line);
+            row.PropertyChanged += OnRowPropertyChanged;
+            _rowsById.TryAdd(row.DiscoveredId, row);
+            Rows.Add(row);
+            Recount(row);
+            if (line.Problem is null)
+            {
+                _importQueue.Add(row);
+            }
+        }
+
+        Rows.CollectionChanged += OnRowsChanged;
+        FilteredRows.ReplaceAll(Rows.Where(r => IsListed(r, SearchText)).ToList());
+        _importTotal = _importQueue.Count;
+        UpdateSummary();
+    }
+
+    /// <summary>
+    /// Probes every address of the import, at most <see cref="MaxImportProbes"/> at a time: a probe holds
+    /// its slot until its watch stream ended (device found and its logins finished, or nothing answered).
+    /// Credentials of a line go with its probe; the server tries them first for that device only.
+    /// </summary>
+    private async Task RunImportAsync()
+    {
+        if (_importTotal == 0)
+        {
+            ScanStatusText = "No address of the file can be checked.";
+            return;
+        }
+
+        _importRunning = true;
+        HasScanned = true;
+        _anyStopped = false;
+        IsProgressIndeterminate = false;
+        ScanProgress = 0;
+        UpdateImportProgress();
+        UpdateScanning();
+        var slots = new SemaphoreSlim(MaxImportProbes);
+        _importSlots = slots;
+        _importStop = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+        CancellationToken stop = _importStop.Token;
+        int next = 0;
+        try
+        {
+            for (; next < _importQueue.Count; next++)
+            {
+                await slots.WaitAsync(stop).ConfigureAwait(true);
+                DiscoveredRowViewModel row = _importQueue[next];
+                ImportLine line = row.ImportLine!;
+                _ui.Post(row.MarkImportChecking);
+                string sessionId;
+                try
+                {
+                    sessionId = await _api.ProbeAddressAsync(line.Address, line.UserName, line.Password, stop).ConfigureAwait(true);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    slots.Release();
+                    _ui.Post(() =>
+                    {
+                        row.SetImportProblem("Not found", Message(ex)); // e.g. a host name that does not resolve
+                        ImportLineDone();
+                    });
+                    continue;
+                }
+
+                _ui.Post(() =>
+                {
+                    _sessions.Add(sessionId);
+                    _scanning.Add(sessionId);
+                    _importRows[sessionId] = row;
+                    _importSlotHeld.Add(sessionId);
+                    row.SessionId = sessionId;
+                    StartWatch(sessionId);
+                });
+            }
+        }
+        catch (OperationCanceledException) when (!_cts.IsCancellationRequested)
+        {
+            // Stop: the lines not probed yet stay unchecked.
+            int from = next;
+            _ui.Post(() =>
+            {
+                for (int i = from; i < _importQueue.Count; i++)
+                {
+                    _importQueue[i].SetImportProblem("Not checked", "Stopped before this address was checked.", PillKind.Neutral);
+                }
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            return; // page closed
+        }
+
+        _ui.Post(() =>
+        {
+            _importRunning = false;
+            ScanFinished(null);
+        });
+    }
+
+    /// <summary>A probe's watch stream ended: its slot is free for the next address.</summary>
+    private void ReleaseImportSlot(string sessionId)
+    {
+        if (_importSlotHeld.Remove(sessionId))
+        {
+            try
+            {
+                _importSlots?.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+                // page closed
+            }
+        }
+    }
+
+    private void ImportLineDone()
+    {
+        _importDone++;
+        UpdateImportProgress();
+    }
+
+    private void UpdateImportProgress()
+    {
+        ScanProgress = _importTotal == 0 ? 100 : _importDone * 100 / _importTotal;
+        ScanStatusText = string.Create(CultureInfo.CurrentCulture, $"Checking addresses: {_importDone:N0} of {_importTotal:N0}");
     }
 
     /// <summary>Zero-conf: runs until the server's time limit (Discovery.ZeroConfSeconds) or Stop.</summary>
@@ -270,6 +451,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         }
 
         _cts.Dispose();
+        _importStop?.Dispose();
     }
 
     // ------------------------------------------------------------ commands
@@ -300,6 +482,12 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     [RelayCommand(CanExecute = nameof(ShowStop))]
     private async Task StopScanAsync()
     {
+        if (_importStop is { IsCancellationRequested: false } import)
+        {
+            _anyStopped = true;
+            await import.CancelAsync().ConfigureAwait(true); // no further addresses; running probes end below
+        }
+
         foreach (string session in _scanning.ToList())
         {
             _stopRequested.Add(session);
@@ -621,7 +809,11 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                 _ui.Post(() => OnDiscovered(sessionId, found));
             }
 
-            _ui.Post(() => _watching.Remove(sessionId));
+            _ui.Post(() =>
+            {
+                _watching.Remove(sessionId);
+                ReleaseImportSlot(sessionId);
+            });
         }
         catch (OperationCanceledException)
         {
@@ -632,6 +824,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             _ui.Post(() =>
             {
                 _watching.Remove(sessionId);
+                ReleaseImportSlot(sessionId);
                 if (_scanning.Contains(sessionId))
                 {
                     ErrorText = "Discovery stopped: " + Message(ex);
@@ -645,22 +838,40 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         }
     }
 
-    private void UpdateScanning() => IsScanning = _starting > 0 || _scanning.Count > 0;
+    private void UpdateScanning() => IsScanning = _starting > 0 || _scanning.Count > 0 || _importRunning;
 
     internal void OnDiscovered(string sessionId, DiscoveredDevice found)
     {
         ArgumentNullException.ThrowIfNull(found);
-        if (!IsScanMode && _scanning.Contains(sessionId) && found.ProgressPercent > 0 && !found.ScanFinished)
+        if (!IsScanMode && !IsImportMode && _scanning.Contains(sessionId) && found.ProgressPercent > 0 && !found.ScanFinished)
         {
             ScanProgress = Math.Clamp(found.ProgressPercent, 0, 100);
         }
 
-        if (!string.IsNullOrEmpty(found.DiscoveredId))
+        if (!string.IsNullOrEmpty(found.DiscoveredId) && !_duplicateSessions.Contains(sessionId))
         {
             // Scale: O(1) lookups; a /16 range scan can report thousands of devices, each several times.
             DiscoveredRowViewModel? row = _rowsById.GetValueOrDefault(found.DiscoveredId)
                 ?? (found.Serial.Length > 0 ? FindBySerial(found.Serial) : null);
-            if (row is null)
+            _importRows.Remove(sessionId, out DiscoveredRowViewModel? line);
+            if (line is not null && row is not null && row != line)
+            {
+                // Import: another line (another address) already found this device.
+                line.SetImportProblem("Not added", $"Same device as {row.Address} ({row.Serial}).");
+                _duplicateSessions.Add(sessionId);
+            }
+            else if (line is not null && row is null)
+            {
+                // Import: the line's own row shows the device it found (file order stays).
+                _rowsById.Remove(line.DiscoveredId);
+                line.Adopt(found, sessionId);
+                _rowsById.TryAdd(line.DiscoveredId, line);
+                if (!line.IsAlreadyManaged && !line.Matches(SearchText))
+                {
+                    FilteredRows.Remove(line); // the search no longer matches (managed ones leave in OnRowPropertyChanged)
+                }
+            }
+            else if (row is null)
             {
                 row = new DiscoveredRowViewModel(found, sessionId);
                 row.PropertyChanged += OnRowPropertyChanged;
@@ -686,6 +897,16 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                 Validation.SetServerError(nameof(ManualAddress), $"No Axis device answered at {input}.");
             }
 
+            if (_importRows.Remove(sessionId, out DiscoveredRowViewModel? notFound))
+            {
+                notFound.SetImportProblem("Not found", $"No Axis device answered at {notFound.Address}.");
+            }
+
+            if (IsImportMode && _scanning.Contains(sessionId))
+            {
+                ImportLineDone();
+            }
+
             ScanFinished(sessionId);
         }
 
@@ -709,18 +930,19 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             _anyStopped |= _stopRequested.Remove(sessionId);
         }
 
-        if (_starting == 0 && _scanning.Count == 0)
+        if (_starting == 0 && _scanning.Count == 0 && !_importRunning)
         {
             // Text first, then IsScanning: whoever reacts to IsScanning sees the final text.
             ScanProgress = 100;
             IsProgressIndeterminate = false;
-            int listed = Rows.Count - _hidden;
+            int listed = Rows.Count - _hidden - _noDevice;
             string found = listed == 1 ? "1 device found" : string.Create(CultureInfo.CurrentCulture, $"{listed} devices found");
             if (_hidden > 0)
             {
                 found += string.Create(CultureInfo.CurrentCulture, $", {_hidden} already added");
             }
-            ScanStatusText = (_anyStopped ? "Scan stopped, " : "Scan finished, ") + found;
+            string what = IsImportMode ? "Import" : "Scan";
+            ScanStatusText = what + (_anyStopped ? " stopped, " : " finished, ") + found;
         }
 
         UpdateScanning();
@@ -774,7 +996,8 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     /// <summary>Updates the summary counters for one row in O(1); true when they changed.</summary>
     private bool Recount(DiscoveredRowViewModel row)
     {
-        var now = new RowCounts(row.CanAdd, row.ShowLogIn, row.ShowSetPassword, row.IsSelected && row.CanAdd, row.IsAlreadyManaged);
+        var now = new RowCounts(row.CanAdd, row.ShowLogIn, row.ShowSetPassword, row.IsSelected && row.CanAdd, row.IsAlreadyManaged,
+            row.IsImportPlaceholder, row.HasImportProblem);
         if (_counted.TryGetValue(row, out RowCounts old))
         {
             if (old == now)
@@ -797,10 +1020,12 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         _factory += counts.NeedsPassword ? delta : 0;
         _selected += counts.Selected ? delta : 0;
         _hidden += counts.Hidden ? delta : 0;
+        _noDevice += counts.NoDevice ? delta : 0;
+        _problems += counts.Problem ? delta : 0;
     }
 
     /// <summary>What a row adds to the summary ("ready to add", "need a login", "need a password", "selected").</summary>
-    private readonly record struct RowCounts(bool Ready, bool NeedsLogin, bool NeedsPassword, bool Selected, bool Hidden);
+    private readonly record struct RowCounts(bool Ready, bool NeedsLogin, bool NeedsPassword, bool Selected, bool Hidden, bool NoDevice, bool Problem);
 
     // Scale: per-row bookkeeping so a discovered device, a login result or a checkbox costs O(1), not a
     // scan of every row (4 counts over 5,000 rows per change made "select all" O(n^2)).
@@ -812,6 +1037,8 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     private int _factory;
     private int _selected;
     private int _hidden;
+    private int _noDevice;
+    private int _problems;
 
     /// <summary>
     /// Devices OADM already manages are not listed at all (user decision); only the scan status
@@ -840,7 +1067,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         int failed = _failed;
         int factory = _factory;
         SelectedCount = _selected;
-        var parts = new List<string> { string.Create(CultureInfo.CurrentCulture, $"{Rows.Count - _hidden} found"), string.Create(CultureInfo.CurrentCulture, $"{ready} ready to add") };
+        var parts = new List<string> { string.Create(CultureInfo.CurrentCulture, $"{Rows.Count - _hidden - _noDevice} found"), string.Create(CultureInfo.CurrentCulture, $"{ready} ready to add") };
         if (failed > 0)
         {
             parts.Add(string.Create(CultureInfo.CurrentCulture, $"{failed} need a login"));
@@ -849,6 +1076,11 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         if (factory > 0)
         {
             parts.Add(string.Create(CultureInfo.CurrentCulture, $"{factory} need a password"));
+        }
+
+        if (_problems > 0)
+        {
+            parts.Add(string.Create(CultureInfo.CurrentCulture, $"{_problems} not added"));
         }
 
         parts.Add(string.Create(CultureInfo.CurrentCulture, $"{SelectedCount} selected"));

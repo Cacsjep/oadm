@@ -162,6 +162,10 @@ public sealed partial class DevicesViewModel : ObservableObject
                 return RunAddPageAsync(AddDevicesMode.IpRange);
             case HostPages.AddManually:
                 return RunAddPageAsync(AddDevicesMode.Manual);
+            case HostPages.ExportDevices:
+                return ExportDevicesAsync();
+            case HostPages.AddImport:
+                return ImportDevicesAsync();
             default:
                 NavigateRequested?.Invoke(this, hostPage);
                 return Task.CompletedTask;
@@ -221,6 +225,88 @@ public sealed partial class DevicesViewModel : ObservableObject
         {
             await _dialogs.ShowAddDevicesAsync(page).ConfigureAwait(true);
         }
+    }
+
+    /// <summary>CSV files of the export and the import.</summary>
+    internal static readonly FileType CsvFile = new("CSV file", "csv", "text/csv");
+
+    /// <summary>
+    /// Export devices: the selected devices, or every device the search shows when none is selected, as
+    /// CSV (<see cref="DeviceListCsv"/>), in the grid's unsorted order. O(n).
+    /// </summary>
+    internal async Task ExportDevicesAsync()
+    {
+        IReadOnlyList<DeviceRowViewModel> rows = ExportRows();
+        if (rows.Count == 0)
+        {
+            await _dialogs.ShowMessageAsync("Export devices", "There are no devices to export.").ConfigureAwait(true);
+            return;
+        }
+
+        try
+        {
+            byte[] content = DeviceListCsv.ToBytes(rows);
+            string? saved = await _dialogs.SaveFileAsync("Export devices", DeviceListCsv.DefaultFileName(DateTime.Now), CsvFile, content).ConfigureAwait(true);
+            if (saved is not null)
+            {
+                LogExported(_logger, rows.Count, saved);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogActionFailed(_logger, ex, "export");
+            await _dialogs.ShowMessageAsync("Export devices", "The file could not be saved: " + ex.Message).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>
+    /// Import devices: asks for a CSV file (<see cref="DeviceImportFile"/>) and opens the add page with
+    /// every address of it. A file that cannot be used at all is explained in the message window; problems
+    /// of single lines show in their rows.
+    /// </summary>
+    internal async Task ImportDevicesAsync()
+    {
+        DeviceImportFile file;
+        try
+        {
+            PickedFile? picked = await _dialogs.OpenFileAsync("Import devices", CsvFile, DeviceImportFile.MaxBytes).ConfigureAwait(true);
+            if (picked is null)
+            {
+                return;
+            }
+
+            file = DeviceImportFile.Parse(picked.Name, picked.Content, picked.IsTooLarge);
+        }
+        catch (DeviceImportException ex)
+        {
+            await _dialogs.ShowMessageAsync("Import devices", ex.Message).ConfigureAwait(true);
+            return;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            await _dialogs.ShowMessageAsync("Import devices", "The file could not be read: " + ex.Message).ConfigureAwait(true);
+            return;
+        }
+
+        LogImporting(_logger, file.Lines.Count, file.FileName);
+        AddDevicesViewModel page = _addPageFactory(AddDevicesMode.Import);
+        page.SetImport(file);
+        await using (page.ConfigureAwait(true))
+        {
+            await _dialogs.ShowAddDevicesAsync(page).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>The devices an export writes: the selection when there is one, else the search result.</summary>
+    internal IReadOnlyList<DeviceRowViewModel> ExportRows()
+    {
+        if (SelectedDevices.Count == 0)
+        {
+            return [.. FilteredDevices];
+        }
+
+        var selected = SelectedDevices.ToHashSet();
+        return _store.Devices.Where(selected.Contains).ToList();
     }
 
     private List<string> SelectedIds() => SelectedDevices.Select(d => d.Id).ToList();
@@ -368,6 +454,12 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Removed {Count} device(s)")]
     private static partial void LogRemoved(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Importing {Count} address line(s) from {FileName}")]
+    private static partial void LogImporting(ILogger logger, int count, string fileName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Exported {Count} device(s) to {FileName}")]
+    private static partial void LogExported(ILogger logger, int count, string fileName);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not {Action} devices")]
     private static partial void LogActionFailed(ILogger logger, Exception ex, string action);

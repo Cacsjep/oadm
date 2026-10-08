@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Threading.Channels;
 
 using Grpc.Core;
@@ -26,6 +27,12 @@ public sealed class DiscoveryGrpcService(
     DiscoveryAuthenticator authenticator,
     IHostApplicationLifetime lifetime) : Proto.DiscoveryService.DiscoveryServiceBase
 {
+    /// <summary>Longest user name of a probe credential (like the credential list).</summary>
+    public const int MaxUserNameLength = 64;
+
+    /// <summary>Longest password of a probe credential.</summary>
+    public const int MaxPasswordLength = 256;
+
     public override async Task<Proto.DiscoverySession> StartZeroConf(Proto.Empty request, ServerCallContext context) =>
         new() { SessionId = (await discovery.StartZeroConfAsync(context.CancellationToken).ConfigureAwait(false)).Id };
 
@@ -44,9 +51,24 @@ public sealed class DiscoveryGrpcService(
 
     public override async Task<Proto.DiscoverySession> ProbeAddress(Proto.ProbeAddressRequest request, ServerCallContext context)
     {
+        // Credentials of an imported line: both or none, checked before anything is probed.
+        var userName = request.UserName.Trim();
+        var hasCredentials = userName.Length > 0 || request.Password.Length > 0;
+        if (hasCredentials && (userName.Length is 0 or > MaxUserNameLength || request.Password.Length is 0 or > MaxPasswordLength))
+        {
+            throw GrpcGuard.InvalidArgument(string.Create(CultureInfo.InvariantCulture,
+                $"Enter both a user name (1-{MaxUserNameLength} characters) and a password (1-{MaxPasswordLength} characters)."));
+        }
+
         try
         {
             var session = await discovery.StartAddressProbeAsync(request.Address, context.CancellationToken).ConfigureAwait(false);
+            if (hasCredentials)
+            {
+                // Before the watch starts the automatic login, so the credential is the first one tried.
+                authenticator.AddSessionCredential(session.Id, userName, request.Password);
+            }
+
             return new Proto.DiscoverySession { SessionId = session.Id };
         }
         catch (ArgumentException ex)

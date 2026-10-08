@@ -147,7 +147,7 @@ public sealed class HeadlessSmokeTests
 
             // The Devices page toolbar: toolbar plugins with a separator between groups.
             StackPanel toolbarPanel = window.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Name == "ToolbarPanel");
-            Assert.Equal(["Scan", "Scan IP range", "Add manually", "Remove", "Restart", "AXIS OS - Release Notes"],
+            Assert.Equal(["Scan", "Scan IP range", "Add manually", "Import devices", "Remove", "Export devices", "Restart", "AXIS OS - Release Notes"],
                 toolbarPanel.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.ToolbarButton>().Select(b => b.Text ?? "").ToArray());
             Capture(window, outDir, "client-toolbar.png");
 
@@ -156,6 +156,8 @@ public sealed class HeadlessSmokeTests
             vm.IsNavExpanded = true;
             await PumpUntilAsync(() => true);
             Capture(window, outDir, "client-toolbar-1280.png");
+            Assert.True(toolbarPanel.DesiredSize.Width <= toolbarPanel.Bounds.Width + 0.5,
+                $"toolbar needs {toolbarPanel.DesiredSize.Width} px, has {toolbarPanel.Bounds.Width} px at 1280 px with the rail expanded");
             window.Width = 1440;
             vm.IsNavExpanded = false;
             await PumpUntilAsync(() => true);
@@ -260,6 +262,27 @@ public sealed class HeadlessSmokeTests
             Capture(manualWindow, outDir, "client-add-manual.png");
             await manualVm.DisposeAsync();
             manualWindow.Close();
+
+            // Import devices: every line of the file is a row; credentials of a line are tried first for its device.
+            AddDevicesViewModel importVm = factory(AddDevicesMode.Import);
+            importVm.SetImport(DeviceImportFile.Parse("site-a.csv", string.Join('\n',
+                "Address,User name,Password",
+                "10.0.0.93,admin,right-Pass1",
+                "10.0.0.97,,",
+                "camera7.example.com:8443,,",
+                "10.0.0.90,,",
+                "10.0.0.199,,",
+                "10.0.0.97,,",
+                "not an address,,")));
+            var importWindow = new AddDevicesWindow { DataContext = importVm, Width = 1040 };
+            importWindow.Show();
+            await PumpUntilAsync(() => importVm.ImportCompletion is { IsCompleted: true } && !importVm.IsScanning && importVm.Rows.All(r => r.IsImportPlaceholder || r.AuthState != AuthState.Pending));
+            importVm.SelectAllAuthenticatedCommand.Execute(null);
+            await PumpUntilAsync(() => true);
+            Capture(importWindow, outDir, "client-add-import.png");
+            Assert.Equal("Import finished, 4 devices found", importVm.ScanStatusText);
+            await importVm.DisposeAsync();
+            importWindow.Close();
 
             // Task details with per-device results and the task log (fake "Done with warnings" task).
             TaskRowViewModel warned = vm.Devices.Tasks.Tasks.First(t => t.State == TaskState.DoneWithWarnings);

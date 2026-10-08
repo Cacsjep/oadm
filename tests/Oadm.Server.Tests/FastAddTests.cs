@@ -354,6 +354,38 @@ public sealed class FastAddTests
     }
 
     [Fact]
+    public async Task ProbeAddressWithCredentialsTriesThemFirstForThatDeviceOnly()
+    {
+        var network = Network();
+        network["10.9.0.2"].User = "admin";
+        await using var host = await TestServerHost.StartAsync(network);
+        await host.Settings.AddCredentialAsync(new Proto.AddCredentialRequest { UserName = "root", Password = Password });
+
+        // A line of an imported device list: its credentials log in to that device, before the credential list.
+        var session = await host.Discovery.ProbeAddressAsync(new Proto.ProbeAddressRequest { Address = "10.9.0.2", UserName = " admin ", Password = "other-password" });
+        var found = Assert.Single((await TestHelpers.WatchToEndAsync(host, session.SessionId)).Values);
+        Assert.Equal(Proto.AuthState.Authenticated, found.AuthState);
+        Assert.Equal("admin", found.AuthUserName);
+        Assert.Equal("entered", found.CredentialId);
+
+        // Never saved to the credential list; Commit stores them for the device.
+        Assert.Single((await host.Settings.ListCredentialsAsync(new Proto.Empty())).Entries);
+        var reply = await host.AddDevices.CommitAsync(new Proto.CommitRequest { SessionId = session.SessionId, DiscoveredIds = { found.DiscoveredId } });
+        var stored = await host.Get<CredentialStore>().GetAsync(Guid.Parse(Assert.Single(reply.DeviceIds)), CancellationToken.None);
+        Assert.Equal(("admin", "other-password"), (stored!.UserName, stored.Password));
+
+        // Wrong credentials in the file: the credential list still logs in.
+        var wrong = await host.Discovery.ProbeAddressAsync(new Proto.ProbeAddressRequest { Address = "10.9.0.1", UserName = "root", Password = "nope" });
+        var listed = Assert.Single((await TestHelpers.WatchToEndAsync(host, wrong.SessionId)).Values);
+        Assert.Equal(Proto.AuthState.Authenticated, listed.AuthState);
+        Assert.StartsWith("list:", listed.CredentialId, StringComparison.Ordinal);
+
+        // Only both or none.
+        var half = await Assert.ThrowsAsync<RpcException>(() => host.Discovery.ProbeAddressAsync(new Proto.ProbeAddressRequest { Address = "10.9.0.1", UserName = "root" }).ResponseAsync);
+        Assert.Equal(StatusCode.InvalidArgument, half.StatusCode);
+    }
+
+    [Fact]
     public async Task CredentialListIsEncryptedAndNeverReturnsPasswords()
     {
         await using var host = await TestServerHost.StartAsync();

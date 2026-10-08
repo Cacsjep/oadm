@@ -58,6 +58,29 @@ public sealed class AddManuallyToolbarPlugin : IToolbarPlugin
     }
 }
 
+/// <summary>
+/// "Import devices" (icon button after Add manually): a CSV file of addresses, optionally with user name
+/// and password per device, opens the add page with every address (<see cref="HostPages.AddImport"/>).
+/// </summary>
+public sealed class ImportToolbarPlugin : IToolbarPlugin
+{
+    public const string Text = "Import devices";
+
+    public string Id => "oadm.toolbar.import";
+    public int Order => 30;
+    public ToolbarGroup Group => ToolbarGroup.Add;
+
+    public Control CreateControl(IToolbarContext ctx)
+    {
+        ArgumentNullException.ThrowIfNull(ctx);
+        // Icon only: the toolbar must fit the 1280 px minimum window with the rail expanded.
+        var button = new ToolbarButton { Text = Text, IconKey = "download", IsIconOnly = true, Name = "ImportButton" };
+        ToolTip.SetTip(button, "Import devices: add the addresses of a CSV file (an export, or one address per line; optional User name and Password columns)");
+        button.Click += async (_, _) => await ctx.OpenAsync(HostPages.AddImport).ConfigureAwait(true);
+        return button;
+    }
+}
+
 /// <summary>"Remove": removes the selected devices from OADM after a confirmation. Disabled without a selection.</summary>
 public sealed class RemoveToolbarPlugin : IToolbarPlugin
 {
@@ -104,6 +127,38 @@ public sealed class RemoveToolbarPlugin : IToolbarPlugin
     }
 
     private static string DisplayAddress(IDeviceInfo device) => device is DeviceRowViewModel row ? row.DisplayAddress : device.Address;
+}
+
+/// <summary>
+/// "Export devices" (icon button, next to Remove): saves the selected devices, or every device the search
+/// shows when none is selected, as a CSV file (<see cref="HostPages.ExportDevices"/>). The tooltip says which.
+/// </summary>
+public sealed class ExportToolbarPlugin : IToolbarPlugin
+{
+    public const string Text = "Export devices";
+
+    public string Id => "oadm.toolbar.export";
+    public int Order => 10;
+    public ToolbarGroup Group => ToolbarGroup.Manage;
+
+    public Control CreateControl(IToolbarContext ctx)
+    {
+        ArgumentNullException.ThrowIfNull(ctx);
+        // Icon only: the toolbar must fit the 1280 px minimum window with the rail expanded.
+        var button = new ToolbarButton { Text = Text, IconKey = "export", IsIconOnly = true, Name = "ExportButton" };
+        ToolTip.SetTip(button, Tooltip(ctx.SelectedDevices.Count));
+        ctx.SelectionChanged += (_, _) => ToolTip.SetTip(button, Tooltip(ctx.SelectedDevices.Count));
+        button.Click += async (_, _) => await ctx.OpenAsync(HostPages.ExportDevices).ConfigureAwait(true);
+        return button;
+    }
+
+    /// <summary>Says which devices the export writes.</summary>
+    public static string Tooltip(int selected) => selected switch
+    {
+        0 => "Export devices: save every device shown as a CSV file",
+        1 => "Export devices: save the selected device as a CSV file",
+        _ => string.Create(System.Globalization.CultureInfo.CurrentCulture, $"Export devices: save the {selected} selected devices as a CSV file"),
+    };
 }
 
 /// <summary>
@@ -187,7 +242,9 @@ public static class BuiltInToolbarPlugins
         new ScanToolbarPlugin(),
         new ScanRangeToolbarPlugin(),
         new AddManuallyToolbarPlugin(),
+        new ImportToolbarPlugin(),
         new RemoveToolbarPlugin(),
+        new ExportToolbarPlugin(),
         new TaskActionsToolbarPlugin(),
         new ReleaseNotesToolbarPlugin(),
     ];
