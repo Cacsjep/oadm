@@ -514,7 +514,18 @@ tried in the same run. Unreachable attempts count neither as attempt nor as reje
 # Visual Style
 
 Reference: MultiDrive (Avalonia showcase), `docs/style-reference-multidrive.png`, https://multidrive.io/.
-Dark only, calm and spacious, no gradients inside the app.
+Dark only, calm and spacious, no gradients inside the app (one exception: the soft glow of the start splash).
+
+- Start splash (user decision 2026-10-08, approved mockup `mockups/loading/index.html`): `Shell/SplashWindow` (borderless,
+  520x560, centered) with `Controls/SplashLogo` (the app icon built from seven hexagons: the outer six fly in one after another,
+  each drawn as an accent outline that fills; then the center hexagon, the lens ring and the lens opening like an iris; a soft
+  glow (`Oadm.SplashGlowBrush`) breathing behind it, one scan line sweep, one lens blink; complete after 2.3 s), the wordmark
+  "OADM" whose letter spacing pulls together, "Open AXIS Device Management", the shared progress bar and the real loading step
+  (`SplashViewModel`: Starting, Connecting to <server> (+ resuming a remembered login), Loading devices (main streams started,
+  waits for the first device list, at most 15 s), Ready). `AppShell.StartupAsync` keeps it at least 2.7 s (logo and wordmark
+  complete), then fades it out (0.35 s) and shows the login window (nobody remembered; the login view model is already
+  initialized) or the main window. Log out shows the login window directly, without the splash. Tests: `SplashTests`
+  (headless renders `client-splash-building.png`, `client-splash.png`; the headless render clock follows real time).
 
 - Window: starts maximized. Custom title bar (ExtendClientAreaToDecorationsHint), app name
   top-left, window buttons top-right, background near-black `#141414`. Caption button hover

@@ -1,0 +1,26 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="using:Oadm.Client.Shell"
+        xmlns:c="using:Oadm.Client.Controls"
+        x:Class="Oadm.Client.Shell.SplashWindow"
+        x:DataType="shell:SplashViewModel"
+        Title="OADM"
+        Width="520" Height="560" CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        WindowDecorations="None"
+        Background="{StaticResource Oadm.WindowBackgroundBrush}">
+  <!-- Start splash: the animated logo, the wordmark and the real loading steps (see SplashViewModel). -->
+  <Panel x:Name="Root">
+    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="24">
+      <c:SplashLogo HorizontalAlignment="Center" />
+      <StackPanel Spacing="8">
+        <TextBlock Classes="splashWordmark" Text="OADM" />
+        <TextBlock Classes="splashSubtitle" Text="{x:Static shell:SplashViewModel.Subtitle}" />
+      </StackPanel>
+      <StackPanel Classes="splashProgress" HorizontalAlignment="Center">
+        <ProgressBar Minimum="0" Maximum="100" Value="{Binding Progress}" />
+        <TextBlock Classes="secondary" HorizontalAlignment="Center" Text="{Binding Status}" />
+      </StackPanel>
+    </StackPanel>
+  </Panel>
+</Window>

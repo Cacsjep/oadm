@@ -63,6 +63,8 @@ public sealed partial class LoginViewModel : ValidatingViewModel
 
 
     /// <summary>Raised on the UI thread after a successful login; the app opens the main window.</summary>
+    private bool _initialized;
+
     public event EventHandler? LoggedIn;
 
     public ObservableCollection<string> RecentServers { get; } = [];
@@ -160,6 +162,12 @@ public sealed partial class LoginViewModel : ValidatingViewModel
     /// </summary>
     public async Task InitializeAsync()
     {
+        if (_initialized)
+        {
+            return; // already done behind the start splash
+        }
+
+        _initialized = true;
         if (ServerAddressError(ServerAddress) is not null)
         {
             return;
