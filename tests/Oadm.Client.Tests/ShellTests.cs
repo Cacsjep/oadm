@@ -10,29 +10,27 @@ namespace Oadm.Client.Tests;
 
 public sealed class ShellNavigationTests
 {
-    private static MainWindowViewModel CreateShell(DevicesFixture f, ServerConnection connection) => new(
-        connection,
-        f.Devices,
-        new LogsViewModel(new LogStore(f.Ui)),
-        new SettingsViewModel(f.Api, connection, f.Clipboard, NullLogger<SettingsViewModel>.Instance),
-        f.Catalog,
-        f.Registry,
-        f.Api,
-        f.Settings,
-        new UserSession(),
-        NullLogger<MainWindowViewModel>.Instance);
+    private static MainWindowViewModel CreateShell(DevicesFixture f, ServerConnection connection, UserSession? session = null) =>
+        f.CreateShell(connection, session);
+
+    private static UserSession SignedIn(UserRole role)
+    {
+        var session = new UserSession();
+        session.SignIn(new UserInfo { UserName = role == UserRole.Admin ? "anna" : "otto", Role = role }, "https://localhost:5080");
+        return session;
+    }
 
     [Fact]
-    public void Rail_has_devices_on_top_and_logs_settings_pinned_at_the_bottom()
+    public void Rail_has_devices_on_top_and_the_operator_pages_pinned_at_the_bottom()
     {
         using var f = new DevicesFixture();
         using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
-        MainWindowViewModel vm = CreateShell(f, connection);
+        MainWindowViewModel vm = CreateShell(f, connection, SignedIn(UserRole.Operator));
 
         NavItemViewModel devices = Assert.Single(vm.NavItems);
         Assert.Equal("Devices", devices.Title);
-        Assert.Equal(["logs", "settings"], vm.BottomNavItems.Select(n => n.Key).ToArray());
-        Assert.DoesNotContain(vm.NavItems.Concat(vm.BottomNavItems), n => n.Key is "tasks" or "about");
+        Assert.Equal(["logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
+        Assert.DoesNotContain(vm.NavItems.Concat(vm.BottomNavItems), n => n.Key is "tasks");
         Assert.Same(f.Devices, vm.CurrentPage);
         Assert.True(devices.IsSelected);
 
@@ -42,12 +40,73 @@ public sealed class ShellNavigationTests
     }
 
     [Fact]
+    public void Administrators_see_users_and_credentials_above_logs()
+    {
+        using var f = new DevicesFixture();
+        using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
+        MainWindowViewModel vm = CreateShell(f, connection, SignedIn(UserRole.Admin));
+
+        Assert.Equal(["users", "credentials", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
+        Assert.Equal(["Users", "Credentials", "Logs", "Settings", "About"], vm.BottomNavItems.Select(n => n.Title).ToArray());
+        Assert.Equal(["users", "key", "logs", "settings", "info"], vm.BottomNavItems.Select(n => n.IconKey).ToArray());
+        Assert.IsType<UsersViewModel>(vm.BottomNavItems[0].Page);
+        Assert.IsType<CredentialsViewModel>(vm.BottomNavItems[1].Page);
+        Assert.IsType<SettingsViewModel>(vm.BottomNavItems[3].Page);
+        Assert.IsType<AboutViewModel>(vm.BottomNavItems[4].Page);
+    }
+
+    [Fact]
+    public async Task Admin_entries_follow_the_session_role_live()
+    {
+        using var f = new DevicesFixture();
+        using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
+        UserSession session = SignedIn(UserRole.Admin);
+        MainWindowViewModel vm = CreateShell(f, connection, session);
+        vm.NavigateCommand.Execute(vm.BottomNavItems.Single(n => n.Key == "credentials"));
+        Assert.IsType<CredentialsViewModel>(vm.CurrentPage);
+
+        // Another user logs in as operator: the admin pages disappear and the open one falls back to Devices.
+        session.SignIn(new UserInfo { UserName = "otto", Role = UserRole.Operator }, "https://localhost:5080");
+        Assert.Equal(["logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
+        Assert.Same(f.Devices, vm.CurrentPage);
+
+        // An operator cannot open them by key either.
+        await f.Devices.ToolbarContext.OpenAsync(Oadm.Sdk.Client.HostPages.Users);
+        Assert.Same(f.Devices, vm.CurrentPage);
+
+        // Back to an administrator: the entries come back, the current page stays.
+        vm.NavigateCommand.Execute(vm.BottomNavItems.Single(n => n.Key == "about"));
+        session.SignIn(new UserInfo { UserName = "anna", Role = UserRole.Admin }, "https://localhost:5080");
+        Assert.Equal(["users", "credentials", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
+        Assert.IsType<AboutViewModel>(vm.CurrentPage);
+        Assert.True(vm.BottomNavItems[4].IsSelected);
+    }
+
+    [Theory]
+    [InlineData("users", typeof(UsersViewModel))]
+    [InlineData("credentials", typeof(CredentialsViewModel))]
+    [InlineData("logs", typeof(LogsViewModel))]
+    [InlineData("settings", typeof(SettingsViewModel))]
+    [InlineData("about", typeof(AboutViewModel))]
+    public async Task Host_pages_open_by_key(string key, Type page)
+    {
+        using var f = new DevicesFixture();
+        using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
+        MainWindowViewModel vm = CreateShell(f, connection, SignedIn(UserRole.Admin));
+
+        await f.Devices.ToolbarContext.OpenAsync(key);
+
+        Assert.IsType(page, vm.CurrentPage);
+        Assert.True(vm.CurrentItem!.IsSelected);
+    }
+
+    [Fact]
     public async Task Settings_page_loads_and_saves_use_host_name()
     {
         var api = new Oadm.Client.Api.FakeOadmApi(TimeSpan.FromMilliseconds(5)); // disposed by the fixture
         using var f = new DevicesFixture(api);
         using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
-        var settings = new SettingsViewModel(f.Api, connection, f.Clipboard, NullLogger<SettingsViewModel>.Instance);
+        var settings = new SettingsViewModel(f.Api, connection, NullLogger<SettingsViewModel>.Instance);
 
         await settings.LoadAsync();
         Assert.False(settings.UseHostName);
@@ -72,7 +131,7 @@ public sealed class ShellNavigationTests
 
         Assert.Equal(["devices", "plugin:oadm.ntp"], vm.NavItems.Select(n => n.Key).ToArray());
         Assert.True(vm.NavItems[1].HasSeparatorBefore);
-        Assert.Equal(["logs", "settings"], vm.BottomNavItems.Select(n => n.Key).ToArray());
+        Assert.Equal(["logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
     }
 
     [Fact]

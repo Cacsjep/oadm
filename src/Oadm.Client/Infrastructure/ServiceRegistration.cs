@@ -77,9 +77,15 @@ public static class ServiceRegistration
         services.AddSingleton<TasksViewModel>();
         services.AddSingleton<AboutViewModel>();
         services.AddSingleton<SettingsViewModel>();
+        services.AddSingleton<CredentialsViewModel>();
         services.AddSingleton<LogsViewModel>();
         services.AddSingleton<AuditLogViewModel>();
-        services.AddSingleton<UsersViewModel>();
+        services.AddSingleton(sp => new UsersViewModel(
+            sp.GetRequiredService<IOadmApi>(),
+            sp.GetRequiredService<IDialogService>(),
+            sp.GetRequiredService<UserSession>(),
+            sp.GetRequiredService<ILogger<UsersViewModel>>(),
+            sp.GetRequiredService<ServerConnection>()));
         services.AddSingleton<Func<AddDevicesMode, AddDevicesViewModel>>(sp => mode => new AddDevicesViewModel(
             sp.GetRequiredService<IOadmApi>(),
             sp.GetRequiredService<IUiDispatcher>(),

@@ -114,17 +114,36 @@ public sealed class HeadlessSmokeTests
             Assert.False(live.IsOpen);
             await PumpUntilAsync(() => true);
 
+            // Fake mode is the administrator: every host page is in the bottom group of the rail.
+            Assert.Equal(["users", "credentials", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
+            var pageTitles = new Dictionary<string, string>
+            {
+                ["users"] = "Who can log in to this server and what they may do.",
+                ["credentials"] = "Passwords OADM tries when it adds devices.",
+                ["settings"] = "Stored on the OADM server and shared by every client.",
+                ["about"] = "Version and licenses.",
+            };
             foreach (NavItemViewModel item in vm.NavItems.Concat(vm.BottomNavItems).ToList())
             {
                 vm.NavigateCommand.Execute(item);
                 await PumpUntilAsync(() => true);
+                if (pageTitles.TryGetValue(item.Key, out string? text))
+                {
+                    List<string> texts = window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text ?? "").ToList();
+                    Assert.Contains(item.Title, texts);
+                    Assert.Contains(text, texts);
+                }
+
                 Capture(window, outDir, $"client-page-{item.Key.Replace(':', '-')}.png");
             }
 
-            vm.ToggleNavCommand.Execute(null);
+            vm.IsNavExpanded = true;
             vm.NavigateCommand.Execute(vm.NavItems[0]);
             await PumpUntilAsync(() => true);
             Capture(window, outDir, "client-rail-expanded.png");
+            vm.ToggleNavCommand.Execute(null);
+            await PumpUntilAsync(() => true);
+            Capture(window, outDir, "client-rail-collapsed.png");
 
             // The Devices page toolbar: toolbar plugins with a separator between groups.
             StackPanel toolbarPanel = window.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Name == "ToolbarPanel");

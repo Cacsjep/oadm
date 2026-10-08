@@ -16,7 +16,7 @@ using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Client.Tests;
 
-/// <summary>Settings page card "About and licenses": client and server version, the third-party notices.</summary>
+/// <summary>About page: terms of use, client and server version, the third-party notices.</summary>
 public sealed class AboutAndLicensesTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "oadm-about-" + Guid.NewGuid().ToString("N"));
@@ -109,7 +109,7 @@ public sealed class AboutAndLicensesTests : IDisposable
     }
 
     [Fact]
-    public async Task Settings_page_shows_versions_and_the_license_texts()
+    public async Task About_page_shows_versions_and_the_license_texts()
     {
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         var file = Path.Combine(_dir, ThirdPartyNotices.FileName);
@@ -121,18 +121,18 @@ public sealed class AboutAndLicensesTests : IDisposable
             using var f = new DevicesFixture(api);
             using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
             var about = new AboutViewModel(f.Api, connection, new ThirdPartyNotices([file]));
-            var vm = new SettingsViewModel(f.Api, connection, f.Clipboard, NullLogger<SettingsViewModel>.Instance, about: about);
-            await vm.LoadAsync();
             await about.LoadServerVersionAsync();
             await about.ToggleLicensesCommand.ExecuteAsync(null);
 
-            var window = new Window { Width = 1000, Height = 1400, Content = new SettingsView { DataContext = vm } };
+            var window = new Window { Width = 1000, Height = 1400, Content = new AboutPageView { DataContext = about } };
             window.Show();
             window.GetVisualDescendants().OfType<ScrollViewer>().First().ScrollToEnd();
             Dispatcher.UIThread.RunJobs();
 
             List<string> texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? "").ToList();
-            Assert.Contains("About and licenses", texts);
+            Assert.Contains("About", texts);
+            Assert.Contains("Version and licenses.", texts);
+            Assert.DoesNotContain("About and licenses", texts); // no card title repeating the page title
             Assert.Contains("Terms of use", texts);
             Assert.True(texts.IndexOf("Terms of use") < texts.IndexOf(AboutViewModel.LicenseText)); // terms before the license
             Assert.Contains(FakeOadmApi.FakeServerVersion, texts);
@@ -145,7 +145,7 @@ public sealed class AboutAndLicensesTests : IDisposable
             if (!string.IsNullOrEmpty(outDir))
             {
                 Directory.CreateDirectory(outDir);
-                frame.Save(Path.Combine(outDir, "client-settings-about.png"));
+                frame.Save(Path.Combine(outDir, "client-about.png"));
             }
 
             window.Close();

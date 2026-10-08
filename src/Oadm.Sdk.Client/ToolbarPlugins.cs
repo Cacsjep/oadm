@@ -62,6 +62,15 @@ public static class HostPages
     public const string Devices = "devices";
     public const string Logs = "logs";
     public const string Settings = "settings";
+
+    /// <summary>Users page (administrators only; for an operator opening it does nothing).</summary>
+    public const string Users = "users";
+
+    /// <summary>Credential list page (administrators only; for an operator opening it does nothing).</summary>
+    public const string Credentials = "credentials";
+
+    /// <summary>About page: terms of use, versions and licenses.</summary>
+    public const string About = "about";
 }
 
 /// <summary>A task plugin as the toolbar sees it (server TaskService.ListTaskPlugins).</summary>

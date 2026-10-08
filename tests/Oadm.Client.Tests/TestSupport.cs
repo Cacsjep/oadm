@@ -120,6 +120,26 @@ internal sealed class DevicesFixture : IDisposable
         }
     }
 
+    /// <summary>The main window view model with every navigation page; <paramref name="session"/> decides the role.</summary>
+    public Oadm.Client.Shell.MainWindowViewModel CreateShell(Oadm.Client.Shell.ServerConnection connection, Oadm.Client.Shell.UserSession? session = null)
+    {
+        session ??= new Oadm.Client.Shell.UserSession();
+        return new Oadm.Client.Shell.MainWindowViewModel(
+            connection,
+            Devices,
+            new Oadm.Client.Logging.LogsViewModel(new Oadm.Client.Logging.LogStore(Ui)),
+            new Oadm.Client.Settings.SettingsViewModel(Api, connection, NullLogger<Oadm.Client.Settings.SettingsViewModel>.Instance, session),
+            new Oadm.Client.Settings.UsersViewModel(Api, Dialogs, session, NullLogger<Oadm.Client.Settings.UsersViewModel>.Instance),
+            new Oadm.Client.Settings.CredentialsViewModel(Api, connection, Clipboard, session),
+            new Oadm.Client.Settings.AboutViewModel(Api, connection),
+            Catalog,
+            Registry,
+            Api,
+            Settings,
+            session,
+            NullLogger<Oadm.Client.Shell.MainWindowViewModel>.Instance);
+    }
+
     public void Dispose() => (Api as IDisposable)?.Dispose();
 }
 

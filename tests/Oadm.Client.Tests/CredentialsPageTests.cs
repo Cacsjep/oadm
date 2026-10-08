@@ -16,11 +16,53 @@ using Oadm.Client.Shell;
 
 namespace Oadm.Client.Tests;
 
-/// <summary>Credential list on the Settings page: eye button reveals the stored password, copy button copies it.</summary>
-public sealed class SettingsCredentialRevealTests
+/// <summary>Credentials page: eye button reveals the stored password, copy button copies it; administrators only.</summary>
+public sealed class CredentialsPageTests
 {
-    private static SettingsViewModel Create(DevicesFixture f, ServerConnection connection) =>
-        new(f.Api, connection, f.Clipboard, NullLogger<SettingsViewModel>.Instance);
+    private static CredentialsViewModel Create(DevicesFixture f, ServerConnection connection, UserSession? session = null) =>
+        new(f.Api, connection, f.Clipboard, session, NullLogger<CredentialsViewModel>.Instance);
+
+    [Fact]
+    public async Task Operators_never_read_the_list_and_lose_it_when_the_role_changes()
+    {
+        var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
+        using var f = new DevicesFixture(api);
+        using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
+        var session = new UserSession();
+        session.SignIn(new Oadm.Contracts.V1.UserInfo { UserName = "anna", Role = Oadm.Contracts.V1.UserRole.Admin }, "fake");
+        CredentialsViewModel vm = Create(f, connection, session);
+        await vm.LoadAsync();
+        Assert.NotEmpty(vm.Credentials);
+
+        session.SignIn(new Oadm.Contracts.V1.UserInfo { UserName = "otto", Role = Oadm.Contracts.V1.UserRole.Operator }, "fake");
+        Assert.Empty(vm.Credentials);
+        Assert.True(vm.HasNoCredentials);
+        await vm.LoadAsync();
+        Assert.Empty(vm.Credentials);
+    }
+
+    [Fact]
+    public async Task Adding_a_credential_reloads_the_list_and_reports_below_the_user_name_on_failure()
+    {
+        var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
+        using var f = new DevicesFixture(api);
+        using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
+        CredentialsViewModel vm = Create(f, connection);
+        await vm.LoadAsync();
+        int before = vm.Credentials.Count;
+
+        vm.NewCredentialUserName = "service";
+        vm.NewCredentialPassword = "Service-pass-1";
+        await vm.AddCredentialCommand.ExecuteAsync(null);
+
+        Assert.Equal(before + 1, vm.Credentials.Count);
+        Assert.Equal("Added. OADM tries service on every device it finds.", vm.CredentialMessage);
+        Assert.Equal("", vm.NewCredentialPassword);
+        Assert.False(vm.HasErrors);
+
+        await vm.RemoveCredentialCommand.ExecuteAsync(vm.Credentials.Single(c => c.UserName == "service"));
+        Assert.Equal(before, vm.Credentials.Count);
+    }
 
     [Fact]
     public async Task Eye_button_reveals_the_password_and_hides_it_again()
@@ -28,7 +70,7 @@ public sealed class SettingsCredentialRevealTests
         var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
         using var f = new DevicesFixture(api);
         using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
-        SettingsViewModel vm = Create(f, connection);
+        CredentialsViewModel vm = Create(f, connection);
         await api.AddCredentialAsync("service", "Reveal-me-42", CancellationToken.None);
         await vm.LoadAsync();
 
@@ -54,7 +96,7 @@ public sealed class SettingsCredentialRevealTests
         var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
         using var f = new DevicesFixture(api);
         using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
-        SettingsViewModel vm = Create(f, connection);
+        CredentialsViewModel vm = Create(f, connection);
         await api.AddCredentialAsync("service", "Copy-me-42", CancellationToken.None);
         await vm.LoadAsync();
         CredentialItemViewModel item = vm.Credentials.Single(c => c.UserName == "service");
@@ -72,7 +114,7 @@ public sealed class SettingsCredentialRevealTests
     {
         using var f = new DevicesFixture();
         using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
-        SettingsViewModel vm = Create(f, connection);
+        CredentialsViewModel vm = Create(f, connection);
         f.Api.RevealCredentialAsync("gone", Arg.Any<CancellationToken>())
             .Returns<Task<string>>(_ => throw new RpcException(new Status(StatusCode.NotFound, "Credential 'gone' not found.")));
         var item = new CredentialItemViewModel("gone", "root", "");
@@ -88,7 +130,7 @@ public sealed class SettingsCredentialRevealTests
     }
 
     [Fact]
-    public async Task Settings_page_shows_a_revealed_password_and_no_client_card()
+    public async Task Credentials_page_shows_its_header_and_a_revealed_password()
     {
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         HeadlessUnitTestSession session = HeadlessSession.Shared;
@@ -97,11 +139,11 @@ public sealed class SettingsCredentialRevealTests
             var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
             using var f = new DevicesFixture(api);
             using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
-            SettingsViewModel vm = Create(f, connection);
+            CredentialsViewModel vm = Create(f, connection);
             await vm.LoadAsync();
             Assert.Equal(["root", "operator"], vm.Credentials.Select(c => c.UserName).ToArray());
 
-            var window = new Window { Width = 1000, Height = 1200, Content = new SettingsView { DataContext = vm } };
+            var window = new Window { Width = 1000, Height = 1200, Content = new CredentialsView { DataContext = vm } };
             window.Show();
             await vm.ToggleRevealCredentialCommand.ExecuteAsync(vm.Credentials[0]);
             Dispatcher.UIThread.RunJobs();
@@ -109,7 +151,9 @@ public sealed class SettingsCredentialRevealTests
             List<string> texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? "").ToList();
             Assert.Contains("Fake-root-pass1", texts);
             Assert.Contains(CredentialItemViewModel.MaskedText, texts);
-            Assert.DoesNotContain("This client", texts);
+            Assert.Contains("Credentials", texts);
+            Assert.Contains("Passwords OADM tries when it adds devices.", texts);
+            Assert.DoesNotContain("Credential list", texts); // no card title repeating the page title
             Assert.DoesNotContain(texts, t => t.Contains("never shown again", StringComparison.Ordinal));
             List<object?> tips = window.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("iconOnly")).Select(ToolTip.GetTip).ToList();
             Assert.Equal(2, tips.Count(t => (t as string) == "Copy password"));
@@ -121,7 +165,7 @@ public sealed class SettingsCredentialRevealTests
             if (!string.IsNullOrEmpty(outDir))
             {
                 Directory.CreateDirectory(outDir);
-                frame.Save(Path.Combine(outDir, "client-settings-credential-revealed.png"));
+                frame.Save(Path.Combine(outDir, "client-credentials-revealed.png"));
             }
 
             window.Close();

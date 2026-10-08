@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Globalization;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -7,78 +6,35 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 
 using Oadm.Client.Api;
-using Oadm.Client.Dialogs;
 using Oadm.Client.Shell;
-using Grpc.Core;
-
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Client.Validation;
 
 namespace Oadm.Client.Settings;
 
 /// <summary>
-/// One credential list entry: user name, when it was added and, only after the eye button asked the server
-/// (<see cref="IOadmApi.RevealCredentialAsync"/>), its password. Masked again (and forgotten) on the second click.
-/// </summary>
-public sealed partial class CredentialItemViewModel(string id, string userName, string addedText) : ObservableObject
-{
-    /// <summary>Shown while the password is hidden; always the same length so it says nothing about the password.</summary>
-    public const string MaskedText = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
-
-    public string Id { get; } = id;
-    public string UserName { get; } = userName;
-    public string AddedText { get; } = addedText;
-
-    /// <summary>The revealed password; null while hidden.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsRevealed), nameof(PasswordText), nameof(RevealTooltip))]
-    public partial string? Password { get; private set; }
-
-    public bool IsRevealed => Password is not null;
-
-    public string PasswordText => Password ?? MaskedText;
-
-    public string RevealTooltip => IsRevealed ? "Hide password" : "Show password";
-
-    internal void Reveal(string password) => Password = password;
-
-    internal void Hide() => Password = null;
-}
-
-/// <summary>
-/// Server settings (SettingsService) and the credential list. Every field reports its error below itself
-/// (<see cref="ValidatingViewModel"/>); Save and Add credential stay disabled while their fields have errors.
-/// The server address of this client is set with <c>--server</c> or the client settings file.
+/// Settings page: the server settings (SettingsService). Every field reports its error below itself
+/// (<see cref="ValidatingViewModel"/>); Save stays disabled while a field has an error. Operators see the values
+/// read-only. Users, the credential list and About are pages of their own. The server address of this client is set
+/// with <c>--server</c> or the client settings file.
 /// </summary>
 public sealed partial class SettingsViewModel : ValidatingViewModel
 {
     private readonly IOadmApi _api;
-    private readonly IClipboardService _clipboard;
     private readonly ILogger<SettingsViewModel> _logger;
     private readonly UserSession? _session;
 
-    /// <summary>The Users card (Admin only); null in tests that do not need it.</summary>
-    public UsersViewModel? Users { get; }
-
-    /// <summary>Server settings, credential list and users can only be changed by administrators (the server checks it too).</summary>
+    /// <summary>Server settings can only be changed by administrators (the server checks it too).</summary>
     public bool IsAdmin => _session?.IsAdmin ?? true;
 
     public bool IsOperator => !IsAdmin;
 
-    /// <summary>The Users card is shown to administrators.</summary>
-    public bool ShowUsers => Users is not null && IsAdmin;
-
-    public SettingsViewModel(IOadmApi api, ServerConnection connection, IClipboardService clipboard, ILogger<SettingsViewModel> logger,
-        UserSession? session = null, UsersViewModel? users = null, AboutViewModel? about = null)
+    public SettingsViewModel(IOadmApi api, ServerConnection connection, ILogger<SettingsViewModel> logger, UserSession? session = null)
     {
         ArgumentNullException.ThrowIfNull(connection);
-        ArgumentNullException.ThrowIfNull(clipboard);
-        About = about ?? new AboutViewModel(api, connection);
         _api = api;
-        _clipboard = clipboard;
         _logger = logger;
         _session = session;
-        Users = users;
         connection.Connected += (_, _) => _ = LoadAsync();
         if (session is not null)
         {
@@ -88,7 +44,6 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
                 {
                     OnPropertyChanged(nameof(IsAdmin));
                     OnPropertyChanged(nameof(IsOperator));
-                    OnPropertyChanged(nameof(ShowUsers));
                     SaveCommand.NotifyCanExecuteChanged();
                 }
             };
@@ -102,15 +57,10 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             .Rule(nameof(ZeroConfSeconds), () => RangeError(ZeroConfSeconds, 5, 300))
             .Rule(nameof(MaxParallelTasksPerPlugin), () => RangeError(MaxParallelTasksPerPlugin, MinParallelTasks, MaxParallelTasks))
             .Rule(nameof(ServerName), () => ServerName.Trim().Length == 0 ? "Enter a server name." : null)
-            .Rule(nameof(ListenUrl), () => ListenUrlError(ListenUrl))
-            .Rule(nameof(NewCredentialUserName), () => NewCredentialUserName.Trim().Length == 0 ? "Enter a user name." : null)
-            .Rule(nameof(NewCredentialPassword), () => NewCredentialPassword.Length == 0 ? "Enter the password." : null);
+            .Rule(nameof(ListenUrl), () => ListenUrlError(ListenUrl));
         Validation.Validate();
         Validation.Reset();
     }
-
-    /// <summary>Card "About and licenses" (versions, license texts).</summary>
-    public AboutViewModel About { get; }
 
     private static readonly string[] ServerFields =
     [
@@ -123,20 +73,13 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     public const int MaxParallelTasks = 256;
     public const int DefaultParallelTasks = 16;
 
-    private static readonly string[] CredentialFields = [nameof(NewCredentialUserName), nameof(NewCredentialPassword)];
-
     /// <summary>Why Save is disabled (tooltip).</summary>
     public string? SaveBlockedReason => Validation.FirstErrorOf(ServerFields);
-
-    /// <summary>Why Add credential is disabled (tooltip).</summary>
-    public string? AddCredentialBlockedReason => Validation.FirstErrorOf(CredentialFields);
 
     protected override void OnValidationChanged()
     {
         OnPropertyChanged(nameof(SaveBlockedReason));
-        OnPropertyChanged(nameof(AddCredentialBlockedReason));
         SaveCommand.NotifyCanExecuteChanged();
-        AddCredentialCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>"Enter a value from 5 to 3600." for an empty or out-of-range number field.</summary>
@@ -182,16 +125,6 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     [ObservableProperty] public partial string? ServerMessage { get; private set; }
     [ObservableProperty] public partial bool ServerMessageIsError { get; private set; }
 
-    /// <summary>The server's credential list, tried on every discovered device when adding devices.</summary>
-    public ObservableCollection<CredentialItemViewModel> Credentials { get; } = [];
-
-    [ObservableProperty] public partial string NewCredentialUserName { get; set; } = "root";
-    [ObservableProperty] public partial string NewCredentialPassword { get; set; } = "";
-    [ObservableProperty] public partial string? CredentialMessage { get; private set; }
-    [ObservableProperty] public partial bool CredentialMessageIsError { get; private set; }
-
-    public bool HasNoCredentials => Credentials.Count == 0;
-
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     public partial bool IsLoaded { get; private set; }
@@ -212,15 +145,6 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             Validation.Reset(ServerFields); // loaded values: nothing edited yet
             IsLoaded = true;
             ServerMessage = null;
-            if (IsAdmin)
-            {
-                await LoadCredentialsAsync().ConfigureAwait(true);
-            }
-
-            if (Users is not null)
-            {
-                await Users.LoadAsync().ConfigureAwait(true);
-            }
         }
         catch (Exception ex)
         {
@@ -272,120 +196,6 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         finally
         {
             IsBusy = false;
-        }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanAddCredential))]
-    private async Task AddCredentialAsync()
-    {
-        string user = NewCredentialUserName.Trim();
-        if (!Validation.IsValidFor(CredentialFields))
-        {
-            Validation.ShowAll(CredentialFields);
-            return;
-        }
-
-        CredentialMessage = null;
-
-        try
-        {
-            await _api.AddCredentialAsync(user, NewCredentialPassword, CancellationToken.None).ConfigureAwait(true);
-            NewCredentialPassword = "";
-            Validation.Reset(CredentialFields); // ready for the next one
-            CredentialMessageIsError = false;
-            CredentialMessage = $"Added. OADM tries {user} on every device it finds.";
-            await LoadCredentialsAsync().ConfigureAwait(true);
-        }
-        catch (Exception ex)
-        {
-            // e.g. the entry exists already or the list is full: below the user name
-            Validation.SetServerError(nameof(NewCredentialUserName), "Adding failed: " + (ex is RpcException rpc ? rpc.Status.Detail : ex.Message));
-        }
-    }
-
-    private bool CanAddCredential() => Validation.IsValidFor(CredentialFields);
-
-    [RelayCommand]
-    private async Task RemoveCredentialAsync(CredentialItemViewModel? item)
-    {
-        if (item is null)
-        {
-            return;
-        }
-
-        try
-        {
-            await _api.RemoveCredentialAsync(item.Id, CancellationToken.None).ConfigureAwait(true);
-            CredentialMessage = null;
-            await LoadCredentialsAsync().ConfigureAwait(true);
-        }
-        catch (Exception ex)
-        {
-            CredentialMessageIsError = true;
-            CredentialMessage = "Removing failed: " + (ex is RpcException rpc ? rpc.Status.Detail : ex.Message);
-        }
-    }
-
-    private async Task LoadCredentialsAsync()
-    {
-        IReadOnlyList<CredentialEntry> entries = await _api.ListCredentialsAsync(CancellationToken.None).ConfigureAwait(true);
-        Credentials.Clear();
-        foreach (CredentialEntry entry in entries)
-        {
-            string added = entry.Created is null ? "" : "Added " + entry.Created.ToDateTime().ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
-            Credentials.Add(new CredentialItemViewModel(entry.Id, entry.UserName, added));
-        }
-
-        OnPropertyChanged(nameof(HasNoCredentials));
-    }
-
-    /// <summary>Eye button: loads the stored password from the server and shows it; a second click masks it again.</summary>
-    [RelayCommand]
-    private async Task ToggleRevealCredentialAsync(CredentialItemViewModel? item)
-    {
-        if (item is null)
-        {
-            return;
-        }
-
-        if (item.IsRevealed)
-        {
-            item.Hide();
-            return;
-        }
-
-        try
-        {
-            item.Reveal(await _api.RevealCredentialAsync(item.Id, CancellationToken.None).ConfigureAwait(true));
-            CredentialMessage = null;
-        }
-        catch (Exception ex)
-        {
-            CredentialMessageIsError = true;
-            CredentialMessage = "Showing the password failed: " + (ex is RpcException rpc ? rpc.Status.Detail : ex.Message);
-        }
-    }
-
-    /// <summary>Copy button: copies the stored password to the clipboard (loaded from the server unless shown already).</summary>
-    [RelayCommand]
-    private async Task CopyCredentialPasswordAsync(CredentialItemViewModel? item)
-    {
-        if (item is null)
-        {
-            return;
-        }
-
-        try
-        {
-            string password = item.Password ?? await _api.RevealCredentialAsync(item.Id, CancellationToken.None).ConfigureAwait(true);
-            bool copied = await _clipboard.SetTextAsync(password).ConfigureAwait(true);
-            CredentialMessageIsError = !copied;
-            CredentialMessage = copied ? $"Password of {item.UserName} copied to the clipboard." : "The clipboard is not available.";
-        }
-        catch (Exception ex)
-        {
-            CredentialMessageIsError = true;
-            CredentialMessage = "Copying the password failed: " + (ex is RpcException rpc ? rpc.Status.Detail : ex.Message);
         }
     }
 

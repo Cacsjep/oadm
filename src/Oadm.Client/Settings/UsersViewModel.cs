@@ -22,7 +22,7 @@ public sealed record RoleOption(UserRole Role, string Title)
     public override string ToString() => Title;
 }
 
-/// <summary>One user of the Users card.</summary>
+/// <summary>One user of the Users page.</summary>
 public sealed partial class UserRowViewModel(UserInfo info, bool isSelf) : ObservableObject
 {
     public UserInfo Info { get; } = info;
@@ -56,7 +56,7 @@ public sealed partial class UserRowViewModel(UserInfo info, bool isSelf) : Obser
 }
 
 /// <summary>
-/// Settings page card Users (Admin only): list (user, role, last login, state), add, change role, reset password,
+/// Navigation page Users (Admin only, loaded on every connect): list (user, role, last login, state), add, change role, reset password,
 /// disable or enable, delete. The server refuses changes of the own account and of the last enabled administrator;
 /// its message is shown in the shared message window. Field errors appear below the fields.
 /// </summary>
@@ -67,8 +67,14 @@ public sealed partial class UsersViewModel : ValidatingViewModel
     private readonly UserSession _session;
     private readonly ILogger<UsersViewModel> _logger;
 
-    public UsersViewModel(IOadmApi api, IDialogService dialogs, UserSession session, ILogger<UsersViewModel> logger)
+    public UsersViewModel(IOadmApi api, IDialogService dialogs, UserSession session, ILogger<UsersViewModel> logger,
+        ServerConnection? connection = null)
     {
+        if (connection is not null)
+        {
+            connection.Connected += (_, _) => _ = LoadAsync();
+        }
+
         _api = api;
         _dialogs = dialogs;
         _session = session;
@@ -150,9 +156,9 @@ public sealed partial class UsersViewModel : ValidatingViewModel
             Users.ReplaceAll(users.Select(u => new UserRowViewModel(u, string.Equals(u.UserName, _session.UserName, StringComparison.OrdinalIgnoreCase))).ToList());
             UpdateSummary();
         }
-        catch (RpcException ex)
+        catch (Exception ex)
         {
-            LogFailed(_logger, "list users", ex.Status.Detail);
+            LogFailed(_logger, "list users", ex is RpcException rpc ? rpc.Status.Detail : ex.Message);
         }
     }
 
