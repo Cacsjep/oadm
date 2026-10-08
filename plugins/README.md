@@ -67,6 +67,9 @@ the server project for shared payload types (it then ships in the same folder).
   <version>" / "Upgrade <app> to <version>" / "Remove|Start|Stop <app>"; Restart "Restart device"; VAPIX
   Commander rollout: the command name or "<first command> +N more"; Network: see its README.
 - `CanRun(device)`: cheap, synchronous; check `device.Apis.Supports(apiId, minVersion)`.
+- `device.Tags`: the device's tag names (sorted, e.g. "Building A", "PTZ"; empty when none), set by the user in the
+  Devices page (Tags dialog). Use them to filter or label, e.g. a core plugin that works per building; compare names
+  case-insensitive. Colors are a host matter and not in the SDK. Filled on the server and in the client.
 - `ExecuteAsync(ctx, device, payloadJson, ct)` runs once per device; every device is its own task.
   Re-check `(await ctx.Vapix.GetApiListAsync(ct)).Require(...)` before the first write.
 - **Steps (rule): every device request and every wait is its own named step**, so the user always
@@ -209,7 +212,8 @@ an error of a whole table (e.g. "Not enough addresses") directly below that tabl
 
   `Icon.devices`, `Icon.tasks`, `Icon.settings`, `Icon.plugin`, `Icon.add`, `Icon.range`,
   `Icon.remove`, `Icon.refresh`, `Icon.restart`, `Icon.identify`, `Icon.columns`, `Icon.search`,
-  `Icon.details`, `Icon.cancel`, `Icon.chevronDown`, `Icon.chevronUp`, `Icon.close`, `Icon.check`,
+  `Icon.details`, `Icon.cancel`, `Icon.chevronDown`, `Icon.chevronRight`, `Icon.chevronUp`, `Icon.close`, `Icon.check`,
+  `Icon.tag`, `Icon.groupBy`, `Icon.edit`,
   `Icon.server`, `Icon.externalLink`, `Icon.key`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
   `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.network`, `Icon.firmware`, `Icon.users`,
   `Icon.user`, `Icon.logout`, `Icon.audit`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
@@ -302,7 +306,7 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
 - Server part: a public class implementing `ICorePlugin` (`Id`, `DisplayName`, `IconKey` = rail icon,
   `TaskPlugins` it contributes, `StartAsync(ctx)`, `StopAsync`, `InvokeAsync(method, payloadJson, ct)`).
   `StartAsync` gets `ICorePluginContext`: `Devices` (all managed devices as `IDeviceInfo`, incl.
-  `CertNotAfterUtc` / `CertTrustName`), `Vapix.CreateAsync(deviceId)` (authenticated client with the
+  `CertNotAfterUtc` / `CertTrustName` / `Tags`), `Vapix.CreateAsync(deviceId)` (authenticated client with the
   stored credentials; never dispose it), `Tasks`, `Settings` (namespaced key/value), `Logger`.
   A plugin that throws on start is Faulted; the others keep running.
 - `InvokeAsync` is the page backend (gRPC `PluginService.Invoke`): route by method name, JSON in and out.
