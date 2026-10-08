@@ -74,19 +74,25 @@ public sealed class ToolbarPluginTests
             Assert.False(buttons[1].IsEnabled); // Remove needs a selection
 
             await f.SetPluginsAsync(
-                TestSupport.Plugin("oadm.restart", "Restart", toolbar: true, dialog: false, "1"),
+                TestSupport.WithReason(TestSupport.Plugin("oadm.restart", "Restart", toolbar: true, dialog: false, "1"), "The device does not answer", "2"),
                 TestSupport.Plugin("oadm.identify", "Identify", toolbar: false, dialog: false, "1"));
             Dispatcher.UIThread.RunJobs();
             ToolbarButton restart = panel.GetVisualDescendantsOfType<ToolbarButton>().Single(b => b.Text == "Restart");
             Assert.True(separators[1].IsVisible);
             Assert.False(restart.IsEnabled);
+            Assert.Null(ToolTip.GetTip(restart)); // nothing selected: no reason
 
             f.Select("1");
             Assert.True(restart.IsEnabled);
+            Assert.Null(ToolTip.GetTip(restart));
             Assert.True(buttons[1].IsEnabled);
             Assert.Equal("Sample (1)", buttons[4].Text);
             f.Select("1", "2");
             Assert.False(restart.IsEnabled); // Restart cannot run on device 2
+            Assert.Equal("The device does not answer: 1 of 2 selected devices", ToolTip.GetTip(restart));
+            Assert.True(ToolTip.GetShowOnDisabled(restart));
+            f.Select("2");
+            Assert.Equal("The device does not answer", ToolTip.GetTip(restart));
 
             // A new view of the page gets the same controls.
             var other = new StackPanel();

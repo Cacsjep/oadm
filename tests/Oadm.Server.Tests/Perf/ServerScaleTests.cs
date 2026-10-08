@@ -71,13 +71,14 @@ internal static class ServerScale
         return ids;
     }
 
-    /// <summary>Ten menu task plugins with typical CanRun checks (status and an API).</summary>
-    public static void RegisterPlugins(TestServerHost host)
+    /// <summary>Ten menu task plugins with typical CanRun checks (status and an API) and their reasons.</summary>
+    public static void RegisterPlugins(TestServerHost host, int count = Plugins, string? lastApi = null)
     {
         var registry = host.Get<PluginRegistry>();
-        for (var i = 0; i < Plugins; i++)
+        for (var i = 0; i < count; i++)
         {
-            Assert.True(registry.RegisterTaskPlugin(new ApiTaskPlugin($"perf.task{i}", i % 2 == 0 ? "api-000" : "api-050"), new PluginOrigin("perf", "1.0.0", null)));
+            var api = i == count - 1 && lastApi is not null ? lastApi : i % 2 == 0 ? "api-000" : "api-050";
+            Assert.True(registry.RegisterTaskPlugin(new ApiTaskPlugin($"perf.task{i}", api), new PluginOrigin("perf", "1.0.0", null)));
         }
     }
 
@@ -94,6 +95,9 @@ internal static class ServerScale
         public bool RequiresDialog => false;
 
         public bool CanRun(IDeviceInfo device) => device.Status == SdkDeviceStatus.Ok && device.Apis.FindApi(api) is not null;
+
+        public string? NotSupportedReason(IDeviceInfo device) =>
+            TaskSupportReasons.ForStatus(device.Status, requireOk: true) ?? TaskSupportReasons.NeedsApi("the API " + api, device);
 
         public Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct) => Task.CompletedTask;
     }
@@ -206,6 +210,66 @@ public sealed class ServerScaleTests(ScaleServerFixture fixture, ITestOutputHelp
             page = await Host.Tasks.ListAsync(new Proto.ListTasksRequest { Limit = 100, Offset = 25_000 }, cancellationToken: cts.Token));
         Assert.Equal(100, page.Tasks.Count);
         Assert.True(page.TotalCount >= ServerScale.Tasks);
+    }
+}
+
+/// <summary>Not-runnable reasons in ListTaskPlugins for 5,000 devices x 15 plugins (own server: other plugins).</summary>
+[Trait("Category", "Perf")]
+public sealed class ServerReasonScaleTests(ITestOutputHelper output)
+{
+    [Fact]
+    public async Task ReasonsFor5000DevicesAnd15PluginsKeepTheCompactReplySmallAndSendEveryIdOnce()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var ids = await ServerScale.SeedDevicesAsync(host);
+        ServerScale.RegisterPlugins(host, 15, lastApi: "api-999"); // the last one runs on no device
+
+        Proto.TaskPluginList compact = null!;
+        await ServerScale.MeasureAsync(output, "ListTaskPlugins compact, 5,000 devices x 15 plugins, first call (CanRun 75,000 times + reasons)", TimeSpan.FromSeconds(10), async () =>
+            compact = await host.Tasks.ListTaskPluginsAsync(new Proto.ListTaskPluginsRequest { Compact = true }));
+        await ServerScale.MeasureAsync(output, "ListTaskPlugins compact again (cached)", TimeSpan.FromSeconds(2), async () =>
+            await host.Tasks.ListTaskPluginsAsync(new Proto.ListTaskPluginsRequest { Compact = true }));
+        Proto.TaskPluginList full = await host.Tasks.ListTaskPluginsAsync(new Proto.ListTaskPluginsRequest());
+
+        var reasonBytes = compact.Plugins.Where(p => p.RunnableOnAllExcept).Sum(p => p.NotRunnableGroups.Sum(g => g.CalculateSize() + 2));
+        output.WriteLine($"Reply size: compact {compact.CalculateSize() / 1024.0:F1} KB (reasons of the 14 all-except plugins {reasonBytes} bytes), full {full.CalculateSize() / 1024.0:F1} KB");
+        Assert.True(compact.CalculateSize() < 200 * 1024, "compact reply below 200 KB");
+        Assert.True(reasonBytes < 4 * 1024, "the reasons add only a few short strings, no device ids, in the compact form");
+
+        foreach (var plugin in compact.Plugins)
+        {
+            var notRunnable = ServerScale.Devices - (plugin.RunnableOnAllExcept ? ServerScale.Devices - plugin.NotRunnableDeviceIds.Count : plugin.RunnableDeviceIds.Count);
+            Assert.Equal(notRunnable, plugin.NotRunnableGroups.Sum(g => g.Count));
+            var listed = plugin.NotRunnableGroups.SelectMany(g => g.DeviceIds).ToList();
+            if (plugin.RunnableOnAllExcept)
+            {
+                Assert.Empty(listed); // the ids are in not_runnable_device_ids, sorted by group
+                Assert.DoesNotContain(plugin.NotRunnableGroups, g => g.OtherDevices);
+            }
+            else
+            {
+                Assert.Single(plugin.NotRunnableGroups, g => g.OtherDevices);
+                Assert.Equal(listed.Count, listed.Distinct().Count());
+                Assert.DoesNotContain(listed, plugin.RunnableDeviceIds.Contains);
+            }
+        }
+
+        // perf.task0 (api-000): every 50th unreachable, every 20th without the API (every 100th is both: unreachable wins).
+        var task0 = compact.Plugins.Single(p => p.Id == "perf.task0");
+        Assert.True(task0.RunnableOnAllExcept);
+        Assert.Equal(
+            [("Needs the API api-000 (this device has 12.11.77)", 200), ("The device does not answer", 100)],
+            task0.NotRunnableGroups.Select(g => (g.Reason, g.Count)).ToArray());
+        var unreachable = ids.Where((_, i) => i % 50 == 0).Select(id => id.ToString()).ToHashSet();
+        Assert.True(task0.NotRunnableDeviceIds.Skip(200).All(unreachable.Contains));
+
+        // perf.task14 (api-999): runs nowhere, so the runnable list is sent and the most common reason covers the rest.
+        var none = compact.Plugins.Single(p => p.Id == "perf.task14");
+        Assert.False(none.RunnableOnAllExcept);
+        Assert.Empty(none.RunnableDeviceIds);
+        var other = Assert.Single(none.NotRunnableGroups, g => g.OtherDevices);
+        Assert.Equal(("Needs the API api-999 (this device has 12.11.77)", 4_900, 0), (other.Reason, other.Count, other.DeviceIds.Count));
+        Assert.Equal(100, none.NotRunnableGroups.Single(g => !g.OtherDevices).DeviceIds.Count);
     }
 }
 

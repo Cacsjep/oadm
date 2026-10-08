@@ -9,6 +9,11 @@ workflow copies the section into the GitHub release.
 
 ### Added
 
+- **Unsupported tasks stay visible**: the device context menu always lists every task in its group; a task the
+  selection cannot run is greyed out with the reason as tooltip ("Needs AXIS OS 11.11 or later (this device has
+  11.9.65)", or "...: 3 of 5 selected devices" for several), also on toolbar task buttons. Plugin SDK:
+  `ITaskPlugin.NotSupportedReason` and `TaskSupportReasons`; the bundled plugins name the missing firmware, API or
+  device status.
 - **Device tags** with colors: a Tags column with colored chips (sortable, searchable, in the column chooser), a
   **Tags** entry in the device context menu for one or many devices (check tags for all / some / none of the selection,
   create tags with one of eight colors; administrators rename, recolor and delete them), applied in one server call.

@@ -3,8 +3,25 @@ using Oadm.Core.Plugins;
 
 namespace Oadm.Server.Tasks;
 
-/// <summary>Devices a task plugin can run on (CanRun true) and the others, in device-table order.</summary>
-public sealed record TaskPluginRunnable(RegisteredTaskPlugin Plugin, IReadOnlyList<Guid> Runnable, IReadOnlyList<Guid> NotRunnable);
+/// <summary>
+/// Devices a task plugin can run on (CanRun true, in device-table order) and the others, grouped by the reason
+/// (<see cref="Sdk.Plugins.ITaskPlugin.NotSupportedReason"/>): <see cref="NotRunnable"/> is the concatenation of
+/// <see cref="Reasons"/> in their order (most devices first).
+/// </summary>
+public sealed record TaskPluginRunnable(
+    RegisteredTaskPlugin Plugin,
+    IReadOnlyList<Guid> Runnable,
+    IReadOnlyList<Guid> NotRunnable,
+    IReadOnlyList<NotRunnableReason> Reasons)
+{
+    public TaskPluginRunnable(RegisteredTaskPlugin plugin, IReadOnlyList<Guid> runnable, IReadOnlyList<Guid> notRunnable)
+        : this(plugin, runnable, notRunnable, notRunnable.Count == 0 ? [] : [new NotRunnableReason(Sdk.Plugins.TaskSupportReasons.Default, notRunnable)])
+    {
+    }
+}
+
+/// <summary>Not-runnable devices of one task plugin that share a reason.</summary>
+public sealed record NotRunnableReason(string Reason, IReadOnlyList<Guid> DeviceIds);
 
 /// <summary>
 /// Scale: ListTaskPlugins asks every task plugin's CanRun for every device (5,000 devices x N plugins)
@@ -23,6 +40,7 @@ public sealed partial class TaskPluginRunnableCache(
     public static readonly TimeSpan MaxAge = TimeSpan.FromSeconds(10);
 
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly HashSet<string> _reasonFailuresLogged = new(StringComparer.Ordinal);
     private Entry? _entry;
 
     /// <summary>Number of computations so far (tests and diagnostics).</summary>
@@ -58,14 +76,37 @@ public sealed partial class TaskPluginRunnableCache(
                 }
 
                 var runnable = new List<Guid>(all.Count);
-                var notRunnable = new List<Guid>();
+                var byReason = new Dictionary<string, List<Guid>>(StringComparer.Ordinal);
                 var logged = false;
                 foreach (var device in all)
                 {
-                    (SafeCanRun(plugin, device, ref logged) ? runnable : notRunnable).Add(device.Id);
+                    if (SafeCanRun(plugin, device, ref logged))
+                    {
+                        runnable.Add(device.Id);
+                        continue;
+                    }
+
+                    var reason = SafeReason(plugin, device);
+                    if (!byReason.TryGetValue(reason, out var ids))
+                    {
+                        byReason[reason] = ids = [];
+                    }
+
+                    ids.Add(device.Id);
                 }
 
-                results.Add(new TaskPluginRunnable(plugin, runnable, notRunnable));
+                var reasons = byReason
+                    .OrderByDescending(r => r.Value.Count)
+                    .ThenBy(r => r.Key, StringComparer.Ordinal)
+                    .Select(r => new NotRunnableReason(r.Key, r.Value))
+                    .ToList();
+                var notRunnable = new List<Guid>(all.Count - runnable.Count);
+                foreach (var group in reasons)
+                {
+                    notRunnable.AddRange(group.DeviceIds);
+                }
+
+                results.Add(new TaskPluginRunnable(plugin, runnable, notRunnable, reasons));
             }
 
             Computations++;
@@ -120,6 +161,18 @@ public sealed partial class TaskPluginRunnableCache(
         }
     }
 
+    /// <summary>The plugin's reason (default text when it gives none); a throwing plugin is logged once per server run.</summary>
+    private string SafeReason(RegisteredTaskPlugin plugin, Device device)
+    {
+        var reason = Sdk.Plugins.TaskSupportReasons.Of(plugin.Plugin, device, out var error);
+        if (error is not null && _reasonFailuresLogged.Add(plugin.Id))
+        {
+            LogReasonFailed(error, plugin.Id, device.Id);
+        }
+
+        return reason;
+    }
+
     public void Dispose() => _gate.Dispose();
 
     private sealed record Entry(long Version, DateTimeOffset At, IReadOnlyList<RegisteredTaskPlugin> Plugins, IReadOnlyList<TaskPluginRunnable> Results);
@@ -129,4 +182,7 @@ public sealed partial class TaskPluginRunnableCache(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Task plugin {PluginId}: CanRun threw for device {DeviceId}")]
     private partial void LogCanRunFailed(Exception ex, string pluginId, Guid deviceId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Task plugin {PluginId}: NotSupportedReason threw for device {DeviceId}; the default text is shown (logged once)")]
+    private partial void LogReasonFailed(Exception ex, string pluginId, Guid deviceId);
 }

@@ -71,6 +71,13 @@ public sealed class RestartTaskPlugin : ITaskPlugin
         return device.Status is DeviceStatus.Ok or DeviceStatus.Unknown;
     }
 
+    /// <summary>Plain-language reason for the greyed menu entry when <see cref="CanRun"/> is false (cached data only).</summary>
+    public string? NotSupportedReason(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return TaskSupportReasons.ForStatus(device.Status);
+    }
+
     public async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);

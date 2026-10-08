@@ -41,6 +41,13 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
             && CachedApiCheck.Supports(device.Apis, PwdgrpApi.ApiId, MinUserManagement);
     }
 
+    /// <summary>Plain-language reason for the greyed menu entry when <see cref="CanRun"/> is false (cached data only).</summary>
+    public string? NotSupportedReason(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return TaskSupportReasons.ForStatus(device.Status) ?? TaskSupportReasons.NeedsApi("the user management API", device);
+    }
+
     public async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);

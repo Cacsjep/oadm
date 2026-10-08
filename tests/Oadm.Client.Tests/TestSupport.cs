@@ -53,6 +53,15 @@ internal static class TestSupport
         info.RunnableDeviceIds.AddRange(runnable);
         return info;
     }
+
+    /// <summary>Adds a reason group that lists its devices (the list form of ListTaskPlugins).</summary>
+    public static TaskPluginInfo WithReason(TaskPluginInfo info, string reason, params string[] deviceIds)
+    {
+        var group = new NotRunnableGroup { Reason = reason, Count = deviceIds.Length };
+        group.DeviceIds.AddRange(deviceIds);
+        info.NotRunnableGroups.Add(group);
+        return info;
+    }
 }
 
 /// <summary>Builds a DevicesViewModel with its collaborators, all without Avalonia.</summary>

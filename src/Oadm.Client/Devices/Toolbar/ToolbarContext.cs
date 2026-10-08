@@ -79,6 +79,12 @@ public sealed class ToolbarContext : IToolbarContext
         return plugin is not null && TaskPluginCatalog.RunnableFor([plugin], _selection.Select(d => d.Id).ToList()).Any();
     }
 
+    public string? CannotRunTaskReason(string pluginId)
+    {
+        TaskPluginInfo? plugin = Find(pluginId);
+        return plugin is null ? null : TaskPluginCatalog.NotRunnableReason(plugin, _selection.Select(d => d.Id).ToList());
+    }
+
     public async Task<IReadOnlyList<string>?> RunTaskAsync(string pluginId, CancellationToken ct)
     {
         TaskPluginInfo? plugin = Find(pluginId);

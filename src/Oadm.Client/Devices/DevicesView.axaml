@@ -65,6 +65,8 @@
                     <Setter Property="CommandParameter" Value="{Binding CommandParameter}" />
                     <Setter Property="IsEnabled" Value="{Binding IsEnabled}" />
                     <Setter Property="ItemsSource" Value="{Binding Items}" />
+                    <Setter Property="ToolTip.Tip" Value="{Binding ToolTip}" />
+                    <Setter Property="ToolTip.ShowOnDisabled" Value="True" />
                     <Setter Property="Icon">
                       <Template>
                         <ui:OadmIcon Data="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" />

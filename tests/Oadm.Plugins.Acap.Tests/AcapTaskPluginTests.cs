@@ -49,6 +49,15 @@ public sealed class AcapTaskPluginTests
     }
 
     [Fact]
+    public void NotSupportedReason_names_the_status_or_the_missing_api()
+    {
+        Assert.Equal("The device does not answer", Plugin.NotSupportedReason(new FakeDevice { Status = DeviceStatus.Unreachable }));
+        Assert.Equal("OADM cannot log in to the device: use Log in", Plugin.NotSupportedReason(new FakeDevice { Status = DeviceStatus.CredentialsRequired }));
+        Assert.Equal("OADM has not read what this device supports yet: refresh the device", Plugin.NotSupportedReason(new FakeDevice { Apis = [] }));
+        Assert.Equal("Needs the application API (this device has 12.11.77)", Plugin.NotSupportedReason(new FakeDevice { Apis = [new("application", "2.0")] }));
+    }
+
+    [Fact]
     public async Task Execute_rechecks_the_fresh_api_list_before_any_write()
     {
         var (device, ctx, files) = Setup();

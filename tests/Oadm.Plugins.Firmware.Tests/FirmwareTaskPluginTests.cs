@@ -67,6 +67,15 @@ public sealed class FirmwareTaskPluginTests
     }
 
     [Fact]
+    public void NotSupportedReason_names_the_status_or_the_missing_firmware_api()
+    {
+        var plugin = new FirmwareTaskPlugin();
+        Assert.Equal("OADM has not checked the device yet: refresh the device", plugin.NotSupportedReason(new FakeDevice(DeviceStatus.Unknown)));
+        Assert.Equal("The device has no password yet: use Set password", plugin.NotSupportedReason(new FakeDevice(DeviceStatus.PasswordNotSet)));
+        Assert.Equal("Needs the firmware management API (this device has 9.80.3)", plugin.NotSupportedReason(new FakeDevice(DeviceStatus.Ok, version: "9.80.3", apis: new DeviceApi("basic-device-info", "1.3"))));
+    }
+
+    [Fact]
     public async Task Full_upgrade_uploads_waits_for_restart_verifies_and_commits()
     {
         var (ctx, device, payload, image) = Setup();

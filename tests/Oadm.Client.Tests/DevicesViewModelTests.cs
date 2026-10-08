@@ -106,7 +106,7 @@ public sealed class DevicesViewModelTests
     }
 
     [Fact]
-    public async Task Context_menu_has_core_actions_and_plugins_runnable_for_whole_selection()
+    public async Task Context_menu_has_core_actions_and_every_plugin_disabled_unless_runnable_for_whole_selection()
     {
         using DevicesFixture f = CreateWithDevices();
         await f.SetPluginsAsync(
@@ -120,7 +120,13 @@ public sealed class DevicesViewModelTests
         string[] headers = f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray();
         Assert.Equal(["Open web interface", "Refresh", "Tags", "Remove", "-", "General"], headers);
         Assert.False(f.Devices.ContextMenuEntries[0].IsEnabled); // web UI needs exactly one device
-        Assert.Equal(["Change password", "Restart"], f.Devices.ContextMenuEntries[5].Items!.Select(e => e.Header).ToArray());
+        IReadOnlyList<MenuEntryViewModel> tasks = f.Devices.ContextMenuEntries[5].Items!;
+        Assert.Equal(["Change password", "Only device 1", "Restart"], tasks.Select(e => e.Header).ToArray());
+        Assert.Equal([true, false, true], tasks.Select(e => e.IsEnabled).ToArray());
+        Assert.Null(tasks[0].ToolTip);
+
+        // No reason from the server (older servers): the default text, counted over the selection.
+        Assert.Equal("Not supported on this device: 1 of 2 selected devices", tasks[1].ToolTip);
     }
 
     [Fact]
@@ -171,15 +177,29 @@ public sealed class DevicesViewModelTests
     }
 
     [Fact]
-    public async Task Context_menu_without_runnable_plugins_has_no_separator()
+    public async Task Context_menu_keeps_a_group_whose_tasks_cannot_run_with_the_entries_disabled()
     {
         using DevicesFixture f = CreateWithDevices();
         await f.SetPluginsAsync(TestSupport.Plugin("oadm.restart", "Restart", toolbar: true, dialog: false, "1", "2"));
 
         f.Select("4");
 
-        Assert.Equal(["Open web interface", "Refresh", "Tags", "Remove"], f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray());
+        Assert.Equal(["Open web interface", "Refresh", "Tags", "Remove", "-", "General"], f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray());
         Assert.True(f.Devices.ContextMenuEntries[0].IsEnabled);
+        MenuEntryViewModel restart = Assert.Single(f.Devices.ContextMenuEntries[5].Items!);
+        Assert.False(restart.IsEnabled);
+        Assert.Equal("Not supported on this device", restart.ToolTip);
+    }
+
+    [Fact]
+    public async Task Context_menu_without_task_plugins_has_no_separator()
+    {
+        using DevicesFixture f = CreateWithDevices();
+        await f.SetPluginsAsync();
+
+        f.Select("4");
+
+        Assert.Equal(["Open web interface", "Refresh", "Tags", "Remove"], f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray());
     }
 
     [Fact]

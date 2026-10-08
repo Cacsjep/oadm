@@ -60,6 +60,13 @@ public sealed class DateTimeTaskPlugin : ITaskPlugin, ITaskPluginQuery
         return device.Status is DeviceStatus.Ok or DeviceStatus.Unknown && TimeApis.CanConfigure(device.Apis);
     }
 
+    /// <summary>Plain-language reason for the greyed menu entry when <see cref="CanRun"/> is false (cached data only).</summary>
+    public string? NotSupportedReason(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return TaskSupportReasons.ForStatus(device.Status) ?? TaskSupportReasons.NeedsApi("the Time API", device);
+    }
+
     public async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);

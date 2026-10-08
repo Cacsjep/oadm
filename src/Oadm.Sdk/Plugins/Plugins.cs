@@ -42,6 +42,17 @@ public interface ITaskPlugin : IPlugin
     bool CanRun(IDeviceInfo device);
 
     /// <summary>
+    /// Why <see cref="CanRun"/> is false for this device, in plain language: what is missing and what to do, e.g.
+    /// "Needs AXIS OS 11.11 or later (this device has 10.12.338)" or "Needs the Time API". The context menu shows the
+    /// task greyed out with this text as tooltip. Called only when CanRun is false, with cached data only (cheap, no
+    /// request). A detail about this one device goes at the end in parentheses starting with "this device" (see
+    /// <see cref="TaskSupportReasons.ThisDevice"/>): the host leaves it out when it sums up several devices. Null:
+    /// <see cref="TaskSupportReasons.Default"/>. Helpers: <see cref="TaskSupportReasons"/>. Exceptions are caught by the
+    /// host (default text, logged once). Default: null.
+    /// </summary>
+    string? NotSupportedReason(IDeviceInfo device) => null;
+
+    /// <summary>
     /// How many tasks of this plugin may run at the same time (one task = one device); further tasks
     /// wait in Queued. Can only lower the server setting Tasks.MaxParallelPerPlugin (default 16): the
     /// engine uses the smaller of the two. Null: the server setting. Firmware upgrades use 4.

@@ -4,6 +4,7 @@ using System.Globalization;
 using Oadm.Plugins.Pki.Device;
 using Oadm.Plugins.Shared;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.Pki.Tasks;
@@ -77,6 +78,21 @@ public static class PkiCompatibility
 
     /// <summary>For tests.</summary>
     internal static void ClearCache() => DiscoverCache.Clear();
+
+    /// <summary>
+    /// Why a PKI task cannot run on the device (cached data only): "Needs AXIS OS 11.11 or later (this device has
+    /// 10.12.338)", for 802.1X also "Needs the network settings API". Null when it can.
+    /// </summary>
+    public static string? NotSupportedReason(IDeviceInfo device, bool needsNetworkSettings)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        if (!FirmwareSupportsCertApi(device.FirmwareVersion))
+        {
+            return TaskSupportReasons.NeedsFirmware("11.11", device);
+        }
+
+        return needsNetworkSettings && !HasNetworkSettings(device.Apis) ? TaskSupportReasons.NeedsApi("the network settings API", device) : null;
+    }
 
     /// <summary>Cheap CanRun filter of every PKI task.</summary>
     public static bool CanRunCertificateTask(IDeviceInfo device)

@@ -119,6 +119,13 @@ public interface IToolbarContext
     bool CanRunTask(string pluginId);
 
     /// <summary>
+    /// Why the task plugin cannot run on the selection, in plain language (the context menu tooltip of the greyed
+    /// entry, e.g. "Needs AXIS OS 11.11 or later: 3 of 5 selected devices"); null when it can or nothing is selected.
+    /// Default (older hosts): null.
+    /// </summary>
+    string? CannotRunTaskReason(string pluginId) => null;
+
+    /// <summary>
     /// Runs a task plugin on the selection like the context menu does: its dialog first when it has
     /// one, then one task per device. Returns the task ids, or null when nothing was started.
     /// </summary>

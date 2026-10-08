@@ -60,6 +60,14 @@ public sealed class TaskPluginTests
     }
 
     [Fact]
+    public void NotSupportedReason_names_the_status_or_the_missing_time_api()
+    {
+        Assert.Equal("The device's certificate changed since it was added", _plugin.NotSupportedReason(new FakeDevice(Guid.NewGuid(), Status: DeviceStatus.CertificateChanged)));
+        Assert.Equal("OADM has not read what this device supports yet: refresh the device", _plugin.NotSupportedReason(new FakeDevice(Guid.NewGuid()) { Apis = [] }));
+        Assert.Equal("Needs the Time API (this device has 12.11.77)", _plugin.NotSupportedReason(new FakeDevice(Guid.NewGuid()) { Apis = Fixture.FutureMajor }));
+    }
+
+    [Fact]
     public async Task New_time_zone_with_the_current_time_mode()
     {
         // Like ADM both are written; the time mode the device already has is skipped.

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Oadm.Client.Api;
 using Oadm.Client.Infrastructure;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Client.Plugins;
 
@@ -120,22 +121,114 @@ public sealed partial class TaskPluginCatalog(IOadmApi api, IUiDispatcher ui, IL
         return SetOf(plugin).Contains(deviceId);
     }
 
+    /// <summary>
+    /// Why the plugin cannot run on the given devices (tooltip of its greyed menu entry or toolbar button), or null
+    /// when it can run on all of them (or none are given). One device: its reason ("Needs AXIS OS 11.11 or later (this
+    /// device has 10.12.338)"). Several: the most common reason without device details and how many of the devices it
+    /// concerns, plus how many other reasons there are ("Needs AXIS OS 11.11 or later: 3 of 5 selected devices (+1 other
+    /// reason)"). O(devices) with one hash lookup each.
+    /// </summary>
+    public static string? NotRunnableReason(TaskPluginInfo plugin, IReadOnlyCollection<string> deviceIds)
+    {
+        ArgumentNullException.ThrowIfNull(plugin);
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        if (deviceIds.Count == 0)
+        {
+            return null;
+        }
+
+        RunnableSet set = SetOf(plugin);
+        Dictionary<string, int>? counts = null;
+        string? single = null;
+        foreach (string id in deviceIds)
+        {
+            int index = set.ReasonIndex(id);
+            if (index == RunnableSet.Runnable)
+            {
+                continue;
+            }
+
+            single = set.Reason(index);
+            counts ??= new Dictionary<string, int>(StringComparer.Ordinal);
+            string general = set.General(index);
+            counts[general] = counts.GetValueOrDefault(general) + 1;
+        }
+
+        if (counts is null)
+        {
+            return null;
+        }
+
+        if (deviceIds.Count == 1)
+        {
+            return single;
+        }
+
+        KeyValuePair<string, int> top = counts
+            .OrderByDescending(c => c.Value)
+            .ThenBy(c => c.Key, StringComparer.Ordinal)
+            .First();
+        string text = $"{top.Key}: {top.Value} of {deviceIds.Count} selected devices";
+        int others = counts.Count - 1;
+        return others switch
+        {
+            0 => text,
+            1 => text + " (+1 other reason)",
+            _ => text + $" (+{others} other reasons)",
+        };
+    }
+
     /// <summary>The runnable set of a plugin info, built once per instance (a refresh brings new instances).</summary>
     private static RunnableSet SetOf(TaskPluginInfo plugin) => Sets.GetValue(plugin, p => new RunnableSet(p));
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not load task plugins: {Reason}")]
     private static partial void LogRefreshFailed(ILogger logger, string reason);
 
-    /// <summary>Hash set over runnable_device_ids, or over not_runnable_device_ids for the compact form.</summary>
+    /// <summary>
+    /// Hash set over runnable_device_ids, or over not_runnable_device_ids for the compact form, plus the reason of every
+    /// not-runnable device (not_runnable_groups, see tasks.proto) as an index into the few distinct reasons.
+    /// </summary>
     private sealed class RunnableSet
     {
+        public const int Runnable = -1;
+        private const int NoReason = -2;
+
         private readonly HashSet<string> _ids;
         private readonly bool _allExcept;
+        private readonly Dictionary<string, int> _reasonOf = new(StringComparer.Ordinal);
+        private readonly List<string> _reasons = [];
+        private readonly List<string> _general = [];
+        private readonly int _otherReason = NoReason;
 
         public RunnableSet(TaskPluginInfo plugin)
         {
             _allExcept = plugin.RunnableOnAllExcept;
             _ids = new HashSet<string>(_allExcept ? plugin.NotRunnableDeviceIds : plugin.RunnableDeviceIds, StringComparer.Ordinal);
+            int next = 0;
+            foreach (NotRunnableGroup group in plugin.NotRunnableGroups)
+            {
+                int index = AddReason(group.Reason);
+                if (_allExcept)
+                {
+                    // not_runnable_device_ids are sorted by group: this group takes the next `count` ids.
+                    int end = Math.Min(plugin.NotRunnableDeviceIds.Count, next + Math.Max(0, group.Count));
+                    for (; next < end; next++)
+                    {
+                        _reasonOf[plugin.NotRunnableDeviceIds[next]] = index;
+                    }
+                }
+                else if (group.OtherDevices)
+                {
+                    _otherReason = index;
+                }
+                else
+                {
+                    foreach (string id in group.DeviceIds)
+                    {
+                        _reasonOf[id] = index;
+                    }
+                }
+            }
         }
 
         public bool Contains(string deviceId) => _ids.Contains(deviceId) != _allExcept;
@@ -151,6 +244,31 @@ public sealed partial class TaskPluginCatalog(IOadmApi api, IUiDispatcher ui, IL
             }
 
             return true;
+        }
+
+        /// <summary>Index of the device's reason, <see cref="Runnable"/> when the plugin can run on it.</summary>
+        public int ReasonIndex(string deviceId)
+        {
+            if (Contains(deviceId))
+            {
+                return Runnable;
+            }
+
+            return _reasonOf.TryGetValue(deviceId, out int index) ? index : _otherReason;
+        }
+
+        /// <summary>The full reason; the default text when the server sent none (older servers).</summary>
+        public string Reason(int index) => index >= 0 ? _reasons[index] : TaskSupportReasons.Default;
+
+        /// <summary>The reason without its device detail.</summary>
+        public string General(int index) => index >= 0 ? _general[index] : TaskSupportReasons.Default;
+
+        private int AddReason(string reason)
+        {
+            string text = string.IsNullOrWhiteSpace(reason) ? TaskSupportReasons.Default : reason;
+            _reasons.Add(text);
+            _general.Add(TaskSupportReasons.General(text));
+            return _reasons.Count - 1;
         }
     }
 }

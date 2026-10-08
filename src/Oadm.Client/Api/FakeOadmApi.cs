@@ -691,6 +691,20 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 TaskPluginInfo info = template.Clone();
                 info.RunnableDeviceIds.Clear();
                 info.RunnableDeviceIds.AddRange(_devices.Where(d => d.Status == DeviceStatus.Ok).Select(d => d.Id));
+
+                // Why the others cannot run it, like the server: one group per device status, ids listed.
+                foreach (IGrouping<DeviceStatus, Device> byStatus in _devices.Where(d => d.Status != DeviceStatus.Ok).GroupBy(d => d.Status))
+                {
+                    var group = new NotRunnableGroup
+                    {
+                        Reason = Oadm.Sdk.Plugins.TaskSupportReasons.ForStatus((Oadm.Sdk.Devices.DeviceStatus)(int)byStatus.Key, requireOk: true)
+                            ?? Oadm.Sdk.Plugins.TaskSupportReasons.Default,
+                        Count = byStatus.Count(),
+                    };
+                    group.DeviceIds.AddRange(byStatus.Select(d => d.Id));
+                    info.NotRunnableGroups.Add(group);
+                }
+
                 result.Add(info);
             }
 

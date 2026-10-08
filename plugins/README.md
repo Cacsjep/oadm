@@ -67,6 +67,18 @@ the server project for shared payload types (it then ships in the same folder).
   <version>" / "Upgrade <app> to <version>" / "Remove|Start|Stop <app>"; Restart "Restart device"; VAPIX
   Commander rollout: the command name or "<first command> +N more"; Network: see its README.
 - `CanRun(device)`: cheap, synchronous; check `device.Apis.Supports(apiId, minVersion)`.
+- `NotSupportedReason(device)` (optional, default null): why `CanRun` is false, called only then, cached data only. The
+  context menu always lists the task; on a selection it cannot run on it is greyed out with this text as tooltip (also
+  the toolbar button). Plain language, what is missing and what to do, no trailing period: "Needs AXIS OS 11.11 or later
+  (this device has 11.9.65)", "Needs the Time API", "The device does not answer". Claim a firmware version only where
+  your check really is a version (or you verified the API's first firmware); otherwise name the missing function. A
+  detail about this one device goes last as " (this device ...)": the host drops it when it sums up several devices
+  ("Needs AXIS OS 11.11 or later: 3 of 5 selected devices"). Helpers in `TaskSupportReasons`: `ForStatus(status,
+  requireOk)` (unreachable, no login, no password, certificate changed), `NeedsFirmware("11.11", device)`,
+  `NeedsApi("the network settings API", device)` (says "refresh the device" while the API list was not read yet).
+  Null, empty or an exception = "Not supported on this device" (the host logs the exception once). Bundled: Restart
+  (status), Users / Applications / Firmware / Date and time / Network settings / Assign IP (status, then the API), "Use
+  OADM as NTP server" (NTP API), PKI tasks (AXIS OS 11.11; 802.1X also the network settings API).
 - `device.Tags`: the device's tag names (sorted, e.g. "Building A", "PTZ"; empty when none), set by the user in the
   Devices page (Tags dialog). Use them to filter or label, e.g. a core plugin that works per building; compare names
   case-insensitive. Colors are a host matter and not in the SDK. Filled on the server and in the client.
@@ -248,6 +260,7 @@ public interface IToolbarContext           // UI thread only; events are raised 
     IReadOnlyList<IDeviceInfo> Devices { get; }           event EventHandler? DevicesChanged;
     IReadOnlyList<ToolbarTaskPlugin> TaskPlugins { get; } event EventHandler? TaskPluginsChanged;
     bool CanRunTask(string pluginId);                     // CanRun for the whole selection
+    string? CannotRunTaskReason(string pluginId);         // the reason as the context menu shows it; null = can run or nothing selected
     Task<IReadOnlyList<string>?> RunTaskAsync(string pluginId, CancellationToken ct); // dialog first when needed
     Task OpenAsync(string hostPage);                      // HostPages.AddScan / AddIpRange / AddManually / AddImport / ExportDevices / Devices / Logs / Settings
     Task RemoveDevicesAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
