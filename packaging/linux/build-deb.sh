@@ -10,7 +10,8 @@
 #                                     /usr/bin/oadm-client -> /opt/oadm/client/Oadm.Client,
 #                                     /usr/share/applications/oadm.desktop, /usr/share/icons/hicolor/{256x256,512x512}/apps/oadm.png
 #   oadm_<version>_<arch>.deb         metapackage: depends on oadm-server and oadm-client of the same version
-# Each has /usr/share/doc/<package>/{copyright,THIRD-PARTY-NOTICES.txt,LGPL-2.1.txt}.
+# Each has /usr/share/doc/<package>/{copyright,TERMS.md,THIRD-PARTY-NOTICES.txt,LGPL-2.1.txt} (TERMS.md: terms of use,
+# shown before the license everywhere; Debian has no interactive acceptance).
 # Data folder /var/lib/oadm (systemd StateDirectory, 0700), created by the server's postinst too.
 # The former single package "oadm" (before 0.0.3) is replaced: oadm-server and oadm-client take over its files.
 set -euo pipefail
@@ -46,7 +47,8 @@ RUNTIME_DEPENDS="libc6, libgcc-s1 | libgcc1, libstdc++6, zlib1g, libssl3t64 | li
 # The client (Avalonia on X11) needs fontconfig and the X11 libraries.
 CLIENT_DEPENDS="$RUNTIME_DEPENDS, libfontconfig1, libx11-6, libice6, libsm6, libxrandr2, libxi6, libxcursor1"
 
-# /usr/share/doc/<package>: copyright (Debian format, Apache-2.0 text), the generated notices and the LGPL text.
+# /usr/share/doc/<package>: copyright (Debian format, Apache-2.0 text), the terms of use, the generated notices and the
+# LGPL text.
 write_docs() {
   local root="$1" package="$2" from="$3" doc="$1/usr/share/doc/$2"
   mkdir -p "$doc"
@@ -58,12 +60,14 @@ write_docs() {
     echo "Files: *"
     echo "Copyright: OADM contributors"
     echo "License: Apache-2.0"
+    echo " Terms of use (no warranty, use at your own risk, not affiliated with Axis):"
+    echo " /usr/share/doc/$package/TERMS.md."
     echo " Bundled third-party components (FFmpeg LGPL-2.1, .NET, Avalonia, ...) and every"
     echo " NuGet package with its license text: /usr/share/doc/$package/THIRD-PARTY-NOTICES.txt."
     echo " ."
     tr -d '\r' < "$REPO_ROOT/LICENSE" | sed -e 's/^$/./' -e 's/^/ /'
   } > "$doc/copyright"
-  cp "$from/THIRD-PARTY-NOTICES.txt" "$from/LGPL-2.1.txt" "$doc/"
+  cp "$from/TERMS.md" "$from/THIRD-PARTY-NOTICES.txt" "$from/LGPL-2.1.txt" "$doc/"
 }
 
 # Permissions (directories 0755, files 0644, the given executables 0755), Installed-Size, control file, build.

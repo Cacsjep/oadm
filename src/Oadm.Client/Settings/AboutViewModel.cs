@@ -84,6 +84,24 @@ public sealed partial class AboutViewModel : ObservableObject
 
     public const string LicenseText = "OADM is open source software under the Apache License 2.0. It contains third-party software under its own licenses, listed below.";
 
+    /// <summary>Title of the terms of use (first line of TERMS.md).</summary>
+    public string TermsTitle { get; } = Terms.Title;
+
+    /// <summary>The terms of use without the title: shown before the license, like on the installers' license page.</summary>
+    public string TermsText { get; } = Terms.Body;
+
+    /// <summary>TERMS.md of the repository, embedded in the client.</summary>
+    public static (string Title, string Body) Terms { get; } = ReadTerms();
+
+    private static (string Title, string Body) ReadTerms()
+    {
+        using var stream = typeof(AboutViewModel).Assembly.GetManifestResourceStream("Oadm.Client.TERMS.md")
+            ?? throw new InvalidOperationException("TERMS.md is not embedded in the client.");
+        using var reader = new StreamReader(stream);
+        var parts = reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal).Trim().Split('\n', 2);
+        return (parts[0].Trim(), parts.Length > 1 ? parts[1].Trim() : string.Empty);
+    }
+
     public string ClientVersion { get; } = VersionOf(typeof(AboutViewModel).Assembly);
 
     [ObservableProperty]

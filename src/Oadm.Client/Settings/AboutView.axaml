@@ -8,6 +8,11 @@
   <Border Classes="card">
     <StackPanel Spacing="16">
       <TextBlock Classes="cardTitle" Text="About and licenses" />
+      <!-- Terms of use first, then the license (same order as the installers' license page). -->
+      <StackPanel Spacing="8">
+        <TextBlock Classes="sectionTitle" Text="{Binding TermsTitle}" />
+        <TextBlock TextWrapping="Wrap" Text="{Binding TermsText}" />
+      </StackPanel>
       <StackPanel Classes="form">
         <ui:FormField Classes="wide" Label="Client version">
           <TextBlock Text="{Binding ClientVersion}" />

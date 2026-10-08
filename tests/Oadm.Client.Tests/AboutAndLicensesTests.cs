@@ -33,6 +33,19 @@ public sealed class AboutAndLicensesTests : IDisposable
     }
 
     [Fact]
+    public void Terms_of_use_come_first_and_match_TERMS_md()
+    {
+        var vm = new AboutViewModel(Substitute.For<IOadmApi>());
+        var repo = Path.GetDirectoryName(ThirdPartyNotices.DefaultCandidates(AppContext.BaseDirectory)[^1])!; // the repository root
+        var terms = File.ReadAllText(Path.Combine(repo, "TERMS.md")).Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
+
+        Assert.Equal("Terms of use", vm.TermsTitle);
+        Assert.StartsWith("OADM is free, open source software, provided \"as is\"", vm.TermsText, StringComparison.Ordinal);
+        Assert.Contains("not affiliated with, sponsored by, or endorsed by Axis Communications AB", vm.TermsText, StringComparison.Ordinal);
+        Assert.Equal(terms, vm.TermsTitle + "\n\n" + vm.TermsText);
+    }
+
+    [Fact]
     public async Task Server_version_comes_from_the_server_settings()
     {
         var api = Substitute.For<IOadmApi>();
@@ -120,6 +133,8 @@ public sealed class AboutAndLicensesTests : IDisposable
 
             List<string> texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? "").ToList();
             Assert.Contains("About and licenses", texts);
+            Assert.Contains("Terms of use", texts);
+            Assert.True(texts.IndexOf("Terms of use") < texts.IndexOf(AboutViewModel.LicenseText)); // terms before the license
             Assert.Contains(FakeOadmApi.FakeServerVersion, texts);
             Assert.Contains(about.ClientVersion, texts);
             var code = window.GetVisualDescendants().OfType<CodeView>().Single();

@@ -79,7 +79,7 @@ jobs:
         shell: bash
         run: |
           for app in server client; do
-            for f in LICENSE.txt THIRD-PARTY-NOTICES.txt LGPL-2.1.txt; do
+            for f in TERMS.md LICENSE.txt THIRD-PARTY-NOTICES.txt LGPL-2.1.txt; do
               test -s "artifacts/publish/$app/${{ matrix.rid }}/$f" || { echo "$app: $f missing"; exit 1; }
             done
           done
@@ -111,6 +111,7 @@ jobs:
           if ((Query "SELECT Value FROM Property WHERE Property='OADM_FW_PROFILE'") -ne '3') { throw 'firewall profile must be Domain + Private (3)' }
           $licenses = @(Query 'SELECT FileName FROM File') | Where-Object { $_ -match 'LICENSE\.txt|THIRD-PARTY-NOTICES\.txt|LGPL-2\.1\.txt' }
           if ($licenses.Count -ne 6) { throw "license texts in both folders expected, found $($licenses.Count)" }
+          if (@(@(Query 'SELECT FileName FROM File') -match 'TERMS\.md').Count -ne 2) { throw 'TERMS.md in both folders expected' }
           Query "SELECT Property, Value FROM Property WHERE Property='ProductVersion'"
 
       - name: Inspect .deb packages
@@ -125,6 +126,7 @@ jobs:
           dpkg-deb --field artifacts/packages/oadm_*_amd64.deb Depends | grep -q 'oadm-server (='
           dpkg-deb --contents artifacts/packages/oadm-server_*_amd64.deb | grep -q 'usr/share/doc/oadm-server/THIRD-PARTY-NOTICES.txt'
           dpkg-deb --contents artifacts/packages/oadm-client_*_amd64.deb | grep -q 'usr/share/doc/oadm-client/LGPL-2.1.txt'
+          for p in oadm oadm-server oadm-client; do dpkg-deb --contents artifacts/packages/${p}_*_amd64.deb | grep -q "usr/share/doc/$p/TERMS.md"; done
           ! dpkg-deb --contents artifacts/packages/oadm-client_*_amd64.deb | grep -q 'oadm-server.service'
 
       - name: Check .pkg choices (macOS, not installed)
@@ -141,6 +143,10 @@ jobs:
           test -f expanded/oadm-client.pkg/Payload/OADM.app/Contents/Resources/LGPL-2.1.txt
           test -f expanded/oadm-server.pkg/Payload/THIRD-PARTY-NOTICES.txt
           test -x expanded/oadm-client.pkg/Payload/OADM.app/Contents/Resources/uninstall-oadm.sh
+          test -f expanded/oadm-client.pkg/Payload/OADM.app/Contents/Resources/TERMS.md
+          # License page: the terms of use first, then the Apache-2.0 text.
+          grep -q '<license file="license.txt"' expanded/Distribution
+          head -1 expanded/Resources/license.txt | grep -q '^Terms of use'
 
       - name: Smoke test (Windows MSI, server and client)
         if: matrix.target == 'windows' && matrix.smoke
@@ -171,7 +177,7 @@ jobs:
           foreach ($f in 'oadm.db', 'master.key') { if (-not (Test-Path "C:\ProgramData\OADM\$f")) { throw "$f missing" } }
           foreach ($app in 'Server', 'Client') {
             if (-not (Test-Path "C:\Program Files\OADM\$app\plugins\oadm.restart")) { throw "$app plugins missing" }
-            foreach ($f in 'LICENSE.txt', 'THIRD-PARTY-NOTICES.txt', 'LGPL-2.1.txt') { if (-not (Test-Path "C:\Program Files\OADM\$app\$f")) { throw "$app $f missing" } }
+            foreach ($f in 'TERMS.md', 'LICENSE.txt', 'THIRD-PARTY-NOTICES.txt', 'LGPL-2.1.txt') { if (-not (Test-Path "C:\Program Files\OADM\$app\$f")) { throw "$app $f missing" } }
           }
           (Get-Acl C:\ProgramData\OADM).Access | Format-Table IdentityReference, FileSystemRights -AutoSize
           # Only TCP 5080 for Domain and Private; the NTP and DHCP plugins add their UDP rules only while enabled.

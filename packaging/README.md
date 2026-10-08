@@ -2,7 +2,7 @@
 
 `manage package <windows|linux|macos> [--rid RID] [--version V]` publishes server and client for the RID
 (`manage publish all`: self-contained single-file exes, every plugin project in `plugins/<plugin id>/` next to
-each exe, `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt` and `LGPL-2.1.txt` next to each exe) and builds the installer into
+each exe, `TERMS.md`, `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt` and `LGPL-2.1.txt` next to each exe) and builds the installer into
 `artifacts/packages/`.
 
 CI: one workflow, `.github/workflows/release.yml`, only on release tags `v*.*.*` (e.g. `v0.0.1`): job `tests` (build and
@@ -36,7 +36,7 @@ Version: `--version` (a tag `v1.2.0` gives `1.2.0`), default `0.1.0-dev`. It goe
 | Data folder | `%ProgramData%\OADM` (`--Oadm:DataDir`), SYSTEM + Administrators only | `/var/lib/oadm` (`OADM_DATA_DIR`, StateDirectory 0700) | `/Library/Application Support/OADM` (`OADM_DATA_DIR`, 0700) |
 | Native lib extraction | `%ProgramData%\OADM\runtime` | `/var/cache/oadm` | `/Library/Application Support/OADM/runtime` |
 | Firewall | TCP 5080 for `Oadm.Server.exe`, profiles Domain and Private (MSI); the NTP / DHCP plugins add UDP 123 / 67 (Domain, Private) while enabled and remove it when disabled or stopped | not touched | not touched (application firewall asks) |
-| License texts | `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt`, `LGPL-2.1.txt` in `Server` and `Client` | same in `/opt/oadm/server`, `/opt/oadm/client` and `/usr/share/doc/<package>/` | same in the server folder and `OADM.app/Contents/Resources` |
+| License texts | `TERMS.md`, `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt`, `LGPL-2.1.txt` in `Server` and `Client`; license page of the wizard = terms of use + Apache-2.0 (`License.rtf`, accepted as before) | same in `/opt/oadm/server`, `/opt/oadm/client` and `/usr/share/doc/<package>/` (no interactive acceptance on Debian) | same in the server folder and `OADM.app/Contents/Resources`; the installer's license page (`<license>`) = terms of use + Apache-2.0 |
 | Uninstall | Apps and Features / `msiexec /x`; data kept | `apt remove oadm oadm-server oadm-client` (data kept, also on purge) | `sudo "/Library/Application Support/OADM/server/uninstall-oadm.sh"` (client only: `OADM.app/Contents/Resources/uninstall-oadm.sh`); data kept |
 
 Notes:
@@ -55,6 +55,10 @@ Notes:
   `notices/licenses/` (MIT, Apache-2.0, BSD-2/3-Clause, OFL-1.1, LGPL-2.1) and the license and notice files shipped in
   the packages (FFmpeg `legal/`, runtime packs), deduplicated. A license without a text there is a warning: add the
   text to `notices/licenses/<SPDX id>.txt`. The client shows the file on Settings > About and licenses.
+- Terms of use: `/TERMS.md` (no warranty, use at your own risk, not affiliated with Axis) is shown before the license
+  everywhere the license is shown: MSI license page (`windows/License.rtf`, regenerate with `windows/make-ui-assets.py`
+  after changing `TERMS.md` or `LICENSE`), .pkg license page, `/usr/share/doc/<package>/TERMS.md`, the top of the client's
+  About and licenses card (embedded in the client), and next to every published exe.
 - Service definitions always pass the data folder explicitly; without it the server would use the service
   account's LocalApplicationData (`C:\Windows\System32\config\systemprofile\AppData\Local\Oadm`, `/root/.local/share/Oadm`).
 - The single-file server extracts its native libraries (SQLite) at start. Services point

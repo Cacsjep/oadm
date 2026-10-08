@@ -42,7 +42,13 @@ package and runtime pack with license, copyright, project and where it is used (
 license texts from `packaging/notices/licenses/` (MIT, Apache-2.0, BSD-2/3-Clause, OFL-1.1, LGPL-2.1; Apache-2.0,
 LGPL-2.1 and OFL-1.1 always) and the license and notice files the packages ship (root `LICENSE*`/`NOTICE*`/
 `THIRD-PARTY-NOTICES*`, the nuspec license file, `legal/**`), deduplicated by content; a license without a text is a
-warning. `LICENSE.txt` and `LGPL-2.1.txt` are written next to each exe too.
+warning. `LICENSE.txt`, `LGPL-2.1.txt` and `TERMS.md` are written next to each exe too.
+**Terms of use** (`/TERMS.md`, user decision 2026-10-08: plain-language disclaimer, "as is", no liability for device
+changes, not affiliated with Axis; text fixed by the user) come before the license everywhere the license is shown:
+MSI license page (`packaging/windows/License.rtf` = TERMS.md then LICENSE, built by `make-ui-assets.py`, accepted as
+before), .pkg license page (productbuild `<license>` from `--resources`, TERMS.md then LICENSE), .deb
+`/usr/share/doc/<package>/TERMS.md` (no interactive acceptance), the top of the client's About and licenses card
+(embedded resource `Oadm.Client.TERMS.md`), and every publish folder / installed app folder.
 
 Installers (`manage package <windows|linux|macos> [--rid] [--version]` into `artifacts/packages/`; layout
 table and notes in `packaging/README.md`). Every installer offers **"Server and client"** (default) or **"Client

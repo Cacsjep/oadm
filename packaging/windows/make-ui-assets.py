@@ -1,6 +1,6 @@
-"""Builds the MSI wizard assets: License.rtf (from /LICENSE), Banner.bmp (493x58) and Dialog.bmp (493x312).
+"""Builds the MSI wizard assets: License.rtf (from /TERMS.md and /LICENSE), Banner.bmp (493x58) and Dialog.bmp (493x312).
 
-The outputs are committed; run this after LICENSE or the app icon changed: python make-ui-assets.py (needs Pillow).
+The outputs are committed; run this after TERMS.md, LICENSE or the app icon changed: python make-ui-assets.py (needs Pillow).
 The WiX dialogs draw black text on the white part of the bitmaps, so the brand color stays at the edges.
 """
 import os
@@ -13,11 +13,17 @@ ICON = os.path.join(ROOT, "icon", "oadm-app-icon-128.png")
 VIOLET = (0x5C, 0x2E, 0x91)
 
 
-def license_rtf() -> None:
-    text = open(os.path.join(ROOT, "LICENSE"), encoding="utf-8").read()
+def rtf_text(text: str) -> str:
     body = text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
     body = "".join(ch if ord(ch) < 128 else f"\\u{ord(ch)}?" for ch in body)
-    body = body.replace("\r\n", "\n").replace("\n", "\\par\n")
+    return body.replace("\r\n", "\n").replace("\n", "\\par\n")
+
+
+def license_rtf() -> None:
+    # The terms of use (TERMS.md, title in bold) first, then the Apache-2.0 text; the wizard asks to accept both.
+    title, terms = open(os.path.join(ROOT, "TERMS.md"), encoding="utf-8").read().replace("\r\n", "\n").strip().split("\n", 1)
+    text = open(os.path.join(ROOT, "LICENSE"), encoding="utf-8").read()
+    body = "{\\b " + rtf_text(title) + "}\\par\n" + rtf_text(terms.strip() + "\n") + rtf_text(text)
     rtf = "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Segoe UI;}}\\fs16\n" + body + "}\n"
     open(os.path.join(HERE, "License.rtf"), "w", encoding="ascii", newline="\n").write(rtf)
 

@@ -8,7 +8,8 @@
 # both, the default; "Client only" = the server choice unchecked, or installer -applyChoiceChangesXML):
 #   choice com.oadm.choice.client (always)
 #     com.oadm.pkg.client   /Applications/OADM.app (Contents/MacOS/Oadm.Client, Resources/plugins/, OADM.icns,
-#                           LICENSE.txt, THIRD-PARTY-NOTICES.txt, LGPL-2.1.txt, uninstall-oadm.sh)
+#                           TERMS.md, LICENSE.txt, THIRD-PARTY-NOTICES.txt, LGPL-2.1.txt, uninstall-oadm.sh)
+# The installer's license page shows TERMS.md followed by LICENSE (productbuild --resources, <license>).
 #   choice com.oadm.choice.server
 #     com.oadm.pkg.launchd  /Library/LaunchDaemons/com.oadm.server.plist
 #     com.oadm.pkg.server   /Library/Application Support/OADM/server (Oadm.Server + plugins/, license texts,
@@ -59,7 +60,7 @@ if [ -d "$APP/Contents/MacOS/plugins" ]; then
   mv "$APP/Contents/MacOS/plugins" "$APP/Contents/Resources/plugins"
 fi
 # License texts are resources, not code (the client's About page also looks in Contents/Resources).
-for f in LICENSE.txt THIRD-PARTY-NOTICES.txt LGPL-2.1.txt; do
+for f in LICENSE.txt THIRD-PARTY-NOTICES.txt LGPL-2.1.txt TERMS.md; do
   if [ -f "$APP/Contents/MacOS/$f" ]; then mv "$APP/Contents/MacOS/$f" "$APP/Contents/Resources/$f"; fi
 done
 cp "$HERE/uninstall-oadm.sh" "$APP/Contents/Resources/uninstall-oadm.sh"
@@ -109,10 +110,16 @@ pkgbuild --root "$SERVER" --scripts "$SCRIPTS" --identifier com.oadm.pkg.server 
   --install-location "/Library/Application Support/OADM/server" "$PKGS/oadm-server.pkg"
 
 # --- product archive
+# License page of the installer (must be accepted): the terms of use first, then the Apache-2.0 text.
+RESOURCES="$WORK/resources"
+mkdir -p "$RESOURCES"
+{ tr -d '\r' < "$REPO_ROOT/TERMS.md"; echo; tr -d '\r' < "$REPO_ROOT/LICENSE"; } > "$RESOURCES/license.txt"
+
 cat > "$WORK/distribution.xml" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
     <title>OADM $VERSION</title>
+    <license file="license.txt" mime-type="text/plain"/>
     <options customize="allow" require-scripts="true" rootVolumeOnly="true" hostArchitectures="$HOST_ARCHS"/>
     <domains enable_localSystem="true" enable_anywhere="false" enable_currentUserHome="false"/>
     <volume-check>
@@ -141,5 +148,5 @@ EOF
 
 mkdir -p "$OUT_DIR"
 PKG="$OUT_DIR/OADM-$VERSION-$RID.pkg"
-productbuild --distribution "$WORK/distribution.xml" --package-path "$PKGS" "$PKG"
+productbuild --distribution "$WORK/distribution.xml" --package-path "$PKGS" --resources "$RESOURCES" "$PKG"
 echo "built $PKG"
