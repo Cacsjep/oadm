@@ -154,6 +154,17 @@ it) and `serverTimeZoneName`.
 `Model/TimeZones.txt` = the device's 313 IANA ids. Labels and offsets come from the OS time zone database
 (`TimeZoneInfo`, IANA ids on Windows through ICU). Old ICU data (Windows 10 1809) lacks a few new ids; same-rules
 aliases cover them (Europe/Kyiv -> Europe/Kiev, Pacific/Kanton -> Pacific/Enderbury, America/Ciudad_Juarez ->
-America/Denver, America/Coyhaique -> America/Punta_Arenas, Asia/Urumqi -> Asia/Dhaka); Antarctica/Troll has none there
-(listed as UTC, set by IANA id only). POSIX strings use the device's own style: Europe/Vienna =
+America/Denver, America/Coyhaique -> America/Punta_Arenas, Asia/Urumqi -> Asia/Dhaka, Antarctica/Vostok ->
+Asia/Tashkent; Windows Server 2025 lacks Vostok and Troll). A zone the OS does not know at all (Antarctica/Troll) stays
+in the list without an offset ("Troll - Antarctica/Troll", offset column "Unknown", sorted last, no daylight saving
+option): devices with the Time API get it by IANA id and apply their own rules; a POSIX string (daylight saving off,
+legacy firmware) cannot be built and the task fails "... not known to this server ... Nothing was changed.".
+
+Standard offset, "observes daylight saving" and the POSIX rule are read from the instants at which the OS changes the
+offset in the current year (`ZoneYear`: day-by-day scan, each change pinned to the second), not from
+`TimeZoneInfo.AdjustmentRule`s: Windows describes floating rules, Linux and macOS build one fixed-date rule per year from
+tzdata (with end times like 1:59:59.999) and keep history (Asia/Kolkata's 1940s daylight saving), so only the instants
+are the same on every OS. Each transition becomes `Mm.w.d/time` in the local time in force before it (start in standard,
+end in daylight saving time); a fourth weekday that is also the last one of the month is "last" (week 5) unless the next
+six years match "fourth" more often. POSIX strings use the device's own style: Europe/Vienna =
 `<UTC1>-1<UTC2>-2,M3.5.0/2:00:00,M10.5.0/3:00:00` (exactly what 10.0.0.48 reports), Asia/Kolkata = `<UTC530>-5:30`.

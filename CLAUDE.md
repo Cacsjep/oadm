@@ -1441,7 +1441,8 @@ time chapter; wording from the ACS 5 manual, sources in the plugin `README.md`),
   writes the time zone and the selected time mode to every selected device. **Device time** card for the first selected
   device (read-only query `getTimeSettings`: device time and offset, time zone, time mode with sync state, server time and
   difference); **Time zone** card: the 313 IANA zones of AXIS OS 12.11 (bundled list, offsets from the OS time zone
-  database) in a DataGrid (UTC offset, City, Time zone, DST) with `ui:SearchBox`, "Automatically adjust for daylight
+  database, read from this year's offset change instants so all three OS agree (`ZoneYear`); a zone the OS does not
+  know, e.g. Antarctica/Troll on Windows Server 2025, is listed last without offset and set by IANA id only) in a DataGrid (UTC offset, City, Time zone, DST) with `ui:SearchBox`, "Automatically adjust for daylight
   saving time changes"; **Time mode** card: Synchronize with server computer time (NTP off, the OADM server's UTC sent
   once per device at execution time, the devices get the server's time zone, the zone list is disabled), Synchronize
   with NTP server (Obtain from DHCP / Use servers, up to 5, one per line; Use NTS with NTS KE servers on ntp 1.5+), Set
