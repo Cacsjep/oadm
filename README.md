@@ -30,17 +30,18 @@ Uninstalling keeps the data folder (devices, credentials, settings, the PKI).
 
 ### Linux (Debian, Ubuntu)
 
-Download the three `.deb` files (`oadm`, `oadm-server`, `oadm-client`) and install them:
+Download the `.deb` files you need (`oadm-server`, `oadm-client`) and install them:
 
 ```sh
-sudo apt install ./oadm_*.deb ./oadm-server_*.deb ./oadm-client_*.deb   # server and client
-sudo apt install ./oadm-client_*.deb                                      # client only
+sudo apt install ./oadm-server_*.deb ./oadm-client_*.deb   # server and client
+sudo apt install ./oadm-server_*.deb                       # server only
+sudo apt install ./oadm-client_*.deb                       # client only
 ```
 
 - The server runs as the systemd service `oadm-server`: `sudo systemctl status oadm-server`.
 - Start the client from the app menu (**OADM**) or with `oadm-client`.
 - Data folder: `/var/lib/oadm`.
-- Uninstall: `sudo apt remove oadm oadm-server oadm-client`.
+- Uninstall: `sudo apt remove oadm-server oadm-client`.
 
 ### macOS
 
