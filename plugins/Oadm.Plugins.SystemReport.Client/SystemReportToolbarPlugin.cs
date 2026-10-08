@@ -40,7 +40,7 @@ public sealed class SystemReportToolbarPlugin : IToolbarPlugin
     {
         ArgumentNullException.ThrowIfNull(ctx);
         // Icon only (tooltip = name and purpose): the toolbar must fit the 1280 px minimum window with the rail expanded.
-        var button = new ToolbarButton { Text = Text, IconKey = SystemReportPluginInfo.IconKey, IsIconOnly = true, Name = "SystemReportButton", IsEnabled = ctx.SelectedDevices.Count > 0 };
+        var button = new ToolbarButton { Text = Text, IconKey = SystemReportPluginInfo.IconKey, Name = "SystemReportButton", IsEnabled = ctx.SelectedDevices.Count > 0 };
         ToolTip.SetTip(button, Tooltip);
         ToolTip.SetShowOnDisabled(button, true);
         ctx.SelectionChanged += (_, _) => button.IsEnabled = ctx.SelectedDevices.Count > 0;

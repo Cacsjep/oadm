@@ -542,7 +542,7 @@ Dark only, calm and spacious, no gradients inside the app.
   colored icon, with the error or warning message right of it when there is one; finished tasks
   show no progress bar. Count badges stay a small solid violet pill.
 - Window chrome: title bar and caption buttons are 32 px high (caption buttons 46x32), exactly
-  like the Windows default. Main window minimum size 1280x720.
+  like the Windows default. Main window minimum size 1800x720 (user decision 2026-10-08).
 - Text fields, number fields and select fields: text vertically centered (measured; select
   fields need the Inter correction, text boxes do not).
 - Icons: one outline icon set (Fluent System Icons / Lucide geometry), monochrome
@@ -557,10 +557,10 @@ density, styled as described in Visual Style.
 Layout, top to bottom:
 1. Title "Devices". Left navigation rail as described in Visual Style.
 2. Toolbar: toolbar plugins (Scan, Scan IP range, Add manually, Import devices | Remove, Export devices | task plugin
-   actions that declare `ShowInToolbar`, then the icon button System report (plugin) | plugin entries, last the icon
-   button AXIS OS - Release Notes), Columns icon button (tooltip
-   "Choose columns") and search box right-aligned (host parts); compact icon buttons keep it on one line at 1280 px with
-   the rail expanded (user decision 2026-10-08).
+   actions that declare `ShowInToolbar`, then the button System report (plugin) | plugin entries, last the button AXIS
+   OS - Release Notes), Columns icon button (tooltip "Choose columns") and search box right-aligned (host parts); one line
+   at the 1800 px minimum window width with the rail expanded (user decision 2026-10-08: System report and AXIS OS -
+   Release Notes are buttons with text; Import, Export and Columns stay icon buttons).
 3. Status line: "N devices, M selected".
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
    client, horizontal scroll, multi-select, right-click context menu: the core actions (Open web
@@ -948,7 +948,7 @@ BOM, a cell starting with = + - @ gets a leading `'` (no formula injection), no 
 save picker `IDialogService.SaveFileAsync`, default name `oadm-devices-<yyyy-MM-dd>.csv`; nothing to export or a
 failed save = `ui:MessageWindow`; O(n), 5,000 devices tested), one generic plugin with a button per task plugin that declares
 `ShowInToolbar` (Tasks; enabled when it can run on the whole selection) and **AXIS OS - Release Notes** (Plugins,
-order 1000 = last, icon-only `ui:ToolbarButton` (`IsIconOnly`, the name as tooltip), icon `externalLink`: opens https://help.axis.com/en-us/axis-os-release-notes in the default browser). External ones come from
+order 1000 = last, `ui:ToolbarButton` with text, icon `externalLink`: opens https://help.axis.com/en-us/axis-os-release-notes in the default browser). External ones come from
 `*.Client.dll` like dialogs and pages. `DeviceToolbar` orders them by group, order, id, creates each
 control once (failures logged, entry left out), keeps a `ToolbarSeparator` only between groups that
 show something and moves the same controls into a new page view. Buttons are `ui:ToolbarButton`
@@ -1674,7 +1674,7 @@ client saves one ZIP for Axis support. Read-only for devices.
   `status` ({jobId, sinceVersion}) -> state running/packing/done/failed, total, finished, failed, size, version and only the
   devices changed after `sinceVersion` (5,000 devices: no full list per poll); `read` ({jobId, offset}) -> 2 MB base64
   chunks; `delete`. All Operator; `start` is audited ("Plugin action", "System report", "start").
-- Client (`SystemReportToolbarPlugin`, group Tasks, order 100, icon-only `ui:ToolbarButton` "System report", icon `file`,
+- Client (`SystemReportToolbarPlugin`, group Tasks, order 100, `ui:ToolbarButton` "System report" with text, icon `file`,
   enabled with a selection, tooltip "System report: download the system reports of the selected devices for Axis support,
   in one ZIP file"): save dialog first (`oadm-system-reports-<yyyy-MM-dd>.zip`), then `SystemReportWindow` (title bar, card
   "Devices" with the summary "6 devices · 2 done · 1 failed", `ui:ProgressRow` "Downloading system reports 4 of 6" /

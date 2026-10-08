@@ -63,7 +63,7 @@ public sealed class HeadlessSmokeTests
         {
             var app = (App)Application.Current!;
             MainWindowViewModel vm = app.Services!.GetRequiredService<MainWindowViewModel>();
-            var window = new MainWindow { DataContext = vm, Width = 1440, Height = 900 };
+            var window = new MainWindow { DataContext = vm, Width = 1800, Height = 900 };
             window.Show();
             vm.Start();
             await PumpUntilAsync(() => vm.Devices.FilteredDevices.Count == 12 && vm.Devices.Tasks.Tasks.Count > 0);
@@ -156,13 +156,13 @@ public sealed class HeadlessSmokeTests
             Capture(window, outDir, "client-toolbar.png");
 
             // At the minimum window width with the rail expanded the toolbar still fits on one line.
-            window.Width = 1280;
+            window.Width = 1800;
             vm.IsNavExpanded = true;
             await PumpUntilAsync(() => true);
-            Capture(window, outDir, "client-toolbar-1280.png");
+            Capture(window, outDir, "client-toolbar-1800.png");
             Assert.True(toolbarPanel.DesiredSize.Width <= toolbarPanel.Bounds.Width + 0.5,
-                $"toolbar needs {toolbarPanel.DesiredSize.Width} px, has {toolbarPanel.Bounds.Width} px at 1280 px with the rail expanded");
-            window.Width = 1440;
+                $"toolbar needs {toolbarPanel.DesiredSize.Width} px, has {toolbarPanel.Bounds.Width} px at 1800 px with the rail expanded");
+            window.Width = 1800;
             vm.IsNavExpanded = false;
             await PumpUntilAsync(() => true);
 

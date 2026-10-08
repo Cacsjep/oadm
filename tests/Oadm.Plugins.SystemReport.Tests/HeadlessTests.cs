@@ -43,7 +43,7 @@ public sealed class HeadlessTests
             // Toolbar button: disabled without a selection, enabled with one.
             var ctx = new ClientTests.FakeToolbarContext();
             var button = (ToolbarButton)new SystemReportToolbarPlugin().CreateControl(ctx);
-            Assert.Equal(("System report", "file", true, false), (button.Text, button.IconKey, button.IsIconOnly, button.IsEnabled));
+            Assert.Equal(("System report", "file", false, false), (button.Text, button.IconKey, button.IsIconOnly, button.IsEnabled));
             Assert.Equal(SystemReportToolbarPlugin.Tooltip, ToolTip.GetTip(button));
             ctx.Selected.Add(new FakeDevice());
             ctx.RaiseSelectionChanged();
