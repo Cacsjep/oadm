@@ -233,12 +233,12 @@ internal sealed class Rig : IAsyncDisposable
         LeaseCheckInterval = TimeSpan.FromMilliseconds(50),
     };
 
-    /// <summary><see cref="Fast"/> with a 300 ms lease: for the test that a stream without keep-alive ends.</summary>
+    /// <summary><see cref="Fast"/> with a 1 s lease: for the test that a stream without keep-alive ends.</summary>
     public static MetadataMonitorOptions ShortLease() => new()
     {
         BatchInterval = TimeSpan.FromMilliseconds(20),
         ReconnectDelays = [TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(20)],
-        LeaseTimeout = TimeSpan.FromMilliseconds(300),
+        LeaseTimeout = TimeSpan.FromSeconds(1),
         LeaseCheckInterval = TimeSpan.FromMilliseconds(50),
     };
 

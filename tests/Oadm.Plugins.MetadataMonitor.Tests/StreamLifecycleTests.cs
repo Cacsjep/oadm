@@ -128,10 +128,10 @@ public sealed class StreamLifecycleTests
         await using var log = new EventLog(rig.Hub);
         var reply = await rig.StartStreamAsync();
 
-        // Keep-alives hold it open past the lease...
-        for (var i = 0; i < 8; i++)
+        // Keep-alives (every 100 ms for 1.5 s) hold it open past the 1 s lease...
+        for (var i = 0; i < 15; i++)
         {
-            await Task.Delay(60);
+            await Task.Delay(100);
             await rig.Plugin.InvokeAsync(MetadataMethods.KeepAlive, MetadataJson.Serialize(new StreamRequest(reply.StreamId!)), CancellationToken.None);
         }
 
@@ -139,7 +139,7 @@ public sealed class StreamLifecycleTests
 
         // ...without them the server ends it (client closed).
         await Wait.UntilAsync(() => rig.Plugin.StreamCount == 0);
-        Assert.True(rig.Streams.Last!.Disposed);
+        await Wait.UntilAsync(() => rig.Streams.Last!.Disposed); // closed right after it is removed (asynchronously)
         await Wait.UntilAsync(() => log.States[^1].State == MonitorStates.Stopped);
     }
 
