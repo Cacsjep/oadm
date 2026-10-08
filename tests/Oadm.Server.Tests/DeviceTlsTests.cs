@@ -48,7 +48,8 @@ public sealed class DeviceTlsTests
         Assert.Equal(Fingerprint(served), stored.CertFingerprintSha256);
         Assert.Equal("CN=new", stored.CertSubject);
         Assert.NotNull(stored.CertNotAfterUtc);
-        Assert.Equal(DeviceStatus.Unknown, stored.Status); // the queued refresh sets the real status
+        // No longer CertificateChanged: Unknown until the queued refresh ran, Ok when it already did (busy CI runner).
+        Assert.Contains(stored.Status, new[] { DeviceStatus.Unknown, DeviceStatus.Ok });
 
         // The factory's client now pins the new certificate.
         var client = await host.Get<VapixClientFactory>().GetClientAsync(device.Id, CancellationToken.None);
