@@ -4,7 +4,7 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
 version and date, and the release workflow copies it into the GitHub release.
 
-## [Unreleased]
+## [1.2.0] - 2026-10-08
 
 ### Added
 
@@ -80,4 +80,5 @@ version and date, and the release workflow copies it into the GitHub release.
 - The splash logo's lens is centered in its ring.
 - The server publish no longer contains an IIS `web.config` and other unused web files.
 
+[1.2.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.2.0
 [1.1.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.1.0
