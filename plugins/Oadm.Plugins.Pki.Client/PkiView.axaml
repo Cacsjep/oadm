@@ -93,9 +93,6 @@
           <ui:FormField Label="Warn before expiry (days)" InputWidth="460">
             <TextBox Text="{Binding ExpiryWarningDays}" />
           </ui:FormField>
-          <ui:FormField Classes="wide">
-            <TextBlock Classes="secondary" Text="{Binding IssuedSummary}" TextWrapping="Wrap" />
-          </ui:FormField>
           <ui:FormField InputWidth="460">
             <Button Classes="primary" HorizontalAlignment="Right" Content="Save" Command="{Binding SaveCommand}"
                     ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />

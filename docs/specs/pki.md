@@ -162,7 +162,7 @@ Certificate authority                                                           
 Device certificates                                                             (card)
   Device certificate validity (days)   [ 365 ]
   Warn before expiry (days)            [ 30 ]
-  Issued: 120 devices · 3 expire within 30 days · 4 from a previous CA          (summary line, from `issued`)
+  (no summary line: the issued counts stay in `getState`, the page does not show them, user decision 2026-10-08)
 
 IEEE 802.1X                                                                     (card)
   EAPOL version      [ 1 v ]
