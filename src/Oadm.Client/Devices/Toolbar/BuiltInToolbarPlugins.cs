@@ -23,11 +23,8 @@ public sealed class AddToolbarPlugin : IToolbarPlugin
         ("Import from file", "download", HostPages.AddImport, "Add devices from a CSV or address list"),
     ];
 
-    public string Id => "oadm.toolbar.add";
-    public int Order => 0;
-    public ToolbarGroup Group => ToolbarGroup.Add;
-
-    public Control CreateControl(IToolbarContext ctx)
+    /// <summary>The Add menu (toolbar button and the empty Devices page).</summary>
+    public static MenuFlyout CreateMenu(IToolbarContext ctx)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         var menu = new MenuFlyout { Placement = PlacementMode.BottomEdgeAlignedLeft };
@@ -39,7 +36,17 @@ public sealed class AddToolbarPlugin : IToolbarPlugin
             menu.Items.Add(item);
         }
 
-        var button = new ToolbarButton { Text = "Add", IconKey = "add", IsPrimary = true, Name = "AddButton", Flyout = menu };
+        return menu;
+    }
+
+    public string Id => "oadm.toolbar.add";
+    public int Order => 0;
+    public ToolbarGroup Group => ToolbarGroup.Add;
+
+    public Control CreateControl(IToolbarContext ctx)
+    {
+        ArgumentNullException.ThrowIfNull(ctx);
+        var button = new ToolbarButton { Text = "Add", IconKey = "add", IsPrimary = true, Name = "AddButton", Flyout = CreateMenu(ctx) };
         ToolTip.SetTip(button, "Add devices: discovery, network range, manually or from a file");
         return button;
     }
@@ -217,7 +224,10 @@ public sealed class TaskActionsToolbarPlugin : IToolbarPlugin
     }
 }
 
-/// <summary>"AXIS OS - Release Notes": opens the AXIS OS release notes on help.axis.com in the default browser. Last on the toolbar.</summary>
+/// <summary>
+/// "AXIS OS - Release Notes": opens the AXIS OS release notes on help.axis.com in the default browser. An icon-only link
+/// on the right of the toolbar, next to Columns (class <c>trailing</c>), so it does not compete with the device actions.
+/// </summary>
 public sealed class ReleaseNotesToolbarPlugin : IToolbarPlugin
 {
     public static readonly Uri ReleaseNotesUri = new("https://help.axis.com/en-us/axis-os-release-notes");
@@ -229,8 +239,8 @@ public sealed class ReleaseNotesToolbarPlugin : IToolbarPlugin
     public Control CreateControl(IToolbarContext ctx)
     {
         ArgumentNullException.ThrowIfNull(ctx);
-        var button = new ToolbarButton { Text = "AXIS OS - Release Notes", IconKey = "externalLink" };
-        ToolTip.SetTip(button, "Open the AXIS OS release notes on help.axis.com in your browser");
+        var button = new ToolbarButton { Text = "AXIS OS - Release Notes", IconKey = "externalLink", IsIconOnly = true, Classes = { "trailing" } };
+        ToolTip.SetTip(button, "AXIS OS release notes (help.axis.com)");
         button.Click += async (_, _) =>
         {
             if (TopLevel.GetTopLevel(button)?.Launcher is { } launcher && !await launcher.LaunchUriAsync(ReleaseNotesUri).ConfigureAwait(true))

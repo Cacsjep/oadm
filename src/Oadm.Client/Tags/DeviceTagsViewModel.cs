@@ -159,7 +159,9 @@ public sealed partial class DeviceTagsViewModel : ValidatingViewModel
 
     // ---------------------------------------------------------------- new tag
 
-    [ObservableProperty] public partial bool IsAddingTag { get; private set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsInlineEditorOpen))]
+    public partial bool IsAddingTag { get; private set; }
 
     [ObservableProperty] public partial string NewTagName { get; set; } = "";
 
@@ -168,10 +170,13 @@ public sealed partial class DeviceTagsViewModel : ValidatingViewModel
     // ---------------------------------------------------------------- edit (administrators)
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsEditing))]
+    [NotifyPropertyChangedFor(nameof(IsEditing), nameof(IsInlineEditorOpen))]
     public partial TagChoiceViewModel? EditingChoice { get; private set; }
 
     public bool IsEditing => EditingChoice is not null;
+
+    /// <summary>New tag or rename editor open: OK is demoted, the editor's button is the accent one.</summary>
+    public bool IsInlineEditorOpen => IsAddingTag || IsEditing;
 
     [ObservableProperty] public partial string EditName { get; set; } = "";
 

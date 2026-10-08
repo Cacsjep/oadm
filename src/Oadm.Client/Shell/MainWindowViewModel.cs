@@ -55,6 +55,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         session.PropertyChanged += (_, e) =>
         {
             OnPropertyChanged(nameof(UserTooltip));
+            OnPropertyChanged(nameof(UserInitial));
             if (e.PropertyName == nameof(UserSession.IsAdmin))
             {
                 SyncBottomNavItems();
@@ -88,6 +89,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <summary>The logged-in user (bottom of the rail, with Log out).</summary>
     public UserSession Session { get; }
+
+    /// <summary>First letter of the user name, upper case: the avatar at the bottom of the rail.</summary>
+    public string UserInitial => string.IsNullOrEmpty(Session.UserName)
+        ? "?"
+        : char.ToUpperInvariant(Session.UserName[0]).ToString();
 
     /// <summary>"Logged in as anna (Administrator) on https://localhost:5080".</summary>
     public string UserTooltip => Session.IsLoggedIn

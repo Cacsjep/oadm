@@ -146,13 +146,16 @@ public sealed class HeadlessSmokeTests
             Capture(window, outDir, "client-rail-collapsed.png");
 
             // The Devices page toolbar: toolbar plugins with a separator between groups.
-            StackPanel toolbarPanel = window.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Name == "ToolbarPanel");
+            var toolbarPanel = window.GetVisualDescendants().OfType<Oadm.Client.Controls.ToolbarOverflowPanel>().Single(p => p.Name == "ToolbarPanel");
+            StackPanel trailingPanel = window.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Name == "TrailingToolbarPanel");
             // The System report button comes from its plugin (artifacts/plugins/oadm.system-report after a full build).
             string[] toolbarTexts = toolbarPanel.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.ToolbarButton>().Select(b => b.Text ?? "").ToArray();
             string[] expectedToolbar = toolbarTexts.Contains("System report")
-                ? ["Add", "Remove", "Refresh", "Export", "Restart", "System report", "AXIS OS - Release Notes"]
-                : ["Add", "Remove", "Refresh", "Export", "Restart", "AXIS OS - Release Notes"];
+                ? ["Add", "Remove", "Refresh", "Export", "Restart", "System report"]
+                : ["Add", "Remove", "Refresh", "Export", "Restart"];
             Assert.Equal(expectedToolbar, toolbarTexts);
+            // The release notes link sits on the right, icon only, next to Columns.
+            Assert.Equal(["AXIS OS - Release Notes"], trailingPanel.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.ToolbarButton>().Select(b => b.Text ?? "").ToArray());
             Capture(window, outDir, "client-toolbar.png");
 
             // At the minimum window width with the rail expanded the toolbar still fits on one line.
@@ -160,8 +163,7 @@ public sealed class HeadlessSmokeTests
             vm.IsNavExpanded = true;
             await PumpUntilAsync(() => true);
             Capture(window, outDir, "client-toolbar-1800.png");
-            Assert.True(toolbarPanel.DesiredSize.Width <= toolbarPanel.Bounds.Width + 0.5,
-                $"toolbar needs {toolbarPanel.DesiredSize.Width} px, has {toolbarPanel.Bounds.Width} px at 1800 px with the rail expanded");
+            Assert.False(toolbarPanel.HasOverflow, "every toolbar entry fits at 1800 px with the rail expanded");
             window.Width = 1800;
             vm.IsNavExpanded = false;
             await PumpUntilAsync(() => true);

@@ -25,7 +25,8 @@
             <Button Classes="toolbar" Command="{Binding DeleteCommand}" ToolTip.Tip="Delete the finished task from the history">
               <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete" Spacing="8" />
             </Button>
-            <Button Classes="toolbar" Command="{Binding DeleteAllCommand}" ToolTip.Tip="Cancel running tasks and delete the whole task history">
+            <Border Classes="vseparator" />
+            <Button Classes="toolbar danger" Command="{Binding DeleteAllCommand}" ToolTip.Tip="Cancel running tasks and delete the whole task history">
               <ui:IconLabel Icon="{StaticResource Icon.deleteAll}" Text="Delete all" Spacing="8" />
             </Button>
             <Border Classes="vseparator" />

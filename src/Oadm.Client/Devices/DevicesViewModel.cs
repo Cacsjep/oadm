@@ -543,7 +543,6 @@ public sealed partial class DevicesViewModel : ObservableObject
         }
 
         ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Tags", IconKey = "tag", Command = EditTagsCommand });
-        ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Remove", IconKey = "remove", Command = RemoveCommand });
 
         IReadOnlyList<TaskPluginInfo> plugins = _catalog.Plugins;
         if (plugins.Count > 0)
@@ -555,6 +554,10 @@ public sealed partial class DevicesViewModel : ObservableObject
                 ContextMenuEntries.Add(group);
             }
         }
+
+        // Remove last, after its own separator: away from the everyday entries.
+        ContextMenuEntries.Add(MenuEntryViewModel.Separator());
+        ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Remove", IconKey = "remove", Command = RemoveCommand });
     }
 
     private bool SelectionNeedsLogin() => SelectedDevices.Any(d => d.ContractStatus == DeviceStatus.CredentialsRequired);

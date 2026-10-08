@@ -19,10 +19,19 @@
     <Border Grid.Column="0" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" MinHeight="{StaticResource Oadm.DevicesCardMinHeight}">
       <Grid RowDefinitions="Auto,Auto,*">
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-          <!-- Toolbar plugins (built-in: Scan, Scan IP range, Add manually | Remove | task actions), filled by DevicesView.axaml.cs -->
-          <StackPanel x:Name="ToolbarPanel" Grid.Column="0" Orientation="Horizontal" Spacing="4" />
+          <!-- Toolbar plugins (built-in: Add | Remove, Refresh, Export | task actions | plugin entries), filled by
+               DevicesView.axaml.cs. Entries that do not fit (e.g. with the live view open) move into the More menu. -->
+          <Grid Grid.Column="0" ColumnDefinitions="*,Auto" Margin="0,0,8,0">
+            <c:ToolbarOverflowPanel x:Name="ToolbarPanel" Spacing="4" OverflowButton="{Binding #MoreButton}" />
+            <Button x:Name="MoreButton" Grid.Column="1" Classes="toolbar iconOnly" ToolTip.Tip="More actions"
+                    IsVisible="{Binding #ToolbarPanel.HasOverflow}">
+              <ui:OadmIcon Data="{StaticResource Icon.more}" />
+            </Button>
+          </Grid>
 
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+            <!-- Toolbar links marked "trailing" (AXIS OS release notes) -->
+            <StackPanel x:Name="TrailingToolbarPanel" Orientation="Horizontal" Spacing="4" />
             <Button x:Name="GroupByTagButton" Classes="toolbar iconOnly" Classes.active="{Binding GroupByTag}" ToolTip.Tip="Group by tag"
                     Command="{Binding ToggleGroupByTagCommand}">
               <ui:OadmIcon Data="{StaticResource Icon.groupBy}" />
@@ -87,21 +96,13 @@
                             CommandParameter="{Binding Row}">
                     <Panel Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Background="Transparent" ToolTip.Tip="{Binding Row.CategoryTooltip}">
                       <ui:OadmIcon Data="{Binding Row.CategoryIconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   Classes.ok="{Binding Row.IsStatusOk}" Classes.warn="{Binding Row.IsStatusWarning}" Classes.error="{Binding Row.IsStatusError}" />
+                                   Classes.warn="{Binding Row.IsStatusWarning}" Classes.error="{Binding Row.IsStatusError}" />
                     </Panel>
                     </Button>
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Tag="mac" Header="MAC address" Width="140*" MinWidth="70" Binding="{Binding Row.Serial}" x:DataType="dev:IDeviceGridItem" />
-              <DataGridTemplateColumn Tag="status" Header="Status" Width="160*" MinWidth="70" SortMemberPath="Row.StatusText">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="dev:IDeviceGridItem">
-                    <TextBlock Text="{Binding Row.StatusText}" />
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-              <DataGridTemplateColumn Tag="address" Header="Address" Width="120*" MinWidth="70" SortMemberPath="Row.DisplayAddress">
+              <DataGridTemplateColumn Tag="address" Header="Address" Width="120*" MinWidth="110" SortMemberPath="Row.DisplayAddress">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:IDeviceGridItem">
                     <Button Classes="link" Margin="10,0" HorizontalAlignment="Left" ToolTip.Tip="Open the web interface of the device"
@@ -112,6 +113,16 @@
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
+              <DataGridTextColumn Tag="model" Header="Model" Width="160*" MinWidth="70" Binding="{Binding Row.Model}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTemplateColumn Tag="status" Header="Status" Width="160*" MinWidth="150" SortMemberPath="Row.StatusText">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="dev:IDeviceGridItem">
+                    <TextBlock Text="{Binding Row.StatusText}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Tag="mac" Header="MAC address" Width="140*" MinWidth="70" Binding="{Binding Row.Serial}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTextColumn Tag="firmware" Header="Firmware" Width="100*" MinWidth="70" Binding="{Binding Row.FirmwareVersion}" x:DataType="dev:IDeviceGridItem" />
               <DataGridTemplateColumn Tag="tags" Header="Tags" Width="150*" MinWidth="70" SortMemberPath="Row.TagsText">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:IDeviceGridItem">
@@ -119,21 +130,29 @@
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Tag="model" Header="Model" Width="160*" MinWidth="70" Binding="{Binding Row.Model}" x:DataType="dev:IDeviceGridItem" />
-              <DataGridTextColumn Tag="firmware" Header="Firmware" Width="100*" MinWidth="70" Binding="{Binding Row.FirmwareVersion}" x:DataType="dev:IDeviceGridItem" />
               <DataGridTextColumn Tag="dhcp" Header="DHCP" Width="86*" MinWidth="70" Binding="{Binding Row.DhcpText}" x:DataType="dev:IDeviceGridItem" />
               <DataGridTextColumn Tag="https" Header="HTTPS" Width="96*" MinWidth="70" Binding="{Binding Row.HttpsText}" x:DataType="dev:IDeviceGridItem" />
-              <DataGridTemplateColumn Tag="certExpires" Header="Certificate expires" Width="156*" MinWidth="70" SortMemberPath="Row.CertExpiresSortKey">
+              <DataGridTemplateColumn Tag="certExpires" Width="156*" MinWidth="70" SortMemberPath="Row.CertExpiresSortKey" CellStyleClasses="number">
+                <DataGridTemplateColumn.Header>
+                  <TextBlock Classes="numberHeader" Text="Certificate expires" />
+                </DataGridTemplateColumn.Header>
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:IDeviceGridItem">
-                    <ui:StatusChip Text="{Binding Row.CertExpires.Text}" IsVisible="{Binding Row.CertExpires.HasText}" ToolTip.Tip="{Binding Row.CertTooltip}" IsOk="{Binding Row.CertExpires.IsOk}" IsWarning="{Binding Row.CertExpires.IsWarning}" IsError="{Binding Row.CertExpires.IsError}" />
+                    <!-- Colour only for exceptions: OK is plain text, warnings and errors get the chip -->
+                    <Panel>
+                      <TextBlock Text="{Binding Row.CertExpires.Text}" IsVisible="{Binding Row.CertExpires.IsOk}" ToolTip.Tip="{Binding Row.CertTooltip}" />
+                      <ui:StatusChip Text="{Binding Row.CertExpires.Text}" IsVisible="{Binding Row.CertExpires.IsChip}" ToolTip.Tip="{Binding Row.CertTooltip}" IsWarning="{Binding Row.CertExpires.IsWarning}" IsError="{Binding Row.CertExpires.IsError}" />
+                    </Panel>
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
               <DataGridTemplateColumn Tag="certTrust" Header="Certificate" Width="110*" MinWidth="70" SortMemberPath="Row.CertTrust.Text">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:IDeviceGridItem">
-                    <ui:StatusChip Text="{Binding Row.CertTrust.Text}" IsVisible="{Binding Row.CertTrust.HasText}" ToolTip.Tip="{Binding Row.CertTooltip}" IsOk="{Binding Row.CertTrust.IsOk}" IsWarning="{Binding Row.CertTrust.IsWarning}" IsError="{Binding Row.CertTrust.IsError}" />
+                    <Panel>
+                      <TextBlock Classes="besideChips" Text="{Binding Row.CertTrust.Text}" IsVisible="{Binding Row.CertTrust.IsOk}" ToolTip.Tip="{Binding Row.CertTooltip}" />
+                      <ui:StatusChip Text="{Binding Row.CertTrust.Text}" IsVisible="{Binding Row.CertTrust.IsChip}" ToolTip.Tip="{Binding Row.CertTooltip}" IsWarning="{Binding Row.CertTrust.IsWarning}" IsError="{Binding Row.CertTrust.IsError}" />
+                    </Panel>
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
@@ -144,7 +163,10 @@
           <StackPanel IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
             <ui:OadmIcon Data="{StaticResource Icon.devices}" Width="32" Height="32" HorizontalAlignment="Center" />
             <TextBlock Classes="sectionTitle" Text="No devices yet" HorizontalAlignment="Center" />
-            <TextBlock Classes="secondary" Text="Use Add to find devices, scan a range or import a file." HorizontalAlignment="Center" />
+            <!-- The same menu as the toolbar's Add (DevicesView.axaml.cs) -->
+            <Button x:Name="EmptyAddButton" Classes="primary" HorizontalAlignment="Center" Margin="0,8,0,0">
+              <ui:IconLabel Icon="{StaticResource Icon.add}" Text="Add devices" />
+            </Button>
           </StackPanel>
         </Panel>
       </Grid>

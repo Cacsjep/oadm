@@ -21,7 +21,7 @@
 
         <Grid ColumnDefinitions="*,Auto" Margin="0,12,0,0">
           <ui:SearchBox Grid.Column="0" Text="{Binding SearchText}" Placeholder="Search tags" Width="NaN" HorizontalAlignment="Stretch" />
-          <Button Grid.Column="1" x:Name="NewTagButton" Classes="secondary" Margin="8,0,0,0" Command="{Binding StartNewTagCommand}" IsEnabled="{Binding !IsAddingTag}">
+          <Button Grid.Column="1" x:Name="NewTagButton" Classes="secondary" Margin="8,0,0,0" Command="{Binding StartNewTagCommand}">
             <ui:IconLabel Icon="{StaticResource Icon.add}" Text="New tag" />
           </Button>
         </Grid>
@@ -63,7 +63,7 @@
                               Command="{Binding $parent[Window].((vm:DeviceTagsViewModel)DataContext).StartEditCommand}" CommandParameter="{Binding}">
                         <ui:OadmIcon Data="{StaticResource Icon.edit}" />
                       </Button>
-                      <Button Classes="toolbar iconOnly" ToolTip.Tip="Delete tag"
+                      <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Delete tag"
                               Command="{Binding $parent[Window].((vm:DeviceTagsViewModel)DataContext).DeleteCommand}" CommandParameter="{Binding}">
                         <ui:OadmIcon Data="{StaticResource Icon.remove}" />
                       </Button>
@@ -101,7 +101,8 @@
     </Border>
 
     <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
-      <Button Classes="primary" Content="OK" Command="{Binding ApplyCommand}" />
+      <!-- While an inline editor is open its button (Create tag, Save) is the one accent button -->
+      <Button Classes.primary="{Binding !IsInlineEditorOpen}" Classes.secondary="{Binding IsInlineEditorOpen}" Content="OK" Command="{Binding ApplyCommand}" />
     </ui:DialogFooter>
   </Grid>
 </Window>

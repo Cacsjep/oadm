@@ -39,7 +39,11 @@ public sealed partial class TasksViewModel : ObservableObject
         _logger = logger;
         IsExpanded = settings.Current.BottomPaneExpanded;
         PaneHeight = settings.Current.TasksPaneHeight >= MinPaneHeight ? settings.Current.TasksPaneHeight : DefaultPaneHeight;
-        store.Tasks.CollectionChanged += (_, _) => DeleteAllCommand.NotifyCanExecuteChanged();
+        store.Tasks.CollectionChanged += (_, _) =>
+        {
+            DeleteAllCommand.NotifyCanExecuteChanged();
+            OnPropertyChanged(nameof(IsEmpty));
+        };
         store.Changed += (_, task) =>
         {
             OnPropertyChanged(nameof(ActiveCount));
@@ -54,6 +58,9 @@ public sealed partial class TasksViewModel : ObservableObject
     }
 
     public ObservableCollection<TaskRowViewModel> Tasks => _store.Tasks;
+
+    /// <summary>No task in the history: the grid shows a one-line hint.</summary>
+    public bool IsEmpty => _store.Tasks.Count == 0;
 
     public int ActiveCount => _store.ActiveCount;
     public bool HasActive => ActiveCount > 0;

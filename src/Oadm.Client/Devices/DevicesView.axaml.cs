@@ -15,9 +15,9 @@ public partial class DevicesView : UserControl
     private LiveViewViewModel? _liveView;
     private DevicesViewModel? _viewModel;
 
-    // Device card : live view split while the panel is open (about 60 : 40), kept when the user drags the splitter.
-    private GridLength _deviceColumn = new(3, GridUnitType.Star);
-    private GridLength _liveColumn = new(2, GridUnitType.Star);
+    // Device card : live view split while the panel is open (about 65 : 35), kept when the user drags the splitter.
+    private GridLength _deviceColumn = new(65, GridUnitType.Star);
+    private GridLength _liveColumn = new(35, GridUnitType.Star);
 
     public DevicesView()
     {
@@ -48,7 +48,8 @@ public partial class DevicesView : UserControl
             vm.PropertyChanged += OnViewModelPropertyChanged;
             vm.TagGrouping.GroupsChanged += OnGroupsChanged;
             ApplyItemsSource();
-            vm.Toolbar.AttachTo(ToolbarPanel, vm.ToolbarContext);
+            vm.Toolbar.AttachTo(ToolbarPanel, vm.ToolbarContext, TrailingToolbarPanel);
+            EmptyAddButton.Flyout = Toolbar.AddToolbarPlugin.CreateMenu(vm.ToolbarContext);
             DeviceGridLayoutBinder.Attach(DeviceGrid, vm.Columns);
             _liveView = vm.LiveView;
             _liveView.PropertyChanged += OnLiveViewPropertyChanged;
@@ -88,6 +89,7 @@ public partial class DevicesView : UserControl
         {
             DeviceGrid.Classes.Remove("tagGroups");
             DeviceGrid.ItemsSource = vm.FilteredDevices;
+            ApplyTagsColumn(vm);
             return;
         }
 
@@ -101,6 +103,16 @@ public partial class DevicesView : UserControl
         view.GroupDescriptions.Add(byTag);
         DeviceGrid.Classes.Add("tagGroups");
         DeviceGrid.ItemsSource = view;
+        ApplyTagsColumn(vm);
+    }
+
+    /// <summary>Group mode hides the Tags column (the group header names the tag); otherwise the column chooser decides.</summary>
+    private void ApplyTagsColumn(DevicesViewModel vm)
+    {
+        if (DeviceGrid.Columns.FirstOrDefault(c => c.Tag as string == "tags") is { } column)
+        {
+            column.IsVisible = (vm.Columns.Find("tags")?.IsVisible ?? true) && !DeviceGridLayoutBinder.HiddenByGroupMode(DeviceGrid, "tags");
+        }
     }
 
     private void OnLiveViewPropertyChanged(object? sender, PropertyChangedEventArgs e)

@@ -43,7 +43,7 @@ public sealed class DeviceTagsHeadlessTests
 
             DataGrid grid = window.GetVisualDescendants().OfType<DataGrid>().First(g => g.Name == "DeviceGrid");
             DataGridColumn tags = grid.Columns.Single(c => c.Header as string == "Tags");
-            Assert.Equal(4, tags.DisplayIndex); // after Address
+            Assert.Equal(6, tags.DisplayIndex); // after Firmware
             Assert.Contains(vm.Columns.Choosable, c => c.Key == "tags");
 
             // Chips in the tag colors; the cell of a device with three tags.

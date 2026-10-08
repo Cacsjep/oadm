@@ -49,24 +49,26 @@ public sealed partial class DeviceToolbar
 
     /// <summary>
     /// Puts the toolbar into <paramref name="panel"/>: the plugin controls in order with a
-    /// <see cref="ToolbarSeparator"/> before each new group. Controls are created on the first call
-    /// and moved on later calls (a page view is created again after navigating).
+    /// <see cref="ToolbarSeparator"/> before each new group. A control with the class <c>trailing</c> (a link such as
+    /// the AXIS OS release notes) goes to <paramref name="trailing"/> on the right instead. Controls are created on the
+    /// first call and moved on later calls (a page view is created again after navigating).
     /// </summary>
-    public void AttachTo(Panel panel, IToolbarContext context)
+    public void AttachTo(Panel panel, IToolbarContext context, Panel? trailing = null)
     {
         ArgumentNullException.ThrowIfNull(panel);
         ArgumentNullException.ThrowIfNull(context);
         _controls ??= Create(context);
         foreach (Control control in _controls)
         {
-            if (control.Parent is Panel old && !ReferenceEquals(old, panel))
+            Panel target = trailing is not null && control.Classes.Contains("trailing") ? trailing : panel;
+            if (control.Parent is Panel old && !ReferenceEquals(old, target))
             {
                 old.Children.Remove(control);
             }
 
-            if (!panel.Children.Contains(control))
+            if (!target.Children.Contains(control))
             {
-                panel.Children.Add(control);
+                target.Children.Add(control);
             }
         }
     }

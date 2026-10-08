@@ -4,10 +4,11 @@
              xmlns:tasks="using:Oadm.Client.Tasks"
              x:Class="Oadm.Client.Tasks.TasksGridView"
              x:DataType="tasks:TasksViewModel">
+  <Panel>
   <DataGrid ItemsSource="{Binding Tasks}" SelectedItem="{Binding SelectedTask}" SelectionMode="Single" IsReadOnly="True"
             CanUserReorderColumns="False">
     <DataGrid.Columns>
-      <DataGridTextColumn Header="Name" Width="2*" MinWidth="180" Binding="{Binding Name}" x:DataType="tasks:TaskRowViewModel" />
+      <DataGridTextColumn Header="Name" Width="3*" MinWidth="260" Binding="{Binding Name}" x:DataType="tasks:TaskRowViewModel" />
       <DataGridTemplateColumn Header="Device" Width="110" SortMemberPath="DeviceText">
         <DataGridTemplateColumn.CellTemplate>
           <DataTemplate x:DataType="tasks:TaskRowViewModel">
@@ -15,7 +16,7 @@
           </DataTemplate>
         </DataGridTemplateColumn.CellTemplate>
       </DataGridTemplateColumn>
-      <DataGridTemplateColumn Header="Status" Width="8*" MinWidth="420" SortMemberPath="StateText">
+      <DataGridTemplateColumn Header="Status" Width="3*" MinWidth="280" SortMemberPath="StateText">
         <DataGridTemplateColumn.CellTemplate>
           <DataTemplate x:DataType="tasks:TaskRowViewModel">
             <ui:StatusChip Text="{Binding StatusMessage}" ToolTip.Tip="{Binding StatusTooltip}" IsOk="{Binding IsStateOk}" IsWarning="{Binding IsStateWarning}" IsError="{Binding IsStateError}" IsAccent="{Binding IsStateAccent}" />
@@ -43,4 +44,7 @@
       </DataGridTemplateColumn>
     </DataGrid.Columns>
   </DataGrid>
+  <TextBlock Classes="secondary" Text="No tasks yet. Right-click devices to run one." IsVisible="{Binding IsEmpty}"
+             HorizontalAlignment="Center" VerticalAlignment="Center" />
+  </Panel>
 </UserControl>

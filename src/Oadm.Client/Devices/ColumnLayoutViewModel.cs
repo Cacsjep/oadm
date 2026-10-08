@@ -29,12 +29,12 @@ public sealed class ColumnLayoutViewModel
     public static IReadOnlyList<(string Key, string Header)> DefaultColumns { get; } =
     [
         (IconKey, ""),
-        ("mac", "MAC address"),
-        ("status", "Status"),
         ("address", "Address"),
-        ("tags", "Tags"),
         ("model", "Model"),
+        ("status", "Status"),
+        ("mac", "MAC address"),
         ("firmware", "Firmware"),
+        ("tags", "Tags"),
         ("dhcp", "DHCP"),
         ("https", "HTTPS"),
         ("certExpires", "Certificate expires"),

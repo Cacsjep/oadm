@@ -54,7 +54,7 @@ internal sealed class DeviceGridLayoutBinder
         for (int i = 0; i < ordered.Count; i++)
         {
             (DataGridColumn column, ColumnOptionViewModel? option) = ordered[i];
-            column.IsVisible = option!.IsVisible;
+            column.IsVisible = option!.IsVisible && !HiddenByGroupMode(_grid, option.Key);
             // Saved widths are used as star weights: columns keep their proportions and the
             // grid always fills its full width. The icon column stays fixed.
             if (option.Width > 0 && option.Key != "icon")
@@ -73,10 +73,13 @@ internal sealed class DeviceGridLayoutBinder
             DataGridColumn? column = _grid.Columns.FirstOrDefault(c => KeyOf(c) == option.Key);
             if (column is not null)
             {
-                column.IsVisible = option.IsVisible;
+                column.IsVisible = option.IsVisible && !HiddenByGroupMode(_grid, option.Key);
             }
         }
     }
+
+    /// <summary>In group mode (grid class <c>tagGroups</c>) the Tags column is hidden: the group header names the tag.</summary>
+    public static bool HiddenByGroupMode(DataGrid grid, string key) => key == "tags" && grid.Classes.Contains("tagGroups");
 
     private void Capture()
     {

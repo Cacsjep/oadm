@@ -10,30 +10,28 @@
         ShowInTaskbar="False"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="{StaticResource Oadm.TitleBarHeight}">
-  <Grid RowDefinitions="Auto,Auto,16,3*,16,2*,Auto">
+  <Grid RowDefinitions="Auto,Auto,0,3*,16,2*,Auto">
     <ui:DialogTitleBar Text="{Binding Title}" />
 
-    <!-- A task targets exactly one device: one row -->
-    <Border Grid.Row="1" Classes="card" Margin="16,0">
-      <Grid RowDefinitions="Auto,Auto">
-        <TextBlock Classes="cardTitle" Text="Device" Margin="0,0,0,12" />
-        <DataGrid Grid.Row="1" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single" MaxHeight="140">
-          <DataGrid.Columns>
-            <DataGridTextColumn Header="Device" Width="2*" Binding="{Binding Device}" x:DataType="tasks:TaskDeviceRow" />
-            <DataGridTextColumn Header="MAC address" Width="*" Binding="{Binding Serial}" x:DataType="tasks:TaskDeviceRow" />
-            <DataGridTextColumn Header="Model" Width="*" Binding="{Binding Model}" x:DataType="tasks:TaskDeviceRow" />
-            <DataGridTemplateColumn Header="Status" Width="170">
-              <DataGridTemplateColumn.CellTemplate>
-                <DataTemplate x:DataType="tasks:TaskDeviceRow">
-                  <ui:StatusChip Text="{Binding StateText}" IsOk="{Binding IsStateOk}" IsWarning="{Binding IsStateWarning}" IsError="{Binding IsStateError}" IsAccent="{Binding IsStateAccent}" />
-                </DataTemplate>
-              </DataGridTemplateColumn.CellTemplate>
-            </DataGridTemplateColumn>
-            <DataGridTextColumn Header="Message" Width="2*" Binding="{Binding Message}" x:DataType="tasks:TaskDeviceRow" />
-          </DataGrid.Columns>
-        </DataGrid>
-      </Grid>
-    </Border>
+    <!-- A task targets exactly one device: one header line with its facts and state -->
+    <WrapPanel Grid.Row="1" Margin="24,4,24,12" Orientation="Horizontal" ItemSpacing="20" LineSpacing="6">
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <TextBlock Classes="secondary" Text="Device" />
+        <TextBlock Text="{Binding Device.Device, FallbackValue=''}" />
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <TextBlock Classes="secondary" Text="MAC address" />
+        <TextBlock Text="{Binding Device.Serial, FallbackValue=''}" />
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <TextBlock Classes="secondary" Text="Model" />
+        <TextBlock Text="{Binding Device.Model, FallbackValue=''}" />
+      </StackPanel>
+      <ui:StatusChip Text="{Binding Device.StateText, FallbackValue=''}" Detail="{Binding Device.Message, FallbackValue=''}"
+                     ToolTip.Tip="{Binding Device.Message, FallbackValue=''}"
+                     IsOk="{Binding Device.IsStateOk, FallbackValue=False}" IsWarning="{Binding Device.IsStateWarning, FallbackValue=False}"
+                     IsError="{Binding Device.IsStateError, FallbackValue=False}" IsAccent="{Binding Device.IsStateAccent, FallbackValue=False}" />
+    </WrapPanel>
 
     <!-- What the task did, step by step (live while it runs) -->
     <Border Grid.Row="3" Classes="card" Margin="16,0">
@@ -42,7 +40,7 @@
           <TextBlock Classes="cardTitle" Text="Steps" />
           <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding StepsStatus}" VerticalAlignment="Center" />
         </Grid>
-        <DataGrid Grid.Row="1" ItemsSource="{Binding Steps}" IsReadOnly="True" SelectionMode="Single"
+        <DataGrid x:Name="StepsGrid" Grid.Row="1" ItemsSource="{Binding Steps}" IsReadOnly="True" SelectionMode="Single"
                   CanUserSortColumns="False" CanUserReorderColumns="False">
           <DataGrid.Columns>
             <DataGridTextColumn Header="#" Width="48" Binding="{Binding Number}" x:DataType="tasks:TaskStepRowViewModel" />
@@ -61,7 +59,11 @@
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
-            <DataGridTextColumn Header="Duration" Width="110" Binding="{Binding DurationText}" x:DataType="tasks:TaskStepRowViewModel" />
+            <DataGridTextColumn Width="110" Binding="{Binding DurationText}" x:DataType="tasks:TaskStepRowViewModel" CellStyleClasses="number">
+              <DataGridTextColumn.Header>
+                <TextBlock Classes="numberHeader" Text="Duration" />
+              </DataGridTextColumn.Header>
+            </DataGridTextColumn>
             <DataGridTemplateColumn Header="Progress" Width="180">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="tasks:TaskStepRowViewModel">
@@ -101,6 +103,10 @@
       </Grid>
     </Border>
 
-    <ui:DialogFooter Grid.Row="6" x:Name="Footer" CancelText="Close" />
+    <ui:DialogFooter Grid.Row="6" x:Name="Footer" CancelText="Close">
+      <TextBlock Classes="error" Text="{Binding CancelError}" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="480"
+                 IsVisible="{Binding CancelError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      <Button Classes="secondary" Content="Cancel task" Command="{Binding CancelTaskCommand}" IsVisible="{Binding CanCancel}" />
+    </ui:DialogFooter>
   </Grid>
 </Window>

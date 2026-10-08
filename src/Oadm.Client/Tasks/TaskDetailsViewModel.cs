@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Globalization;
 
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Client.Api;
 using Oadm.Client.Devices;
@@ -55,7 +56,21 @@ public sealed partial class TaskDetailsViewModel : ObservableObject, IDisposable
 
     public TaskRowViewModel Task { get; }
 
-    [ObservableProperty] public partial IReadOnlyList<TaskDeviceRow> Rows { get; private set; } = [];
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Device))]
+    public partial IReadOnlyList<TaskDeviceRow> Rows { get; private set; } = [];
+
+    /// <summary>The task's device (a task targets exactly one), shown as one header line.</summary>
+    public TaskDeviceRow? Device => Rows.Count > 0 ? Rows[0] : null;
+
+    /// <summary>The step the task is on (running, else the failed or last one); the steps list scrolls to it.</summary>
+    [ObservableProperty] public partial TaskStepRowViewModel? CurrentStep { get; private set; }
+
+    /// <summary>Cancel task in the footer while the task runs.</summary>
+    public bool CanCancel => Task.IsActive;
+
+    /// <summary>Text of the error when cancelling failed, below the footer's buttons.</summary>
+    [ObservableProperty] public partial string? CancelError { get; private set; }
 
     public string Title => $"{Task.Name} - {Task.StateText}";
 
@@ -111,6 +126,25 @@ public sealed partial class TaskDetailsViewModel : ObservableObject, IDisposable
         }
     }
 
+    [RelayCommand(CanExecute = nameof(CanCancel))]
+    private async System.Threading.Tasks.Task CancelTaskAsync()
+    {
+        if (_api is not { } api)
+        {
+            return;
+        }
+
+        try
+        {
+            CancelError = null;
+            await api.CancelTaskAsync(Task.Id, CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            CancelError = "The task could not be cancelled: " + ex.Message;
+        }
+    }
+
     public void Dispose()
     {
         if (!_disposed)
@@ -149,7 +183,12 @@ public sealed partial class TaskDetailsViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(Title));
                 ReloadLog();
                 break;
+            case nameof(TaskRowViewModel.IsActive):
+                OnPropertyChanged(nameof(CanCancel));
+                CancelTaskCommand.NotifyCanExecuteChanged();
+                break;
             case nameof(TaskRowViewModel.CurrentStepIndex):
+                UpdateCurrentStep();
                 ReloadLog();
                 break;
         }
@@ -200,10 +239,17 @@ public sealed partial class TaskDetailsViewModel : ObservableObject, IDisposable
             Steps[i].Update(steps[i], now);
         }
 
+        UpdateCurrentStep();
         int finished = steps.Count(s => s.State is TaskStepState.Done or TaskStepState.Warning or TaskStepState.Skipped or TaskStepState.Failed);
         StepsStatus = steps.Count == 0
             ? "No steps reported."
             : string.Create(CultureInfo.CurrentCulture, $"{finished} of {steps.Count} steps finished");
+    }
+
+    private void UpdateCurrentStep()
+    {
+        int index = Task.CurrentStepIndex;
+        CurrentStep = index >= 0 && index < Steps.Count ? Steps[index] : null;
     }
 
     private TaskLogRow ToRow(TaskLogEntry entry)

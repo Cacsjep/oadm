@@ -72,7 +72,13 @@
         </Button>
         <Border DockPanel.Dock="Bottom" x:Name="RailUser" Classes="railUser" Margin="0,2"
                 ToolTip.Tip="{Binding UserTooltip}" ToolTip.Placement="Right">
-          <ui:IconLabel Icon="{StaticResource Icon.user}" Text="{Binding Session.UserName}" Spacing="12" IsTextVisible="{Binding IsNavExpanded}" />
+          <!-- Initial avatar + name: the account, not a navigation entry -->
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <Border Classes="avatar">
+              <TextBlock Text="{Binding UserInitial}" />
+            </Border>
+            <TextBlock Text="{Binding Session.UserName}" IsVisible="{Binding IsNavExpanded}" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
         </Border>
         <Border DockPanel.Dock="Bottom" Classes="separator" Margin="4,6" />
         <ItemsControl DockPanel.Dock="Bottom" ItemsSource="{Binding BottomNavItems}">

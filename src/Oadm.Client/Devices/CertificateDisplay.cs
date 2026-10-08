@@ -11,6 +11,9 @@ public sealed record ChipInfo(string Text, PillKind Kind)
 
     public bool HasText => Text.Length > 0;
     public bool IsOk => Kind == PillKind.Ok;
+
+    /// <summary>Shown as a chip: everything but OK (OK is plain text, colour marks exceptions only).</summary>
+    public bool IsChip => HasText && Kind != PillKind.Ok;
     public bool IsWarning => Kind == PillKind.Warning;
     public bool IsError => Kind == PillKind.Error;
 }

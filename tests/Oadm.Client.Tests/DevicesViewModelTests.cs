@@ -118,9 +118,9 @@ public sealed class DevicesViewModelTests
 
         // Plugins without a group land in "General"; a group is always a submenu, the host appends no "...".
         string[] headers = f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray();
-        Assert.Equal(["Open web interface", "Refresh", "Tags", "Remove", "-", "General"], headers);
+        Assert.Equal(["Open web interface", "Refresh", "Tags", "-", "General", "-", "Remove"], headers); // Remove last
         Assert.False(f.Devices.ContextMenuEntries[0].IsEnabled); // web UI needs exactly one device
-        IReadOnlyList<MenuEntryViewModel> tasks = f.Devices.ContextMenuEntries[5].Items!;
+        IReadOnlyList<MenuEntryViewModel> tasks = f.Devices.ContextMenuEntries[4].Items!;
         Assert.Equal(["Change password", "Only device 1", "Restart"], tasks.Select(e => e.Header).ToArray());
         Assert.Equal([true, false, true], tasks.Select(e => e.IsEnabled).ToArray());
         Assert.Null(tasks[0].ToolTip);
@@ -154,9 +154,9 @@ public sealed class DevicesViewModelTests
         f.Select("1", "2");
 
         IReadOnlyList<MenuEntryViewModel> entries = f.Devices.ContextMenuEntries;
-        Assert.Equal(["Open web interface", "Refresh", "Tags", "Remove", "-", "Applications", "Custom tools", "General", "Maintenance", "Network", "Users"],
+        Assert.Equal(["Open web interface", "Refresh", "Tags", "-", "Applications", "Custom tools", "General", "Maintenance", "Network", "Users", "-", "Remove"],
             entries.Select(e => e.Header).ToArray());
-        Assert.All(entries.Skip(5), g => Assert.NotNull(g.Items)); // one submenu per group, even with one entry
+        Assert.All(entries.Skip(4).Take(6), g => Assert.NotNull(g.Items)); // one submenu per group, even with one entry
         Assert.Equal("network", entries.Single(e => e.Header == "Network").IconKey);
         Assert.Equal("plugin", entries.Single(e => e.Header == "Custom tools").IconKey);
 
@@ -184,22 +184,22 @@ public sealed class DevicesViewModelTests
 
         f.Select("4");
 
-        Assert.Equal(["Open web interface", "Refresh", "Tags", "Remove", "-", "General"], f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray());
+        Assert.Equal(["Open web interface", "Refresh", "Tags", "-", "General", "-", "Remove"], f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray());
         Assert.True(f.Devices.ContextMenuEntries[0].IsEnabled);
-        MenuEntryViewModel restart = Assert.Single(f.Devices.ContextMenuEntries[5].Items!);
+        MenuEntryViewModel restart = Assert.Single(f.Devices.ContextMenuEntries[4].Items!);
         Assert.False(restart.IsEnabled);
         Assert.Equal("Not supported on this device", restart.ToolTip);
     }
 
     [Fact]
-    public async Task Context_menu_without_task_plugins_has_no_separator()
+    public async Task Context_menu_without_task_plugins_has_only_the_separator_before_Remove()
     {
         using DevicesFixture f = CreateWithDevices();
         await f.SetPluginsAsync();
 
         f.Select("4");
 
-        Assert.Equal(["Open web interface", "Refresh", "Tags", "Remove"], f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray());
+        Assert.Equal(["Open web interface", "Refresh", "Tags", "-", "Remove"], f.Devices.ContextMenuEntries.Select(e => e.Header).ToArray());
     }
 
     [Fact]
