@@ -86,6 +86,12 @@ public sealed class HardeningRow : INotifyPropertyChanged
 
     public bool IsFail => Kind is RowKind.Fail or RowKind.NotReachable;
 
+    /// <summary>
+    /// The device icon is coloured only when that adds information: red for a device that could not be scanned. Pass,
+    /// warnings and failed checks are already in the Score and check columns, so the icon stays neutral for them.
+    /// </summary>
+    public bool IsIconError => Kind == RowKind.NotReachable;
+
     /// <summary>Lower-case text the search looks in.</summary>
     public string SearchText { get; private set; } = string.Empty;
 

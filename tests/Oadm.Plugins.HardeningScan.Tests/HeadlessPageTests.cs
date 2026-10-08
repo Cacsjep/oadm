@@ -42,6 +42,8 @@ public sealed class HeadlessPageTests
         ctx.DeviceList.AddRange(devices);
         ctx.Selection.AddRange(devices.Take(3));
         var settings = new HardeningClientSettingsStore(Path.Combine(Path.GetTempPath(), "oadm-hardening-tests", Guid.NewGuid().ToString("N"), "client.json"));
+        // A detail height dragged on a tall screen must not push the result grid over the toolbar on a smaller window.
+        settings.Save(new HardeningClientSettings { DetailHeight = 778 });
         var state = await plugin.InvokeAsync(HardeningMethods.GetState, null, CancellationToken.None);
 
         var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
@@ -60,6 +62,15 @@ public sealed class HeadlessPageTests
             var basicColumns = view.CheckColumns.Count;
             var chips = view.GetVisualDescendants().OfType<StatusChip>().Count(c => c.IsVisible);
             Capture(window, outDir, "hardening-scan-basic.png");
+
+            // Inside the main window at the minimum width: 1800 x 900 with the rail.
+            window.Width = 1800 - 220;
+            window.Height = 900 - 32;
+            Pump();
+            Capture(window, outDir, "hardening-scan-1800x900.png");
+            window.Width = 1280;
+            window.Height = 860;
+            Pump();
 
             vm.Level = ScanLevel.Extended;
             Pump();

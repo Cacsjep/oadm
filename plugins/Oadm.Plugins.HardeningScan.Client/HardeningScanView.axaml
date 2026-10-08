@@ -9,7 +9,16 @@
   <!-- One card (the host's page card): level switch and scan controls, progress and summary, the result grid (one icon
        column per check, built by the code-behind from the catalog), the selected device's checks or the items that cannot be
        checked automatically. Shared controls and theme classes only. -->
-  <Grid x:Name="Root" RowDefinitions="Auto,Auto,Auto,*,Auto,240">
+  <!-- The result grid row keeps at least 160 px; the remembered detail height is fitted to the page (code-behind). -->
+  <Grid x:Name="Root">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" MinHeight="168" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="240" MinHeight="120" />
+    </Grid.RowDefinitions>
     <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="10">
       <Border Grid.Column="0" Classes="segmented" VerticalAlignment="Center">
         <StackPanel Orientation="Horizontal">
@@ -43,7 +52,7 @@
     <!-- 5,000 rows: virtualized; the check columns are added by the code-behind (one per check of the level). -->
     <DataGrid x:Name="ResultGrid" Grid.Row="3" Margin="0,8,0,0" ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow}"
               IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="True" CanUserResizeColumns="True"
-              SelectionMode="Single" FrozenColumnCount="6" MinHeight="160">
+              SelectionMode="Single" FrozenColumnCount="6">
       <DataGrid.Columns>
         <DataGridTemplateColumn Tag="icon" Width="40" CanUserSort="True" SortMemberPath="Kind" CanUserReorder="False" CanUserResize="False">
           <DataGridTemplateColumn.CellTemplate>
@@ -51,7 +60,7 @@
               <Panel Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Background="Transparent" ToolTip.Tip="{Binding Status}">
                 <ui:OadmIcon Data="{Binding IconKey, Converter={x:Static vm:IconKeyConverter.Instance}}" Width="18" Height="18"
                              HorizontalAlignment="Center" VerticalAlignment="Center"
-                             Classes.ok="{Binding IsPass}" Classes.warn="{Binding IsWarn}" Classes.error="{Binding IsFail}" />
+                             Classes.error="{Binding IsIconError}" />
               </Panel>
             </DataTemplate>
           </DataGridTemplateColumn.CellTemplate>
@@ -59,7 +68,11 @@
         <DataGridTextColumn Tag="address" Header="Address" Width="120" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:HardeningRow" />
         <DataGridTextColumn Tag="model" Header="Model" Width="104" Binding="{Binding Model}" x:DataType="vm:HardeningRow" />
         <DataGridTextColumn Tag="firmware" Header="AXIS OS" Width="96" Binding="{Binding Firmware}" x:DataType="vm:HardeningRow" />
-        <DataGridTextColumn Tag="score" Header="Score" Width="80" Binding="{Binding ScoreText}" SortMemberPath="ScoreSortKey" x:DataType="vm:HardeningRow" />
+        <DataGridTextColumn Tag="score" Width="90" Binding="{Binding ScoreText}" SortMemberPath="ScoreSortKey" CellStyleClasses="number" x:DataType="vm:HardeningRow">
+          <DataGridTextColumn.Header>
+            <TextBlock Classes="numberHeader" Text="Score" />
+          </DataGridTextColumn.Header>
+        </DataGridTextColumn>
         <DataGridTextColumn Tag="lastScan" Header="Last scan" Width="104" Binding="{Binding LastScanText}" SortMemberPath="ScannedUtc" x:DataType="vm:HardeningRow" />
       </DataGrid.Columns>
     </DataGrid>
@@ -70,7 +83,7 @@
       <TextBlock Classes="secondary" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="{Binding DetailTitle}" />
 
       <!-- The selected device's checks; the Result column sorts by severity (failed first). -->
-      <DataGrid x:Name="DetailGrid" Grid.Row="1" ItemsSource="{Binding DetailItems}"
+      <DataGrid x:Name="DetailGrid" Grid.Row="1" Classes="wrapRows" ItemsSource="{Binding DetailItems}"
                 IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False" SelectionMode="Single">
         <DataGrid.Columns>
           <DataGridTemplateColumn Header="Result" Width="150" CanUserSort="True" SortMemberPath="SortRank">
@@ -90,14 +103,16 @@
           <DataGridTemplateColumn Header="Found" Width="2*" CanUserSort="False">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate x:DataType="vm:DetailItem">
-                <TextBlock Text="{Binding Found}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Found}" />
+                <TextBlock Text="{Binding Found}" VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="2" Margin="10,6"
+                           TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Found}" />
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
           <DataGridTemplateColumn Header="Recommendation" Width="3*" CanUserSort="False">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate x:DataType="vm:DetailItem">
-                <TextBlock Text="{Binding Recommendation}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Recommendation}" />
+                <TextBlock Text="{Binding Recommendation}" VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="2" Margin="10,6"
+                           TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Recommendation}" />
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>

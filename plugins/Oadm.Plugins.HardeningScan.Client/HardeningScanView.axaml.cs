@@ -35,6 +35,28 @@ public partial class HardeningScanView : UserControl
             }
         };
         ResultGrid.ColumnReordered += (_, _) => SaveColumns();
+        Root.SizeChanged += (_, _) => FitDetailHeight();
+    }
+
+    /// <summary>
+    /// The remembered detail height, but never more than leaves the result grid its minimum height: a height dragged on a
+    /// tall screen must not push the grid over the toolbar on a smaller window.
+    /// </summary>
+    private void FitDetailHeight()
+    {
+        if (_vm is null || Root.Bounds.Height <= 0)
+        {
+            return;
+        }
+
+        RowDefinitions rows = Root.RowDefinitions;
+        double fixedRows = rows[0].ActualHeight + rows[1].ActualHeight + rows[2].ActualHeight + rows[4].ActualHeight;
+        double available = Root.Bounds.Height - fixedRows - rows[3].MinHeight;
+        double height = Math.Max(rows[5].MinHeight, Math.Min(_vm.Settings.DetailHeight, available));
+        if (Math.Abs(rows[5].Height.Value - height) > 0.5)
+        {
+            rows[5].Height = new GridLength(height);
+        }
     }
 
     /// <summary>The check columns currently in the grid (tests).</summary>
@@ -64,6 +86,7 @@ public partial class HardeningScanView : UserControl
             _vm.ColumnsChanged += OnColumnsChanged;
             _vm.SaveCsv = SaveCsvAsync;
             Root.RowDefinitions[5].Height = new GridLength(_vm.Settings.DetailHeight);
+            FitDetailHeight();
             BuildCheckColumns();
         }
     }

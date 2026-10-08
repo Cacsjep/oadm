@@ -44,7 +44,7 @@ public static class HardeningCatalog
     [
         Info("B1", ScanLevel.Basic, $"{Commissioning} > Factory default settings", "Factory default settings",
             "Start commissioning from factory default settings, so no setting of an earlier installation remains. OADM cannot tell whether a device was reset before it was commissioned."),
-        Check(AxisOs, ScanLevel.Basic, $"{Commissioning} > Upgrade to latest AXIS OS", "Latest AXIS OS", "AXIS OS",
+        Check(AxisOs, ScanLevel.Basic, $"{Commissioning} > Upgrade to latest AXIS OS", "Latest AXIS OS", "Latest OS",
             "Shown only: OADM has no list of the current AXIS OS versions yet.",
             "Upgrade to the latest AXIS OS of the device's track; it contains the latest security fixes.", rated: false),
         Check(Accounts, ScanLevel.Basic, $"{Commissioning} > Create dedicated accounts", "Dedicated accounts", "Accounts",
