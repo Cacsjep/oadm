@@ -109,6 +109,10 @@ the server project for shared payload types (it then ships in the same folder).
   that leaves the device (another host, port or scheme, `//host/...`, a backslash): always pass paths relative to the
   device. Parse XML from a device only with `DeviceXml.Parse` / `DeviceXml.ParseElement` (`Oadm.Sdk.Vapix`): at most
   1 MB, DTDs prohibited; never `XDocument.Parse` / `XElement.Parse` directly.
+- Large read-only downloads (server reports, logs): `request.Options.Set(VapixRequestOptions.StreamResponse, true)`
+  returns the answer after its headers without buffering it; read `response.Content.ReadAsStreamAsync(ct)` straight into
+  a file (core plugins: `ctx.DataDirectory`), stop at your own size limit and bound the read with your own token (the
+  timeout covers the headers only). Dispose the response. Sample: `ServerReportDownloader` of the System report.
 - `ITaskPluginQuery.QueryAsync` serves the dialog (read-only, 30 s timeout on the server).
   `ITaskQueryContext.Devices` (may be null on other hosts) lists all managed devices, e.g. to flag an
   address another managed device has.
@@ -247,6 +251,8 @@ public interface IToolbarContext           // UI thread only; events are raised 
     Task<bool> ConfirmAsync(string title, string message, string confirmText);
     Task<string?> QueryAsync(string pluginId, Guid deviceId, string method, string? payloadJson, CancellationToken ct);
     Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct);
+    Task<string?> InvokePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct);
+                                                          // a core plugin's InvokeAsync (PluginService.Invoke); DIM: older hosts throw NotSupportedException
     Window? Owner { get; }                                // owner for the plugin's own dialogs
 }
 ```
@@ -260,6 +266,12 @@ public interface IToolbarContext           // UI thread only; events are raised 
   disable them from `SelectionChanged` / `TaskPluginsChanged`; never cache the selection.
 - Sample: `tests/TestPlugins/Oadm.TestPlugins.Sample.Client/SampleToolbarPlugin.cs` ("Sample (n)"
   with the selection count, runs the sample task), loaded by `ToolbarPluginTests`.
+- A toolbar button with a server part of its own: a core plugin with `HasPage => false` (no rail entry) whose
+  `InvokeAsync` the button calls through `ctx.InvokePluginAsync(pluginId, method, payload, ct)` (gRPC errors are
+  `RpcException`, show `Status.Detail`). Long work runs as a job the button's dialog polls, large results come back in
+  chunks. Sample: the System report (`plugins/Oadm.Plugins.SystemReport` + `.Client`, `SystemReportToolbarPlugin`): save
+  dialog first, then a progress dialog; the platform parts sit behind a small interface (`ISystemReportUi`) so the flow is
+  testable without windows. Keep the toolbar on one line at 1280 px with the rail expanded: prefer `IsIconOnly`.
 
 ```csharp
 public sealed class SampleToolbarPlugin : IToolbarPlugin
@@ -299,7 +311,9 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
   Keep replies below the client's 32 MB message limit: hand out large results in chunks (see
   `readReport`) and run long work as a background job the page polls (see `generateReport` /
   `reportStatus`).
-- More context: `ctx.PluginDirectory` (the plugin folder, for data files such as the VAPIX Commander
+- More context: `ctx.DataDirectory` (a private working folder `<datafolder>/plugin-data/<id>` in the admin-only data
+  folder, created on first use, for downloads and built archives; clean up what you write, never use a shared temp
+  folder for device data), `ctx.PluginDirectory` (the plugin folder, for data files such as the VAPIX Commander
   `Library/*.json`), `ctx.Secrets` (`ISecretProtector`, encrypt secrets you store in `Settings`; null =
   do not store them), `ctx.EventStreams` (device event streams, see below), `ctx.Tasks.Cancel(taskId)`. A contributed task plugin that only the page starts
   sets `ShowInMenus => false` and has no public constructor (the loader then never registers it alone).
@@ -335,6 +349,10 @@ id `oadm.snapshot-report`, spec in `CLAUDE.md` "Snapshot report plugin").
   server certificate, read-only queries for a grouped certificate list, confirmation-only dialogs (an `ITaskPluginDialog`
   whose `ShowAsync` shows `MessageWindow.ConfirmAsync` and returns "{}"), and a stateful fake camera for the tests
   (`tests/Oadm.Plugins.Pki.Tests/FakeCamera.cs`).
+- Without a page: `HasPage => false` lists the plugin with `CorePluginInfo.no_page`, the client adds no rail entry; its
+  client part is e.g. a toolbar plugin (see "Toolbar plugins"). Seventh sample: the System report (`oadm.system-report`,
+  spec in `CLAUDE.md` "System report plugin"): background jobs with status deltas by version, files in
+  `ctx.DataDirectory`, streamed device downloads, a ZIP read in chunks.
 - Sixth sample: the Metadata Monitor (`plugins/Oadm.Plugins.MetadataMonitor` + `.Client`, id `oadm.metadata-monitor`, spec
   in `CLAUDE.md` "Metadata Monitor (core plugin)"): a read-only live view of one camera's event stream. The server part
   opens the stream through `ctx.EventStreams` (below), parses the XML and pushes batched messages; the page keeps the
