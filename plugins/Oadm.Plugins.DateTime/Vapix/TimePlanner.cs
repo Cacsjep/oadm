@@ -311,7 +311,7 @@ public static class TimePlanner
         {
             if (!dst)
             {
-                return new DateTimeOffset(unspecified, info.BaseUtcOffset).ToUniversalTime();
+                return new DateTimeOffset(unspecified, ZoneYear.Of(info, wall.Year).Standard).ToUniversalTime();
             }
 
             if (info.IsInvalidTime(unspecified))
