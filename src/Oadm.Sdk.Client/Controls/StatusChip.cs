@@ -161,7 +161,7 @@ public sealed class StatusChip : Grid
             : $"{Text}: {Detail}";
         _text.Text = text;
         _text.IsVisible = !string.IsNullOrEmpty(text);
-        // Same measured Inter correction as IconLabel so text and icon centers line up.
-        _text.Margin = new Thickness(8, 3, 0, 0);
+        // Like IconLabel: centered without an Inter correction (measured, ButtonAlignmentTests).
+        _text.Margin = new Thickness(8, 0, 0, 0);
     }
 }

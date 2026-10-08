@@ -75,12 +75,16 @@ Options:
   --server URL   client: server address for this run (default: the client setting)
   --fake         client: run on built-in sample data without a server
   --release      Build and run Release instead of {CONFIGURATION}
+  --no-plugin-build
+                 Do not build the plugins: use those already in artifacts/plugins (faster
+                 when no plugin changed; the server or client keeps loading the last build)
 
 Examples:
   manage run server
   manage run server --port 5099 --data ./tmp-data
   manage run client --fake
   manage run client --server http://10.0.0.5:5080
+  manage run client --no-plugin-build
   manage run dev --port 5099 --data ./tmp-data
 
 ## test

@@ -87,6 +87,7 @@ is_verb() {
 TARGET=""
 OPT_RELEASE=0
 OPT_FAKE=0
+OPT_NO_PLUGIN_BUILD=0
 OPT_PORT=""
 OPT_DATA=""
 OPT_SERVER=""
@@ -107,6 +108,7 @@ option_allowed() {
     run:server:--port|run:server:--data|run:server:--release) return 0 ;;
     run:client:--fake|run:client:--server|run:client:--data|run:client:--release) return 0 ;;
     run:dev:--port|run:dev:--data|run:dev:--release) return 0 ;;
+    run:*:--no-plugin-build) return 0 ;;
     test:*:--filter|test:*:--release) return 0 ;;
     publish:*:--rid|publish:*:--version) return 0 ;;
     package:*:--rid|package:*:--version) return 0 ;;
@@ -123,7 +125,7 @@ parse_args() {
       help|-h|--help) show_help "$verb"; exit 0 ;;
       --) EXTRA=("$@"); break ;;
       -*)
-        option_has_value "$arg" || [ "$arg" = --release ] || [ "$arg" = --fake ] \
+        option_has_value "$arg" || [ "$arg" = --release ] || [ "$arg" = --fake ] || [ "$arg" = --no-plugin-build ] \
           || usage_error "$verb" "unknown option '$arg' (arguments for dotnet or the app go after --)"
         if option_has_value "$arg"; then
           [ $# -gt 0 ] && [ -n "$1" ] || usage_error "$verb" "option $arg needs a value"
@@ -166,6 +168,7 @@ parse_args() {
     case "$name" in
       --release) OPT_RELEASE=1 ;;
       --fake) OPT_FAKE=1 ;;
+      --no-plugin-build) OPT_NO_PLUGIN_BUILD=1 ;;
       --port)
         case "$value" in ''|*[!0-9]*) usage_error "$verb" "--port needs a number from 1 to 65535" ;; esac
         [ "$value" -ge 1 ] && [ "$value" -le 65535 ] || usage_error "$verb" "--port needs a number from 1 to 65535"
@@ -287,6 +290,16 @@ cmd_build() {
   esac
 }
 
+# Builds the plugins, or with --no-plugin-build uses those already deployed in artifacts/plugins (warns when none are).
+build_plugins_unless_skipped() {
+  if [ "$OPT_NO_PLUGIN_BUILD" -eq 0 ]; then build_plugins; return; fi
+  if [ -n "$(ls -A "$REPO_ROOT/artifacts/plugins" 2>/dev/null)" ]; then
+    echo "skipping the plugin build (--no-plugin-build): using artifacts/plugins"
+  else
+    echo "warning: no plugins in artifacts/plugins yet: run once without --no-plugin-build" >&2
+  fi
+}
+
 cmd_run() {
   require_dotnet
   export_dev_environment
@@ -294,12 +307,12 @@ cmd_run() {
   EXTRA=()
   case "$TARGET" in
     server)
-      build_project "$SERVER_PROJECT"; build_plugins
+      build_project "$SERVER_PROJECT"; build_plugins_unless_skipped
       set_server_args
       exec "$DOTNET" exec "$(app_dll Oadm.Server)" ${SERVER_ARGS[@]+"${SERVER_ARGS[@]}"} ${app_args[@]+"${app_args[@]}"}
       ;;
     client)
-      build_project "$CLIENT_PROJECT"; build_plugins
+      build_project "$CLIENT_PROJECT"; build_plugins_unless_skipped
       local client_args=()
       if [ $OPT_FAKE -eq 1 ]; then client_args+=(--fake); fi
       if [ -n "$OPT_SERVER" ]; then client_args+=(--server "$OPT_SERVER"); fi
@@ -307,7 +320,11 @@ cmd_run() {
       exec "$DOTNET" exec "$(app_dll Oadm.Client)" ${client_args[@]+"${client_args[@]}"} ${app_args[@]+"${app_args[@]}"}
       ;;
     dev)
-      build_project "$SOLUTION"
+      if [ "$OPT_NO_PLUGIN_BUILD" -eq 1 ]; then
+        build_project "$SERVER_PROJECT"; build_project "$CLIENT_PROJECT"; build_plugins_unless_skipped
+      else
+        build_project "$SOLUTION"
+      fi
       set_server_args
       local log_dir="$REPO_ROOT/artifacts/logs" port="${OPT_PORT:-5080}" server_dll client_dll
       server_dll="$(app_dll Oadm.Server)"

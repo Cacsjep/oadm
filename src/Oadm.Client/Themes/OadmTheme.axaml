@@ -861,13 +861,13 @@
   <Style Selector="ContextMenu MenuItem, MenuFlyoutPresenter MenuItem">
     <Setter Property="MinWidth" Value="{StaticResource Oadm.MenuMinWidth}" />
   </Style>
-  <!-- Same alignment as ui:IconLabel: icon centered, header text with the Inter correction -->
+  <!-- Same alignment as ui:IconLabel: icon and header text centered (measured: no Inter correction with crisp text) -->
   <Style Selector="MenuItem /template/ ContentPresenter#PART_IconPresenter">
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
   <Style Selector="MenuItem /template/ ContentPresenter#PART_HeaderPresenter">
     <Setter Property="VerticalAlignment" Value="Center" />
-    <Setter Property="Margin" Value="0,3,0,0" />
+    <Setter Property="Margin" Value="0" />
   </Style>
 
   <!-- Dialog windows (add devices page, task plugin dialogs): title bar, card headings, button row -->

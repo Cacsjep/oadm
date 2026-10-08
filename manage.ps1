@@ -88,6 +88,7 @@ $Verbs = @('build', 'run', 'test', 'publish', 'package', 'clean', 'info', 'help'
 $script:Target = ''
 $script:OptRelease = $false
 $script:OptFake = $false
+$script:OptNoPluginBuild = $false
 $script:OptPort = ''
 $script:OptData = ''
 $script:OptServer = ''
@@ -105,6 +106,7 @@ function Test-OptionAllowed([string]$Verb, [string]$Tgt, [string]$Name) {
         { $_ -in 'run:server:--port', 'run:server:--data', 'run:server:--release' } { return $true }
         { $_ -in 'run:client:--fake', 'run:client:--server', 'run:client:--data', 'run:client:--release' } { return $true }
         { $_ -in 'run:dev:--port', 'run:dev:--data', 'run:dev:--release' } { return $true }
+        { $_ -like 'run:*:--no-plugin-build' } { return $true }
         { $_ -like 'test:*:--filter' -or $_ -like 'test:*:--release' } { return $true }
         { $_ -like 'publish:*:--rid' -or $_ -like 'publish:*:--version' } { return $true }
         { $_ -like 'package:*:--rid' -or $_ -like 'package:*:--version' } { return $true }
@@ -124,7 +126,7 @@ function Read-Arguments([string]$Verb, [string[]]$Arguments) {
         }
         if ($arg.StartsWith('-')) {
             $isValue = $ValueOptions -ccontains $arg
-            if (-not $isValue -and $arg -cne '--release' -and $arg -cne '--fake') {
+            if (-not $isValue -and $arg -cne '--release' -and $arg -cne '--fake' -and $arg -cne '--no-plugin-build') {
                 Exit-Usage $Verb "unknown option '$arg' (arguments for dotnet or the app go after --)"
             }
             if ($isValue) {
@@ -175,6 +177,7 @@ function Read-Arguments([string]$Verb, [string[]]$Arguments) {
         switch -CaseSensitive ($name) {
             '--release' { $script:OptRelease = $true }
             '--fake' { $script:OptFake = $true }
+            '--no-plugin-build' { $script:OptNoPluginBuild = $true }
             '--port' {
                 $n = 0
                 if ($value -notmatch '^[0-9]+$' -or -not [int]::TryParse($value, [ref]$n) -or $n -lt 1 -or $n -gt 65535) {
@@ -307,6 +310,17 @@ function Invoke-Build {
     }
 }
 
+# Builds the plugins, or with --no-plugin-build uses those already deployed in artifacts/plugins (warns when none are).
+function Build-PluginsUnlessSkipped {
+    if (-not $script:OptNoPluginBuild) { Build-Plugins; return }
+    $deployed = Join-Path $RepoRoot 'artifacts/plugins'
+    if (-not (Test-Path -LiteralPath $deployed) -or -not (Get-ChildItem -LiteralPath $deployed -Directory | Select-Object -First 1)) {
+        Write-Warning 'no plugins in artifacts/plugins yet: run once without --no-plugin-build'
+    } else {
+        Write-Host 'skipping the plugin build (--no-plugin-build): using artifacts/plugins'
+    }
+}
+
 function Invoke-Run {
     Initialize-Dotnet
     Set-DevEnvironment
@@ -314,13 +328,13 @@ function Invoke-Run {
     $script:Extra = @()
     switch ($script:Target) {
         'server' {
-            Build-Project $ServerProject; Build-Plugins
+            Build-Project $ServerProject; Build-PluginsUnlessSkipped
             $serverArgs = Get-ServerArgs
             & $script:Dotnet exec (Get-AppDll 'Oadm.Server') @serverArgs @appArgs
             exit $LASTEXITCODE
         }
         'client' {
-            Build-Project $ClientProject; Build-Plugins
+            Build-Project $ClientProject; Build-PluginsUnlessSkipped
             $clientArgs = @()
             if ($script:OptFake) { $clientArgs += '--fake' }
             if ($script:OptServer) { $clientArgs += '--server', $script:OptServer }
@@ -329,7 +343,8 @@ function Invoke-Run {
             exit $LASTEXITCODE
         }
         'dev' {
-            Build-Project $Solution
+            if ($script:OptNoPluginBuild) { Build-Project $ServerProject; Build-Project $ClientProject; Build-PluginsUnlessSkipped }
+            else { Build-Project $Solution }
             $serverArgs = Get-ServerArgs
             $serverDll = Get-AppDll 'Oadm.Server'
             $clientDll = Get-AppDll 'Oadm.Client'

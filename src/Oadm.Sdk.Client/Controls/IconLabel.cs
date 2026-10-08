@@ -7,7 +7,7 @@ namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>
 /// The one icon + text row used everywhere (toolbar buttons, navigation rail, menus, dialogs).
-/// Both parts are vertically centered, and the text gets the measured Inter correction so its
+/// Both parts are vertically centered; measured with crisp text (pixel-aligned baselines) no Inter correction is needed, so its
 /// capitals line up with the icon center. Never build icon + text rows by hand.
 /// </summary>
 public sealed class IconLabel : Grid
@@ -17,7 +17,7 @@ public sealed class IconLabel : Grid
     /// capitals about 1.5 px above center next to a 16 px icon (measured in headless renders).
     /// A 3 px top margin on a centered element moves it down by exactly that.
     /// </summary>
-    private const double InterBaselineCorrection = 3;
+    private const double InterBaselineCorrection = 0;
 
     public static readonly StyledProperty<Geometry?> IconProperty =
         AvaloniaProperty.Register<IconLabel, Geometry?>(nameof(Icon));
