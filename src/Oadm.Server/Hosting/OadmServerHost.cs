@@ -159,6 +159,8 @@ public static partial class OadmServerHost
         services.AddSingleton<ILiveVideoSourceFactory, AxisLiveVideoSourceFactory>();
         services.AddSingleton(new LiveViewHubOptions());
         services.AddSingleton<LiveViewHub>();
+        // Device event streams (RTSP metadata) for core plugins such as the Metadata Monitor
+        services.AddSingleton<Sdk.Devices.IDeviceEventStreams, DeviceEventStreams>();
 
         // Plugins and tasks
         services.AddSingleton<PluginRegistry>();
@@ -207,7 +209,8 @@ public static partial class OadmServerHost
             sp.GetRequiredService<IPluginSettingsProvider>(),
             sp.GetRequiredService<ILoggerFactory>(),
             new Core.Security.PluginSecretProtector(sp.GetRequiredService<Core.Security.CredentialProtector>()),
-            trustAnchors: sp.GetRequiredService<TrustAnchorRegistry>()));
+            trustAnchors: sp.GetRequiredService<TrustAnchorRegistry>(),
+            eventStreams: sp.GetRequiredService<Sdk.Devices.IDeviceEventStreams>()));
 
         // Polling
         services.AddSingleton<DevicePollingService>();

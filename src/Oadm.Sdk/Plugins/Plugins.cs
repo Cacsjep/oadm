@@ -229,6 +229,12 @@ public interface ICorePluginContext
     /// device grid). Null when the host does not support it.
     /// </summary>
     ITrustAnchors? TrustAnchors => null;
+
+    /// <summary>
+    /// Event streams of managed devices (RTSP metadata, opened by the server with the stored credentials, which never
+    /// reach the plugin). Null when the host does not offer them.
+    /// </summary>
+    IDeviceEventStreams? EventStreams => null;
 }
 
 /// <summary>Server-side encryption for secrets a plugin persists. Values never leave the server.</summary>

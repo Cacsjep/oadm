@@ -35,6 +35,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     private readonly IPluginSettingsProvider _settings;
     private readonly ISecretProtector? _secrets;
     private readonly TrustAnchorRegistry? _trustAnchors;
+    private readonly IDeviceEventStreams? _eventStreams;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.OrdinalIgnoreCase);
@@ -50,7 +51,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         ILoggerFactory? loggerFactory = null,
         ISecretProtector? secrets = null,
         PluginEventHub? events = null,
-        TrustAnchorRegistry? trustAnchors = null)
+        TrustAnchorRegistry? trustAnchors = null,
+        IDeviceEventStreams? eventStreams = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(devices);
@@ -64,6 +66,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         _settings = settings;
         _secrets = secrets;
         _trustAnchors = trustAnchors;
+        _eventStreams = eventStreams;
         Events = events ?? new PluginEventHub();
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _logger = _loggerFactory.CreateLogger<CorePluginHost>();
@@ -108,7 +111,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     registered.Origin.Directory,
                     _secrets,
                     Events.For(registered.Id),
-                    _trustAnchors?.For(registered.Id));
+                    _trustAnchors?.For(registered.Id),
+                    _eventStreams);
                 try
                 {
                     await registered.Plugin.StartAsync(context, ct).ConfigureAwait(false);
@@ -250,7 +254,8 @@ internal sealed class CorePluginContext(
     string? pluginDirectory = null,
     ISecretProtector? secrets = null,
     IPluginEvents? events = null,
-    ITrustAnchors? trustAnchors = null) : ICorePluginContext
+    ITrustAnchors? trustAnchors = null,
+    IDeviceEventStreams? eventStreams = null) : ICorePluginContext
 {
     public IDeviceRepository Devices { get; } = devices;
 
@@ -269,4 +274,6 @@ internal sealed class CorePluginContext(
     public IPluginEvents? Events { get; } = events;
 
     public ITrustAnchors? TrustAnchors { get; } = trustAnchors;
+
+    public IDeviceEventStreams? EventStreams { get; } = eventStreams;
 }
