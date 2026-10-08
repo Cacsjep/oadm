@@ -28,9 +28,13 @@ public sealed class FakeModeTests : IDisposable
 
         await vm.StartStopCommand.ExecuteAsync(null);
         await Wait.UntilAsync(() => vm.Messages.Count > 80);
-
         Assert.True(vm.IsRunning);
-        Assert.StartsWith("Live · ", vm.StatusText, StringComparison.Ordinal);
+        await Wait.UntilAsync(() => vm.StatusText.StartsWith("Live · ", StringComparison.Ordinal));
+
+        // Stop first: without a UI thread the events arrive on the thread pool, so read the list once it is final.
+        await vm.StartStopCommand.ExecuteAsync(null);
+        await Wait.UntilAsync(() => vm.StatusText.StartsWith("Stopped", StringComparison.Ordinal));
+        await Task.Delay(50);
         Assert.Equal(64, vm.Messages.Count(m => m.Topic == "Device/IO/VirtualInput" && m.Operation == "Initialized"));
         Assert.Contains(vm.Messages, m => m.Topic == "Storage/Alert" && m.Info.StartsWith("[INIT] disk_id = SD_DISK;", StringComparison.Ordinal));
         Assert.Contains(vm.Messages, m => m.Topic == "Device/Status/Temperature/Inside");
@@ -38,8 +42,6 @@ public sealed class FakeModeTests : IDisposable
         Assert.Equal(Enumerable.Range(1, vm.Messages.Count).Select(i => (long)i), vm.Messages.Select(m => m.Seq));
         Assert.All(vm.Messages, m => Assert.StartsWith("<wsnt:NotificationMessage", m.Xml, StringComparison.Ordinal));
 
-        await vm.StartStopCommand.ExecuteAsync(null);
-        await Wait.UntilAsync(() => vm.StatusText.StartsWith("Stopped", StringComparison.Ordinal));
         vm.Deactivate();
     }
 
