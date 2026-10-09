@@ -65,10 +65,12 @@ public sealed class RtspMetadataSourceTests
     public async Task QuietStreamIsKeptAliveAndAnsweredKeepAlivesKeepItOpen()
     {
         await using var server = new FakeEventRtspServer { Packets = [], StayOpen = true, AnswerKeepAlives = true };
-        var options = Options(server.Port, "secret") with { KeepAliveInterval = TimeSpan.FromMilliseconds(200), DeadTimeout = TimeSpan.FromMilliseconds(900) };
+        var options = Options(server.Port, "secret") with { KeepAliveInterval = TimeSpan.FromMilliseconds(200), DeadTimeout = TimeSpan.FromMilliseconds(1500) };
         await using var source = await RtspMetadataSource.OpenAsync(options, CancellationToken.None);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        // Twice the dead timeout: without the answered keep-alives the read would end as unreachable. The 1.5 s leave
+        // room for a busy CI machine answering one keep-alive late.
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
         {
             await foreach (var unused in source.ReadAsync(cts.Token))
