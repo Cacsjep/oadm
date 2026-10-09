@@ -4,6 +4,24 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
 version and date, and the release workflow copies it into the GitHub release.
 
+## [1.3.0] - 2026-10-09
+
+### Fixed
+
+- Snapshot report: **Export PDF** failed in the installed version ("The report could not be created"): the plugin did
+  not find its PDF library. Plugins now load every library from their own folder.
+- Report errors always say what went wrong; they were empty before.
+- The client no longer logs a hidden error from the start splash animation.
+
+### Changed
+
+- Updated Avalonia to 12.1.3 and the test tools.
+
+### Security
+
+- `SECURITY.md`: report vulnerabilities privately through GitHub. Dependabot alerts and updates and CodeQL code scanning
+  are on.
+
 ## [1.2.0] - 2026-10-09
 
 ### Added
@@ -84,5 +102,6 @@ version and date, and the release workflow copies it into the GitHub release.
 - The splash logo's lens is centered in its ring.
 - The server publish no longer contains an IIS `web.config` and other unused web files.
 
+[1.3.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.3.0
 [1.2.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.2.0
 [1.1.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.1.0
