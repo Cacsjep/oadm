@@ -10,6 +10,7 @@
   <a href="https://github.com/Cacsjep/oadm/releases/latest"><img src="https://img.shields.io/github/v/release/Cacsjep/oadm" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0"></a>
   <a href="https://acs-dev.org/"><img src="https://img.shields.io/badge/web-acs--dev.org-6C5CE7" alt="Website: acs-dev.org"></a>
+  <a href="https://www.linkedin.com/in/christoph-acs-70150795/"><img src="https://img.shields.io/badge/LinkedIn-Christoph-0A66C2?logo=linkedin&amp;logoColor=white" alt="LinkedIn"></a>
 </p>
 
 **OADM is an independent open source project. It is not affiliated with, sponsored by or endorsed by Axis
