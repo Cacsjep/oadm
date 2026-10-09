@@ -1,4 +1,6 @@
-# Keeps the commit-pinned GitHub Actions current: a weekly pull request with the new commit hash and version comment.
+# Weekly pull requests for updates: the commit-pinned GitHub Actions (new hash and version comment) and the NuGet
+# packages, grouped so related packages move together. Security updates come at once, outside the schedule.
+# Every pull request is built and unit-tested by pr.yml before it is merged.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -8,3 +10,20 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      avalonia:
+        patterns: ["Avalonia*", "AvaloniaUI.*"]
+      grpc:
+        patterns: ["Grpc.*", "Google.Protobuf"]
+      microsoft:
+        patterns: ["Microsoft.*", "System.*"]
+      serilog:
+        patterns: ["Serilog*"]
+      tests:
+        patterns: ["xunit*", "NSubstitute", "coverlet.*"]

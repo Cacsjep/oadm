@@ -101,8 +101,12 @@ release of the tag with the installers and `SHA256SUMS.txt`):
 - Icons: the app icon is `icon/oadm-app-icon-<size>.png` (16-1024); `packaging/icons/make-icons.py`
   builds `oadm.ico` (client exe, MSI, shortcuts), `oadm.icns` (macOS), `oadm.png` / `oadm-256.png` (Linux, window icon of
   every client window) from it.
-Supply chain: every GitHub Action is pinned by its full commit hash (the version as a comment), `.github/dependabot.yml`
-opens a weekly pull request with updated hashes, checkout runs with `persist-credentials: false`, workflow permissions
+Supply chain and security (user decisions 2026-10-09): every GitHub Action is pinned by its full commit hash (the version as
+a comment); `.github/dependabot.yml` opens weekly pull requests for the Actions (new hashes) and the NuGet packages
+(grouped: Avalonia, gRPC, Microsoft, Serilog, test packages); Dependabot alerts and security updates, private
+vulnerability reporting and secret scanning with push protection are on; `SECURITY.md` says how to report; `codeql.yml`
+runs CodeQL (C#) on pushes to main, pull requests and weekly; `pr.yml` builds and unit-tests every pull request on Linux
+(Timing tests excluded); checkout runs with `persist-credentials: false`, workflow permissions
 are `contents: read` except the release job (`contents: write`).
 
 Developer commands: one entry point per shell at the repo root, `./manage.sh` (bash) and

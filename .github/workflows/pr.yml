@@ -1,0 +1,29 @@
+name: pr
+
+# Builds and unit-tests every pull request (Dependabot updates included) on Linux before it is merged. The full matrix
+# with the installers runs only for release tags (release.yml). Tests that depend on real elapsed time stay local.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: tests ubuntu-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          global-json-file: global.json
+      - run: dotnet build Oadm.sln -c Release
+      - run: dotnet test Oadm.sln -c Release --no-build --filter "Category!=Hardware&Category!=Perf&Category!=HardwareWrite&Category!=Timing" --blame-hang-timeout 5m
