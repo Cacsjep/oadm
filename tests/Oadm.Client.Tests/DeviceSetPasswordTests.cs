@@ -254,7 +254,7 @@ public sealed class DeviceSetPasswordTests
             if (!string.IsNullOrEmpty(outDir))
             {
                 Directory.CreateDirectory(outDir);
-                frame.Save(Path.Combine(outDir, "client-set-password.png"));
+                frame.Save(Path.Combine(outDir, "client-set-password.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
             }
 
             window.Close();

@@ -299,7 +299,7 @@ public sealed class HeadlessPageTests
         Directory.CreateDirectory(outDir);
         using (frame)
         {
-            frame.Save(Path.Combine(outDir, name));
+            frame.Save(Path.Combine(outDir, name), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
         }
     }
 }

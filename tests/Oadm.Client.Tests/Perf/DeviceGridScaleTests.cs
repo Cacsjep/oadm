@@ -81,7 +81,7 @@ public sealed class DeviceGridScaleTests(ITestOutputHelper output)
             {
                 WriteableBitmap? frame = window.CaptureRenderedFrame();
                 Directory.CreateDirectory(outDir);
-                frame?.Save(Path.Combine(outDir, "devices-5000-headless.png"));
+                frame?.Save(Path.Combine(outDir, "devices-5000-headless.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
             }
 
             window.Close();

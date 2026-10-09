@@ -165,7 +165,7 @@ public sealed class CredentialsPageTests
             if (!string.IsNullOrEmpty(outDir))
             {
                 Directory.CreateDirectory(outDir);
-                frame.Save(Path.Combine(outDir, "client-credentials-revealed.png"));
+                frame.Save(Path.Combine(outDir, "client-credentials-revealed.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
             }
 
             window.Close();
