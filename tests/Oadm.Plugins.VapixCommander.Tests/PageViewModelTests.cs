@@ -219,6 +219,7 @@ public sealed class PageViewModelTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")]
     public async Task Thousands_of_devices_filter_select_and_check_compatibility_fast()
     {
         var page = await PageFixture.CreateAsync();

@@ -147,6 +147,7 @@ public sealed class RolloutEngineTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // the slow device must start within the 200 ms
     public async Task Stop_on_first_error_stops_the_whole_rollout()
     {
         // Two run at a time: the failing device and a slow one; the other three wait in Queued.

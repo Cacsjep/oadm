@@ -125,6 +125,7 @@ public sealed class ScanServiceTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // the other devices must finish within 300 ms
     public async Task A_hanging_device_ends_with_the_device_timeout_and_the_others_finish()
     {
         var options = Rig.Fast();

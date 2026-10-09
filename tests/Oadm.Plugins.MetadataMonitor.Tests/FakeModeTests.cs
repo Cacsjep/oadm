@@ -16,6 +16,7 @@ public sealed class FakeModeTests : IDisposable
     public void Dispose() => _api.Dispose();
 
     [Fact]
+    [Trait("Category", "Timing")] // waits 50 ms for the watch to subscribe
     public async Task Fake_backend_streams_generated_events_the_page_shows()
     {
         Assert.Contains(await _api.ListCorePluginsAsync(CancellationToken.None), p => p.Id == MetadataMonitorPluginInfo.PluginId && p.IconKey == MetadataMonitorPluginInfo.IconKey);

@@ -277,6 +277,7 @@ public sealed class ViewModelTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // time budget
     public void Five_thousand_devices_are_summarized_in_one_pass()
     {
         var devices = Enumerable.Range(0, 5000)

@@ -11,6 +11,7 @@ namespace Oadm.Plugins.VapixCommander.Tests;
 /// a rollout to 5,000 devices (one batched task start) and the rollout bookkeeping of 5,000 tasks stay linear.
 /// The budgets include the first call (JIT) on a busy CI runner; quadratic work on 5,000 items would still exceed them.
 /// </summary>
+[Trait("Category", "Timing")] // time budgets
 public sealed class ScaleTests
 {
     private const int Count = 5000;

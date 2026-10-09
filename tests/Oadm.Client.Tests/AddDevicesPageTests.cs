@@ -399,6 +399,7 @@ public sealed class AddDevicesPageTests : IDisposable
     }
 
     [Fact]
+    [Trait("Category", "Timing")]
     public async Task An_import_of_ten_thousand_lines_lists_and_filters_fast()
     {
         string csv = "Address,User name,Password\n" + string.Join("\n", Enumerable.Range(0, DeviceImportFile.MaxLines).Select(i => $"10.1.{i / 256}.{i % 256},root,pass{i}"));

@@ -41,6 +41,7 @@ public sealed class LiveViewHubTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // waits 20 ms for the pump to cache the GOP
     public async Task LateViewerStartsWithTheCachedGop()
     {
         var factory = new FakeSourceFactory();

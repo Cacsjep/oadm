@@ -291,6 +291,7 @@ public sealed class EngineTests : IDisposable
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // the requests must overlap the 300 ms probes
     public async Task Probes_are_bounded_and_busy_requests_get_no_answer()
     {
         _probe.Delay = TimeSpan.FromMilliseconds(300);

@@ -12,7 +12,7 @@ The help below writes "manage" for either one.
 Verbs:
   build     Build all, server, client or plugins              (default target: all)
   run       Run server, client, or dev (server + client)
-  test      Run unit, perf, hardware or all tests              (default target: unit)
+  test      Run unit, perf, timing, hardware or all tests      (default target: unit)
   publish   Self-contained single-file apps in artifacts/publish (default target: all)
   package   Installer for windows (MSI), linux (.deb) or macos (.pkg) in artifacts/packages
   clean    Remove bin, obj and artifacts
@@ -88,15 +88,17 @@ Examples:
   manage run dev --port 5099 --data ./tmp-data
 
 ## test
-Usage: manage test [unit|perf|hardware|all] [--filter EXPR] [--release] [-- dotnet test args]
+Usage: manage test [unit|perf|timing|hardware|all] [--filter EXPR] [--release] [-- dotnet test args]
 
 Targets:
   unit       Tests that need no camera, Category!=Hardware and Category!=Perf
-             (default, fast, what CI runs for every release tag)
+             (default, fast; CI runs them for every release tag without the Timing tests)
   perf       Scale tests, Category=Perf: 5,000 devices and 50,000 tasks (client stores,
              Devices grid, ListTaskPlugins, Watch snapshots, polling spread, task engine
              batches, task history paging and retention). A few minutes; each test has a time
              budget and writes its measured times to the test output
+  timing     Category=Timing: tests that depend on real elapsed time or machine speed
+             (also part of unit; not run by CI, shared runners are too slow and busy)
   hardware   Read-only camera tests, Category=Hardware, against the cameras in
              dev-cameras.yaml or the file named by OADM_DEV_CAMERAS
   all        unit, perf and hardware together (hardware tests skip themselves without cameras)

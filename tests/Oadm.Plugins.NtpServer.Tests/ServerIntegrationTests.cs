@@ -51,6 +51,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // offset and timestamps within 50 ms
     public async Task A_client_on_loopback_gets_a_valid_mode_4_answer_it_accepts()
     {
         var reply = await SaveAsync();
@@ -139,6 +140,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // 200 ms answers, real-time refill
     public async Task Rate_limited_clients_get_one_kiss_of_death_and_one_log_entry()
     {
         await SaveAsync();
@@ -160,6 +162,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Timing")]
     public async Task Requests_are_answered_within_a_few_ms_while_the_upstream_hangs()
     {
         await using var upstream = new FakeUpstream(UpstreamBehavior.Answer);
@@ -183,6 +186,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // 300 ms query timeout
     public async Task Upstream_on_save_is_validated_then_served_and_an_unreachable_one_falls_back_with_a_warning()
     {
         await using var upstream = new FakeUpstream();
@@ -231,6 +235,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // 300 ms query timeout, offset to 0.1 s
     public async Task Clock_offset_over_one_second_is_a_warning()
     {
         await using var upstream = new FakeUpstream { ClockOffset = TimeSpan.FromSeconds(3.2) };

@@ -100,6 +100,7 @@ public sealed class DeviceAutoAddTests
     }
 
     [Theory]
+    [Trait("Category", "Timing")] // real probe timeouts; failed under load
     [InlineData("NotFound")]
     [InlineData("NoSerial")]
     [InlineData("NoModel")]

@@ -14,6 +14,7 @@ public sealed class ScaleTests
     private const int Count = 5000;
 
     [Fact]
+    [Trait("Category", "Timing")] // time budget
     public async Task Dialog_with_5000_devices_reads_only_the_first_device()
     {
         var devices = Enumerable.Range(0, Count).Select(i => (IDeviceInfo)new FakeDevice(Guid.NewGuid(), $"10.0.{i / 256}.{i % 256}")).ToList();

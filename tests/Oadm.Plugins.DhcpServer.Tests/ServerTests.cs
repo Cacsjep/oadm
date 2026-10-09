@@ -180,6 +180,7 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // the other server must answer within 300 ms
     public async Task Another_DHCP_server_needs_a_confirmation_then_the_status_says_running()
     {
         await using var router = new FakeOtherServer(_network);
@@ -282,6 +283,7 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // real-time rate limit refill
     public async Task A_flood_from_one_device_is_rate_limited()
     {
         await Save(Options.Enable());

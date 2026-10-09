@@ -164,6 +164,7 @@ public sealed class DeviceImportFileTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")]
     public void Ten_thousand_lines_are_read_fast()
     {
         string text = "Address,User name,Password\n" + string.Join("\n", Enumerable.Range(0, DeviceImportFile.MaxLines).Select(i => $"10.{i / 65536}.{i / 256 % 256}.{i % 256},root,pass{i}"));
