@@ -2,6 +2,8 @@ name: pr
 
 # Builds and unit-tests every pull request (Dependabot updates included) on Linux before it is merged. The full matrix
 # with the installers runs only for release tags (release.yml). Tests that depend on real elapsed time stay local.
+# A pull request that changes only the website (website/) skips build and tests; the job still reports, because it is
+# the required check on main.
 on:
   pull_request:
     branches: [main]
@@ -22,8 +24,23 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+          fetch-depth: 0
+      - id: changes
+        name: check for changes outside the website
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if git diff --name-only "$BASE"...HEAD | grep -qvE '^(website/|\.github/workflows/pages\.yml$)'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Only the website changed: no build and tests."
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.changes.outputs.code == 'true'
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
-      - run: dotnet build Oadm.sln -c Release
-      - run: dotnet test Oadm.sln -c Release --no-build --filter "Category!=Hardware&Category!=Perf&Category!=HardwareWrite&Category!=Timing" --blame-hang-timeout 5m
+      - if: steps.changes.outputs.code == 'true'
+        run: dotnet build Oadm.sln -c Release
+      - if: steps.changes.outputs.code == 'true'
+        run: dotnet test Oadm.sln -c Release --no-build --filter "Category!=Hardware&Category!=Perf&Category!=HardwareWrite&Category!=Timing" --blame-hang-timeout 5m

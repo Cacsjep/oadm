@@ -108,7 +108,8 @@ a comment); `.github/dependabot.yml` opens weekly pull requests for the Actions 
 (grouped: Avalonia, gRPC, Microsoft, Serilog, test packages); Dependabot alerts and security updates, private
 vulnerability reporting and secret scanning with push protection are on; `SECURITY.md` says how to report; `codeql.yml`
 runs CodeQL (C#) on pushes to main, pull requests and weekly; `pr.yml` builds and unit-tests every pull request on Linux
-(Timing tests excluded); rulesets on `main`: no force push or deletion (everyone), changes through a pull request with
+(Timing tests excluded); changes only in `website/` (user decision 2026-10-09) skip CodeQL and the .NET build and tests
+(`pr.yml` still reports its required check, with the steps skipped); rulesets on `main`: no force push or deletion (everyone), changes through a pull request with
 the passing check "tests ubuntu-latest" (administrators bypass); minimal issue templates (bug, feature) and pull request
 template (one line); checkout runs with `persist-credentials: false`, workflow permissions
 are `contents: read` except the release job (`contents: write`).
