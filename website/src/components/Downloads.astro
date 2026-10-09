@@ -11,7 +11,11 @@ let version = '';
 let assets: Asset[] = [];
 try {
 	const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
-		headers: { Accept: 'application/vnd.github+json' },
+		// The Pages workflow passes its token, so the build is not held up by the limit for anonymous requests.
+		headers: {
+			Accept: 'application/vnd.github+json',
+			...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
+		},
 	});
 	if (response.ok) {
 		const release = await response.json();
@@ -49,7 +53,10 @@ const links = {
 		<a href={`https://github.com/${repo}`} aria-label="GitHub"><Icon name="github" /></a>
 		<a href="https://www.linkedin.com/in/christoph-acs-70150795/" aria-label="LinkedIn"><Icon name="linkedin" /></a>
 	</div>
-	<a class="dl dl-docs" href="start/install/"><Icon name="open-book" />Documentation</a>
+	<div class="download-buttons">
+		<a class="dl" href="start/install/"><Icon name="open-book" />Documentation</a>
+		<a class="dl" href={`https://github.com/${repo}/issues/new/choose`}><Icon name="comment" />Bug report or feature request</a>
+	</div>
 </div>
 
 <script>
