@@ -164,9 +164,24 @@ jobs:
       - name: Smoke test (Windows MSI, server and client)
         if: matrix.target == 'windows' && matrix.smoke
         shell: pwsh
+        timeout-minutes: 15
         run: |
+          # Every process gets a time limit; a hang prints the logs and the busiest processes instead of a silent stuck job.
+          function Invoke-Limited([string] $file, [string] $arguments, [string] $log, [int] $seconds = 300) {
+            $p = Start-Process $file -ArgumentList $arguments -PassThru
+            if (-not $p.WaitForExit($seconds * 1000)) {
+              "TIMEOUT after $seconds s: $file $arguments"
+              if ($log -and (Test-Path $log)) { Get-Content $log -Tail 80 }
+              Get-ChildItem C:\ProgramData\OADM\logs -ErrorAction SilentlyContinue | Get-Content -Tail 80
+              Get-Process | Sort-Object CPU -Descending | Select-Object -First 15 Name, Id, CPU, StartTime | Format-Table -AutoSize
+              $p.Kill($true)
+              throw "timeout: $file $arguments"
+            }
+            $p.WaitForExit()
+            $p
+          }
           $msi = (Get-ChildItem artifacts/packages/*.msi | Select-Object -First 1).FullName
-          $p = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /l*v install.log" -Wait -PassThru
+          $p = Invoke-Limited msiexec.exe "/i `"$msi`" /qn /l*v install.log" install.log
           if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 80; throw "install failed: $($p.ExitCode)" }
           $svc = Get-Service OadmServer
           "service: $($svc.Status) $($svc.StartType)"
@@ -179,6 +194,7 @@ jobs:
           $handler = [System.Net.Http.HttpClientHandler]::new()
           $handler.ServerCertificateCustomValidationCallback = [System.Net.Http.HttpClientHandler]::DangerousAcceptAnyServerCertificateValidator
           $client = [System.Net.Http.HttpClient]::new($handler)
+          $client.Timeout = [TimeSpan]::FromSeconds(60)
           $req = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post, 'https://127.0.0.1:5080/oadm.Smoke/Test')
           $req.Version = [Version]'2.0'
           $req.VersionPolicy = [System.Net.Http.HttpVersionPolicy]::RequestVersionExact
@@ -202,10 +218,10 @@ jobs:
           if (($rules[0].Profile.ToString() -replace ' ', '') -ne 'Domain,Private') { throw "profile Domain, Private expected, not $($rules[0].Profile)" }
           # The server checked its folders at start (service mode) and did not refuse them.
           if (Select-String -Path C:\ProgramData\OADM\logs\*.log -Pattern 'could not be fixed' -Quiet) { throw 'folder check failed' }
-          # WinExe: Start-Process waits and returns the exit code.
-          $d = Start-Process 'C:\Program Files\OADM\Client\Oadm.Client.exe' -ArgumentList '--check-decoder' -Wait -PassThru
+          # WinExe: Start-Process returns at once; Invoke-Limited waits for the exit code.
+          $d = Invoke-Limited 'C:\Program Files\OADM\Client\Oadm.Client.exe' '--check-decoder' '' 120
           if ($d.ExitCode -ne 0) { throw "decoder check failed: $($d.ExitCode)" }
-          $p = Start-Process msiexec.exe -ArgumentList "/x `"$msi`" /qn /l*v uninstall.log" -Wait -PassThru
+          $p = Invoke-Limited msiexec.exe "/x `"$msi`" /qn /l*v uninstall.log" uninstall.log
           if ($p.ExitCode -ne 0) { Get-Content uninstall.log -Tail 80; throw "uninstall failed: $($p.ExitCode)" }
           if (Get-Service OadmServer -ErrorAction SilentlyContinue) { throw 'service still installed' }
           if (Get-NetFirewallRule -DisplayName 'OADM Server*' -ErrorAction SilentlyContinue) { throw 'firewall rule left behind' }
@@ -215,17 +231,32 @@ jobs:
       - name: Smoke test (Windows MSI, client only)
         if: matrix.target == 'windows' && matrix.smoke
         shell: pwsh
+        timeout-minutes: 15
         run: |
+          # Every process gets a time limit; a hang prints the logs and the busiest processes instead of a silent stuck job.
+          function Invoke-Limited([string] $file, [string] $arguments, [string] $log, [int] $seconds = 300) {
+            $p = Start-Process $file -ArgumentList $arguments -PassThru
+            if (-not $p.WaitForExit($seconds * 1000)) {
+              "TIMEOUT after $seconds s: $file $arguments"
+              if ($log -and (Test-Path $log)) { Get-Content $log -Tail 80 }
+              Get-ChildItem C:\ProgramData\OADM\logs -ErrorAction SilentlyContinue | Get-Content -Tail 80
+              Get-Process | Sort-Object CPU -Descending | Select-Object -First 15 Name, Id, CPU, StartTime | Format-Table -AutoSize
+              $p.Kill($true)
+              throw "timeout: $file $arguments"
+            }
+            $p.WaitForExit()
+            $p
+          }
           $msi = (Get-ChildItem artifacts/packages/*.msi | Select-Object -First 1).FullName
-          $p = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" ADDLOCAL=Client /qn /l*v install-client.log" -Wait -PassThru
+          $p = Invoke-Limited msiexec.exe "/i `"$msi`" ADDLOCAL=Client /qn /l*v install-client.log" install-client.log
           if ($p.ExitCode -ne 0) { Get-Content install-client.log -Tail 80; throw "install failed: $($p.ExitCode)" }
           if (Get-Service OadmServer -ErrorAction SilentlyContinue) { throw 'client only must not install the service' }
           if (Test-Path 'C:\Program Files\OADM\Server') { throw 'client only must not install the server' }
           if (Get-NetFirewallRule -DisplayName 'OADM Server*' -ErrorAction SilentlyContinue) { throw 'client only must not add a firewall rule' }
           if (-not (Test-Path 'C:\Program Files\OADM\Client\THIRD-PARTY-NOTICES.txt')) { throw 'client license texts missing' }
-          $d = Start-Process 'C:\Program Files\OADM\Client\Oadm.Client.exe' -ArgumentList '--check-decoder' -Wait -PassThru
+          $d = Invoke-Limited 'C:\Program Files\OADM\Client\Oadm.Client.exe' '--check-decoder' '' 120
           if ($d.ExitCode -ne 0) { throw "decoder check failed: $($d.ExitCode)" }
-          $p = Start-Process msiexec.exe -ArgumentList "/x `"$msi`" /qn /l*v uninstall-client.log" -Wait -PassThru
+          $p = Invoke-Limited msiexec.exe "/x `"$msi`" /qn /l*v uninstall-client.log" uninstall-client.log
           if ($p.ExitCode -ne 0) { Get-Content uninstall-client.log -Tail 80; throw "uninstall failed: $($p.ExitCode)" }
           if (Test-Path 'C:\Program Files\OADM\Client\Oadm.Client.exe') { throw 'client still installed' }
           'client only: install, decoder, uninstall ok'

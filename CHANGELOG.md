@@ -4,12 +4,6 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
 version and date, and the release workflow copies it into the GitHub release.
 
-## [Unreleased]
-
-### Changed
-
-- Date and time: compact dialog like ADM's.
-
 ## [1.2.0] - 2026-10-09
 
 ### Added
@@ -41,6 +35,8 @@ version and date, and the release workflow copies it into the GitHub release.
 
 - Shorter, plainer texts across the app.
 - Snapshot report: opening the page takes no snapshots; press **Create snapshots** first.
+- Date and time: compact dialog like ADM's.
+- Login window: no logo above the form.
 - Live view: no "Live" label while the picture plays; codec, resolution and frame rate stay.
 - Clearer layout: Address first in the device grid, colour only for warnings and errors, red buttons for delete and
   remove, longer task names, readable failure reasons, and a More menu when the toolbar does not fit.
