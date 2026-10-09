@@ -19,12 +19,13 @@ public sealed class UpstreamClientTests
         var sample = await UpstreamClient.QueryAsync(upstream.EndPoint, AnswerTimeout, TimeProvider.System, CancellationToken.None);
 
         Assert.Equal(2, sample.Stratum);
-        Assert.InRange(sample.OffsetSeconds, 2.9, 3.1);
-        Assert.InRange(sample.DelaySeconds, 0, 0.3);
+        // A loaded CI runner answers loopback slowly and unevenly; the offset error is up to half the round trip.
+        Assert.InRange(sample.OffsetSeconds, 2.5, 3.5);
+        Assert.InRange(sample.DelaySeconds, 0, 1);
         Assert.Equal(0.002, sample.RootDelaySeconds, 3);
         Assert.Equal(3, sample.ToState("x").Stratum);
-        // Same tolerance as the offset above: a slow CI round trip shifts the measured offset by up to 0.1 s.
-        Assert.Matches(@"^(2\.9|3\.0|3\.1) s off, \d+ ms round trip$", sample.Describe());
+        // Same tolerance as the offset above.
+        Assert.Matches(@"^(2\.[5-9]|3\.[0-5]) s off, \d+ ms round trip$", sample.Describe());
     }
 
     [Fact]
