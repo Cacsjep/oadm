@@ -68,7 +68,7 @@ Targets:
            Closing the client stops the server. App args after -- go to the client
 
 Options:
-  --port N       server, dev: listen on http://0.0.0.0:N (default: the server setting, 5080).
+  --port N       server, dev: listen on https://0.0.0.0:N (default: the server setting, 5080).
                  dev also points the client at localhost:N (TLS)
   --data DIR     server, dev: server data folder (default: OADM_DATA_DIR, else
                  LocalApplicationData/Oadm). client: client settings and log folder
@@ -83,7 +83,7 @@ Examples:
   manage run server
   manage run server --port 5099 --data ./tmp-data
   manage run client --fake
-  manage run client --server http://10.0.0.5:5080
+  manage run client --server 10.0.0.5:5080
   manage run client --no-plugin-build
   manage run dev --port 5099 --data ./tmp-data
 
