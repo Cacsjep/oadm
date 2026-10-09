@@ -42,6 +42,8 @@ sudo apt install ./oadm-client_*.deb                       # client only
 - Client: app menu > **OADM**, or `oadm-client`.
 - Data folder: `/var/lib/oadm`.
 - Uninstall: `sudo apt remove oadm-server oadm-client`.
+- The notice "Download is performed unsandboxed as root ... couldn't be accessed by user '_apt'" is harmless: apt
+  cannot read your private home folder and reads the file as root instead. To avoid it, install from `/tmp`.
 
 ### macOS
 
