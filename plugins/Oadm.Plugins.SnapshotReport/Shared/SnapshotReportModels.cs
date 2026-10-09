@@ -22,7 +22,7 @@ public static class SnapshotReportPluginInfo
     public const int Parallelism = 4;
 
     /// <summary>Time one snapshot (or one source list) may take.</summary>
-    public static readonly TimeSpan SnapshotTimeout = TimeSpan.FromSeconds(10);
+    public static readonly TimeSpan SnapshotTimeout = TimeSpan.FromSeconds(3);
 
     /// <summary>Bytes of the PDF returned per <see cref="SnapshotReportMethods.ReadReport"/> call.</summary>
     public const int ReportChunkBytes = 2 * 1024 * 1024;
@@ -150,7 +150,7 @@ public sealed class SnapshotResult
     public int Height { get; set; }
     public DateTimeOffset? CapturedUtc { get; set; }
 
-    /// <summary>Readable failure ("Timeout after 10 s", "Unauthorized - HTTP 401", device error text); null on success.</summary>
+    /// <summary>Readable failure ("Timeout after 3 s", "Unauthorized - HTTP 401", device error text); null on success.</summary>
     public string? Error { get; set; }
 }
 

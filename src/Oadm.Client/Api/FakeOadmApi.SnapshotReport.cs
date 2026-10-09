@@ -98,7 +98,7 @@ public sealed partial class FakeOadmApi
                 DeviceStatus.CredentialsRequired => "Credentials required - the device rejects the stored credentials",
                 DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
                 DeviceStatus.CertificateChanged => Oadm.Sdk.Devices.DeviceMessages.CertificateChanged,
-                DeviceStatus.Unreachable => "Timeout after 10 s",
+                DeviceStatus.Unreachable => "Timeout after 3 s",
                 _ => null,
             };
             IReadOnlyList<LiveViewSource> sources = error is null ? await ListLiveViewSourcesAsync(device.Id, ct).ConfigureAwait(false) : [];
