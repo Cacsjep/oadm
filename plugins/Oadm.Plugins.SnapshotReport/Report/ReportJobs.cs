@@ -197,10 +197,18 @@ public sealed partial class ReportJobs : IDisposable
 #pragma warning restore CA1031
         {
             job.State = ReportJobStates.Failed;
-            job.Error = ex.Message;
+            job.Error = FailureText(ex);
             LogReportFailed(ex, job.Id);
         }
     }
+
+    /// <summary>The page's text for a failed report: never empty (a missing assembly once came with no message).</summary>
+    internal static string FailureText(Exception ex) => ex switch
+    {
+        FileNotFoundException { FileName: { Length: > 0 } file } => "A file the report needs is missing: " + file,
+        _ when !string.IsNullOrWhiteSpace(ex.Message) => ex.Message,
+        _ => ex.GetType().Name,
+    };
 
     /// <summary>
     /// Snapshot size of a report: the requested size, capped for large reports so that thousands of snapshots stay

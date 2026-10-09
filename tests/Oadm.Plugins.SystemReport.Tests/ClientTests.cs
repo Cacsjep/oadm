@@ -135,6 +135,7 @@ public sealed class ClientTests : IDisposable
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // time budget
     public void Five_thousand_devices_update_by_id()
     {
         var devices = Enumerable.Range(0, 5000).Select(i => (IDeviceInfo)new FakeDevice { Address = $"10.0.{i / 256}.{i % 256}", Serial = $"ACCC8E{i:X6}" }).ToList();

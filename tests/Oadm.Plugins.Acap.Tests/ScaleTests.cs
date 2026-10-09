@@ -32,6 +32,7 @@ public sealed class ScaleTests : IDisposable
         })];
 
     [Fact]
+    [Trait("Category", "Timing")] // time budget
     public async Task Dialog_with_5000_devices_checks_a_bounded_sample()
     {
         var devices = Devices();
@@ -59,6 +60,7 @@ public sealed class ScaleTests : IDisposable
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // time budget
     public void Sample_takes_one_device_per_model_and_firmware_first()
     {
         var choices = Devices().Select(d => new DeviceChoice(d)).ToList();

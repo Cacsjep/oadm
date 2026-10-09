@@ -110,6 +110,7 @@ public sealed class JobTests : IDisposable
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // the peak is reached only while 80 ms downloads overlap
     public async Task At_most_four_devices_download_at_the_same_time()
     {
         var ids = new List<Guid>();
@@ -240,6 +241,7 @@ public sealed class JobTests : IDisposable
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // time budget
     public async Task Five_thousand_devices_start_at_once_and_report_their_changes_compactly()
     {
         var ids = new List<Guid>();

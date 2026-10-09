@@ -87,6 +87,7 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // fake clock stepped against real delays
     public async Task RunningServiceDoesAFullRefreshAfterTenMinutes()
     {
         var device = await AddAsync(DeviceStatus.Ok);

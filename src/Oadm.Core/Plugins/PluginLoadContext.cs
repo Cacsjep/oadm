@@ -6,16 +6,20 @@ namespace Oadm.Core.Plugins;
 /// <summary>
 /// Collectible load context for one plugin folder. Shared contract assemblies (the Oadm SDKs
 /// and Microsoft.Extensions.*) always resolve from the host so interface type identity holds;
-/// everything else is resolved from the plugin folder via its .deps.json, falling back to the host.
+/// everything else is resolved from the plugin folder via its .deps.json, then by file name in the plugin folder (a
+/// published .deps.json can lack a package's runtime list: the installed 1.2.0 Snapshot report could not find MigraDoc),
+/// falling back to the host.
 /// </summary>
 public sealed class PluginLoadContext : AssemblyLoadContext
 {
     private readonly AssemblyDependencyResolver _resolver;
+    private readonly string _directory;
 
     public PluginLoadContext(string mainAssemblyPath, string name)
         : base(name, isCollectible: true)
     {
         _resolver = new AssemblyDependencyResolver(mainAssemblyPath);
+        _directory = Path.GetDirectoryName(Path.GetFullPath(mainAssemblyPath))!;
     }
 
     /// <summary>True for assemblies that must come from the host, never from a plugin folder.</summary>
@@ -58,8 +62,20 @@ public sealed class PluginLoadContext : AssemblyLoadContext
             return null; // Default context.
         }
 
-        var path = _resolver.ResolveAssemblyToPath(assemblyName);
+        var path = _resolver.ResolveAssemblyToPath(assemblyName) ?? InPluginFolder(assemblyName);
         return path is null ? null : LoadFromAssemblyPath(path);
+    }
+
+    /// <summary>"&lt;name&gt;.dll" next to the plugin when it exists, else null (then the host resolves it).</summary>
+    private string? InPluginFolder(AssemblyName assemblyName)
+    {
+        if (string.IsNullOrEmpty(assemblyName.Name) || assemblyName.Name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            return null;
+        }
+
+        var candidate = Path.Combine(_directory, assemblyName.Name + ".dll");
+        return File.Exists(candidate) ? candidate : null;
     }
 
     protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)

@@ -183,6 +183,7 @@ error, anything else comes from dotnet or the app. If the execution policy block
 | Category | Command | Content |
 |---|---|---|
 | Unit (no category) | `manage test unit` | Fast, no network, no devices; what CI runs |
+| `Timing` | `manage test timing` | Depend on real elapsed time or machine speed; part of `manage test unit`, not run by CI |
 | `Perf` | `manage test perf` | Scale tests (5,000 devices, 50,000 tasks) with time budgets for a developer machine |
 | `Hardware` | `manage test hardware` | Read-only tests against your devices in `dev-cameras.yaml` |
 | `HardwareWrite` | never from `manage` | Tests that change a device; run only on purpose against a test device |

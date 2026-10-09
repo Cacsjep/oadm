@@ -1,7 +1,8 @@
 name: release
 
 # The one CI workflow (replaces ci.yml and package.yml). Runs only for release tags (v0.0.1, v1.2.0, ...):
-#   1. tests      build and unit tests on Windows, Linux and macOS (like "manage test unit"; hang detection 5 min)
+#   1. tests      build and unit tests on Windows, Linux and macOS (like "manage test unit" without Timing tests; hang
+#                 detection 5 min)
 #   2. installers MSI (Windows), .deb packages (Linux amd64), .pkg (macOS Intel), built with "manage package"; the MSI
 #                 and the .deb packages are installed, checked and removed again, both as "Server and client" and as
 #                 "Client only"; the .pkg is checked without installing it
@@ -29,20 +30,21 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
       - run: dotnet build Oadm.sln -c Release
       # Unit tests only (like manage test unit): Perf tests have time budgets made for a developer machine and run with
-      # manage test perf; hardware tests need real devices.
-      # One second run when the first fails: shared CI runners are slow and busy, and a timing hiccup must not block a
-      # release; a real failure fails twice. The first run's failures stay visible as a warning.
+      # manage test perf; hardware tests need real devices. Timing tests depend on real elapsed time or machine speed and
+      # failed again and again on the slow, busy shared runners (macOS): they run locally only (manage test timing).
+      # One second run when the first fails: a hiccup in a test not marked Timing must not block a release; a real
+      # failure fails twice. The first run's failures stay visible as a warning.
       - shell: bash
         run: |
-          tests() { dotnet test Oadm.sln -c Release --no-build --filter "Category!=Hardware&Category!=Perf&Category!=HardwareWrite" --blame-hang-timeout 5m; }
+          tests() { dotnet test Oadm.sln -c Release --no-build --filter "Category!=Hardware&Category!=Perf&Category!=HardwareWrite&Category!=Timing" --blame-hang-timeout 5m; }
           if ! tests; then
             echo "::warning::Tests failed on the first run; running them again."
             tests
@@ -62,10 +64,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
@@ -298,7 +300,7 @@ jobs:
           echo "client only: install, decoder, remove ok"
 
       - name: Upload
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: oadm-${{ steps.version.outputs.version }}-${{ matrix.rid }}
           path: artifacts/packages/*
@@ -313,14 +315,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           sparse-checkout: CHANGELOG.md
           sparse-checkout-cone-mode: false
 
       - name: Download installers
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: installers
           merge-multiple: true

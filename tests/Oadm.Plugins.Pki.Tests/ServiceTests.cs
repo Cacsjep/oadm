@@ -360,6 +360,7 @@ public sealed class ServiceTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // time budget
     public void Issued_counts_for_5000_devices_are_one_pass()
     {
         var now = DateTime.UtcNow;

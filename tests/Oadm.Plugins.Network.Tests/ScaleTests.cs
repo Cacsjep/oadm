@@ -33,6 +33,7 @@ public sealed class ScaleTests
         [.. devices.Select((d, i) => new AddressStatus(string.Create(CultureInfo.InvariantCulture, $"2001:db8::1:{i:x}"), d.Id, "P3265-V"))];
 
     [Fact]
+    [Trait("Category", "Timing")] // time budget
     public void Ipv6_conflicts_of_5000_rows_against_5000_managed_devices_are_linear()
     {
         var devices = Devices(Count);
@@ -67,6 +68,7 @@ public sealed class ScaleTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // time budget
     public void Ipv4_conflicts_of_5000_rows_are_linear()
     {
         var devices = Devices(Count);

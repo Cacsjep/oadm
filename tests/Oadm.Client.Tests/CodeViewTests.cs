@@ -193,6 +193,7 @@ public sealed class CodeViewTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // time budget
     public void Large_bodies_are_formatted_but_shown_without_colors_above_the_limit()
     {
         var json = new StringBuilder("[");
@@ -227,6 +228,7 @@ public sealed class CodeViewTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")]
     public void Highlighting_a_body_of_the_size_limit_is_fast()
     {
         var json = new StringBuilder("{");

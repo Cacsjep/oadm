@@ -68,6 +68,7 @@ public sealed class DeviceListCsvTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")]
     public void Five_thousand_devices_are_written_fast()
     {
         List<DeviceRowViewModel> rows = Enumerable.Range(0, 5000)

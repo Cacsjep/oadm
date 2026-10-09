@@ -94,6 +94,7 @@ public sealed class PageViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // 300 ms query timeout
     public async Task Upstream_field_errors_stay_under_the_field_and_block_saving()
     {
         var calls = 0;
@@ -199,6 +200,7 @@ public static class HeadlessEntry
 public sealed class HeadlessPageTests
 {
     [Fact]
+    [Trait("Category", "Timing")] // 200 ms answers, real-time refill
     public async Task Page_renders_running_with_requests_and_with_errors()
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");

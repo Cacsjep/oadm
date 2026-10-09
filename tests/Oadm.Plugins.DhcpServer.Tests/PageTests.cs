@@ -236,6 +236,7 @@ public sealed class PageViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Timing")]
     public void Five_thousand_leases_load_search_update_and_resolve_device_names_fast()
     {
         var now = DateTime.UtcNow;

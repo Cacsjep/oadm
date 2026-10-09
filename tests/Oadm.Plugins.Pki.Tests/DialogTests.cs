@@ -153,6 +153,7 @@ public sealed class CertificatesViewModelTests(ITestOutputHelper output)
     }
 
     [Fact]
+    [Trait("Category", "Timing")]
     public async Task Five_thousand_devices_summary_and_filter_stay_fast()
     {
         // The unit-run variant of the scale check: 5,000 devices with a short certificate list each.
@@ -294,6 +295,7 @@ public sealed class InstallCaViewModelTests(ITestOutputHelper output)
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // time budget
     public async Task Install_confirms_and_returns_the_usable_certificates_for_5000_devices()
     {
         using var root = TestCa.Root("Acme Root CA");

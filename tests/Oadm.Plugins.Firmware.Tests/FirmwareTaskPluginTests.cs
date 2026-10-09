@@ -429,6 +429,7 @@ public sealed class FirmwareTaskPluginTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // cancels after 100 ms, expected in a later step
     public async Task Cancellation_while_waiting_surfaces_as_cancellation()
     {
         var (ctx, device, payload, _) = Setup();

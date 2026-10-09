@@ -205,6 +205,7 @@ public sealed class SnapshotServiceTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // the peak is reached only while 80 ms requests overlap
     public async Task At_most_four_snapshots_run_at_the_same_time()
     {
         var device = new FakeDevice();

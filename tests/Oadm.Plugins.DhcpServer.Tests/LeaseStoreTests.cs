@@ -123,6 +123,7 @@ public sealed class LeaseStoreTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")]
     public void Five_thousand_leases_allocate_fast()
     {
         var pool = new AddressPool(Ip.Of("10.0.0.1"), Ip.Of("10.0.255.254"), new HashSet<uint>());

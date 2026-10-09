@@ -97,6 +97,7 @@ public sealed class RestartTaskPluginTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")]
     public async Task TimesOutWhenTheDeviceNeverComesBack()
     {
         var vapix = new FakeVapixClient { Answers = n => n == 1 };
