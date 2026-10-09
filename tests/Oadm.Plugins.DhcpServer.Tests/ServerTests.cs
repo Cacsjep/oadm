@@ -297,7 +297,9 @@ public sealed class ServerTests : IAsyncLifetime
             }
         }
 
-        Assert.Equal(10, answered); // burst of 10, then one every 3 s
+        // Burst of 10, then one every 3 s: the 20 unanswered sends wait 100 ms each, so a slow machine may pass 3 s and
+        // get one refill.
+        Assert.InRange(answered, 10, 11);
     }
 
     [Fact]
