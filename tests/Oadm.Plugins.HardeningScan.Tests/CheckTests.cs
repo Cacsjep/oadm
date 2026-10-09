@@ -282,8 +282,9 @@ public sealed class CheckTests
     [Fact]
     public void Cache_only_results_keep_the_version_uart_and_certificate()
     {
-        var device = new TestDevice { CertTrustName = "Trusted", CertNotAfterUtc = DateTime.UtcNow.AddDays(10) };
-        var results = HardeningChecks.CacheOnly(device, ScanLevel.Extended, "Credentials required - the device rejects the stored credentials", DateTimeOffset.UtcNow).ToDictionary(r => r.Id);
+        var now = new DateTimeOffset(2026, 10, 9, 12, 0, 0, TimeSpan.Zero); // one fixed time: two clock reads can be equal
+        var device = new TestDevice { CertTrustName = "Trusted", CertNotAfterUtc = now.UtcDateTime.AddDays(9.5) };
+        var results = HardeningChecks.CacheOnly(device, ScanLevel.Extended, "Credentials required - the device rejects the stored credentials", now).ToDictionary(r => r.Id);
         Expect(results, HardeningCatalog.AxisOs, CheckState.Info);
         Expect(results, HardeningCatalog.Uart, CheckState.Pass);
         Expect(results, HardeningCatalog.Certificate, CheckState.Warn, "Trusted certificate, expires in 9 days");

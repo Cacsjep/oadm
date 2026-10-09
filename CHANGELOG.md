@@ -34,6 +34,7 @@ version and date, and the release workflow copies it into the GitHub release.
 ### Changed
 
 - Shorter, plainer texts across the app.
+- Live view: no "Live" label while the picture plays; codec, resolution and frame rate stay.
 - Clearer layout: Address first in the device grid, colour only for warnings and errors, red buttons for delete and
   remove, longer task names, readable failure reasons, and a More menu when the toolbar does not fit.
 
