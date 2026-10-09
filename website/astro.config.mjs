@@ -31,7 +31,6 @@ export default defineConfig({
 					items: [
 						{ label: 'Install', slug: 'start/install' },
 						{ label: 'First start', slug: 'start/first-start' },
-						{ label: 'Coming from ADM', slug: 'start/coming-from-adm' },
 					],
 				},
 				{
