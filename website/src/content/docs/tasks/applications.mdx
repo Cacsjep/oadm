@@ -1,0 +1,61 @@
+---
+title: Applications (ACAP)
+description: Install, upgrade, start, stop and remove ACAP applications on many devices.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import shot from '../../../assets/screens/acap-dialog-apps.png';
+
+**Applications (ACAP)** shows the applications on a device and installs or controls them on every selected device. It
+is in the context menu under **Applications**.
+
+<Image src={shot} alt="The Applications dialog with the installed applications and the package preview" class="screen" />
+
+## Install or upgrade
+
+<Steps>
+
+1. Select the devices, right-click and choose **Applications** > **Applications (ACAP)**.
+2. Click **Install or upgrade** and choose the `.eap` file.
+3. The device table shows per device in **Result** whether it is an install, an upgrade, a reinstall or a downgrade,
+   and any problem.
+   The preview reads up to 25 devices. Other rows say "Checked at install".
+4. Turn on **Start after install** if the application should run right away. Turn on **Allow downgrade** to install an
+   older version.
+5. Click **Install**.
+
+</Steps>
+
+## Start, stop or remove
+
+**Installed applications** lists the applications of the first selected device. With several devices, choose the
+device to show. Select an application and click **Start**, **Stop** or **Remove**. The action runs on every selected
+device. **Remove** asks for confirmation below the list: **Keep** or **Remove**.
+
+A device that already is in the requested state is left alone. A device without the application ends with a warning.
+
+## What OADM checks first
+
+Before anything is uploaded, OADM reads the package and the device and refuses (Nothing was changed) when:
+
+- the package is not a valid `.eap` file,
+- the package is built for another processor type,
+- the device's AXIS OS is outside the versions the package supports,
+- the package runs as root and the device has AXIS OS 12 or later,
+- the package is older than the installed version and **Allow downgrade** is off,
+- the application is part of AXIS OS (bundled), for **Remove**.
+
+The dialog warns when the device accepts only signed applications or when the vendor differs from the installed one.
+The device checks the signature itself.
+
+## Steps
+
+- Install: Check compatibility, Read package, Read device info, Read SDK version, Read unsigned application setting,
+  Read installed applications, Check package, Upload package, Verify installation, and with **Start after install**
+  Start application and Verify application state.
+- Remove, start, stop: Check compatibility, Read installed applications, Remove application (or Start, Stop), Verify.
+
+<Aside>
+AXIS OS 13 accepts only signed applications.
+</Aside>

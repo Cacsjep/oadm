@@ -1,0 +1,53 @@
+---
+title: OADM
+description: Open source alternative to AXIS Device Manager for Windows, Linux and macOS.
+template: splash
+editUrl: false
+head:
+  - tag: title
+    content: OADM - Open AXIS Device Management
+hero:
+  title: Extensible. Feature-rich. Cross‑platform.<br />Open source AXIS device management.
+  tagline: Runs on Windows, Linux and macOS. Same workflows as AXIS Device Manager, and a lot more.<span class="independent">An independent open source project. It is not affiliated with, sponsored by or endorsed by Axis Communications.</span>
+---
+
+import { Image } from 'astro:assets';
+import Downloads from '../../components/Downloads.astro';
+import devices from '../../assets/screens/client-liveview.png';
+import snapshotReport from '../../assets/screens/snapshot-report-page.png';
+import commander from '../../assets/screens/plugin-vapix-commander-rollout.png';
+import hardening from '../../assets/screens/hardening-scan-basic.png';
+import metadata from '../../assets/screens/metadata-monitor-page.png';
+import tags from '../../assets/screens/client-tags-group-mode.png';
+import dhcp from '../../assets/screens/dhcp-server-page.png';
+
+<Downloads />
+
+<Image src={devices} alt="The Devices page with the live view next to the device list" class="screen hero-screen" />
+
+<p class="section-lead">Everything you use in AXIS Device Manager, plus what it never had.</p>
+
+<div class="extras">
+	<a href="devices/live-view/"><strong>Live view</strong><span>Video next to the device list, every sensor and view area.</span></a>
+	<a href="tools/snapshot-report/"><strong>Snapshot report</strong><span>Check every camera at a glance, export a PDF for the customer.</span></a>
+	<a href="tools/vapix-commander/"><strong>VAPIX Commander</strong><span>Any VAPIX command, rolled out to hundreds of devices.</span></a>
+	<a href="tools/hardening-scan/"><strong>Hardening scan</strong><span>Every device against the AXIS OS Hardening Guide.</span></a>
+	<a href="tools/metadata-monitor/"><strong>Metadata Monitor</strong><span>Watch the events a camera sends, live.</span></a>
+	<a href="tools/ntp-server/"><strong>NTP and DHCP server</strong><span>Time and addresses for sites without infrastructure.</span></a>
+	<a href="devices/tags/"><strong>Tags</strong><span>Your own labels, search and group the list by them.</span></a>
+	<a href="start/install/"><strong>Windows, Linux, macOS</strong><span>Server and client on every system.</span></a>
+	<a href="dev/plugins/"><strong>Plugins</strong><span>Add your own tasks and pages with the same SDK.</span></a>
+	<a href="project/license/"><strong>Open source</strong><span>Apache-2.0, free for commercial use.</span></a>
+</div>
+
+<div class="gallery">
+	<figure><Image src={snapshotReport} alt="Snapshot report" class="screen" /><figcaption>Snapshot report</figcaption></figure>
+	<figure><Image src={commander} alt="VAPIX Commander" class="screen" /><figcaption>VAPIX Commander</figcaption></figure>
+	<figure><Image src={hardening} alt="Hardening scan" class="screen" /><figcaption>Hardening scan</figcaption></figure>
+	<figure><Image src={metadata} alt="Metadata Monitor" class="screen" /><figcaption>Metadata Monitor</figcaption></figure>
+	<figure><Image src={tags} alt="Device list grouped by tag" class="screen" /><figcaption>Tags</figcaption></figure>
+	<figure><Image src={dhcp} alt="DHCP server" class="screen" /><figcaption>DHCP server</figcaption></figure>
+</div>
+
+<p class="section-lead">Coming from ADM? <a href="start/coming-from-adm/">See where everything is</a>.</p>
+

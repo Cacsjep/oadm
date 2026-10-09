@@ -1,0 +1,64 @@
+---
+title: Users
+description: Add, change or remove user accounts on many devices.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import shot from '../../../assets/screens/plugin-users-add.png';
+
+**Users** manages the user accounts of the selected devices: add a user, change a password or role, or remove users.
+It is in the context menu under **Users**.
+
+<Image src={shot} alt="The Users dialog adding a user with role and PTZ control" class="screen" />
+
+## Run it
+
+<Steps>
+
+1. Select the devices, right-click and choose **Users** > **Users**.
+2. **Existing users** lists the accounts of the first selected device.
+3. Choose the **Action**:
+   - **Add**: **User name**, **Password**, **Confirm password**, **Role** and **PTZ control**.
+   - **Change**: the user name, then **Set a new password** and/or **Change role**. Click a user in the list to fill
+     the name.
+   - **Remove**: select the users in **Existing users** (Ctrl or Shift for several).
+4. Click **Add user**, **Change user** or **Remove users**. Removing asks for confirmation.
+
+</Steps>
+
+Roles are the same as on the device: **Administrator**, **Operator** and **Viewer**, each with or without **PTZ
+control**. User names have 1 to 14 characters: a-z, A-Z, 0-9.
+
+## Password rules
+
+The hint below the password shows the rule of the device:
+
+- no rule: 1 to 64 characters,
+- length: at least 15 characters,
+- complex: at least 12 characters with upper case, lower case, a digit and a special character.
+
+The device checks the password again.
+
+## What OADM checks first
+
+- The device supports user management.
+- The password matches the device's rule.
+- **No lock-out**: OADM never removes, demotes or changes the password of the account it uses itself, and never
+  removes or demotes the last administrator. On AXIS OS older than 11.5, `root` cannot be removed. In **Remove** mode
+  these accounts are greyed and cannot be selected.
+
+A refused device fails with "Nothing was changed". With several users to remove, every user is checked before the
+first one is removed.
+
+## Steps
+
+Check compatibility, Read password policy, Identify OADM account, Read users, Validate change, then one step per write
+(Add user joe, Remove user joe, Remove user ann), Verify users.
+
+A user that already exists (Add) or is missing (Change, Remove) ends the task with a warning and nothing is written.
+
+<Aside>
+Passwords are never shown in task names, steps or logs. The **Tasks** pane says "Add user joe" or "Change password
+joe".
+</Aside>

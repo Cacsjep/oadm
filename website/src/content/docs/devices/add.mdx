@@ -1,0 +1,57 @@
+---
+title: Add devices
+description: Find devices, log in to them and add them in one step.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import scan from '../../../assets/screens/client-add-scan-finished.png';
+import importFile from '../../../assets/screens/client-add-import.png';
+
+Adding devices is one page, no wizard. OADM logs in to every device it finds with the passwords on your
+**Credentials** page, so most devices are ready to add right away.
+
+<Image src={scan} alt="Found devices with their login result" class="screen" />
+
+## Ways to find devices
+
+Click **Add** on the Devices page and choose:
+
+- **Discovery**: finds the Axis devices on the local network. Runs for 30 seconds (change it in Settings).
+- **Network range**: enter From and To, press **Scan**. Several ranges add to the same list.
+- **Add manually**: an IP address or host name, optionally with port and `https://`. Press **Find**.
+- **Import from file**: a CSV file (for example an export from OADM) or a text file with one address per line.
+
+**Stop** ends a running search; the devices found stay in the list. **Scan again** searches once more.
+Devices OADM already manages are not listed.
+
+## Login results
+
+| Result | What to do |
+|---|---|
+| Authenticated (user) | Ready. The row is checked. |
+| Login failed | Click the row or **Log in**, enter user name and password, **Retry**. A password that works is tried on the other failed devices too. |
+| Password not set | Factory default. **Set password** sets the first `root` password when you add the device. **Use for all factory-default devices** applies it to every one. |
+| Unreachable | The device does not answer, or did not identify itself as an Axis device. No password was sent to it. |
+
+<Steps>
+
+1. Check the devices you want. **Select all authenticated** checks every ready device.
+2. Click **Add 3 devices** in the footer. The page closes and the devices appear in the list.
+
+</Steps>
+
+## Import from a file
+
+<Image src={importFile} alt="Import from file with one row per line" class="screen" />
+
+- Columns: **Address** (or IP address, IP, Host name), optional **User name**, **Password** and **Tags**. Other columns
+  are ignored. Comma or semicolon.
+- A password without a user name is for `root`. Logins in the file are tried first and are never saved.
+- Up to 10,000 addresses and 2 MB per file. A line with a problem shows **Not added** and the reason in its row.
+- Tags in the file are given to the devices you add.
+
+<Aside type="tip">
+OADM only sends a password after the device answered like an Axis device, and tries HTTPS first. Passwords of
+devices you already manage are never tried on new devices.
+</Aside>

@@ -1,0 +1,66 @@
+---
+title: VAPIX Commander
+description: Send VAPIX commands to one device or roll them out to many.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import shot from '../../../assets/screens/plugin-vapix-commander-rollout.png';
+
+VAPIX Commander sends VAPIX requests to your devices. Pick ready-made commands from the library, fill in their fields
+and roll them out to any number of devices. Or send one request to one device and look at the answer.
+
+<Image src={shot} alt="VAPIX Commander with the library, the rollout set and the target devices" class="screen" />
+
+The page has three cards:
+
+- **Library**: the built-in commands and your saved commands, grouped by category.
+- **Rollout set** / **Raw request**: the commands to run, or one request you write yourself.
+- **Target devices**: the devices to run on, with a compatibility check per device.
+
+## Roll out commands
+
+<Steps>
+
+1. Open **VAPIX Commander** in the navigation rail.
+2. In the Library, click a command to add it to the rollout set. Add as many as you need.
+3. Select a row in the rollout set and fill in its fields. Errors show below the field while you type.
+4. In Target devices, check the devices. **Devices page selection** takes the devices you selected on the Devices page;
+   **Compatible** checks only the devices that support all commands.
+5. Leave **Stop on first error** on if the rollout should stop after the first failure.
+6. Click **Run on N devices** and confirm. Commands that change a device are listed in the confirmation. Dangerous
+   commands need a second confirmation.
+
+</Steps>
+
+Each device becomes one task in the Tasks pane below the page. Each command is one step with its result, for example
+"Product: P3265-V". A command the device does not support fails with "Nothing was sent".
+
+## Send one request
+
+<Steps>
+
+1. Switch to **Raw request**, or select a command in the library.
+2. Choose the device in **Send to**.
+3. Click **Send**.
+
+</Steps>
+
+The result shows the status, the time it took, the interpreted result, the request line, the answer and its headers.
+JSON and XML answers are shown formatted; **Raw** shows the exact text the device sent.
+
+**Save as command** keeps a raw request as your own command. Saved commands are stored on the server and shared by all
+clients. You can export them as a file and import them on another server.
+
+## Good to know
+
+- Requests always go to the device's own address. Paths that point to another host are refused.
+- Passwords in command fields are stored encrypted, never shown again and never exported. They show as `***` in
+  request lines.
+- The compatibility check uses the device information OADM already has. Before a command changes a device, the server
+  checks again with fresh data.
+- Commands that send and rollouts are written to the audit log.
+
+<Aside>
+Operators can use VAPIX Commander. No administrator rights are needed.
+</Aside>

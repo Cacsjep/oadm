@@ -1,0 +1,43 @@
+---
+title: First start
+description: Connect the client, create the first administrator and add your first devices.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import login from '../../../assets/screens/login-window.png';
+import firstAdmin from '../../../assets/screens/login-first-admin.png';
+
+<Steps>
+
+1. Install OADM on the computer that runs the server. The service starts on its own.
+
+2. Start the client. It connects to `localhost:5080`. For a server on another computer enter `<server>:5080`.
+
+   <Image src={login} alt="Login window" class="screen" />
+
+3. On the first connection the client shows the server's fingerprint. Compare it with the line "Server TLS certificate
+   fingerprint" in the server log, then confirm. The client remembers the server from now on.
+
+4. While the server has no users, the login window creates the **first administrator**. From another computer you
+   also need the setup code from `setup-code.txt` in the server's data folder (it is in the server log too).
+
+   <Image src={firstAdmin} alt="Create the first administrator" class="screen" />
+
+5. Open **Credentials** in the navigation rail and add the passwords you use on your devices.
+
+6. On the Devices page click **Add** and choose **Discovery**, **Network range**, **Add manually** or
+   **Import from file**. OADM logs in to every device it finds with your credentials. See
+   [Add devices](../../devices/add/).
+
+</Steps>
+
+<Aside type="tip">
+Add more people on the **Users** page. Operators work with devices and tasks; administrators also change settings,
+users and the servers. See [Users and roles](../../admin/users/).
+</Aside>
+
+## Start options
+
+- `--server <server>:5080` preselects a server in the login window.
+- **Remember me** keeps you logged in on this computer. The password is never saved.

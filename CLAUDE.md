@@ -112,6 +112,10 @@ runs CodeQL (C#) on pushes to main, pull requests and weekly; `pr.yml` builds an
 the passing check "tests ubuntu-latest" (administrators bypass); minimal issue templates (bug, feature) and pull request
 template (one line); checkout runs with `persist-credentials: false`, workflow permissions
 are `contents: read` except the release job (`contents: write`).
+Website (user decision 2026-10-09): landing page and user docs in `website/` with Astro Starlight (MkDocs Material is in
+maintenance mode), base `/oadm`, published to https://cacsjep.github.io/oadm/ by `pages.yml` on pushes to main that change
+`website/` (deploy job `pages: write`, `id-token: write`); npm versions pinned exactly, Dependabot npm group `website`;
+screenshots in `website/src/assets/screens/` come from the headless tests (`OADM_SCREENSHOT_DIR`), click to enlarge; dark only (no theme switch); the landing page has no top bar, its download buttons link the latest release files (Linux = both .deb); texts follow "Wording".
 
 Developer commands: one entry point per shell at the repo root, `./manage.sh` (bash) and
 `.\manage.ps1` (PowerShell 5.1/7), verb + target (`build`, `run`, `test`, `publish`, `package`, `clean`,

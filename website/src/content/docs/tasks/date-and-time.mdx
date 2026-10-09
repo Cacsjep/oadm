@@ -1,0 +1,59 @@
+---
+title: Date and time
+description: Set the time zone and time mode on many devices, like in ADM.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import shot from '../../../assets/screens/datetime-dialog-single.png';
+
+**Date and time** is the "Set date and time" dialog you know from AXIS Device Manager. It works on any number of
+devices. It is in the context menu under **Maintenance**.
+
+<Image src={shot} alt="The Set date and time dialog with device time, time zone and time mode" class="screen" />
+
+## Run it
+
+<Steps>
+
+1. Select the devices, right-click and choose **Maintenance** > **Date and time**.
+2. **Device time** shows the clock of the first selected device, ticking live.
+3. Choose the **Time zone**. Type a city name to jump to it. Leave **Automatically adjust for daylight saving time
+   changes** on where daylight saving applies.
+4. Choose the **Time mode**:
+   - **Synchronize with server computer time**: the devices get the time and time zone of the OADM server. NTP is
+     turned off.
+   - **Synchronize with NTP server**: **Obtain from DHCP**, or up to 5 servers separated by commas. **Use NTS (Network
+     Time Security)** appears when a selected device supports it.
+   - **Set manually**: date and time in the device's time zone, or **Use this computer's time**. NTP is turned off.
+5. Click **OK**.
+
+</Steps>
+
+Like in ADM, **OK** always writes the time zone and the time mode to every selected device. There is no "keep
+unchanged". Values a device already has are skipped.
+
+The dialog opens with the first device's time zone and mode. **OK** stays disabled until a time zone is chosen and every
+field is valid. Hover it to see why.
+
+## Requirements
+
+- Setting the date and time needs the Time API (AXIS OS 9.30 or later). Older devices fail that step with "Nothing was
+  changed".
+- Time zone and NTP also work on older firmware, with one NTP server only.
+- NTS needs a device whose AXIS OS supports it. The check box is shown only then.
+
+The dialog notes below the chosen mode how many devices cannot do it, for example "500 of the selected devices have no
+Time API".
+
+## Steps
+
+Check compatibility, Read current time settings, Read NTP settings, Validate settings, Set time zone, Set NTP
+configuration or Turn off NTP, Set date and time, Verify time settings, Verify NTP settings.
+
+OADM reads every value back. A different value or a clock more than 3 seconds off ends the task with a warning.
+
+<Aside>
+To use OADM itself as the NTP server, turn on the [NTP server](../../tools/ntp-server/) and run **Maintenance** >
+**Use OADM as NTP server** on the devices.
+</Aside>

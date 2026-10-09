@@ -27,3 +27,11 @@ updates:
         patterns: ["Serilog*"]
       tests:
         patterns: ["xunit*", "NSubstitute", "coverlet.*"]
+
+  - package-ecosystem: npm
+    directory: /website
+    schedule:
+      interval: weekly
+    groups:
+      website:
+        patterns: ["*"]

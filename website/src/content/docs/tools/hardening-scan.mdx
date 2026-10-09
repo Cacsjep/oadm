@@ -1,0 +1,62 @@
+---
+title: Hardening scan
+description: Check every device against the AXIS OS hardening guide.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import shot from '../../../assets/screens/hardening-scan-basic.png';
+
+The Hardening scan checks your devices against the
+[AXIS OS Hardening Guide](https://help.axis.com/en-us/axis-os-hardening-guide) in its two levels, Basic and Extended.
+You see one column per check and a result per device: pass, warning, fail, could not be read, or does not apply.
+The scan only reads. It never changes a device.
+
+<Image src={shot} alt="The Hardening scan page with one column per check" class="screen" />
+
+## Scan your devices
+
+<Steps>
+
+1. Open **Hardening scan** in the navigation rail.
+2. Choose **Basic** or **Extended**.
+3. Click **Scan all**, or **Scan selected** to scan only the devices selected on the Devices page.
+4. Watch the progress row. **Stop** ends the scan; the devices already scanned keep their result.
+5. Click a device to see its checks in **Selected device**: the value found and the recommendation of the guide. Failed
+   checks come first.
+
+</Steps>
+
+Hover a result for the details. The summary line counts the devices that were scanned, pass, have warnings, failed or
+could not be reached. Use the status filter (Failed, Warnings, Not scanned) and the search box to find devices.
+
+**Export CSV** saves the shown devices with the result and value of every check.
+
+## What is checked
+
+Basic covers the checks of the guide that OADM can read from the network, for example user accounts, password rules,
+static IP address, time synchronization, SD card encryption, applications, SSH, discovery protocols, firewall and HTTPS
+ciphers. Extended adds certificates, remote syslog, SNMP, RTSPS and OAuth, plus HTTPS only, IEEE 802.1X, brute-force
+protection, access log, signed video and Network Time Security.
+
+Some rules to know:
+
+- SSH turned on fails the check.
+- The web interface, discovery protocols and DHCP turned on are warnings.
+- Bonjour turned on is a warning. Note that OADM's **Discovery** and the re-find of moved devices use it.
+- The AXIS OS version is shown for information only and is not rated.
+- Checks the guide lists but that cannot be checked over the network are not shown.
+
+The score is the number of passed checks out of the rated ones. A device passes when none of its checks is a warning or
+a failure.
+
+## Good to know
+
+- OADM scans 16 devices at a time.
+- Devices that are unreachable, need a login, have no password yet or have a changed certificate are not contacted.
+- The last result of every device is kept on the server and shown with its scan time, also after a restart.
+- A scan writes no audit entry.
+
+<Aside>
+Operators can run the Hardening scan. No administrator rights are needed.
+</Aside>

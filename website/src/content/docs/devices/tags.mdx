@@ -1,0 +1,37 @@
+---
+title: Tags
+description: Label devices and group the list by your labels.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import dialog from '../../../assets/screens/client-tags-dialog.png';
+import grouped from '../../../assets/screens/client-tags-group-mode.png';
+
+Tags are your own labels, for example "Building A" or "PTZ". Each tag has a color.
+
+<Steps>
+
+1. Select devices, right-click and choose **Tags**.
+2. Check the tags the devices should have. **New tag** creates one.
+3. Click **OK**.
+
+</Steps>
+
+<Image src={dialog} alt="Tags dialog" class="screen" />
+
+A check box shows a dash when only some of the selected devices have the tag. Click it once to give the tag to all.
+
+## Group by tag
+
+**Group by tag** in the toolbar shows one group per tag. A device with two tags appears in both groups. Devices
+without a tag are in **No tag** at the end.
+
+<Image src={grouped} alt="Device list grouped by tag" class="screen" />
+
+## Good to know
+
+- The search finds tags too.
+- **Export** writes a Tags column. **Import from file** reads one (tags separated by `;`).
+- Up to 20 tags per device, names up to 32 characters.
+- Operators tag devices and create tags. Renaming, recoloring and deleting a tag needs an administrator.

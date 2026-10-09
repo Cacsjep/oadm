@@ -1,0 +1,45 @@
+---
+title: System report
+description: Download the system reports of many devices in one ZIP file for Axis support.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import shot from '../../../assets/screens/system-report-dialog.png';
+
+Axis support usually asks for the system report of a device. **System report** downloads the system reports of all
+selected devices and saves them in one ZIP file. It works like "Get system report" in AXIS Device Manager.
+
+<Image src={shot} alt="The System report window with the download status of each device" class="screen" />
+
+## Download system reports
+
+<Steps>
+
+1. On the Devices page, select the devices.
+2. Click **System report** in the toolbar.
+3. Choose where to save the ZIP file. The default name is `oadm-system-reports-<date>.zip`.
+4. Watch the progress. Each device shows Waiting, Downloading, Done with the file size, or Failed with the reason.
+5. When all devices are done, OADM puts the reports into one file and saves it. The window shows how many reports were
+   saved and how many failed.
+
+</Steps>
+
+## What is in the ZIP file
+
+- One system report per device, unchanged, named after the address, MAC address, model and time.
+- For video devices the report includes a snapshot, as Axis support asks for.
+- `summary.txt`: when the file was made, one line per report, and the devices that failed with their reason.
+
+## Good to know
+
+- A system report takes about half a minute per device. OADM downloads four at a time.
+- The device account OADM uses must be an administrator. Otherwise the device answers "Forbidden - HTTP 403
+  (administrator rights are required)".
+- Devices that need a login, have no password yet or have a changed certificate are skipped with the reason.
+- **Cancel** or closing the window stops the download. The saved file is then incomplete; delete it.
+- The System report only reads from the devices. It never changes anything.
+
+<Aside>
+Operators can download system reports. No administrator rights in OADM are needed.
+</Aside>

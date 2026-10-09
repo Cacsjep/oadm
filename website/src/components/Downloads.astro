@@ -1,0 +1,93 @@
+---
+// Download buttons for the latest release. The links are read from GitHub when the site is built and again in the
+// browser, so a new release shows up without a website rebuild. Without either, they open the release page.
+import { Icon } from '@astrojs/starlight/components';
+
+const repo = 'Cacsjep/oadm';
+const releasePage = `https://github.com/${repo}/releases/latest`;
+
+type Asset = { name: string; browser_download_url: string };
+let version = '';
+let assets: Asset[] = [];
+try {
+	const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
+		headers: { Accept: 'application/vnd.github+json' },
+	});
+	if (response.ok) {
+		const release = await response.json();
+		version = release.tag_name ?? '';
+		assets = release.assets ?? [];
+	}
+} catch {
+	// Offline build: the buttons open the release page.
+}
+
+const find = (pattern: RegExp) => assets.find((a) => pattern.test(a.name))?.browser_download_url ?? releasePage;
+const links = {
+	windows: find(/win-x64\.msi$/),
+	macos: find(/osx-x64\.pkg$/),
+	server: find(/^oadm-server_.*\.deb$/),
+	client: find(/^oadm-client_.*\.deb$/),
+};
+---
+
+<div class="downloads not-content" data-repo={repo}>
+	<span class="dl-label">Download</span>
+	<div class="download-buttons">
+		<a class="dl" data-asset="win-x64\.msi$" href={links.windows}><Icon name="seti:windows" />Windows</a>
+		<a class="dl" data-linux data-asset="^oadm-server_.*\.deb$" data-client={links.client} href={links.server}><Icon name="linux" />Linux</a>
+		<a class="dl" data-asset="osx-x64\.pkg$" href={links.macos}><Icon name="apple" />macOS</a>
+	</div>
+	<p class="dl-meta">
+		<span class="dl-version">{version ? `Latest: ${version}` : 'Latest release'}</span>
+		<span aria-hidden="true">·</span>
+		<a href={releasePage}>All files and checksums</a>
+		<span aria-hidden="true">·</span>
+		<a href="start/install/">Install guide</a>
+	</p>
+	<div class="dl-social">
+		<a href={`https://github.com/${repo}`} aria-label="GitHub"><Icon name="github" /></a>
+		<a href="https://www.linkedin.com/in/christoph-acs-70150795/" aria-label="LinkedIn"><Icon name="linkedin" /></a>
+	</div>
+	<a class="dl dl-docs" href="start/install/"><Icon name="open-book" />Documentation</a>
+</div>
+
+<script>
+	// Refresh the links from the latest release in the browser.
+	const root = document.querySelector<HTMLElement>('.downloads');
+
+	// Linux has two packages: the button downloads the server and the client .deb.
+	root?.querySelector<HTMLAnchorElement>('a[data-linux]')?.addEventListener('click', (event) => {
+		const link = event.currentTarget as HTMLAnchorElement;
+		const client = link.dataset.client;
+		if (!client || client === link.href || !client.endsWith('.deb')) return;
+		event.preventDefault();
+		for (const url of [link.href, client]) {
+			const frame = document.createElement('iframe');
+			frame.hidden = true;
+			frame.src = url;
+			document.body.append(frame);
+			setTimeout(() => frame.remove(), 60_000);
+		}
+	});
+
+	if (root) {
+		fetch(`https://api.github.com/repos/${root.dataset.repo}/releases/latest`)
+			.then((r) => (r.ok ? r.json() : null))
+			.then((release) => {
+				if (!release) return;
+				const assets: { name: string; browser_download_url: string }[] = release.assets ?? [];
+				root.querySelectorAll<HTMLAnchorElement>('a[data-asset]').forEach((link) => {
+					const pattern = new RegExp(link.dataset.asset ?? '^$');
+					const asset = assets.find((a) => pattern.test(a.name));
+					if (asset) link.href = asset.browser_download_url;
+				});
+				const client = assets.find((a) => /^oadm-client_.*\.deb$/.test(a.name));
+				const linux = root.querySelector<HTMLAnchorElement>('a[data-linux]');
+				if (client && linux) linux.dataset.client = client.browser_download_url;
+				const label = root.querySelector('.dl-version');
+				if (label && release.tag_name) label.textContent = `Latest: ${release.tag_name}`;
+			})
+			.catch(() => {});
+	}
+</script>

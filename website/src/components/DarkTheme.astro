@@ -1,0 +1,8 @@
+---
+// OADM is dark only, like the app: always the dark theme, no theme switch (replaces Starlight's ThemeProvider).
+---
+
+<script is:inline>
+	document.documentElement.dataset.theme = 'dark';
+	window.StarlightThemeProvider = { updatePickers() {} };
+</script>

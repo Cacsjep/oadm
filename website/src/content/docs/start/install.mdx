@@ -1,0 +1,79 @@
+---
+title: Install
+description: Install the OADM server and client on Windows, Linux or macOS.
+---
+
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+OADM has two parts:
+
+- **Server**: runs as a service, talks to the devices, keeps the device list, passwords and tasks.
+- **Client**: the app you work in. It connects to a server on the same computer or elsewhere.
+
+Download the installer for your system from the [latest release](https://github.com/Cacsjep/oadm/releases/latest).
+Every installer offers **Server and client** (default) or **Client only**, for a computer that connects to a server
+elsewhere. Uninstalling keeps the data folder (devices, credentials, settings, PKI).
+
+<Aside>
+The installers are not signed yet. Check a download against `SHA256SUMS.txt` of the release.
+</Aside>
+
+<Tabs syncKey="os">
+<TabItem label="Windows">
+
+<Steps>
+
+1. Download `OADM-<version>-win-x64.msi` and double-click it.
+2. Accept the terms and the license, then choose **Server and client** or **Client only**.
+3. Finish. With the server, the Windows service **OADM Server** starts now and on every boot.
+
+</Steps>
+
+- Client: Start menu > **OADM**.
+- Data folder: `%ProgramData%\OADM`.
+- Uninstall: Settings > Apps > OADM.
+- Silent install of the client only: `msiexec /i OADM-<version>-win-x64.msi ADDLOCAL=Client /qn`.
+
+</TabItem>
+<TabItem label="Linux">
+
+Debian and Ubuntu, x64. Download the `.deb` files you need and install them:
+
+```sh
+sudo apt install ./oadm-server_*.deb ./oadm-client_*.deb   # server and client
+sudo apt install ./oadm-server_*.deb                       # server only
+sudo apt install ./oadm-client_*.deb                       # client only
+```
+
+- Server: systemd service `oadm-server` (`sudo systemctl status oadm-server`).
+- Client: app menu > **OADM**, or `oadm-client`.
+- Data folder: `/var/lib/oadm`.
+- Uninstall: `sudo apt remove oadm-server oadm-client`.
+
+<Aside>
+The notice "Download is performed unsandboxed as root ... couldn't be accessed by user '_apt'" is harmless: apt cannot
+read your private home folder and reads the file as root instead. To avoid it, install from `/tmp`.
+</Aside>
+
+</TabItem>
+<TabItem label="macOS">
+
+Intel Macs (x64).
+
+<Steps>
+
+1. Download `OADM-<version>-osx-x64.pkg`.
+2. The package is not signed yet: right-click it, choose **Open** and confirm.
+3. For the client only, click **Customize** and clear **OADM server**.
+
+</Steps>
+
+- Server: background service `com.oadm.server`.
+- Client: **Applications > OADM**.
+- Data folder: `/Library/Application Support/OADM`.
+- Uninstall: `sudo /Applications/OADM.app/Contents/Resources/uninstall-oadm.sh`.
+
+</TabItem>
+</Tabs>
+
+Next: [First start](../first-start/).
