@@ -4,6 +4,26 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
 version and date, and the release workflow copies it into the GitHub release.
 
+## [1.4.0] - 2026-10-09
+
+### Added
+
+- **Image Health Dashboard**: the status of AXIS Image Health Analytics on every camera in one table: blur, block,
+  redirect, under-exposure and unsuitability as OK, Pending, Detected or Off, plus "Not running" for cameras where the
+  app is stopped. The page checks the cameras when it opens and on **Refresh**; **Auto refresh** checks every 10
+  seconds while the page is open. Nothing runs in the background. Off by default.
+- **Plugins** on the Settings page: every plugin with what it adds and its version. Administrators turn plugins on or
+  off; the change applies at once and is in the audit log. A plugin that is off shows no page, menu entry or toolbar
+  button. Plugin SDK: `enabledByDefault` in `plugin.json`.
+- Metadata Monitor: **RTSP port** for cameras behind a router that forwards RTSP to another port. OADM remembers it
+  per camera.
+
+### Changed
+
+- The **Hardening scan** is off by default. Turn it on under Settings > Plugins.
+- Snapshot report: a snapshot that does not arrive within 3 seconds (was 10) counts as failed, so offline cameras no
+  longer slow down the page.
+
 ## [1.3.0] - 2026-10-09
 
 ### Fixed
@@ -102,6 +122,7 @@ version and date, and the release workflow copies it into the GitHub release.
 - The splash logo's lens is centered in its ring.
 - The server publish no longer contains an IIS `web.config` and other unused web files.
 
+[1.4.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.4.0
 [1.3.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.3.0
 [1.2.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.2.0
 [1.1.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.1.0
