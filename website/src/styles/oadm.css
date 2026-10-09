@@ -61,8 +61,13 @@ html[data-has-hero] header site-search {
 	@supports (animation-timeline: scroll()) {
 		html[data-has-hero] body::before,
 		html[data-has-hero] body::after {
-			animation: oadm-mark-turn linear both;
-			animation-timeline: scroll(root block);
+			/* Longhands and a variable: the build minifier would otherwise merge the timeline into the animation
+			   shorthand, which browsers reject, and the mark would not turn. */
+			--oadm-mark-timeline: scroll(root block);
+			animation-name: oadm-mark-turn;
+			animation-timing-function: linear;
+			animation-fill-mode: both;
+			animation-timeline: var(--oadm-mark-timeline);
 		}
 	}
 }
