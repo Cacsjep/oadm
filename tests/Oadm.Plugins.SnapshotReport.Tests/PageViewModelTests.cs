@@ -29,6 +29,27 @@ public sealed class PageViewModelTests
     }
 
     [Fact]
+    public async Task Nothing_is_read_until_Create_snapshots_is_pressed()
+    {
+        using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5)) { SnapshotDelay = TimeSpan.Zero };
+        using var vm = new SnapshotReportViewModel(new FakeApiContext(api), new FakeUi(), new ExportSettingsStore(TempFiles.NewSettingsPath()));
+
+        Assert.True(vm.IsWaitingForCreate);
+        Assert.Empty(vm.Tiles);
+        Assert.False(vm.IsEmpty);
+        Assert.Equal(string.Empty, vm.StatusLine);
+        Assert.True(vm.CreateSnapshotsCommand.CanExecute(null));
+        Assert.False(vm.RefreshAllCommand.CanExecute(null));
+
+        await vm.CreateSnapshotsCommand.ExecuteAsync(null);
+
+        Assert.False(vm.IsWaitingForCreate);
+        Assert.NotEmpty(vm.Tiles);
+        Assert.False(vm.CreateSnapshotsCommand.CanExecute(null));
+        Assert.True(vm.RefreshAllCommand.CanExecute(null));
+    }
+
+    [Fact]
     public async Task Refresh_lists_tiles_loads_every_snapshot_and_reports_progress()
     {
         using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5)) { SnapshotDelay = TimeSpan.Zero };

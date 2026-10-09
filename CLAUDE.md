@@ -1338,7 +1338,8 @@ Read-only for devices (param.cgi reads and image.cgi snapshots).
   PDF) and returns its status; `reportStatus` ({jobId}) -> state running/done/failed, done/total,
   message, size, pages, failed; `readReport` ({jobId, offset}) -> 2 MB base64 chunks (a report is larger
   than one gRPC message); `deleteReport`. Jobs live in server memory, 30 minutes after last use.
-- Page: toolbar Refresh all, "Select all" check box, **Export PDF** (primary); picture size slider labeled "Size"
+- Page: toolbar **Create snapshots** (user decision 2026-10-09: opening the page contacts no device; the first load starts only
+  with this button, the page shows "No snapshots yet" until then; disabled afterwards), Refresh all (enabled after the first load), "Select all" check box, **Export PDF** (primary); picture size slider labeled "Size"
   with its px value (200-720 px) and `ui:SearchBox` on the right; status line "14 pictures from 9 cameras · 13 selected
   · 3 failed"; `ui:ProgressRow` while loading ("Loading snapshots 5 of 14", 4 at a time). Tiles
   (`Border.tile`, accent outline on hover or keyboard focus; selection is the check box only) in a wrap panel: picture (`Button.picture` on

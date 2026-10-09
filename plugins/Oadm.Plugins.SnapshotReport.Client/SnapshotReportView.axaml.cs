@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 
@@ -9,7 +8,6 @@ namespace Oadm.Plugins.SnapshotReport.Client;
 public partial class SnapshotReportView : UserControl, ISnapshotReportUi
 {
     private readonly Dictionary<Control, SnapshotTileRow> _realized = [];
-    private bool _loadedOnce;
 
     public SnapshotReportView()
     {
@@ -39,19 +37,6 @@ public partial class SnapshotReportView : UserControl, ISnapshotReportUi
                 vm.AvailableWidth = e.NewSize.Width;
             }
         };
-    }
-
-    /// <summary>Loads the snapshots the first time the page is shown (the rail creates the view at connect).</summary>
-    public bool LoadOnFirstShow { get; set; } = true;
-
-    protected override void OnLoaded(RoutedEventArgs e)
-    {
-        base.OnLoaded(e);
-        if (!_loadedOnce && LoadOnFirstShow && DataContext is SnapshotReportViewModel vm)
-        {
-            _loadedOnce = true;
-            _ = vm.RefreshAllAsync();
-        }
     }
 
     public IImage? Decode(byte[] jpeg, int decodeWidth)

@@ -53,7 +53,7 @@ public sealed class HeadlessPageTests
         using var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
         var (tiles, errors) = await session.Dispatch(async () =>
         {
-            var view = new SnapshotReportView { LoadOnFirstShow = false };
+            var view = new SnapshotReportView();
             var vm = new SnapshotReportViewModel(new FakeApiContext(api), view, settings);
             view.DataContext = vm;
             // Like the client shell: page title above one card that hosts the plugin view.
@@ -67,6 +67,8 @@ public sealed class HeadlessPageTests
             layout.Children.Add(card);
             var window = new Window { Width = 1500, Height = 980, Content = new Border { Padding = new Thickness(16), Child = layout } };
             window.Show();
+            Pump();
+            Capture(window, outDir, "snapshot-report-before-create.png");
             await vm.RefreshAllAsync();
             vm.Tiles.First(t => t.Title == "10.0.0.48 - View Area 2").IsSelected = false;
             Pump();

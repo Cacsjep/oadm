@@ -9,6 +9,8 @@
   <Grid RowDefinitions="Auto,Auto,Auto,*">
     <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
       <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+        <ui:ToolbarButton IconKey="snapshot" Text="Create snapshots" Command="{Binding CreateSnapshotsCommand}"
+                          ToolTip.Tip="Take a picture of every camera" />
         <ui:ToolbarButton IconKey="refresh" Text="Refresh all" Command="{Binding RefreshAllCommand}"
                           ToolTip.Tip="Read the video sources again and take new snapshots" />
         <ui:ToolbarSeparator />
@@ -99,6 +101,11 @@
 
       <TextBlock Classes="error" Text="{Binding ErrorMessage}" TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center"
                  IsVisible="{Binding HasError}" />
+      <StackPanel IsVisible="{Binding IsWaitingForCreate}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+        <ui:OadmIcon Data="{DynamicResource Icon.snapshot}" Width="32" Height="32" HorizontalAlignment="Center" />
+        <TextBlock Classes="sectionTitle" Text="No snapshots yet" HorizontalAlignment="Center" />
+        <TextBlock Classes="secondary" Text="Press Create snapshots to take a picture of every camera." HorizontalAlignment="Center" />
+      </StackPanel>
       <StackPanel IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
         <ui:OadmIcon Data="{DynamicResource Icon.snapshot}" Width="32" Height="32" HorizontalAlignment="Center" />
         <TextBlock Classes="sectionTitle" Text="No video devices" HorizontalAlignment="Center" />

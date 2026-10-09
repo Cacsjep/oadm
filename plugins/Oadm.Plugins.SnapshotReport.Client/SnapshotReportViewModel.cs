@@ -134,7 +134,19 @@ public sealed partial class SnapshotReportViewModel : ObservableObject, IDisposa
     [ObservableProperty]
     public partial bool IsAllSelected { get; set; }
 
-    public bool IsEmpty => !IsLoading && Tiles.Count == 0 && !HasError;
+    public bool IsEmpty => HasCreated && !IsLoading && Tiles.Count == 0 && !HasError;
+
+    /// <summary>
+    /// False until the user pressed Create snapshots: opening the page contacts no device (a site can have hundreds of
+    /// cameras; user decision 2026-10-09).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEmpty), nameof(IsWaitingForCreate), nameof(StatusLine))]
+    [NotifyCanExecuteChangedFor(nameof(CreateSnapshotsCommand), nameof(RefreshAllCommand))]
+    public partial bool HasCreated { get; private set; }
+
+    /// <summary>The page before Create snapshots: shows the prompt instead of the grid.</summary>
+    public bool IsWaitingForCreate => !HasCreated;
 
     public IEnumerable<SnapshotTileViewModel> SelectedTiles => Tiles.Where(t => t.IsSelected);
 
@@ -167,6 +179,11 @@ public sealed partial class SnapshotReportViewModel : ObservableObject, IDisposa
     {
         get
         {
+            if (!HasCreated)
+            {
+                return string.Empty;
+            }
+
             int selected = 0, failed = 0;
             foreach (var tile in Tiles)
             {
@@ -190,13 +207,18 @@ public sealed partial class SnapshotReportViewModel : ObservableObject, IDisposa
         }
     }
 
+    /// <summary>The first load, started only by the user (the page itself never contacts devices).</summary>
+    [RelayCommand(CanExecute = nameof(IsWaitingForCreate))]
+    private Task CreateSnapshotsAsync() => RefreshAllAsync();
+
     /// <summary>
     /// Lists the sources and loads the snapshots of the shown tiles (also "Refresh all"). Completes when every shown
     /// tile has its snapshot; the others load when they are scrolled into view.
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasCreated))]
     public async Task RefreshAllAsync()
     {
+        HasCreated = true;
         _loadCts?.Cancel();
         _loadCts?.Dispose();
         var cts = new CancellationTokenSource();

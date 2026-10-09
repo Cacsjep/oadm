@@ -404,7 +404,7 @@ public sealed class HeadlessScaleTests
         using var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
         var (tileControls, requests, rows, columns) = await session.Dispatch(async () =>
         {
-            var view = new SnapshotReportView { LoadOnFirstShow = false };
+            var view = new SnapshotReportView();
             var vm = new SnapshotReportViewModel(ctx, view, new ExportSettingsStore(TempFiles.NewSettingsPath()));
             view.DataContext = vm;
             var window = new Window { Width = 1500, Height = 980, Content = new Border { Padding = new Thickness(16), Child = view } };
