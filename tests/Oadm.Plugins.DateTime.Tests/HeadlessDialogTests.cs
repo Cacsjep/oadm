@@ -29,7 +29,7 @@ public sealed class HeadlessDialogTests
         var dataFolder = Path.Combine(Path.GetTempPath(), "oadm-datetime-headless-" + Guid.NewGuid().ToString("N"));
         App.Options = new AppOptions { UseFake = true, DataFolder = dataFolder };
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
-        using var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
 
         var (singleOk, multiErrors) = await session.Dispatch(async () =>
         {

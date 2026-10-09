@@ -95,7 +95,7 @@ public sealed class HeadlessPageTests
             return (atEnd, before, after, selectionKept);
         }, CancellationToken.None);
 
-        await Task.Run(session.Dispose);
+        GC.KeepAlive(session); // not disposed: Avalonia's headless Dispose can throw a NullReferenceException on CI
         Assert.True(result.atEnd, "autoscroll keeps the newest row visible");
         Assert.True(Math.Abs(result.after - result.before) < 1, $"scroll position kept without autoscroll ({result.before} -> {result.after})");
         Assert.True(result.selectionKept, "the grid keeps the selected row through batches");

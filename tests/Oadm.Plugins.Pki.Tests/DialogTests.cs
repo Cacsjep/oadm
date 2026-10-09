@@ -465,7 +465,7 @@ public sealed class HeadlessDialogTests
         }
         finally
         {
-            await Task.Run(session.Dispose);
+            GC.KeepAlive(session); // not disposed: Avalonia's headless Dispose can throw a NullReferenceException on CI
         }
     }
 

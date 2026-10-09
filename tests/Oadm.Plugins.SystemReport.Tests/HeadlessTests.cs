@@ -37,7 +37,7 @@ public sealed class HeadlessTests
     public async Task The_button_follows_the_selection_and_the_dialog_renders_every_state()
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
-        using var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
         await session.Dispatch(() =>
         {
             // Toolbar button: disabled without a selection, enabled with one.

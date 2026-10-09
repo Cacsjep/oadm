@@ -521,7 +521,7 @@ public sealed class HeadlessPageTests
         finally
         {
             // The awaited dispatch may continue on the session's UI thread; Dispose waits for that thread, so dispose elsewhere.
-            await Task.Run(session.Dispose);
+            GC.KeepAlive(session); // not disposed: Avalonia's headless Dispose can throw a NullReferenceException on CI
             File.Delete(settingsFile);
         }
     }

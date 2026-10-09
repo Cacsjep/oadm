@@ -29,7 +29,7 @@ public sealed class UsersWindowHeadlessTests
         var dataFolder = Path.Combine(Path.GetTempPath(), "oadm-users-headless-" + Guid.NewGuid().ToString("N"));
         App.Options = new AppOptions { UseFake = true, DataFolder = dataFolder };
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
-        using var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
 
         await session.Dispatch(() =>
         {

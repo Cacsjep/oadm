@@ -401,7 +401,7 @@ public sealed class HeadlessScaleTests
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         var ctx = new ScaleTests.ManyTilesContext(Count);
-        using var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
         var (tileControls, requests, rows, columns) = await session.Dispatch(async () =>
         {
             var view = new SnapshotReportView();

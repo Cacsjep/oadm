@@ -38,7 +38,7 @@ public sealed class HeadlessDialogTests
         var current = NetworkInfoParser.WithIpv6Parameters(
             NetworkInfoParser.ParseGetNetworkInfo(Fixture.Read(Fixture.GetNetworkInfo), "10.0.0.48"),
             Fixture.Parameters(Fixture.ParamNetwork));
-        using var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
 
         var rows = await session.Dispatch(async () =>
         {
@@ -133,7 +133,7 @@ public sealed class HeadlessDialogTests
         var current = NetworkInfoParser.WithIpv6Parameters(
             NetworkInfoParser.ParseGetNetworkInfo(Fixture.Read(Fixture.GetNetworkInfo), "10.0.0.48"),
             Fixture.Parameters(Fixture.ParamNetwork));
-        using var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
 
         var (rows, conflicts) = await session.Dispatch(async () =>
         {

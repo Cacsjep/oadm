@@ -47,7 +47,7 @@ public sealed class HeadlessDialogTests
         ctx.Devices[d1.Id] = new ListApplicationsResult { Device = new AcapDeviceFacts { Architecture = "aarch64", FirmwareVersion = "12.11.77", AllowUnsigned = true }, Applications = recorded };
         ctx.Devices[d2.Id] = FakeDialogContext.State(arch: "armv7hf", fw: "11.11.124");
 
-        using var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
         var (rows, compat) = await session.Dispatch(async () =>
         {
             var window = new AcapWindow();

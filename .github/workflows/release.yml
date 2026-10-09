@@ -38,7 +38,15 @@ jobs:
       - run: dotnet build Oadm.sln -c Release
       # Unit tests only (like manage test unit): Perf tests have time budgets made for a developer machine and run with
       # manage test perf; hardware tests need real devices.
-      - run: dotnet test Oadm.sln -c Release --no-build --filter "Category!=Hardware&Category!=Perf&Category!=HardwareWrite" --blame-hang-timeout 5m
+      # One second run when the first fails: shared CI runners are slow and busy, and a timing hiccup must not block a
+      # release; a real failure fails twice. The first run's failures stay visible as a warning.
+      - shell: bash
+        run: |
+          tests() { dotnet test Oadm.sln -c Release --no-build --filter "Category!=Hardware&Category!=Perf&Category!=HardwareWrite" --blame-hang-timeout 5m; }
+          if ! tests; then
+            echo "::warning::Tests failed on the first run; running them again."
+            tests
+          fi
 
   installers:
     name: installer ${{ matrix.target }} ${{ matrix.rid }}

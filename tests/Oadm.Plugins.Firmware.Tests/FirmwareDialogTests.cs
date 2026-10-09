@@ -319,7 +319,7 @@ public sealed class FirmwareDialogHeadlessTests
     public async Task Dialog_renders_with_host_theme()
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
-        using var session = HeadlessUnitTestSession.StartNew(typeof(ThemeTestEntry));
+        var session = HeadlessUnitTestSession.StartNew(typeof(ThemeTestEntry));
 
         var rows = await session.Dispatch(async () =>
         {

@@ -50,7 +50,7 @@ public sealed class HeadlessPageTests
         var settings = new ExportSettingsStore(TempFiles.NewSettingsPath());
         settings.Save(new ExportSettings { Site = "Headquarters Vienna", Technician = "Jane Doe" });
 
-        using var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
         var (tiles, errors) = await session.Dispatch(async () =>
         {
             var view = new SnapshotReportView();

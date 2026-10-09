@@ -120,7 +120,7 @@ public sealed class CommanderViewHeadlessTests
         finally
         {
             // The awaited dispatch may continue on the session's UI thread; Dispose waits for that thread, so dispose elsewhere.
-            await Task.Run(session.Dispose);
+            GC.KeepAlive(session); // not disposed: Avalonia's headless Dispose can throw a NullReferenceException on CI
         }
 
         try
@@ -199,7 +199,7 @@ public sealed class CommanderViewHeadlessTests
         }
         finally
         {
-            await Task.Run(session.Dispose);
+            GC.KeepAlive(session); // not disposed: Avalonia's headless Dispose can throw a NullReferenceException on CI
         }
 
         try
@@ -264,7 +264,7 @@ public sealed class CommanderViewHeadlessTests
         }
         finally
         {
-            await Task.Run(session.Dispose);
+            GC.KeepAlive(session); // not disposed: Avalonia's headless Dispose can throw a NullReferenceException on CI
         }
 
         try

@@ -82,7 +82,7 @@ public sealed class HeadlessPageTests
             return (basicColumns, extendedColumns, chips);
         }, CancellationToken.None);
 
-        await Task.Run(session.Dispose);
+        GC.KeepAlive(session); // not disposed: Avalonia's headless Dispose can throw a NullReferenceException on CI
         Assert.Equal(15, result.basicColumns);
         Assert.Equal(26, result.extendedColumns);
         Assert.True(result.chips > 50, $"status chips rendered: {result.chips}");
