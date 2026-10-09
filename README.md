@@ -1,6 +1,15 @@
-# OADM - Open AXIS Device Management
+<p align="center">
+  <img src="icon/oadm-app-icon-256.png" alt="OADM" width="128" height="128">
+</p>
 
-Open source alternative to AXIS Device Manager for Windows, Linux and macOS.
+<h1 align="center">OADM - Open AXIS Device Management</h1>
+
+<p align="center">Open source alternative to AXIS Device Manager for Windows, Linux and macOS.</p>
+
+<p align="center">
+  <a href="https://github.com/Cacsjep/oadm/releases/latest"><img src="https://img.shields.io/github/v/release/Cacsjep/oadm" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0"></a>
+</p>
 
 **OADM is an independent open source project. It is not affiliated with, sponsored by or endorsed by Axis
 Communications.**
