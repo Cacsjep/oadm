@@ -237,6 +237,7 @@ public sealed class CheckTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // 200 ms per request
     public async Task One_failed_read_marks_only_its_checks()
     {
         var camera = new FakeCamera();

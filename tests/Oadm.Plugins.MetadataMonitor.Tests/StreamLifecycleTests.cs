@@ -122,6 +122,7 @@ public sealed class StreamLifecycleTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // keep-alives every 100 ms against a 1 s lease
     public async Task A_stream_without_keep_alive_ends_when_its_page_is_gone()
     {
         await using var rig = await new Rig(Rig.ShortLease()).StartAsync();
@@ -144,6 +145,7 @@ public sealed class StreamLifecycleTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // waits 200 ms for the burst to be read
     public async Task A_burst_above_the_batch_limit_drops_the_oldest_and_counts_them()
     {
         await using var rig = await new Rig(new MetadataMonitorOptions { BatchInterval = TimeSpan.FromSeconds(30) }).StartAsync(); // one flush: on Stop
@@ -169,6 +171,7 @@ public sealed class StreamLifecycleTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // waits 200 ms for the messages to be read
     public async Task Large_batches_are_split_below_the_event_size_limit()
     {
         await using var rig = await new Rig(new MetadataMonitorOptions { BatchInterval = TimeSpan.FromSeconds(30), MaxEventCharacters = 20_000 }).StartAsync();

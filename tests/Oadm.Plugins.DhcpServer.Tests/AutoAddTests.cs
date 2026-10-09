@@ -157,6 +157,7 @@ public sealed class AutoAddTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // the peak is reached only while 100 ms adds overlap
     public async Task At_most_four_devices_are_handled_at_the_same_time()
     {
         var fake = new FakeAutoAdd { Latency = TimeSpan.FromMilliseconds(100) };
@@ -190,6 +191,7 @@ public sealed class AutoAddTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // time budget
     public async Task The_engine_reports_every_ack_and_never_waits_for_the_server_side()
     {
         var fake = new FakeAutoAdd { Block = new TaskCompletionSource() };

@@ -33,6 +33,7 @@ public sealed class FakeModeTests : IDisposable
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // waits 50 ms for the last results
     public async Task The_page_scans_against_the_fake_backend()
     {
         var devices = (await _api.ListDevicesAsync(CancellationToken.None)).Select(d => (IDeviceInfo)new DeviceRowViewModel(d)).ToList();

@@ -109,6 +109,7 @@ public sealed class ScaleTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // time budget
     public async Task Page_with_5000_tiles_selects_and_filters_in_one_pass()
     {
         var ctx = new ManyTilesContext(Count);

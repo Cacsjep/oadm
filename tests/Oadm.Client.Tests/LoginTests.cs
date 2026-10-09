@@ -289,6 +289,7 @@ public sealed class LoginTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")]
     public async Task Audit_tab_filters_five_thousand_entries_quickly()
     {
         var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));

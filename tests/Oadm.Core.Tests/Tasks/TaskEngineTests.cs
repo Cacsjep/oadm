@@ -66,6 +66,7 @@ public sealed class TaskEngineTests : IAsyncLifetime
     }
 
     [Theory]
+    [Trait("Category", "Timing")] // the peak is reached only while 40 ms tasks overlap
     [InlineData(null, null, 16)]
     [InlineData(3, null, 3)]
     [InlineData(null, 2, 2)]
@@ -114,6 +115,7 @@ public sealed class TaskEngineTests : IAsyncLifetime
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // the peak is reached only while 40 ms tasks overlap
     public async Task AChangedSettingAppliesToNewTasksWithoutARestart()
     {
         var limit = 2;

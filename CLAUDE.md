@@ -57,7 +57,9 @@ Installers (`manage package <windows|linux|macos> [--rid] [--version]` into `art
 table and notes in `packaging/README.md`). Every installer offers **"Server and client"** (default) or **"Client
 only"** and ships `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt` and `LGPL-2.1.txt` with each app. CI is one workflow,
 `.github/workflows/release.yml`, only on release tags `v*.*.*` (e.g. `v0.0.1`): job `tests` (Windows, Linux, macOS,
-`dotnet test` with the unit filter and `--blame-hang-timeout 5m`, 30 min timeout) -> job `installers` (needs tests;
+`dotnet test` with the unit filter minus the Timing tests,
+`Category!=Hardware&Category!=Perf&Category!=HardwareWrite&Category!=Timing`, and `--blame-hang-timeout 5m`, 30 min
+timeout) -> job `installers` (needs tests;
 builds the three installers; installs, checks and removes the MSI and the .deb packages as "Server and client" and as
 "Client only"; checks the .pkg's choices and payload without installing) -> job `release` (needs both; the GitHub
 release of the tag with the installers and `SHA256SUMS.txt`):
@@ -2370,6 +2372,9 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   - Tests: `[Trait("Category", "Perf")]` for scale tests that take longer than about a second; they run
     with `manage test perf` (not in `manage test unit`), each with a generous but meaningful time
     budget, and write their measured times to the test output.
+  - Tests: `[Trait("Category", "Timing")]` for tests that depend on real elapsed time or machine speed (short real
+    timeouts, `Task.Delay` races, time budgets outside Perf); they run locally (`manage test unit`, `manage test timing`),
+    not in the release workflow (user decision 2026-10-09). New tests prefer a fake `TimeProvider`.
 - Core plugin pages never repeat the page title in a card heading: the description goes into
   the host page header via `ui:PageHeader.Subtitle` (2 px top margin, theme); the status never sits top right in the page
   header but directly left of the Save button it reports on (or next to the value it describes, e.g. the CA validity on the

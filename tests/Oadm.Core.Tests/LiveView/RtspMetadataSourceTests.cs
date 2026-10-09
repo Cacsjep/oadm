@@ -62,6 +62,7 @@ public sealed class RtspMetadataSourceTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")]
     public async Task QuietStreamIsKeptAliveAndAnsweredKeepAlivesKeepItOpen()
     {
         await using var server = new FakeEventRtspServer { Packets = [], StayOpen = true, AnswerKeepAlives = true };

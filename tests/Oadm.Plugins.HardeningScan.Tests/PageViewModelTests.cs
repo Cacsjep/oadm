@@ -43,6 +43,7 @@ public sealed class PageViewModelTests(ITestOutputHelper output)
         [.. Enumerable.Range(0, count).Select(i => new TestDevice { Address = $"10.{i / 65_000}.{i / 250 % 250}.{(i % 250) + 1}", Serial = $"B8A44F{i:X6}", Model = i % 2 == 0 ? "P3265-V" : "M3106-L Mk II" })];
 
     [Fact]
+    [Trait("Category", "Timing")]
     public void Five_thousand_devices_filter_search_and_summarize_fast()
     {
         var devices = Devices(5_000);

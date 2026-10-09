@@ -14,6 +14,7 @@ public sealed class ScaleTests
     private const int Count = 5000;
 
     [Fact]
+    [Trait("Category", "Timing")] // time budget
     public async Task Users_dialog_with_5000_devices_reads_only_the_first_device()
     {
         var apis = Fixtures.P3265ApiList();

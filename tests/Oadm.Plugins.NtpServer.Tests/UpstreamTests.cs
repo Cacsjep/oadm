@@ -13,6 +13,7 @@ public sealed class UpstreamClientTests
     private static readonly TimeSpan AnswerTimeout = TimeSpan.FromSeconds(3);
 
     [Fact]
+    [Trait("Category", "Timing")] // offset accuracy depends on the round trip
     public async Task Good_answer_gives_stratum_offset_and_round_trip()
     {
         await using var upstream = new FakeUpstream { ClockOffset = TimeSpan.FromSeconds(3) };
@@ -29,6 +30,7 @@ public sealed class UpstreamClientTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")]
     public async Task No_answer_times_out_with_the_hard_timeout()
     {
         await using var upstream = new FakeUpstream(UpstreamBehavior.NoAnswer);
@@ -40,6 +42,7 @@ public sealed class UpstreamClientTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // round trip under 0.3 s
     public async Task Slow_answer_beyond_the_timeout_fails_and_the_late_answer_is_ignored()
     {
         await using var upstream = new FakeUpstream { Delay = TimeSpan.FromMilliseconds(600) };
@@ -134,6 +137,7 @@ public sealed class ResolverTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")]
     public async Task Dns_hang_ends_at_the_dns_timeout_even_when_the_resolver_ignores_the_token()
     {
         var resolver = new FakeResolver { Hang = true };
@@ -176,6 +180,7 @@ public sealed class ResolverTests
 public sealed class UpstreamMonitorTests
 {
     [Fact]
+    [Trait("Category", "Timing")] // 300 ms query timeout
     public async Task Good_answers_serve_stratum_plus_one_failures_fall_back_to_local_and_recovery_switches_back()
     {
         await using var upstream = new FakeUpstream();
@@ -199,6 +204,7 @@ public sealed class UpstreamMonitorTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // 300 ms query timeout
     public async Task Two_failures_keep_serving_the_last_good_upstream_state()
     {
         await using var upstream = new FakeUpstream();
@@ -215,6 +221,7 @@ public sealed class UpstreamMonitorTests
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // counts requests after a real 1 s wait
     public async Task Kiss_of_death_rate_backs_off_to_the_poll_interval()
     {
         await using var upstream = new FakeUpstream(UpstreamBehavior.KissRate);
