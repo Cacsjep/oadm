@@ -15,6 +15,8 @@ Most OADM features are plugins, and your plugins use the same SDK as the built-i
 | Core plugin | Own page in the navigation rail | A service on the server with a page in the client; can add tasks | NTP server, PKI, Snapshot report |
 | Toolbar plugin | A control in the Devices toolbar | In the client | Add, Export |
 
+Working with an AI assistant? See [Build a plugin with AI](../ai-plugins/).
+
 ## Start
 
 1. Copy the closest built-in plugin: `Oadm.Plugins.Restart` (task without dialog), `Oadm.Plugins.Users` (task with

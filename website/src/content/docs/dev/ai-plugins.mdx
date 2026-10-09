@@ -1,0 +1,60 @@
+---
+title: Build a plugin with AI
+description: Write an OADM plugin together with an AI coding assistant.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+OADM is developed together with an AI assistant, and the repository is set up for it. You describe what the plugin
+should do; the assistant asks, writes the spec, then builds the plugin with tests.
+
+## What the assistant needs
+
+- [`CLAUDE.md`](https://github.com/Cacsjep/oadm/blob/main/CLAUDE.md): the spec and the rules for code, UI, wording,
+  device safety and tests. Claude Code reads it by itself; give it to other assistants first.
+- [`plugins/README.md`](https://github.com/Cacsjep/oadm/blob/main/plugins/README.md): the plugin SDK with examples.
+- A working checkout that builds: see [Build from source](../build/).
+
+## How to start
+
+<Steps>
+
+1. Clone the repository and open it in your assistant, for example Claude Code.
+
+2. Describe the plugin like a user story and ask the assistant to ask first:
+
+   ```text
+   Read CLAUDE.md and plugins/README.md. I want a task plugin "Set host name" in the
+   Network group, with a dialog for one or many devices. Ask me what is unclear, write
+   the spec, then build it with tests and headless screenshots.
+   ```
+
+3. Answer its questions. Decisions go into the spec, so the next session knows them too.
+
+4. Let it build in small steps. After each step: `manage test unit`, then look at the screenshots it rendered.
+
+5. Try the plugin with `manage run dev`. The build puts it into `artifacts/plugins/`, where OADM loads it.
+
+</Steps>
+
+## How the assistant works
+
+- **Copies what works.** It starts from the closest built-in plugin and uses the shared controls and styles, so the
+  plugin looks and behaves like the rest of OADM.
+- **Tests everything.** Every non-trivial class gets tests with fake devices; nothing needs a network.
+- **Checks the UI headless.** It renders the dialogs and pages offscreen as screenshots. It never clicks on your
+  desktop.
+- **Keeps devices safe.** A plugin that changes a device checks the device first, validates every input before the
+  first write and never locks OADM out.
+
+## Real devices
+
+<Aside type="caution">
+Put your test cameras into `dev-cameras.yaml` (git-ignored, it holds passwords). The assistant may run the read-only
+hardware tests against them. Tests that change a device run only when you ask, and only against a test device.
+</Aside>
+
+## Share your plugin
+
+Open a pull request on [GitHub](https://github.com/Cacsjep/oadm). Every contributed plugin is reviewed for quality and
+security before it becomes part of a release. Keep the change focused: one plugin, its tests and its spec.

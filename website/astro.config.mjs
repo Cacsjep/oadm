@@ -82,6 +82,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Build from source', slug: 'dev/build' },
 						{ label: 'Write a plugin', slug: 'dev/plugins' },
+						{ label: 'Build a plugin with AI', slug: 'dev/ai-plugins' },
 					],
 				},
 				{
