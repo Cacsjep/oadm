@@ -10,7 +10,8 @@ RULE are in `CLAUDE.md` ("Plugin System").
 plugins/
   Oadm.Plugins.<Name>/              server part
     Oadm.Plugins.<Name>.csproj      AssemblyName Oadm.Plugins.<Name>.Server
-    plugin.json                     { "id": "oadm.<name>", "version", "minSdkVersion", "displayName" }
+    plugin.json                     { "id": "oadm.<name>", "version", "minSdkVersion", "displayName",
+                                      "enabledByDefault": true }  (optional; false = off until an admin turns it on)
     <Name>TaskPlugin.cs             ITaskPlugin (+ ITaskPluginQuery when the dialog reads state)
   Oadm.Plugins.<Name>.Client/       optional client part (Avalonia)
     Oadm.Plugins.<Name>.Client.csproj   AssemblyName Oadm.Plugins.<Name>.Client

@@ -1,0 +1,53 @@
+---
+title: Image Health Dashboard
+description: The status of AXIS Image Health Analytics on every camera, in one table.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import shot from '../../../assets/screens/image-health-dashboard.png';
+
+The Image Health Dashboard shows what AXIS Image Health Analytics reports on each camera: blur, a blocked view, a
+redirected camera, under-exposure and an unsuitable scene. One row per camera that has the app.
+
+<Image src={shot} alt="The Image Health Dashboard with OK, pending and detected states" class="screen" />
+
+<Aside>
+The dashboard is off by default. An administrator turns it on under **Settings** > **Plugins**.
+</Aside>
+
+## Check your cameras
+
+<Steps>
+
+1. Open **Image Health Dashboard** in the navigation rail.
+
+   OADM asks every camera once. The progress row counts the cameras.
+
+2. Read the table. Each detection shows:
+   - **OK**: nothing found.
+   - **Pending**: the app saw something and waits to confirm it.
+   - **Detected**: the app confirmed it.
+   - **Off**: the detection is turned off in the app.
+3. Click **Refresh** to ask every camera again, or turn on **Auto refresh** to ask every 10 seconds while the page is
+   open.
+
+</Steps>
+
+The **App** column shows **Running**, **Not running** (the app is installed but stopped), or why OADM could not read
+the camera. **Last change** shows when a detection changed between two checks. The line above the table counts the
+cameras with the app running, with a detection, pending, not running, without the app and those that could not be
+checked.
+
+## Good to know
+
+- OADM asks the cameras only when you open the page, click **Refresh** or turn on **Auto refresh**. Nothing runs in
+  the background, and nothing runs after you leave the page.
+- Cameras without the app are counted but not listed.
+- OADM asks 24 cameras at a time and waits at most 3 seconds for each.
+- The dashboard only reads. It never changes a camera or the app settings.
+- Devices that need a login, have no password yet, have a changed certificate or do not answer show the reason.
+
+<Aside>
+Operators can use the dashboard. No administrator rights are needed.
+</Aside>

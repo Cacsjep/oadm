@@ -161,7 +161,8 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.MetadataMonitor(.Client)/  core plugin: live event stream of one camera (RTSP metadata, port of AXIS Metadata Monitor)
   Oadm.Plugins.Pki(.Client)/              core plugin: PKI (one CA for device certificates, trusted root store)
   Oadm.Plugins.SystemReport(.Client)/     core plugin without a page: toolbar "System report" (server reports in one ZIP)
-  Oadm.Plugins.HardeningScan(.Client)/    core plugin: read-only scan against the AXIS OS hardening guide
+  Oadm.Plugins.HardeningScan(.Client)/    core plugin: read-only scan against the AXIS OS hardening guide (off by default)
+  Oadm.Plugins.ImageHealth(.Client)/      core plugin: Image Health Dashboard, AXIS Image Health Analytics status of every camera (off by default)
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
                                 (both copy their output to artifacts/plugins/<plugin id>/)
@@ -288,7 +289,10 @@ Two processes, like ADM:
   {plugin_id, topic, payload_json} the plugin publishes through `ICorePluginContext.Events` from the call on; NOT_FOUND
   unknown plugin; `Oadm.Core.Plugins.PluginEventHub` fans out with 256 events buffered per watcher, oldest dropped).
   Users: "Snapshot report", "VAPIX Commander", "NTP server", "DHCP server", "PKI", "Metadata Monitor", "Hardening scan",
-  "System report" (from its toolbar button through `IToolbarContext.InvokePluginAsync`).
+  "Image Health Dashboard", "System report" (from its toolbar button through `IToolbarContext.InvokePluginAsync`).
+  `ListPackages` (every loaded plugin package with id, display name, version, enabled, enabled_by_default, has_page,
+  menu_task_count; any user) and `SetPackageEnabled(id, enabled)` (Admin; NOT_FOUND unknown package; reply: the whole
+  list), see "Plugins on and off".
 - `SettingsService`: `Get`, `Set` (`ServerSettings.zero_conf_seconds = 8`, 0 keeps the stored value; read-only
   `server_version = 21` in both replies for the About page),
   `ListCredentials`, `AddCredential(user_name, password)`
@@ -616,7 +620,7 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   expand/collapse toggle at the bottom of the rail; expanded ~220 px with icon + label.
   Selected item as rounded pill `#2A2A2A`. Entries top: Devices, then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (VAPIX
-  Commander), Security (PKI, Hardening scan), Monitoring (Metadata Monitor), Reporting (Snapshot report; System report has
+  Commander), Security (PKI, Hardening scan), Monitoring (Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
   no page), Maintenance, Integrations, Utilities, Extensions (default, third-party); user decision 2026-10-08): only groups
   with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
   each group, collapsed = a separator at each group start. Pinned bottom, top to bottom: Users and Credentials (Admin only: hidden for operators, follow the session
@@ -1053,7 +1057,8 @@ public interface ICorePluginContext
     IPluginEvents? Events => null;     // Publish(topic, payloadJson): live events to the plugin's page (PluginService.Watch)
     ITrustAnchors? TrustAnchors => null; // Set(der[]): CAs the server trusts when rating device certificates (per plugin)
     IDeviceEventStreams? EventStreams => null; // OpenAsync(deviceId): the device's RTSP event stream with the stored
-                                       // credentials (never handed out): XML documents, LostDocuments, dispose = TEARDOWN
+                                       // credentials (never handed out): XML documents, LostDocuments, dispose = TEARDOWN;
+                                       // Get/SetRtspPortAsync(deviceId): the device's RTSP port (port forward, null = 554)
     IFirewallRules? Firewall => null;  // Open/CloseAsync(FirewallRule): inbound allow rule for the server exe, Domain +
                                        // Private; only the Windows service offers it (netsh), else null. Helper:
                                        // FirewallRuleKeeper.SyncAsync(enabled) (Oadm.Sdk.Network)
@@ -1195,11 +1200,37 @@ answers is unchanged. Used by the System report for server reports.
   `ICorePlugin` implementations via reflection, then registers the Core plugins' `TaskPlugins`
   too. Client does the same for `*.Client.dll` with `ITaskPluginDialog`, `ICorePluginPage` and
   `IToolbarPlugin` over the same three roots (`ClientPluginLoader.DefaultRoots`).
-- Plugin folder: `plugin.json` (id, version, minSdkVersion), `<Name>.Server.dll`,
-  optional `<Name>.Client.dll`, private dependencies. SDK assemblies are shared from the
+- Plugin folder: `plugin.json` (id, version, minSdkVersion, displayName, optional `enabledByDefault`, default true),
+  `<Name>.Server.dll`, optional `<Name>.Client.dll`, private dependencies. SDK assemblies are shared from the
   host and never copied into the plugin folder.
 - Plugin failures (load or execution) are logged and isolated; a broken plugin never
   prevents server or client from starting.
+
+### Plugins on and off
+
+User decision 2026-10-09: the Settings page lists every plugin package (one plugin folder = one row: its core plugins,
+contributed and standalone tasks and client parts together) and administrators turn each on or off; the change applies
+at once without a restart.
+- Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
+  **Off by default: Hardening scan and Image Health Dashboard** (user decision). The administrator's choices are the
+  server setting `Plugins.Enabled` (JSON object package id -> on; packages without a choice use their default),
+  applied before the core plugins start (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
+- `PluginRegistry`: `TaskPlugins`, `CorePlugins`, `TryGetTaskPlugin`, `TryGetCorePlugin` see only enabled packages
+  (so ListCorePlugins, ListTaskPlugins, Run and Query skip a package that is off; the runnable cache follows the plugin
+  set); `AllTaskPlugins` / `AllCorePlugins` / `Packages` (`PluginPackageState`: origin, enabled, has page, menu task
+  count) see all. `SetEnabled` + `CorePluginHost.SyncEnabledAsync`: core plugins of a package turned off are stopped
+  (trust anchors removed), turned on are started. Invoking a core plugin that is off: FAILED_PRECONDITION "The <name>
+  plugin is turned off.". Tasks of the package already queued or running finish.
+- gRPC `PluginService.ListPackages` / `SetPackageEnabled` (Admin, audited "Turned plugin on" / "Turned plugin off",
+  target the plugin name).
+- Client: `Plugins/PluginPackageStore` (loaded on every connect; `Changed` reloads the rail pages and the task catalog
+  and hides the toolbar entries of packages that are off: `DeviceToolbar.ApplyPackageStates`, the package of a client
+  part from the plugin.json next to its dll, `IClientPluginRegistry.PackageOf`). Settings page card **Plugins**
+  (`Settings/PluginsViewModel`): DataGrid On (check box), Plugin, Adds ("Page", "9 context menu entries", "Toolbar
+  button"), Version; operators read-only; a refused change is undone with the reason below the list. Other clients
+  see a change on their next connect. Fake mode: `FakeOadmApi.Plugins.cs`.
+- Tests: `tests/Oadm.Server.Tests/PluginPackageTests` (default off, live start / stop, menus, roles, audit, stored
+  choice, the bundled manifests), `tests/Oadm.Client.Tests/PluginListTests` (headless `client-settings-plugins.png`).
 
 ## HARD RULE: device safety for task plugins
 
@@ -1340,8 +1371,8 @@ Read-only for devices (param.cgi reads and image.cgi snapshots).
   aspect (`VideoResolutions.Choose`, shared with the live view): grid 1280x720, report 1920x1080
   (`SnapshotReportPluginInfo`). Verified on 10.0.0.48 (AXIS OS 12.11): 1280x720 about 125 KB in
   0.1-0.3 s, camera=1/2 are the two view areas, a missing camera answers HTTP 400 with an HTML
-  "400 Bad Request" page. At most 4 device requests at a time (all callers), 10 s timeout each.
-  Errors are short texts (shared with every plugin: SDK `DeviceMessages`): "Timeout after 10 s", "Unauthorized - HTTP 401 (check the credentials)", "Forbidden - HTTP 403 (administrator rights are required)",
+  "400 Bad Request" page. At most 4 device requests at a time (all callers), 3 s timeout each (user decision 2026-10-09).
+  Errors are short texts (shared with every plugin: SDK `DeviceMessages`): "Timeout after 3 s", "Unauthorized - HTTP 401 (check the credentials)", "Forbidden - HTTP 403 (administrator rights are required)",
   "Bad Request - HTTP 400", "Unreachable - <socket error>", "The device has no video source 3", or the
   VAPIX text the device sent ("Error: ...").
 - `InvokeAsync` methods (`SnapshotReportMethods`, JSON camelCase, models in `Shared/`): `listSources`
@@ -1900,6 +1931,56 @@ Read-only for devices. Decided with the user on 2026-10-08:
   Watch); Core: `MetadataDepacketizerTests`, `RtspMetadataSourceTests` (scripted RTSP server), `DeviceEventStreamsTests`,
   `MetadataRecorderTests` (Hardware; re-records `Fixtures/LiveView/events.sdp` + `.rtp` with `OADM_RECORD_RTP_DIR`).
 
+- **RTSP port** (user decision 2026-10-09): a field next to the camera select ("RTSP port", empty = 554, error below
+  the field for anything but 1..65535) for cameras behind NAT whose RTSP port is forwarded to another port. `start`
+  ({deviceId, rtspPort}) stores it on the server for the device (`IDeviceEventStreams.SetRtspPortAsync`, server setting
+  `Devices.RtspPorts` = JSON object device id -> port, written by `Oadm.Core.LiveView.DeviceEventStreams`; null or 554
+  removes it), `getRtspPort` ({deviceId}) prefills the field when a camera is chosen; every event stream of the device
+  uses it. Verified with a loan AXIS Q3548-LVE behind NAT (RTSP 554 forwarded to 32077).
+
+## Image Health Dashboard (core plugin)
+
+`plugins/Oadm.Plugins.ImageHealth` (+ `.Client`), id `oadm.image-health`, rail page **Image Health Dashboard** (group
+Monitoring, icon `eye`), **off by default** (`plugin.json` `enabledByDefault: false`). One table with the status of
+AXIS Image Health Analytics (AIHA) on every camera that has the app. Read-only for devices. Plugin `README.md`.
+Decided with the user on 2026-10-09:
+
+| Topic | Decision |
+|---|---|
+| Source | The app's own HTTP status, `GET /local/AXISImageHealthAnalytics/v1/status` with the stored credentials (no event stream). |
+| When | Only on request: the page checks once when it opens, **Refresh** checks again, **Auto refresh** (check box, off by default) every 10 s while the page is open. No background polling, nothing after the page was left. |
+| Load | 24 cameras at a time, 3 s per request (200 cameras = about 9 rounds). |
+| Not running | A camera with the app installed but stopped stays in the table as **Not running**. |
+
+- **Device API** (verified on an AXIS Q3548-LVE, AXIS OS 12.11.118, AIHA 3.2.2): 200 with JSON
+  `{"block":"normal","blur":"detected","redirect":"pending","status":"none","status_criticity":"info",
+  "under-exposure":"normal","unsuitability":"suitable"}` while the app runs; 503 (HTML) when it is installed but stopped;
+  404 without the app; 401 without credentials. Values: normal / pending / detected / disabled; unsuitability suitable /
+  unsuitable. Shown as **OK** (ok chip), **Pending** (warning: the app waits to confirm), **Detected** (error), **Off**
+  (neutral: turned off in the app); another value as sent (`DetectionStates.FromRaw`). `status` / `status_criticity` are
+  not shown.
+- **Server** (`Monitoring/ImageHealthMonitor`): `check` starts a check unless one runs and returns the state at once;
+  `getState` returns it without a request. A check lists the video devices (`HasVideo`), asks each once
+  (`Parallel.ForEachAsync`, `CheckParallelism` 24, `RequestTimeout` 3 s), keeps rows in memory between checks and
+  updates them in place: running (five detections), Not running (503, detections cleared), error (refused status
+  without a request: Credentials required, Password not set, Certificate changed, Unreachable; or the HTTP / timeout /
+  network text of `DeviceMessages`); 404 = without the app (counted, row removed); devices removed from OADM leave.
+  `ChangedUtc` = when a detection changed between two answers of the running app. Events (500 ms): `rows`
+  ({rows, removed}) and `state` (checking, checked, total, running, notRunning, withoutApp, failed, checkedUtc).
+- **Page** (one card, subtitle "AXIS Image Health Analytics on every camera."): Refresh, Auto refresh, SearchBox;
+  progress row "Checking cameras 120 of 200"; summary "3 cameras with the app running · 1 with a detection · 1 pending
+  · 1 not running · 2 without the app · 1 could not be checked · checked 19:34:14"; virtualized DataGrid (`wrapRows`)
+  Address, Model, Blur, Block, Redirect, Under-exposure, Unsuitability (status chips, sortable by severity), Last change,
+  App (Running ok, Not running warning, Checking accent, error text red). Empty: "No camera has AXIS Image Health
+  Analytics." Rows updated in place by device id; search, new and removed rows one reset (O(n), 5,000 tested).
+- Not in fake mode yet.
+- Tests: `tests/Oadm.Plugins.ImageHealth.Tests` (the three recorded answers, disabled / unsuitable / other values,
+  check lifecycle: no request without a check, Not running, removed app, changes timed, one check at a time, 24 at a
+  time with 200 cameras, failures; view model: one check on show, Auto refresh off by default and only while shown,
+  5,000 rows; headless `image-health-dashboard.png`; read-only hardware test `ImageHealthHardwareTests` through the
+  in-process server and the real page over gRPC, using the dev camera whose note mentions AIHA, renders
+  `image-health-dashboard-live.png`).
+
 ## System report plugin (core plugin without a page)
 
 `plugins/Oadm.Plugins.SystemReport` (+ `.Client`), id `oadm.system-report`, like ADM's "Get system report" (user decision
@@ -1943,7 +2024,7 @@ client saves one ZIP for Axis support. Read-only for devices.
 ## Hardening scan (core plugin)
 
 `plugins/Oadm.Plugins.HardeningScan` (+ `.Client`), id `oadm.hardening-scan`, rail page **Hardening scan** (icon
-`clipboardCheck`). Spec, check table, evidence from 10.0.0.48 and the decisions: plugin `README.md`. One read-only scan of every
+`clipboardCheck`), **off by default** (user decision 2026-10-09, see "Plugins on and off"). Spec, check table, evidence from 10.0.0.48 and the decisions: plugin `README.md`. One read-only scan of every
 managed device against the AXIS OS Hardening Guide in its two levels; one icon column per check (pass / warn / fail / read
 error / does not apply); the items that cannot be checked remotely are not shown on the page (user decision 2026-10-08).
 - Decisions (user, 2026-10-08): B2 latest AXIS OS = information only (version shown, not rated); the extras X1-X6 (HTTPS only,
@@ -2051,7 +2132,8 @@ tries when it adds devices.", `Settings/CredentialsViewModel` + `CredentialsView
 "Hide password" that loads it with `RevealCredential` and masks (and forgets) it on the second click, copy icon
 button "Copy password" (clipboard of the window, loaded on demand, not shown), added time, Remove as a red icon button), a separator, then the add form under the heading "Add credential" (user
 name, password, "Add credential"); stored encrypted on the server (`CredentialListStore`, table
-CredentialListEntries), tried on every discovered device (see "Add Devices Page"). Rail page **About** (everyone,
+CredentialListEntries), tried on every discovered device (see "Add Devices Page"). The Settings page's second card
+**Plugins** turns plugin packages on and off (see "Plugins on and off"). Rail page **About** (everyone,
 subtitle "Version and licenses.", `Settings/AboutPageView` around the card `Settings/AboutView`, `AboutViewModel`):
 terms of use (card title, a scrollable block with wider line spacing), client version, server version (`ServerSettings.server_version`), the
 sentence on the Apache-2.0 license, "Show licenses" shows `THIRD-PARTY-NOTICES.txt` (next to the exe, the macOS app's
@@ -2107,7 +2189,8 @@ marked *(default)* were filled in and can be changed. This section wins over old
   not change server configuration (Snapshot report, VAPIX Commander, Metadata Monitor, System report, PKI read and device
   certificate tasks). **Admin only**: `SettingsService.Set`, credential list (add, remove, reveal), users, `TaskService.DeleteAll`,
   PKI (generate, import, backup, export, install in the server root store, PKI settings), DHCP and NTP save / static
-  leases / release, renaming, recoloring and deleting a tag definition (`TagService.Update` / `Delete`). Core plugins declare their method roles through a new SDK member
+  leases / release, renaming, recoloring and deleting a tag definition (`TagService.Update` / `Delete`), turning plugins on
+  or off (`PluginService.SetPackageEnabled`). Core plugins declare their method roles through a new SDK member
   `ICorePlugin.RequiredRole(string method)` (DIM default Operator); the host checks it before `InvokeAsync`.
 - **Credential reveal**: Admin only, every reveal in the audit log; without a login (no users yet) it is refused.
 - **PKI "Install in trusted root store" on the server**: Admin only; the confirmation shows the CA's SHA-256 fingerprint;
@@ -2126,7 +2209,7 @@ marked *(default)* were filled in and can be changed. This section wins over old
   add/remove/reveal, PKI actions, DHCP/NTP save, task runs (plugin, device count), Delete all, device remove, device login
   ("Log in": user name, device and success counts), first password set ("Set password": counts), device added
   automatically / device moved (user "system", DHCP server), tags (created, renamed, color changed, deleted; tagging:
-  "Tagged 12 devices: +Building A -PTZ"), VAPIX Commander send / rollout. Logs page gets an **Audit** tab (Admin only, virtualized, SearchBox).
+  "Tagged 12 devices: +Building A -PTZ"), plugins turned on / off, VAPIX Commander send / rollout. Logs page gets an **Audit** tab (Admin only, virtualized, SearchBox).
 - **Implementation** (done 2026-10-08):
   - Server: `Oadm.Server.Auth` (`AuthInterceptor` on every call sets `Oadm.Core.Auth.CallerContext` for the call, so
     `TaskEngine.RunAsync` and core plugin task runs take the owner "user@machine" from it; `AccessPolicy` role table;

@@ -18,13 +18,15 @@ which events a device sends: I/O ports, virtual inputs, storage, temperature, ta
 
 1. Open **Metadata Monitor** in the navigation rail.
 2. Choose the camera. Type to jump to a camera in the list.
-3. Click **Start**.
+3. If the camera is behind a router that forwards RTSP to another port, enter that port in **RTSP port**. Leave it
+   empty for the usual port 554. OADM remembers it for the camera.
+4. Click **Start**.
 
    The status changes to Connecting, then Live. At the start most cameras send the current state of every event, for
    example one message per virtual input.
 
-4. Click a message to see its XML below the list. The copy button copies it.
-5. Click **Stop** when you are done.
+5. Click a message to see its XML below the list. The copy button copies it.
+6. Click **Stop** when you are done.
 
 </Steps>
 
