@@ -417,7 +417,7 @@ public sealed class HeadlessScaleTests
             if (!string.IsNullOrEmpty(outDir) && frame is not null)
             {
                 Directory.CreateDirectory(outDir);
-                frame.Save(Path.Combine(outDir, "snapshot-report-5000-tiles.png"));
+                frame.Save(Path.Combine(outDir, "snapshot-report-5000-tiles.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
             }
 
             frame?.Dispose();

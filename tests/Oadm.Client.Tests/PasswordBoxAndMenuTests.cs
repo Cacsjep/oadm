@@ -118,7 +118,7 @@ public sealed class PasswordBoxAndMenuTests
             if (!string.IsNullOrEmpty(outDir))
             {
                 Directory.CreateDirectory(outDir);
-                frame.Save(Path.Combine(outDir, "client-context-menu-groups.png"));
+                frame.Save(Path.Combine(outDir, "client-context-menu-groups.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
             }
 
             window.Close();

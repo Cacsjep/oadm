@@ -345,7 +345,7 @@ public sealed class FormValidationTests
         if (!string.IsNullOrEmpty(outDir))
         {
             Directory.CreateDirectory(outDir);
-            frame.Save(Path.Combine(outDir, name));
+            frame.Save(Path.Combine(outDir, name), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
         }
     }
 }

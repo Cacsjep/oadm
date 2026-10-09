@@ -78,7 +78,7 @@ public sealed class SecurityMenuTests
             if (!string.IsNullOrEmpty(outDir))
             {
                 Directory.CreateDirectory(outDir);
-                frame.Save(Path.Combine(outDir, "pki-security-menu.png"));
+                frame.Save(Path.Combine(outDir, "pki-security-menu.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
             }
 
             window.Close();

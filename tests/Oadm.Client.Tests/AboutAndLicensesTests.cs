@@ -145,7 +145,7 @@ public sealed class AboutAndLicensesTests : IDisposable
             if (!string.IsNullOrEmpty(outDir))
             {
                 Directory.CreateDirectory(outDir);
-                frame.Save(Path.Combine(outDir, "client-about.png"));
+                frame.Save(Path.Combine(outDir, "client-about.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
             }
 
             window.Close();

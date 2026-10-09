@@ -166,7 +166,7 @@ public sealed class UnsupportedTasksMenuTests(ITestOutputHelper output)
             if (!string.IsNullOrEmpty(outDir))
             {
                 Directory.CreateDirectory(outDir);
-                frame.Save(Path.Combine(outDir, "client-context-menu-unsupported.png"));
+                frame.Save(Path.Combine(outDir, "client-context-menu-unsupported.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
             }
 
             window.Close();
