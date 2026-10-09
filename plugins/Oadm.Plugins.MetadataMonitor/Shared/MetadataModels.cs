@@ -29,6 +29,9 @@ public static class MetadataMethods
     /// <summary><see cref="StartRequest"/> -> <see cref="StartReply"/>: opens the event stream of one device.</summary>
     public const string Start = "start";
 
+    /// <summary><see cref="RtspPortRequest"/> -> <see cref="RtspPortReply"/>: the RTSP port stored for the device.</summary>
+    public const string GetRtspPort = "getRtspPort";
+
     /// <summary><see cref="StreamRequest"/> -> null: ends the stream (RTSP TEARDOWN).</summary>
     public const string Stop = "stop";
 
@@ -62,7 +65,16 @@ public static class MessageCategories
     public const string Invalid = "Invalid";
 }
 
-public sealed record StartRequest(Guid DeviceId);
+/// <summary>
+/// Opens the event stream of a device. <paramref name="RtspPort"/>: the device's RTSP port when it is forwarded (camera
+/// behind NAT), null = 554; stored on the server for the device (the Image Health Dashboard uses it too).
+/// </summary>
+public sealed record StartRequest(Guid DeviceId, int? RtspPort = null);
+
+public sealed record RtspPortRequest(Guid DeviceId);
+
+/// <summary>The stored RTSP port, null = 554.</summary>
+public sealed record RtspPortReply(int? Port);
 
 /// <summary>The new stream id, or the reason the device refused (<c>error</c>).</summary>
 public sealed record StartReply(string? StreamId, string? Error);

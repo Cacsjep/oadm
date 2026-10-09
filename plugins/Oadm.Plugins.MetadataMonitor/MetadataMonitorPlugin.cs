@@ -87,7 +87,11 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
         switch (method)
         {
             case MetadataMethods.Start:
-                return MetadataJson.Serialize(await StartStreamAsync(MetadataJson.Deserialize<StartRequest>(payloadJson).DeviceId, ct).ConfigureAwait(false));
+                return MetadataJson.Serialize(await StartStreamAsync(MetadataJson.Deserialize<StartRequest>(payloadJson), ct).ConfigureAwait(false));
+            case MetadataMethods.GetRtspPort:
+                var portDevice = MetadataJson.Deserialize<RtspPortRequest>(payloadJson).DeviceId;
+                var port = _ctx.EventStreams is { } portStreams ? await portStreams.GetRtspPortAsync(portDevice, ct).ConfigureAwait(false) : null;
+                return MetadataJson.Serialize(new RtspPortReply(port));
             case MetadataMethods.Stop:
                 await StopStreamAsync(MetadataJson.Deserialize<StreamRequest>(payloadJson).StreamId).ConfigureAwait(false);
                 return null;
@@ -106,6 +110,9 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
 
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);
 
+    /// <summary>A port outside 1..65535.</summary>
+    public const string RtspPortError = "Enter a port from 1 to 65535.";
+
     /// <summary>The refusal text for a device status, or null when the stream may be opened.</summary>
     internal static string? RefusalFor(DeviceStatus status) => status switch
     {
@@ -115,8 +122,9 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
         _ => null,
     };
 
-    private async Task<StartReply> StartStreamAsync(Guid deviceId, CancellationToken ct)
+    private async Task<StartReply> StartStreamAsync(StartRequest request, CancellationToken ct)
     {
+        var deviceId = request.DeviceId;
         var ctx = _ctx!;
         if (ctx.EventStreams is not { } streams || ctx.Events is not { } events)
         {
@@ -132,6 +140,24 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
         if (RefusalFor(device.Status) is { } refusal)
         {
             return new StartReply(null, refusal);
+        }
+
+        if (request.RtspPort is < 1 or > 65535)
+        {
+            return new StartReply(null, RtspPortError);
+        }
+
+        try
+        {
+            await streams.SetRtspPortAsync(deviceId, request.RtspPort, ct).ConfigureAwait(false);
+        }
+        catch (NotSupportedException) when (request.RtspPort is null or 554)
+        {
+            // a host without stored ports: the default port needs nothing stored
+        }
+        catch (NotSupportedException)
+        {
+            return new StartReply(null, "This OADM server cannot use another RTSP port");
         }
 
         if (_sessions.Count >= _options.MaxStreams)

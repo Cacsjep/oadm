@@ -35,6 +35,41 @@ public sealed class StreamLifecycleTests
     }
 
     [Fact]
+    public async Task Start_stores_the_rtsp_port_of_the_camera_and_the_page_reads_it_back()
+    {
+        await using var rig = await new Rig().StartAsync();
+        rig.Streams.Ports = [];
+        async Task<string?> Invoke(string method, object payload) => await rig.Plugin.InvokeAsync(method, MetadataJson.Serialize(payload), CancellationToken.None);
+
+        var reply = MetadataJson.Deserialize<StartReply>(await Invoke(MetadataMethods.Start, new StartRequest(rig.Camera.Id, 32077)));
+        Assert.Null(reply.Error);
+        Assert.Equal(32077, rig.Streams.Ports[rig.Camera.Id]);
+        Assert.Equal(32077, MetadataJson.Deserialize<RtspPortReply>(await Invoke(MetadataMethods.GetRtspPort, new RtspPortRequest(rig.Camera.Id))).Port);
+        await rig.StopStreamAsync(reply.StreamId!);
+
+        // Empty field = 554: the stored port is removed.
+        reply = MetadataJson.Deserialize<StartReply>(await Invoke(MetadataMethods.Start, new StartRequest(rig.Camera.Id)));
+        Assert.Empty(rig.Streams.Ports);
+        await rig.StopStreamAsync(reply.StreamId!);
+
+        Assert.Equal(MetadataMonitorPlugin.RtspPortError, MetadataJson.Deserialize<StartReply>(await Invoke(MetadataMethods.Start, new StartRequest(rig.Camera.Id, 70000))).Error);
+        rig.Streams.Ports = null; // a host without stored ports cannot use another port
+        Assert.NotNull(MetadataJson.Deserialize<StartReply>(await Invoke(MetadataMethods.Start, new StartRequest(rig.Camera.Id, 32077))).Error);
+    }
+
+    [Theory]
+    [InlineData("", true, null)]
+    [InlineData(" 32077 ", true, 32077)]
+    [InlineData("0", false, null)]
+    [InlineData("65536", false, null)]
+    [InlineData("abc", false, null)]
+    public void The_rtsp_port_field_accepts_empty_or_1_to_65535(string text, bool valid, int? port)
+    {
+        Assert.Equal(valid, Client.MetadataMonitorViewModel.ParseRtspPort(text, out var parsed));
+        Assert.Equal(port, parsed);
+    }
+
+    [Fact]
     public async Task A_broken_connection_reconnects_with_backoff_and_keeps_numbering()
     {
         await using var rig = await new Rig().StartAsync();

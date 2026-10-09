@@ -95,6 +95,31 @@ internal sealed class FakeEventStreams : IDeviceEventStreams
 
     public List<FakeEventSource> Opened { get; } = [];
 
+    /// <summary>Stored RTSP ports (null = the host has no setting: SetRtspPortAsync throws like the SDK default).</summary>
+    public Dictionary<Guid, int>? Ports { get; set; }
+
+    public Task<int?> GetRtspPortAsync(Guid deviceId, CancellationToken ct) =>
+        Task.FromResult(Ports is not null && Ports.TryGetValue(deviceId, out var port) ? port : (int?)null);
+
+    public Task SetRtspPortAsync(Guid deviceId, int? port, CancellationToken ct)
+    {
+        if (Ports is null)
+        {
+            throw new NotSupportedException();
+        }
+
+        if (port is null or 554)
+        {
+            Ports.Remove(deviceId);
+        }
+        else
+        {
+            Ports[deviceId] = port.Value;
+        }
+
+        return Task.CompletedTask;
+    }
+
     public int Attempts { get; private set; }
 
     public FakeEventSource? Last

@@ -18,7 +18,7 @@ namespace Oadm.Plugins.MetadataMonitor.Client;
 /// (stops the stream and the watch). While a stream runs the page confirms it every few seconds (keep-alive), so the
 /// server ends streams of closed clients.
 /// </summary>
-public sealed partial class MetadataMonitorViewModel : ObservableObject, IDisposable
+public sealed partial class MetadataMonitorViewModel : ObservableObject, IDisposable, System.ComponentModel.INotifyDataErrorInfo
 {
     private const int MaxEarlyEvents = 64;
 
@@ -71,6 +71,46 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
     [NotifyCanExecuteChangedFor(nameof(StartStopCommand))]
     public partial CameraOption? SelectedCamera { get; set; }
 
+    /// <summary>
+    /// The camera's RTSP port when it is forwarded (camera behind NAT); empty = 554. Read from the server when a camera is
+    /// chosen, stored on the server for the camera on Start.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(StartStopCommand))]
+    [NotifyPropertyChangedFor(nameof(StartStopTip), nameof(HasErrors))]
+    public partial string RtspPortText { get; set; } = string.Empty;
+
+    /// <summary>The error below the RTSP port field, or null.</summary>
+    public string? RtspPortError => ParseRtspPort(RtspPortText, out _) ? null : MetadataMonitorPlugin.RtspPortError;
+
+    public bool HasErrors => RtspPortError is not null;
+
+    public event EventHandler<System.ComponentModel.DataErrorsChangedEventArgs>? ErrorsChanged;
+
+    public System.Collections.IEnumerable GetErrors(string? propertyName) =>
+        propertyName == nameof(RtspPortText) && RtspPortError is { } error ? new[] { error } : Array.Empty<string>();
+
+    partial void OnRtspPortTextChanged(string value) => ErrorsChanged?.Invoke(this, new System.ComponentModel.DataErrorsChangedEventArgs(nameof(RtspPortText)));
+
+    /// <summary>Empty = default (null); otherwise a whole number from 1 to 65535.</summary>
+    public static bool ParseRtspPort(string? text, out int? port)
+    {
+        port = null;
+        var trimmed = (text ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+        {
+            return true;
+        }
+
+        if (int.TryParse(trimmed, NumberStyles.None, CultureInfo.InvariantCulture, out var value) && value is >= 1 and <= 65535)
+        {
+            port = value;
+            return true;
+        }
+
+        return false;
+    }
+
     [ObservableProperty]
     public partial string FilterText { get; set; } = string.Empty;
 
@@ -120,7 +160,7 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
 
     public string StartStopTip => IsRunning
         ? "End the event stream (the list stays)"
-        : SelectedCamera is null ? "Choose a camera first" : "Open the event stream of the camera and show its events live";
+        : SelectedCamera is null ? "Choose a camera first" : RtspPortError is { } portError ? portError : "Open the event stream of the camera and show its events live";
 
     /// <summary>The selected message; survives batches, filtering and trimming while the row exists.</summary>
     public MessageRow? SelectedMessage
@@ -317,7 +357,7 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
         }
     }
 
-    private bool CanStartStop() => !IsBusy && (IsRunning || SelectedCamera is not null);
+    private bool CanStartStop() => !IsBusy && (IsRunning || (SelectedCamera is not null && RtspPortError is null));
 
     [RelayCommand]
     private void Clear()
@@ -346,6 +386,11 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
         if (oldValue is not null && newValue?.Id != oldValue.Id && (IsRunning || _starting))
         {
             _ = StopStreamAsync(); // one camera at a time: switching stops the running stream
+        }
+
+        if (newValue is not null && newValue.Id != oldValue?.Id)
+        {
+            _ = LoadRtspPortAsync(newValue.Id);
         }
     }
 
@@ -377,6 +422,24 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
         UpdateSummary();
     }
 
+    private async Task LoadRtspPortAsync(Guid deviceId)
+    {
+        try
+        {
+            var json = await _ctx.InvokeAsync(MetadataMethods.GetRtspPort, MetadataJson.Serialize(new RtspPortRequest(deviceId)), CancellationToken.None).ConfigureAwait(true);
+            if (SelectedCamera?.Id == deviceId)
+            {
+                var port = string.IsNullOrEmpty(json) ? null : MetadataJson.Deserialize<RtspPortReply>(json).Port;
+                RtspPortText = port?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+            }
+        }
+#pragma warning disable CA1031 // An older server without the method: keep the field as it is.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+        }
+    }
+
     private async Task StartStreamAsync()
     {
         if (SelectedCamera is not { } camera)
@@ -392,7 +455,7 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
         SetStatus("accent", "Connecting", null);
         try
         {
-            var json = await _ctx.InvokeAsync(MetadataMethods.Start, MetadataJson.Serialize(new StartRequest(camera.Id)), CancellationToken.None).ConfigureAwait(true);
+            var json = await _ctx.InvokeAsync(MetadataMethods.Start, MetadataJson.Serialize(new StartRequest(camera.Id, ParseRtspPort(RtspPortText, out var rtspPort) ? rtspPort : null)), CancellationToken.None).ConfigureAwait(true);
             var reply = MetadataJson.Deserialize<StartReply>(json);
             if (reply.StreamId is null)
             {

@@ -12,6 +12,19 @@ public interface IDeviceEventStreams
     /// or does not answer, <see cref="KeyNotFoundException"/> for an unknown device.
     /// </summary>
     Task<IDeviceEventSource> OpenAsync(Guid deviceId, CancellationToken ct);
+
+    /// <summary>
+    /// The RTSP port stored for a device (a port forward to port 554, e.g. a camera behind NAT), null = 554. Every
+    /// <see cref="OpenAsync"/> uses it. Hosts without the setting return null.
+    /// </summary>
+    Task<int?> GetRtspPortAsync(Guid deviceId, CancellationToken ct) => Task.FromResult<int?>(null);
+
+    /// <summary>
+    /// Stores the RTSP port of a device (1..65535; null or 554 = the default). Throws <see cref="ArgumentOutOfRangeException"/>
+    /// for another value, <see cref="NotSupportedException"/> on hosts without the setting.
+    /// </summary>
+    Task SetRtspPortAsync(Guid deviceId, int? port, CancellationToken ct) =>
+        throw new NotSupportedException("This server cannot store RTSP ports.");
 }
 
 /// <summary>An open event stream; dispose to end it (RTSP TEARDOWN).</summary>
