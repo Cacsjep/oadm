@@ -781,12 +781,6 @@
   <Style Selector="StackPanel.compactForm ui|FormField">
     <Setter Property="LabelWidth" Value="{StaticResource Oadm.FormLabelWidthCompact}" />
   </Style>
-  <!-- Product mark above the login form: app icon and "OADM" -->
-  <Style Selector="StackPanel.productMark TextBlock">
-    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizePageTitle}" />
-    <Setter Property="FontWeight" Value="SemiBold" />
-    <Setter Property="VerticalAlignment" Value="Center" />
-  </Style>
   <Style Selector="ui|FormField > ComboBox, ui|FormField > NumericUpDown">
     <Setter Property="HorizontalAlignment" Value="Stretch" />
   </Style>

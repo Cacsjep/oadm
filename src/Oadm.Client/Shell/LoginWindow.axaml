@@ -15,10 +15,6 @@
 
     <Border Grid.Row="1" Classes="dialogBody">
       <StackPanel Classes="form compactForm">
-        <StackPanel Classes="productMark" Orientation="Horizontal" Spacing="12" Margin="0,4,0,8">
-          <Image Source="avares://Oadm.Client/Assets/oadm-256.png" Width="40" Height="40" />
-          <TextBlock Text="OADM" />
-        </StackPanel>
         <ui:StatusChip IsWarning="True" Text="{Binding Notice}"
                        IsVisible="{Binding Notice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Intro}"

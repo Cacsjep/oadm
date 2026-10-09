@@ -2101,7 +2101,7 @@ marked *(default)* were filled in and can be changed. This section wins over old
   logged in the audit log. The client-side install is unchanged.
 - **Login window (client).** Shown at start: Server (default `localhost:5080`, remembered, list of recent servers), User
   name, Password (`ui:PasswordBox`), "Remember me" (keeps the token in the client settings, never the password), Log in;
-  the app icon and "OADM" above the form, a narrower label column (`StackPanel.compactForm`), and **Quit** on the left
+  no product mark above the form (user decision 2026-10-09), a narrower label column (`StackPanel.compactForm`), and **Quit** on the left
   (it ends the app when nobody logged in).
   First connect to a server: fingerprint confirmation. No users yet: "Create the first administrator" (+ setup code for
   remote servers). The rail shows the logged-in user with Log out at the bottom. Replaces the removed "This client"
