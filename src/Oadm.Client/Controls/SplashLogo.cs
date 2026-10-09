@@ -100,7 +100,9 @@ public sealed class SplashLogo : Panel
         {
             Duration = TimeSpan.FromSeconds(2.4),
             Delay = TimeSpan.FromSeconds(2.1),
-            IterationCount = IterationCount.Infinite,
+            // Finite: RunAsync refuses endless animations ("Looping animations must not use the Run method"); 100 x 2.4 s
+            // outlasts any splash.
+            IterationCount = new IterationCount(100),
             Easing = new SineEaseInOut(),
             Children = { Frame(0, OpacityProperty, 1.0), Frame(0.5, OpacityProperty, 0.7), Frame(1, OpacityProperty, 1.0) },
         }));

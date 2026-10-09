@@ -289,6 +289,11 @@ public sealed partial class SystemReportViewModel : ObservableObject
         var detail = ex.GetType().GetProperty("Status")?.GetValue(ex) is { } status
             ? status.GetType().GetProperty("Detail")?.GetValue(status) as string
             : null;
-        return string.IsNullOrWhiteSpace(detail) ? ex.Message : detail;
+        if (!string.IsNullOrWhiteSpace(detail))
+        {
+            return detail;
+        }
+
+        return string.IsNullOrWhiteSpace(ex.Message) ? ex.GetType().Name : ex.Message;
     }
 }
