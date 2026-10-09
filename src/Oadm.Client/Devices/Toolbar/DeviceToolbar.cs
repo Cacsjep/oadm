@@ -18,6 +18,9 @@ namespace Oadm.Client.Devices.Toolbar;
 public sealed partial class DeviceToolbar
 {
     private readonly ILogger<DeviceToolbar> _logger;
+    private readonly IClientPluginRegistry _registry;
+    private readonly Dictionary<IToolbarPlugin, Control> _byPlugin = [];
+    private Func<string?, bool> _isPackageEnabled = _ => true;
     private List<Control>? _controls;
 
     public DeviceToolbar(IEnumerable<IToolbarPlugin> builtIn, IClientPluginRegistry registry, ILogger<DeviceToolbar> logger)
@@ -25,6 +28,7 @@ public sealed partial class DeviceToolbar
         ArgumentNullException.ThrowIfNull(builtIn);
         ArgumentNullException.ThrowIfNull(registry);
         _logger = logger;
+        _registry = registry;
         var plugins = builtIn.ToList();
         foreach (IToolbarPlugin plugin in registry.ToolbarPlugins)
         {
@@ -73,6 +77,23 @@ public sealed partial class DeviceToolbar
         }
     }
 
+    /// <summary>
+    /// Hides the entries of plugin packages that are off (Settings page, Plugins) and shows them again when turned on.
+    /// Built-in entries have no package and stay.
+    /// </summary>
+    public void ApplyPackageStates(Func<string?, bool> isPackageEnabled)
+    {
+        ArgumentNullException.ThrowIfNull(isPackageEnabled);
+        _isPackageEnabled = isPackageEnabled;
+        foreach ((IToolbarPlugin plugin, Control control) in _byPlugin)
+        {
+            if (_registry.PackageOf(plugin) is { } package)
+            {
+                control.IsVisible = isPackageEnabled(package);
+            }
+        }
+    }
+
     private List<Control> Create(IToolbarContext context)
     {
         var result = new List<Control>();
@@ -87,6 +108,11 @@ public sealed partial class DeviceToolbar
                     Control control = plugin.CreateControl(context);
                     control.Name ??= plugin.Id;
                     controls.Add(control);
+                    _byPlugin[plugin] = control;
+                    if (!_isPackageEnabled(_registry.PackageOf(plugin)))
+                    {
+                        control.IsVisible = false;
+                    }
                 }
                 catch (Exception ex)
                 {

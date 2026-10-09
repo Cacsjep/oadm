@@ -9,6 +9,11 @@ service PluginService {
   // Live events a core plugin pushes to its page (ICorePluginContext.Events), from the moment of the call until
   // the client cancels. NOT_FOUND for an unknown plugin. A slow watcher loses the oldest events (256 buffered).
   rpc Watch (WatchPluginRequest) returns (stream PluginEvent);
+  // Every loaded plugin package (plugin folder) with its state; the Settings page's plugin list. Any logged-in user.
+  rpc ListPackages (Empty) returns (PluginPackageList);
+  // Admin: turns a package (its core plugins and tasks together) on or off at once, stored on the server.
+  // NOT_FOUND for an unknown package. Reply: the whole list.
+  rpc SetPackageEnabled (SetPackageEnabledRequest) returns (PluginPackageList);
 }
 
 // no_page: the plugin has no rail page (ICorePlugin.HasPage false), e.g. a toolbar-only plugin; clients add no rail entry.
@@ -18,3 +23,16 @@ message InvokeRequest { string plugin_id = 1; string method = 2; string payload_
 message InvokeReply { string payload_json = 1; }
 message WatchPluginRequest { string plugin_id = 1; }
 message PluginEvent { string plugin_id = 1; string topic = 2; string payload_json = 3; }
+
+// id = plugin.json id; has_page: a rail page; menu_task_count: context menu entries.
+message PluginPackageInfo {
+  string id = 1;
+  string display_name = 2;
+  string version = 3;
+  bool enabled = 4;
+  bool enabled_by_default = 5;
+  bool has_page = 6;
+  int32 menu_task_count = 7;
+}
+message PluginPackageList { repeated PluginPackageInfo packages = 1; }
+message SetPackageEnabledRequest { string id = 1; bool enabled = 2; }

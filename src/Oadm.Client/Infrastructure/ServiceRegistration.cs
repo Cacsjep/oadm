@@ -67,6 +67,7 @@ public static class ServiceRegistration
         services.AddSingleton<TaskStore>();
         services.AddSingleton<ServerConnection>();
         services.AddSingleton<TaskPluginCatalog>();
+        services.AddSingleton<PluginPackageStore>();
         services.AddSingleton<IClientPluginRegistry>(sp => new ClientPluginLoader(options, sp.GetRequiredService<ILogger<ClientPluginLoader>>()));
         services.AddSingleton<AvaloniaDialogService>();
         services.AddSingleton<IDialogService>(sp => sp.GetRequiredService<AvaloniaDialogService>());
@@ -77,6 +78,7 @@ public static class ServiceRegistration
         services.AddSingleton<ColumnLayoutViewModel>();
         services.AddSingleton<TasksViewModel>();
         services.AddSingleton<AboutViewModel>();
+        services.AddSingleton<PluginsViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<CredentialsViewModel>();
         services.AddSingleton<LogsViewModel>();

@@ -18,6 +18,9 @@ public interface IClientPluginRegistry
 
     /// <summary>Toolbar parts of the Devices page from plugins (the built-in ones are registered in the container).</summary>
     IReadOnlyList<IToolbarPlugin> ToolbarPlugins { get; }
+
+    /// <summary>The plugin package (plugin.json id next to the dll) a part was loaded from; null for built-in parts.</summary>
+    string? PackageOf(object part) => null;
 }
 
 /// <summary>
@@ -32,6 +35,7 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
     private readonly List<ITaskPluginDialog> _dialogs = [];
     private readonly List<ICorePluginPage> _pages = [];
     private readonly List<IToolbarPlugin> _toolbar = [];
+    private readonly Dictionary<object, string> _packageOf = new(ReferenceEqualityComparer.Instance);
 
     // Kept alive on purpose: a collectible load context whose object is collected starts unloading, and a plugin
     // that loads one of its own assemblies later (e.g. its shared server models on first use) then fails.
@@ -114,6 +118,8 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
     public ITaskPluginDialog? FindDialog(string pluginId) =>
         _dialogs.Find(d => string.Equals(d.PluginId, pluginId, StringComparison.OrdinalIgnoreCase));
 
+    public string? PackageOf(object part) => _packageOf.TryGetValue(part, out string? id) ? id : null;
+
     public ICorePluginPage? FindPage(string pluginId) =>
         _pages.Find(p => string.Equals(p.PluginId, pluginId, StringComparison.OrdinalIgnoreCase));
 
@@ -131,6 +137,7 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
                 var context = new PluginLoadContext(dll);
                 _contexts.Add(context);
                 Assembly assembly = context.LoadFromAssemblyPath(Path.GetFullPath(dll));
+                string? packageId = ReadPackageId(Path.GetDirectoryName(Path.GetFullPath(dll)));
                 foreach (Type type in assembly.GetExportedTypes().Where(t => t is { IsClass: true, IsAbstract: false }))
                 {
                     if (typeof(ITaskPluginDialog).IsAssignableFrom(type) && Activator.CreateInstance(type) is ITaskPluginDialog dialog)
@@ -148,6 +155,10 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
                     if (typeof(IToolbarPlugin).IsAssignableFrom(type) && Activator.CreateInstance(type) is IToolbarPlugin toolbar)
                     {
                         _toolbar.Add(toolbar);
+                        if (packageId is not null)
+                        {
+                            _packageOf[toolbar] = packageId;
+                        }
                         LogLoaded(_logger, "toolbar", toolbar.Id, dll);
                     }
                 }
@@ -156,6 +167,31 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
             {
                 LogLoadFailed(_logger, ex, dll);
             }
+        }
+    }
+
+    /// <summary>The id of plugin.json in the folder, or null.</summary>
+    private static string? ReadPackageId(string? directory)
+    {
+        if (directory is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            string path = Path.Combine(directory, "plugin.json");
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path), new System.Text.Json.JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = System.Text.Json.JsonCommentHandling.Skip });
+            return doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException)
+        {
+            return null;
         }
     }
 

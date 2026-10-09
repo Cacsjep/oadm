@@ -247,6 +247,7 @@ public static partial class OadmServerHost
             sp.GetRequiredService<ILoggerFactory>()));
         services.AddSingleton<Sdk.Tasks.ITaskRunner>(sp => sp.GetRequiredService<TaskEngine>());
         services.AddSingleton<TaskPluginRunnableCache>();
+        services.AddSingleton<PluginActivation>();
         services.AddSingleton(sp => new CorePluginHost(
             sp.GetRequiredService<PluginRegistry>(),
             sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
@@ -338,7 +339,8 @@ public static partial class OadmServerHost
         var engine = sp.GetRequiredService<TaskEngine>();
         await engine.RecoverInterruptedAsync(ct).ConfigureAwait(false);
 
-        // 4. Core plugins.
+        // 4. Core plugins of the packages that are on (Settings page, Plugins; manifest default otherwise).
+        await sp.GetRequiredService<PluginActivation>().LoadAsync(ct).ConfigureAwait(false);
         await sp.GetRequiredService<CorePluginHost>().StartAllAsync(ct).ConfigureAwait(false);
 
         // 5. Background services and Kestrel.

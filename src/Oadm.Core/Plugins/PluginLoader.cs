@@ -148,7 +148,11 @@ public sealed partial class PluginLoader
             context = new PluginLoadContext(dlls[0], "plugin:" + manifest.Id);
             var assemblies = dlls.Select(context.LoadFromFileWithoutLock).ToArray();
 
-            var origin = new PluginOrigin(manifest.Id, manifest.Version, directory);
+            var origin = new PluginOrigin(manifest.Id, manifest.Version, directory)
+            {
+                DisplayName = string.IsNullOrWhiteSpace(manifest.DisplayName) ? manifest.Id : manifest.DisplayName.Trim(),
+                EnabledByDefault = manifest.EnabledByDefault,
+            };
             var registered = assemblies.Sum(a => RegisterTypes(a, origin));
             if (registered == 0)
             {
@@ -263,10 +267,10 @@ public sealed partial class PluginLoader
                 continue;
             }
 
-            var before = _registry.TaskPlugins.Count;
+            var before = _registry.AllTaskPlugins.Count;
             if (_registry.RegisterCorePlugin(core, origin))
             {
-                count += 1 + (_registry.TaskPlugins.Count - before);
+                count += 1 + (_registry.AllTaskPlugins.Count - before);
                 foreach (var task in SafeContributed(core))
                 {
                     contributedTypes.Add(task.GetType());

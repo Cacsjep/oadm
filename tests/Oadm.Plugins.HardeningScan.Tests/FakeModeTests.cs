@@ -19,6 +19,9 @@ public sealed class FakeModeTests : IDisposable
     [Fact]
     public async Task The_fake_backend_answers_with_the_plugin_contract()
     {
+        // Off by default like on the server; turned on, its page is listed.
+        Assert.DoesNotContain(await _api.ListCorePluginsAsync(CancellationToken.None), p => p.Id == HardeningScanPluginInfo.PluginId);
+        await _api.SetPluginPackageEnabledAsync(HardeningScanPluginInfo.PluginId, true, CancellationToken.None);
         Assert.Contains(await _api.ListCorePluginsAsync(CancellationToken.None), p => p.Id == HardeningScanPluginInfo.PluginId && p.IconKey == HardeningScanPluginInfo.IconKey);
         var state = HardeningJson.Deserialize<HardeningState>(await _api.InvokeCorePluginAsync(HardeningScanPluginInfo.PluginId, HardeningMethods.GetState, null, CancellationToken.None));
         Assert.Equal(HardeningCatalog.ColumnIds, state.Columns);

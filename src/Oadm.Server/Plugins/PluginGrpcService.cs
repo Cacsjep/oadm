@@ -13,9 +13,54 @@ namespace Oadm.Server.Plugins;
 /// <summary>
 /// gRPC PluginService: core plugin pages and their backend calls. Invoke checks the role the plugin requires for the
 /// method (<see cref="ICorePlugin.RequiredRole"/>, PERMISSION_DENIED) and writes audited calls to the audit log.
+/// ListPackages / SetPackageEnabled: the plugin list of the Settings page (<see cref="PluginActivation"/>).
 /// </summary>
-public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost host, AuditLog audit) : Proto.PluginService.PluginServiceBase
+public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost host, AuditLog audit, PluginActivation activation) : Proto.PluginService.PluginServiceBase
 {
+    public override Task<Proto.PluginPackageList> ListPackages(Proto.Empty request, ServerCallContext context) =>
+        Task.FromResult(PackageList());
+
+    public override async Task<Proto.PluginPackageList> SetPackageEnabled(Proto.SetPackageEnabledRequest request, ServerCallContext context)
+    {
+        if (string.IsNullOrWhiteSpace(request.Id))
+        {
+            throw GrpcGuard.InvalidArgument("id is required.");
+        }
+
+        PluginPackageState changed;
+        try
+        {
+            changed = await activation.SetEnabledAsync(request.Id, request.Enabled, context.CancellationToken).ConfigureAwait(false);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            throw GrpcGuard.NotFound(ex.Message);
+        }
+
+        await audit.WriteAsync(
+            request.Enabled ? AuditActions.PluginTurnedOn : AuditActions.PluginTurnedOff,
+            changed.Origin.DisplayName,
+            null,
+            context.CancellationToken).ConfigureAwait(false);
+        return PackageList();
+    }
+
+    private Proto.PluginPackageList PackageList()
+    {
+        var reply = new Proto.PluginPackageList();
+        reply.Packages.AddRange(registry.Packages.Select(p => new Proto.PluginPackageInfo
+        {
+            Id = p.Id,
+            DisplayName = p.Origin.DisplayName,
+            Version = p.Origin.Version,
+            Enabled = p.Enabled,
+            EnabledByDefault = p.Origin.EnabledByDefault,
+            HasPage = p.HasPage,
+            MenuTaskCount = p.MenuTaskCount,
+        }));
+        return reply;
+    }
+
     public override Task<Proto.CorePluginList> ListCorePlugins(Proto.Empty request, ServerCallContext context)
     {
         var reply = new Proto.CorePluginList();

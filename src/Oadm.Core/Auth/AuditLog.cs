@@ -37,6 +37,8 @@ public static class AuditActions
     public const string TagRecolored = "Changed tag color";
     public const string TagDeleted = "Deleted tag";
     public const string DevicesTagged = "Tagged devices";
+    public const string PluginTurnedOn = "Turned plugin on";
+    public const string PluginTurnedOff = "Turned plugin off";
 }
 
 /// <summary>

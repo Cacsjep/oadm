@@ -166,28 +166,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         {
             for (var i = _startOrder.Count - 1; i >= 0; i--)
             {
-                var id = _startOrder[i];
-                if (!_entries.TryGetValue(id, out var entry) || entry.State != CorePluginState.Running)
-                {
-                    continue;
-                }
-
-                entry.State = CorePluginState.Stopping;
-                try
-                {
-                    await entry.Plugin.StopAsync(ct).ConfigureAwait(false);
-                    entry.State = CorePluginState.Stopped;
-                    _trustAnchors?.Remove(id); // a stopped plugin's CAs are no longer vouched for
-                    LogStopped(id);
-                }
-#pragma warning disable CA1031 // Keep stopping the remaining plugins.
-                catch (Exception ex)
-#pragma warning restore CA1031
-                {
-                    entry.State = CorePluginState.Faulted;
-                    entry.Error = ex.Message;
-                    LogStopFailed(ex, id);
-                }
+                await StopOneAsync(_startOrder[i], ct).ConfigureAwait(false);
             }
 
             _startOrder.Clear();
@@ -195,6 +174,59 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         finally
         {
             _lifecycle.Release();
+        }
+    }
+
+    /// <summary>
+    /// After a package was turned on or off (<see cref="PluginRegistry.SetEnabled"/>): stops the running core plugins of
+    /// disabled packages, then starts the enabled ones that are not running. Errors are logged, never thrown.
+    /// </summary>
+    public async Task SyncEnabledAsync(CancellationToken ct)
+    {
+        var enabled = _registry.CorePlugins.Select(c => c.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        await _lifecycle.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            for (var i = _startOrder.Count - 1; i >= 0; i--)
+            {
+                var id = _startOrder[i];
+                if (!enabled.Contains(id))
+                {
+                    await StopOneAsync(id, ct).ConfigureAwait(false);
+                    _startOrder.RemoveAt(i);
+                }
+            }
+        }
+        finally
+        {
+            _lifecycle.Release();
+        }
+
+        await StartAllAsync(ct).ConfigureAwait(false);
+    }
+
+    private async Task StopOneAsync(string id, CancellationToken ct)
+    {
+        if (!_entries.TryGetValue(id, out var entry) || entry.State != CorePluginState.Running)
+        {
+            return;
+        }
+
+        entry.State = CorePluginState.Stopping;
+        try
+        {
+            await entry.Plugin.StopAsync(ct).ConfigureAwait(false);
+            entry.State = CorePluginState.Stopped;
+            _trustAnchors?.Remove(id); // a stopped plugin's CAs are no longer vouched for
+            LogStopped(id);
+        }
+#pragma warning disable CA1031 // Keep stopping the remaining plugins.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            entry.State = CorePluginState.Faulted;
+            entry.Error = ex.Message;
+            LogStopFailed(ex, id);
         }
     }
 
@@ -211,6 +243,11 @@ public sealed partial class CorePluginHost : IAsyncDisposable
 
         if (!_registry.TryGetCorePlugin(pluginId, out var registered))
         {
+            if (_registry.AllCorePlugins.FirstOrDefault(c => string.Equals(c.Id, pluginId, StringComparison.OrdinalIgnoreCase)) is { } off)
+            {
+                throw new InvalidOperationException($"The {off.Origin.DisplayName} plugin is turned off.");
+            }
+
             throw new KeyNotFoundException($"Unknown core plugin '{pluginId}'.");
         }
 

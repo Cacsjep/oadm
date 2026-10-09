@@ -149,6 +149,12 @@ public interface IOadmApi
     Task<IReadOnlyList<CorePluginInfo>> ListCorePluginsAsync(CancellationToken ct);
     Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct);
 
+    /// <summary>Every plugin package with its state (Settings page, Plugins).</summary>
+    Task<IReadOnlyList<PluginPackageInfo>> ListPluginPackagesAsync(CancellationToken ct);
+
+    /// <summary>Admin: turns a plugin package on or off; returns the whole list.</summary>
+    Task<IReadOnlyList<PluginPackageInfo>> SetPluginPackageEnabledAsync(string packageId, bool enabled, CancellationToken ct);
+
     /// <summary>Live events of a core plugin (PluginService.Watch) until cancelled. Default: none (the page polls).</summary>
     IAsyncEnumerable<PluginEvent> WatchCorePluginAsync(string pluginId, CancellationToken ct) => AsyncEnumerable.Empty<PluginEvent>();
 }

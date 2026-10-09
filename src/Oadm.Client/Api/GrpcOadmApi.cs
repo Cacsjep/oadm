@@ -330,6 +330,12 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<IReadOnlyList<CorePluginInfo>> ListCorePluginsAsync(CancellationToken ct) =>
         (await C.Plugins.ListCorePluginsAsync(new Empty(), cancellationToken: ct)).Plugins;
 
+    public async Task<IReadOnlyList<PluginPackageInfo>> ListPluginPackagesAsync(CancellationToken ct) =>
+        (await C.Plugins.ListPackagesAsync(new Empty(), cancellationToken: ct)).Packages;
+
+    public async Task<IReadOnlyList<PluginPackageInfo>> SetPluginPackageEnabledAsync(string packageId, bool enabled, CancellationToken ct) =>
+        (await C.Plugins.SetPackageEnabledAsync(new SetPackageEnabledRequest { Id = packageId, Enabled = enabled }, cancellationToken: ct)).Packages;
+
     public async Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct)
     {
         var reply = await C.Plugins.InvokeAsync(

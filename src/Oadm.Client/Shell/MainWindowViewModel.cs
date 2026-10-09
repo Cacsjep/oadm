@@ -23,6 +23,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly IOadmApi _api;
     private readonly IClientPluginRegistry _plugins;
     private readonly TaskPluginCatalog _catalog;
+    private readonly PluginPackageStore? _packages;
+    private bool _loadingPackagesOnConnect;
     private readonly ILogger<MainWindowViewModel> _logger;
     private readonly IClientSettingsStore _settings;
     private readonly NavItemViewModel _devicesItem;
@@ -45,7 +47,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IOadmApi api,
         IClientSettingsStore clientSettings,
         UserSession session,
-        ILogger<MainWindowViewModel> logger)
+        ILogger<MainWindowViewModel> logger,
+        PluginPackageStore? packages = null)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(clientSettings);
@@ -64,6 +67,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _api = api;
         _plugins = plugins;
         _catalog = catalog;
+        _packages = packages;
+        if (packages is not null)
+        {
+            packages.Changed += (_, _) =>
+            {
+                Devices.Toolbar.ApplyPackageStates(packages.IsEnabled);
+                if (!_loadingPackagesOnConnect)
+                {
+                    _ = ReloadPluginsAsync();
+                }
+            };
+        }
+
         _settings = clientSettings;
         _logger = logger;
         IsNavExpanded = clientSettings.Current.NavRailExpanded;
@@ -225,6 +241,19 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private async Task OnConnectedAsync()
     {
+        if (_packages is not null)
+        {
+            _loadingPackagesOnConnect = true;
+            try
+            {
+                await _packages.LoadAsync(CancellationToken.None).ConfigureAwait(true);
+            }
+            finally
+            {
+                _loadingPackagesOnConnect = false;
+            }
+        }
+
         await _catalog.RefreshAsync(CancellationToken.None).ConfigureAwait(true);
         try
         {
@@ -244,6 +273,20 @@ public sealed partial class MainWindowViewModel : ObservableObject
         catch (Exception ex)
         {
             LogKeyNoticeFailed(_logger, ex.Message);
+        }
+    }
+
+    /// <summary>A plugin package was turned on or off: rail pages and task menus follow the server.</summary>
+    private async Task ReloadPluginsAsync()
+    {
+        try
+        {
+            await _catalog.RefreshAsync(CancellationToken.None).ConfigureAwait(true);
+            SyncCorePluginPages(await _api.ListCorePluginsAsync(CancellationToken.None).ConfigureAwait(true));
+        }
+        catch (Exception ex)
+        {
+            LogCorePluginsFailed(_logger, ex.Message);
         }
     }
 

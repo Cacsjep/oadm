@@ -11,6 +11,12 @@ namespace Oadm.Core.Plugins;
 /// <summary>Where a plugin came from: a plugin folder (manifest) or an assembly compiled into the host.</summary>
 public sealed record PluginOrigin(string PackageId, string Version, string? Directory)
 {
+    /// <summary>Name of the package in the plugin list (manifest displayName, else the id).</summary>
+    public string DisplayName { get; init; } = PackageId;
+
+    /// <summary>Manifest <c>enabledByDefault</c>: the state until an administrator changes it.</summary>
+    public bool EnabledByDefault { get; init; } = true;
+
     public static PluginOrigin FromAssembly(Assembly assembly)
     {
         ArgumentNullException.ThrowIfNull(assembly);
@@ -36,6 +42,15 @@ public sealed record RegisteredCorePlugin(ICorePlugin Plugin, PluginOrigin Origi
     public string Id => Plugin.Id;
 }
 
+/// <summary>
+/// One plugin package (plugin folder) in the plugin list: its core plugins and task plugins are turned on and off
+/// together. <see cref="HasPage"/>: a core plugin with a rail page; <see cref="MenuTaskCount"/>: context menu entries.
+/// </summary>
+public sealed record PluginPackageState(PluginOrigin Origin, bool Enabled, bool HasPage, int MenuTaskCount)
+{
+    public string Id => Origin.PackageId;
+}
+
 /// <summary>A plugin that could not be loaded or registered. Shown to admins, never fatal.</summary>
 public sealed record PluginLoadError(string Source, string Message, Exception? Exception = null);
 
@@ -43,6 +58,8 @@ public sealed record PluginLoadError(string Source, string Message, Exception? E
 /// All task and core plugins known to the host. Contributed task plugins are registered exactly
 /// like standalone ones, with their owning core plugin attached. Plugin ids are unique
 /// (case-insensitive); the first registration wins. Thread-safe.
+/// Packages can be turned off (Settings page, Plugins): <see cref="TaskPlugins"/>, <see cref="CorePlugins"/> and the
+/// lookups only see enabled packages; <see cref="AllTaskPlugins"/> and <see cref="AllCorePlugins"/> see every one.
 /// </summary>
 public sealed partial class PluginRegistry
 {
@@ -50,6 +67,7 @@ public sealed partial class PluginRegistry
     private readonly List<RegisteredTaskPlugin> _tasks = [];
     private readonly List<RegisteredCorePlugin> _cores = [];
     private readonly List<PluginLoadError> _errors = [];
+    private readonly Dictionary<string, bool> _enabledOverrides = new(StringComparer.OrdinalIgnoreCase);
     private readonly ILogger _logger;
 
     public PluginRegistry(ILogger<PluginRegistry>? logger = null)
@@ -57,7 +75,32 @@ public sealed partial class PluginRegistry
         _logger = (ILogger?)logger ?? NullLogger.Instance;
     }
 
+    /// <summary>Task plugins of enabled packages.</summary>
     public IReadOnlyList<RegisteredTaskPlugin> TaskPlugins
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return [.. _tasks.Where(t => IsEnabledLocked(t.Origin))];
+            }
+        }
+    }
+
+    /// <summary>Core plugins of enabled packages.</summary>
+    public IReadOnlyList<RegisteredCorePlugin> CorePlugins
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return [.. _cores.Where(c => IsEnabledLocked(c.Origin))];
+            }
+        }
+    }
+
+    /// <summary>Every registered task plugin, enabled or not.</summary>
+    public IReadOnlyList<RegisteredTaskPlugin> AllTaskPlugins
     {
         get
         {
@@ -68,7 +111,8 @@ public sealed partial class PluginRegistry
         }
     }
 
-    public IReadOnlyList<RegisteredCorePlugin> CorePlugins
+    /// <summary>Every registered core plugin, enabled or not.</summary>
+    public IReadOnlyList<RegisteredCorePlugin> AllCorePlugins
     {
         get
         {
@@ -90,21 +134,139 @@ public sealed partial class PluginRegistry
         }
     }
 
+    /// <summary>Every package with at least one registered plugin, in registration order, with its state.</summary>
+    public IReadOnlyList<PluginPackageState> Packages
+    {
+        get
+        {
+            lock (_sync)
+            {
+                var origins = new List<PluginOrigin>();
+                foreach (var origin in _cores.Select(c => c.Origin).Concat(_tasks.Select(t => t.Origin)))
+                {
+                    if (!origins.Exists(o => SamePackage(o, origin)))
+                    {
+                        origins.Add(origin);
+                    }
+                }
+
+                return [.. origins.Select(o => new PluginPackageState(
+                    o,
+                    IsEnabledLocked(o),
+                    _cores.Exists(c => SamePackage(c.Origin, o) && SafeHasPage(c.Plugin)),
+                    _tasks.Count(t => SamePackage(t.Origin, o) && SafeShowInMenus(t.Plugin))))];
+            }
+        }
+    }
+
+    /// <summary>Raised after <see cref="SetEnabled"/> or <see cref="ApplyEnabledStates"/>.</summary>
+    public event EventHandler? EnabledChanged;
+
+    /// <summary>Whether a package is known and on: the administrator's choice, else the manifest default.</summary>
+    public bool IsEnabled(string packageId)
+    {
+        lock (_sync)
+        {
+            var origin = FindOriginLocked(packageId);
+            return origin is not null && IsEnabledLocked(origin);
+        }
+    }
+
+    /// <summary>Whether a package with this id has registered plugins.</summary>
+    public bool HasPackage(string packageId)
+    {
+        lock (_sync)
+        {
+            return FindOriginLocked(packageId) is not null;
+        }
+    }
+
+    /// <summary>The stored choices (package id -> on), e.g. at server start. Packages not listed use their default.</summary>
+    public void ApplyEnabledStates(IReadOnlyDictionary<string, bool> states)
+    {
+        ArgumentNullException.ThrowIfNull(states);
+        lock (_sync)
+        {
+            _enabledOverrides.Clear();
+            foreach (var (id, enabled) in states)
+            {
+                _enabledOverrides[id] = enabled;
+            }
+        }
+
+        EnabledChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Turns a package on or off. Returns every choice to store (package id -> on).</summary>
+    public IReadOnlyDictionary<string, bool> SetEnabled(string packageId, bool enabled)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
+        Dictionary<string, bool> snapshot;
+        lock (_sync)
+        {
+            _enabledOverrides[packageId] = enabled;
+            snapshot = new Dictionary<string, bool>(_enabledOverrides, StringComparer.OrdinalIgnoreCase);
+        }
+
+        EnabledChanged?.Invoke(this, EventArgs.Empty);
+        return snapshot;
+    }
+
+    /// <summary>A task plugin of an enabled package.</summary>
     public bool TryGetTaskPlugin(string id, [NotNullWhen(true)] out RegisteredTaskPlugin? plugin)
     {
         lock (_sync)
         {
-            plugin = _tasks.Find(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
+            plugin = _tasks.Find(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase) && IsEnabledLocked(t.Origin));
             return plugin is not null;
         }
     }
 
+    /// <summary>A core plugin of an enabled package.</summary>
     public bool TryGetCorePlugin(string id, [NotNullWhen(true)] out RegisteredCorePlugin? plugin)
     {
         lock (_sync)
         {
-            plugin = _cores.Find(c => string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase));
+            plugin = _cores.Find(c => string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase) && IsEnabledLocked(c.Origin));
             return plugin is not null;
+        }
+    }
+
+    private PluginOrigin? FindOriginLocked(string packageId) =>
+        _cores.Select(c => c.Origin).Concat(_tasks.Select(t => t.Origin))
+            .FirstOrDefault(o => string.Equals(o.PackageId, packageId, StringComparison.OrdinalIgnoreCase));
+
+    private bool IsEnabledLocked(PluginOrigin origin) =>
+        _enabledOverrides.TryGetValue(origin.PackageId, out var enabled) ? enabled : origin.EnabledByDefault;
+
+    private static bool SamePackage(PluginOrigin a, PluginOrigin b) =>
+        string.Equals(a.PackageId, b.PackageId, StringComparison.OrdinalIgnoreCase);
+
+    private static bool SafeHasPage(ICorePlugin plugin)
+    {
+        try
+        {
+            return plugin.HasPage;
+        }
+#pragma warning disable CA1031 // Plugin code is untrusted.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return false;
+        }
+    }
+
+    private static bool SafeShowInMenus(ITaskPlugin plugin)
+    {
+        try
+        {
+            return plugin.ShowInMenus;
+        }
+#pragma warning disable CA1031 // Plugin code is untrusted.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return false;
         }
     }
 

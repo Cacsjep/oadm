@@ -686,7 +686,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         {
             ThrowIfOffline();
             var result = new List<TaskPluginInfo>();
-            foreach (TaskPluginInfo template in _pluginTemplates)
+            foreach (TaskPluginInfo template in _pluginTemplates.Where(t => IsFakePluginEnabled(t.Id)))
             {
                 TaskPluginInfo info = template.Clone();
                 info.RunnableDeviceIds.Clear();
@@ -940,7 +940,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         lock (_gate)
         {
             ThrowIfOffline();
-            return Task.FromResult<IReadOnlyList<CorePluginInfo>>([.. FakeCorePlugins]);
+            return Task.FromResult<IReadOnlyList<CorePluginInfo>>([.. FakeCorePlugins.Where(p => IsFakePluginEnabled(p.Id))]);
         }
     }
 

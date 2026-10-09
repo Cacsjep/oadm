@@ -103,6 +103,31 @@
                        TextWrapping="Wrap" IsVisible="{Binding ServerMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           </StackPanel>
         </Border>
+
+        <!-- Plugins: one row per plugin package; the check box turns it on or off at once (administrators). -->
+        <Border Classes="card" IsVisible="{Binding Plugins, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <StackPanel Spacing="12" DataContext="{Binding Plugins}" x:DataType="settings:PluginsViewModel">
+            <TextBlock Classes="sectionTitle" Text="Plugins" />
+            <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Hint}" />
+            <DataGrid ItemsSource="{Binding Plugins}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
+                      SelectionMode="Single" IsVisible="{Binding !IsEmpty}">
+              <DataGrid.Columns>
+                <DataGridTemplateColumn Header="On" Width="72" SortMemberPath="IsEnabled" x:DataType="settings:PluginRowViewModel">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="settings:PluginRowViewModel">
+                      <CheckBox IsChecked="{Binding IsEnabled}" IsEnabled="{Binding CanToggle}" HorizontalAlignment="Center"
+                                ToolTip.Tip="{Binding StateText}" />
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Plugin" Width="200" Binding="{Binding Name}" x:DataType="settings:PluginRowViewModel" />
+                <DataGridTextColumn Header="Adds" Width="*" Binding="{Binding Adds}" x:DataType="settings:PluginRowViewModel" />
+                <DataGridTextColumn Header="Version" Width="90" Binding="{Binding Version}" x:DataType="settings:PluginRowViewModel" />
+              </DataGrid.Columns>
+            </DataGrid>
+            <TextBlock Classes="error" TextWrapping="Wrap" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" />
+          </StackPanel>
+        </Border>
       </StackPanel>
     </ScrollViewer>
   </Grid>

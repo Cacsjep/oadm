@@ -319,8 +319,11 @@ public interface IPluginSettings
     Task SetAsync(string key, string? valueJson, CancellationToken ct);
 }
 
-/// <summary>Content of plugin.json next to the plugin assemblies.</summary>
-public sealed record PluginManifest(string Id, string Version, string MinSdkVersion, string? DisplayName = null);
+/// <summary>
+/// Content of plugin.json next to the plugin assemblies. <paramref name="EnabledByDefault"/> false: the plugin is off
+/// until an administrator turns it on (Settings page, Plugins).
+/// </summary>
+public sealed record PluginManifest(string Id, string Version, string MinSdkVersion, string? DisplayName = null, bool EnabledByDefault = true);
 
 /// <summary>
 /// Well-known context menu groups (<see cref="ITaskPlugin.Group"/>). Plugins reuse these so related
