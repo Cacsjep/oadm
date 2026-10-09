@@ -68,7 +68,7 @@ public sealed class LiveViewViewModelTests
         stream.Send(VideoCodec.H265);
         await TestSupport.WaitUntilAsync(() => vm.Image is not null);
         Assert.Equal(LiveViewState.Live, vm.State);
-        Assert.Equal("Live", vm.StateText);
+        Assert.Equal("", vm.StateText); // live: no chip, only codec, resolution and fps
         Assert.StartsWith("H.265  ·  640x360", vm.DetailText, StringComparison.Ordinal);
     }
 

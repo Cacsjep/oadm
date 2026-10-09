@@ -732,8 +732,8 @@ web UI. Reference screenshot: headless `client-liveview.png`.
   resizable with the vertical `paneSplitter`; the device card keeps at least 900 px, toolbar entries that do not fit go
   into the More menu, Address and Status keep minimum widths so they stay readable; the panel at least 320 px). Slides in from the right (250 ms, cubic ease-out).
   Header: `IconLabel` with video icon and model, subtitle address, serial and (with several
-  sources) the source name, source switch, close button. Below: state chip (Connecting, Live,
-  Reconnecting, Error) and detail text (codec, resolution, fps, or the reason). Picture
+  sources) the source name, source switch, close button. Below: state chip (Connecting,
+  Reconnecting, Error; none while live: the picture says it) and detail text (codec, resolution, fps, or the reason). Picture
   `Stretch=Uniform` on a dark rounded surface.
 - Open/close: the icon of the shown device or the close button or Escape closes the panel and
   stops the stream; another device's icon switches. Removing the shown device closes it. The icon

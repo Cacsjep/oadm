@@ -376,7 +376,7 @@ public sealed partial class LiveViewViewModel : ObservableObject, IDisposable
             _windowStart = now;
             _framesInWindow = 0;
             _streamInfo = info;
-            SetState(LiveViewState.Live, "Live", _streamInfo);
+            SetState(LiveViewState.Live, "", _streamInfo); // no chip while live: the picture says it
             return;
         }
 
@@ -393,7 +393,7 @@ public sealed partial class LiveViewViewModel : ObservableObject, IDisposable
             _streamInfo = info;
         }
 
-        SetState(LiveViewState.Live, "Live", _streamInfo);
+        SetState(LiveViewState.Live, "", _streamInfo); // no chip while live: the picture says it
     }
 
     private void SetStateFor(int id, LiveViewState state, string stateText, string detail)
