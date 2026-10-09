@@ -12,10 +12,10 @@ using Oadm.Sdk.Devices;
 namespace Oadm.Plugins.DateAndTime.Client;
 
 /// <summary>
-/// "Set date and time" dialog, a clone of the ADM / AXIS Camera Station dialog: Device time (first selected device,
-/// read-only), Time zone (searchable IANA list, "Automatically adjust for daylight saving time changes") and Time mode
-/// (Synchronize with server computer time, Synchronize with NTP server: Obtain from DHCP / Use servers / NTS, Set
-/// manually). Exactly like ADM there is no "keep": OK writes the time zone and the time mode to every selected device.
+/// "Set date and time" dialog, a compact clone of the ADM / AXIS Camera Station dialog: Device time (first selected
+/// device, read-only, ticking), Time zone (one drop-down of the IANA zones sorted by offset, "Automatically adjust for
+/// daylight saving time changes") and Time mode (Synchronize with server computer time, Synchronize with NTP server:
+/// Obtain from DHCP / servers / NTS, Set manually), each radio button with its input below it. Exactly like ADM there is no "keep": OK writes the time zone and the time mode to every selected device.
 /// Defaults: the first device's time zone (the OADM server's when the device has no IANA zone) and its time mode (NTP
 /// when enabled, otherwise manual). Field errors are reported below their input (<see cref="ValidatingViewModel"/>),
 /// with the server's own rules (<see cref="PayloadValidator"/>). No per-device work: the device summaries are one
@@ -29,6 +29,7 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
     private bool _initialDst = true;
     private int _maxYear = PayloadValidator.DefaultMaxYear;
     private bool _ready;
+    private DateTimeOffset _readAt;
 
     public DateTimeDialogViewModel(IReadOnlyList<IDeviceInfo> devices, Func<DateTimeOffset>? now = null)
     {
@@ -61,11 +62,10 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
             }
         }
 
-        FilteredZones = TimeZoneCatalog.All;
         var local = _now();
         ManualDate = local.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         ManualTime = local.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
-        DeviceTimeStatus = $"Reading the time of {Label(devices[0])}...";
+        DeviceTimeStatus = "Reading the device time";
         Validation
             .Rule(nameof(SelectedZone), () => IsServerTime ? null
                 : SelectedZone is null ? "Select a time zone." : PayloadValidator.ValidateTimeZone(SelectedZone.Id))
@@ -91,9 +91,9 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
 
     // ---- Device time (first selected device, read-only) ----
 
-    /// <summary>"10.0.0.48 · P3265-V" or "10.0.0.48 · P3265-V (first of 12 selected devices)".</summary>
-    public string DeviceCardDescription => IsMultiDevice
-        ? $"{Label(_devices[0])}, the first of {_devices.Count.ToString("N0", CultureInfo.InvariantCulture)} selected devices"
+    /// <summary>"10.0.0.48 · P3265-V" or "10.0.0.48 · P3265-V, first of 12 devices" (next to the Device time heading).</summary>
+    public string DeviceLabel => IsMultiDevice
+        ? $"{Label(_devices[0])}, first of {Count(_devices.Count)} devices"
         : Label(_devices[0]);
 
     [ObservableProperty]
@@ -114,17 +114,16 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
 
     public bool HasDeviceTime => Current is not null;
 
+    /// <summary>The device's local time, "2026-10-07 18:24:01 (UTC+02:00)", advanced by <see cref="Tick"/>.</summary>
     [ObservableProperty]
     public partial string DeviceTimeText { get; set; } = string.Empty;
 
+    /// <summary>The OADM server's time in this computer's zone and the difference to the device (below "Synchronize with server computer time").</summary>
     [ObservableProperty]
-    public partial string DeviceTimeZoneText { get; set; } = string.Empty;
-
-    [ObservableProperty]
-    public partial string DeviceTimeModeText { get; set; } = string.Empty;
-
-    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasServerTime), nameof(HasServerTimeDetail))]
     public partial string ServerTimeText { get; set; } = string.Empty;
+
+    public bool HasServerTime => ServerTimeText.Length > 0;
 
     /// <summary>IANA id of the OADM server's time zone (server time mode).</summary>
     [ObservableProperty]
@@ -132,11 +131,8 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
 
     // ---- Time zone ----
 
-    [ObservableProperty]
-    public partial IReadOnlyList<TimeZoneEntry> FilteredZones { get; set; }
-
-    [ObservableProperty]
-    public partial string ZoneSearch { get; set; } = string.Empty;
+    /// <summary>Every zone of the drop-down, sorted by UTC offset (zones the OS does not know last).</summary>
+    public IReadOnlyList<TimeZoneEntry> Zones { get; } = TimeZoneCatalog.All;
 
     [ObservableProperty]
     public partial TimeZoneEntry? SelectedZone { get; set; }
@@ -151,20 +147,6 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
     public bool CanEditTimeZone => !IsServerTime;
 
     public bool CanAdjustDst => CanEditTimeZone && SelectedZone is { ObservesDaylightSaving: true };
-
-    /// <summary>The time zone error, shown directly below the time zone list.</summary>
-    public string? TimeZoneError => ErrorOf(nameof(SelectedZone));
-
-    public bool HasTimeZoneError => TimeZoneError is not null;
-
-    /// <summary>Card description: what happens with the time zone.</summary>
-    public string TimeZoneDescription => IsServerTime
-        ? ServerTimeZone is { } server
-            ? $"The devices get the time zone of the OADM server: {server}."
-            : "The OADM server's time zone is not known to AXIS devices; the devices keep their time zone."
-        : SelectedZone is { } zone
-            ? $"Set to {zone.Label}" + (AdjustForDst || !zone.ObservesDaylightSaving ? "." : ", without daylight saving time.")
-            : "Select the time zone of the devices.";
 
     // ---- Time mode ----
 
@@ -191,33 +173,32 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
         set => SetMode(value, TimeMode.Manual);
     }
 
+    /// <summary>"Obtain from DHCP"; NTS always uses the entered servers.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(UseServers), nameof(ShowServerList))]
+    [NotifyPropertyChangedFor(nameof(ShowServerList))]
     public partial bool UseDhcp { get; set; }
 
-    public bool UseServers
-    {
-        get => !UseDhcp;
-        set => UseDhcp = !value;
-    }
-
+    /// <summary>The server field is in use (enabled and validated): NTP without DHCP, or NTS.</summary>
     public bool ShowServerList => IsNtp && (!UseDhcp || UseNts);
 
-    /// <summary>One host name or IP address per line (commas and spaces also separate).</summary>
+    /// <summary>Host names or IP addresses separated by commas (new lines, spaces and semicolons also separate).</summary>
     [ObservableProperty]
     public partial string NtpServersText { get; set; } = string.Empty;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowServerList), nameof(ServersLabel))]
+    [NotifyPropertyChangedFor(nameof(ShowServerList), nameof(ServersPlaceholder), nameof(HasNtsHint))]
     public partial bool UseNts { get; set; }
 
     public bool ShowNts => NtsDeviceCount > 0;
 
-    public string ServersLabel => UseNts ? "NTS KE servers" : "NTP servers";
+    public string ServersPlaceholder => UseNts ? "Up to 5 NTS KE servers, separated by commas" : "Up to 5 NTP servers, separated by commas";
 
-    public string NtsHint => NtsDeviceCount == _devices.Count
-        ? "Network Time Security: the servers must be NTS KE servers."
+    /// <summary>Only when some of the selected devices cannot use NTS.</summary>
+    public string? NtsHint => NtsDeviceCount == _devices.Count
+        ? null
         : $"NTS works on {Count(NtsDeviceCount)} of {Count(_devices.Count)} devices; the others are not changed.";
+
+    public bool HasNtsHint => UseNts && NtsHint is not null;
 
     [ObservableProperty]
     public partial string ManualDate { get; set; }
@@ -232,16 +213,18 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
         {
             var note = Mode switch
             {
-                TimeMode.ServerTime => "The devices get the date and time of the OADM server once, when each task runs, and NTP is turned off.",
+                TimeMode.ServerTime => ServerTimeZone is { } zone
+                    ? $"The devices get this time and the server's time zone ({zone}) once, when each task runs. NTP is turned off."
+                    : "The devices get this time once, when each task runs, and keep their time zone. NTP is turned off.",
                 TimeMode.Manual => "Date and time in the time zone of each device. NTP is turned off.",
                 _ => null,
             };
             var devices = Mode switch
             {
                 TimeMode.ServerTime or TimeMode.Manual when NoTimeApiCount > 0 =>
-                    $"{Count(NoTimeApiCount)} of the selected devices {(NoTimeApiCount == 1 ? "has" : "have")} no Time API (AXIS OS 9.30 or later) and cannot take a date and time; their tasks fail without changes.",
+                    $"{Count(NoTimeApiCount)} of the selected devices {(NoTimeApiCount == 1 ? "has" : "have")} no Time API (AXIS OS 9.30 or later): their tasks fail without changes.",
                 TimeMode.Ntp when SingleNtpServerCount > 0 && ServerCount > 1 =>
-                    $"{Count(SingleNtpServerCount)} of the selected devices {(SingleNtpServerCount == 1 ? "takes" : "take")} only one NTP server (no NTP API); their tasks fail without changes.",
+                    $"{Count(SingleNtpServerCount)} of the selected devices {(SingleNtpServerCount == 1 ? "takes" : "take")} only one NTP server: their tasks fail without changes.",
                 _ => null,
             };
             return note is null ? devices : devices is null ? note : note + " " + devices;
@@ -250,9 +233,15 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
 
     public bool HasModeNote => ModeNote is not null;
 
-    public string ModeDescription => DeviceTimeModeText.Length == 0
-        ? string.Empty
-        : "Current: " + DeviceTimeModeText;
+    /// <summary>The note below the chosen time mode's input (null for the other two).</summary>
+    public string? ServerTimeNote => IsServerTime ? ModeNote : null;
+
+    /// <summary>Something to show below "Synchronize with server computer time" (no empty gap while reading).</summary>
+    public bool HasServerTimeDetail => HasServerTime || ServerTimeNote is not null;
+
+    public string? NtpNote => IsNtp ? ModeNote : null;
+
+    public string? ManualNote => IsManual ? ModeNote : null;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ApplyBlockedReason))]
@@ -291,17 +280,8 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
         DeviceTimeStatus = null;
         ServerTimeZone = current.ServerTimeZone;
         _maxYear = current.MaxYear ?? PayloadValidator.DefaultMaxYear;
-
-        DeviceTimeText = current.DeviceLocal is { } local
-            ? local.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + (current.DeviceUtc is null ? string.Empty : " " + TimeZoneCatalog.FormatOffset(local.Offset))
-            : "Not reported";
-        DeviceTimeZoneText = current.TimeZone is { } tz
-            ? TimeZoneCatalog.Find(tz)?.Label ?? tz
-            : current.PosixTimeZone is { } posix
-                ? $"Custom (POSIX {posix}), daylight saving {(current.DstEnabled == false ? "off" : "on")}"
-                : "Not reported";
-        DeviceTimeModeText = DescribeMode(current);
-        ServerTimeText = DescribeServerTime(current);
+        _readAt = _now();
+        Tick();
 
         _initialZoneId = current.TimeZone;
         _initialDst = current.DstEnabled ?? true;
@@ -319,7 +299,7 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
         var servers = current.NtsEnabled == true ? current.NtsServers : current.NtpServers;
         if (string.IsNullOrWhiteSpace(NtpServersText) && servers.Count > 0)
         {
-            NtpServersText = string.Join(Environment.NewLine, servers);
+            NtpServersText = string.Join(", ", servers);
         }
 
         UseDhcp = current.NtpSource == NtpSource.Dhcp && current.NtsEnabled != true;
@@ -330,7 +310,6 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
             ManualTime = deviceLocal.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
         }
 
-        OnPropertyChanged(nameof(ModeDescription));
         Validation.Reset(); // prefilled, not edited: errors show once the user edits a field or tries OK
         Recompute();
     }
@@ -342,7 +321,25 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
         DeviceTimeStatus = "The device time could not be read: " + message;
     }
 
-    /// <summary>Reads the first device's time settings (read-only query) for the Device time card.</summary>
+    /// <summary>
+    /// Advances the device and server time by the time since they were read (the window calls it every second), so
+    /// both tick like a clock without another device request.
+    /// </summary>
+    public void Tick()
+    {
+        if (Current is not { } current)
+        {
+            return;
+        }
+
+        var elapsed = _now() - _readAt;
+        DeviceTimeText = current.DeviceLocal is { } local
+            ? FormatTime(local + elapsed) + (current.DeviceUtc is null ? string.Empty : " " + TimeZoneCatalog.FormatOffset(local.Offset))
+            : "Not reported";
+        ServerTimeText = DescribeServerTime(current, elapsed);
+    }
+
+    /// <summary>Reads the first device's time settings (read-only query) for Device time.</summary>
     public async Task LoadCurrentAsync(ITaskDialogContext ctx, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
@@ -395,11 +392,6 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(this, false);
 
-    partial void OnZoneSearchChanged(string value)
-    {
-        FilteredZones = [.. TimeZoneCatalog.Search(TimeZoneCatalog.All, value)];
-    }
-
     partial void OnSelectedZoneChanged(TimeZoneEntry? value) => Recompute();
 
     partial void OnAdjustForDstChanged(bool value) => Recompute();
@@ -439,8 +431,8 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
         Validation.Validate();
         foreach (var name in new[]
         {
-            nameof(TimeZoneUnchanged), nameof(CanEditTimeZone), nameof(CanAdjustDst), nameof(TimeZoneDescription),
-            nameof(ShowServerList), nameof(ModeNote), nameof(HasModeNote),
+            nameof(TimeZoneUnchanged), nameof(CanEditTimeZone), nameof(CanAdjustDst),
+            nameof(ShowServerList), nameof(ModeNote), nameof(HasModeNote), nameof(ServerTimeNote), nameof(HasServerTimeDetail), nameof(NtpNote), nameof(ManualNote),
         })
         {
             OnPropertyChanged(name);
@@ -452,8 +444,6 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
 
     protected override void OnValidationChanged()
     {
-        OnPropertyChanged(nameof(TimeZoneError));
-        OnPropertyChanged(nameof(HasTimeZoneError));
         if (_ready)
         {
             CanApply = IsFormValid && BuildPayload() is not null;
@@ -497,41 +487,17 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
     internal static List<string> ParseServers(string? text) =>
         [.. (text ?? string.Empty).Split(['\r', '\n', ',', ' ', ';', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
 
-    internal static string DescribeMode(CurrentTimeSettings s)
+    /// <summary>"2026-10-07 18:24:00 (UTC+02:00) · device is 3.2 s ahead": the server's time in this computer's zone.</summary>
+    internal static string DescribeServerTime(CurrentTimeSettings s, TimeSpan elapsed)
     {
-        if (s.NtpEnabled == false)
-        {
-            return "Set manually (NTP off)";
-        }
-
-        if (s.NtpEnabled is null)
-        {
-            return "Not reported";
-        }
-
-        var text = s.NtsEnabled == true
-            ? "Synchronize with NTS KE servers " + Join(s.NtsServers)
-            : s.NtpSource == NtpSource.Dhcp
-                ? "Synchronize with NTP server, obtained from DHCP" + (s.AdvertisedServers.Count > 0 ? " (" + Join(s.AdvertisedServers) + ")" : string.Empty)
-                : "Synchronize with NTP server " + Join(s.NtpServers);
-        return s.Synced switch
-        {
-            true => text + " · synchronized" + (s.NtpOffsetMilliseconds is { } o ? string.Create(CultureInfo.InvariantCulture, $", offset {o:0.###} ms") : string.Empty),
-            false => text + " · not synchronized",
-            _ => text,
-        };
-
-        static string Join(IReadOnlyList<string> list) => list.Count == 0 ? "(none)" : string.Join(", ", list);
-    }
-
-    internal static string DescribeServerTime(CurrentTimeSettings s)
-    {
+        ArgumentNullException.ThrowIfNull(s);
         if (s.ServerUtc is not { } server)
         {
-            return "Not available";
+            return string.Empty;
         }
 
-        var text = server.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + " (this computer's time zone)";
+        var local = (server + elapsed).ToLocalTime();
+        var text = FormatTime(local) + " " + TimeZoneCatalog.FormatOffset(local.Offset);
         if (s.Difference is { } diff)
         {
             var seconds = Math.Abs(diff.TotalSeconds);
@@ -542,6 +508,8 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
 
         return text;
     }
+
+    private static string FormatTime(DateTimeOffset time) => time.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
 
     private static string Label(IDeviceInfo device) =>
         string.IsNullOrEmpty(device.Model) ? device.Address : $"{device.Address} · {device.Model}";

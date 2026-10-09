@@ -6,108 +6,72 @@
         x:Class="Oadm.Plugins.DateAndTime.Client.DateTimeWindow"
         x:DataType="vm:DateTimeDialogViewModel"
         Title="{Binding Title}"
-        Width="2200" Height="760" MinWidth="960" MinHeight="600"
+        Width="500" SizeToContent="Height" CanResize="False"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
-  <!-- Clone of the ADM / AXIS Camera Station "Set date and time" dialog: Device time, Time zone, Time mode.
-       Like ADM, OK always writes the time zone and the time mode. Layout of the add devices page: title bar, cards,
-       footer. Shared controls and theme classes only; every error directly below its field. -->
-  <Grid RowDefinitions="Auto,*,Auto">
+  <!-- Compact clone of the ADM "Set date and time" dialog, one column: Device time, Time zone, Time mode (each radio
+       button with its input below it; inputs of the other modes are disabled). Like ADM, OK always writes the time
+       zone and the time mode. Single operation: title bar, Border.dialogBody, footer. Every error below its field. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
 
-    <Grid Grid.Row="1" RowDefinitions="Auto,*" ColumnDefinitions="*,*" ColumnSpacing="{DynamicResource Oadm.Gap}" RowSpacing="{DynamicResource Oadm.Gap}" Margin="16,0">
-      <!-- Device time: read-only facts of the first selected device as one compact strip, so Time mode fits below -->
-      <Border Grid.ColumnSpan="2" Classes="card">
-        <StackPanel Spacing="10">
-          <ui:CardHeader Classes="flush" Title="Device time" Description="{Binding DeviceCardDescription}" />
-          <ui:StatusChip Text="{Binding DeviceTimeStatus}" IsAccent="{Binding IsLoading}" IsError="{Binding DeviceTimeFailed}"
-                         IsVisible="{Binding HasDeviceTimeStatus}" ToolTip.Tip="{Binding DeviceTimeStatus}" />
-          <WrapPanel Orientation="Horizontal" ItemSpacing="28" LineSpacing="6" IsVisible="{Binding HasDeviceTime}">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Classes="secondary" Text="Device time" />
-              <TextBlock Text="{Binding DeviceTimeText}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Classes="secondary" Text="Time zone" />
-              <TextBlock Text="{Binding DeviceTimeZoneText}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Classes="secondary" Text="Time mode" />
-              <TextBlock Text="{Binding DeviceTimeModeText}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Classes="secondary" Text="Server time" />
-              <TextBlock Text="{Binding ServerTimeText}" />
-            </StackPanel>
-          </WrapPanel>
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <!-- Device time: the first selected device, read-only, ticking -->
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <TextBlock Classes="sectionTitle" Text="Device time" VerticalAlignment="Bottom" />
+          <TextBlock Classes="secondary" Text="{Binding DeviceLabel}" VerticalAlignment="Bottom" TextTrimming="CharacterEllipsis" />
         </StackPanel>
-      </Border>
+        <TextBlock Text="{Binding DeviceTimeText}" IsVisible="{Binding HasDeviceTime}" />
+        <ui:StatusChip Text="{Binding DeviceTimeStatus}" IsAccent="{Binding IsLoading}" IsError="{Binding DeviceTimeFailed}" MaxLines="2"
+                       IsVisible="{Binding HasDeviceTimeStatus}" />
 
-      <ScrollViewer Grid.Row="1" Grid.Column="0" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Spacing="{DynamicResource Oadm.Gap}">
-          <!-- Time mode -->
-          <Border Classes="card">
-            <StackPanel>
-              <ui:CardHeader Title="Time mode" Description="{Binding ModeDescription}" />
-              <StackPanel Classes="form">
-                <RadioButton GroupName="mode" Content="Synchronize with server computer time" IsChecked="{Binding IsServerTime}" />
-                <RadioButton GroupName="mode" Content="Synchronize with NTP server" IsChecked="{Binding IsNtp}" />
-                <Grid ColumnDefinitions="28,*" IsVisible="{Binding IsNtp}">
-                  <StackPanel Grid.Column="1" Classes="form">
-                    <RadioButton GroupName="ntpSource" Content="Obtain from DHCP" IsChecked="{Binding UseDhcp}" IsEnabled="{Binding !UseNts}" />
-                    <RadioButton GroupName="ntpSource" Content="Use servers" IsChecked="{Binding UseServers}" />
-                    <CheckBox Content="Use NTS (Network Time Security)" IsChecked="{Binding UseNts}" IsVisible="{Binding ShowNts}" />
-                    <TextBlock Classes="secondary small" Text="{Binding NtsHint}" TextWrapping="Wrap" IsVisible="{Binding UseNts}" />
-                    <ui:FormField Classes="wide" Label="{Binding ServersLabel}" IsVisible="{Binding ShowServerList}">
-                      <TextBox Classes="multiline" Text="{Binding NtpServersText}"
-                               PlaceholderText="One IP address or host name per line, up to 5" />
-                    </ui:FormField>
-                  </StackPanel>
-                </Grid>
-                <RadioButton GroupName="mode" Content="Set manually" IsChecked="{Binding IsManual}" />
-                <Grid ColumnDefinitions="28,*" IsVisible="{Binding IsManual}">
-                  <StackPanel Grid.Column="1" Classes="form">
-                    <ui:FormField Classes="wide" Label="Date">
-                      <TextBox Text="{Binding ManualDate}" PlaceholderText="yyyy-mm-dd" />
-                    </ui:FormField>
-                    <ui:FormField Classes="wide" Label="Time">
-                      <TextBox Text="{Binding ManualTime}" PlaceholderText="hh:mm:ss" />
-                    </ui:FormField>
-                    <ui:FormField Classes="wide">
-                      <Button Classes="secondary" Content="Use this computer's time" Command="{Binding UseComputerTimeCommand}" />
-                    </ui:FormField>
-                  </StackPanel>
-                </Grid>
-                <TextBlock Classes="secondary small" Text="{Binding ModeNote}" TextWrapping="Wrap" IsVisible="{Binding HasModeNote}" />
-              </StackPanel>
-            </StackPanel>
-          </Border>
+        <!-- Time zone -->
+        <TextBlock Classes="sectionTitle subsection" Text="Time zone" />
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Zones}" SelectedItem="{Binding SelectedZone}"
+                  PlaceholderText="Choose a time zone" IsEnabled="{Binding CanEditTimeZone}"
+                  IsTextSearchEnabled="True" TextSearch.TextBinding="{Binding City, DataType=m:TimeZoneEntry}">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="m:TimeZoneEntry">
+              <TextBlock Text="{Binding ShortLabel}" TextTrimming="CharacterEllipsis" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+        <CheckBox Content="Automatically adjust for daylight saving time changes" IsChecked="{Binding AdjustForDst}" IsEnabled="{Binding CanAdjustDst}" />
+
+        <!-- Time mode -->
+        <TextBlock Classes="sectionTitle subsection" Text="Time mode" />
+        <RadioButton GroupName="mode" Content="Synchronize with server computer time" IsChecked="{Binding IsServerTime}" />
+        <StackPanel Classes="optionDetail" IsEnabled="{Binding IsServerTime}" IsVisible="{Binding HasServerTimeDetail}">
+          <TextBlock Text="{Binding ServerTimeText}" IsVisible="{Binding HasServerTime}" />
+          <TextBlock Classes="secondary small" Text="{Binding ServerTimeNote}" TextWrapping="Wrap"
+                     IsVisible="{Binding ServerTimeNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         </StackPanel>
-      </ScrollViewer>
 
-      <!-- Time zone: searchable IANA list -->
-      <Border Grid.Row="1" Grid.Column="1" Classes="card">
-        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
-          <ui:CardHeader Title="Time zone" Description="{Binding TimeZoneDescription}" />
-          <ui:SearchBox Grid.Row="1" Text="{Binding ZoneSearch}" Placeholder="Search time zones" IsEnabled="{Binding CanEditTimeZone}" HorizontalAlignment="Left" />
-          <DataGrid Grid.Row="2" Margin="{DynamicResource Oadm.GapTop}" ItemsSource="{Binding FilteredZones}" SelectedItem="{Binding SelectedZone}"
-                    SelectionMode="Single" IsReadOnly="True" CanUserReorderColumns="False" IsEnabled="{Binding CanEditTimeZone}">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="UTC offset" Width="110" Binding="{Binding OffsetText}" x:DataType="m:TimeZoneEntry" />
-              <DataGridTextColumn Header="City" Width="*" Binding="{Binding City}" x:DataType="m:TimeZoneEntry" />
-              <DataGridTextColumn Header="Time zone" Width="*" Binding="{Binding Id}" x:DataType="m:TimeZoneEntry" />
-              <DataGridTextColumn Header="DST" Width="70" Binding="{Binding DaylightSavingText}" x:DataType="m:TimeZoneEntry" />
-            </DataGrid.Columns>
-          </DataGrid>
-          <!-- The time zone error directly below the list (the list itself has no inline error presenter) -->
-          <TextBlock Grid.Row="3" Classes="fieldMessage error" Text="{Binding TimeZoneError}" IsVisible="{Binding HasTimeZoneError}" />
-          <CheckBox Grid.Row="4" Margin="{DynamicResource Oadm.GapTop}" Content="Automatically adjust for daylight saving time changes"
-                    IsChecked="{Binding AdjustForDst}" IsEnabled="{Binding CanAdjustDst}" />
-        </Grid>
-      </Border>
-    </Grid>
+        <RadioButton GroupName="mode" Content="Synchronize with NTP server" IsChecked="{Binding IsNtp}" />
+        <StackPanel Classes="optionDetail" IsEnabled="{Binding IsNtp}">
+          <CheckBox Content="Obtain from DHCP" IsChecked="{Binding UseDhcp}" IsEnabled="{Binding !UseNts}" />
+          <TextBox Text="{Binding NtpServersText}" PlaceholderText="{Binding ServersPlaceholder}" IsEnabled="{Binding ShowServerList}" />
+          <CheckBox Content="Use NTS (Network Time Security)" IsChecked="{Binding UseNts}" IsVisible="{Binding ShowNts}" />
+          <TextBlock Classes="secondary small" Text="{Binding NtsHint}" TextWrapping="Wrap" IsVisible="{Binding HasNtsHint}" />
+          <TextBlock Classes="secondary small" Text="{Binding NtpNote}" TextWrapping="Wrap"
+                     IsVisible="{Binding NtpNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+
+        <RadioButton GroupName="mode" Content="Set manually" IsChecked="{Binding IsManual}" />
+        <StackPanel Classes="optionDetail" IsEnabled="{Binding IsManual}">
+          <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="8">
+            <TextBox Grid.Column="0" Text="{Binding ManualDate}" PlaceholderText="yyyy-mm-dd" VerticalAlignment="Top" />
+            <TextBox Grid.Column="1" Text="{Binding ManualTime}" PlaceholderText="hh:mm:ss" VerticalAlignment="Top" />
+            <Button Grid.Column="2" Classes="secondary" Content="Use this computer's time" Command="{Binding UseComputerTimeCommand}" VerticalAlignment="Top" />
+          </Grid>
+          <TextBlock Classes="secondary small" Text="{Binding ManualNote}" TextWrapping="Wrap"
+                     IsVisible="{Binding ManualNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
 
     <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
       <Button Classes="primary" Content="OK" Command="{Binding ApplyCommand}" IsEnabled="{Binding CanApply}" IsDefault="True"

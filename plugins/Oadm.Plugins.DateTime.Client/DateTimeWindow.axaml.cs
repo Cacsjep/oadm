@@ -1,16 +1,22 @@
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 
 namespace Oadm.Plugins.DateAndTime.Client;
 
-/// <summary>View of <see cref="DateTimeDialogViewModel"/>. Code-behind only wires the close request.</summary>
+/// <summary>
+/// View of <see cref="DateTimeDialogViewModel"/>. Code-behind only wires the close request and the one-second clock
+/// that lets the device and server time tick (<see cref="DateTimeDialogViewModel.Tick"/>).
+/// </summary>
 public sealed partial class DateTimeWindow : Window
 {
+    private readonly DispatcherTimer _clock = new() { Interval = TimeSpan.FromSeconds(1) };
     private DateTimeDialogViewModel? _model;
 
     public DateTimeWindow()
     {
         AvaloniaXamlLoader.Load(this);
+        _clock.Tick += (_, _) => _model?.Tick();
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -28,23 +34,16 @@ public sealed partial class DateTimeWindow : Window
         }
     }
 
-    /// <summary>The dialog asks for 2200 px (user decision): on a smaller screen it takes 92 % of it, centered.</summary>
     protected override void OnOpened(EventArgs e)
     {
         base.OnOpened(e);
-        if (Screens.ScreenFromWindow(this) is not { } screen)
-        {
-            return;
-        }
+        _clock.Start();
+    }
 
-        var area = screen.WorkingArea;
-        var maxWidth = area.Width / screen.Scaling * 0.92;
-        if (Width > maxWidth)
-        {
-            Width = Math.Max(MinWidth, maxWidth);
-            var width = (int)(Width * screen.Scaling);
-            Position = new Avalonia.PixelPoint(area.X + ((area.Width - width) / 2), Position.Y);
-        }
+    protected override void OnClosed(EventArgs e)
+    {
+        _clock.Stop();
+        base.OnClosed(e);
     }
 
     private void OnCloseRequested(object? sender, bool apply) => Close(apply);

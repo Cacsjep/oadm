@@ -1150,13 +1150,10 @@
     <Setter Property="TextWrapping" Value="NoWrap" />
   </Style>
 
-  <!-- Multi-line plain text fields, one entry per line (NTP servers of the date and time dialog) -->
-  <Style Selector="TextBox.multiline">
-    <Setter Property="VerticalContentAlignment" Value="Top" />
-    <Setter Property="Padding" Value="10,8" />
-    <Setter Property="AcceptsReturn" Value="True" />
-    <Setter Property="TextWrapping" Value="NoWrap" />
-    <Setter Property="MinHeight" Value="88" />
+  <!-- The inputs of a radio button choice, directly below it and indented to its text (date and time dialog) -->
+  <Style Selector="StackPanel.optionDetail">
+    <Setter Property="Margin" Value="28,0,0,0" />
+    <Setter Property="Spacing" Value="8" />
   </Style>
 
   <!-- The one read-only code display (ui:CodeView): response bodies and headers, highlighted -->

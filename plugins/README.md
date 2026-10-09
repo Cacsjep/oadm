@@ -164,8 +164,8 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
 - Styles and classes from the host theme (`Themes/OadmTheme.axaml`), e.g. `Border.card`, `Border.dialogBody`,
   `TextBlock.secondary`, `TextBlock.fieldLabel`, `TextBlock.warning`, `TextBlock.error`, `Button.primary`,
   `Button.secondary`, `Button.toolbar`, `Button.danger` (red: delete or remove; `Button.toolbar.danger` and
-  `Button.link.danger` for flat buttons and row links), `Border.vseparator`, `TextBox.multiline` (one entry per line,
-  e.g. NTP servers), `DataGrid.wrapRows` (rows grow, status chips show two lines), numeric columns
+  `Button.link.danger` for flat buttons and row links), `Border.vseparator`, `StackPanel.optionDetail` (the inputs
+  of a radio button choice, indented below it), `DataGrid.wrapRows` (rows grow, status chips show two lines), numeric columns
   (`CellStyleClasses="number"` + header `TextBlock.numberHeader`), `ui|SearchBox.stretch` (fills a narrow card),
   `Border.tile` (a picture tile; selection is its check box), `Border.liveViewSurface` (dark picture surface),
   `Button.picture` (a clickable picture without button chrome). Stack `ui:FormField`s in `StackPanel Classes="form"`

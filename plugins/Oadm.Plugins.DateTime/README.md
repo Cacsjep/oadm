@@ -42,15 +42,16 @@ How OADM clones it (`DateTimeWindow`):
 
 | ADM / ACS | OADM |
 |---|---|
-| Device time (single device only) | **Device time** card for the first selected device (read-only query): device time with offset, time zone, time mode with sync state and NTP offset, server time and the difference ("device and server agree", "device is 3.2 s ahead"). With several devices the card names the device it shows. |
-| Time zone drop-down | **Time zone** card: the 313 IANA zones of AXIS OS 12.11 in a DataGrid (UTC offset, City, Time zone, DST), sorted by offset like the Windows list, `ui:SearchBox` (city, id or "UTC+05:30"). Preselected: the first device's IANA zone, or the OADM server's zone when the device has none (POSIX zone). |
+| Layout | The same compact single column: Device time, Time zone, Time mode, OK / Cancel. No cards; 500 px wide, as high as its content. |
+| Device time (single device only) | **Device time** of the first selected device (read-only query) as text with its offset, ticking every second. With several devices the heading names the device it shows ("first of 12 devices"). |
+| Time zone drop-down | The same drop-down: the 313 IANA zones of AXIS OS 12.11, "(UTC+01:00) Vienna", sorted by offset like the Windows list, virtualized; typing a city jumps to it. Preselected: the first device's IANA zone, or the OADM server's zone when the device has none (POSIX zone). |
 | Automatically adjust for daylight saving time changes | Same check box. Off = the zone's standard-time POSIX rule with daylight saving off (`setPosixTimeZone enableDst=false`). |
-| Time zone only with NTP / manual | Server time mode disables the zone: the devices get the OADM server's time zone (shown). |
-| Synchronize with server computer time | NTP off; the OADM server's UTC time is sent once per device when its task runs (like ACS). |
-| Synchronize with NTP server: Obtain from DHCP / Use server | Same radio buttons. "Use servers" takes up to 5 host names or addresses, one per line. **Use NTS (Network Time Security)** when the devices support it (NTS KE servers). |
-| Set manually | Date + Time in the device's time zone, "Use this computer's time"; NTP off. |
+| Time zone only with NTP / manual | Server time mode disables the zone: the devices get the OADM server's time zone (named in the note below the radio button). |
+| Synchronize with server computer time | Below the radio button: the server time and the difference to the device ("device and server agree", "device is 3.2 s ahead"). NTP off; the OADM server's UTC time is sent once per device when its task runs (like ACS). |
+| Synchronize with NTP server: Obtain from DHCP / Use server | Below the radio button: an **Obtain from DHCP** check box and one field for up to 5 host names or addresses, separated by commas. **Use NTS (Network Time Security)** when a selected device supports it (the field then takes NTS KE servers). |
+| Set manually | Below the radio button: date, time and "Use this computer's time", in the device's time zone; NTP off. |
 | (always writes everything) | Same, **exactly like ADM** (user decision): no "Keep unchanged"; OK writes the time zone and the selected time mode to every selected device. The time mode starts at the first device's mode (NTP if enabled, else Set manually). The steps skip values a device already has ("Already ..."). |
-| OK | OK, disabled with the reason as tooltip until a time zone is chosen and every field is valid. Each error sits below its input; the time zone error below the list. |
+| OK | OK, disabled with the reason as tooltip until a time zone is chosen and every field is valid. Each error sits below its input; the time zone error below the drop-down. Device notes ("500 of the selected devices have no Time API ...") are one small line below the chosen mode's input. |
 
 ## VAPIX research
 

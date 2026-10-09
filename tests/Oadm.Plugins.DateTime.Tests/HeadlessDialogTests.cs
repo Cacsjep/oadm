@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 using Oadm.Client;
 using Oadm.Client.Infrastructure;
@@ -35,13 +36,12 @@ public sealed class HeadlessDialogTests
         {
             var now = new DateTimeOffset(2026, 10, 7, 18, 30, 0, TimeSpan.FromHours(2));
 
-            // One device (10.0.0.48 as recorded): device time card, a new time zone, NTP with two servers.
+            // One device (10.0.0.48 as recorded): device time, a new time zone, NTP with two servers.
             var single = new DateTimeDialogViewModel([new FakeDevice(Guid.NewGuid())], () => now);
             single.ApplyCurrent(ViewModelTests.Current10048);
-            single.ZoneSearch = "vienna";
-            single.SelectedZone = single.FilteredZones[0];
+            single.SelectedZone = single.Zones.Single(z => z.Id == "Europe/Vienna");
             single.IsNtp = true;
-            single.NtpServersText = "10.0.0.17\npool.ntp.org";
+            single.NtpServersText = "10.0.0.17, pool.ntp.org";
             var window = new DateTimeWindow { DataContext = single };
             window.Show();
             await PumpAsync();
@@ -77,20 +77,37 @@ public sealed class HeadlessDialogTests
             Capture(window3, outDir, "datetime-dialog-server-time.png");
             window3.Close();
 
-            // NTS KE servers on one device, read error in the device card.
+            // NTS KE servers on one device, read error below Device time.
             var nts = new DateTimeDialogViewModel([new FakeDevice(Guid.NewGuid())], () => now);
             nts.ShowLoadError("Unauthorized - HTTP 401 (check the credentials)");
             nts.IsNtp = true;
             nts.UseNts = true;
-            nts.NtpServersText = "nts.netnod.se\nnts.example..com";
-            nts.ApplyCommand.Execute(null); // OK tried: the missing time zone shows below the list too
+            nts.NtpServersText = "nts.netnod.se, nts.example..com";
+            nts.ApplyCommand.Execute(null); // OK tried: the missing time zone shows below the drop-down too
             var window4 = new DateTimeWindow { DataContext = nts };
             window4.Show();
             await PumpAsync();
-            Assert.Equal("Select a time zone.", nts.TimeZoneError);
+            Assert.Equal("Select a time zone.", nts.ErrorOf(nameof(nts.SelectedZone)));
             Assert.NotNull(nts.ErrorOf(nameof(nts.NtpServersText)));
             Capture(window4, outDir, "datetime-dialog-nts-error.png");
             window4.Close();
+
+            // The time zone drop-down: type a city to jump to it; the open list creates only the visible rows.
+            var search = new DateTimeDialogViewModel([new FakeDevice(Guid.NewGuid())], () => now);
+            var window5 = new DateTimeWindow { DataContext = search };
+            window5.Show();
+            await PumpAsync();
+            var zones = window5.GetVisualDescendants().OfType<ComboBox>().Single();
+            zones.Focus();
+            window5.KeyTextInput("Tokyo");
+            await PumpAsync();
+            Assert.Equal("Asia/Tokyo", search.SelectedZone?.Id);
+            zones.IsDropDownOpen = true;
+            await PumpAsync();
+            var realized = zones.GetRealizedContainers().Count();
+            Assert.InRange(realized, 1, 100);
+            zones.IsDropDownOpen = false;
+            window5.Close();
             return (ok, errors);
         }, CancellationToken.None);
 

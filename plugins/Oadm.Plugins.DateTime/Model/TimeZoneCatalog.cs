@@ -14,14 +14,14 @@ namespace Oadm.Plugins.DateAndTime.Model;
 /// </param>
 public sealed record TimeZoneEntry(string Id, string Label, TimeSpan BaseOffset, bool ObservesDaylightSaving, bool HasOffset = true)
 {
-    /// <summary>"UTC+01:00", "Unknown" when the OS does not know the zone (grid column).</summary>
+    /// <summary>"UTC+01:00", "Unknown" when the OS does not know the zone.</summary>
     public string OffsetText => HasOffset ? TimeZoneCatalog.FormatOffset(BaseOffset).Trim('(', ')') : "Unknown";
 
-    /// <summary>"Vienna" (grid column).</summary>
+    /// <summary>"Vienna" (type-to-search in the time zone list).</summary>
     public string City => string.Equals(Id, "UTC", StringComparison.Ordinal) ? "Coordinated Universal Time" : TimeZoneCatalog.City(Id);
 
-    /// <summary>"Yes" when the zone has daylight saving time (grid column).</summary>
-    public string DaylightSavingText => ObservesDaylightSaving ? "Yes" : "No";
+    /// <summary>"(UTC+01:00) Vienna" like the ADM drop-down; "Troll" without a known offset. City names are unique.</summary>
+    public string ShortLabel => HasOffset ? $"{TimeZoneCatalog.FormatOffset(BaseOffset)} {City}" : City;
 
     public override string ToString() => Label;
 }
@@ -45,21 +45,6 @@ public static class TimeZoneCatalog
     public static bool IsKnown(string? id) => id is not null && LazyIds.Value.Contains(id);
 
     public static TimeZoneEntry? Find(string? id) => id is null ? null : All.FirstOrDefault(z => string.Equals(z.Id, id, StringComparison.Ordinal));
-
-    /// <summary>Case-insensitive search in id and label ("vienna", "UTC+01", "europe/"); O(n), no allocation per entry.</summary>
-    public static IEnumerable<TimeZoneEntry> Search(IEnumerable<TimeZoneEntry> zones, string? text)
-    {
-        ArgumentNullException.ThrowIfNull(zones);
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return zones;
-        }
-
-        var needle = text.Trim();
-        var spaced = needle.Replace(' ', '_');
-        return zones.Where(z => z.Label.Contains(needle, StringComparison.OrdinalIgnoreCase)
-            || z.Id.Contains(spaced, StringComparison.OrdinalIgnoreCase));
-    }
 
     /// <summary>
     /// Zones newer than some OS time zone databases (e.g. the ICU of Windows 10 1809), mapped to an older id with the

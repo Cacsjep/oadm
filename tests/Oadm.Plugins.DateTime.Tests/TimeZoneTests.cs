@@ -46,6 +46,7 @@ public sealed class TimeZoneTests
         var troll = TimeZoneCatalog.Describe("Antarctica/Troll", zone: null, 2026);
         Assert.Equal("Troll - Antarctica/Troll", troll.Label);
         Assert.Equal("Unknown", troll.OffsetText);
+        Assert.Equal("Troll", troll.ShortLabel);
         Assert.False(troll.ObservesDaylightSaving);
         var vienna = TimeZoneCatalog.Describe("Europe/Vienna", Vienna2026(), 2026);
         Assert.Equal("(UTC+01:00) Vienna - Europe/Vienna", vienna.Label);
@@ -71,19 +72,19 @@ public sealed class TimeZoneTests
     }
 
     [Theory]
-    [InlineData("vienna", "Europe/Vienna")]
-    [InlineData("Buenos Aires", "America/Argentina/Buenos_Aires")]
-    [InlineData("UTC+05:30", "Asia/Kolkata")]
-    [InlineData("europe/vie", "Europe/Vienna")]
-    public void Search_finds_by_city_id_and_offset(string text, string id)
+    [InlineData("Europe/Vienna", "(UTC+01:00) Vienna")]
+    [InlineData("America/Argentina/Buenos_Aires", "(UTC-03:00) Buenos Aires")]
+    [InlineData("Asia/Kolkata", "(UTC+05:30) Kolkata")]
+    [InlineData("UTC", "(UTC) Coordinated Universal Time")]
+    public void Drop_down_labels_like_adm(string id, string label)
     {
-        Assert.Contains(TimeZoneCatalog.Search(TimeZoneCatalog.All, text), z => z.Id == id);
+        Assert.Equal(label, TimeZoneCatalog.Find(id)!.ShortLabel);
     }
 
     [Fact]
-    public void Empty_search_returns_everything()
+    public void City_names_are_unique_for_type_to_search()
     {
-        Assert.Equal(313, TimeZoneCatalog.Search(TimeZoneCatalog.All, "  ").Count());
+        Assert.Equal(313, TimeZoneCatalog.All.Select(z => z.City).Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 
     [Theory]

@@ -1966,21 +1966,28 @@ error / does not apply); the items that cannot be checked remotely are not shown
 **Date and time**: a clone of the ADM / AXIS Camera Station "Set date and time" dialog (the ADM manual has no date and
 time chapter; wording from the ACS 5 manual, sources in the plugin `README.md`), for any number of devices.
 - Dialog "Set date and time" behaves **exactly like ADM** (user decision): no "Keep unchanged" anywhere, OK always
-  writes the time zone and the selected time mode to every selected device. **Device time** strip across the top for
-  the first selected device (one line, read-only query `getTimeSettings`: device time and offset, time zone, time mode
-  with sync state, server time and difference); below it the **Time mode** card (left) and the **Time zone** card
-  (right), so every time mode shows at the default size. **Time zone** card: the 313 IANA zones of AXIS OS 12.11 (bundled list, offsets from the OS time zone
-  database, read from this year's offset change instants so all three OS agree (`ZoneYear`); a zone the OS does not
-  know, e.g. Antarctica/Troll on Windows Server 2025, is listed last without offset and set by IANA id only) in a DataGrid (UTC offset, City, Time zone, DST) with `ui:SearchBox`, "Automatically adjust for daylight
-  saving time changes"; **Time mode** card: Synchronize with server computer time (NTP off, the OADM server's UTC sent
-  once per device at execution time, the devices get the server's time zone, the zone list is disabled), Synchronize
-  with NTP server (Obtain from DHCP / Use servers, up to 5, one per line; Use NTS with NTS KE servers on ntp 1.5+), Set
-  manually (date + time in the device's zone, NTP off). Defaults when the dialog opens: time zone = the first device's
-  current IANA zone (the OADM server's zone when the device has none, e.g. a POSIX zone), time mode = the first device's
-  mode (NTP if enabled, otherwise Set manually). OK (disabled with the reason as tooltip until a zone is chosen and every
-  field is valid; field errors below their inputs, the zone error directly below the list); device notes are O(n)
-  summaries of the cached API lists ("500 of the selected devices have no Time API ..."). Devices without the Time API
-  fail setting the clock with "Nothing was changed" (no legacy date.cgi).
+  writes the time zone and the selected time mode to every selected device. Compact like ADM's dialog (user decision
+  2026-10-09): a single-operation dialog (`Border.dialogBody`, 500 px, `SizeToContent="Height"`, no cards), one column
+  with the headings (`TextBlock.sectionTitle`) **Device time** (the first selected device's time as read-only text,
+  ticking every second without another request, read-only query `getTimeSettings`; the device "10.0.0.48 · P3265-V" /
+  ", first of 12 devices" next to the heading; "Reading the device time" or the read error in a `ui:StatusChip`), **Time
+  zone** (one virtualized `ComboBox` of the 313 IANA zones of AXIS OS 12.11, sorted by UTC offset, items "(UTC+01:00)
+  Vienna", type a city to jump to it (`TextSearch.TextBinding` = City); offsets from the OS time zone database, read
+  from this year's offset change instants so all three OS agree (`ZoneYear`); a zone the OS does not know, e.g.
+  Antarctica/Troll on Windows Server 2025, is listed last without offset ("Troll") and set by IANA id only; "Automatically
+  adjust for daylight saving time changes" below it) and **Time mode**: three radio buttons, each with its input below
+  it, indented (`StackPanel.optionDetail`), the inputs of the other modes disabled: Synchronize with server computer time
+  (the server time in this computer's zone and the difference to the device, ticking; NTP off, the OADM server's UTC
+  sent once per device at execution time, the devices get the server's time zone, the zone drop-down is disabled),
+  Synchronize with NTP server ("Obtain from DHCP" check box; one text field for up to 5 servers separated by commas,
+  new lines also accepted; "Use NTS (Network Time Security)" only when a selected device has ntp 1.5+, then the field
+  takes NTS KE servers), Set manually (date and time fields + "Use this computer's time", in the device's zone, NTP
+  off). Defaults when the dialog opens: time zone = the first device's current IANA zone (the OADM server's zone when
+  the device has none, e.g. a POSIX zone), time mode = the first device's mode (NTP if enabled, otherwise Set
+  manually). OK (disabled with the reason as tooltip until a zone is chosen and every field is valid; every error
+  directly below its input, the zone error below the drop-down); device notes are O(n) summaries of the cached API lists,
+  one small line below the chosen mode's input ("500 of the selected devices have no Time API ..."). Devices without
+  the Time API fail setting the clock with "Nothing was changed" (no legacy date.cgi).
 - APIs: time-service 1.x (`getDateTimeInfo`, `setTimeZone`, `setPosixTimeZone` for DST off, `setDateTime`), ntp 1.x
   (`getNTPInfo`, `setNTPClientConfiguration`; NTS from 1.5), param.cgi `Time.*` for older firmware (time zone as POSIX,
   one NTP server; no date and time without the Time API; date.cgi is not used). Decision table and what 10.0.0.48
@@ -1994,7 +2001,8 @@ time chapter; wording from the ACS 5 manual, sources in the plugin `README.md`),
   2026-10-07 18:00"; "Sync with server time" for server time mode.
 - Tests: `tests/Oadm.Plugins.DateTime.Tests` (request bodies per API version, recorded 10.0.0.48 fixtures, validation,
   time zones and POSIX conversion, step sequences against a stateful fake device, view model with 5000 devices, headless
-  screenshots `datetime-dialog-single.png`, `-multi-errors.png`, `-server-time.png`, `-nts-error.png`).
+  screenshots `datetime-dialog-single.png`, `-multi-errors.png`, `-server-time.png`, `-nts-error.png`; the drop-down's
+  type-to-search and that its open list realizes only the visible rows).
 
 ## Applications (ACAP) plugin
 

@@ -4,6 +4,12 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
 version and date, and the release workflow copies it into the GitHub release.
 
+## [Unreleased]
+
+### Changed
+
+- Date and time: compact dialog like ADM's.
+
 ## [1.2.0] - 2026-10-09
 
 ### Added

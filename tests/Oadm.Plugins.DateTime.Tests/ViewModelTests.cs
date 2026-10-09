@@ -36,11 +36,11 @@ public sealed class ViewModelTests
         Assert.Equal("Set date and time", vm.Title);
         Assert.True(vm.IsLoading);
         Assert.Equal("2026-10-07", vm.ManualDate);
-        Assert.Equal(313, vm.FilteredZones.Count);
+        Assert.Equal(313, vm.Zones.Count); // one drop-down for every zone
     }
 
     [Fact]
-    public void Device_time_card_shows_the_first_device()
+    public void Device_time_shows_the_first_device()
     {
         var vm = Create();
 
@@ -48,11 +48,12 @@ public sealed class ViewModelTests
 
         Assert.False(vm.IsLoading);
         Assert.True(vm.HasDeviceTime);
+        Assert.False(vm.HasDeviceTimeStatus);
         Assert.Equal("2026-10-07 18:24:01 (UTC+02:00)", vm.DeviceTimeText);
-        Assert.Equal("Custom (POSIX <UTC1>-1<UTC2>-2,M3.5.0/2:00:00,M10.5.0/3:00:00), daylight saving on", vm.DeviceTimeZoneText);
-        Assert.Equal("Synchronize with NTP server 10.0.0.17 · synchronized, offset 0.016 ms", vm.DeviceTimeModeText);
-        Assert.Contains("device and server agree", vm.ServerTimeText, StringComparison.Ordinal);
+        Assert.True(vm.HasServerTime);
+        Assert.EndsWith(" · device and server agree", vm.ServerTimeText, StringComparison.Ordinal);
         Assert.Equal("10.0.0.17", vm.NtpServersText);
+        Assert.Equal("10.0.0.1 · P3265-V", vm.DeviceLabel);
         Assert.Equal("2026-10-07", vm.ManualDate);
         Assert.Equal("18:24:01", vm.ManualTime);
 
@@ -66,6 +67,25 @@ public sealed class ViewModelTests
         Assert.Equal("Europe/Vienna", payload.TimeZone);
         Assert.Equal(TimeMode.Ntp, payload.Mode);
         Assert.Equal(["10.0.0.17"], payload.Ntp!.Servers);
+    }
+
+    [Fact]
+    public void Device_and_server_time_tick_like_a_clock()
+    {
+        var now = ClientNow;
+        var vm = new DateTimeDialogViewModel([new FakeDevice(Guid.NewGuid())], () => now);
+        vm.Tick(); // nothing read yet
+        Assert.Equal(string.Empty, vm.DeviceTimeText);
+        Assert.False(vm.HasServerTime);
+
+        vm.ApplyCurrent(Current10048);
+        var server = vm.ServerTimeText;
+        now = now.AddSeconds(5);
+        vm.Tick();
+
+        Assert.Equal("2026-10-07 18:24:06 (UTC+02:00)", vm.DeviceTimeText);
+        Assert.NotEqual(server, vm.ServerTimeText);
+        Assert.EndsWith(" · device and server agree", vm.ServerTimeText, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -91,10 +111,10 @@ public sealed class ViewModelTests
         vm.ApplyCommand.Execute(null);
 
         Assert.Null(closed);
-        Assert.Equal("Select a time zone.", vm.TimeZoneError); // below the time zone list
+        Assert.Equal(["Select a time zone."], Errors(vm, nameof(vm.SelectedZone))); // below the time zone drop-down
         Assert.Equal(["Enter at least one NTP server."], Errors(vm, nameof(vm.NtpServersText)));
         vm.SelectedZone = Zone("Europe/Vienna");
-        Assert.Null(vm.TimeZoneError);
+        Assert.Empty(Errors(vm, nameof(vm.SelectedZone)));
     }
 
     [Fact]
@@ -118,15 +138,14 @@ public sealed class ViewModelTests
     {
         var vm = Create(3);
         vm.UseDhcp = true;
-        vm.ZoneSearch = "vienna";
 
-        vm.SelectedZone = Assert.Single(vm.FilteredZones);
+        vm.SelectedZone = vm.Zones.Single(z => z.ShortLabel == "(UTC+01:00) Vienna");
 
         Assert.True(vm.CanApply);
         Assert.Equal("Europe/Vienna", vm.BuildPayload()!.TimeZone);
         Assert.Equal(TimeMode.Ntp, vm.BuildPayload()!.Mode);
-        Assert.StartsWith("Set to (UTC+01:00) Vienna", vm.TimeZoneDescription, StringComparison.Ordinal);
         Assert.True(vm.CanAdjustDst);
+        Assert.Equal("10.0.0.1 · P3265-V, first of 3 devices", vm.DeviceLabel);
     }
 
     [Fact]
@@ -135,14 +154,14 @@ public sealed class ViewModelTests
         var vm = Create();
         vm.SelectedZone = Zone("Europe/Vienna");
         vm.IsNtp = true;
-        vm.UseServers = true;
-        vm.NtpServersText = "10.0.0.17\nbad host!";
+        vm.UseDhcp = false;
+        vm.NtpServersText = "10.0.0.17, bad host!";
 
         Assert.Equal(["\"host!\" is not a valid host name or IP address."], Errors(vm, nameof(vm.NtpServersText)));
         Assert.True(vm.HasErrors);
         Assert.False(vm.CanApply);
 
-        vm.NtpServersText = "10.0.0.17\npool.ntp.org";
+        vm.NtpServersText = "10.0.0.17,pool.ntp.org\n"; // commas, also new lines (pasted)
 
         Assert.Empty(Errors(vm, nameof(vm.NtpServersText)));
         Assert.True(vm.CanApply);
@@ -177,7 +196,8 @@ public sealed class ViewModelTests
 
         Assert.True(vm.ShowNts);
         Assert.True(vm.ShowServerList);
-        Assert.Equal("NTS KE servers", vm.ServersLabel);
+        Assert.StartsWith("Up to 5 NTS KE servers", vm.ServersPlaceholder, StringComparison.Ordinal);
+        Assert.False(vm.HasNtsHint); // every selected device can use NTS
         var ntp = vm.BuildPayload()!.Ntp!;
         Assert.True(ntp.Nts);
         Assert.Equal(NtpSource.Static, ntp.Source);
@@ -213,14 +233,15 @@ public sealed class ViewModelTests
     {
         var vm = Create();
         vm.ApplyCurrent(Current10048);
-        vm.ZoneSearch = "tokyo";
-        vm.SelectedZone = vm.FilteredZones[0];
+        vm.SelectedZone = Zone("Asia/Tokyo");
 
         vm.IsServerTime = true;
 
         Assert.False(vm.CanEditTimeZone);
         Assert.False(vm.TimeZoneUnchanged);
-        Assert.Equal("The devices get the time zone of the OADM server: Europe/Vienna.", vm.TimeZoneDescription);
+        Assert.Contains("the server's time zone (Europe/Vienna)", vm.ServerTimeNote, StringComparison.Ordinal);
+        Assert.Null(vm.NtpNote);
+        Assert.Null(vm.ManualNote);
         var payload = vm.BuildPayload()!;
         Assert.Equal(TimeMode.ServerTime, payload.Mode);
         Assert.Null(payload.TimeZone);
@@ -269,8 +290,7 @@ public sealed class ViewModelTests
         var vm = new DateTimeDialogViewModel(devices, () => ClientNow);
         vm.IsNtp = true;
         vm.NtpServersText = "10.0.0.1, 10.0.0.2";
-        vm.ZoneSearch = "europe";
-        vm.SelectedZone = vm.FilteredZones[0];
+        vm.SelectedZone = Zone("Europe/Vienna");
         vm.IsManual = true;
 
         watch.Stop();
@@ -281,8 +301,10 @@ public sealed class ViewModelTests
         Assert.Equal("Set date and time for 5,000 devices", vm.Title);
         Assert.Contains("500 of the selected devices have no Time API", vm.ModeNote, StringComparison.Ordinal);
         vm.IsNtp = true;
-        Assert.StartsWith("500 of the selected devices take only one NTP server", vm.ModeNote, StringComparison.Ordinal);
+        Assert.StartsWith("500 of the selected devices take only one NTP server", vm.NtpNote, StringComparison.Ordinal);
+        Assert.False(vm.HasNtsHint);
         vm.UseNts = true;
+        Assert.True(vm.HasNtsHint);
         Assert.Equal("NTS works on 4,000 of 5,000 devices; the others are not changed.", vm.NtsHint);
     }
 }
