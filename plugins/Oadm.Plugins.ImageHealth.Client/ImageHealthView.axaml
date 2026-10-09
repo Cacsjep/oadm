@@ -1,0 +1,87 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.ImageHealth.Client"
+             x:Class="Oadm.Plugins.ImageHealth.Client.ImageHealthView"
+             x:DataType="vm:ImageHealthViewModel"
+             ui:PageHeader.Subtitle="AXIS Image Health Analytics on every camera.">
+  <!-- One card (the host's page card): Refresh and search, progress and summary, one row per camera with the app.
+       Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,Auto,Auto,*">
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="10">
+      <ui:ToolbarButton Grid.Column="0" IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}"
+                        ToolTip.Tip="Check every camera again" />
+      <CheckBox Grid.Column="1" VerticalAlignment="Center" Content="Auto refresh" IsChecked="{Binding AutoRefresh}"
+                ToolTip.Tip="Check every 10 s while this page is open" />
+      <ui:SearchBox Grid.Column="3" Width="220" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="Search cameras" />
+    </Grid>
+
+    <ui:ProgressRow Grid.Row="1" Margin="0,10,0,0" Value="{Binding ProgressValue}" Text="{Binding ProgressText}" IsActive="{Binding IsChecking}"
+                    IsVisible="{Binding IsChecking}" />
+
+    <StackPanel Grid.Row="2" Margin="0,10,0,0" Spacing="4">
+      <TextBlock Classes="secondary" Text="{Binding SummaryText}" />
+      <TextBlock Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+    </StackPanel>
+
+    <!-- Thousands of cameras: virtualized, rows updated in place. -->
+    <DataGrid x:Name="RowGrid" Grid.Row="3" Margin="0,8,0,0" Classes="wrapRows" ItemsSource="{Binding Rows}"
+              IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="True" CanUserResizeColumns="True" SelectionMode="Single">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Address" Width="150" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:ImageHealthRowViewModel" />
+        <DataGridTextColumn Header="Model" Width="130" Binding="{Binding Model}" x:DataType="vm:ImageHealthRowViewModel" />
+        <DataGridTemplateColumn Header="Blur" Width="130" CanUserSort="True" SortMemberPath="Blur.SortKey">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate x:DataType="vm:ImageHealthRowViewModel">
+              <ui:StatusChip Text="{Binding Blur.Text}" IsOk="{Binding Blur.IsOk}" IsWarning="{Binding Blur.IsWarning}" IsError="{Binding Blur.IsError}"
+                             IsVisible="{Binding Blur.HasValue}" ToolTip.Tip="The picture is out of focus" />
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+        <DataGridTemplateColumn Header="Block" Width="130" CanUserSort="True" SortMemberPath="Block.SortKey">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate x:DataType="vm:ImageHealthRowViewModel">
+              <ui:StatusChip Text="{Binding Block.Text}" IsOk="{Binding Block.IsOk}" IsWarning="{Binding Block.IsWarning}" IsError="{Binding Block.IsError}"
+                             IsVisible="{Binding Block.HasValue}" ToolTip.Tip="Something covers the view" />
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+        <DataGridTemplateColumn Header="Redirect" Width="130" CanUserSort="True" SortMemberPath="Redirect.SortKey">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate x:DataType="vm:ImageHealthRowViewModel">
+              <ui:StatusChip Text="{Binding Redirect.Text}" IsOk="{Binding Redirect.IsOk}" IsWarning="{Binding Redirect.IsWarning}" IsError="{Binding Redirect.IsError}"
+                             IsVisible="{Binding Redirect.HasValue}" ToolTip.Tip="The camera points somewhere else" />
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+        <DataGridTemplateColumn Header="Under-exposure" Width="150" CanUserSort="True" SortMemberPath="UnderExposure.SortKey">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate x:DataType="vm:ImageHealthRowViewModel">
+              <ui:StatusChip Text="{Binding UnderExposure.Text}" IsOk="{Binding UnderExposure.IsOk}" IsWarning="{Binding UnderExposure.IsWarning}" IsError="{Binding UnderExposure.IsError}"
+                             IsVisible="{Binding UnderExposure.HasValue}" ToolTip.Tip="The picture is too dark" />
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+        <DataGridTemplateColumn Header="Unsuitability" Width="130" CanUserSort="True" SortMemberPath="Unsuitability.SortKey">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate x:DataType="vm:ImageHealthRowViewModel">
+              <ui:StatusChip Text="{Binding Unsuitability.Text}" IsOk="{Binding Unsuitability.IsOk}" IsWarning="{Binding Unsuitability.IsWarning}" IsError="{Binding Unsuitability.IsError}"
+                             IsVisible="{Binding Unsuitability.HasValue}" ToolTip.Tip="The scene is not suitable for the analysis" />
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+        <DataGridTextColumn Header="Last change" Width="150" Binding="{Binding ChangedText}" SortMemberPath="ChangedUtc" x:DataType="vm:ImageHealthRowViewModel" />
+        <DataGridTemplateColumn Header="App" Width="*" MinWidth="200" CanUserSort="True" SortMemberPath="App">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate x:DataType="vm:ImageHealthRowViewModel">
+              <ui:StatusChip Text="{Binding AppText}" MaxLines="2"
+                             IsOk="{Binding IsRunning}" IsAccent="{Binding IsChecking}" IsWarning="{Binding IsNotRunning}" IsError="{Binding IsAppError}" />
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+      </DataGrid.Columns>
+    </DataGrid>
+    <TextBlock Grid.Row="3" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding EmptyText}"
+               IsVisible="{Binding ShowEmpty}" />
+  </Grid>
+</UserControl>
