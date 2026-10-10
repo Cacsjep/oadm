@@ -4,6 +4,21 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
 version and date, and the release workflow copies it into the GitHub release.
 
+## [1.5.0] - 2026-10-10
+
+### Added
+
+- **SoC** column on the Devices page: the chip of each device, for example ARTPEC-8. Also in the search and the export.
+- Download section of the website: a "What's new" link to the release notes of the latest version.
+
+### Changed
+
+- **Plugins** has its own page in the navigation rail, next to Users and Credentials (administrators only), with a
+  short description of each plugin instead of what it adds and its version.
+- Restart, Upgrade firmware, Date and time, Applications (ACAP), Users, Network settings, PKI and System report are
+  always on, can no longer be turned off and are not listed on the Plugins page. Plugin SDK: `alwaysOn` and
+  `description` in `plugin.json`.
+
 ## [1.4.0] - 2026-10-09
 
 ### Added
@@ -122,6 +137,7 @@ version and date, and the release workflow copies it into the GitHub release.
 - The splash logo's lens is centered in its ring.
 - The server publish no longer contains an IIS `web.config` and other unused web files.
 
+[1.5.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.5.0
 [1.4.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.4.0
 [1.3.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.3.0
 [1.2.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.2.0
