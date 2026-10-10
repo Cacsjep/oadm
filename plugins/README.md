@@ -359,6 +359,12 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
   `Border.card`s. The context also offers the managed devices and the Devices page selection (`Devices`,
   `SelectedDevices`, `DevicesChanged`), `OwnerName`, `ConfirmAsync`, `ShowMessageAsync`, `OpenAsync(HostPages.Devices)`
   and `Owner`.
+- **Several views at once**: the rail entry's context menu **Open in new window** shows another copy of the page in a
+  window of its own, so `CreateView` can be called several times, each time with its own context. Keep all page state in
+  the view model of that view (never in static or shared fields of the page class), start server work when the view is
+  attached and stop it when it is detached (the windows close on logout, with the main window and when the plugin is
+  turned off), and keep server-side state per caller: a stream or job the page starts gets its own id (a "start" method
+  returns it, events carry it, the page ignores events of other ids), like the Metadata Monitor and the I/O Monitor.
 - **Rail group**: `CorePluginGroup Group` (default `Extensions`) puts the page under a group header in the rail, in
   this order: Servers, Automation, Security, Monitoring, Reporting, Maintenance, Integrations, Utilities, Extensions.
 - **Without a page**: `HasPage => false` lists the plugin with `CorePluginInfo.no_page` and the client adds no rail
