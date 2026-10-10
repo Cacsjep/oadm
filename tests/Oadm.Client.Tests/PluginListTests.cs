@@ -39,10 +39,11 @@ public sealed class PluginListTests
         await WaitAsync(() => changed == 1);
         Assert.Contains(await api.ListCorePluginsAsync(CancellationToken.None), p => p.Id == FakeOadmApi.HardeningScanPluginId);
 
-        // Metadata Monitor off: its page leaves the rail.
-        vm.Plugins.Single(p => p.Id == FakeOadmApi.MetadataMonitorPluginId).IsEnabled = false;
+        // Snapshot report off: its page leaves the rail. The Metadata Monitor is off by default too.
+        Assert.False(vm.Plugins.Single(p => p.Id == FakeOadmApi.MetadataMonitorPluginId).IsEnabled);
+        vm.Plugins.Single(p => p.Id == FakeOadmApi.SnapshotReportPluginId).IsEnabled = false;
         await WaitAsync(() => changed == 2);
-        Assert.DoesNotContain(await api.ListCorePluginsAsync(CancellationToken.None), p => p.Id == FakeOadmApi.MetadataMonitorPluginId);
+        Assert.DoesNotContain(await api.ListCorePluginsAsync(CancellationToken.None), p => p.Id == FakeOadmApi.SnapshotReportPluginId);
         Assert.Null(vm.ErrorText);
     }
 

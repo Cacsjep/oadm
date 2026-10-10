@@ -19,6 +19,8 @@ public sealed class FakeModeTests : IDisposable
     [Trait("Category", "Timing")] // waits 50 ms for the watch to subscribe
     public async Task Fake_backend_streams_generated_events_the_page_shows()
     {
+        Assert.DoesNotContain(await _api.ListCorePluginsAsync(CancellationToken.None), p => p.Id == MetadataMonitorPluginInfo.PluginId); // off by default
+        await _api.SetPluginPackageEnabledAsync(MetadataMonitorPluginInfo.PluginId, true, CancellationToken.None);
         Assert.Contains(await _api.ListCorePluginsAsync(CancellationToken.None), p => p.Id == MetadataMonitorPluginInfo.PluginId && p.IconKey == MetadataMonitorPluginInfo.IconKey);
         var device = (await _api.ListDevicesAsync(CancellationToken.None)).First(d => d.Address == "10.0.0.48");
         var ctx = new FakeContext(_api, new TestDevice(device.Address, "P3265-V") { Id = Guid.Parse(device.Id) });

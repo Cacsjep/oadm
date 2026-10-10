@@ -6,7 +6,7 @@ namespace Oadm.Client.Api;
 
 /// <summary>
 /// Fake plugin list of the Plugins page: the simulated core plugins plus Restart, each one package. The Hardening scan
-/// is off by default like on the server (its manifest says so); turning a package off hides its rail page and its tasks.
+/// and the other monitoring plugins are off by default like on the server (their manifests say so); turning a package off hides its rail page and its tasks.
 /// </summary>
 public sealed partial class FakeOadmApi
 {
@@ -16,7 +16,7 @@ public sealed partial class FakeOadmApi
     [
         Package(SnapshotReportPluginId, "Snapshot report", "Snapshots of every camera and a PDF maintenance report.", hasPage: true, tasks: 0),
         Package(PkiPluginId, "PKI", "Issues device certificates for HTTPS and IEEE 802.1X.", hasPage: true, tasks: 9, alwaysOn: true),
-        Package(MetadataMonitorPluginId, "Metadata Monitor", "Shows the events a camera sends, live.", hasPage: true, tasks: 0),
+        Package(MetadataMonitorPluginId, "Metadata Monitor", "Shows the events a camera sends, live.", hasPage: true, tasks: 0, enabledByDefault: false),
         Package(HardeningScanPluginId, "Hardening scan", "Checks devices against the AXIS OS hardening guide.", hasPage: true, tasks: 0, enabledByDefault: false),
         Package(IoMonitorPluginId, "I/O Monitor", "Shows the inputs and outputs of a device, live.", hasPage: true, tasks: 0, enabledByDefault: false),
         Package(SystemReportPluginId, "System report", "Downloads the system reports of devices for Axis support.", hasPage: false, tasks: 0, alwaysOn: true),

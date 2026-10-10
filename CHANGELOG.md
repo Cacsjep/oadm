@@ -27,6 +27,7 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Changed
 
+- The Metadata Monitor is now off by default. To use it, an administrator turns it on on the Plugins page.
 - Cameras with older AXIS OS (8.x, before 8.50) can be added and managed: OADM recognizes them by their login prompt and
   reads what they support from their parameters, so Upgrade firmware, Users, Network settings, Date and time and
   Applications are available for them.

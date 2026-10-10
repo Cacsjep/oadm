@@ -159,7 +159,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.VapixCommander(.Client)/   core plugin: VAPIX command library, raw requests, rollouts
   Oadm.Plugins.NtpServer(.Client)/        core plugin: NTP server (RFC 5905 server mode) + "Use OADM as NTP server"
   Oadm.Plugins.DhcpServer(.Client)/       core plugin: DHCP server (RFC 2131) with static leases and lease list
-  Oadm.Plugins.MetadataMonitor(.Client)/  core plugin: live event stream of one camera (RTSP metadata, port of AXIS Metadata Monitor)
+  Oadm.Plugins.MetadataMonitor(.Client)/  core plugin: live event stream of one camera (RTSP metadata, port of AXIS Metadata Monitor, off by default)
   Oadm.Plugins.Pki(.Client)/              core plugin: PKI (one CA for device certificates, trusted root store)
   Oadm.Plugins.SystemReport(.Client)/     core plugin without a page: toolbar "System report" (server reports in one ZIP)
   Oadm.Plugins.HardeningScan(.Client)/    core plugin: read-only scan against the AXIS OS hardening guide (off by default)
@@ -1311,7 +1311,8 @@ plugins, contributed and standalone tasks and client parts together) and adminis
 applies at once without a restart. User decision 2026-10-10: own rail page (not a Settings card), core functionality
 is always on.
 - Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
-  **Off by default: Hardening scan, Image Health Dashboard and I/O Monitor** (user decision). The administrator's choices are the
+  **Off by default: Hardening scan, Image Health Dashboard, I/O Monitor and Metadata Monitor** (user decisions; Metadata
+  Monitor 2026-10-10). The administrator's choices are the
   server setting `Plugins.Enabled` (JSON object package id -> on; packages without a choice use their default),
   applied before the core plugins start (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
 - **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade firmware, Date and time, Applications
@@ -1963,7 +1964,7 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
 ## Metadata Monitor (core plugin)
 
 `plugins/Oadm.Plugins.MetadataMonitor` (+ `.Client`), id `oadm.metadata-monitor`, rail page **Metadata Monitor** (icon
-`activity`). A port of the AXIS Metadata Monitor tool: pick one camera, Start, and watch its event stream live, the way a
+`activity`), **off by default** (user decision 2026-10-10). A port of the AXIS Metadata Monitor tool: pick one camera, Start, and watch its event stream live, the way a
 technician checks which events a device sends (I/O ports, virtual inputs, storage, temperature, tampering, ACAP events).
 Read-only for devices. Decided with the user on 2026-10-08:
 
