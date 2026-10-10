@@ -12,6 +12,8 @@ version and date, and the release workflow copies it into the GitHub release.
   save the configuration of devices as files, then import one file into every selected device of the same model, or the
   ZIP of an export so each device gets its own file back. Host name, IP address and device names stay as they are on
   each device. Uses the same export and import as the camera's web interface.
+- Image Health Dashboard: count cards above the table for Good, Detected, Pending, Detection off and Errors (app not
+  running or camera not reachable).
 
 ### Changed
 

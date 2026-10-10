@@ -53,6 +53,9 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] public partial string SummaryText { get; private set; } = string.Empty;
 
+    /// <summary>The dashboard cards above the table (all cameras, not only the search results).</summary>
+    [ObservableProperty] public partial ImageHealthCounts Counts { get; private set; } = ImageHealthCounts.Empty;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmpty))]
     public partial string EmptyText { get; private set; } = "Checking the cameras.";
@@ -259,6 +262,7 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
 
     private void UpdateSummary()
     {
+        Counts = ImageHealthCounts.From(_byId.Values);
         var state = _state;
         if (state is null)
         {
@@ -266,32 +270,11 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var detected = _byId.Values.Count(r => r.AnyDetected);
-        var pending = _byId.Values.Count(r => r.AnyPending);
-        var parts = new List<string> { Count(state.Running, "camera with the app running", "cameras with the app running") };
-        if (detected > 0)
-        {
-            parts.Add(Count(detected, "with a detection", "with a detection"));
-        }
-
-        if (pending > 0)
-        {
-            parts.Add(Count(pending, "pending", "pending"));
-        }
-
-        if (state.NotRunning > 0)
-        {
-            parts.Add(Count(state.NotRunning, "not running", "not running"));
-        }
-
+        // The cards above the table count the cameras with the app; the line adds what they do not show.
+        var parts = new List<string>();
         if (state.WithoutApp > 0)
         {
-            parts.Add(Count(state.WithoutApp, "without the app", "without the app"));
-        }
-
-        if (state.Failed > 0)
-        {
-            parts.Add(Count(state.Failed, "could not be checked", "could not be checked"));
+            parts.Add(Count(state.WithoutApp, "camera without the app", "cameras without the app"));
         }
 
         if (Rows.Count != _byId.Count)

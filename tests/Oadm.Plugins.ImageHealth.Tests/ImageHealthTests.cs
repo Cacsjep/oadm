@@ -231,7 +231,8 @@ public sealed class ViewModelTests
 
         vm.Activate();
         await Wait.UntilAsync(() => vm.Rows.Count == 1 && vm.Rows[0].IsRunning && !vm.IsChecking);
-        Assert.StartsWith("1 camera with the app running · 1 pending · checked ", vm.SummaryText, StringComparison.Ordinal);
+        Assert.StartsWith("checked ", vm.SummaryText, StringComparison.Ordinal);
+        Assert.Equal(1, vm.Counts.Pending);
         Assert.True(vm.Rows[0].Blur.IsWarning);
         Assert.True(vm.Rows[0].UnderExposure.IsOk);
         await Task.Delay(200);
@@ -265,9 +266,44 @@ public sealed class ViewModelTests
         vm.SearchText = "10.0.1.";
         var search = watch.ElapsedMilliseconds;
 
+        Assert.Equal(4_999, vm.Counts.Good); // all cameras, not the search
         Console.WriteLine($"5,000 rows: load {load} ms, 1,000 changes + 1 removed {update} ms, check reply + search {search} ms");
         Assert.Equal(256, vm.Rows.Count); // 10.0.1.0 .. 10.0.1.255
         Assert.True(load + update + search < 2_000);
+    }
+
+    [Fact]
+    public void Every_camera_counts_in_one_card_and_the_worst_state_wins()
+    {
+        const string ok = DetectionStates.Ok, pending = DetectionStates.Pending, detected = DetectionStates.Detected, off = DetectionStates.Off;
+        ImageHealthRow Camera(string app, string? blur, string? block, string? redirect, string? under, string? unsuitable) =>
+            new(Guid.NewGuid(), "10.0.0.1", "P3265-V", app, null, blur, block, redirect, under, unsuitable, null);
+        var vm = new ImageHealthViewModel(new PluginPageContext(new ImageHealthPlugin(), new Oadm.Core.Plugins.PluginEventHub()));
+
+        vm.ApplyState(new ImageHealthState(false, 9, 9, 6, 1, 0, 1, null,
+        [
+            Camera(AppStates.Running, ok, ok, ok, ok, ok),
+            Camera(AppStates.Running, detected, pending, off, ok, ok), // detected wins
+            Camera(AppStates.Running, detected, detected, ok, ok, ok),
+            Camera(AppStates.Running, ok, pending, off, ok, ok), // pending wins over off
+            Camera(AppStates.Running, off, ok, off, ok, ok),
+            Camera(AppStates.Running, ok, ok, "learning", ok, ok), // another value counts as good
+            Camera(AppStates.NotRunning, null, null, null, null, null),
+            Camera(AppStates.Error, null, null, null, null, null),
+            Camera(AppStates.Checking, null, null, null, null, null), // not counted yet
+        ]), replaceRows: true);
+
+        var counts = vm.Counts;
+        Assert.Equal((2, 2, 1, 1, 2, 8), (counts.Good, counts.Detected, counts.Pending, counts.Off, counts.Errors, counts.Total));
+        Assert.Equal("of 8 cameras", counts.GoodDetail);
+        Assert.Equal("Blur 2 · Block 1", counts.DetectedDetail);
+        Assert.Equal("Block 1", counts.PendingDetail);
+        Assert.Equal("Blur 1 · Redirect 1", counts.OffDetail);
+        Assert.Equal("1 not running · 1 could not be checked", counts.ErrorsDetail);
+        Assert.True(counts.IsGoodOk && counts.IsDetectedError && counts.IsPendingWarning && counts.IsErrorsError);
+
+        vm.SearchText = "nothing matches";
+        Assert.Equal(counts, vm.Counts); // the cards count every camera, not the search
     }
 
     internal static ImageHealthRow Row(int i, string state) => new(
@@ -292,17 +328,20 @@ public sealed class HeadlessPageTests
             const string pending = DetectionStates.Pending;
             const string detected = DetectionStates.Detected;
             const string off = DetectionStates.Off;
-            vm.ApplyState(new ImageHealthState(false, 7, 7, 3, 1, 2, 1, null,
+            vm.ApplyState(new ImageHealthState(false, 9, 9, 5, 1, 2, 1, null,
             [
                 new ImageHealthRow(Guid.NewGuid(), "10.0.0.48", "P3265-V", AppStates.Running, null, ok, ok, ok, off, ok, null),
+                new ImageHealthRow(Guid.NewGuid(), "10.0.0.49", "P3265-V", AppStates.Running, null, ok, ok, ok, ok, ok, null),
+                new ImageHealthRow(Guid.NewGuid(), "10.0.0.50", "Q3548-LVE", AppStates.Running, null, ok, ok, ok, ok, ok, null),
                 new ImageHealthRow(Guid.NewGuid(), "10.0.0.52", "Q3548-LVE", AppStates.Running, null, detected, detected, pending, ok, ok, new DateTimeOffset(2026, 10, 9, 18, 21, 7, TimeSpan.Zero)),
                 new ImageHealthRow(Guid.NewGuid(), "10.0.0.61", "M3215-LVE", AppStates.Running, null, pending, pending, pending, ok, ok, new DateTimeOffset(2026, 10, 9, 18, 20, 52, TimeSpan.Zero)),
                 new ImageHealthRow(Guid.NewGuid(), "10.0.0.70", "M3106-L Mk II", AppStates.NotRunning, null, null, null, null, null, null, null),
                 new ImageHealthRow(Guid.NewGuid(), "10.0.0.202", "M3215-LVE", AppStates.Error, "Credentials required - the device rejects the stored credentials", null, null, null, null, null, null),
             ]), replaceRows: true);
             Headless.Pump();
-            Assert.Equal(5, vm.Rows.Count);
-            Assert.Equal("3 cameras with the app running · 1 with a detection · 1 pending · 1 not running · 2 without the app · 1 could not be checked", vm.SummaryText);
+            Assert.Equal(7, vm.Rows.Count);
+            Assert.Equal("2 cameras without the app", vm.SummaryText);
+            Assert.Equal((2, 1, 1, 1, 2), (vm.Counts.Good, vm.Counts.Detected, vm.Counts.Pending, vm.Counts.Off, vm.Counts.Errors));
             Headless.Capture(window, "image-health-dashboard.png");
             window.Close();
         }, CancellationToken.None);

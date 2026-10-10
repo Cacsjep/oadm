@@ -34,6 +34,17 @@ public sealed record DetectionCell(string? State)
     };
 }
 
+/// <summary>The dashboard cards: every camera with the app counts in exactly one.</summary>
+public enum HealthBucket
+{
+    None,
+    Good,
+    Detected,
+    Pending,
+    Off,
+    Error,
+}
+
 /// <summary>A camera row of the Image Health Dashboard; updated in place when the server pushes a change.</summary>
 public sealed partial class ImageHealthRowViewModel : ObservableObject
 {
@@ -57,7 +68,7 @@ public sealed partial class ImageHealthRowViewModel : ObservableObject
     public string Model { get; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(AppText), nameof(IsRunning), nameof(IsNotRunning), nameof(IsAppError), nameof(IsChecking))]
+    [NotifyPropertyChangedFor(nameof(AppText), nameof(IsRunning), nameof(IsNotRunning), nameof(IsAppError), nameof(IsAppProblem), nameof(IsChecking))]
     public partial string App { get; private set; } = AppStates.Checking;
 
     [ObservableProperty]
@@ -89,6 +100,9 @@ public sealed partial class ImageHealthRowViewModel : ObservableObject
 
     public bool IsAppError => App == AppStates.Error;
 
+    /// <summary>Not running or not checked: both count as errors (user decision 2026-10-10), red in the App column.</summary>
+    public bool IsAppProblem => IsNotRunning || IsAppError;
+
     /// <summary>When OADM saw a detection change between two checks, local time.</summary>
     public string ChangedText => ChangedUtc is { } at ? at.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture) : string.Empty;
 
@@ -97,6 +111,18 @@ public sealed partial class ImageHealthRowViewModel : ObservableObject
 
     /// <summary>Any detection pending (and none detected).</summary>
     public bool AnyPending => !AnyDetected && (Blur.IsWarning || Block.IsWarning || Redirect.IsWarning || UnderExposure.IsWarning || Unsuitability.IsWarning);
+
+    /// <summary>The dashboard card this camera counts in (the worst state wins); none while it is being checked.</summary>
+    public HealthBucket Bucket =>
+        IsNotRunning || IsAppError ? HealthBucket.Error
+        : IsChecking ? HealthBucket.None
+        : AnyDetected ? HealthBucket.Detected
+        : AnyPending ? HealthBucket.Pending
+        : Cells.Any(c => c.State == DetectionStates.Off) ? HealthBucket.Off
+        : HealthBucket.Good;
+
+    /// <summary>The five detections in column order, with their column names.</summary>
+    public IEnumerable<DetectionCell> Cells => [Blur, Block, Redirect, UnderExposure, Unsuitability];
 
     /// <summary>Text the search matches.</summary>
     public string SearchText => $"{Address} {Model}";

@@ -42,7 +42,7 @@ internal static class Headless
     {
         var page = new Oadm.Client.Shell.CorePluginPageView
         {
-            DataContext = new Oadm.Client.Shell.CorePluginPageViewModel(ImageHealthPluginInfo.PluginId, ImageHealthPluginInfo.DisplayName, view),
+            DataContext = new Oadm.Client.Shell.CorePluginPageViewModel(ImageHealthPluginInfo.PluginId, ImageHealthPluginInfo.DisplayName, view, new Oadm.Plugins.ImageHealth.Client.ImageHealthPage().HasOwnCards),
         };
         var window = new Window { Width = 1500, Height = 640, Content = new Border { Padding = new Thickness(16), Child = page } };
         Oadm.Client.App.ApplyCrispText(window);

@@ -190,6 +190,7 @@
       <x:Double x:Key="Oadm.FontSizeSmall">10</x:Double>
       <x:Double x:Key="Oadm.FontSizeCardTitle">18</x:Double>
       <x:Double x:Key="Oadm.FontSizePageTitle">22</x:Double>
+      <x:Double x:Key="Oadm.FontSizeStat">28</x:Double>
       <x:Double x:Key="Oadm.FontSizeAppName">14</x:Double>
       <x:Double x:Key="Oadm.FontSizeSplashWordmark">34</x:Double>
       <x:Double x:Key="Oadm.GridRowHeight">34</x:Double>
@@ -396,6 +397,44 @@
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.CardCornerRadius}" />
     <Setter Property="Padding" Value="{StaticResource Oadm.CardPadding}" />
     <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <!-- Monitoring card (ui:StatCard): status icon + title, a large count, a small detail line. The status colors icon and
+       count; neutral without one. -->
+  <Style Selector="ui|StatCard">
+    <Setter Property="Padding" Value="16,14" />
+  </Style>
+  <Style Selector="ui|StatCard ui|OadmIcon.statIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusNeutralBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard TextBlock.statTitle">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard TextBlock.statValue">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeStat}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard TextBlock.statDetail">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard.ok ui|OadmIcon.statIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusOkBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard.ok TextBlock.statValue">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusOkBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard.warn ui|OadmIcon.statIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusWarningBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard.warn TextBlock.statValue">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusWarningBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard.error ui|OadmIcon.statIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="ui|StatCard.error TextBlock.statValue">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
   </Style>
   <!-- Body of a single-operation dialog (one form, no card), padded like ui:MessageWindow. -->
   <Style Selector="Border.dialogBody">

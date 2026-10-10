@@ -159,6 +159,7 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
   | `ui:PasswordBox Text` | **every password field**: bullet mask and an eye button ("Show password" / "Hide password"); never a `TextBox` with `PasswordChar` |
   | `MessageWindow.ConfirmAsync(owner, title, message, confirmText)` / `ShowMessageAsync` | **every confirmation or message popup** (the host uses the same window); e.g. the Network dialogs confirm risky changes on Apply / Finish, no inline warning with a check box |
   | `ui:StatusChip Text IsOk IsWarning IsError IsAccent` | every status value (colored icon + text), in grid cells with `Margin="10,0"` |
+  | `ui:StatCard Title Value Detail IsOk IsWarning IsError` | monitoring count card (large count, detail line); set the status only while the count needs attention |
   | `ui:FileRow FileName Details Error Command` | a chosen local file with its "Choose file" button; sizes with `FileSizeText.Format` |
   | `ui:ProgressRow Value Text IsActive` | upload or scan progress (0 to 100) with its status text |
   | `ui:OadmIcon Data` | a single icon |

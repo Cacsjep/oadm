@@ -146,7 +146,7 @@ src/
   Oadm.Sdk/            plugin SDK: interfaces, attributes, context objects. No Avalonia, no EF
   Oadm.Sdk.Client/     client-side plugin SDK: dialog/page/toolbar interfaces, ITaskDialogContext,
                        IToolbarContext, shared controls (Controls/: IconLabel, SearchBox, OadmIcon,
-                       DialogTitleBar, CardHeader, DialogFooter, StatusChip, FileRow, ProgressRow,
+                       DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow,
                        ToolbarButton, ToolbarSeparator, PasswordBox, MessageWindow, FormField),
                        form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection,
                        Collections/RangeObservableCollection (bulk list of the host grids and plugin pages)
@@ -1191,7 +1191,7 @@ API guide: `plugins/README.md`.
 
 Dialogs and pages are real Avalonia views with view models, styled by the host theme. They use
 the shared controls from `Oadm.Sdk.Client.Controls` (`IconLabel`, `SearchBox`, `PasswordBox`, `OadmIcon`,
-`DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip`, `FileRow`, `ProgressRow`, `FormField`,
+`DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip`, `FileRow`, `ProgressRow`, `FormField`, `StatCard`,
 `ToolbarButton`, `ToolbarSeparator`, `MessageWindow` (every message and confirmation popup:
 `MessageWindow.ConfirmAsync` / `ShowMessageAsync`, used by the host dialog service and plugin dialogs);
 usage in `plugins/README.md`) and
@@ -1998,11 +1998,15 @@ Decided with the user on 2026-10-09:
   network text of `DeviceMessages`); 404 = without the app (counted, row removed); devices removed from OADM leave.
   `ChangedUtc` = when a detection changed between two answers of the running app. Events (500 ms): `rows`
   ({rows, removed}) and `state` (checking, checked, total, running, notRunning, withoutApp, failed, checkedUtc).
-- **Page** (one card, subtitle "AXIS Image Health Analytics on every camera."): Refresh, Auto refresh, SearchBox;
-  progress row "Checking cameras 120 of 200"; summary "3 cameras with the app running · 1 with a detection · 1 pending
-  · 1 not running · 2 without the app · 1 could not be checked · checked 19:34:14"; virtualized DataGrid (`wrapRows`)
+- **Page** (`HasOwnCards`, subtitle "AXIS Image Health Analytics on every camera."): a row of five count cards
+  (`ui:StatCard`, user decision 2026-10-10): **Good** (ok, "of 12 cameras"), **Detected** (error), **Pending** (warning),
+  **Detection off** (neutral), each with "Blur 2 · Block 1", and **Errors** (error, "1 not running · 2 could not be
+  checked"); every camera with the app counts in exactly one, the worst state wins (Errors > Detected > Pending > Off >
+  Good, `ImageHealthCounts`, O(n)), colored only while the count is above 0, all cameras regardless of the search. Below
+  them the table card: Refresh, Auto refresh, SearchBox; progress row "Checking cameras 120 of 200"; summary "2 cameras
+  without the app · 5 shown · checked 19:34:14"; virtualized DataGrid (`wrapRows`)
   Address, Model, Blur, Block, Redirect, Under-exposure, Unsuitability (status chips, sortable by severity), Last change,
-  App (Running ok, Not running warning, Checking accent, error text red). Empty: "No camera has AXIS Image Health
+  App (Running ok, Not running red, Checking accent, error text red). Empty: "No camera has AXIS Image Health
   Analytics." Rows updated in place by device id; search, new and removed rows one reset (O(n), 5,000 tested).
 - Not in fake mode yet.
 - Tests: `tests/Oadm.Plugins.ImageHealth.Tests` (the three recorded answers, disabled / unsuitable / other values,
@@ -2487,7 +2491,9 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   Auto from the content type then the text, `IsFormatted` false = exact text; unparsable text plain, above
   512 K characters plain; monospace `Oadm.FontFamilyMono`, no wrapping, selectable and copyable; colors
   `Oadm.Code.*Brush`; logic in `CodeText` without UI; editable bodies stay `TextBox.code`), `FormField` (every labeled form row: label,
-  input, error or hint below the input; classes `wide` and `inline`). Before
+  input, error or hint below the input; classes `wide` and `inline`), `StatCard` (every monitoring count card: status icon +
+  title, large count, small detail line; `IsOk` / `IsWarning` / `IsError` color icon and count, set only while the count
+  needs attention). Before
   writing new XAML, check both `Controls/` folders and reuse; if a second place needs something
   that exists only inline, extract it into a control first.
 - Plugin projects copy their output to `artifacts/plugins/<id>/` after every build. A running
