@@ -9,7 +9,8 @@ import page from '../../../assets/screens/device-triggers-page.png';
 import editor from '../../../assets/screens/device-triggers-editor.png';
 
 A device trigger makes an event of your devices available to the [event rules](../event-rules/): a digital input, a
-virtual input, an Object Analytics scenario, a storage alert, a temperature warning or the event of another app. OADM
+virtual input, an Object Analytics scenario, a blur detected by AXIS Image Health Analytics, a storage alert, a
+temperature warning or the event of another app. OADM
 reads which events each device offers and keeps a live connection to every device a trigger uses.
 
 <Image src={page} alt="The Device triggers page with three triggers and the devices of one" class="screen" />
@@ -48,6 +49,16 @@ Every trigger appears in the rule dialog in the group **Device triggers**, twice
 
 Events that happen once (camera tampering, a counting report) fire the rule each time. The values of the event can go
 into actions, for example `{port}` in a VAPIX command. The rule dialog lists them under the event.
+
+## Object Analytics and Image Health Analytics
+
+- **Object Analytics**: each scenario is its own event, named like the scenario, plus **Any Scenario**. Object in area,
+  line crossing and tailgating turn on and off. Crossline counting and occupancy send their counts each time (use
+  `{total}`, `{human}` or `{car}` in actions); occupancy also has a threshold alarm that turns on and off. To try a rule,
+  use **Test alarm** of the scenario in the app: the trigger turns on for a few seconds.
+- **Image Health Analytics**: Blur, Block, Redirect, Under-Exposure, Unsuitability and Any-Active-Events turn on and off.
+- An app that is stopped has no events. The trigger then shows **The event is no longer on the device**, and after 30
+  seconds its "connection lost" event turns on.
 
 ## Good to know
 

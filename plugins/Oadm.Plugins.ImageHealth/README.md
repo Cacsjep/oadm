@@ -34,10 +34,9 @@ open connection and also reports Pending and disabled detections.
   Detection off, Errors. Each camera with the app counts in one card, the worst state wins (Errors > Detected > Pending >
   Off > Good); Not running and could not be checked count as Errors (App column red for both). The cards count every
   camera, not the search; the summary line keeps only "without the app", "N shown" and the check time.
-- (2026-10-10) **Monitor continuously** (check box, Admin, plugin setting `config`, off by default): a background check
-  every 30 s, also with the page closed; after every check the event rule events (`ImageHealthEvents`: five detections,
-  App not running, Camera could not be checked) are published as full reports (`ReplaceStates`). Off: no background
-  request and every event off.
+- (2026-10-10) A live display only: no background check and no events. Event rules use the app's own events through
+  Device triggers (`Image Health Analytics - Blur` ... `Any-Active-Events`, on/off). The former "Monitor continuously"
+  switch and its plugin setting `config` are gone (an old stored value is ignored).
 
 ## Code
 

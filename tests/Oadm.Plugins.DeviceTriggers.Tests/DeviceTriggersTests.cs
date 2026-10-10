@@ -43,6 +43,20 @@ public sealed class DeviceTriggersTests
     }
 
     [Fact]
+    public void ImageHealthAnalyticsEventsAreOnOffEventsWithTheAppNames()
+    {
+        // Recorded on a loan AXIS Q6411-LE (AXIS OS 13.0.88) with AXIS Image Health Analytics running, 2026-10-10.
+        var events = EventDeclarations.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "q6411-aiha-eventinstances.xml")));
+
+        var blur = Assert.Single(events, e => e.Topic == "tnsaxis:CameraApplicationPlatform/AXISImageHealthAnalytics/Blur");
+        Assert.Equal(("Image Health Analytics - Blur", true, "active"), (blur.Name, blur.Stateful, blur.StateItem));
+        var any = Assert.Single(events, e => e.Topic == "tnsaxis:CameraApplicationPlatform/AXISImageHealthAnalytics/Any-Active-Events");
+        Assert.True(any.Stateful);
+        string[] detections = ["Blur", "Block", "Redirect", "Under-Exposure", "Unsuitability", "Any-Active-Events"];
+        Assert.All(detections, n => Assert.Contains(events, e => e.Topic == "tnsaxis:CameraApplicationPlatform/AXISImageHealthAnalytics/" + n && e.Stateful));
+    }
+
+    [Fact]
     public void OneFilterPerTopicAndValuesJoinedWithOr()
     {
         var a = Fixture.VirtualInputTrigger("A", [], "3");

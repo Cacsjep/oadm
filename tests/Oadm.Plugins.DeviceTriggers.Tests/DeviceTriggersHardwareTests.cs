@@ -46,6 +46,53 @@ public sealed class DeviceTriggersHardwareTests
         Assert.Equal(TriggerConnection.Connected, state.Connection);
     }
 
+    public sealed class TriggerTheoryAttribute : TheoryAttribute
+    {
+        public TriggerTheoryAttribute()
+        {
+            if (string.IsNullOrWhiteSpace(Url))
+            {
+                Skip = "OADM_TRIGGER_URL is not set.";
+            }
+        }
+    }
+
+    /// <summary>
+    /// App events (verified on a loan AXIS Q6411-LE, AXIS OS 13.0.88, 2026-10-10, with both apps running): AXIS Image Health
+    /// Analytics and AXIS Object Analytics. A device without the app passes with a note.
+    /// </summary>
+    [TriggerTheory]
+    [Trait("Category", "Hardware")]
+    [InlineData("tnsaxis:CameraApplicationPlatform/AXISImageHealthAnalytics/Any-Active-Events")]
+    [InlineData("tnsaxis:CameraApplicationPlatform/ObjectAnalytics/Device1ScenarioANY")]
+    public async Task An_app_reports_its_events_to_a_trigger(string topic)
+    {
+        var Topic = topic;
+        await using var rig = await StartAsync();
+        var device = (await rig.Devices.ListAsync(CancellationToken.None)).Single();
+        var read = await rig.CallAsync<ReadStatusReply>(DeviceTriggersMethods.StartRead, new StartReadRequest([device.Id]));
+        await Wait.UntilAsync(() => (read = rig.CallAsync<ReadStatusReply>(DeviceTriggersMethods.ReadStatus, new ReadStatusRequest(read.JobId)).Result).Finished, "the event list", 30_000);
+        if (read.Events.FirstOrDefault(e => e.Topic == Topic) is not { } aiha)
+        {
+            Console.WriteLine($"{Topic} is not on this device (the app does not run): nothing to check.");
+            return;
+        }
+
+        var trigger = await rig.SaveAsync(new TriggerDefinition
+        {
+            Name = "App event",
+            Topic = aiha.Topic,
+            EventName = aiha.Name,
+            Stateful = aiha.Stateful,
+            StateItem = aiha.StateItem,
+            Values = [.. aiha.Data.Select(d => d.Name)],
+            DeviceIds = [device.Id],
+        });
+        await Wait.UntilAsync(() => rig.Publisher.Lines.Any(l => l.StartsWith("replace trigger", StringComparison.Ordinal)), "the device's report", 30_000);
+        Console.WriteLine(aiha.Name + ": " + string.Join(" | ", rig.Publisher.Lines));
+        Assert.Equal(TriggerConnection.Connected, rig.Plugin.Runtime!.StatesOf(trigger).Single().Connection);
+    }
+
     [TriggerFact]
     [Trait("Category", "HardwareWrite")]
     public async Task Switching_virtual_input_64_turns_the_trigger_on_and_off()
@@ -67,6 +114,46 @@ public sealed class DeviceTriggersHardwareTests
         }
 
         await Wait.UntilAsync(() => rig.Publisher.Lines.Contains($"set trigger {device.Id} off"), "off", 15_000);
+        Console.WriteLine(string.Join(Environment.NewLine, rig.Publisher.Lines));
+    }
+
+    /// <summary>
+    /// The "Test alarm" of an Object Analytics scenario (<c>sendAlarmEvent</c>; the scenario is on for about 6 s) turns the
+    /// trigger on and off. Needs a fence, motion or tailgating scenario with id <c>OADM_TRIGGER_OA_SCENARIO</c> (default 2);
+    /// counting scenarios send nothing on a test alarm. Verified on a loan AXIS Q6411-LE (AXIS OS 13.0.88), 2026-10-10.
+    /// </summary>
+    [TriggerFact]
+    [Trait("Category", "HardwareWrite")]
+    public async Task An_Object_Analytics_test_alarm_turns_the_trigger_on_and_off()
+    {
+        var scenario = Environment.GetEnvironmentVariable("OADM_TRIGGER_OA_SCENARIO") is { Length: > 0 } n ? int.Parse(n, System.Globalization.CultureInfo.InvariantCulture) : 2;
+        var topic = $"tnsaxis:CameraApplicationPlatform/ObjectAnalytics/Device1Scenario{scenario}";
+        await using var rig = await StartAsync();
+        var device = (await rig.Devices.ListAsync(CancellationToken.None)).Single();
+        await rig.SaveAsync(new TriggerDefinition
+        {
+            Name = "Scenario " + scenario,
+            Topic = topic,
+            EventName = "AXIS Object Analytics › Scenario " + scenario,
+            Stateful = true,
+            StateItem = "active",
+            Values = ["scenarioType", "classTypes", "objectId", "triggerTime", "active"],
+            DeviceIds = [device.Id],
+        });
+        await Wait.UntilAsync(() => rig.Publisher.Lines.Any(l => l.StartsWith("replace trigger", StringComparison.Ordinal)), "the device's report", 30_000);
+        var vapix = await rig.Cameras.CreateAsync(device.Id, CancellationToken.None);
+
+        using (var request = new HttpRequestMessage(HttpMethod.Post, "/local/objectanalytics/control.cgi")
+        {
+            Content = new StringContent($$$"""{"apiVersion":"1.6","context":"oadm","method":"sendAlarmEvent","params":{"scenario":{{{scenario}}}}}""", System.Text.Encoding.UTF8, "application/json"),
+        })
+        using (var response = await vapix.SendAsync(request, CancellationToken.None))
+        {
+            Assert.True(response.IsSuccessStatusCode, $"sendAlarmEvent: HTTP {(int)response.StatusCode}");
+        }
+
+        await Wait.UntilAsync(() => rig.Publisher.Lines.Any(l => l.StartsWith($"set trigger {device.Id} on", StringComparison.Ordinal)), "on", 20_000);
+        await Wait.UntilAsync(() => rig.Publisher.Lines.Contains($"set trigger {device.Id} off"), "off again", 20_000);
         Console.WriteLine(string.Join(Environment.NewLine, rig.Publisher.Lines));
     }
 

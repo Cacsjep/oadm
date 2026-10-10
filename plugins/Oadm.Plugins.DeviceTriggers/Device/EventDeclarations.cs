@@ -88,12 +88,23 @@ public static class EventDeclarations
             }
 
             path.Add(TopicPart(child));
-            names.Add(child.Attribute(Aev + "NiceName")?.Value is { Length: > 0 } nice ? nice.Trim() : child.Name.LocalName);
+            names.Add(child.Attribute(Aev + "NiceName")?.Value is { Length: > 0 } nice ? nice.Trim() : "\u0000" + child.Name.LocalName);
             var internalData = applicationData || string.Equals(child.Attribute("isApplicationData")?.Value, "true", StringComparison.OrdinalIgnoreCase);
             Walk(child, path, names, internalData, events);
             path.RemoveAt(path.Count - 1);
             names.RemoveAt(names.Count - 1);
         }
+    }
+
+    /// <summary>
+    /// The device's names of the levels ("Device › Input ports › Virtual input"). When the event itself has a name, levels
+    /// without one are left out (apps: "Image Health Analytics - Blur", not "CameraApplicationPlatform › ..."); otherwise
+    /// they appear with their topic name ("Device › MQTT › ClientStatus"). Unnamed levels are marked with a leading NUL.
+    /// </summary>
+    private static string DisplayName(List<string> names)
+    {
+        var named = names[^1].Length > 0 && names[^1][0] != '\0';
+        return string.Join(" › ", names.Where(n => !named || n[0] != '\0').Select(n => n.TrimStart('\0')));
     }
 
     private static string TopicPart(XElement element)
@@ -118,7 +129,7 @@ public static class EventDeclarations
         var sources = Items(message.Element(Aev + "SourceInstance"), out _);
         var data = Items(message.Element(Aev + "DataInstance"), out var stateItem);
         var stateful = string.Equals(message.Attribute(Aev + "isProperty")?.Value, "true", StringComparison.OrdinalIgnoreCase) && stateItem is not null;
-        return new DeviceEvent(string.Join('/', path), string.Join(" › ", names), stateful, stateful ? stateItem : null, sources, data);
+        return new DeviceEvent(string.Join('/', path), DisplayName(names), stateful, stateful ? stateItem : null, sources, data);
     }
 
     private static List<EventItem> Items(XElement? instance, out string? stateItem)

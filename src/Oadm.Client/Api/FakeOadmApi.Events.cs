@@ -14,7 +14,7 @@ using Oadm.Sdk.Events;
 namespace Oadm.Client.Api;
 
 /// <summary>
-/// Fake mode: event rules in memory. The catalog has the built-in device status events, the Image Health events and the
+/// Fake mode: event rules in memory. The catalog has the built-in device status events, two sample device triggers and the
 /// two bundled actions; three sample rules (one on, one off) and a sample event log. No rule really runs; saving checks
 /// the basics like the server and logs a line.
 /// </summary>
@@ -39,13 +39,10 @@ public sealed partial class FakeOadmApi
             ("oadm.device.certificate-changed", "Certificate changed", "Device status", "Built in", "The device presents another HTTPS certificate."),
             ("oadm.device.certificate-expires-soon", "Certificate expires soon", "Device status", "Built in", "30 days or less left."),
             ("oadm.device.certificate-expired", "Certificate expired", "Device status", "Built in", ""),
-            ("oadm.image-health.blur", "Blur detected", "Image Health", "Image Health Dashboard", "The picture is out of focus."),
-            ("oadm.image-health.block", "Block detected", "Image Health", "Image Health Dashboard", "Something covers the view."),
-            ("oadm.image-health.redirect", "Redirect detected", "Image Health", "Image Health Dashboard", "The camera points somewhere else."),
-            ("oadm.image-health.under-exposure", "Under-exposure detected", "Image Health", "Image Health Dashboard", "The picture is too dark."),
-            ("oadm.image-health.unsuitability", "Unsuitable scene detected", "Image Health", "Image Health Dashboard", "The scene is not suitable for the analysis."),
-            ("oadm.image-health.not-running", "App not running", "Image Health", "Image Health Dashboard", "AXIS Image Health Analytics is installed but stopped."),
-            ("oadm.image-health.unreachable", "Camera could not be checked", "Image Health", "Image Health Dashboard", ""),
+            (FakePersonTrigger, "Person in the yard", "Device triggers", "Device triggers", "AXIS Object Analytics › Scenario 1. Values: {active}."),
+            (FakePersonTrigger + ".lost", "Person in the yard: connection lost", "Device triggers", "Device triggers", "No events of this trigger from the device for 30 s. Values: {reason}."),
+            ("oadm.device-triggers.sample-gate", "Gate contact", "Device triggers", "Device triggers", "Device › Input ports › Digital input port · Port: Port 1 (0). Values: {port}, {state}."),
+            ("oadm.device-triggers.sample-gate.lost", "Gate contact: connection lost", "Device triggers", "Device triggers", "No events of this trigger from the device for 30 s. Values: {reason}."),
         ];
         foreach (var (id, name, group, source, description) in types)
         {
@@ -83,6 +80,9 @@ public sealed partial class FakeOadmApi
         return catalog;
     }
 
+    /// <summary>The sample device trigger of the fake event rules.</summary>
+    internal const string FakePersonTrigger = "oadm.device-triggers.sample-person";
+
     private static readonly ActionChoiceEntry[] FakeCommands =
     [
         new() { Value = "saved:overlay-on", Label = "Saved: Show warning overlay" },
@@ -93,8 +93,8 @@ public sealed partial class FakeOadmApi
     private void SeedEventRules()
     {
         var io = _devices.First(d => d.Address == "10.0.0.30");
-        AddFakeRule("Blurred camera: warning lamp", true, (1, DateTime.UtcNow.AddMinutes(-12)),
-            [Event("oadm.image-health.blur", DeviceSelectorMode.All), Schedule("08:00", "18:00", DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday)],
+        AddFakeRule("Person in the yard: warning lamp", true, (1, DateTime.UtcNow.AddMinutes(-12)),
+            [Event(FakePersonTrigger, DeviceSelectorMode.All), Schedule("08:00", "18:00", DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday)],
             [Output(Guid.Parse(io.Id), "follow"), Command(DeviceSelectorMode.EventDevice, "saved:overlay-on", "saved:overlay-off")]);
         AddFakeRule("Camera offline in Building A", true, (0, DateTime.UtcNow.AddHours(-3)),
             [new RuleCondition { Kind = RuleConditionKind.Event, EventTypeId = "oadm.device.unreachable", Devices = new DeviceSelector { Mode = DeviceSelectorMode.Tags, Tags = ["Building A"] } }],
@@ -104,8 +104,8 @@ public sealed partial class FakeOadmApi
             [Command(DeviceSelectorMode.EventDevice, "saved:overlay-on", null)]);
 
         var start = DateTime.UtcNow.AddMinutes(-15);
-        AddLogLocked(start, EventLogKind.EventLogEvent, EventLogResult.EventLogInfo, "Blur detected", _devices[5], null, "On");
-        AddLogLocked(start.AddSeconds(1), EventLogKind.EventLogRule, EventLogResult.EventLogInfo, "Rule turned on", _devices[5], _rules[0], "Blur detected");
+        AddLogLocked(start, EventLogKind.EventLogEvent, EventLogResult.EventLogInfo, "Person in the yard", _devices[5], null, "On");
+        AddLogLocked(start.AddSeconds(1), EventLogKind.EventLogRule, EventLogResult.EventLogInfo, "Rule turned on", _devices[5], _rules[0], "Person in the yard");
         AddLogLocked(start.AddSeconds(2), EventLogKind.EventLogAction, EventLogResult.EventLogOk, "Set output", io, _rules[0], "Rule turned on: Output 1 active");
         AddLogLocked(start.AddSeconds(2), EventLogKind.EventLogAction, EventLogResult.EventLogOk, "Run VAPIX command", _devices[5], _rules[0], "Rule turned on: Show warning overlay");
         AddLogLocked(start.AddMinutes(-170), EventLogKind.EventLogEvent, EventLogResult.EventLogInfo, "Device unreachable", _devices[4], null, "On");

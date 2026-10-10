@@ -43,10 +43,10 @@ public sealed class EventRulesTests
         page.ApplyRules(await api.ListRulesAsync(CancellationToken.None));
 
         Assert.Equal(3, page.Rules.Count);
-        var lamp = page.Rules.Single(r => r.Name == "Blurred camera: warning lamp");
+        var lamp = page.Rules.Single(r => r.Name == "Person in the yard: warning lamp");
         Assert.True(lamp.IsOn);
         Assert.Equal("On", lamp.StateText);
-        Assert.Equal("Blur detected (all devices) · Mon-Fri 08:00-18:00", lamp.ConditionsText);
+        Assert.Equal("Person in the yard (all devices) · Mon-Fri 08:00-18:00", lamp.ConditionsText);
         Assert.StartsWith("Output 1 follows the rule on 10.0.0.30", lamp.ActionsText, StringComparison.Ordinal);
         Assert.Equal("Turned off", page.Rules.Single(r => r.Name == "Certificates about to expire").StateText);
         Assert.Equal("3 rules · 2 turned on · 1 active now", page.RulesStatus);
@@ -121,9 +121,9 @@ public sealed class EventRulesTests
         Assert.Equal("New event rule", editor.Title);
         Assert.Equal("Enter a name.", editor.Problem);
 
-        editor.Name = "Blur lamp";
+        editor.Name = "Person lamp";
         var trigger = editor.Conditions[0];
-        trigger.SelectedEventType = trigger.EventTypes.Single(t => t.Id == "oadm.image-health.blur");
+        trigger.SelectedEventType = trigger.EventTypes.Single(t => t.Id == "oadm.device-triggers.sample-person");
         editor.AddScheduleCommand.Execute(null);
         var action = editor.RuleActions[0];
         action.SelectedAction = action.Actions.Single(a => a.Id == "oadm.outputs.set");
@@ -160,7 +160,7 @@ public sealed class EventRulesTests
 
         await editor.SaveCommand.ExecuteAsync(null);
         Assert.NotNull(editor.Saved);
-        Assert.Contains(await api.ListRulesAsync(CancellationToken.None), r => r.Name == "Blur lamp");
+        Assert.Contains(await api.ListRulesAsync(CancellationToken.None), r => r.Name == "Person lamp");
         _ = store;
         api.Dispose();
     }
@@ -193,10 +193,10 @@ public sealed class EventRulesTests
     {
         var (api, _, _, page) = await CreateAsync();
         page.ApplyRules(await api.ListRulesAsync(CancellationToken.None));
-        var editor = await page.CreateEditorAsync(page.Rules.Single(r => r.Name == "Blurred camera: warning lamp").Id);
+        var editor = await page.CreateEditorAsync(page.Rules.Single(r => r.Name == "Person in the yard: warning lamp").Id);
         Assert.NotNull(editor);
         Assert.Equal("Change event rule", editor.Title);
-        Assert.Equal("oadm.image-health.blur", editor.Conditions[0].SelectedEventType!.Id);
+        Assert.Equal("oadm.device-triggers.sample-person", editor.Conditions[0].SelectedEventType!.Id);
         Assert.Equal(RuleConditionKind.Schedule, editor.Conditions[1].Kind);
         Assert.Equal(2, editor.RuleActions.Count);
         Assert.Equal("follow", editor.RuleActions[0].Fields.Single(f => f.Key == "mode").Value);
@@ -249,7 +249,7 @@ public sealed class EventRulesTests
             page.SelectedRule = page.Rules[0];
             Pump();
             var texts = window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text ?? string.Empty).ToList();
-            Assert.Contains("Blurred camera: warning lamp", texts);
+            Assert.Contains("Person in the yard: warning lamp", texts);
             Capture(window, outDir, "event-rules-page.png");
 
             page.ShowLogCommand.Execute(null);
@@ -257,7 +257,7 @@ public sealed class EventRulesTests
             Capture(window, outDir, "event-rules-log.png");
             window.Close();
 
-            var editor = await page.CreateEditorAsync(page.Rules.Single(r => r.Name == "Blurred camera: warning lamp").Id);
+            var editor = await page.CreateEditorAsync(page.Rules.Single(r => r.Name == "Person in the yard: warning lamp").Id);
             var dialog = new RuleEditorWindow { Height = 1500 };
             dialog.Attach(editor!);
             Oadm.Client.App.ApplyCrispText(dialog);

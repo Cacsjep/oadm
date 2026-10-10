@@ -137,17 +137,15 @@ internal sealed class FakeVapix : IVapixClientFactory
     }
 }
 
-internal sealed class FakeContext(IDeviceRepository devices, IVapixClientFactory vapix, IPluginEvents events, IPluginSettings? settings = null, Oadm.Sdk.Events.IEventPublisher? publisher = null) : ICorePluginContext
+internal sealed class FakeContext(IDeviceRepository devices, IVapixClientFactory vapix, IPluginEvents events) : ICorePluginContext
 {
-    public Oadm.Sdk.Events.IEventPublisher? EventPublisher => publisher;
-
     public IDeviceRepository Devices => devices;
 
     public IVapixClientFactory Vapix => vapix;
 
     public ITaskRunner Tasks => throw new NotSupportedException();
 
-    public IPluginSettings Settings { get; } = settings ?? new MemorySettings();
+    public IPluginSettings Settings => throw new NotSupportedException();
 
     public Microsoft.Extensions.Logging.ILogger Logger => Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
 
@@ -211,13 +209,11 @@ internal sealed class Rig : IAsyncDisposable
         PublishInterval = TimeSpan.FromMilliseconds(20),
     };
 
-    public MemorySettings Settings { get; } = new();
 
-    public RecordingPublisher Publisher { get; } = new();
 
     public async Task<Rig> StartAsync()
     {
-        await Plugin.StartAsync(new FakeContext(Devices, Vapix, Hub.For(ImageHealthPluginInfo.PluginId), Settings, Publisher), CancellationToken.None);
+        await Plugin.StartAsync(new FakeContext(Devices, Vapix, Hub.For(ImageHealthPluginInfo.PluginId)), CancellationToken.None);
         return this;
     }
 
@@ -247,33 +243,4 @@ internal static class Recorded
     public static string Detected => Read("q3548-status-detected.json");
 
     private static string Read(string name) => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", name));
-}
-
-internal sealed class MemorySettings : IPluginSettings
-{
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string?> _values = new();
-
-    public Task<string?> GetAsync(string key, CancellationToken ct) => Task.FromResult(_values.GetValueOrDefault(key));
-
-    public Task SetAsync(string key, string? valueJson, CancellationToken ct)
-    {
-        _values[key] = valueJson;
-        return Task.CompletedTask;
-    }
-}
-
-/// <summary>Records the full reports of the event rule events (type -> devices on), newest last.</summary>
-internal sealed class RecordingPublisher : Oadm.Sdk.Events.IEventPublisher
-{
-    public System.Collections.Concurrent.ConcurrentQueue<(string TypeId, IReadOnlyCollection<Guid> On)> Reports { get; } = new();
-
-    public IReadOnlyCollection<Guid>? Last(string typeId) => Reports.LastOrDefault(r => r.TypeId == typeId).On;
-
-    public void SetState(string typeId, Guid? deviceId, bool isOn, IReadOnlyDictionary<string, string>? data = null) => throw new NotSupportedException();
-
-    public void Fire(string typeId, Guid? deviceId, IReadOnlyDictionary<string, string>? data = null) => throw new NotSupportedException();
-
-    public void ReplaceStates(string typeId, IReadOnlyCollection<Guid> onDevices) => Reports.Enqueue((typeId, [.. onDevices]));
-
-    public bool IsWatched(string typeId) => true;
 }

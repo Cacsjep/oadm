@@ -465,7 +465,7 @@ filter on.
   counts as off. Types are read once at registration before `StartAsync`, so a plugin that loads its types from settings
   raises the event in `StartAsync`; rules that use them wait for them meanwhile.
 - Calls only queue; `IsWatched(typeId)` says whether an enabled rule uses the type (skip expensive work otherwise).
-- Samples: the Image Health Dashboard (`ImageHealthEvents`, "Monitor continuously"), Device triggers
+- Sample: Device triggers
   (`plugins/Oadm.Plugins.DeviceTriggers`: dynamic types, a WebSocket per device, "connection lost" per trigger).
 
 ### Device WebSockets

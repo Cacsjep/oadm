@@ -29,7 +29,7 @@ public enum EventFieldType
 public sealed record EventField(string Name, string DisplayName, EventFieldType Type = EventFieldType.Text, IReadOnlyList<string>? Values = null);
 
 /// <summary>
-/// An event a source can publish. <paramref name="Id"/> is stable and unique ("oadm.image-health.blur");
+/// An event a source can publish. <paramref name="Id"/> is stable and unique ("oadm.device-triggers.&lt;id&gt;");
 /// <paramref name="DisplayName"/> names the event in plain language ("Blur detected"), for a stateful event its "on"
 /// state; <paramref name="Group"/> groups the picker of the rule dialog ("Image Health").
 /// </summary>

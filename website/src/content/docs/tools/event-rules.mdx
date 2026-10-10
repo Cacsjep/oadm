@@ -48,8 +48,7 @@ Administrators create and change rules. Operators see the rules and the event lo
 |---|---|
 | Device unreachable, Credentials required, Certificate changed | The device status OADM sees |
 | Certificate expires soon (30 days or less), Certificate expired | The HTTPS certificate of the device |
-| Blur, Block, Redirect, Under-exposure, Unsuitable scene detected, App not running, Camera could not be checked | The [Image Health Dashboard](../image-health-dashboard/), while **Monitor continuously** is on |
-| Any event a device offers (inputs, virtual inputs, Object Analytics, storage, ...) and its "connection lost" | [Device triggers](../device-triggers/) you create |
+| Any event a device offers (inputs, virtual inputs, Object Analytics, Image Health Analytics, storage, ...) and its "connection lost" | [Device triggers](../device-triggers/) you create |
 
 Most events are on while something is true and off again when it ends. Then the rule is **on** while all conditions
 hold, and some actions can undo themselves when the rule turns **off**.

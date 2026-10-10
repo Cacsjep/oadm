@@ -37,12 +37,6 @@ public static class ImageHealthMethods
     /// <summary>{} -> <see cref="ImageHealthState"/>: the current rows and counts, without asking any device.</summary>
     public const string GetState = "getState";
 
-    /// <summary>
-    /// <see cref="MonitoringRequest"/> -> <see cref="ImageHealthState"/>: turns "Monitor continuously" on or off (Admin,
-    /// audited). While on, the server checks every camera in the background and publishes the event rule events.
-    /// </summary>
-    public const string SetMonitoring = "setMonitoring";
-
     /// <summary>Event: <see cref="RowsEvent"/>, changed and removed rows (batched every 500 ms).</summary>
     public const string RowsTopic = "rows";
 
@@ -161,14 +155,7 @@ public sealed record ImageHealthState(
     int WithoutApp,
     int Failed,
     DateTimeOffset? CheckedUtc,
-    IReadOnlyList<ImageHealthRow> Rows)
-{
-    /// <summary>"Monitor continuously" is on: the server checks in the background and publishes events for event rules.</summary>
-    public bool Monitoring { get; init; }
-}
-
-/// <summary>Turns "Monitor continuously" on or off.</summary>
-public sealed record MonitoringRequest(bool Enabled);
+    IReadOnlyList<ImageHealthRow> Rows);
 
 /// <summary>Changed rows, and the devices that left the table (app removed, device removed from OADM).</summary>
 public sealed record RowsEvent(IReadOnlyList<ImageHealthRow> Rows, IReadOnlyList<Guid> Removed);

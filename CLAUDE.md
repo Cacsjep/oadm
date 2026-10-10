@@ -905,7 +905,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 
 | Topic | Decision |
 |---|---|
-| Built-in events | Only what OADM already knows (`BuiltInEvents`, stateful per device): Device unreachable, Credentials required, Certificate changed (device status from polling), Certificate expires soon (30 days or less, fixed), Certificate expired (rechecked hourly). Every other device event comes from an opt-in plugin: Image Health, and **Device triggers** for any event a device offers (see "Device triggers"). |
+| Built-in events | Only what OADM already knows (`BuiltInEvents`, stateful per device): Device unreachable, Credentials required, Certificate changed (device status from polling), Certificate expires soon (30 days or less, fixed), Certificate expired (rechecked hourly). Every other device event comes from the opt-in plugin **Device triggers** (any event a device offers, see "Device triggers"; user decision 2026-10-10: also the AXIS Image Health Analytics detections, the Image Health Dashboard is a live display only). |
 | Kinds | Stateful (on / off per device or for the server) or stateless (one shot). Off is the default; a stateful source sends one full report (`ReplaceStates`) per type after every start ("ready"), then `SetState` per change or `ReplaceStates` again; a source that is turned off counts as everything off. |
 | Simple mode | Conditions must all hold. The first is the trigger ("When": an event, devices All / chosen / tags); further ones ("And") are stateful events (on "the same device", or "any" of All / chosen / tags) or schedules (weekdays + from / to in server time, over midnight allowed). Only the trigger may be one-shot. Advanced AND / OR later on the same model. |
 | Rule state | All events stateful: the rule is on per subject (the trigger's device, or the server) while all conditions hold. One-shot trigger: the rule fires while the others hold. |
@@ -952,8 +952,6 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   Commander, available while it is on): a saved command (stored values and passwords) or a library command whose fields all
   have defaults, optional second command when the rule turns off, "Allow dangerous commands" required for dangerous ones;
   device safety like a rollout (cached API list, fresh one before a write).
-- **Image Health events** (`ImageHealthEvents`): Blur / Block / Redirect / Under-exposure / Unsuitable scene detected
-  (pending is not on), App not running, Camera could not be checked; published only while "Monitor continuously" is on.
 - **Client**: rail page **Event rules** (key `HostPages.EventRules`, icon `zap`, group Automation before the plugin pages of
   that group; `EventRulesViewModel` + `EventRulesView`): segmented tabs **Rules** (toolbar New rule, Edit, Duplicate,
   Delete (red, confirmed); grid On check box (administrators), Name, When, Then, State chip (On ok, waiting accent, problem
@@ -969,7 +967,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   with a fake clock, one-shot triggers, cooldown and runs per minute, rule off / change / delete, built-in device and
   certificate events, removed device, ready wait and timeout, restart, plugin turned off, action order and failures,
   refused device status, server-wide events, tags, secrets, copy, validation, summaries, log retention, schedules over
-  midnight), `tests/Oadm.Plugins.Outputs.Tests`, `RunCommandActionTests` (VAPIX Commander), `ImageHealthEventTests`,
+  midnight), `tests/Oadm.Plugins.Outputs.Tests`, `RunCommandActionTests` (VAPIX Commander),
   `tests/Oadm.Client.Tests/EventRulesTests` (page, roles, log, dialog, 5,000 devices; headless `event-rules-page.png`,
   `event-rules-log.png`, `event-rules-editor.png`, `event-rules-editor-errors.png`).
 
@@ -2066,7 +2064,7 @@ Decided with the user on 2026-10-09:
 | Topic | Decision |
 |---|---|
 | Source | The app's own HTTP status, `GET /local/AXISImageHealthAnalytics/v1/status` with the stored credentials (no event stream). |
-| When | On request: the page checks once when it opens, **Refresh** checks again, **Auto refresh** (check box, off by default) every 10 s while the page is open. **Monitor continuously** (check box, Admin, off by default, plugin setting `config`, user decision 2026-10-10): every 30 s in the background, also with the page closed, and only then the event rule events (see "Event rules"). |
+| When | On request: the page checks once when it opens, **Refresh** checks again, **Auto refresh** (check box, off by default) every 10 s while the page is open. Nothing in the background and no events (user decision 2026-10-10: a live display only; event rules use the app's own events through Device triggers, verified on a loan AXIS Q6411-LE with AXIS OS 13.0.88: Image Health Analytics - Blur, Block, Redirect, Under-Exposure, Unsuitability and Any-Active-Events (on/off, "active"; also as ONVIF variants "(Onvif)")). |
 | Load | 24 cameras at a time, 3 s per request (200 cameras = about 9 rounds). |
 | Not running | A camera with the app installed but stopped stays in the table as **Not running**. |
 
@@ -2135,13 +2133,21 @@ Automation, icon `bell`), **off by default**. Spec and device research: `docs/sp
 | Event gone | The event list of a connected device is read again every 5 minutes and on every reconnect. |
 | Roles | Administrators create, change, copy, turn on / off and delete (audited); operators see triggers and states. |
 
-- **Device side** (verified on 10.0.0.48, AXIS P3265-V, AXIS OS 12.11, 2026-10-10): `aev:GetEventInstances` (SOAP, 42
+- **Device side** (verified on 10.0.0.48, AXIS P3265-V, AXIS OS 12.11, and a loan AXIS Q6411-LE, AXIS OS 13.0.88, with AXIS Image Health Analytics, 2026-10-10): `aev:GetEventInstances` (SOAP, 42
   usable events, `isProperty` = on/off, `isPropertyState` the state item, topics marked `isApplicationData` left out); the
   stream `/vapix/ws-data-stream?sources=events` with a one-time `wssession.cgi` token (valid 15 s); `events:configure`
   answers `data: {}` or error 2104, then the current state of every matching on/off event (the report; OADM waits 1.5 s);
   an unknown topic is accepted silently; the device sends nothing while idle and answers pings (OADM pings every 10 s); 30
   parallel connections worked. SDK: `IVapixClient.ConnectWebSocketAsync(path, keepAlive)` (session token, the client's
   certificate pin), `IDynamicEventSource`.
+- **Apps** (loan AXIS Q6411-LE, AXIS OS 13.0.88, 2026-10-10): AXIS Image Health Analytics declares "Image Health
+  Analytics - Blur / Block / Redirect / Under-Exposure / Unsuitability / Any-Active-Events" (on/off `active`).
+  AXIS Object Analytics declares per scenario `Device1Scenario<id>` named like the scenario plus `Device1ScenarioANY`:
+  motion, fence and tailgating are on/off (`active`, `scenarioType`, `classTypes`, `objectId`, `triggerTime`),
+  crossline counting and occupancy are one-shot with the counts (`total`, `totalHuman`, ... / `human`, `car`, ...),
+  occupancy adds `Device1Scenario<id>Threshold` (on/off). The scenario's **Test alarm** (`sendAlarmEvent`) turns a
+  motion / fence / tailgating scenario on for about 6 s; counting scenarios send nothing. Apps that are stopped have no
+  events (the trigger shows "The event is no longer on the device").
 - **Page** (own cards): triggers (On, Name, Event, Devices, State "On for 1 of 3 · 1 connection lost", Last event; New
   trigger, Edit, Duplicate, Delete) and the devices of the selected trigger (Connection chip with the problem, State, Last
   event), live through the plugin's `changed` events. Dialog `TriggerEditorWindow`: Name, Turned on, devices (virtualized,
@@ -2151,7 +2157,8 @@ Automation, icon `bell`), **off by default**. Spec and device research: `docs/sp
 - **Fake mode** (`FakeOadmApi.DeviceTriggers.cs`): three sample triggers, event lists per device kind.
 - **Tests**: `tests/Oadm.Plugins.DeviceTriggers.Tests` (fake camera speaking the WebSocket protocol in memory; page and
   dialog; headless `device-triggers-page.png`, `device-triggers-editor.png`; hardware read test and the opt-in write test
-  switching virtual input 64, `OADM_TRIGGER_URL` / `_USER` / `_PASSWORD`), `tests/Oadm.Core.Tests/Events/
+  switching virtual input 64 and the Object Analytics test alarm (`OADM_TRIGGER_OA_SCENARIO`), `OADM_TRIGGER_URL` /
+  `_USER` / `_PASSWORD`; read-only app event test for Image Health and Object Analytics), `tests/Oadm.Core.Tests/Events/
   DynamicEventTypesTests`, `tests/Oadm.Core.Tests/Vapix/VapixWebSocketTests`.
 
 ## System report plugin (core plugin without a page)

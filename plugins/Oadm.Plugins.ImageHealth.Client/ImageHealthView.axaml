@@ -27,8 +27,6 @@
                             ToolTip.Tip="Check every camera again" />
           <CheckBox Grid.Column="1" VerticalAlignment="Center" Content="Auto refresh" IsChecked="{Binding AutoRefresh}"
                     ToolTip.Tip="Check every 10 s while this page is open" />
-          <CheckBox Grid.Column="2" VerticalAlignment="Center" Content="Monitor continuously" IsChecked="{Binding MonitorContinuously}"
-                    ToolTip.Tip="Check every 30 s, also with the page closed, for event rules" />
           <ui:SearchBox Grid.Column="4" Width="220" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="Search cameras" />
         </Grid>
 

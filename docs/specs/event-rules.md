@@ -12,7 +12,7 @@ Status: built 2026-10-10 (implementation notes in `CLAUDE.md`, "Event rules"). D
 | Home | Built into the server (host feature, always there): engine, rule store, event log, rail page. Event sources and actions come from plugins through new SDK interfaces, like task plugins. |
 | Built-in events | Only what OADM already knows: device status (Unreachable, Credentials required, Certificate changed) and the HTTPS certificate (expires within 30 days, expired). |
 | Plugin events | Every other device event comes from an opt-in plugin. First: Image Health (AIHA detections). Later e.g. a "Device events" plugin (any device event, digital inputs) that keeps event streams open only where the user asked for them. |
-| AIHA monitoring | A switch on the Image Health page, "Monitor continuously" (off by default). Only while it is on the plugin checks in the background and publishes events; off = today's behavior (checks only while the page is open). |
+| AIHA monitoring | Replaced (user decision 2026-10-10): the AIHA detections come from the app's own events through Device triggers (`docs/specs/device-triggers.md`); the Image Health Dashboard is a live display only. |
 | Action runs | Own event log only, never tasks: a rule that fires 200 times a day does not fill the task history. |
 | Action target | Per action: the device that fired the event, chosen devices, devices with tags, or all devices. |
 | Roles | Administrators create, change, turn on and delete rules (audited). Operators see rules and the event log read-only. |
@@ -33,7 +33,7 @@ Status: built 2026-10-10 (implementation notes in `CLAUDE.md`, "Event rules"). D
 
 ## Concepts
 
-- **Event type**: declared by a source (built-in or plugin): id (`oadm.device.unreachable`, `oadm.image-health.blur`), name
+- **Event type**: declared by a source (built-in or plugin): id (`oadm.device.unreachable`, `oadm.device-triggers.<id>`), name
   ("Blur detected"), group for the picker ("Device status", "Image Health"), **kind** stateful (on / off, e.g. blur detected
   and cleared) or stateless (a pulse, e.g. "rollout failed"), **scope** device (one state per device) or server (one
   state), optional data fields (name, type) a condition can filter on.
@@ -82,7 +82,7 @@ public interface IEventPublisher           // ICorePluginContext.Events2 / Event
 // start (and after being turned on) a source sends one ReplaceStates per stateful type it serves: that is its "ready".
 // Until then the engine keeps the stored states and runs nothing for the type. Later it may send Set per change, or
 // ReplaceStates again at any time (e.g. after each check round); the engine diffs. A source turned off (plugin off,
-// "Monitor continuously" off) counts as ReplaceStates(type, []). Stateless types have no state and need nothing.
+// trigger turned off) counts as ReplaceStates(type, []). Stateless types have no state and need nothing.
 
 // Oadm.Sdk.Actions
 public enum ActionEdge { Fired, TurnedOn, TurnedOff }
@@ -169,14 +169,11 @@ the pickers; rules using them stay, show "Not available: <plugin> is turned off"
    off edge only on stateful rules. VAPIX: I/O port management API (`io/portmanagement.cgi`, `setStates`), fallback
    `io/port.cgi` on older firmware. To verify on hardware (needs a device with a relay or output).
 
-## AIHA events (Image Health plugin)
+## AIHA events
 
-- Page switch "Monitor continuously" (plugin setting, Admin, default off). On: background check every 30 s (24 cameras at
-  a time, 3 s each, the existing monitor), events published per camera:
-  `oadm.image-health.blur|block|redirect|under-exposure|unsuitability` (stateful: on = detected; pending is not on),
-  `oadm.image-health.not-running` (stateful: app installed but stopped), `oadm.image-health.unreachable` (stateful:
-  could not be checked). The page shows the same rows and cards.
-- Off: no background request, as today; the event types stay listed, rules using them do not fire (states go off).
+Replaced by Device triggers (user decision 2026-10-10): the app declares its detections as on/off events
+(`tnsaxis:CameraApplicationPlatform/AXISImageHealthAnalytics/Blur` ... `Any-Active-Events`), verified on a loan AXIS
+Q6411-LE with AXIS OS 13.0.88.
 
 ## Event log
 
@@ -197,7 +194,6 @@ the pickers; rules using them stay, show "Not available: <plugin> is turned off"
   the fields; Save disabled with the reason.
 - Tab **Event log**: virtualized grid (time, what, device, rule, action, result chip, message), SearchBox, filters,
   live (WatchLog), 5,000+ rows O(n).
-- Image Health page: the "Monitor continuously" switch.
 
 ## Later
 

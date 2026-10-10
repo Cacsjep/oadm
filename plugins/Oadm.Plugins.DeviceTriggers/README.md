@@ -32,6 +32,14 @@ one WebSocket event stream per device and publishes every trigger as two event t
 - Verified on 10.0.0.48 (AXIS P3265-V, AXIS OS 12.11): 42 events, token login over HTTPS, the report after the filter,
   and virtual input 64 on and off (`DeviceTriggersHardwareTests`, `OADM_TRIGGER_URL` / `_USER` / `_PASSWORD`; the write
   test is `Category=HardwareWrite`).
+- **Apps** (loan AXIS Q6411-LE, AXIS OS 13.0.88, 2026-10-10): AXIS Image Health Analytics declares "Image Health
+  Analytics - Blur / Block / Redirect / Under-Exposure / Unsuitability / Any-Active-Events" (on/off `active`).
+  AXIS Object Analytics declares per scenario `Device1Scenario<id>` named like the scenario plus `Device1ScenarioANY`:
+  motion, fence and tailgating are on/off (`active`, `scenarioType`, `classTypes`, `objectId`, `triggerTime`),
+  crossline counting and occupancy are one-shot with the counts (`total`, `totalHuman`, ... / `human`, `car`, ...),
+  occupancy adds `Device1Scenario<id>Threshold` (on/off). The scenario's **Test alarm** (`sendAlarmEvent`) turns a
+  motion / fence / tailgating scenario on for about 6 s; counting scenarios send nothing. Apps that are stopped have no
+  events (the trigger shows "The event is no longer on the device").
 - Tests: `tests/Oadm.Plugins.DeviceTriggers.Tests` (recorded event list, filters, messages, reports, Any, one-shot,
   connection lost and back, event gone, refused statuses, turn off, types follow save / copy / delete, validation,
   removed devices, live read, roles, page and dialog view models incl. 5,000 devices, fake mode, headless
