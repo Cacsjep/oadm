@@ -78,6 +78,9 @@ public static class HostPages
     /// <summary>Credential list page (administrators only; for an operator opening it does nothing).</summary>
     public const string Credentials = "credentials";
 
+    /// <summary>Plugins page: turn plugins on or off (administrators only; for an operator opening it does nothing).</summary>
+    public const string Plugins = "plugins";
+
     /// <summary>About page: terms of use, versions and licenses.</summary>
     public const string About = "about";
 }

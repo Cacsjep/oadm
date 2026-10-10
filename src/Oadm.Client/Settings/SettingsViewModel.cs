@@ -24,17 +24,13 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     private readonly ILogger<SettingsViewModel> _logger;
     private readonly UserSession? _session;
 
-    /// <summary>The card "Plugins" (null in tests that build the view model alone).</summary>
-    public PluginsViewModel? Plugins { get; }
-
     /// <summary>Server settings can only be changed by administrators (the server checks it too).</summary>
     public bool IsAdmin => _session?.IsAdmin ?? true;
 
     public bool IsOperator => !IsAdmin;
 
-    public SettingsViewModel(IOadmApi api, ServerConnection connection, ILogger<SettingsViewModel> logger, UserSession? session = null, PluginsViewModel? plugins = null)
+    public SettingsViewModel(IOadmApi api, ServerConnection connection, ILogger<SettingsViewModel> logger, UserSession? session = null)
     {
-        Plugins = plugins;
         ArgumentNullException.ThrowIfNull(connection);
         _api = api;
         _logger = logger;

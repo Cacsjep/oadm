@@ -321,9 +321,17 @@ public interface IPluginSettings
 
 /// <summary>
 /// Content of plugin.json next to the plugin assemblies. <paramref name="EnabledByDefault"/> false: the plugin is off
-/// until an administrator turns it on (Settings page, Plugins).
+/// until an administrator turns it on (Plugins page). <paramref name="AlwaysOn"/> true: core functionality that cannot be
+/// turned off (the stored choice is ignored). <paramref name="Description"/>: one short sentence for the Plugins page.
 /// </summary>
-public sealed record PluginManifest(string Id, string Version, string MinSdkVersion, string? DisplayName = null, bool EnabledByDefault = true);
+public sealed record PluginManifest(
+    string Id,
+    string Version,
+    string MinSdkVersion,
+    string? DisplayName = null,
+    bool EnabledByDefault = true,
+    bool AlwaysOn = false,
+    string? Description = null);
 
 /// <summary>
 /// Well-known context menu groups (<see cref="ITaskPlugin.Group"/>). Plugins reuse these so related

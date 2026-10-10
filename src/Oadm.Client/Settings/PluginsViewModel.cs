@@ -10,19 +10,18 @@ using Oadm.Contracts.V1;
 
 namespace Oadm.Client.Settings;
 
-/// <summary>One plugin package of the Settings page's plugin list; the check box turns it on or off at once.</summary>
+/// <summary>One plugin package of the Plugins page; the check box turns it on or off at once.</summary>
 public sealed partial class PluginRowViewModel : ObservableObject
 {
     private readonly PluginsViewModel _owner;
     private bool _applying;
 
-    internal PluginRowViewModel(PluginsViewModel owner, PluginPackageInfo info, string adds)
+    internal PluginRowViewModel(PluginsViewModel owner, PluginPackageInfo info)
     {
         _owner = owner;
         Id = info.Id;
         Name = info.DisplayName;
-        Version = info.Version;
-        Adds = adds;
+        Description = info.Description;
         OffByDefault = !info.EnabledByDefault;
         _applying = true;
         IsEnabled = info.Enabled;
@@ -33,10 +32,9 @@ public sealed partial class PluginRowViewModel : ObservableObject
 
     public string Name { get; }
 
-    public string Version { get; }
+    /// <summary>One sentence from plugin.json.</summary>
+    public string Description { get; }
 
-    /// <summary>What the plugin adds: "Page", "9 context menu entries", "Toolbar button".</summary>
-    public string Adds { get; }
 
     public bool OffByDefault { get; }
 
@@ -85,22 +83,21 @@ public sealed partial class PluginRowViewModel : ObservableObject
 }
 
 /// <summary>
-/// Settings page, card "Plugins": every plugin package of the server with its state. Administrators turn a package on
-/// or off at once (PluginService.SetPackageEnabled); operators see the list read-only. A package's rail page, context
-/// menu entries and toolbar entries follow through <see cref="PluginPackageStore.Changed"/>.
+/// Rail page "Plugins" (administrators only): every plugin package of the server that can be turned off, with its state
+/// and description; packages that are always on (core functionality) are not listed. Administrators turn a package on
+/// or off at once (PluginService.SetPackageEnabled). A package's rail page, context menu entries and toolbar entries follow through
+/// <see cref="PluginPackageStore.Changed"/>.
 /// </summary>
 public sealed partial class PluginsViewModel : ObservableObject
 {
     private readonly PluginPackageStore _store;
-    private readonly IClientPluginRegistry? _registry;
     private readonly UserSession? _session;
     private readonly ILogger<PluginsViewModel> _logger;
 
-    public PluginsViewModel(PluginPackageStore store, ILogger<PluginsViewModel> logger, IClientPluginRegistry? registry = null, UserSession? session = null)
+    public PluginsViewModel(PluginPackageStore store, ILogger<PluginsViewModel> logger, UserSession? session = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _logger = logger;
-        _registry = registry;
         _session = session;
         store.Changed += (_, _) => Rebuild();
         if (session is not null)
@@ -110,7 +107,6 @@ public sealed partial class PluginsViewModel : ObservableObject
                 if (e.PropertyName == nameof(UserSession.IsAdmin))
                 {
                     OnPropertyChanged(nameof(IsAdmin));
-                    OnPropertyChanged(nameof(Hint));
                     foreach (PluginRowViewModel row in Plugins)
                     {
                         row.NotifyRole();
@@ -125,11 +121,6 @@ public sealed partial class PluginsViewModel : ObservableObject
     public bool IsAdmin => _session?.IsAdmin ?? true;
 
     public Oadm.Sdk.Client.Collections.RangeObservableCollection<PluginRowViewModel> Plugins { get; } = [];
-
-    /// <summary>The line above the list.</summary>
-    public string Hint => IsAdmin
-        ? "A plugin that is off shows no page, menu entry or toolbar button."
-        : "Only administrators can turn plugins on or off.";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
@@ -157,32 +148,10 @@ public sealed partial class PluginsViewModel : ObservableObject
     private void Rebuild()
     {
         Plugins.ReplaceAll(_store.Packages
+            .Where(p => !p.AlwaysOn)
             .OrderBy(p => p.DisplayName, StringComparer.CurrentCultureIgnoreCase)
-            .Select(p => new PluginRowViewModel(this, p, AddsText(p))));
+            .Select(p => new PluginRowViewModel(this, p)));
         OnPropertyChanged(nameof(IsEmpty));
-    }
-
-    private string AddsText(PluginPackageInfo package)
-    {
-        var parts = new List<string>();
-        if (package.HasPage)
-        {
-            parts.Add("Page");
-        }
-
-        if (package.MenuTaskCount > 0)
-        {
-            parts.Add(package.MenuTaskCount == 1
-                ? "1 context menu entry"
-                : string.Create(CultureInfo.CurrentCulture, $"{package.MenuTaskCount} context menu entries"));
-        }
-
-        if (_registry?.ToolbarPlugins.Any(t => string.Equals(_registry.PackageOf(t), package.Id, StringComparison.OrdinalIgnoreCase)) == true)
-        {
-            parts.Add("Toolbar button");
-        }
-
-        return string.Join(", ", parts);
     }
 
     /// <summary>gRPC errors carry the user message in Status.Detail.</summary>

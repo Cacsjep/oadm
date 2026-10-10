@@ -11,7 +11,7 @@ using Proto = Oadm.Contracts.V1;
 
 namespace Oadm.Server.Tests;
 
-/// <summary>Plugin packages turned on and off (Settings page, Plugins): the default of the manifest, live start / stop, menus, roles, audit, persistence.</summary>
+/// <summary>Plugin packages turned on and off (Plugins page): the default of the manifest, live start / stop, menus, roles, audit, persistence.</summary>
 public sealed class PluginPackageTests
 {
     [Fact]
@@ -82,6 +82,36 @@ public sealed class PluginPackageTests
     }
 
     [Fact]
+    public async Task APackageThatIsAlwaysOnCannotBeTurnedOffAndIgnoresAStoredChoice()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var core = new CountingCorePlugin("test.pki", new MenuTask("test.pki.deploy"));
+        var registry = host.Get<PluginRegistry>();
+        registry.RegisterCorePlugin(core, new PluginOrigin("test.pki", "1.0.0", null)
+        {
+            DisplayName = "PKI",
+            AlwaysOn = true,
+            Description = "Issues device certificates.",
+        });
+
+        // A choice stored before the package became always on (or edited by hand) is ignored.
+        registry.ApplyEnabledStates(new Dictionary<string, bool> { ["test.pki"] = false });
+        await host.Get<CorePluginHost>().StartAllAsync(CancellationToken.None);
+        Assert.Equal(1, core.Starts);
+        Assert.True(registry.IsEnabled("test.pki"));
+
+        var package = (await host.Plugins.ListPackagesAsync(new Proto.Empty())).Packages.Single(p => p.Id == "test.pki");
+        Assert.Equal((true, true, "Issues device certificates."), (package.Enabled, package.AlwaysOn, package.Description));
+
+        var refused = await Assert.ThrowsAsync<RpcException>(async () =>
+            await host.Plugins.SetPackageEnabledAsync(new Proto.SetPackageEnabledRequest { Id = "test.pki", Enabled = false }));
+        Assert.Equal((StatusCode.FailedPrecondition, "PKI is always on."), (refused.StatusCode, refused.Status.Detail));
+        Assert.Equal(0, core.Stops);
+        Assert.Contains((await host.Tasks.ListTaskPluginsAsync(new Proto.ListTaskPluginsRequest())).Plugins, p => p.Id == "test.pki.deploy");
+        Assert.DoesNotContain((await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries, e => e.Action == AuditActions.PluginTurnedOff);
+    }
+
+    [Fact]
     public void TheBundledManifestsTurnTheHardeningScanAndTheImageHealthDashboardOffByDefault()
     {
         var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
@@ -92,6 +122,12 @@ public sealed class PluginPackageTests
             .ToList();
         Assert.NotEmpty(manifests);
         Assert.Equal(["oadm.hardening-scan", "oadm.image-health"], manifests.Where(m => !m.EnabledByDefault).Select(m => m.Id).Order());
+
+        // Core functionality is always on (user decision 2026-10-10); every bundled plugin has a description.
+        Assert.Equal(
+            ["oadm.acap", "oadm.datetime", "oadm.firmware", "oadm.network", "oadm.pki", "oadm.restart", "oadm.system-report", "oadm.users"],
+            manifests.Where(m => m.AlwaysOn).Select(m => m.Id).Order());
+        Assert.All(manifests, m => Assert.False(string.IsNullOrWhiteSpace(m.Description), m.Id));
     }
 
     private sealed class CountingCorePlugin(string id, params ITaskPlugin[] tasks) : ICorePlugin

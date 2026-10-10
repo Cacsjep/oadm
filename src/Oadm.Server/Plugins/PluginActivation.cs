@@ -49,7 +49,8 @@ public sealed partial class PluginActivation(
 
     /// <summary>
     /// Turns a package on or off, stores the choice and starts or stops its core plugins.
-    /// Throws <see cref="KeyNotFoundException"/> for an unknown package.
+    /// Throws <see cref="KeyNotFoundException"/> for an unknown package, <see cref="InvalidOperationException"/> for one
+    /// that is always on.
     /// </summary>
     public async Task<PluginPackageState> SetEnabledAsync(string packageId, bool enabled, CancellationToken ct)
     {

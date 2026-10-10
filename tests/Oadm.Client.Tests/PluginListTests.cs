@@ -13,7 +13,7 @@ using Oadm.Client.Shell;
 
 namespace Oadm.Client.Tests;
 
-/// <summary>The Settings page's plugin list: states from the server, turning a plugin on and off, operators read-only.</summary>
+/// <summary>The Plugins page: states from the server, turning a plugin on and off, plugins that are always on.</summary>
 public sealed class PluginListTests
 {
     [Fact]
@@ -27,8 +27,8 @@ public sealed class PluginListTests
         var hardening = vm.Plugins.Single(p => p.Id == FakeOadmApi.HardeningScanPluginId);
         Assert.False(hardening.IsEnabled);
         Assert.True(hardening.OffByDefault);
-        Assert.Equal("Page", hardening.Adds);
-        Assert.Equal("Page, 9 context menu entries", vm.Plugins.Single(p => p.Id == FakeOadmApi.PkiPluginId).Adds);
+        Assert.Equal("Checks devices against the AXIS OS hardening guide.", hardening.Description);
+        Assert.True(hardening.CanToggle);
         Assert.DoesNotContain(await api.ListCorePluginsAsync(CancellationToken.None), p => p.Id == FakeOadmApi.HardeningScanPluginId);
         Assert.False(store.IsEnabled(FakeOadmApi.HardeningScanPluginId));
         Assert.True(store.IsEnabled("unknown.package")); // older server: everything is on
@@ -39,11 +39,30 @@ public sealed class PluginListTests
         await WaitAsync(() => changed == 1);
         Assert.Contains(await api.ListCorePluginsAsync(CancellationToken.None), p => p.Id == FakeOadmApi.HardeningScanPluginId);
 
-        // Restart off: its menu entry leaves the task list.
-        vm.Plugins.Single(p => p.Id == FakeOadmApi.RestartPluginId).IsEnabled = false;
+        // Metadata Monitor off: its page leaves the rail.
+        vm.Plugins.Single(p => p.Id == FakeOadmApi.MetadataMonitorPluginId).IsEnabled = false;
         await WaitAsync(() => changed == 2);
-        Assert.DoesNotContain(await api.ListTaskPluginsAsync(CancellationToken.None), p => p.Id == FakeOadmApi.RestartPluginId);
+        Assert.DoesNotContain(await api.ListCorePluginsAsync(CancellationToken.None), p => p.Id == FakeOadmApi.MetadataMonitorPluginId);
         Assert.Null(vm.ErrorText);
+    }
+
+    [Fact]
+    public async Task Core_plugins_are_always_on_and_not_listed()
+    {
+        using var api = new FakeOadmApi(TimeSpan.Zero);
+        var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
+        var vm = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance);
+        await store.LoadAsync(CancellationToken.None);
+
+        Assert.DoesNotContain(vm.Plugins, p => p.Id is FakeOadmApi.RestartPluginId or FakeOadmApi.PkiPluginId or FakeOadmApi.SystemReportPluginId);
+        Assert.All(vm.Plugins, p => Assert.True(p.CanToggle));
+        Assert.True(store.IsEnabled(FakeOadmApi.RestartPluginId));
+
+        // The server refuses to turn them off.
+        var refused = await Assert.ThrowsAsync<Grpc.Core.RpcException>(() =>
+            api.SetPluginPackageEnabledAsync(FakeOadmApi.RestartPluginId, false, CancellationToken.None));
+        Assert.Equal("Restart is always on.", refused.Status.Detail);
+        Assert.Contains(await api.ListTaskPluginsAsync(CancellationToken.None), p => p.Id == FakeOadmApi.RestartPluginId);
     }
 
     [Fact]
@@ -53,35 +72,30 @@ public sealed class PluginListTests
         var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
         var vm = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance);
         await store.LoadAsync(CancellationToken.None);
-        var row = vm.Plugins.Single(p => p.Id == FakeOadmApi.PkiPluginId);
+        var row = vm.Plugins.Single(p => p.Id == FakeOadmApi.SnapshotReportPluginId);
 
         api.SetOnline(false);
         row.IsEnabled = false;
         await WaitAsync(() => vm.HasError);
 
         Assert.True(row.IsEnabled);
-        Assert.StartsWith("PKI could not be turned off: ", vm.ErrorText, StringComparison.Ordinal);
+        Assert.StartsWith("Snapshot report could not be turned off: ", vm.ErrorText, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Settings_page_shows_the_plugin_list()
+    public async Task Plugins_page_shows_the_plugin_list()
     {
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         HeadlessUnitTestSession session = HeadlessSession.Shared;
         bool done = await session.Dispatch(async () =>
         {
             var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
-            using var f = new DevicesFixture(api);
-            using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
             var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
             var plugins = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance);
-            var settings = new SettingsViewModel(f.Api, connection, NullLogger<SettingsViewModel>.Instance, plugins: plugins);
-            await settings.LoadAsync();
             await store.LoadAsync(CancellationToken.None);
 
-            var window = new Window { Width = 1100, Height = 1500, Content = new SettingsView { DataContext = settings } };
+            var window = new Window { Width = 1100, Height = 420, Content = new PluginsPageView { DataContext = plugins } };
             window.Show();
-            window.GetVisualDescendants().OfType<ScrollViewer>().First().ScrollToEnd();
             Dispatcher.UIThread.RunJobs();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Dispatcher.UIThread.RunJobs();
@@ -89,13 +103,15 @@ public sealed class PluginListTests
             List<string> texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? "").ToList();
             Assert.Contains("Plugins", texts);
             Assert.Contains("Hardening scan", texts);
+            Assert.Contains("Shows the events a camera sends, live.", texts);
+            Assert.DoesNotContain("PKI", texts);
 
             WriteableBitmap? frame = window.CaptureRenderedFrame();
             Assert.NotNull(frame);
             if (!string.IsNullOrEmpty(outDir))
             {
                 Directory.CreateDirectory(outDir);
-                frame.Save(Path.Combine(outDir, "client-settings-plugins.png"), PngBitmapEncoderOptions.Default);
+                frame.Save(Path.Combine(outDir, "client-plugins-page.png"), PngBitmapEncoderOptions.Default);
             }
 
             window.Close();

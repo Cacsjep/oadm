@@ -24,7 +24,8 @@ message InvokeReply { string payload_json = 1; }
 message WatchPluginRequest { string plugin_id = 1; }
 message PluginEvent { string plugin_id = 1; string topic = 2; string payload_json = 3; }
 
-// id = plugin.json id; has_page: a rail page; menu_task_count: context menu entries.
+// id = plugin.json id; has_page: a rail page; menu_task_count: context menu entries; always_on: core functionality that
+// cannot be turned off (SetPackageEnabled answers FAILED_PRECONDITION); description: one sentence from plugin.json.
 message PluginPackageInfo {
   string id = 1;
   string display_name = 2;
@@ -33,6 +34,8 @@ message PluginPackageInfo {
   bool enabled_by_default = 5;
   bool has_page = 6;
   int32 menu_task_count = 7;
+  bool always_on = 8;
+  string description = 9;
 }
 message PluginPackageList { repeated PluginPackageInfo packages = 1; }
 message SetPackageEnabledRequest { string id = 1; bool enabled = 2; }

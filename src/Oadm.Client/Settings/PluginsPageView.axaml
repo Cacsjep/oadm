@@ -1,0 +1,32 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:settings="using:Oadm.Client.Settings"
+             xmlns:c="using:Oadm.Client.Controls"
+             x:Class="Oadm.Client.Settings.PluginsPageView"
+             x:DataType="settings:PluginsViewModel">
+  <!-- Navigation page Plugins (Admin only): one row per plugin package; the check box turns it on or off at once.
+       Packages that are always on (core functionality) are not listed. -->
+  <Grid RowDefinitions="Auto,*" RowSpacing="16">
+    <c:PageTitleBar Title="Plugins" Subtitle="A plugin that is off shows no page, menu entry or toolbar button." />
+    <Border Grid.Row="1" Classes="card" MaxWidth="1000" HorizontalAlignment="Left" VerticalAlignment="Top">
+      <Grid RowDefinitions="*,Auto" RowSpacing="12">
+        <DataGrid ItemsSource="{Binding Plugins}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
+                  SelectionMode="Single" IsVisible="{Binding !IsEmpty}">
+          <DataGrid.Columns>
+            <DataGridTemplateColumn Header="On" Width="72" SortMemberPath="IsEnabled" x:DataType="settings:PluginRowViewModel">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="settings:PluginRowViewModel">
+                  <CheckBox IsChecked="{Binding IsEnabled}" IsEnabled="{Binding CanToggle}" HorizontalAlignment="Center"
+                            ToolTip.Tip="{Binding StateText}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Plugin" Width="220" Binding="{Binding Name}" x:DataType="settings:PluginRowViewModel" />
+            <DataGridTextColumn Header="Description" Width="*" Binding="{Binding Description}" x:DataType="settings:PluginRowViewModel" />
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Grid.Row="1" Classes="error" TextWrapping="Wrap" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" />
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

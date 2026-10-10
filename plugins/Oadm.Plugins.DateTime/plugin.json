@@ -2,5 +2,7 @@
   "id": "oadm.datetime",
   "version": "0.1.0",
   "minSdkVersion": "0.1.0",
-  "displayName": "Date and time"
+  "displayName": "Date and time",
+  "description": "Set the time zone, NTP servers or the date and time of devices.",
+  "alwaysOn": true
 }

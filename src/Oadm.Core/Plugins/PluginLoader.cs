@@ -152,6 +152,8 @@ public sealed partial class PluginLoader
             {
                 DisplayName = string.IsNullOrWhiteSpace(manifest.DisplayName) ? manifest.Id : manifest.DisplayName.Trim(),
                 EnabledByDefault = manifest.EnabledByDefault,
+                AlwaysOn = manifest.AlwaysOn,
+                Description = string.IsNullOrWhiteSpace(manifest.Description) ? null : manifest.Description.Trim(),
             };
             var registered = assemblies.Sum(a => RegisterTypes(a, origin));
             if (registered == 0)

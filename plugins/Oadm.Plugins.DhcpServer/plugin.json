@@ -2,5 +2,6 @@
   "id": "oadm.dhcp-server",
   "version": "0.1.0",
   "minSdkVersion": "0.1.0",
-  "displayName": "DHCP server"
+  "displayName": "DHCP server",
+  "description": "Hands out IP addresses and can add new Axis devices automatically."
 }

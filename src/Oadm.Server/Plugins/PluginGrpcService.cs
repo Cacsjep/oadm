@@ -36,6 +36,10 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
         {
             throw GrpcGuard.NotFound(ex.Message);
         }
+        catch (InvalidOperationException ex)
+        {
+            throw GrpcGuard.FailedPrecondition(ex.Message);
+        }
 
         await audit.WriteAsync(
             request.Enabled ? AuditActions.PluginTurnedOn : AuditActions.PluginTurnedOff,
@@ -57,6 +61,8 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
             EnabledByDefault = p.Origin.EnabledByDefault,
             HasPage = p.HasPage,
             MenuTaskCount = p.MenuTaskCount,
+            AlwaysOn = p.Origin.AlwaysOn,
+            Description = p.Origin.Description ?? string.Empty,
         }));
         return reply;
     }

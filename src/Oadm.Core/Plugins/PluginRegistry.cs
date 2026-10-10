@@ -17,6 +17,12 @@ public sealed record PluginOrigin(string PackageId, string Version, string? Dire
     /// <summary>Manifest <c>enabledByDefault</c>: the state until an administrator changes it.</summary>
     public bool EnabledByDefault { get; init; } = true;
 
+    /// <summary>Manifest <c>alwaysOn</c>: core functionality, always enabled, cannot be turned off.</summary>
+    public bool AlwaysOn { get; init; }
+
+    /// <summary>Manifest <c>description</c>: one short sentence for the Plugins page.</summary>
+    public string? Description { get; init; }
+
     public static PluginOrigin FromAssembly(Assembly assembly)
     {
         ArgumentNullException.ThrowIfNull(assembly);
@@ -204,6 +210,11 @@ public sealed partial class PluginRegistry
         Dictionary<string, bool> snapshot;
         lock (_sync)
         {
+            if (FindOriginLocked(packageId) is { AlwaysOn: true } origin)
+            {
+                throw new InvalidOperationException($"{origin.DisplayName} is always on.");
+            }
+
             _enabledOverrides[packageId] = enabled;
             snapshot = new Dictionary<string, bool>(_enabledOverrides, StringComparer.OrdinalIgnoreCase);
         }
@@ -237,7 +248,7 @@ public sealed partial class PluginRegistry
             .FirstOrDefault(o => string.Equals(o.PackageId, packageId, StringComparison.OrdinalIgnoreCase));
 
     private bool IsEnabledLocked(PluginOrigin origin) =>
-        _enabledOverrides.TryGetValue(origin.PackageId, out var enabled) ? enabled : origin.EnabledByDefault;
+        origin.AlwaysOn || (_enabledOverrides.TryGetValue(origin.PackageId, out var enabled) ? enabled : origin.EnabledByDefault);
 
     private static bool SamePackage(PluginOrigin a, PluginOrigin b) =>
         string.Equals(a.PackageId, b.PackageId, StringComparison.OrdinalIgnoreCase);

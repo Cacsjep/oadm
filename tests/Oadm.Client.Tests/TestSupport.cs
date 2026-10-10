@@ -146,7 +146,11 @@ internal sealed class DevicesFixture : IDisposable
             Api,
             Settings,
             session,
-            NullLogger<Oadm.Client.Shell.MainWindowViewModel>.Instance);
+            NullLogger<Oadm.Client.Shell.MainWindowViewModel>.Instance,
+            pluginList: new Oadm.Client.Settings.PluginsViewModel(
+                new Oadm.Client.Plugins.PluginPackageStore(Api, NullLogger<Oadm.Client.Plugins.PluginPackageStore>.Instance),
+                NullLogger<Oadm.Client.Settings.PluginsViewModel>.Instance,
+                session));
     }
 
     public void Dispose() => (Api as IDisposable)?.Dispose();

@@ -3,5 +3,6 @@
   "version": "0.1.0",
   "minSdkVersion": "0.1.0",
   "displayName": "Image Health Dashboard",
-  "enabledByDefault": false
+  "enabledByDefault": false,
+  "description": "Shows blur, blocked and redirected views from AXIS Image Health Analytics."
 }

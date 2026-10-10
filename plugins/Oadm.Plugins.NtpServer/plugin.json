@@ -2,5 +2,6 @@
   "id": "oadm.ntp-server",
   "version": "0.1.0",
   "minSdkVersion": "0.1.0",
-  "displayName": "NTP server"
+  "displayName": "NTP server",
+  "description": "Serves the time to devices from this server."
 }

@@ -40,19 +40,20 @@ public sealed class ShellNavigationTests
     }
 
     [Fact]
-    public void Administrators_see_users_and_credentials_above_logs()
+    public void Administrators_see_users_credentials_and_plugins_above_logs()
     {
         using var f = new DevicesFixture();
         using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
         MainWindowViewModel vm = CreateShell(f, connection, SignedIn(UserRole.Admin));
 
-        Assert.Equal(["users", "credentials", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
-        Assert.Equal(["Users", "Credentials", "Logs", "Settings", "About"], vm.BottomNavItems.Select(n => n.Title).ToArray());
-        Assert.Equal(["users", "key", "logs", "settings", "info"], vm.BottomNavItems.Select(n => n.IconKey).ToArray());
+        Assert.Equal(["users", "credentials", "plugins", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
+        Assert.Equal(["Users", "Credentials", "Plugins", "Logs", "Settings", "About"], vm.BottomNavItems.Select(n => n.Title).ToArray());
+        Assert.Equal(["users", "key", "plugin", "logs", "settings", "info"], vm.BottomNavItems.Select(n => n.IconKey).ToArray());
         Assert.IsType<UsersViewModel>(vm.BottomNavItems[0].Page);
         Assert.IsType<CredentialsViewModel>(vm.BottomNavItems[1].Page);
-        Assert.IsType<SettingsViewModel>(vm.BottomNavItems[3].Page);
-        Assert.IsType<AboutViewModel>(vm.BottomNavItems[4].Page);
+        Assert.IsType<PluginsViewModel>(vm.BottomNavItems[2].Page);
+        Assert.IsType<SettingsViewModel>(vm.BottomNavItems[4].Page);
+        Assert.IsType<AboutViewModel>(vm.BottomNavItems[5].Page);
     }
 
     [Fact]
@@ -77,14 +78,15 @@ public sealed class ShellNavigationTests
         // Back to an administrator: the entries come back, the current page stays.
         vm.NavigateCommand.Execute(vm.BottomNavItems.Single(n => n.Key == "about"));
         session.SignIn(new UserInfo { UserName = "anna", Role = UserRole.Admin }, "https://localhost:5080");
-        Assert.Equal(["users", "credentials", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
+        Assert.Equal(["users", "credentials", "plugins", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
         Assert.IsType<AboutViewModel>(vm.CurrentPage);
-        Assert.True(vm.BottomNavItems[4].IsSelected);
+        Assert.True(vm.BottomNavItems[5].IsSelected);
     }
 
     [Theory]
     [InlineData("users", typeof(UsersViewModel))]
     [InlineData("credentials", typeof(CredentialsViewModel))]
+    [InlineData("plugins", typeof(PluginsViewModel))]
     [InlineData("logs", typeof(LogsViewModel))]
     [InlineData("settings", typeof(SettingsViewModel))]
     [InlineData("about", typeof(AboutViewModel))]

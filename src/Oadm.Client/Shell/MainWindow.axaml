@@ -35,6 +35,9 @@
     <DataTemplate DataType="settings:CredentialsViewModel">
       <settings:CredentialsView />
     </DataTemplate>
+    <DataTemplate DataType="settings:PluginsViewModel">
+      <settings:PluginsPageView />
+    </DataTemplate>
     <DataTemplate DataType="settings:AboutViewModel">
       <settings:AboutPageView />
     </DataTemplate>

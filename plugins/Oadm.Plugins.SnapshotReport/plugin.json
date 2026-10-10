@@ -2,5 +2,6 @@
   "id": "oadm.snapshot-report",
   "version": "0.1.0",
   "minSdkVersion": "0.1.0",
-  "displayName": "Snapshot report"
+  "displayName": "Snapshot report",
+  "description": "Snapshots of every camera and a PDF maintenance report."
 }

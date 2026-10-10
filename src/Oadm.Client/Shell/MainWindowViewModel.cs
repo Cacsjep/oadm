@@ -30,6 +30,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly NavItemViewModel _devicesItem;
     private readonly NavItemViewModel _usersItem;
     private readonly NavItemViewModel _credentialsItem;
+    private readonly NavItemViewModel? _pluginsItem;
     private readonly NavItemViewModel _logsItem;
     private readonly NavItemViewModel _settingsItem;
     private readonly NavItemViewModel _aboutItem;
@@ -48,7 +49,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IClientSettingsStore clientSettings,
         UserSession session,
         ILogger<MainWindowViewModel> logger,
-        PluginPackageStore? packages = null)
+        PluginPackageStore? packages = null,
+        PluginsViewModel? pluginList = null)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(clientSettings);
@@ -85,11 +87,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IsNavExpanded = clientSettings.Current.NavRailExpanded;
 
         // Top: Devices, then one entry per core plugin page (added on connect).
-        // Bottom: Users and Credentials (administrators only), Logs, Settings, About.
+        // Bottom: Users, Credentials and Plugins (administrators only), Logs, Settings, About.
         _devicesItem = new NavItemViewModel(HostPages.Devices, "Devices", "devices", devices);
         NavItems.Add(_devicesItem);
         _usersItem = new NavItemViewModel(HostPages.Users, "Users", "users", users);
         _credentialsItem = new NavItemViewModel(HostPages.Credentials, "Credentials", "key", credentials);
+        _pluginsItem = pluginList is null ? null : new NavItemViewModel(HostPages.Plugins, "Plugins", "plugin", pluginList);
         _logsItem = new NavItemViewModel(HostPages.Logs, "Logs", "logs", logs);
         _settingsItem = new NavItemViewModel(HostPages.Settings, "Settings", "settings", settings);
         _aboutItem = new NavItemViewModel(HostPages.About, "About", "info", about);
@@ -213,13 +216,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The bottom group follows the role of the logged-in user: administrators see Users and Credentials, operators
+    /// The bottom group follows the role of the logged-in user: administrators see Users, Credentials and Plugins, operators
     /// do not (the server refuses those calls for them). A hidden page that was open falls back to Devices.
     /// </summary>
     private void SyncBottomNavItems()
     {
+        NavItemViewModel[] adminItems = _pluginsItem is null ? [_usersItem, _credentialsItem] : [_usersItem, _credentialsItem, _pluginsItem];
         NavItemViewModel[] wanted = Session.IsAdmin
-            ? [_usersItem, _credentialsItem, _logsItem, _settingsItem, _aboutItem]
+            ? [.. adminItems, _logsItem, _settingsItem, _aboutItem]
             : [_logsItem, _settingsItem, _aboutItem];
         if (BottomNavItems.SequenceEqual(wanted))
         {
