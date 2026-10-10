@@ -2,7 +2,7 @@
 
 Core plugin `oadm.image-health`, rail page **Image Health Dashboard** (group Monitoring). One table with the status of
 AXIS Image Health Analytics (AIHA) on every camera that has the app. Off by default (`plugin.json`
-`enabledByDefault: false`); an administrator turns it on under Settings > Plugins. Read-only for devices.
+`enabledByDefault: false`); an administrator turns it on on the Plugins page. Read-only for devices.
 
 ## Device API
 
@@ -43,7 +43,7 @@ open connection and also reports Pending and disabled detections.
 
 ## Manual test
 
-1. Turn the plugin on under Settings > Plugins.
+1. Turn the plugin on on the Plugins page.
 2. Open the page with a camera running AIHA: one row, five detections, App "Running".
 3. Cover the lens (or point the camera elsewhere) and press Refresh: Pending, then Detected; Last change is set.
 4. Stop the app on the camera, Refresh: App "Not running".

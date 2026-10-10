@@ -291,7 +291,7 @@ Two processes, like ADM:
   Users: "Snapshot report", "VAPIX Commander", "NTP server", "DHCP server", "PKI", "Metadata Monitor", "Hardening scan",
   "Image Health Dashboard", "System report" (from its toolbar button through `IToolbarContext.InvokePluginAsync`).
   `ListPackages` (every loaded plugin package with id, display name, version, enabled, enabled_by_default, has_page,
-  menu_task_count; any user) and `SetPackageEnabled(id, enabled)` (Admin; NOT_FOUND unknown package; reply: the whole
+  menu_task_count, always_on, description; any user) and `SetPackageEnabled(id, enabled)` (Admin; NOT_FOUND unknown package; reply: the whole
   list), see "Plugins on and off".
 - `SettingsService`: `Get`, `Set` (`ServerSettings.zero_conf_seconds = 8`, 0 keeps the stored value; read-only
   `server_version = 21` in both replies for the About page),
@@ -324,7 +324,8 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
 - `Device`: Id (Guid), Serial (= MAC, unique, upper hex, no separators), Address,
   UseHostName (bool), HostName, Model (ProdNbr), FirmwareVersion, DhcpEnabled, HttpsEnabled,
   Dot1xEnabled, UpnpFriendlyName, ServerName, Status (enum below), Scheme (http/https),
-  ProductType (raw basicdeviceinfo ProdType, e.g. "Dome Camera"), Category (enum below),
+  ProductType (raw basicdeviceinfo ProdType, e.g. "Dome Camera"), Soc (raw basicdeviceinfo Soc, e.g. "Axis Artpec-8",
+  max 64, migration `DeviceSoc`; proto `soc = 29`), Category (enum below),
   HasVideo (derived from Category, not stored),
   CertFingerprintSha256 (nullable), CertNotAfterUtc (nullable), CertTrust (enum below),
   CertSubject, CertIssuer, CertNameMatches (nullable bool, address in SAN; stored, not shown
@@ -623,9 +624,9 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   Commander), Security (PKI, Hardening scan), Monitoring (Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
   no page), Maintenance, Integrations, Utilities, Extensions (default, third-party); user decision 2026-10-08): only groups
   with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
-  each group, collapsed = a separator at each group start. Pinned bottom, top to bottom: Users and Credentials (Admin only: hidden for operators, follow the session
-  role live), Logs, Settings, About (icons `users`, `key`, `logs`, `settings`, `info`), then the logged-in user (an initial
-  avatar and the name in primary text, not a navigation entry) with Log out and the expand toggle. Keys = `HostPages` (`users`, `credentials`, `logs`, `settings`, `about`); opening an
+  each group, collapsed = a separator at each group start. Pinned bottom, top to bottom: Users, Credentials and Plugins (Admin only: hidden for operators, follow the session
+  role live), Logs, Settings, About (icons `users`, `key`, `plugin`, `logs`, `settings`, `info`), then the logged-in user (an initial
+  avatar and the name in primary text, not a navigation entry) with Log out and the expand toggle. Keys = `HostPages` (`users`, `credentials`, `plugins`, `logs`, `settings`, `about`); opening an
   admin page as operator does nothing, a hidden page that was open falls back to Devices. No Tasks page. Every page
   header (core plugin pages, Users, Credentials, About, Settings) is the shared `Controls/PageTitleBar` (title, grey
   side subtitle, trailing content); host pages never repeat the page title in a card heading.
@@ -803,6 +804,7 @@ and the saved per-client order cover other preferences):
 | Status | computed, see enum |
 | MAC address | SerialNumber from basicdeviceinfo |
 | Firmware | Version |
+| SoC | basicdeviceinfo `Soc` (status poll and full refresh), shown in Axis spelling: "Axis Artpec-8" = "ARTPEC-8", other chips as reported (`DeviceSocText`); empty until read; in the search and the export (user decision 2026-10-10) |
 | Tags | the device's tags as chips (`c:TagChipList`, `Border.tagChip`: the name in the tag color on a subtle pill), "+N" when they do not fit, tooltip with every tag; sorted by "Building A; PTZ" |
 | DHCP | Network.BootProto == dhcp -> Yes/No |
 | HTTPS | HTTPS enabled -> Enabled/Disabled |
@@ -1158,7 +1160,7 @@ uses the same flow), **Refresh** (Manage, order 5, icon `refresh`, enabled with 
 "Refresh" uses the same flow), **Export** (Manage, order 10, icon `export`, `HostPages.ExportDevices`,
 user decision 2026-10-08: the selected devices, or every device the search shows when none is selected, the
 tooltip says which; `Devices/DeviceListCsv`: header + every grid column as text (MAC address, Status, Address,
-Host name, Model, Firmware, Category, Product type, DHCP, HTTPS, Certificate expires as ISO date yyyy-MM-dd,
+Host name, Model, Firmware, SoC, Category, Product type, DHCP, HTTPS, Certificate expires as ISO date yyyy-MM-dd,
 Certificate, IEEE 802.1X) in the grid's unsorted order, RFC 4180 quoting (`Infrastructure/Csv`), CRLF, UTF-8 with
 BOM, a cell starting with = + - @ gets a leading `'` (no formula injection), no password (the client has none);
 save picker `IDialogService.SaveFileAsync`, default name `oadm-devices-<yyyy-MM-dd>.csv`; nothing to export or a
@@ -1200,7 +1202,8 @@ answers is unchanged. Used by the System report for server reports.
   `ICorePlugin` implementations via reflection, then registers the Core plugins' `TaskPlugins`
   too. Client does the same for `*.Client.dll` with `ITaskPluginDialog`, `ICorePluginPage` and
   `IToolbarPlugin` over the same three roots (`ClientPluginLoader.DefaultRoots`).
-- Plugin folder: `plugin.json` (id, version, minSdkVersion, displayName, optional `enabledByDefault`, default true),
+- Plugin folder: `plugin.json` (id, version, minSdkVersion, displayName, description, optional `enabledByDefault`,
+  default true, and `alwaysOn`, default false),
   `<Name>.Server.dll`, optional `<Name>.Client.dll`, private dependencies. SDK assemblies are shared from the
   host and never copied into the plugin folder.
 - Plugin failures (load or execution) are logged and isolated; a broken plugin never
@@ -1208,29 +1211,40 @@ answers is unchanged. Used by the System report for server reports.
 
 ### Plugins on and off
 
-User decision 2026-10-09: the Settings page lists every plugin package (one plugin folder = one row: its core plugins,
-contributed and standalone tasks and client parts together) and administrators turn each on or off; the change applies
-at once without a restart.
+User decision 2026-10-09: the rail page **Plugins** lists every plugin package (one plugin folder = one row: its core
+plugins, contributed and standalone tasks and client parts together) and administrators turn each on or off; the change
+applies at once without a restart. User decision 2026-10-10: own rail page (not a Settings card), core functionality
+is always on.
 - Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
   **Off by default: Hardening scan and Image Health Dashboard** (user decision). The administrator's choices are the
   server setting `Plugins.Enabled` (JSON object package id -> on; packages without a choice use their default),
   applied before the core plugins start (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
+- **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade firmware, Date and time, Applications
+  (ACAP), Users, Network settings, PKI and System report (core functionality, user decision 2026-10-10). Enabled whatever
+  the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers FAILED_PRECONDITION "<name> is always on.".
+  Switchable: Snapshot report, VAPIX Commander, Metadata Monitor, NTP server, DHCP server, Hardening scan, Image Health
+  Dashboard. Third-party plugins are switchable unless their manifest says otherwise.
+- Manifest `description` (`PluginOrigin.Description`): one short sentence shown on the Plugins page; every bundled
+  plugin has one.
 - `PluginRegistry`: `TaskPlugins`, `CorePlugins`, `TryGetTaskPlugin`, `TryGetCorePlugin` see only enabled packages
   (so ListCorePlugins, ListTaskPlugins, Run and Query skip a package that is off; the runnable cache follows the plugin
   set); `AllTaskPlugins` / `AllCorePlugins` / `Packages` (`PluginPackageState`: origin, enabled, has page, menu task
   count) see all. `SetEnabled` + `CorePluginHost.SyncEnabledAsync`: core plugins of a package turned off are stopped
   (trust anchors removed), turned on are started. Invoking a core plugin that is off: FAILED_PRECONDITION "The <name>
   plugin is turned off.". Tasks of the package already queued or running finish.
-- gRPC `PluginService.ListPackages` / `SetPackageEnabled` (Admin, audited "Turned plugin on" / "Turned plugin off",
-  target the plugin name).
+- gRPC `PluginService.ListPackages` (any user: clients hide toolbar entries of packages that are off) /
+  `SetPackageEnabled` (Admin, audited "Turned plugin on" / "Turned plugin off", target the plugin name);
+  `PluginPackageInfo.always_on = 8`, `description = 9`.
 - Client: `Plugins/PluginPackageStore` (loaded on every connect; `Changed` reloads the rail pages and the task catalog
   and hides the toolbar entries of packages that are off: `DeviceToolbar.ApplyPackageStates`, the package of a client
-  part from the plugin.json next to its dll, `IClientPluginRegistry.PackageOf`). Settings page card **Plugins**
-  (`Settings/PluginsViewModel`): DataGrid On (check box), Plugin, Adds ("Page", "9 context menu entries", "Toolbar
-  button"), Version; operators read-only; a refused change is undone with the reason below the list. Other clients
-  see a change on their next connect. Fake mode: `FakeOadmApi.Plugins.cs`.
+  part from the plugin.json next to its dll, `IClientPluginRegistry.PackageOf`). Rail page **Plugins** (Admin only,
+  key `HostPages.Plugins`, icon `plugin`, below Credentials; subtitle "A plugin that is off shows no page, menu entry or
+  toolbar button."; `Settings/PluginsPageView` + `PluginsViewModel`): one card with a DataGrid On (check box), Plugin,
+  Description, sorted by name; always-on packages are not listed (user decision 2026-10-10); a refused change is undone with the reason below the list. Other clients see a change
+  on their next connect. Fake mode: `FakeOadmApi.Plugins.cs` (PKI, Restart, System report always on).
 - Tests: `tests/Oadm.Server.Tests/PluginPackageTests` (default off, live start / stop, menus, roles, audit, stored
-  choice, the bundled manifests), `tests/Oadm.Client.Tests/PluginListTests` (headless `client-settings-plugins.png`).
+  choice, always on, the bundled manifests: off by default, always on, descriptions), `tests/Oadm.Client.Tests/
+  PluginListTests` (always on, headless `client-plugins-page.png`), `ShellTests` (rail entry admin only).
 
 ## HARD RULE: device safety for task plugins
 
@@ -2132,8 +2146,8 @@ tries when it adds devices.", `Settings/CredentialsViewModel` + `CredentialsView
 "Hide password" that loads it with `RevealCredential` and masks (and forgets) it on the second click, copy icon
 button "Copy password" (clipboard of the window, loaded on demand, not shown), added time, Remove as a red icon button), a separator, then the add form under the heading "Add credential" (user
 name, password, "Add credential"); stored encrypted on the server (`CredentialListStore`, table
-CredentialListEntries), tried on every discovered device (see "Add Devices Page"). The Settings page's second card
-**Plugins** turns plugin packages on and off (see "Plugins on and off"). Rail page **About** (everyone,
+CredentialListEntries), tried on every discovered device (see "Add Devices Page"). Rail page **Plugins** (Admin only)
+turns plugin packages on and off (see "Plugins on and off"). Rail page **About** (everyone,
 subtitle "Version and licenses.", `Settings/AboutPageView` around the card `Settings/AboutView`, `AboutViewModel`):
 terms of use (card title, a scrollable block with wider line spacing), client version, server version (`ServerSettings.server_version`), the
 sentence on the Apache-2.0 license, "Show licenses" shows `THIRD-PARTY-NOTICES.txt` (next to the exe, the macOS app's

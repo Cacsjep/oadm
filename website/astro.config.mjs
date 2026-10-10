@@ -73,6 +73,7 @@ export default defineConfig({
 					label: 'Administration',
 					items: [
 						{ label: 'Users and roles', slug: 'admin/users' },
+						{ label: 'Plugins', slug: 'admin/plugins' },
 						{ label: 'Settings', slug: 'admin/settings' },
 						{ label: 'Ports, data and backup', slug: 'admin/ports-and-data' },
 						{ label: 'Logs and troubleshooting', slug: 'admin/troubleshooting' },
