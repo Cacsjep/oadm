@@ -1,10 +1,14 @@
 name: pages
 
 # Builds the website (website/, Astro Starlight) and publishes it to GitHub Pages: https://cacsjep.github.io/oadm/
+# Also after every successful release: the download links and "What's new" are read from the latest release at build time.
 on:
   push:
     branches: [main]
     paths: ['website/**', '.github/workflows/pages.yml']
+  workflow_run:
+    workflows: [release]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -17,6 +21,7 @@ concurrency:
 jobs:
   build:
     name: build website
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

@@ -115,7 +115,8 @@ template (one line); checkout runs with `persist-credentials: false`, workflow p
 are `contents: read` except the release job (`contents: write`).
 Website (user decision 2026-10-09): landing page and user docs in `website/` with Astro Starlight (MkDocs Material is in
 maintenance mode), base `/oadm`, published to https://cacsjep.github.io/oadm/ by `pages.yml` on pushes to main that change
-`website/` (deploy job `pages: write`, `id-token: write`); npm versions pinned exactly, Dependabot npm group `website`;
+`website/` and after every successful `release` run (`workflow_run`, so the static download links and "What's new in
+vX" match the new release; the browser also re-reads the latest release with `cache: 'no-store'`) (deploy job `pages: write`, `id-token: write`); npm versions pinned exactly, Dependabot npm group `website`;
 screenshots in `website/src/assets/screens/` come from the headless tests (`OADM_SCREENSHOT_DIR`), click to enlarge; dark only (no theme switch); the landing page has no top bar, its download buttons link the latest release files (Linux = both .deb); texts follow "Wording".
 
 Developer commands: one entry point per shell at the repo root, `./manage.sh` (bash) and

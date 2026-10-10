@@ -79,7 +79,8 @@ const links = {
 	});
 
 	if (root) {
-		fetch(`https://api.github.com/repos/${root.dataset.repo}/releases/latest`)
+		// no-store: never a cached answer, so a new release shows on the next page load.
+		fetch(`https://api.github.com/repos/${root.dataset.repo}/releases/latest`, { cache: 'no-store' })
 			.then((r) => (r.ok ? r.json() : null))
 			.then((release) => {
 				if (!release) return;
