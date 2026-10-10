@@ -111,32 +111,50 @@ public sealed partial class PluginRegistry
 
         if (plugin is IEventSource eventSource)
         {
-            IReadOnlyList<EventTypeInfo> types;
-            try
+            ReadEventTypes(plugin, eventSource, origin);
+            if (eventSource is IDynamicEventSource dynamic)
             {
-                types = eventSource.EventTypes ?? [];
+                dynamic.EventTypesChanged += (_, _) =>
+                {
+                    ReadEventTypes(plugin, eventSource, origin);
+                    EventTypesChanged?.Invoke(this, EventArgs.Empty);
+                };
             }
-#pragma warning disable CA1031 // Plugin code is untrusted.
-            catch (Exception ex)
-#pragma warning restore CA1031
-            {
-                AddError(new PluginLoadError(origin.PackageId, $"Event types of {plugin.Id} could not be read: {ex.Message}", ex));
-                types = [];
-            }
+        }
+    }
 
+    /// <summary>The event types of a dynamic source changed (<see cref="IDynamicEventSource"/>); raised on the plugin's thread.</summary>
+    public event EventHandler? EventTypesChanged;
+
+    /// <summary>Replaces the event types of one core plugin with what it declares now.</summary>
+    private void ReadEventTypes(ICorePlugin plugin, IEventSource eventSource, PluginOrigin origin)
+    {
+        IReadOnlyList<EventTypeInfo> types;
+        try
+        {
+            types = eventSource.EventTypes ?? [];
+        }
+#pragma warning disable CA1031 // Plugin code is untrusted.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            AddError(new PluginLoadError(origin.PackageId, $"Event types of {plugin.Id} could not be read: {ex.Message}", ex));
+            return;
+        }
+
+        lock (_sync)
+        {
+            _eventTypes.RemoveAll(e => string.Equals(e.SourceId, plugin.Id, StringComparison.OrdinalIgnoreCase));
             foreach (var type in types.Where(t => t is not null))
             {
-                lock (_sync)
+                if (string.IsNullOrWhiteSpace(type.Id) || string.IsNullOrWhiteSpace(type.DisplayName)
+                    || _eventTypes.Exists(e => string.Equals(e.Id, type.Id, StringComparison.OrdinalIgnoreCase)))
                 {
-                    if (string.IsNullOrWhiteSpace(type.Id) || string.IsNullOrWhiteSpace(type.DisplayName)
-                        || _eventTypes.Exists(e => string.Equals(e.Id, type.Id, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        AddErrorLocked(new PluginLoadError(origin.PackageId, $"Event type id '{type.Id}' is invalid or already registered."));
-                        continue;
-                    }
-
-                    _eventTypes.Add(new RegisteredEventType(type, plugin.Id, origin));
+                    AddErrorLocked(new PluginLoadError(origin.PackageId, $"Event type id '{type.Id}' is invalid or already registered."));
+                    continue;
                 }
+
+                _eventTypes.Add(new RegisteredEventType(type, plugin.Id, origin));
             }
         }
     }

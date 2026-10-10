@@ -60,6 +60,7 @@
   <StreamGeometry x:Key="Icon.activity">M22 12h-4l-3 9L9 3l-3 9H2</StreamGeometry>
   <StreamGeometry x:Key="Icon.toggle">M2 12a7 7 0 0 1 7 -7h6a7 7 0 0 1 0 14H9a7 7 0 0 1 -7 -7z M15 9a3 3 0 1 0 0 6a3 3 0 1 0 0 -6z</StreamGeometry>
   <StreamGeometry x:Key="Icon.zap">M13 2L3 14h9l-1 8l10 -12h-9l1 -8z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.bell">M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3 -2 3 -9z M10.3 21a1.94 1.94 0 0 0 3.4 0</StreamGeometry>
   <StreamGeometry x:Key="Icon.info">M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0z M12 16v-4 M12 8h0.01</StreamGeometry>
   <!-- Lucide shield-check: certificates / PKI (key stays the credentials icon). -->
   <StreamGeometry x:Key="Icon.shield">M20 13c0 5 -3.5 7.5 -7.66 8.95a1 1 0 0 1 -0.67 -0.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1 -1c2 0 4.5 -1.2 6.24 -2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z M9 12l2 2l4 -4</StreamGeometry>

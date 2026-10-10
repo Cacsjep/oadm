@@ -1,0 +1,60 @@
+---
+title: Device triggers
+description: Use any event of your devices in event rules.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import page from '../../../assets/screens/device-triggers-page.png';
+import editor from '../../../assets/screens/device-triggers-editor.png';
+
+A device trigger makes an event of your devices available to the [event rules](../event-rules/): a digital input, a
+virtual input, an Object Analytics scenario, a storage alert, a temperature warning or the event of another app. OADM
+reads which events each device offers and keeps a live connection to every device a trigger uses.
+
+<Image src={page} alt="The Device triggers page with three triggers and the devices of one" class="screen" />
+
+<Aside>
+Device triggers are off by default. An administrator turns them on on the **Plugins** page. Only administrators create,
+change and delete triggers.
+</Aside>
+
+## Create a trigger
+
+<Steps>
+
+1. Open **Device triggers** in the navigation rail and choose **New trigger**.
+2. Give it a name, for example "Gate open". Rules show the trigger by this name.
+3. Check the devices and choose **Read events**. OADM asks each device which events it offers right now.
+4. Choose the **Event**. The list has the events all chosen devices offer.
+5. Optionally narrow it down, for example **Port number** 3 or **Scenario 1**. **Any** means every port or scenario.
+6. Choose **Save**.
+
+</Steps>
+
+<Image src={editor} alt="The trigger dialog with two devices and the virtual input event on port 3" class="screen" />
+
+A device that does not offer the chosen event stays in the list with **Does not offer this event**. Remove it or choose
+another event. Devices with older AXIS OS that cannot send events this way are greyed.
+
+## Use it in a rule
+
+Every trigger appears in the rule dialog in the group **Device triggers**, twice:
+
+| Event | On while |
+|---|---|
+| Gate open | The event is on, for example the input is active. With **Any**, while at least one port is on. |
+| Gate open: connection lost | OADM gets no events from the device for 30 seconds: no connection, the login is refused, or the event is no longer on the device (for example Object Analytics was stopped). |
+
+Events that happen once (camera tampering, a counting report) fire the rule each time. The values of the event can go
+into actions, for example `{port}` in a VAPIX command. The rule dialog lists them under the event.
+
+## Good to know
+
+- OADM reads the events from the devices each time you create or edit a trigger, and again every 5 minutes while
+  connected. Apps add their events only while they run.
+- During a short outage the trigger keeps its last state. After the device is back, it reports its current state and
+  only real changes run actions.
+- The devices table below the triggers shows the connection, the state and the last event of each device.
+- A trigger that is turned off closes its connections. Its rules stay but do not run.
+- A device removed from OADM leaves its triggers.

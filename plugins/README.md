@@ -234,7 +234,7 @@ resolve them at compile time, so use `DynamicResource` (`Icon="{DynamicResource 
 `Icon.server`, `Icon.externalLink`, `Icon.more`, `Icon.key`, `Icon.lock`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
 `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.network`, `Icon.firmware`, `Icon.users`,
 `Icon.user`, `Icon.logout`, `Icon.audit`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
-`Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`,
+`Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.toggle`, `Icon.zap`, `Icon.bell`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`,
 `Icon.device.camera`, `Icon.device.encoder`,
 `Icon.device.speaker`, `Icon.device.audio`, `Icon.device.intercom`, `Icon.device.radar`,
 `Icon.device.io`, `Icon.device.door`, `Icon.device.generic`.
@@ -424,6 +424,7 @@ public sealed class EmailAction : IActionPlugin
     public async Task ExecuteAsync(IActionContext ctx, ActionInvocation run, CancellationToken ct)
     {
         var subject = ctx.Text(run.Get("subject"));      // {rule} {event} {device} {address} {model} {serial} {state} {time}
+                                                         // + every value of the event by name ({port}, {total})
         await Smtp.SendAsync(run.Get("to")!, subject, ctx.Text(run.Get("body")), run.Get("smtpPassword"), ct);
         ctx.Log("Sent to " + run.Get("to"));            // one line in the event log entry; never log secrets
     }
@@ -457,8 +458,23 @@ filter on.
   of before the restart and runs nothing for the type; after 2 minutes it counts as nothing on). Afterwards `SetState` per
   change or `ReplaceStates` again whenever convenient (e.g. after each check round): the server works out the changes.
 - **Stateless**: `Fire(typeId, deviceId, data)`.
+- **Values**: the `data` of `SetState` / `Fire` are the event's values; actions can use each one as a placeholder
+  (`{port}`), and a rule condition can filter on declared data fields.
+- **Types that change** (the user creates them, e.g. device triggers): implement `IDynamicEventSource` and raise
+  `EventTypesChanged` after `EventTypes` changed. A new stateful type waits for its first `ReplaceStates`; a removed type
+  counts as off. Types are read once at registration before `StartAsync`, so a plugin that loads its types from settings
+  raises the event in `StartAsync`; rules that use them wait for them meanwhile.
 - Calls only queue; `IsWatched(typeId)` says whether an enabled rule uses the type (skip expensive work otherwise).
-- Sample: the Image Health Dashboard (`ImageHealthEvents`, "Monitor continuously").
+- Samples: the Image Health Dashboard (`ImageHealthEvents`, "Monitor continuously"), Device triggers
+  (`plugins/Oadm.Plugins.DeviceTriggers`: dynamic types, a WebSocket per device, "connection lost" per trigger).
+
+### Device WebSockets
+
+`IVapixClient.ConnectWebSocketAsync(pathAndQuery, keepAlive, ct)` opens a WebSocket to the device (e.g.
+`/vapix/ws-data-stream?sources=events`): ws for HTTP devices, wss with the pinned certificate for HTTPS devices, logged in
+with a one-time session token (`wssession.cgi`), so the stored credentials never reach the plugin. The socket pings every
+`keepAlive` and aborts when no pong comes back (devices send nothing on a quiet stream). The caller disposes the socket;
+reconnect with a backoff when it breaks.
 
 ### Host support for service plugins (NTP, DHCP, ...)
 

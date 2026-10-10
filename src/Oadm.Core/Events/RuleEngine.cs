@@ -67,6 +67,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
     private readonly HashSet<string> _ready = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTime> _waitingSince = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _offSources = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _knownTypes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<Guid, DeviceRef> _devices = [];
     private readonly Dictionary<Guid, Runtime> _rules = [];
     private readonly List<(Guid Rule, Guid Subject, bool Add, DateTime Since)> _stateOps = [];
@@ -133,6 +134,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
             _deviceFeed.Changed += OnDeviceChanged;
         }
 
+        _catalog.Registry.EventTypesChanged += OnEventTypesChanged;
         if (_deviceRepository is not null)
         {
             foreach (var device in await _deviceRepository.ListDevicesAsync(ct).ConfigureAwait(false))
@@ -191,7 +193,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
         return done.Task.WaitAsync(ct);
     }
 
-    /// <summary>A plugin package was turned on or off.</summary>
+    /// <summary>A plugin package was turned on or off, or a source's event types changed.</summary>
     public void SourcesChanged() => Enqueue(new SourcesChangedCommand());
 
     /// <summary>Waits until every command queued so far was processed (tests).</summary>
@@ -221,6 +223,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
             _deviceFeed.Changed -= OnDeviceChanged;
         }
 
+        _catalog.Registry.EventTypesChanged -= OnEventTypesChanged;
         _commands.Writer.TryComplete();
         await _stop.CancelAsync().ConfigureAwait(false);
         foreach (var task in new[] { _loop, _ticker })
@@ -243,6 +246,8 @@ public sealed partial class RuleEngine : IAsyncDisposable
     }
 
     private void OnDeviceChanged(object? sender, DeviceChange change) => Enqueue(new DeviceCommand(change));
+
+    private void OnEventTypesChanged(object? sender, EventArgs e) => SourcesChanged();
 
     private void Enqueue(Command command)
     {
@@ -730,6 +735,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
         {
             var runtime = new Runtime(current, _catalog);
             _rules[runtime.Id] = runtime;
+            WaitForUndeclaredTypes();
             if (runtime.Stateful && IsEvaluable(runtime))
             {
                 Reconcile(runtime, AllCandidates(runtime), runtime.TriggerTypeId);
@@ -744,8 +750,11 @@ public sealed partial class RuleEngine : IAsyncDisposable
     {
         var now = _time.GetUtcNow().UtcDateTime;
         var off = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var declared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var type in _catalog.EventTypes.Where(t => t.SourceId != BuiltInEvents.SourceId))
         {
+            declared.Add(type.Id);
+            var added = !initial && !_knownTypes.Contains(type.Id);
             if (!type.Stateful)
             {
                 _ready.Add(type.Id); // one-shot events have no state to report
@@ -771,19 +780,55 @@ public sealed partial class RuleEngine : IAsyncDisposable
                     }
                 }
             }
-            else if (initial || _offSources.Contains(type.SourceId))
+            else if (initial || added || _offSources.Contains(type.SourceId))
             {
-                // Turned on (or server start): wait for the source's first full report.
+                // Turned on, a new type of a running source, or server start: wait for the source's first full report.
                 _ready.Remove(type.Id);
                 _waitingSince[type.Id] = now;
             }
         }
 
+        // Types a source no longer declares (e.g. a deleted device trigger): off, and their rules turn off.
+        foreach (var gone in _knownTypes.Where(t => !declared.Contains(t)).ToList())
+        {
+            _waitingSince.Remove(gone);
+            _ready.Add(gone);
+            if (_on.Remove(gone, out var set) && set.Count > 0 && !initial)
+            {
+                OnTypeChanged(gone, [.. set.Keys]);
+            }
+        }
+
+        _knownTypes.Clear();
+        _knownTypes.UnionWith(declared);
         _offSources.Clear();
         _offSources.UnionWith(off);
+        WaitForUndeclaredTypes();
         if (!initial)
         {
+            foreach (var runtime in _rules.Values)
+            {
+                runtime.Refresh(_catalog);
+            }
+
             EvaluateAllReady();
+        }
+    }
+
+    /// <summary>
+    /// Types rules use that no source declares (yet): a source that declares its types once it runs (device triggers,
+    /// started after the engine) or one that was removed. They wait like a source after a start, then count as off.
+    /// </summary>
+    private void WaitForUndeclaredTypes()
+    {
+        var now = _time.GetUtcNow().UtcDateTime;
+        foreach (var typeId in _rules.Values.SelectMany(r => r.Types))
+        {
+            if (!_knownTypes.Contains(typeId) && !_ready.Contains(typeId) && !_waitingSince.ContainsKey(typeId)
+                && !BuiltInEvents.Types.Any(t => string.Equals(t.Id, typeId, StringComparison.OrdinalIgnoreCase)))
+            {
+                _waitingSince[typeId] = now;
+            }
         }
     }
 
@@ -910,7 +955,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
         var status = new Dictionary<Guid, RuleRuntimeStatus>();
         foreach (var runtime in _rules.Values)
         {
-            var waiting = runtime.Types.Where(t => !_ready.Contains(t)).Select(t => _catalog.FindEventType(t)?.SourceName ?? t).Distinct().ToList();
+            var waiting = runtime.Types.Where(t => !_ready.Contains(t)).Select(t => _catalog.FindEventType(t)?.SourceName ?? "its events").Distinct().ToList();
             status[runtime.Id] = new RuleRuntimeStatus(runtime.Id, runtime.Active.Count, waiting.Count == 0 ? null : string.Join(", ", waiting), runtime.LastFiredUtc);
         }
 
@@ -994,10 +1039,8 @@ public sealed partial class RuleEngine : IAsyncDisposable
         {
             Definition = stored.Definition;
             LastFiredUtc = stored.LastFiredUtc;
-            var trigger = catalog.FindEventType(Definition.Conditions.FirstOrDefault()?.EventTypeId);
             TriggerTypeId = Definition.Conditions.FirstOrDefault()?.EventTypeId ?? string.Empty;
-            Stateful = trigger?.Stateful ?? true;
-            TriggerScope = trigger?.Info.Scope ?? EventScope.Device;
+            Refresh(catalog);
             Types = Definition.Conditions.Where(c => c.Kind == RuleConditionKind.Event && c.EventTypeId is not null)
                 .Select(c => c.EventTypeId!).ToHashSet(StringComparer.OrdinalIgnoreCase);
             HasSchedule = Definition.Conditions.Any(c => c.Kind == RuleConditionKind.Schedule);
@@ -1012,9 +1055,9 @@ public sealed partial class RuleEngine : IAsyncDisposable
 
         public string TriggerTypeId { get; }
 
-        public bool Stateful { get; }
+        public bool Stateful { get; private set; }
 
-        public EventScope TriggerScope { get; }
+        public EventScope TriggerScope { get; private set; }
 
         public HashSet<string> Types { get; }
 
@@ -1035,6 +1078,21 @@ public sealed partial class RuleEngine : IAsyncDisposable
         public DateTime? LastPauseLog { get; set; }
 
         public DateTime? LastFiredUtc { get; set; }
+
+        /// <summary>Kind and scope of the trigger, read again when the event types changed (a type declared late).</summary>
+        public void Refresh(EventCatalog catalog)
+        {
+            if (catalog.FindEventType(TriggerTypeId) is { } trigger)
+            {
+                Stateful = trigger.Stateful;
+                TriggerScope = trigger.Info.Scope;
+            }
+            else if (TriggerTypeId.Length == 0 || Active.Count == 0)
+            {
+                Stateful = true;
+                TriggerScope = EventScope.Device;
+            }
+        }
     }
 
     private sealed class Publisher(RuleEngine engine, string sourceId) : IEventPublisher

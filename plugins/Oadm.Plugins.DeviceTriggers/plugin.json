@@ -1,0 +1,8 @@
+{
+  "id": "oadm.device-triggers",
+  "version": "0.1.0",
+  "minSdkVersion": "0.1.0",
+  "displayName": "Device triggers",
+  "description": "Uses events of the devices in event rules.",
+  "enabledByDefault": false
+}

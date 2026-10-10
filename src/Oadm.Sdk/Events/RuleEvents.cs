@@ -49,11 +49,23 @@ public sealed record EventTypeInfo(
 
 /// <summary>
 /// A core plugin that publishes events for the event rules implements this next to <c>ICorePlugin</c> and publishes
-/// through <c>ICorePluginContext.EventPublisher</c>. The types are read once when the plugin is registered.
+/// through <c>ICorePluginContext.EventPublisher</c>. The types are read once when the plugin is registered (see
+/// <see cref="IDynamicEventSource"/> for types that change).
 /// </summary>
 public interface IEventSource
 {
     IReadOnlyList<EventTypeInfo> EventTypes { get; }
+}
+
+/// <summary>
+/// An event source whose types change while it runs (types the user creates, e.g. device triggers). Raise
+/// <see cref="EventTypesChanged"/> after <see cref="IEventSource.EventTypes"/> changed: the server reads the list again,
+/// new stateful types wait for their first <see cref="IEventPublisher.ReplaceStates"/> like after a start, and removed
+/// types count as off (their rules turn off and show "Not available").
+/// </summary>
+public interface IDynamicEventSource : IEventSource
+{
+    event EventHandler? EventTypesChanged;
 }
 
 /// <summary>

@@ -953,6 +953,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         new CorePluginInfo { Id = MetadataMonitorPluginId, DisplayName = "Metadata Monitor", IconKey = "activity", Group = "Monitoring" },
         new CorePluginInfo { Id = HardeningScanPluginId, DisplayName = "Hardening scan", IconKey = "clipboardCheck", Group = "Security" },
         new CorePluginInfo { Id = IoMonitorPluginId, DisplayName = "I/O Monitor", IconKey = "toggle", Group = "Monitoring" },
+        new CorePluginInfo { Id = DeviceTriggersPluginId, DisplayName = "Device triggers", IconKey = "bell", Group = "Automation" },
     ];
 
     public Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) => pluginId switch
@@ -963,6 +964,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         SystemReportPluginId => InvokeSystemReportAsync(method, payloadJson),
         HardeningScanPluginId => InvokeHardeningScanAsync(method, payloadJson),
         IoMonitorPluginId => InvokeIoMonitorAsync(method, payloadJson),
+        DeviceTriggersPluginId => InvokeDeviceTriggersAsync(method, payloadJson),
         _ => throw new RpcException(new Status(StatusCode.NotFound, $"Unknown core plugin '{pluginId}'.")),
     };
 
@@ -1593,6 +1595,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         device.Apis.Add(new DeviceApi { Id = "fwmgr", Version = "1.10", Name = "Firmware management", Status = "official" });
         device.Apis.Add(new DeviceApi { Id = "packagemanager", Version = "1.4", Name = "Package manager", Status = "official" });
         device.Apis.Add(new DeviceApi { Id = "time-service", Version = "1.1", Name = "Time service", Status = "official" });
+        device.Apis.Add(new DeviceApi { Id = "event-streaming-over-websocket", Version = "1.0", Name = "Event streaming over WebSocket", Status = "official" });
         return device;
     }
 

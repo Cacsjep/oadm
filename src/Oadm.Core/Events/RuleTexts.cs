@@ -151,7 +151,7 @@ public static class RuleTexts
             var type = catalog.FindEventType(condition.EventTypeId);
             if (type is null)
             {
-                return "Not available: an event of this rule is not installed";
+                return "Not available: an event of this rule no longer exists";
             }
 
             if (!type.Available)

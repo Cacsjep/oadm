@@ -19,6 +19,7 @@ public sealed partial class FakeOadmApi
         Package(MetadataMonitorPluginId, "Metadata Monitor", "Shows the events a camera sends, live.", hasPage: true, tasks: 0, enabledByDefault: false),
         Package(HardeningScanPluginId, "Hardening scan", "Checks devices against the AXIS OS hardening guide.", hasPage: true, tasks: 0, enabledByDefault: false),
         Package(IoMonitorPluginId, "I/O Monitor", "Shows the inputs and outputs of a device, live.", hasPage: true, tasks: 0, enabledByDefault: false),
+        Package(DeviceTriggersPluginId, "Device triggers", "Uses events of the devices in event rules.", hasPage: true, tasks: 0, enabledByDefault: false),
         Package(SystemReportPluginId, "System report", "Downloads the system reports of devices for Axis support.", hasPage: false, tasks: 0, alwaysOn: true),
         Package(RestartPluginId, "Restart", "Restarts devices.", hasPage: false, tasks: 1, alwaysOn: true),
     ];

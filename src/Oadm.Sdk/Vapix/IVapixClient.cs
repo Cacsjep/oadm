@@ -21,6 +21,19 @@ public interface IVapixClient
     /// </summary>
     Task<IReadOnlyList<VideoSource>> GetVideoSourcesAsync(CancellationToken ct) =>
         throw new NotSupportedException("This client cannot list video sources.");
+
+    /// <summary>
+    /// Opens a WebSocket to the device (<paramref name="pathAndQuery"/> relative to the device, e.g.
+    /// <c>/vapix/ws-data-stream?sources=events</c>): ws for HTTP devices, wss with the pinned certificate for HTTPS
+    /// devices. The login is a one-time session token (<c>wssession.cgi</c>) read with the stored credentials, which never
+    /// reach the plugin. The socket pings the device every <paramref name="keepAlive"/> and aborts when no pong comes back
+    /// within the same time (devices send nothing on a quiet stream). The caller disposes the socket.
+    /// Throws like <see cref="SendAsync"/> (unreachable, certificate changed, timeout) and
+    /// <see cref="UnauthorizedAccessException"/> when the device refuses the login.
+    /// Hosts without it throw <see cref="NotSupportedException"/>.
+    /// </summary>
+    Task<System.Net.WebSockets.WebSocket> ConnectWebSocketAsync(string pathAndQuery, TimeSpan keepAlive, CancellationToken ct) =>
+        throw new NotSupportedException("This client cannot open WebSockets.");
 }
 
 public interface IVapixClientFactory

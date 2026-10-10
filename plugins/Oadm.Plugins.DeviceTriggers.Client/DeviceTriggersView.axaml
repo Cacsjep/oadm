@@ -1,0 +1,87 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.DeviceTriggers.Client"
+             x:Class="Oadm.Plugins.DeviceTriggers.Client.DeviceTriggersView"
+             x:DataType="vm:DeviceTriggersViewModel"
+             ui:PageHeader.Subtitle="Use events of your devices in event rules.">
+  <!-- Own cards: the triggers with their live state, then the devices of the selected trigger. -->
+  <Grid RowDefinitions="*,Auto,*">
+    <Border Grid.Row="0" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}">
+      <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+            <ui:ToolbarButton Text="New trigger" IconKey="add" IsPrimary="True" Command="{Binding NewTriggerCommand}" />
+            <ui:ToolbarButton Text="Edit" IconKey="edit" Command="{Binding EditCommand}" />
+            <ui:ToolbarButton Text="Duplicate" IconKey="copy" Command="{Binding DuplicateCommand}" />
+            <ui:ToolbarSeparator />
+            <Button Classes="toolbar danger" Command="{Binding DeleteCommand}">
+              <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete" Spacing="8" />
+            </Button>
+          </StackPanel>
+          <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" Placeholder="Search triggers" />
+        </Grid>
+
+        <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding StatusText}" Margin="2,14,0,8" />
+
+        <DataGrid x:Name="TriggerGrid" Grid.Row="2" Classes="wrapRows" ItemsSource="{Binding Triggers}" SelectedItem="{Binding SelectedTrigger}"
+                  IsReadOnly="True" SelectionMode="Single" CanUserSortColumns="True" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTemplateColumn Header="On" Width="60" SortMemberPath="Enabled">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:TriggerRowViewModel">
+                  <CheckBox IsChecked="{Binding Enabled}" HorizontalAlignment="Center" ToolTip.Tip="Turn the trigger on or off" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Name" Width="220" Binding="{Binding Name}" x:DataType="vm:TriggerRowViewModel" />
+            <DataGridTextColumn Header="Event" Width="2*" Binding="{Binding EventText}" x:DataType="vm:TriggerRowViewModel" />
+            <DataGridTextColumn Header="Devices" Width="110" Binding="{Binding DeviceCount}" CellStyleClasses="number" x:DataType="vm:TriggerRowViewModel">
+              <DataGridTextColumn.Header>
+                <TextBlock Classes="numberHeader" Text="Devices" />
+              </DataGridTextColumn.Header>
+            </DataGridTextColumn>
+            <DataGridTemplateColumn Header="State" Width="260" SortMemberPath="StateText">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:TriggerRowViewModel">
+                  <ui:StatusChip Text="{Binding StateText}" IsOk="{Binding IsOk}" IsAccent="{Binding IsAccent}" IsError="{Binding IsError}" MaxLines="2" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Last event" Width="140" Binding="{Binding LastEventText}" SortMemberPath="LastEventSortKey" x:DataType="vm:TriggerRowViewModel" />
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Grid.Row="2" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:DeviceTriggersViewModel.EmptyText}"
+                   IsVisible="{Binding ShowEmpty}" />
+        <TextBlock Grid.Row="3" Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" Margin="0,8,0,0" />
+      </Grid>
+    </Border>
+
+    <GridSplitter Grid.Row="1" Classes="paneSplitter" />
+
+    <Border Grid.Row="2" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}">
+      <Grid RowDefinitions="Auto,*">
+        <ui:CardHeader Grid.Row="0" Title="{Binding DevicesTitle}" Description="{Binding DevicesSummary}" />
+        <DataGrid x:Name="DeviceGrid" Grid.Row="1" Classes="wrapRows" ItemsSource="{Binding Devices}" IsReadOnly="True" SelectionMode="Extended"
+                  CanUserSortColumns="True" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Address" Width="150" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:TriggerDeviceRow" />
+            <DataGridTextColumn Header="Model" Width="150" Binding="{Binding Model}" x:DataType="vm:TriggerDeviceRow" />
+            <DataGridTemplateColumn Header="Connection" Width="2*" MinWidth="260" SortMemberPath="ConnectionText">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:TriggerDeviceRow">
+                  <ui:StatusChip Text="{Binding ConnectionText}" Detail="{Binding Problem}" IsOk="{Binding IsOk}" IsAccent="{Binding IsAccent}"
+                                 IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" MaxLines="2" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="State" Width="80" Binding="{Binding StateText}" x:DataType="vm:TriggerDeviceRow" />
+            <DataGridTextColumn Header="Last event" Width="2*" Binding="{Binding LastEventText}" x:DataType="vm:TriggerDeviceRow" />
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Grid.Row="1" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding DevicesEmptyText}"
+                   IsVisible="{Binding !HasSelection}" />
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

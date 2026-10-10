@@ -15,6 +15,11 @@ version and date, and the release workflow copies it into the GitHub release.
   command, with an optional second one when the rule turns off), on the device of the event, chosen devices, devices
   with tags or all devices. Limits against event storms, copy rules, and an event log of everything that ran.
 - **I/O Monitor** (plugin, off by default): pick a device and see its inputs and outputs live.
+- **Device triggers** (plugin, off by default): use any event your devices offer in event rules, for example a digital
+  input, a virtual input, an Object Analytics scenario or a storage alert, on one or many devices, optionally only for
+  one port or scenario. OADM reads the events from the devices and keeps a live connection to each. Every trigger also
+  has a "connection lost" event, so a rule can react when a device stops sending. The event's values (port, scenario,
+  counts) can be used in actions, for example {port}.
 - Plugin pages open in a window of their own: right-click the page in the navigation rail, **Open in new window**.
 - Image Health Dashboard: **Monitor continuously** checks every camera in the background, so event rules can use the
   results.

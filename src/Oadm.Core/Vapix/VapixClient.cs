@@ -357,6 +357,82 @@ public sealed class VapixClient : IVapixClient, IDisposable
         }
     }
 
+    /// <summary>Session token for one WebSocket login (VAPIX, valid once and for 15 s).</summary>
+    internal const string WsSessionPath = "axis-cgi/wssession.cgi";
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The upgrade goes through this client's handler, so the certificate pin applies to wss exactly like to requests;
+    /// a pin mismatch throws <see cref="CertificateChangedException"/>.
+    /// </remarks>
+    public async Task<System.Net.WebSockets.WebSocket> ConnectWebSocketAsync(string pathAndQuery, TimeSpan keepAlive, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pathAndQuery);
+        if (!pathAndQuery.StartsWith('/') || pathAndQuery.StartsWith("//", StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The path must start with one /.", nameof(pathAndQuery));
+        }
+
+        EnsureSameDevice(new Uri(pathAndQuery, UriKind.Relative));
+        string token;
+        using (var request = new HttpRequestMessage(HttpMethod.Get, WsSessionPath))
+        {
+            try
+            {
+                token = (await SendForStringAsync(request, ct).ConfigureAwait(false)).Trim();
+            }
+            catch (VapixAuthenticationException ex)
+            {
+                throw new UnauthorizedAccessException(ex.Message, ex);
+            }
+        }
+
+        if (token.Length == 0 || token.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('-' or '_' or '.' or '~')))
+        {
+            throw new VapixException("The device sent no usable WebSocket session token.", HttpStatusCode.OK);
+        }
+
+        var target = new Uri(BaseAddress, pathAndQuery);
+        var builder = new UriBuilder(target)
+        {
+            Scheme = target.Scheme == Uri.UriSchemeHttps ? "wss" : "ws",
+            Port = target.Port,
+            Query = (target.Query.Length > 1 ? target.Query[1..] + "&" : string.Empty) + "wssession=" + token,
+        };
+        var socket = new System.Net.WebSockets.ClientWebSocket();
+        socket.Options.KeepAliveInterval = keepAlive;
+        socket.Options.KeepAliveTimeout = keepAlive;
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(_timeout);
+        try
+        {
+            await socket.ConnectAsync(builder.Uri, _http, timeoutCts.Token).ConfigureAwait(false);
+            return socket;
+        }
+        catch (Exception ex)
+        {
+            socket.Dispose();
+            if (ex is OperationCanceledException && !ct.IsCancellationRequested)
+            {
+                throw new TaskCanceledException(
+                    string.Create(System.Globalization.CultureInfo.InvariantCulture, $"The device did not answer within {_timeout.TotalSeconds:0} seconds."),
+                    new TimeoutException(ex.Message, ex));
+            }
+
+            if (Pinning?.MismatchFingerprint is { } actual)
+            {
+                throw new CertificateChangedException(Pinning.PinnedFingerprint ?? string.Empty, actual.Length == 0 ? null : actual, ex);
+            }
+
+            if (ex is System.Net.WebSockets.WebSocketException { InnerException: HttpRequestException http } && http.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            {
+                throw new UnauthorizedAccessException($"The device refused the WebSocket login: HTTP {(int)http.StatusCode}", ex);
+            }
+
+            throw;
+        }
+    }
+
     public void Dispose()
     {
         _http.Dispose();

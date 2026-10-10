@@ -167,6 +167,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.DeviceConfig(.Client)/     Maintenance tasks: Export configuration / Import configuration (device config files)
   Oadm.Plugins.Outputs/                   event rule action "Set output" (relays, outputs)
   Oadm.Plugins.IoMonitor(.Client)/        core plugin: live inputs and outputs of one device (off by default)
+  Oadm.Plugins.DeviceTriggers(.Client)/   core plugin: events of the devices for the event rules (WebSocket, off by default)
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
                                 (both copy their output to artifacts/plugins/<plugin id>/)
@@ -293,7 +294,7 @@ Two processes, like ADM:
   {plugin_id, topic, payload_json} the plugin publishes through `ICorePluginContext.Events` from the call on; NOT_FOUND
   unknown plugin; `Oadm.Core.Plugins.PluginEventHub` fans out with 256 events buffered per watcher, oldest dropped).
   Users: "Snapshot report", "VAPIX Commander", "NTP server", "DHCP server", "PKI", "Metadata Monitor", "Hardening scan",
-  "Image Health Dashboard", "System report" (from its toolbar button through `IToolbarContext.InvokePluginAsync`).
+  "Image Health Dashboard", "I/O Monitor", "Device triggers", "System report" (from its toolbar button through `IToolbarContext.InvokePluginAsync`).
   `ListPackages` (every loaded plugin package with id, display name, version, enabled, enabled_by_default, has_page,
   menu_task_count, always_on, description; any user) and `SetPackageEnabled(id, enabled)` (Admin; NOT_FOUND unknown package; reply: the whole
   list), see "Plugins on and off".
@@ -642,7 +643,7 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   with the main window, on logout and when the plugin is turned off (`MainWindowViewModel.PluginWindowRequested` /
   `ClosePluginWindowsRequested`; tests `PluginWindowTests`, headless `client-plugin-window.png`). Entries top: Devices, then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (VAPIX
-  Commander), Security (PKI, Hardening scan), Monitoring (Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
+  Commander, Device triggers), Security (PKI, Hardening scan), Monitoring (Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
   no page), Maintenance, Integrations, Utilities, Extensions (default, third-party); user decision 2026-10-08): only groups
   with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
   each group, collapsed = a separator at each group start. Pinned bottom, top to bottom: Users, Credentials and Plugins (Admin only: hidden for operators, follow the session
@@ -904,7 +905,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 
 | Topic | Decision |
 |---|---|
-| Built-in events | Only what OADM already knows (`BuiltInEvents`, stateful per device): Device unreachable, Credentials required, Certificate changed (device status from polling), Certificate expires soon (30 days or less, fixed), Certificate expired (rechecked hourly). Every other device event comes from an opt-in plugin (first: Image Health; later a "Device events" plugin for event streams and digital inputs). |
+| Built-in events | Only what OADM already knows (`BuiltInEvents`, stateful per device): Device unreachable, Credentials required, Certificate changed (device status from polling), Certificate expires soon (30 days or less, fixed), Certificate expired (rechecked hourly). Every other device event comes from an opt-in plugin: Image Health, and **Device triggers** for any event a device offers (see "Device triggers"). |
 | Kinds | Stateful (on / off per device or for the server) or stateless (one shot). Off is the default; a stateful source sends one full report (`ReplaceStates`) per type after every start ("ready"), then `SetState` per change or `ReplaceStates` again; a source that is turned off counts as everything off. |
 | Simple mode | Conditions must all hold. The first is the trigger ("When": an event, devices All / chosen / tags); further ones ("And") are stateful events (on "the same device", or "any" of All / chosen / tags) or schedules (weekdays + from / to in server time, over midnight allowed). Only the trigger may be one-shot. Advanced AND / OR later on the same model. |
 | Rule state | All events stateful: the rule is on per subject (the trigger's device, or the server) while all conditions hold. One-shot trigger: the rule fires while the others hold. |
@@ -932,7 +933,11 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   events from `DeviceChangeFeed`; ticks every 15 s for schedules and ready timeouts), `ActionRunner` (edges of one rule in
   order), `EventLog` (queued, batched every 500 ms, live watch), `EventRulesService`, `RuleTexts` (summaries). The engine
   starts after the plugin activation and before the core plugins (`OadmServerHost.StartAsync` 4b); `CorePluginHost` hands
-  a publisher to every core plugin that implements `IEventSource`.
+  a publisher to every core plugin that implements `IEventSource`. Types can change while the server runs
+  (`IDynamicEventSource.EventTypesChanged`, device triggers): the registry reads them again, a new stateful type waits for
+  its first report, a removed type counts as off ("Not available: an event of this rule no longer exists"), and a type a
+  stored rule uses that no source declares yet waits like a source after a start (2 minutes), then counts as off.
+  Placeholders also fill every value of the event by its name (`{port}`, `{total}`) after the fixed ones.
 - **gRPC** `EventService`: `GetCatalog`, `ListRules`, `WatchRules` (list on subscribe and after every change, at most every
   500 ms), `GetRule`, `SaveRule`, `DeleteRule`, `SetRuleEnabled`, `DuplicateRule` ("<name> (copy)", off, passwords kept),
   `ListActionChoices` (the last five Admin), `ListLog` (newest first, limit 0 = 10,000, optional rule filter), `WatchLog`.
@@ -1311,15 +1316,15 @@ plugins, contributed and standalone tasks and client parts together) and adminis
 applies at once without a restart. User decision 2026-10-10: own rail page (not a Settings card), core functionality
 is always on.
 - Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
-  **Off by default: Hardening scan, Image Health Dashboard, I/O Monitor and Metadata Monitor** (user decisions; Metadata
-  Monitor 2026-10-10). The administrator's choices are the
+  **Off by default: Device triggers, Hardening scan, Image Health Dashboard, I/O Monitor and Metadata Monitor** (user
+  decisions; Metadata Monitor and Device triggers 2026-10-10). The administrator's choices are the
   server setting `Plugins.Enabled` (JSON object package id -> on; packages without a choice use their default),
   applied before the core plugins start (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
 - **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade firmware, Date and time, Applications
   (ACAP), Users, Network settings, PKI, System report, Device configuration and Outputs (core functionality, user decision 2026-10-10). Enabled whatever
   the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers FAILED_PRECONDITION "<name> is always on.".
   Switchable: Snapshot report, VAPIX Commander, Metadata Monitor, NTP server, DHCP server, Hardening scan, Image Health
-  Dashboard. Third-party plugins are switchable unless their manifest says otherwise.
+  Dashboard, I/O Monitor, Device triggers. Third-party plugins are switchable unless their manifest says otherwise.
 - Manifest `description` (`PluginOrigin.Description`): one short sentence shown on the Plugins page; every bundled
   plugin has one.
 - `PluginRegistry`: `TaskPlugins`, `CorePlugins`, `TryGetTaskPlugin`, `TryGetCorePlugin` see only enabled packages
@@ -2112,6 +2117,42 @@ device; no events, no actions, no switching. Details in its `README.md`.
   `Border.ioFaceplate` and `Border.ioTerminalBlock` (no own backgrounds: user feedback), `StackPanel.ioTerminal`, `Canvas.ioContact`, `Path.ioContactLever(.active)`.
 - Verified read-only on a loan AXIS A9210 (AXIS OS 12.10.73.2). Fake mode: the A9188 at 10.0.0.30. Tests:
   `tests/Oadm.Plugins.IoMonitor.Tests` (headless `io-monitor-page.png`, hardware `io-monitor-live.png`).
+
+## Device triggers (core plugin)
+
+`plugins/Oadm.Plugins.DeviceTriggers` (+ `.Client`), id `oadm.device-triggers`, rail page **Device triggers** (group
+Automation, icon `bell`), **off by default**. Spec and device research: `docs/specs/device-triggers.md`; details: plugin
+`README.md`. User decisions 2026-10-10:
+
+| Topic | Decision |
+|---|---|
+| What | A trigger = an event that the chosen devices offer (from the device's own event list: I/O ports, virtual inputs, temperature, storage, Object Analytics scenarios, other apps), optionally narrowed per source item (port, disk, channel, ...) to one value or Any. Every trigger is an event of the event rules. |
+| Event list | Read live from the devices every time a trigger is created or edited, never cached (an app that is stopped or removed has no events). The editor offers the events all chosen devices have; a device without the chosen event stays listed with the reason and blocks Save. |
+| Devices | Chosen devices only (no tags); devices removed from OADM leave the trigger. |
+| Stream | WebSocket event stream (VAPIX `event-streaming-over-websocket`), one permanent connection per device for all its turned-on triggers, also without a rule. |
+| State | On/off events: on while at least one matching source is on. One-shot events stay one-shot. The event's values are placeholders in actions. No value comparisons in v1. |
+| Connection lost | Every trigger has a second event "&lt;Trigger&gt;: connection lost" per device: on after 30 s without events (connection, login, event no longer on the device), off with the next report. During a problem the trigger keeps its last state. |
+| Event gone | The event list of a connected device is read again every 5 minutes and on every reconnect. |
+| Roles | Administrators create, change, copy, turn on / off and delete (audited); operators see triggers and states. |
+
+- **Device side** (verified on 10.0.0.48, AXIS P3265-V, AXIS OS 12.11, 2026-10-10): `aev:GetEventInstances` (SOAP, 42
+  usable events, `isProperty` = on/off, `isPropertyState` the state item, topics marked `isApplicationData` left out); the
+  stream `/vapix/ws-data-stream?sources=events` with a one-time `wssession.cgi` token (valid 15 s); `events:configure`
+  answers `data: {}` or error 2104, then the current state of every matching on/off event (the report; OADM waits 1.5 s);
+  an unknown topic is accepted silently; the device sends nothing while idle and answers pings (OADM pings every 10 s); 30
+  parallel connections worked. SDK: `IVapixClient.ConnectWebSocketAsync(path, keepAlive)` (session token, the client's
+  certificate pin), `IDynamicEventSource`.
+- **Page** (own cards): triggers (On, Name, Event, Devices, State "On for 1 of 3 · 1 connection lost", Last event; New
+  trigger, Edit, Duplicate, Delete) and the devices of the selected trigger (Connection chip with the problem, State, Last
+  event), live through the plugin's `changed` events. Dialog `TriggerEditorWindow`: Name, Turned on, devices (virtualized,
+  search, **Read events** with progress, per device "42 events" / the error / "Does not offer this event"; devices
+  without the stream API greyed), Event (what all chosen devices offer, "Turns on and off" / "Happens once"), one select
+  per source item (Any or a value); Save disabled with the first problem as tooltip.
+- **Fake mode** (`FakeOadmApi.DeviceTriggers.cs`): three sample triggers, event lists per device kind.
+- **Tests**: `tests/Oadm.Plugins.DeviceTriggers.Tests` (fake camera speaking the WebSocket protocol in memory; page and
+  dialog; headless `device-triggers-page.png`, `device-triggers-editor.png`; hardware read test and the opt-in write test
+  switching virtual input 64, `OADM_TRIGGER_URL` / `_USER` / `_PASSWORD`), `tests/Oadm.Core.Tests/Events/
+  DynamicEventTypesTests`, `tests/Oadm.Core.Tests/Vapix/VapixWebSocketTests`.
 
 ## System report plugin (core plugin without a page)
 

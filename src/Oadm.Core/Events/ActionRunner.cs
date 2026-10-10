@@ -407,7 +407,7 @@ public static class Placeholders
 
         var address = device?.Address ?? job.Trigger.DeviceAddress ?? string.Empty;
         var model = device?.Model ?? job.Trigger.DeviceModel ?? string.Empty;
-        return text
+        var filled = text
             .Replace("{rule}", job.Rule.Name, StringComparison.OrdinalIgnoreCase)
             .Replace("{event}", job.Trigger.EventName, StringComparison.OrdinalIgnoreCase)
             .Replace("{device}", address.Length == 0 ? string.Empty : DeviceRef.Text(address, model), StringComparison.OrdinalIgnoreCase)
@@ -416,5 +416,16 @@ public static class Placeholders
             .Replace("{serial}", device?.Serial ?? string.Empty, StringComparison.OrdinalIgnoreCase)
             .Replace("{state}", job.Trigger.State switch { true => "on", false => "off", _ => string.Empty }, StringComparison.OrdinalIgnoreCase)
             .Replace("{time}", job.Trigger.TimeUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase);
+
+        // Values of the event (device triggers: {port}, {total}, ...); the fixed names above already went.
+        foreach (var (name, value) in job.Trigger.Data)
+        {
+            if (name.Length > 0 && filled.Contains('{', StringComparison.Ordinal))
+            {
+                filled = filled.Replace("{" + name + "}", value, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        return filled;
     }
 }

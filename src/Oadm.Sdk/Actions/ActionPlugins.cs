@@ -158,7 +158,8 @@ public interface IActionContext
 
     /// <summary>
     /// Fills the placeholders {rule}, {event}, {device} (address), {address}, {model}, {serial}, {state} (on / off) and
-    /// {time} (server local time) in a text of the settings.
+    /// {time} (server local time) in a text of the settings, then every value of the event by its name ({port},
+    /// {total}; <see cref="ActionTrigger.Data"/>). The fixed names win over event values of the same name.
     /// </summary>
     string Text(string? text);
 }
