@@ -8,6 +8,7 @@ const releasePage = `https://github.com/${repo}/releases/latest`;
 
 type Asset = { name: string; browser_download_url: string };
 let version = '';
+let releaseUrl = releasePage;
 let assets: Asset[] = [];
 try {
 	const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
@@ -20,6 +21,7 @@ try {
 	if (response.ok) {
 		const release = await response.json();
 		version = release.tag_name ?? '';
+		releaseUrl = release.html_url ?? releasePage;
 		assets = release.assets ?? [];
 	}
 } catch {
@@ -43,9 +45,7 @@ const links = {
 		<a class="dl" data-asset="osx-x64\.pkg$" href={links.macos}><Icon name="apple" />macOS</a>
 	</div>
 	<p class="dl-meta">
-		<span class="dl-version">{version ? `Latest: ${version}` : 'Latest release'}</span>
-		<span aria-hidden="true">·</span>
-		<a href={releasePage}>All files and checksums</a>
+		<a class="dl-version" href={releaseUrl}>{version ? `What's new in ${version}` : 'Release notes'}</a>
 		<span aria-hidden="true">·</span>
 		<a href="start/install/">Install guide</a>
 	</p>
@@ -92,8 +92,9 @@ const links = {
 				const client = assets.find((a) => /^oadm-client_.*\.deb$/.test(a.name));
 				const linux = root.querySelector<HTMLAnchorElement>('a[data-linux]');
 				if (client && linux) linux.dataset.client = client.browser_download_url;
-				const label = root.querySelector('.dl-version');
-				if (label && release.tag_name) label.textContent = `Latest: ${release.tag_name}`;
+				const label = root.querySelector<HTMLAnchorElement>('.dl-version');
+				if (label && release.tag_name) label.textContent = `What's new in ${release.tag_name}`;
+				if (label && release.html_url) label.href = release.html_url;
 			})
 			.catch(() => {});
 	}
