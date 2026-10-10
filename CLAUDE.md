@@ -164,6 +164,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.SystemReport(.Client)/     core plugin without a page: toolbar "System report" (server reports in one ZIP)
   Oadm.Plugins.HardeningScan(.Client)/    core plugin: read-only scan against the AXIS OS hardening guide (off by default)
   Oadm.Plugins.ImageHealth(.Client)/      core plugin: Image Health Dashboard, AXIS Image Health Analytics status of every camera (off by default)
+  Oadm.Plugins.DeviceConfig(.Client)/     Maintenance tasks: Export configuration / Import configuration (device config files)
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
                                 (both copy their output to artifacts/plugins/<plugin id>/)
@@ -1079,7 +1080,7 @@ pane shows `GetTaskName` (see Tasks). The server registry (`RegisteredTaskPlugin
 / `.Group`) strips trailing "..." / "…" and shortens longer names to 31 characters + "…", logging a
 warning for either; empty groups become `General`, groups are shortened the same way. The task name in
 the tasks pane, `TaskPluginInfo` and the client menu and toolbar use the normalized name. Bundled plugins:
-Restart, Upgrade firmware and Date and time (Maintenance), Applications (ACAP) (Applications), Users (Users), Network
+Restart, Upgrade firmware, Date and time, Export configuration and Import configuration (Maintenance), Applications (ACAP) (Applications), Users (Users), Network
 settings and Assign IP address (Network), the nine PKI tasks (Security, contributed by `oadm.pki`); `TaskPluginNamesTests` checks every plugin deployed to
 `artifacts/plugins`.
 
@@ -1221,7 +1222,7 @@ is always on.
   server setting `Plugins.Enabled` (JSON object package id -> on; packages without a choice use their default),
   applied before the core plugins start (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
 - **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade firmware, Date and time, Applications
-  (ACAP), Users, Network settings, PKI and System report (core functionality, user decision 2026-10-10). Enabled whatever
+  (ACAP), Users, Network settings, PKI, System report and Device configuration (core functionality, user decision 2026-10-10). Enabled whatever
   the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers FAILED_PRECONDITION "<name> is always on.".
   Switchable: Snapshot report, VAPIX Commander, Metadata Monitor, NTP server, DHCP server, Hardening scan, Image Health
   Dashboard. Third-party plugins are switchable unless their manifest says otherwise.
@@ -1321,6 +1322,9 @@ Steps of the other task plugins (details in each plugin README):
   package (byte progress), Verify installation (+ Start application, Verify application state); remove,
   start, stop: Check compatibility, Read installed applications, <action> application, Verify ....
   Names: "Install <app> <version>", "Upgrade <app> to <version>", "Remove|Start|Stop <app>".
+- Import configuration: Read configuration file, Check compatibility, Import <area> (one per settings area: network and
+  system settings, event rules, schedules, MQTT events, time zone, power settings, password policy), Verify configuration.
+  Name "Import configuration <file name>".
 - Restart: name "Restart device". VAPIX Commander rollout: the command name or "<first> +N more".
 
 ## Network settings plugin
@@ -2112,6 +2116,40 @@ time chapter; wording from the ACS 5 manual, sources in the plugin `README.md`),
   time zones and POSIX conversion, step sequences against a stateful fake device, view model with 5000 devices, headless
   screenshots `datetime-dialog-single.png`, `-multi-errors.png`, `-server-time.png`, `-nts-error.png`; the drop-down's
   type-to-search and that its open list realizes only the visible rows).
+
+## Device configuration plugin
+
+`plugins/Oadm.Plugins.DeviceConfig` (+ `.Client`), id `oadm.device-config`, always on, context menu (group Maintenance)
+**Export configuration** and **Import configuration**, AXIS OS 12.5 or later (`CanRun` from the cached firmware version).
+Spec, device research and decisions: `docs/specs/device-config.md`. User decisions 2026-10-10:
+
+| Topic | Decision |
+|---|---|
+| Device API | Only the device's own `GET /config/rest/$export` and `PATCH /config/rest/$import` (+ `/config/discover`), like the web interface; the device validates, OADM shows its answer. No own schema check, no dry run (the API has none). |
+| Mode | Merge only (`importType=merge`); "default" can reset network settings. |
+| Identity | Never imported: host name, IP address, subnet, router, broadcast, DHCP on/off, Bonjour / UPnP names, volatile host name, IPv6 address and router, 802.1X identity, plus read-only values (DHCP vendor class, SNMP engine boots, power status). Also left out after the write tests: `Time.POSIXTimeZone` / `DST` / `ObtainFromDHCP` (they override the time zone area), `MediaClipCollection` (clips are not in the file) and `Rotation` where the file has auto rotation on (writing it turns auto rotation off). `ConfigIdentity`. |
+| Backup | None by OADM; whoever wants a way back exports first. |
+| Model | Same model only (file `metadata.prodNbr` vs the device); other AXIS OS versions allowed. |
+| Files | One `.json` for every selected device of its model, or the ZIP of an export where each device gets the entry with its MAC address in the name. |
+
+- **Export**: dialog only (never a task); save dialog first (`<address>_<MAC>_<model>_config.json` for one device,
+  `oadm-config-<date>.zip` for several, `summary.txt` with the failures), then `ExportConfigWindow` (like System report);
+  the client reads each device through the read-only query `export` (8 at a time) and writes the device's answer unchanged.
+- **Import**: `ImportConfigWindow`: file (`ui:FileRow`), settings areas as check boxes with notes (identity stays, no
+  passwords in the file, other models left out), for a ZIP a virtualized device table (Ready, No file for this device, Two
+  files for this device, Not a device configuration file, Other model); Import confirms, uploads the file and returns
+  `ImportPayload` (file id, sections, device -> ZIP entry, device -> reason left out). Task steps: see "Steps of the other
+  task plugins"; one PATCH per area (`{"data":{"<key>":{...}}}`), device warnings = step Warning, an error fails its step
+  while the other areas still run, Verify configuration exports again and compares (differences = Warning).
+- Device answers (write tests on AXIS M3098-LV and Q3546-LVE, AXIS OS 12.11.118, table in the spec): a wrong value type answers
+  200 "success" with the warning "Failed to import <key>: ..." and imports nothing of the area = step Failed; "Failed to set
+  property: root.X" = the rest was set, step Warning; "Field 'x' has been removed from the request" = unknown property left out
+  (counted, not a verify difference). After a full parameter import the web server resets connections for under a second:
+  `ConfigApi` retries connection errors for 30 s. `ImportHardwareWriteTests` (opt-in, `OADM_CONFIG_WRITE_URL` / `_USER` /
+  `_PASSWORD`) imports a camera's own export back and expects no change.
+- Not in fake mode. Tests: `tests/Oadm.Plugins.DeviceConfig.Tests` (recorded 10.0.0.48 export and discover, stateful fake
+  camera, both view models incl. Perf 5,000 devices / files, headless `device-config-export.png`,
+  `device-config-import-other-model.png`, `device-config-import-zip.png`).
 
 ## Applications (ACAP) plugin
 

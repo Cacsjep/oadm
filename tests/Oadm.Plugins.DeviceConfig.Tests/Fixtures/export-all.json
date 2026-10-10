@@ -1,0 +1,1926 @@
+{
+  "status": "success",
+  "data": {
+    "action-rules.v2": {
+      "recipients": [],
+      "rules": []
+    },
+    "event-mqtt-bridge.v2": {
+      "publication": {
+        "appendEventTopic": true,
+        "customTopicPrefix": "",
+        "eventFilter": [],
+        "includeSerialNumberInPayload": false,
+        "includeTopicNamespaces": true,
+        "topicPrefix": "DEFAULT"
+      },
+      "subscription": []
+    },
+    "event-schedules.v2": {
+      "schedules": [
+        {
+          "id": "com.axis.schedules.weekends",
+          "name": "Weekends",
+          "schedule": "DTSTART:19700103T000000\nDTEND:19700105T000000\nRRULE:FREQ=WEEKLY"
+        },
+        {
+          "id": "com.axis.schedules.weekdays",
+          "name": "Weekdays",
+          "schedule": "DTSTART:19700105T000000\nDTEND:19700110T000000\nRRULE:FREQ=WEEKLY"
+        },
+        {
+          "id": "com.axis.schedules.office_hours",
+          "name": "Office Hours",
+          "schedule": "DTSTART:19700101T080000\nDTEND:19700101T180000\nRRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"
+        },
+        {
+          "id": "com.axis.schedules.after_hours",
+          "name": "After Hours",
+          "schedule": "DTSTART:19700101T180000\nDTEND:19700102T080000\nRRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"
+        }
+      ]
+    },
+    "param.v2": {
+      "API": {
+        "RemoteSyslog1": {
+          "Enabled": "false",
+          "Server1": {
+            "Address": "",
+            "Port": "6514",
+            "Protocol": "TLS",
+            "Severity": "Warning",
+            "SyslogFormat": "RFC5424",
+            "Type": "All"
+          },
+          "Server2": {
+            "Address": "",
+            "Port": "6514",
+            "Protocol": "TLS",
+            "Severity": "Warning",
+            "SyslogFormat": "RFC5424",
+            "Type": "All"
+          }
+        }
+      },
+      "Audio": {
+        "DSCP": "0",
+        "DuplexMode": "full",
+        "MaxListeners": "20",
+        "MaxTransmitters": "1",
+        "ReceiverBuffer": "120",
+        "ReceiverTimeout": "2500"
+      },
+      "AudioCollection": [
+        {
+          "Enabled": "no",
+          "HTTPMessageType": "singlepart",
+          "Name": "",
+          "NbrOfChannels": "1",
+          "Source": "0",
+          "groupId": "A0"
+        },
+        {
+          "Enabled": "no",
+          "HTTPMessageType": "singlepart",
+          "Name": "",
+          "NbrOfChannels": "1",
+          "Source": "0",
+          "groupId": "A1"
+        },
+        {
+          "Enabled": "no",
+          "HTTPMessageType": "singlepart",
+          "Name": "",
+          "NbrOfChannels": "1",
+          "Source": "0",
+          "groupId": "A2"
+        },
+        {
+          "Enabled": "no",
+          "HTTPMessageType": "singlepart",
+          "Name": "",
+          "NbrOfChannels": "1",
+          "Source": "0",
+          "groupId": "A3"
+        },
+        {
+          "Enabled": "no",
+          "HTTPMessageType": "singlepart",
+          "Name": "",
+          "NbrOfChannels": "1",
+          "Source": "0",
+          "groupId": "A4"
+        },
+        {
+          "Enabled": "no",
+          "HTTPMessageType": "singlepart",
+          "Name": "",
+          "NbrOfChannels": "1",
+          "Source": "0",
+          "groupId": "A5"
+        },
+        {
+          "Enabled": "no",
+          "HTTPMessageType": "singlepart",
+          "Name": "",
+          "NbrOfChannels": "1",
+          "Source": "0",
+          "groupId": "A6"
+        },
+        {
+          "Enabled": "no",
+          "HTTPMessageType": "singlepart",
+          "Name": "",
+          "NbrOfChannels": "1",
+          "Source": "0",
+          "groupId": "A7"
+        }
+      ],
+      "AudioSourceCollection": [
+        {
+          "AlarmLevel": "100",
+          "AudioEncoding": "aac",
+          "AudioSupport": "no",
+          "BitRate": "32000",
+          "InputGain": "45",
+          "InputType": "mic",
+          "MicrophonePower": "yes",
+          "MicrophonePowerType": "electret",
+          "Name": "Audio",
+          "OutputGain": "0",
+          "SampleRate": "48000",
+          "groupId": "A0"
+        },
+        {
+          "AlarmLevel": "100",
+          "AudioEncoding": "aac",
+          "BitRate": "32000",
+          "Name": "Audio",
+          "SampleRate": "48000",
+          "groupId": "A1"
+        }
+      ],
+      "Bandwidth": {
+        "Limit": "0"
+      },
+      "HTTPS": {
+        "Ciphers": "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305",
+        "Enabled": "yes",
+        "Port": "443"
+      },
+      "IOPortCollection": [
+        {
+          "Input": {
+            "Name": "Port 1",
+            "Trig": "closed"
+          },
+          "Usage": "",
+          "groupId": "I0"
+        },
+        {
+          "Output": {
+            "Active": "closed",
+            "Button": "none",
+            "DelayTime": "1",
+            "Mode": "bistable",
+            "Name": "Port 2",
+            "PulseTime": "0"
+          },
+          "Usage": "",
+          "groupId": "I1"
+        }
+      ],
+      "Image": {
+        "MaxViewers": "20",
+        "PrivacyMaskType": "none",
+        "RFCCompliantMultipartEnabled": "yes",
+        "Referrers": "",
+        "ReferrersEnabled": "no"
+      },
+      "ImageCollection": [
+        {
+          "Appearance": {
+            "ColorEnabled": "yes",
+            "Compression": "30",
+            "MirrorEnabled": "no",
+            "Overlays": "all",
+            "Resolution": "1920x1080",
+            "Rotation": "180"
+          },
+          "Enabled": "yes",
+          "MPEG": {
+            "Complexity": "50",
+            "ConfigHeaderInterval": "1",
+            "FrameSkipMode": "drop",
+            "H264": {
+              "PSEnabled": "yes",
+              "Profile": "high"
+            },
+            "H265": {
+              "PSEnabled": "no"
+            },
+            "ICount": "1",
+            "PCount": "61",
+            "SignedVideo": {
+              "Enabled": "no"
+            },
+            "UserDataEnabled": "yes",
+            "UserDataInterval": "1",
+            "ZChromaQPMode": "off",
+            "ZFpsMode": "fixed",
+            "ZGopMode": "fixed",
+            "ZGradualDecodeRefresh": "auto",
+            "ZMaxGopLength": "300",
+            "ZMinFps": "0",
+            "ZProfile": "classic",
+            "ZProfileLevel": "0",
+            "ZStrength": "10"
+          },
+          "Name": "View Area 1",
+          "Overlay": {
+            "MaskWindows": {
+              "Color": "black",
+              "MosaicScale": "5"
+            }
+          },
+          "RateControl": {
+            "ABR": {
+              "MaxBitrate": "0",
+              "RetentionTime": "7",
+              "TargetBitrate": "0"
+            },
+            "MaxBitrate": "0",
+            "Mode": "vbr",
+            "Priority": "framerate",
+            "TargetBitrate": "0"
+          },
+          "SizeControl": {
+            "MaxFrameSize": "0"
+          },
+          "Stream": {
+            "Duration": "0",
+            "FPS": "30",
+            "NbrOfFrames": "0"
+          },
+          "groupId": "I0"
+        },
+        {
+          "Appearance": {
+            "ColorEnabled": "yes",
+            "Compression": "30",
+            "MirrorEnabled": "no",
+            "Overlays": "all",
+            "Resolution": "1920x1080",
+            "Rotation": "180"
+          },
+          "Enabled": "yes",
+          "MPEG": {
+            "Complexity": "50",
+            "ConfigHeaderInterval": "1",
+            "FrameSkipMode": "drop",
+            "H264": {
+              "PSEnabled": "no",
+              "Profile": "high"
+            },
+            "H265": {
+              "PSEnabled": "no"
+            },
+            "ICount": "1",
+            "PCount": "61",
+            "SignedVideo": {
+              "Enabled": "no"
+            },
+            "UserDataEnabled": "no",
+            "UserDataInterval": "1",
+            "ZChromaQPMode": "off",
+            "ZFpsMode": "fixed",
+            "ZGopMode": "fixed",
+            "ZGradualDecodeRefresh": "auto",
+            "ZMaxGopLength": "300",
+            "ZMinFps": "0",
+            "ZProfile": "classic",
+            "ZProfileLevel": "0",
+            "ZStrength": "10"
+          },
+          "Name": "View Area 2",
+          "RateControl": {
+            "ABR": {
+              "MaxBitrate": "0",
+              "RetentionTime": "7",
+              "TargetBitrate": "0"
+            },
+            "MaxBitrate": "0",
+            "Mode": "vbr",
+            "Priority": "framerate",
+            "TargetBitrate": "0"
+          },
+          "SizeControl": {
+            "MaxFrameSize": "0"
+          },
+          "Stream": {
+            "Duration": "0",
+            "FPS": "0",
+            "NbrOfFrames": "0"
+          },
+          "groupId": "I1"
+        },
+        {
+          "Appearance": {
+            "ColorEnabled": "yes",
+            "Compression": "30",
+            "MirrorEnabled": "no",
+            "Overlays": "all",
+            "Resolution": "1920x1080",
+            "Rotation": "180"
+          },
+          "Enabled": "no",
+          "MPEG": {
+            "Complexity": "50",
+            "ConfigHeaderInterval": "1",
+            "FrameSkipMode": "drop",
+            "H264": {
+              "PSEnabled": "no",
+              "Profile": "high"
+            },
+            "H265": {
+              "PSEnabled": "no"
+            },
+            "ICount": "1",
+            "PCount": "61",
+            "SignedVideo": {
+              "Enabled": "no"
+            },
+            "UserDataEnabled": "no",
+            "UserDataInterval": "1",
+            "ZChromaQPMode": "off",
+            "ZFpsMode": "fixed",
+            "ZGopMode": "fixed",
+            "ZGradualDecodeRefresh": "auto",
+            "ZMaxGopLength": "300",
+            "ZMinFps": "0",
+            "ZProfile": "classic",
+            "ZProfileLevel": "0",
+            "ZStrength": "10"
+          },
+          "Name": "View Area 3",
+          "RateControl": {
+            "ABR": {
+              "MaxBitrate": "0",
+              "RetentionTime": "7",
+              "TargetBitrate": "0"
+            },
+            "MaxBitrate": "0",
+            "Mode": "vbr",
+            "Priority": "framerate",
+            "TargetBitrate": "0"
+          },
+          "SizeControl": {
+            "MaxFrameSize": "0"
+          },
+          "Stream": {
+            "Duration": "0",
+            "FPS": "0",
+            "NbrOfFrames": "0"
+          },
+          "groupId": "I2"
+        },
+        {
+          "Appearance": {
+            "ColorEnabled": "yes",
+            "Compression": "30",
+            "MirrorEnabled": "no",
+            "Overlays": "all",
+            "Resolution": "1920x1080",
+            "Rotation": "180"
+          },
+          "Enabled": "no",
+          "MPEG": {
+            "Complexity": "50",
+            "ConfigHeaderInterval": "1",
+            "FrameSkipMode": "drop",
+            "H264": {
+              "PSEnabled": "no",
+              "Profile": "high"
+            },
+            "H265": {
+              "PSEnabled": "no"
+            },
+            "ICount": "1",
+            "PCount": "61",
+            "SignedVideo": {
+              "Enabled": "no"
+            },
+            "UserDataEnabled": "no",
+            "UserDataInterval": "1",
+            "ZChromaQPMode": "off",
+            "ZFpsMode": "fixed",
+            "ZGopMode": "fixed",
+            "ZGradualDecodeRefresh": "auto",
+            "ZMaxGopLength": "300",
+            "ZMinFps": "0",
+            "ZProfile": "classic",
+            "ZProfileLevel": "0",
+            "ZStrength": "10"
+          },
+          "Name": "View Area 4",
+          "RateControl": {
+            "ABR": {
+              "MaxBitrate": "0",
+              "RetentionTime": "7",
+              "TargetBitrate": "0"
+            },
+            "MaxBitrate": "0",
+            "Mode": "vbr",
+            "Priority": "framerate",
+            "TargetBitrate": "0"
+          },
+          "SizeControl": {
+            "MaxFrameSize": "0"
+          },
+          "Stream": {
+            "Duration": "0",
+            "FPS": "0",
+            "NbrOfFrames": "0"
+          },
+          "groupId": "I3"
+        },
+        {
+          "Appearance": {
+            "ColorEnabled": "yes",
+            "Compression": "30",
+            "MirrorEnabled": "no",
+            "Overlays": "all",
+            "Resolution": "1920x1080",
+            "Rotation": "180"
+          },
+          "Enabled": "no",
+          "MPEG": {
+            "Complexity": "50",
+            "ConfigHeaderInterval": "1",
+            "FrameSkipMode": "drop",
+            "H264": {
+              "PSEnabled": "no",
+              "Profile": "high"
+            },
+            "H265": {
+              "PSEnabled": "no"
+            },
+            "ICount": "1",
+            "PCount": "61",
+            "SignedVideo": {
+              "Enabled": "no"
+            },
+            "UserDataEnabled": "no",
+            "UserDataInterval": "1",
+            "ZChromaQPMode": "off",
+            "ZFpsMode": "fixed",
+            "ZGopMode": "fixed",
+            "ZGradualDecodeRefresh": "auto",
+            "ZMaxGopLength": "300",
+            "ZMinFps": "0",
+            "ZProfile": "classic",
+            "ZProfileLevel": "0",
+            "ZStrength": "10"
+          },
+          "Name": "View Area 5",
+          "RateControl": {
+            "ABR": {
+              "MaxBitrate": "0",
+              "RetentionTime": "7",
+              "TargetBitrate": "0"
+            },
+            "MaxBitrate": "0",
+            "Mode": "vbr",
+            "Priority": "framerate",
+            "TargetBitrate": "0"
+          },
+          "SizeControl": {
+            "MaxFrameSize": "0"
+          },
+          "Stream": {
+            "Duration": "0",
+            "FPS": "0",
+            "NbrOfFrames": "0"
+          },
+          "groupId": "I4"
+        },
+        {
+          "Appearance": {
+            "ColorEnabled": "yes",
+            "Compression": "30",
+            "MirrorEnabled": "no",
+            "Overlays": "all",
+            "Resolution": "1920x1080",
+            "Rotation": "180"
+          },
+          "Enabled": "no",
+          "MPEG": {
+            "Complexity": "50",
+            "ConfigHeaderInterval": "1",
+            "FrameSkipMode": "drop",
+            "H264": {
+              "PSEnabled": "no",
+              "Profile": "high"
+            },
+            "H265": {
+              "PSEnabled": "no"
+            },
+            "ICount": "1",
+            "PCount": "61",
+            "SignedVideo": {
+              "Enabled": "no"
+            },
+            "UserDataEnabled": "no",
+            "UserDataInterval": "1",
+            "ZChromaQPMode": "off",
+            "ZFpsMode": "fixed",
+            "ZGopMode": "fixed",
+            "ZGradualDecodeRefresh": "auto",
+            "ZMaxGopLength": "300",
+            "ZMinFps": "0",
+            "ZProfile": "classic",
+            "ZProfileLevel": "0",
+            "ZStrength": "10"
+          },
+          "Name": "View Area 6",
+          "RateControl": {
+            "ABR": {
+              "MaxBitrate": "0",
+              "RetentionTime": "7",
+              "TargetBitrate": "0"
+            },
+            "MaxBitrate": "0",
+            "Mode": "vbr",
+            "Priority": "framerate",
+            "TargetBitrate": "0"
+          },
+          "SizeControl": {
+            "MaxFrameSize": "0"
+          },
+          "Stream": {
+            "Duration": "0",
+            "FPS": "0",
+            "NbrOfFrames": "0"
+          },
+          "groupId": "I5"
+        },
+        {
+          "Appearance": {
+            "ColorEnabled": "yes",
+            "Compression": "30",
+            "MirrorEnabled": "no",
+            "Overlays": "all",
+            "Resolution": "1920x1080",
+            "Rotation": "180"
+          },
+          "Enabled": "no",
+          "MPEG": {
+            "Complexity": "50",
+            "ConfigHeaderInterval": "1",
+            "FrameSkipMode": "drop",
+            "H264": {
+              "PSEnabled": "no",
+              "Profile": "high"
+            },
+            "H265": {
+              "PSEnabled": "no"
+            },
+            "ICount": "1",
+            "PCount": "61",
+            "SignedVideo": {
+              "Enabled": "no"
+            },
+            "UserDataEnabled": "no",
+            "UserDataInterval": "1",
+            "ZChromaQPMode": "off",
+            "ZFpsMode": "fixed",
+            "ZGopMode": "fixed",
+            "ZGradualDecodeRefresh": "auto",
+            "ZMaxGopLength": "300",
+            "ZMinFps": "0",
+            "ZProfile": "classic",
+            "ZProfileLevel": "0",
+            "ZStrength": "10"
+          },
+          "Name": "View Area 7",
+          "RateControl": {
+            "ABR": {
+              "MaxBitrate": "0",
+              "RetentionTime": "7",
+              "TargetBitrate": "0"
+            },
+            "MaxBitrate": "0",
+            "Mode": "vbr",
+            "Priority": "framerate",
+            "TargetBitrate": "0"
+          },
+          "SizeControl": {
+            "MaxFrameSize": "0"
+          },
+          "Stream": {
+            "Duration": "0",
+            "FPS": "0",
+            "NbrOfFrames": "0"
+          },
+          "groupId": "I6"
+        },
+        {
+          "Appearance": {
+            "ColorEnabled": "yes",
+            "Compression": "30",
+            "MirrorEnabled": "no",
+            "Overlays": "all",
+            "Resolution": "1920x1080",
+            "Rotation": "180"
+          },
+          "Enabled": "no",
+          "MPEG": {
+            "Complexity": "50",
+            "ConfigHeaderInterval": "1",
+            "FrameSkipMode": "drop",
+            "H264": {
+              "PSEnabled": "no",
+              "Profile": "high"
+            },
+            "H265": {
+              "PSEnabled": "no"
+            },
+            "ICount": "1",
+            "PCount": "61",
+            "SignedVideo": {
+              "Enabled": "no"
+            },
+            "UserDataEnabled": "no",
+            "UserDataInterval": "1",
+            "ZChromaQPMode": "off",
+            "ZFpsMode": "fixed",
+            "ZGopMode": "fixed",
+            "ZGradualDecodeRefresh": "auto",
+            "ZMaxGopLength": "300",
+            "ZMinFps": "0",
+            "ZProfile": "classic",
+            "ZProfileLevel": "0",
+            "ZStrength": "10"
+          },
+          "Name": "View Area 8",
+          "RateControl": {
+            "ABR": {
+              "MaxBitrate": "0",
+              "RetentionTime": "7",
+              "TargetBitrate": "0"
+            },
+            "MaxBitrate": "0",
+            "Mode": "vbr",
+            "Priority": "framerate",
+            "TargetBitrate": "0"
+          },
+          "SizeControl": {
+            "MaxFrameSize": "0"
+          },
+          "Stream": {
+            "Duration": "0",
+            "FPS": "0",
+            "NbrOfFrames": "0"
+          },
+          "groupId": "I7"
+        }
+      ],
+      "ImageSourceCollection": [
+        {
+          "CaptureFrequency": "60Hz",
+          "DCIris": {
+            "Enabled": "yes",
+            "Position": "50"
+          },
+          "DayNight": {
+            "IrCutFilter": "auto",
+            "ShiftLevel": "70"
+          },
+          "Name": "Camera",
+          "Rotation": "180",
+          "Sensor": {
+            "BlueBalance": "50",
+            "Brightness": "48",
+            "CaptureMode": "1",
+            "ColorLevel": "49",
+            "Contrast": "49",
+            "CoordX": "5000",
+            "CoordY": "5000",
+            "CustomExposureWindow": {
+              "Weight": "100"
+            },
+            "CustomExposureWindowCollection": [
+              {
+                "Bottom": "7497",
+                "Left": "2499",
+                "Right": "7497",
+                "Top": "2499",
+                "WindowType": "disabled",
+                "groupId": "C0"
+              }
+            ],
+            "Defog": "off",
+            "DefogEffect": "50",
+            "Exposure": "auto",
+            "ExposurePriorityNormal": "50",
+            "ExposureResponsiveness": "50",
+            "ExposureValue": "50",
+            "ExposureWindow": "auto",
+            "HighlightsRecovery": "0",
+            "LocalContrast": "3",
+            "LowLatencyMode": "off",
+            "ManualGain": "0",
+            "ManualGainControl": "no",
+            "ManualShutter": "388724",
+            "ManualShutterControl": "no",
+            "MaxExposureTime": "-1",
+            "MaxGain": "100",
+            "MinExposureTime": "1",
+            "MinGain": "0",
+            "RedBalance": "50",
+            "SNF": "100",
+            "ShadowsRecovery": "0",
+            "Sharpness": "50",
+            "TNF": "100",
+            "ToneMapping": "13",
+            "WDR": "on",
+            "WhiteBalance": "auto",
+            "WhiteBalanceWindow": "auto",
+            "WhiteBalanceXstart": "0",
+            "WhiteBalanceXstop": "9999",
+            "WhiteBalanceYstart": "0",
+            "WhiteBalanceYstop": "9999"
+          },
+          "groupId": "I0"
+        }
+      ],
+      "Layout": {
+        "AACInstallationEnabled": "yes",
+        "DefaultJoystickMode": "no",
+        "DefaultStreamProfile": "",
+        "DefaultVideoFormat": "h264",
+        "EnableBasicSetup": "yes",
+        "H264InstallationEnabled": "yes",
+        "LiveViewVideo": "1",
+        "PlainConfigEnabled": "no",
+        "ShowRelCrossEnabled": "yes",
+        "ShowVideoFormatDropDown": "yes",
+        "ViewerIE": "activex",
+        "ViewerOther": "spush"
+      },
+      "MediaClipCollection": [
+        {
+          "Name": "Camera clicks",
+          "groupId": "M9"
+        }
+      ],
+      "Network": {
+        "Bonjour": {
+          "Enabled": "yes",
+          "FriendlyName": "AXIS P3265-V"
+        },
+        "BootProto": "dhcp",
+        "Broadcast": "192.168.0.255",
+        "DHCP": {
+          "VendorClass": "AXIS,Dome Camera,P3265-V,12.11.77"
+        },
+        "DNSServer1": "1.1.1.1",
+        "DNSServer2": "0.0.0.0",
+        "DNSUpdate": {
+          "DNSName": "",
+          "Enabled": "no",
+          "TTL": "30"
+        },
+        "DefaultRouter": "192.168.0.1",
+        "DomainName": "",
+        "Enabled": "yes",
+        "HTTP": {
+          "AuthenticationPolicy": "recommended",
+          "AuthenticationWithQop": "no"
+        },
+        "HostName": "axis-b8a44f631339",
+        "IPAddress": "192.168.0.90",
+        "IPv6": {
+          "AcceptRA": "yes",
+          "DHCPv6": "auto",
+          "DefaultRouter": "",
+          "Enabled": "no",
+          "IPAddress": ""
+        },
+        "InterfaceCollection": [
+          {
+            "Link": {
+              "MTU": "1500"
+            },
+            "dot1x": {
+              "EAP": {
+                "MultiAuthEnabled": "no"
+              },
+              "EAPOLVersion": "3",
+              "EAPTLS": {
+                "Identity": "48"
+              },
+              "Enabled": "no"
+            },
+            "groupId": "I0"
+          }
+        ],
+        "LLDP": {
+          "POE": {
+            "Enabled": "no"
+          }
+        },
+        "Media": "auto",
+        "QoS": {
+          "Class1": {
+            "DSCP": "0"
+          },
+          "Class2": {
+            "DSCP": "0"
+          },
+          "Class3": {
+            "DSCP": "0"
+          },
+          "Class4": {
+            "DSCP": "0"
+          },
+          "Class5": {
+            "DSCP": "0"
+          }
+        },
+        "RTP": {
+          "AudioDSCP": "0",
+          "EndPort": "50999",
+          "InternallyTaggedMulticastEnabled": "no",
+          "MetadataDSCP": "0",
+          "OnvifReplayExt": "no",
+          "StartPort": "50000",
+          "VideoDSCP": "0"
+        },
+        "RTPCollection": [
+          {
+            "AlwaysMulticastAudio": "no",
+            "AlwaysMulticastProfile": "videocodec=h264",
+            "AlwaysMulticastVideo": "no",
+            "AudioAddress": "239.231.19.185",
+            "AudioPort": "0",
+            "TTL": "5",
+            "VideoAddress": "239.217.74.32",
+            "VideoPort": "0",
+            "groupId": "R0"
+          },
+          {
+            "AlwaysMulticastAudio": "no",
+            "AlwaysMulticastProfile": "videocodec=h264",
+            "AlwaysMulticastVideo": "no",
+            "AudioAddress": "239.238.19.185",
+            "AudioPort": "0",
+            "TTL": "5",
+            "VideoAddress": "239.238.19.57",
+            "VideoPort": "0",
+            "groupId": "R1"
+          },
+          {
+            "AlwaysMulticastAudio": "no",
+            "AlwaysMulticastProfile": "videocodec=h264",
+            "AlwaysMulticastVideo": "no",
+            "AudioAddress": "239.246.19.185",
+            "AudioPort": "0",
+            "TTL": "5",
+            "VideoAddress": "239.246.19.57",
+            "VideoPort": "0",
+            "groupId": "R2"
+          },
+          {
+            "AlwaysMulticastAudio": "no",
+            "AlwaysMulticastProfile": "videocodec=h264",
+            "AlwaysMulticastVideo": "no",
+            "AudioAddress": "239.193.19.185",
+            "AudioPort": "0",
+            "TTL": "5",
+            "VideoAddress": "239.193.19.57",
+            "VideoPort": "0",
+            "groupId": "R3"
+          },
+          {
+            "AlwaysMulticastAudio": "no",
+            "AlwaysMulticastProfile": "videocodec=h264",
+            "AlwaysMulticastVideo": "no",
+            "AudioAddress": "239.201.19.185",
+            "AudioPort": "0",
+            "TTL": "5",
+            "VideoAddress": "239.201.19.57",
+            "VideoPort": "0",
+            "groupId": "R4"
+          },
+          {
+            "AlwaysMulticastAudio": "no",
+            "AlwaysMulticastProfile": "videocodec=h264",
+            "AlwaysMulticastVideo": "no",
+            "AudioAddress": "239.208.19.185",
+            "AudioPort": "0",
+            "TTL": "5",
+            "VideoAddress": "239.208.19.57",
+            "VideoPort": "0",
+            "groupId": "R5"
+          },
+          {
+            "AlwaysMulticastAudio": "no",
+            "AlwaysMulticastProfile": "videocodec=h264",
+            "AlwaysMulticastVideo": "no",
+            "AudioAddress": "239.216.19.185",
+            "AudioPort": "0",
+            "TTL": "5",
+            "VideoAddress": "239.216.19.57",
+            "VideoPort": "0",
+            "groupId": "R6"
+          },
+          {
+            "AlwaysMulticastAudio": "no",
+            "AlwaysMulticastProfile": "videocodec=h264",
+            "AlwaysMulticastVideo": "no",
+            "AudioAddress": "239.223.19.185",
+            "AudioPort": "0",
+            "TTL": "5",
+            "VideoAddress": "239.223.19.57",
+            "VideoPort": "0",
+            "groupId": "R7"
+          }
+        ],
+        "RTSP": {
+          "AllowClientTransportSettings": "no",
+          "AuthenticateOverHTTP": "no",
+          "AuthenticateRTSPOverHTTP": "yes",
+          "Enabled": "yes",
+          "Port": "554",
+          "ProtViewer": "password",
+          "Timeout": "10"
+        },
+        "RTSPS": {
+          "AllowClientTransportSettings": "no",
+          "CertificateId": "Axis device ID ECC-P256 (802.1AR)",
+          "Ciphers": "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305",
+          "Enabled": "no",
+          "Port": "322",
+          "Timeout": "60"
+        },
+        "Resolver": {
+          "ObtainFromDHCP": "no"
+        },
+        "SSH": {
+          "Enabled": "yes"
+        },
+        "SubnetMask": "255.255.255.0",
+        "UPnP": {
+          "Enabled": "no",
+          "FriendlyName": "AXIS P3265-V - B8A44F631339"
+        },
+        "VolatileHostName": {
+          "ObtainFromDHCP": "yes"
+        },
+        "ZeroConf": {
+          "Enabled": "yes",
+          "Fallback": "yes"
+        },
+        "tcpECN": "1"
+      },
+      "PTZ": {
+        "BoaProtPTZOperator": "password",
+        "ImageSourceCollection": [
+          {
+            "PTZEnabled": "false",
+            "groupId": "I0"
+          }
+        ],
+        "LimitCollection": [
+          {
+            "MaxZoom": "9999",
+            "MinZoom": "1",
+            "groupId": "L1"
+          },
+          {
+            "MaxZoom": "9999",
+            "MinZoom": "1",
+            "groupId": "L2"
+          },
+          {
+            "MaxZoom": "9999",
+            "MinZoom": "1",
+            "groupId": "L3"
+          },
+          {
+            "MaxZoom": "9999",
+            "MinZoom": "1",
+            "groupId": "L4"
+          },
+          {
+            "MaxZoom": "9999",
+            "MinZoom": "1",
+            "groupId": "L5"
+          },
+          {
+            "MaxZoom": "9999",
+            "MinZoom": "1",
+            "groupId": "L6"
+          },
+          {
+            "MaxZoom": "9999",
+            "MinZoom": "1",
+            "groupId": "L7"
+          },
+          {
+            "MaxZoom": "9999",
+            "MinZoom": "1",
+            "groupId": "L8"
+          }
+        ],
+        "PresetCollection": [
+          {
+            "HomePosition": "1",
+            "Name": "",
+            "PositionCollection": [
+              {
+                "Data": "pan=0.000000:tilt=0.000000:zoom=1.000000",
+                "groupId": "P1"
+              }
+            ],
+            "groupId": "P0"
+          },
+          {
+            "HomePosition": "1",
+            "Name": "",
+            "PositionCollection": [
+              {
+                "Data": "pan=0.000000:tilt=0.000000:zoom=1.000000",
+                "groupId": "P1"
+              }
+            ],
+            "groupId": "P1"
+          },
+          {
+            "HomePosition": "1",
+            "Name": "",
+            "PositionCollection": [
+              {
+                "Data": "pan=0.000000:tilt=0.000000:zoom=1.000000",
+                "groupId": "P1"
+              }
+            ],
+            "groupId": "P2"
+          },
+          {
+            "HomePosition": "1",
+            "Name": "",
+            "PositionCollection": [
+              {
+                "Data": "pan=0.000000:tilt=0.000000:zoom=1.000000",
+                "groupId": "P1"
+              }
+            ],
+            "groupId": "P3"
+          },
+          {
+            "HomePosition": "1",
+            "Name": "",
+            "PositionCollection": [
+              {
+                "Data": "pan=0.000000:tilt=0.000000:zoom=1.000000",
+                "groupId": "P1"
+              }
+            ],
+            "groupId": "P4"
+          },
+          {
+            "HomePosition": "1",
+            "Name": "",
+            "PositionCollection": [
+              {
+                "Data": "pan=0.000000:tilt=0.000000:zoom=1.000000",
+                "groupId": "P1"
+              }
+            ],
+            "groupId": "P5"
+          },
+          {
+            "HomePosition": "1",
+            "Name": "",
+            "PositionCollection": [
+              {
+                "Data": "pan=0.000000:tilt=0.000000:zoom=1.000000",
+                "groupId": "P1"
+              }
+            ],
+            "groupId": "P6"
+          },
+          {
+            "HomePosition": "1",
+            "Name": "",
+            "PositionCollection": [
+              {
+                "Data": "pan=0.000000:tilt=0.000000:zoom=1.000000",
+                "groupId": "P1"
+              }
+            ],
+            "groupId": "P7"
+          }
+        ],
+        "ResponseEncoding": "iso-8859-1",
+        "SupportCollection": [
+          {
+            "AbsoluteBrightness": "false",
+            "AbsoluteFocus": "false",
+            "AbsoluteIris": "false",
+            "AbsolutePan": "true",
+            "AbsoluteTilt": "true",
+            "AbsoluteZoom": "true",
+            "ActionNotification": "true",
+            "AreaZoom": "true",
+            "AutoFocus": "false",
+            "AutoIrCutFilter": "false",
+            "AutoIris": "false",
+            "Auxiliary": "false",
+            "BackLight": "false",
+            "ContinuousBrightness": "false",
+            "ContinuousFocus": "false",
+            "ContinuousIris": "false",
+            "ContinuousPan": "true",
+            "ContinuousTilt": "true",
+            "ContinuousZoom": "true",
+            "DevicePreset": "false",
+            "DigitalZoom": "false",
+            "GenericHTTP": "false",
+            "IrCutFilter": "false",
+            "JoyStickEmulation": "true",
+            "LensOffset": "false",
+            "OSDMenu": "false",
+            "ProportionalSpeed": "true",
+            "RelativeBrightness": "false",
+            "RelativeFocus": "false",
+            "RelativeIris": "false",
+            "RelativePan": "true",
+            "RelativeTilt": "true",
+            "RelativeZoom": "true",
+            "ServerPreset": "true",
+            "SpeedCtl": "true",
+            "groupId": "S1"
+          },
+          {
+            "AbsoluteBrightness": "false",
+            "AbsoluteFocus": "false",
+            "AbsoluteIris": "false",
+            "AbsolutePan": "true",
+            "AbsoluteTilt": "true",
+            "AbsoluteZoom": "true",
+            "ActionNotification": "true",
+            "AreaZoom": "true",
+            "AutoFocus": "false",
+            "AutoIrCutFilter": "false",
+            "AutoIris": "false",
+            "Auxiliary": "false",
+            "BackLight": "false",
+            "ContinuousBrightness": "false",
+            "ContinuousFocus": "false",
+            "ContinuousIris": "false",
+            "ContinuousPan": "true",
+            "ContinuousTilt": "true",
+            "ContinuousZoom": "true",
+            "DevicePreset": "false",
+            "DigitalZoom": "false",
+            "GenericHTTP": "false",
+            "IrCutFilter": "false",
+            "JoyStickEmulation": "true",
+            "LensOffset": "false",
+            "OSDMenu": "false",
+            "ProportionalSpeed": "true",
+            "RelativeBrightness": "false",
+            "RelativeFocus": "false",
+            "RelativeIris": "false",
+            "RelativePan": "true",
+            "RelativeTilt": "true",
+            "RelativeZoom": "true",
+            "ServerPreset": "true",
+            "SpeedCtl": "true",
+            "groupId": "S2"
+          },
+          {
+            "AbsoluteBrightness": "false",
+            "AbsoluteFocus": "false",
+            "AbsoluteIris": "false",
+            "AbsolutePan": "true",
+            "AbsoluteTilt": "true",
+            "AbsoluteZoom": "true",
+            "ActionNotification": "true",
+            "AreaZoom": "true",
+            "AutoFocus": "false",
+            "AutoIrCutFilter": "false",
+            "AutoIris": "false",
+            "Auxiliary": "false",
+            "BackLight": "false",
+            "ContinuousBrightness": "false",
+            "ContinuousFocus": "false",
+            "ContinuousIris": "false",
+            "ContinuousPan": "true",
+            "ContinuousTilt": "true",
+            "ContinuousZoom": "true",
+            "DevicePreset": "false",
+            "DigitalZoom": "false",
+            "GenericHTTP": "false",
+            "IrCutFilter": "false",
+            "JoyStickEmulation": "true",
+            "LensOffset": "false",
+            "OSDMenu": "false",
+            "ProportionalSpeed": "true",
+            "RelativeBrightness": "false",
+            "RelativeFocus": "false",
+            "RelativeIris": "false",
+            "RelativePan": "true",
+            "RelativeTilt": "true",
+            "RelativeZoom": "true",
+            "ServerPreset": "true",
+            "SpeedCtl": "true",
+            "groupId": "S3"
+          },
+          {
+            "AbsoluteBrightness": "false",
+            "AbsoluteFocus": "false",
+            "AbsoluteIris": "false",
+            "AbsolutePan": "true",
+            "AbsoluteTilt": "true",
+            "AbsoluteZoom": "true",
+            "ActionNotification": "true",
+            "AreaZoom": "true",
+            "AutoFocus": "false",
+            "AutoIrCutFilter": "false",
+            "AutoIris": "false",
+            "Auxiliary": "false",
+            "BackLight": "false",
+            "ContinuousBrightness": "false",
+            "ContinuousFocus": "false",
+            "ContinuousIris": "false",
+            "ContinuousPan": "true",
+            "ContinuousTilt": "true",
+            "ContinuousZoom": "true",
+            "DevicePreset": "false",
+            "DigitalZoom": "false",
+            "GenericHTTP": "false",
+            "IrCutFilter": "false",
+            "JoyStickEmulation": "true",
+            "LensOffset": "false",
+            "OSDMenu": "false",
+            "ProportionalSpeed": "true",
+            "RelativeBrightness": "false",
+            "RelativeFocus": "false",
+            "RelativeIris": "false",
+            "RelativePan": "true",
+            "RelativeTilt": "true",
+            "RelativeZoom": "true",
+            "ServerPreset": "true",
+            "SpeedCtl": "true",
+            "groupId": "S4"
+          },
+          {
+            "AbsoluteBrightness": "false",
+            "AbsoluteFocus": "false",
+            "AbsoluteIris": "false",
+            "AbsolutePan": "true",
+            "AbsoluteTilt": "true",
+            "AbsoluteZoom": "true",
+            "ActionNotification": "true",
+            "AreaZoom": "true",
+            "AutoFocus": "false",
+            "AutoIrCutFilter": "false",
+            "AutoIris": "false",
+            "Auxiliary": "false",
+            "BackLight": "false",
+            "ContinuousBrightness": "false",
+            "ContinuousFocus": "false",
+            "ContinuousIris": "false",
+            "ContinuousPan": "true",
+            "ContinuousTilt": "true",
+            "ContinuousZoom": "true",
+            "DevicePreset": "false",
+            "DigitalZoom": "false",
+            "GenericHTTP": "false",
+            "IrCutFilter": "false",
+            "JoyStickEmulation": "true",
+            "LensOffset": "false",
+            "OSDMenu": "false",
+            "ProportionalSpeed": "true",
+            "RelativeBrightness": "false",
+            "RelativeFocus": "false",
+            "RelativeIris": "false",
+            "RelativePan": "true",
+            "RelativeTilt": "true",
+            "RelativeZoom": "true",
+            "ServerPreset": "true",
+            "SpeedCtl": "true",
+            "groupId": "S5"
+          },
+          {
+            "AbsoluteBrightness": "false",
+            "AbsoluteFocus": "false",
+            "AbsoluteIris": "false",
+            "AbsolutePan": "true",
+            "AbsoluteTilt": "true",
+            "AbsoluteZoom": "true",
+            "ActionNotification": "true",
+            "AreaZoom": "true",
+            "AutoFocus": "false",
+            "AutoIrCutFilter": "false",
+            "AutoIris": "false",
+            "Auxiliary": "false",
+            "BackLight": "false",
+            "ContinuousBrightness": "false",
+            "ContinuousFocus": "false",
+            "ContinuousIris": "false",
+            "ContinuousPan": "true",
+            "ContinuousTilt": "true",
+            "ContinuousZoom": "true",
+            "DevicePreset": "false",
+            "DigitalZoom": "false",
+            "GenericHTTP": "false",
+            "IrCutFilter": "false",
+            "JoyStickEmulation": "true",
+            "LensOffset": "false",
+            "OSDMenu": "false",
+            "ProportionalSpeed": "true",
+            "RelativeBrightness": "false",
+            "RelativeFocus": "false",
+            "RelativeIris": "false",
+            "RelativePan": "true",
+            "RelativeTilt": "true",
+            "RelativeZoom": "true",
+            "ServerPreset": "true",
+            "SpeedCtl": "true",
+            "groupId": "S6"
+          },
+          {
+            "AbsoluteBrightness": "false",
+            "AbsoluteFocus": "false",
+            "AbsoluteIris": "false",
+            "AbsolutePan": "true",
+            "AbsoluteTilt": "true",
+            "AbsoluteZoom": "true",
+            "ActionNotification": "true",
+            "AreaZoom": "true",
+            "AutoFocus": "false",
+            "AutoIrCutFilter": "false",
+            "AutoIris": "false",
+            "Auxiliary": "false",
+            "BackLight": "false",
+            "ContinuousBrightness": "false",
+            "ContinuousFocus": "false",
+            "ContinuousIris": "false",
+            "ContinuousPan": "true",
+            "ContinuousTilt": "true",
+            "ContinuousZoom": "true",
+            "DevicePreset": "false",
+            "DigitalZoom": "false",
+            "GenericHTTP": "false",
+            "IrCutFilter": "false",
+            "JoyStickEmulation": "true",
+            "LensOffset": "false",
+            "OSDMenu": "false",
+            "ProportionalSpeed": "true",
+            "RelativeBrightness": "false",
+            "RelativeFocus": "false",
+            "RelativeIris": "false",
+            "RelativePan": "true",
+            "RelativeTilt": "true",
+            "RelativeZoom": "true",
+            "ServerPreset": "true",
+            "SpeedCtl": "true",
+            "groupId": "S7"
+          },
+          {
+            "AbsoluteBrightness": "false",
+            "AbsoluteFocus": "false",
+            "AbsoluteIris": "false",
+            "AbsolutePan": "true",
+            "AbsoluteTilt": "true",
+            "AbsoluteZoom": "true",
+            "ActionNotification": "true",
+            "AreaZoom": "true",
+            "AutoFocus": "false",
+            "AutoIrCutFilter": "false",
+            "AutoIris": "false",
+            "Auxiliary": "false",
+            "BackLight": "false",
+            "ContinuousBrightness": "false",
+            "ContinuousFocus": "false",
+            "ContinuousIris": "false",
+            "ContinuousPan": "true",
+            "ContinuousTilt": "true",
+            "ContinuousZoom": "true",
+            "DevicePreset": "false",
+            "DigitalZoom": "false",
+            "GenericHTTP": "false",
+            "IrCutFilter": "false",
+            "JoyStickEmulation": "true",
+            "LensOffset": "false",
+            "OSDMenu": "false",
+            "ProportionalSpeed": "true",
+            "RelativeBrightness": "false",
+            "RelativeFocus": "false",
+            "RelativeIris": "false",
+            "RelativePan": "true",
+            "RelativeTilt": "true",
+            "RelativeZoom": "true",
+            "ServerPreset": "true",
+            "SpeedCtl": "true",
+            "groupId": "S8"
+          }
+        ],
+        "UserAdvCollection": [
+          {
+            "MoveSpeed": "100",
+            "groupId": "U1"
+          },
+          {
+            "MoveSpeed": "100",
+            "groupId": "U2"
+          },
+          {
+            "MoveSpeed": "100",
+            "groupId": "U3"
+          },
+          {
+            "MoveSpeed": "100",
+            "groupId": "U4"
+          },
+          {
+            "MoveSpeed": "100",
+            "groupId": "U5"
+          },
+          {
+            "MoveSpeed": "100",
+            "groupId": "U6"
+          },
+          {
+            "MoveSpeed": "100",
+            "groupId": "U7"
+          },
+          {
+            "MoveSpeed": "100",
+            "groupId": "U8"
+          }
+        ],
+        "UserCtlQueueCollection": [
+          {
+            "Priority": "10",
+            "TimeoutTime": "60",
+            "TimeoutType": "activity",
+            "UseCookie": "no",
+            "groupId": "U0"
+          },
+          {
+            "Priority": "30",
+            "TimeoutTime": "60",
+            "TimeoutType": "activity",
+            "UseCookie": "no",
+            "groupId": "U1"
+          },
+          {
+            "Priority": "50",
+            "TimeoutTime": "60",
+            "TimeoutType": "timespan",
+            "UseCookie": "no",
+            "groupId": "U2"
+          },
+          {
+            "Priority": "20",
+            "TimeoutTime": "20",
+            "TimeoutType": "activity",
+            "UseCookie": "no",
+            "groupId": "U3"
+          },
+          {
+            "Priority": "40",
+            "TimeoutTime": "60",
+            "TimeoutType": "infinity",
+            "UseCookie": "no",
+            "groupId": "U4"
+          },
+          {
+            "Priority": "35",
+            "TimeoutTime": "60",
+            "TimeoutType": "infinity",
+            "UseCookie": "no",
+            "groupId": "U5"
+          },
+          {
+            "Priority": "1",
+            "TimeoutTime": "60",
+            "TimeoutType": "activity",
+            "UseCookie": "no",
+            "groupId": "U6"
+          }
+        ],
+        "VariousCollection": [
+          {
+            "CtlQueueLimit": "20",
+            "CtlQueuePollTime": "20",
+            "CtlQueueing": "false",
+            "HomePresetSet": "true",
+            "Locked": "true",
+            "MaxProportionalSpeed": "200",
+            "PanEnabled": "true",
+            "ProportionalSpeedEnabled": "true",
+            "ReturnToOverview": "0",
+            "SpeedCtlEnabled": "true",
+            "TiltEnabled": "true",
+            "ZoomEnabled": "true",
+            "groupId": "V1"
+          },
+          {
+            "CtlQueueLimit": "20",
+            "CtlQueuePollTime": "20",
+            "CtlQueueing": "false",
+            "HomePresetSet": "true",
+            "Locked": "true",
+            "MaxProportionalSpeed": "200",
+            "PanEnabled": "true",
+            "ProportionalSpeedEnabled": "true",
+            "ReturnToOverview": "0",
+            "SpeedCtlEnabled": "true",
+            "TiltEnabled": "true",
+            "ZoomEnabled": "true",
+            "groupId": "V2"
+          },
+          {
+            "CtlQueueLimit": "20",
+            "CtlQueuePollTime": "20",
+            "CtlQueueing": "false",
+            "HomePresetSet": "true",
+            "Locked": "true",
+            "MaxProportionalSpeed": "200",
+            "PanEnabled": "true",
+            "ProportionalSpeedEnabled": "true",
+            "ReturnToOverview": "0",
+            "SpeedCtlEnabled": "true",
+            "TiltEnabled": "true",
+            "ZoomEnabled": "true",
+            "groupId": "V3"
+          },
+          {
+            "CtlQueueLimit": "20",
+            "CtlQueuePollTime": "20",
+            "CtlQueueing": "false",
+            "HomePresetSet": "true",
+            "Locked": "true",
+            "MaxProportionalSpeed": "200",
+            "PanEnabled": "true",
+            "ProportionalSpeedEnabled": "true",
+            "ReturnToOverview": "0",
+            "SpeedCtlEnabled": "true",
+            "TiltEnabled": "true",
+            "ZoomEnabled": "true",
+            "groupId": "V4"
+          },
+          {
+            "CtlQueueLimit": "20",
+            "CtlQueuePollTime": "20",
+            "CtlQueueing": "false",
+            "HomePresetSet": "true",
+            "Locked": "true",
+            "MaxProportionalSpeed": "200",
+            "PanEnabled": "true",
+            "ProportionalSpeedEnabled": "true",
+            "ReturnToOverview": "0",
+            "SpeedCtlEnabled": "true",
+            "TiltEnabled": "true",
+            "ZoomEnabled": "true",
+            "groupId": "V5"
+          },
+          {
+            "CtlQueueLimit": "20",
+            "CtlQueuePollTime": "20",
+            "CtlQueueing": "false",
+            "HomePresetSet": "true",
+            "Locked": "true",
+            "MaxProportionalSpeed": "200",
+            "PanEnabled": "true",
+            "ProportionalSpeedEnabled": "true",
+            "ReturnToOverview": "0",
+            "SpeedCtlEnabled": "true",
+            "TiltEnabled": "true",
+            "ZoomEnabled": "true",
+            "groupId": "V6"
+          },
+          {
+            "CtlQueueLimit": "20",
+            "CtlQueuePollTime": "20",
+            "CtlQueueing": "false",
+            "HomePresetSet": "true",
+            "Locked": "true",
+            "MaxProportionalSpeed": "200",
+            "PanEnabled": "true",
+            "ProportionalSpeedEnabled": "true",
+            "ReturnToOverview": "0",
+            "SpeedCtlEnabled": "true",
+            "TiltEnabled": "true",
+            "ZoomEnabled": "true",
+            "groupId": "V7"
+          },
+          {
+            "CtlQueueLimit": "20",
+            "CtlQueuePollTime": "20",
+            "CtlQueueing": "false",
+            "HomePresetSet": "true",
+            "Locked": "true",
+            "MaxProportionalSpeed": "200",
+            "PanEnabled": "true",
+            "ProportionalSpeedEnabled": "true",
+            "ReturnToOverview": "0",
+            "SpeedCtlEnabled": "true",
+            "TiltEnabled": "true",
+            "ZoomEnabled": "true",
+            "groupId": "V8"
+          }
+        ]
+      },
+      "Properties": {
+        "Image": {
+          "ShowSuboptimalResolutions": "false"
+        },
+        "ImageCollection": [
+          {
+            "ShowSuboptimalResolutions": "false",
+            "groupId": "I0"
+          },
+          {
+            "ShowSuboptimalResolutions": "false",
+            "groupId": "I1"
+          },
+          {
+            "ShowSuboptimalResolutions": "false",
+            "groupId": "I2"
+          },
+          {
+            "ShowSuboptimalResolutions": "false",
+            "groupId": "I3"
+          },
+          {
+            "ShowSuboptimalResolutions": "false",
+            "groupId": "I4"
+          },
+          {
+            "ShowSuboptimalResolutions": "false",
+            "groupId": "I5"
+          },
+          {
+            "ShowSuboptimalResolutions": "false",
+            "groupId": "I6"
+          },
+          {
+            "ShowSuboptimalResolutions": "false",
+            "groupId": "I7"
+          }
+        ]
+      },
+      "Recording": {
+        "DefaultDiskId": "SD_DISK",
+        "DefaultSplitDuration": "300"
+      },
+      "RemoteService": {
+        "BackOffFactorMin": "2",
+        "BackOffFactorSpan": "6",
+        "BackOffMaxSec": "20",
+        "ClientCert": "",
+        "DSCP": "0",
+        "Enabled": "oneclick",
+        "LogFile": "syslog",
+        "ProxyAuth": "basic",
+        "ProxyDispatcherOnly": "no",
+        "ProxyLogin": "",
+        "ProxyPort": "3128",
+        "ProxyServer": "",
+        "ServerList": "dispatchse1-st.axis.com:443,dispatchse1-st.axis.com:80,195.60.68.120:443,195.60.68.120:80,dispatchse2-st.axis.com:443,dispatchse2-st.axis.com:80,195.60.68.121:443,195.60.68.121:80,dispatcher-st.axis.com:443,dispatcher-st.axis.com:80,dispatchus1-st.axis.com:443,dispatchus1-st.axis.com:80,dispatchjp1-st.axis.com:443,dispatchjp1-st.axis.com:80",
+        "TimeSyncEnabled": "yes"
+      },
+      "SNMP": {
+        "DSCP": "0",
+        "Enabled": "no",
+        "EngineBoots": "0",
+        "InitialUserPasswdSet": "no",
+        "TransportProtocol": "udp",
+        "Trap": {
+          "Enabled": "no"
+        },
+        "TrapCollection": [
+          {
+            "Address": "",
+            "AuthFail": {
+              "Enabled": "no"
+            },
+            "ColdStart": {
+              "Enabled": "no"
+            },
+            "Community": "public",
+            "LinkUp": {
+              "Enabled": "no"
+            },
+            "WarmStart": {
+              "Enabled": "no"
+            },
+            "groupId": "T0"
+          }
+        ],
+        "V1": "no",
+        "V1ReadCommunity": "public",
+        "V1WriteCommunity": "write",
+        "V2c": "no",
+        "V3": "no"
+      },
+      "StatusLed": {
+        "FlashInterval": "4",
+        "Usage": "on"
+      },
+      "StorageCollection": [
+        {
+          "AutoRepair": "yes",
+          "CleanupLevel": "90",
+          "CleanupMaxAge": "7",
+          "CleanupPolicyActive": "fifo",
+          "DeviceNode": "/dev/sd_disk2",
+          "Enabled": "yes",
+          "ExtraMountOptions": "",
+          "FileSystem": "ext4",
+          "FriendlyName": "",
+          "Locked": "no",
+          "MountOnBoot": "yes",
+          "MountPointPermissions": "0770",
+          "RequiredFileSystem": "none",
+          "groupId": "S0"
+        },
+        {
+          "AutoRepair": "yes",
+          "CleanupLevel": "90",
+          "CleanupMaxAge": "7",
+          "CleanupPolicyActive": "fifo",
+          "DeviceNode": "NetworkShare:",
+          "Enabled": "yes",
+          "ExtraMountOptions": "",
+          "FileSystem": "cifs",
+          "FriendlyName": "",
+          "Locked": "no",
+          "MountOnBoot": "yes",
+          "MountPointPermissions": "0770",
+          "RequiredFileSystem": "none",
+          "groupId": "S1"
+        }
+      ],
+      "StreamCache": {
+        "Size": "67108864"
+      },
+      "StreamCacheCollection": [
+        {
+          "Enabled": "no",
+          "Options": "",
+          "RequestedLengthTime": "30",
+          "groupId": "S0"
+        }
+      ],
+      "StreamProfileCollection": [
+        {
+          "Description": "ACS_Pro_High_0_AXIS P3265-V",
+          "Name": "View Area 1_ACS_Pro_High",
+          "Parameters": "camera=1&videocodec=h264&fps=30&resolution=1920x1080&compression=30&videozstrength=20&videozgopmode=fixed&audio=0",
+          "groupId": "S0"
+        },
+        {
+          "Description": "ACS_Pro_Medium_0_AXIS P3265-V",
+          "Name": "View Area 1_ACS_Pro_Medium",
+          "Parameters": "camera=1&videocodec=h264&fps=15&resolution=1280x720&compression=30&videozstrength=20&videozgopmode=fixed&audio=0",
+          "groupId": "S1"
+        },
+        {
+          "Description": "ACS_Pro_Low_0_AXIS P3265-V",
+          "Name": "View Area 1_ACS_Pro_Low",
+          "Parameters": "camera=1&videocodec=h264&fps=8&resolution=640x360&compression=30&videozstrength=20&videozgopmode=fixed&audio=0",
+          "groupId": "S2"
+        }
+      ],
+      "System": {
+        "AccessLog": "Off",
+        "AlternateBoaPort": "0",
+        "BoaDSCP": "0",
+        "BoaGroupPolicy": {
+          "admin": "both",
+          "operator": "both",
+          "viewer": "both"
+        },
+        "BoaKeepAliveTimeout": "180",
+        "BoaPort": "80",
+        "BoaProtViewer": "password",
+        "CaptureFrequencySet": "yes",
+        "CaptureModeSet": "yes",
+        "HTTP2": {
+          "AllowH2": "yes"
+        },
+        "HTTPAuthRTSPOverHTTP": "no",
+        "HTTPServerTokens": "yes",
+        "HTTPWatchDog": "yes",
+        "PreventDoSAttack": {
+          "ActivatePasswordThrottling": "On",
+          "DoSBlockingPeriod": "30",
+          "DoSPageCount": "5",
+          "DoSPageInterval": "30",
+          "DoSSiteCount": "5",
+          "DoSSiteInterval": "30"
+        },
+        "SkipDigestUriValidation": "User-Agent HttpClient",
+        "WebInterfaceDisabled": "no"
+      },
+      "TamperingCollection": [
+        {
+          "DarkDetectionEnabled": "yes",
+          "DarkThreshold": "90",
+          "MinDuration": "20",
+          "Sensitivity": "50",
+          "groupId": "T0"
+        }
+      ],
+      "TemperatureControl": {
+        "SensorCollection": [
+          {
+            "Name": "Main",
+            "TriggerHigh": "80",
+            "TriggerLow": "0",
+            "groupId": "S0"
+          },
+          {
+            "Name": "CPU",
+            "TriggerHigh": "110",
+            "TriggerLow": "-35",
+            "groupId": "S1"
+          },
+          {
+            "Name": "Optics",
+            "TriggerHigh": "80",
+            "TriggerLow": "0",
+            "groupId": "S2"
+          },
+          {
+            "Name": "ImageSensor",
+            "TriggerHigh": "85",
+            "TriggerLow": "0",
+            "groupId": "S3"
+          }
+        ]
+      },
+      "Time": {
+        "DST": {
+          "Enabled": "yes"
+        },
+        "NTP": {
+          "Server": "10.0.0.17"
+        },
+        "ObtainFromDHCP": "no",
+        "POSIXTimeZone": "<UTC1>-1<UTC2>-2,M3.5.0/2:00:00,M10.5.0/3:00:00",
+        "SyncSource": "None"
+      },
+      "WebService": {
+        "DiscoveryMode": {
+          "Discoverable": "No"
+        },
+        "UsernameToken": {
+          "ReplayAttackProtection": "yes"
+        }
+      }
+    },
+    "power-settings.v2": {
+      "dynamicPowerMode": {
+        "enabled": true
+      },
+      "powerStatus": {
+        "powerReceived": -1.0
+      }
+    },
+    "time.v2": {
+      "timeZone": {
+        "dhcp": {
+          "enabled": false
+        },
+        "iana": {
+          "timeZone": null
+        },
+        "posix": {
+          "dstEnabled": true,
+          "timeZone": "<UTC1>-1<UTC2>-2,M3.5.0/2:00:00,M10.5.0/3:00:00"
+        }
+      }
+    },
+    "user-management.v2": {
+      "settings": {
+        "passphraseComplexity": {
+          "policy": "none"
+        }
+      }
+    }
+  },
+  "metadata": {
+    "fwVersion": "12.11.77",
+    "prodNbr": "P3265-V"
+  }
+}

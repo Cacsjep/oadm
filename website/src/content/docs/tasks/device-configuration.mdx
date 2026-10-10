@@ -1,0 +1,77 @@
+---
+title: Device configuration
+description: Export the configuration of devices and import it into devices of the same model.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import exportShot from '../../../assets/screens/device-config-export.png';
+import importShot from '../../../assets/screens/device-config-import-other-model.png';
+import zipShot from '../../../assets/screens/device-config-import-zip.png';
+
+**Export configuration** saves the configuration of devices to files. **Import configuration** applies such a file to
+other devices of the same model, or puts the configuration of each device back. Both are in the context menu under
+**Maintenance** and need AXIS OS 12.5 or later.
+
+OADM uses the device's own export and import, the same as **Maintenance** > **Export** / **Import** in the camera's web
+interface. Like there, a file holds part of the configuration:
+
+| In the file | Not in the file |
+|---|---|
+| Network and system settings (parameters), event rules, schedules, MQTT events, time zone, power settings, password policy | Users and passwords, certificates, firewall, SSH, applications and their settings, analytics, overlays |
+
+## Export
+
+<Image src={exportShot} alt="The Export configuration window with the state of each device" class="screen" />
+
+<Steps>
+
+1. Select the devices, right-click and choose **Maintenance** > **Export configuration**.
+2. Choose where to save. One device gives a `.json` file, several devices one ZIP with a file per device.
+3. The window shows each device: **Done** with the size, or **Failed** with the reason. In a ZIP, `summary.txt` lists
+   the devices that failed.
+
+</Steps>
+
+The file names hold address, MAC address and model, for example `10.0.0.48_B8A44F631339_P3265-V_config.json`. The
+import of a ZIP finds each device by that MAC address.
+
+## Import
+
+<Steps>
+
+1. Select the devices, right-click and choose **Maintenance** > **Import configuration**.
+2. Choose a file:
+   - **A `.json` file** goes to every selected device of its model. Devices of another model are left out.
+   - **A ZIP from Export configuration** gives each selected device its own file.
+3. Untick the settings you do not want to import.
+4. Click **Import** and confirm. OADM uploads the file once, then a task starts per device.
+
+</Steps>
+
+<Image src={importShot} alt="Import of one file into devices of several models" class="screen" />
+
+With a ZIP, the **Devices** list shows per device which file it gets: **Ready**, **No file for this device**, **Two
+files for this device**, **Other model** or **Not a device configuration file**. Devices with a problem are left out.
+
+<Image src={zipShot} alt="Import of a ZIP: each device gets its own file" class="screen" />
+
+<Aside type="caution">
+The settings in the file replace the current ones. Export the devices first if you want a way back.
+</Aside>
+
+## What stays on each device
+
+- **Host name, IP address, subnet, router, DHCP on or off and the device names** are never imported, so many devices
+  can share one file.
+- **Settings that are not in the file** stay as they are.
+- **Passwords** are not in a file. Event recipients that need one, for example an FTP server, must get it again.
+
+## Steps of an import
+
+| Step | What happens |
+|---|---|
+| Read configuration file | Reads the file the device gets. |
+| Check compatibility | AXIS OS 12.5 or later, the same model as the file. Otherwise the task fails with "Nothing was changed". |
+| Import network and system settings, Import event rules, ... | One step per settings area. The device checks the values itself; its warnings or errors show in the step. A refused area does not stop the others. |
+| Verify configuration | Exports again and compares. Settings that differ make the task end with warnings. |

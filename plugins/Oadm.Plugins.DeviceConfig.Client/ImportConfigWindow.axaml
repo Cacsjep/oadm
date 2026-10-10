@@ -1,0 +1,81 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.DeviceConfig.Client"
+        x:Class="Oadm.Plugins.DeviceConfig.Client.ImportConfigWindow"
+        x:DataType="vm:ImportConfigViewModel"
+        Title="{x:Static vm:ImportConfigViewModel.Title}"
+        Width="1000" Height="780" MinWidth="800" MinHeight="560"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+  <!-- Title bar, file card, settings card, devices card (ZIP only), footer. Shared controls only. -->
+  <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:ImportConfigViewModel.Title}" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <StackPanel>
+        <ui:CardHeader Title="Configuration file" Description="{Binding Scope}" />
+        <TextBlock Classes="secondary" TextWrapping="Wrap" Margin="0,0,0,8"
+                   Text="One .json file for every device of its model, or the ZIP of an export: each device gets its own file." />
+        <ui:FileRow FileName="{Binding FileName}" Details="{Binding FileDetails}" Error="{Binding FileError}" ButtonText="Choose file" Command="{Binding BrowseCommand}" />
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="2" Classes="card" Margin="16,16,16,0" IsVisible="{Binding HasSections}">
+      <StackPanel Spacing="6">
+        <ui:CardHeader Title="Settings" />
+        <!-- A handful of areas: columns keep the card short so the device list has room. -->
+        <ItemsControl ItemsSource="{Binding Sections}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel ItemWidth="300" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ImportSectionOption">
+              <CheckBox IsChecked="{Binding IsChecked}" Content="{Binding Text}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <ItemsControl ItemsSource="{Binding Notes}" Margin="0,6,0,0">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <ui:ProgressRow Value="{Binding UploadProgress}" Text="{Binding UploadText}" IsVisible="{Binding IsUploading}" Margin="0,6,0,0" />
+        <ui:StatusChip Text="{Binding Error}" IsError="True" IsVisible="{Binding HasError}" />
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="3" Classes="card" Margin="16,16,16,0" IsVisible="{Binding IsZip}">
+      <Grid RowDefinitions="Auto,*">
+        <ui:CardHeader Grid.Row="0" Title="Devices" Description="{Binding DevicesSummary}" />
+        <DataGrid Grid.Row="1" Classes="wrapRows" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single"
+                  CanUserReorderColumns="False" HeadersVisibility="Column">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="MAC address" Binding="{Binding Serial}" Width="140" x:DataType="vm:ImportDeviceRow" />
+            <DataGridTextColumn Header="Address" Binding="{Binding Address}" Width="130" x:DataType="vm:ImportDeviceRow" />
+            <DataGridTextColumn Header="Model" Binding="{Binding Model}" Width="140" x:DataType="vm:ImportDeviceRow" />
+            <DataGridTextColumn Header="File" Binding="{Binding FileText}" Width="1.5*" x:DataType="vm:ImportDeviceRow" />
+            <DataGridTemplateColumn Header="Status" Width="2*" SortMemberPath="Status">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:ImportDeviceRow">
+                  <ui:StatusChip Margin="10,0" Text="{Binding Status}" IsOk="{Binding IsReady}" IsWarning="{Binding IsWarning}" ToolTip.Tip="{Binding Status}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+      </Grid>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="4" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Import" Command="{Binding ImportCommand}" IsDefault="True"
+              ToolTip.Tip="{Binding ImportBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

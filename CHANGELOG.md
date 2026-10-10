@@ -4,6 +4,15 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
 version and date, and the release workflow copies it into the GitHub release.
 
+## Unreleased
+
+### Added
+
+- **Export configuration** and **Import configuration** in the context menu under Maintenance (AXIS OS 12.5 or later):
+  save the configuration of devices as files, then import one file into every selected device of the same model, or the
+  ZIP of an export so each device gets its own file back. Host name, IP address and device names stay as they are on
+  each device. Uses the same export and import as the camera's web interface.
+
 ## [1.5.0] - 2026-10-10
 
 ### Added

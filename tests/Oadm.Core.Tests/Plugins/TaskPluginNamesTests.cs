@@ -89,6 +89,8 @@ public sealed class TaskPluginNamesTests
             {
                 ["oadm.restart"] = TaskGroups.Maintenance,
                 ["oadm.firmware"] = TaskGroups.Maintenance,
+                ["oadm.device-config.export"] = TaskGroups.Maintenance,
+                ["oadm.device-config.import"] = TaskGroups.Maintenance,
                 ["oadm.acap"] = TaskGroups.Applications,
                 ["oadm.users"] = TaskGroups.Users,
                 ["oadm.network"] = TaskGroups.Network,

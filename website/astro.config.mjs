@@ -49,6 +49,7 @@ export default defineConfig({
 						{ label: 'Overview', slug: 'tasks/overview' },
 						{ label: 'Upgrade firmware', slug: 'tasks/firmware' },
 						{ label: 'Date and time', slug: 'tasks/date-and-time' },
+						{ label: 'Device configuration', slug: 'tasks/device-configuration' },
 						{ label: 'Network settings', slug: 'tasks/network' },
 						{ label: 'Users', slug: 'tasks/users' },
 						{ label: 'Applications (ACAP)', slug: 'tasks/applications' },
