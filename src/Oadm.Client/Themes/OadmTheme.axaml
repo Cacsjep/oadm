@@ -1224,6 +1224,57 @@
   <!-- Inline editor below a list (add devices page: log in, set password) -->
   <!-- Event rule dialog: one condition or action on a raised surface; a check list (devices, tags) in a framed box;
        weekday toggles of a schedule -->
+  <!-- I/O Monitor: the device faceplate. A terminal per port: the contact drawn open or closed (green while active), name
+       and port number. -->
+  <Style Selector="Border.ioFaceplate">
+    <Setter Property="Padding" Value="0" />
+  </Style>
+  <Style Selector="TextBlock.ioFaceplateTitle">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="LetterSpacing" Value="1" />
+  </Style>
+  <Style Selector="TextBlock.ioRowLabel">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="LetterSpacing" Value="2" />
+  </Style>
+  <Style Selector="Border.ioTerminalBlock">
+    <Setter Property="Padding" Value="0,4,0,0" />
+  </Style>
+  <Style Selector="StackPanel.ioTerminal">
+    <Setter Property="Width" Value="76" />
+    <Setter Property="Spacing" Value="6" />
+    <Setter Property="Margin" Value="0,0,0,6" />
+  </Style>
+  <Style Selector="Canvas.ioContact">
+    <Setter Property="Width" Value="28" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Ellipse.ioContactPin">
+    <Setter Property="Width" Value="6" />
+    <Setter Property="Height" Value="6" />
+    <Setter Property="Fill" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Path.ioContactLever">
+    <Setter Property="Stroke" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="StrokeThickness" Value="2" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+  </Style>
+  <Style Selector="Path.ioContactLever.active">
+    <Setter Property="Stroke" Value="{StaticResource Oadm.StatusOkBrush}" />
+  </Style>
+  <Style Selector="TextBlock.ioPortName">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="TextBlock.ioPortNumber">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
   <Style Selector="Border.ruleItem">
     <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />

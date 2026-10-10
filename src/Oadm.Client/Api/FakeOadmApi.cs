@@ -952,6 +952,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         new CorePluginInfo { Id = PkiPluginId, DisplayName = "PKI", IconKey = "shield", Group = "Security" },
         new CorePluginInfo { Id = MetadataMonitorPluginId, DisplayName = "Metadata Monitor", IconKey = "activity", Group = "Monitoring" },
         new CorePluginInfo { Id = HardeningScanPluginId, DisplayName = "Hardening scan", IconKey = "clipboardCheck", Group = "Security" },
+        new CorePluginInfo { Id = IoMonitorPluginId, DisplayName = "I/O Monitor", IconKey = "toggle", Group = "Monitoring" },
     ];
 
     public Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) => pluginId switch
@@ -961,6 +962,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         MetadataMonitorPluginId => InvokeMetadataMonitorAsync(method, payloadJson),
         SystemReportPluginId => InvokeSystemReportAsync(method, payloadJson),
         HardeningScanPluginId => InvokeHardeningScanAsync(method, payloadJson),
+        IoMonitorPluginId => InvokeIoMonitorAsync(method, payloadJson),
         _ => throw new RpcException(new Status(StatusCode.NotFound, $"Unknown core plugin '{pluginId}'.")),
     };
 
@@ -1442,7 +1444,9 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         _devices.Add(CreateDevice("ACCC8E0A1B2C", "10.0.0.21", "AXIS M3106-L Mk II", "11.11.124", DeviceStatus.Ok));
         _devices.Add(CreateDevice("ACCC8EF00D11", "10.0.0.22", "AXIS Q6135-LE", "12.6.94", DeviceStatus.Ok));
         _devices.Add(CreateDevice("B8A44F2E7A90", "10.0.0.23", "AXIS P1468-LE", "12.11.77", DeviceStatus.CredentialsRequired));
-        _devices.Add(CreateDevice("00408CA1B2C3", "10.0.0.30", "AXIS A9188", "11.11.124", DeviceStatus.Unreachable));
+        Device a9188 = CreateDevice("00408CA1B2C3", "10.0.0.30", "AXIS A9188", "11.11.124", DeviceStatus.Unreachable);
+        a9188.Apis.Add(new DeviceApi { Id = "io-port-management", Version = "1.1", Name = "I/O port management", Status = "official" });
+        _devices.Add(a9188);
         _devices.Add(CreateDevice("B8A44F3C4D5E", "10.0.0.31", "AXIS M4317-PLVE", "12.11.77", DeviceStatus.Ok));
         _devices.Add(CreateDevice("ACCC8E77E3A1", "10.0.0.32", "AXIS P3727-PLE", "11.8.64", DeviceStatus.Ok));
         _devices.Add(CreateDevice("B8A44F4A5B6C", "10.0.0.33", "AXIS Q3538-LVE", "12.11.77", DeviceStatus.CertificateChanged));

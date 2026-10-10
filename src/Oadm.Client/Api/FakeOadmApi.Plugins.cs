@@ -18,6 +18,7 @@ public sealed partial class FakeOadmApi
         Package(PkiPluginId, "PKI", "Issues device certificates for HTTPS and IEEE 802.1X.", hasPage: true, tasks: 9, alwaysOn: true),
         Package(MetadataMonitorPluginId, "Metadata Monitor", "Shows the events a camera sends, live.", hasPage: true, tasks: 0),
         Package(HardeningScanPluginId, "Hardening scan", "Checks devices against the AXIS OS hardening guide.", hasPage: true, tasks: 0, enabledByDefault: false),
+        Package(IoMonitorPluginId, "I/O Monitor", "Shows the inputs and outputs of a device, live.", hasPage: true, tasks: 0, enabledByDefault: false),
         Package(SystemReportPluginId, "System report", "Downloads the system reports of devices for Axis support.", hasPage: false, tasks: 0, alwaysOn: true),
         Package(RestartPluginId, "Restart", "Restarts devices.", hasPage: false, tasks: 1, alwaysOn: true),
     ];

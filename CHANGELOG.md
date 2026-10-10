@@ -14,6 +14,8 @@ version and date, and the release workflow copies it into the GitHub release.
   active, inactive, toggle or follow the rule, for example a relay) and **Run VAPIX command** (a saved VAPIX Commander
   command, with an optional second one when the rule turns off), on the device of the event, chosen devices, devices
   with tags or all devices. Limits against event storms, copy rules, and an event log of everything that ran.
+- **I/O Monitor** (plugin, off by default): pick a device and see its inputs and outputs live.
+- Plugin pages open in a window of their own: right-click the page in the navigation rail, **Open in new window**.
 - Image Health Dashboard: **Monitor continuously** checks every camera in the background, so event rules can use the
   results.
 - **Export configuration** and **Import configuration** in the context menu under Maintenance (AXIS OS 12.5 or later):

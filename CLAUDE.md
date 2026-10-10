@@ -166,6 +166,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.ImageHealth(.Client)/      core plugin: Image Health Dashboard, AXIS Image Health Analytics status of every camera (off by default)
   Oadm.Plugins.DeviceConfig(.Client)/     Maintenance tasks: Export configuration / Import configuration (device config files)
   Oadm.Plugins.Outputs/                   event rule action "Set output" (relays, outputs)
+  Oadm.Plugins.IoMonitor(.Client)/        core plugin: live inputs and outputs of one device (off by default)
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
                                 (both copy their output to artifacts/plugins/<plugin id>/)
@@ -635,7 +636,11 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   appears only while the server is unreachable.
 - Left navigation rail: expanded by default (user decision 2026-10-08; collapsed: icons only, ~56 px, tooltips with the label),
   expand/collapse toggle at the bottom of the rail; expanded ~220 px with icon + label.
-  Selected item as rounded pill `#2A2A2A`. Entries top: Devices, then one per Core plugin
+  Selected item as rounded pill `#2A2A2A`. Plugin pages (not host pages, user decision 2026-10-10) have a context menu
+  **Open in new window** on their rail entry: the plugin creates another, independent view (own context, streams, state)
+  shown in `Shell/PluginWindow` (title bar "<page> · OADM", page padding, not modal, as many as wanted); the windows close
+  with the main window, on logout and when the plugin is turned off (`MainWindowViewModel.PluginWindowRequested` /
+  `ClosePluginWindowsRequested`; tests `PluginWindowTests`, headless `client-plugin-window.png`). Entries top: Devices, then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (VAPIX
   Commander), Security (PKI, Hardening scan), Monitoring (Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
   no page), Maintenance, Integrations, Utilities, Extensions (default, third-party); user decision 2026-10-08): only groups
@@ -1306,7 +1311,7 @@ plugins, contributed and standalone tasks and client parts together) and adminis
 applies at once without a restart. User decision 2026-10-10: own rail page (not a Settings card), core functionality
 is always on.
 - Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
-  **Off by default: Hardening scan and Image Health Dashboard** (user decision). The administrator's choices are the
+  **Off by default: Hardening scan, Image Health Dashboard and I/O Monitor** (user decision). The administrator's choices are the
   server setting `Plugins.Enabled` (JSON object package id -> on; packages without a choice use their default),
   applied before the core plugins start (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
 - **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade firmware, Date and time, Applications
@@ -2091,6 +2096,21 @@ Decided with the user on 2026-10-09:
   5,000 rows; headless `image-health-dashboard.png`; read-only hardware test `ImageHealthHardwareTests` through the
   in-process server and the real page over gRPC, using the dev camera whose note mentions AIHA, renders
   `image-health-dashboard-live.png`).
+
+## I/O Monitor (core plugin)
+
+`plugins/Oadm.Plugins.IoMonitor` (+ `.Client`), id `oadm.io-monitor`, rail page **I/O Monitor** (group Monitoring, icon
+`toggle`), **off by default**. User decision 2026-10-10: a simple, fast live display of the inputs and outputs of one
+device; no events, no actions, no switching. Details in its `README.md`.
+- Devices with `io-port-management` 1.x in their API list; the server reads `getPorts` every 200 ms while a page shows the
+  device (stored credentials, 3 s timeout, 1 s after a failure) and pushes only changes (topic `ports`); `start` / `stop` /
+  `keepAlive` (5 s; stopped after 20 s without), at most 20 devices at once; refused statuses without a request.
+- Page: device picker, status chip, and the device drawn as a faceplate (user request: an illustration, not cards): rows
+  INPUTS and OUTPUTS of terminals, each the contact drawn open or closed (green while active), the port name and the port
+  number as "Set output" counts; tooltip open / closed and normal state (no LEDs, no glow: user feedback). Theme:
+  `Border.ioFaceplate` and `Border.ioTerminalBlock` (no own backgrounds: user feedback), `StackPanel.ioTerminal`, `Canvas.ioContact`, `Path.ioContactLever(.active)`.
+- Verified read-only on a loan AXIS A9210 (AXIS OS 12.10.73.2). Fake mode: the A9188 at 10.0.0.30. Tests:
+  `tests/Oadm.Plugins.IoMonitor.Tests` (headless `io-monitor-page.png`, hardware `io-monitor-live.png`).
 
 ## System report plugin (core plugin without a page)
 

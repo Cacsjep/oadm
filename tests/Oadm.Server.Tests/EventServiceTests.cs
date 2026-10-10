@@ -58,8 +58,8 @@ public sealed class EventServiceTests
         Assert.Contains(log.Entries, e => e.Kind == Proto.EventLogKind.EventLogEvent && e.What == "Device unreachable");
         Assert.Contains(log.Entries, e => e.Kind == Proto.EventLogKind.EventLogRule && e.What == "Rule turned on");
         Assert.Contains(log.Entries, e => e.Kind == Proto.EventLogKind.EventLogAction && e.Result == Proto.EventLogResult.EventLogOk);
-        var list = await events.ListRulesAsync(new Proto.Empty());
-        Assert.Equal("On", Assert.Single(list.Rules).StateText);
+        // The rule's state is published right after the engine's batch; the action may have run a moment earlier.
+        await TestHelpers.WaitUntilAsync(async () => (await events.ListRulesAsync(new Proto.Empty())).Rules.Single().StateText == "On", "the rule is on", TimeSpan.FromSeconds(10));
         Assert.Contains((await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries, e => e.Action == AuditActions.RuleCreated && e.Target == "Camera offline");
     }
 

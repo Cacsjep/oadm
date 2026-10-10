@@ -1,0 +1,109 @@
+{
+  "apiVersion": "1.1",
+  "context": "oadm",
+  "method": "getPorts",
+  "data": {
+    "numberOfPorts": 11,
+    "items": [
+      {
+        "port": "0",
+        "configurable": false,
+        "usage": "Relay",
+        "name": "RELAY",
+        "direction": "output",
+        "state": "open",
+        "normalState": "open"
+      },
+      {
+        "port": "1",
+        "configurable": false,
+        "usage": "",
+        "name": "I1",
+        "direction": "input",
+        "state": "open",
+        "normalState": "open"
+      },
+      {
+        "port": "2",
+        "configurable": false,
+        "usage": "",
+        "name": "I2",
+        "direction": "input",
+        "state": "open",
+        "normalState": "open"
+      },
+      {
+        "port": "3",
+        "configurable": false,
+        "usage": "",
+        "name": "O1",
+        "direction": "output",
+        "state": "open",
+        "normalState": "open"
+      },
+      {
+        "port": "4",
+        "configurable": false,
+        "usage": "",
+        "name": "O2",
+        "direction": "output",
+        "state": "open",
+        "normalState": "open"
+      },
+      {
+        "port": "5",
+        "configurable": false,
+        "usage": "",
+        "name": "I3",
+        "direction": "input",
+        "state": "open",
+        "normalState": "open"
+      },
+      {
+        "port": "6",
+        "configurable": false,
+        "usage": "",
+        "name": "O3",
+        "direction": "output",
+        "state": "open",
+        "normalState": "open"
+      },
+      {
+        "port": "7",
+        "configurable": true,
+        "usage": "",
+        "name": "I/O 1",
+        "direction": "input",
+        "state": "open",
+        "normalState": "open"
+      },
+      {
+        "port": "8",
+        "configurable": true,
+        "usage": "",
+        "name": "I/O 2",
+        "direction": "input",
+        "state": "open",
+        "normalState": "open"
+      },
+      {
+        "port": "9",
+        "configurable": false,
+        "usage": "",
+        "name": "I4",
+        "direction": "input",
+        "state": "open",
+        "normalState": "open"
+      },
+      {
+        "port": "10",
+        "configurable": false,
+        "usage": "",
+        "name": "I5",
+        "direction": "input",
+        "state": "open",
+        "normalState": "open"
+      }
+    ]
+  }
+}

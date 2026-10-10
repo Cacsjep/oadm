@@ -121,7 +121,7 @@ public sealed class PluginPackageTests
             .Select(PluginLoader.ReadManifest)
             .ToList();
         Assert.NotEmpty(manifests);
-        Assert.Equal(["oadm.hardening-scan", "oadm.image-health"], manifests.Where(m => !m.EnabledByDefault).Select(m => m.Id).Order());
+        Assert.Equal(["oadm.hardening-scan", "oadm.image-health", "oadm.io-monitor"], manifests.Where(m => !m.EnabledByDefault).Select(m => m.Id).Order());
 
         // Core functionality is always on (user decision 2026-10-10); every bundled plugin has a description.
         Assert.Equal(

@@ -113,6 +113,16 @@
                         CommandParameter="{Binding}"
                         ToolTip.Tip="{Binding Title}" ToolTip.Placement="Right"
                         ToolTip.ServiceEnabled="{Binding !$parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}">
+                  <!-- Plugin pages: right click opens another copy in its own window -->
+                  <Button.ContextMenu>
+                    <ContextMenu IsEnabled="{Binding CanOpenInWindow}" IsVisible="{Binding CanOpenInWindow}">
+                      <MenuItem Header="Open in new window" Command="{Binding OpenInNewWindowCommand}">
+                        <MenuItem.Icon>
+                          <ui:OadmIcon Data="{StaticResource Icon.externalLink}" />
+                        </MenuItem.Icon>
+                      </MenuItem>
+                    </ContextMenu>
+                  </Button.ContextMenu>
                   <Grid ColumnDefinitions="*,Auto">
                     <ui:IconLabel Grid.Column="0" Icon="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Text="{Binding Title}" Spacing="12"
                                  IsTextVisible="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}" />

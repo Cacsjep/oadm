@@ -30,7 +30,8 @@ public sealed partial class FakeOadmApi
     public async IAsyncEnumerable<PluginEvent> WatchCorePluginAsync(string pluginId, [EnumeratorCancellation] CancellationToken ct)
     {
         if (!string.Equals(pluginId, MetadataMonitorPluginId, StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(pluginId, HardeningScanPluginId, StringComparison.OrdinalIgnoreCase))
+            && !string.Equals(pluginId, HardeningScanPluginId, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(pluginId, IoMonitorPluginId, StringComparison.OrdinalIgnoreCase))
         {
             yield break;
         }

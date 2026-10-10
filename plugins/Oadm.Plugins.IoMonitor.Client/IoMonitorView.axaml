@@ -1,0 +1,66 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.IoMonitor.Client"
+             x:Class="Oadm.Plugins.IoMonitor.Client.IoMonitorView"
+             x:DataType="vm:IoMonitorViewModel"
+             ui:PageHeader.Subtitle="Inputs and outputs of a device, live.">
+  <UserControl.Resources>
+    <!-- One terminal of the faceplate: the contact drawn open or closed (green while active), the port name and number.
+         The tooltip has the open / closed details. -->
+    <DataTemplate x:Key="Terminal" x:DataType="vm:PortTileViewModel">
+      <StackPanel Classes="ioTerminal" ToolTip.Tip="{Binding Detail}">
+        <Canvas Classes="ioContact">
+          <Ellipse Classes="ioContactPin" Canvas.Left="1" Canvas.Top="13" />
+          <Ellipse Classes="ioContactPin" Canvas.Left="21" Canvas.Top="13" />
+          <Path Classes="ioContactLever" Classes.active="{Binding Active}" Data="M5,16 L23,16" IsVisible="{Binding IsClosed}" />
+          <Path Classes="ioContactLever" Classes.active="{Binding Active}" Data="M5,16 L20,7" IsVisible="{Binding IsOpen}" />
+        </Canvas>
+        <TextBlock Classes="ioPortName" Text="{Binding Name}" />
+        <TextBlock Classes="ioPortNumber" Text="{Binding Number}" />
+      </StackPanel>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <!-- One card (the host's page card): device picker and state, then the device's faceplate with its terminals. -->
+  <Grid RowDefinitions="Auto,*">
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+      <ComboBox Grid.Column="0" ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" PlaceholderText="Choose a device" MinWidth="320" />
+      <ui:StatusChip Grid.Column="2" VerticalAlignment="Center" Text="{Binding State}" Detail="{Binding ErrorText}"
+                     IsOk="{Binding IsLive}" IsAccent="{Binding IsConnecting}" IsError="{Binding HasError}" MaxLines="2" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Margin="0,24,0,0" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel>
+        <!-- The faceplate of the device -->
+        <Border Classes="ioFaceplate" IsVisible="{Binding ShowPanel}" HorizontalAlignment="Left">
+          <StackPanel Spacing="18">
+            <TextBlock Classes="ioFaceplateTitle" Text="{Binding PanelTitle}" />
+            <StackPanel Spacing="8" IsVisible="{Binding HasInputs}">
+              <TextBlock Classes="ioRowLabel" Text="INPUTS" />
+              <Border Classes="ioTerminalBlock">
+                <ItemsControl ItemsSource="{Binding Inputs}" ItemTemplate="{StaticResource Terminal}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                </ItemsControl>
+              </Border>
+            </StackPanel>
+            <StackPanel Spacing="8" IsVisible="{Binding HasOutputs}">
+              <TextBlock Classes="ioRowLabel" Text="OUTPUTS" />
+              <Border Classes="ioTerminalBlock">
+                <ItemsControl ItemsSource="{Binding Outputs}" ItemTemplate="{StaticResource Terminal}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                </ItemsControl>
+              </Border>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding ShowEmpty}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

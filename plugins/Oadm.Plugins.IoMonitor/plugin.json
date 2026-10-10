@@ -1,0 +1,8 @@
+{
+  "id": "oadm.io-monitor",
+  "version": "0.1.0",
+  "minSdkVersion": "0.1.0",
+  "displayName": "I/O Monitor",
+  "description": "Shows the inputs and outputs of a device, live.",
+  "enabledByDefault": false
+}

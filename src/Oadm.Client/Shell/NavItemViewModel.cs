@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace Oadm.Client.Shell;
 
@@ -29,6 +30,17 @@ public sealed partial class NavItemViewModel(string key, string title, string ic
 
     /// <summary>First entry of its group while the rail is expanded: the small group header above it.</summary>
     [ObservableProperty] public partial bool ShowGroupHeader { get; set; }
+
+    /// <summary>
+    /// Plugin pages only (user decision 2026-10-10): the rail entry's context menu "Open in new window" opens another,
+    /// independent copy of the page in its own window. Set by the shell; null for host pages.
+    /// </summary>
+    public Action<NavItemViewModel>? OpenInWindow { get; init; }
+
+    public bool CanOpenInWindow => OpenInWindow is not null && Page is CorePluginPageViewModel { HasView: true };
+
+    [RelayCommand]
+    private void OpenInNewWindow() => OpenInWindow?.Invoke(this);
 }
 
 /// <summary>Navigation page of a core plugin. <see cref="View"/> comes from the plugin's client assembly, if installed.</summary>
@@ -41,6 +53,10 @@ public sealed class CorePluginPageViewModel(string pluginId, string title, objec
 
     public string PluginId { get; } = pluginId;
     public string Title { get; } = title;
+
+    /// <summary>"I/O Monitor · OADM": the title of the page's own window.</summary>
+    public string WindowTitle => Title + " · OADM";
+
     public object? View { get; } = view;
     public bool HasView => View is not null;
 

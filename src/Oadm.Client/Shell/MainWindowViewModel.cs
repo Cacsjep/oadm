@@ -200,11 +200,52 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Connection.Start();
     }
 
-    /// <summary>Logout: stops the streams and closes the live view.</summary>
+    /// <summary>Logout: stops the streams, closes the live view and the plugin windows.</summary>
     public void Stop()
     {
         Connection.Stop();
         Devices.LiveView.CloseCommand.Execute(null);
+        ClosePluginWindowsRequested?.Invoke(this, null);
+    }
+
+    /// <summary>A plugin page to show in a window of its own (the view opens it).</summary>
+    public event EventHandler<CorePluginPageViewModel>? PluginWindowRequested;
+
+    /// <summary>Close the plugin windows of one plugin (turned off) or all of them (null: logout).</summary>
+    public event EventHandler<string?>? ClosePluginWindowsRequested;
+
+    /// <summary>
+    /// Another copy of a plugin page for a window of its own: the plugin creates a new view with its own context, so
+    /// streams and state are independent of the page in the rail.
+    /// </summary>
+    internal CorePluginPageViewModel? CreatePluginWindowPage(NavItemViewModel item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (item.Page is not CorePluginPageViewModel rail || _plugins.FindPage(rail.PluginId) is not { } page)
+        {
+            return null;
+        }
+
+        try
+        {
+            var view = page.CreateView(new CorePluginClientContext(_api, rail.PluginId, Devices.ToolbarContext));
+            return new CorePluginPageViewModel(rail.PluginId, rail.Title, view, page.HasOwnCards,
+                page.ShowTasksPane ? Devices.Tasks : null);
+        }
+        catch (Exception ex)
+        {
+            LogPageFailed(_logger, ex, rail.PluginId);
+            _ = ReportPageFailureAsync(rail.Title, ex);
+            return null;
+        }
+    }
+
+    private void OpenPluginWindow(NavItemViewModel item)
+    {
+        if (CreatePluginWindowPage(item) is { } page)
+        {
+            PluginWindowRequested?.Invoke(this, page);
+        }
     }
 
     [RelayCommand]
@@ -313,6 +354,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         foreach (NavItemViewModel stale in NavItems.Where(n => n.Page is CorePluginPageViewModel && !corePlugins.Any(p => "plugin:" + p.Id == n.Key)).ToList())
         {
             NavItems.Remove(stale);
+            ClosePluginWindowsRequested?.Invoke(this, ((CorePluginPageViewModel)stale.Page).PluginId);
             if (stale.IsSelected)
             {
                 Navigate(_devicesItem);
@@ -349,6 +391,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             {
                 GroupTitle = group.ToString(),
                 GroupOrder = (int)group,
+                OpenInWindow = OpenPluginWindow,
             });
         }
 
