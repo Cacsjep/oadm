@@ -41,6 +41,13 @@ public static class AccessPolicy
         // Tags: operators tag devices and create tags; renaming, recoloring and deleting a tag definition is Admin only.
         ["/oadm.v1.TagService/Update"] = Access.Admin,
         ["/oadm.v1.TagService/Delete"] = Access.Admin,
+
+        // Event rules change devices unattended: changing rules is Admin only (user decision 2026-10-10).
+        ["/oadm.v1.EventService/SaveRule"] = Access.Admin,
+        ["/oadm.v1.EventService/DeleteRule"] = Access.Admin,
+        ["/oadm.v1.EventService/SetRuleEnabled"] = Access.Admin,
+        ["/oadm.v1.EventService/DuplicateRule"] = Access.Admin,
+        ["/oadm.v1.EventService/ListActionChoices"] = Access.Admin,
     };
 
     /// <summary>Services that are Admin only as a whole.</summary>

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- test method names use underscores -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1861;CA2000;CA1859</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The plugin compiles against the SDK without copying it; the tests need it at run time. -->
+    <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj" />
+    <!-- The real VAPIX client for the opt-in hardware write test. -->
+    <ProjectReference Include="..\..\src\Oadm.Core\Oadm.Core.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Outputs\Oadm.Plugins.Outputs.csproj" />
+  </ItemGroup>
+</Project>

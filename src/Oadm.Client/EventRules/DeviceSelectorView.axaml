@@ -1,0 +1,17 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Client.EventRules"
+             x:Class="Oadm.Client.EventRules.DeviceSelectorView"
+             x:DataType="vm:DeviceSelectorViewModel">
+  <!-- Which devices: a mode, then the device or tag list for "chosen" and "with tags". -->
+  <StackPanel Spacing="8">
+    <ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" MinWidth="260" />
+    <Panel IsVisible="{Binding IsDevices}">
+      <vm:PickListView DataContext="{Binding Devices}" />
+    </Panel>
+    <Panel IsVisible="{Binding IsTags}">
+      <vm:PickListView DataContext="{Binding Tags}" />
+    </Panel>
+  </StackPanel>
+</UserControl>

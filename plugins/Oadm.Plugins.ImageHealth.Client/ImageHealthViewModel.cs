@@ -73,6 +73,47 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
 
     partial void OnAutoRefreshChanged(bool value) => SyncAutoRefresh();
 
+    /// <summary>
+    /// "Monitor continuously" (server setting, administrators): the server checks every 30 s in the background, also while
+    /// this page is closed, and event rules can use the results. Off by default.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool MonitorContinuously { get; set; }
+
+    private bool _applyingMonitoring;
+
+    partial void OnMonitorContinuouslyChanged(bool value)
+    {
+        if (!_applyingMonitoring)
+        {
+            _ = SetMonitoringAsync(value);
+        }
+    }
+
+    private async Task SetMonitoringAsync(bool enabled)
+    {
+        try
+        {
+            var json = await _ctx.InvokeAsync(ImageHealthMethods.SetMonitoring, ImageHealthJson.Serialize(new MonitoringRequest(enabled)), CancellationToken.None).ConfigureAwait(true);
+            ApplyState(ImageHealthJson.Deserialize<ImageHealthState>(json), replaceRows: true);
+            ErrorText = null;
+        }
+#pragma warning disable CA1031 // Shown on the page.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            SetMonitoringSilently(!enabled);
+            ErrorText = "Monitor continuously could not be changed: " + Message(ex);
+        }
+    }
+
+    private void SetMonitoringSilently(bool value)
+    {
+        _applyingMonitoring = true;
+        MonitorContinuously = value;
+        _applyingMonitoring = false;
+    }
+
     /// <summary>The page is shown: watch the events and check once.</summary>
     public void Activate()
     {
@@ -135,6 +176,7 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(state);
         _state = state;
+        SetMonitoringSilently(state.Monitoring);
         if (replaceRows)
         {
             var keep = new Dictionary<Guid, ImageHealthRowViewModel>(_byId);

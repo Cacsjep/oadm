@@ -155,6 +155,19 @@ public interface IOadmApi
     /// <summary>Admin: turns a plugin package on or off; returns the whole list.</summary>
     Task<IReadOnlyList<PluginPackageInfo>> SetPluginPackageEnabledAsync(string packageId, bool enabled, CancellationToken ct);
 
+    // EventService (event rules; changing rules is Admin only)
+    Task<EventCatalog> GetEventCatalogAsync(CancellationToken ct);
+    Task<IReadOnlyList<RuleSummary>> ListRulesAsync(CancellationToken ct);
+    IAsyncEnumerable<RuleList> WatchRulesAsync(CancellationToken ct);
+    Task<RuleDetail> GetRuleAsync(string id, CancellationToken ct);
+    Task<RuleDetail> SaveRuleAsync(string definitionJson, CancellationToken ct);
+    Task DeleteRuleAsync(string id, CancellationToken ct);
+    Task<RuleSummary> SetRuleEnabledAsync(string id, bool enabled, CancellationToken ct);
+    Task<RuleDetail> DuplicateRuleAsync(string id, CancellationToken ct);
+    Task<IReadOnlyList<ActionChoiceEntry>> ListActionChoicesAsync(string actionId, string fieldKey, CancellationToken ct);
+    Task<EventLogPage> ListEventLogAsync(int limit, string? ruleId, CancellationToken ct);
+    IAsyncEnumerable<EventLogPage> WatchEventLogAsync(CancellationToken ct);
+
     /// <summary>Live events of a core plugin (PluginService.Watch) until cancelled. Default: none (the page polls).</summary>
     IAsyncEnumerable<PluginEvent> WatchCorePluginAsync(string pluginId, CancellationToken ct) => AsyncEnumerable.Empty<PluginEvent>();
 }

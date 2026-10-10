@@ -61,6 +61,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Snapshot report', slug: 'tools/snapshot-report' },
 						{ label: 'System report', slug: 'tools/system-report' },
+						{ label: 'Event rules', slug: 'tools/event-rules' },
 						{ label: 'VAPIX Commander', slug: 'tools/vapix-commander' },
 						{ label: 'Hardening scan', slug: 'tools/hardening-scan' },
 						{ label: 'Metadata Monitor', slug: 'tools/metadata-monitor' },

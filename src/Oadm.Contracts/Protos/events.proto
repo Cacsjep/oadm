@@ -1,0 +1,176 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// Event rules: IF events (and schedules) THEN actions. Events and actions come from plugins; the server keeps the
+// rules, evaluates them and logs every event a rule uses and every action run. Rules are edited as definition JSON
+// (Oadm.Sdk.Events.RuleDefinition, camelCase). Changing rules is Admin only (audited); reading is Operator.
+service EventService {
+  // Every event type and action the plugins that are on offer (for the rule dialog).
+  rpc GetCatalog (Empty) returns (EventCatalog);
+  // Every rule with its summary and live state, sorted by name.
+  rpc ListRules (Empty) returns (RuleList);
+  // The list on subscribe and again after every change (rule saved, turned on or off, state changed); a burst sends
+  // the newest list once.
+  rpc WatchRules (Empty) returns (stream RuleList);
+  // The definition of one rule (password values never included). NOT_FOUND.
+  rpc GetRule (RuleId) returns (RuleDetail);
+  // Admin. Creates (empty id) or replaces a rule. INVALID_ARGUMENT with the first problem; field problems in
+  // RuleDetail are not used: the dialog checks first, the server checks again.
+  rpc SaveRule (SaveRuleRequest) returns (RuleDetail);
+  // Admin. A rule that is on runs its off actions first. NOT_FOUND.
+  rpc DeleteRule (RuleId) returns (Empty);
+  // Admin. Turning a rule off runs its off actions. NOT_FOUND.
+  rpc SetRuleEnabled (SetRuleEnabledRequest) returns (RuleSummary);
+  // Admin. A copy named "<name> (copy)", turned off, with the stored password values. NOT_FOUND.
+  rpc DuplicateRule (RuleId) returns (RuleDetail);
+  // The choices of an action setting filled by the action plugin (e.g. saved VAPIX commands). NOT_FOUND.
+  rpc ListActionChoices (ActionChoicesRequest) returns (ActionChoiceList);
+  // Newest first; limit 0 = 10,000. Optional filters.
+  rpc ListLog (ListEventLogRequest) returns (EventLogPage);
+  // New log entries as they are written (batches).
+  rpc WatchLog (Empty) returns (stream EventLogPage);
+}
+
+message EventFieldInfo {
+  string name = 1;
+  string display_name = 2;
+  repeated string values = 3;
+}
+
+message EventTypeEntry {
+  string id = 1;
+  string display_name = 2;
+  string group = 3;
+  bool stateful = 4;
+  bool device_scope = 5;
+  string description = 6;
+  repeated EventFieldInfo fields = 7;
+  bool available = 8;            // false: its plugin is off
+  string source_name = 9;        // "Built in", "Image Health Dashboard"
+}
+
+message ActionChoiceEntry {
+  string value = 1;
+  string label = 2;
+}
+
+enum ActionFieldKind {
+  ACTION_FIELD_TEXT = 0;
+  ACTION_FIELD_MULTILINE = 1;
+  ACTION_FIELD_NUMBER = 2;
+  ACTION_FIELD_BOOL = 3;
+  ACTION_FIELD_CHOICE = 4;
+  ACTION_FIELD_DYNAMIC_CHOICE = 5;
+  ACTION_FIELD_PASSWORD = 6;
+}
+
+message ActionFieldEntry {
+  string key = 1;
+  string label = 2;
+  ActionFieldKind kind = 3;
+  bool required = 4;
+  optional string default_value = 5;
+  string hint = 6;
+  repeated ActionChoiceEntry choices = 7;
+  int32 min = 8;
+  int32 max = 9;
+  int32 max_length = 10;
+  bool off_edge = 11;
+  string visible_when_key = 12;
+  string visible_when_value = 13;
+}
+
+message ActionEntry {
+  string id = 1;
+  string display_name = 2;
+  string group = 3;
+  string description = 4;
+  string icon_key = 5;
+  bool needs_device = 6;
+  bool supports_turn_off = 7;
+  repeated ActionFieldEntry fields = 8;
+  bool available = 9;
+  string source_name = 10;
+}
+
+message EventCatalog {
+  repeated EventTypeEntry event_types = 1;
+  repeated ActionEntry actions = 2;
+}
+
+message RuleId { string id = 1; }
+
+message RuleSummary {
+  string id = 1;
+  string name = 2;
+  bool enabled = 3;
+  string conditions_text = 4;    // "Blur detected · Mon-Fri 08:00-18:00"
+  string actions_text = 5;       // "Pulse output 1 for 5 s · Run VAPIX command Restart"
+  bool stateful = 6;
+  int32 active_count = 7;        // devices (or 1 for a server-wide trigger) the rule is on for
+  string state_text = 8;         // "On for 2 devices", "Off", "Waiting for Image Health Dashboard"
+  google.protobuf.Timestamp last_fired = 9;
+  string problem = 10;           // "Not available: VAPIX Commander is turned off"
+}
+
+message RuleList { repeated RuleSummary rules = 1; }
+
+message RuleDetail {
+  RuleSummary summary = 1;
+  string definition_json = 2;
+}
+
+message SaveRuleRequest { string definition_json = 1; }
+
+message SetRuleEnabledRequest {
+  string id = 1;
+  bool enabled = 2;
+}
+
+message ActionChoicesRequest {
+  string action_id = 1;
+  string field_key = 2;
+}
+
+message ActionChoiceList { repeated ActionChoiceEntry choices = 1; }
+
+enum EventLogKind {
+  EVENT_LOG_EVENT = 0;       // an event a rule uses
+  EVENT_LOG_RULE = 1;        // a rule turned on, off or fired
+  EVENT_LOG_ACTION = 2;      // one action run on one target
+  EVENT_LOG_SYSTEM = 3;      // dropped runs, limits, start
+}
+
+enum EventLogResult {
+  EVENT_LOG_INFO = 0;
+  EVENT_LOG_OK = 1;
+  EVENT_LOG_FAILED = 2;
+  EVENT_LOG_SKIPPED = 3;
+}
+
+message EventLogEntry {
+  int64 id = 1;
+  google.protobuf.Timestamp time = 2;
+  EventLogKind kind = 3;
+  EventLogResult result = 4;
+  string what = 5;           // "Blur detected", "Rule turned on", "Set output"
+  string device_id = 6;
+  string device = 7;         // "10.0.0.48 (P3265-V)"
+  string rule_id = 8;
+  string rule = 9;
+  string message = 10;
+}
+
+message ListEventLogRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+  string rule_id = 3;        // optional filter
+}
+
+message EventLogPage {
+  repeated EventLogEntry entries = 1;
+  int32 total_count = 2;
+}

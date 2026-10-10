@@ -1,0 +1,26 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Client.EventRules"
+             x:Class="Oadm.Client.EventRules.PickListView"
+             x:DataType="vm:PickListViewModel">
+  <!-- A searchable list of devices or tags with check boxes. Virtualized: thousands of devices. -->
+  <StackPanel Spacing="6">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+      <ui:SearchBox Grid.Column="0" Text="{Binding SearchText}" Width="NaN" HorizontalAlignment="Stretch" />
+      <TextBlock Grid.Column="1" Classes="secondary" VerticalAlignment="Center" Text="{Binding SummaryText}" />
+    </Grid>
+    <Border Classes="pickList">
+      <ListBox ItemsSource="{Binding Visible}" Height="150" SelectionMode="Single">
+        <ListBox.ItemsPanel>
+          <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
+        </ListBox.ItemsPanel>
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:PickItem">
+            <CheckBox IsChecked="{Binding IsChecked}" Content="{Binding Text}" />
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Border>
+  </StackPanel>
+</UserControl>

@@ -171,6 +171,39 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         return await C.Tags.SetDeviceTagsAsync(request, cancellationToken: ct);
     }
 
+    public async Task<EventCatalog> GetEventCatalogAsync(CancellationToken ct) =>
+        await C.Events.GetCatalogAsync(new Empty(), cancellationToken: ct);
+
+    public async Task<IReadOnlyList<RuleSummary>> ListRulesAsync(CancellationToken ct) =>
+        (await C.Events.ListRulesAsync(new Empty(), cancellationToken: ct)).Rules;
+
+    public IAsyncEnumerable<RuleList> WatchRulesAsync(CancellationToken ct) =>
+        ReadAll(C.Events.WatchRules(new Empty(), cancellationToken: ct), ct);
+
+    public async Task<RuleDetail> GetRuleAsync(string id, CancellationToken ct) =>
+        await C.Events.GetRuleAsync(new RuleId { Id = id }, cancellationToken: ct);
+
+    public async Task<RuleDetail> SaveRuleAsync(string definitionJson, CancellationToken ct) =>
+        await C.Events.SaveRuleAsync(new SaveRuleRequest { DefinitionJson = definitionJson }, cancellationToken: ct);
+
+    public async Task DeleteRuleAsync(string id, CancellationToken ct) =>
+        await C.Events.DeleteRuleAsync(new RuleId { Id = id }, cancellationToken: ct);
+
+    public async Task<RuleSummary> SetRuleEnabledAsync(string id, bool enabled, CancellationToken ct) =>
+        await C.Events.SetRuleEnabledAsync(new SetRuleEnabledRequest { Id = id, Enabled = enabled }, cancellationToken: ct);
+
+    public async Task<RuleDetail> DuplicateRuleAsync(string id, CancellationToken ct) =>
+        await C.Events.DuplicateRuleAsync(new RuleId { Id = id }, cancellationToken: ct);
+
+    public async Task<IReadOnlyList<ActionChoiceEntry>> ListActionChoicesAsync(string actionId, string fieldKey, CancellationToken ct) =>
+        (await C.Events.ListActionChoicesAsync(new ActionChoicesRequest { ActionId = actionId, FieldKey = fieldKey }, cancellationToken: ct)).Choices;
+
+    public async Task<EventLogPage> ListEventLogAsync(int limit, string? ruleId, CancellationToken ct) =>
+        await C.Events.ListLogAsync(new ListEventLogRequest { Limit = limit, RuleId = ruleId ?? string.Empty }, cancellationToken: ct);
+
+    public IAsyncEnumerable<EventLogPage> WatchEventLogAsync(CancellationToken ct) =>
+        ReadAll(C.Events.WatchLog(new Empty(), cancellationToken: ct), ct);
+
     public async Task RemoveDevicesAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct) =>
         await C.Devices.RemoveAsync(ToIds(deviceIds), cancellationToken: ct);
 
@@ -436,5 +469,6 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public FileService.FileServiceClient Files { get; } = new(channel);
         public LiveViewService.LiveViewServiceClient LiveView { get; } = new(channel);
         public TagService.TagServiceClient Tags { get; } = new(channel);
+        public EventService.EventServiceClient Events { get; } = new(channel);
     }
 }

@@ -296,6 +296,22 @@ public sealed partial class PluginLoader
             }
         }
 
+        // Standalone actions of the event rules; contributed ones were registered with their core plugin.
+        var contributedActions = _registry.AllActionPlugins.Where(a => a.Owner is not null).Select(a => a.Plugin.GetType()).ToHashSet();
+        foreach (var type in types.Where(t => typeof(Sdk.Actions.IActionPlugin).IsAssignableFrom(t) && !typeof(ICorePlugin).IsAssignableFrom(t)))
+        {
+            if (contributedActions.Contains(type) || type.GetConstructor(Type.EmptyTypes) is null)
+            {
+                LogSkippedType(type.FullName ?? type.Name, origin.PackageId);
+                continue;
+            }
+
+            if (TryCreate(type, origin) is Sdk.Actions.IActionPlugin action && _registry.RegisterActionPlugin(action, origin))
+            {
+                count++;
+            }
+        }
+
         return count;
     }
 

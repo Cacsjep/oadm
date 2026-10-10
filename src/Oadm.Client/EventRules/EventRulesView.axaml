@@ -1,0 +1,102 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="using:Oadm.Client.Controls"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Client.EventRules"
+             x:Class="Oadm.Client.EventRules.EventRulesView"
+             x:DataType="vm:EventRulesViewModel">
+  <Grid RowDefinitions="Auto,*">
+    <c:PageTitleBar Grid.Row="0" Title="Event rules" Subtitle="Run actions when events happen." Margin="0,0,0,16" />
+
+    <!-- Rules -->
+    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" IsVisible="{Binding IsRulesTab}">
+      <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="16">
+          <Border Grid.Column="0" Classes="segmented">
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="segment" Classes.selected="{Binding IsRulesTab}" Content="Rules" Command="{Binding ShowRulesCommand}" />
+              <Button Classes="segment" Classes.selected="{Binding IsLogTab}" Content="Event log" Command="{Binding ShowLogCommand}" />
+            </StackPanel>
+          </Border>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+            <ui:ToolbarButton Text="New rule" IconKey="add" IsPrimary="True" Command="{Binding NewRuleCommand}"
+                              ToolTip.Tip="{Binding ReadOnlyHint}" ToolTip.ShowOnDisabled="True" />
+            <ui:ToolbarButton Text="Edit" IconKey="edit" Command="{Binding EditCommand}" />
+            <ui:ToolbarButton Text="Duplicate" IconKey="copy" Command="{Binding DuplicateCommand}" />
+            <ui:ToolbarSeparator />
+            <Button Classes="toolbar danger" Command="{Binding DeleteCommand}">
+              <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete" Spacing="8" />
+            </Button>
+          </StackPanel>
+          <ui:SearchBox Grid.Column="3" Text="{Binding SearchText}" Placeholder="Search rules" />
+        </Grid>
+
+        <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding RulesStatus}" Margin="2,14,0,8" />
+
+        <DataGrid x:Name="RuleGrid" Grid.Row="2" Classes="wrapRows" ItemsSource="{Binding Rules}" SelectedItem="{Binding SelectedRule}"
+                  IsReadOnly="True" SelectionMode="Single" CanUserSortColumns="True" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTemplateColumn Header="On" Width="60" SortMemberPath="Enabled">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:RuleRowViewModel">
+                  <CheckBox IsChecked="{Binding Enabled}" IsEnabled="{Binding CanToggle}" HorizontalAlignment="Center" ToolTip.Tip="Turn the rule on or off" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Name" Width="220" Binding="{Binding Name}" x:DataType="vm:RuleRowViewModel" />
+            <DataGridTextColumn Header="When" Width="2*" Binding="{Binding ConditionsText}" x:DataType="vm:RuleRowViewModel" />
+            <DataGridTextColumn Header="Then" Width="2*" Binding="{Binding ActionsText}" x:DataType="vm:RuleRowViewModel" />
+            <DataGridTemplateColumn Header="State" Width="220" SortMemberPath="StateText">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:RuleRowViewModel">
+                  <ui:StatusChip Text="{Binding StateText}" IsOk="{Binding IsOn}" IsWarning="{Binding HasProblem}" IsAccent="{Binding IsWaiting}" MaxLines="2" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Last run" Width="140" Binding="{Binding LastFiredText}" SortMemberPath="LastFiredSortKey" x:DataType="vm:RuleRowViewModel" />
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Grid.Row="2" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding RulesEmptyText}"
+                   IsVisible="{Binding ShowRulesEmpty}" />
+        <TextBlock Grid.Row="3" Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" Margin="0,8,0,0" />
+      </Grid>
+    </Border>
+
+    <!-- Event log -->
+    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" IsVisible="{Binding IsLogTab}">
+      <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="16">
+          <Border Grid.Column="0" Classes="segmented">
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="segment" Classes.selected="{Binding IsRulesTab}" Content="Rules" Command="{Binding ShowRulesCommand}" />
+              <Button Classes="segment" Classes.selected="{Binding IsLogTab}" Content="Event log" Command="{Binding ShowLogCommand}" />
+            </StackPanel>
+          </Border>
+          <ui:ToolbarButton Grid.Column="1" Text="Refresh" IconKey="refresh" Command="{Binding RefreshLogCommand}" />
+          <ui:SearchBox Grid.Column="3" Text="{Binding LogSearchText}" Placeholder="Search the log" />
+        </Grid>
+
+        <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding LogStatus}" Margin="2,14,0,8" />
+
+        <DataGrid x:Name="LogGrid" Grid.Row="2" Classes="wrapRows" ItemsSource="{Binding LogEntries}" IsReadOnly="True" SelectionMode="Extended"
+                  CanUserSortColumns="False" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Time" Width="150" Binding="{Binding TimeText}" x:DataType="vm:EventLogRowViewModel" />
+            <DataGridTextColumn Header="Type" Width="80" Binding="{Binding KindText}" x:DataType="vm:EventLogRowViewModel" />
+            <DataGridTextColumn Header="What" Width="180" Binding="{Binding What}" x:DataType="vm:EventLogRowViewModel" />
+            <DataGridTextColumn Header="Device" Width="190" Binding="{Binding Device}" x:DataType="vm:EventLogRowViewModel" />
+            <DataGridTextColumn Header="Rule" Width="200" Binding="{Binding Rule}" x:DataType="vm:EventLogRowViewModel" />
+            <DataGridTemplateColumn Header="Result" Width="*" MinWidth="240">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:EventLogRowViewModel">
+                  <ui:StatusChip Text="{Binding ResultText}" Detail="{Binding Message}" IsOk="{Binding IsOk}" IsError="{Binding IsError}" IsWarning="{Binding IsWarning}" MaxLines="2" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Grid.Row="3" Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" Margin="0,8,0,0" />
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

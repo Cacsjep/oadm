@@ -89,6 +89,19 @@ public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLa
         return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
     }
 
+    public async Task<bool> ShowRuleEditorAsync(EventRules.RuleEditorViewModel editor)
+    {
+        ArgumentNullException.ThrowIfNull(editor);
+        if (CurrentOwner() is not { } owner)
+        {
+            return false;
+        }
+
+        var window = new EventRules.RuleEditorWindow();
+        window.Attach(editor);
+        return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
+    }
+
     public async Task<string?> ShowTaskPluginDialogAsync(ITaskPluginDialog dialog, IReadOnlyList<IDeviceInfo> devices)
     {
         ArgumentNullException.ThrowIfNull(dialog);

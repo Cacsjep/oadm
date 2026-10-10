@@ -20,6 +20,9 @@ public sealed class ImageHealthOptions
     /// <summary>Changed rows and counts are pushed at most this often.</summary>
     public TimeSpan PublishInterval { get; init; } = TimeSpan.FromMilliseconds(500);
 
+    /// <summary>"Monitor continuously" checks every camera this often (user decision 2026-10-10: a switch on the page).</summary>
+    public TimeSpan MonitorInterval { get; init; } = TimeSpan.FromSeconds(30);
+
     public TimeProvider Time { get; init; } = TimeProvider.System;
 }
 
@@ -55,6 +58,12 @@ public sealed partial class ImageHealthMonitor : IAsyncDisposable
         var token = _stopping.Token;
         _publishLoop = Task.Run(() => PublishLoopAsync(token), CancellationToken.None);
     }
+
+    /// <summary>"Monitor continuously" is on (shown in <see cref="Snapshot"/>).</summary>
+    public bool Monitoring { get; set; }
+
+    /// <summary>Raised after every finished check (not after a cancelled one), with the rows at that moment.</summary>
+    public event Action<IReadOnlyList<ImageHealthRow>>? CheckFinished;
 
     /// <summary>Whether a check runs (tests).</summary>
     public bool IsChecking
@@ -127,7 +136,10 @@ public sealed partial class ImageHealthMonitor : IAsyncDisposable
                 _withoutApp,
                 _rows.Values.Count(r => r.App == AppStates.Error),
                 _checkedUtc,
-                rows);
+                rows)
+            {
+                Monitoring = Monitoring,
+            };
         }
     }
 
@@ -184,8 +196,9 @@ public sealed partial class ImageHealthMonitor : IAsyncDisposable
                 _checkedUtc = _options.Time.GetUtcNow();
             }
 
-            var state = Snapshot(withRows: false);
+            var state = Snapshot(withRows: true);
             LogChecked(_ctx.Logger, state.Total, state.Running, state.NotRunning, state.Failed);
+            CheckFinished?.Invoke(state.Rows);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

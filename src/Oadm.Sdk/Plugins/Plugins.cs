@@ -300,6 +300,13 @@ public interface ICorePluginContext
     /// devices to new addresses (<see cref="IDeviceAutoAdd"/>). Null when the host does not offer it.
     /// </summary>
     IDeviceAutoAdd? AutoAdd => null;
+
+    /// <summary>
+    /// Publishes the plugin's events to the server's event rules (the plugin implements
+    /// <see cref="Events.IEventSource"/> to declare them). Null when the host has no event rules or the plugin declares no
+    /// events.
+    /// </summary>
+    Events.IEventPublisher? EventPublisher => null;
 }
 
 /// <summary>Server-side encryption for secrets a plugin persists. Values never leave the server.</summary>

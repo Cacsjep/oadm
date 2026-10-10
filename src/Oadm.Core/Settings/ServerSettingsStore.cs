@@ -177,6 +177,19 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
                 }
 
                 break;
+            case SettingKeys.EventsLogRetentionDays:
+                RequireInt(key, value, 0, ServerSettings.MaxTasksRetentionDays);
+                break;
+            case SettingKeys.EventsLogMaxEntries:
+                RequireInt(key, value, 0, ServerSettings.MaxTasksMaxHistory);
+                if (value.GetInt32() is > 0 and < ServerSettings.MinTasksMaxHistory)
+                {
+                    throw new ArgumentException(
+                        string.Create(CultureInfo.InvariantCulture, $"'{key}' must be 0 (no limit) or at least {ServerSettings.MinTasksMaxHistory}."),
+                        nameof(valueJson));
+                }
+
+                break;
             case SettingKeys.ScanParallelism:
                 RequireInt(key, value, 1, 1024);
                 break;
@@ -240,6 +253,8 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.UploadsRetentionHours] = JsonSerializer.Serialize(ServerSettings.DefaultUploadsRetentionHours),
             [SettingKeys.TasksRetentionDays] = JsonSerializer.Serialize(ServerSettings.DefaultTasksRetentionDays),
             [SettingKeys.TasksMaxHistory] = JsonSerializer.Serialize(ServerSettings.DefaultTasksMaxHistory),
+            [SettingKeys.EventsLogRetentionDays] = JsonSerializer.Serialize(ServerSettings.DefaultEventsLogRetentionDays),
+            [SettingKeys.EventsLogMaxEntries] = JsonSerializer.Serialize(ServerSettings.DefaultEventsLogMaxEntries),
             [SettingKeys.DevicesUseHostName] = JsonSerializer.Serialize(d.UseHostName),
             [SettingKeys.DiscoveryZeroConfSeconds] = JsonSerializer.Serialize(d.ZeroConfSeconds),
             [SettingKeys.TasksMaxParallelPerPlugin] = JsonSerializer.Serialize(d.MaxParallelTasksPerPlugin),

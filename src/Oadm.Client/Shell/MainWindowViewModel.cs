@@ -50,7 +50,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         UserSession session,
         ILogger<MainWindowViewModel> logger,
         PluginPackageStore? packages = null,
-        PluginsViewModel? pluginList = null)
+        PluginsViewModel? pluginList = null,
+        EventRules.EventRulesViewModel? eventRules = null)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(clientSettings);
@@ -90,6 +91,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
         // Bottom: Users, Credentials and Plugins (administrators only), Logs, Settings, About.
         _devicesItem = new NavItemViewModel(HostPages.Devices, "Devices", "devices", devices);
         NavItems.Add(_devicesItem);
+        if (eventRules is not null)
+        {
+            // Built-in page in the Automation group, before the plugin pages of that group.
+            NavItems.Add(new NavItemViewModel(HostPages.EventRules, "Event rules", "zap", eventRules)
+            {
+                GroupTitle = CorePluginGroup.Automation.ToString(),
+                GroupOrder = (int)CorePluginGroup.Automation,
+            });
+        }
+
         _usersItem = new NavItemViewModel(HostPages.Users, "Users", "users", users);
         _credentialsItem = new NavItemViewModel(HostPages.Credentials, "Credentials", "key", credentials);
         _pluginsItem = pluginList is null ? null : new NavItemViewModel(HostPages.Plugins, "Plugins", "plugin", pluginList);
@@ -97,6 +108,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _settingsItem = new NavItemViewModel(HostPages.Settings, "Settings", "settings", settings);
         _aboutItem = new NavItemViewModel(HostPages.About, "About", "info", about);
         SyncBottomNavItems();
+        UpdateNavGroups();
 
         connection.Connected += (_, _) => _ = OnConnectedAsync();
         devices.NavigateRequested += (_, key) => Navigate(NavItems.Concat(BottomNavItems).FirstOrDefault(n => n.Key == key));
@@ -346,7 +358,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>Core plugin pages sorted by group (<see cref="CorePluginGroup"/> order), the server's order inside a group.</summary>
     private void OrderCorePluginPages()
     {
-        var pages = NavItems.Where(n => n.Page is CorePluginPageViewModel).ToList();
+        var pages = NavItems.Where(n => n.GroupTitle is not null).ToList();
         var ordered = pages.OrderBy(n => n.GroupOrder).ToList(); // stable
         if (!pages.SequenceEqual(ordered))
         {
@@ -372,7 +384,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         string? previous = null;
         var first = true;
-        foreach (NavItemViewModel item in NavItems.Where(n => n.Page is CorePluginPageViewModel))
+        foreach (NavItemViewModel item in NavItems.Where(n => n.GroupTitle is not null))
         {
             bool start = !string.Equals(item.GroupTitle, previous, StringComparison.Ordinal);
             item.ShowGroupHeader = start && IsNavExpanded;

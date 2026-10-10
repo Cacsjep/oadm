@@ -43,6 +43,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     private readonly IFirewallRules? _firewall;
     private readonly string? _pluginDataRoot;
     private readonly IDeviceAutoAdd? _autoAdd;
+    private readonly Func<string, Sdk.Events.IEventPublisher>? _eventPublishers;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.OrdinalIgnoreCase);
@@ -62,7 +63,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         IDeviceEventStreams? eventStreams = null,
         IFirewallRules? firewall = null,
         string? pluginDataRoot = null,
-        IDeviceAutoAdd? autoAdd = null)
+        IDeviceAutoAdd? autoAdd = null,
+        Func<string, Sdk.Events.IEventPublisher>? eventPublishers = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(devices);
@@ -80,6 +82,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         _firewall = firewall;
         _pluginDataRoot = pluginDataRoot;
         _autoAdd = autoAdd;
+        _eventPublishers = eventPublishers;
         Events = events ?? new PluginEventHub();
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _logger = _loggerFactory.CreateLogger<CorePluginHost>();
@@ -128,7 +131,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     _eventStreams,
                     _firewall,
                     _pluginDataRoot is null ? null : Path.Combine(_pluginDataRoot, SafeFolderName(registered.Id)),
-                    _autoAdd);
+                    _autoAdd,
+                    registered.Plugin is Sdk.Events.IEventSource ? _eventPublishers?.Invoke(registered.Id) : null);
                 try
                 {
                     await registered.Plugin.StartAsync(context, ct).ConfigureAwait(false);
@@ -345,7 +349,8 @@ internal sealed class CorePluginContext(
     IDeviceEventStreams? eventStreams = null,
     IFirewallRules? firewall = null,
     string? dataDirectory = null,
-    IDeviceAutoAdd? autoAdd = null) : ICorePluginContext
+    IDeviceAutoAdd? autoAdd = null,
+    Sdk.Events.IEventPublisher? eventPublisher = null) : ICorePluginContext
 {
     private readonly Lazy<string?> _dataDirectory = new(() =>
     {
@@ -380,6 +385,8 @@ internal sealed class CorePluginContext(
     public IFirewallRules? Firewall { get; } = firewall;
 
     public IDeviceAutoAdd? AutoAdd { get; } = autoAdd;
+
+    public Sdk.Events.IEventPublisher? EventPublisher { get; } = eventPublisher;
 
     /// <summary>Created on first use, so plugins that never ask leave no empty folder behind.</summary>
     public string? DataDirectory => _dataDirectory.Value;

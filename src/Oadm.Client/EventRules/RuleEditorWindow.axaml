@@ -1,0 +1,195 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Client.EventRules"
+        x:Class="Oadm.Client.EventRules.RuleEditorWindow"
+        x:DataType="vm:RuleEditorViewModel"
+        Title="{Binding Title}"
+        Width="820" Height="860" MinHeight="500"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+  <!-- Several sections: title bar, cards (rule, conditions, actions, limits) in a scroll area, footer. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+
+    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="{DynamicResource Oadm.Gap}" Margin="16,0,16,8">
+
+        <!-- Rule -->
+        <Border Classes="card">
+          <StackPanel Classes="form">
+            <ui:FormField Label="Name">
+              <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="64" />
+            </ui:FormField>
+            <ui:FormField>
+              <CheckBox Content="Turned on" IsChecked="{Binding Enabled}" />
+            </ui:FormField>
+          </StackPanel>
+        </Border>
+
+        <!-- Conditions: "When" (the trigger) and any number of "And" -->
+        <Border Classes="card">
+          <StackPanel Spacing="12">
+            <ui:CardHeader Title="Conditions" Description="{Binding StateHint}" />
+            <ItemsControl ItemsSource="{Binding Conditions}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel Spacing="12" /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ConditionViewModel">
+                  <Border Classes="ruleItem">
+                    <Grid ColumnDefinitions="64,*,Auto" ColumnSpacing="12">
+                      <TextBlock Grid.Column="0" Classes="sectionTitle" Text="{Binding Title}" VerticalAlignment="Top" Margin="0,6,0,0" />
+                      <StackPanel Grid.Column="1" Spacing="8">
+                        <!-- Event -->
+                        <StackPanel Spacing="8" IsVisible="{Binding IsEvent}">
+                          <ComboBox ItemsSource="{Binding EventTypes}" SelectedItem="{Binding SelectedEventType}" PlaceholderText="Choose an event"
+                                    HorizontalAlignment="Stretch" />
+                          <TextBlock Classes="secondary" Text="{Binding EventDescription}" IsVisible="{Binding EventDescription, Converter={x:Static ObjectConverters.IsNotNull}}" TextWrapping="Wrap" />
+                          <Panel IsVisible="{Binding ShowSelector}">
+                            <vm:DeviceSelectorView DataContext="{Binding Selector}" />
+                          </Panel>
+                          <ItemsControl ItemsSource="{Binding Filters}">
+                            <ItemsControl.ItemTemplate>
+                              <DataTemplate x:DataType="vm:FilterFieldViewModel">
+                                <ui:FormField Label="{Binding Label}" Hint="Optional">
+                                  <TextBox Text="{Binding Value}" />
+                                </ui:FormField>
+                              </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                          </ItemsControl>
+                        </StackPanel>
+                        <!-- Schedule -->
+                        <StackPanel Spacing="8" IsVisible="{Binding IsSchedule}">
+                          <TextBlock Classes="secondary" Text="Inside this time window (server time)" />
+                          <ItemsControl ItemsSource="{Binding Days}">
+                            <ItemsControl.ItemsPanel>
+                              <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="4" /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                              <DataTemplate x:DataType="vm:DayToggle">
+                                <ToggleButton Classes="day" Content="{Binding Text}" IsChecked="{Binding IsChecked}" />
+                              </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                          </ItemsControl>
+                          <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Classes="fieldLabel" Text="From" VerticalAlignment="Center" />
+                            <TextBox Text="{Binding From}" Width="80" />
+                            <TextBlock Classes="fieldLabel" Text="To" VerticalAlignment="Center" />
+                            <TextBox Text="{Binding To}" Width="80" />
+                          </StackPanel>
+                        </StackPanel>
+                        <TextBlock Classes="error small" Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" TextWrapping="Wrap" />
+                      </StackPanel>
+                      <Button Grid.Column="2" Classes="toolbar iconOnly danger" VerticalAlignment="Top" ToolTip.Tip="Remove condition"
+                              Command="{Binding RemoveCommand}" IsVisible="{Binding !IsTrigger}">
+                        <ui:OadmIcon Data="{StaticResource Icon.remove}" />
+                      </Button>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Classes="secondary" Command="{Binding AddEventConditionCommand}" IsEnabled="{Binding CanAddCondition}">
+                <ui:IconLabel Icon="{StaticResource Icon.add}" Text="Add event" />
+              </Button>
+              <Button Classes="secondary" Command="{Binding AddScheduleCommand}" IsEnabled="{Binding CanAddCondition}">
+                <ui:IconLabel Icon="{StaticResource Icon.clock}" Text="Add schedule" />
+              </Button>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <!-- Actions: one to five, in this order -->
+        <Border Classes="card">
+          <StackPanel Spacing="12">
+            <ui:CardHeader Title="Actions" Description="They run in this order." />
+            <ItemsControl ItemsSource="{Binding RuleActions}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel Spacing="12" /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:RuleActionViewModel">
+                  <Border Classes="ruleItem">
+                    <Grid ColumnDefinitions="64,*,Auto" ColumnSpacing="12">
+                      <TextBlock Grid.Column="0" Classes="sectionTitle" Text="Then" VerticalAlignment="Top" Margin="0,6,0,0" />
+                      <StackPanel Grid.Column="1" Spacing="8">
+                        <ComboBox ItemsSource="{Binding Actions}" SelectedItem="{Binding SelectedAction}" PlaceholderText="Choose an action" HorizontalAlignment="Stretch" />
+                        <TextBlock Classes="secondary" Text="{Binding Description}" IsVisible="{Binding Description, Converter={x:Static ObjectConverters.IsNotNull}}" TextWrapping="Wrap" />
+                        <StackPanel Spacing="6" IsVisible="{Binding ShowTargets}">
+                          <TextBlock Classes="fieldLabel" Text="On" />
+                          <vm:DeviceSelectorView DataContext="{Binding Targets}" />
+                        </StackPanel>
+                        <ItemsControl ItemsSource="{Binding Fields}">
+                          <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><StackPanel Classes="form" /></ItemsPanelTemplate>
+                          </ItemsControl.ItemsPanel>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ActionFieldViewModel">
+                              <Panel IsVisible="{Binding IsVisible}">
+                                <ui:FormField Label="{Binding Label}" Hint="{Binding Hint}" Error="{Binding Error}" IsVisible="{Binding !IsBool}">
+                                  <Panel>
+                                    <TextBox Text="{Binding Text}" IsVisible="{Binding IsText}" />
+                                    <TextBox Text="{Binding Text}" IsVisible="{Binding IsNumber}" Width="120" HorizontalAlignment="Left" />
+                                    <TextBox Text="{Binding Text}" IsVisible="{Binding IsMultiline}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" />
+                                    <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}" IsVisible="{Binding IsChoice}" HorizontalAlignment="Stretch" />
+                                    <ui:PasswordBox Text="{Binding Text}" IsVisible="{Binding IsPassword}" />
+                                  </Panel>
+                                </ui:FormField>
+                                <ui:FormField Error="{Binding Error}" IsVisible="{Binding IsBool}">
+                                  <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" />
+                                </ui:FormField>
+                              </Panel>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Classes="error small" Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" TextWrapping="Wrap" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Top">
+                        <Button Classes="toolbar iconOnly" ToolTip.Tip="Move up" Command="{Binding MoveUpCommand}">
+                          <ui:OadmIcon Data="{StaticResource Icon.chevronUp}" />
+                        </Button>
+                        <Button Classes="toolbar iconOnly" ToolTip.Tip="Move down" Command="{Binding MoveDownCommand}">
+                          <ui:OadmIcon Data="{StaticResource Icon.chevronDown}" />
+                        </Button>
+                        <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Remove action" Command="{Binding RemoveCommand}">
+                          <ui:OadmIcon Data="{StaticResource Icon.remove}" />
+                        </Button>
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding AddActionCommand}" IsEnabled="{Binding CanAddAction}">
+              <ui:IconLabel Icon="{StaticResource Icon.add}" Text="Add action" />
+            </Button>
+          </StackPanel>
+        </Border>
+
+        <!-- Limits against event storms -->
+        <Border Classes="card">
+          <StackPanel Classes="form">
+            <ui:CardHeader Title="Limits" />
+            <ui:FormField Label="Wait between runs" Hint="Seconds per device before the rule can run again">
+              <TextBox Text="{Binding Cooldown}" Width="120" HorizontalAlignment="Left" />
+            </ui:FormField>
+            <ui:FormField Label="Runs per minute" Hint="At most, for the whole rule">
+              <TextBox Text="{Binding MaxRuns}" Width="120" HorizontalAlignment="Left" />
+            </ui:FormField>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Classes="error" Text="{Binding ServerError}" IsVisible="{Binding HasServerError}" TextWrapping="Wrap" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" IsDefault="True" Content="Save" Command="{Binding SaveCommand}"
+              ToolTip.Tip="{Binding Problem}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

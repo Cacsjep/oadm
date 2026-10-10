@@ -22,12 +22,14 @@
     </UniformGrid>
     <Border Grid.Row="1" Classes="card">
       <Grid RowDefinitions="Auto,Auto,Auto,*">
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="10">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="10">
           <ui:ToolbarButton Grid.Column="0" IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}"
                             ToolTip.Tip="Check every camera again" />
           <CheckBox Grid.Column="1" VerticalAlignment="Center" Content="Auto refresh" IsChecked="{Binding AutoRefresh}"
                     ToolTip.Tip="Check every 10 s while this page is open" />
-          <ui:SearchBox Grid.Column="3" Width="220" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="Search cameras" />
+          <CheckBox Grid.Column="2" VerticalAlignment="Center" Content="Monitor continuously" IsChecked="{Binding MonitorContinuously}"
+                    ToolTip.Tip="Check every 30 s, also with the page closed, for event rules" />
+          <ui:SearchBox Grid.Column="4" Width="220" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="Search cameras" />
         </Grid>
 
         <ui:ProgressRow Grid.Row="1" Margin="0,10,0,0" Value="{Binding ProgressValue}" Text="{Binding ProgressText}" IsActive="{Binding IsChecking}"

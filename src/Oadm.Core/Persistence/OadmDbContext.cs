@@ -27,6 +27,9 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
     public DbSet<AuthTokenEntity> AuthTokens => Set<AuthTokenEntity>();
     public DbSet<AuditEntryEntity> AuditEntries => Set<AuditEntryEntity>();
     public DbSet<TagDefinition> TagDefinitions => Set<TagDefinition>();
+    public DbSet<Events.EventRuleEntity> EventRules => Set<Events.EventRuleEntity>();
+    public DbSet<Events.EventRuleStateEntity> EventRuleStates => Set<Events.EventRuleStateEntity>();
+    public DbSet<Events.EventLogEntryEntity> EventLogEntries => Set<Events.EventLogEntryEntity>();
 
     private static readonly ValueConverter<DateTime, DateTime> UtcConverter =
         new(v => v.Kind == DateTimeKind.Utc ? v : v.ToUniversalTime(), v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
@@ -211,6 +214,42 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.HasIndex(t => t.NormalizedName).IsUnique();
             e.Property(t => t.Color).HasConversion<string>().HasMaxLength(16);
             e.Property(t => t.CreatedUtc).HasConversion(UtcConverter);
+        });
+
+        modelBuilder.Entity<Events.EventRuleEntity>(e =>
+        {
+            e.ToTable("EventRules");
+            e.HasKey(r => r.Id);
+            e.Property(r => r.Id).ValueGeneratedNever();
+            e.Property(r => r.Name).IsRequired().HasMaxLength(Sdk.Events.RuleDefinition.MaxNameLength);
+            e.Property(r => r.DefinitionJson).IsRequired();
+            e.Property(r => r.CreatedUtc).HasConversion(UtcConverter);
+            e.Property(r => r.UpdatedUtc).HasConversion(UtcConverter);
+            e.Property(r => r.LastFiredUtc).HasConversion(NullableUtcConverter);
+        });
+
+        modelBuilder.Entity<Events.EventRuleStateEntity>(e =>
+        {
+            e.ToTable("EventRuleStates");
+            e.HasKey(r => new { r.RuleId, r.SubjectId });
+            e.Property(r => r.SinceUtc).HasConversion(UtcConverter);
+            e.HasOne<Events.EventRuleEntity>().WithMany().HasForeignKey(r => r.RuleId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Events.EventLogEntryEntity>(e =>
+        {
+            e.ToTable("EventLogEntries");
+            e.HasKey(l => l.Id);
+            e.Property(l => l.Id).ValueGeneratedOnAdd();
+            e.Property(l => l.TimeUtc).HasConversion(UtcConverter);
+            e.Property(l => l.Kind).HasConversion<string>().HasMaxLength(16);
+            e.Property(l => l.Result).HasConversion<string>().HasMaxLength(16);
+            e.Property(l => l.What).IsRequired().HasMaxLength(Events.EventLogEntryEntity.MaxTextLength);
+            e.Property(l => l.Device).IsRequired().HasMaxLength(Events.EventLogEntryEntity.MaxTextLength);
+            e.Property(l => l.Rule).IsRequired().HasMaxLength(Events.EventLogEntryEntity.MaxTextLength);
+            e.Property(l => l.Message).IsRequired().HasMaxLength(Events.EventLogEntryEntity.MaxMessageLength);
+            e.HasIndex(l => l.TimeUtc);
+            e.HasIndex(l => l.RuleId);
         });
 
         modelBuilder.Entity<Setting>(e =>

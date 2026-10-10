@@ -94,6 +94,7 @@ public sealed class AuthTests
             Proto.AuthService.Descriptor, Proto.UserService.Descriptor, Proto.AuditService.Descriptor, Proto.SettingsService.Descriptor,
             Proto.TaskService.Descriptor, Proto.DeviceService.Descriptor, Proto.PluginService.Descriptor, Proto.DiscoveryService.Descriptor,
             Proto.AddDevicesService.Descriptor, Proto.FileService.Descriptor, Proto.LiveViewService.Descriptor, Proto.TagService.Descriptor,
+            Proto.EventService.Descriptor,
         }.SelectMany(s => s.Methods.Select(m => $"/{s.FullName}/{m.Name}")).ToHashSet();
 
         Assert.All(AccessPolicy.ListedMethods, m => Assert.Contains(m, methods));

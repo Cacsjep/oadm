@@ -14,7 +14,7 @@ namespace Oadm.Plugins.VapixCommander;
 /// "Try on one device" and rollouts (one <see cref="RolloutTaskPlugin"/> task per device). Backend of the
 /// Commander page; the methods are listed in <see cref="CommanderMethods"/>.
 /// </summary>
-public sealed partial class VapixCommanderPlugin : ICorePlugin
+public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions.IActionSource
 {
     public const string PluginId = "oadm.vapix-commander";
 
@@ -23,6 +23,7 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin
     private ICorePluginContext? _ctx;
     private ILogger _logger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
     private SavedCommandStore? _saved;
+    private IReadOnlyList<CommandListItem> _savedSnapshot = [];
 
     public VapixCommanderPlugin()
         : this(null)
@@ -35,6 +36,7 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin
         _libraryDirectory = libraryDirectory;
         _rolloutTask = new RolloutTaskPlugin(this);
         TaskPlugins = [_rolloutTask];
+        ActionPlugins = [new RunCommandAction(this)];
     }
 
     public string Id => PluginId;
@@ -45,6 +47,9 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin
     public CorePluginGroup Group => CorePluginGroup.Automation;
 
     public IReadOnlyList<ITaskPlugin> TaskPlugins { get; }
+
+    /// <summary>The event rule action "Run VAPIX command".</summary>
+    public IReadOnlyList<Oadm.Sdk.Actions.IActionPlugin> ActionPlugins { get; }
 
     public CommandLibrary Library { get; private set; } = CommandLibrary.Empty;
 
@@ -57,7 +62,7 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin
 
     private SavedCommandStore Saved => _saved ?? throw new InvalidOperationException("The VAPIX Commander is not started.");
 
-    public Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
+    public async Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         _ctx = ctx;
@@ -72,7 +77,7 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin
             LogLibraryProblem(problem);
         }
 
-        return Task.CompletedTask;
+        await RefreshSavedSnapshotAsync(ct).ConfigureAwait(false);
     }
 
     public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
@@ -111,6 +116,7 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin
         try
         {
             var saved = await Saved.SaveAsync(request.Command, request.PreviousId, request.Owner, ct).ConfigureAwait(false);
+            await RefreshSavedSnapshotAsync(ct).ConfigureAwait(false);
             LogSaved(saved.Command.Id, request.Owner ?? "?");
             return new SaveCommandReply { Saved = saved };
         }
@@ -123,14 +129,56 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin
     private async Task<OkReply> DeleteAsync(DeleteCommandRequest request, CancellationToken ct)
     {
         var deleted = await Saved.DeleteAsync(request.Id, ct).ConfigureAwait(false);
+        await RefreshSavedSnapshotAsync(ct).ConfigureAwait(false);
         return deleted ? new OkReply { Ok = true } : new OkReply { Error = "The saved command no longer exists." };
     }
 
     private async Task<ImportReply> ImportAsync(ImportRequest request, CancellationToken ct)
     {
         var reply = await Saved.ImportAsync(request.Json, request.Owner, ct).ConfigureAwait(false);
+        await RefreshSavedSnapshotAsync(ct).ConfigureAwait(false);
         LogImported(reply.Imported, reply.Problems.Count);
         return reply;
+    }
+
+    private async Task RefreshSavedSnapshotAsync(CancellationToken ct) =>
+        _savedSnapshot = await Saved.ListAsync(ct).ConfigureAwait(false);
+
+    /// <summary>Library commands an event rule can send as they are: every required field has a default.</summary>
+    private static bool NeedsNoInput(CommandDefinition command) => command.Fields.All(f => !f.IsRequired || f.Default is not null);
+
+    /// <summary>The commands the event rule action offers: saved ones first, then library ones that need no input.</summary>
+    internal IReadOnlyList<Oadm.Sdk.Actions.ActionChoice> ActionChoices() =>
+    [
+        .. _savedSnapshot.OrderBy(c => c.Command.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(c => new Oadm.Sdk.Actions.ActionChoice(RunCommandAction.SavedPrefix + c.Command.Id, "Saved: " + c.Command.Name)),
+        .. Library.Commands.Where(NeedsNoInput).OrderBy(c => c.Category).ThenBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(c => new Oadm.Sdk.Actions.ActionChoice(RunCommandAction.LibraryPrefix + c.Id, c.Category + ": " + c.Name)),
+    ];
+
+    /// <summary>A command of an event rule action ("saved:&lt;id&gt;" or "library:&lt;id&gt;"), null when unknown.</summary>
+    internal CommandDefinition? FindForAction(string reference)
+    {
+        if (reference.StartsWith(RunCommandAction.SavedPrefix, StringComparison.Ordinal))
+        {
+            var id = reference[RunCommandAction.SavedPrefix.Length..];
+            return _savedSnapshot.FirstOrDefault(c => c.Command.Id == id)?.Command;
+        }
+
+        return reference.StartsWith(RunCommandAction.LibraryPrefix, StringComparison.Ordinal)
+            ? Library.Find(reference[RunCommandAction.LibraryPrefix.Length..])
+            : null;
+    }
+
+    /// <summary>The command and values an event rule action sends (stored values and passwords of a saved command).</summary>
+    internal Task<(CommandDefinition Command, Dictionary<string, JsonElement> Values)> ResolveForActionAsync(string reference, CancellationToken ct)
+    {
+        var commandRef = reference.StartsWith(RunCommandAction.SavedPrefix, StringComparison.Ordinal)
+            ? new CommandRef { Source = CommandSources.Saved, Id = reference[RunCommandAction.SavedPrefix.Length..] }
+            : reference.StartsWith(RunCommandAction.LibraryPrefix, StringComparison.Ordinal)
+                ? new CommandRef { Source = CommandSources.Library, Id = reference[RunCommandAction.LibraryPrefix.Length..] }
+                : throw new InvalidOperationException("Choose a command.");
+        return ResolveAsync(commandRef, null, ct);
     }
 
     /// <summary>The server's definition of a command plus the stored password values of a saved one.</summary>

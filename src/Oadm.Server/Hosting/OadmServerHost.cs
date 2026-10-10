@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 using Oadm.Core.Devices;
 using Oadm.Core.Discovery;
+using Oadm.Core.Events;
 using Oadm.Core.Discovery.Mdns;
 using Oadm.Core.LiveView;
 using Oadm.Core.Persistence;
@@ -17,6 +18,7 @@ using Oadm.Server.AddDevices;
 using Oadm.Server.Auth;
 using Oadm.Server.Devices;
 using Oadm.Server.Discovery;
+using Oadm.Server.Events;
 using Oadm.Server.Files;
 using Oadm.Server.LiveView;
 using Oadm.Server.Plugins;
@@ -129,6 +131,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<AddDevicesGrpcService>();
         app.MapGrpcService<FileGrpcService>();
         app.MapGrpcService<LiveViewGrpcService>();
+        app.MapGrpcService<EventGrpcService>();
         if (app.Environment.IsDevelopment())
         {
             app.MapGrpcReflectionService();
@@ -260,7 +263,40 @@ public static partial class OadmServerHost
             eventStreams: sp.GetRequiredService<Sdk.Devices.IDeviceEventStreams>(),
             firewall: sp.GetService<Sdk.Network.IFirewallRules>(),
             pluginDataRoot: sp.GetRequiredService<OadmPaths>().PluginDataDirectory,
-            autoAdd: sp.GetRequiredService<Sdk.Devices.IDeviceAutoAdd>()));
+            autoAdd: sp.GetRequiredService<Sdk.Devices.IDeviceAutoAdd>(),
+            eventPublishers: id => sp.GetRequiredService<RuleEngine>().PublisherFor(id)));
+
+        // Event rules: IF events THEN actions (built-in device status events, plugin events and actions).
+        services.AddSingleton<EventCatalog>();
+        services.AddSingleton(sp => new RuleStore(
+            sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<OadmDbContext>>(),
+            new Core.Security.PluginSecretProtector(sp.GetRequiredService<Core.Security.CredentialProtector>()),
+            sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton(sp => new EventLog(
+            sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<OadmDbContext>>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<EventLog>>()));
+        services.AddSingleton(sp => new ActionRunner(
+            sp.GetRequiredService<EventCatalog>(),
+            sp.GetRequiredService<RuleStore>(),
+            sp.GetRequiredService<EventLog>(),
+            sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
+            sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
+            sp.GetRequiredService<IPluginSettingsProvider>(),
+            sp.GetRequiredService<ILoggerFactory>()));
+        services.AddSingleton(new RuleEngineOptions());
+        services.AddSingleton(sp => new RuleEngine(
+            sp.GetRequiredService<EventCatalog>(),
+            sp.GetRequiredService<RuleStore>(),
+            sp.GetRequiredService<EventLog>(),
+            sp.GetRequiredService<ActionRunner>(),
+            sp.GetRequiredService<DeviceRepository>(),
+            sp.GetRequiredService<IDeviceChangeFeed>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<RuleEngineOptions>(),
+            sp.GetRequiredService<ILogger<RuleEngine>>()));
+        services.AddSingleton<EventRulesService>();
+        services.AddHostedService<EventLogRetentionHostedService>();
 
         // Polling
         services.AddSingleton<DevicePollingService>();
@@ -341,6 +377,12 @@ public static partial class OadmServerHost
 
         // 4. Core plugins of the packages that are on (Settings page, Plugins; manifest default otherwise).
         await sp.GetRequiredService<PluginActivation>().LoadAsync(ct).ConfigureAwait(false);
+
+        // 4b. Event rules before the core plugins: their publishers queue into a running engine, and each event type
+        // waits for its source's first full report before a rule that uses it runs anything.
+        var rules = sp.GetRequiredService<RuleEngine>();
+        await rules.StartAsync(ct).ConfigureAwait(false);
+        registry.EnabledChanged += (_, _) => rules.SourcesChanged();
         await sp.GetRequiredService<CorePluginHost>().StartAllAsync(ct).ConfigureAwait(false);
 
         // 5. Background services and Kestrel.
@@ -374,6 +416,9 @@ public static partial class OadmServerHost
         var sp = app.Services;
         await app.StopAsync(ct).ConfigureAwait(false);
         await sp.GetRequiredService<CorePluginHost>().StopAllAsync(ct).ConfigureAwait(false);
+        await sp.GetRequiredService<RuleEngine>().DisposeAsync().ConfigureAwait(false);
+        await sp.GetRequiredService<ActionRunner>().DisposeAsync().ConfigureAwait(false);
+        await sp.GetRequiredService<EventLog>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<TaskEngine>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<CoreDiscoveryService>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<LiveViewHub>().DisposeAsync().ConfigureAwait(false);

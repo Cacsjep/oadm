@@ -385,6 +385,75 @@ Each spec is in `CLAUDE.md` under the plugin's name unless noted; NTP server, DH
 | System report (`Oadm.Plugins.SystemReport`) | `oadm.system-report` | no page, a toolbar button; background jobs with status deltas by version, files in `ctx.DataDirectory`, streamed device downloads, a ZIP read in chunks |
 | Hardening scan (`Oadm.Plugins.HardeningScan`) | `oadm.hardening-scan` | spec in its `README.md`: a read-only scan job over thousands of devices with bounded parallelism, results as events and kept in a plugin setting, request code of other plugins compiled in as linked sources, grid columns built from a catalog (icon-only status cells bound to one byte per row, tooltips built when they open) |
 
+## Event rule actions and events
+
+The event rules (built into the server, "Event rules" in `CLAUDE.md`, spec `docs/specs/event-rules.md`) run actions
+when events happen. Both sides are plugins.
+
+### Writing an action
+
+An action is one class implementing `IActionPlugin` (`Oadm.Sdk.Actions`) in a plugin's `*.Server.dll`: a public class
+with a parameterless constructor (the loader registers it like a task plugin), or one a core plugin returns from
+`IActionSource.ActionPlugins` (then it shares the core plugin's state and settings). No client part is needed: the rule
+dialog draws the settings form from `Fields`.
+
+```csharp
+public sealed class EmailAction : IActionPlugin
+{
+    public string Id => "acme.email.send";              // unique among actions
+    public string DisplayName => "Send email";          // the action picker
+    public string? IconKey => "send";
+    public string Group => "Notifications";
+    public bool NeedsDevice => false;                   // true: runs once per target device with ctx.Vapix
+    public IReadOnlyList<ActionField> Fields { get; } =
+    [
+        ActionField.Text("to", "To", required: true),
+        ActionField.Text("subject", "Subject", defaultValue: "{event} on {device}"),
+        ActionField.Multiline("body", "Message"),
+        ActionField.Password("smtpPassword", "SMTP password"),   // stored encrypted, never sent back to a client
+    ];
+
+    public string Describe(JsonElement settings) => "Email " + settings.GetProperty("to").GetString();
+
+    public async Task ExecuteAsync(IActionContext ctx, ActionInvocation run, CancellationToken ct)
+    {
+        var subject = ctx.Text(run.Get("subject"));      // {rule} {event} {device} {address} {model} {serial} {state} {time}
+        await Smtp.SendAsync(run.Get("to")!, subject, ctx.Text(run.Get("body")), run.Get("smtpPassword"), ct);
+        ctx.Log("Sent to " + run.Get("to"));            // one line in the event log entry; never log secrets
+    }
+}
+```
+
+- **Fields**: `Text`, `Multiline`, `Number` (min / max), `Bool`, `Choice` (fixed list), `DynamicChoice` (the list comes
+  from `ListChoicesAsync` while the rule is edited, e.g. saved VAPIX commands), `Password`. `Required`, `Hint`, `Default`,
+  `VisibleWhenKey` / `VisibleWhenValue` (show a field only for one choice, e.g. "Seconds" for "Pulse") and `OffEdge` (a
+  setting of "When the rule turns off", shown only for rules that turn on and off). The host checks required values,
+  numbers, choices and lengths (`ActionSettings`, the same code in the dialog and on the server); `Validate` adds the
+  action's own rules (errors per field key).
+- **Edges**: `ActionInvocation.Edge` is `Fired` (one-shot rule), `TurnedOn` or `TurnedOff`. Set `SupportsTurnOff` when
+  the action has an off part and `RunsOn(edge, settings)` to skip edges (default: off edges only with `SupportsTurnOff`).
+- **Runs**: at most 16 at once for all rules, 30 s each (`ct` is cancelled; `MaxRunTime(settings)` asks for longer, e.g. a
+  pulse the device answers only after it ended); throw for a failure, the message goes into the
+  event log; there is no retry. Devices that refuse the login are skipped before the action is called.
+- **Settings of the plugin** (an SMTP server): `ctx.Settings` (the package's, or the owning core plugin's).
+- Samples: `plugins/Oadm.Plugins.Outputs/SetOutputAction.cs` (device action, choices, a visible-when field, turn off),
+  `plugins/Oadm.Plugins.VapixCommander/RunCommandAction.cs` (contributed by a core plugin, dynamic choices, off command).
+
+### Publishing events
+
+A core plugin declares its events by implementing `IEventSource` (`Oadm.Sdk.Events`) and publishes through
+`ctx.EventPublisher` (null when the host has no event rules). Event types: id, name, group for the picker, kind
+(stateful on / off, or stateless one-shot), scope (per device or for the server), optional data fields a condition can
+filter on.
+
+- **Stateful**: off is the default. After every start (and after being turned on) send one
+  `ReplaceStates(typeId, devicesThatAreOn)` per type: that is the source's "ready" (until then the server keeps the states
+  of before the restart and runs nothing for the type; after 2 minutes it counts as nothing on). Afterwards `SetState` per
+  change or `ReplaceStates` again whenever convenient (e.g. after each check round): the server works out the changes.
+- **Stateless**: `Fire(typeId, deviceId, data)`.
+- Calls only queue; `IsWatched(typeId)` says whether an enabled rule uses the type (skip expensive work otherwise).
+- Sample: the Image Health Dashboard (`ImageHealthEvents`, "Monitor continuously").
+
 ### Host support for service plugins (NTP, DHCP, ...)
 
 - **Saved settings**: `ctx.Settings.GetAsync/SetAsync(key, json)` (per plugin, server database). Store one JSON

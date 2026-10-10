@@ -8,6 +8,14 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Added
 
+- **Event rules** (new page under Automation): IF events THEN actions. Events: device unreachable, credentials required,
+  certificate changed, certificate expiring or expired, and the Image Health detections. Conditions: one event, then
+  further events and schedules that must all hold. Actions (up to five per rule, in order): **Set output** (pulse,
+  active, inactive, toggle or follow the rule, for example a relay) and **Run VAPIX command** (a saved VAPIX Commander
+  command, with an optional second one when the rule turns off), on the device of the event, chosen devices, devices
+  with tags or all devices. Limits against event storms, copy rules, and an event log of everything that ran.
+- Image Health Dashboard: **Monitor continuously** checks every camera in the background, so event rules can use the
+  results.
 - **Export configuration** and **Import configuration** in the context menu under Maintenance (AXIS OS 12.5 or later):
   save the configuration of devices as files, then import one file into every selected device of the same model, or the
   ZIP of an export so each device gets its own file back. Host name, IP address and device names stay as they are on

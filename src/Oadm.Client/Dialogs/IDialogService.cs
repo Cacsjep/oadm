@@ -23,6 +23,9 @@ public interface IDialogService
     /// <summary>Shows the Tags dialog of the selected devices; true when tags were applied.</summary>
     Task<bool> ShowDeviceTagsAsync(Oadm.Client.Tags.DeviceTagsViewModel tags);
 
+    /// <summary>The event rule dialog; true when the rule was saved (<see cref="Oadm.Client.EventRules.RuleEditorViewModel.Saved"/>).</summary>
+    Task<bool> ShowRuleEditorAsync(Oadm.Client.EventRules.RuleEditorViewModel editor);
+
     /// <summary>The window dialogs open on (active window, else the main window); null without a desktop.</summary>
     Avalonia.Controls.Window? Owner { get; }
 

@@ -1222,6 +1222,27 @@
   </Style>
 
   <!-- Inline editor below a list (add devices page: log in, set password) -->
+  <!-- Event rule dialog: one condition or action on a raised surface; a check list (devices, tags) in a framed box;
+       weekday toggles of a schedule -->
+  <Style Selector="Border.ruleItem">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="14" />
+  </Style>
+  <Style Selector="Border.pickList">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="ToggleButton.day">
+    <Setter Property="MinWidth" Value="48" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ToggleButton.day:checked /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+  </Style>
   <Style Selector="Border.inlineEditor">
     <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />

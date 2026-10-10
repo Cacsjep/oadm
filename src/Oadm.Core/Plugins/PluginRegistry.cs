@@ -148,7 +148,7 @@ public sealed partial class PluginRegistry
             lock (_sync)
             {
                 var origins = new List<PluginOrigin>();
-                foreach (var origin in _cores.Select(c => c.Origin).Concat(_tasks.Select(t => t.Origin)))
+                foreach (var origin in _cores.Select(c => c.Origin).Concat(_tasks.Select(t => t.Origin)).Concat(_actions.Select(a => a.Origin)))
                 {
                     if (!origins.Exists(o => SamePackage(o, origin)))
                     {
@@ -244,7 +244,7 @@ public sealed partial class PluginRegistry
     }
 
     private PluginOrigin? FindOriginLocked(string packageId) =>
-        _cores.Select(c => c.Origin).Concat(_tasks.Select(t => t.Origin))
+        _cores.Select(c => c.Origin).Concat(_tasks.Select(t => t.Origin)).Concat(_actions.Select(a => a.Origin))
             .FirstOrDefault(o => string.Equals(o.PackageId, packageId, StringComparison.OrdinalIgnoreCase));
 
     private bool IsEnabledLocked(PluginOrigin origin) =>
@@ -323,6 +323,7 @@ public sealed partial class PluginRegistry
         }
 
         LogRegisteredCore(id, origin.PackageId);
+        RegisterContributions(plugin, origin);
         foreach (var task in contributed)
         {
             if (task is not null)

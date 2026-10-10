@@ -21,6 +21,12 @@ public static class SettingKeys
 
     /// <summary>The history keeps at most this many tasks; older finished ones are deleted. Int, default 50000, 0 or 100..1000000 (0 = no limit). Not on the settings page yet.</summary>
     public const string TasksMaxHistory = "Tasks.MaxHistory";
+
+    /// <summary>Event log retention in days (default 30, 0 = no age limit).</summary>
+    public const string EventsLogRetentionDays = "Events.LogRetentionDays";
+
+    /// <summary>Most event log entries kept (default 100,000, 0 = no limit, else at least 100).</summary>
+    public const string EventsLogMaxEntries = "Events.LogMaxEntries";
     /// <summary>Add devices by host name when one is known, otherwise by IP address. Bool, default false.</summary>
     public const string DevicesUseHostName = "Devices.UseHostName";
 
@@ -105,6 +111,8 @@ public sealed record ServerSettings(
     public const int DefaultTasksMaxHistory = 50_000;
     public const int MinTasksMaxHistory = 100;
     public const int MaxTasksMaxHistory = 1_000_000;
+    public const int DefaultEventsLogRetentionDays = 30;
+    public const int DefaultEventsLogMaxEntries = 100_000;
     public const bool DefaultUseHostName = false;
     public const int DefaultZeroConfSeconds = 30;
     public const int MinZeroConfSeconds = 5;

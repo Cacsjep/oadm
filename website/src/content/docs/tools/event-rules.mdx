@@ -1,0 +1,89 @@
+---
+title: Event rules
+description: Run actions when events happen, for example switch a relay while a camera is blurred.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import page from '../../../assets/screens/event-rules-page.png';
+import editor from '../../../assets/screens/event-rules-editor.png';
+
+An event rule says: **when** this happens, **then** do that. For example: while a camera reports blur during working
+hours, switch on the warning lamp on the I/O box and show an overlay on the camera.
+
+<Image src={page} alt="The Event rules page with three rules" class="screen" />
+
+<Aside>
+Administrators create and change rules. Operators see the rules and the event log.
+</Aside>
+
+## Create a rule
+
+<Steps>
+
+1. Open **Event rules** in the navigation rail and click **New rule**.
+
+2. Enter a name.
+
+3. Under **Conditions**, choose the event in **When**, and which devices it is about: all devices, chosen devices or
+   devices with tags.
+
+4. Add more conditions if you need them. They all must hold:
+   - **Add event**: another event, on the same device or on any device you choose. Example: blur, and the camera is
+     reachable.
+   - **Add schedule**: weekdays and a time window. Example: Monday to Friday, 08:00 to 18:00.
+
+5. Under **Actions**, choose up to five actions. They run in the order of the list. For each one choose where it runs:
+   on the device of the event, on chosen devices, on devices with tags or on all devices.
+
+6. Click **Save**.
+
+</Steps>
+
+<Image src={editor} alt="The rule dialog with a trigger, a schedule and two actions" class="screen" />
+
+## Events
+
+| Event | Comes from |
+|---|---|
+| Device unreachable, Credentials required, Certificate changed | The device status OADM sees |
+| Certificate expires soon (30 days or less), Certificate expired | The HTTPS certificate of the device |
+| Blur, Block, Redirect, Under-exposure, Unsuitable scene detected, App not running, Camera could not be checked | The [Image Health Dashboard](../image-health-dashboard/), while **Monitor continuously** is on |
+
+Most events are on while something is true and off again when it ends. Then the rule is **on** while all conditions
+hold, and some actions can undo themselves when the rule turns **off**.
+
+## Actions
+
+- **Set output**: switches an output of the device, for example a relay. **Follow the rule** keeps it active while the
+  rule is on. **Pulse** switches it on for a number of seconds. **Set active**, **Set inactive** and **Toggle** do what
+  they say.
+- **Run VAPIX command**: sends a saved command of the [VAPIX Commander](../vapix-commander/), with its values and
+  passwords. Optionally a second command when the rule turns off, for example to hide an overlay again. Commands marked
+  dangerous need **Allow dangerous commands**.
+
+When several devices turn a rule on, an action on chosen devices (the lamp on the I/O box) switches on with the first
+one and off when the last one ends.
+
+## Manage rules
+
+- Turn a rule on or off with its check box. Turning off a rule that is on runs its "turn off" actions, so a lamp does
+  not stay on.
+- **Duplicate** copies a rule, turned off, with its stored passwords.
+- **Delete** removes a rule after a confirmation.
+- The **State** column shows whether a rule is on and for how many devices, and when an event or action is not available
+  because its plugin is turned off.
+
+## Event log
+
+The **Event log** tab lists what happened: the events your rules use, when a rule turned on, off or ran, and every
+action with its result. The newest entries come first and new ones appear live. OADM keeps the log for 30 days or
+100,000 entries.
+
+## Good to know
+
+- **Wait between runs** (default 10 s per device) and **Runs per minute** (default 60 for the whole rule) protect against
+  a flapping camera. Runs beyond them are skipped and logged.
+- After a server restart OADM checks every event again and runs only what changed while it was down.
+- A failed action is logged; the next action of the rule still runs. OADM does not retry.
+- Devices that need a login, have no password yet or have a changed certificate are skipped.

@@ -79,6 +79,7 @@ public static class ServiceRegistration
         services.AddSingleton<TasksViewModel>();
         services.AddSingleton<AboutViewModel>();
         services.AddSingleton<PluginsViewModel>();
+        services.AddSingleton<EventRules.EventRulesViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<CredentialsViewModel>();
         services.AddSingleton<LogsViewModel>();

@@ -165,6 +165,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.HardeningScan(.Client)/    core plugin: read-only scan against the AXIS OS hardening guide (off by default)
   Oadm.Plugins.ImageHealth(.Client)/      core plugin: Image Health Dashboard, AXIS Image Health Analytics status of every camera (off by default)
   Oadm.Plugins.DeviceConfig(.Client)/     Maintenance tasks: Export configuration / Import configuration (device config files)
+  Oadm.Plugins.Outputs/                   event rule action "Set output" (relays, outputs)
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
                                 (both copy their output to artifacts/plugins/<plugin id>/)
@@ -306,6 +307,7 @@ Two processes, like ADM:
 - `LiveViewService`: `Watch(device_id, max_width, max_height, fps, accepted_codecs, camera)`
   (stream of encoded access units), `ListSources(device_id)` (view areas / sensors / channels).
   See "Live view".
+- `EventService` (`events.proto`, event rules, see "Event rules").
 - `TagService` (`tags.proto`, device tags, see "Device tags"): `List` (every definition sorted by name with its
   `device_count`, then names used on devices without a definition, `defined = false`), `Watch` (the whole `TagList` on
   subscribe and after every change of the definitions; small, no ChangeBatcher needed), `Create(name, color)`
@@ -888,6 +890,79 @@ with the labels in the grid, the search, the export and the import; plugins read
   group mode rows and distinct selection, export / import, fake mode), `DeviceTagsHeadlessTests` (headless
   `client-tags-column.png`, `client-tags-group-mode.png`, `client-tags-dialog.png`), Perf `TagGroupScaleTests`.
 
+# Event rules
+
+Built-in feature (not a plugin), user decisions 2026-10-10, spec `docs/specs/event-rules.md`: "IF events THEN actions".
+Events and actions come from plugins (SDK `Oadm.Sdk.Events`, `Oadm.Sdk.Actions`), the server keeps the rules, evaluates
+them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventService` (`events.proto`), client
+`EventRules/`.
+
+| Topic | Decision |
+|---|---|
+| Built-in events | Only what OADM already knows (`BuiltInEvents`, stateful per device): Device unreachable, Credentials required, Certificate changed (device status from polling), Certificate expires soon (30 days or less, fixed), Certificate expired (rechecked hourly). Every other device event comes from an opt-in plugin (first: Image Health; later a "Device events" plugin for event streams and digital inputs). |
+| Kinds | Stateful (on / off per device or for the server) or stateless (one shot). Off is the default; a stateful source sends one full report (`ReplaceStates`) per type after every start ("ready"), then `SetState` per change or `ReplaceStates` again; a source that is turned off counts as everything off. |
+| Simple mode | Conditions must all hold. The first is the trigger ("When": an event, devices All / chosen / tags); further ones ("And") are stateful events (on "the same device", or "any" of All / chosen / tags) or schedules (weekdays + from / to in server time, over midnight allowed). Only the trigger may be one-shot. Advanced AND / OR later on the same model. |
+| Rule state | All events stateful: the rule is on per subject (the trigger's device, or the server) while all conditions hold. One-shot trigger: the rule fires while the others hold. |
+| Actions | One to five per rule, run in the listed order on each edge, each on its targets in parallel (16 at once for all rules, 30 s per run); a failure is logged and the next one runs; no retry. Targets: the device of the event, chosen devices, devices with tags, all devices. Actions on chosen / tag / all devices run when the first subject turns on and when the last one turns off; actions on the event's device and actions without devices run per subject. |
+| Limits | Per rule, editable: wait between runs per device (default 10 s), runs per minute (default 60); a suppressed "turns on" also suppresses its "turns off"; "Rule paused" logged once a minute. |
+| Changes | Turning off, changing or deleting a rule that is on runs its off actions first; a changed rule is then evaluated fresh. A removed device goes off. A plugin turned off: its events go off, rules show "Not available: <plugin> is turned off". |
+| Restart | The subjects each rule was on for are stored (`EventRuleStates`); a rule is evaluated once every event type it uses is ready (or after 2 minutes); only real differences run actions. |
+| Roles | Administrators create, change, copy, turn on / off and delete rules (audited "Created / Changed / Deleted / Turned ... event rule"); operators read rules and the log. |
+| Log | Own event log (`EventLogEntries`), never tasks: events a rule uses, rule edges, every action run with its result; 30 days or 100,000 entries (`Events.LogRetentionDays`, `Events.LogMaxEntries`, hourly). |
+
+- **SDK**: `IEventSource` (a core plugin declares `EventTypeInfo`: id, name, group, kind, scope, data fields) and
+  `ICorePluginContext.EventPublisher` (`IEventPublisher`: `SetState`, `Fire`, `ReplaceStates`, `IsWatched`; only queues).
+  `IActionPlugin` (standalone class with a parameterless constructor in a `*.Server.dll`, or contributed through
+  `IActionSource.ActionPlugins` of a core plugin): `NeedsDevice`, `SupportsTurnOff`, declarative `Fields` (`ActionField`:
+  Text, Multiline, Number, Bool, Choice, DynamicChoice through `ListChoicesAsync`, Password stored encrypted and never sent
+  back), `Validate`, `Describe`, `RunsOn(edge)`, `ExecuteAsync(IActionContext, ActionInvocation)`; `IActionContext` gives a
+  pre-authenticated `Vapix` for the target, the plugin's settings, `Log` and `Text` (placeholders {rule} {event} {device}
+  {address} {model} {serial} {state} {time}). The client draws the settings form from `Fields` (`ActionSettings` checks
+  shared by server and dialog); no client part is needed. The rule model `RuleDefinition` (JSON, camelCase) lives in
+  `Oadm.Sdk.Events` and is the definition JSON of gRPC.
+- **Server** (`Oadm.Core.Events`): `EventCatalog` (built-in + plugin types and actions, with availability), `RuleStore`
+  (table `EventRules`: definition JSON with password values encrypted, purpose `oadm:event-rule:<rule>:<action key>:<field>`;
+  `ForClient` removes them and lists `StoredSecretFields`; an empty field keeps the stored value; at most 500 rules),
+  `RuleValidator`, `RuleEngine` (one loop owns all state; publishers, the device feed and rule changes only queue; built-in
+  events from `DeviceChangeFeed`; ticks every 15 s for schedules and ready timeouts), `ActionRunner` (edges of one rule in
+  order), `EventLog` (queued, batched every 500 ms, live watch), `EventRulesService`, `RuleTexts` (summaries). The engine
+  starts after the plugin activation and before the core plugins (`OadmServerHost.StartAsync` 4b); `CorePluginHost` hands
+  a publisher to every core plugin that implements `IEventSource`.
+- **gRPC** `EventService`: `GetCatalog`, `ListRules`, `WatchRules` (list on subscribe and after every change, at most every
+  500 ms), `GetRule`, `SaveRule`, `DeleteRule`, `SetRuleEnabled`, `DuplicateRule` ("<name> (copy)", off, passwords kept),
+  `ListActionChoices` (the last five Admin), `ListLog` (newest first, limit 0 = 10,000, optional rule filter), `WatchLog`.
+- **First actions**: **Set output** (bundled always-on package `oadm.outputs`, `plugins/Oadm.Plugins.Outputs`, server only):
+  output number 1..64, modes Follow the rule (stateful rules only; inactive on the off edge), Pulse N s (1..3600), Set
+  active, Set inactive, Toggle; I/O port management API (`io-port-management`: getPorts, setPorts, setStateSequence; active
+  = state differs from the normal state; inputs refused; the log names the port, "Output 1 (RELAY) active") when listed,
+  else `port.cgi` (`action=n:/`, `n:\`, `n:/ms\` (answers after the pulse: the action asks for the pulse + 15 s through
+  `IActionPlugin.MaxRunTime`), `checkactive=n` for Toggle; `checkoutput` is refused by the A9210). Output n = port "n-1".
+  Verified with the opt-in `OutputHardwareWriteTests` (`OADM_OUTPUT_WRITE_URL` / `_USER` / `_PASSWORD` / `_PORT`) on a loan
+  AXIS A9210 (AXIS OS 12.10.73.2, io-port-management 1.1, output 1 = RELAY), every mode on both APIs, 2026-10-10. **Run VAPIX command** (contributed by VAPIX
+  Commander, available while it is on): a saved command (stored values and passwords) or a library command whose fields all
+  have defaults, optional second command when the rule turns off, "Allow dangerous commands" required for dangerous ones;
+  device safety like a rollout (cached API list, fresh one before a write).
+- **Image Health events** (`ImageHealthEvents`): Blur / Block / Redirect / Under-exposure / Unsuitable scene detected
+  (pending is not on), App not running, Camera could not be checked; published only while "Monitor continuously" is on.
+- **Client**: rail page **Event rules** (key `HostPages.EventRules`, icon `zap`, group Automation before the plugin pages of
+  that group; `EventRulesViewModel` + `EventRulesView`): segmented tabs **Rules** (toolbar New rule, Edit, Duplicate,
+  Delete (red, confirmed); grid On check box (administrators), Name, When, Then, State chip (On ok, waiting accent, problem
+  warning), Last run; double click edits; search; status "3 rules · 2 turned on · 1 active now"; live through
+  `WatchRules`) and **Event log** (Refresh, search, virtualized grid Time, Type, What, Device, Rule, Result chip + message;
+  newest 10,000, live through `WatchLog`). Rule dialog `RuleEditorWindow` (`RuleEditorViewModel`, cards Rule (name, Turned
+  on), Conditions ("When" / "And" rows, Add event, Add schedule, day toggles), Actions ("Then" rows: action, On (targets),
+  the settings form, move up / down, remove; Add action up to five), Limits); device and tag lists are searchable
+  virtualized check lists (`PickListView`, chosen ones first); errors below their field; Save disabled with the first
+  problem as tooltip; a server refusal below the cards. Fake mode (`FakeOadmApi.Events.cs`): catalog, three sample rules,
+  a sample log.
+- **Tests**: `tests/Oadm.Core.Tests/Events` (engine edges per device and aggregate, same / any device conditions, schedule
+  with a fake clock, one-shot triggers, cooldown and runs per minute, rule off / change / delete, built-in device and
+  certificate events, removed device, ready wait and timeout, restart, plugin turned off, action order and failures,
+  refused device status, server-wide events, tags, secrets, copy, validation, summaries, log retention, schedules over
+  midnight), `tests/Oadm.Plugins.Outputs.Tests`, `RunCommandActionTests` (VAPIX Commander), `ImageHealthEventTests`,
+  `tests/Oadm.Client.Tests/EventRulesTests` (page, roles, log, dialog, 5,000 devices; headless `event-rules-page.png`,
+  `event-rules-log.png`, `event-rules-editor.png`, `event-rules-editor-errors.png`).
+
 # Tasks
 
 - **A task always targets exactly one device.** Running a plugin on N selected devices creates
@@ -1080,6 +1155,7 @@ public interface ICorePluginContext
                                        // FirewallRuleKeeper.SyncAsync(enabled) (Oadm.Sdk.Network)
     string? DataDirectory => null;     // <datafolder>/plugin-data/<id>, created on first use: working files (downloads,
                                        // archives) in the admin-only data folder, never a shared temp folder; plugin cleans up
+    IEventPublisher? EventPublisher => null; // event rules: SetState / Fire / ReplaceStates of the plugin's IEventSource types
     IDeviceAutoAdd? AutoAdd => null;   // AddAsync(address, expectedSerial, source): add an Axis device like the add page
                                        // (Axis check, factory default check, credential list login) -> DeviceAutoAddOutcome;
                                        // FollowAsync(serial, address, source): move a managed device's record -> DeviceFollowResult
@@ -1234,7 +1310,7 @@ is always on.
   server setting `Plugins.Enabled` (JSON object package id -> on; packages without a choice use their default),
   applied before the core plugins start (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
 - **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade firmware, Date and time, Applications
-  (ACAP), Users, Network settings, PKI, System report and Device configuration (core functionality, user decision 2026-10-10). Enabled whatever
+  (ACAP), Users, Network settings, PKI, System report, Device configuration and Outputs (core functionality, user decision 2026-10-10). Enabled whatever
   the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers FAILED_PRECONDITION "<name> is always on.".
   Switchable: Snapshot report, VAPIX Commander, Metadata Monitor, NTP server, DHCP server, Hardening scan, Image Health
   Dashboard. Third-party plugins are switchable unless their manifest says otherwise.
@@ -1979,7 +2055,7 @@ Decided with the user on 2026-10-09:
 | Topic | Decision |
 |---|---|
 | Source | The app's own HTTP status, `GET /local/AXISImageHealthAnalytics/v1/status` with the stored credentials (no event stream). |
-| When | Only on request: the page checks once when it opens, **Refresh** checks again, **Auto refresh** (check box, off by default) every 10 s while the page is open. No background polling, nothing after the page was left. |
+| When | On request: the page checks once when it opens, **Refresh** checks again, **Auto refresh** (check box, off by default) every 10 s while the page is open. **Monitor continuously** (check box, Admin, off by default, plugin setting `config`, user decision 2026-10-10): every 30 s in the background, also with the page closed, and only then the event rule events (see "Event rules"). |
 | Load | 24 cameras at a time, 3 s per request (200 cameras = about 9 rounds). |
 | Not running | A camera with the app installed but stopped stays in the table as **Not running**. |
 
@@ -2180,7 +2256,8 @@ without the explicit option. Decision table and research in `plugins/Oadm.Plugin
 # Settings
 
 Server-side in `Setting`. Goal 1 keys: `Polling.IntervalSeconds` (60, 5..86400),
-`Polling.FullRefreshMinutes` (10, 1..1440), `Scan.Parallelism` (32, Settings page "Addresses scanned at once"), `Scan.TimeoutMs` (1500),
+`Polling.FullRefreshMinutes` (10, 1..1440), `Events.LogRetentionDays` (30, 0..3650) and `Events.LogMaxEntries` (100000, 0 or
+100..1000000): event log retention (server-only), `Scan.Parallelism` (32, Settings page "Addresses scanned at once"), `Scan.TimeoutMs` (1500),
 `Discovery.ZeroConfSeconds` (30, 5..300: a zero-conf scan of the add page ends after this time; Settings
 page "Discovery duration (s)"), `Server.Name` (hostname),
 `Server.ListenUrl`, `Uploads.MaxMegabytes` (2048, 1..65536), `Uploads.RetentionHours` (24,

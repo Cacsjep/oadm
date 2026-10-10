@@ -81,6 +81,9 @@ public static class HostPages
     /// <summary>Plugins page: turn plugins on or off (administrators only; for an operator opening it does nothing).</summary>
     public const string Plugins = "plugins";
 
+    /// <summary>Event rules (rail page in the Automation group).</summary>
+    public const string EventRules = "eventRules";
+
     /// <summary>About page: terms of use, versions and licenses.</summary>
     public const string About = "about";
 }
