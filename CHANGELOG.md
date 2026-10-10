@@ -13,6 +13,12 @@ version and date, and the release workflow copies it into the GitHub release.
   ZIP of an export so each device gets its own file back. Host name, IP address and device names stay as they are on
   each device. Uses the same export and import as the camera's web interface.
 
+### Changed
+
+- Cameras with older AXIS OS (8.x, before 8.50) can be added and managed: OADM recognizes them by their login prompt and
+  reads what they support from their parameters, so Upgrade firmware, Users, Network settings, Date and time and
+  Applications are available for them.
+
 ## [1.5.0] - 2026-10-10
 
 ### Added

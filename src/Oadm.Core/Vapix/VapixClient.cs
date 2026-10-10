@@ -172,9 +172,22 @@ public sealed class VapixClient : IVapixClient, IDisposable
     }
 
     /// <inheritdoc />
+    /// <summary>
+    /// <c>apidiscovery.cgi getApiList</c>; on AXIS OS before 8.50 (404) the list derived from the <c>param.cgi</c> Properties
+    /// (<see cref="LegacyApiList"/>).
+    /// </summary>
     public async Task<IReadOnlyList<DeviceApi>> GetApiListAsync(CancellationToken ct)
     {
-        var json = await PostJsonAsync(ApiDiscoveryPath, """{"apiVersion":"1.0","method":"getApiList"}""", ct).ConfigureAwait(false);
+        string json;
+        try
+        {
+            json = await PostJsonAsync(ApiDiscoveryPath, """{"apiVersion":"1.0","method":"getApiList"}""", ct).ConfigureAwait(false);
+        }
+        catch (VapixException ex) when (ex.StatusCode == HttpStatusCode.NotFound && ex is not VapixAuthenticationException)
+        {
+            return LegacyApiList.FromProperties(await ListParametersAsync(LegacyApiList.Groups, ct).ConfigureAwait(false));
+        }
+
         return VapixParsers.ParseApiList(json);
     }
 
@@ -400,7 +413,10 @@ public sealed class VapixClient : IVapixClient, IDisposable
 
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
-            throw new VapixAuthenticationException($"{path}: HTTP {(int)response.StatusCode}", response.StatusCode);
+            throw new VapixAuthenticationException($"{path}: HTTP {(int)response.StatusCode}", response.StatusCode)
+            {
+                RealmSerial = Discovery.AxisRealm.TryGetSerial(response.Headers.WwwAuthenticate.Select(h => h.ToString())),
+            };
         }
 
         if (!response.IsSuccessStatusCode)

@@ -104,14 +104,15 @@ internal sealed class TestServerHost : IAsyncDisposable
     /// <param name="useRealNetwork">Keep the real VAPIX connector and probes (hardware tests).</param>
     /// <param name="configureServices">Extra replacements after the defaults (e.g. a fake live video source).</param>
     /// <param name="createAdmin">False: no user exists (first-administrator tests); the clients call without a token.</param>
-    public static async Task<TestServerHost> StartAsync(FakeAxisNetwork? network = null, bool useRealNetwork = false, Action<IServiceCollection>? configureServices = null, bool createAdmin = true)
+    /// <param name="pluginRoots">Plugin folders to load (hardware tests: <c>PluginPaths.Development()</c>); none by default.</param>
+    public static async Task<TestServerHost> StartAsync(FakeAxisNetwork? network = null, bool useRealNetwork = false, Action<IServiceCollection>? configureServices = null, bool createAdmin = true, IReadOnlyList<string>? pluginRoots = null)
     {
         network ??= new FakeAxisNetwork();
         var dataDirectory = NewDataDirectory();
         var app = OadmServerHost.Build([], new OadmServerHostOptions
         {
             DataDirectory = dataDirectory,
-            PluginRoots = [],
+            PluginRoots = pluginRoots ?? [],
             LogToConsole = false,
             ConfigureBuilder = b => b.WebHost.UseTestServer(),
             ConfigureServices = services =>

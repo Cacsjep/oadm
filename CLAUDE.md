@@ -454,6 +454,18 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
   REST cert v1 `certificates/<alias>` and `ca_certificates/<alias>` return the PEM; AXIS OS 11.11+, read-only, verified on
   10.0.0.48) and rates it the same way (nothing is pinned); cleared when HTTPS is off or the API is missing (user decision
   2026-10-08). Cross-platform APIs only.
+- **Old AXIS OS** (verified read-only on an AXIS Q6154-E with 8.40.104, loan camera, 2026-10-10;
+  `tests/Oadm.Server.Tests/Hardware/OldFirmwareHardwareTests`, opt-in with `OADM_OLD_CAMERA_URL` / `_USER` / `_PASSWORD`):
+  no `apidiscovery.cgi` (404, it came with 8.50), no anonymous `getAllUnrestrictedProperties` (401: the Axis check uses the
+  realm, see "Production hardening" 2), no `systemready.cgi`, `time.cgi`, `ntp.cgi`, `/config`; `network_settings.cgi`
+  without `getNetworkInfo`. Authenticated `basicdeviceinfo` (incl. Soc), `param.cgi`, `firmwaremanagement.cgi` (1.0),
+  `pwdgrp.cgi`, `applications/list.cgi` work. `VapixClient.GetApiListAsync` answers a 404 with `LegacyApiList` from the
+  `param.cgi` group `Properties` (param-cgi 1.0 always, fwmgr from `Properties.FirmwareManagement.Version`, application
+  when `Properties.EmbeddedDevelopment.Version`, user-management when `Properties.API.Browser.UserGroup=yes`; status "from
+  parameters"), so Upgrade firmware, Users, Applications and (through their param.cgi fallbacks) Network settings and Date
+  and time run; PKI (11.11) and Device configuration (12.5) stay greyed with their reason. Writes on such firmware are not
+  tested yet; the discovered row has no model (no anonymous properties); a factory-default 8.x device is not recognized
+  (no systemready).
 - Endpoints used in Goal 1:
   - `basicdeviceinfo.cgi` -> SerialNumber, ProdNbr, ProdShortName, Version, HardwareID
   - `param.cgi?action=list&group=Network.BootProto,Network.UPnP.FriendlyName,Network.Interface.I0.dot1x.Enabled,HTTPS.Enabled`
@@ -2313,7 +2325,9 @@ marked *(default)* were filled in and can be changed. This section wins over old
   `basicdeviceinfo.cgi` `getAllUnrestrictedProperties` with a valid Axis answer (12-hex serial number, ProdNbr). Only
   then OADM logs in: **HTTPS first** (Digest, then Basic), then HTTP (Digest, then Basic). User decision: such a verified
   Axis device may get Basic over plain HTTP when it offers nothing else. Known residual risk (recorded on the user's
-  request): a device that imitates the anonymous answer passes the check.
+  request): a device that imitates the anonymous answer passes the check. **Old AXIS OS** (user decision 2026-10-10):
+  AXIS OS 8.x answers the anonymous call with 401; then the login challenge's realm `AXIS_<serial>` must name the
+  discovered serial (`DiscoveryAuthenticator.JudgeRealm`, `VapixAuthenticationException.RealmSerial`), same residual risk.
 - **Candidates: credential list only** (+ credentials typed in the session). Passwords of managed devices are never
   tried on new devices. At most 10 rejected credentials per device (unchanged).
 - Implemented in `DiscoveryAuthenticator` (`Judge`, `LoginSchemes`) and `VapixConnectionOptions.AllowBasicOverHttp`

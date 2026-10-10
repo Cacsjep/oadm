@@ -124,6 +124,8 @@ internal sealed class FakeAxisDevice
                         FakeAxisAnswer.NoSerial => Json(Serialize(new { apiVersion = "1.3", data = new { propertyList = new { ProdNbr = Model, Brand = "AXIS" } } })),
                         FakeAxisAnswer.NoModel => Json(Serialize(new { apiVersion = "1.3", data = new { propertyList = new { SerialNumber = Serial, Brand = "AXIS" } } })),
                         FakeAxisAnswer.Unauthorized => Unauthorized(),
+                        FakeAxisAnswer.UnauthorizedOtherRealm => Unauthorized("AXIS_ACCC8EFFFFFF"),
+                        FakeAxisAnswer.UnauthorizedNoRealm => Unauthorized("device"),
                         _ => new HttpResponseMessage(HttpStatusCode.NotFound),
                     };
                 }
@@ -208,10 +210,10 @@ internal sealed class FakeAxisDevice
 
     private static string Serialize<T>(T value) => JsonSerializer.Serialize(value);
 
-    private HttpResponseMessage Unauthorized()
+    private HttpResponseMessage Unauthorized(string? realm = null)
     {
         var response = new HttpResponseMessage(HttpStatusCode.Unauthorized);
-        response.Headers.WwwAuthenticate.ParseAdd($"Digest realm=\"AXIS_{Serial}\", nonce=\"abc\", algorithm=MD5, qop=\"auth\"");
+        response.Headers.WwwAuthenticate.ParseAdd($"Digest realm=\"{realm ?? "AXIS_" + Serial}\", nonce=\"abc\", algorithm=MD5, qop=\"auth\"");
         return response;
     }
 
@@ -323,8 +325,14 @@ internal enum FakeAxisAnswer
     /// <summary>Another serial number than the discovered one.</summary>
     OtherSerial,
 
-    /// <summary>HTTP 401 for the anonymous request.</summary>
+    /// <summary>HTTP 401 for the anonymous request with the device's realm (AXIS OS 8.x).</summary>
     Unauthorized,
+
+    /// <summary>HTTP 401 for the anonymous request, realm with another serial number.</summary>
+    UnauthorizedOtherRealm,
+
+    /// <summary>HTTP 401 for the anonymous request without an AXIS_ realm.</summary>
+    UnauthorizedNoRealm,
 }
 
 internal static class FakeSerials

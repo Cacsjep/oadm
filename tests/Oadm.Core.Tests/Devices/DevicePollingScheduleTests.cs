@@ -271,7 +271,13 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
 
                 if (path.EndsWith("param.cgi", StringComparison.Ordinal))
                 {
-                    FullRefreshTimes.Add(_clock?.GetUtcNow() ?? DateTimeOffset.UtcNow);
+                    // Only the network parameters mark a full refresh (the API list falls back to the Properties group
+                    // when apidiscovery.cgi is missing, as here).
+                    if (request.RequestUri!.Query.Contains("Network", StringComparison.Ordinal))
+                    {
+                        FullRefreshTimes.Add(_clock?.GetUtcNow() ?? DateTimeOffset.UtcNow);
+                    }
+
                     return Fixtures.Text(Fixtures.Read("param-list-networkinfo.txt"));
                 }
 

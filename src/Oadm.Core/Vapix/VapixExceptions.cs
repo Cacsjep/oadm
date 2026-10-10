@@ -50,6 +50,9 @@ public sealed class VapixAuthenticationException : VapixException
         : base(message, statusCode)
     {
     }
+
+    /// <summary>The serial number in the 401 challenge's realm <c>AXIS_&lt;serial&gt;</c>, null when there is none.</summary>
+    public string? RealmSerial { get; init; }
 }
 
 /// <summary>

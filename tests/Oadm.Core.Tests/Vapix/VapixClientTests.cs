@@ -54,6 +54,49 @@ public class VapixClientTests
     }
 
     [Fact]
+    public async Task WithoutApiDiscoveryTheApiListComesFromTheParameterProperties()
+    {
+        // AXIS OS 8.40 (AXIS Q6154-E, 8.40.104): apidiscovery.cgi is 404, param.cgi Properties lists what the device has.
+        var handler = new FakeHttpMessageHandler((request, _) => request.RequestUri!.AbsolutePath.EndsWith("apidiscovery.cgi", StringComparison.Ordinal)
+            ? Fixtures.Text("<html>404 Not Found</html>", HttpStatusCode.NotFound, "text/html")
+            : Fixtures.Text(Fixtures.Read("param-properties-Q6154-E-8.40.txt")));
+        using var client = Client(handler);
+
+        var apis = await client.GetApiListAsync(CancellationToken.None);
+
+        Assert.Equal(["param-cgi 1.0", "fwmgr 1.0", "application 1.0", "user-management 1.0"], apis.Select(a => $"{a.Id} {a.Version}"));
+        Assert.All(apis, a => Assert.Equal(LegacyApiList.Source, a.Status));
+        Assert.Equal("https://10.0.0.48/axis-cgi/param.cgi?action=list&group=Properties", handler.Requests[1].Uri.ToString());
+    }
+
+    [Fact]
+    public async Task OtherApiDiscoveryErrorsAreNotReplaced()
+    {
+        var handler = new FakeHttpMessageHandler((_, _) => Fixtures.Text("error", HttpStatusCode.InternalServerError));
+        using var client = Client(handler);
+
+        await Assert.ThrowsAsync<VapixException>(() => client.GetApiListAsync(CancellationToken.None));
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public void TheLegacyListHasOnlyWhatTheDeviceNames()
+    {
+        var apis = LegacyApiList.FromProperties(new Dictionary<string, string> { ["root.Properties.Firmware.Version"] = "7.10.1" });
+        Assert.Equal(["param-cgi"], apis.Select(a => a.Id));
+    }
+
+    [Fact]
+    public async Task A401CarriesTheSerialOfItsRealm()
+    {
+        var handler = new FakeHttpMessageHandler((_, _) => Fixtures.Unauthorized("401-https-headers.txt"));
+        using var client = Client(handler);
+
+        var ex = await Assert.ThrowsAsync<VapixAuthenticationException>(() => client.GetUnrestrictedPropertiesAsync(CancellationToken.None));
+        Assert.Matches("^[0-9A-F]{12}$", ex.RealmSerial);
+    }
+
+    [Fact]
     public async Task ListParametersBuildsGroupList()
     {
         var handler = new FakeHttpMessageHandler((_, _) => Fixtures.Text(Fixtures.Read("param-list-networkinfo.txt")));

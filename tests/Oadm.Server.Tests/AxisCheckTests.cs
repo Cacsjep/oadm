@@ -18,7 +18,8 @@ public sealed class AxisCheckTests
     [InlineData((int)FakeAxisAnswer.NoSerial)]
     [InlineData((int)FakeAxisAnswer.NoModel)]
     [InlineData((int)FakeAxisAnswer.OtherSerial)]
-    [InlineData((int)FakeAxisAnswer.Unauthorized)]
+    [InlineData((int)FakeAxisAnswer.UnauthorizedOtherRealm)]
+    [InlineData((int)FakeAxisAnswer.UnauthorizedNoRealm)]
     public async Task ADeviceThatFailsTheAxisCheckNeverGetsACredential(int answer)
     {
         var network = new FakeAxisNetwork();
@@ -40,6 +41,22 @@ public sealed class AxisCheckTests
         var retry = await host.AddDevices.RetryAuthAsync(new Proto.RetryAuthRequest { SessionId = session, DiscoveredId = device.DiscoveredId, UserName = "root", Password = Password });
         Assert.Equal(Proto.AuthState.Unreachable, retry.AuthState);
         Assert.Empty(imitation.CredentialRequests);
+    }
+
+    [Fact]
+    public async Task OldAxisOsPassesWithTheSerialInItsLoginPrompt()
+    {
+        // AXIS OS 8.x answers the anonymous call with 401 and realm AXIS_<serial> (user decision 2026-10-10).
+        var network = new FakeAxisNetwork();
+        var camera = network.Add("10.9.1.4", FakeSerials.Make(4), Password);
+        camera.AnonymousAnswer = FakeAxisAnswer.Unauthorized;
+        await using var host = await TestServerHost.StartAsync(network);
+        await host.Settings.AddCredentialAsync(new Proto.AddCredentialRequest { UserName = "root", Password = Password });
+
+        var (_, devices) = await TestHelpers.ScanWithLoginAsync(host, "10.9.1.4", "10.9.1.4");
+
+        Assert.Equal(Proto.AuthState.Authenticated, devices["10.9.1.4"].AuthState);
+        Assert.Equal([("http", "root")], camera.CredentialRequests);
     }
 
     [Fact]
@@ -85,6 +102,22 @@ public sealed class AxisCheckTests
         var firstCredential = connections.IndexOf(login);
         Assert.Contains(connections.Take(firstCredential), c => c.Credentials is null && c.Scheme == "http");
         Assert.Contains(connections.Take(firstCredential), c => c.Credentials is null && c.Scheme == "https"); // tried first, refused
+    }
+
+    [Theory]
+    [InlineData("ACCC8EE1301C", "ACCC8EE1301C", true)]
+    [InlineData("accc8ee1301c", "ACCC8EE1301C", true)]
+    [InlineData("ACCC8EE1301D", "ACCC8EE1301C", false)]
+    public void OldAxisOsPassesOnTheRealmOfItsLoginPrompt(string realmSerial, string expected, bool verified)
+    {
+        // AXIS OS 8.40 answers the anonymous call with 401 Digest realm="AXIS_ACCC8EE1301C" (user decision 2026-10-10).
+        var verdict = DiscoveryAuthenticator.JudgeRealm(realmSerial, expected);
+
+        Assert.Equal(verified, verdict.Kind == DiscoveryAuthenticator.AxisVerdictKind.Verified);
+        if (!verified)
+        {
+            Assert.Equal("The address now answers as another device (ACCC8EE1301D). No password was sent.", verdict.Detail);
+        }
     }
 
     [Theory]

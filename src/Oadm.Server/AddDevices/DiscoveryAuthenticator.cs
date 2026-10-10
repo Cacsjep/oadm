@@ -584,6 +584,8 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     /// <summary>
     /// The anonymous Axis check on one scheme: <c>basicdeviceinfo getAllUnrestrictedProperties</c> must answer
     /// with a 12-hex serial number equal to the discovered one and a product number. Never sends a credential.
+    /// AXIS OS 8.x does not answer that call without a login (401, verified on an AXIS Q6154-E with 8.40.104); there the
+    /// login challenge's realm <c>AXIS_&lt;serial&gt;</c> must name the discovered serial (user decision 2026-10-10).
     /// </summary>
     private async Task<AxisVerdict> CheckAxisAsync(DiscoveredDevice device, string scheme, CancellationToken ct)
     {
@@ -597,6 +599,10 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
             });
             var properties = await client.GetUnrestrictedPropertiesAsync(ct).ConfigureAwait(false);
             return Judge(properties, device.Serial);
+        }
+        catch (VapixAuthenticationException ex) when (ex.RealmSerial is { } realmSerial)
+        {
+            return JudgeRealm(realmSerial, device.Serial);
         }
         catch (VapixException)
         {
@@ -655,6 +661,12 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
             ? new AxisVerdict(AxisVerdictKind.Verified, null)
             : new AxisVerdict(AxisVerdictKind.NotAxis, $"The address now answers as another device ({serial}). No password was sent.");
     }
+
+    /// <summary>Older AXIS OS: the serial in the login challenge's realm must be the discovered one.</summary>
+    internal static AxisVerdict JudgeRealm(string realmSerial, string expectedSerial) =>
+        string.Equals(SerialNumber.Normalize(realmSerial), SerialNumber.Normalize(expectedSerial), StringComparison.Ordinal)
+            ? new AxisVerdict(AxisVerdictKind.Verified, null)
+            : new AxisVerdict(AxisVerdictKind.NotAxis, $"The address now answers as another device ({SerialNumber.Normalize(realmSerial) ?? realmSerial}). No password was sent.");
 
     /// <summary>One login on one scheme: basicdeviceinfo with the credential, plus network parameters on devices with anonymous access.</summary>
     private async Task<Attempt> TryOneOnSchemeAsync(DiscoveredDevice device, string scheme, string userName, string password, CancellationToken ct)
