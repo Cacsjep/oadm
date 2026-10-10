@@ -17,6 +17,7 @@ public class VapixParsersTests
         Assert.Equal("12.11.77", info.Version);
         Assert.Equal("931.11", info.HardwareId);
         Assert.Equal("aarch64", info.Architecture);
+        Assert.Equal("Axis Artpec-8", info.Soc);
     }
 
     [Fact]

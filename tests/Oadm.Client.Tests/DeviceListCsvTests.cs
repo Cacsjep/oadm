@@ -26,6 +26,7 @@ public sealed class DeviceListCsvTests
         device.HostName = "cam-entrance";
         device.Category = DeviceCategory.Camera;
         device.ProductType = "Dome Camera";
+        device.Soc = "Axis Artpec-8";
         device.CertNotAfter = Timestamp.FromDateTime(new DateTime(2027, 3, 4, 10, 0, 0, DateTimeKind.Utc));
         device.CertTrust = CertificateTrust.SelfSigned;
         device.Tags.AddRange(["Building A", "PTZ"]);
@@ -33,9 +34,31 @@ public sealed class DeviceListCsvTests
         string csv = DeviceListCsv.Write([Row(device)]);
 
         string[] lines = csv.Split("\r\n");
-        Assert.Equal("MAC address,Status,Address,Tags,Host name,Model,Firmware,Category,Product type,DHCP,HTTPS,Certificate expires,Certificate,IEEE 802.1X", lines[0]);
-        Assert.Equal("ACCC8E5F6071,OK,10.0.0.48,Building A; PTZ,cam-entrance,AXIS P3265-V,12.11.77,Camera,Dome Camera,Yes,Enabled,2027-03-04,Self-signed,Disabled", lines[1]);
+        Assert.Equal("MAC address,Status,Address,Tags,Host name,Model,Firmware,SoC,Category,Product type,DHCP,HTTPS,Certificate expires,Certificate,IEEE 802.1X", lines[0]);
+        Assert.Equal("ACCC8E5F6071,OK,10.0.0.48,Building A; PTZ,cam-entrance,AXIS P3265-V,12.11.77,ARTPEC-8,Camera,Dome Camera,Yes,Enabled,2027-03-04,Self-signed,Disabled", lines[1]);
         Assert.Equal("", lines[2]); // CRLF after the last record
+    }
+
+    [Theory]
+    [InlineData("Axis Artpec-8", "ARTPEC-8")]
+    [InlineData("Axis ARTPEC-9", "ARTPEC-9")]
+    [InlineData("  Axis Artpec-7 ", "ARTPEC-7")]
+    [InlineData("Ambarella CV25", "Ambarella CV25")]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void Soc_text_uses_the_axis_spelling_without_the_brand(string? soc, string? expected) =>
+        Assert.Equal(expected, DeviceSocText.ToText(soc));
+
+    [Fact]
+    public void The_search_finds_devices_by_soc()
+    {
+        Device device = TestSupport.Device("1", "ACCC8E5F6071", "10.0.0.48", "AXIS P3265-V");
+        device.Soc = "Axis Artpec-8";
+        DeviceRowViewModel row = Row(device);
+
+        Assert.Equal("ARTPEC-8", row.Soc);
+        Assert.True(row.Matches("artpec-8"));
+        Assert.False(row.Matches("artpec-7"));
     }
 
     [Theory]

@@ -20,7 +20,7 @@ public static class DeviceListCsv
 
     public static IReadOnlyList<string> Columns { get; } =
     [
-        "MAC address", "Status", AddressColumn, TagsColumn, "Host name", "Model", "Firmware", "Category", "Product type",
+        "MAC address", "Status", AddressColumn, TagsColumn, "Host name", "Model", "Firmware", "SoC", "Category", "Product type",
         "DHCP", "HTTPS", "Certificate expires", "Certificate", "IEEE 802.1X",
     ];
 
@@ -45,6 +45,7 @@ public static class DeviceListCsv
                 d.HostName,
                 d.Model,
                 d.FirmwareVersion,
+                d.Soc,
                 DeviceCategoryInfo.ToText(d.Category),
                 d.ProductType,
                 d.DhcpText,

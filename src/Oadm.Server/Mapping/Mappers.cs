@@ -36,6 +36,7 @@ public static class Mappers
             WarrantyExpiry = device.WarrantyExpiry?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
             ReplacementModel = device.ReplacementModel ?? string.Empty,
             ProductType = device.ProductType ?? string.Empty,
+            Soc = device.Soc ?? string.Empty,
             Category = ToProto(device.Category),
             HasVideo = device.HasVideo,
             CertTrust = ToProto(device.CertTrust),

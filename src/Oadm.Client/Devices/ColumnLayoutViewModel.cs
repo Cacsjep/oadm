@@ -34,6 +34,7 @@ public sealed class ColumnLayoutViewModel
         ("status", "Status"),
         ("mac", "MAC address"),
         ("firmware", "Firmware"),
+        ("soc", "SoC"),
         ("tags", "Tags"),
         ("dhcp", "DHCP"),
         ("https", "HTTPS"),

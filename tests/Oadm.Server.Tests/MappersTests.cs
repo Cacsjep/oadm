@@ -71,6 +71,7 @@ public sealed class MappersTests
             Serial = "B8A44F631339",
             Address = "10.0.0.48",
             ProductType = "Dome Camera",
+            Soc = "Axis Artpec-8",
             Category = Sdk.Devices.DeviceCategory.Camera,
             CertNotAfterUtc = notAfter,
             CertTrust = Core.Vapix.CertificateTrust.SelfSigned,
@@ -88,6 +89,7 @@ public sealed class MappersTests
         Assert.True(proto.HasCertNameMatches);
         Assert.False(proto.CertNameMatches);
         Assert.Equal("Dome Camera", proto.ProductType);
+        Assert.Equal("Axis Artpec-8", proto.Soc);
         Assert.Equal(Proto.DeviceCategory.Camera, proto.Category);
         Assert.True(proto.HasVideo);
     }

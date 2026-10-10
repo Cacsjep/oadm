@@ -66,6 +66,7 @@ message Device {
   DeviceCategory category = 26;
   bool has_video = 27;                            // derived from category
   repeated DeviceApi apis = 28;                   // VAPIX API list from the last full refresh
+  string soc = 29;                                // raw basicdeviceinfo Soc, e.g. "Axis Artpec-8"; empty until known
 }
 
 // One entry of the device's VAPIX API discovery list (apidiscovery.cgi getApiList).

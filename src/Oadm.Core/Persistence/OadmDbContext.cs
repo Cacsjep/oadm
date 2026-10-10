@@ -78,6 +78,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(d => d.Scheme).HasConversion<string>().HasMaxLength(8);
             e.Property(d => d.LastSeenUtc).HasConversion(NullableUtcConverter);
             e.Property(d => d.ProductType).HasMaxLength(128);
+            e.Property(d => d.Soc).HasMaxLength(64);
             e.Property(d => d.Category).HasConversion<string>().HasMaxLength(16);
             e.Ignore(d => d.HasVideo);
             e.Ignore(d => d.CredentialUserName);

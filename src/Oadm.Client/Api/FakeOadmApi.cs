@@ -1569,6 +1569,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         LastSeen = Timestamp.FromDateTime(DateTime.UtcNow),
         HasCredentials = status != DeviceStatus.PasswordNotSet,
         ProductType = SampleProductType(model),
+        Soc = SampleSoc(model),
         Category = SampleCategory(model),
         HasVideo = SampleCategory(model) is DeviceCategory.Camera or DeviceCategory.Encoder or DeviceCategory.Intercom,
         CertTrust = CertificateTrust.SelfSigned,
@@ -1599,6 +1600,16 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         _ when model.Contains("A9188", StringComparison.Ordinal) => "Network I/O Relay Module",
         _ when model.Contains("Q6135", StringComparison.Ordinal) => "PTZ Network Camera",
         _ => "Network Camera",
+    };
+
+    /// <summary>basicdeviceinfo Soc like the devices report it (the P3265-V says "Axis Artpec-8").</summary>
+    internal static string SampleSoc(string model) => model switch
+    {
+        _ when model.Contains("P3265", StringComparison.Ordinal) => "Axis Artpec-8",
+        _ when model.Contains("Q6135", StringComparison.Ordinal) => "Axis Artpec-7",
+        _ when model.Contains("C1310", StringComparison.Ordinal) => "Axis Artpec-6",
+        _ when model.Contains("M30", StringComparison.Ordinal) => "Ambarella CV25",
+        _ => "Axis Artpec-8",
     };
 
     internal static DeviceCategory SampleCategory(string model) => SampleProductType(model) switch

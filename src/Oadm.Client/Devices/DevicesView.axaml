@@ -123,6 +123,7 @@
               </DataGridTemplateColumn>
               <DataGridTextColumn Tag="mac" Header="MAC address" Width="140*" MinWidth="70" Binding="{Binding Row.Serial}" x:DataType="dev:IDeviceGridItem" />
               <DataGridTextColumn Tag="firmware" Header="Firmware" Width="100*" MinWidth="70" Binding="{Binding Row.FirmwareVersion}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTextColumn Tag="soc" Header="SoC" Width="100*" MinWidth="70" Binding="{Binding Row.Soc}" x:DataType="dev:IDeviceGridItem" />
               <DataGridTemplateColumn Tag="tags" Header="Tags" Width="150*" MinWidth="70" SortMemberPath="Row.TagsText">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:IDeviceGridItem">
