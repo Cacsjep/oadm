@@ -124,7 +124,7 @@
       <SolidColorBrush x:Key="Oadm.ButtonOnRaisedBrush" Color="{StaticResource Oadm.ButtonOnRaisedColor}" />
       <SolidColorBrush x:Key="Oadm.ButtonOnRaisedHoverBrush" Color="{StaticResource Oadm.ButtonOnRaisedHoverColor}" />
       <SolidColorBrush x:Key="Oadm.BrandBrush" Color="{StaticResource Oadm.BrandColor}" />
-      <!-- Start splash only (user decision 2026-10-08): the soft accent glow behind the logo, the one gradient of the app -->
+      <!-- Start splash only: the soft accent glow behind the logo, the one gradient of the app -->
       <RadialGradientBrush x:Key="Oadm.SplashGlowBrush">
         <GradientStop Offset="0" Color="#616C5CE7" />
         <GradientStop Offset="0.45" Color="#1A6C5CE7" />
@@ -304,7 +304,7 @@
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
   <!-- Start splash (Shell/SplashWindow): "OADM" whose wide letter spacing pulls together, the subtitle and the progress
-       block fade in (timeline of mockups/loading/index.html, user decision 2026-10-08). -->
+       block fade in (timeline of mockups/loading/index.html). -->
   <Style Selector="TextBlock.splashWordmark">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSplashWordmark}" />
     <Setter Property="FontWeight" Value="Bold" />
@@ -1410,7 +1410,7 @@
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
     <Setter Property="HorizontalAlignment" Value="Center" />
   </Style>
-  <!-- When / And / Then rows of the rule dialog: outlined, no fill (user decision 2026-10-11) -->
+  <!-- When / And / Then rows of the rule dialog: outlined, no fill -->
   <Style Selector="Border.ruleItem">
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />

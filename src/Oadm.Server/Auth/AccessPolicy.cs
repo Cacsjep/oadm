@@ -42,7 +42,7 @@ public static class AccessPolicy
         ["/oadm.v1.TagService/Update"] = Access.Admin,
         ["/oadm.v1.TagService/Delete"] = Access.Admin,
 
-        // Event rules change devices unattended: changing rules is Admin only (user decision 2026-10-10).
+        // Event rules change devices unattended: changing rules is Admin only.
         ["/oadm.v1.EventService/SaveRule"] = Access.Admin,
         ["/oadm.v1.EventService/DeleteRule"] = Access.Admin,
         ["/oadm.v1.EventService/SetRuleEnabled"] = Access.Admin,

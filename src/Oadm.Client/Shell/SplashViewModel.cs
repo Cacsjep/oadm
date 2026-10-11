@@ -3,7 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace Oadm.Client.Shell;
 
 /// <summary>
-/// The start splash (user decision 2026-10-08): shown while the client really loads (server connection, remembered login,
+/// The start splash: shown while the client really loads (server connection, remembered login,
 /// first device list), the status line says the current step and the bar follows the steps. It stays at least until the
 /// logo animation is complete (<see cref="MinimumDuration"/>), then closes as soon as the client is ready.
 /// </summary>

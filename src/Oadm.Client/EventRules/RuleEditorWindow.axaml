@@ -10,7 +10,7 @@
         ShowInTaskbar="False"
         CanResize="False"
         WindowDecorations="BorderOnly">
-  <!-- A wizard (user decision 2026-10-11): title bar, the step switch, one step at a time in a scroll area, footer with
+  <!-- A wizard: title bar, the step switch, one step at a time in a scroll area, footer with
        Back / Next, Save on the overview. -->
   <Grid RowDefinitions="Auto,Auto,*,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />

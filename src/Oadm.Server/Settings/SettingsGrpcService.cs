@@ -98,8 +98,8 @@ public sealed partial class SettingsGrpcService(
     }
 
     /// <summary>
-    /// The stored password of one credential list entry (Settings page eye / copy button; user decision
-    /// 2026-10-08). Device passwords are never returned. Logged as Information without the password.
+    /// The stored password of one credential list entry (Settings page eye / copy button).
+    /// Device passwords are never returned. Logged as Information without the password.
     /// </summary>
     public override async Task<Proto.RevealedCredential> RevealCredential(Proto.CredentialEntryId request, ServerCallContext context)
     {

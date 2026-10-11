@@ -430,7 +430,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Group starts of the core plugin pages (user decision 2026-10-08): only groups with pages appear; expanded rail = a
+    /// Group starts of the core plugin pages: only groups with pages appear; expanded rail = a
     /// small header above the first page of each group (and the separator under Devices), collapsed rail = a separator.
     /// </summary>
     private void UpdateNavGroups()

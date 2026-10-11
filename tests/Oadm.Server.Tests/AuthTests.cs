@@ -151,7 +151,7 @@ public sealed class AuthTests
         Assert.False(status.SetupCodeRequired); // the in-process client counts as local
         Assert.True(File.Exists(Path.Combine(host.DataDirectory, AuthManager.SetupCodeFileName)));
 
-        // No strength rule (user decision): only an empty password is refused.
+        // No strength rule: only an empty password is refused.
         var weak = await Assert.ThrowsAsync<RpcException>(async () => await auth.CreateFirstAdminAsync(new Proto.CreateFirstAdminRequest { UserName = "boss", Password = "" }));
         Assert.Equal(StatusCode.InvalidArgument, weak.StatusCode);
 

@@ -45,7 +45,7 @@ public sealed record ChoiceOption<T>(T Value, string Text)
 }
 
 /// <summary>
-/// Which devices a condition or an action is about (user decision 2026-10-11: no mode drop-down): <see cref="ChooseDevicesCommand"/>
+/// Which devices a condition or an action is about (no mode drop-down): <see cref="ChooseDevicesCommand"/>
 /// opens the shared <see cref="DevicePickerWindow"/> with the device of the event (when offered), All devices, or chosen
 /// devices and tags together. The choice shows as one line ("Tag Building A and 3 devices: 10.0.0.48, ...").
 /// </summary>
@@ -90,7 +90,7 @@ public sealed partial class DeviceSelectorViewModel : ObservableObject
     };
 
     /// <summary>
-    /// The button (user decision 2026-10-11): "Choose devices" while nothing is chosen, else "Selected devices: All",
+    /// The button: "Choose devices" while nothing is chosen, else "Selected devices: All",
     /// "Selected devices: Tag Building A and 3 devices". The full choice with addresses is its tooltip.
     /// </summary>
     public string ButtonText => Choice.IsEmpty ? "Choose devices" : "Selected devices: " + ShortText();

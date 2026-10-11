@@ -34,7 +34,7 @@ public sealed record DecryptedCredential(Guid Id, string UserName, string Passwo
 /// The encrypted credential list (Settings page): user name + password pairs the server tries on
 /// discovered devices when adding them. Passwords are encrypted with the master key (AES-256-GCM,
 /// entry id as associated data); clients see ids and user names, a password only through the explicit
-/// <see cref="RevealAsync"/> (Settings page eye button, user decision 2026-10-08).
+/// <see cref="RevealAsync"/> (Settings page eye button).
 /// </summary>
 public sealed class CredentialListStore(IDbContextFactory<OadmDbContext> dbFactory, CredentialProtector protector, TimeProvider time)
 {

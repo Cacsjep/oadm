@@ -17,7 +17,7 @@ public sealed record UserRecord(Guid Id, string UserName, UserRole Role, bool Di
 
 /// <summary>
 /// The users table (Settings page card Users, Admin only). Names are unique case-insensitively, 1..64 characters;
-/// passwords any length up to <see cref="MaxPasswordLength"/> (no strength rule, user decision 2026-10-08). The last enabled administrator can never be demoted,
+/// passwords any length up to <see cref="MaxPasswordLength"/> (no strength rule). The last enabled administrator can never be demoted,
 /// disabled or deleted, and nobody can change the role, the state or the existence of their own account. A changed
 /// password, role or state ends the user's sessions.
 /// </summary>

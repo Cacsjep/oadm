@@ -344,7 +344,7 @@ public sealed record PluginManifest(
 /// Well-known context menu groups (<see cref="ITaskPlugin.Group"/>). Plugins reuse these so related
 /// tasks of different plugins share one submenu; any other non-empty name creates its own submenu.
 /// </summary>
-/// <summary>Groups of the core plugin pages in the client's navigation rail, shown in this order (user decision 2026-10-08).</summary>
+/// <summary>Groups of the core plugin pages in the client's navigation rail, shown in this order.</summary>
 public enum CorePluginGroup
 {
     /// <summary>Network services OADM runs for the devices: NTP server, DHCP server.</summary>

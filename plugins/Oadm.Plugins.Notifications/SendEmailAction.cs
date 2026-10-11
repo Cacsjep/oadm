@@ -14,7 +14,7 @@ using Oadm.Sdk.Actions;
 namespace Oadm.Plugins.Notifications;
 
 /// <summary>
-/// Event rule action "Send email" (user decisions 2026-10-11): the mail server is part of each action (no shared
+/// Event rule action "Send email": the mail server is part of each action (no shared
 /// setting, so an action stands on its own and is copied with its rule), STARTTLS / TLS / none, optional login (password
 /// stored encrypted), "Allow untrusted certificates", To / Subject / Body with placeholders, body as text or HTML (HTML
 /// escapes the values and gets a plain-text part too). Runs once per rule edge, no device. Sent with MailKit.

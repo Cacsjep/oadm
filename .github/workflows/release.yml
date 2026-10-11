@@ -56,7 +56,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # x64 only (user decision: no ARM installers). macOS: the .pkg is checked without installing it.
+        # x64 only (no ARM installers). macOS: the .pkg is checked without installing it.
         include:
           - { os: windows-latest, target: windows, rid: win-x64, smoke: true }
           - { os: ubuntu-latest, target: linux, rid: linux-x64, smoke: true }

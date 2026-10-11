@@ -26,7 +26,7 @@ public static class DeviceTriggersPluginInfo
     public const int MaxNameLength = 64;
     public const int MaxDevicesPerTrigger = 5_000;
 
-    /// <summary>Second event of every trigger (user decision 2026-10-10): "&lt;Trigger&gt;: connection lost".</summary>
+    /// <summary>Second event of every trigger: "&lt;Trigger&gt;: connection lost".</summary>
     public const string LostSuffix = ": connection lost";
 
     /// <summary>"Connection lost" turns on after the trigger received nothing usable from a device for this long.</summary>
@@ -95,7 +95,7 @@ public sealed record EventItem(string Name, string? DisplayName, IReadOnlyList<E
 public sealed record DeviceEvent(string Topic, string Name, bool Stateful, string? StateItem, IReadOnlyList<EventItem> Sources, IReadOnlyList<EventItem> Data)
 {
     /// <summary>The group of the event picker ("Input ports", "Device status"); every app event (Object Analytics, Video
-    /// Motion Detection, Image Health Analytics, ...) is in "Applications" (user decision 2026-10-11).</summary>
+    /// Motion Detection, Image Health Analytics, ...) is in "Applications".</summary>
     [JsonIgnore]
     public string Group => GroupAndTitle(Topic, Name).Group;
 
@@ -167,7 +167,7 @@ public sealed record TriggerDefinition
     /// <summary>Names of the event's source and data items: the placeholders ({port}) rules can use.</summary>
     public IReadOnlyList<string> Values { get; init; } = [];
 
-    /// <summary>Devices chosen one by one (user decision 2026-10-11: plus <see cref="Tags"/> or <see cref="AllDevices"/>).</summary>
+    /// <summary>Devices chosen one by one (plus <see cref="Tags"/> or <see cref="AllDevices"/>).</summary>
     public IReadOnlyList<Guid> DeviceIds { get; init; } = [];
 
     /// <summary>Every device with one of these tags, also devices tagged later.</summary>

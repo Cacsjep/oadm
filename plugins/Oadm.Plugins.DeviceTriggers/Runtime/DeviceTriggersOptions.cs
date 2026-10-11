@@ -3,10 +3,10 @@ namespace Oadm.Plugins.DeviceTriggers.Runtime;
 /// <summary>Timing of the device triggers; tests shorten them.</summary>
 public sealed class DeviceTriggersOptions
 {
-    /// <summary>"Connection lost" turns on after a problem lasted this long (user decision: 30 s).</summary>
+    /// <summary>"Connection lost" turns on after a problem lasted this long (30 s).</summary>
     public TimeSpan LostDelay { get; init; } = DeviceTriggersPluginInfo.LostDelay;
 
-    /// <summary>The event list of a connected device is read again this often (user decision: 5 min).</summary>
+    /// <summary>The event list of a connected device is read again this often (5 min).</summary>
     public TimeSpan RecheckInterval { get; init; } = DeviceTriggersPluginInfo.RecheckInterval;
 
     /// <summary>WebSocket ping interval and pong timeout.</summary>

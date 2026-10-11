@@ -7,7 +7,7 @@ using Avalonia.Media;
 namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>
-/// The one editable code field (request bodies; user decision 2026-10-11): a monospace <see cref="TextBox"/> for typing,
+/// The one editable code field (request bodies): a monospace <see cref="TextBox"/> for typing,
 /// selecting, the caret and undo, with the same text drawn colored on top of it (JSON, XML, param.cgi key=value; the
 /// tokenizer and colors of <see cref="CodeView"/>). The colored layer follows the text box's scrolling and never takes
 /// input. The text is shown exactly as typed (never re-indented); texts above <see cref="CodeText.DefaultHighlightLimit"/>

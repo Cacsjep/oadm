@@ -18,7 +18,7 @@ namespace Oadm.Core.Uploads;
 /// file without metadata is never visible. Size limit <c>Uploads.MaxMegabytes</c>, removed after
 /// <c>Uploads.RetentionHours</c> by <see cref="DeleteExpiredAsync"/>. Ids are 32 lower-case hex chars;
 /// anything else is rejected, so an id can never escape the folder.
-/// All uploads together use at most <see cref="QuotaBytes"/> (10 GB, user decision) and at least
+/// All uploads together use at most <see cref="QuotaBytes"/> (10 GB) and at least
 /// <see cref="MinFreeDiskBytes"/> (1 GB) of the disk stay free: a new upload first removes the oldest finished
 /// uploads until it fits, otherwise it is refused (<see cref="UploadRejectedException.TooLarge"/>, RESOURCE_EXHAUSTED).
 /// </summary>
@@ -29,7 +29,7 @@ public sealed partial class UploadStore : IUploadedFiles
     private const string PartialExtension = ".part";
     private const int MaxNameLength = 255;
 
-    /// <summary>Disk space all uploads together may use (10 GB, user decision).</summary>
+    /// <summary>Disk space all uploads together may use (10 GB).</summary>
     public const long DefaultQuotaBytes = 10L * 1024 * 1024 * 1024;
 
     /// <summary>Free disk space that must remain after an upload (1 GB).</summary>

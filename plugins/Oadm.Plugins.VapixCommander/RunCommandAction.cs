@@ -6,7 +6,7 @@ using Oadm.Sdk.Vapix;
 namespace Oadm.Plugins.VapixCommander;
 
 /// <summary>
-/// Event rule action "Run VAPIX command" (user decision 2026-10-10): a saved command (with its stored values and
+/// Event rule action "Run VAPIX command": a saved command (with its stored values and
 /// passwords) or a library command that needs no input, when the rule turns on or fires, and optionally a second one
 /// when it turns off. Device safety like a rollout: the command must fit the device's cached API list, a command that
 /// changes the device re-checks a fresh API list first, and commands marked dangerous need "Allow dangerous commands".
@@ -125,7 +125,7 @@ public sealed class RunCommandAction(VapixCommanderPlugin owner) : IActionPlugin
     }
 
     /// <summary>
-    /// The event's values in the command (user decision 2026-10-11): a text field of the command whose value holds
+    /// The event's values in the command: a text field of the command whose value holds
     /// placeholders ("{carID}", "{port}", "{device}") gets them filled from the rule and the event before the command is
     /// checked and sent; the field checks (pattern, length) then apply to the filled value. Passwords are never touched.
     /// </summary>

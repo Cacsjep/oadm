@@ -541,7 +541,7 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
     /// <summary>The first problem of the whole rule (Save tooltip), null when it can be saved.</summary>
     public string? Problem => ProblemOf(RuleStep) ?? ProblemOf(WhenStep) ?? ProblemOf(ThenStep);
 
-    // Wizard (user decision 2026-10-11): 1 Rule (name, turned on, limits), 2 When (conditions), 3 Then (actions),
+    // Wizard: 1 Rule (name, turned on, limits), 2 When (conditions), 3 Then (actions),
     // 4 Overview (everything in short lines, Save). Next is disabled with the step's first problem as tooltip.
     public const int RuleStep = 0;
     public const int WhenStep = 1;
@@ -792,7 +792,7 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
     }
 
     /// <summary>
-    /// The placeholder panel of the Then step (user decision 2026-10-11: a list with copy buttons): the values of the
+    /// The placeholder panel of the Then step (a list with copy buttons): the values of the
     /// trigger, then the rule and the device (<see cref="ActionPlaceholders.Fixed"/>). Rebuilt when the trigger changes.
     /// </summary>
     [ObservableProperty] public partial IReadOnlyList<PlaceholderGroup> PlaceholderGroups { get; private set; } = [];

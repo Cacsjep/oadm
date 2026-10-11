@@ -9,7 +9,7 @@ using Oadm.Sdk.Actions;
 namespace Oadm.Plugins.Notifications;
 
 /// <summary>
-/// Event rule action "Send HTTP request" (user decisions 2026-10-11): any method, URL, query parameters, headers, login
+/// Event rule action "Send HTTP request": any method, URL, query parameters, headers, login
 /// (none, Basic, Digest, Bearer token), a body with a format (JSON, XML, text, form) and "Allow untrusted certificates".
 /// Every text takes the placeholders; their values are escaped for the part they go into (URL-encoded in the URL and the
 /// query, JSON or XML escaped in the body), so "objectId": "{objectId}" stays valid JSON. Runs once per rule edge, no

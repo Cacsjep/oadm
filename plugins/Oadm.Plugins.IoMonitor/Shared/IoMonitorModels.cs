@@ -15,7 +15,7 @@ public static class IoMonitorPluginInfo
 
     public const string Path = "/axis-cgi/io/portmanagement.cgi";
 
-    /// <summary>The ports are read this often while a page shows a device (user decision 2026-10-10: 200 ms).</summary>
+    /// <summary>The ports are read this often while a page shows a device (200 ms).</summary>
     public static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(200);
 }
 

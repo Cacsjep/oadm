@@ -143,7 +143,7 @@ public sealed partial class PluginsViewModel : ObservableObject
     public Oadm.Sdk.Client.Collections.RangeObservableCollection<PluginRowViewModel> Plugins { get; } = [];
 
     /// <summary>
-    /// The groups that have packages, in rail order (user decision 2026-10-11: the page groups like the navigation rail).
+    /// The groups that have packages, in rail order (the page groups like the navigation rail).
     /// Set with every rebuild, before <see cref="Plugins"/> changes.
     /// </summary>
     public IReadOnlyList<PluginGroupKey> Groups { get; private set; } = [];

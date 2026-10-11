@@ -62,7 +62,7 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
 
     public bool ShowEmpty => Rows.Count == 0;
 
-    /// <summary>Check every 10 s while the page is shown. Off by default (user decision 2026-10-09).</summary>
+    /// <summary>Check every 10 s while the page is shown. Off by default.</summary>
     [ObservableProperty]
     public partial bool AutoRefresh { get; set; }
 

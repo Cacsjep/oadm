@@ -511,7 +511,7 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     /// <summary>
     /// Core actions, then every menu task plugin in its group; one that cannot run on the whole selection is disabled
-    /// with the reason as tooltip (user decision 2026-10-08: unsupported tasks stay visible, greyed out).
+    /// with the reason as tooltip (unsupported tasks stay visible, greyed out).
     /// </summary>
     internal void RebuildContextMenu()
     {
@@ -574,7 +574,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     }
 
     /// <summary>
-    /// One submenu per task group (sorted by name), even with a single entry (user decision); inside, the
+    /// One submenu per task group (sorted by name), even with a single entry; inside, the
     /// tasks sorted by name with their icons. Names never end with "..." (stripped defensively) and are
     /// shortened to <see cref="TaskPluginNames.MaxDisplayNameLength"/> characters. <paramref name="notRunnableReason"/>
     /// gives the reason a task cannot run on the selection (null = it can): such a task is disabled with the reason as

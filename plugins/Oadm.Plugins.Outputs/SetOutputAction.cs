@@ -7,8 +7,8 @@ using Oadm.Sdk.Vapix;
 namespace Oadm.Plugins.Outputs;
 
 /// <summary>
-/// Event rule action "Set output": switches an output port of a device (a relay of a camera or an I/O module). Modes
-/// (user decision 2026-10-10): Follow the rule (active while a stateful rule is on), Pulse for N seconds, Set active,
+/// Event rule action "Set output": switches an output port of a device (a relay of a camera or an I/O module). Modes:
+/// Follow the rule (active while a stateful rule is on), Pulse for N seconds, Set active,
 /// Set inactive, Toggle. Uses the I/O port management API when the device lists it, else port.cgi.
 /// </summary>
 public sealed class SetOutputAction : IActionPlugin

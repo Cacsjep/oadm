@@ -28,7 +28,7 @@ public sealed record ActionPlaceholder(string Name, string Group, string Descrip
 }
 
 /// <summary>
-/// The placeholders of the event rule actions (user decision 2026-10-11: everything OADM knows about the rule, the event
+/// The placeholders of the event rule actions (everything OADM knows about the rule, the event
 /// and the device), one list for the server (<see cref="Fill"/>) and the rule dialog's placeholder panel. The values of
 /// the event come on top, by their name ({objectId}, {port}); the fixed names win over event values of the same name.
 /// </summary>

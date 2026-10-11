@@ -11,7 +11,7 @@ public enum DeviceSelectorMode
     All = 0,
 
     /// <summary>
-    /// A choice (user decision 2026-10-11, tags and devices together): the devices in <see cref="DeviceSelector.DeviceIds"/>
+    /// A choice (tags and devices together): the devices in <see cref="DeviceSelector.DeviceIds"/>
     /// and every device with at least one of <see cref="DeviceSelector.Tags"/>.
     /// </summary>
     Devices = 1,

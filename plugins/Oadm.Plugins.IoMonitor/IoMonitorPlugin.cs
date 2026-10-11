@@ -31,7 +31,7 @@ public sealed class IoMonitorOptions
 }
 
 /// <summary>
-/// Core plugin "I/O Monitor" (off by default, user decision 2026-10-10): the page picks one device with inputs or
+/// Core plugin "I/O Monitor" (off by default): the page picks one device with inputs or
 /// outputs and shows their states live. While the page shows the device the server reads the ports every 200 ms
 /// (<c>getPorts</c> of the I/O port management API, stored credentials) and pushes them to the page when something
 /// changed. Pages showing the same device share one reading of it. Read-only for devices; no events, no actions.

@@ -16,7 +16,7 @@ namespace Oadm.Client.Controls;
 
 /// <summary>
 /// The animated OADM logo of the start splash (the app icon: seven pointy-top hexagons with the lens in the middle; mockup
-/// <c>mockups/loading/index.html</c>, user decision 2026-10-08). The six outer hexagons fly in one after another, each drawn as an
+/// <c>mockups/loading/index.html</c>). The six outer hexagons fly in one after another, each drawn as an
 /// accent outline that then fills; then the center hexagon, the lens ring and the lens opening like an iris; a soft glow grows
 /// behind the logo and keeps breathing, a scan line sweeps once around it and the lens blinks once. The logo is complete after
 /// <see cref="CompleteAfter"/>. Starts when attached to a visual tree; colors from the theme. Transforms are animated through

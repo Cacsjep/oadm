@@ -5,8 +5,8 @@ using Oadm.Sdk.Events;
 namespace Oadm.Core.Events;
 
 /// <summary>
-/// The events OADM publishes itself: device status from polling and the HTTPS certificate (user decision 2026-10-10:
-/// built in is only what OADM already knows; every other device event comes from an opt-in plugin).
+/// The events OADM publishes itself: device status from polling and the HTTPS certificate
+/// (built in is only what OADM already knows; every other device event comes from an opt-in plugin).
 /// </summary>
 public static class BuiltInEvents
 {

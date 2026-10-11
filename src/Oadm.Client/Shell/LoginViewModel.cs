@@ -176,7 +176,7 @@ public sealed partial class LoginViewModel : ValidatingViewModel
     }
 
     /// <summary>
-    /// Connect again (user decision 2026-10-11: a refresh icon right of the server field): the server could not be
+    /// Connect again (a refresh icon right of the server field): the server could not be
     /// reached, e.g. it was still starting, or another address was typed. Repeats what opening the window does (resume a remembered login, else ask the server whether it needs its first administrator)
     /// without restarting the client.
     /// </summary>

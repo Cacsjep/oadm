@@ -11,10 +11,10 @@ namespace Oadm.Plugins.ImageHealth.Monitoring;
 /// <summary>Timing and limits of <see cref="ImageHealthMonitor"/>; tests shorten them.</summary>
 public sealed class ImageHealthOptions
 {
-    /// <summary>Cameras asked at the same time (user decision 2026-10-09: 24; 200 cameras = about 9 rounds).</summary>
+    /// <summary>Cameras asked at the same time (24; 200 cameras = about 9 rounds).</summary>
     public int CheckParallelism { get; init; } = 24;
 
-    /// <summary>Time for one status request (user decision 2026-10-09: 3 s).</summary>
+    /// <summary>Time for one status request (3 s).</summary>
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(3);
 
     /// <summary>Changed rows and counts are pushed at most this often.</summary>
@@ -24,7 +24,7 @@ public sealed class ImageHealthOptions
 }
 
 /// <summary>
-/// The status of AXIS Image Health Analytics on every camera, read only on request (user decision 2026-10-09: no
+/// The status of AXIS Image Health Analytics on every camera, read only on request (no
 /// background polling, no open connection). <see cref="StartCheck"/> asks every video device once for the app status
 /// (<see cref="ImageHealthPluginInfo.StatusPath"/>, <see cref="ImageHealthOptions.CheckParallelism"/> at a time, stored
 /// credentials): the page calls it when it opens, on Refresh and, with Auto refresh on, every 10 s. Rows are updated in

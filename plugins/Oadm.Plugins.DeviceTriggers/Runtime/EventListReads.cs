@@ -8,7 +8,7 @@ using Oadm.Sdk.Vapix;
 namespace Oadm.Plugins.DeviceTriggers.Runtime;
 
 /// <summary>
-/// The editor's live reads of event lists (user decision: always read from the devices when a trigger is created or
+/// The editor's live reads of event lists (always read from the devices when a trigger is created or
 /// edited, never from a cache: an app that is stopped or removed has no events). One job per read, 16 devices at a time,
 /// kept in memory for <see cref="DeviceTriggersOptions.ReadJobLifetime"/>.
 /// </summary>

@@ -3,7 +3,7 @@ namespace Oadm.Plugins.HardeningScan;
 /// <summary>
 /// The rows of the AXIS OS Hardening Guide (https://help.axis.com/en-us/axis-os-hardening-guide) the scan knows, in guide
 /// order: Basic hardening (B), Extended hardening (E) and the additional Extended columns from "Default protection" and
-/// "Legacy hardening" (X, user decision 2026-10-08: Extended only). Checked rows are grid columns; info rows cannot be
+/// "Legacy hardening" (X: Extended only). Checked rows are grid columns; info rows cannot be
 /// checked remotely and are listed once on the page with the guide's text.
 /// </summary>
 public static class HardeningCatalog

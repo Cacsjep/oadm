@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace Oadm.Plugins.HardeningScan.Scanning;
 
 /// <summary>
-/// The last result per device and level (user decision 2026-10-08: kept across restarts in the plugin setting
+/// The last result per device and level (kept across restarts in the plugin setting
 /// <c>results</c>). Bounded: at most <see cref="HardeningScanPluginInfo.MaxStoredDevices"/> devices per level (the oldest
 /// results are dropped first), values and details are cut when they are made. Thread-safe.
 /// </summary>

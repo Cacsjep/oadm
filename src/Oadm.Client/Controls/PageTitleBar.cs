@@ -73,7 +73,7 @@ public sealed class PageTitleBar : Grid
     /// Puts the subtitle on the title's baseline. Both are bottom aligned, but a 22 px line has more space below the
     /// baseline than a 12 px line, so bottom alignment alone leaves the subtitle a few pixels too low. The difference is
     /// applied as a whole-pixel render offset (no second layout pass, text stays crisp), then the subtitle is raised by
-    /// <see cref="SubtitleRaise"/> (user decision: 2 px above the title baseline looks right).
+    /// <see cref="SubtitleRaise"/> (2 px above the title baseline looks right).
     /// </summary>
     protected override Size ArrangeOverride(Size arrangeSize)
     {

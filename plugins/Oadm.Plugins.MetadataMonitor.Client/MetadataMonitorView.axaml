@@ -57,7 +57,7 @@
     <!-- Splitter and detail only while a message is selected (code-behind collapses the row). -->
     <GridSplitter x:Name="DetailSplitter" Grid.Row="2" Classes="paneSplitter" IsVisible="{Binding HasDetail}" />
 
-    <!-- The selected message's XML, always pretty-printed and highlighted (user decision: no Raw switch). -->
+    <!-- The selected message's XML, always pretty-printed and highlighted (no Raw switch). -->
     <Grid Grid.Row="3" RowDefinitions="Auto,*" RowSpacing="8" IsVisible="{Binding HasDetail}">
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
         <TextBlock Classes="secondary" Text="{Binding DetailTitle}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />

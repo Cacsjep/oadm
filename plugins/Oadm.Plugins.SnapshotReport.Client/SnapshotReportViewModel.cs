@@ -138,7 +138,7 @@ public sealed partial class SnapshotReportViewModel : ObservableObject, IDisposa
 
     /// <summary>
     /// False until the user pressed Create snapshots: opening the page contacts no device (a site can have hundreds of
-    /// cameras; user decision 2026-10-09).
+    /// cameras).
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEmpty), nameof(IsWaitingForCreate), nameof(StatusLine))]

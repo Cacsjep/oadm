@@ -5,7 +5,7 @@
              xmlns:vm="using:Oadm.Client.EventRules"
              x:Class="Oadm.Client.EventRules.EventRulesView"
              x:DataType="vm:EventRulesViewModel">
-  <!-- Rules on top, the event log below with a splitter (like the Devices page and its tasks; user decision 2026-10-11) -->
+  <!-- Rules on top, the event log below with a splitter (like the Devices page and its tasks) -->
   <Grid RowDefinitions="Auto,*,Auto,320">
     <c:PageTitleBar Grid.Row="0" Title="Event rules" Subtitle="Run actions when events happen." Margin="0,0,0,16" />
 

@@ -36,7 +36,7 @@ public sealed record DetectionCell(string? State)
 
 /// <summary>
 /// The dashboard cards Good, Detected, Pending and Errors: every camera with the app counts in exactly one. A detection
-/// that is turned off does not count against a camera (user decision 2026-10-11); "Detection off" counts those cameras
+/// that is turned off does not count against a camera; "Detection off" counts those cameras
 /// on top.
 /// </summary>
 public enum HealthBucket
@@ -103,7 +103,7 @@ public sealed partial class ImageHealthRowViewModel : ObservableObject
 
     public bool IsAppError => App == AppStates.Error;
 
-    /// <summary>Not running or not checked: both count as errors (user decision 2026-10-10), red in the App column.</summary>
+    /// <summary>Not running or not checked: both count as errors, red in the App column.</summary>
     public bool IsAppProblem => IsNotRunning || IsAppError;
 
     /// <summary>When OADM saw a detection change between two checks, local time.</summary>

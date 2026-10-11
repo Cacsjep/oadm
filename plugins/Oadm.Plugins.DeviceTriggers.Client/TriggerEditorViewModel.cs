@@ -111,7 +111,7 @@ public sealed partial class FilterRowViewModel : ObservableObject
 }
 
 /// <summary>
-/// The trigger dialog (user decisions 2026-10-10): name, turned on, the devices (only those that can send events this
+/// The trigger dialog: name, turned on, the devices (only those that can send events this
 /// way), **Read events** (live from the chosen devices, every time; a device whose list cannot be read stays with the
 /// reason), the event all chosen devices offer, and per source item Any or one value. Save is disabled with the first
 /// problem as its tooltip; the server checks again.
@@ -259,8 +259,8 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
                 return WaitText;
             }
 
-            // Devices that could not be read (offline, login refused) stay: OADM connects once they answer
-            // (user decision 2026-10-11). Only a device that was read and lacks the event cannot stay.
+            // Devices that could not be read (offline, login refused) stay: OADM connects once they answer.
+            // Only a device that was read and lacks the event cannot stay.
             if (SelectedEvent?.Event is { } e)
             {
                 var missing = chosen.Where(d => _offered.GetValueOrDefault(d.Id) is { } topics && !topics.Contains(e.Topic)).Select(d => d.Address).ToList();

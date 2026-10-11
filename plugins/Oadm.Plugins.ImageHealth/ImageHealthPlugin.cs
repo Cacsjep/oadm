@@ -7,8 +7,8 @@ namespace Oadm.Plugins.ImageHealth;
 /// Core plugin "Image Health Dashboard": the status of AXIS Image Health Analytics (blur, block, redirect,
 /// under-exposure, unsuitability) on every camera that has the app, in one table. Off by default (plugin.json). A live
 /// display only: the server asks the cameras when the page asks (<see cref="ImageHealthMonitor"/>): when it opens, on
-/// Refresh and with Auto refresh every 10 s. Event rules use the app's own events through Device triggers (user decision
-/// 2026-10-10). Read-only for devices.
+/// Refresh and with Auto refresh every 10 s. Event rules use the app's own events through Device triggers.
+/// Read-only for devices.
 /// </summary>
 public sealed class ImageHealthPlugin : ICorePlugin, IAsyncDisposable
 {

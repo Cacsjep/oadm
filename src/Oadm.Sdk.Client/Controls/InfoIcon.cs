@@ -6,7 +6,7 @@ using Avalonia.Media;
 namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>
-/// A small info icon next to an input (every "what does this mean" text, user decision 2026-10-11): the text shows as a
+/// A small info icon next to an input (every "what does this mean" text): the text shows as a
 /// tooltip on hover and in a flyout on click. <see cref="FormField.Info"/> places one right of the input.
 /// </summary>
 public sealed class InfoIcon : Button

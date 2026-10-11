@@ -166,7 +166,7 @@ public sealed class PluginPackageTests
         Assert.NotEmpty(manifests);
         Assert.Equal(["oadm.device-triggers", "oadm.hardening-scan", "oadm.image-health", "oadm.io-monitor", "oadm.metadata-monitor"], manifests.Where(m => !m.EnabledByDefault).Select(m => m.Id).Order());
 
-        // Core functionality is always on (user decision 2026-10-10); every bundled plugin has a description.
+        // Core functionality is always on; every bundled plugin has a description.
         Assert.Equal(
             ["oadm.acap", "oadm.datetime", "oadm.device-config", "oadm.firmware", "oadm.network", "oadm.notifications", "oadm.outputs", "oadm.pki", "oadm.restart", "oadm.system-report", "oadm.users"],
             manifests.Where(m => m.AlwaysOn).Select(m => m.Id).Order());

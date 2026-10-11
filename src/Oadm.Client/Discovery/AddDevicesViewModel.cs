@@ -621,7 +621,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             UpdateSummary();
         }
 
-        // User decision: the page always closes after adding.
+        // The page always closes after adding.
         CloseRequested?.Invoke(this, AddedDeviceIds.Count > 0);
     }
 
@@ -1081,7 +1081,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     private int _problems;
 
     /// <summary>
-    /// Devices OADM already manages are not listed at all (user decision); only the scan status
+    /// Devices OADM already manages are not listed at all; only the scan status
     /// line counts them ("Scan finished, 8 devices found, 3 already added"). They stay in <see cref="Rows"/> so a later
     /// answer of the same device is merged, not added.
     /// </summary>

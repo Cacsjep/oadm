@@ -23,7 +23,7 @@ public sealed class CommandChoice(CommandListItem item)
 }
 
 /// <summary>
-/// The request builder dialog (user decision 2026-10-11, own window instead of a tab of the page). A new command starts
+/// The request builder dialog (own window instead of a tab of the page). A new command starts
 /// with a choice: from scratch, or from a library or saved command (always saved as a new command). The pen icon of a
 /// saved command opens it directly; Save then replaces it. Send tries the request on one device; Save stores the command
 /// for all clients and closes the dialog.

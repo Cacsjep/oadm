@@ -454,7 +454,7 @@ public sealed class HeadlessPageTests
                 await vm.LoadAsync();
                 Pump();
                 Capture(window, outDir, "pki-page.png");
-                // The Device certificates card shows no "Issued: N devices" summary line (user decision).
+                // The Device certificates card shows no "Issued: N devices" summary line.
                 var firstSummary = window.GetVisualDescendants().OfType<TextBlock>().Any(t => (t.Text ?? "").StartsWith("Issued:", StringComparison.Ordinal));
 
                 // Imported intermediate, previous CA, imported RADIUS CA with a custom identity.

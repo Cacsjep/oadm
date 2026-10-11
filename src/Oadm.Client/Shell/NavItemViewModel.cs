@@ -32,7 +32,7 @@ public sealed partial class NavItemViewModel(string key, string title, string ic
     [ObservableProperty] public partial bool ShowGroupHeader { get; set; }
 
     /// <summary>
-    /// Plugin pages only (user decision 2026-10-10): the rail entry's context menu "Open in new window" opens another,
+    /// Plugin pages only: the rail entry's context menu "Open in new window" opens another,
     /// independent copy of the page in its own window. Set by the shell; null for host pages.
     /// </summary>
     public Action<NavItemViewModel>? OpenInWindow { get; init; }

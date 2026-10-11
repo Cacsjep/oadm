@@ -53,7 +53,7 @@ public abstract class ValidatingViewModel : ObservableObject, INotifyDataErrorIn
 
     /// <summary>
     /// The user left the input of <paramref name="propertyName"/> (<see cref="Controls.FormField"/> on lost focus): its error
-    /// shows now, also when the field was never edited (an empty required field, user decision 2026-10-11).
+    /// shows now, also when the field was never edited (an empty required field).
     /// </summary>
     public void FieldLeft(string propertyName)
     {

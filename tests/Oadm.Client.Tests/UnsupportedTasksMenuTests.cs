@@ -18,8 +18,7 @@ using Xunit.Abstractions;
 namespace Oadm.Client.Tests;
 
 /// <summary>
-/// Task plugins the selection cannot run stay in the context menu, greyed out, with the reason as tooltip
-/// (user decision 2026-10-08).
+/// Task plugins the selection cannot run stay in the context menu, greyed out, with the reason as tooltip.
 /// </summary>
 public sealed class UnsupportedTasksMenuTests(ITestOutputHelper output)
 {

@@ -15,7 +15,7 @@ using Oadm.Sdk.Client;
 
 namespace Oadm.Client.Tests;
 
-/// <summary>"Open in new window" of plugin pages (user decision 2026-10-10: plugin pages only). OADM_SCREENSHOT_DIR writes client-plugin-window.png.</summary>
+/// <summary>"Open in new window" of plugin pages (not host pages). OADM_SCREENSHOT_DIR writes client-plugin-window.png.</summary>
 public sealed class PluginWindowTests
 {
     private sealed class CountingPage : ICorePluginPage

@@ -7,7 +7,7 @@ namespace Oadm.Plugins.HardeningScan;
 /// Core plugin "Hardening scan": one read-only scan of every managed device against the AXIS OS Hardening Guide, in the
 /// guide's two levels Basic and Extended, shown on its page as one column per check. Read-only for devices (param.cgi
 /// list, VAPIX get / list methods, config/rest GETs, the SOAP Get of the web server settings). Every method is for operators
-/// (nothing changes server configuration) and no scan is audited (user decision 2026-10-08, like the snapshot report).
+/// (nothing changes server configuration) and no scan is audited (like the snapshot report).
 /// Page backend methods: <see cref="HardeningMethods"/>.
 /// </summary>
 public sealed class HardeningScanPlugin : ICorePlugin, IAsyncDisposable
@@ -58,7 +58,7 @@ public sealed class HardeningScanPlugin : ICorePlugin, IAsyncDisposable
     /// <summary>Read-only scans: every method is for operators.</summary>
     public UserRole RequiredRole(string method) => UserRole.Operator;
 
-    /// <summary>No audit entry for a scan (user decision 2026-10-08).</summary>
+    /// <summary>No audit entry for a scan.</summary>
     public bool IsAudited(string method) => false;
 
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)

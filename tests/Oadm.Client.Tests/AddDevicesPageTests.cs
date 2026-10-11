@@ -46,7 +46,7 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.True(Row(page, "10.0.0.90").ShowSetPassword);
         Assert.Equal("Unreachable", Row(page, "10.0.0.95").ChipText);
         Assert.Equal(3, page.Rows.Count(r => r.ChipText == "Already added" && r.IsMuted));
-        // Already added devices are not listed at all (user decision), only counted.
+        // Already added devices are not listed at all, only counted.
         Assert.DoesNotContain(page.FilteredRows, r => r.IsAlreadyManaged);
         Assert.Equal(8, page.FilteredRows.Count);
         Assert.Equal("8 found · 3 ready to add · 2 need a login · 2 need a password · 0 selected", page.SummaryText);

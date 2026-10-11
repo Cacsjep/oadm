@@ -30,7 +30,7 @@ public static class CertApi
     public const string DiscoverPath = "config/discover";
     public const string BasePath = "config/rest/cert/v1";
 
-    /// <summary>The key type OADM creates (user decision).</summary>
+    /// <summary>The key type OADM creates.</summary>
     public const string KeyType = "RSA-2048";
 
     /// <summary>Message of devices without the REST certificate API.</summary>

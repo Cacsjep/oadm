@@ -124,7 +124,7 @@ public sealed class LoginTests
         vm.Password = "short";
         vm.ConfirmPassword = "other";
         await vm.SubmitCommand.ExecuteAsync(null);
-        Assert.Null(vm.ErrorOf(nameof(vm.Password))); // no strength rule (user decision)
+        Assert.Null(vm.ErrorOf(nameof(vm.Password))); // no strength rule
         Assert.Equal("The passwords do not match.", vm.ErrorOf(nameof(vm.ConfirmPassword)));
         Assert.Equal("Enter the setup code from the server.", vm.ErrorOf(nameof(vm.SetupCode)));
 
@@ -284,7 +284,7 @@ public sealed class LoginTests
         Assert.False(vm.AddUserCommand.CanExecute(null));
         vm.NewUserName = "tech3";
         vm.NewPassword = "short";
-        Assert.Null(vm.ErrorOf(nameof(vm.NewPassword))); // no strength rule (user decision)
+        Assert.Null(vm.ErrorOf(nameof(vm.NewPassword))); // no strength rule
         vm.NewPassword = "Tech3-pass-123";
         await vm.AddUserCommand.ExecuteAsync(null);
         Assert.Contains(vm.Users, u => u.UserName == "tech3" && !u.IsAdmin);

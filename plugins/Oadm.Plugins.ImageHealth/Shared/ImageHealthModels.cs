@@ -17,7 +17,7 @@ public static class ImageHealthPluginInfo
     /// </summary>
     public const string StatusPath = "/local/AXISImageHealthAnalytics/v1/status";
 
-    /// <summary>Auto refresh checks again this often (user decision 2026-10-09: 10 s, off by default).</summary>
+    /// <summary>Auto refresh checks again this often (10 s, off by default).</summary>
     public static readonly TimeSpan AutoRefreshInterval = TimeSpan.FromSeconds(10);
 
     /// <summary>Rows per pushed event; more changed rows go out in several events.</summary>

@@ -585,7 +585,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     /// The anonymous Axis check on one scheme: <c>basicdeviceinfo getAllUnrestrictedProperties</c> must answer
     /// with a 12-hex serial number equal to the discovered one and a product number. Never sends a credential.
     /// AXIS OS 8.x does not answer that call without a login (401, verified on an AXIS Q6154-E with 8.40.104); there the
-    /// login challenge's realm <c>AXIS_&lt;serial&gt;</c> must name the discovered serial (user decision 2026-10-10).
+    /// login challenge's realm <c>AXIS_&lt;serial&gt;</c> must name the discovered serial.
     /// </summary>
     private async Task<AxisVerdict> CheckAxisAsync(DiscoveredDevice device, string scheme, CancellationToken ct)
     {
@@ -679,7 +679,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
                 Scheme = scheme,
                 Credentials = new NetworkCredential(userName, password),
                 Timeout = AttemptTimeout,
-                AllowBasicOverHttp = true, // the device passed the Axis check on this scheme (user decision)
+                AllowBasicOverHttp = true, // the device passed the Axis check on this scheme
             });
             var info = await client.GetBasicDeviceInfoAsync(ct).ConfigureAwait(false);
             if (!string.Equals(info.SerialNumber, device.Serial, StringComparison.OrdinalIgnoreCase))

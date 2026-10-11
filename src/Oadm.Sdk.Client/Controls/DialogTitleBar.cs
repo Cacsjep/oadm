@@ -7,7 +7,7 @@ namespace Oadm.Sdk.Client.Controls;
 /// <summary>
 /// The header of every dialog window (a window with <c>WindowDecorations="BorderOnly"</c>, no system title bar): the
 /// title as a heading and an X that closes the window, aligned with the content. Like a dialog on a web page it does
-/// not move and is modal (user decision 2026-10-11). Padding comes from the theme (<c>ui|DialogTitleBar</c>).
+/// not move and is modal. Padding comes from the theme (<c>ui|DialogTitleBar</c>).
 /// </summary>
 public sealed class DialogTitleBar : Border
 {

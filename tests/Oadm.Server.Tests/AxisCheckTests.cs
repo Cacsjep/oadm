@@ -46,7 +46,7 @@ public sealed class AxisCheckTests
     [Fact]
     public async Task OldAxisOsPassesWithTheSerialInItsLoginPrompt()
     {
-        // AXIS OS 8.x answers the anonymous call with 401 and realm AXIS_<serial> (user decision 2026-10-10).
+        // AXIS OS 8.x answers the anonymous call with 401 and realm AXIS_<serial>.
         var network = new FakeAxisNetwork();
         var camera = network.Add("10.9.1.4", FakeSerials.Make(4), Password);
         camera.AnonymousAnswer = FakeAxisAnswer.Unauthorized;
@@ -110,7 +110,7 @@ public sealed class AxisCheckTests
     [InlineData("ACCC8EE1301D", "ACCC8EE1301C", false)]
     public void OldAxisOsPassesOnTheRealmOfItsLoginPrompt(string realmSerial, string expected, bool verified)
     {
-        // AXIS OS 8.40 answers the anonymous call with 401 Digest realm="AXIS_ACCC8EE1301C" (user decision 2026-10-10).
+        // AXIS OS 8.40 answers the anonymous call with 401 Digest realm="AXIS_ACCC8EE1301C".
         var verdict = DiscoveryAuthenticator.JudgeRealm(realmSerial, expected);
 
         Assert.Equal(verified, verdict.Kind == DiscoveryAuthenticator.AxisVerdictKind.Verified);

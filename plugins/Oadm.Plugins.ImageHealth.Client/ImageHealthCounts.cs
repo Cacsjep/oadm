@@ -5,7 +5,7 @@ namespace Oadm.Plugins.ImageHealth.Client;
 /// <summary>
 /// The counts of the five dashboard cards above the table. Every camera with the app counts in one of Good, Detected,
 /// Pending and Errors, the worst state wins: Errors (app not running or the camera could not be checked), Detected,
-/// Pending, Good. A detection turned off in the app does not count against the camera (user decision 2026-10-11):
+/// Pending, Good. A detection turned off in the app does not count against the camera:
 /// "Detection off" counts the checked cameras with at least one detection off on top, so it is not part of
 /// <see cref="Total"/>. Built in one pass over all rows, independent of the search.
 /// </summary>

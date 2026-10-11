@@ -45,7 +45,7 @@ public sealed partial class WizardStepItem(int index, string name, Func<int> cur
 }
 
 /// <summary>
-/// The step row of every wizard (user decision 2026-10-11): a numbered circle and the name per step, a thin line between
+/// The step row of every wizard: a numbered circle and the name per step, a thin line between
 /// steps; the current step accent, done steps with a check, later steps grey. A step that can be opened is a button.
 /// Bind <see cref="ItemsControl.ItemsSource"/> to <see cref="WizardStepItem"/>s. Look from the theme
 /// (<c>Button.wizardStep</c>, <c>Border.wizardDot</c>, <c>TextBlock.wizardLabel</c>, <c>Border.wizardLine</c>).

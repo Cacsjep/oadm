@@ -488,7 +488,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
 
     private sealed record Resolution(TriggerDefinition Source, TriggerDefinition Value);
 
-    /// <summary>Devices removed from OADM leave their triggers (user decision).</summary>
+    /// <summary>Devices removed from OADM leave their triggers.</summary>
     private async Task RemoveDevicesAsync(IReadOnlyCollection<Guid> devices)
     {
         if (_ctx is not { } ctx)

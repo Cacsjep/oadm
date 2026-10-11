@@ -13,7 +13,7 @@ service SettingsService {
   rpc AddCredential (AddCredentialRequest) returns (CredentialEntry);   // INVALID_ARGUMENT, RESOURCE_EXHAUSTED (list full)
   rpc RemoveCredential (CredentialEntryId) returns (Empty);              // NOT_FOUND
   // The stored password of one credential list entry, on the technician's explicit request (Settings page eye
-  // and copy buttons; user decision 2026-10-08, to be restricted to administrators once client login exists).
+  // and copy buttons; Admin only, audited).
   // Logged without the password. Device passwords are never returned. NOT_FOUND.
   rpc RevealCredential (CredentialEntryId) returns (RevealedCredential);
 }
