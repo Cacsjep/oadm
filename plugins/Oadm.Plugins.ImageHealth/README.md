@@ -31,8 +31,9 @@ open connection and also reports Pending and disabled detections.
 - 24 cameras at a time, 3 s per request.
 - A camera with the app stopped stays in the table as **Not running**; cameras without the app are only counted.
 - (2026-10-10) Five count cards above the table (`ImageHealthCounts`, shared `ui:StatCard`): Good, Detected, Pending,
-  Detection off, Errors. Each camera with the app counts in one card, the worst state wins (Errors > Detected > Pending >
-  Off > Good); Not running and could not be checked count as Errors (App column red for both). The cards count every
+  Detection off, Errors. Each camera with the app counts in one of Good, Detected, Pending, Errors, the worst state wins
+  (Errors > Detected > Pending > Good); 2026-10-11: a detection turned off is no problem, such a camera is Good, and
+  Detection off counts the checked cameras with a detection off on top; Not running and could not be checked count as Errors (App column red for both). The cards count every
   camera, not the search; the summary line keeps only "without the app", "N shown" and the check time.
 - (2026-10-10) A live display only: no background check and no events. Event rules use the app's own events through
   Device triggers (`Image Health Analytics - Blur` ... `Any-Active-Events`, on/off). The former "Monitor continuously"

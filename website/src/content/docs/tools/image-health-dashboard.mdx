@@ -24,10 +24,12 @@ The dashboard is off by default. An administrator turns it on on the **Plugins**
 
    OADM asks every camera once. The progress row counts the cameras.
 
-2. Read the cards above the table. Each camera with the app counts in one card, the worst state wins:
-   - **Good**: the app runs and found nothing.
-   - **Detected**, **Pending**, **Detection off**: the line below the count says which detections.
+2. Read the cards above the table. Each camera with the app counts in one of Good, Detected, Pending and Errors, the
+   worst state wins:
+   - **Good**: the app runs and found nothing. A detection turned off in the app does not count against the camera.
+   - **Detected**, **Pending**: the line below the count says which detections.
    - **Errors**: the app is not running, or OADM could not read the camera.
+   - **Detection off**: cameras with at least one detection turned off, counted on top of the other cards.
 3. Read the table. Each detection shows:
    - **OK**: nothing found.
    - **Pending**: the app saw something and waits to confirm it.

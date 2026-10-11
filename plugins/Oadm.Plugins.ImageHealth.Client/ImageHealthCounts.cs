@@ -3,9 +3,11 @@ using System.Globalization;
 namespace Oadm.Plugins.ImageHealth.Client;
 
 /// <summary>
-/// The counts of the five dashboard cards above the table. Every camera with the app counts in one card, the worst state
-/// wins: Errors (app not running or the camera could not be checked), Detected, Pending, Detection off, Good. Built in one
-/// pass over all rows, independent of the search.
+/// The counts of the five dashboard cards above the table. Every camera with the app counts in one of Good, Detected,
+/// Pending and Errors, the worst state wins: Errors (app not running or the camera could not be checked), Detected,
+/// Pending, Good. A detection turned off in the app does not count against the camera (user decision 2026-10-11):
+/// "Detection off" counts the checked cameras with at least one detection off on top, so it is not part of
+/// <see cref="Total"/>. Built in one pass over all rows, independent of the search.
 /// </summary>
 public sealed record ImageHealthCounts(
     int Good, int Detected, int Pending, int Off, int NotRunning, int Failed,
@@ -17,7 +19,7 @@ public sealed record ImageHealthCounts(
 
     public int Errors => NotRunning + Failed;
 
-    public int Total => Good + Detected + Pending + Off + Errors;
+    public int Total => Good + Detected + Pending + Errors;
 
     public string GoodText => Number(Good);
 
@@ -55,7 +57,14 @@ public sealed record ImageHealthCounts(
         var offBy = new int[Names.Length];
         foreach (var row in rows)
         {
-            switch (row.Bucket)
+            var bucket = row.Bucket;
+            if (bucket is HealthBucket.Good or HealthBucket.Detected or HealthBucket.Pending && row.Cells.Any(c => c.State == DetectionStates.Off))
+            {
+                off++;
+                Tally(row, offBy, DetectionStates.Off);
+            }
+
+            switch (bucket)
             {
                 case HealthBucket.Good:
                     good++;
@@ -67,10 +76,6 @@ public sealed record ImageHealthCounts(
                 case HealthBucket.Pending:
                     pending++;
                     Tally(row, pendingBy, DetectionStates.Pending);
-                    break;
-                case HealthBucket.Off:
-                    off++;
-                    Tally(row, offBy, DetectionStates.Off);
                     break;
                 case HealthBucket.Error when row.IsNotRunning:
                     notRunning++;

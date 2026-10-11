@@ -34,14 +34,17 @@ public sealed record DetectionCell(string? State)
     };
 }
 
-/// <summary>The dashboard cards: every camera with the app counts in exactly one.</summary>
+/// <summary>
+/// The dashboard cards Good, Detected, Pending and Errors: every camera with the app counts in exactly one. A detection
+/// that is turned off does not count against a camera (user decision 2026-10-11); "Detection off" counts those cameras
+/// on top.
+/// </summary>
 public enum HealthBucket
 {
     None,
     Good,
     Detected,
     Pending,
-    Off,
     Error,
 }
 
@@ -118,7 +121,6 @@ public sealed partial class ImageHealthRowViewModel : ObservableObject
         : IsChecking ? HealthBucket.None
         : AnyDetected ? HealthBucket.Detected
         : AnyPending ? HealthBucket.Pending
-        : Cells.Any(c => c.State == DetectionStates.Off) ? HealthBucket.Off
         : HealthBucket.Good;
 
     /// <summary>The five detections in column order, with their column names.</summary>

@@ -273,7 +273,7 @@ public sealed class ViewModelTests
     }
 
     [Fact]
-    public void Every_camera_counts_in_one_card_and_the_worst_state_wins()
+    public void Every_camera_counts_in_one_card_the_worst_state_wins_and_a_detection_off_is_still_good()
     {
         const string ok = DetectionStates.Ok, pending = DetectionStates.Pending, detected = DetectionStates.Detected, off = DetectionStates.Off;
         ImageHealthRow Camera(string app, string? blur, string? block, string? redirect, string? under, string? unsuitable) =>
@@ -285,8 +285,8 @@ public sealed class ViewModelTests
             Camera(AppStates.Running, ok, ok, ok, ok, ok),
             Camera(AppStates.Running, detected, pending, off, ok, ok), // detected wins
             Camera(AppStates.Running, detected, detected, ok, ok, ok),
-            Camera(AppStates.Running, ok, pending, off, ok, ok), // pending wins over off
-            Camera(AppStates.Running, off, ok, off, ok, ok),
+            Camera(AppStates.Running, ok, pending, off, ok, ok), // pending
+            Camera(AppStates.Running, off, ok, off, ok, ok), // good: turned off is no problem
             Camera(AppStates.Running, ok, ok, "learning", ok, ok), // another value counts as good
             Camera(AppStates.NotRunning, null, null, null, null, null),
             Camera(AppStates.Error, null, null, null, null, null),
@@ -294,11 +294,11 @@ public sealed class ViewModelTests
         ]), replaceRows: true);
 
         var counts = vm.Counts;
-        Assert.Equal((2, 2, 1, 1, 2, 8), (counts.Good, counts.Detected, counts.Pending, counts.Off, counts.Errors, counts.Total));
+        Assert.Equal((3, 2, 1, 3, 2, 8), (counts.Good, counts.Detected, counts.Pending, counts.Off, counts.Errors, counts.Total));
         Assert.Equal("of 8 cameras", counts.GoodDetail);
         Assert.Equal("Blur 2 · Block 1", counts.DetectedDetail);
         Assert.Equal("Block 1", counts.PendingDetail);
-        Assert.Equal("Blur 1 · Redirect 1", counts.OffDetail);
+        Assert.Equal("Blur 1 · Redirect 3", counts.OffDetail); // every checked camera with a detection off
         Assert.Equal("1 not running · 1 could not be checked", counts.ErrorsDetail);
         Assert.True(counts.IsGoodOk && counts.IsDetectedError && counts.IsPendingWarning && counts.IsErrorsError);
 
@@ -341,7 +341,7 @@ public sealed class HeadlessPageTests
             Headless.Pump();
             Assert.Equal(7, vm.Rows.Count);
             Assert.Equal("2 cameras without the app", vm.SummaryText);
-            Assert.Equal((2, 1, 1, 1, 2), (vm.Counts.Good, vm.Counts.Detected, vm.Counts.Pending, vm.Counts.Off, vm.Counts.Errors));
+            Assert.Equal((3, 1, 1, 1, 2), (vm.Counts.Good, vm.Counts.Detected, vm.Counts.Pending, vm.Counts.Off, vm.Counts.Errors));
             Headless.Capture(window, "image-health-dashboard.png");
             window.Close();
         }, CancellationToken.None);

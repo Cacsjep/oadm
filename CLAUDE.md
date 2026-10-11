@@ -2156,8 +2156,9 @@ Decided with the user on 2026-10-09:
 - **Page** (`HasOwnCards`, subtitle "AXIS Image Health Analytics on every camera."): a row of five count cards
   (`ui:StatCard`, user decision 2026-10-10): **Good** (ok, "of 12 cameras"), **Detected** (error), **Pending** (warning),
   **Detection off** (neutral), each with "Blur 2 · Block 1", and **Errors** (error, "1 not running · 2 could not be
-  checked"); every camera with the app counts in exactly one, the worst state wins (Errors > Detected > Pending > Off >
-  Good, `ImageHealthCounts`, O(n)), colored only while the count is above 0, all cameras regardless of the search. Below
+  checked"); every camera with the app counts in exactly one of Good, Detected, Pending and Errors, the worst state wins
+  (Errors > Detected > Pending > Good; a detection turned off in the app is no problem, user decision 2026-10-11: such a
+  camera is Good, and **Detection off** counts the checked cameras with a detection off on top, `ImageHealthCounts`, O(n)), colored only while the count is above 0, all cameras regardless of the search. Below
   them the table card: Refresh, Auto refresh, SearchBox; progress row "Checking cameras 120 of 200"; summary "2 cameras
   without the app · 5 shown · checked 19:34:14"; virtualized DataGrid (`wrapRows`)
   Address, Model, Blur, Block, Redirect, Under-exposure, Unsuitability (status chips, sortable by severity), Last change,
