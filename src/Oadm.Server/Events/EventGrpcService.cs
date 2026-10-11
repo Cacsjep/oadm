@@ -191,6 +191,30 @@ public sealed class EventGrpcService(
         return new Proto.ClearEventLogReply { Deleted = deleted };
     }
 
+    public override async Task<Proto.TestActionReply> TestAction(Proto.TestActionRequest request, ServerCallContext context)
+    {
+        System.Text.Json.Nodes.JsonObject settings;
+        try
+        {
+            settings = System.Text.Json.Nodes.JsonNode.Parse(string.IsNullOrEmpty(request.SettingsJson) ? "{}" : request.SettingsJson) as System.Text.Json.Nodes.JsonObject
+                ?? throw new JsonException("not an object");
+        }
+        catch (JsonException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "The settings are not valid: " + ex.Message));
+        }
+
+        Guid? ruleId = string.IsNullOrEmpty(request.RuleId) ? null : GrpcGuard.ParseId(request.RuleId, "rule id");
+        Guid? actionKey = string.IsNullOrEmpty(request.ActionKey) ? null : GrpcGuard.ParseId(request.ActionKey, "action key");
+        Guid? deviceId = string.IsNullOrEmpty(request.DeviceId) ? null : GrpcGuard.ParseId(request.DeviceId, "device id");
+        var (ok, message) = await actions.TestAsync(
+            request.ActionId, settings, request.RuleName, ruleId, actionKey, string.IsNullOrEmpty(request.EventTypeId) ? null : request.EventTypeId,
+            deviceId, context.CancellationToken).ConfigureAwait(false);
+        var name = rules.Catalog.FindAction(request.ActionId)?.Plugin.DisplayName ?? request.ActionId;
+        await audit.WriteAsync(AuditActions.EventActionTested, name, (ok ? "Sent" : "Failed") + (string.IsNullOrWhiteSpace(request.RuleName) ? string.Empty : " · " + request.RuleName), context.CancellationToken).ConfigureAwait(false);
+        return new Proto.TestActionReply { Ok = ok, Message = message };
+    }
+
     public override async Task WatchLog(Proto.Empty request, IServerStreamWriter<Proto.EventLogPage> responseStream, ServerCallContext context)
     {
         using var linked = GrpcGuard.LinkWithShutdown(context, lifetime.ApplicationStopping);
@@ -240,6 +264,8 @@ public sealed class EventGrpcService(
                 OffEdge = field.OffEdge,
                 VisibleWhenKey = field.VisibleWhenKey ?? string.Empty,
                 VisibleWhenValue = field.VisibleWhenValue ?? string.Empty,
+                Language = field.Language ?? string.Empty,
+                LanguageKey = field.LanguageKey ?? string.Empty,
             };
             if (field.Default is not null)
             {

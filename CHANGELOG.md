@@ -6,6 +6,28 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+### Added
+
+- Event rules: new actions **Send email** and **Send HTTP request** (webhooks, Teams, Slack, building systems), with
+  login, headers, a JSON, XML, HTML or text body and **Allow untrusted certificates**. **Send test** tries them right away.
+- Event rules: a **Placeholders** list next to the actions, with a copy button for each. New placeholders for the
+  device: `{hostName}`, `{mac}`, `{firmware}`, `{category}`, `{tags}`, `{status}`, `{webUrl}`, and `{date}`, `{timeUtc}`.
+
+- VAPIX Commander: **+** in the Library writes a new command in its own window, from scratch or from an existing
+  command, with Send to try it. The pen icon of a saved command opens it there to change it.
+- VAPIX Commander: a field can be removed again; its value goes back where the placeholder was.
+
+### Changed
+
+- Event rules: the limit **Flood limit** is now called **Max per minute**.
+- VAPIX Commander: the page has no Raw request tab any more; the middle card is the rollout set.
+- VAPIX Commander: Make field and Remove are icons in each query and header row.
+
+### Fixed
+
+- VAPIX Commander: renaming a placeholder while typing no longer resets the field's label, type and value.
+- VAPIX Commander: a click on a library command sometimes needed a second click.
+
 ## [2.0.0] - 2026-10-11
 
 ### Added

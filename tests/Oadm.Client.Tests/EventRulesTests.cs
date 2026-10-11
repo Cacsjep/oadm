@@ -291,6 +291,77 @@ public sealed class EventRulesTests
     }
 
     [Fact]
+    public async Task Notification_actions_have_code_bodies_rows_placeholders_and_a_test()
+    {
+        string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        var done = await HeadlessSession.Shared.Dispatch(async () =>
+        {
+            var (api, _, _, page) = await CreateAsync();
+            var editor = (await page.CreateEditorAsync(null))!;
+            var dialog = new RuleEditorWindow();
+            dialog.Attach(editor);
+            Oadm.Client.App.ApplyCrispText(dialog);
+            dialog.Show();
+            editor.Name = "Person in the yard: notify";
+            editor.Conditions[0].SelectedEventType = editor.Conditions[0].EventTypes.Single(t => t.Id == FakeOadmApi.FakePersonTrigger);
+            editor.NextCommand.Execute(null);
+            editor.NextCommand.Execute(null);
+            Assert.True(editor.IsThenStep);
+
+            // The placeholders: the trigger's values first, then the rule and the device.
+            Assert.Equal("Event: Person in the yard", editor.PlaceholderGroups[0].Title);
+            Assert.Contains(editor.PlaceholderGroups[0].Items, i => i.Text == "{objectId}");
+            Assert.Contains(editor.PlaceholderGroups.SelectMany(g => g.Items), i => i.Text == "{mac}");
+
+            // Send HTTP request: JSON body colored, query and header rows, a test with sample values.
+            var http = editor.RuleActions[0];
+            http.SelectedAction = http.Actions.Single(a => a.Id == "oadm.notifications.http");
+            Assert.False(http.ShowTargets);
+            Assert.True(http.CanTest);
+            http.Fields.Single(f => f.Key == "url").Text = "https://hooks.example.com/oadm";
+            var body = http.Fields.Single(f => f.Key == "body");
+            body.Text = "{\n  \"objectID\": \"{objectId}\",\n  \"camera\": \"{serial}\",\n  \"time\": \"{time}\"\n}";
+            Pump();
+            Assert.Equal(CodeLanguage.Json, body.Language);
+            var headers = http.Fields.Single(f => f.Key == "headers");
+            headers.AddRowCommand.Execute(null);
+            headers.Rows[0].Name = "X-Site";
+            headers.Rows[0].Value = "{tags}";
+            var settings = http.Settings();
+            Assert.Equal("X-Site", settings["headers"]![0]!["name"]!.GetValue<string>());
+            await http.TestCommand.ExecuteAsync(null);
+            Assert.True(http.TestOk);
+            Pump();
+            Capture(dialog, outDir, "event-rules-http-action.png");
+            dialog.GetVisualDescendants().OfType<ScrollViewer>().First().ScrollToEnd();
+            Pump();
+            Capture(dialog, outDir, "event-rules-http-action-2.png");
+
+            // Send email: HTML body colored like XML; the rows of a header field are gone.
+            http.SelectedAction = http.Actions.Single(a => a.Id == "oadm.notifications.email");
+            var email = http;
+            email.Fields.Single(f => f.Key == "host").Text = "smtp.example.com";
+            email.Fields.Single(f => f.Key == "from").Text = "oadm@example.com";
+            email.Fields.Single(f => f.Key == "to").Text = "security@example.com";
+            email.Fields.Single(f => f.Key == "format").SelectChoice("html");
+            email.Fields.Single(f => f.Key == "body").Text = "<p>Hello, camera <b>{serial}</b> saw object {objectId} at {time}.</p>\n<p><a href=\"{webUrl}\">Open the camera</a></p>";
+            Pump();
+            Assert.Equal(CodeLanguage.Xml, email.Fields.Single(f => f.Key == "body").Language);
+            Assert.False(email.HasFieldErrors);
+            dialog.GetVisualDescendants().OfType<ScrollViewer>().First().ScrollToHome();
+            Pump();
+            Capture(dialog, outDir, "event-rules-email-action.png");
+            dialog.GetVisualDescendants().OfType<ScrollViewer>().First().ScrollToEnd();
+            Pump();
+            Capture(dialog, outDir, "event-rules-email-action-2.png");
+            dialog.Close();
+            api.Dispose();
+            return true;
+        }, CancellationToken.None);
+        Assert.True(done);
+    }
+
+    [Fact]
     public async Task Page_and_dialog_render()
     {
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");

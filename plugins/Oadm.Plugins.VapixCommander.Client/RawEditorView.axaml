@@ -1,0 +1,143 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:c="using:Oadm.Plugins.VapixCommander.Client"
+             x:Class="Oadm.Plugins.VapixCommander.Client.RawEditorView"
+             x:DataType="c:RawEditorViewModel">
+  <!-- The request builder's form: command details, then the request like Postman (method, path, query, headers, body,
+       timeout, response) and its fields. Shared controls and theme classes only. -->
+  <StackPanel Classes="form">
+    <ui:FormField Classes="wide" Label="Name">
+      <TextBox Text="{Binding SaveName}" />
+    </ui:FormField>
+    <ui:FormField Label="Category" InputWidth="200">
+      <ComboBox ItemsSource="{Binding Categories}" SelectedItem="{Binding SaveCategory}" />
+    </ui:FormField>
+    <ui:FormField Classes="wide" Label="Description">
+      <TextBox Text="{Binding SaveDescription}" PlaceholderText="Optional" />
+    </ui:FormField>
+
+    <TextBlock Classes="sectionTitle" Text="Request" />
+    <Grid Classes="inputRow" ColumnDefinitions="110,*" ColumnSpacing="8">
+      <ComboBox ItemsSource="{Binding Methods}" SelectedItem="{Binding Method}" HorizontalAlignment="Stretch" />
+      <TextBox Grid.Column="1" Text="{Binding Path}" PlaceholderText="/axis-cgi/param.cgi" />
+    </Grid>
+
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="sectionTitle" Text="Query parameters" VerticalAlignment="Center" />
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+        <Button Classes="secondary" Content="Add" Command="{Binding AddQueryRowCommand}" />
+      </StackPanel>
+    </Grid>
+    <DataGrid ItemsSource="{Binding QueryRows}" SelectedItem="{Binding SelectedQueryRow}" SelectionMode="Single" CanUserSortColumns="False" MinHeight="90" MaxHeight="200">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Key" Width="*" Binding="{Binding Key}" x:DataType="c:KeyValueRowViewModel" />
+        <DataGridTextColumn Header="Value" Width="*" Binding="{Binding Value}" x:DataType="c:KeyValueRowViewModel" />
+      <DataGridTemplateColumn Width="80" CanUserResize="False" CanUserSort="False" CanUserReorder="False">
+        <DataGridTemplateColumn.CellTemplate>
+          <DataTemplate x:DataType="c:KeyValueRowViewModel">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0">
+              <Button Classes="toolbar iconOnly" ToolTip.Tip="Make field: the value becomes a {{placeholder}}" CommandParameter="{Binding}"
+                      Command="{Binding $parent[UserControl].((c:RawEditorViewModel)DataContext).MakeRowFieldCommand}">
+                <ui:OadmIcon Data="{DynamicResource Icon.braces}" />
+              </Button>
+              <Button Classes="toolbar iconOnly" ToolTip.Tip="Remove" CommandParameter="{Binding}"
+                      Command="{Binding $parent[UserControl].((c:RawEditorViewModel)DataContext).RemoveQueryRowCommand}">
+                <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
+              </Button>
+            </StackPanel>
+          </DataTemplate>
+        </DataGridTemplateColumn.CellTemplate>
+      </DataGridTemplateColumn>
+      </DataGrid.Columns>
+    </DataGrid>
+    <TextBlock Classes="fieldMessage error" Text="{Binding QueryRowsError}"
+               IsVisible="{Binding QueryRowsError, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding ShowHeaders}">
+      <TextBlock Classes="sectionTitle" Text="Headers" VerticalAlignment="Center" />
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+        <Button Classes="secondary" Content="Add" Command="{Binding AddHeaderRowCommand}" />
+      </StackPanel>
+    </Grid>
+    <DataGrid ItemsSource="{Binding HeaderRows}" IsVisible="{Binding ShowHeaders}" SelectedItem="{Binding SelectedHeaderRow}" SelectionMode="Single" CanUserSortColumns="False" MinHeight="60" MaxHeight="160">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Header" Width="*" Binding="{Binding Key}" x:DataType="c:KeyValueRowViewModel" />
+        <DataGridTextColumn Header="Value" Width="*" Binding="{Binding Value}" x:DataType="c:KeyValueRowViewModel" />
+      <DataGridTemplateColumn Width="80" CanUserResize="False" CanUserSort="False" CanUserReorder="False">
+        <DataGridTemplateColumn.CellTemplate>
+          <DataTemplate x:DataType="c:KeyValueRowViewModel">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0">
+              <Button Classes="toolbar iconOnly" ToolTip.Tip="Make field: the value becomes a {{placeholder}}" CommandParameter="{Binding}"
+                      Command="{Binding $parent[UserControl].((c:RawEditorViewModel)DataContext).MakeRowFieldCommand}">
+                <ui:OadmIcon Data="{DynamicResource Icon.braces}" />
+              </Button>
+              <Button Classes="toolbar iconOnly" ToolTip.Tip="Remove" CommandParameter="{Binding}"
+                      Command="{Binding $parent[UserControl].((c:RawEditorViewModel)DataContext).RemoveHeaderRowCommand}">
+                <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
+              </Button>
+            </StackPanel>
+          </DataTemplate>
+        </DataGridTemplateColumn.CellTemplate>
+      </DataGridTemplateColumn>
+      </DataGrid.Columns>
+    </DataGrid>
+    <TextBlock Classes="fieldMessage error" Text="{Binding HeaderRowsError}"
+               IsVisible="{Binding HeaderRowsError, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+    <ui:FormField Label="Body" InputWidth="160" IsVisible="{Binding ShowBody}">
+      <ComboBox ItemsSource="{Binding BodyTypeOptions}" SelectedItem="{Binding BodyType}" />
+    </ui:FormField>
+    <ui:CodeEditor Text="{Binding BodyText}" Language="{Binding BodyLanguage}" Height="160" IsVisible="{Binding ShowBodyText}"
+                   PlaceholderText="JSON, form (key=value&amp;key2=value), text or XML; use {{name}} for fields" />
+
+    <ui:FormField Label="Timeout (s)" InputWidth="160">
+      <NumericUpDown Value="{Binding TimeoutSeconds}" Minimum="1" Maximum="600" Increment="5" FormatString="0" />
+    </ui:FormField>
+    <ui:FormField Label="Response" InputWidth="160">
+      <ComboBox ItemsSource="{Binding ResponseKindOptions}" SelectedItem="{Binding ResponseKind}" />
+    </ui:FormField>
+
+    <TextBlock Classes="sectionTitle" Text="Fields" IsVisible="{Binding HasFields}" />
+    <ItemsControl ItemsSource="{Binding Fields}" IsVisible="{Binding HasFields}">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate><StackPanel Spacing="8" /></ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="c:RawFieldViewModel">
+          <StackPanel>
+            <Grid ColumnDefinitions="140,*,130,*,Auto" ColumnSpacing="8">
+              <TextBlock Classes="fieldLabel" Text="{Binding Placeholder}" />
+              <TextBox Grid.Column="1" Text="{Binding Label}" PlaceholderText="Label" />
+              <ComboBox Grid.Column="2" ItemsSource="{Binding TypeOptions}" SelectedItem="{Binding Type}" HorizontalAlignment="Stretch" />
+              <Panel Grid.Column="3">
+                <TextBox Text="{Binding Value}" PlaceholderText="{Binding ValuePlaceholder}" IsVisible="{Binding !IsPassword}" />
+                <ui:PasswordBox Text="{Binding Value}" PlaceholderText="{Binding ValuePlaceholder}" IsVisible="{Binding IsPassword}" />
+              </Panel>
+              <Button Grid.Column="4" Classes="toolbar iconOnly" VerticalAlignment="Center" CommandParameter="{Binding}"
+                      ToolTip.Tip="Remove field: the placeholder becomes its value again"
+                      Command="{Binding $parent[UserControl].((c:RawEditorViewModel)DataContext).RemoveFieldCommand}">
+                <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
+              </Button>
+            </Grid>
+            <!-- The problem of this field row, directly below it -->
+            <TextBlock Classes="fieldMessage error" Text="{Binding Error}" IsVisible="{Binding HasError}" />
+          </StackPanel>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+    <ui:FormField Classes="wide" Label="Requires API">
+      <StackPanel Classes="inputRow">
+        <TextBox Text="{Binding RequiresApi}" PlaceholderText="param-cgi" Width="200" />
+        <TextBox Text="{Binding RequiresVersion}" PlaceholderText="1.0" Width="80" />
+      </StackPanel>
+    </ui:FormField>
+    <ui:FormField Classes="wide">
+      <StackPanel Orientation="Horizontal" Spacing="16">
+        <CheckBox Content="Changes the device" IsChecked="{Binding Writes}" />
+        <CheckBox Content="Dangerous (restart, reset, network, users)" IsChecked="{Binding Dangerous}" />
+      </StackPanel>
+    </ui:FormField>
+  </StackPanel>
+</UserControl>

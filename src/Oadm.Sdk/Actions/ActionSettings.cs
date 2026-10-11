@@ -20,8 +20,43 @@ public static class ActionSettings
             return false;
         }
 
-        return field.VisibleWhenKey is not { Length: > 0 } key
-            || string.Equals(Text(settings, key), field.VisibleWhenValue, StringComparison.OrdinalIgnoreCase);
+        if (field.VisibleWhenKey is not { Length: > 0 } key)
+        {
+            return true;
+        }
+
+        var current = Text(settings, key) ?? string.Empty;
+        return (field.VisibleWhenValue ?? string.Empty).Split('|').Any(v => string.Equals(current, v, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Most rows of a <see cref="ActionFieldType.KeyValues"/> setting.</summary>
+    public const int MaxPairs = 50;
+
+    /// <summary>The rows of a <see cref="ActionFieldType.KeyValues"/> value (a JSON array of {"name", "value"}), without empty names.</summary>
+    public static IReadOnlyList<KeyValuePair<string, string>> Pairs(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var pairs = new List<KeyValuePair<string, string>>();
+        foreach (var row in value.EnumerateArray())
+        {
+            if (row.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var name = row.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString()!.Trim() : string.Empty;
+            var text = row.TryGetProperty("value", out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : string.Empty;
+            if (name.Length > 0)
+            {
+                pairs.Add(new(name, text));
+            }
+        }
+
+        return pairs;
     }
 
     /// <summary>A setting as text: strings as they are, numbers and booleans in invariant JSON form, null when missing.</summary>
@@ -69,6 +104,7 @@ public static class ActionSettings
 
             var problem = field.Type switch
             {
+                ActionFieldType.KeyValues => CheckPairs(settings[field.Key], field),
                 ActionFieldType.Number => CheckNumber(field, value),
                 ActionFieldType.Bool => value is "true" or "false" ? null : "Must be on or off.",
                 ActionFieldType.Choice => field.Choices.Any(c => string.Equals(c.Value, value, StringComparison.Ordinal)) ? null : "Choose one of the list.",
@@ -83,6 +119,38 @@ public static class ActionSettings
         }
 
         return errors;
+    }
+
+    private static string? CheckPairs(JsonNode? node, ActionField field)
+    {
+        if (node is not JsonArray rows)
+        {
+            return "Must be a list of names and values.";
+        }
+
+        if (rows.Count > MaxPairs)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"At most {MaxPairs} rows.");
+        }
+
+        foreach (var row in rows)
+        {
+            var name = (row as JsonObject)?["name"]?.GetValueKind() == JsonValueKind.String ? row!["name"]!.GetValue<string>().Trim() : string.Empty;
+            var value = (row as JsonObject)?["value"]?.GetValueKind() == JsonValueKind.String ? row!["value"]!.GetValue<string>() : string.Empty;
+            if (name.Length == 0 && value.Length > 0)
+            {
+                return "Every row with a value needs a name.";
+            }
+
+            if (name.Any(char.IsControl) || value.Contains('\r', StringComparison.Ordinal) || value.Contains('\n', StringComparison.Ordinal))
+            {
+                return "Names and values must be on one line.";
+            }
+        }
+
+        return rows.ToJsonString().Length > field.MaxLength
+            ? string.Create(CultureInfo.InvariantCulture, $"At most {field.MaxLength:N0} characters.")
+            : null;
     }
 
     private static string? CheckNumber(ActionField field, string value)

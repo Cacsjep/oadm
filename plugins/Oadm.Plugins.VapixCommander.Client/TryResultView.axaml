@@ -1,0 +1,36 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:c="using:Oadm.Plugins.VapixCommander.Client"
+             x:Class="Oadm.Plugins.VapixCommander.Client.TryResultView"
+             x:DataType="c:TryResultViewModel">
+  <!-- The answer of Send: status, summary, request line, body (Pretty / Raw) and headers. Page and request builder. -->
+  <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" RowSpacing="8">
+    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+      <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding Success}" IsError="{Binding IsError}" />
+      <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding ExchangeLine}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+      <Button Grid.Column="2" Classes="toolbar iconOnly" Command="{Binding $parent[c:TryResultView].CloseCommand}" ToolTip.Tip="Close">
+        <ui:OadmIcon Data="{DynamicResource Icon.close}" />
+      </Button>
+    </Grid>
+    <SelectableTextBlock Grid.Row="1" Text="{Binding Summary}" TextWrapping="Wrap" />
+    <SelectableTextBlock Grid.Row="2" Classes="secondary small" Text="{Binding RequestLine}" TextWrapping="Wrap" />
+    <Grid Grid.Row="3" ColumnDefinitions="2*,*" ColumnSpacing="8" IsVisible="{Binding HasBody}">
+      <StackPanel Orientation="Horizontal" Spacing="10">
+        <Border Classes="segmented" IsVisible="{Binding CanShowRaw}">
+          <StackPanel Orientation="Horizontal">
+            <Button Classes="segment" Classes.selected="{Binding IsPretty}" Content="Pretty" Command="{Binding ShowPrettyCommand}" ToolTip.Tip="Indented and highlighted" />
+            <Button Classes="segment" Classes.selected="{Binding IsRaw}" Content="Raw" Command="{Binding ShowRawCommand}" ToolTip.Tip="Exactly as the device sent it" />
+          </StackPanel>
+        </Border>
+        <TextBlock Classes="secondary small" Text="{Binding ContentType}" VerticalAlignment="Center" />
+        <TextBlock Classes="warning small" Text="Cut at 256 KB." VerticalAlignment="Center" IsVisible="{Binding IsBodyTruncated}" />
+      </StackPanel>
+      <TextBlock Grid.Column="1" Classes="secondary small" Text="Headers" VerticalAlignment="Center" />
+    </Grid>
+    <Grid Grid.Row="4" ColumnDefinitions="2*,*" ColumnSpacing="8" MinHeight="200" IsVisible="{Binding HasBody}">
+      <ui:CodeView Text="{Binding DisplayBody}" Language="{Binding BodyLanguage}" IsFormatted="{Binding IsPretty}" />
+      <ui:CodeView Grid.Column="1" Text="{Binding HeadersText}" Language="Plain" />
+    </Grid>
+  </Grid>
+</UserControl>

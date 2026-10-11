@@ -174,6 +174,9 @@ public interface IOadmApi
     /// <summary>Admin: deletes every event log entry; returns how many.</summary>
     Task<int> ClearEventLogAsync(CancellationToken ct);
 
+    /// <summary>Admin: "Send test" of an action without devices (EventService.TestAction).</summary>
+    Task<TestActionReply> TestEventActionAsync(TestActionRequest request, CancellationToken ct);
+
     /// <summary>Live events of a core plugin (PluginService.Watch) until cancelled. Default: none (the page polls).</summary>
     IAsyncEnumerable<PluginEvent> WatchCorePluginAsync(string pluginId, CancellationToken ct) => AsyncEnumerable.Empty<PluginEvent>();
 }

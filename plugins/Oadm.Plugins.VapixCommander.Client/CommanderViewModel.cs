@@ -34,14 +34,6 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         ArgumentNullException.ThrowIfNull(host);
         _backend = backend;
         _host = host;
-        Raw.SaveRequested += (_, command) => _ = SaveRawAsync(command);
-        Raw.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(RawEditorViewModel.IsFormValid))
-            {
-                AddRawToRolloutCommand.NotifyCanExecuteChanged();
-            }
-        };
         Validation.Rule(nameof(PresetName), () => IsPresetOpen ? CommandNameError(PresetName) : null);
         RolloutItems.CollectionChanged += (_, _) => OnRolloutChanged();
         host.DevicesChanged += (_, _) => SyncDevices();
@@ -52,6 +44,9 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
     /// <summary>Set by the view: export/import file pickers.</summary>
     public ICommanderFiles? Files { get; set; }
 
+    /// <summary>Set by the view: the request builder window.</summary>
+    public ICommanderDialogs? Dialogs { get; set; }
+
     // ---------------------------------------------------------------- library
 
     public ObservableCollection<LibraryNodeViewModel> LibraryTree { get; } = [];
@@ -60,7 +55,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
     public partial string? LibrarySearch { get; set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(DeleteSavedCommand), nameof(ExportSavedCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteSavedCommand), nameof(ExportSavedCommand), nameof(EditSavedCommand))]
     public partial LibraryNodeViewModel? SelectedNode { get; set; }
 
     [ObservableProperty]
@@ -87,14 +82,6 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
     public bool HasSelectedRolloutItem => SelectedRolloutItem is not null;
 
     public bool HasRolloutItems => RolloutItems.Count > 0;
-
-    public RawEditorViewModel Raw { get; } = new();
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsRolloutTab))]
-    public partial bool IsRawTab { get; set; }
-
-    public bool IsRolloutTab => !IsRawTab;
 
     // "Save preset" of the selected rollout command
     [ObservableProperty]
@@ -288,7 +275,6 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         var vm = new RolloutCommandViewModel(item);
         RolloutItems.Add(vm);
         SelectedRolloutItem = vm;
-        IsRawTab = false;
         return vm;
     }
 
@@ -312,6 +298,33 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
     }
 
     private bool CanDeleteSaved(LibraryNodeViewModel? node) => (node ?? SelectedNode)?.IsSaved == true;
+
+    /// <summary>Opens a saved command (the given node, else the selected one) in the request builder; Save replaces it.</summary>
+    [RelayCommand(CanExecute = nameof(CanDeleteSaved))]
+    private Task EditSavedAsync(LibraryNodeViewModel? node) =>
+        (node ?? SelectedNode)?.Item is { Source: CommandSources.Saved } item
+            ? ShowBuilderAsync(RequestBuilderViewModel.ForEdit(_backend, _host, item, Targets, TryDevice))
+            : Task.CompletedTask;
+
+    /// <summary>"+" of the library: the request builder for a new command, from scratch or from a library or saved command.</summary>
+    [RelayCommand]
+    private Task NewCommandAsync() =>
+        ShowBuilderAsync(new RequestBuilderViewModel(_backend, _host, [.. _library, .. _saved], Targets, TryDevice));
+
+    private async Task ShowBuilderAsync(RequestBuilderViewModel builder)
+    {
+        if (Dialogs is null)
+        {
+            return;
+        }
+
+        await Dialogs.ShowBuilderAsync(builder).ConfigureAwait(true);
+        if (builder.Saved is { } saved)
+        {
+            SetLibraryStatus($"Saved \"{saved.Command.Name}\".", error: false);
+            await ReloadSavedAsync().ConfigureAwait(true);
+        }
+    }
 
     /// <summary>Exports one saved command (the given node, else the selected one) as a library file.</summary>
     [RelayCommand(CanExecute = nameof(CanDeleteSaved))]
@@ -434,12 +447,6 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         IsPresetOpen = false;
     }
 
-    [RelayCommand]
-    private void ShowRollout() => IsRawTab = false;
-
-    [RelayCommand]
-    private void ShowRaw() => IsRawTab = true;
-
     /// <summary>Opens "Save with values" for the row (selects it, so its field form shows the values being saved).</summary>
     [RelayCommand(CanExecute = nameof(CanUseRow))]
     private void SavePreset(RolloutCommandViewModel? item)
@@ -484,32 +491,6 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
     }
 
     private bool CanConfirmPreset() => CommandNameError(PresetName) is null;
-
-    /// <summary>Adds the raw request to the rollout set as an inline command.</summary>
-    [RelayCommand(CanExecute = nameof(CanAddRaw))]
-    private void AddRawToRollout()
-    {
-        if (!Raw.ShowProblems())
-        {
-            return; // every problem below its input
-        }
-
-        var (command, _) = Raw.Build(forSave: false);
-        var name = "Raw: " + command.Request.Method + " " + command.Request.Path;
-        command.Name = name.Length > 80 ? name[..80] : name;
-        command.Id = "raw.request";
-        Add(new CommandListItem { Source = CommandSources.Inline, Command = command });
-    }
-
-    private bool CanAddRaw() => Raw.IsFormValid;
-
-    private async Task SaveRawAsync(CommandDefinition command)
-    {
-        if (await SaveAsync(command).ConfigureAwait(true))
-        {
-            Raw.SaveCompleted();
-        }
-    }
 
     private async Task<bool> SaveAsync(CommandDefinition command)
     {
@@ -747,7 +728,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
 
     // ================================================================ try
 
-    /// <summary>Sends the selected rollout command (or the raw request) to <see cref="TryDevice"/> now; writes ask first.</summary>
+    /// <summary>Sends the selected rollout command to <see cref="TryDevice"/> now; writes ask first.</summary>
     [RelayCommand(CanExecute = nameof(CanTry))]
     private async Task TryAsync()
     {
@@ -761,20 +742,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         Dictionary<string, System.Text.Json.JsonElement> values;
         string name;
         bool writes;
-        if (IsRawTab)
-        {
-            if (!Raw.ShowProblems())
-            {
-                return; // every problem below its input
-            }
-
-            var (command, _) = Raw.Build(forSave: false);
-            reference = new CommandRef { Source = CommandSources.Inline, Command = command };
-            values = Raw.Values();
-            name = command.Request.Method + " " + command.Request.Path;
-            writes = command.Writes;
-        }
-        else if (SelectedRolloutItem is { } item)
+        if (SelectedRolloutItem is { } item)
         {
             reference = item.Ref;
             values = item.Values();
@@ -839,7 +807,6 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
             }
 
             SelectedRolloutItem = invalid;
-            IsRawTab = false;
             SetStatus($"Check the values of \"{invalid.Name}\".", error: true);
             return;
         }

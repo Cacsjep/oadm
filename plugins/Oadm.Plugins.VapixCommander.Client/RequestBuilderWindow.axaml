@@ -1,0 +1,75 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:c="using:Oadm.Plugins.VapixCommander.Client"
+        x:Class="Oadm.Plugins.VapixCommander.Client.RequestBuilderWindow"
+        x:DataType="c:RequestBuilderViewModel"
+        Title="{Binding Title}"
+        Width="1360" Height="760"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Request builder: first where to start (new command only), then the request with Send on the right. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Text="{Binding Title}" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <Panel>
+        <!-- Step 1: from scratch or from an existing command -->
+        <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="10" IsVisible="{Binding IsChoosing}">
+          <RadioButton GroupName="start" Content="Start from scratch" IsChecked="{Binding StartFromScratch}" />
+          <RadioButton Grid.Row="1" GroupName="start" Content="Start from an existing command" IsChecked="{Binding StartFromExisting}" />
+          <ui:SearchBox Grid.Row="2" Classes="stretch" Text="{Binding Search}" Placeholder="Search commands" Margin="28,0,0,0" />
+          <!-- Virtualized: the library has hundreds of commands. Double click = Next (code-behind). -->
+          <ListBox x:Name="CommandList" Grid.Row="3" Margin="28,0,0,0" ItemsSource="{Binding VisibleCommands}" SelectedItem="{Binding SelectedCommand}"
+                   DoubleTapped="OnCommandDoubleTapped">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="c:CommandChoice">
+                <StackPanel>
+                  <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Classes="secondary small" Text="{Binding Detail}" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Grid>
+
+        <!-- Step 2: the request, Send and its answer -->
+        <Grid ColumnDefinitions="*,540" ColumnSpacing="{DynamicResource Oadm.Gap}" IsVisible="{Binding IsBuilding}">
+          <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+            <c:RawEditorView DataContext="{Binding Raw}" Margin="0,0,12,0" />
+          </ScrollViewer>
+          <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="12">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+              <TextBlock Classes="fieldLabel" Text="Send to" />
+              <ComboBox Grid.Column="1" ItemsSource="{Binding Devices}" SelectedItem="{Binding TryDevice}" HorizontalAlignment="Stretch" PlaceholderText="Device">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="c:TargetDeviceViewModel">
+                    <TextBlock Text="{Binding Title}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+              <Button Grid.Column="2" Classes="secondary" Command="{Binding SendCommand}" ToolTip.Tip="Changes ask first">
+                <ui:IconLabel Icon="{DynamicResource Icon.send}" Text="Send" />
+              </Button>
+            </Grid>
+            <TextBlock Grid.Row="1" Classes="secondary" Text="Send the request to see the answer." IsVisible="{Binding !HasTryResult}" />
+            <Border Grid.Row="1" Classes="inlineEditor" IsVisible="{Binding HasTryResult}">
+              <c:TryResultView DataContext="{Binding TryResult}" CloseCommand="{Binding $parent[Window].((c:RequestBuilderViewModel)DataContext).CloseTryResultCommand}" />
+            </Border>
+          </Grid>
+        </Grid>
+      </Panel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <ui:StatusChip IsError="True" Text="{Binding SaveError}" IsVisible="{Binding HasSaveError}" VerticalAlignment="Center" />
+      <Button Classes="secondary" Content="Back" Command="{Binding BackCommand}" IsVisible="{Binding CanGoBack}" />
+      <Button Classes="primary" Content="Next" Command="{Binding NextCommand}" IsVisible="{Binding IsChoosing}"
+              ToolTip.Tip="{Binding NextBlockedReason}" ToolTip.ShowOnDisabled="True" />
+      <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding IsBuilding}"
+              ToolTip.Tip="{Binding Raw.BlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

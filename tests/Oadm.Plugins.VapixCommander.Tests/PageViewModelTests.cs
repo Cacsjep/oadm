@@ -106,6 +106,10 @@ internal sealed class PageFixture
         return new PageFixture(plugin, server, client, vm) { Camera = camera, Speaker = speaker };
     }
 
+    /// <summary>The request builder for a new command, as the library's "+" opens it.</summary>
+    public RequestBuilderViewModel NewBuilder() =>
+        new(new CommanderBackend(Client), Client, [.. Vm.LibraryTree.SelectMany(Flatten).Where(n => n.Item is not null).Select(n => n.Item!)], Vm.Targets, Vm.TryDevice);
+
     public CommandListItem Item(string id) => Vm.LibraryTree.SelectMany(Flatten).First(n => n.Item?.Command.Id == id).Item!;
 
     public static IEnumerable<LibraryNodeViewModel> Flatten(LibraryNodeViewModel node) => [node, .. node.Children.SelectMany(Flatten)];
@@ -474,7 +478,7 @@ public sealed class PageViewModelTests
     }
 
     [Fact]
-    public void Raw_editor_hides_the_body_on_get_colors_json_and_resets()
+    public void Raw_editor_hides_the_body_on_get_and_colors_json()
     {
         var raw = new RawEditorViewModel();
         Assert.False(raw.ShowBody); // GET sends no body
@@ -486,30 +490,25 @@ public sealed class PageViewModelTests
         Assert.Equal(CodeLanguage.Json, raw.BodyLanguage);
         raw.BodyText = "{\"level\":\"{{level}}\"}";
         raw.Path = "/axis-cgi/daynight.cgi";
-        raw.HeaderRows.Add(new KeyValueRowViewModel { Key = "X-Note", Value = "1" });
         raw.SyncFields();
         Assert.NotEmpty(raw.Fields);
         raw.Method = "GET";
         Assert.True(raw.ShowBody); // a GET that has a body keeps showing it (never hide data)
-
-        raw.ResetCommand.Execute(null);
-
-        Assert.Equal(("GET", "/axis-cgi/param.cgi", BodyTypes.None, string.Empty), (raw.Method, raw.Path, raw.BodyType, raw.BodyText));
-        Assert.Equal(["action=list", "group=Brand"], raw.QueryRows.Select(r => r.Key + "=" + r.Value));
-        Assert.Empty(raw.HeaderRows);
-        Assert.Empty(raw.Fields);
-        Assert.False(raw.ShowBody);
-        Assert.Equal(ResponseKinds.ParamCgi, raw.ResponseKind);
-        Assert.Null(raw.ErrorOf(nameof(RawEditorViewModel.Path))); // an untouched form again
     }
 
     [Fact]
-    public async Task Raw_editor_makes_fields_prefills_requires_and_saves()
+    public async Task Builder_makes_fields_prefills_requires_and_saves_a_new_command()
     {
         var page = await PageFixture.CreateAsync();
         var vm = page.Vm;
-        var raw = vm.Raw;
-        vm.ShowRawCommand.Execute(null);
+        var builder = page.NewBuilder();
+        Assert.True(builder.IsChoosing);
+        Assert.Equal("New command", builder.Title);
+        Assert.False(builder.SaveCommand.CanExecute(null));
+        builder.NextCommand.Execute(null); // from scratch
+        var raw = builder.Raw;
+        Assert.Empty(raw.QueryRows); // an empty request
+        raw.FillBrandList();
 
         Assert.Equal("param-cgi", raw.RequiresApi);
         Assert.Equal("1.0", raw.RequiresVersion);
@@ -541,33 +540,92 @@ public sealed class PageViewModelTests
         Assert.Equal(ResponseKinds.Rest, raw.ResponseKind);
         raw.Path = "/axis-cgi/param.cgi";
 
-        raw.OpenSaveCommand.Execute(null);
+        Assert.False(builder.SaveCommand.CanExecute(null)); // a name first
         raw.SaveName = "Night shift 40";
-        raw.SaveCommand.Execute(null);
-        await TestUtil.WaitUntilAsync(() => !raw.IsSaveOpen);
-        Assert.Contains(vm.LibraryTree[1].Children.SelectMany(c => c.Children), n => n.Title == "Night shift 40");
+        Assert.True(builder.SaveCommand.CanExecute(null));
+        var closed = false;
+        builder.CloseRequested += (_, _) => closed = true;
+        await builder.SaveCommand.ExecuteAsync(null);
 
-        vm.AddRawToRolloutCommand.Execute(null);
-        Assert.Equal("Raw: GET /axis-cgi/param.cgi", vm.RolloutItems.Single().Name);
-        Assert.Equal(CommandSources.Inline, vm.RolloutItems.Single().Ref.Source);
+        Assert.True(closed);
+        Assert.Equal("Night shift 40", builder.Saved!.Command.Name);
     }
 
     [Fact]
-    public async Task Raw_send_reports_validation_problems()
+    public async Task Builder_starts_from_an_existing_command_and_saves_it_as_a_new_one()
+    {
+        var page = await PageFixture.CreateAsync();
+        var builder = page.NewBuilder();
+        Assert.Equal(3, builder.VisibleCommands.Count);
+        builder.Search = "brand";
+        var brand = Assert.Single(builder.VisibleCommands);
+        builder.StartFromExisting = true;
+        Assert.False(builder.NextCommand.CanExecute(null)); // nothing chosen yet
+        builder.SelectedCommand = brand;
+        builder.NextCommand.Execute(null);
+
+        Assert.True(builder.IsBuilding);
+        Assert.True(builder.CanGoBack);
+        Assert.Equal(brand.Item.Command.Name, builder.Raw.SaveName);
+        Assert.Equal(brand.Item.Command.Request.Path, builder.Raw.Path);
+
+        await builder.SaveCommand.ExecuteAsync(null);
+        Assert.NotEqual(brand.Item.Command.Id, builder.Saved!.Command.Id); // a library command is never changed
+    }
+
+    [Fact]
+    public async Task The_pen_icon_edits_a_saved_command_in_place()
     {
         var page = await PageFixture.CreateAsync();
         var vm = page.Vm;
-        vm.ShowRawCommand.Execute(null);
-        vm.Raw.RequiresApi = string.Empty;
+        var dialogs = new FakeDialogs();
+        vm.Dialogs = dialogs;
+        await vm.ImportJsonAsync(File.ReadAllText(Path.Combine(Samples.Directory, "Common.json")));
+        var node = vm.LibraryTree[1].Children.Single().Children.First(n => n.Item!.Command.Request.Query?.ContainsKey("group") == true);
+        dialogs.OnShow = async builder =>
+        {
+            Assert.True(builder.IsEditing);
+            Assert.False(builder.IsChoosing);
+            Assert.False(builder.CanGoBack);
+            Assert.Equal("Edit command", builder.Title);
+            builder.Raw.QueryRows.Single(r => r.Key == "group").Value = "Network";
+            await builder.SaveCommand.ExecuteAsync(null);
+        };
 
-        await vm.TryCommand.ExecuteAsync(null);
+        await vm.EditSavedCommand.ExecuteAsync(node);
 
-        // The required API follows the path for a plain request: the problem shows below the path.
-        Assert.Contains("requires", vm.Raw.ErrorOf(nameof(vm.Raw.Path)), StringComparison.Ordinal);
-        Assert.Null(vm.TryResult);
-        Assert.False(vm.AddRawToRolloutCommand.CanExecute(null));
-        Assert.Equal(vm.Raw.ErrorOf(nameof(vm.Raw.Path)), vm.Raw.BlockedReason);
+        var edited = vm.LibraryTree[1].Children.Single().Children.Single(n => n.Item!.Command.Id == node.Item!.Command.Id);
+        Assert.Equal("Network", edited.Item!.Command.Request.Query!["group"]);
+        Assert.Equal(3, vm.LibraryTree[1].CommandCount); // replaced, not added
+        Assert.StartsWith("Saved", vm.LibraryStatus, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task Builder_send_reports_validation_problems_without_asking_for_a_name()
+    {
+        var page = await PageFixture.CreateAsync();
+        var builder = page.NewBuilder();
+        builder.NextCommand.Execute(null);
+        builder.Raw.FillBrandList();
+        builder.Raw.RequiresApi = string.Empty;
+
+        await builder.SendCommand.ExecuteAsync(null);
+
+        Assert.Contains("requires", builder.Raw.ErrorOf(nameof(RawEditorViewModel.RequiresApi)), StringComparison.Ordinal);
+        Assert.Null(builder.Raw.ErrorOf(nameof(RawEditorViewModel.SaveName))); // Send needs no name
+        Assert.Null(builder.TryResult);
+
+        builder.Raw.RequiresApi = "param-cgi";
+        await builder.SendCommand.ExecuteAsync(null);
+        Assert.True(builder.TryResult!.Success);
+    }
+}
+
+internal sealed class FakeDialogs : ICommanderDialogs
+{
+    public Func<RequestBuilderViewModel, Task>? OnShow { get; set; }
+
+    public Task ShowBuilderAsync(RequestBuilderViewModel builder) => OnShow?.Invoke(builder) ?? Task.CompletedTask;
 }
 
 internal static class TestUtil

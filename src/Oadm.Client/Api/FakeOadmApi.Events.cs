@@ -52,6 +52,13 @@ public sealed partial class FakeOadmApi
             });
         }
 
+        var person = catalog.EventTypes.Single(t => t.Id == FakePersonTrigger);
+        person.Description = "AXIS Object Analytics › Scenario 1.\n\nValues:\n• {active}\n• {objectId}\n• {classTypes}\n• {triggerTime}";
+        foreach (var (field, label) in new[] { ("active", "Active"), ("objectId", "Object ID"), ("classTypes", "Class types"), ("triggerTime", "Trigger time") })
+        {
+            person.Fields.Add(new EventFieldInfo { Name = field, DisplayName = label });
+        }
+
         var output = new ActionEntry
         {
             Id = "oadm.outputs.set", DisplayName = "Set output", Group = "Devices", Description = "Switches an output of the device, for example a relay.",
@@ -77,7 +84,72 @@ public sealed partial class FakeOadmApi
         command.Fields.Add(new ActionFieldEntry { Key = "offCommand", Label = "When the rule turns off", Kind = ActionFieldKind.ActionFieldDynamicChoice, OffEdge = true, Hint = "Optional" });
         command.Fields.Add(new ActionFieldEntry { Key = "allowDangerous", Label = "Allow dangerous commands", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false" });
         catalog.Actions.Add(command);
+        catalog.Actions.Add(FakeHttpAction());
+        catalog.Actions.Add(FakeEmailAction());
         return catalog;
+    }
+
+    /// <summary>"Send HTTP request" as the Notifications plugin declares it.</summary>
+    private static ActionEntry FakeHttpAction()
+    {
+        var http = new ActionEntry
+        {
+            Id = "oadm.notifications.http", DisplayName = "Send HTTP request", Group = "Notifications", IconKey = "send", NeedsDevice = false, SupportsTurnOff = true,
+            Description = "Sends a request to a web service, for example a webhook of Teams, Slack or a building system.", Available = true, SourceName = "Notifications",
+        };
+        http.Fields.Add(Choice("method", "Method", "POST", ("GET", "GET"), ("POST", "POST"), ("PUT", "PUT"), ("PATCH", "PATCH"), ("DELETE", "DELETE")));
+        http.Fields.Add(new ActionFieldEntry { Key = "url", Label = "URL", Kind = ActionFieldKind.ActionFieldText, Required = true, MaxLength = 1000 });
+        http.Fields.Add(new ActionFieldEntry { Key = "query", Label = "Query parameters", Kind = ActionFieldKind.ActionFieldKeyValues, MaxLength = 20_000 });
+        http.Fields.Add(new ActionFieldEntry { Key = "headers", Label = "Headers", Kind = ActionFieldKind.ActionFieldKeyValues, MaxLength = 20_000 });
+        http.Fields.Add(Choice("auth", "Login", "none", ("none", "None"), ("basic", "Basic"), ("digest", "Digest"), ("bearer", "Bearer token")));
+        http.Fields.Add(new ActionFieldEntry { Key = "user", Label = "User name", Kind = ActionFieldKind.ActionFieldText, VisibleWhenKey = "auth", VisibleWhenValue = "basic|digest", MaxLength = 1000 });
+        http.Fields.Add(new ActionFieldEntry { Key = "password", Label = "Password", Kind = ActionFieldKind.ActionFieldPassword, VisibleWhenKey = "auth", VisibleWhenValue = "basic|digest", MaxLength = 256 });
+        http.Fields.Add(new ActionFieldEntry { Key = "token", Label = "Token", Kind = ActionFieldKind.ActionFieldPassword, VisibleWhenKey = "auth", VisibleWhenValue = "bearer", MaxLength = 4096 });
+        http.Fields.Add(Choice("bodyType", "Body type", "json", ("none", "None"), ("json", "JSON"), ("xml", "XML"), ("text", "Text"), ("form", "Form")));
+        http.Fields.Add(new ActionFieldEntry
+        {
+            Key = "body", Label = "Body", Kind = ActionFieldKind.ActionFieldCode, LanguageKey = "bodyType", VisibleWhenKey = "bodyType", VisibleWhenValue = "json|xml|text|form",
+            MaxLength = 50_000, Hint = "Form: one name=value per line.",
+            DefaultValue = "{\n  \"rule\": \"{rule}\",\n  \"event\": \"{event}\",\n  \"device\": \"{device}\",\n  \"state\": \"{state}\",\n  \"time\": \"{time}\"\n}",
+        });
+        http.Fields.Add(new ActionFieldEntry { Key = "allowUntrusted", Label = "Allow untrusted certificates", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false" });
+        http.Fields.Add(new ActionFieldEntry { Key = "timeout", Label = "Timeout (s)", Kind = ActionFieldKind.ActionFieldNumber, Required = true, Min = 1, Max = 120, DefaultValue = "15" });
+        http.Fields.Add(new ActionFieldEntry { Key = "onOff", Label = "Also send when the rule turns off", Kind = ActionFieldKind.ActionFieldBool, OffEdge = true, DefaultValue = "false" });
+        return http;
+    }
+
+    /// <summary>"Send email" as the Notifications plugin declares it.</summary>
+    private static ActionEntry FakeEmailAction()
+    {
+        var email = new ActionEntry
+        {
+            Id = "oadm.notifications.email", DisplayName = "Send email", Group = "Notifications", IconKey = "send", NeedsDevice = false, SupportsTurnOff = true,
+            Description = "Sends an email through your mail server.", Available = true, SourceName = "Notifications",
+        };
+        email.Fields.Add(new ActionFieldEntry { Key = "host", Label = "Mail server", Kind = ActionFieldKind.ActionFieldText, Required = true, MaxLength = 1000 });
+        email.Fields.Add(new ActionFieldEntry { Key = "port", Label = "Port", Kind = ActionFieldKind.ActionFieldNumber, Required = true, Min = 1, Max = 65535, DefaultValue = "587" });
+        email.Fields.Add(Choice("security", "Encryption", "starttls", ("starttls", "STARTTLS (usually port 587)"), ("tls", "TLS (usually port 465)"), ("none", "None")));
+        email.Fields.Add(new ActionFieldEntry { Key = "allowUntrusted", Label = "Allow untrusted certificates", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false" });
+        email.Fields.Add(new ActionFieldEntry { Key = "user", Label = "User name", Kind = ActionFieldKind.ActionFieldText, Hint = "Optional", MaxLength = 1000 });
+        email.Fields.Add(new ActionFieldEntry { Key = "password", Label = "Password", Kind = ActionFieldKind.ActionFieldPassword, MaxLength = 256 });
+        email.Fields.Add(new ActionFieldEntry { Key = "from", Label = "From", Kind = ActionFieldKind.ActionFieldText, Required = true, MaxLength = 1000 });
+        email.Fields.Add(new ActionFieldEntry { Key = "to", Label = "To", Kind = ActionFieldKind.ActionFieldText, Required = true, Hint = "Several addresses separated by commas", MaxLength = 1000 });
+        email.Fields.Add(new ActionFieldEntry { Key = "subject", Label = "Subject", Kind = ActionFieldKind.ActionFieldText, Required = true, DefaultValue = "{rule}: {event} on {device}", MaxLength = 1000 });
+        email.Fields.Add(Choice("format", "Format", "text", ("text", "Text"), ("html", "HTML")));
+        email.Fields.Add(new ActionFieldEntry
+        {
+            Key = "body", Label = "Body", Kind = ActionFieldKind.ActionFieldCode, LanguageKey = "format", Required = true, MaxLength = 50_000,
+            DefaultValue = "{event} on {device} at {time}.\n\nRule: {rule}\nDevice: {model}, {serial}\n{webUrl}",
+        });
+        email.Fields.Add(new ActionFieldEntry { Key = "onOff", Label = "Also send when the rule turns off", Kind = ActionFieldKind.ActionFieldBool, OffEdge = true, DefaultValue = "false" });
+        return email;
+    }
+
+    private static ActionFieldEntry Choice(string key, string label, string defaultValue, params (string Value, string Label)[] choices)
+    {
+        var field = new ActionFieldEntry { Key = key, Label = label, Kind = ActionFieldKind.ActionFieldChoice, Required = true, DefaultValue = defaultValue };
+        field.Choices.AddRange(choices.Select(c => new ActionChoiceEntry { Value = c.Value, Label = c.Label }));
+        return field;
     }
 
     /// <summary>The sample device trigger of the fake event rules.</summary>
@@ -316,6 +388,17 @@ public sealed partial class FakeOadmApi
             page.Entries.AddRange(entries.Take(limit <= 0 ? 10_000 : limit).Select(e => e.Clone()));
             return Task.FromResult(page);
         }
+    }
+
+    public Task<TestActionReply> TestEventActionAsync(TestActionRequest request, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        lock (_gate)
+        {
+            ThrowIfOffline();
+        }
+
+        return Task.FromResult(new TestActionReply { Ok = true, Message = "Sent (fake mode: nothing left this computer)" });
     }
 
     public Task<int> ClearEventLogAsync(CancellationToken ct)

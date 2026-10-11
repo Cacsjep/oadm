@@ -5,7 +5,7 @@
         x:Class="Oadm.Client.EventRules.RuleEditorWindow"
         x:DataType="vm:RuleEditorViewModel"
         Title="{Binding Title}"
-        Width="820" Height="760"
+        Width="1160" Height="780"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         CanResize="False"
@@ -35,7 +35,7 @@
                             Info="After the rule ran for a device, that device is ignored for this many seconds. Stops a flickering event from running the actions again and again.">
                 <TextBox Text="{Binding Cooldown}" />
               </ui:FormField>
-              <ui:FormField Label="Flood limit (runs per minute)" InputWidth="120"
+              <ui:FormField Label="Max per minute" InputWidth="120"
                             Info="At most this many runs per minute for all devices together. Further events are skipped and noted in the event log.">
                 <TextBox Text="{Binding MaxRuns}" />
               </ui:FormField>
@@ -119,8 +119,9 @@
           </StackPanel>
         </Border>
 
-        <!-- 3 Then: one to five actions, in this order -->
-        <Border Classes="card" IsVisible="{Binding IsThenStep}">
+        <!-- 3 Then: one to five actions, in this order; the placeholders the texts can use on the right -->
+        <Grid ColumnDefinitions="*,300" ColumnSpacing="{DynamicResource Oadm.Gap}" IsVisible="{Binding IsThenStep}">
+        <Border Classes="card">
           <StackPanel Spacing="12">
             <ui:CardHeader Title="Actions" Description="They run in this order." />
             <ItemsControl ItemsSource="{Binding RuleActions}">
@@ -145,16 +146,45 @@
                           <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate><StackPanel Classes="form" /></ItemsPanelTemplate>
                           </ItemsControl.ItemsPanel>
+                          <!-- A hidden setting takes no row and no spacing (the container hides, not only its content). -->
+                          <ItemsControl.Styles>
+                            <Style Selector="ContentPresenter" x:DataType="vm:ActionFieldViewModel">
+                              <Setter Property="IsVisible" Value="{Binding IsVisible}" />
+                            </Style>
+                          </ItemsControl.Styles>
                           <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:ActionFieldViewModel">
                               <Panel IsVisible="{Binding IsVisible}">
-                                <ui:FormField Label="{Binding Label}" Hint="{Binding Hint}" Error="{Binding Error}" IsVisible="{Binding !IsBool}">
+                                <ui:FormField Classes="wide" Label="{Binding Label}" Hint="{Binding Hint}" Error="{Binding Error}" IsVisible="{Binding !IsBool}">
                                   <Panel>
                                     <TextBox Text="{Binding Text}" IsVisible="{Binding IsText}" />
                                     <TextBox Text="{Binding Text}" IsVisible="{Binding IsNumber}" Width="120" HorizontalAlignment="Left" />
                                     <TextBox Text="{Binding Text}" IsVisible="{Binding IsMultiline}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" />
                                     <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}" IsVisible="{Binding IsChoice}" HorizontalAlignment="Stretch" />
                                     <ui:PasswordBox Text="{Binding Text}" IsVisible="{Binding IsPassword}" />
+                                    <ui:CodeEditor Text="{Binding Text}" Language="{Binding Language}" Height="180" IsVisible="{Binding IsCode}" />
+                                    <StackPanel Spacing="6" IsVisible="{Binding IsKeyValues}">
+                                      <ItemsControl ItemsSource="{Binding Rows}" IsVisible="{Binding HasRows}">
+                                        <ItemsControl.ItemsPanel>
+                                          <ItemsPanelTemplate><StackPanel Spacing="6" /></ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                          <DataTemplate x:DataType="vm:KeyValueEntry">
+                                            <Grid ColumnDefinitions="*,2*,Auto" ColumnSpacing="6">
+                                              <TextBox Text="{Binding Name}" PlaceholderText="Name" />
+                                              <TextBox Grid.Column="1" Text="{Binding Value}" PlaceholderText="Value" />
+                                              <Button Grid.Column="2" Classes="toolbar iconOnly" ToolTip.Tip="Remove" CommandParameter="{Binding}"
+                                                      Command="{Binding $parent[ItemsControl].((vm:ActionFieldViewModel)DataContext).RemoveRowCommand}">
+                                                <ui:OadmIcon Data="{StaticResource Icon.remove}" />
+                                              </Button>
+                                            </Grid>
+                                          </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                      </ItemsControl>
+                                      <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding AddRowCommand}">
+                                        <ui:IconLabel Icon="{StaticResource Icon.add}" Text="Add" />
+                                      </Button>
+                                    </StackPanel>
                                   </Panel>
                                 </ui:FormField>
                                 <ui:FormField Error="{Binding Error}" IsVisible="{Binding IsBool}">
@@ -165,6 +195,13 @@
                           </ItemsControl.ItemTemplate>
                         </ItemsControl>
                         <TextBlock Classes="error small" Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding CanTest}">
+                          <Button Classes="secondary" Command="{Binding TestCommand}" ToolTip.Tip="Sends it once now, with sample event values">
+                            <ui:IconLabel Icon="{StaticResource Icon.send}" Text="Send test" />
+                          </Button>
+                          <ui:StatusChip Text="{Binding TestResult}" IsOk="{Binding TestOk}" IsError="{Binding TestFailed}" IsAccent="{Binding IsTesting}"
+                                         MaxLines="2" MaxWidth="460" ToolTip.Tip="{Binding TestResult}" IsVisible="{Binding HasTestResult}" VerticalAlignment="Center" />
+                        </StackPanel>
                       </StackPanel>
                       <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Top">
                         <Button Classes="toolbar iconOnly" ToolTip.Tip="Move up" Command="{Binding MoveUpCommand}">
@@ -187,6 +224,41 @@
             </Button>
           </StackPanel>
         </Border>
+
+        <!-- Placeholders: what the texts of an action can use; each one copies with its button -->
+        <Border Grid.Column="1" Classes="card" VerticalAlignment="Top">
+          <StackPanel Spacing="10">
+            <ui:CardHeader Title="Placeholders" Description="Use them in the texts of an action." />
+            <ItemsControl ItemsSource="{Binding PlaceholderGroups}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel Spacing="12" /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:PlaceholderGroup">
+                  <StackPanel Spacing="2">
+                    <TextBlock Classes="sectionTitle" Text="{Binding Title}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Title}" />
+                    <ItemsControl ItemsSource="{Binding Items}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PlaceholderItem">
+                          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" Background="Transparent" ToolTip.Tip="{Binding Description}">
+                            <StackPanel VerticalAlignment="Center">
+                              <TextBlock Classes="mono" Text="{Binding Text}" />
+                              <TextBlock Classes="secondary small" Text="{Binding Description}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="toolbar iconOnly" ToolTip.Tip="Copy" Click="OnCopyPlaceholder" VerticalAlignment="Center">
+                              <ui:OadmIcon Data="{StaticResource Icon.copy}" />
+                            </Button>
+                          </Grid>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+        </Grid>
 
         <!-- 4 Overview: the whole rule in short lines, then Save -->
         <Border Classes="card" IsVisible="{Binding IsOverviewStep}">

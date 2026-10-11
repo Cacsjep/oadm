@@ -34,6 +34,23 @@ service EventService {
   rpc WatchLog (Empty) returns (stream EventLogPage);
   // Admin: deletes every entry of the event log (audited); reply = how many.
   rpc ClearLog (Empty) returns (ClearEventLogReply);
+  // Admin: runs an action without devices once now with sample event values ("Send test" of the rule dialog).
+  rpc TestAction (TestActionRequest) returns (TestActionReply);
+}
+
+message TestActionRequest {
+  string action_id = 1;
+  string settings_json = 2;    // the action's settings as edited; empty passwords take the stored ones of rule_id / action_key
+  string rule_name = 3;
+  string rule_id = 4;          // empty for a new rule
+  string action_key = 5;
+  string event_type_id = 6;    // the trigger: its values get sample values
+  string device_id = 7;        // the device of the event for the device placeholders; empty = none
+}
+
+message TestActionReply {
+  bool ok = 1;
+  string message = 2;          // "Sent: HTTP 200 OK" or the error
 }
 
 message ClearEventLogReply {
@@ -71,6 +88,8 @@ enum ActionFieldKind {
   ACTION_FIELD_CHOICE = 4;
   ACTION_FIELD_DYNAMIC_CHOICE = 5;
   ACTION_FIELD_PASSWORD = 6;
+  ACTION_FIELD_CODE = 7;       // a body drawn as a code editor (language or language_key)
+  ACTION_FIELD_KEY_VALUES = 8; // rows of name and value, a JSON array of {"name", "value"}
 }
 
 message ActionFieldEntry {
@@ -86,7 +105,9 @@ message ActionFieldEntry {
   int32 max_length = 10;
   bool off_edge = 11;
   string visible_when_key = 12;
-  string visible_when_value = 13;
+  string visible_when_value = 13;   // one value or several separated by "|"
+  string language = 14;             // code field: json, xml, html, text
+  string language_key = 15;         // code field: the field whose value is the language
 }
 
 message ActionEntry {

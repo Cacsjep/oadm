@@ -90,6 +90,49 @@ public sealed class EventServiceTests
         Assert.Equal(StatusCode.InvalidArgument, unreadable.StatusCode);
     }
 
+    [Fact]
+    public async Task SendTestRunsTheActionOnceWithSampleValuesAndTheStoredPasswordAndIsAdminOnly()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var action = new NotifyAction();
+        host.Get<PluginRegistry>().RegisterActionPlugin(action, new PluginOrigin("test.notify", "1.0", null) { DisplayName = "Notify" });
+        var events = new Proto.EventService.EventServiceClient(host.Invoker);
+        var device = await host.Get<DeviceRepository>().AddAsync(new Device
+        {
+            Serial = "ACCC8E000123", Address = "10.0.0.48", Model = "P3265-V", Status = DeviceStatus.Ok, Category = DeviceCategory.Camera,
+        }, CancellationToken.None);
+        var key = Guid.NewGuid();
+        var rule = new RuleDefinition
+        {
+            Name = "Gate",
+            Conditions = [new RuleCondition { Kind = RuleConditionKind.Event, EventTypeId = BuiltInEvents.Unreachable, Devices = new DeviceSelector { Mode = DeviceSelectorMode.All } }],
+            Actions = [new RuleAction { Key = key, ActionId = action.Id, Settings = new JsonObject { ["message"] = "x", ["token"] = "stored" } }],
+        };
+        var saved = RuleDefinition.FromJson((await events.SaveRuleAsync(new Proto.SaveRuleRequest { DefinitionJson = rule.ToJson() })).DefinitionJson);
+
+        // The password field left empty: the stored one of the rule's action is used.
+        var reply = await events.TestActionAsync(new Proto.TestActionRequest
+        {
+            ActionId = action.Id,
+            SettingsJson = new JsonObject { ["message"] = "{rule} {device} {mac} {state}" }.ToJsonString(),
+            RuleName = "Gate",
+            RuleId = saved.Id.ToString(),
+            ActionKey = key.ToString(),
+            EventTypeId = BuiltInEvents.Unreachable,
+            DeviceId = device.Id.ToString(),
+        });
+
+        Assert.True(reply.Ok, reply.Message);
+        Assert.Equal("Gate 10.0.0.48 (P3265-V) AC:CC:8E:00:01:23 on|stored", Assert.Single(action.Messages));
+        await host.Get<EventLog>().FlushAsync(CancellationToken.None);
+        Assert.DoesNotContain((await events.ListLogAsync(new Proto.ListEventLogRequest())).Entries, e => e.Kind == Proto.EventLogKind.EventLogAction);
+        Assert.Contains((await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries, e => e.Action == AuditActions.EventActionTested && e.Target == "Notify");
+
+        var op = new Proto.EventService.EventServiceClient(await host.InvokerForUserAsync("tech1", UserRole.Operator));
+        var refused = await Assert.ThrowsAsync<RpcException>(async () => await op.TestActionAsync(new Proto.TestActionRequest { ActionId = action.Id }));
+        Assert.Equal(StatusCode.PermissionDenied, refused.StatusCode);
+    }
+
     private sealed class NotifyAction : IActionPlugin
     {
         public ConcurrentQueue<string> Messages { get; } = new();

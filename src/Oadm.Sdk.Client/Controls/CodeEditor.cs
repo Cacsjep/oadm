@@ -122,7 +122,7 @@ public sealed class CodeEditor : Panel
     private void Render()
     {
         var language = Language == CodeLanguage.Auto ? CodeLanguage.Plain : Language;
-        Document = CodeText.Prepare(_box.Text, language, null, format: false);
+        Document = CodeText.Prepare(_box.Text, language, null, format: false, colorUnparsed: true);
         var inlines = VisualRoot is null ? null : CodeHighlight.Build(this, Document);
         if (inlines is null)
         {

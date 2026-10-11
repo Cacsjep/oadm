@@ -169,6 +169,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.ImageHealth(.Client)/      core plugin: Image Health Dashboard, AXIS Image Health Analytics status of every camera (off by default)
   Oadm.Plugins.DeviceConfig(.Client)/     Maintenance tasks: Export configuration / Import configuration (device config files)
   Oadm.Plugins.Outputs/                   event rule action "Set output" (relays, outputs)
+  Oadm.Plugins.Notifications/             event rule actions "Send email" and "Send HTTP request"
   Oadm.Plugins.IoMonitor(.Client)/        core plugin: live inputs and outputs of one device (off by default)
   Oadm.Plugins.DeviceTriggers(.Client)/   core plugin: events of the devices for the event rules (WebSocket, off by default)
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
@@ -921,7 +922,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 | Simple mode | Conditions must all hold. The first is the trigger ("When": an event, devices All / chosen / tags); further ones ("And") are stateful events (on "the same device", or "any" of All / chosen / tags) or schedules (weekdays + from / to in server time, over midnight allowed). Only the trigger may be one-shot. Advanced AND / OR later on the same model. |
 | Rule state | All events stateful: the rule is on per subject (the trigger's device, or the server) while all conditions hold. One-shot trigger: the rule fires while the others hold. |
 | Actions | One to five per rule, run in the listed order on each edge, each on its targets in parallel (16 at once for all rules, 30 s per run); a failure is logged and the next one runs; no retry. Edges run in order per rule and subject (a "turns off" never overtakes its "turns on"; edges with actions on chosen / tag / all devices also in order among themselves); different devices never wait for each other. Targets: the device of the event, chosen devices, devices with tags, all devices. Actions on chosen / tag / all devices run when the first subject turns on and when the last one turns off; actions on the event's device and actions without devices run per subject. |
-| Limits | Per rule, editable (user decision 2026-10-11, security names): **Dead time** per device (default 10 s between two "turns on"), **Flood limit** (default 60 runs per minute for the whole rule); a suppressed "turns on" also suppresses its "turns off"; "Rule paused" logged once a minute. |
+| Limits | Per rule, editable (user decision 2026-10-11, security names): **Dead time** per device (default 10 s between two "turns on"), **Max per minute** (default 60 runs per minute for the whole rule; user decision 2026-10-11, was "Flood limit"); a suppressed "turns on" also suppresses its "turns off"; "Rule paused" logged once a minute. |
 | Changes | Turning off, changing or deleting a rule that is on runs its off actions first; a changed rule is then evaluated fresh. A removed device goes off. A plugin turned off: its events go off, rules show "Not available: <plugin> is turned off". |
 | Restart | The subjects each rule was on for are stored (`EventRuleStates`); a rule is evaluated once every event type it uses is ready (or after 2 minutes); only real differences run actions. |
 | Roles | Administrators create, change, copy, turn on / off and delete rules (audited "Created / Changed / Deleted / Turned ... event rule"); operators read rules and the log. |
@@ -932,9 +933,16 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   `IActionPlugin` (standalone class with a parameterless constructor in a `*.Server.dll`, or contributed through
   `IActionSource.ActionPlugins` of a core plugin): `NeedsDevice`, `SupportsTurnOff`, declarative `Fields` (`ActionField`:
   Text, Multiline, Number, Bool, Choice, DynamicChoice through `ListChoicesAsync`, Password stored encrypted and never sent
-  back), `Validate`, `Describe`, `RunsOn(edge)`, `ExecuteAsync(IActionContext, ActionInvocation)`; `IActionContext` gives a
-  pre-authenticated `Vapix` for the target, the plugin's settings, `Log` and `Text` (placeholders {rule} {event} {device}
-  {address} {model} {serial} {state} {time}). The client draws the settings form from `Fields` (`ActionSettings` checks
+  back, Code = a body in the code editor colored by `Language` or by the value of the field `LanguageKey` (json, xml, html,
+  text, form), KeyValues = name / value rows stored as `[{"name","value"}]` (at most 50, one line each,
+  `ActionInvocation.GetPairs`); `VisibleWhenValue` may list several values "basic|digest"), `Validate`, `Describe`,
+  `RunsOn(edge)`, `ExecuteAsync(IActionContext, ActionInvocation)`; `IActionContext` gives a pre-authenticated `Vapix` for
+  the target, the plugin's settings, `Log` and `Text(text)` / `Text(text, PlaceholderEscape)` (None, Json, Xml, Url: each
+  value escaped for the format it goes into, user decision 2026-10-11). The placeholders are one list,
+  `Oadm.Sdk.Actions.ActionPlaceholders.Fixed` (user decision 2026-10-11: everything OADM knows): {rule} {event} {state}
+  {time} {date} {timeUtc}, device {device} {address} {hostName} {model} {serial} {mac} {firmware} {category} {tags}
+  {status} {webUrl} (the action's device, else the event's device), then every value of the event by its name; filled in
+  one pass (`ActionPlaceholders.Fill`: a value holding "{x}" is never filled again, unknown names stay). The client draws the settings form from `Fields` (`ActionSettings` checks
   shared by server and dialog); no client part is needed. The rule model `RuleDefinition` (JSON, camelCase) lives in
   `Oadm.Sdk.Events` and is the definition JSON of gRPC.
 - **Server** (`Oadm.Core.Events`): `EventCatalog` (built-in + plugin types and actions, with availability), `RuleStore`
@@ -956,7 +964,17 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   Placeholders also fill every value of the event by its name (`{port}`, `{total}`) after the fixed ones.
 - **gRPC** `EventService`: `GetCatalog`, `ListRules`, `WatchRules` (list on subscribe and after every change, at most every
   500 ms), `GetRule`, `SaveRule`, `DeleteRule`, `SetRuleEnabled`, `DuplicateRule` ("<name> (copy)", off, passwords kept),
-  `ListActionChoices` (the last five Admin), `ListLog` (newest first, limit 0 = 10,000, optional rule filter), `WatchLog`.
+  `ListActionChoices` (the last five Admin), `ListLog` (newest first, limit 0 = 10,000, optional rule filter), `WatchLog`,
+  `TestAction` (Admin, audited "Tested event rule action": runs an action without devices once now, outside rule states and
+  limits, with "sample" (or the first listed value) for every value of the trigger and the trigger's first chosen device as
+  the device of the event; empty passwords take the stored ones of the rule's action; nothing in the event log; reply ok +
+  message).
+- **Notifications** (user decisions 2026-10-11, bundled always-on package `oadm.notifications`,
+  `plugins/Oadm.Plugins.Notifications`, server only, plugin `README.md`): **Send HTTP request** (method, URL, query and
+  header rows, login None / Basic / Digest / Bearer token, body type None / JSON / XML / Text / Form in the code editor,
+  "Allow untrusted certificates", timeout, success = 2xx) and **Send email** (MailKit; mail server, port, STARTTLS / TLS /
+  none, optional login, "Allow untrusted certificates", From, To, Subject, Format Text / HTML; the server settings live in
+  each action, no shared setting). Both run once per rule edge without devices, optionally also when the rule turns off.
 - **First actions**: **Set output** (bundled always-on package `oadm.outputs`, `plugins/Oadm.Plugins.Outputs`, server only):
   output number 1..64, modes Follow the rule (stateful rules only; inactive on the off edge), Pulse N s (1..3600), Set
   active, Set inactive, Toggle; I/O port management API (`io-port-management`: getPorts, setPorts, setStateSequence; active
@@ -983,7 +1001,11 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   errors of rule actions stand below the rules list, errors reading the log below the log). Rule dialog `RuleEditorWindow` (`RuleEditorViewModel`), a wizard (user decision 2026-10-11) with
   the steps as a segmented switch (a step opens when every step before it is complete): **1 Rule** (Name and Turned on in
   one row, Limits), **2 When** (Conditions: "When" / "And" rows, Add event, Add schedule, day toggles), **3 Then** (Actions:
-  "Then" rows: action, On (targets), the settings form, move up / down, remove; Add action up to five), **4 Overview** (one
+  "Then" rows: action, On (targets), the settings form (code fields in `ui:CodeEditor`, name / value rows with Add and
+  remove icons, every setting `FormField.wide`), move up / down, remove; actions without devices have **Send test** with
+  the result chip next to it (`TestAction`); Add action up to five; right of the actions the **Placeholders** card (user
+  decision 2026-10-11: a list with copy buttons): "Event: <trigger>" with the trigger's values, then Rule and Device from
+  `ActionPlaceholders.Fixed`, each "{name}" + a short description + a copy icon; window 1160 wide), **4 Overview** (one
   short line per part: Name, State, When, And, Then, Limits; Save). Footer Back / Next (disabled with the step's first
   problem as tooltip) and Save on the overview. The devices of a condition or an action have no mode drop-down (user decision 2026-10-11): one purple
   button that says what is chosen ("Choose devices" while nothing is, else "Selected devices: All" / "Selected devices: Tag
@@ -992,7 +1014,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   device of the event", All devices, or chosen devices and tags together; the event's and the action's description sit in an info icon right of their
   select; the When / And / Then rows are outlined (`Border.ruleItem`, no fill). Server: `DeviceSelectorMode.Devices` (and the older `Tags`) = the listed devices
   plus every device with one of the tags (`DeviceSelector.ChoiceMatches`, `IsEmptyChoice`: "choose at least one device
-  or tag"). The limits are **Dead time (s)** and **Flood limit (runs per minute)** with their explanation in an info icon
+  or tag"). The limits are **Dead time (s)** and **Max per minute** with their explanation in an info icon
   (`FormField.Info`); errors below their field; a server refusal below the overview. Fake mode (`FakeOadmApi.Events.cs`): catalog, three sample rules,
   a sample log.
 - **Tests**: `tests/Oadm.Core.Tests/Events` (engine edges per device and aggregate, same / any device conditions, schedule
@@ -1351,7 +1373,7 @@ is always on.
   server setting `Plugins.Enabled` (JSON object package id -> on; packages without a choice use their default),
   applied before the core plugins start (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
 - **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade firmware, Date and time, Applications
-  (ACAP), Users, Network settings, PKI, System report, Device configuration and Outputs (core functionality, user decision 2026-10-10). Enabled whatever
+  (ACAP), Users, Network settings, PKI, System report, Device configuration, Outputs and Notifications (core functionality, user decision 2026-10-10). Enabled whatever
   the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers FAILED_PRECONDITION "<name> is always on.".
   Switchable: Snapshot report, VAPIX Commander, Metadata Monitor, NTP server, DHCP server, Hardening scan, Image Health
   Dashboard, I/O Monitor, Device triggers. Third-party plugins are switchable unless their manifest says otherwise.
@@ -1621,27 +1643,40 @@ JSON schema: `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md` + `c
   API, Version too old, API list not read yet, Needs a video device), `rollout`. User-level problems come
   back as `error` in the reply, not as gRPC errors.
 - Page (`HasOwnCards`: three cards, shared controls only, compact icon buttons = `Button.toolbar.iconOnly`
-  + `ui:OadmIcon` with a tooltip): **Library** card (Import icon right of the title, library messages (import, export, save, delete) in a status chip
+  + `ui:OadmIcon` with a tooltip): **Library** card (**+** "New command" and Import icons right of the title, library messages (import, export, save, delete) in a status chip
   under the title, SearchBox filling the card width (`ui|SearchBox.stretch`, also in Target devices), TreeView
   Built-in / Saved by category without any badges (no counts, no write / dangerous: the tooltip, the Kind
   column of the rollout set, the header of the selected command ("Write · dangerous · <description>") and
   the run confirmation say it). A single click on a command adds it to the rollout set, a click on a group
-  only expands / collapses it (a double click is one action); Enter does the same for the selected node.
-  Saved commands show Export and Delete icons on hover of their row (Delete key on a selected saved
-  command); no "Add to rollout" and no "Export all" buttons); middle card with a
-  segmented switch **Rollout set** (DataGrid #, Command, Category, Kind, Source and an icon column with
+  only expands / collapses it (a double click is one action; it acts when the button goes down, because selecting a
+  row can scroll the tree and lose the tap); Enter does the same for the selected node.
+  Saved commands show Edit (pen), Export and Delete icons on hover of their row (Delete key on a selected saved
+  command); no "Add to rollout" and no "Export all" buttons); middle card **Rollout set** (title, "Send to" and
+  **Send** for the selected row; no Raw request tab, user decision 2026-10-11) (DataGrid #, Command, Category, Kind, Source and an icon column with
   per-row Move up, Move down, Save with values (saved copy in Custom with the entered values, opens the
   name editor for that row) and Remove, disabled when not possible (first row up, last row down); a
   "Remove all" icon in that column's header; no button row. Keyboard on the grid: Delete removes the
   selected row, Ctrl+Up / Ctrl+Down move it. Selecting a row shows its field form below, checked like
-  the server while typing; `ui:PasswordBox` for passwords) / **Raw request** (method, path, query and
-  header tables with Make field (the header table is hidden for GET unless the command has headers), body type + body
-  (hidden for GET unless the command has a body; the body in `ui:CodeEditor`, JSON and XML colored while typing), timeout,
-  response kind, fields from `{{placeholders}}` typed by hand, "Add to rollout", "Save as command", **Reset** (a new
-  request: GET param.cgi list Brand, no headers, body or fields; user decision 2026-10-11) with name, category, description, requires
-  prefilled from the path (param.cgi -> param-cgi 1.0, `/config/rest/<api>/v<n>` -> `<api> n.0`, known
-  CGIs), changes-the-device (prefilled from method/action) and dangerous); "Send to <device>" + **Send**
-  shows the result card (status chip, "HTTP 200 OK · 84 ms · address", interpreted result, request
+  the server while typing; `ui:PasswordBox` for passwords); **Send** shows the result card below it
+  (`TryResultView`, shared with the request builder).
+- **Request builder** (user decision 2026-10-11: its own dialog `RequestBuilderWindow` / `RequestBuilderViewModel`,
+  1360x760, so the rollout set and the editor no longer share a card): the Library's **+** asks first "Start from
+  scratch" (an empty request: no path, rows, body or fields; the path field shows an example) or "Start from an
+  existing command" (search + virtualized list of every built-in and saved command, double
+  click = Next; the copy is always saved as a new command, a saved one named "<name> (copy)"); the pen icon of a saved
+  command opens it directly ("Edit command", no first step) and **Save** replaces it (`SaveCommandRequest.PreviousId`;
+  no "Save as new": that is **+** from the saved command). The left side is `RawEditorView` (`RawEditorViewModel`):
+  Name, Category, Description, then the request: method, path, query and header tables (the header table is hidden for
+  GET unless the command has headers; Make field and Remove are icons in each row), body type + body (hidden for GET
+  unless the command has a body; the body in `ui:CodeEditor`, JSON and XML colored while typing), timeout, response
+  kind, fields from `{{placeholders}}` typed by hand (a placeholder renamed or broken while typing keeps its field's
+  label, type and value; a field's remove icon puts its value back in place of the placeholder, typed in a JSON body),
+  requires prefilled from the path (param.cgi -> param-cgi 1.0, `/config/rest/<api>/v<n>` -> `<api> n.0`, known CGIs),
+  changes-the-device (prefilled from method/action) and dangerous; a loaded command keeps what the editor does not show
+  (choices, limits, docs, extracts). The right side: "Send to <device>" + **Send** (checks everything but name and
+  category) and the result card. Footer Cancel, Back (new command), Next / **Save** (disabled with the first problem as
+  tooltip; a refused save left of it). No unsaved request goes to the rollout set: save it, then click it in the library.
+  The result card (status chip, "HTTP 200 OK · 84 ms · address", interpreted result, request
   line, body and headers in `ui:CodeView`s). The body language comes from the response content type
   (else from the text: param.cgi key=value); JSON and XML are always shown pretty-printed (2 spaces,
   also when the device sends them minified) with a **Pretty / Raw** switch (default Pretty; Raw = the
@@ -1669,7 +1704,7 @@ JSON schema: `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md` + `c
   stop on first error through the real task engine and core plugin host, saved CRUD / encryption /
   export / import, compatibility, page view models against the in-process plugin (library click, per-row
   rollout actions and their disabled states, 5000-device timing), bundled library,
-  headless screenshots `plugin-vapix-commander-rollout.png` (library + rollout set with four rows),
+  headless screenshots `plugin-vapix-commander-rollout.png` (library + rollout set with four rows), `-new.png` (request builder, first step),
   `-try-error.png`, `-raw.png`, `-try-json.png`, `-try-json-raw.png`, `-try-xml.png`, `-try-paramcgi.png`,
   `-many-devices.png` (5000 devices, asserts that only a few rows are realized)); `tests/Oadm.Client.Tests/CodeViewTests`
   (detection, pretty-printing, tokens, fallbacks, size limits, rendering and copy);
@@ -2692,7 +2727,8 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   512 K characters plain; monospace `Oadm.FontFamilyMono`, no wrapping, selectable and copyable; colors
   `Oadm.Code.*Brush`; logic in `CodeText` without UI), `CodeEditor` (every editable code field, user decision 2026-10-11: a monospace text box for
   typing, caret, selection and undo with the same text drawn colored on top, aligned and scrolled with it; `Language`
-  Json / Xml / KeyValue / Plain; never re-indented; the coloring of `CodeView` through `CodeHighlight`), `FormField` (every labeled form row: label,
+  Json / Xml / KeyValue / Plain; never re-indented; the coloring of `CodeView` through `CodeHighlight`, also for JSON and
+  XML that do not parse yet (`CodeText.Prepare(colorUnparsed: true)`: typing, an HTML body with several elements)), `FormField` (every labeled form row: label,
   input, error or hint below the input; classes `wide` and `inline`), `StatCard` (every monitoring count card: status icon +
   title, large count, small detail line; `IsOk` / `IsWarning` / `IsError` color icon and count, set only while the count
   needs attention), `DevicePickerWindow` + `DevicePickerViewModel` (every "choose devices" dialog, user decision 2026-10-11:

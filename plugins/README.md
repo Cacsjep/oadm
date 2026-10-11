@@ -235,7 +235,7 @@ resolve them at compile time, so use `DynamicResource` (`Icon="{DynamicResource 
 `Icon.devices`, `Icon.tasks`, `Icon.settings`, `Icon.plugin`, `Icon.add`, `Icon.range`,
 `Icon.remove`, `Icon.refresh`, `Icon.restart`, `Icon.identify`, `Icon.columns`, `Icon.search`,
 `Icon.details`, `Icon.cancel`, `Icon.chevronDown`, `Icon.chevronRight`, `Icon.chevronUp`, `Icon.close`, `Icon.check`,
-`Icon.tag`, `Icon.groupBy`, `Icon.edit`,
+`Icon.tag`, `Icon.groupBy`, `Icon.edit`, `Icon.braces`,
 `Icon.server`, `Icon.externalLink`, `Icon.more`, `Icon.key`, `Icon.lock`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
 `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.network`, `Icon.firmware`, `Icon.users`,
 `Icon.user`, `Icon.logout`, `Icon.audit`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
@@ -437,8 +437,11 @@ public sealed class EmailAction : IActionPlugin
 ```
 
 - **Fields**: `Text`, `Multiline`, `Number` (min / max), `Bool`, `Choice` (fixed list), `DynamicChoice` (the list comes
-  from `ListChoicesAsync` while the rule is edited, e.g. saved VAPIX commands), `Password`. `Required`, `Hint`, `Default`,
-  `VisibleWhenKey` / `VisibleWhenValue` (show a field only for one choice, e.g. "Seconds" for "Pulse") and `OffEdge` (a
+  from `ListChoicesAsync` while the rule is edited, e.g. saved VAPIX commands), `Password`, `Code` (a body in the code
+  editor; `Language` or `LanguageKey` = the field whose value is json / xml / html / text / form), `KeyValues` (name / value
+  rows, read with `run.GetPairs(key)`). `Required`, `Hint`, `Default`,
+  `VisibleWhenKey` / `VisibleWhenValue` (show a field only for one choice, e.g. "Seconds" for "Pulse"; several as
+  "basic|digest") and `OffEdge` (a
   setting of "When the rule turns off", shown only for rules that turn on and off). The host checks required values,
   numbers, choices and lengths (`ActionSettings`, the same code in the dialog and on the server); `Validate` adds the
   action's own rules (errors per field key).
@@ -448,8 +451,12 @@ public sealed class EmailAction : IActionPlugin
   pulse the device answers only after it ended); throw for a failure, the message goes into the
   event log; there is no retry. Devices that refuse the login are skipped before the action is called.
 - **Settings of the plugin** (an SMTP server): `ctx.Settings` (the package's, or the owning core plugin's).
+- **Placeholders**: `ctx.Text(text)` fills `ActionPlaceholders.Fixed` and the event's values; `ctx.Text(text,
+  PlaceholderEscape.Json | Xml | Url)` escapes every value for a body or URL, never the text around it. The rule dialog
+  lists the placeholders, and actions without devices get **Send test** (sample values).
 - Samples: `plugins/Oadm.Plugins.Outputs/SetOutputAction.cs` (device action, choices, a visible-when field, turn off),
   `plugins/Oadm.Plugins.VapixCommander/RunCommandAction.cs` (contributed by a core plugin, dynamic choices, off command).
+  `plugins/Oadm.Plugins.Notifications` (actions without devices, code bodies, rows, escaping).
 
 ### Publishing events
 

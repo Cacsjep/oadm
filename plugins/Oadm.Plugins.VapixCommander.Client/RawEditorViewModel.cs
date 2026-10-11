@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -39,6 +40,14 @@ public sealed partial class RawFieldViewModel : ObservableObject
 
     public bool IsPassword => Type == FieldTypes.Password;
 
+    /// <summary>The types offered for this field (a loaded choice field keeps its own type, which has no raw editor).</summary>
+    public IReadOnlyList<string> TypeOptions { get; init; } = RawEditorViewModel.FieldTypeOptions;
+
+    /// <summary>A password of a saved command that the server keeps; an empty value keeps it.</summary>
+    public bool HasStoredValue { get; init; }
+
+    public string ValuePlaceholder => HasStoredValue ? "Stored value kept when empty" : "Value";
+
     /// <summary>The problem of this field (label, type, default), shown in its row once the request was checked.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
@@ -56,8 +65,10 @@ public sealed partial class RawFieldViewModel : ObservableObject
 
 /// <summary>
 /// Postman-like raw request editor: method, path, query and header tables, body (json/form/text/xml), timeout and
-/// response kind. "Make field" turns a value into a {{placeholder}}; placeholders typed by hand get a field
-/// automatically. "Save as command" builds a format-v1 command (requires prefilled from the path).
+/// response kind, plus the command details (name, category, description, required API, changes the device, dangerous).
+/// "Make field" turns a value into a {{placeholder}}; placeholders typed by hand get a field automatically, removing a
+/// field puts its value back in place of the placeholder. The request builder dialog (<see cref="RequestBuilderViewModel"/>)
+/// owns it: <see cref="Load"/> fills it from a command, Send uses <see cref="Build"/> without the details, Save with them.
 /// </summary>
 public sealed partial class RawEditorViewModel : ValidatingViewModel
 {
@@ -101,6 +112,12 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
     private bool _writesEdited;
     private bool _suppressEdits;
 
+    /// <summary>The saved command being edited (keeps what the raw editor does not show: choices, limits, extracts).</summary>
+    private CommandDefinition? _original;
+
+    /// <summary>Fields whose placeholder disappeared while typing: they come back with their label, type and value.</summary>
+    private readonly Dictionary<string, RawFieldViewModel> _dropped = new(StringComparer.Ordinal);
+
     public RawEditorViewModel()
     {
         QueryRows.CollectionChanged += (_, e) => RowsChanged(e.NewItems);
@@ -122,10 +139,9 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
                 };
             }
         };
-        QueryRows.Add(new KeyValueRowViewModel { Key = "action", Value = "list" });
-        QueryRows.Add(new KeyValueRowViewModel { Key = "group", Value = "Brand" });
+        // "Start from scratch": an empty request (the path field shows an example).
         ApplyPathDefaults();
-        Validation.Rules(RawFields, () => MapProblems(BuildCore(IsSaveOpen).Problems));
+        Validation.Rules(RawFields, () => MapProblems(BuildCore(forSave: true).Problems));
         Validation.Validate();
     }
 
@@ -135,18 +151,24 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
     /// <summary>Error of the header table (below it).</summary>
     public string? HeaderRowsError => ErrorOf(HeaderRowsKey);
 
-    /// <summary>Why "Add to rollout" / Save are disabled (tooltip).</summary>
+    /// <summary>Why Save is disabled (tooltip).</summary>
     public string? BlockedReason => FormError;
 
     /// <summary>
-    /// Send, Add to rollout or Save was tried: every problem shows below its input (or in its table / field row).
-    /// Returns true when the request is valid.
+    /// Save (or with <paramref name="forSend"/> Send) was tried: every problem shows below its input (or in its table /
+    /// field row); Send leaves out the name and category, a request sent once needs none. Returns true when valid.
     /// </summary>
-    public bool ShowProblems()
+    public bool ShowProblems(bool forSend = false)
     {
         SyncFields();
-        Validation.ShowAll();
-        return Validation.IsValid;
+        if (!forSend)
+        {
+            Validation.ShowAll();
+            return Validation.IsValid;
+        }
+
+        Validation.ShowAll([.. RawFields.Where(f => f is not nameof(SaveName) and not nameof(SaveCategory))]);
+        return BuildCore(forSave: false).Problems.Count == 0;
     }
 
     protected override void OnValidationChanged()
@@ -160,7 +182,6 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
             field.Error = problems.GetValueOrDefault(field.Name);
         }
 
-        SaveCommand.NotifyCanExecuteChanged();
     }
 
     private Dictionary<string, string> _fieldProblems = new(StringComparer.Ordinal);
@@ -172,7 +193,7 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
         var fieldProblems = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var problem in problems)
         {
-            var key = KeyOf(problem, IsSaveOpen);
+            var key = KeyOf(problem);
             if (key == FieldsKey && FieldNameOf(problem) is { } name)
             {
                 fieldProblems.TryAdd(name, problem);
@@ -186,14 +207,13 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
     }
 
     /// <summary>The input a validator message is about.</summary>
-    internal static string KeyOf(string problem, bool saveOpen)
+    internal static string KeyOf(string problem)
     {
         ArgumentNullException.ThrowIfNull(problem);
         bool Has(string text) => problem.Contains(text, StringComparison.OrdinalIgnoreCase);
         if (Has("required API") || Has("Minimum version"))
         {
-            // The required API is edited in the save form; for a plain request it follows the path.
-            return !saveOpen ? nameof(Path) : Has("Minimum version") ? nameof(RequiresVersion) : nameof(RequiresApi);
+            return Has("Minimum version") ? nameof(RequiresVersion) : nameof(RequiresApi);
         }
 
         return problem switch
@@ -234,7 +254,7 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
     public partial string Method { get; set; } = "GET";
 
     [ObservableProperty]
-    public partial string Path { get; set; } = "/axis-cgi/param.cgi";
+    public partial string Path { get; set; } = string.Empty;
 
     public ObservableCollection<KeyValueRowViewModel> QueryRows { get; } = [];
 
@@ -269,44 +289,90 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
     };
 
     /// <summary>
-    /// Reset: a fresh request (GET param.cgi list Brand, no headers, no body, no fields, default timeout and response),
-    /// the save form closed and empty, nothing marked as edited.
+    /// Fills the editor from a library or saved command: the request, its fields with their defaults and the details.
+    /// What the editor does not show (choices, limits, docs, extracts) is kept for the save.
     /// </summary>
-    [RelayCommand]
-    private void Reset()
+    public void Load(CommandListItem item)
     {
+        ArgumentNullException.ThrowIfNull(item);
+        var command = item.Command;
         _suppressEdits = true;
         try
         {
-            IsSaveOpen = false;
-            Method = "GET";
-            Path = "/axis-cgi/param.cgi";
+            Method = command.Request.Method;
+            Path = command.Request.Path;
             QueryRows.Clear();
-            QueryRows.Add(new KeyValueRowViewModel { Key = "action", Value = "list" });
-            QueryRows.Add(new KeyValueRowViewModel { Key = "group", Value = "Brand" });
+            foreach (var (key, value) in command.Request.Query ?? [])
+            {
+                QueryRows.Add(new KeyValueRowViewModel { Key = key, Value = value });
+            }
+
             HeaderRows.Clear();
-            BodyType = BodyTypes.None;
-            BodyText = string.Empty;
+            foreach (var (key, value) in command.Request.Headers ?? [])
+            {
+                HeaderRows.Add(new KeyValueRowViewModel { Key = key, Value = value });
+            }
+
+            BodyType = command.Request.Body is null ? command.Request.EffectiveBodyType
+                : string.IsNullOrEmpty(command.Request.BodyType) ? BodyTypes.Json : command.Request.BodyType;
+            BodyText = BodyTextOf(BodyType, command.Request.Body);
             Fields.Clear();
-            TimeoutSeconds = CommandLimits.DefaultTimeoutSeconds;
-            SaveName = string.Empty;
-            SaveCategory = CommandCategories.Custom;
-            SaveDescription = string.Empty;
-            Dangerous = false;
+            foreach (var field in command.Fields)
+            {
+                Fields.Add(new RawFieldViewModel
+                {
+                    Name = field.Name,
+                    Label = field.Label,
+                    Type = field.Type,
+                    Value = DefaultText(field.Default),
+                    TypeOptions = FieldTypeOptions.Contains(field.Type) ? FieldTypeOptions : [.. FieldTypeOptions, field.Type],
+                    HasStoredValue = item.StoredSecretFields.Contains(field.Name),
+                });
+            }
+
+            TimeoutSeconds = command.Request.EffectiveTimeoutSeconds;
+            ResponseKind = command.Response.Kind;
+            SaveName = command.Name;
+            SaveCategory = string.IsNullOrEmpty(command.Category) ? CommandCategories.Custom : command.Category;
+            SaveDescription = command.Description ?? string.Empty;
+            RequiresApi = command.Requires.FirstOrDefault()?.Api ?? string.Empty;
+            RequiresVersion = command.Requires.FirstOrDefault()?.MinVersion ?? string.Empty;
+            Writes = command.Writes;
+            Dangerous = command.Dangerous;
         }
         finally
         {
             _suppressEdits = false;
         }
 
-        _requiresEdited = false;
-        _kindEdited = false;
-        _writesEdited = false;
-        ApplyPathDefaults();
-        OnPropertyChanged(nameof(HasFields));
+        // The saved values win over the defaults derived from the path.
+        _requiresEdited = true;
+        _kindEdited = true;
+        _writesEdited = true;
+        _original = command.Clone();
+        _dropped.Clear();
+        SyncFields();
         Validation.Reset();
         Validation.Validate();
     }
+
+    private static string BodyTextOf(string bodyType, JsonNode? body) => body switch
+    {
+        null => string.Empty,
+        JsonValue value when value.TryGetValue<string>(out var text) => text,
+        JsonObject form when bodyType == BodyTypes.Form => string.Join("\n", form.Select(p => p.Key + "=" + (p.Value is JsonValue v && v.TryGetValue<string>(out var s) ? s : p.Value?.ToJsonString()))),
+        _ => body.ToJsonString(IndentedJson),
+    };
+
+    private static readonly JsonSerializerOptions IndentedJson = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    private static string DefaultText(JsonElement? value) => value switch
+    {
+        null => string.Empty,
+        { ValueKind: JsonValueKind.String } s => s.GetString() ?? string.Empty,
+        { ValueKind: JsonValueKind.Null or JsonValueKind.Undefined } => string.Empty,
+        { } other => other.GetRawText(),
+    };
 
     /// <summary>
     /// The request headers section: not needed for GET (Axis GET requests carry everything in path and query), so it is
@@ -324,10 +390,7 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
 
     public bool HasFields => Fields.Count > 0;
 
-    // "Save as command"
-    [ObservableProperty]
-    public partial bool IsSaveOpen { get; set; }
-
+    // Command details
     [ObservableProperty]
     public partial string SaveName { get; set; } = string.Empty;
 
@@ -349,14 +412,17 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial bool Dangerous { get; set; }
 
-    /// <summary>The page saves the built command (<see cref="CommanderViewModel"/> handles it).</summary>
-    public event EventHandler<CommandDefinition>? SaveRequested;
-
     partial void OnPathChanged(string value) => ApplyPathDefaults();
 
     partial void OnMethodChanged(string value) => ApplyPathDefaults();
 
-    partial void OnBodyTextChanged(string value) => SyncFields();
+    partial void OnBodyTextChanged(string value)
+    {
+        if (!_suppressEdits)
+        {
+            SyncFields();
+        }
+    }
 
     partial void OnRequiresApiChanged(string value) => _requiresEdited |= !_suppressEdits;
 
@@ -369,12 +435,13 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
     [RelayCommand]
     private void AddQueryRow() => QueryRows.Add(new KeyValueRowViewModel());
 
+    /// <summary>Removes a query row (the row's own button passes it; null = the selected row).</summary>
     [RelayCommand]
-    private void RemoveQueryRow()
+    private void RemoveQueryRow(KeyValueRowViewModel? row)
     {
-        if (SelectedQueryRow is { } row)
+        if ((row ?? SelectedQueryRow) is { } remove)
         {
-            QueryRows.Remove(row);
+            QueryRows.Remove(remove);
             SyncFields();
         }
     }
@@ -383,64 +450,69 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
     private void AddHeaderRow() => HeaderRows.Add(new KeyValueRowViewModel());
 
     [RelayCommand]
-    private void RemoveHeaderRow()
+    private void RemoveHeaderRow(KeyValueRowViewModel? row)
     {
-        if (SelectedHeaderRow is { } row)
+        if ((row ?? SelectedHeaderRow) is { } remove)
         {
-            HeaderRows.Remove(row);
+            HeaderRows.Remove(remove);
             SyncFields();
         }
     }
 
-    /// <summary>Turns the selected query value into a {{placeholder}} field (name from the key, type from the value).</summary>
+    /// <summary>Turns a row's value into a {{placeholder}} field (name from the key, type from the value).</summary>
     [RelayCommand]
-    private void MakeQueryField()
+    private void MakeRowField(KeyValueRowViewModel? row)
     {
-        if (SelectedQueryRow is { } row)
+        if (row is not null)
         {
             MakeField(row);
         }
     }
 
+    /// <summary>
+    /// Removes a field: every {{placeholder}} of it becomes its value again (the reverse of Make field). In a JSON body a
+    /// value that was exactly the placeholder becomes a typed value (number, true / false).
+    /// </summary>
     [RelayCommand]
-    private void MakeHeaderField()
+    private void RemoveField(RawFieldViewModel? field)
     {
-        if (SelectedHeaderRow is { } row)
+        if (field is null || !Fields.Contains(field))
         {
-            MakeField(row);
+            return;
         }
+
+        var placeholder = field.Placeholder;
+        var value = field.IsPassword ? string.Empty : field.Value;
+        _suppressEdits = true;
+        try
+        {
+            Path = Path.Replace(placeholder, value, StringComparison.Ordinal);
+            foreach (var row in QueryRows.Concat(HeaderRows))
+            {
+                row.Key = row.Key.Replace(placeholder, value, StringComparison.Ordinal);
+                row.Value = row.Value.Replace(placeholder, value, StringComparison.Ordinal);
+            }
+
+            BodyText = BodyType switch
+            {
+                BodyTypes.Json => BodyText
+                    .Replace("\"" + placeholder + "\"", ToField(field).Default is { } typed ? typed.GetRawText() : "\"\"", StringComparison.Ordinal)
+                    .Replace(placeholder, JsonEncodedText.Encode(value, JavaScriptEncoder.UnsafeRelaxedJsonEscaping).ToString(), StringComparison.Ordinal),
+                BodyTypes.Xml => BodyText.Replace(placeholder, System.Security.SecurityElement.Escape(value), StringComparison.Ordinal),
+                _ => BodyText.Replace(placeholder, value, StringComparison.Ordinal),
+            };
+            Fields.Remove(field);
+        }
+        finally
+        {
+            _suppressEdits = false;
+        }
+
+        _dropped.Remove(field.Name);
+        SyncFields();
+        ApplyPathDefaults();
+        Validation.Validate();
     }
-
-    [RelayCommand]
-    private void OpenSave()
-    {
-        IsSaveOpen = true;
-        if (string.IsNullOrWhiteSpace(SaveName))
-        {
-            SaveName = Method + " " + Path;
-        }
-    }
-
-    [RelayCommand]
-    private void CancelSave() => IsSaveOpen = false;
-
-    [RelayCommand(CanExecute = nameof(IsFormValid))]
-    private void Save()
-    {
-        if (!ShowProblems())
-        {
-            return; // every problem is shown below its input
-        }
-
-        var (command, problems) = Build(forSave: true);
-        if (problems.Count == 0)
-        {
-            SaveRequested?.Invoke(this, command);
-        }
-    }
-
-    /// <summary>Called by the page after a successful save.</summary>
-    public void SaveCompleted() => IsSaveOpen = false;
 
     /// <summary>Turns a row's value into a placeholder; returns the new field.</summary>
     public RawFieldViewModel? MakeField(KeyValueRowViewModel row)
@@ -497,14 +569,28 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
                 break;
         }
 
+        // A saved command keeps what the editor does not show (further requirements, docs, extracts of the same kind).
+        var original = forSave ? _original : null;
+        var requires = string.IsNullOrWhiteSpace(RequiresApi) ? new List<ApiRequirement>() : [new ApiRequirement { Api = RequiresApi.Trim(), MinVersion = RequiresVersion.Trim() }];
+        requires.AddRange(original?.Requires.Skip(1) ?? []);
+        var response = new CommandResponse { Kind = ResponseKind };
+        if (original?.Response is { } kept && kept.Kind == ResponseKind)
+        {
+            response.Success = kept.Success;
+            response.ErrorPattern = kept.ErrorPattern;
+            response.Extract = kept.Extract;
+        }
+
         var command = new CommandDefinition
         {
             Id = forSave ? string.Empty : "raw.request",
-            Version = 1,
+            Version = original?.Version ?? 1,
+            Docs = original?.Docs,
+            HasVideoOnly = original?.HasVideoOnly ?? false,
             Name = forSave ? SaveName.Trim() : "Raw request",
             Category = forSave ? SaveCategory : CommandCategories.Custom,
             Description = forSave && !string.IsNullOrWhiteSpace(SaveDescription) ? SaveDescription.Trim() : null,
-            Requires = string.IsNullOrWhiteSpace(RequiresApi) ? [] : [new ApiRequirement { Api = RequiresApi.Trim(), MinVersion = RequiresVersion.Trim() }],
+            Requires = requires,
             Writes = Writes,
             Dangerous = Dangerous,
             Fields = [.. Fields.Select(ToField)],
@@ -520,7 +606,7 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
                 Body = body,
                 TimeoutSeconds = TimeoutSeconds is { } t ? (int)t : null,
             },
-            Response = new CommandResponse { Kind = ResponseKind },
+            Response = response,
         };
 
         // The id is generated by the server on save; the raw request needs no name. Checked also when the body does
@@ -551,26 +637,56 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
             .Concat(Placeholders.In(BodyText))
             .Distinct(StringComparer.Ordinal)
             .ToList();
-        foreach (var name in used.Where(n => Fields.All(f => f.Name != n)))
+        var added = used.Where(n => Fields.All(f => f.Name != n)).ToList();
+        var stale = Fields.Where(f => !used.Contains(f.Name)).ToList();
+
+        // One placeholder renamed while typing ({{act}} -> {{action}}): the field keeps its label, type and value.
+        if (added.Count == 1 && stale.Count == 1 && !_dropped.ContainsKey(added[0]))
         {
-            Fields.Add(new RawFieldViewModel { Name = name, Label = Labelize(name) });
+            var renamed = stale[0];
+            if (renamed.Label == Labelize(renamed.Name))
+            {
+                renamed.Label = Labelize(added[0]);
+            }
+
+            renamed.Name = added[0];
+            added.Clear();
+            stale.Clear();
         }
 
-        foreach (var stale in Fields.Where(f => !used.Contains(f.Name)).ToList())
+        foreach (var name in added)
         {
-            Fields.Remove(stale);
+            Fields.Add(_dropped.Remove(name, out var back) ? back : new RawFieldViewModel { Name = name, Label = Labelize(name) });
+        }
+
+        foreach (var field in stale)
+        {
+            // Kept: a placeholder broken while typing ("{{action}" ) comes back with its settings.
+            _dropped[field.Name] = field;
+            Fields.Remove(field);
         }
 
         OnPropertyChanged(nameof(HasFields));
     }
 
-    private static CommandField ToField(RawFieldViewModel field)
+    /// <summary>The field as saved; a field of the edited command keeps what the editor does not show (choices, limits, unit).</summary>
+    private CommandField ToField(RawFieldViewModel field)
     {
+        var kept = _original?.Fields.FirstOrDefault(f => f.Name == field.Name && f.Type == field.Type);
         var result = new CommandField
         {
             Name = field.Name,
             Label = string.IsNullOrWhiteSpace(field.Label) ? field.Name : field.Label,
             Type = field.Type,
+            Description = kept?.Description,
+            Required = kept?.Required,
+            Min = kept?.Min,
+            Max = kept?.Max,
+            Pattern = kept?.Pattern,
+            Unit = kept?.Unit,
+            TrueValue = kept?.TrueValue,
+            FalseValue = kept?.FalseValue,
+            Options = kept?.Options,
         };
         if (!string.IsNullOrEmpty(field.Value))
         {
@@ -579,6 +695,7 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
                 FieldTypes.Integer when long.TryParse(field.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l) => JsonSerializer.SerializeToElement(l),
                 FieldTypes.Number when double.TryParse(field.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) => JsonSerializer.SerializeToElement(d),
                 FieldTypes.Boolean => JsonSerializer.SerializeToElement(field.Value is "yes" or "true" or "1" or "on"),
+                FieldTypes.Enum when kept?.Options?.FirstOrDefault(o => DefaultText(o.Value) == field.Value) is { } option => option.Value,
                 _ => JsonSerializer.SerializeToElement(field.Value),
             };
         }

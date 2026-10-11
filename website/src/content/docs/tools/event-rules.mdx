@@ -8,6 +8,8 @@ import { Image } from 'astro:assets';
 import page from '../../../assets/screens/event-rules-page.png';
 import editor from '../../../assets/screens/event-rules-editor-when.png';
 import overview from '../../../assets/screens/event-rules-editor-overview.png';
+import httpAction from '../../../assets/screens/event-rules-http-action.png';
+import emailAction from '../../../assets/screens/event-rules-email-action-2.png';
 
 An event rule says: **when** this happens, **then** do that. For example: while a camera reports blur during working
 hours, switch on the warning lamp on the I/O box and show an overlay on the camera.
@@ -25,7 +27,7 @@ Administrators create and change rules. Operators see the rules and the event lo
 1. Open **Event rules** in the navigation rail and click **New rule**. The rule is made in four steps; **Next** goes
    on once a step is complete.
 
-2. **Rule**: enter a name. **Dead time** and **Flood limit** can stay as they are.
+2. **Rule**: enter a name. **Dead time** and **Max per minute** can stay as they are.
 
 3. **When**: choose the event, then the devices with the purple button (**Choose devices**, later **Selected devices**): all devices, or any mix of tags and single devices. A tag also
    covers devices you tag later. Add more conditions if you need them. They all must hold:
@@ -65,6 +67,28 @@ hold, and some actions can undo themselves when the rule turns **off**.
   dangerous need **Allow dangerous commands**.
   Text fields of the saved command can use the event's values: type `{carID}`, `{port}` or `{device}` as the field's
   value and OADM fills it in when the rule runs. The info icon next to an event lists its values.
+- **Send HTTP request**: calls a web service, for example a webhook of Teams or Slack or a building system. Method, URL,
+  query parameters, headers, a login (Basic, Digest or a token) and a body as JSON, XML, text or form.
+  **Allow untrusted certificates** accepts a self-signed certificate on the receiving side.
+- **Send email**: sends a mail through your mail server, as text or HTML. The mail server is part of the action.
+
+Email and HTTP run once each time the rule turns on or fires. Check **Also send when the rule turns off** for a second
+message when it ends; `{state}` tells which one it is.
+
+### Placeholders
+
+Every text of an action can hold placeholders that OADM fills in when the rule runs: the rule, the event, the device
+(address, host name, model, serial number, MAC address, AXIS OS, tags, a link to its web interface) and every value of the
+event, for example `{objectId}`. The **Placeholders** card next to the actions lists them; the icon copies one.
+
+In a JSON, XML or HTML body OADM escapes each value, so `"objectID": "{objectId}"` stays valid whatever the event sends.
+
+**Send test** sends the email or the request once right away. The event's values are filled in with sample values, the
+device is the first one the trigger uses.
+
+<Image src={httpAction} alt="Send HTTP request with a JSON body, headers and the placeholders" class="screen" />
+
+<Image src={emailAction} alt="Send email with an HTML body" class="screen" />
 
 When several devices turn a rule on, an action on chosen devices (the lamp on the I/O box) switches on with the first
 one and off when the last one ends.

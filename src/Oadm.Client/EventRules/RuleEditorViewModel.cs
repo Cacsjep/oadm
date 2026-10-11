@@ -207,7 +207,7 @@ public sealed partial class RuleActionViewModel : ObservableObject
     public IReadOnlyList<ActionOption> Actions => _owner.Actions;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowTargets), nameof(Description))]
+    [NotifyPropertyChangedFor(nameof(ShowTargets), nameof(Description), nameof(CanTest))]
     public partial ActionOption? SelectedAction { get; set; }
 
     public DeviceSelectorViewModel Targets { get; }
@@ -246,6 +246,60 @@ public sealed partial class RuleActionViewModel : ObservableObject
 
     public bool HasFieldErrors => Fields.Any(f => f.IsVisible && f.Problem is not null);
 
+    /// <summary>"Send test": only actions without devices (email, HTTP); device actions would change devices.</summary>
+    public bool CanTest => SelectedAction?.Entry is { NeedsDevice: false, Available: true };
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasTestResult))]
+    public partial string? TestResult { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TestFailed))]
+    public partial bool TestOk { get; set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(TestCommand))]
+    [NotifyPropertyChangedFor(nameof(TestFailed))]
+    public partial bool IsTesting { get; set; }
+
+    public bool TestFailed => !TestOk && !IsTesting;
+
+    public bool HasTestResult => TestResult is not null;
+
+    /// <summary>Sends the action once now with sample values for the event (the server fills the placeholders).</summary>
+    [RelayCommand(CanExecute = nameof(NotTesting))]
+    private async Task TestAsync()
+    {
+        RefreshFields(_owner.IsStateful);
+        if (HasFieldErrors)
+        {
+            ShowAllErrors();
+            TestResult = "Fix the settings first.";
+            TestOk = false;
+            return;
+        }
+
+        IsTesting = true;
+        TestResult = "Sending";
+        try
+        {
+            var reply = await _owner.TestActionAsync(this).ConfigureAwait(true);
+            TestOk = reply.Ok;
+            TestResult = reply.Message;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            TestOk = false;
+            TestResult = ex is Grpc.Core.RpcException rpc ? rpc.Status.Detail : ex.Message;
+        }
+        finally
+        {
+            IsTesting = false;
+        }
+    }
+
+    private bool NotTesting() => !IsTesting;
+
     [RelayCommand]
     private void Remove() => _owner.RemoveAction(this);
 
@@ -263,6 +317,7 @@ public sealed partial class RuleActionViewModel : ObservableObject
         }
 
         ShowErrors = true;
+        TestResult = null;
         BuildFields(null);
         _owner.Revalidate();
     }
@@ -304,6 +359,10 @@ public sealed partial class RuleActionViewModel : ObservableObject
         {
             field.IsVisible = ActionSettings.IsVisible(field.Field, settings, statefulRule);
             field.Problem = field.LoadError ?? errors.GetValueOrDefault(field.Key);
+            if (field.IsCode)
+            {
+                field.Language = ActionFieldViewModel.LanguageOf(field.Field.Language ?? (field.Field.LanguageKey is { } key ? ActionSettings.Text(settings, key) : null));
+            }
         }
 
         OnPropertyChanged(nameof(Error));
@@ -331,6 +390,7 @@ public sealed partial class RuleActionViewModel : ObservableObject
 
             settings[field.Key] = field.Field.Type switch
             {
+                ActionFieldType.KeyValues => field.RowsJson(),
                 ActionFieldType.Number when int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) => JsonValue.Create(n),
                 ActionFieldType.Bool => JsonValue.Create(field.IsChecked),
                 _ => JsonValue.Create(value),
@@ -350,7 +410,7 @@ public sealed partial class RuleActionViewModel : ObservableObject
         }
 
         var settings = Fields
-            .Where(f => f.IsVisible && !f.IsPassword)
+            .Where(f => f.IsVisible && !f.IsPassword && !f.IsCode && !f.IsKeyValues)
             .Select(f => (f.Label, Text: f.IsBool ? (f.IsChecked ? "Yes" : "No") : f.IsChoice ? f.SelectedChoice?.Text ?? string.Empty : f.Text.Trim()))
             .Where(f => f.Text.Length > 0)
             .Select(f => $"{f.Label}: {f.Text}")
@@ -601,7 +661,7 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
             lines.Add(new("Then", action.Summary()));
         }
 
-        lines.Add(new("Limits", string.Create(CultureInfo.CurrentCulture, $"Dead time {Cooldown.Trim()} s, flood limit {MaxRuns.Trim()} runs per minute")));
+        lines.Add(new("Limits", string.Create(CultureInfo.CurrentCulture, $"Dead time {Cooldown.Trim()} s, max {MaxRuns.Trim()} per minute")));
         Overview.Clear();
         foreach (var line in lines)
         {
@@ -732,6 +792,63 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
     }
 
     /// <summary>
+    /// The placeholder panel of the Then step (user decision 2026-10-11: a list with copy buttons): the values of the
+    /// trigger, then the rule and the device (<see cref="ActionPlaceholders.Fixed"/>). Rebuilt when the trigger changes.
+    /// </summary>
+    [ObservableProperty] public partial IReadOnlyList<PlaceholderGroup> PlaceholderGroups { get; private set; } = [];
+
+    private string? _placeholderTrigger = "\0";
+
+    private void RefreshPlaceholders()
+    {
+        var type = Trigger?.SelectedEventType?.Entry;
+        if (_placeholderTrigger == type?.Id)
+        {
+            return;
+        }
+
+        _placeholderTrigger = type?.Id;
+        var groups = new List<PlaceholderGroup>();
+        var fixedNames = ActionPlaceholders.Fixed.Select(p => p.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (type is not null && type.Fields.Any(f => !fixedNames.Contains(f.Name)))
+        {
+            groups.Add(new PlaceholderGroup(
+                "Event: " + type.DisplayName,
+                [.. type.Fields.Where(f => !fixedNames.Contains(f.Name)).Select(f => new PlaceholderItem("{" + f.Name + "}", f.DisplayName))]));
+        }
+
+        foreach (var group in ActionPlaceholders.Fixed.GroupBy(p => p.Group))
+        {
+            groups.Add(new PlaceholderGroup(group.Key, [.. group.Select(p => new PlaceholderItem(p.Text, p.Description))]));
+        }
+
+        PlaceholderGroups = groups;
+    }
+
+    /// <summary>
+    /// "Send test" of an action without devices: the server sends it once with sample values for the trigger's values; the
+    /// device of the event is the first chosen device of the trigger, else the first device.
+    /// </summary>
+    internal Task<TestActionReply> TestActionAsync(RuleActionViewModel action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        var device = Trigger?.Selector.ChosenIds.FirstOrDefault() is { } chosen && chosen != Guid.Empty ? chosen
+            : DeviceList.Count > 0 ? DeviceList[0].Id : Guid.Empty;
+        return _api.TestEventActionAsync(
+            new TestActionRequest
+            {
+                ActionId = action.SelectedAction?.Id ?? string.Empty,
+                SettingsJson = action.Settings().ToJsonString(),
+                RuleName = Name.Trim(),
+                RuleId = IsNew ? string.Empty : _original.Id.ToString(),
+                ActionKey = action.Key.ToString(),
+                EventTypeId = Trigger?.SelectedEventType?.Id ?? string.Empty,
+                DeviceId = device == Guid.Empty ? string.Empty : device.ToString(),
+            },
+            CancellationToken.None);
+    }
+
+    /// <summary>
     /// Fills a list the action provides (fire and forget: every error ends as the field's problem, nothing escapes).
     /// </summary>
     internal async Task LoadChoicesAsync(string actionId, ActionFieldViewModel field)
@@ -765,6 +882,7 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
         try
         {
             var stateful = IsStateful;
+            RefreshPlaceholders();
             for (var i = 0; i < RuleActions.Count; i++)
             {
                 RuleActions[i].Title = string.Create(CultureInfo.InvariantCulture, $"Action {i + 1}");

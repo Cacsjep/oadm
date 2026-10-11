@@ -120,9 +120,11 @@ public static class CodeText
 
     /// <summary>
     /// Prepares <paramref name="text"/> for display. <paramref name="format"/> false keeps the text exactly as it is
-    /// (still highlighted when it parses). Never throws for any input.
+    /// (still highlighted when it parses). <paramref name="colorUnparsed"/>: JSON and XML that do not parse are still
+    /// colored token by token (the code editor while typing, an HTML body with several elements). Never throws for any input.
     /// </summary>
-    public static CodeDocument Prepare(string? text, CodeLanguage language = CodeLanguage.Auto, string? contentType = null, bool format = true, int highlightLimit = DefaultHighlightLimit)
+    public static CodeDocument Prepare(string? text, CodeLanguage language = CodeLanguage.Auto, string? contentType = null, bool format = true,
+        int highlightLimit = DefaultHighlightLimit, bool colorUnparsed = false)
     {
         if (string.IsNullOrEmpty(text))
         {
@@ -140,13 +142,13 @@ public static class CodeText
             case CodeLanguage.Json:
             case CodeLanguage.Xml:
                 var pretty = text.Length > MaxFormatChars ? null : language == CodeLanguage.Json ? FormatJson(text) : FormatXml(text);
-                if (pretty is null)
+                if (pretty is null && !colorUnparsed)
                 {
                     // Does not parse (or is too large to check): exactly the device text, no colors.
                     return new CodeDocument(text, CodeLanguage.Plain, []);
                 }
 
-                shown = format ? pretty : text;
+                shown = format && pretty is not null ? pretty : text;
                 break;
             case CodeLanguage.KeyValue:
                 shown = text;

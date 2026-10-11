@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Text.Json.Nodes;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -240,6 +241,20 @@ public sealed partial class ActionFieldViewModel : ObservableObject
 
     public bool IsPassword => Entry.Kind == ActionFieldKind.ActionFieldPassword;
 
+    /// <summary>A body with a format (JSON, XML, HTML, text) in the code editor.</summary>
+    public bool IsCode => Entry.Kind == ActionFieldKind.ActionFieldCode;
+
+    /// <summary>Rows of name and value (headers, query parameters).</summary>
+    public bool IsKeyValues => Entry.Kind == ActionFieldKind.ActionFieldKeyValues;
+
+    /// <summary>How the code editor colors the body; follows the field <see cref="ActionField.LanguageKey"/>.</summary>
+    [ObservableProperty] public partial CodeLanguage Language { get; set; } = CodeLanguage.Plain;
+
+    /// <summary>The rows of a <see cref="IsKeyValues"/> field.</summary>
+    public ObservableCollection<KeyValueEntry> Rows { get; } = [];
+
+    public bool HasRows => Rows.Count > 0;
+
     public ObservableCollection<ChoiceOption<string>> Choices { get; } = [];
 
     [ObservableProperty] public partial string Text { get; set; } = string.Empty;
@@ -270,11 +285,68 @@ public sealed partial class ActionFieldViewModel : ObservableObject
     public partial bool PasswordStored { get; set; }
 
     /// <summary>The value as text for the settings JSON ("" = empty).</summary>
-    public string Value => IsBool ? (IsChecked ? "true" : "false") : IsChoice ? SelectedChoice?.Value ?? string.Empty : Text;
+    public string Value => IsBool ? (IsChecked ? "true" : "false") : IsChoice ? SelectedChoice?.Value ?? string.Empty : IsKeyValues ? RowsJson().ToJsonString() : Text;
+
+    /// <summary>The rows as the settings store them: [{"name", "value"}], rows that are completely empty left out.</summary>
+    public JsonArray RowsJson() =>
+        [.. Rows.Where(r => r.Name.Trim().Length > 0 || r.Value.Length > 0).Select(r => (JsonNode)new JsonObject { ["name"] = r.Name.Trim(), ["value"] = r.Value })];
+
+    [RelayCommand]
+    private void AddRow()
+    {
+        Rows.Add(NewRow(string.Empty, string.Empty));
+        OnPropertyChanged(nameof(HasRows));
+        Edited();
+    }
+
+    [RelayCommand]
+    private void RemoveRow(KeyValueEntry? row)
+    {
+        if (row is not null && Rows.Remove(row))
+        {
+            OnPropertyChanged(nameof(HasRows));
+            Edited();
+        }
+    }
+
+    private KeyValueEntry NewRow(string name, string value)
+    {
+        var row = new KeyValueEntry { Name = name, Value = value };
+        row.PropertyChanged += (_, _) => Edited();
+        return row;
+    }
+
+    /// <summary>The code editor's coloring for "json", "xml", "html" (as XML), anything else plain.</summary>
+    internal static CodeLanguage LanguageOf(string? language) => language?.ToLowerInvariant() switch
+    {
+        "json" => CodeLanguage.Json,
+        "xml" or "html" => CodeLanguage.Xml,
+        _ => CodeLanguage.Plain,
+    };
 
     public void SetValue(string? value)
     {
-        if (IsBool)
+        if (IsKeyValues)
+        {
+            Rows.Clear();
+            try
+            {
+                if (!string.IsNullOrEmpty(value) && JsonNode.Parse(value) is JsonArray rows)
+                {
+                    foreach (var row in rows.OfType<JsonObject>())
+                    {
+                        Rows.Add(NewRow(row["name"]?.GetValue<string>() ?? string.Empty, row["value"]?.GetValue<string>() ?? string.Empty));
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException or FormatException)
+            {
+                // A broken stored value starts empty; the user sees no rows.
+            }
+
+            OnPropertyChanged(nameof(HasRows));
+        }
+        else if (IsBool)
         {
             IsChecked = string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
         }
@@ -339,6 +411,22 @@ public sealed partial class ActionFieldViewModel : ObservableObject
         OffEdge = entry.OffEdge,
         VisibleWhenKey = entry.VisibleWhenKey.Length == 0 ? null : entry.VisibleWhenKey,
         VisibleWhenValue = entry.VisibleWhenValue.Length == 0 ? null : entry.VisibleWhenValue,
+        Language = entry.Language.Length == 0 ? null : entry.Language,
+        LanguageKey = entry.LanguageKey.Length == 0 ? null : entry.LanguageKey,
         Choices = [.. entry.Choices.Select(c => new ActionChoice(c.Value, c.Label))],
     };
 }
+
+/// <summary>One row of a name and value list (an HTTP header, a query parameter).</summary>
+public sealed partial class KeyValueEntry : ObservableObject
+{
+    [ObservableProperty] public partial string Name { get; set; } = string.Empty;
+
+    [ObservableProperty] public partial string Value { get; set; } = string.Empty;
+}
+
+/// <summary>A placeholder in the panel of the rule dialog: "{objectId}" and what it is.</summary>
+public sealed record PlaceholderItem(string Text, string Description);
+
+/// <summary>A group of the placeholder panel: Rule, Device, the trigger's values.</summary>
+public sealed record PlaceholderGroup(string Title, IReadOnlyList<PlaceholderItem> Items);

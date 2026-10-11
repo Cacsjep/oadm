@@ -1,0 +1,8 @@
+{
+  "id": "oadm.notifications",
+  "version": "0.1.0",
+  "minSdkVersion": "0.1.0",
+  "displayName": "Notifications",
+  "description": "Event rule actions that send an email or an HTTP request.",
+  "alwaysOn": true
+}

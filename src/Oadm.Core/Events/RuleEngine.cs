@@ -44,7 +44,7 @@ public sealed record RuleRuntimeStatus(Guid RuleId, int ActiveCount, string? Wai
 /// <item>A stateful rule turns on for a subject when all conditions hold and off when one ends; a stateless trigger
 /// fires while the others hold. Actions on "the device of the event" (and actions without devices) run per subject;
 /// actions on chosen / tag / all devices run when the first subject turns on and when the last one turns off.</item>
-/// <item>Limits per rule: the dead time per subject between two "turns on", and the flood limit (runs per minute). A suppressed "turns on"
+/// <item>Limits per rule: the dead time per subject between two "turns on", and the max runs per minute. A suppressed "turns on"
 /// also suppresses its "turns off".</item>
 /// <item>Restart: the subjects a rule was on for are stored. A rule is evaluated once every event type it uses is ready
 /// (its source reported with ReplaceStates, or the source is off, or <see cref="RuleEngineOptions.SourceReadyTimeout"/>
@@ -737,10 +737,10 @@ public sealed partial class RuleEngine : IAsyncDisposable
             {
                 runtime.LastPauseLog = now;
                 _log.Write(EventLogKind.System, EventLogResult.Skipped, "Rule paused", ruleId: runtime.Id, rule: runtime.Name,
-                    message: string.Create(CultureInfo.InvariantCulture, $"Flood limit: at most {runtime.Definition.MaxRunsPerMinute} runs per minute"));
+                    message: string.Create(CultureInfo.InvariantCulture, $"Max per minute: at most {runtime.Definition.MaxRunsPerMinute} runs per minute"));
             }
 
-            return "Flood limit";
+            return "Max per minute";
         }
 
         runtime.Runs.Enqueue(now);

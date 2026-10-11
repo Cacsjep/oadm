@@ -31,7 +31,7 @@ public static class HeadlessEntry
 public sealed class CommanderViewHeadlessTests
 {
     [Fact]
-    public async Task Commander_page_renders_rollout_set_try_error_and_raw_request()
+    public async Task Commander_page_renders_rollout_set_try_error_and_the_request_builder()
     {
         var dataFolder = Path.Combine(Path.GetTempPath(), "oadm-commander-headless-" + Guid.NewGuid().ToString("N"));
         App.Options = new AppOptions { UseFake = true, DataFolder = dataFolder };
@@ -89,41 +89,58 @@ public sealed class CommanderViewHeadlessTests
                 Capture(window, outDir, "plugin-vapix-commander-try-error.png");
 
                 vm.CloseTryResultCommand.Execute(null);
-                vm.ShowRawCommand.Execute(null);
+                window.Close();
+
+                // The request builder: where to start (new command), then the request.
+                var builder = page.NewBuilder();
+                var dialog = new RequestBuilderWindow();
+                dialog.Attach(builder);
+                dialog.Show();
+                builder.Search = "brand";
+                builder.StartFromExisting = true;
                 Dispatcher.UIThread.RunJobs();
-                vm.Raw.MakeField(vm.Raw.QueryRows[1]);
+                Assert.False(builder.NextCommand.CanExecute(null)); // nothing chosen yet
+                Capture(dialog, outDir, "plugin-vapix-commander-new.png");
+
+                builder.StartFromScratch = true;
+                builder.NextCommand.Execute(null);
+                builder.Raw.SaveName = "Read brand";
+                builder.Raw.FillBrandList().MakeField(builder.Raw.QueryRows[1]);
                 Dispatcher.UIThread.RunJobs();
-                Capture(window, outDir, "plugin-vapix-commander-raw.png");
+                Capture(dialog, outDir, "plugin-vapix-commander-raw.png");
 
                 // A POST with a JSON body: the body editor colors it while typing.
-                vm.Raw.Method = "POST";
-                vm.Raw.Path = "/axis-cgi/daynight.cgi";
-                vm.Raw.BodyType = "json";
-                vm.Raw.BodyText = "{\n  \"apiVersion\": \"1.0\",\n  \"method\": \"setDayNightParams\",\n  \"params\": { \"level\": \"{{level}}\" }\n}";
+                builder.Raw.Method = "POST";
+                builder.Raw.Path = "/axis-cgi/daynight.cgi";
+                builder.Raw.BodyType = "json";
+                builder.Raw.BodyText = "{\n  \"apiVersion\": \"1.0\",\n  \"method\": \"setDayNightParams\",\n  \"params\": { \"level\": \"{{level}}\" }\n}";
                 Dispatcher.UIThread.RunJobs();
-                Capture(window, outDir, "plugin-vapix-commander-raw-json.png");
-                vm.Raw.ResetCommand.Execute(null);
-                vm.Raw.MakeField(vm.Raw.QueryRows[1]);
-                Dispatcher.UIThread.RunJobs();
+                Capture(dialog, outDir, "plugin-vapix-commander-raw-json.png");
+                dialog.Close();
 
-                // Raw editor with errors: each one directly below its input (path, JSON body, field row), save form name.
-                vm.Raw.Path = "axis-cgi/param.cgi";
-                vm.Raw.BodyType = "json";
-                vm.Raw.BodyText = "{ broken";
-                vm.Raw.Fields[0].Label = "";
-                vm.Raw.OpenSaveCommand.Execute(null);
-                vm.Raw.SaveName = "ab";
-                vm.Raw.ShowProblems();
+                // Errors: each one directly below its input (name, path, JSON body, field row).
+                builder = page.NewBuilder();
+                dialog = new RequestBuilderWindow();
+                dialog.Attach(builder);
+                dialog.Show();
+                builder.NextCommand.Execute(null);
+                builder.Raw.FillBrandList().MakeField(builder.Raw.QueryRows[1]);
+                builder.Raw.Path = "axis-cgi/param.cgi";
+                builder.Raw.Method = "POST";
+                builder.Raw.BodyType = "json";
+                builder.Raw.BodyText = "{ broken";
+                builder.Raw.Fields[0].Label = "";
+                builder.Raw.SaveName = "ab";
+                builder.Raw.ShowProblems();
                 Dispatcher.UIThread.RunJobs();
-                Assert.Equal(CommandValidator.PathProblem, vm.Raw.ErrorOf(nameof(vm.Raw.Path)));
-                Assert.StartsWith("The JSON body is not valid", vm.Raw.ErrorOf(nameof(vm.Raw.BodyText)), StringComparison.Ordinal);
-                Assert.Equal("Name must have 3 to 80 characters.", vm.Raw.ErrorOf(nameof(vm.Raw.SaveName)));
-                var pathBox = view.GetVisualDescendants().OfType<TextBox>().Single(t => t.IsEffectivelyVisible && t.Text == "axis-cgi/param.cgi");
+                Assert.Equal(CommandValidator.PathProblem, builder.Raw.ErrorOf(nameof(builder.Raw.Path)));
+                Assert.StartsWith("The JSON body is not valid", builder.Raw.ErrorOf(nameof(builder.Raw.BodyText)), StringComparison.Ordinal);
+                Assert.Equal("Name must have 3 to 80 characters.", builder.Raw.ErrorOf(nameof(builder.Raw.SaveName)));
+                var pathBox = dialog.GetVisualDescendants().OfType<TextBox>().Single(t => t.IsEffectivelyVisible && t.Text == "axis-cgi/param.cgi");
                 Assert.True(DataValidationErrors.GetHasErrors(pathBox));
-                Assert.False(vm.AddRawToRolloutCommand.CanExecute(null));
-                Assert.False(vm.Raw.SaveCommand.CanExecute(null));
-                Capture(window, outDir, "plugin-vapix-commander-raw-errors.png");
-                window.Close();
+                Assert.False(builder.SaveCommand.CanExecute(null));
+                Capture(dialog, outDir, "plugin-vapix-commander-raw-errors.png");
+                dialog.Close();
                 completed = true;
             }, CancellationToken.None);
             Assert.True(completed, "the page checks did not run to the end");
@@ -189,23 +206,29 @@ public sealed class CommanderViewHeadlessTests
                 Assert.Equal(CodeLanguage.KeyValue, body.Document.Language);
                 Capture(window, outDir, "plugin-vapix-commander-try-paramcgi.png");
 
-                // XML from the raw request editor.
-                vm.ShowRawCommand.Execute(null);
-                vm.Raw.Path = "/axis-cgi/disks/list.cgi";
-                vm.Raw.QueryRows.Clear();
-                vm.Raw.QueryRows.Add(new KeyValueRowViewModel { Key = "diskid", Value = "all" });
-                vm.Raw.ResponseKind = ResponseKinds.Xml;
+                window.Close();
+
+                // XML, sent from the request builder.
+                var builder = page.NewBuilder();
+                var dialog = new RequestBuilderWindow();
+                dialog.Attach(builder);
+                dialog.Show();
+                builder.NextCommand.Execute(null);
+                builder.Raw.Path = "/axis-cgi/disks/list.cgi";
+                builder.Raw.QueryRows.Clear();
+                builder.Raw.QueryRows.Add(new KeyValueRowViewModel { Key = "diskid", Value = "all" });
+                builder.Raw.ResponseKind = ResponseKinds.Xml;
                 vapix.Handler = _ => FakeVapix.Text(
                     "<?xml version=\"1.0\" encoding=\"UTF-8\"?><root xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" version=\"1.0\"><!-- edge storage --><disks numberofdisks=\"1\"><disk diskid=\"SD_DISK\" name=\"\" totalsize=\"30535680\" freesize=\"29967360\" cleanuplevel=\"90\" cleanupmaxage=\"7\" group=\"S0\" status=\"OK\" filesystem=\"vfat\" fullaction=\"overwrite\" readonly=\"no\" /><note><![CDATA[Card <A> & more]]></note></disks></root>",
                     HttpStatusCode.OK,
                     "text/xml");
-                await vm.TryCommand.ExecuteAsync(null);
+                await builder.SendCommand.ExecuteAsync(null);
                 Dispatcher.UIThread.RunJobs();
-                body = view.GetVisualDescendants().OfType<CodeView>().First(c => c.IsEffectivelyVisible);
+                body = dialog.GetVisualDescendants().OfType<CodeView>().First(c => c.IsEffectivelyVisible);
                 Assert.Equal(CodeLanguage.Xml, body.Document.Language);
                 Assert.True(body.Document.IsHighlighted);
-                Capture(window, outDir, "plugin-vapix-commander-try-xml.png");
-                window.Close();
+                Capture(dialog, outDir, "plugin-vapix-commander-try-xml.png");
+                dialog.Close();
             }, CancellationToken.None);
         }
         finally

@@ -42,6 +42,15 @@ public enum ActionFieldType
 
     /// <summary>A secret: stored encrypted on the server, never sent back to a client, decrypted only for the run.</summary>
     Password = 6,
+
+    /// <summary>
+    /// A body with a format (JSON, XML, HTML, text), drawn as a code editor colored by <see cref="ActionField.Language"/>
+    /// or by the value of the field <see cref="ActionField.LanguageKey"/> ("json", "xml", "html", "text", "form").
+    /// </summary>
+    Code = 7,
+
+    /// <summary>Rows of name and value (HTTP headers, query parameters); stored as a JSON array of {"name", "value"}.</summary>
+    KeyValues = 8,
 }
 
 /// <summary>A choice of a <see cref="ActionFieldType.Choice"/> or <see cref="ActionFieldType.DynamicChoice"/> field.</summary>
@@ -75,7 +84,14 @@ public sealed record ActionField(string Key, string Label, ActionFieldType Type)
     /// <summary>Shown only while the Choice / Bool field <see cref="VisibleWhenKey"/> has the value <see cref="VisibleWhenValue"/>.</summary>
     public string? VisibleWhenKey { get; init; }
 
+    /// <summary>One value, or several separated by "|" ("basic|digest").</summary>
     public string? VisibleWhenValue { get; init; }
+
+    /// <summary>Fixed language of a <see cref="ActionFieldType.Code"/> field: "json", "xml", "html", "text".</summary>
+    public string? Language { get; init; }
+
+    /// <summary>The field whose value is the language of this <see cref="ActionFieldType.Code"/> field.</summary>
+    public string? LanguageKey { get; init; }
 
     public static ActionField Text(string key, string label, bool required = false, string? defaultValue = null) =>
         new(key, label, ActionFieldType.Text) { Required = required, Default = defaultValue };
@@ -97,6 +113,12 @@ public sealed record ActionField(string Key, string Label, ActionFieldType Type)
 
     public static ActionField Password(string key, string label, bool required = false) =>
         new(key, label, ActionFieldType.Password) { Required = required, MaxLength = 256 };
+
+    public static ActionField Code(string key, string label, string? languageKey = null, bool required = false) =>
+        new(key, label, ActionFieldType.Code) { Required = required, MaxLength = 50_000, LanguageKey = languageKey };
+
+    public static ActionField KeyValues(string key, string label) =>
+        new(key, label, ActionFieldType.KeyValues) { MaxLength = 20_000 };
 }
 
 /// <summary>What happened, handed to an action run.</summary>
@@ -137,6 +159,10 @@ public sealed record ActionInvocation(
 
     public int GetInt(string key, int fallback) =>
         int.TryParse(Get(key), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : fallback;
+
+    /// <summary>The rows of a <see cref="ActionFieldType.KeyValues"/> setting, in order; rows without a name are left out.</summary>
+    public IReadOnlyList<KeyValuePair<string, string>> GetPairs(string key) =>
+        Settings.ValueKind == JsonValueKind.Object && Settings.TryGetProperty(key, out var value) ? ActionSettings.Pairs(value) : [];
 }
 
 /// <summary>Server services for one action run.</summary>
@@ -157,11 +183,18 @@ public interface IActionContext
     void Log(string message);
 
     /// <summary>
-    /// Fills the placeholders {rule}, {event}, {device} (address), {address}, {model}, {serial}, {state} (on / off) and
-    /// {time} (server local time) in a text of the settings, then every value of the event by its name ({port},
-    /// {total}; <see cref="ActionTrigger.Data"/>). The fixed names win over event values of the same name.
+    /// Fills the placeholders of <see cref="ActionPlaceholders.Fixed"/> ({rule}, {event}, {state}, {time}, {device},
+    /// {serial}, {mac}, ...) in a text of the settings, then every value of the event by its name ({port}, {total};
+    /// <see cref="ActionTrigger.Data"/>). The fixed names win over event values of the same name; unknown names stay.
+    /// Device values come from the action's device, else from the device of the event.
     /// </summary>
     string Text(string? text);
+
+    /// <summary>
+    /// <see cref="Text(string?)"/> for a text with a format: each value is escaped (<see cref="PlaceholderEscape"/>), so
+    /// "objectId": "{objectId}" stays valid JSON whatever the value holds. The text around the placeholders is unchanged.
+    /// </summary>
+    string Text(string? text, PlaceholderEscape escape) => escape == PlaceholderEscape.None ? Text(text) : Text(text);
 }
 
 /// <summary>Services for <see cref="IActionPlugin.ListChoicesAsync"/> (read-only, while a rule is edited).</summary>

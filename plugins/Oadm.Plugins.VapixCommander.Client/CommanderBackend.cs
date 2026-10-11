@@ -64,3 +64,10 @@ public interface ICommanderFiles
     /// <summary>Saves <paramref name="content"/> under a name the user picks (suggested <paramref name="fileName"/>); false when cancelled.</summary>
     Task<bool> SaveJsonAsync(string fileName, string content);
 }
+
+/// <summary>Dialogs of the page (the view shows them; tests answer them).</summary>
+public interface ICommanderDialogs
+{
+    /// <summary>Shows the request builder until it saves or is cancelled.</summary>
+    Task ShowBuilderAsync(RequestBuilderViewModel builder);
+}

@@ -12,6 +12,17 @@ public static class DeviceMessages
     /// <summary>A device that is no longer in the device table.</summary>
     public const string Removed = "The device was removed from OADM.";
 
+    /// <summary>The short status name of the device grid: "OK", "Unreachable", "Credentials required" ...</summary>
+    public static string StatusText(DeviceStatus status) => status switch
+    {
+        DeviceStatus.Ok => "OK",
+        DeviceStatus.Unreachable => "Unreachable",
+        DeviceStatus.CredentialsRequired => "Credentials required",
+        DeviceStatus.PasswordNotSet => "Password not set",
+        DeviceStatus.CertificateChanged => "Certificate changed",
+        _ => "Unknown",
+    };
+
     /// <summary>
     /// The device presents another certificate than the one OADM pinned. OADM has no accept action: removing the device
     /// and adding it again pins the new certificate.

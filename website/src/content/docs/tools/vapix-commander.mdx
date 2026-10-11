@@ -8,6 +8,7 @@ import { Image } from 'astro:assets';
 import shot from '../../../assets/screens/plugin-vapix-commander-rollout.png';
 import raw from '../../../assets/screens/plugin-vapix-commander-raw.png';
 import rawJson from '../../../assets/screens/plugin-vapix-commander-raw-json.png';
+import newCommand from '../../../assets/screens/plugin-vapix-commander-new.png';
 import tryJson from '../../../assets/screens/plugin-vapix-commander-try-json.png';
 
 VAPIX Commander sends VAPIX requests to your devices. Pick ready-made commands from the library, fill in their fields
@@ -17,8 +18,8 @@ and roll them out to any number of devices. Or send one request to one device an
 
 The page has three cards:
 
-- **Library**: the built-in commands and your saved commands, grouped by category.
-- **Rollout set** / **Raw request**: the commands to run, or one request you write yourself.
+- **Library**: the built-in commands and your saved commands, grouped by category. **+** writes a new command.
+- **Rollout set**: the commands to run.
 - **Target devices**: the devices to run on, with a compatibility check per device.
 
 ## Roll out commands
@@ -43,7 +44,7 @@ Each device becomes one task in the Tasks pane below the page. Each command is o
 
 <Steps>
 
-1. Switch to **Raw request**, or select a command in the library.
+1. Select a command in the rollout set.
 2. Choose the device in **Send to**.
 3. Click **Send**.
 
@@ -54,16 +55,29 @@ JSON and XML answers are shown formatted; **Raw** shows the exact text the devic
 
 <Image src={tryJson} alt="The answer of a JSON request, formatted and colored" class="screen" />
 
-## Write a raw request
+## Write your own command
 
-**Raw request** is for anything the library does not have, like Postman for one camera.
+For anything the library does not have, write the request yourself, like Postman for one camera.
+
+<Steps>
+
+1. Click **+** in the Library.
+2. Choose **Start from scratch**, or **Start from an existing command** and pick one. A built-in or saved command is
+   copied; the original stays as it is.
+3. Click **Next**, give the command a name and write the request.
+4. Try it with **Send** on the right.
+5. Click **Save**. The command is in the library under Saved.
+
+</Steps>
+
+<Image src={newCommand} alt="New command: start from scratch or from an existing command" class="screen" />
 
 <Image src={raw} alt="A raw param.cgi request with query parameters and a field" class="screen" />
 
 - **Method and path**: for example `GET` `/axis-cgi/param.cgi`. The path always starts with `/` and stays on the
   device.
-- **Query parameters**: one row per parameter, for example `action` = `list`, `group` = `Brand`. **Add** and **Remove**
-  edit the rows.
+- **Query parameters**: one row per parameter, for example `action` = `list`, `group` = `Brand`. **Add** adds a row; the
+  icons at the end of a row make a field of it or remove it.
 - **Headers**: only needed for some APIs. A GET request has none, so the table is hidden there.
 - **Body**: for POST, PUT and PATCH. Choose **json**, **form** (`key=value&key2=value`), **text** or **xml**. JSON and
   XML are colored while you type. A GET request has no body, so the body is hidden there.
@@ -78,12 +92,14 @@ JSON and XML answers are shown formatted; **Raw** shows the exact text the devic
 A field turns a fixed value into an input. A saved command then asks for that value, so next time you only fill in the
 form and never touch the request again.
 
-- **Query and headers**: select the row and click **Make field**. OADM names the field after the key
+- **Query and headers**: click the `{ }` icon of the row (**Make field**). OADM names the field after the key
   (`ImageSource.I0.DayNight.ShiftLevel` becomes `shiftLevel`) and guesses its type from the value (number, yes/no, text).
 - **Body and anywhere else**: type `{{name}}` where the value goes. The field appears below at once.
 - In JSON, write a whole value as `"{{level}}"` (with the quotes). If the field is a number or yes/no, OADM sends a
   real number or true/false: `"level": "{{level}}"` goes out as `"level": 40`.
 - Below the request, each field has a label, a type (text, number, yes/no, password) and a value for this send.
+- Renaming a placeholder while you type keeps the field's label, type and value.
+- The remove icon of a field puts its value back where the placeholder was.
 
 ```json
 {
@@ -93,12 +109,14 @@ form and never touch the request again.
 }
 ```
 
-### Save it as a command
+### Save and change commands
 
-**Save as command** keeps the request with its fields as your own command: a name, a category, a short description,
-the API it needs (filled in from the path, for example `param-cgi 1.0`), whether it changes the device and whether it
-is dangerous. Saved commands are stored on the server and shared by all clients. You can export them as a file and
-import them on another server. **Add to rollout** puts the request into the rollout set without saving it.
+A saved command has a name, a category, a short description, the API it needs (filled in from the path, for example
+`param-cgi 1.0`), whether it changes the device and whether it is dangerous. Saved commands are stored on the server
+and shared by all clients. You can export them as a file and import them on another server.
+
+To change a saved command, point at it in the library and click the pen icon. Change it and click **Save**. For a
+variant, use **+** and start from the saved command instead.
 
 ### Use it in event rules
 

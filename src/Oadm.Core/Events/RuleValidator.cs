@@ -99,7 +99,7 @@ public static class RuleValidator
 
         if (rule.MaxRunsPerMinute is < 1 or > 1000)
         {
-            return "The flood limit must be 1 to 1000 runs per minute.";
+            return "Max per minute must be 1 to 1000.";
         }
 
         return null;

@@ -8,7 +8,7 @@ using Avalonia.VisualTree;
 namespace Oadm.Plugins.VapixCommander.Client;
 
 /// <summary>The Commander page view. Code-behind only wires the file pickers, library clicks and keyboard shortcuts to view model commands.</summary>
-public partial class CommanderView : UserControl, ICommanderFiles
+public partial class CommanderView : UserControl, ICommanderFiles, ICommanderDialogs
 {
     private static readonly FilePickerFileType JsonFiles = new("VAPIX Commander commands") { Patterns = ["*.json"], MimeTypes = ["application/json"] };
 
@@ -24,6 +24,7 @@ public partial class CommanderView : UserControl, ICommanderFiles
         if (DataContext is CommanderViewModel vm)
         {
             vm.Files = this;
+            vm.Dialogs = this;
         }
 
         base.OnDataContextChanged(e);
@@ -74,10 +75,29 @@ public partial class CommanderView : UserControl, ICommanderFiles
         return true;
     }
 
-    /// <summary>A click on a library row: a command goes to the rollout set, a group expands or collapses. Row icon buttons are ignored.</summary>
-    private void OnLibraryNodeTapped(object? sender, TappedEventArgs e)
+    public async Task ShowBuilderAsync(RequestBuilderViewModel builder)
     {
-        if (sender is not Control { DataContext: LibraryNodeViewModel node } row || IsOnButton(row, e))
+        var window = new RequestBuilderWindow();
+        window.Attach(builder);
+        if (TopLevel.GetTopLevel(this) is Window owner)
+        {
+            await window.ShowDialog(owner).ConfigureAwait(true);
+        }
+        else
+        {
+            window.Show();
+        }
+    }
+
+    /// <summary>
+    /// A click on a library row: a command goes to the rollout set, a group expands or collapses. Row icon buttons are
+    /// ignored. Acts when the button goes down: selecting a row can scroll the tree (bring into view), so the release can
+    /// land on another row and a tap was lost. The press is not handled, so the tree still selects the row.
+    /// </summary>
+    private void OnLibraryNodePressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Control { DataContext: LibraryNodeViewModel node } row || IsOnButton(row, e)
+            || e.ClickCount != 1 || !e.GetCurrentPoint(row).Properties.IsLeftButtonPressed)
         {
             return;
         }
@@ -85,7 +105,6 @@ public partial class CommanderView : UserControl, ICommanderFiles
         if (DataContext is CommanderViewModel vm)
         {
             vm.ActivateCommand.Execute(node);
-            e.Handled = true;
         }
     }
 

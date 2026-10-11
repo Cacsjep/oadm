@@ -383,6 +383,10 @@
   <Style Selector="TextBlock.secondary">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
   </Style>
+  <!-- Code in running text: a placeholder name such as {objectId} -->
+  <Style Selector="TextBlock.mono">
+    <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamilyMono}" />
+  </Style>
   <Style Selector="TextBlock.small">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
   </Style>

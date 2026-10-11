@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -379,6 +380,13 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
             }
         }
 
+        // Actions without devices (email, HTTP) still name the device of the event in their texts.
+        var textDevice = device;
+        if (textDevice is null && job.Trigger.DeviceId is { } eventDevice)
+        {
+            textDevice = await _devices.FindAsync(eventDevice, ct).ConfigureAwait(false);
+        }
+
         await _slots.WaitAsync(ct).ConfigureAwait(false);
         var lines = new List<string>();
         try
@@ -412,7 +420,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
                 _settings.GetSettings(SettingsId(action.Registered)),
                 lines,
                 job,
-                device);
+                textDevice);
             var invocation = new ActionInvocation(job.Rule.Id, job.Rule.Name, job.Edge, settings, device, job.Trigger);
             await plugin.ExecuteAsync(context, invocation, timeout.Token).ConfigureAwait(false);
             Write(job, deviceId, plugin.DisplayName, EventLogResult.Ok, Joined(lines, EdgeText(job.Edge)), device);
@@ -435,6 +443,91 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         finally
         {
             _slots.Release();
+        }
+    }
+
+    /// <summary>
+    /// "Send test" of the rule dialog (administrators): runs an action without devices once now, outside every rule state
+    /// and limit, with sample values for the event ("sample" for every value of <paramref name="eventTypeId"/>) and the
+    /// given device as the device of the event. Password fields left empty take the stored value of the rule's action.
+    /// Nothing is written to the event log. Returns the result line.
+    /// </summary>
+    public async Task<(bool Ok, string Message)> TestAsync(
+        string actionId, JsonObject settings, string ruleName, Guid? ruleId, Guid? actionKey, string? eventTypeId, Guid? deviceId, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        var action = _catalog.FindAction(actionId);
+        if (action is null || !action.Available)
+        {
+            return (false, action is null ? "Not available: the action is not installed" : action.UnavailableText);
+        }
+
+        if (action.Plugin.NeedsDevice)
+        {
+            return (false, "Only actions without devices can be tested here.");
+        }
+
+        if (ruleId is { } rule && actionKey is { } key && await _store.GetAsync(rule, ct).ConfigureAwait(false) is { } stored
+            && stored.Definition.Actions.FirstOrDefault(a => a.Key == key && a.ActionId == actionId) is { } storedAction)
+        {
+            var decrypted = _store.DecryptSettings(rule, storedAction);
+            foreach (var field in action.Plugin.Fields.Where(f => f.Type == ActionFieldType.Password))
+            {
+                if (ActionSettings.Text(settings, field.Key) is not { Length: > 0 } && decrypted[field.Key] is { } kept)
+                {
+                    settings[field.Key] = kept.DeepClone();
+                }
+            }
+        }
+
+        var type = _catalog.FindEventType(eventTypeId);
+        var device = deviceId is { } id ? await _devices.FindAsync(id, ct).ConfigureAwait(false) : null;
+        var data = (type?.Info.DataFields ?? []).ToDictionary(f => f.Name, f => f.Values is { Count: > 0 } values ? values[0] : "sample", StringComparer.Ordinal);
+        var trigger = new ActionTrigger(
+            type?.Id ?? string.Empty, type?.Info.DisplayName ?? "Test", device?.Id, device?.Address, device?.Model, true, DateTimeOffset.UtcNow, data);
+        var definition = new RuleDefinition { Id = ruleId ?? Guid.Empty, Name = string.IsNullOrWhiteSpace(ruleName) ? "Test" : ruleName };
+        var job = new RuleEdgeJob(definition, true, ActionEdge.TurnedOn, device?.Id, false, trigger);
+        using var document = JsonDocument.Parse(settings.ToJsonString());
+        var lines = new List<string>();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var limit = _options.ActionTimeout;
+        try
+        {
+            if (action.Plugin.MaxRunTime(document.RootElement) is { } longer && longer > limit)
+            {
+                limit = longer < TimeSpan.FromMinutes(5) ? longer : TimeSpan.FromMinutes(5);
+            }
+        }
+#pragma warning disable CA1031 // Plugin code is untrusted: the default applies.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+        }
+
+        timeout.CancelAfter(limit);
+        try
+        {
+            var context = new RunContext(
+                null,
+                _loggerFactory.CreateLogger("Oadm.Actions." + action.Id),
+                action.Registered.Owner,
+                _settings.GetSettings(SettingsId(action.Registered)),
+                lines,
+                job,
+                device);
+            var invocation = new ActionInvocation(definition.Id, definition.Name, ActionEdge.TurnedOn, document.RootElement.Clone(), null, trigger);
+            await action.Plugin.ExecuteAsync(context, invocation, timeout.Token).ConfigureAwait(false);
+            return (true, Joined(lines, "Sent"));
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return (false, Joined(lines, "Timeout - the action did not finish in time"));
+        }
+#pragma warning disable CA1031 // A failed test is the answer, never a crash.
+        catch (Exception ex) when (ex is not OperationCanceledException)
+#pragma warning restore CA1031
+        {
+            return (false, Joined(lines, ex.Message));
         }
     }
 
@@ -488,6 +581,8 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         }
 
         public string Text(string? text) => Placeholders.Fill(text, job, device);
+
+        public string Text(string? text, PlaceholderEscape escape) => Placeholders.Fill(text, job, device, escape);
     }
 
     private sealed class QueryContext(ILogger logger, ICorePlugin? owner, IPluginSettings settings, IDeviceRepository devices) : IActionQueryContext
@@ -502,10 +597,13 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
     }
 }
 
-/// <summary>{rule}, {event}, {device}, {address}, {model}, {serial}, {state}, {time} in action texts.</summary>
+/// <summary>
+/// The values of <see cref="ActionPlaceholders"/> for one action run: the rule, the event, the device (the action's, else
+/// the event's), then the values of the event by their name. Names are case-insensitive.
+/// </summary>
 public static class Placeholders
 {
-    public static string Fill(string? text, RuleEdgeJob job, IDeviceInfo? device)
+    public static string Fill(string? text, RuleEdgeJob job, IDeviceInfo? device, PlaceholderEscape escape = PlaceholderEscape.None)
     {
         ArgumentNullException.ThrowIfNull(job);
         if (string.IsNullOrEmpty(text))
@@ -513,27 +611,62 @@ public static class Placeholders
             return string.Empty;
         }
 
-        var address = device?.Address ?? job.Trigger.DeviceAddress ?? string.Empty;
-        var model = device?.Model ?? job.Trigger.DeviceModel ?? string.Empty;
-        var filled = text
-            .Replace("{rule}", job.Rule.Name, StringComparison.OrdinalIgnoreCase)
-            .Replace("{event}", job.Trigger.EventName, StringComparison.OrdinalIgnoreCase)
-            .Replace("{device}", address.Length == 0 ? string.Empty : DeviceRef.Text(address, model), StringComparison.OrdinalIgnoreCase)
-            .Replace("{address}", address, StringComparison.OrdinalIgnoreCase)
-            .Replace("{model}", model, StringComparison.OrdinalIgnoreCase)
-            .Replace("{serial}", device?.Serial ?? string.Empty, StringComparison.OrdinalIgnoreCase)
-            .Replace("{state}", job.Trigger.State switch { true => "on", false => "off", _ => string.Empty }, StringComparison.OrdinalIgnoreCase)
-            .Replace("{time}", job.Trigger.TimeUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase);
+        var values = Values(job.Rule.Name, job.Trigger, device);
+        return ActionPlaceholders.Fill(text, name => values.GetValueOrDefault(name), escape);
+    }
 
-        // Values of the event (device triggers: {port}, {total}, ...); the fixed names above already went.
-        foreach (var (name, value) in job.Trigger.Data)
+    /// <summary>Every placeholder value of a run: the fixed ones first, the event's values where no fixed name is taken.</summary>
+    public static Dictionary<string, string> Values(string ruleName, ActionTrigger trigger, IDeviceInfo? device)
+    {
+        ArgumentNullException.ThrowIfNull(trigger);
+        var address = device?.Address ?? trigger.DeviceAddress ?? string.Empty;
+        var model = device?.Model ?? trigger.DeviceModel ?? string.Empty;
+        var local = trigger.TimeUtc.ToLocalTime();
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            if (name.Length > 0 && filled.Contains('{', StringComparison.Ordinal))
+            ["rule"] = ruleName,
+            ["event"] = trigger.EventName,
+            ["state"] = trigger.State switch { true => "on", false => "off", _ => string.Empty },
+            ["time"] = local.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
+            ["date"] = local.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            ["timeUtc"] = trigger.TimeUtc.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture),
+            ["device"] = address.Length == 0 ? string.Empty : DeviceRef.Text(address, model),
+            ["address"] = address,
+            ["hostName"] = device?.HostName ?? string.Empty,
+            ["model"] = model,
+            ["serial"] = device?.Serial ?? string.Empty,
+            ["mac"] = Mac(device?.Serial),
+            ["firmware"] = device?.FirmwareVersion ?? string.Empty,
+            ["category"] = device is null ? string.Empty : CategoryText(device.Category),
+            ["tags"] = device is null ? string.Empty : string.Join("; ", device.Tags),
+            ["status"] = device is null ? string.Empty : DeviceMessages.StatusText(device.Status),
+            ["webUrl"] = address.Length == 0 ? string.Empty : (device?.HttpsEnabled == false ? "http://" : "https://") + UrlHost(address) + "/",
+        };
+
+        foreach (var (name, value) in trigger.Data)
+        {
+            if (name.Length > 0)
             {
-                filled = filled.Replace("{" + name + "}", value, StringComparison.OrdinalIgnoreCase);
+                values.TryAdd(name, value);
             }
         }
 
-        return filled;
+        return values;
     }
+
+    /// <summary>"B8A44F631339" -> "B8:A4:4F:63:13:39"; anything else as it is.</summary>
+    private static string Mac(string? serial) =>
+        serial is { Length: 12 } s && s.All(char.IsAsciiHexDigit)
+            ? string.Join(':', Enumerable.Range(0, 6).Select(i => s.Substring(i * 2, 2)))
+            : serial ?? string.Empty;
+
+    private static string UrlHost(string address) =>
+        System.Net.IPAddress.TryParse(address, out var ip) && ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? "[" + address + "]" : address;
+
+    private static string CategoryText(DeviceCategory category) => category switch
+    {
+        DeviceCategory.IoModule => "I/O module",
+        DeviceCategory.DoorController => "Door controller",
+        _ => category.ToString(),
+    };
 }
