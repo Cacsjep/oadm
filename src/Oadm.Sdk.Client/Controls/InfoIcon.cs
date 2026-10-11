@@ -24,6 +24,7 @@ public sealed class InfoIcon : Button
         VerticalAlignment = VerticalAlignment.Center;
         Content = new OadmIcon { Data = ToolbarButton.ResolveIcon("info") };
         Flyout = new Flyout { Content = _flyoutText, Placement = PlacementMode.BottomEdgeAlignedLeft };
+        IsVisible = false; // shown once there is a text (an event or action is chosen)
     }
 
     protected override Type StyleKeyOverride => typeof(Button);

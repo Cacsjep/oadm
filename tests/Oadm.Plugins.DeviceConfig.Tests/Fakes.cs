@@ -78,6 +78,9 @@ internal sealed class ConfigCamera : IVapixClient
 
     public int Exports { get; private set; }
 
+    /// <summary>Called with "METHOD path?query" before each request; an exception it returns is thrown (timeout, lost connection).</summary>
+    public Func<string, Exception?>? Fail { get; set; }
+
     public Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct) =>
         Task.FromResult(new BasicDeviceInfo("B8A44F631339", ProdNbr, ProdNbr, "AXIS " + ProdNbr + " Dome Camera", Version, "9A3", "aarch64", "Dome Camera", "Axis Artpec-8"));
 
@@ -92,6 +95,11 @@ internal sealed class ConfigCamera : IVapixClient
         ct.ThrowIfCancellationRequested();
         var path = request.RequestUri!.OriginalString;
         Requests.Add(request.Method + " " + path);
+        if (Fail?.Invoke(request.Method + " " + path) is { } failure)
+        {
+            throw failure;
+        }
+
         if (ResetNext > 0)
         {
             ResetNext--;
@@ -154,6 +162,28 @@ internal sealed class ConfigCamera : IVapixClient
             return;
         }
 
+        // Parameter collections merge item by item, matched by groupId (as the device does).
+        if (value is JsonArray items && current is JsonArray existing && items.All(i => i is JsonObject o && o["groupId"] is not null))
+        {
+            foreach (var item in items.OfType<JsonObject>())
+            {
+                var id = (string?)item["groupId"];
+                var match = existing.OfType<JsonObject>().FirstOrDefault(o => (string?)o["groupId"] == id);
+                if (match is null)
+                {
+                    existing.Add(item.DeepClone());
+                    continue;
+                }
+
+                foreach (var (child, childValue) in item)
+                {
+                    Merge(match, child, childValue, ignores, path + "." + id + "." + child);
+                }
+            }
+
+            return;
+        }
+
         if (ignores.Contains(path))
         {
             return;
@@ -184,6 +214,19 @@ internal sealed class MemoryUploads : IUploadedFiles
     public Task<Stream> OpenReadAsync(string fileId, CancellationToken ct) =>
         _files.TryGetValue(fileId, out var file) ? Task.FromResult<Stream>(new MemoryStream(file.Data, writable: false)) : throw new FileNotFoundException(fileId);
 }
+
+/// <summary>An upload that is removed between <see cref="FindAsync"/> and <see cref="OpenReadAsync"/> (retention, quota).</summary>
+internal sealed class VanishingUploads : IUploadedFiles
+{
+    public Task<UploadedFile?> FindAsync(string fileId, CancellationToken ct) =>
+        Task.FromResult<UploadedFile?>(new UploadedFile(fileId, "lobby.json", 1, "00"));
+
+    public Task<Stream> OpenReadAsync(string fileId, CancellationToken ct) =>
+        throw new FileNotFoundException($"Uploaded file {fileId} does not exist (it may have expired).", fileId);
+}
+
+/// <summary>Stands for the host's exception of a changed device certificate (plugins know it only by name).</summary>
+internal sealed class CertificateChangedException(string message) : Exception(message);
 
 internal sealed class RecordingContext : ITaskExecutionContext
 {

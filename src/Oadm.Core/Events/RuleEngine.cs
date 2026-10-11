@@ -23,7 +23,10 @@ public sealed class RuleEngineOptions
     /// <summary>Certificate expiry of the built-in events is recomputed this often.</summary>
     public TimeSpan CertificateCheckInterval { get; init; } = TimeSpan.FromHours(1);
 
-    /// <summary>Commands (events, device changes) waiting for the engine; beyond it new ones are dropped and logged.</summary>
+    /// <summary>
+    /// Commands (events, device changes) waiting for the engine; beyond it new events are dropped and logged. Rule changes
+    /// are never dropped: they wait for room (the store already committed them).
+    /// </summary>
     public int QueueCapacity { get; init; } = 100_000;
 }
 
@@ -70,7 +73,8 @@ public sealed partial class RuleEngine : IAsyncDisposable
     private readonly HashSet<string> _knownTypes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<Guid, DeviceRef> _devices = [];
     private readonly Dictionary<Guid, Runtime> _rules = [];
-    private readonly List<(Guid Rule, Guid Subject, bool Add, DateTime Since)> _stateOps = [];
+    // Pending state writes; the last change of a (rule, subject) wins. Dropped only after a successful write.
+    private readonly Dictionary<(Guid Rule, Guid Subject), (bool Add, DateTime Since)> _stateOps = [];
     private readonly Dictionary<Guid, DateTime> _firedDirty = [];
     private DateTime _lastCertificateCheck = DateTime.MinValue;
     private DateTime _startedUtc;
@@ -104,7 +108,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
         _logger = (ILogger?)logger ?? NullLogger.Instance;
         _commands = Channel.CreateBounded<Command>(new BoundedChannelOptions(_options.QueueCapacity)
         {
-            FullMode = BoundedChannelFullMode.DropWrite,
+            FullMode = BoundedChannelFullMode.Wait, // TryWrite fails when full (events are dropped); WriteAsync waits
             SingleReader = true,
         });
     }
@@ -185,12 +189,31 @@ public sealed partial class RuleEngine : IAsyncDisposable
     public Task ApplyRuleChangeAsync(StoredRule? previous, StoredRule? current, CancellationToken ct)
     {
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!_commands.Writer.TryWrite(new RuleChanged(previous, current, done)))
+        var command = new RuleChanged(previous, current, done);
+        if (_commands.Writer.TryWrite(command))
         {
-            throw new InvalidOperationException("The event rules are busy. Try again.");
+            return done.Task.WaitAsync(ct);
         }
 
-        return done.Task.WaitAsync(ct);
+        return QueueRuleChangeAsync(command, ct);
+    }
+
+    /// <summary>
+    /// The queue is full of events: wait for room, not cancellable by the caller (the store already committed the change,
+    /// so the engine must apply it). Only a stopped engine refuses it; the next start loads the stored rules anyway.
+    /// </summary>
+    private async Task QueueRuleChangeAsync(RuleChanged command, CancellationToken ct)
+    {
+        try
+        {
+            await _commands.Writer.WriteAsync(command, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (ChannelClosedException)
+        {
+            return; // stopping
+        }
+
+        await command.Done.Task.WaitAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>A plugin package was turned on or off, or a source's event types changed.</summary>
@@ -200,11 +223,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
     public async Task DrainAsync(CancellationToken ct)
     {
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        while (!_commands.Writer.TryWrite(new Barrier(done)))
-        {
-            await Task.Delay(10, ct).ConfigureAwait(false);
-        }
-
+        await _commands.Writer.WriteAsync(new Barrier(done), ct).ConfigureAwait(false);
         await done.Task.WaitAsync(ct).ConfigureAwait(false);
     }
 
@@ -239,6 +258,22 @@ public sealed partial class RuleEngine : IAsyncDisposable
             }
             catch (OperationCanceledException)
             {
+            }
+        }
+
+        // The loop has stopped: write what is still pending, bounded, not tied to the stop token.
+        if (_loop is not null)
+        {
+            using var last = new CancellationTokenSource(FinalFlushTimeout);
+            try
+            {
+                await FlushStatesAsync(last.Token).ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // Shutdown: what cannot be written is logged; the next start re-evaluates.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                LogPersistFailed(ex);
             }
         }
 
@@ -516,27 +551,29 @@ public sealed partial class RuleEngine : IAsyncDisposable
         return candidates;
     }
 
-    /// <summary>Whether a stateful rule holds for a subject now.</summary>
-    private bool Holds(Runtime runtime, Guid subject)
+    /// <summary>Whether a stateful rule holds for a subject now; <paramref name="shared"/> = <see cref="SharedHold"/>.</summary>
+    private bool Holds(Runtime runtime, Guid subject, bool shared)
     {
-        var trigger = runtime.Definition.Conditions[0];
-        if (runtime.TriggerScope == EventScope.Device && (subject == Guid.Empty || !Selects(trigger.Devices, subject)))
+        if (runtime.TriggerScope == EventScope.Device && (subject == Guid.Empty || !Selects(runtime.Trigger, subject)))
         {
             return false;
         }
 
-        return IsOn(runtime.TriggerTypeId, subject, trigger.Data) && OthersHold(runtime, subject);
+        return shared && IsOn(runtime.TriggerTypeId, subject, runtime.Trigger.Condition.Data) && SubjectHold(runtime, subject);
     }
 
-    /// <summary>The conditions after the trigger, for a subject.</summary>
-    private bool OthersHold(Runtime runtime, Guid subject)
+    /// <summary>
+    /// The conditions after the trigger that do not depend on the subject: schedules, server events and "on for any of
+    /// these devices". Evaluated once per reconcile, not per subject.
+    /// </summary>
+    private bool SharedHold(Runtime runtime)
     {
         var local = _time.GetLocalNow().DateTime;
-        foreach (var condition in runtime.Definition.Conditions.Skip(1))
+        foreach (var condition in runtime.Others)
         {
-            if (condition.Kind == RuleConditionKind.Schedule)
+            if (condition.Condition.Kind == RuleConditionKind.Schedule)
             {
-                if (condition.Schedule is null || !RuleTimes.IsInside(condition.Schedule, local))
+                if (condition.Condition.Schedule is null || !RuleTimes.IsInside(condition.Condition.Schedule, local))
                 {
                     return false;
                 }
@@ -544,23 +581,20 @@ public sealed partial class RuleEngine : IAsyncDisposable
                 continue;
             }
 
-            var typeId = condition.EventTypeId ?? string.Empty;
-            var type = _catalog.FindEventType(typeId);
-            if (type is { DeviceScope: false })
+            if (condition.PerSubject)
             {
-                if (!IsOn(typeId, Guid.Empty, condition.Data))
+                continue;
+            }
+
+            var typeId = condition.TypeId;
+            if (condition.Type is { DeviceScope: false })
+            {
+                if (!IsOn(typeId, Guid.Empty, condition.Condition.Data))
                 {
                     return false;
                 }
             }
-            else if (condition.Devices.Mode == DeviceSelectorMode.EventDevice)
-            {
-                if (!IsOn(typeId, subject, condition.Data))
-                {
-                    return false;
-                }
-            }
-            else if (!_on.TryGetValue(typeId, out var set) || !set.Any(e => Selects(condition.Devices, e.Key) && Matches(e.Value, condition.Data)))
+            else if (!_on.TryGetValue(typeId, out var set) || !set.Any(e => Selects(condition, e.Key) && Matches(e.Value, condition.Condition.Data)))
             {
                 return false;
             }
@@ -569,20 +603,38 @@ public sealed partial class RuleEngine : IAsyncDisposable
         return true;
     }
 
-    private bool Selects(DeviceSelector selector, Guid device) => selector.Mode switch
+    /// <summary>The conditions after the trigger on "the same device".</summary>
+    private bool SubjectHold(Runtime runtime, Guid subject)
+    {
+        foreach (var condition in runtime.Others)
+        {
+            if (condition.PerSubject && !IsOn(condition.TypeId, subject, condition.Condition.Data))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Whether a selector picks a managed device (a late state of a removed device never counts).</summary>
+    private bool Selects(ConditionRuntime selector, Guid device) => selector.Condition.Devices.Mode switch
     {
         DeviceSelectorMode.All => _devices.ContainsKey(device),
         DeviceSelectorMode.Devices or DeviceSelectorMode.Tags =>
-            selector.DeviceIds.Contains(device) || (selector.Tags.Count > 0 && _devices.TryGetValue(device, out var info) && selector.Tags.Any(info.Tags.Contains)),
+            _devices.TryGetValue(device, out var info)
+            && (selector.DeviceIds.Contains(device) || (selector.Tags.Count > 0 && selector.Tags.Overlaps(info.Tags))),
         _ => false,
     };
 
     /// <summary>Re-evaluates a stateful rule for <paramref name="subjects"/> and runs the edges.</summary>
     private void Reconcile(Runtime runtime, IEnumerable<Guid> subjects, string causeTypeId)
     {
+        bool? shared = null;
         foreach (var subject in subjects.ToList())
         {
-            var holds = Holds(runtime, subject);
+            shared ??= SharedHold(runtime);
+            var holds = Holds(runtime, subject, shared.Value);
             var isOn = runtime.Active.ContainsKey(subject) || runtime.Suppressed.Contains(subject);
             if (holds && !isOn)
             {
@@ -611,7 +663,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
         runtime.LastOnEdge[subject] = now;
         runtime.LastFiredUtc = now;
         _firedDirty[runtime.Id] = now;
-        _stateOps.Add((runtime.Id, subject, true, now));
+        _stateOps[(runtime.Id, subject)] = (true, now);
         Dispatch(runtime, ActionEdge.TurnedOn, subject, aggregate, causeTypeId, true);
     }
 
@@ -624,7 +676,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
         }
 
         runtime.Active.Remove(subject);
-        _stateOps.Add((runtime.Id, subject, false, default));
+        _stateOps[(runtime.Id, subject)] = (false, default);
         Dispatch(runtime, ActionEdge.TurnedOff, subject, runtime.Active.Count == 0, causeTypeId, false);
     }
 
@@ -644,8 +696,8 @@ public sealed partial class RuleEngine : IAsyncDisposable
                 logged = true;
             }
 
-            var trigger = runtime.Definition.Conditions[0];
-            if ((type.DeviceScope && !Selects(trigger.Devices, device)) || !Matches(data ?? EmptyData, trigger.Data) || !OthersHold(runtime, device))
+            if ((type.DeviceScope && !Selects(runtime.Trigger, device)) || !Matches(data ?? EmptyData, runtime.Trigger.Condition.Data)
+                || !SharedHold(runtime) || !SubjectHold(runtime, device))
             {
                 continue;
             }
@@ -671,7 +723,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
         var cooldown = TimeSpan.FromSeconds(runtime.Definition.CooldownSeconds);
         if (cooldown > TimeSpan.Zero && runtime.LastOnEdge.TryGetValue(subject, out var last) && now - last < cooldown)
         {
-            return string.Create(CultureInfo.InvariantCulture, $"Skipped: dead time ({runtime.Definition.CooldownSeconds} s after the last run)");
+            return string.Create(CultureInfo.InvariantCulture, $"Dead time ({runtime.Definition.CooldownSeconds} s after the last run)");
         }
 
         while (runtime.Runs.Count > 0 && now - runtime.Runs.Peek() >= TimeSpan.FromMinutes(1))
@@ -688,7 +740,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
                     message: string.Create(CultureInfo.InvariantCulture, $"Flood limit: at most {runtime.Definition.MaxRunsPerMinute} runs per minute"));
             }
 
-            return "Skipped: flood limit";
+            return "Flood limit";
         }
 
         runtime.Runs.Enqueue(now);
@@ -722,7 +774,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
             foreach (var subject in old.Active.Keys.ToList())
             {
                 old.Active.Remove(subject);
-                _stateOps.Add((old.Id, subject, false, default));
+                _stateOps[(old.Id, subject)] = (false, default);
                 if (old.Stateful)
                 {
                     LogRule(old, subject, "Rule turned off", change.Current is null ? "The rule was deleted" : change.Current.Definition.Enabled ? "The rule was changed" : "The rule was turned off", EventLogResult.Info);
@@ -926,27 +978,21 @@ public sealed partial class RuleEngine : IAsyncDisposable
     // ---------- persistence and status ----------
     private async Task FlushStatesAsync(CancellationToken ct)
     {
+        // Only the loop (or start / stop, when it does not run) touches the pending changes: nothing is added while
+        // this awaits. A failed write keeps them for the next flush.
         if (_stateOps.Count > 0)
         {
-            // The last change of a (rule, subject) in this batch wins.
-            var last = new Dictionary<(Guid Rule, Guid Subject), (bool Add, DateTime Since)>();
-            foreach (var (rule, subject, add, since) in _stateOps)
-            {
-                last[(rule, subject)] = (add, since);
-            }
-
-            _stateOps.Clear();
             await _store.WriteStatesAsync(
-                [.. last.Where(e => e.Value.Add).Select(e => (e.Key.Rule, e.Key.Subject, e.Value.Since))],
-                [.. last.Where(e => !e.Value.Add).Select(e => (e.Key.Rule, e.Key.Subject))],
+                [.. _stateOps.Where(e => e.Value.Add).Select(e => (e.Key.Rule, e.Key.Subject, e.Value.Since))],
+                [.. _stateOps.Where(e => !e.Value.Add).Select(e => (e.Key.Rule, e.Key.Subject))],
                 ct).ConfigureAwait(false);
+            _stateOps.Clear();
         }
 
         if (_firedDirty.Count > 0)
         {
-            var fired = new Dictionary<Guid, DateTime>(_firedDirty);
+            await _store.SetLastFiredAsync(new Dictionary<Guid, DateTime>(_firedDirty), ct).ConfigureAwait(false);
             _firedDirty.Clear();
-            await _store.SetLastFiredAsync(fired, ct).ConfigureAwait(false);
         }
     }
 
@@ -999,6 +1045,9 @@ public sealed partial class RuleEngine : IAsyncDisposable
 
     private static readonly IReadOnlyDictionary<string, string> EmptyData = new Dictionary<string, string>();
 
+    /// <summary>The last write of the rule states at server stop.</summary>
+    private static readonly TimeSpan FinalFlushTimeout = TimeSpan.FromSeconds(5);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Event rules started with {Count} enabled rules")]
     private partial void LogStarted(int count);
 
@@ -1040,6 +1089,8 @@ public sealed partial class RuleEngine : IAsyncDisposable
             Definition = stored.Definition;
             LastFiredUtc = stored.LastFiredUtc;
             TriggerTypeId = Definition.Conditions.FirstOrDefault()?.EventTypeId ?? string.Empty;
+            Trigger = new ConditionRuntime(Definition.Conditions.FirstOrDefault() ?? new RuleCondition());
+            Others = [.. Definition.Conditions.Skip(1).Select(c => new ConditionRuntime(c))];
             Refresh(catalog);
             Types = Definition.Conditions.Where(c => c.Kind == RuleConditionKind.Event && c.EventTypeId is not null)
                 .Select(c => c.EventTypeId!).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -1054,6 +1105,12 @@ public sealed partial class RuleEngine : IAsyncDisposable
         public string Name => Definition.Name;
 
         public string TriggerTypeId { get; }
+
+        /// <summary>The first condition with its device and tag sets.</summary>
+        public ConditionRuntime Trigger { get; }
+
+        /// <summary>The conditions after the trigger, with their resolved event types.</summary>
+        public IReadOnlyList<ConditionRuntime> Others { get; }
 
         public bool Stateful { get; private set; }
 
@@ -1082,6 +1139,11 @@ public sealed partial class RuleEngine : IAsyncDisposable
         /// <summary>Kind and scope of the trigger, read again when the event types changed (a type declared late).</summary>
         public void Refresh(EventCatalog catalog)
         {
+            foreach (var other in Others)
+            {
+                other.Type = other.Condition.Kind == RuleConditionKind.Event ? catalog.FindEventType(other.TypeId) : null;
+            }
+
             if (catalog.FindEventType(TriggerTypeId) is { } trigger)
             {
                 Stateful = trigger.Stateful;
@@ -1093,6 +1155,25 @@ public sealed partial class RuleEngine : IAsyncDisposable
                 TriggerScope = EventScope.Device;
             }
         }
+    }
+
+    /// <summary>A condition with its chosen devices and tags as sets (a choice can list thousands of devices).</summary>
+    private sealed class ConditionRuntime(RuleCondition condition)
+    {
+        public RuleCondition Condition { get; } = condition;
+
+        public string TypeId { get; } = condition.EventTypeId ?? string.Empty;
+
+        public HashSet<Guid> DeviceIds { get; } = [.. condition.Devices.DeviceIds];
+
+        public HashSet<string> Tags { get; } = new(condition.Devices.Tags, StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>The event type as the catalog knows it (null: not declared now); set by <see cref="Runtime.Refresh"/>.</summary>
+        public CatalogEventType? Type { get; set; }
+
+        /// <summary>An event condition on "the same device" as the trigger (a server event never is).</summary>
+        public bool PerSubject =>
+            Condition.Kind == RuleConditionKind.Event && Condition.Devices.Mode == DeviceSelectorMode.EventDevice && Type is not { DeviceScope: false };
     }
 
     private sealed class Publisher(RuleEngine engine, string sourceId) : IEventPublisher

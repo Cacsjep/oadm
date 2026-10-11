@@ -150,7 +150,8 @@ internal sealed class EventListReads(ICorePluginContext ctx, DeviceTriggersOptio
             return (refusal, null);
         }
 
-        if (!device.Apis.Supports(DeviceTriggersPluginInfo.ApiId, DeviceTriggersPluginInfo.ApiVersion))
+        // An empty API list is not read yet (a device just added): try it, like the runtime and the editor do.
+        if (device.Apis.Count > 0 && !device.Apis.Supports(DeviceTriggersPluginInfo.ApiId, DeviceTriggersPluginInfo.ApiVersion))
         {
             return (DeviceTriggersPluginInfo.NotSupportedReason, null);
         }

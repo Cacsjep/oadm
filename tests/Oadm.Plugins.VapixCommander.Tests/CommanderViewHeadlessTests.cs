@@ -95,6 +95,17 @@ public sealed class CommanderViewHeadlessTests
                 Dispatcher.UIThread.RunJobs();
                 Capture(window, outDir, "plugin-vapix-commander-raw.png");
 
+                // A POST with a JSON body: the body editor colors it while typing.
+                vm.Raw.Method = "POST";
+                vm.Raw.Path = "/axis-cgi/daynight.cgi";
+                vm.Raw.BodyType = "json";
+                vm.Raw.BodyText = "{\n  \"apiVersion\": \"1.0\",\n  \"method\": \"setDayNightParams\",\n  \"params\": { \"level\": \"{{level}}\" }\n}";
+                Dispatcher.UIThread.RunJobs();
+                Capture(window, outDir, "plugin-vapix-commander-raw-json.png");
+                vm.Raw.ResetCommand.Execute(null);
+                vm.Raw.MakeField(vm.Raw.QueryRows[1]);
+                Dispatcher.UIThread.RunJobs();
+
                 // Raw editor with errors: each one directly below its input (path, JSON body, field row), save form name.
                 vm.Raw.Path = "axis-cgi/param.cgi";
                 vm.Raw.BodyType = "json";

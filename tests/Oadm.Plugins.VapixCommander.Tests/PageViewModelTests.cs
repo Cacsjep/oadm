@@ -6,6 +6,7 @@ using Avalonia.Controls;
 
 using Oadm.Plugins.VapixCommander.Client;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Vapix;
 
@@ -470,6 +471,36 @@ public sealed class PageViewModelTests
 
         Assert.Equal("Imported 3 commands.", page.Vm.LibraryStatus);
         Assert.Equal(3, page.Vm.LibraryTree[1].CommandCount);
+    }
+
+    [Fact]
+    public void Raw_editor_hides_the_body_on_get_colors_json_and_resets()
+    {
+        var raw = new RawEditorViewModel();
+        Assert.False(raw.ShowBody); // GET sends no body
+        raw.Method = "POST";
+        Assert.True(raw.ShowBody);
+        Assert.False(raw.ShowBodyText);
+        raw.BodyType = BodyTypes.Json;
+        Assert.True(raw.ShowBodyText);
+        Assert.Equal(CodeLanguage.Json, raw.BodyLanguage);
+        raw.BodyText = "{\"level\":\"{{level}}\"}";
+        raw.Path = "/axis-cgi/daynight.cgi";
+        raw.HeaderRows.Add(new KeyValueRowViewModel { Key = "X-Note", Value = "1" });
+        raw.SyncFields();
+        Assert.NotEmpty(raw.Fields);
+        raw.Method = "GET";
+        Assert.True(raw.ShowBody); // a GET that has a body keeps showing it (never hide data)
+
+        raw.ResetCommand.Execute(null);
+
+        Assert.Equal(("GET", "/axis-cgi/param.cgi", BodyTypes.None, string.Empty), (raw.Method, raw.Path, raw.BodyType, raw.BodyText));
+        Assert.Equal(["action=list", "group=Brand"], raw.QueryRows.Select(r => r.Key + "=" + r.Value));
+        Assert.Empty(raw.HeaderRows);
+        Assert.Empty(raw.Fields);
+        Assert.False(raw.ShowBody);
+        Assert.Equal(ResponseKinds.ParamCgi, raw.ResponseKind);
+        Assert.Null(raw.ErrorOf(nameof(RawEditorViewModel.Path))); // an untouched form again
     }
 
     [Fact]

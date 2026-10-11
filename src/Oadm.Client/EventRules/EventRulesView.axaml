@@ -53,7 +53,7 @@
         </DataGrid>
         <TextBlock Grid.Row="2" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding RulesEmptyText}"
                    IsVisible="{Binding ShowRulesEmpty}" />
-        <TextBlock Grid.Row="3" Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" Margin="0,8,0,0" />
+        <TextBlock Grid.Row="3" Classes="error" Text="{Binding RulesErrorText}" IsVisible="{Binding HasRulesError}" TextWrapping="Wrap" Margin="0,8,0,0" />
       </Grid>
     </Border>
 
@@ -66,6 +66,9 @@
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16">
             <TextBlock Classes="cardTitle" Text="Event log" VerticalAlignment="Center" />
             <ui:ToolbarButton Text="Refresh" IconKey="refresh" Command="{Binding RefreshLogCommand}" />
+            <Button Classes="toolbar danger" Command="{Binding ClearLogCommand}" IsVisible="{Binding IsAdmin}">
+              <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete all" Spacing="8" />
+            </Button>
           </StackPanel>
           <ui:SearchBox Grid.Column="3" Text="{Binding LogSearchText}" Placeholder="Search the log" />
         </Grid>
@@ -83,13 +86,13 @@
             <DataGridTemplateColumn Header="Result" Width="*" MinWidth="240">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:EventLogRowViewModel">
-                  <ui:StatusChip Text="{Binding ResultText}" Detail="{Binding Message}" IsOk="{Binding IsOk}" IsError="{Binding IsError}" IsWarning="{Binding IsWarning}" MaxLines="2" />
+                  <ui:StatusChip Text="{Binding ResultText}" Detail="{Binding Message}" IsOk="{Binding IsOk}" IsError="{Binding IsError}" IsWarning="{Binding IsWarning}" IsInfo="{Binding IsInfo}" MaxLines="2" />
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
           </DataGrid.Columns>
         </DataGrid>
-        <TextBlock Grid.Row="3" Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" Margin="0,8,0,0" />
+        <TextBlock Grid.Row="3" Classes="error" Text="{Binding LogErrorText}" IsVisible="{Binding HasLogError}" TextWrapping="Wrap" Margin="0,8,0,0" />
       </Grid>
     </Border>
   </Grid>

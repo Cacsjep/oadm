@@ -124,6 +124,7 @@ public sealed class EventLogRowViewModel
         IsOk = entry.Result == EventLogResult.EventLogOk;
         IsError = entry.Result == EventLogResult.EventLogFailed;
         IsWarning = entry.Result == EventLogResult.EventLogSkipped;
+        IsInfo = entry.Result == EventLogResult.EventLogInfo;
         _search = string.Join(' ', What, Device, Rule, Message, KindText, ResultText);
     }
 
@@ -146,6 +147,9 @@ public sealed class EventLogRowViewModel
     public string Message { get; }
 
     public string ResultText { get; }
+
+    /// <summary>Something happened (an event, a rule turned on or off): the blue info icon.</summary>
+    public bool IsInfo { get; }
 
     public bool IsOk { get; }
 
@@ -201,11 +205,19 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] public partial string LogSearchText { get; set; } = string.Empty;
 
+    /// <summary>A refused rule action (open, copy, delete, turn on / off), directly below the rules list.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasError))]
-    public partial string? ErrorText { get; private set; }
+    [NotifyPropertyChangedFor(nameof(HasRulesError))]
+    public partial string? RulesErrorText { get; private set; }
 
-    public bool HasError => !string.IsNullOrEmpty(ErrorText);
+    public bool HasRulesError => !string.IsNullOrEmpty(RulesErrorText);
+
+    /// <summary>The event log could not be read, directly below the log.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasLogError))]
+    public partial string? LogErrorText { get; private set; }
+
+    public bool HasLogError => !string.IsNullOrEmpty(LogErrorText);
 
     [ObservableProperty] public partial string RulesStatus { get; private set; } = string.Empty;
 
@@ -234,7 +246,7 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
         _active = new CancellationTokenSource();
         var token = _active.Token;
         _ = WatchRulesAsync(token);
-        _ = LoadLogAsync(token);
+        _ = WatchLogAsync(token);
     }
 
     public void Dispose() => Deactivate();
@@ -293,11 +305,11 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
             var copy = await _api.DuplicateRuleAsync(row.Id, CancellationToken.None).ConfigureAwait(true);
             ApplySummary(copy.Summary);
             SelectedRule = _rulesById.GetValueOrDefault(copy.Summary.Id);
-            ErrorText = null;
+            RulesErrorText = null;
         }
         catch (RpcException ex)
         {
-            ErrorText = "The rule could not be copied: " + ex.Status.Detail;
+            RulesErrorText = "The rule could not be copied: " + ex.Status.Detail;
         }
     }
 
@@ -323,16 +335,59 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
             await _api.DeleteRuleAsync(row.Id, CancellationToken.None).ConfigureAwait(true);
             _rulesById.Remove(row.Id);
             FilterRules();
-            ErrorText = null;
+            RulesErrorText = null;
         }
         catch (RpcException ex)
         {
-            ErrorText = "The rule could not be deleted: " + ex.Status.Detail;
+            RulesErrorText = "The rule could not be deleted: " + ex.Status.Detail;
         }
     }
 
+    /// <summary>Reads the log again (the live watch keeps running).</summary>
     [RelayCommand]
-    private Task RefreshLogAsync() => LoadLogAsync(_active?.Token ?? CancellationToken.None);
+    private async Task RefreshLogAsync()
+    {
+        try
+        {
+            await LoadLogAsync(_active?.Token ?? CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+#pragma warning disable CA1031 // Shown below the log.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogErrorText = LogReadError(ex);
+        }
+    }
+
+    /// <summary>Delete all (administrators, red, confirmed): every entry of the event log goes, for every client.</summary>
+    [RelayCommand(CanExecute = nameof(CanChange))]
+    private async Task ClearLogAsync()
+    {
+        if (!await _dialogs.ConfirmAsync("Delete all", "Delete every entry of the event log? Other clients see the empty log too.", "Delete all").ConfigureAwait(true))
+        {
+            return;
+        }
+
+        try
+        {
+            await _api.ClearEventLogAsync(_active?.Token ?? CancellationToken.None).ConfigureAwait(true);
+            _log.Clear();
+            FilterLog();
+            LogErrorText = null;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+#pragma warning disable CA1031 // Shown below the log.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogErrorText = "The event log could not be cleared: " + (ex is Grpc.Core.RpcException rpc ? rpc.Status.Detail : ex.Message);
+        }
+    }
 
     internal async Task SetEnabledAsync(RuleRowViewModel row, bool enabled)
     {
@@ -346,12 +401,14 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
         try
         {
             ApplySummary(await _api.SetRuleEnabledAsync(row.Id, enabled, CancellationToken.None).ConfigureAwait(true));
-            ErrorText = null;
+            RulesErrorText = null;
         }
-        catch (RpcException ex)
+#pragma warning disable CA1031 // Fire and forget from the check box: every failure undoes it and says why.
+        catch (Exception ex)
+#pragma warning restore CA1031
         {
             row.Revert();
-            ErrorText = "The rule could not be changed: " + ex.Status.Detail;
+            RulesErrorText = "The rule could not be changed: " + (ex is RpcException rpc ? rpc.Status.Detail : ex.Message);
         }
         finally
         {
@@ -366,12 +423,12 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
         {
             var catalog = await _api.GetEventCatalogAsync(CancellationToken.None).ConfigureAwait(true);
             RuleDetail? detail = ruleId is null ? null : await _api.GetRuleAsync(ruleId, CancellationToken.None).ConfigureAwait(true);
-            ErrorText = null;
+            RulesErrorText = null;
             return new RuleEditorViewModel(_api, catalog, detail, _devices);
         }
         catch (RpcException ex)
         {
-            ErrorText = "The rule could not be opened: " + ex.Status.Detail;
+            RulesErrorText = "The rule could not be opened: " + ex.Status.Detail;
             return null;
         }
     }
@@ -508,50 +565,76 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Reads the newest <see cref="LogLimit"/> entries (UI thread) and replaces the list.</summary>
     private async Task LoadLogAsync(CancellationToken ct)
     {
-        try
-        {
-            var page = await _api.ListEventLogAsync(LogLimit, null, ct).ConfigureAwait(true);
-            _log.Clear();
-            AppendLog(page.Entries);
-            _ = WatchLogAsync(ct);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (RpcException ex)
-        {
-            ErrorText = "The event log could not be read: " + ex.Status.Detail;
-        }
+        var page = await _api.ListEventLogAsync(LogLimit, null, ct).ConfigureAwait(true);
+        ct.ThrowIfCancellationRequested();
+        _log.Clear();
+        AppendLog(page.Entries);
+        LogErrorText = null;
     }
 
-    private bool _watchingLog;
+    private static string LogReadError(Exception ex) =>
+        "The event log could not be read: " + (ex is RpcException rpc ? rpc.Status.Detail : ex.Message);
 
+    /// <summary>
+    /// Keeps the log live while the page is shown: reads the list, then watches new entries; after a failure or a dropped
+    /// stream it reads and watches again with the same backoff as the rules (1, 2, 4 ... 15 s). One loop per activation:
+    /// <see cref="Deactivate"/> cancels it, entries of a cancelled loop are ignored.
+    /// </summary>
     private async Task WatchLogAsync(CancellationToken ct)
     {
-        if (_watchingLog)
+        var delay = TimeSpan.FromSeconds(1);
+        while (!ct.IsCancellationRequested)
         {
-            return;
-        }
-
-        _watchingLog = true;
-        try
-        {
-            await foreach (var page in _api.WatchEventLogAsync(ct).ConfigureAwait(false))
+            var loaded = false;
+            try
             {
-                var entries = page.Entries.ToList();
-                _ui.Post(() => AppendLog(entries));
+                await LoadLogAsync(ct).ConfigureAwait(true);
+                loaded = true;
+                await foreach (var page in _api.WatchEventLogAsync(ct).ConfigureAwait(true))
+                {
+                    var entries = page.Entries.ToList();
+                    _ui.Post(() =>
+                    {
+                        if (!ct.IsCancellationRequested)
+                        {
+                            AppendLog(entries);
+                        }
+                    });
+                    delay = TimeSpan.FromSeconds(1);
+                }
             }
-        }
-#pragma warning disable CA1031 // A dropped stream: Refresh reads the log again.
-        catch (Exception)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled && ct.IsCancellationRequested)
+            {
+                return;
+            }
+#pragma warning disable CA1031 // The connection dropped: read and watch again after a short delay.
+            catch (Exception ex)
 #pragma warning restore CA1031
-        {
-        }
-        finally
-        {
-            _watchingLog = false;
+            {
+                // A dropped watch stays quiet (the list is read again); a list that cannot be read shows below the log.
+                if (!loaded && !ct.IsCancellationRequested)
+                {
+                    LogErrorText = LogReadError(ex);
+                }
+            }
+
+            try
+            {
+                await Task.Delay(delay, ct).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            delay = TimeSpan.FromSeconds(Math.Min(15, delay.TotalSeconds * 2));
         }
     }
 

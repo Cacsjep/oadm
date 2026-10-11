@@ -28,7 +28,10 @@ public static class IoMonitorMethods
     /// <summary><see cref="StreamRequest"/>: stops it (another device chosen, page left).</summary>
     public const string Stop = "stop";
 
-    /// <summary><see cref="StreamRequest"/>: every 5 s while the page shows the device; without it the server stops after 20 s.</summary>
+    /// <summary>
+    /// <see cref="StreamRequest"/> -> <see cref="KeepAliveReply"/>: every 5 s while the page shows the device; without it the
+    /// server stops after 20 s. An unknown stream (expired, server restarted) answers <c>running: false</c>: the page starts again.
+    /// </summary>
     public const string KeepAlive = "keepAlive";
 
     /// <summary>Event: <see cref="PortsEvent"/> when a port or the read result changed.</summary>
@@ -53,6 +56,9 @@ public sealed record StartRequest(Guid DeviceId);
 public sealed record StartReply(string? StreamId, string? Error);
 
 public sealed record StreamRequest(string? StreamId);
+
+/// <summary>False: the server no longer reads for this stream.</summary>
+public sealed record KeepAliveReply(bool Running);
 
 /// <summary>The ports of a stream after a change; <see cref="Error"/> while the device cannot be read (the last ports stay).</summary>
 public sealed record PortsEvent(string StreamId, IReadOnlyList<IoPort> Ports, string? Error, DateTimeOffset ReadUtc);

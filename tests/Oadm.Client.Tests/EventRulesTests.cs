@@ -114,6 +114,27 @@ public sealed class EventRulesTests
     }
 
     [Fact]
+    public async Task Delete_all_empties_the_event_log_after_a_confirmation_and_events_show_as_information()
+    {
+        var (api, _, dialogs, page) = await CreateAsync();
+        page.AppendLog((await api.ListEventLogAsync(0, null, CancellationToken.None)).Entries);
+        Assert.NotEmpty(page.LogEntries);
+        var info = page.LogEntries.First(e => e.KindText == "Event");
+        Assert.True(info.IsInfo); // an event only says that something happened: the blue info icon, not the grey dash
+        Assert.False(page.LogEntries.First(e => e.ResultText == "Done").IsInfo);
+
+        await page.ClearLogCommand.ExecuteAsync(null);
+        await dialogs.Received(1).ConfirmAsync("Delete all", Arg.Any<string>(), "Delete all");
+        Assert.Empty(page.LogEntries);
+        Assert.Empty((await api.ListEventLogAsync(0, null, CancellationToken.None)).Entries);
+
+        var (opApi, _, _, operatorPage) = await CreateAsync(isAdmin: false);
+        Assert.False(operatorPage.ClearLogCommand.CanExecute(null)); // administrators only
+        api.Dispose();
+        opApi.Dispose();
+    }
+
+    [Fact]
     public async Task The_dialog_builds_a_rule_with_conditions_actions_and_settings()
     {
         var (api, store, _, page) = await CreateAsync();
@@ -355,6 +376,137 @@ public sealed class EventRulesTests
             return true;
         }, CancellationToken.None);
         Assert.True(done);
+    }
+
+    [Fact]
+    public async Task A_refused_rule_change_shows_below_the_rules_only_and_rolls_the_check_box_back()
+    {
+        var (fake, store, dialogs, _) = await CreateAsync();
+        var api = Substitute.For<IOadmApi>();
+        api.SetRuleEnabledAsync(default!, default, default).ReturnsForAnyArgs<RuleSummary>(_ => throw new InvalidOperationException("Connection lost."));
+        var page = new EventRulesViewModel(api, dialogs, store, new ImmediateUiDispatcher());
+        page.ApplyRules(await fake.ListRulesAsync(CancellationToken.None));
+        var certificates = page.Rules.Single(r => r.Name == "Certificates about to expire");
+
+        certificates.Enabled = true; // not an RpcException: still handled, nothing unobserved
+        await TestSupport.WaitUntilAsync(() => page.HasRulesError);
+        Assert.False(certificates.Enabled);
+        Assert.False(certificates.IsBusy);
+        Assert.Equal("The rule could not be changed: Connection lost.", page.RulesErrorText);
+        Assert.False(page.HasLogError);
+        fake.Dispose();
+    }
+
+    [Fact]
+    [Trait("Category", "Timing")]
+    public async Task The_log_reads_and_watches_again_after_a_failure_and_after_the_page_comes_back()
+    {
+        var (fake, store, dialogs, _) = await CreateAsync();
+        var api = Substitute.For<IOadmApi>();
+        var server = new List<long> { 1 };
+        var lists = 0;
+        var watches = 0;
+        api.WatchRulesAsync(default).ReturnsForAnyArgs(ci => Stream<RuleList>([], fail: false, ci.Arg<CancellationToken>()));
+        api.ListEventLogAsync(default, default, default).ReturnsForAnyArgs(_ =>
+        {
+            lock (server)
+            {
+                if (++lists == 1)
+                {
+                    throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "Server is down."));
+                }
+
+                var page = new EventLogPage();
+                page.Entries.AddRange(server.Select(Entry));
+                return Task.FromResult(page);
+            }
+        });
+        api.WatchEventLogAsync(default).ReturnsForAnyArgs(ci =>
+        {
+            lock (server)
+            {
+                var id = server.Count + 1;
+                server.Add(id);
+                var page = new EventLogPage();
+                page.Entries.Add(Entry(id));
+                return Stream([page], fail: ++watches == 1, ci.Arg<CancellationToken>()); // the first watch drops
+            }
+        });
+        var vm = new EventRulesViewModel(api, dialogs, store, new ImmediateUiDispatcher());
+
+        vm.Activate();
+        await TestSupport.WaitUntilAsync(() => vm.HasLogError);
+        Assert.Equal("The event log could not be read: Server is down.", vm.LogErrorText);
+        Assert.False(vm.HasRulesError);
+        await TestSupport.WaitUntilAsync(() => watches == 2 && vm.LogEntries.Count == 3, 10_000);
+        Assert.False(vm.HasLogError);
+        Assert.Equal([3L, 2, 1], vm.LogEntries.Select(e => e.Id));
+
+        vm.Deactivate();
+        vm.Activate(); // the page shown again: live again
+        await TestSupport.WaitUntilAsync(() => watches == 3 && vm.LogEntries.Count == 4, 10_000);
+        Assert.Equal(4, vm.LogEntries[0].Id);
+        vm.Dispose();
+        fake.Dispose();
+
+        static EventLogEntry Entry(long id) => new() { Id = id, Time = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTime(DateTime.UtcNow), What = "Set output" };
+    }
+
+    [Fact]
+    public async Task A_list_that_cannot_be_read_stays_the_fields_error()
+    {
+        var (fake, store, _, _) = await CreateAsync();
+        var api = Substitute.For<IOadmApi>();
+        api.ListActionChoicesAsync(default!, default!, default).ReturnsForAnyArgs<IReadOnlyList<ActionChoiceEntry>>(_ => throw new InvalidOperationException("Connection lost."));
+        var editor = new RuleEditorViewModel(api, await fake.GetEventCatalogAsync(CancellationToken.None), null, store);
+        editor.AddActionCommand.Execute(null);
+        var action = editor.RuleActions[^1];
+        action.SelectedAction = action.Actions.Single(a => a.Id == "oadm.vapix-commander.command");
+        var command = action.Fields.Single(f => f.Key == "command");
+        await TestSupport.WaitUntilAsync(() => command.LoadError is not null);
+
+        editor.Name = "Overlay";
+        editor.Revalidate(); // any later change re-checks every field
+        Assert.Equal("The list could not be read: Connection lost.", command.Error);
+        fake.Dispose();
+    }
+
+    [Fact]
+    public async Task The_device_picker_of_a_rule_offers_the_defined_tags_and_keeps_chosen_ones()
+    {
+        var (api, store, _, _) = await CreateAsync();
+        store.Tags.Reset([.. await api.ListTagsAsync(CancellationToken.None), new DeviceTag { Id = Guid.NewGuid().ToString(), Name = "Later", Color = TagColor.Teal, Defined = true }]);
+        var editor = new RuleEditorViewModel(api, await api.GetEventCatalogAsync(CancellationToken.None), null, store);
+        var targets = editor.RuleActions[0].Targets;
+        targets.SetChoice(DeviceChoice.Devices([], ["Not defined yet"]));
+        DevicePickerViewModel? shown = null;
+        editor.ShowPicker = picker =>
+        {
+            shown = picker;
+            return Task.FromResult(true);
+        };
+        await targets.ChooseDevicesCommand.ExecuteAsync(null);
+
+        Assert.Contains(shown!.Tags, t => t.Name == "Later" && t.CountText == "0" && !t.IsChecked);
+        Assert.Contains(shown.Tags, t => t.Name == "Not defined yet" && t.IsChecked);
+        Assert.Equal(["Not defined yet"], targets.ToSelector().Tags);
+        api.Dispose();
+    }
+
+    private static async IAsyncEnumerable<T> Stream<T>(IReadOnlyList<T> items, bool fail, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        foreach (var item in items)
+        {
+            await Task.Yield();
+            yield return item;
+        }
+
+        if (fail)
+        {
+            throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "Stream dropped."));
+        }
+
+        await Task.Delay(Timeout.Infinite, ct);
     }
 
     private static void Pump()

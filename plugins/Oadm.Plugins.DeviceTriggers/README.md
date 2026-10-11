@@ -7,19 +7,26 @@ one WebSocket event stream per device and publishes every trigger as two event t
 
 - **Event types** (`IDynamicEventSource`, they change with the triggers): `oadm.device-triggers.<id>` named like the
   trigger (on/off or one-shot like the device's event), and `oadm.device-triggers.<id>.lost` "&lt;Trigger&gt;: connection
-  lost" (on/off). Group "Device triggers". Disabled triggers keep their types (their rules stay valid, the events are
-  off); a deleted trigger's types disappear (its rules show "Not available: an event of this rule no longer exists").
+  lost" (on/off). Group "Device triggers". Disabled triggers keep their types (their rules stay valid) and report them
+  as off at once (`ReplaceStates` with nobody on); a turned-on trigger without devices right now reports the same; a
+  deleted trigger's types disappear (its rules show "Not available: an event of this rule no longer exists").
 - **Event list** (`Device/EventDeclarations`): SOAP `aev:GetEventInstances` at `/vapix/services`, read-only. Topics marked
   `isApplicationData` (on the topic or a parent) are left out. The editor reads it live for every create and edit
-  (`startRead` / `readStatus`, 16 devices at a time); a connection reads it on every connect and every 5 minutes.
+  (`startRead` / `readStatus`, 16 devices at a time; a device whose API list was not read yet is read too); a connection
+  reads it on every connect and every 5 minutes, and on a trigger change only when a chosen device lacks a topic not
+  checked yet (devices of a tag or of all devices never cause a read).
 - **Stream** (`Runtime/DeviceConnection`, one per device with a turned-on trigger): `IVapixClient.ConnectWebSocketAsync`
   (session token from `wssession.cgi`, wss with the pinned certificate, ping every 10 s), then `events:configure` with one
   filter per topic (narrowed values joined with "or", "Any" = the whole topic); what arrives within 1.5 s after the reply
-  is the device's report of its current states. Trigger changes set a new filter on the open socket. Reconnect after 1, 2,
+  is the device's report of its current states. Trigger changes set a new filter on the open socket of the devices whose
+  triggers changed only. At most 16 devices connect at once (`DeviceTriggersOptions.ConnectParallelism`). The request's
+  `context` is numbered; answers to a replaced list are ignored. A refused entry (2104) is a problem of its triggers only:
+  with several entries each is tried alone, the accepted ones are set together. A value with both quote characters is an
+  XPath `concat()`. A refused upgrade (401 / 403) shows the shared Unauthorized / Forbidden text. Reconnect after 1, 2,
   4, 8, 10 s. Devices with Credentials required, Password not set or Certificate changed are not contacted.
 - **State** (`Runtime/TriggerRuntime`): per trigger and device the state of every matching source; on while at least one
   is on. The first report of every device (or a problem) makes the trigger report to the rules (`SetState` with the
-  event values, then `ReplaceStates`); afterwards each change is one `SetState`, one-shot events are `Fire`. A problem keeps
+  event values, then `ReplaceStates`; a pending count per trigger keeps the check O(1)); afterwards each change is one `SetState`, one-shot events are `Fire`. A problem keeps
   the last state; after 30 s "connection lost" turns on with `{reason}`; the next report turns it off.
 - **Methods** (`DeviceTriggersMethods`): `list`, `get`, `startRead`, `readStatus` (Operator); `save`, `delete`,
   `setEnabled`, `duplicate` (Admin, audited). Event `changed` (page reload, at most every 300 ms on the page). Triggers are
@@ -27,13 +34,15 @@ one WebSocket event stream per device and publishes every trigger as two event t
   triggers (checked every 30 s).
 - **Page**: triggers (On, Name, Event, Devices, State, Last event; New trigger, Edit, Duplicate, Delete) and the devices of
   the selected one (Connection, State, Last event). Dialog: name and turned on in one row, Choose devices (the shared device
-  picker with All devices, tags and single devices; OK reads the event lists of the devices that joined at once), the
-  trigger's devices with "Included by" (Chosen, Tag X, All devices) and their event count or why they were not read (they
-  stay), the event (grouped select of every event any device offers; a chosen device that was read and lacks the event is
-  shown "Does not offer this event" and blocks Save, a device of a tag or of all devices is left out), one select per
-  source item (Any or a value). Server: `AllDevices` / `Tags` are resolved after every change and every 30 s
-  (`DeviceTriggersOptions.ResolveInterval`, `TriggerDefinition.Implicit`); `TriggerRuntime.NotOffered` leaves such a
-  device out without "connection lost".
+  picker with All devices, tags and single devices; OK reads the event lists of the devices that joined at once, the
+  chosen ones first), the trigger's devices with "Included by" (Chosen, Tag X, All devices) and their event count or why
+  they were not read (they stay), the event (grouped select of every event any device offers; a chosen device that was
+  read and lacks the event is shown "Does not offer this event" and blocks Save, a device of a tag or of all devices is
+  left out; Save waits only for the chosen devices once the event is known), one select per source item (Any or a value).
+  Server: `AllDevices` / `Tags` are resolved after every change and every 30 s (`DeviceTriggersOptions.ResolveInterval`,
+  `TriggerDefinition.Implicit`), one resolve at a time so an older list never replaces a newer one (stop waits for a
+  resolve in flight; a stopped runtime takes no new connections); `TriggerRuntime.NotOffered` leaves such a device out
+  without "connection lost".
 - Verified on 10.0.0.48 (AXIS P3265-V, AXIS OS 12.11): 42 events, token login over HTTPS, the report after the filter,
   and virtual input 64 on and off (`DeviceTriggersHardwareTests`, `OADM_TRIGGER_URL` / `_USER` / `_PASSWORD`; the write
   test is `Category=HardwareWrite`).
@@ -47,5 +56,7 @@ one WebSocket event stream per device and publishes every trigger as two event t
   events (the trigger shows "The event is no longer on the device").
 - Tests: `tests/Oadm.Plugins.DeviceTriggers.Tests` (recorded event list, filters, messages, reports, Any, one-shot,
   connection lost and back, event gone, refused statuses, turn off, types follow save / copy / delete, validation,
+  `RobustnessTests`: resolve order and stop, filters only to changed devices, connect limit, refused filter of one
+  trigger, turned-off and empty triggers report at once, 5,000 devices,
   removed devices, live read, roles, page and dialog view models incl. 5,000 devices, fake mode, headless
   `device-triggers-page.png`, `device-triggers-editor.png`). Fake mode: `FakeOadmApi.DeviceTriggers.cs`.

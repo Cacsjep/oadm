@@ -35,6 +35,10 @@ public sealed class StatusChip : Grid
     public static readonly StyledProperty<bool> IsAccentProperty =
         AvaloniaProperty.Register<StatusChip, bool>(nameof(IsAccent));
 
+    /// <summary>Information only (blue "i"): something happened, nothing to check (event log events and rule edges).</summary>
+    public static readonly StyledProperty<bool> IsInfoProperty =
+        AvaloniaProperty.Register<StatusChip, bool>(nameof(IsInfo));
+
     /// <summary>
     /// Lines the text may wrap to before it is trimmed (default 1). The theme sets 2 in grids with the class
     /// <c>wrapRows</c>, so a failure reason stays readable instead of ending in "...".
@@ -103,6 +107,12 @@ public sealed class StatusChip : Grid
         set => SetValue(IsErrorProperty, value);
     }
 
+    public bool IsInfo
+    {
+        get => GetValue(IsInfoProperty);
+        set => SetValue(IsInfoProperty, value);
+    }
+
     public bool IsAccent
     {
         get => GetValue(IsAccentProperty);
@@ -157,12 +167,18 @@ public sealed class StatusChip : Grid
             Classes.Set("accent", IsAccent);
             UpdateIcon();
         }
+        else if (change.Property == IsInfoProperty)
+        {
+            Classes.Set("info", IsInfo);
+            UpdateIcon();
+        }
     }
 
     private string IconKey => IsError ? "Icon.status.error"
         : IsWarning ? "Icon.status.warning"
         : IsAccent ? "Icon.status.running"
         : IsOk ? "Icon.status.ok"
+        : IsInfo ? "Icon.status.info"
         : "Icon.status.neutral";
 
     private void UpdateIcon()

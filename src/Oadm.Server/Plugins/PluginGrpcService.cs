@@ -41,11 +41,12 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
             throw GrpcGuard.FailedPrecondition(ex.Message);
         }
 
+        // The change is done: it is audited even when the caller has gone meanwhile.
         await audit.WriteAsync(
             request.Enabled ? AuditActions.PluginTurnedOn : AuditActions.PluginTurnedOff,
             changed.Origin.DisplayName,
             null,
-            context.CancellationToken).ConfigureAwait(false);
+            CancellationToken.None).ConfigureAwait(false);
         return PackageList();
     }
 

@@ -212,7 +212,9 @@ build_plugins() {
       p="${p#"$REPO_ROOT"/}"
       if [ $first -eq 0 ]; then printf ',\n'; fi
       first=0
-      printf '      "%s"' "${p//\//\\\\}"
+      # JSON-escaped Windows separators ("plugins\\X\\X.csproj", like manage.ps1). sed, not ${p//\//...}: bash 3.2,
+      # 4.x and 5.2 (patsub_replacement) treat backslashes in the replacement differently.
+      printf '      "%s"' "$(printf '%s' "$p" | sed 's#/#\\\\#g')"
     done < <(plugin_projects)
     printf '\n    ]\n  }\n}\n'
   } > "$PLUGIN_FILTER"

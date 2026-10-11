@@ -4,6 +4,7 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Collections;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
@@ -90,7 +91,7 @@ public sealed partial class IoMonitorViewModel : ObservableObject, IDisposable
 
     public static TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
 
-    public ObservableCollection<IoDeviceOption> Devices { get; } = [];
+    public RangeObservableCollection<IoDeviceOption> Devices { get; } = [];
 
     public ObservableCollection<PortTileViewModel> Inputs { get; } = [];
 
@@ -312,13 +313,34 @@ public sealed partial class IoMonitorViewModel : ObservableObject, IDisposable
             while (!ct.IsCancellationRequested)
             {
                 await Task.Delay(KeepAliveInterval, ct).ConfigureAwait(true);
-                await _ctx.InvokeAsync(IoMonitorMethods.KeepAlive, IoMonitorJson.Serialize(new StreamRequest(streamId)), ct).ConfigureAwait(true);
+                string? json;
+                try
+                {
+                    json = await _ctx.InvokeAsync(IoMonitorMethods.KeepAlive, IoMonitorJson.Serialize(new StreamRequest(streamId)), ct).ConfigureAwait(true);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    return;
+                }
+#pragma warning disable CA1031 // A missed keep-alive is retried with the next one.
+                catch (Exception)
+#pragma warning restore CA1031
+                {
+                    continue;
+                }
+
+                // the server no longer reads for this stream (it expired or the server restarted): start again, so the
+                // page never shows old states; an empty answer (older server, fake mode) means it still runs
+                if (!string.IsNullOrEmpty(json) && !IoMonitorJson.Deserialize<KeepAliveReply>(json).Running && !ct.IsCancellationRequested && _streamId == streamId)
+                {
+                    _ = SwitchAsync(SelectedDevice);
+                    return;
+                }
             }
         }
-#pragma warning disable CA1031 // Stopped or the connection dropped: the next start begins again.
-        catch (Exception)
-#pragma warning restore CA1031
+        catch (OperationCanceledException)
         {
+            // stopped
         }
     }
 
@@ -357,21 +379,37 @@ public sealed partial class IoMonitorViewModel : ObservableObject, IDisposable
     private void RefreshDevices()
     {
         var options = IoDeviceOption.From(_ctx.Devices);
-        var selected = SelectedDevice?.Id;
-        Devices.Clear();
-        foreach (var option in options)
+        var selected = SelectedDevice;
+
+        // one reset; the picker may clear its selection on it, which must not stop the stream
+        _silent = true;
+        try
         {
-            Devices.Add(option);
+            Devices.ReplaceAll(options);
+        }
+        finally
+        {
+            _silent = false;
         }
 
-        if (selected is { } id && Devices.FirstOrDefault(d => d.Id == id) is { } again && !ReferenceEquals(again, SelectedDevice))
+        if (selected is null)
         {
-            // the same device: keep the stream, only swap the list entry
-            SetSelectedSilently(again);
+            if (SelectedDevice is not null)
+            {
+                SetSelectedSilently(null);
+            }
         }
-        else if (selected is not null && Devices.All(d => d.Id != selected))
+        else if (options.FirstOrDefault(d => d.Id == selected.Id) is { } again)
         {
-            SelectedDevice = null; // removed from OADM
+            if (!ReferenceEquals(again, SelectedDevice))
+            {
+                SetSelectedSilently(again); // the same device: keep the stream, only swap the list entry
+            }
+        }
+        else
+        {
+            SetSelectedSilently(null); // removed from OADM: stop reading it
+            _ = SwitchAsync(null);
         }
 
         OnPropertyChanged(nameof(EmptyText));
@@ -379,7 +417,7 @@ public sealed partial class IoMonitorViewModel : ObservableObject, IDisposable
 
     private bool _silent;
 
-    private void SetSelectedSilently(IoDeviceOption option)
+    private void SetSelectedSilently(IoDeviceOption? option)
     {
         _silent = true;
         SelectedDevice = option;

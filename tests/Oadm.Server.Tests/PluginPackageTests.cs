@@ -112,6 +112,34 @@ public sealed class PluginPackageTests
     }
 
     [Fact]
+    public async Task ACallCancelledDuringTheChangeStillStoresItAndStartsThePlugin()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        using var cts = new CancellationTokenSource();
+        var core = new CountingCorePlugin("test.dashboard") { OnStart = ct => { cts.Cancel(); ct.ThrowIfCancellationRequested(); } };
+        var registry = host.Get<PluginRegistry>();
+        registry.RegisterCorePlugin(core, new PluginOrigin("test.dashboard", "1.0.0", null) { DisplayName = "Dashboard", EnabledByDefault = false });
+        var activation = host.Get<PluginActivation>();
+        await activation.LoadAsync(CancellationToken.None);
+
+        // The caller goes away while the plugin starts: the change still completes everywhere.
+        var state = await activation.SetEnabledAsync("test.dashboard", true, cts.Token);
+
+        Assert.True(state.Enabled);
+        Assert.Equal(1, core.Starts);
+        Assert.Equal("test.dashboard", Assert.Single((await host.Plugins.ListCorePluginsAsync(new Proto.Empty())).Plugins).Id);
+        Assert.Equal("pong", (await host.Plugins.InvokeAsync(new Proto.InvokeRequest { PluginId = "test.dashboard", Method = "ping" })).PayloadJson);
+        registry.ApplyEnabledStates(new Dictionary<string, bool>());
+        await activation.LoadAsync(CancellationToken.None);
+        Assert.True(registry.IsEnabled("test.dashboard"));
+
+        // A call cancelled before it got its turn changes nothing.
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => activation.SetEnabledAsync("test.dashboard", false, cts.Token));
+        Assert.True(registry.IsEnabled("test.dashboard"));
+        Assert.Equal(0, core.Stops);
+    }
+
+    [Fact]
     public void TheBundledManifestsTurnTheHardeningScanAndTheImageHealthDashboardOffByDefault()
     {
         var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
@@ -136,6 +164,9 @@ public sealed class PluginPackageTests
 
         public int Stops;
 
+        /// <summary>Runs inside <see cref="StartAsync"/> with its token.</summary>
+        public Action<CancellationToken>? OnStart { get; init; }
+
         public string Id => id;
 
         public string DisplayName => id;
@@ -146,6 +177,7 @@ public sealed class PluginPackageTests
 
         public Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
         {
+            OnStart?.Invoke(ct);
             Starts++;
             return Task.CompletedTask;
         }

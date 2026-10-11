@@ -82,5 +82,6 @@
   <StreamGeometry x:Key="Icon.status.error">M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0 -20z M15 9l-6 6 M9 9l6 6</StreamGeometry>
   <StreamGeometry x:Key="Icon.status.warning">M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71 -3L13.71 3.86a2 2 0 0 0 -3.42 0z M12 9v4 M12 17h0.01</StreamGeometry>
   <StreamGeometry x:Key="Icon.status.running">M21 12a9 9 0 1 1 -6.22 -8.56</StreamGeometry>
+  <StreamGeometry x:Key="Icon.status.info">M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0 -20z M12 16v-4 M12 8h0.01</StreamGeometry>
   <StreamGeometry x:Key="Icon.status.neutral">M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0 -20z M8 12h8</StreamGeometry>
 </ResourceDictionary>

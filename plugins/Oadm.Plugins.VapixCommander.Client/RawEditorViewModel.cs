@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Client.Validation;
 
 namespace Oadm.Plugins.VapixCommander.Client;
@@ -229,7 +230,7 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
     public static IReadOnlyList<string> Categories => CommandCategories.All;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowHeaders))]
+    [NotifyPropertyChangedFor(nameof(ShowHeaders), nameof(ShowBody), nameof(ShowBodyText))]
     public partial string Method { get; set; } = "GET";
 
     [ObservableProperty]
@@ -246,13 +247,66 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
     public partial KeyValueRowViewModel? SelectedHeaderRow { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasBody))]
+    [NotifyPropertyChangedFor(nameof(HasBody), nameof(ShowBody), nameof(ShowBodyText), nameof(BodyLanguage))]
     public partial string BodyType { get; set; } = BodyTypes.None;
 
     [ObservableProperty]
     public partial string BodyText { get; set; } = string.Empty;
 
     public bool HasBody => BodyType != BodyTypes.None;
+
+    /// <summary>The body section: GET sends none, so it is hidden there unless the command already has a body (never hide data).</summary>
+    public bool ShowBody => !string.Equals(Method, "GET", StringComparison.OrdinalIgnoreCase) || HasBody;
+
+    public bool ShowBodyText => ShowBody && HasBody;
+
+    /// <summary>How the body editor colors the text (JSON, XML; form and text plain).</summary>
+    public CodeLanguage BodyLanguage => BodyType switch
+    {
+        BodyTypes.Json => CodeLanguage.Json,
+        BodyTypes.Xml => CodeLanguage.Xml,
+        _ => CodeLanguage.Plain,
+    };
+
+    /// <summary>
+    /// Reset: a fresh request (GET param.cgi list Brand, no headers, no body, no fields, default timeout and response),
+    /// the save form closed and empty, nothing marked as edited.
+    /// </summary>
+    [RelayCommand]
+    private void Reset()
+    {
+        _suppressEdits = true;
+        try
+        {
+            IsSaveOpen = false;
+            Method = "GET";
+            Path = "/axis-cgi/param.cgi";
+            QueryRows.Clear();
+            QueryRows.Add(new KeyValueRowViewModel { Key = "action", Value = "list" });
+            QueryRows.Add(new KeyValueRowViewModel { Key = "group", Value = "Brand" });
+            HeaderRows.Clear();
+            BodyType = BodyTypes.None;
+            BodyText = string.Empty;
+            Fields.Clear();
+            TimeoutSeconds = CommandLimits.DefaultTimeoutSeconds;
+            SaveName = string.Empty;
+            SaveCategory = CommandCategories.Custom;
+            SaveDescription = string.Empty;
+            Dangerous = false;
+        }
+        finally
+        {
+            _suppressEdits = false;
+        }
+
+        _requiresEdited = false;
+        _kindEdited = false;
+        _writesEdited = false;
+        ApplyPathDefaults();
+        OnPropertyChanged(nameof(HasFields));
+        Validation.Reset();
+        Validation.Validate();
+    }
 
     /// <summary>
     /// The request headers section: not needed for GET (Axis GET requests carry everything in path and query), so it is

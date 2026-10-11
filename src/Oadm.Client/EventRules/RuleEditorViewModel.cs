@@ -33,8 +33,8 @@ public sealed partial class ConditionViewModel : ObservableObject
         IsTrigger = isTrigger;
         EventTypes = isTrigger ? owner.AllEventTypes : [.. owner.AllEventTypes.Where(t => t.Stateful)];
         Selector = isTrigger
-            ? new DeviceSelectorViewModel(owner.DeviceList, DevicePickerOptions.Full(), DeviceChoice.AllDevices, initial?.Devices, owner.PickDevicesAsync)
-            : new DeviceSelectorViewModel(owner.DeviceList, DevicePickerOptions.Full("The same device"), DeviceChoice.EventDevice, initial?.Devices, owner.PickDevicesAsync);
+            ? new DeviceSelectorViewModel(owner.DeviceList, DevicePickerOptions.Full(null, owner.TagNames), DeviceChoice.AllDevices, initial?.Devices, owner.PickDevicesAsync)
+            : new DeviceSelectorViewModel(owner.DeviceList, DevicePickerOptions.Full("The same device", owner.TagNames), DeviceChoice.EventDevice, initial?.Devices, owner.PickDevicesAsync);
         Selector.Changed += (_, _) => owner.Revalidate();
         foreach (var day in new[] { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday })
         {
@@ -191,7 +191,7 @@ public sealed partial class RuleActionViewModel : ObservableObject
         Key = initial?.Key ?? Guid.NewGuid();
         Targets = new DeviceSelectorViewModel(
             owner.DeviceList,
-            DevicePickerOptions.Full("The device of the event"),
+            DevicePickerOptions.Full("The device of the event", owner.TagNames),
             DeviceChoice.EventDevice,
             initial?.Targets,
             owner.PickDevicesAsync);
@@ -303,7 +303,7 @@ public sealed partial class RuleActionViewModel : ObservableObject
         foreach (var field in Fields)
         {
             field.IsVisible = ActionSettings.IsVisible(field.Field, settings, statefulRule);
-            field.Problem = errors.GetValueOrDefault(field.Key);
+            field.Problem = field.LoadError ?? errors.GetValueOrDefault(field.Key);
         }
 
         OnPropertyChanged(nameof(Error));
@@ -392,6 +392,7 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
         AllEventTypes = [.. catalog.EventTypes.OrderBy(t => t.Group == "Device status" ? 0 : 1).ThenBy(t => t.Group).ThenBy(t => t.DisplayName).Select(t => new EventTypeOption(t))];
         Actions = [.. catalog.Actions.OrderBy(a => a.DisplayName, StringComparer.CurrentCultureIgnoreCase).Select(a => new ActionOption(a))];
         DeviceList = [.. devices.Devices];
+        TagNames = [.. devices.Tags.Tags.Where(t => t.IsDefined).Select(t => t.Name)];
         Steps = [.. StepNames.Select((name, i) => new WizardStepItem(i, name, () => Step, CanOpen, GoTo))];
         _original = detail is null ? new RuleDefinition { Enabled = true } : RuleDefinition.FromJson(detail.DefinitionJson);
         IsNew = detail is null;
@@ -691,6 +692,9 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
     /// <summary>Every managed device, for the shared device picker of conditions and actions.</summary>
     internal IReadOnlyList<IDeviceInfo> DeviceList { get; }
 
+    /// <summary>The defined tags: the picker offers them also before any device carries them.</summary>
+    internal IReadOnlyList<string> TagNames { get; }
+
     /// <summary>Shows the shared device picker (set by the window); true = OK.</summary>
     public Func<DevicePickerViewModel, Task<bool>>? ShowPicker { get; set; }
 
@@ -727,21 +731,26 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
         }
     }
 
+    /// <summary>
+    /// Fills a list the action provides (fire and forget: every error ends as the field's problem, nothing escapes).
+    /// </summary>
     internal async Task LoadChoicesAsync(string actionId, ActionFieldViewModel field)
     {
         try
         {
             var choices = await _api.ListActionChoicesAsync(actionId, field.Key, CancellationToken.None).ConfigureAwait(true);
             var shown = field.ShowError;
+            field.LoadError = null;
             field.SetChoices(choices);
             field.ShowError = shown;
-            Revalidate();
         }
-        catch (RpcException ex)
+        catch (Exception ex)
         {
-            field.Problem = "The list could not be read: " + ex.Status.Detail;
+            field.LoadError = "The list could not be read: " + (ex is RpcException rpc ? rpc.Status.Detail : ex.Message);
             field.ShowError = true;
         }
+
+        Revalidate();
     }
 
     /// <summary>Re-checks every part after any change (cheap: a rule has few parts).</summary>

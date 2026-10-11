@@ -46,6 +46,8 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
+        <ui:StatusChip Text="{x:Static vm:ImportConfigViewModel.ConnectionNote}" IsWarning="True" MaxLines="2"
+                       IsVisible="{Binding HasConnectionSettings}" />
         <ui:ProgressRow Value="{Binding UploadProgress}" Text="{Binding UploadText}" IsVisible="{Binding IsUploading}" Margin="0,6,0,0" />
         <ui:StatusChip Text="{Binding Error}" IsError="True" IsVisible="{Binding HasError}" />
       </StackPanel>

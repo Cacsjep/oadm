@@ -50,7 +50,9 @@ public sealed partial class PluginActivation(
     /// <summary>
     /// Turns a package on or off, stores the choice and starts or stops its core plugins.
     /// Throws <see cref="KeyNotFoundException"/> for an unknown package, <see cref="InvalidOperationException"/> for one
-    /// that is always on.
+    /// that is always on. <paramref name="ct"/> only covers the wait for an earlier change: once the registry has the new
+    /// state, storing it and starting or stopping the core plugins run to the end, so a cancelled call never leaves the
+    /// registry, the stored choice and the running plugins disagreeing. A choice that cannot be stored is undone.
     /// </summary>
     public async Task<PluginPackageState> SetEnabledAsync(string packageId, bool enabled, CancellationToken ct)
     {
@@ -63,9 +65,19 @@ public sealed partial class PluginActivation(
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            var before = registry.IsEnabled(packageId);
             var states = registry.SetEnabled(packageId, enabled);
-            await settings.SetJsonAsync(SettingKey, JsonSerializer.Serialize(states), ct).ConfigureAwait(false);
-            await host.SyncEnabledAsync(ct).ConfigureAwait(false);
+            try
+            {
+                await settings.SetJsonAsync(SettingKey, JsonSerializer.Serialize(states), CancellationToken.None).ConfigureAwait(false);
+            }
+            catch
+            {
+                registry.SetEnabled(packageId, before);
+                throw;
+            }
+
+            await host.SyncEnabledAsync(CancellationToken.None).ConfigureAwait(false);
             LogChanged(logger, packageId, enabled ? "on" : "off");
         }
         finally

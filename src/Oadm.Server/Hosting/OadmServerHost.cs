@@ -384,6 +384,9 @@ public static partial class OadmServerHost
         await rules.StartAsync(ct).ConfigureAwait(false);
         registry.EnabledChanged += (_, _) => rules.SourcesChanged();
         await sp.GetRequiredService<CorePluginHost>().StartAllAsync(ct).ConfigureAwait(false);
+        // Rules are evaluated at once, but their actions wait until here: contributed actions (Run VAPIX command) need
+        // their core plugin running.
+        sp.GetRequiredService<ActionRunner>().PluginsStarted();
 
         // 5. Background services and Kestrel.
         var listenUrl = options.ListenUrl

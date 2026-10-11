@@ -45,14 +45,14 @@ public sealed class RuleStore(IDbContextFactory<OadmDbContext> dbFactory, ISecre
     }
 
     /// <summary>
-    /// Creates (empty id) or replaces a rule. Password fields (<paramref name="passwordFields"/> per action id) are
+    /// Creates (empty id) or replaces a rule. Password fields (<paramref name="passwordFields"/> per action) are
     /// encrypted; an empty one listed in <see cref="RuleAction.StoredSecretFields"/> keeps the stored value of the action
     /// with the same <see cref="RuleAction.Key"/>. Returns the stored rule and the previous version (null when new).
     /// Throws <see cref="KeyNotFoundException"/> for an unknown id and <see cref="RuleValidationException"/> over
     /// <see cref="MaxRules"/>.
     /// </summary>
     public async Task<(StoredRule Rule, StoredRule? Previous)> SaveAsync(
-        RuleDefinition incoming, Func<string, IReadOnlyCollection<string>> passwordFields, CancellationToken ct)
+        RuleDefinition incoming, Func<RuleAction, IReadOnlyCollection<string>> passwordFields, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(incoming);
         ArgumentNullException.ThrowIfNull(passwordFields);
@@ -84,7 +84,7 @@ public sealed class RuleStore(IDbContextFactory<OadmDbContext> dbFactory, ISecre
             foreach (var action in rule.Actions)
             {
                 var old = previous?.Definition.Actions.FirstOrDefault(a => a.Key == action.Key);
-                ProtectSettings(rule.Id, action, old, passwordFields(action.ActionId));
+                ProtectSettings(rule.Id, action, old, passwordFields(action));
             }
 
             if (row is null)
@@ -158,7 +158,10 @@ public sealed class RuleStore(IDbContextFactory<OadmDbContext> dbFactory, ISecre
         }
     }
 
-    /// <summary>A copy "&lt;name&gt; (copy)", turned off, with the stored password values (encrypted again for the copy).</summary>
+    /// <summary>
+    /// A copy "&lt;name&gt; (copy)", turned off, with the stored password values (encrypted again for the copy). A value
+    /// that cannot be read (older master key) stays empty in the copy.
+    /// </summary>
     public async Task<StoredRule?> DuplicateAsync(Guid id, CancellationToken ct)
     {
         var source = await GetAsync(id, ct).ConfigureAwait(false);
@@ -177,19 +180,33 @@ public sealed class RuleStore(IDbContextFactory<OadmDbContext> dbFactory, ISecre
             {
                 if (IsSecret(node))
                 {
-                    var plain = secrets.Unprotect(node!.GetValue<string>()[SecretPrefix.Length..], Purpose(id, action.Key, key));
-                    action.Settings[key] = plain; // encrypted again for the copy below
+                    string plain;
+                    try
+                    {
+                        plain = secrets.Unprotect(node!.GetValue<string>()[SecretPrefix.Length..], Purpose(id, action.Key, key));
+                    }
+#pragma warning disable CA1031 // A value of an older master key cannot be read; the copy gets an empty field.
+                    catch (Exception)
+#pragma warning restore CA1031
+                    {
+                        plain = string.Empty;
+                    }
+
+                    action.Settings[key] = plain; // encrypted again for the copy below (an empty one is left out)
                 }
             }
 
             action.StoredSecretFields = [];
         }
 
-        var secretKeys = source.Definition.Actions.ToDictionary(
-            a => a.ActionId,
-            a => (IReadOnlyCollection<string>)[.. a.Settings.Where(p => IsSecret(p.Value)).Select(p => p.Key)],
-            StringComparer.OrdinalIgnoreCase);
-        var (rule, _) = await SaveAsync(copy, actionId => secretKeys.GetValueOrDefault(actionId) ?? [], ct).ConfigureAwait(false);
+        // By action key: a rule can hold two actions of the same type.
+        var secretKeys = new Dictionary<Guid, IReadOnlyCollection<string>>();
+        foreach (var action in source.Definition.Actions)
+        {
+            secretKeys[action.Key] = [.. action.Settings.Where(p => IsSecret(p.Value)).Select(p => p.Key)];
+        }
+
+        var (rule, _) = await SaveAsync(copy, action => secretKeys.GetValueOrDefault(action.Key) ?? [], ct).ConfigureAwait(false);
         return rule;
     }
 
@@ -218,7 +235,10 @@ public sealed class RuleStore(IDbContextFactory<OadmDbContext> dbFactory, ISecre
             g => (IReadOnlyDictionary<Guid, DateTime>)g.ToDictionary(r => r.SubjectId, r => r.SinceUtc));
     }
 
-    /// <summary>Applies state changes in one transaction: added (rule, subject, since) and removed (rule, subject).</summary>
+    /// <summary>
+    /// Applies state changes in one transaction: added (rule, subject, since) and removed (rule, subject). Changes of rules
+    /// that no longer exist are skipped (serialized with <see cref="DeleteAsync"/>, so a rule cannot vanish meanwhile).
+    /// </summary>
     public async Task WriteStatesAsync(
         IReadOnlyCollection<(Guid Rule, Guid Subject, DateTime Since)> added,
         IReadOnlyCollection<(Guid Rule, Guid Subject)> removed,
@@ -231,33 +251,46 @@ public sealed class RuleStore(IDbContextFactory<OadmDbContext> dbFactory, ISecre
             return;
         }
 
-        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-        var rules = await db.EventRules.Select(r => r.Id).ToListAsync(ct).ConfigureAwait(false);
-        var known = rules.ToHashSet();
-        foreach (var (rule, subject) in removed)
+        await _write.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            var row = await db.EventRuleStates.FindAsync([rule, subject], ct).ConfigureAwait(false);
-            if (row is not null)
+            await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+            var rules = await db.EventRules.Select(r => r.Id).ToListAsync(ct).ConfigureAwait(false);
+            var known = rules.ToHashSet();
+            foreach (var (rule, subject) in removed)
             {
-                db.EventRuleStates.Remove(row);
-            }
-        }
+                if (!known.Contains(rule))
+                {
+                    continue; // deleted with its states
+                }
 
-        foreach (var (rule, subject, since) in added)
+                var row = await db.EventRuleStates.FindAsync([rule, subject], ct).ConfigureAwait(false);
+                if (row is not null)
+                {
+                    db.EventRuleStates.Remove(row);
+                }
+            }
+
+            foreach (var (rule, subject, since) in added)
+            {
+                if (!known.Contains(rule))
+                {
+                    continue; // deleted meanwhile
+                }
+
+                var row = await db.EventRuleStates.FindAsync([rule, subject], ct).ConfigureAwait(false);
+                if (row is null)
+                {
+                    db.EventRuleStates.Add(new EventRuleStateEntity { RuleId = rule, SubjectId = subject, SinceUtc = since });
+                }
+            }
+
+            await db.SaveChangesAsync(ct).ConfigureAwait(false);
+        }
+        finally
         {
-            if (!known.Contains(rule))
-            {
-                continue; // deleted meanwhile
-            }
-
-            var row = await db.EventRuleStates.FindAsync([rule, subject], ct).ConfigureAwait(false);
-            if (row is null)
-            {
-                db.EventRuleStates.Add(new EventRuleStateEntity { RuleId = rule, SubjectId = subject, SinceUtc = since });
-            }
+            _write.Release();
         }
-
-        await db.SaveChangesAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>The rule for a client: password values removed, their fields in <see cref="RuleAction.StoredSecretFields"/>.</summary>

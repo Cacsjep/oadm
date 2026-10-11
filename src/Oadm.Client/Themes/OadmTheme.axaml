@@ -58,6 +58,7 @@
       <Color x:Key="Oadm.StatusWarningColor">#E0A43A</Color>
       <Color x:Key="Oadm.StatusErrorColor">#E5534B</Color>
       <Color x:Key="Oadm.StatusNeutralColor">#8A8A8A</Color>
+      <Color x:Key="Oadm.StatusInfoColor">#5AA9E6</Color>
       <Color x:Key="Oadm.StatusOkBackgroundColor">#263FB27F</Color>
       <Color x:Key="Oadm.StatusWarningBackgroundColor">#26E0A43A</Color>
       <Color x:Key="Oadm.StatusErrorBackgroundColor">#26E5534B</Color>
@@ -141,6 +142,7 @@
       <SolidColorBrush x:Key="Oadm.StatusWarningBrush" Color="{StaticResource Oadm.StatusWarningColor}" />
       <SolidColorBrush x:Key="Oadm.StatusErrorBrush" Color="{StaticResource Oadm.StatusErrorColor}" />
       <SolidColorBrush x:Key="Oadm.StatusNeutralBrush" Color="{StaticResource Oadm.StatusNeutralColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusInfoBrush" Color="{StaticResource Oadm.StatusInfoColor}" />
       <SolidColorBrush x:Key="Oadm.StatusOkBackgroundBrush" Color="{StaticResource Oadm.StatusOkBackgroundColor}" />
       <SolidColorBrush x:Key="Oadm.StatusWarningBackgroundBrush" Color="{StaticResource Oadm.StatusWarningBackgroundColor}" />
       <SolidColorBrush x:Key="Oadm.StatusErrorBackgroundBrush" Color="{StaticResource Oadm.StatusErrorBackgroundColor}" />
@@ -463,6 +465,9 @@
   </Style>
   <Style Selector="ui|StatusChip.error ui|OadmIcon.statusIcon, ui|OadmIcon.error">
     <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="ui|StatusChip.info ui|OadmIcon.statusIcon, ui|OadmIcon.info">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusInfoBrush}" />
   </Style>
   <Style Selector="ui|StatusChip.accent ui|OadmIcon.statusIcon, ui|OadmIcon.accent">
     <Setter Property="Foreground" Value="{StaticResource Oadm.AccentBrush}" />
@@ -1296,6 +1301,23 @@
   </Style>
 
   <!-- The one read-only code display (ui:CodeView): response bodies and headers, highlighted -->
+  <!-- ui:CodeEditor: the text box keeps caret, selection and background; its text is transparent and the colored copy
+       (TextBlock.codeEditorText, same font) is drawn over it -->
+  <Style Selector="TextBox.codeEditorInput">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="SelectionForegroundBrush" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="CaretBrush" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <Style Selector="TextBox.codeEditorInput:focus">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="TextBox.codeEditorInput:pointerover">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="TextBlock.codeEditorText">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
   <Style Selector="ui|CodeView">
     <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />

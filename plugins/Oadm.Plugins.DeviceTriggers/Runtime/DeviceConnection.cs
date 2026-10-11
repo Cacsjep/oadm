@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http;
 using System.Net.WebSockets;
 using System.Text;
@@ -16,8 +17,10 @@ namespace Oadm.Plugins.DeviceTriggers.Runtime;
 /// The permanent event stream of one device for all its turned-on triggers. Each session: read the device's event list
 /// (events that are gone are a problem of their triggers), open the WebSocket (session token, pinned certificate, ping
 /// every 10 s), set one filter per topic, take what arrives within the settle time as the device's report, then pass
-/// every event on. Trigger changes set a new filter on the open socket; the event list is read again every 5 minutes.
-/// A broken session is a problem of every trigger; reconnects wait 1, 2, 4, 8, 10 s.
+/// every event on. Trigger changes of this device set a new filter on the open socket; the event list is read again every
+/// 5 minutes. At most <see cref="DeviceTriggersOptions.ConnectParallelism"/> devices connect at once. A filter entry the
+/// device refuses is a problem of its triggers only; a broken session is a problem of every trigger; reconnects wait 1, 2,
+/// 4, 8, 10 s.
 /// </summary>
 internal sealed partial class DeviceConnection : IAsyncDisposable
 {
@@ -81,6 +84,7 @@ internal sealed partial class DeviceConnection : IAsyncDisposable
     /// <summary>A short user text for a failed session.</summary>
     internal static string Describe(Exception ex, TimeSpan timeout) => ex switch
     {
+        UnauthorizedAccessException { Message: DeviceMessages.Forbidden } => DeviceMessages.Forbidden,
         UnauthorizedAccessException => DeviceMessages.Unauthorized,
         TaskCanceledException or TimeoutException => DeviceMessages.Timeout(timeout),
         HttpRequestException http => DeviceMessages.Unreachable(http.InnerException?.Message ?? http.Message),
@@ -172,30 +176,71 @@ internal sealed partial class DeviceConnection : IAsyncDisposable
         ct.ThrowIfCancellationRequested();
     }
 
-    /// <summary>One connection. Returns when no trigger is left; throws when it breaks.</summary>
+    /// <summary>
+    /// One connection. Returns when no trigger is left; throws when it breaks. A filter entry the device refuses (error
+    /// 2104) is a problem of its triggers only: with several entries each is tried alone once, then the accepted ones are
+    /// set; the refused ones stay out for the rest of the session.
+    /// </summary>
     private async Task RunSessionAsync(TaskCompletionSource signal, CancellationToken ct)
     {
-        var vapix = await _ctx.Vapix.CreateAsync(_deviceId, ct).ConfigureAwait(false); // cached by the host, never disposed here
-        var offered = await ReadOfferedAsync(vapix, ct).ConfigureAwait(false);
+        IVapixClient vapix;
+        HashSet<string> offered;
+        WebSocket connected;
+        await _runtime.ConnectGate.WaitAsync(ct).ConfigureAwait(false); // at most 16 devices connect at once
+        try
+        {
+            vapix = await _ctx.Vapix.CreateAsync(_deviceId, ct).ConfigureAwait(false); // cached by the host, never disposed here
+            offered = await ReadOfferedAsync(vapix, ct).ConfigureAwait(false);
+            connected = await vapix.ConnectWebSocketAsync(DeviceTriggersPluginInfo.StreamPath, _options.KeepAlive, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _runtime.ConnectGate.Release();
+        }
+
+        using var socket = connected;
         var nextRecheck = _time.GetUtcNow() + _options.RecheckInterval;
-        using var socket = await vapix.ConnectWebSocketAsync(DeviceTriggersPluginInfo.StreamPath, _options.KeepAlive, ct).ConfigureAwait(false);
         LogConnected(Logger, _deviceId);
 
+        // Topics of explicitly chosen triggers that the last read of the event list did not have: not read again on every
+        // trigger change, only when a new one is missing (devices of a tag or all devices never cause a read).
+        var confirmedMissing = _runtime.TriggersFor(_deviceId).Where(t => !offered.Contains(t.Topic)).Select(t => t.Topic).ToHashSet(StringComparer.Ordinal);
+        var refused = new Dictionary<string, string>(StringComparer.Ordinal); // filter entry key -> the device's error
         Task<string?>? receive = null;
         IReadOnlyList<TriggerDefinition> filtered = [];
+        IReadOnlyList<FilterEntry> sent = [];
+        Queue<FilterEntry>? probe = null; // entries tried one at a time after a refused list
+        FilterEntry? probing = null;
+        var afterProbe = false;
         List<StreamNotification>? report = null;
         DateTimeOffset? reportDue = null;
         var awaitingReply = false;
+        var sequence = 0;
+        var context = string.Empty;
         try
         {
-            async Task ConfigureAsync()
+            async Task SendAsync(IReadOnlyList<FilterEntry> entries)
             {
+                sent = entries;
+                awaitingReply = true;
+                reportDue = _time.GetUtcNow() + _options.RequestTimeout;
+                context = "oadm-" + (++sequence).ToString(CultureInfo.InvariantCulture); // answers to older lists are ignored
+                await socket.SendAsync(Encoding.UTF8.GetBytes(EventStreamJson.Configure(entries, context)), WebSocketMessageType.Text, true, ct).ConfigureAwait(false);
+            }
+
+            async Task ConfigureAsync(bool probed = false)
+            {
+                probe = null;
+                probing = null;
+                afterProbe = probed;
                 var triggers = _runtime.TriggersFor(_deviceId);
-                if (triggers.Any(t => !offered.Contains(t.Topic)))
+                if (triggers.Any(t => !offered.Contains(t.Topic) && !t.Implicit.Contains(_deviceId) && !confirmedMissing.Contains(t.Topic)))
                 {
                     offered = await ReadOfferedAsync(vapix, ct).ConfigureAwait(false); // a trigger for an event read before this session
+                    confirmedMissing.Clear();
                 }
 
+                confirmedMissing.UnionWith(triggers.Where(t => !offered.Contains(t.Topic)).Select(t => t.Topic));
                 var missing = triggers.Where(t => !offered.Contains(t.Topic) && !t.Implicit.Contains(_deviceId)).Select(t => t.Id).ToList();
                 if (missing.Count > 0)
                 {
@@ -208,8 +253,18 @@ internal sealed partial class DeviceConnection : IAsyncDisposable
                     _runtime.NotOffered(_deviceId, notOffered); // a device of a tag or of all devices without this event
                 }
 
-                filtered = [.. triggers.Where(t => offered.Contains(t.Topic))];
-                if (filtered.Count == 0)
+                var entries = EventStreamJson.Entries(triggers.Where(t => offered.Contains(t.Topic)));
+                foreach (var entry in entries)
+                {
+                    if (refused.TryGetValue(entry.Key, out var error))
+                    {
+                        _runtime.Problem(_deviceId, [.. entry.Triggers.Select(t => t.Id)], RefusedText(error));
+                    }
+                }
+
+                var usable = entries.Where(e => !refused.ContainsKey(e.Key)).ToList();
+                filtered = [.. usable.SelectMany(e => e.Triggers)];
+                if (usable.Count == 0)
                 {
                     report = null; // nothing to ask for until the event is back (next check of the event list)
                     reportDue = null;
@@ -218,9 +273,19 @@ internal sealed partial class DeviceConnection : IAsyncDisposable
                 }
 
                 report = [];
-                awaitingReply = true;
-                reportDue = _time.GetUtcNow() + _options.RequestTimeout;
-                await socket.SendAsync(Encoding.UTF8.GetBytes(EventStreamJson.Configure(filtered)), WebSocketMessageType.Text, true, ct).ConfigureAwait(false);
+                await SendAsync(usable).ConfigureAwait(false);
+            }
+
+            async Task NextProbeAsync()
+            {
+                if (probe!.Count == 0)
+                {
+                    await ConfigureAsync(probed: true).ConfigureAwait(false); // the accepted entries together
+                    return;
+                }
+
+                probing = probe.Dequeue();
+                await SendAsync([probing]).ConfigureAwait(false);
             }
 
             await ConfigureAsync().ConfigureAwait(false);
@@ -245,17 +310,49 @@ internal sealed partial class DeviceConnection : IAsyncDisposable
                     var text = await receive.ConfigureAwait(false) ?? throw new WebSocketException("The device closed the connection.");
                     receive = null;
                     var message = EventStreamJson.Parse(text);
+                    if (message.IsConfigureReply && message.Context is { } answered && answered != context)
+                    {
+                        continue; // the answer to a list that was replaced since
+                    }
+
                     if (message.IsConfigureReply)
                     {
-                        if (message.Error is { } error)
-                        {
-                            throw new InvalidOperationException("The device refused the event filter: " + error);
-                        }
-
                         awaitingReply = false;
-                        reportDue = _time.GetUtcNow() + _options.SettleTime;
+                        if (probe is not null)
+                        {
+                            if (message.Error is { } probeError)
+                            {
+                                refused[probing!.Key] = probeError;
+                            }
+
+                            await NextProbeAsync().ConfigureAwait(false);
+                        }
+                        else if (message.Error is { } error)
+                        {
+                            if (afterProbe || sent.Count == 0)
+                            {
+                                throw new InvalidOperationException(RefusedText(error)); // every entry alone was accepted
+                            }
+
+                            if (sent.Count == 1)
+                            {
+                                refused[sent[0].Key] = error;
+                                await ConfigureAsync().ConfigureAwait(false);
+                            }
+                            else
+                            {
+                                report = null; // states that arrive while probing are not the report
+                                probe = new Queue<FilterEntry>(sent);
+                                await NextProbeAsync().ConfigureAwait(false);
+                            }
+                        }
+                        else
+                        {
+                            afterProbe = false;
+                            reportDue = _time.GetUtcNow() + _options.SettleTime;
+                        }
                     }
-                    else if (message.Notification is { } notification)
+                    else if (message.Notification is { } notification && probe is null)
                     {
                         if (report is not null)
                         {
@@ -289,6 +386,7 @@ internal sealed partial class DeviceConnection : IAsyncDisposable
                     nextRecheck = _time.GetUtcNow() + _options.RecheckInterval;
                     var before = offered;
                     offered = await ReadOfferedAsync(vapix, ct).ConfigureAwait(false);
+                    confirmedMissing.Clear();
                     var triggers = _runtime.TriggersFor(_deviceId);
                     if (triggers.Any(t => before.Contains(t.Topic) != offered.Contains(t.Topic)))
                     {
@@ -319,6 +417,9 @@ internal sealed partial class DeviceConnection : IAsyncDisposable
             }
         }
     }
+
+    /// <summary>"The device refused the event filter: Could not use supplied event filter".</summary>
+    internal static string RefusedText(string error) => "The device refused the event filter: " + error.Trim().TrimEnd('.');
 
     private async Task<HashSet<string>> ReadOfferedAsync(IVapixClient vapix, CancellationToken ct) =>
         [.. (await EventDeclarations.ReadAsync(vapix, _options.RequestTimeout, ct).ConfigureAwait(false)).Select(e => e.Topic)];

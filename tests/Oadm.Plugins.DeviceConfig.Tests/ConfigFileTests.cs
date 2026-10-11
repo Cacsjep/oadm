@@ -17,9 +17,10 @@ public sealed class ConfigFileTests
         Assert.Equal("12.11.77", file.FirmwareVersion);
         Assert.Equal("From AXIS P3265-V, AXIS OS 12.11.77", file.SourceText);
         Assert.Equal(
-            ["Event rules", "MQTT events", "Schedules", "Network and system settings", "Power", "Time zone", "Password policy"],
+            ["Event rules", "MQTT events", "Schedules", "Network and system settings", "Power", "Time zone", "Password policy", "Connection settings"],
             file.Sections.Select(s => s.Name));
         Assert.True(file.Sections.Single(s => s.Key == ConfigSections.Param).ValueCount > 1000);
+        Assert.Equal(10, file.Sections.Single(s => s.Key == ConfigSections.Connection).ValueCount);
         Assert.Equal(0, file.Sections.Single(s => s.Key == ConfigSections.ActionRules).ValueCount);
         Assert.False(file.HasRecipients);
     }
@@ -69,7 +70,7 @@ public sealed class ConfigFileTests
         Assert.False(((JsonObject)network["UPnP"]!).ContainsKey("FriendlyName"));
         Assert.False(network.ContainsKey("DHCP"));
         Assert.Null(network["InterfaceCollection"]![0]!["dot1x"]!["EAPTLS"]);
-        Assert.Equal("no", (string?)network["InterfaceCollection"]![0]!["dot1x"]!["Enabled"]);
+        Assert.Equal("3", (string?)network["InterfaceCollection"]![0]!["dot1x"]!["EAPOLVersion"]);
         Assert.Equal("1.1.1.1", (string?)network["DNSServer1"]);
         Assert.False(((JsonObject)param["SNMP"]!).ContainsKey("EngineBoots"));
         Assert.Equal("public", (string?)param["SNMP"]!["V1ReadCommunity"]);
@@ -82,6 +83,54 @@ public sealed class ConfigFileTests
 
         var time = ConfigIdentity.Clean("time.v2", file.Data["time.v2"]!);
         Assert.True(JsonNode.DeepEquals(file.Data["time.v2"], time));
+    }
+
+    [Fact]
+    public void Connection_settings_and_multicast_addresses_are_not_network_and_system_settings()
+    {
+        var file = ConfigFile.Parse(Fixtures.Export);
+        var param = (JsonObject)ConfigIdentity.Clean(ConfigSections.Param, file.Data[ConfigSections.Param]!);
+
+        // Left out of the parameters: what decides how OADM reaches the device, and the MAC-derived multicast addresses.
+        Assert.False(((JsonObject)param["HTTPS"]!).ContainsKey("Enabled") || ((JsonObject)param["HTTPS"]!).ContainsKey("Port"));
+        Assert.NotNull(param["HTTPS"]!["Ciphers"]);
+        var system = (JsonObject)param["System"]!;
+        Assert.False(system.ContainsKey("BoaPort") || system.ContainsKey("BoaGroupPolicy") || system.ContainsKey("WebInterfaceDisabled"));
+        Assert.Equal("0", (string?)system["AlternateBoaPort"]);
+        var network = (JsonObject)param["Network"]!;
+        Assert.False(((JsonObject)network["HTTP"]!).ContainsKey("AuthenticationPolicy"));
+        Assert.False(((JsonObject)network["IPv6"]!).ContainsKey("Enabled"));
+        Assert.Equal("yes", (string?)network["IPv6"]!["AcceptRA"]);
+        Assert.False(((JsonObject)network["InterfaceCollection"]![0]!["dot1x"]!).ContainsKey("Enabled"));
+        Assert.All(((JsonArray)network["RTPCollection"]!).OfType<JsonObject>(), rtp =>
+        {
+            Assert.False(rtp.ContainsKey("VideoAddress") || rtp.ContainsKey("AudioAddress"));
+            Assert.NotNull(rtp["groupId"]);
+        });
+
+        // The connection settings are an area of their own with only those values; collection items keep their group id.
+        var connection = ConfigIdentity.Clean(ConfigSections.Connection, file.Data[ConfigSections.Param]!);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""
+            {
+              "HTTPS": { "Enabled": "yes", "Port": "443" },
+              "Network": {
+                "HTTP": { "AuthenticationPolicy": "recommended" },
+                "IPv6": { "Enabled": "no" },
+                "InterfaceCollection": [ { "dot1x": { "Enabled": "no" }, "groupId": "I0" } ]
+              },
+              "System": {
+                "BoaGroupPolicy": { "admin": "both", "operator": "both", "viewer": "both" },
+                "BoaPort": "80",
+                "WebInterfaceDisabled": "no"
+              }
+            }
+            """), connection), connection.ToJsonString());
+        Assert.Equal(ConfigSections.Param, ConfigSections.SourceKey(ConfigSections.Connection));
+        Assert.Equal("time.v2", ConfigSections.SourceKey("time.v2"));
+
+        // A file without connection values has no such area.
+        var plain = ConfigFile.Parse("""{"data":{"param.v2":{"Image":{"DateFormat":"YYYY-MM-DD"}}},"metadata":{"prodNbr":"P3265-V"}}""");
+        Assert.Equal([ConfigSections.Param], plain.Sections.Select(s => s.Key));
     }
 
     [Fact]

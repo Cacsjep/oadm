@@ -9,15 +9,17 @@ permanent WebSocket event stream to each device and hands the event to the event
 
 | Topic | Decision |
 |---|---|
-| Event pick | Devices first. The editor reads the event list of the chosen devices **live every time** a trigger is created or edited (never cached: an app that is stopped or removed has no events). It offers the events **all** chosen devices have; a device without it is shown with the reason and cannot stay in the trigger. |
+| Event pick | Devices first. The editor reads the event list of the trigger's devices **live every time** a trigger is created or edited (never cached: an app that is stopped or removed has no events). It offers **every event any of the devices offers** (2026-10-11). A chosen device that was read and lacks the event blocks Save ("Does not offer this event"); a device that cannot be read now (offline, login refused) stays and is used once it answers; a device of a tag or of all devices without the event is left out quietly. Save waits for the chosen devices only, not for the devices of a tag or of all devices, once the event is known. A device whose API list was not read yet (just added) is read like the others. |
 | Narrowing | Each source item of the event (port, disk, channel, scenario, ...) is a select with the values the device lists, or **Any**. Sent to the device as its content filter. No data value conditions in v1. |
 | Devices | All devices, tags and chosen devices together (2026-10-11, the shared device picker). Devices of a tag or of all devices join and leave with the device table (every 30 s); such a device without the event is left out quietly. A device removed from OADM leaves the trigger. |
 | State | On/off events: the trigger is on per device while at least one matching source is on (Any port: on while any matching port is on). One-shot events stay one-shot. |
 | Values | Every source and data item becomes a placeholder for actions (`{port}`, `{total}`, the device's item name) and is shown in the event log. |
 | Connection lost | Every trigger automatically has a second, on/off event **"<Trigger>: connection lost"** per device: on when OADM receives no events of the trigger from the device for 30 s (connection down, login rejected, event no longer on the device), off once the stream works again. The reason goes to the event log and the page. |
 | State on loss | The trigger keeps its last state per device. After reconnect the device's current-state report corrects it; only real changes run actions. |
-| Event gone | The event list of each connected device is read again every 5 minutes and on every reconnect. Missing event = "connection lost" on, reason "The event is no longer on the device"; it resumes when the event is back. |
-| Connection | One WebSocket per device carrying every turned-on trigger of that device, open permanently while at least one trigger of the device is on (also without a rule). |
+| Event gone | The event list of each connected device is read again every 5 minutes and on every reconnect (a trigger change reads it only when a chosen device lacks an event not checked yet; devices of a tag or of all devices wait for the next regular read). Missing event = "connection lost" on, reason "The event is no longer on the device"; it resumes when the event is back. |
+| Connection | One WebSocket per device carrying every turned-on trigger of that device, open permanently while at least one trigger of the device is on (also without a rule). At most 16 devices connect (event list + stream) at the same time; a trigger change sets a new filter only on the devices whose triggers changed. |
+| Refused filter | A filter entry the device refuses (error 2104) is a problem of its triggers only ("connection lost" after 30 s with the device's text); with several entries each is tried alone once, the accepted ones are set together. The other triggers of the device keep working. |
+| Turned off / no devices | A turned-off trigger keeps its event types and reports them as off at once; a turned-on trigger without devices right now (a tag without devices) reports "off everywhere" at once. Rules never wait for a report that cannot come. |
 | Roles | Administrators create, change, copy, turn on/off and delete (audited); operators see triggers and live states. |
 | Hardware test | Allowed: switch virtual input 64 of 10.0.0.48 on and off (opt-in `HardwareWrite`). Everything else read-only. |
 
@@ -36,9 +38,11 @@ permanent WebSocket event stream to each device and hands the event to the event
   pinned certificate), then `?wssession=<token>`; the token works once and only for 15 s. ws for HTTP devices, wss with
   the pinned certificate for HTTPS devices.
 - Filter: `{"apiVersion":"1.0","method":"events:configure","params":{"eventFilterList":[{"topicFilter":"tns1:Device/tnsaxis:IO/VirtualInput","contentFilter":"boolean(//SimpleItem[@Name=\"port\" and @Value=\"3\"])"}]}}`;
-  answer `data: {}`, a bad filter `error {code 2104, "Could not use supplied event filter"}`; an unknown topic is accepted
+  answer `data: {}` (the request's `context` echoed; OADM numbers it and ignores answers to a replaced list), a bad
+  filter `error {code 2104, "Could not use supplied event filter"}`; an unknown topic is accepted
   silently (OADM checks against the event list). A new configure replaces the old filter (one per device, union of its
-  triggers; an event matching two filters arrives twice, so OADM matches each message to its triggers itself).
+  triggers; an event matching two filters arrives twice, so OADM matches each message to its triggers itself). A value
+  with both quote characters is written as XPath `concat()`.
 - Messages: `{"method":"events:notify","params":{"notification":{"topic":...,"timestamp":<ms>,"message":{"source":{...},"key":{...},"data":{...}}}}}`.
   Right after configure the device sends the current state of every matching stateful event (64 virtual inputs in 0.1 s):
   that is the plugin's full report (`ReplaceStates`). No Initialized/Changed marker.
@@ -64,7 +68,9 @@ permanent WebSocket event stream to each device and hands the event to the event
   (its rules turn off, "Not available: an event of this rule no longer exists"). Types rules use that no source declares
   yet (device triggers declare theirs once the plugin started) wait like a source after a start, then count as off.
 - `IVapixClient.ConnectWebSocketAsync(path, keepAlive)` (SDK, implemented by `VapixClient`): session token, then the
-  upgrade through the client's own handler (certificate pin), pings with `KeepAliveTimeout`.
+  upgrade through the client's own handler (certificate pin), pings with `KeepAliveTimeout`. A refused upgrade (HTTP 401 /
+  403, `CollectHttpResponseDetails`) is `UnauthorizedAccessException` with the shared texts "Unauthorized - HTTP 401 ..." /
+  "Forbidden - HTTP 403 ...", like a refused token request.
 - Action placeholders: every value of the event (`ActionTrigger.Data`) by its name, after the fixed ones.
 - Per trigger two types: `oadm.device-triggers.<id>` (stateful or stateless, device scope) and `....lost` (stateful).
 - The device's report has no end marker: what arrives within 1.5 s after the filter reply is the report.
@@ -72,7 +78,9 @@ permanent WebSocket event stream to each device and hands the event to the event
 ## Tests
 
 Parser of the recorded `GetEventInstances` answer and notifications; filter building; stream lifecycle against a fake
-WebSocket server (initial states, changes, ping timeout, reconnect, token per connection, event gone, configure error);
+WebSocket server (initial states, changes, ping timeout, reconnect, token per connection, event gone, refused filter of
+one trigger, filters only to changed devices, connect limit, no re-read for devices of all devices, resolve order and stop,
+turned-off and empty triggers report at once, 5,000 devices);
 engine integration (dynamic types, connection lost, keep state on loss); page and editor view models with 5,000 devices;
 fake mode; headless screenshots; read-only hardware test (connect, initial states) and the opt-in write test (virtual
 input 64).

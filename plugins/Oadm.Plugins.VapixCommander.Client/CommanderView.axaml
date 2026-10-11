@@ -218,11 +218,11 @@
             <TextBlock Classes="fieldMessage error" Text="{Binding HeaderRowsError}"
                        IsVisible="{Binding HeaderRowsError, Converter={x:Static ObjectConverters.IsNotNull}}" />
 
-            <ui:FormField Label="Body" InputWidth="160">
+            <ui:FormField Label="Body" InputWidth="160" IsVisible="{Binding ShowBody}">
               <ComboBox ItemsSource="{Binding BodyTypeOptions}" SelectedItem="{Binding BodyType}" />
             </ui:FormField>
-            <TextBox Classes="code" Text="{Binding BodyText}" Height="120" IsVisible="{Binding HasBody}"
-                     PlaceholderText="JSON, form (key=value&amp;key2=value), text or XML; use {{name}} for fields" />
+            <ui:CodeEditor Text="{Binding BodyText}" Language="{Binding BodyLanguage}" Height="160" IsVisible="{Binding ShowBodyText}"
+                           PlaceholderText="JSON, form (key=value&amp;key2=value), text or XML; use {{name}} for fields" />
 
             <ui:FormField Label="Timeout (s)" InputWidth="160">
               <NumericUpDown Value="{Binding TimeoutSeconds}" Minimum="1" Maximum="600" Increment="5" FormatString="0" />
@@ -259,6 +259,9 @@
               <Button Classes="secondary" Content="Add to rollout" Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).AddRawToRolloutCommand}"
                       ToolTip.Tip="{Binding BlockedReason}" ToolTip.ShowOnDisabled="True" />
               <Button Classes="secondary" Command="{Binding OpenSaveCommand}"><ui:IconLabel Icon="{DynamicResource Icon.save}" Text="Save as command" /></Button>
+              <Button Classes="secondary" Command="{Binding ResetCommand}" ToolTip.Tip="Start a new request">
+                <ui:IconLabel Icon="{DynamicResource Icon.refresh}" Text="Reset" />
+              </Button>
             </StackPanel>
 
             <Border Classes="inlineEditor" IsVisible="{Binding IsSaveOpen}">

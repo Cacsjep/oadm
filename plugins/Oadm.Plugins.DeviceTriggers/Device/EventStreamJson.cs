@@ -7,8 +7,21 @@ namespace Oadm.Plugins.DeviceTriggers.Device;
 /// <summary>One <c>events:notify</c> message of the WebSocket event stream.</summary>
 public sealed record StreamNotification(string Topic, DateTimeOffset? Time, IReadOnlyDictionary<string, string> Source, IReadOnlyDictionary<string, string> Data);
 
+/// <summary>
+/// One entry of the filter list: a topic, its value filter (null = the whole topic) and the triggers it serves.
+/// <see cref="Key"/> tells entries apart when the device refuses one.
+/// </summary>
+public sealed record FilterEntry(string Topic, string? ContentFilter, IReadOnlyList<TriggerDefinition> Triggers)
+{
+    public string Key => Topic + "\n" + ContentFilter;
+}
+
 /// <summary>What the device answered to a message: a notification, the reply to our filter, or something else.</summary>
-public sealed record StreamMessage(StreamNotification? Notification, bool IsConfigureReply, string? Error);
+public sealed record StreamMessage(StreamNotification? Notification, bool IsConfigureReply, string? Error)
+{
+    /// <summary>The <c>context</c> the device echoes from the request (null when the answer has none).</summary>
+    public string? Context { get; init; }
+}
 
 /// <summary>
 /// The JSON of the WebSocket event stream (verified on AXIS OS 12.11, 2026-10-10): one <c>events:configure</c> sets the
@@ -19,17 +32,42 @@ public sealed record StreamMessage(StreamNotification? Notification, bool IsConf
 public static class EventStreamJson
 {
     /// <summary>The filter list for the triggers of one device: one entry per topic, their value filters joined with "or".</summary>
-    public static string Configure(IEnumerable<TriggerDefinition> triggers)
+    public static string Configure(IEnumerable<TriggerDefinition> triggers) => Configure(Entries(triggers));
+
+    /// <summary>The filter list entries for the triggers of one device: one per topic, ordered by topic.</summary>
+    public static IReadOnlyList<FilterEntry> Entries(IEnumerable<TriggerDefinition> triggers)
     {
         ArgumentNullException.ThrowIfNull(triggers);
-        var filters = new JsonArray();
+        var entries = new List<FilterEntry>();
         foreach (var topic in triggers.GroupBy(t => t.Topic, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
         {
-            var entry = new JsonObject { ["topicFilter"] = topic.Key };
+            string? content = null;
             if (topic.All(t => t.Filters.Count > 0))
             {
                 var parts = topic.Select(t => ContentFilter(t.Filters)).Distinct(StringComparer.Ordinal).ToList();
-                entry["contentFilter"] = parts.Count == 1 ? parts[0] : string.Join(" or ", parts.Select(p => "(" + p + ")"));
+                content = parts.Count == 1 ? parts[0] : string.Join(" or ", parts.Select(p => "(" + p + ")"));
+            }
+
+            entries.Add(new FilterEntry(topic.Key, content, [.. topic]));
+        }
+
+        return entries;
+    }
+
+    /// <summary>
+    /// The <c>events:configure</c> message with these entries (a new one replaces the device's filter list). The device
+    /// echoes <paramref name="context"/> in its answer, so an answer to an older list is told apart.
+    /// </summary>
+    public static string Configure(IEnumerable<FilterEntry> entries, string context = "oadm")
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        var filters = new JsonArray();
+        foreach (var e in entries)
+        {
+            var entry = new JsonObject { ["topicFilter"] = e.Topic };
+            if (e.ContentFilter is not null)
+            {
+                entry["contentFilter"] = e.ContentFilter;
             }
 
             filters.Add(entry);
@@ -38,17 +76,34 @@ public static class EventStreamJson
         return new JsonObject
         {
             ["apiVersion"] = "1.0",
-            ["context"] = "oadm",
+            ["context"] = context,
             ["method"] = "events:configure",
             ["params"] = new JsonObject { ["eventFilterList"] = filters },
         }.ToJsonString();
     }
 
-    /// <summary><c>boolean(//SimpleItem[@Name="port" and @Value="3"]) and ...</c>; a value with " is quoted with '.</summary>
+    /// <summary>
+    /// <c>boolean(//SimpleItem[@Name="port" and @Value="3"]) and ...</c>; a value with " is quoted with ', one with both
+    /// is an XPath <c>concat()</c>.
+    /// </summary>
     public static string ContentFilter(IEnumerable<TriggerFilter> filters) =>
         string.Join(" and ", filters.Select(f => $"boolean(//SimpleItem[@Name={Quote(f.Name)} and @Value={Quote(f.Value)}])"));
 
-    private static string Quote(string value) => value.Contains('"', StringComparison.Ordinal) ? "'" + value.Replace("'", string.Empty, StringComparison.Ordinal) + "'" : "\"" + value + "\"";
+    internal static string Quote(string value)
+    {
+        if (!value.Contains('"', StringComparison.Ordinal))
+        {
+            return "\"" + value + "\"";
+        }
+
+        if (!value.Contains('\'', StringComparison.Ordinal))
+        {
+            return "'" + value + "'";
+        }
+
+        // XPath 1.0 has no escape inside a literal: concat("it's ", '"', "x", '"').
+        return "concat(" + string.Join(", '\"', ", value.Split('"').Select(part => "\"" + part + "\"")) + ")";
+    }
 
     public static StreamMessage Parse(string json)
     {
@@ -67,7 +122,7 @@ public static class EventStreamJson
         {
             var error = root?["error"];
             var text = error is null ? null : error["message"]?.GetValue<string>() ?? "The device refused the event filter.";
-            return new StreamMessage(null, true, text);
+            return new StreamMessage(null, true, text) { Context = root?["context"] is JsonValue c && c.TryGetValue<string>(out var context) ? context : null };
         }
 
         if (method != "events:notify" || root?["params"]?["notification"] is not JsonObject notification)

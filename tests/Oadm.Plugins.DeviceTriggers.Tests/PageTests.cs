@@ -189,6 +189,56 @@ public sealed class PageTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task Editing_an_all_devices_trigger_can_save_before_every_device_is_read()
+    {
+        await using var rig = new Rig();
+        var a = rig.AddDevice("10.0.0.48");
+        var b = rig.AddDevice("10.0.0.49");
+        await rig.StartAsync();
+        var trigger = await rig.SaveAsync(Fixture.VirtualInputTrigger("Gate open", [a.Id], "5") with { AllDevices = true });
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        rig.Cameras[b.Id].HoldReads = release.Task; // a slow device of All devices
+        TriggerEditorViewModel.ReadPollInterval = TimeSpan.FromMilliseconds(20);
+        using var editor = new TriggerEditorViewModel(new PageContext(rig.Plugin, rig.Hub, await rig.Devices.ListAsync(CancellationToken.None)), trigger, []);
+
+        var start = editor.StartAsync();
+        var chosen = editor.VisibleDevices.Single(d => d.Id == a.Id);
+        var implicitDevice = editor.VisibleDevices.Single(d => d.Id == b.Id);
+        await Wait.UntilAsync(() => chosen.StatusText == "42 events" && implicitDevice.IsReading, "the chosen device read, the other one still reading");
+
+        Assert.Equal(Fixture.VirtualInput, editor.SelectedEvent?.Event.Topic);
+        Assert.Null(editor.Problem); // only chosen devices hold Save back
+        Assert.True(editor.CanSave);
+        release.SetResult();
+        await start;
+        Assert.Equal("42 events", implicitDevice.StatusText);
+    }
+
+    [Fact]
+    public async Task A_new_trigger_on_all_devices_waits_for_an_event_before_save()
+    {
+        await using var rig = new Rig();
+        var a = rig.AddDevice("10.0.0.48");
+        await rig.StartAsync();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        rig.Cameras[a.Id].HoldReads = release.Task;
+        TriggerEditorViewModel.ReadPollInterval = TimeSpan.FromMilliseconds(20);
+        using var editor = new TriggerEditorViewModel(new PageContext(rig.Plugin, rig.Hub, await rig.Devices.ListAsync(CancellationToken.None)), null, []) { Name = "Gate open" };
+        editor.ShowPicker = picker =>
+        {
+            picker.SelectAllCommand.Execute(null);
+            return Task.FromResult(true);
+        };
+
+        var choose = editor.ChooseDevicesCommand.ExecuteAsync(null);
+        await Wait.UntilAsync(() => editor.IsReading, "reading");
+        Assert.Equal("Wait until the events are read.", editor.Problem); // no event known yet
+        release.SetResult();
+        await choose;
+        Assert.Equal("Choose an event.", editor.Problem);
+    }
+
+    [Fact]
     public async Task The_dialog_takes_5000_devices_from_the_picker_fast()
     {
         var devices = Enumerable.Range(0, 5000).Select(i => (IDeviceInfo)new TestDevice($"10.1.{i / 250}.{i % 250 + 1}")).ToList();

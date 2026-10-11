@@ -97,6 +97,14 @@ public sealed partial class EventLog : IAsyncDisposable
         }
     }
 
+    /// <summary>Deletes every entry (Clear all on the page, Admin): what is queued first, then the table. Returns how many.</summary>
+    public async Task<int> ClearAsync(CancellationToken ct)
+    {
+        await FlushAsync(ct).ConfigureAwait(false);
+        await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        return await db.EventLogEntries.ExecuteDeleteAsync(ct).ConfigureAwait(false);
+    }
+
     /// <summary>Newest first. <paramref name="limit"/> 0 or above <see cref="ListLimit"/> = <see cref="ListLimit"/>.</summary>
     public async Task<(IReadOnlyList<EventLogLine> Lines, int Total)> ListAsync(int limit, int offset, Guid? ruleId, CancellationToken ct)
     {

@@ -92,6 +92,7 @@ public sealed class RunCommandAction(VapixCommanderPlugin owner) : IActionPlugin
         var device = invocation.Device ?? throw new InvalidOperationException("No device.");
         var vapix = ctx.Vapix ?? throw new InvalidOperationException("No device.");
         var (command, values) = await owner.ResolveForActionAsync(reference, ct).ConfigureAwait(false);
+        FillEventValues(ctx, command, values);
         if (command.Dangerous && !invocation.GetBool("allowDangerous"))
         {
             throw new InvalidOperationException($"{command.Name} is marked dangerous and \"Allow dangerous commands\" is off. Nothing was sent.");
@@ -120,6 +121,25 @@ public sealed class RunCommandAction(VapixCommanderPlugin owner) : IActionPlugin
         if (!string.IsNullOrWhiteSpace(outcome.Summary))
         {
             ctx.Log(outcome.Summary);
+        }
+    }
+
+    /// <summary>
+    /// The event's values in the command (user decision 2026-10-11): a text field of the command whose value holds
+    /// placeholders ("{carID}", "{port}", "{device}") gets them filled from the rule and the event before the command is
+    /// checked and sent; the field checks (pattern, length) then apply to the filled value. Passwords are never touched.
+    /// </summary>
+    internal static void FillEventValues(IActionContext ctx, CommandDefinition command, Dictionary<string, JsonElement> values)
+    {
+        foreach (var field in command.Fields.Where(f => f.Type == FieldTypes.String))
+        {
+            var text = values.TryGetValue(field.Name, out var entered) && entered.ValueKind == JsonValueKind.String ? entered.GetString()
+                : field.Default is { ValueKind: JsonValueKind.String } stored ? stored.GetString()
+                : null;
+            if (text is not null && text.Contains('{', StringComparison.Ordinal))
+            {
+                values[field.Name] = JsonSerializer.SerializeToElement(ctx.Text(text));
+            }
         }
     }
 

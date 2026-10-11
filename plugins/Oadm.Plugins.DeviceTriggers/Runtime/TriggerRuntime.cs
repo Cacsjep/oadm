@@ -27,6 +27,8 @@ internal sealed class TriggerRuntime : IAsyncDisposable
     private readonly Dictionary<Guid, TriggerDefinition> _active = [];
     private readonly Dictionary<(Guid Trigger, Guid Device), Slot> _slots = [];
     private readonly HashSet<Guid> _reported = [];
+    private readonly Dictionary<Guid, int> _pending = []; // per trigger: slots without a report and without a problem yet
+    private readonly HashSet<Guid> _offReported = []; // turned-off triggers whose events were reported as everything off
     private readonly Dictionary<Guid, DeviceConnection> _connections = [];
     private readonly HashSet<Guid> _dirty = [];
     private readonly CancellationTokenSource _stop = new();
@@ -40,6 +42,7 @@ internal sealed class TriggerRuntime : IAsyncDisposable
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _time = time ?? TimeProvider.System;
         _lastSweep = _time.GetUtcNow();
+        ConnectGate = new SemaphoreSlim(Math.Max(1, _options.ConnectParallelism));
         _ticker = Task.Run(TickAsync, CancellationToken.None);
     }
 
@@ -50,6 +53,9 @@ internal sealed class TriggerRuntime : IAsyncDisposable
     public event EventHandler<IReadOnlyCollection<Guid>>? DevicesRemoved;
 
     private IEventPublisher? Publisher => _ctx.EventPublisher;
+
+    /// <summary>Bounds the devices that connect at the same time (event list + stream), shared by every connection.</summary>
+    internal SemaphoreSlim ConnectGate { get; }
 
     /// <summary>Open device connections (tests).</summary>
     public int ConnectionCount
@@ -73,13 +79,21 @@ internal sealed class TriggerRuntime : IAsyncDisposable
         List<DeviceConnection> stale = [];
         lock (_sync)
         {
+            if (Volatile.Read(ref _disposed) == 1)
+            {
+                return; // a resolve that read the runtime before the plugin stopped: no connections on a disposed runtime
+            }
+
             var wanted = triggers.Where(t => t.Enabled).ToDictionary(t => t.Id);
+            var affected = new HashSet<Guid>(); // devices whose trigger set changed: only their connections set a new filter
             foreach (var (id, old) in _active.ToList())
             {
                 if (!wanted.TryGetValue(id, out var now) || !SameEvent(old, now))
                 {
                     Stop(old);
                     _active.Remove(id);
+                    _offReported.Add(id); // everything off was just reported
+                    affected.UnionWith(old.DeviceIds);
                 }
             }
 
@@ -88,24 +102,40 @@ internal sealed class TriggerRuntime : IAsyncDisposable
                 if (_active.TryGetValue(id, out var old))
                 {
                     _active[id] = trigger;
-                    foreach (var removed in old.DeviceIds.Except(trigger.DeviceIds).ToList())
+                    if (ReferenceEquals(old.DeviceIds, trigger.DeviceIds) && ReferenceEquals(old.Implicit, trigger.Implicit))
                     {
-                        RemoveSlot(trigger, removed);
+                        continue; // same definition and devices (a rename keeps everything)
                     }
 
-                    foreach (var added in trigger.DeviceIds.Except(old.DeviceIds))
+                    var before = old.DeviceIds.ToHashSet();
+                    var after = trigger.DeviceIds.ToHashSet();
+                    foreach (var removed in before.Where(d => !after.Contains(d)))
+                    {
+                        RemoveSlot(trigger, removed);
+                        affected.Add(removed);
+                    }
+
+                    foreach (var added in after.Where(d => !before.Contains(d)))
                     {
                         _slots[(id, added)] = new Slot();
+                        _pending[id] = _pending.GetValueOrDefault(id) + 1;
+                        affected.Add(added);
                     }
+
+                    // A device that moved between chosen and tag / all devices is checked differently (missing event).
+                    affected.UnionWith(after.Where(d => before.Contains(d) && old.Implicit.Contains(d) != trigger.Implicit.Contains(d)));
+                    CheckReady(id);
                 }
                 else
                 {
                     Start(trigger);
+                    affected.UnionWith(trigger.DeviceIds);
                 }
 
                 _dirty.Add(id);
             }
 
+            ReportDisabled(triggers);
             var devices = _active.Values.SelectMany(t => t.DeviceIds).ToHashSet();
             foreach (var (device, connection) in _connections.ToList())
             {
@@ -114,7 +144,7 @@ internal sealed class TriggerRuntime : IAsyncDisposable
                     _connections.Remove(device);
                     stale.Add(connection);
                 }
-                else
+                else if (affected.Contains(device))
                 {
                     connection.Signal();
                 }
@@ -237,6 +267,7 @@ internal sealed class TriggerRuntime : IAsyncDisposable
                 }
 
                 slot.Sources.Clear();
+                Settle(trigger, slot);
                 slot.Settled = true;
                 slot.Healthy = true;
                 slot.ProblemSince = null;
@@ -268,6 +299,7 @@ internal sealed class TriggerRuntime : IAsyncDisposable
                     continue;
                 }
 
+                Settle(trigger, slot);
                 slot.Healthy = false;
                 slot.ProblemSince ??= now;
                 if (slot.Problem != message || slot.Connection is TriggerConnection.Connecting or TriggerConnection.Connected)
@@ -334,6 +366,7 @@ internal sealed class TriggerRuntime : IAsyncDisposable
                     UpdateLocked(current, device, slot, latest?.Time);
                 }
 
+                Settle(current.Id, slot);
                 slot.Settled = true;
                 _dirty.Add(current.Id);
                 CheckReady(current.Id);
@@ -400,6 +433,7 @@ internal sealed class TriggerRuntime : IAsyncDisposable
             }
 
             _active.Clear();
+            _offReported.Clear();
         }
 
         foreach (var connection in connections)
@@ -408,6 +442,7 @@ internal sealed class TriggerRuntime : IAsyncDisposable
         }
 
         _stop.Dispose();
+        ConnectGate.Dispose();
     }
 
     /// <summary>Same event on the devices: name and devices may differ, everything else must match.</summary>
@@ -432,16 +467,59 @@ internal sealed class TriggerRuntime : IAsyncDisposable
     private void Start(TriggerDefinition trigger)
     {
         _active[trigger.Id] = trigger;
+        _offReported.Remove(trigger.Id);
+        var count = 0;
         foreach (var device in trigger.DeviceIds)
         {
-            _slots[(trigger.Id, device)] = new Slot();
+            if (_slots.TryAdd((trigger.Id, device), new Slot()))
+            {
+                count++;
+            }
         }
+
+        _pending[trigger.Id] = count;
 
         // Nobody is "connection lost" yet; one-shot events have nothing to report.
         Publisher?.ReplaceStates(DeviceTriggersPluginInfo.LostTypeId(trigger.Id), []);
         if (!trigger.Stateful)
         {
             _reported.Add(trigger.Id);
+        }
+
+        CheckReady(trigger.Id); // no devices right now (a tag without devices): reported at once as everything off
+    }
+
+    /// <summary>
+    /// Turned-off triggers keep their event types (their rules stay valid): reported once as everything off, so their rules
+    /// are evaluated at once (the trigger is off) instead of waiting for a report that never comes.
+    /// </summary>
+    private void ReportDisabled(IReadOnlyCollection<TriggerDefinition> triggers)
+    {
+        var disabled = new HashSet<Guid>();
+        foreach (var trigger in triggers.Where(t => !t.Enabled))
+        {
+            disabled.Add(trigger.Id);
+            if (_offReported.Add(trigger.Id))
+            {
+                if (trigger.Stateful)
+                {
+                    Publisher?.ReplaceStates(DeviceTriggersPluginInfo.TypeId(trigger.Id), []);
+                }
+
+                Publisher?.ReplaceStates(DeviceTriggersPluginInfo.LostTypeId(trigger.Id), []);
+            }
+        }
+
+        _offReported.IntersectWith(disabled);
+    }
+
+    /// <summary>The slot reported or has a problem: it no longer holds back the trigger's first full report.</summary>
+    private void Settle(Guid trigger, Slot slot)
+    {
+        if (!slot.Counted)
+        {
+            slot.Counted = true;
+            _pending[trigger] = _pending.GetValueOrDefault(trigger) - 1;
         }
     }
 
@@ -460,6 +538,7 @@ internal sealed class TriggerRuntime : IAsyncDisposable
 
         Publisher?.ReplaceStates(DeviceTriggersPluginInfo.LostTypeId(trigger.Id), []);
         _reported.Remove(trigger.Id);
+        _pending.Remove(trigger.Id);
         _dirty.Add(trigger.Id);
     }
 
@@ -469,6 +548,8 @@ internal sealed class TriggerRuntime : IAsyncDisposable
         {
             return;
         }
+
+        Settle(trigger.Id, slot);
 
         if (trigger.Stateful && slot.IsOn && _reported.Contains(trigger.Id))
         {
@@ -529,13 +610,13 @@ internal sealed class TriggerRuntime : IAsyncDisposable
             return;
         }
 
-        var slots = trigger.DeviceIds.Select(d => (Device: d, Slot: _slots.GetValueOrDefault((triggerId, d)))).Where(e => e.Slot is not null).ToList();
-        if (slots.Any(e => !e.Slot!.Settled && e.Slot.ProblemSince is null))
+        if (_pending.GetValueOrDefault(triggerId) > 0)
         {
-            return;
+            return; // O(1) per call; the slots are walked once, when the trigger reports
         }
 
         _reported.Add(triggerId);
+        var slots = trigger.DeviceIds.Select(d => (Device: d, Slot: _slots.GetValueOrDefault((triggerId, d)))).Where(e => e.Slot is not null).ToList();
 
         // The values first (the type is not ready yet, so nothing runs), then the full report: the rules that turn on
         // now have the event's values for their actions.
@@ -645,6 +726,9 @@ internal sealed class TriggerRuntime : IAsyncDisposable
         public DateTimeOffset? ProblemSince { get; set; }
 
         public bool LostOn { get; set; }
+
+        /// <summary>Taken off the trigger's pending count (reported or a problem, see <c>Settle</c>).</summary>
+        public bool Counted { get; set; }
 
         public DateTimeOffset? LastEventUtc { get; set; }
 

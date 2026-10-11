@@ -226,14 +226,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return null;
         }
 
+        var context = new CorePluginClientContext(_api, rail.PluginId, Devices.ToolbarContext);
         try
         {
-            var view = page.CreateView(new CorePluginClientContext(_api, rail.PluginId, Devices.ToolbarContext));
+            var view = page.CreateView(context);
             return new CorePluginPageViewModel(rail.PluginId, rail.Title, view, page.HasOwnCards,
-                page.ShowTasksPane ? Devices.Tasks : null);
+                page.ShowTasksPane ? Devices.Tasks : null, context: context);
         }
         catch (Exception ex)
         {
+            context.Dispose();
             LogPageFailed(_logger, ex, rail.PluginId);
             _ = ReportPageFailureAsync(rail.Title, ex);
             return null;
@@ -354,26 +356,34 @@ public sealed partial class MainWindowViewModel : ObservableObject
         foreach (NavItemViewModel stale in NavItems.Where(n => n.Page is CorePluginPageViewModel && !corePlugins.Any(p => "plugin:" + p.Id == n.Key)).ToList())
         {
             NavItems.Remove(stale);
-            ClosePluginWindowsRequested?.Invoke(this, ((CorePluginPageViewModel)stale.Page).PluginId);
+            var stalePage = (CorePluginPageViewModel)stale.Page;
+            ClosePluginWindowsRequested?.Invoke(this, stalePage.PluginId);
             if (stale.IsSelected)
             {
                 Navigate(_devicesItem);
             }
+
+            // The removed page's view and view model must not stay reachable from the Devices page context.
+            stalePage.Dispose();
         }
 
         foreach (CorePluginInfo plugin in corePlugins.Where(p => NavItems.All(n => n.Key != "plugin:" + p.Id)))
         {
             object? view = null;
             string? error = null;
+            CorePluginClientContext? context = null;
             ICorePluginPage? page = _plugins.FindPage(plugin.Id);
             if (page is not null)
             {
+                context = new CorePluginClientContext(_api, plugin.Id, Devices.ToolbarContext);
                 try
                 {
-                    view = page.CreateView(new CorePluginClientContext(_api, plugin.Id, Devices.ToolbarContext));
+                    view = page.CreateView(context);
                 }
                 catch (Exception ex)
                 {
+                    context.Dispose();
+                    context = null;
                     // The page shows the error instead of its view; the client keeps running (production hardening 4).
                     LogPageFailed(_logger, ex, plugin.Id);
                     error = ex.Message;
@@ -387,7 +397,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             NavItems.Add(new NavItemViewModel("plugin:" + plugin.Id, plugin.DisplayName,
                 string.IsNullOrEmpty(plugin.IconKey) ? "plugin" : plugin.IconKey,
                 new CorePluginPageViewModel(plugin.Id, plugin.DisplayName, view, page?.HasOwnCards == true,
-                    page?.ShowTasksPane == true && view is not null ? Devices.Tasks : null, error))
+                    page?.ShowTasksPane == true && view is not null ? Devices.Tasks : null, error, context))
             {
                 GroupTitle = group.ToString(),
                 GroupOrder = (int)group,
@@ -463,36 +473,90 @@ public sealed partial class MainWindowViewModel : ObservableObject
 /// Bridges a core plugin page to PluginService.Invoke; devices, selection, dialogs and host pages come from the
 /// Devices page's <see cref="IToolbarContext"/> (same data and dialogs as toolbar plugins).
 /// </summary>
-internal sealed class CorePluginClientContext(IOadmApi api, string pluginId, IToolbarContext host) : ICorePluginClientContext
+/// <remarks>
+/// The plugin's <see cref="DevicesChanged"/> handlers stay on this context; the context holds one handler on the
+/// long-lived host. <see cref="Dispose"/> (page removed, plugin window closed) detaches it, so a closed page view and its
+/// view model are no longer reachable from the host, whatever the plugin subscribed.
+/// </remarks>
+internal sealed class CorePluginClientContext : ICorePluginClientContext, IDisposable
 {
-    public IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo> Devices => host.Devices;
+    private readonly IOadmApi _api;
+    private readonly string _pluginId;
+    private readonly IToolbarContext _host;
+    private EventHandler? _devicesChanged;
+    private bool _hostSubscribed;
+    private bool _disposed;
 
-    public IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo> SelectedDevices => host.SelectedDevices;
+    public CorePluginClientContext(IOadmApi api, string pluginId, IToolbarContext host)
+    {
+        _api = api;
+        _pluginId = pluginId;
+        _host = host;
+    }
+
+    public IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo> Devices => _host.Devices;
+
+    public IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo> SelectedDevices => _host.SelectedDevices;
 
     public event EventHandler? DevicesChanged
     {
-        add => host.DevicesChanged += value;
-        remove => host.DevicesChanged -= value;
+        add
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _devicesChanged += value;
+            if (!_hostSubscribed)
+            {
+                _host.DevicesChanged += OnHostDevicesChanged;
+                _hostSubscribed = true;
+            }
+        }
+        remove => _devicesChanged -= value;
+    }
+
+    /// <summary>True while the context forwards the host's device changes (tests).</summary>
+    internal bool IsAttached => _hostSubscribed;
+
+    private void OnHostDevicesChanged(object? sender, EventArgs e) => _devicesChanged?.Invoke(this, e);
+
+    /// <summary>Drops every subscription of the plugin and the one on the host.</summary>
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _devicesChanged = null;
+        if (_hostSubscribed)
+        {
+            _host.DevicesChanged -= OnHostDevicesChanged;
+            _hostSubscribed = false;
+        }
     }
 
     public string OwnerName => TaskPluginRunner.OwnerName;
 
-    public Avalonia.Controls.Window? Owner => host.Owner;
+    public Avalonia.Controls.Window? Owner => _host.Owner;
 
     public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
-        api.InvokeCorePluginAsync(pluginId, method, payloadJson, ct);
+        _api.InvokeCorePluginAsync(_pluginId, method, payloadJson, ct);
 
     public async IAsyncEnumerable<Oadm.Sdk.Plugins.PluginEvent> WatchEventsAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
-        await foreach (var item in api.WatchCorePluginAsync(pluginId, ct).ConfigureAwait(true))
+        await foreach (var item in _api.WatchCorePluginAsync(_pluginId, ct).ConfigureAwait(true))
         {
             yield return new Oadm.Sdk.Plugins.PluginEvent(item.Topic, string.IsNullOrEmpty(item.PayloadJson) ? null : item.PayloadJson);
         }
     }
 
-    public Task ShowMessageAsync(string title, string message) => host.ShowMessageAsync(title, message);
+    public Task ShowMessageAsync(string title, string message) => _host.ShowMessageAsync(title, message);
 
-    public Task<bool> ConfirmAsync(string title, string message, string confirmText) => host.ConfirmAsync(title, message, confirmText);
+    public Task<bool> ConfirmAsync(string title, string message, string confirmText) => _host.ConfirmAsync(title, message, confirmText);
 
-    public Task OpenAsync(string hostPage) => host.OpenAsync(hostPage);
+    public Task OpenAsync(string hostPage) => _host.OpenAsync(hostPage);
 }

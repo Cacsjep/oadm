@@ -135,6 +135,30 @@ public sealed class LoginTests
     }
 
     [Fact]
+    public async Task Try_again_reaches_a_server_that_was_not_running_when_the_window_opened()
+    {
+        var f = new Fixture();
+        int calls = 0;
+        f.Api.GetAuthStatusAsync(Arg.Any<CancellationToken>()).Returns(_ => ++calls == 1
+            ? throw new RpcException(new Status(StatusCode.Unavailable, "Connection refused"))
+            : Task.FromResult(new AuthStatus { NeedsFirstAdmin = true }));
+        f.Trust.LastCheck.Returns(PinCheck.Unknown);
+        f.Trust.PresentedFingerprint.Returns((string?)null); // nothing answered: no certificate seen
+        LoginViewModel vm = f.Create("nvr01:5080");
+
+        await vm.InitializeAsync();
+        Assert.StartsWith("Cannot reach the OADM server at nvr01:5080", vm.ServerProblem, StringComparison.Ordinal);
+        Assert.True(vm.TryAgainCommand.CanExecute(null));
+        Assert.False(vm.IsFirstAdminMode);
+
+        await vm.TryAgainCommand.ExecuteAsync(null); // the server is up now: no restart of the client needed
+
+        Assert.Null(vm.ServerProblem);
+        Assert.True(vm.IsFirstAdminMode); // the answer of the server applies, like when the window opens
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
     public async Task First_connection_asks_to_trust_the_fingerprint_then_logs_in()
     {
         var f = new Fixture();

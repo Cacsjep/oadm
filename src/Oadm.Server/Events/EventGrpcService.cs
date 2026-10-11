@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Threading.Channels;
 
@@ -181,6 +182,13 @@ public sealed class EventGrpcService(
         var page = new Proto.EventLogPage { TotalCount = total };
         page.Entries.AddRange(lines.Select(ToProto));
         return page;
+    }
+
+    public override async Task<Proto.ClearEventLogReply> ClearLog(Proto.Empty request, ServerCallContext context)
+    {
+        var deleted = await log.ClearAsync(context.CancellationToken).ConfigureAwait(false);
+        await audit.WriteAsync(AuditActions.EventLogCleared, "Event log", string.Create(CultureInfo.InvariantCulture, $"{deleted} entries"), context.CancellationToken).ConfigureAwait(false);
+        return new Proto.ClearEventLogReply { Deleted = deleted };
     }
 
     public override async Task WatchLog(Proto.Empty request, IServerStreamWriter<Proto.EventLogPage> responseStream, ServerCallContext context)

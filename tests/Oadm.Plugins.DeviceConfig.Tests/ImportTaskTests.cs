@@ -25,6 +25,9 @@ public sealed class ImportTaskTests
         data["param.v2"]!["Network"]!["HostName"] = "lobby-cam";
         data["param.v2"]!["Network"]!["IPAddress"] = "10.0.0.99";
         data["param.v2"]!["Network"]!["BootProto"] = "none";
+        data["param.v2"]!["Network"]!["RTPCollection"]![0]!["VideoAddress"] = "239.1.1.1";
+        data["param.v2"]!["HTTPS"]!["Enabled"] = "no";
+        data["param.v2"]!["System"]!["BoaPort"] = "8080";
         export["metadata"]!["prodNbr"] = model;
         return export.ToJsonString();
     }
@@ -108,6 +111,114 @@ public sealed class ImportTaskTests
         Assert.Equal("dhcp", (string?)s.Camera.Data["param.v2"]!["Network"]!["BootProto"]);
         Assert.Equal("10.0.0.1", (string?)s.Camera.Data["param.v2"]!["Network"]!["DNSServer1"]);
         Assert.Equal("CET-1CEST,M3.5.0,M10.5.0/3", (string?)s.Camera.Data["time.v2"]!["timeZone"]!["posix"]!["timeZone"]);
+
+        // Without "Connection settings" HTTPS and the HTTP port stay; the multicast addresses always do.
+        var param = (JsonObject)s.Camera.Imports.Single(i => i.Key == "param.v2").Data;
+        Assert.False(((JsonObject)param["HTTPS"]!).ContainsKey("Enabled"));
+        Assert.False(((JsonObject)param["System"]!).ContainsKey("BoaPort"));
+        Assert.Equal("yes", (string?)s.Camera.Data["param.v2"]!["HTTPS"]!["Enabled"]);
+        Assert.Equal("80", (string?)s.Camera.Data["param.v2"]!["System"]!["BoaPort"]);
+        Assert.Null(param["Network"]!["RTPCollection"]![0]!["VideoAddress"]);
+        Assert.Equal("239.217.74.32", (string?)s.Camera.Data["param.v2"]!["Network"]!["RTPCollection"]![0]!["VideoAddress"]);
+    }
+
+    [Fact]
+    public async Task Connection_settings_are_imported_only_when_chosen_in_their_own_step_last()
+    {
+        var s = Setup(sections: [ConfigSections.Connection, "time.v2", "param.v2"]);
+        await RunAsync(s);
+
+        Assert.Equal(
+        [
+            "Read configuration file: Done",
+            "Check compatibility: Done",
+            "Import time zone: Done",
+            "Import network and system settings: Done",
+            "Import connection settings: Done",
+            "Verify configuration: Done",
+            "Completed: Done",
+        ], StepRun.Lines(s.Ctx.Steps));
+        Assert.Equal(["time.v2", "param.v2", "param.v2"], s.Camera.Imports.Select(i => i.Key));
+
+        // The last request writes the connection values only, after everything else.
+        var connection = (JsonObject)s.Camera.Imports[2].Data;
+        Assert.Equal(["HTTPS", "Network", "System"], connection.Select(p => p.Key).Order());
+        Assert.False(((JsonObject)connection["Network"]!).ContainsKey("DNSServer1"));
+        Assert.Equal("10 values", StepRun.Detail(s.Ctx.Steps, "Import connection settings"));
+        Assert.Equal("no", (string?)s.Camera.Data["param.v2"]!["HTTPS"]!["Enabled"]);
+        Assert.Equal("8080", (string?)s.Camera.Data["param.v2"]!["System"]!["BoaPort"]);
+        Assert.Equal("All imported values match", StepRun.Detail(s.Ctx.Steps, "Verify configuration"));
+    }
+
+    [Fact]
+    public async Task A_timeout_fails_its_area_and_the_others_still_run()
+    {
+        var patches = 0;
+        var s = Setup(camera: c => c.Fail = request => request.StartsWith("PATCH", StringComparison.Ordinal) && ++patches == 6
+            ? new TaskCanceledException("The device did not answer within 60 seconds.", new TimeoutException())
+            : null);
+        var ex = await Assert.ThrowsAsync<ConfigDeviceException>(() => RunAsync(s));
+
+        Assert.Equal("Time zone: Timeout after 60 s", ex.Message);
+        Assert.Equal("Import time zone: Failed", StepRun.Lines(s.Ctx.Steps)[7]);
+        Assert.Equal("Timeout after 60 s", StepRun.Detail(s.Ctx.Steps, "Import time zone"));
+        Assert.Equal("Import password policy: Done", StepRun.Lines(s.Ctx.Steps)[8]);
+        Assert.Equal("Verify configuration: Done", StepRun.Lines(s.Ctx.Steps)[9]);
+        Assert.Contains(s.Ctx.Logs, l => l.Level == TaskLogLevel.Error && l.Message == "Time zone: Timeout after 60 s");
+    }
+
+    [Fact]
+    public async Task A_changed_certificate_stops_the_import()
+    {
+        var patches = 0;
+        var s = Setup(camera: c => c.Fail = request => request.StartsWith("PATCH", StringComparison.Ordinal) && ++patches == 2
+            ? new CertificateChangedException("Device certificate changed. Pinned SHA-256 AA, presented BB.")
+            : null);
+        var ex = await Assert.ThrowsAsync<ConfigDeviceException>(() => RunAsync(s));
+
+        Assert.Equal(DeviceMessages.CertificateChanged, ex.Message);
+        Assert.Equal("Import MQTT events: Failed", StepRun.Lines(s.Ctx.Steps)[3]);
+        Assert.Equal("Import schedules: Skipped", StepRun.Lines(s.Ctx.Steps)[4]);
+        Assert.Equal("Verify configuration: Skipped", StepRun.Lines(s.Ctx.Steps)[9]);
+        Assert.Single(s.Camera.Imports);
+    }
+
+    [Fact]
+    public async Task A_device_that_cannot_be_read_after_the_import_fails_the_verify()
+    {
+        var s = Setup(sections: ["time.v2"], camera: c => c.Fail = request => request == "GET /config/rest/$export"
+            ? new TaskCanceledException("The device did not answer within 15 seconds.", new TimeoutException())
+            : null);
+        var ex = await Assert.ThrowsAsync<ConfigDeviceException>(() => RunAsync(s));
+
+        Assert.Equal("Verify configuration: " + DeviceMessages.TimedOut, ex.Message);
+        Assert.Equal("Import time zone: Done", StepRun.Lines(s.Ctx.Steps)[2]);
+        Assert.Equal("Verify configuration: Failed", StepRun.Lines(s.Ctx.Steps)[3]);
+    }
+
+    [Fact]
+    public async Task A_zip_entry_of_another_device_changes_nothing()
+    {
+        var s = Setup(zip: true);
+        var other = new FakeDevice { Id = s.Device.Id, Serial = "AC:CC:8E:00:00:00" };
+        var ex = await Assert.ThrowsAsync<ConfigFileException>(() =>
+            StepRun.RunAsync(s.Ctx.Steps, () => s.Plugin.ExecuteAsync(s.Ctx, other, s.Payload, CancellationToken.None)));
+
+        Assert.Equal("The file 10.0.0.48_B8A44F631339_P3265-V_config.json is not for this device (ACCC8E000000). Nothing was changed.", ex.Message);
+        Assert.Equal("Read configuration file: Failed", StepRun.Lines(s.Ctx.Steps)[0]);
+        Assert.Empty(s.Camera.Requests);
+    }
+
+    [Fact]
+    public async Task An_upload_removed_while_the_task_waited_changes_nothing()
+    {
+        var s = Setup();
+        var ctx = new RecordingContext(s.Camera, new VanishingUploads());
+        var ex = await Assert.ThrowsAsync<ConfigFileException>(() =>
+            StepRun.RunAsync(ctx.Steps, () => s.Plugin.ExecuteAsync(ctx, s.Device, s.Payload, CancellationToken.None)));
+
+        Assert.Equal("The configuration file is no longer on the server. Import it again. Nothing was changed.", ex.Message);
+        Assert.Empty(s.Camera.Requests);
     }
 
     [Fact]

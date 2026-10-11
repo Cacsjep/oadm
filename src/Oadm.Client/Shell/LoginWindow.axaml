@@ -20,8 +20,14 @@
                    IsVisible="{Binding Intro, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
         <ui:FormField Label="Server" Error="{Binding ServerProblem}">
-          <ComboBox x:Name="ServerBox" IsEditable="True" Text="{Binding ServerAddress}" ItemsSource="{Binding RecentServers}"
-                    PlaceholderText="localhost:5080" IsEnabled="{Binding !IsBusy}" />
+          <!-- The refresh icon connects again (the server was not running yet, or another address) without a restart -->
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+            <ComboBox x:Name="ServerBox" IsEditable="True" Text="{Binding ServerAddress}" ItemsSource="{Binding RecentServers}"
+                      PlaceholderText="localhost:5080" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch" />
+            <Button Grid.Column="1" Classes="toolbar iconOnly" Command="{Binding TryAgainCommand}" ToolTip.Tip="Connect again">
+              <ui:OadmIcon Data="{DynamicResource Icon.refresh}" />
+            </Button>
+          </Grid>
         </ui:FormField>
         <ui:FormField Label="User name">
           <TextBox x:Name="UserNameBox" Text="{Binding UserName}" IsEnabled="{Binding !IsBusy}" />

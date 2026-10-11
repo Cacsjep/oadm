@@ -129,6 +129,43 @@ public sealed class RunCommandActionTests
         Assert.Equal("The command no longer exists.", action.Validate(unknown.RootElement, true)["command"]);
     }
 
+    [Fact]
+    public void Text_fields_get_the_event_values_and_other_fields_stay()
+    {
+        var command = new CommandDefinition
+        {
+            Fields =
+            [
+                new CommandField { Name = "text", Type = FieldTypes.String, Default = JsonSerializer.SerializeToElement("Car {carID} at {device}") },
+                new CommandField { Name = "plain", Type = FieldTypes.String, Default = JsonSerializer.SerializeToElement("no placeholder") },
+                new CommandField { Name = "secret", Type = FieldTypes.Password },
+                new CommandField { Name = "level", Type = FieldTypes.Integer, Default = JsonSerializer.SerializeToElement(20) },
+            ],
+        };
+        var values = new Dictionary<string, JsonElement>(StringComparer.Ordinal) { ["secret"] = JsonSerializer.SerializeToElement("{carID}") };
+        var ctx = new FillContext();
+
+        RunCommandAction.FillEventValues(ctx, command, values);
+
+        Assert.Equal("Car ABC123 at 10.0.0.48", values["text"].GetString());
+        Assert.False(values.ContainsKey("plain")); // nothing to fill: the stored value is used as before
+        Assert.Equal("{carID}", values["secret"].GetString()); // passwords are never filled
+        Assert.False(values.ContainsKey("level"));
+    }
+
+    private sealed class FillContext : IActionContext
+    {
+        public IVapixClient? Vapix => null;
+        public ILogger Logger => NullLogger.Instance;
+        public ICorePlugin? Owner => null;
+        public IPluginSettings Settings => throw new NotSupportedException();
+        public void Log(string message)
+        {
+        }
+
+        public string Text(string? text) => (text ?? string.Empty).Replace("{carID}", "ABC123", StringComparison.Ordinal).Replace("{device}", "10.0.0.48", StringComparison.Ordinal);
+    }
+
     private static async Task<List<string>> RunAsync(RunCommandAction action, IVapixClient vapix, FakeDevice device, string settingsJson, ActionEdge edge)
     {
         using var settings = JsonDocument.Parse(settingsJson);

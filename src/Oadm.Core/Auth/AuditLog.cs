@@ -42,6 +42,7 @@ public static class AuditActions
     public const string RuleCreated = "Created event rule";
     public const string RuleChanged = "Changed event rule";
     public const string RuleDeleted = "Deleted event rule";
+    public const string EventLogCleared = "Cleared event log";
     public const string RuleTurnedOn = "Turned event rule on";
     public const string RuleTurnedOff = "Turned event rule off";
 }

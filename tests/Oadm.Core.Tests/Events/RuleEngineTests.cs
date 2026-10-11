@@ -23,9 +23,9 @@ public sealed class RuleEngineTests
         rig.Publisher.SetState(EventRulesRig.Blur, a.Id, false);
         await rig.SettleAsync();
 
-        Assert.Equal(
-            [(ActionEdge.TurnedOn, a.Id), (ActionEdge.TurnedOn, b.Id), (ActionEdge.TurnedOff, a.Id)],
-            rig.OnDevice.Edges.Select(e => (e.Edge, e.Device!.Value)).ToList());
+        // In order per device; devices do not wait for each other.
+        Assert.Equal([ActionEdge.TurnedOn, ActionEdge.TurnedOff], rig.OnDevice.Edges.Where(e => e.Device == a.Id).Select(e => e.Edge));
+        Assert.Equal([ActionEdge.TurnedOn], rig.OnDevice.Edges.Where(e => e.Device == b.Id).Select(e => e.Edge));
         var rule = Assert.Single((await rig.Rules.ListAsync(CancellationToken.None)));
         Assert.Equal(1, rule.ActiveCount);
         Assert.Equal("On", rule.StateText);
@@ -183,7 +183,7 @@ public sealed class RuleEngineTests
         rig.Publisher.SetState(EventRulesRig.Blur, camera.Id, true);
         await rig.SettleAsync();
         Assert.Equal(3, rig.OnDevice.Edges.Count);
-        Assert.Contains(await rig.LogLinesAsync(), l => l.Kind == EventLogKind.Rule && l.Result == EventLogResult.Skipped && l.Message.Contains("dead time (10 s", StringComparison.Ordinal));
+        Assert.Contains(await rig.LogLinesAsync(), l => l.Kind == EventLogKind.Rule && l.Result == EventLogResult.Skipped && l.Message.Contains("Dead time (10 s", StringComparison.Ordinal));
     }
 
     [Fact]

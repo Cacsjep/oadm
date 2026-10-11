@@ -300,4 +300,36 @@ public sealed class CodeViewTests
             return Task.CompletedTask;
         }, CancellationToken.None);
     }
+
+    [Fact]
+    public async Task Code_editor_colors_the_text_it_edits_and_keeps_it_exactly_as_typed()
+    {
+        HeadlessUnitTestSession session = HeadlessSession.Shared;
+        await session.Dispatch(() =>
+        {
+            var editor = new CodeEditor { Language = CodeLanguage.Json, Text = "{\"level\": \"{{level}}\"}", Width = 380, Height = 120 };
+            var window = new Window { Width = 400, Height = 200, Content = editor };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("{\"level\": \"{{level}}\"}", editor.Input.Text);
+            TextBlock colored = editor.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Classes.Contains("codeEditorText"));
+            Run key = colored.Inlines!.OfType<Run>().Single(r => r.Text == "\"level\"");
+            Assert.Equal(((ISolidColorBrush)window.FindResource("Oadm.Code.KeyBrush")!).Color, ((ISolidColorBrush)key.Foreground!).Color);
+            Assert.Equal(editor.Input.FontFamily, colored.FontFamily); // the colored copy lies exactly over the typed text
+
+            // Typing goes through the text box and back to the bound text; never re-indented.
+            editor.Input.Text = "{\"a\":1}";
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("{\"a\":1}", editor.Text);
+            Assert.Equal("{\"a\":1}", string.Concat(colored.Inlines!.OfType<Run>().Select(r => r.Text)));
+
+            // Plain: no colors.
+            editor.Language = CodeLanguage.Plain;
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("{\"a\":1}", colored.Text);
+            window.Close();
+            return Task.CompletedTask;
+        }, CancellationToken.None);
+    }
 }

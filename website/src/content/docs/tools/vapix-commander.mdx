@@ -6,6 +6,9 @@ description: Send VAPIX commands to one device or roll them out to many.
 import { Steps, Aside } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
 import shot from '../../../assets/screens/plugin-vapix-commander-rollout.png';
+import raw from '../../../assets/screens/plugin-vapix-commander-raw.png';
+import rawJson from '../../../assets/screens/plugin-vapix-commander-raw-json.png';
+import tryJson from '../../../assets/screens/plugin-vapix-commander-try-json.png';
 
 VAPIX Commander sends VAPIX requests to your devices. Pick ready-made commands from the library, fill in their fields
 and roll them out to any number of devices. Or send one request to one device and look at the answer.
@@ -49,8 +52,59 @@ Each device becomes one task in the Tasks pane below the page. Each command is o
 The result shows the status, the time it took, the interpreted result, the request line, the answer and its headers.
 JSON and XML answers are shown formatted; **Raw** shows the exact text the device sent.
 
-**Save as command** keeps a raw request as your own command. Saved commands are stored on the server and shared by all
-clients. You can export them as a file and import them on another server.
+<Image src={tryJson} alt="The answer of a JSON request, formatted and colored" class="screen" />
+
+## Write a raw request
+
+**Raw request** is for anything the library does not have, like Postman for one camera.
+
+<Image src={raw} alt="A raw param.cgi request with query parameters and a field" class="screen" />
+
+- **Method and path**: for example `GET` `/axis-cgi/param.cgi`. The path always starts with `/` and stays on the
+  device.
+- **Query parameters**: one row per parameter, for example `action` = `list`, `group` = `Brand`. **Add** and **Remove**
+  edit the rows.
+- **Headers**: only needed for some APIs. A GET request has none, so the table is hidden there.
+- **Body**: for POST, PUT and PATCH. Choose **json**, **form** (`key=value&key2=value`), **text** or **xml**. JSON and
+  XML are colored while you type. A GET request has no body, so the body is hidden there.
+- **Timeout** and **Response**: how long to wait and how OADM reads the answer (param.cgi lines, JSON-RPC, REST, XML or
+  text). Both are filled in from the path for the known Axis APIs.
+- **Reset** starts a new request.
+
+<Image src={rawJson} alt="A POST with a JSON body, colored while typing" class="screen" />
+
+### Fields: values you fill in later
+
+A field turns a fixed value into an input. A saved command then asks for that value, so next time you only fill in the
+form and never touch the request again.
+
+- **Query and headers**: select the row and click **Make field**. OADM names the field after the key
+  (`ImageSource.I0.DayNight.ShiftLevel` becomes `shiftLevel`) and guesses its type from the value (number, yes/no, text).
+- **Body and anywhere else**: type `{{name}}` where the value goes. The field appears below at once.
+- In JSON, write a whole value as `"{{level}}"` (with the quotes). If the field is a number or yes/no, OADM sends a
+  real number or true/false: `"level": "{{level}}"` goes out as `"level": 40`.
+- Below the request, each field has a label, a type (text, number, yes/no, password) and a value for this send.
+
+```json
+{
+  "apiVersion": "1.0",
+  "method": "setDayNightParams",
+  "params": { "level": "{{level}}", "note": "{{note}}" }
+}
+```
+
+### Save it as a command
+
+**Save as command** keeps the request with its fields as your own command: a name, a category, a short description,
+the API it needs (filled in from the path, for example `param-cgi 1.0`), whether it changes the device and whether it
+is dangerous. Saved commands are stored on the server and shared by all clients. You can export them as a file and
+import them on another server. **Add to rollout** puts the request into the rollout set without saving it.
+
+### Use it in event rules
+
+The event rule action **Run VAPIX command** runs a saved command. A text field of the command can take a value of the
+event: type `{carID}`, `{port}` or `{device}` (single braces) as the field's value, and OADM fills it in when the rule
+runs. The info icon next to an event in the rule lists the values it has.
 
 ## Good to know
 
@@ -60,6 +114,9 @@ clients. You can export them as a file and import them on another server.
 - The compatibility check uses the device information OADM already has. Before a command changes a device, the server
   checks again with fresh data.
 - Commands that send and rollouts are written to the audit log.
+- **Writes** and **dangerous** are two different marks. A command that changes the device asks for a confirmation
+  before a rollout. Dangerous commands (restart, factory default, firmware roll back, network settings) need a second
+  confirmation and, in event rules, **Allow dangerous commands**.
 
 <Aside>
 Operators can use VAPIX Commander. No administrator rights are needed.

@@ -83,6 +83,12 @@ public sealed partial class ImportConfigViewModel : ObservableObject
 
     public const string PasswordNote = "The file has no passwords. Event recipients that need one must get it again.";
 
+    /// <summary>Warning below the settings areas when the file has connection settings (off by default).</summary>
+    public const string ConnectionNote = "Connection settings (HTTPS, HTTP port, login method, IEEE 802.1X, IPv6, web interface) can make the devices unreachable.";
+
+    /// <summary>Added to the confirmation when the connection settings are chosen.</summary>
+    public const string UnreachableWarning = "The devices may become unreachable.";
+
     private readonly IReadOnlyList<IDeviceInfo> _devices;
     private readonly IConfigFileSource _files;
     private readonly Func<string, IProgress<double>, CancellationToken, Task<UploadedFile>> _upload;
@@ -137,6 +143,9 @@ public sealed partial class ImportConfigViewModel : ObservableObject
     public bool HasError => Error is not null;
 
     public bool HasSections => Sections.Count > 0;
+
+    /// <summary>The file has connection settings: <see cref="ConnectionNote"/> shows.</summary>
+    public bool HasConnectionSettings => Sections.Any(s => s.Key == ConfigSections.Connection);
 
     /// <summary>Devices that get a file.</summary>
     public int TargetCount => _targets.Count;
@@ -326,6 +335,8 @@ public sealed partial class ImportConfigViewModel : ObservableObject
 
     private void AddSection(ImportSectionOption option)
     {
+        // The connection settings can cut OADM off: the user has to choose them.
+        option.IsChecked = option.Key != ConfigSections.Connection;
         option.PropertyChanged += (_, _) => Refresh();
         Sections.Add(option);
     }
@@ -347,6 +358,7 @@ public sealed partial class ImportConfigViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(ImportBlockedReason));
         OnPropertyChanged(nameof(HasSections));
+        OnPropertyChanged(nameof(HasConnectionSettings));
         OnPropertyChanged(nameof(TargetCount));
         ImportCommand.NotifyCanExecuteChanged();
         BrowseCommand.NotifyCanExecuteChanged();
@@ -363,7 +375,13 @@ public sealed partial class ImportConfigViewModel : ObservableObject
         }
 
         var devices = DeviceConfigIds.Count(_targets.Count, "device");
-        if (!await _confirm(Title, $"Import the configuration into {devices}? The settings in the file replace the current ones.", "Import").ConfigureAwait(true))
+        var question = $"Import the configuration into {devices}? The settings in the file replace the current ones.";
+        if (Sections.Any(s => s.Key == ConfigSections.Connection && s.IsChecked))
+        {
+            question += " " + UnreachableWarning;
+        }
+
+        if (!await _confirm(Title, question, "Import").ConfigureAwait(true))
         {
             return;
         }
@@ -556,6 +574,12 @@ public sealed class ZipPlan
                     keys.Add(section.Key);
                 }
             }
+        }
+
+        // The connection settings come last, as in a single file and in the task.
+        if (keys.Remove(ConfigSections.Connection))
+        {
+            keys.Add(ConfigSections.Connection);
         }
 
         return new ZipPlan { Rows = rows, SectionKeys = keys, FileCount = entries.Count, UnmatchedFiles = unmatched, HasRecipients = recipients };

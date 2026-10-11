@@ -268,7 +268,7 @@ public sealed class DeviceTriggersTests
         Assert.Equal(
             [("Gate open", EventKind.Stateful), ("Gate open: connection lost", EventKind.Stateful)],
             types.Select(t => (t.DisplayName, t.Kind)));
-        Assert.Equal("Device › Input ports › Virtual input · Port number: 3. Values: {port}, {active}.", types[0].Description);
+        Assert.Equal("Device › Input ports › Virtual input · Port number: 3.\n\nValues:\n• {port}\n• {active}", types[0].Description);
         Assert.All(types, t => Assert.Equal("Device triggers", t.Group));
 
         var copy = (await rig.CallAsync<SaveReply>(DeviceTriggersMethods.Duplicate, new IdRequest(trigger.Id))).Trigger!;

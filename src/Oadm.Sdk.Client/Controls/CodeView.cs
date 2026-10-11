@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Documents;
 using Avalonia.Controls.Primitives;
 using Avalonia.Media;
 
@@ -14,7 +13,7 @@ namespace Oadm.Sdk.Client.Controls;
 /// texts above <see cref="HighlightLimit"/> characters are shown without colors. Colors are the theme brushes
 /// <c>Oadm.Code.KeyBrush</c>, <c>StringBrush</c>, <c>NumberBrush</c>, <c>LiteralBrush</c>, <c>PunctuationBrush</c>,
 /// <c>TagBrush</c>, <c>AttributeBrush</c>, <c>CommentBrush</c>, <c>ErrorBrush</c>; the look comes from the theme
-/// style <c>ui|CodeView</c>. Editable bodies stay a <c>TextBox.code</c>.
+/// style <c>ui|CodeView</c>. Editable code is <see cref="CodeEditor"/> (same colors).
 /// </summary>
 public sealed class CodeView : Border
 {
@@ -115,47 +114,13 @@ public sealed class CodeView : Border
 
     private void Render()
     {
-        var document = Document;
-        if (!document.IsHighlighted || !_attached)
+        // Brushes come from the theme, so colors are applied once the view is in the tree.
+        var inlines = _attached ? CodeHighlight.Build(this, Document) : null;
+        if (inlines is null)
         {
-            // Brushes come from the theme, so colors are applied once the view is in the tree.
             _text.Inlines = null;
-            _text.Text = document.Text;
+            _text.Text = Document.Text;
             return;
-        }
-
-        var brushes = new IBrush?[Enum.GetValues<CodeTokenKind>().Length];
-        foreach (var kind in Enum.GetValues<CodeTokenKind>())
-        {
-            if (kind != CodeTokenKind.Text && this.TryFindResource($"Oadm.Code.{kind}Brush", ActualThemeVariant, out var found) && found is IBrush brush)
-            {
-                brushes[(int)kind] = brush;
-            }
-        }
-
-        var text = document.Text;
-        var inlines = new InlineCollection();
-        var position = 0;
-        foreach (var token in document.Tokens)
-        {
-            if (token.Start > position)
-            {
-                inlines.Add(new Run(text[position..token.Start]));
-            }
-
-            var run = new Run(text.Substring(token.Start, token.Length));
-            if (brushes[(int)token.Kind] is { } foreground)
-            {
-                run.Foreground = foreground;
-            }
-
-            inlines.Add(run);
-            position = token.Start + token.Length;
-        }
-
-        if (position < text.Length)
-        {
-            inlines.Add(new Run(text[position..]));
         }
 
         _text.Text = null;

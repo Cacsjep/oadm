@@ -383,7 +383,7 @@ public sealed class VapixClient : IVapixClient, IDisposable
             }
             catch (VapixAuthenticationException ex)
             {
-                throw new UnauthorizedAccessException(ex.Message, ex);
+                throw new UnauthorizedAccessException(WebSocketRefusal(ex.StatusCode), ex);
             }
         }
 
@@ -402,6 +402,7 @@ public sealed class VapixClient : IVapixClient, IDisposable
         var socket = new System.Net.WebSockets.ClientWebSocket();
         socket.Options.KeepAliveInterval = keepAlive;
         socket.Options.KeepAliveTimeout = keepAlive;
+        socket.Options.CollectHttpResponseDetails = true; // a refused upgrade (401, 403) is told apart from a broken connection
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(_timeout);
         try
@@ -411,6 +412,7 @@ public sealed class VapixClient : IVapixClient, IDisposable
         }
         catch (Exception ex)
         {
+            var upgradeStatus = socket.HttpStatusCode;
             socket.Dispose();
             if (ex is OperationCanceledException && !ct.IsCancellationRequested)
             {
@@ -424,14 +426,21 @@ public sealed class VapixClient : IVapixClient, IDisposable
                 throw new CertificateChangedException(Pinning.PinnedFingerprint ?? string.Empty, actual.Length == 0 ? null : actual, ex);
             }
 
-            if (ex is System.Net.WebSockets.WebSocketException { InnerException: HttpRequestException http } && http.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            var status = upgradeStatus is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden ? upgradeStatus
+                : ex is System.Net.WebSockets.WebSocketException { InnerException: HttpRequestException http } ? http.StatusCode
+                : null;
+            if (status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             {
-                throw new UnauthorizedAccessException($"The device refused the WebSocket login: HTTP {(int)http.StatusCode}", ex);
+                throw new UnauthorizedAccessException(WebSocketRefusal(status), new VapixAuthenticationException($"{pathAndQuery}: HTTP {(int)status}", status.Value));
             }
 
             throw;
         }
     }
+
+    /// <summary>The shared refusal text of a WebSocket login, like other requests: 403 Forbidden, otherwise Unauthorized.</summary>
+    private static string WebSocketRefusal(HttpStatusCode? status) =>
+        status == HttpStatusCode.Forbidden ? Oadm.Sdk.Devices.DeviceMessages.Forbidden : Oadm.Sdk.Devices.DeviceMessages.Unauthorized;
 
     public void Dispose()
     {

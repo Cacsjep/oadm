@@ -107,6 +107,9 @@ internal sealed record TestDevice(string Address, string? Model = "P3265-V", boo
 
     public IReadOnlyList<string> Tags { get; init; } = [];
 
+    /// <summary>False: the API list was not read yet (a device just added), <see cref="Apis"/> is empty.</summary>
+    public bool ApisRead { get; init; } = true;
+
     public string Serial => "ACCC8E000001";
 
     public string? HostName => null;
@@ -117,12 +120,26 @@ internal sealed record TestDevice(string Address, string? Model = "P3265-V", boo
 
     public bool HasVideo => true;
 
-    public IReadOnlyList<DeviceApi> Apis => HasApi ? [new DeviceApi(DeviceTriggersPluginInfo.ApiId, "1.0"), new DeviceApi("param-cgi", "1.0")] : [new DeviceApi("param-cgi", "1.0")];
+    public IReadOnlyList<DeviceApi> Apis => !ApisRead ? [] : HasApi ? [new DeviceApi(DeviceTriggersPluginInfo.ApiId, "1.0"), new DeviceApi("param-cgi", "1.0")] : [new DeviceApi("param-cgi", "1.0")];
 }
 
 internal sealed class FakeDevices : IDeviceRepository
 {
     private readonly List<IDeviceInfo> _items = [];
+    private TaskCompletionSource? _hold;
+    private TaskCompletionSource? _held;
+
+    /// <summary>
+    /// The next <see cref="ListAsync"/> waits (ignoring its token, like a slow database) until the returned source is set;
+    /// <paramref name="held"/> completes once a call waits.
+    /// </summary>
+    public TaskCompletionSource HoldNextList(out Task held)
+    {
+        _held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        held = _held.Task;
+        _hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        return _hold;
+    }
 
     public void Add(params IDeviceInfo[] devices)
     {
@@ -149,12 +166,21 @@ internal sealed class FakeDevices : IDeviceRepository
         }
     }
 
-    public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct)
+    public async Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct)
     {
+        IReadOnlyList<IDeviceInfo> items;
         lock (_items)
         {
-            return Task.FromResult<IReadOnlyList<IDeviceInfo>>([.. _items]);
+            items = [.. _items];
         }
+
+        if (Interlocked.Exchange(ref _hold, null) is { } hold)
+        {
+            _held?.TrySetResult();
+            await hold.Task;
+        }
+
+        return items;
     }
 
     public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct)
@@ -171,7 +197,17 @@ internal sealed class FakeCameras : IVapixClientFactory
 {
     private readonly ConcurrentDictionary<Guid, FakeCamera> _cameras = new();
 
-    public FakeCamera this[Guid id] => _cameras.GetOrAdd(id, _ => new FakeCamera());
+#pragma warning disable SA1401, CA1051 // Interlocked counters.
+    /// <summary>Event list reads in progress on all cameras, and the most at once.</summary>
+    public int ReadsInFlight;
+
+    public int MaxReadsInFlight;
+#pragma warning restore SA1401, CA1051
+
+    /// <summary>While set, every event list read of every camera waits for it.</summary>
+    public Task? HoldReads { get; set; }
+
+    public FakeCamera this[Guid id] => _cameras.GetOrAdd(id, _ => new FakeCamera(this));
 
     public Task<IVapixClient> CreateAsync(Guid deviceId, CancellationToken ct) => Task.FromResult<IVapixClient>(this[deviceId]);
 }
@@ -180,7 +216,7 @@ internal sealed class FakeCameras : IVapixClientFactory
 /// A camera with the recorded event list and the WebSocket event stream as AXIS OS 12.11 behaves: a filter is answered
 /// with <c>data: {}</c>, then the current state of every matching on/off event, then live events. Read-only.
 /// </summary>
-internal sealed class FakeCamera : IVapixClient
+internal sealed class FakeCamera(FakeCameras? owner = null) : IVapixClient
 {
     private readonly Lock _sync = new();
     private readonly Dictionary<string, (string Topic, Dictionary<string, string> Source, Dictionary<string, string> Data)> _states = [];
@@ -192,6 +228,15 @@ internal sealed class FakeCamera : IVapixClient
     public Exception? Refuse { get; set; }
 
     public int Connections;
+
+    /// <summary>Event list reads (GetEventInstances).</summary>
+    public int Reads;
+
+    /// <summary>A filter list with one of these topics is refused like AXIS OS does (error 2104).</summary>
+    public ConcurrentDictionary<string, bool> RefusedTopics { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>While set, event list reads of this camera wait for it.</summary>
+    public Task? HoldReads { get; set; }
 
     public ConcurrentQueue<string> Configures { get; } = new();
 
@@ -241,6 +286,31 @@ internal sealed class FakeCamera : IVapixClient
     {
         Assert.Equal("/vapix/services", request.RequestUri!.OriginalString);
         Assert.Contains("GetEventInstances", await request.Content!.ReadAsStringAsync(ct), StringComparison.Ordinal); // read-only
+        Interlocked.Increment(ref Reads);
+        if (owner is not null)
+        {
+            var now = Interlocked.Increment(ref owner.ReadsInFlight);
+            int max;
+            while (now > (max = Volatile.Read(ref owner.MaxReadsInFlight)) && Interlocked.CompareExchange(ref owner.MaxReadsInFlight, now, max) != max)
+            {
+            }
+        }
+
+        try
+        {
+            if ((HoldReads ?? owner?.HoldReads) is { } hold)
+            {
+                await hold.WaitAsync(ct);
+            }
+        }
+        finally
+        {
+            if (owner is not null)
+            {
+                Interlocked.Decrement(ref owner.ReadsInFlight);
+            }
+        }
+
         if (Refuse is { } refuse)
         {
             throw refuse;
@@ -366,9 +436,19 @@ internal sealed class FakeCamera : IVapixClient
                     }
 
                     camera.Configures.Enqueue(text);
-                    var filters = JsonNode.Parse(text)!["params"]!["eventFilterList"]!.AsArray();
-                    _topics = [.. filters.Select(f => f!["topicFilter"]!.GetValue<string>())];
-                    await SendAsync("""{"apiVersion":"1.0","context":"oadm","method":"events:configure","data":{}}""");
+                    var request = JsonNode.Parse(text)!;
+                    var context = request["context"]?.GetValue<string>() ?? string.Empty;
+                    var filters = request["params"]!["eventFilterList"]!.AsArray();
+                    var topics = filters.Select(f => f!["topicFilter"]!.GetValue<string>()).ToHashSet(StringComparer.Ordinal);
+                    if (topics.Any(camera.RefusedTopics.ContainsKey))
+                    {
+                        _topics = [];
+                        await SendAsync($$$"""{"apiVersion":"1.0","context":"{{{context}}}","method":"events:configure","error":{"code":2104,"message":"Could not use supplied event filter"}}""");
+                        continue;
+                    }
+
+                    _topics = topics;
+                    await SendAsync($$$"""{"apiVersion":"1.0","context":"{{{context}}}","method":"events:configure","data":{}}""");
                     foreach (var (topic, source, data) in camera.StatesOf(_topics))
                     {
                         await SendAsync(Notify(topic, source, data));
@@ -435,16 +515,28 @@ internal sealed class RecordingPublisher : IEventPublisher
 {
     public ConcurrentQueue<string> Calls { get; } = new();
 
+    /// <summary>The same calls with the full type ids ("replace oadm.device-triggers.&lt;id&gt; []").</summary>
+    public ConcurrentQueue<string> Full { get; } = new();
+
     public List<string> Lines => [.. Calls];
 
-    public void SetState(string typeId, Guid? deviceId, bool isOn, IReadOnlyDictionary<string, string>? data = null) =>
+    public void SetState(string typeId, Guid? deviceId, bool isOn, IReadOnlyDictionary<string, string>? data = null)
+    {
+        Full.Enqueue($"set {typeId} {deviceId} {(isOn ? "on" : "off")}");
         Calls.Enqueue($"set {Short(typeId)} {deviceId} {(isOn ? "on" : "off")}{Data(data)}");
+    }
 
-    public void Fire(string typeId, Guid? deviceId, IReadOnlyDictionary<string, string>? data = null) =>
+    public void Fire(string typeId, Guid? deviceId, IReadOnlyDictionary<string, string>? data = null)
+    {
+        Full.Enqueue($"fire {typeId} {deviceId}");
         Calls.Enqueue($"fire {Short(typeId)} {deviceId}{Data(data)}");
+    }
 
-    public void ReplaceStates(string typeId, IReadOnlyCollection<Guid> onDevices) =>
+    public void ReplaceStates(string typeId, IReadOnlyCollection<Guid> onDevices)
+    {
+        Full.Enqueue($"replace {typeId} [{string.Join(",", onDevices)}]");
         Calls.Enqueue($"replace {Short(typeId)} [{string.Join(",", onDevices)}]");
+    }
 
     public bool IsWatched(string typeId) => true;
 
@@ -495,18 +587,19 @@ internal sealed class Rig : IAsyncDisposable
     /// <param name="lostDelay">"Connection lost" after this (default 400 ms; tests that look at the state before it use more).</param>
     public Rig(DeviceTriggersOptions? options = null, TimeSpan? lostDelay = null)
     {
+        var fast = FastOptions();
         Plugin = new DeviceTriggersPlugin(options ?? new DeviceTriggersOptions
         {
-            LostDelay = lostDelay ?? TimeSpan.FromMilliseconds(400),
-            SettleTime = TimeSpan.FromMilliseconds(150),
-            RequestTimeout = TimeSpan.FromSeconds(5),
-            KeepAlive = TimeSpan.FromSeconds(10),
-            Backoff = [TimeSpan.FromMilliseconds(50)],
-            StatusRetry = TimeSpan.FromMilliseconds(100),
-            TickInterval = TimeSpan.FromMilliseconds(20),
-            DeviceSweepInterval = TimeSpan.FromMilliseconds(100),
-            RecheckInterval = TimeSpan.FromMinutes(5),
-            ResolveInterval = TimeSpan.FromMilliseconds(100),
+            LostDelay = lostDelay ?? fast.LostDelay,
+            SettleTime = fast.SettleTime,
+            RequestTimeout = fast.RequestTimeout,
+            KeepAlive = fast.KeepAlive,
+            Backoff = fast.Backoff,
+            StatusRetry = fast.StatusRetry,
+            TickInterval = fast.TickInterval,
+            DeviceSweepInterval = fast.DeviceSweepInterval,
+            RecheckInterval = fast.RecheckInterval,
+            ResolveInterval = fast.ResolveInterval,
         });
     }
 
@@ -524,16 +617,37 @@ internal sealed class Rig : IAsyncDisposable
 
     public int TypesChanged;
 
+    /// <summary>The context the plugin runs with (tests that drive the runtime directly use it too).</summary>
+    public ICorePluginContext Context => _context ??= new FakeContext(Devices, Cameras, Hub.For(DeviceTriggersPluginInfo.PluginId), Publisher, Settings);
+
+    private ICorePluginContext? _context;
+
+    /// <summary>Short timings for a runtime driven directly.</summary>
+    public static DeviceTriggersOptions FastOptions(int connectParallelism = 16, TimeSpan? sweep = null) => new()
+    {
+        LostDelay = TimeSpan.FromMilliseconds(400),
+        SettleTime = TimeSpan.FromMilliseconds(150),
+        RequestTimeout = TimeSpan.FromSeconds(5),
+        KeepAlive = TimeSpan.FromSeconds(10),
+        Backoff = [TimeSpan.FromMilliseconds(50)],
+        StatusRetry = TimeSpan.FromMilliseconds(100),
+        TickInterval = TimeSpan.FromMilliseconds(20),
+        DeviceSweepInterval = sweep ?? TimeSpan.FromMilliseconds(100),
+        RecheckInterval = TimeSpan.FromMinutes(5),
+        ResolveInterval = TimeSpan.FromMilliseconds(100),
+        ConnectParallelism = connectParallelism,
+    };
+
     public async Task<Rig> StartAsync()
     {
         Plugin.EventTypesChanged += (_, _) => Interlocked.Increment(ref TypesChanged);
-        await Plugin.StartAsync(new FakeContext(Devices, Cameras, Hub.For(DeviceTriggersPluginInfo.PluginId), Publisher, Settings), CancellationToken.None);
+        await Plugin.StartAsync(Context, CancellationToken.None);
         return this;
     }
 
-    public TestDevice AddDevice(string address, bool hasApi = true, DeviceStatus status = DeviceStatus.Ok, IReadOnlyList<string>? tags = null)
+    public TestDevice AddDevice(string address, bool hasApi = true, DeviceStatus status = DeviceStatus.Ok, IReadOnlyList<string>? tags = null, bool apisRead = true)
     {
-        var device = new TestDevice(address, HasApi: hasApi, Status: status) { Tags = tags ?? [] };
+        var device = new TestDevice(address, HasApi: hasApi, Status: status) { Tags = tags ?? [], ApisRead = apisRead };
         Devices.Add(device);
         return device;
     }

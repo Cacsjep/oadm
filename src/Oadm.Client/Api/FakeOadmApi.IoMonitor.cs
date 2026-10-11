@@ -36,7 +36,7 @@ public sealed partial class FakeOadmApi
                 FakeStopIo(payload?["streamId"]?.GetValue<string>() ?? string.Empty);
                 return Task.FromResult<string?>(null);
             case "keepAlive":
-                return Task.FromResult<string?>(null);
+                return Task.FromResult<string?>("{\"running\":true}"); // like the plugin: the stream is known
             default:
                 throw new RpcException(new Status(StatusCode.InvalidArgument, $"Unknown method '{method}'."));
         }

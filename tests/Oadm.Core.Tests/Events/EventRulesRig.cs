@@ -58,6 +58,14 @@ internal sealed class EventRulesRig : IAsyncDisposable
 
     public DeviceRepository Devices => _db.Get<DeviceRepository>();
 
+    public IDbContextFactory<OadmDbContext> DbFactory => _db.Get<IDbContextFactory<OadmDbContext>>();
+
+    /// <summary>Set before start: actions wait for <see cref="ActionRunner.PluginsStarted"/> like on a server start.</summary>
+    public bool HoldActions { get; set; }
+
+    /// <summary>Set before start: the engine queue size.</summary>
+    public int QueueCapacity { get; set; } = 100_000;
+
     public IEventPublisher Publisher => Engine.PublisherFor(SourceId);
 
     public PluginOrigin SourceOrigin { get; } = new("test.source-package", "1.0", null) { DisplayName = "Test source" };
@@ -86,9 +94,13 @@ internal sealed class EventRulesRig : IAsyncDisposable
         Log = new EventLog(dbFactory, Time);
         Runner = new ActionRunner(Catalog, Store, Log, Devices, new FakeVapixFactory(), _db.Get<IPluginSettingsProvider>());
         Engine = new RuleEngine(Catalog, Store, Log, Runner, Devices, _db.Get<IDeviceChangeFeed>(), Time,
-            new RuleEngineOptions { TickInterval = TimeSpan.FromHours(10) });
+            new RuleEngineOptions { TickInterval = TimeSpan.FromHours(10), QueueCapacity = QueueCapacity });
         Rules = new EventRulesService(Catalog, Store, Engine, Devices);
         await Engine.StartAsync(CancellationToken.None);
+        if (!HoldActions)
+        {
+            Runner.PluginsStarted();
+        }
     }
 
     /// <summary>Stops the engine and the runner (keeps the database), like a server stop.</summary>
@@ -206,6 +218,9 @@ public sealed class RecordingAction(string id, bool needsDevice, bool supportsTu
 
     public TimeSpan Delay { get; set; }
 
+    /// <summary>Runs on these devices wait for the task first (a device that does not answer).</summary>
+    public ConcurrentDictionary<Guid, Task> WaitFor { get; } = new();
+
     public string Id { get; } = id;
 
     public string DisplayName => "Record " + Id;
@@ -230,6 +245,11 @@ public sealed class RecordingAction(string id, bool needsDevice, bool supportsTu
         if (Delay > TimeSpan.Zero)
         {
             await Task.Delay(Delay, ct);
+        }
+
+        if (invocation.Device is { } device && WaitFor.TryGetValue(device.Id, out var wait))
+        {
+            await wait.WaitAsync(ct);
         }
 
         Runs.Enqueue((invocation.Edge, invocation.Device?.Id, ctx.Text(invocation.Get("text")) + "|" + invocation.Get("secret"), invocation.RuleId));

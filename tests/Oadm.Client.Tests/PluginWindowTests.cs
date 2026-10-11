@@ -22,6 +22,8 @@ public sealed class PluginWindowTests
     {
         public int Views;
 
+        public List<PageModel> Models { get; } = [];
+
         public string PluginId => "test.monitor";
 
         public string Title => "Monitor";
@@ -29,8 +31,22 @@ public sealed class PluginWindowTests
         public Control CreateView(ICorePluginClientContext ctx)
         {
             Views++;
-            return new TextBlock { Text = $"Copy {Views}" };
+            var model = new PageModel(ctx);
+            Models.Add(model);
+            return new TextBlock { Text = $"Copy {Views}", DataContext = model };
         }
+    }
+
+    /// <summary>A plugin view model that subscribes with a lambda and never unsubscribes (like most plugins).</summary>
+    private sealed class PageModel : IDisposable
+    {
+        public PageModel(ICorePluginClientContext ctx) => ctx.DevicesChanged += (_, _) => Changes++;
+
+        public int Changes { get; private set; }
+
+        public bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
     }
 
     private static (MainWindowViewModel Shell, CountingPage Page, DevicesFixture Fixture, ServerConnection Connection) Create()
@@ -84,6 +100,94 @@ public sealed class PluginWindowTests
         shell.Stop(); // logout
 
         Assert.Equal(["test.monitor", null], closed);
+    }
+
+    [Fact]
+    public void A_closed_window_page_drops_its_device_subscriptions_and_disposes_its_view_model()
+    {
+        var (shell, page, f, connection) = Create();
+        using var _ = f;
+        using var __ = connection;
+        CorePluginPageViewModel? opened = null;
+        shell.PluginWindowRequested += (_, p) => opened = p;
+        shell.NavItems.Single(n => n.Key == "plugin:test.monitor").OpenInNewWindowCommand.Execute(null);
+        Assert.NotNull(opened);
+        PageModel rail = page.Models[0], window = page.Models[1];
+
+        f.SeedDevices(TestSupport.Device("1", "ACCC8E000001", "10.0.0.1", "AXIS P3265-V"));
+        Assert.Equal((1, 1), (rail.Changes, window.Changes));
+
+        opened.Dispose(); // the plugin window closed
+        Assert.True(window.Disposed);
+        f.SeedDevices(TestSupport.Device("2", "ACCC8E000002", "10.0.0.2", "AXIS P3265-V"));
+        Assert.Equal((2, 1), (rail.Changes, window.Changes)); // the closed copy no longer hears the host
+
+        shell.SyncCorePluginPages([]); // plugin turned off: the rail page is released too
+        Assert.True(rail.Disposed);
+        f.SeedDevices(TestSupport.Device("3", "ACCC8E000003", "10.0.0.3", "AXIS P3265-V"));
+        Assert.Equal(2, rail.Changes);
+    }
+
+    [Fact]
+    public void The_context_forwards_device_changes_until_it_is_disposed()
+    {
+        var host = Substitute.For<IToolbarContext>();
+        var context = new CorePluginClientContext(Substitute.For<Oadm.Client.Api.IOadmApi>(), "test.monitor", host);
+        Assert.False(context.IsAttached); // nothing on the host until the plugin subscribes
+        var changes = 0;
+        context.DevicesChanged += (_, _) => changes++;
+        context.DevicesChanged += (_, _) => changes++;
+        Assert.True(context.IsAttached);
+        host.Received(1).DevicesChanged += Arg.Any<EventHandler>(); // one handler on the host for any number of plugin handlers
+
+        host.DevicesChanged += Raise.Event();
+        Assert.Equal(2, changes);
+
+        context.Dispose();
+        Assert.False(context.IsAttached);
+        host.Received(1).DevicesChanged -= Arg.Any<EventHandler>();
+        context.DevicesChanged += (_, _) => changes++; // after Dispose: ignored
+        Assert.False(context.IsAttached);
+    }
+
+    [Fact]
+    public async Task After_logging_out_and_in_twice_open_in_new_window_opens_one_window()
+    {
+        var done = await HeadlessSession.Shared.Dispatch(() =>
+        {
+            var (shell, page, f, connection) = Create();
+            using var _ = f;
+            using var __ = connection;
+            var windows = new List<MainWindow>();
+            for (var login = 0; login < 3; login++)
+            {
+                // AppShell: a new main window per login, the view model lives on; logout stops it and closes the window.
+                if (windows.Count > 0)
+                {
+                    shell.Stop();
+                    windows[^1].Close();
+                }
+
+                var main = new MainWindow { DataContext = shell, Width = 1800, Height = 900 };
+                main.Show();
+                windows.Add(main);
+            }
+
+            shell.NavItems.Single(n => n.Key == "plugin:test.monitor").OpenInNewWindowCommand.Execute(null);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal([0, 0, 1], windows.Select(w => w.PluginWindows.Count));
+            Assert.Equal(2, page.Views); // the rail page plus exactly one window
+
+            var pluginWindow = windows[^1].PluginWindows[0];
+            pluginWindow.Close();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Empty(windows[^1].PluginWindows);
+            Assert.True(page.Models[1].Disposed);
+            Assert.True(((CorePluginPageViewModel)pluginWindow.DataContext!).IsDisposed);
+            windows[^1].Close();
+            return Task.FromResult(true);
+        }, CancellationToken.None);
+        Assert.True(done);
     }
 
     [Fact]

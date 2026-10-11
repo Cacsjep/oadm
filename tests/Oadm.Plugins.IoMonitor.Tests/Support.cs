@@ -102,9 +102,19 @@ internal sealed class FakeDevices : IDeviceRepository
     public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(d => d.Id == id));
 }
 
-/// <summary>A device answering getPorts with <see cref="Body"/> (the recorded A9210 by default); read-only.</summary>
-internal sealed class FakeVapix : IVapixClientFactory, IVapixClient
+/// <summary>
+/// A device answering getPorts with <see cref="Body"/> (the recorded A9210 by default); read-only. Like the host's factory
+/// it caches one client and <see cref="ReplaceClient"/> disposes it and hands out a new one (address or credentials changed).
+/// </summary>
+internal sealed class FakeVapix : IVapixClientFactory
 {
+    private Client _client;
+
+    public FakeVapix()
+    {
+        _client = new Client(this);
+    }
+
     public static string Recorded => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "a9210-getports.json"));
 
     public string Body { get; set; } = Recorded;
@@ -113,7 +123,19 @@ internal sealed class FakeVapix : IVapixClientFactory, IVapixClient
 
     public int Requests;
 
-    public Uri BaseAddress => new("http://device/");
+    /// <summary>Calls of <see cref="CreateAsync"/>.</summary>
+    public int Creates;
+
+    /// <summary>Thrown by <see cref="CreateAsync"/> (device removed, unknown) while set.</summary>
+    public Exception? CreateError { get; set; }
+
+    /// <summary>The factory replaced its client: the old one is disposed and fails every request.</summary>
+    public void ReplaceClient()
+    {
+        var old = _client;
+        _client = new Client(this);
+        old.Disposed = true;
+    }
 
     /// <summary>The recorded ports with some ports active (state "closed").</summary>
     public void SetClosed(params string[] ports)
@@ -127,9 +149,13 @@ internal sealed class FakeVapix : IVapixClientFactory, IVapixClient
         Body = doc.ToJsonString();
     }
 
-    public Task<IVapixClient> CreateAsync(Guid deviceId, CancellationToken ct) => Task.FromResult<IVapixClient>(this);
+    public Task<IVapixClient> CreateAsync(Guid deviceId, CancellationToken ct)
+    {
+        Interlocked.Increment(ref Creates);
+        return CreateError is { } error ? Task.FromException<IVapixClient>(error) : Task.FromResult<IVapixClient>(_client);
+    }
 
-    public async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+    private async Task<HttpResponseMessage> AnswerAsync(HttpRequestMessage request, CancellationToken ct)
     {
         Interlocked.Increment(ref Requests);
         Assert.Equal(IoMonitorPluginInfo.Path, request.RequestUri!.OriginalString);
@@ -137,13 +163,23 @@ internal sealed class FakeVapix : IVapixClientFactory, IVapixClient
         return Override?.Invoke() ?? new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(Body, Encoding.UTF8, "application/json") };
     }
 
-    public Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct) => throw new NotSupportedException();
+    private sealed class Client(FakeVapix device) : IVapixClient
+    {
+        public volatile bool Disposed;
 
-    public Task<IReadOnlyDictionary<string, string>> ListParametersAsync(IEnumerable<string> groups, CancellationToken ct) => throw new NotSupportedException();
+        public Uri BaseAddress => new("http://device/");
 
-    public Task RestartAsync(CancellationToken ct) => throw new NotSupportedException();
+        public Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            Disposed ? throw new ObjectDisposedException(nameof(HttpClient)) : device.AnswerAsync(request, ct);
 
-    public Task<IReadOnlyList<DeviceApi>> GetApiListAsync(CancellationToken ct) => throw new NotSupportedException();
+        public Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<IReadOnlyDictionary<string, string>> ListParametersAsync(IEnumerable<string> groups, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task RestartAsync(CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<DeviceApi>> GetApiListAsync(CancellationToken ct) => throw new NotSupportedException();
+    }
 }
 
 internal sealed class FakeContext(IDeviceRepository devices, IVapixClientFactory vapix, IPluginEvents events) : ICorePluginContext
@@ -172,15 +208,21 @@ internal sealed class PluginPageContext(IoMonitorPlugin plugin, PluginEventHub h
 
     public IReadOnlyList<IDeviceInfo> Devices { get; } = devices;
 
-    public event EventHandler? DevicesChanged
-    {
-        add { }
-        remove { }
-    }
+    /// <summary>Calls of this method fail (a dropped connection) while set.</summary>
+    public string? FailMethod { get; set; }
+
+    public event EventHandler? DevicesChanged;
+
+    public void RaiseDevicesChanged() => DevicesChanged?.Invoke(this, EventArgs.Empty);
 
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
         Calls.Enqueue(method);
+        if (method == FailMethod)
+        {
+            throw new IOException("The connection to the server was lost.");
+        }
+
         return await plugin.InvokeAsync(method, payloadJson, ct);
     }
 
@@ -202,16 +244,20 @@ internal sealed class Rig : IAsyncDisposable
     public FakeVapix Vapix { get; } = new();
 
     /// <param name="leaseTimeout">Without keep-alives a stream stops after this (default 5 s; the lease test shortens it).</param>
-    public Rig(TimeSpan? leaseTimeout = null)
+    /// <param name="retryDelay">Wait after a failed read (default 50 ms).</param>
+    /// <param name="time">Clock of the plugin (default the system clock).</param>
+    public Rig(TimeSpan? leaseTimeout = null, TimeSpan? retryDelay = null, TimeProvider? time = null)
     {
-        Plugin = new(new IoMonitorOptions
-        {
-            PollInterval = TimeSpan.FromMilliseconds(20),
-            RetryDelay = TimeSpan.FromMilliseconds(50),
-            LeaseTimeout = leaseTimeout ?? TimeSpan.FromSeconds(5),
-            LeaseCheckInterval = TimeSpan.FromMilliseconds(50),
-            MaxStreams = 2,
-        });
+        Plugin = new(
+            new IoMonitorOptions
+            {
+                PollInterval = TimeSpan.FromMilliseconds(20),
+                RetryDelay = retryDelay ?? TimeSpan.FromMilliseconds(50),
+                LeaseTimeout = leaseTimeout ?? TimeSpan.FromSeconds(5),
+                LeaseCheckInterval = TimeSpan.FromMilliseconds(50),
+                MaxStreams = 2,
+            },
+            time);
     }
 
     public IoMonitorPlugin Plugin { get; }

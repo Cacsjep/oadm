@@ -63,6 +63,8 @@ hold, and some actions can undo themselves when the rule turns **off**.
 - **Run VAPIX command**: sends a saved command of the [VAPIX Commander](../vapix-commander/), with its values and
   passwords. Optionally a second command when the rule turns off, for example to hide an overlay again. Commands marked
   dangerous need **Allow dangerous commands**.
+  Text fields of the saved command can use the event's values: type `{carID}`, `{port}` or `{device}` as the field's
+  value and OADM fills it in when the rule runs. The info icon next to an event lists its values.
 
 When several devices turn a rule on, an action on chosen devices (the lamp on the I/O box) switches on with the first
 one and off when the last one ends.
@@ -80,7 +82,7 @@ one and off when the last one ends.
 
 The **Event log** below the rules lists what happened: the events your rules use, when a rule turned on, off or ran, and every
 action with its result. The newest entries come first and new ones appear live. OADM keeps the log for 30 days or
-100,000 entries.
+100,000 entries. Administrators can empty it with **Delete all**.
 
 ## Good to know
 

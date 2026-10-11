@@ -32,6 +32,12 @@ service EventService {
   rpc ListLog (ListEventLogRequest) returns (EventLogPage);
   // New log entries as they are written (batches).
   rpc WatchLog (Empty) returns (stream EventLogPage);
+  // Admin: deletes every entry of the event log (audited); reply = how many.
+  rpc ClearLog (Empty) returns (ClearEventLogReply);
+}
+
+message ClearEventLogReply {
+  int32 deleted = 1;
 }
 
 message EventFieldInfo {

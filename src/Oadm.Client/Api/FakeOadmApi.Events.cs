@@ -39,10 +39,10 @@ public sealed partial class FakeOadmApi
             ("oadm.device.certificate-changed", "Certificate changed", "Device status", "Built in", "The device presents another HTTPS certificate."),
             ("oadm.device.certificate-expires-soon", "Certificate expires soon", "Device status", "Built in", "30 days or less left."),
             ("oadm.device.certificate-expired", "Certificate expired", "Device status", "Built in", ""),
-            (FakePersonTrigger, "Person in the yard", "Device triggers", "Device triggers", "AXIS Object Analytics › Scenario 1. Values: {active}."),
-            (FakePersonTrigger + ".lost", "Person in the yard: connection lost", "Device triggers", "Device triggers", "No events of this trigger from the device for 30 s. Values: {reason}."),
-            ("oadm.device-triggers.sample-gate", "Gate contact", "Device triggers", "Device triggers", "Device › Input ports › Digital input port · Port: Port 1 (0). Values: {port}, {state}."),
-            ("oadm.device-triggers.sample-gate.lost", "Gate contact: connection lost", "Device triggers", "Device triggers", "No events of this trigger from the device for 30 s. Values: {reason}."),
+            (FakePersonTrigger, "Person in the yard", "Device triggers", "Device triggers", "AXIS Object Analytics › Scenario 1.\n\nValues:\n• {active}"),
+            (FakePersonTrigger + ".lost", "Person in the yard: connection lost", "Device triggers", "Device triggers", "No events of this trigger from the device for 30 s.\n\nValues:\n• {reason}"),
+            ("oadm.device-triggers.sample-gate", "Gate contact", "Device triggers", "Device triggers", "Device › Input ports › Digital input port · Port: Port 1 (0).\n\nValues:\n• {port}\n• {state}"),
+            ("oadm.device-triggers.sample-gate.lost", "Gate contact: connection lost", "Device triggers", "Device triggers", "No events of this trigger from the device for 30 s.\n\nValues:\n• {reason}"),
         ];
         foreach (var (id, name, group, source, description) in types)
         {
@@ -315,6 +315,17 @@ public sealed partial class FakeOadmApi
 
             page.Entries.AddRange(entries.Take(limit <= 0 ? 10_000 : limit).Select(e => e.Clone()));
             return Task.FromResult(page);
+        }
+    }
+
+    public Task<int> ClearEventLogAsync(CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            var deleted = _eventLog.Count;
+            _eventLog.Clear();
+            return Task.FromResult(deleted);
         }
     }
 

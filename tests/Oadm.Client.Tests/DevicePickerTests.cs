@@ -105,6 +105,25 @@ public sealed class DevicePickerTests(ITestOutputHelper output)
         Assert.Equal(DeviceChoice.Devices([a.Id]).DeviceIds, plain.Choice.DeviceIds);
     }
 
+    [Fact]
+    public void A_chosen_tag_no_device_has_survives_ok_and_defined_tags_are_offered()
+    {
+        var a = new PickDevice("10.0.0.1", "AXIS P3265-V") { Tags = ["Building A"] };
+        var b = new PickDevice("10.0.0.2", "AXIS A9210");
+        var vm = new DevicePickerViewModel([a, b], DeviceChoice.Devices([], ["Outdoor"]), DevicePickerOptions.Full(null, ["Building C", "building a"]));
+
+        Assert.Equal(["Building A", "Building C", "Outdoor"], vm.Tags.Select(t => t.Name)); // one entry per name
+        Assert.Equal(["1", "0", "0"], vm.Tags.Select(t => t.CountText));
+        Assert.True(vm.Tags.Single(t => t.Name == "Outdoor").IsChecked);
+        Assert.Equal(["Outdoor"], vm.Choice.Tags); // OK keeps the tag meant for devices tagged later
+        Assert.Equal("1 tag: 0 of 2 devices", vm.Summary); // no "and 0 devices"
+
+        vm.Tags.Single(t => t.Name == "Building A").IsChecked = true;
+        Assert.Equal("2 tags: 1 of 2 devices", vm.Summary);
+        vm.Visible.Single(i => i.Id == b.Id).IsChecked = true;
+        Assert.Equal("2 tags and 1 device: 2 of 2 devices", vm.Summary);
+    }
+
     private sealed record PickDevice(string Address, string? Model) : IDeviceInfo
     {
         public IReadOnlyList<string> Tags { get; init; } = [];

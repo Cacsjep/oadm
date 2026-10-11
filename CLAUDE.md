@@ -644,7 +644,9 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   **Open in new window** on their rail entry: the plugin creates another, independent view (own context, streams, state)
   shown in `Shell/PluginWindow` (an empty title bar: the page header names the page, user decision 2026-10-11; window title
   "<page> · OADM" for the task bar; page padding, not modal, as many as wanted); the windows close
-  with the main window, on logout and when the plugin is turned off (`MainWindowViewModel.PluginWindowRequested` /
+  with the main window, on logout and when the plugin is turned off; a closed window (or a removed rail page) disposes its
+  page: the plugin context drops every `DevicesChanged` subscription and the view's DataContext is disposed when it is
+  `IDisposable`; the main window unsubscribes from the shell view model when it closes (a new main window per login) (`MainWindowViewModel.PluginWindowRequested` /
   `ClosePluginWindowsRequested`; tests `PluginWindowTests`, headless `client-plugin-window.png`). Entries top: Devices, then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (VAPIX
   Commander, Device triggers), Security (PKI, Hardening scan), Monitoring (Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
@@ -666,8 +668,8 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   Font Inter (Avalonia.Fonts.Inter), whole-pixel sizes only (fractional sizes blur): 12 px body, 10 px small, 18 px card titles, 22 px page titles, semibold titles; every window renders text with subpixel anti-aliasing, strong hinting and pixel-aligned baselines (App.ApplyCrispText). Page subtitles sit right of the page title, small, grey, baseline aligned.
 - Status is never a chip: everywhere a status or result is shown (device certificate columns,
   tasks, task steps, logs, add page, plugin dialogs) use `ui:StatusChip` = a small icon colored
-  by the status (check ok green, warning amber, error red, running violet and spinning, neutral
-  grey) with plain text in the normal text color to its right, plus optional detail text
+  by the status (check ok green, warning amber, error red, running violet and spinning, information blue "i" (`IsInfo`,
+  something happened, nothing to check), neutral grey) with plain text in the normal text color to its right, plus optional detail text
   (e.g. the error message). Colour marks exceptions (layout review 2026-10-08): the device grid's first-column
   device icon is neutral for OK and colored only for warning and error statuses, the Status column is plain text, and
   certificates that are fine (more than 30 days left, Trusted) are plain text without an icon. Tasks pane: the Status column shows only the
@@ -918,7 +920,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 | Kinds | Stateful (on / off per device or for the server) or stateless (one shot). Off is the default; a stateful source sends one full report (`ReplaceStates`) per type after every start ("ready"), then `SetState` per change or `ReplaceStates` again; a source that is turned off counts as everything off. |
 | Simple mode | Conditions must all hold. The first is the trigger ("When": an event, devices All / chosen / tags); further ones ("And") are stateful events (on "the same device", or "any" of All / chosen / tags) or schedules (weekdays + from / to in server time, over midnight allowed). Only the trigger may be one-shot. Advanced AND / OR later on the same model. |
 | Rule state | All events stateful: the rule is on per subject (the trigger's device, or the server) while all conditions hold. One-shot trigger: the rule fires while the others hold. |
-| Actions | One to five per rule, run in the listed order on each edge, each on its targets in parallel (16 at once for all rules, 30 s per run); a failure is logged and the next one runs; no retry. Targets: the device of the event, chosen devices, devices with tags, all devices. Actions on chosen / tag / all devices run when the first subject turns on and when the last one turns off; actions on the event's device and actions without devices run per subject. |
+| Actions | One to five per rule, run in the listed order on each edge, each on its targets in parallel (16 at once for all rules, 30 s per run); a failure is logged and the next one runs; no retry. Edges run in order per rule and subject (a "turns off" never overtakes its "turns on"; edges with actions on chosen / tag / all devices also in order among themselves); different devices never wait for each other. Targets: the device of the event, chosen devices, devices with tags, all devices. Actions on chosen / tag / all devices run when the first subject turns on and when the last one turns off; actions on the event's device and actions without devices run per subject. |
 | Limits | Per rule, editable (user decision 2026-10-11, security names): **Dead time** per device (default 10 s between two "turns on"), **Flood limit** (default 60 runs per minute for the whole rule); a suppressed "turns on" also suppresses its "turns off"; "Rule paused" logged once a minute. |
 | Changes | Turning off, changing or deleting a rule that is on runs its off actions first; a changed rule is then evaluated fresh. A removed device goes off. A plugin turned off: its events go off, rules show "Not available: <plugin> is turned off". |
 | Restart | The subjects each rule was on for are stored (`EventRuleStates`); a rule is evaluated once every event type it uses is ready (or after 2 minutes); only real differences run actions. |
@@ -942,7 +944,12 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   events from `DeviceChangeFeed`; ticks every 15 s for schedules and ready timeouts), `ActionRunner` (edges of one rule in
   order), `EventLog` (queued, batched every 500 ms, live watch), `EventRulesService`, `RuleTexts` (summaries). The engine
   starts after the plugin activation and before the core plugins (`OadmServerHost.StartAsync` 4b); `CorePluginHost` hands
-  a publisher to every core plugin that implements `IEventSource`. Types can change while the server runs
+  a publisher to every core plugin that implements `IEventSource`. Actions wait until the core plugins have started
+  (`ActionRunner.PluginsStarted`, after `CorePluginHost.StartAllAsync`). Rule states are dropped from memory only after a
+  successful write and written once more at stop; a saved / turned on or off / deleted rule always reaches the engine (it
+  waits for room in a full queue, events are dropped). Saving a rule whose action's plugin is off runs only the shared field
+  checks. The catalog is an id-indexed snapshot rebuilt when plugins or event types change; subject-independent conditions
+  are evaluated once per re-evaluation; a chosen device or tag counts only while OADM manages the device. Types can change while the server runs
   (`IDynamicEventSource.EventTypesChanged`, device triggers): the registry reads them again, a new stateful type waits for
   its first report, a removed type counts as off ("Not available: an event of this rule no longer exists"), and a type a
   stored rule uses that no source declares yet waits like a source after a start (2 minutes), then counts as off.
@@ -960,14 +967,20 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   AXIS A9210 (AXIS OS 12.10.73.2, io-port-management 1.1, output 1 = RELAY), every mode on both APIs, 2026-10-10. **Run VAPIX command** (contributed by VAPIX
   Commander, available while it is on): a saved command (stored values and passwords) or a library command whose fields all
   have defaults, optional second command when the rule turns off, "Allow dangerous commands" required for dangerous ones;
-  device safety like a rollout (cached API list, fresh one before a write).
+  device safety like a rollout (cached API list, fresh one before a write). The event's values reach the command (user
+  decision 2026-10-11): a text field of the saved command whose value holds placeholders ("{carID}", "{port}", "{device}")
+  is filled before the field checks and the send (`RunCommandAction.FillEventValues`; passwords never). Event type
+  descriptions list their values one per line ("Values:" then "• {name}"), shown in the info icon of the rule dialog.
 - **Client**: rail page **Event rules** (key `HostPages.EventRules`, icon `zap`, group Automation before the plugin pages of
   that group; `EventRulesViewModel` + `EventRulesView`): rules on top, the **Event log** card below with a splitter, like the Devices
   page and its tasks (user decision 2026-10-11, no tabs). **Rules** (toolbar New rule first, Edit, Duplicate,
   Delete (red, confirmed); search on the right; grid On check box (administrators), Name, When, Then, State chip (On ok, waiting accent, problem
   warning), Last run; double click edits; search; status "3 rules · 2 turned on · 1 active now"; live through
-  `WatchRules`) and **Event log** (title, Refresh, search, virtualized grid Time, Type, What, Device, Rule, Result chip + message;
-  newest 10,000, live through `WatchLog`). Rule dialog `RuleEditorWindow` (`RuleEditorViewModel`), a wizard (user decision 2026-10-11) with
+  `WatchRules`) and **Event log** (title, Refresh, **Delete all** (administrators, red, confirmed; gRPC `ClearLog`, audited
+  "Cleared event log"), search, virtualized grid Time, Type, What, Device, Rule, Result chip + message (events and rule edges
+  the blue info icon, Done ok, Failed error, Skipped warning; a skip message does not repeat "Skipped");
+  newest 10,000, live through `WatchLog`, read and watched again after a drop with the rules' backoff (1, 2, 4 ... 15 s);
+  errors of rule actions stand below the rules list, errors reading the log below the log). Rule dialog `RuleEditorWindow` (`RuleEditorViewModel`), a wizard (user decision 2026-10-11) with
   the steps as a segmented switch (a step opens when every step before it is complete): **1 Rule** (Name and Turned on in
   one row, Limits), **2 When** (Conditions: "When" / "And" rows, Add event, Add schedule, day toggles), **3 Then** (Actions:
   "Then" rows: action, On (targets), the settings form, move up / down, remove; Add action up to five), **4 Overview** (one
@@ -1347,7 +1360,8 @@ is always on.
 - `PluginRegistry`: `TaskPlugins`, `CorePlugins`, `TryGetTaskPlugin`, `TryGetCorePlugin` see only enabled packages
   (so ListCorePlugins, ListTaskPlugins, Run and Query skip a package that is off; the runnable cache follows the plugin
   set); `AllTaskPlugins` / `AllCorePlugins` / `Packages` (`PluginPackageState`: origin, enabled, has page, menu task
-  count) see all. `SetEnabled` + `CorePluginHost.SyncEnabledAsync`: core plugins of a package turned off are stopped
+  count) see all. `SetEnabled` + `CorePluginHost.SyncEnabledAsync` (once a change starts, storing it and starting / stopping the plugins
+  always finish, also when the caller cancels; a failed store undoes it; the audit entry is written either way): core plugins of a package turned off are stopped
   (trust anchors removed), turned on are started. Invoking a core plugin that is off: FAILED_PRECONDITION "The <name>
   plugin is turned off.". Tasks of the package already queued or running finish.
 - gRPC `PluginService.ListPackages` (any user: clients hide toolbar entries of packages that are off) /
@@ -1439,8 +1453,8 @@ Steps of the other task plugins (details in each plugin README):
   start, stop: Check compatibility, Read installed applications, <action> application, Verify ....
   Names: "Install <app> <version>", "Upgrade <app> to <version>", "Remove|Start|Stop <app>".
 - Import configuration: Read configuration file, Check compatibility, Import <area> (one per settings area: network and
-  system settings, event rules, schedules, MQTT events, time zone, power settings, password policy), Verify configuration.
-  Name "Import configuration <file name>".
+  system settings, event rules, schedules, MQTT events, time zone, power settings, password policy), Import connection
+  settings (only when chosen, always last), Verify configuration. Name "Import configuration <file name>".
 - Restart: name "Restart device". VAPIX Commander rollout: the command name or "<first> +N more".
 
 ## Network settings plugin
@@ -1621,8 +1635,10 @@ JSON schema: `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md` + `c
   "Remove all" icon in that column's header; no button row. Keyboard on the grid: Delete removes the
   selected row, Ctrl+Up / Ctrl+Down move it. Selecting a row shows its field form below, checked like
   the server while typing; `ui:PasswordBox` for passwords) / **Raw request** (method, path, query and
-  header tables with Make field (the header table is hidden for GET unless the command has headers), body type + body, timeout, response kind, fields from `{{placeholders}}`
-  typed by hand, "Add to rollout", "Save as command" with name, category, description, requires
+  header tables with Make field (the header table is hidden for GET unless the command has headers), body type + body
+  (hidden for GET unless the command has a body; the body in `ui:CodeEditor`, JSON and XML colored while typing), timeout,
+  response kind, fields from `{{placeholders}}` typed by hand, "Add to rollout", "Save as command", **Reset** (a new
+  request: GET param.cgi list Brand, no headers, body or fields; user decision 2026-10-11) with name, category, description, requires
   prefilled from the path (param.cgi -> param-cgi 1.0, `/config/rest/<api>/v<n>` -> `<api> n.0`, known
   CGIs), changes-the-device (prefilled from method/action) and dangerous); "Send to <device>" + **Send**
   shows the result card (status chip, "HTTP 200 OK · 84 ms · address", interpreted result, request
@@ -2127,13 +2143,16 @@ Decided with the user on 2026-10-09:
 device; no events, no actions, no switching. Details in its `README.md`.
 - Devices with `io-port-management` 1.x in their API list; the server reads `getPorts` every 200 ms while a page shows the
   device (stored credentials, 3 s timeout, 1 s after a failure) and pushes only changes (topic `ports`); `start` / `stop` /
-  `keepAlive` (5 s; stopped after 20 s without), at most 20 devices at once; refused statuses without a request.
+  `keepAlive` (5 s; stopped after 20 s without; the reply `{running}` is false for an unknown stream, then the page starts
+  again), at most 20 devices at once (pages showing the same device share one reading and count once; no start after the
+  plugin stopped); each read takes the client from the VAPIX client factory (never kept or disposed); after a failure the
+  next read starts 1 s later; refused statuses without a request.
 - Page: device picker, status chip, and the device drawn as a faceplate (user request: an illustration, not cards): rows
   INPUTS and OUTPUTS of terminals, each the contact drawn open or closed (green while active), the port name and the port
   number as "Set output" counts; tooltip open / closed and normal state (no LEDs, no glow: user feedback). Theme:
   `Border.ioFaceplate` and `Border.ioTerminalBlock` (no own backgrounds: user feedback), `StackPanel.ioTerminal`, `Canvas.ioContact`, `Path.ioContactLever(.active)`.
 - Verified read-only on a loan AXIS A9210 (AXIS OS 12.10.73.2). Fake mode: the A9188 at 10.0.0.30. Tests:
-  `tests/Oadm.Plugins.IoMonitor.Tests` (headless `io-monitor-page.png`, hardware `io-monitor-live.png`).
+  `tests/Oadm.Plugins.IoMonitor.Tests` (keep-alive retry and restart, device list changes keep the stream, headless `io-monitor-page.png`, hardware `io-monitor-live.png`).
 
 ## Device triggers (core plugin)
 
@@ -2144,9 +2163,9 @@ Automation, icon `flame`), **off by default**. Spec and device research: `docs/s
 | Topic | Decision |
 |---|---|
 | What | A trigger = an event that the chosen devices offer (from the device's own event list: I/O ports, virtual inputs, temperature, storage, Object Analytics scenarios, other apps), optionally narrowed per source item (port, disk, channel, ...) to one value or Any. Every trigger is an event of the event rules. |
-| Event list | Read live from the devices every time a trigger is created or edited, never cached (an app that is stopped or removed has no events). The editor offers every event any of its devices offers (2026-10-11); a device that was read and lacks the chosen event stays listed with the reason and blocks Save; a device that cannot be read now stays and is used anyway. |
+| Event list | Read live from the devices every time a trigger is created or edited, never cached (an app that is stopped or removed has no events). The editor offers every event any of its devices offers (2026-10-11); a device that was read and lacks the chosen event stays listed with the reason and blocks Save; a device that cannot be read now stays and is used anyway. Save waits only for the chosen devices once the event is known; devices whose API list was not read yet are read too. |
 | Devices | User decision 2026-10-11: the shared device picker with All devices, tags and single devices together (stored as `AllDevices`, `Tags`, `DeviceIds`). The plugin resolves the devices after every change and every 30 s (`ResolveInterval`): new and newly tagged devices that can send events join; a device of a tag or of all devices that does not offer the event is left out quietly ("Does not offer this event", no "connection lost"); a chosen device without the event blocks Save. Devices removed from OADM leave the trigger. |
-| Stream | WebSocket event stream (VAPIX `event-streaming-over-websocket`), one permanent connection per device for all its turned-on triggers, also without a rule. |
+| Stream | WebSocket event stream (VAPIX `event-streaming-over-websocket`), one permanent connection per device for all its turned-on triggers, also without a rule. At most 16 devices connect at once (`DeviceTriggersOptions.ConnectParallelism`); a trigger change sets a new filter only on devices whose triggers changed. A filter the device refuses (2104) is a problem of its triggers only. Turned-off triggers keep their event types and report them as off at once; a turned-on trigger without devices reports off at once. |
 | State | On/off events: on while at least one matching source is on. One-shot events stay one-shot. The event's values are placeholders in actions. No value comparisons in v1. |
 | Connection lost | Every trigger has a second event "&lt;Trigger&gt;: connection lost" per device: on after 30 s without events (connection, login, event no longer on the device), off with the next report. During a problem the trigger keeps its last state. |
 | Event gone | The event list of a connected device is read again every 5 minutes and on every reconnect. |
@@ -2158,7 +2177,8 @@ Automation, icon `flame`), **off by default**. Spec and device research: `docs/s
   answers `data: {}` or error 2104, then the current state of every matching on/off event (the report; OADM waits 1.5 s);
   an unknown topic is accepted silently; the device sends nothing while idle and answers pings (OADM pings every 10 s); 30
   parallel connections worked. SDK: `IVapixClient.ConnectWebSocketAsync(path, keepAlive)` (session token, the client's
-  certificate pin), `IDynamicEventSource`.
+  certificate pin; a refused login or upgrade (401 / 403) is `UnauthorizedAccessException` with the shared Unauthorized /
+  Forbidden text), `IDynamicEventSource`.
 - **Apps** (loan AXIS Q6411-LE, AXIS OS 13.0.88, 2026-10-10): AXIS Image Health Analytics declares "Image Health
   Analytics - Blur / Block / Redirect / Under-Exposure / Unsuitability / Any-Active-Events" (on/off `active`).
   AXIS Object Analytics declares per scenario `Device1Scenario<id>` named like the scenario plus `Device1ScenarioANY`:
@@ -2318,7 +2338,8 @@ Spec, device research and decisions: `docs/specs/device-config.md`. User decisio
 |---|---|
 | Device API | Only the device's own `GET /config/rest/$export` and `PATCH /config/rest/$import` (+ `/config/discover`), like the web interface; the device validates, OADM shows its answer. No own schema check, no dry run (the API has none). |
 | Mode | Merge only (`importType=merge`); "default" can reset network settings. |
-| Identity | Never imported: host name, IP address, subnet, router, broadcast, DHCP on/off, Bonjour / UPnP names, volatile host name, IPv6 address and router, 802.1X identity, plus read-only values (DHCP vendor class, SNMP engine boots, power status). Also left out after the write tests: `Time.POSIXTimeZone` / `DST` / `ObtainFromDHCP` (they override the time zone area), `MediaClipCollection` (clips are not in the file) and `Rotation` where the file has auto rotation on (writing it turns auto rotation off). `ConfigIdentity`. |
+| Identity | Never imported: host name, IP address, subnet, router, broadcast, DHCP on/off, Bonjour / UPnP names, volatile host name, IPv6 address and router, 802.1X identity, the multicast addresses (`Network.RTPCollection` Video/AudioAddress, derived from the MAC), plus read-only values (DHCP vendor class, SNMP engine boots, power status). Also left out after the write tests: `Time.POSIXTimeZone` / `DST` / `ObtainFromDHCP` (they override the time zone area), `MediaClipCollection` (clips are not in the file) and `Rotation` where the file has auto rotation on (writing it turns auto rotation off). `ConfigIdentity`. |
+| Connection settings | User decision 2026-10-11: HTTPS on and its port, HTTP port, HTTP/HTTPS per user group, login method, IEEE 802.1X on/off, IPv6 on/off and the web interface (`ConfigIdentity.ConnectionPaths`) are their own area "Connection settings", unchecked by default, with a warning chip; unchecked they are left out of the write and the verify like identity values; checked they are written last in the step "Import connection settings" and the Import confirmation adds "The devices may become unreachable." |
 | Backup | None by OADM; whoever wants a way back exports first. |
 | Model | Same model only (file `metadata.prodNbr` vs the device); other AXIS OS versions allowed. |
 | Files | One `.json` for every selected device of its model, or the ZIP of an export where each device gets the entry with its MAC address in the name. |
@@ -2330,8 +2351,9 @@ Spec, device research and decisions: `docs/specs/device-config.md`. User decisio
   passwords in the file, other models left out), for a ZIP a virtualized device table (Ready, No file for this device, Two
   files for this device, Not a device configuration file, Other model); Import confirms, uploads the file and returns
   `ImportPayload` (file id, sections, device -> ZIP entry, device -> reason left out). Task steps: see "Steps of the other
-  task plugins"; one PATCH per area (`{"data":{"<key>":{...}}}`), device warnings = step Warning, an error fails its step
-  while the other areas still run, Verify configuration exports again and compares (differences = Warning).
+  task plugins"; one PATCH per area (`{"data":{"<key>":{...}}}`), device warnings = step Warning, an error (also a timeout or lost connection, shared
+  device texts) fails its step while the other areas still run; a changed certificate stops the task; a device that cannot
+  be read in Verify fails that step; the server checks that a ZIP entry's name carries the device's MAC address. Verify configuration exports again and compares (differences = Warning).
 - Device answers (write tests on AXIS M3098-LV and Q3546-LVE, AXIS OS 12.11.118, table in the spec): a wrong value type answers
   200 "success" with the warning "Failed to import <key>: ..." and imports nothing of the area = step Failed; "Failed to set
   property: root.X" = the rest was set, step Warning; "Field 'x' has been removed from the request" = unknown property left out
@@ -2443,7 +2465,9 @@ marked *(default)* were filled in and can be changed. This section wins over old
 - **Login window (client).** Shown at start: Server (default `localhost:5080`, remembered, list of recent servers), User
   name, Password (`ui:PasswordBox`), "Remember me" (keeps the token in the client settings, never the password), Log in;
   no product mark above the form (user decision 2026-10-09), a narrower label column (`StackPanel.compactForm`), and **Quit** on the left
-  (it ends the app when nobody logged in).
+  (it ends the app when nobody logged in); a refresh icon right of the server field ("Connect again", user decision
+  2026-10-11) repeats the start (resume a remembered login, else the server's status) without restarting the client, e.g.
+  when the server was not running yet.
   First connect to a server: fingerprint confirmation. No users yet: "Create the first administrator" (+ setup code for
   remote servers). The rail shows the logged-in user with Log out at the bottom. Replaces the removed "This client"
   card: the server address is chosen here. `--server` still preselects it. Fake mode has no login (user "admin").
@@ -2666,7 +2690,9 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   param.cgi `key=value` highlighted with `# Error` lines red, `Language` Auto/Json/Xml/KeyValue/Plain with
   Auto from the content type then the text, `IsFormatted` false = exact text; unparsable text plain, above
   512 K characters plain; monospace `Oadm.FontFamilyMono`, no wrapping, selectable and copyable; colors
-  `Oadm.Code.*Brush`; logic in `CodeText` without UI; editable bodies stay `TextBox.code`), `FormField` (every labeled form row: label,
+  `Oadm.Code.*Brush`; logic in `CodeText` without UI), `CodeEditor` (every editable code field, user decision 2026-10-11: a monospace text box for
+  typing, caret, selection and undo with the same text drawn colored on top, aligned and scrolled with it; `Language`
+  Json / Xml / KeyValue / Plain; never re-indented; the coloring of `CodeView` through `CodeHighlight`), `FormField` (every labeled form row: label,
   input, error or hint below the input; classes `wide` and `inline`), `StatCard` (every monitoring count card: status icon +
   title, large count, small detail line; `IsOk` / `IsWarning` / `IsError` color icon and count, set only while the count
   needs attention), `DevicePickerWindow` + `DevicePickerViewModel` (every "choose devices" dialog, user decision 2026-10-11:
@@ -2675,7 +2701,9 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   with the reason; virtualized, 5,000 devices tested; `DevicePickerWindow.ShowAsync` returns the ids or null; with
   `DevicePickerOptions` a left column offers the device of the event, All devices, or Chosen devices and tags with the tag
   list (the devices of a chosen tag show checked with "Tag <name>"), `ShowChoiceAsync` / `DevicePickerViewModel.Choice`
-  return a `DeviceChoice` {Kind All / EventDevice / Chosen, DeviceIds, Tags}) and
+  return a `DeviceChoice` {Kind All / EventDevice / Chosen, DeviceIds, Tags}; with tags it lists the devices' tags, every
+  tag of the initial choice and `DevicePickerOptions.TagNames` (the rule editor passes the defined tags), count 0 when no
+  device has it; summary "1 tag: 42 of 5,000 devices" / "2 tags and 3 devices: ...") and
   `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
   puts one right of the input instead of a long hint, user decision 2026-10-11), `WizardSteps` + `WizardStepItem` (the step
   row of every wizard: numbered dot and name, thin line between, current accent, done with a check, a step opens when

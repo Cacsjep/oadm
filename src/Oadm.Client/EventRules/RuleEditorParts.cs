@@ -261,6 +261,10 @@ public sealed partial class ActionFieldViewModel : ObservableObject
     /// <summary>The error below the field (only once edited or after a save attempt).</summary>
     public string? Error => ShowError ? Problem : null;
 
+    /// <summary>A list filled by the action that could not be read ("The list could not be read: ..."); kept as the
+    /// field's problem by every re-check until the list loads.</summary>
+    public string? LoadError { get; set; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Hint))]
     public partial bool PasswordStored { get; set; }

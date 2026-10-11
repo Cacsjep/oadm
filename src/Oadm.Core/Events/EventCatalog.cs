@@ -56,37 +56,130 @@ public sealed record CatalogAction(RegisteredActionPlugin Registered, bool Avail
     public string UnavailableText => $"Not available: {SourceName} is turned off";
 }
 
-/// <summary>Built-in events plus the event types and actions of the registered plugins (read live from the registry).</summary>
-public sealed class EventCatalog(PluginRegistry registry)
+/// <summary>
+/// Built-in events plus the event types and actions of the registered plugins. Lookups by id are O(1) on a snapshot that
+/// is rebuilt when packages are turned on or off or a source's event types change (registry events), when a list is read
+/// (catalog for the dialog, source sync of the engine), and when an id is not found (a plugin registered later).
+/// </summary>
+public sealed class EventCatalog
 {
-    public PluginRegistry Registry { get; } = registry;
+    private readonly Lock _sync = new();
+    private volatile Snapshot? _snapshot;
+    private long _version;
+    private int _builds;
 
-    public IReadOnlyList<CatalogEventType> EventTypes
+    public EventCatalog(PluginRegistry registry)
     {
-        get
+        Registry = registry ?? throw new ArgumentNullException(nameof(registry));
+        Registry.EnabledChanged += (_, _) => Invalidate();
+        Registry.EventTypesChanged += (_, _) => Invalidate();
+    }
+
+    public PluginRegistry Registry { get; }
+
+    /// <summary>Every event type, read fresh from the registry.</summary>
+    public IReadOnlyList<CatalogEventType> EventTypes => Rebuild().Types;
+
+    /// <summary>Every action, read fresh from the registry.</summary>
+    public IReadOnlyList<CatalogAction> Actions => Rebuild().Actions;
+
+    /// <summary>How often the snapshot was built (tests).</summary>
+    public int Builds => Volatile.Read(ref _builds);
+
+    public CatalogEventType? FindEventType(string? id)
+    {
+        if (id is null)
         {
-            var list = BuiltInEvents.Types.Select(t => new CatalogEventType(t, BuiltInEvents.SourceId, BuiltInEvents.SourceName, true)).ToList();
-            var names = Registry.AllCorePlugins.ToDictionary(c => c.Id, c => c.Origin.DisplayName, StringComparer.OrdinalIgnoreCase);
-            foreach (var type in Registry.AllEventTypes)
-            {
-                if (list.Exists(t => string.Equals(t.Id, type.Id, StringComparison.OrdinalIgnoreCase)))
-                {
-                    continue; // built-in ids are reserved
-                }
+            return null;
+        }
 
-                list.Add(new CatalogEventType(type.Type, type.SourceId, names.GetValueOrDefault(type.SourceId) ?? type.Origin.DisplayName, Registry.IsEnabled(type.Origin)));
-            }
+        if (Current().TypesById.TryGetValue(id, out var type))
+        {
+            return type;
+        }
 
-            return list;
+        // Not known: a plugin may have registered since (no registry event for that); rarely taken.
+        return Rebuild().TypesById.GetValueOrDefault(id);
+    }
+
+    public CatalogAction? FindAction(string? id)
+    {
+        if (id is null)
+        {
+            return null;
+        }
+
+        if (Current().ActionsById.TryGetValue(id, out var action))
+        {
+            return action;
+        }
+
+        return Rebuild().ActionsById.GetValueOrDefault(id);
+    }
+
+    /// <summary>Drops the snapshot; the next lookup reads the registry again.</summary>
+    public void Invalidate()
+    {
+        lock (_sync)
+        {
+            _version++;
+            _snapshot = null;
         }
     }
 
-    public IReadOnlyList<CatalogAction> Actions =>
-        [.. Registry.AllActionPlugins.Select(a => new CatalogAction(a, Registry.IsEnabled(a.Origin)))];
+    private Snapshot Current() => _snapshot ?? Rebuild();
 
-    public CatalogEventType? FindEventType(string? id) =>
-        id is null ? null : EventTypes.FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
+    private Snapshot Rebuild()
+    {
+        long version;
+        lock (_sync)
+        {
+            version = _version;
+        }
 
-    public CatalogAction? FindAction(string? id) =>
-        id is null ? null : Actions.FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.OrdinalIgnoreCase));
+        var types = BuiltInEvents.Types.Select(t => new CatalogEventType(t, BuiltInEvents.SourceId, BuiltInEvents.SourceName, true)).ToList();
+        var typesById = types.ToDictionary(t => t.Id, StringComparer.OrdinalIgnoreCase);
+        var names = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var core in Registry.AllCorePlugins)
+        {
+            names.TryAdd(core.Id, core.Origin.DisplayName);
+        }
+
+        foreach (var type in Registry.AllEventTypes)
+        {
+            if (typesById.ContainsKey(type.Id))
+            {
+                continue; // built-in ids are reserved
+            }
+
+            var entry = new CatalogEventType(type.Type, type.SourceId, names.GetValueOrDefault(type.SourceId) ?? type.Origin.DisplayName, Registry.IsEnabled(type.Origin));
+            types.Add(entry);
+            typesById[entry.Id] = entry;
+        }
+
+        var actions = Registry.AllActionPlugins.Select(a => new CatalogAction(a, Registry.IsEnabled(a.Origin))).ToList();
+        var actionsById = new Dictionary<string, CatalogAction>(StringComparer.OrdinalIgnoreCase);
+        foreach (var action in actions)
+        {
+            actionsById.TryAdd(action.Id, action);
+        }
+
+        var snapshot = new Snapshot(types, typesById, actions, actionsById);
+        lock (_sync)
+        {
+            if (version == _version)
+            {
+                _snapshot = snapshot; // a change while building leaves the snapshot empty: the next lookup builds again
+            }
+        }
+
+        Interlocked.Increment(ref _builds);
+        return snapshot;
+    }
+
+    private sealed record Snapshot(
+        IReadOnlyList<CatalogEventType> Types,
+        Dictionary<string, CatalogEventType> TypesById,
+        IReadOnlyList<CatalogAction> Actions,
+        Dictionary<string, CatalogAction> ActionsById);
 }

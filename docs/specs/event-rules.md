@@ -211,6 +211,26 @@ Advanced conditions (AND / OR groups), more actions (email, webhook, MQTT, run a
 - The output number is typed (1..64) instead of read from the device, so it works for every target mode.
 - Library commands of VAPIX Commander can be used when every field has a default; saved commands keep their values.
 
+## Implementation notes (review, 2026-10-11)
+
+- Order of action runs: per rule and subject (device, or the server) the edges run one after another, so a "turns off"
+  never overtakes its "turns on". Edges that run actions on chosen / tag / all devices are also ordered among themselves.
+  Different devices never wait for each other: one device that does not answer (30 s timeout) delays only its own
+  edges. Finished chains are dropped. The 16 runs at once for all rules stay.
+- Start: rules are evaluated right after the engine starts, but their actions wait until the core plugins have started
+  (`ActionRunner.PluginsStarted`, called by the server after `CorePluginHost.StartAllAsync`), so contributed actions
+  such as Run VAPIX command find their plugin running.
+- Rule states (`EventRuleStates`) are dropped from memory only after a successful write; a failed write is retried with
+  the next batch, and the server stop writes what is left (5 s at most). Changes of deleted rules are skipped.
+- A saved, turned on / off or deleted rule always reaches the engine: when the event queue is full, the change waits for
+  room instead of failing (the database already holds it); events are still dropped when the queue is full.
+- Saving a rule whose action belongs to a plugin that is off checks only the shared field checks of the action, not the
+  plugin's own (they may need the plugin running); the rule shows "Not available: <plugin> is turned off".
+- Duplicate: password values are copied per action (two actions of the same type keep their own); a value that cannot be
+  read (older master key) is left empty in the copy.
+- A further condition on "any" device and a schedule are evaluated once per re-evaluation, not per device; chosen
+  devices and tags are kept as sets. A state of a device OADM no longer manages never selects a rule.
+
 ## Open questions
 
 - Resolved 2026-10-10 on a loan AXIS A9210: both output APIs work (see `plugins/Oadm.Plugins.Outputs/README.md`).

@@ -61,6 +61,12 @@ The export contains values that belong to **one device** and some that cannot be
   `Network.VolatileHostName.*`.
 - Read-only or runtime: `Network.DHCP.VendorClass` (model and firmware), `SNMP.EngineBoots`, `SNMP.InitialUserPasswdSet`, `power-settings` `powerStatus` (`poeAllocationRequest` is writable and required, see the write tests);
   `power-settings` `powerStatus.powerReceived` and `poeAllocationRequest` (get only in the model).
+- Derived from the MAC address: the multicast addresses `Network.RTPCollection.R<n>.VideoAddress` / `AudioAddress`.
+
+Some values decide whether OADM can still reach and log in to the device (**connection settings**, user decision
+2026-10-11): `HTTPS.Enabled`, `HTTPS.Port`, `System.BoaPort` (HTTP port), `System.BoaGroupPolicy.*` (HTTP / HTTPS per user
+group), `System.WebInterfaceDisabled`, `Network.HTTP.AuthenticationPolicy`, `Network.IPv6.Enabled`,
+`Network.InterfaceCollection.I<n>.dot1x.Enabled` (paths as in the 10.0.0.48 export, `ConfigIdentity.ConnectionPaths`).
 
 Importing one file into many devices as it is would give every device the same host name and, with `BootProto=none`,
 the same IP address.
@@ -78,6 +84,9 @@ the same IP address.
 7. No write test by Claude; the user tests the import by hand on a spare camera.
 8. **Two import modes**: one `.json` file applied to every selected device of its model, or the ZIP of a multi-device
    export where each device gets its own file back (matched by MAC address).
+9. **Connection settings are their own area, off by default** (user decision 2026-10-11): "Connection settings" is listed
+   after the file's areas (unchecked) with a warning; unchecked, its values are left out of "Network and system settings"
+   and of the verify like identity values; checked, they are written last in their own step and the confirmation warns.
 
 ## Export configuration
 
@@ -110,20 +119,26 @@ the same IP address.
   summary "4 ready · 2 left out · 1 file has no selected device", virtualized grid MAC address, Address, Model, File,
   Status ("Ready", "No file for this device", "Two files for this device", "Not a device configuration file",
   "Other model: the file is for AXIS P3265-V"). Read off the UI thread, matched entries only.
-- Settings card: one check box per area (all on, in columns): "Network and system settings (1,276 values)" for one file
-  (values that would be imported), names only for a ZIP. Notes below, only when they apply: "Host name, IP address and
+- Settings card: one check box per area (all on except "Connection settings", in columns): "Network and system settings
+  (1,245 values)" for one file (values that would be imported), names only for a ZIP; "Connection settings (10 values)"
+  last when the parameters have connection values, with the warning chip "Connection settings (HTTPS, HTTP port, login
+  method, IEEE 802.1X, IPv6, web interface) can make the devices unreachable.". Notes below, only when they apply: "Host name, IP address and
   device names stay as they are on each device." (parameters in the file), "The file has no passwords. Event recipients
   that need one must get it again." (event recipients), "2 of 6 devices are other models and are left out." / "None of
   the selected devices is an AXIS ...".
 - Import (primary, disabled with the reason as tooltip) asks in `ui:MessageWindow`: "Import the configuration into 4
-  devices? The settings in the file replace the current ones.", uploads the file (`ITaskDialogContext.UploadAsync`, progress
+  devices? The settings in the file replace the current ones." (+ " The devices may become unreachable." when Connection
+  settings is checked), uploads the file (`ITaskDialogContext.UploadAsync`, progress
   row) and returns `ImportPayload` {fileId, fileName, isZip, sections, files: device id -> ZIP entry ("" = the single file),
   leftOut: device id -> reason}. The host runs the task on every selected device; a device in `leftOut` (or missing from
   `files`) ends Done with warnings "<reason>. Nothing was changed." without a request.
 
 ### Task steps (one task per device, `oadm.device-config.import`)
 
-1. **Read configuration file**: the upload (or its ZIP entry), parsed like in the dialog; detail = the source line.
+1. **Read configuration file**: the upload (or its ZIP entry), parsed like in the dialog; detail = the source line. A ZIP
+   entry whose name does not carry the device's MAC address fails "The file <entry> is not for this device (<MAC>). Nothing
+   was changed."; an upload removed meanwhile "The configuration file is no longer on the server. Import it again. Nothing
+   was changed.".
 2. **Check compatibility**: status, AXIS OS 12.5+ and the model from a fresh basicdeviceinfo ("The file is for AXIS
    Q6135-LE; this device is AXIS P3265-V. Nothing was changed."), `GET /config/discover` (area keys `<api>.<vN>`); none of
    the chosen areas on the device = "None of the settings in the file exist on this device. Nothing was changed.".
@@ -132,10 +147,15 @@ the same IP address.
    (`ConfigIdentity`), sent as `PATCH /config/rest/$import?importType=merge` with `{"data":{"<key>":{...}}}` (the export's
    own format, one area per request; 60 s). Skipped "Not in the file" / "This device does not have these settings" /
    "Nothing to import". Device `warnings` -> step Warning with the first 3 (all in the task log); `information` -> the task
-   log. An error (HTTP status or `"status":"error"`) fails the step with "<HTTP text>: <device message>"; the next areas
-   still run and the task ends Failed "<area>: <error>" (+N more failed).
-4. **Verify configuration**: export again; every imported value must be there (collections matched by `groupId` / `id`);
-   differences -> Warning "2 settings differ after the import: Network.DNSServer1; ...", all in the task log.
+   log. An error (HTTP status or `"status":"error"`) fails the step with "<HTTP text>: <device message>", a timeout or lost
+   connection with the shared device texts ("Timeout after 60 s", "Unreachable - ..."); the next areas still run and the
+   task ends Failed "<area>: <error>" (+N more failed). A changed certificate stops the task (`DeviceMessages.CertificateChanged`):
+   every later request would fail the same way.
+4. **Import connection settings** (only when chosen, always the last import): only the connection values of `param.v2`
+   (collection items with their `groupId`), same request and answers as above.
+5. **Verify configuration**: export again; every imported value must be there (collections matched by `groupId` / `id`);
+   differences -> Warning "2 settings differ after the import: Network.DNSServer1; ...", all in the task log. A device that
+   cannot be read fails the step ("Verify configuration: Unreachable - ...").
 
 Task name: "Import configuration <file name>" (the engine shortens to 48 characters).
 
@@ -156,9 +176,12 @@ Task name: "Import configuration <file name>" (the engine shortens to 48 charact
   error texts, verify comparison.
 - Import task against a stateful fake camera (`ConfigCamera`): every area as merge without identity, chosen areas, ZIP
   entry, other model / old firmware / feature off with no write, missing areas skipped, a refused area while the others
-  run, device warnings and differing values, devices left out, broken or missing file.
+  run, device warnings and differing values, devices left out, broken or missing file, connection settings only when
+  chosen and last, a timeout failing one area, a changed certificate stopping, verify unreadable, ZIP entry of another
+  device, upload removed meanwhile.
 - Export query and window: one file, failed single export writes nothing, ZIP with summary, cancel, Perf 5,000 devices.
-- Import dialog: one file with other models, confirmation, broken files, ZIP matching (every status), Perf 5,000 files.
+- Import dialog: one file with other models, confirmation, connection settings off by default and warned about, broken
+  files, ZIP matching (every status), Perf 5,000 files.
 - Headless screenshots `device-config-export.png`, `device-config-import-other-model.png`, `device-config-import-zip.png`.
 - Opt-in `ImportHardwareWriteTests` (`Category=HardwareWrite`): a camera's own export imported back, no change expected.
 

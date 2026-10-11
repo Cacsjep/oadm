@@ -46,8 +46,15 @@ public sealed record DevicePickerOptions
     /// <summary>Offer the device of the event with this text ("The device of the event", "The same device"); null = not offered.</summary>
     public string? EventDeviceText { get; init; }
 
-    /// <summary>Every option: all devices, tags and, with <paramref name="eventDeviceText"/>, the device of the event.</summary>
-    public static DevicePickerOptions Full(string? eventDeviceText = null) => new() { AllowAll = true, AllowTags = true, EventDeviceText = eventDeviceText };
+    /// <summary>
+    /// With <see cref="AllowTags"/>: tag names offered even when no device has them yet (e.g. the tag definitions of the
+    /// server), for devices tagged later. The tags of the devices and of the initial choice are always offered.
+    /// </summary>
+    public IReadOnlyList<string> TagNames { get; init; } = [];
+
+    /// <summary>Every option: all devices, tags (plus <paramref name="tagNames"/>) and, with <paramref name="eventDeviceText"/>, the device of the event.</summary>
+    public static DevicePickerOptions Full(string? eventDeviceText = null, IEnumerable<string>? tagNames = null) =>
+        new() { AllowAll = true, AllowTags = true, EventDeviceText = eventDeviceText, TagNames = [.. tagNames ?? []] };
 }
 
 /// <summary>One device in the <see cref="DevicePickerWindow"/>: check box, address, model, and why it cannot be chosen.</summary>
@@ -180,10 +187,22 @@ public sealed partial class DevicePickerViewModel : ObservableObject
         if (options.AllowTags)
         {
             var wanted = initial.Tags.ToHashSet(StringComparer.OrdinalIgnoreCase);
-            Tags = [.. _all.SelectMany(i => i.Device.Tags)
-                .GroupBy(t => t, StringComparer.OrdinalIgnoreCase)
-                .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase)
-                .Select(g => new TagPickItem(g.First(), g.Count(), OnTagsChanged) { IsChecked = wanted.Contains(g.Key) })];
+            // Device counts per tag, then the tags no device has yet: a chosen tag must survive OK (it also stands for
+            // devices tagged later), and the defined tags can be chosen before any device carries them.
+            var counts = new Dictionary<string, (string Name, int Count)>(StringComparer.OrdinalIgnoreCase);
+            foreach (var tag in _all.SelectMany(i => i.Device.Tags))
+            {
+                counts[tag] = counts.TryGetValue(tag, out var known) ? (known.Name, known.Count + 1) : (tag, 1);
+            }
+
+            foreach (var tag in options.TagNames.Concat(initial.Tags).Where(t => !string.IsNullOrWhiteSpace(t)))
+            {
+                counts.TryAdd(tag, (tag, 0));
+            }
+
+            Tags = [.. counts.Values
+                .OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase)
+                .Select(t => new TagPickItem(t.Name, t.Count, OnTagsChanged) { IsChecked = wanted.Contains(t.Name) })];
         }
         else
         {
@@ -357,6 +376,7 @@ public sealed partial class DevicePickerViewModel : ObservableObject
             DeviceChoiceKind.All => string.Create(CultureInfo.CurrentCulture, $"All devices ({_all.Count:N0} now, also devices added later)"),
             DeviceChoiceKind.EventDevice => Options.EventDeviceText ?? string.Empty,
             _ when tags == 0 => string.Create(CultureInfo.CurrentCulture, $"{_chosen:N0} of {_all.Count:N0} {(_all.Count == 1 ? "device" : "devices")} chosen"),
+            _ when _chosen == 0 => string.Create(CultureInfo.CurrentCulture, $"{tags:N0} {(tags == 1 ? "tag" : "tags")}: {total:N0} of {_all.Count:N0} devices"),
             _ => string.Create(CultureInfo.CurrentCulture, $"{tags:N0} {(tags == 1 ? "tag" : "tags")} and {_chosen:N0} {(_chosen == 1 ? "device" : "devices")}: {total:N0} of {_all.Count:N0} devices"),
         };
         OnPropertyChanged(nameof(ChosenCount));

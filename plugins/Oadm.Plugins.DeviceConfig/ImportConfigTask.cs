@@ -12,7 +12,8 @@ namespace Oadm.Plugins.DeviceConfig;
 /// "Import configuration" (Maintenance, dialog): imports a configuration file of the same model into the device, one settings
 /// area at a time, always as a merge and without the device's own network identity (<see cref="ConfigIdentity"/>). The device
 /// validates each area itself; OADM shows its answer. Steps: Read configuration file, Check compatibility, Import &lt;area&gt;
-/// (one per area), Verify configuration.
+/// (one per area; a failing area does not stop the others), Import connection settings (only when chosen, always last: it can
+/// cut OADM off from the device), Verify configuration.
 /// </summary>
 public sealed class ImportConfigTask : ITaskPlugin
 {
@@ -32,6 +33,7 @@ public sealed class ImportConfigTask : ITaskPlugin
             "time.v2" => "Import time zone",
             ConfigSections.PowerSettings => "Import power settings",
             "user-management.v2" => "Import password policy",
+            ConfigSections.Connection => "Import connection settings",
             _ => "Import " + key,
         };
     }
@@ -79,13 +81,14 @@ public sealed class ImportConfigTask : ITaskPlugin
             return;
         }
 
-        var sections = payload.Sections.Distinct(StringComparer.Ordinal).ToList();
+        // The connection settings can cut OADM off from the device: their own step, always last.
+        var sections = payload.Sections.Distinct(StringComparer.Ordinal).OrderBy(key => key == ConfigSections.Connection).ToList();
         ctx.PlanSteps([Steps.ReadFile, Steps.CheckCompatibility, .. sections.Select(Steps.Import), Steps.Verify]);
 
         ConfigFile file;
         using (var step = ctx.BeginStep(Steps.ReadFile))
         {
-            file = await ReadFileAsync(ctx, payload, entry, ct).ConfigureAwait(false);
+            file = await ReadFileAsync(ctx, payload, entry, device, ct).ConfigureAwait(false);
             step.Complete(file.SourceText);
         }
 
@@ -109,7 +112,7 @@ public sealed class ImportConfigTask : ITaskPlugin
             }
 
             available = await ConfigApi.DiscoverAsync(ctx.Vapix, ct).ConfigureAwait(false);
-            if (!sections.Any(key => file.Data[key] is JsonObject && available.Contains(key)))
+            if (!sections.Any(key => file.Data[ConfigSections.SourceKey(key)] is JsonObject && available.Contains(ConfigSections.SourceKey(key))))
             {
                 throw new ConfigDeviceException("None of the settings in the file exist on this device. Nothing was changed.");
             }
@@ -122,13 +125,14 @@ public sealed class ImportConfigTask : ITaskPlugin
         foreach (var key in sections)
         {
             var name = Steps.Import(key);
-            if (file.Data[key] is not JsonObject section)
+            var target = ConfigSections.SourceKey(key);
+            if (file.Data[target] is not JsonObject section)
             {
                 ctx.SkipStep(name, "Not in the file");
                 continue;
             }
 
-            if (!available.Contains(key))
+            if (!available.Contains(target))
             {
                 ctx.SkipStep(name, "This device does not have these settings");
                 continue;
@@ -144,13 +148,13 @@ public sealed class ImportConfigTask : ITaskPlugin
             using var step = ctx.BeginStep(name);
             try
             {
-                var answer = await ConfigApi.ImportAsync(ctx.Vapix, key, data, ct).ConfigureAwait(false);
+                var answer = await ConfigApi.ImportAsync(ctx.Vapix, target, data, ct).ConfigureAwait(false);
                 if (answer.Refused is { } refused)
                 {
                     throw new ConfigDeviceException("The device refused these settings: " + refused + ". Nothing of them was changed.");
                 }
 
-                imported.Add((key, data, answer.RemovedFields.ToHashSet(StringComparer.Ordinal)));
+                imported.Add((target, data, answer.RemovedFields.ToHashSet(StringComparer.Ordinal)));
                 foreach (var text in answer.Information)
                 {
                     ctx.Log(TaskLogLevel.Info, $"{ConfigSections.Name(key)}: {text}");
@@ -172,15 +176,26 @@ public sealed class ImportConfigTask : ITaskPlugin
                     step.Complete(values);
                 }
             }
-            catch (ConfigDeviceException ex)
+            catch (Exception ex) when (!DeviceErrors.IsCancelled(ex, ct))
             {
-                step.Fail(ex.Message);
-                ctx.Log(TaskLogLevel.Error, $"{ConfigSections.Name(key)}: {ex.Message}");
-                failures.Add($"{ConfigSections.Name(key)}: {ex.Message}");
+                // A changed certificate stops the import: every later request fails the same way.
+                if (DeviceErrors.IsCertificateChanged(ex))
+                {
+                    throw new ConfigDeviceException(DeviceMessages.CertificateChanged, ex);
+                }
+
+                // Any other failure (refused, timeout, connection lost) fails this area only; the others still run.
+                var message = DeviceErrors.Describe(ex, ConfigApi.ImportTimeout);
+                step.Fail(message);
+                ctx.Log(TaskLogLevel.Error, $"{ConfigSections.Name(key)}: {message}");
+                failures.Add($"{ConfigSections.Name(key)}: {message}");
             }
         }
 
-        await VerifyAsync(ctx, imported, ct).ConfigureAwait(false);
+        if (await VerifyAsync(ctx, imported, ct).ConfigureAwait(false) is { } verifyFailure)
+        {
+            failures.Add(verifyFailure);
+        }
 
         if (failures.Count > 0)
         {
@@ -190,15 +205,32 @@ public sealed class ImportConfigTask : ITaskPlugin
         }
     }
 
-    private static async Task<ConfigFile> ReadFileAsync(ITaskExecutionContext ctx, ImportPayload payload, string entry, CancellationToken ct)
+    private static async Task<ConfigFile> ReadFileAsync(ITaskExecutionContext ctx, ImportPayload payload, string entry, IDeviceInfo device, CancellationToken ct)
     {
         const string Gone = "The configuration file is no longer on the server. Import it again. Nothing was changed.";
+
+        // The dialog matched the ZIP entry by the MAC address in its name; the server checks it again.
+        if (payload.IsZip && !ConfigFileNames.SerialsIn(entry).Contains(ConfigFileNames.NormalizeSerial(device.Serial), StringComparer.Ordinal))
+        {
+            throw new ConfigFileException($"The file {entry} is not for this device ({ConfigFileNames.NormalizeSerial(device.Serial)}). Nothing was changed.");
+        }
+
         if (await ctx.Files.FindAsync(payload.FileId, ct).ConfigureAwait(false) is null)
         {
             throw new ConfigFileException(Gone);
         }
 
-        var stream = await ctx.Files.OpenReadAsync(payload.FileId, ct).ConfigureAwait(false);
+        Stream stream;
+        try
+        {
+            stream = await ctx.Files.OpenReadAsync(payload.FileId, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            // Removed between the two calls (retention, quota or a delete).
+            throw new ConfigFileException(Gone, ex);
+        }
+
         await using (stream.ConfigureAwait(false))
         {
             try
@@ -223,13 +255,16 @@ public sealed class ImportConfigTask : ITaskPlugin
         }
     }
 
-    /// <summary>Exports again and compares every imported value; differences are a warning.</summary>
-    private static async Task VerifyAsync(ITaskExecutionContext ctx, List<(string Key, JsonNode Data, HashSet<string> Removed)> imported, CancellationToken ct)
+    /// <summary>
+    /// Exports again and compares every imported value; differences are a warning. Returns the failure text when the device
+    /// could not be read (e.g. the connection settings cut OADM off), else null.
+    /// </summary>
+    private static async Task<string?> VerifyAsync(ITaskExecutionContext ctx, List<(string Key, JsonNode Data, HashSet<string> Removed)> imported, CancellationToken ct)
     {
         if (imported.Count == 0)
         {
             ctx.SkipStep(Steps.Verify, "Nothing was imported");
-            return;
+            return null;
         }
 
         using var step = ctx.BeginStep(Steps.Verify);
@@ -242,11 +277,18 @@ public sealed class ImportConfigTask : ITaskPlugin
         {
             exported = null;
         }
+        catch (Exception ex) when (!DeviceErrors.IsCancelled(ex, ct))
+        {
+            var message = DeviceErrors.IsCertificateChanged(ex) ? DeviceMessages.CertificateChanged : DeviceErrors.Describe(ex, timeout: null);
+            step.Fail(message);
+            ctx.Log(TaskLogLevel.Error, $"{Steps.Verify}: {message}");
+            return $"{Steps.Verify}: {message}";
+        }
 
         if (exported is null)
         {
             step.Warn("The device sent an unreadable configuration; the import could not be checked.");
-            return;
+            return null;
         }
 
         var differences = new List<string>();
@@ -262,7 +304,7 @@ public sealed class ImportConfigTask : ITaskPlugin
         if (differences.Count == 0)
         {
             step.Complete("All imported values match");
-            return;
+            return null;
         }
 
         foreach (var path in differences)
@@ -272,6 +314,7 @@ public sealed class ImportConfigTask : ITaskPlugin
 
         var count = differences.Count == 1 ? "1 setting differs" : DeviceConfigIds.Count(differences.Count, "setting") + " differ";
         step.Warn($"{count} after the import: {Summary(differences, MaxNamedDifferences)}");
+        return null;
     }
 
     /// <summary>"a; b; c (+4 more)".</summary>

@@ -60,7 +60,7 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rul
         }
 
         RuleValidator.Validate(rule, Catalog, key => StoredSecretsOf(existing, rule, key));
-        var (saved, previous) = await store.SaveAsync(rule, actionId => RuleStore.PasswordFields(Catalog, actionId), ct).ConfigureAwait(false);
+        var (saved, previous) = await store.SaveAsync(rule, action => RuleStore.PasswordFields(Catalog, action.ActionId), ct).ConfigureAwait(false);
         await Engine.ApplyRuleChangeAsync(previous, saved, ct).ConfigureAwait(false);
         var result = await GetAsync(saved.Definition.Id, ct).ConfigureAwait(false) ?? throw new KeyNotFoundException("The rule no longer exists.");
         Changed?.Invoke(this, EventArgs.Empty);

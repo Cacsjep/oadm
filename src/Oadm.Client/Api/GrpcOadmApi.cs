@@ -204,6 +204,9 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public IAsyncEnumerable<EventLogPage> WatchEventLogAsync(CancellationToken ct) =>
         ReadAll(C.Events.WatchLog(new Empty(), cancellationToken: ct), ct);
 
+    public async Task<int> ClearEventLogAsync(CancellationToken ct) =>
+        (await C.Events.ClearLogAsync(new Empty(), cancellationToken: ct)).Deleted;
+
     public async Task RemoveDevicesAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct) =>
         await C.Devices.RemoveAsync(ToIds(deviceIds), cancellationToken: ct);
 

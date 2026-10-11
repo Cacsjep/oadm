@@ -40,6 +40,12 @@ public sealed class DeviceTriggersOptions
     /// <summary>Devices whose event lists the editor reads at the same time.</summary>
     public int ReadParallelism { get; init; } = 16;
 
+    /// <summary>
+    /// Devices that connect at the same time (read the event list and open the stream), so 5,000 devices of All devices
+    /// do not all ask at once after a start.
+    /// </summary>
+    public int ConnectParallelism { get; init; } = 16;
+
     /// <summary>A finished read of the editor is kept this long.</summary>
     public TimeSpan ReadJobLifetime { get; init; } = TimeSpan.FromMinutes(10);
 }

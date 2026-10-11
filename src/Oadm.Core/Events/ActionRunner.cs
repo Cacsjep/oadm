@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
 
@@ -37,10 +36,13 @@ public sealed class ActionRunnerOptions
 }
 
 /// <summary>
-/// Runs the actions of rule edges. The edges of one rule run one after another in the order they happened (so a
-/// "turns off" never overtakes its "turns on"); within an edge the actions run in the listed order, each on its targets
-/// in parallel (at most <see cref="ActionRunnerOptions.MaxParallel"/> runs at once, all rules together). A failed action
-/// is logged and the next one still runs (no retry). Every run is a line in the event log.
+/// Runs the actions of rule edges. The edges of one rule and subject run one after another in the order they happened (so
+/// a subject's "turns off" never overtakes its "turns on"); edges that run actions on chosen / tag / all devices are also
+/// ordered among themselves. Edges of other subjects do not wait for each other (one device that does not answer never
+/// delays another). Within an edge the actions run in the listed order, each on its targets in parallel (at most
+/// <see cref="ActionRunnerOptions.MaxParallel"/> runs at once, all rules together). A failed action is logged and the next
+/// one still runs (no retry). Every run is a line in the event log. Nothing runs before <see cref="PluginsStarted"/>:
+/// edges of the start-up evaluation wait for the core plugins whose actions they use.
 /// </summary>
 public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
 {
@@ -54,7 +56,8 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
     private readonly ILogger _logger;
     private readonly ActionRunnerOptions _options;
     private readonly SemaphoreSlim _slots;
-    private readonly ConcurrentDictionary<Guid, Task> _tails = new();
+    private readonly Dictionary<TailKey, Task> _tails = [];
+    private readonly TaskCompletionSource _pluginsStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _stop = new();
     private int _disposed;
     private readonly Lock _sync = new();
@@ -81,13 +84,55 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         _slots = new SemaphoreSlim(_options.MaxParallel, _options.MaxParallel);
     }
 
+    /// <summary>Chains still running or waiting (tests).</summary>
+    public int PendingChains
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _tails.Count;
+            }
+        }
+    }
+
+    /// <summary>The core plugins have started (server start, after step 4b): queued edges run now, later ones at once.</summary>
+    public void PluginsStarted() => _pluginsStarted.TrySetResult();
+
     public void Dispatch(RuleEdgeJob job)
     {
         ArgumentNullException.ThrowIfNull(job);
+        var subjectKey = new TailKey(job.Rule.Id, job.Subject ?? Guid.Empty, Aggregate: false);
+        var aggregateKey = new TailKey(job.Rule.Id, Guid.Empty, Aggregate: true);
+        var ordered = job.Aggregate && HasAggregateActions(job.Rule);
         lock (_sync)
         {
-            var previous = _tails.GetValueOrDefault(job.Rule.Id) ?? Task.CompletedTask;
-            _tails[job.Rule.Id] = previous.ContinueWith(_ => RunJobAsync(job), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
+            var before = new List<Task>(3) { _pluginsStarted.Task };
+            if (_tails.TryGetValue(subjectKey, out var subjectTail))
+            {
+                before.Add(subjectTail);
+            }
+
+            if (ordered && _tails.TryGetValue(aggregateKey, out var aggregateTail))
+            {
+                before.Add(aggregateTail);
+            }
+
+            var next = Task.WhenAll(before)
+                .ContinueWith(_ => RunJobAsync(job), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default)
+                .Unwrap();
+            _tails[subjectKey] = next;
+            if (ordered)
+            {
+                _tails[aggregateKey] = next;
+            }
+
+            // A finished chain whose last edge this was is removed: the dictionary only holds running chains.
+            _ = next.ContinueWith(
+                finished => RemoveTail(finished, subjectKey, ordered ? aggregateKey : null),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
     }
 
@@ -97,7 +142,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         Task[] tails;
         lock (_sync)
         {
-            tails = [.. _tails.Values];
+            tails = [.. _tails.Values.Distinct()];
         }
 
         await Task.WhenAll(tails).WaitAsync(ct).ConfigureAwait(false);
@@ -128,6 +173,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         }
 
         await _stop.CancelAsync().ConfigureAwait(false);
+        _pluginsStarted.TrySetResult(); // edges still waiting see the stop and end
         try
         {
             await WaitIdleAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
@@ -141,6 +187,26 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         _stop.Dispose();
         _slots.Dispose();
     }
+
+    private void RemoveTail(Task finished, TailKey subjectKey, TailKey? aggregateKey)
+    {
+        lock (_sync)
+        {
+            if (_tails.TryGetValue(subjectKey, out var current) && current == finished)
+            {
+                _tails.Remove(subjectKey);
+            }
+
+            if (aggregateKey is { } key && _tails.TryGetValue(key, out current) && current == finished)
+            {
+                _tails.Remove(key);
+            }
+        }
+    }
+
+    /// <summary>Whether the rule has actions on chosen / tag / all devices (they run only on aggregate edges).</summary>
+    private static bool HasAggregateActions(RuleDefinition rule) =>
+        rule.Actions.Exists(a => a.Targets.Mode != DeviceSelectorMode.EventDevice);
 
     private async Task RunJobAsync(RuleEdgeJob job)
     {
@@ -200,11 +266,11 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         if (!plugin.NeedsDevice)
         {
             // Actions without devices run with every edge (an email per camera), like actions on the event's device.
-            await RunOneAsync(job, catalogAction, settings, null, ct).ConfigureAwait(false);
+            await RunOneAsync(job, catalogAction, settings, null, null, ct).ConfigureAwait(false);
             return;
         }
 
-        IReadOnlyList<Guid> targets;
+        IReadOnlyList<(Guid Id, IDeviceInfo? Device)> targets;
         if (action.Targets.Mode == DeviceSelectorMode.EventDevice)
         {
             if (subjectDevice is not { } subject)
@@ -212,7 +278,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
                 return;
             }
 
-            targets = [subject];
+            targets = [(subject, null)];
         }
         else
         {
@@ -230,33 +296,69 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
             return;
         }
 
-        await Task.WhenAll(targets.Select(device => RunOneAsync(job, catalogAction, settings, device, ct))).ConfigureAwait(false);
+        await Task.WhenAll(targets.Select(target => RunOneAsync(job, catalogAction, settings, target.Id, target.Device, ct))).ConfigureAwait(false);
     }
 
-    private async Task<IReadOnlyList<Guid>> ResolveTargetsAsync(DeviceSelector selector, CancellationToken ct)
+    /// <summary>
+    /// The target devices; when the whole device list was read, each with its device (no second read per target). Chosen
+    /// devices that were removed stay in the list without a device (logged as removed).
+    /// </summary>
+    private async Task<IReadOnlyList<(Guid Id, IDeviceInfo? Device)>> ResolveTargetsAsync(DeviceSelector selector, CancellationToken ct)
     {
-        if (selector.IsChoice && selector.Tags.Count == 0)
+        if (selector.IsChoice && selector.Tags.Count == 0 && selector.DeviceIds.Count <= FewDevices)
         {
-            return [.. selector.DeviceIds.Distinct()];
+            return [.. selector.DeviceIds.Distinct().Select(id => (id, (IDeviceInfo?)null))];
         }
 
         var all = await _devices.ListAsync(ct).ConfigureAwait(false);
-        return selector.Mode switch
+        if (selector.Mode == DeviceSelectorMode.All)
         {
-            DeviceSelectorMode.All => [.. all.Select(d => d.Id)],
-            DeviceSelectorMode.Devices or DeviceSelectorMode.Tags =>
-                [.. selector.DeviceIds.Concat(all.Where(d => selector.ChoiceMatches(d.Id, d.Tags)).Select(d => d.Id)).Distinct()],
-            _ => [],
-        };
+            return [.. all.Select(d => (d.Id, (IDeviceInfo?)d))];
+        }
+
+        if (!selector.IsChoice)
+        {
+            return [];
+        }
+
+        var byId = new Dictionary<Guid, IDeviceInfo>(all.Count);
+        foreach (var device in all)
+        {
+            byId.TryAdd(device.Id, device);
+        }
+
+        var tags = new HashSet<string>(selector.Tags, StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<Guid>();
+        var targets = new List<(Guid, IDeviceInfo?)>();
+        foreach (var id in selector.DeviceIds)
+        {
+            if (seen.Add(id))
+            {
+                targets.Add((id, byId.GetValueOrDefault(id)));
+            }
+        }
+
+        if (tags.Count > 0)
+        {
+            foreach (var device in all)
+            {
+                if (device.Tags.Any(tags.Contains) && seen.Add(device.Id))
+                {
+                    targets.Add((device.Id, device));
+                }
+            }
+        }
+
+        return targets;
     }
 
-    private async Task RunOneAsync(RuleEdgeJob job, CatalogAction action, JsonElement settings, Guid? deviceId, CancellationToken ct)
+    private async Task RunOneAsync(RuleEdgeJob job, CatalogAction action, JsonElement settings, Guid? deviceId, IDeviceInfo? known, CancellationToken ct)
     {
         var plugin = action.Plugin;
         IDeviceInfo? device = null;
         if (deviceId is { } id)
         {
-            device = await _devices.FindAsync(id, ct).ConfigureAwait(false);
+            device = known ?? await _devices.FindAsync(id, ct).ConfigureAwait(false);
             if (device is null)
             {
                 Write(job, deviceId, plugin.DisplayName, EventLogResult.Skipped, DeviceMessages.Removed, deviceText: DeviceMessages.Removed);
@@ -351,6 +453,11 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
 
     /// <summary>Contributed actions share their core plugin's settings; standalone ones use their package's.</summary>
     private static string SettingsId(RegisteredActionPlugin action) => action.Owner?.Id ?? action.Origin.PackageId;
+
+    /// <summary>Up to this many chosen devices (no tags) are read one by one; more read the device list once.</summary>
+    private const int FewDevices = 8;
+
+    private readonly record struct TailKey(Guid Rule, Guid Subject, bool Aggregate);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Event rule {Rule}: action {Action} failed unexpectedly")]
     private partial void LogRunFailed(Exception ex, string rule, string action);

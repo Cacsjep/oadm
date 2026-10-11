@@ -44,8 +44,15 @@ public sealed partial class NavItemViewModel(string key, string title, string ic
 }
 
 /// <summary>Navigation page of a core plugin. <see cref="View"/> comes from the plugin's client assembly, if installed.</summary>
-public sealed class CorePluginPageViewModel(string pluginId, string title, object? view, bool hasOwnCards = false, Oadm.Client.Tasks.TasksViewModel? tasks = null, string? error = null)
+/// <remarks>
+/// <see cref="Dispose"/> (rail page removed, plugin window closed) detaches the plugin context it was created with and
+/// disposes the view's DataContext when it is <see cref="IDisposable"/>, so the page releases its streams and the host
+/// keeps no reference to it.
+/// </remarks>
+public sealed class CorePluginPageViewModel(string pluginId, string title, object? view, bool hasOwnCards = false, Oadm.Client.Tasks.TasksViewModel? tasks = null, string? error = null, IDisposable? context = null) : IDisposable
 {
+    private bool _disposed;
+
     /// <summary>Shown instead of the view: the page is not installed on this client, or it failed to open.</summary>
     public string NoViewText { get; } = error is null
         ? "The page of this plugin is not installed on this client."
@@ -98,4 +105,29 @@ public sealed class CorePluginPageViewModel(string pluginId, string title, objec
     public Oadm.Client.Tasks.TasksViewModel? Tasks { get; } = tasks;
 
     public bool ShowTasksPane => Tasks is not null;
+
+    public bool IsDisposed => _disposed;
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        context?.Dispose();
+        if (View is Avalonia.StyledElement { DataContext: IDisposable disposable })
+        {
+            try
+            {
+                disposable.Dispose();
+            }
+#pragma warning disable CA1031 // A plugin view model that fails while disposing must not break closing its window or page.
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+            }
+        }
+    }
 }

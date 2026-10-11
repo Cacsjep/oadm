@@ -87,7 +87,7 @@ public sealed class ImportDialogTests(ITestOutputHelper output) : IDisposable
 
         Assert.False(vm.IsZip);
         Assert.Equal("From AXIS P3265-V, AXIS OS 12.11.77", vm.FileDetails);
-        Assert.Equal(7, vm.Sections.Count);
+        Assert.Equal(8, vm.Sections.Count);
         Assert.StartsWith("Network and system settings (", vm.Sections[3].Text, StringComparison.Ordinal);
         Assert.Equal(
             [ImportConfigViewModel.IdentityNote, ImportConfigViewModel.PasswordNote, "1 of 3 devices are other models and are left out."],
@@ -117,6 +117,40 @@ public sealed class ImportDialogTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(new[] { devices[0].Id, devices[1].Id }.Order(), payload.Files.Keys.Order());
         Assert.All(payload.Files.Values, v => Assert.Equal(string.Empty, v));
         Assert.Equal("Other model: the file is for AXIS P3265-V", payload.LeftOut[devices[2].Id]);
+    }
+
+    [Fact]
+    public async Task Connection_settings_are_off_by_default_and_warned_about()
+    {
+        var questions = new List<string>();
+        var vm = Dialog([new FakeDevice()], questions: questions);
+        await vm.LoadAsync(Write("lobby.json", FileFor("P3265-V")));
+
+        var connection = vm.Sections[^1];
+        Assert.Equal(("Connection settings (10 values)", false), (connection.Text, connection.IsChecked));
+        Assert.All(vm.Sections.SkipLast(1), s => Assert.True(s.IsChecked));
+        Assert.True(vm.HasConnectionSettings);
+
+        // Left out: the plain question, no connection area in the payload.
+        string? closed = null;
+        vm.CloseRequested += (_, payload) => closed = payload;
+        await vm.ImportCommand.ExecuteAsync(null);
+        Assert.Equal("Import the configuration into 1 device? The settings in the file replace the current ones.", questions[^1]);
+        Assert.DoesNotContain(ConfigSections.Connection, ImportPayload.Parse(closed).Sections);
+
+        // Chosen: the question warns, and the area goes last.
+        var chosen = Dialog([new FakeDevice()], questions: questions);
+        await chosen.LoadAsync(Write("lobby2.json", FileFor("P3265-V")));
+        chosen.Sections[^1].IsChecked = true;
+        chosen.CloseRequested += (_, payload) => closed = payload;
+        await chosen.ImportCommand.ExecuteAsync(null);
+        Assert.Equal("Import the configuration into 1 device? The settings in the file replace the current ones. The devices may become unreachable.", questions[^1]);
+        Assert.Equal(ConfigSections.Connection, ImportPayload.Parse(closed).Sections[^1]);
+
+        // A ZIP lists them last too, unchecked.
+        var zip = Dialog([new FakeDevice()]);
+        await zip.LoadAsync(Zip("site.zip", ("10.0.0.48_B8A44F631339_P3265-V_config.json", FileFor("P3265-V"))));
+        Assert.Equal((ConfigSections.Connection, false), (zip.Sections[^1].Key, zip.Sections[^1].IsChecked));
     }
 
     [Fact]
@@ -182,7 +216,7 @@ public sealed class ImportDialogTests(ITestOutputHelper output) : IDisposable
         ], vm.Rows.Select(r => r.Status));
         Assert.Equal("10.0.0.48_B8A44F631339_P3265-V_config.json", vm.Rows[0].FileText);
         Assert.Equal("1 ready · 4 left out · 1 file has no selected device", vm.DevicesSummary);
-        Assert.Equal(7, vm.Sections.Count);
+        Assert.Equal(8, vm.Sections.Count);
         Assert.All(vm.Sections, s => Assert.Null(s.Detail));
 
         string? closed = null;

@@ -8,7 +8,7 @@ import { Image } from 'astro:assets';
 import shot from '../../../assets/screens/io-monitor-page.png';
 
 The I/O Monitor shows the inputs and outputs of one device and updates them several times a second. Use it to check
-wiring: close a door contact or switch a relay and watch the lamp.
+wiring: close a door contact or switch a relay and watch its contact close.
 
 <Image src={shot} alt="The I/O Monitor with inputs and outputs of an I/O module" class="screen" />
 
@@ -20,13 +20,14 @@ The I/O Monitor is off by default. An administrator turns it on on the **Plugins
 
 1. Open **I/O Monitor** in the navigation rail.
 2. Choose a device. The list shows every device with inputs or outputs.
-3. Each port shows its contact, drawn open or closed; green means **Active**. Point at a port to see its normal
-   state.
+3. The device is drawn as a row of inputs and a row of outputs. Each port shows its contact, drawn open or closed;
+   green means **Active**. Point at a port to see its normal state.
 
-The port number on each tile is the number to use in the **Set output** action of [event rules](../event-rules/).
+The port number under each contact is the number to use in the **Set output** action of [event rules](../event-rules/).
 
 ## Good to know
 
 - OADM reads the device only while the page shows it. Choosing another device or leaving the page stops it.
+- If the connection to the server drops or the server restarts, the page starts reading again on its own.
 - The I/O Monitor only reads. It never switches an output.
 - Devices that need a login, have no password yet or have a changed certificate show the reason instead.

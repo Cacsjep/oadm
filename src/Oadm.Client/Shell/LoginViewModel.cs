@@ -98,7 +98,7 @@ public sealed partial class LoginViewModel : ValidatingViewModel
     public partial bool SetupCodeRequired { get; private set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(SubmitCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SubmitCommand), nameof(TryAgainCommand))]
     public partial bool IsBusy { get; private set; }
 
     /// <summary>"Connecting to localhost:5080" while busy.</summary>
@@ -168,6 +168,25 @@ public sealed partial class LoginViewModel : ValidatingViewModel
         }
 
         _initialized = true;
+        await ConnectToServerAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Connect again (user decision 2026-10-11: a refresh icon right of the server field): the server could not be
+    /// reached, e.g. it was still starting, or another address was typed. Repeats what opening the window does (resume a remembered login, else ask the server whether it needs its first administrator)
+    /// without restarting the client.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanTryAgain))]
+    private Task TryAgainAsync()
+    {
+        ServerProblem = null;
+        return ConnectToServerAsync();
+    }
+
+    private bool CanTryAgain() => !IsBusy;
+
+    private async Task ConnectToServerAsync()
+    {
         if (ServerAddressError(ServerAddress) is not null)
         {
             return;

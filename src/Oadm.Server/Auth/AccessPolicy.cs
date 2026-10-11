@@ -48,6 +48,7 @@ public static class AccessPolicy
         ["/oadm.v1.EventService/SetRuleEnabled"] = Access.Admin,
         ["/oadm.v1.EventService/DuplicateRule"] = Access.Admin,
         ["/oadm.v1.EventService/ListActionChoices"] = Access.Admin,
+        ["/oadm.v1.EventService/ClearLog"] = Access.Admin,
     };
 
     /// <summary>Services that are Admin only as a whole.</summary>

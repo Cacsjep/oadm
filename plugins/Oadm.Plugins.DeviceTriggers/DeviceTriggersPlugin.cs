@@ -23,6 +23,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
     private readonly DeviceTriggersOptions _options;
     private readonly TimeProvider _time;
     private readonly SemaphoreSlim _write = new(1, 1);
+    private readonly SemaphoreSlim _resolve = new(1, 1); // one resolve at a time: a newer list is never overwritten by an older one
     private readonly Lock _sync = new();
     private List<TriggerDefinition> _triggers = [];
     private Dictionary<Guid, Resolution> _resolved = [];
@@ -110,16 +111,35 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
 
     public async Task StopAsync(CancellationToken ct)
     {
+        // The timer first (no new rounds), then a resolve in flight finishes (it may still apply to the runtime) and
+        // later ones find no runtime; only then the runtime closes its connections.
         if (_resolveTimer is { } timer)
         {
             _resolveTimer = null;
             await timer.DisposeAsync().ConfigureAwait(false);
         }
 
-        if (_running is { } running)
+        var running = _running;
+        _running = null;
+        if (running is not null)
         {
-            _running = null;
             await running.CancelAsync().ConfigureAwait(false);
+        }
+
+        TriggerRuntime? stopping;
+        await _resolve.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            stopping = _runtime;
+            _runtime = null;
+        }
+        finally
+        {
+            _resolve.Release();
+        }
+
+        if (running is not null)
+        {
             if (_reads is { } reads)
             {
                 await reads.StopAsync().ConfigureAwait(false);
@@ -128,10 +148,9 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             running.Dispose();
         }
 
-        if (_runtime is { } runtime)
+        if (stopping is not null)
         {
-            _runtime = null;
-            await runtime.DisposeAsync().ConfigureAwait(false);
+            await stopping.DisposeAsync().ConfigureAwait(false);
         }
 
         _reads = null;
@@ -193,13 +212,15 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
     {
         await StopAsync(CancellationToken.None).ConfigureAwait(false);
         _write.Dispose();
+        _resolve.Dispose();
     }
 
     /// <summary>The event types of a trigger. Disabled triggers keep theirs, so their rules stay valid.</summary>
     internal static IEnumerable<EventTypeInfo> TypesOf(TriggerDefinition trigger)
     {
         var what = trigger.FilterText.Length == 0 ? trigger.EventName : $"{trigger.EventName} · {trigger.FilterText}";
-        var values = trigger.Values.Count == 0 ? string.Empty : " Values: " + string.Join(", ", trigger.Values.Select(v => "{" + v + "}")) + ".";
+        // The values (placeholders for the actions) one per line below the text, as the info icon of the rule dialog shows it.
+        var values = trigger.Values.Count == 0 ? string.Empty : "\n\nValues:\n" + string.Join("\n", trigger.Values.Select(v => "• {" + v + "}"));
         yield return new EventTypeInfo(
             DeviceTriggersPluginInfo.TypeId(trigger.Id),
             trigger.Name,
@@ -214,7 +235,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             DeviceTriggersPluginInfo.EventGroup,
             EventKind.Stateful)
         {
-            Description = $"No events of this trigger from the device for {DeviceTriggersPluginInfo.LostDelay.TotalSeconds:0} s. Values: {{reason}}.",
+            Description = $"No events of this trigger from the device for {DeviceTriggersPluginInfo.LostDelay.TotalSeconds:0} s.\n\nValues:\n• {{reason}}",
         };
     }
 
@@ -379,9 +400,23 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
     /// Resolves every trigger to the devices it covers now: the chosen ones, plus with <see cref="TriggerDefinition.AllDevices"/>
     /// or <see cref="TriggerDefinition.Tags"/> every managed device (with that tag) that can send events. Runs after every
     /// change and every <see cref="DeviceTriggersOptions.ResolveInterval"/>, so new and newly tagged devices join; the
-    /// connections follow only when a set changed.
+    /// connections follow only when a set changed. Resolves run one at a time and each reads the stored triggers once it
+    /// runs, so the runtime always gets the lists in order and an older one never replaces a newer one.
     /// </summary>
     private async Task ResolveAsync(CancellationToken ct)
+    {
+        await _resolve.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await ResolveLockedAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _resolve.Release();
+        }
+    }
+
+    private async Task ResolveLockedAsync(CancellationToken ct)
     {
         if (_ctx is not { } ctx || _runtime is not { } runtime)
         {
@@ -426,9 +461,18 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
 
     private async Task ResolveSafelyAsync()
     {
+        if (_running is not { } running)
+        {
+            return;
+        }
+
         try
         {
-            await ResolveAsync(_running?.Token ?? CancellationToken.None).ConfigureAwait(false);
+            await ResolveAsync(running.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+        {
+            // The plugin stops.
         }
 #pragma warning disable CA1031 // The next round tries again.
         catch (Exception ex)

@@ -3,6 +3,8 @@ using System.Net;
 
 using Avalonia.Headless;
 
+using Microsoft.Extensions.Time.Testing;
+
 using Oadm.Plugins.IoMonitor.Client;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
@@ -113,10 +115,142 @@ public sealed class ServerTests
 
         Assert.Equal("The device has no inputs or outputs to show", (await rig.StartStreamAsync(camera.Id)).Error);
         Assert.Equal(DeviceMessages.Removed, (await rig.StartStreamAsync(Guid.NewGuid())).Error);
-        await rig.StartStreamAsync(io.Id);
-        await rig.StartStreamAsync(io.Id);
-        Assert.StartsWith("Too many devices", (await rig.StartStreamAsync(io.Id)).Error, StringComparison.Ordinal);
+        var io2 = new TestDevice("10.0.0.71", "A9210");
+        var io3 = new TestDevice("10.0.0.72", "A9210");
+        rig.Devices.Items.AddRange([io2, io3]);
+        Assert.NotNull((await rig.StartStreamAsync(io.Id)).StreamId);
+        Assert.NotNull((await rig.StartStreamAsync(io.Id)).StreamId); // a second page of the same device counts once
+        Assert.NotNull((await rig.StartStreamAsync(io2.Id)).StreamId);
+        Assert.StartsWith("Too many devices", (await rig.StartStreamAsync(io3.Id)).Error, StringComparison.Ordinal);
+        Assert.NotNull((await rig.StartStreamAsync(io.Id)).StreamId);
+        Assert.Equal(2, rig.Plugin.DeviceCount);
     }
+
+    [Fact]
+    public async Task Starts_at_the_same_time_never_pass_the_device_limit()
+    {
+        await using var rig = await new Rig().StartAsync();
+        var devices = Enumerable.Range(1, 10).Select(i => new TestDevice($"10.0.0.{70 + i}", "A9210")).ToList();
+        rig.Devices.Items.AddRange(devices);
+
+        var replies = await Task.WhenAll(devices.Select(d => Task.Run(() => rig.StartStreamAsync(d.Id))));
+
+        Assert.Equal(2, replies.Count(r => r.StreamId is not null));
+        Assert.Equal(2, rig.Plugin.DeviceCount);
+    }
+
+    [Fact]
+    [Trait("Category", "Timing")]
+    public async Task Two_pages_of_one_device_share_one_reading()
+    {
+        await using var rig = await new Rig().StartAsync();
+        var device = new TestDevice("10.0.0.70", "A9210");
+        rig.Devices.Items.Add(device);
+        var events = await WatchAsync(rig);
+
+        var first = (await rig.StartStreamAsync(device.Id)).StreamId;
+        await Wait.UntilAsync(() => events.Count == 1);
+        var second = (await rig.StartStreamAsync(device.Id)).StreamId;
+        await Wait.UntilAsync(() => events.Count == 2); // the second page gets the last read at once
+        Assert.Equal([first, second], events.Select(e => IoMonitorJson.Deserialize<PortsEvent>(e.PayloadJson).StreamId));
+        Assert.Equal(1, rig.Plugin.DeviceCount);
+        Assert.Equal(2, rig.Plugin.StreamCount);
+
+        // one read per poll for both pages: the requests grow like one stream (every 20 ms), not two
+        var requests = rig.Vapix.Requests;
+        await Task.Delay(400);
+        Assert.InRange(rig.Vapix.Requests - requests, 1, 25);
+
+        rig.Vapix.SetClosed("0");
+        await Wait.UntilAsync(() => events.Count == 4); // each page gets the change
+        Assert.Equal(new[] { first, second }.Order(), events.Skip(2).Select(e => IoMonitorJson.Deserialize<PortsEvent>(e.PayloadJson).StreamId).Order());
+
+        await rig.Plugin.InvokeAsync(IoMonitorMethods.Stop, IoMonitorJson.Serialize(new StreamRequest(first)), CancellationToken.None);
+        Assert.Equal(1, rig.Plugin.DeviceCount); // the other page still shows it
+        await rig.Plugin.InvokeAsync(IoMonitorMethods.Stop, IoMonitorJson.Serialize(new StreamRequest(second)), CancellationToken.None);
+        Assert.Equal(0, rig.Plugin.DeviceCount);
+    }
+
+    [Fact]
+    public async Task Each_read_takes_the_current_client_of_the_factory()
+    {
+        await using var rig = await new Rig().StartAsync();
+        var device = new TestDevice("10.0.0.70", "A9210");
+        rig.Devices.Items.Add(device);
+        var events = await WatchAsync(rig);
+        await rig.StartStreamAsync(device.Id);
+        await Wait.UntilAsync(() => events.Count == 1);
+
+        rig.Vapix.ReplaceClient(); // address, credentials or certificate changed: the old client is disposed
+        var requests = rig.Vapix.Requests;
+        await Wait.UntilAsync(() => rig.Vapix.Requests >= requests + 5);
+        Assert.Single(events); // no "disposed" error was pushed
+
+        rig.Vapix.CreateError = new InvalidOperationException("The device was removed from OADM.");
+        await Wait.UntilAsync(() => events.Count == 2);
+        Assert.Equal(DeviceMessages.Unreachable("The device was removed from OADM."), IoMonitorJson.Deserialize<PortsEvent>(events.Last().PayloadJson).Error);
+    }
+
+    [Fact]
+    public async Task After_a_timeout_the_next_read_waits_one_second()
+    {
+        var time = new FakeTimeProvider();
+        await using var rig = await new Rig(retryDelay: TimeSpan.FromSeconds(1), time: time).StartAsync();
+        var device = new TestDevice("10.0.0.70", "A9210");
+        rig.Devices.Items.Add(device);
+        var events = await WatchAsync(rig);
+        rig.Vapix.Override = () =>
+        {
+            if (rig.Vapix.Requests == 1)
+            {
+                time.Advance(TimeSpan.FromSeconds(3)); // the request timed out after 3 s
+            }
+
+            throw new TaskCanceledException();
+        };
+
+        await rig.StartStreamAsync(device.Id);
+        await Wait.UntilAsync(() => events.Count == 1);
+        Assert.Equal(DeviceMessages.Timeout(TimeSpan.FromSeconds(3)), IoMonitorJson.Deserialize<PortsEvent>(events.Single().PayloadJson).Error);
+        await Task.Delay(100);
+        Assert.Equal(1, rig.Vapix.Requests);
+
+        time.Advance(TimeSpan.FromMilliseconds(900));
+        await Task.Delay(100);
+        Assert.Equal(1, rig.Vapix.Requests);
+        time.Advance(TimeSpan.FromMilliseconds(100));
+        await Wait.UntilAsync(() => rig.Vapix.Requests == 2);
+    }
+
+    [Fact]
+    public async Task No_start_is_accepted_after_the_plugin_stopped()
+    {
+        await using var rig = await new Rig().StartAsync();
+        var device = new TestDevice("10.0.0.70", "A9210");
+        rig.Devices.Items.Add(device);
+        await rig.StartStreamAsync(device.Id);
+
+        await rig.Plugin.StopAsync(CancellationToken.None);
+
+        Assert.Equal(0, rig.Plugin.DeviceCount);
+        Assert.NotNull((await rig.StartStreamAsync(device.Id)).Error);
+        Assert.Equal(0, rig.Plugin.DeviceCount);
+    }
+
+    [Fact]
+    public async Task A_keep_alive_says_whether_the_stream_still_runs()
+    {
+        await using var rig = await new Rig().StartAsync();
+        var device = new TestDevice("10.0.0.70", "A9210");
+        rig.Devices.Items.Add(device);
+        var id = (await rig.StartStreamAsync(device.Id)).StreamId;
+
+        Assert.True(await KeepAliveAsync(rig, id));
+        Assert.False(await KeepAliveAsync(rig, "unknown"));
+    }
+
+    private static async Task<bool> KeepAliveAsync(Rig rig, string? streamId) =>
+        IoMonitorJson.Deserialize<KeepAliveReply>(await rig.Plugin.InvokeAsync(IoMonitorMethods.KeepAlive, IoMonitorJson.Serialize(new StreamRequest(streamId)), CancellationToken.None)).Running;
 
     private static async Task<ConcurrentQueue<PluginEvent>> WatchAsync(Rig rig)
     {
@@ -165,6 +299,84 @@ public sealed class PageTests
         Assert.Equal(1, rig.Plugin.StreamCount);
 
         vm.Deactivate();
+        await Wait.UntilAsync(() => rig.Plugin.StreamCount == 0);
+    }
+
+    [Fact]
+    [Trait("Category", "Timing")]
+    public async Task Failed_keep_alives_are_retried()
+    {
+        await using var rig = await new Rig(TimeSpan.FromSeconds(1)).StartAsync();
+        var io = new TestDevice("10.0.0.70", "A9210");
+        rig.Devices.Items.Add(io);
+        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items);
+        IoMonitorViewModel.KeepAliveInterval = TimeSpan.FromMilliseconds(50);
+        using var vm = new IoMonitorViewModel(ctx);
+        vm.Activate();
+        vm.SelectedDevice = vm.Devices[0];
+        await Wait.UntilAsync(() => vm.IsLive);
+
+        ctx.FailMethod = IoMonitorMethods.KeepAlive; // the connection drops for a moment
+        await Task.Delay(300);
+        ctx.FailMethod = null;
+        await Task.Delay(1_200); // beyond the 1 s lease: only the keep-alives after the drop hold the stream
+
+        Assert.Equal(1, rig.Plugin.StreamCount);
+        Assert.Single(ctx.Calls, IoMonitorMethods.Start);
+    }
+
+    [Fact]
+    public async Task A_stream_the_server_forgot_is_started_again()
+    {
+        await using var rig = await new Rig().StartAsync();
+        var io = new TestDevice("10.0.0.70", "A9210");
+        rig.Devices.Items.Add(io);
+        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items);
+        IoMonitorViewModel.KeepAliveInterval = TimeSpan.FromMilliseconds(50);
+        using var vm = new IoMonitorViewModel(ctx);
+        vm.Activate();
+        vm.SelectedDevice = vm.Devices[0];
+        await Wait.UntilAsync(() => vm.IsLive);
+
+        await rig.Plugin.StopAsync(CancellationToken.None); // the server restarted
+        await rig.StartAsync();
+
+        await Wait.UntilAsync(() => ctx.Calls.Count(c => c == IoMonitorMethods.Start) == 2);
+        await Wait.UntilAsync(() => vm.IsLive && rig.Plugin.StreamCount == 1);
+        rig.Vapix.SetClosed("0");
+        await Wait.UntilAsync(() => vm.Outputs.Count > 0 && vm.Outputs[0].Active);
+    }
+
+    [Fact]
+    public async Task A_device_list_change_keeps_the_stream_running()
+    {
+        await using var rig = await new Rig().StartAsync();
+        var io = new TestDevice("10.0.0.70", "A9210");
+        rig.Devices.Items.Add(io);
+        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items);
+        using var vm = new IoMonitorViewModel(ctx);
+        vm.Activate();
+        vm.SelectedDevice = vm.Devices[0];
+        await Wait.UntilAsync(() => vm.IsLive);
+        var changed = 0;
+        vm.Devices.CollectionChanged += (_, _) => changed++;
+
+        rig.Devices.Items.Add(new TestDevice("10.0.0.71", "A9188"));
+        ctx.RaiseDevicesChanged();
+
+        Assert.Equal(1, changed); // one reset
+        Assert.Equal(2, vm.Devices.Count);
+        Assert.Equal(io.Id, vm.SelectedDevice?.Id);
+        Assert.Contains(vm.SelectedDevice!, vm.Devices);
+        await Task.Delay(200);
+        Assert.True(vm.IsLive);
+        Assert.Single(ctx.Calls, IoMonitorMethods.Start);
+        Assert.DoesNotContain(IoMonitorMethods.Stop, ctx.Calls);
+        Assert.Equal(1, rig.Plugin.StreamCount);
+
+        rig.Devices.Items.Remove(io); // removed from OADM: the reading stops
+        ctx.RaiseDevicesChanged();
+        Assert.Null(vm.SelectedDevice);
         await Wait.UntilAsync(() => rig.Plugin.StreamCount == 0);
     }
 

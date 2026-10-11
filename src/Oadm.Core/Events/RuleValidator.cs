@@ -226,6 +226,13 @@ public static class RuleValidator
             return $"{label}: {fields.First(f => f.Key == key).Label}: {message}";
         }
 
+        if (!catalogAction.Available)
+        {
+            // Its package is off: the plugin's own checks may need its running state (VAPIX Commander's commands). The rule
+            // is saved and shows "Not available: ..."; the action is checked fully when the rule is saved again.
+            return null;
+        }
+
         try
         {
             using var settings = JsonDocument.Parse(action.Settings.ToJsonString());

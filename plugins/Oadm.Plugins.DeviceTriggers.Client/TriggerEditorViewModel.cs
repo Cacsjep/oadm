@@ -252,17 +252,18 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
                 return count;
             }
 
-            if (IsReading)
+            // Only chosen devices hold Save back: a device of a tag or of all devices without the event is left out anyway.
+            var chosen = Chosen().Where(d => !d.IsImplicit).ToList();
+            if (chosen.Any(d => d.IsReading))
             {
-                return "Wait until the events are read.";
+                return WaitText;
             }
 
             // Devices that could not be read (offline, login refused) stay: OADM connects once they answer
             // (user decision 2026-10-11). Only a device that was read and lacks the event cannot stay.
-            var chosen = Chosen().ToList();
             if (SelectedEvent?.Event is { } e)
             {
-                var missing = chosen.Where(d => !d.IsImplicit && _offered.GetValueOrDefault(d.Id) is { } topics && !topics.Contains(e.Topic)).Select(d => d.Address).ToList();
+                var missing = chosen.Where(d => _offered.GetValueOrDefault(d.Id) is { } topics && !topics.Contains(e.Topic)).Select(d => d.Address).ToList();
                 if (missing.Count > 0)
                 {
                     return $"Remove the devices that do not offer this event: {Names(missing)}.";
@@ -273,12 +274,15 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
         }
     }
 
-    private string? EventProblem => IsReading || DevicesProblem is not null ? null
-        : SelectedEvent is not null ? null
+    private const string WaitText = "Wait until the events are read.";
+
+    /// <summary>Save waits for the devices of a tag or of all devices only until the chosen event is known.</summary>
+    private string? EventProblem => DevicesProblem is not null || SelectedEvent is not null ? null
+        : IsReading ? WaitText
         : EventOptions.Count == 0 ? "No events yet: none of the devices could be read." : "Choose an event.";
 
     /// <summary>Editing a trigger reads the event lists of its devices at once (live, never cached).</summary>
-    public Task StartAsync() => IsNew ? Task.CompletedTask : ReadAsync([.. Chosen().Where(d => d.Supported).Select(d => d.Id)]);
+    public Task StartAsync() => IsNew ? Task.CompletedTask : ReadDevicesAsync([.. Chosen().Where(d => d.Supported)]);
 
     public void Dispose()
     {
@@ -319,7 +323,17 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
         ShowErrors = true;
         DevicesServerError = null;
         RefreshEvents();
-        await ReadAsync([.. Chosen().Where(d => d.Supported && !d.IsReading && !_offered.ContainsKey(d.Id)).Select(d => d.Id)]).ConfigureAwait(true);
+        await ReadDevicesAsync([.. Chosen().Where(d => d.Supported && !d.IsReading && !_offered.ContainsKey(d.Id))]).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// The chosen devices first, then those of a tag or of all devices (possibly thousands): Save does not wait for the
+    /// second read once the event is known.
+    /// </summary>
+    private async Task ReadDevicesAsync(IReadOnlyList<TriggerDeviceChoice> devices)
+    {
+        await ReadAsync([.. devices.Where(d => !d.IsImplicit).Select(d => d.Id)]).ConfigureAwait(true);
+        await ReadAsync([.. devices.Where(d => d.IsImplicit).Select(d => d.Id)]).ConfigureAwait(true);
     }
 
     partial void OnSelectedEventChoiceChanged(GroupedChoice? value)
