@@ -6,13 +6,14 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+## [2.1.0] - 2026-10-11
+
 ### Added
 
 - Event rules: new actions **Send email** and **Send HTTP request** (webhooks, Teams, Slack, building systems), with
   login, headers, a JSON, XML, HTML or text body and **Allow untrusted certificates**. **Send test** tries them right away.
 - Event rules: a **Placeholders** list next to the actions, with a copy button for each. New placeholders for the
   device: `{hostName}`, `{mac}`, `{firmware}`, `{category}`, `{tags}`, `{status}`, `{webUrl}`, and `{date}`, `{timeUtc}`.
-
 - VAPIX Commander: **+** in the Library writes a new command in its own window, from scratch or from an existing
   command, with Send to try it. The pen icon of a saved command opens it there to change it.
 - VAPIX Commander: a field can be removed again; its value goes back where the placeholder was.
@@ -219,6 +220,7 @@ version and date, and the release workflow copies it into the GitHub release.
 - The splash logo's lens is centered in its ring.
 - The server publish no longer contains an IIS `web.config` and other unused web files.
 
+[2.1.0]: https://github.com/Cacsjep/oadm/releases/tag/v2.1.0
 [2.0.0]: https://github.com/Cacsjep/oadm/releases/tag/v2.0.0
 [1.5.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.5.0
 [1.4.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.4.0
