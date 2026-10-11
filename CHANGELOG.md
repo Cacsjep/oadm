@@ -6,6 +6,12 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+## [2.1.1] - 2026-10-11
+
+### Fixed
+
+- Image Health Dashboard: a detection turned off in the app no longer keeps a camera out of **Good**.
+
 ## [2.1.0] - 2026-10-11
 
 ### Added
@@ -220,6 +226,7 @@ version and date, and the release workflow copies it into the GitHub release.
 - The splash logo's lens is centered in its ring.
 - The server publish no longer contains an IIS `web.config` and other unused web files.
 
+[2.1.1]: https://github.com/Cacsjep/oadm/releases/tag/v2.1.1
 [2.1.0]: https://github.com/Cacsjep/oadm/releases/tag/v2.1.0
 [2.0.0]: https://github.com/Cacsjep/oadm/releases/tag/v2.0.0
 [1.5.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.5.0
