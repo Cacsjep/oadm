@@ -47,7 +47,7 @@ Targets:
   all       Whole solution: server, client, plugins, tests, tools (default)
   server    Server and the bundled plugins
   client    Avalonia client plus all plugins (their dialogs and pages run in the client)
-  plugins   Bundled plugins only (plugins/*/*.csproj, deployed to artifacts/plugins/<id>)
+  plugins   Bundled plugins only (plugins/*/*.csproj, built in parallel, deployed to artifacts/plugins/<id>)
 
 Options:
   --release   Build Release instead of {CONFIGURATION}

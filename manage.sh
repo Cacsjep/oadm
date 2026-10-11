@@ -199,9 +199,24 @@ build_project() {
   "$DOTNET" build "$1" -c "$CONFIGURATION" ${EXTRA[@]+"${EXTRA[@]}"}
 }
 
+# Builds every plugin project in one MSBuild run, in parallel: a generated solution filter (artifacts/plugins.slnf)
+# of Oadm.sln with the plugin projects, so the shared projects (SDK, Core) are built or checked once, not per plugin.
+# A plugin project must be in Oadm.sln.
+PLUGIN_FILTER="$REPO_ROOT/artifacts/plugins.slnf"
 build_plugins() {
-  local p
-  while IFS= read -r p; do build_project "$p"; done < <(plugin_projects)
+  local p first=1
+  mkdir -p "$(dirname "$PLUGIN_FILTER")"
+  {
+    printf '{\n  "solution": {\n    "path": "../Oadm.sln",\n    "projects": [\n'
+    while IFS= read -r p; do
+      p="${p#"$REPO_ROOT"/}"
+      if [ $first -eq 0 ]; then printf ',\n'; fi
+      first=0
+      printf '      "%s"' "${p//\//\\\\}"
+    done < <(plugin_projects)
+    printf '\n    ]\n  }\n}\n'
+  } > "$PLUGIN_FILTER"
+  build_project "$PLUGIN_FILTER"
 }
 
 # Absolute path of a folder (created if missing).

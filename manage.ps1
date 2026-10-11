@@ -212,8 +212,17 @@ function Build-Project([string]$Project) {
     Invoke-Dotnet (@('build', $Project, '-c', $script:Configuration) + $script:Extra)
 }
 
+# Builds every plugin project in one MSBuild run, in parallel: a generated solution filter (artifacts/plugins.slnf)
+# of Oadm.sln with the plugin projects, so the shared projects (SDK, Core) are built or checked once, not per plugin.
+# A plugin project must be in Oadm.sln.
 function Build-Plugins {
-    foreach ($p in @(Get-PluginProjects)) { Build-Project $p.FullName }
+    $filter = Join-Path $RepoRoot 'artifacts/plugins.slnf'
+    New-Item -ItemType Directory -Force -Path (Split-Path $filter) | Out-Null
+    $root = $RepoRoot.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    $projects = @(Get-PluginProjects | ForEach-Object { $_.FullName.Substring($root.Length).Replace('/', '\') })
+    $json = [ordered]@{ solution = [ordered]@{ path = '../Oadm.sln'; projects = $projects } } | ConvertTo-Json -Depth 4
+    [IO.File]::WriteAllText($filter, $json, (New-Object Text.UTF8Encoding $false))
+    Build-Project $filter
 }
 
 # Absolute path of a folder (created if missing).
