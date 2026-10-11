@@ -105,7 +105,9 @@ release of the tag with the installers and `SHA256SUMS.txt`):
   every client window) from it.
 Supply chain and security (user decisions 2026-10-09): every GitHub Action is pinned by its full commit hash (the version as
 a comment); `.github/dependabot.yml` opens weekly pull requests for the Actions (new hashes) and the NuGet packages
-(grouped: Avalonia, gRPC, Microsoft, Serilog, test packages); Dependabot alerts and security updates, private
+(grouped: Avalonia, gRPC, Microsoft, Serilog, test packages; ignored: JsonSchema.Net 9+ and WixToolset 7+, whose license
+moved to the OSMF EULA); a vulnerable transitive npm package of the website is pinned with an `overrides` entry in
+`website/package.json` (postcss-selector-parser 7.1.6, 2026-10-11) until its parent updates; Dependabot alerts and security updates, private
 vulnerability reporting and secret scanning with push protection are on; `SECURITY.md` says how to report; `codeql.yml`
 runs CodeQL (C#) on pushes to main, pull requests and weekly; `pr.yml` builds and unit-tests every pull request on Linux
 (Timing tests excluded); changes only in `website/` (user decision 2026-10-09) skip CodeQL and the .NET build and tests

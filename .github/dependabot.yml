@@ -16,6 +16,12 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    # Newer majors changed their license away from open source (OSMF EULA): stay on the last open one.
+    ignore:
+      - dependency-name: "JsonSchema.Net"
+        versions: [">= 9.0.0"]
+      - dependency-name: "WixToolset.*"
+        versions: [">= 7.0.0"]
     groups:
       avalonia:
         patterns: ["Avalonia*", "AvaloniaUI.*"]
