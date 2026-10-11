@@ -5,12 +5,13 @@
              x:Class="Oadm.Client.Settings.PluginsPageView"
              x:DataType="settings:PluginsViewModel">
   <!-- Navigation page Plugins (Admin only): one row per plugin package; the check box turns it on or off at once.
-       Packages that are always on (core functionality) are not listed. -->
+       Packages that are always on (core functionality) are not listed. Grouped like the navigation rail (code-behind
+       builds the grouped view: Servers, Automation, Security, Monitoring, ...). -->
   <Grid RowDefinitions="Auto,*" RowSpacing="16">
     <c:PageTitleBar Title="Plugins" Subtitle="A plugin that is off shows no page, menu entry or toolbar button." />
     <Border Grid.Row="1" Classes="card" MaxWidth="1000" HorizontalAlignment="Left" VerticalAlignment="Top">
       <Grid RowDefinitions="*,Auto" RowSpacing="12">
-        <DataGrid ItemsSource="{Binding Plugins}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
+        <DataGrid x:Name="PluginGrid" Classes="groups" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
                   SelectionMode="Single" IsVisible="{Binding !IsEmpty}">
           <DataGrid.Columns>
             <DataGridTemplateColumn Header="On" Width="72" SortMemberPath="IsEnabled" x:DataType="settings:PluginRowViewModel">

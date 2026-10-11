@@ -7,8 +7,24 @@ using Microsoft.Extensions.Logging;
 using Oadm.Client.Plugins;
 using Oadm.Client.Shell;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Client.Settings;
+
+/// <summary>
+/// A group of the Plugins page: the rail group of the package (<see cref="CorePluginGroup"/>, "Servers", "Monitoring"),
+/// in rail order. The header shows <see cref="ToString"/>.
+/// </summary>
+public sealed record PluginGroupKey(CorePluginGroup Group)
+{
+    public int Order => (int)Group;
+
+    public override string ToString() => Group.ToString();
+
+    /// <summary>The group the server reports ("Monitoring"); unknown or empty is Extensions, like the rail.</summary>
+    public static PluginGroupKey Parse(string? group) =>
+        new(Enum.TryParse(group, ignoreCase: true, out CorePluginGroup parsed) && Enum.IsDefined(parsed) ? parsed : CorePluginGroup.Extensions);
+}
 
 /// <summary>One plugin package of the Plugins page; the check box turns it on or off at once.</summary>
 public sealed partial class PluginRowViewModel : ObservableObject
@@ -20,6 +36,7 @@ public sealed partial class PluginRowViewModel : ObservableObject
     {
         _owner = owner;
         Id = info.Id;
+        Group = PluginGroupKey.Parse(info.Group);
         Name = info.DisplayName;
         Description = info.Description;
         OffByDefault = !info.EnabledByDefault;
@@ -29,6 +46,9 @@ public sealed partial class PluginRowViewModel : ObservableObject
     }
 
     public string Id { get; }
+
+    /// <summary>The group the page shows the package under (the grid groups by this property).</summary>
+    public PluginGroupKey Group { get; }
 
     public string Name { get; }
 
@@ -122,6 +142,12 @@ public sealed partial class PluginsViewModel : ObservableObject
 
     public Oadm.Sdk.Client.Collections.RangeObservableCollection<PluginRowViewModel> Plugins { get; } = [];
 
+    /// <summary>
+    /// The groups that have packages, in rail order (user decision 2026-10-11: the page groups like the navigation rail).
+    /// Set with every rebuild, before <see cref="Plugins"/> changes.
+    /// </summary>
+    public IReadOnlyList<PluginGroupKey> Groups { get; private set; } = [];
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
     public partial string? ErrorText { get; private set; }
@@ -147,10 +173,15 @@ public sealed partial class PluginsViewModel : ObservableObject
 
     private void Rebuild()
     {
-        Plugins.ReplaceAll(_store.Packages
+        var rows = _store.Packages
             .Where(p => !p.AlwaysOn)
-            .OrderBy(p => p.DisplayName, StringComparer.CurrentCultureIgnoreCase)
-            .Select(p => new PluginRowViewModel(this, p)));
+            .Select(p => new PluginRowViewModel(this, p))
+            .OrderBy(r => r.Group.Order)
+            .ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+        Groups = [.. rows.Select(r => r.Group).Distinct()];
+        OnPropertyChanged(nameof(Groups));
+        Plugins.ReplaceAll(rows);
         OnPropertyChanged(nameof(IsEmpty));
     }
 

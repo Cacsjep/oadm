@@ -36,6 +36,7 @@ message PluginPackageInfo {
   int32 menu_task_count = 7;
   bool always_on = 8;
   string description = 9;
+  string group = 10;   // rail group of its core plugin ("Servers", "Monitoring"); "Extensions" without one
 }
 message PluginPackageList { repeated PluginPackageInfo packages = 1; }
 message SetPackageEnabledRequest { string id = 1; bool enabled = 2; }

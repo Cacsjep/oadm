@@ -5,7 +5,7 @@ using Oadm.Contracts.V1;
 namespace Oadm.Client.Api;
 
 /// <summary>
-/// Fake plugin list of the Plugins page: the simulated core plugins plus Restart, each one package. The Hardening scan
+/// Fake plugin list of the Plugins page: the simulated core plugins plus Restart, each one package with its rail group. The Hardening scan
 /// and the other monitoring plugins are off by default like on the server (their manifests say so); turning a package off hides its rail page and its tasks.
 /// </summary>
 public sealed partial class FakeOadmApi
@@ -14,14 +14,18 @@ public sealed partial class FakeOadmApi
 
     private static IEnumerable<PluginPackageInfo> FakePackageTemplates =>
     [
-        Package(SnapshotReportPluginId, "Snapshot report", "Snapshots of every camera and a PDF maintenance report.", hasPage: true, tasks: 0),
-        Package(PkiPluginId, "PKI", "Issues device certificates for HTTPS and IEEE 802.1X.", hasPage: true, tasks: 9, alwaysOn: true),
-        Package(MetadataMonitorPluginId, "Metadata Monitor", "Shows the events a camera sends, live.", hasPage: true, tasks: 0, enabledByDefault: false),
-        Package(HardeningScanPluginId, "Hardening scan", "Checks devices against the AXIS OS hardening guide.", hasPage: true, tasks: 0, enabledByDefault: false),
-        Package(IoMonitorPluginId, "I/O Monitor", "Shows the inputs and outputs of a device, live.", hasPage: true, tasks: 0, enabledByDefault: false),
-        Package(DeviceTriggersPluginId, "Device triggers", "Uses events of the devices in event rules.", hasPage: true, tasks: 0, enabledByDefault: false),
-        Package(SystemReportPluginId, "System report", "Downloads the system reports of devices for Axis support.", hasPage: false, tasks: 0, alwaysOn: true),
-        Package(RestartPluginId, "Restart", "Restarts devices.", hasPage: false, tasks: 1, alwaysOn: true),
+        Package(SnapshotReportPluginId, "Snapshot report", "Snapshots of every camera and a PDF maintenance report.", "Reporting", hasPage: true, tasks: 0),
+        Package(PkiPluginId, "PKI", "Issues device certificates for HTTPS and IEEE 802.1X.", "Security", hasPage: true, tasks: 9, alwaysOn: true),
+        Package(MetadataMonitorPluginId, "Metadata Monitor", "Shows the events a camera sends, live.", "Monitoring", hasPage: true, tasks: 0, enabledByDefault: false),
+        Package(HardeningScanPluginId, "Hardening scan", "Checks devices against the AXIS OS hardening guide.", "Security", hasPage: true, tasks: 0, enabledByDefault: false),
+        Package(IoMonitorPluginId, "I/O Monitor", "Shows the inputs and outputs of a device, live.", "Monitoring", hasPage: true, tasks: 0, enabledByDefault: false),
+        Package(DeviceTriggersPluginId, "Device triggers", "Uses events of the devices in event rules.", "Automation", hasPage: true, tasks: 0, enabledByDefault: false),
+        Package("oadm.vapix-commander", "VAPIX Commander", "Sends VAPIX commands to many devices at once.", "Automation", hasPage: true, tasks: 0),
+        Package("oadm.ntp-server", "NTP server", "Serves the time to devices from this server.", "Servers", hasPage: true, tasks: 1),
+        Package("oadm.dhcp-server", "DHCP server", "Hands out IP addresses and can add new Axis devices automatically.", "Servers", hasPage: true, tasks: 0),
+        Package("oadm.image-health", "Image Health Dashboard", "Shows blur, blocked and redirected views from AXIS Image Health Analytics.", "Monitoring", hasPage: true, tasks: 0, enabledByDefault: false),
+        Package(SystemReportPluginId, "System report", "Downloads the system reports of devices for Axis support.", "Reporting", hasPage: false, tasks: 0, alwaysOn: true),
+        Package(RestartPluginId, "Restart", "Restarts devices.", "Extensions", hasPage: false, tasks: 1, alwaysOn: true),
     ];
 
     public Task<IReadOnlyList<PluginPackageInfo>> ListPluginPackagesAsync(CancellationToken ct)
@@ -71,10 +75,11 @@ public sealed partial class FakeOadmApi
         }),
     ];
 
-    private static PluginPackageInfo Package(string id, string name, string description, bool hasPage, int tasks,
+    private static PluginPackageInfo Package(string id, string name, string description, string group, bool hasPage, int tasks,
         bool enabledByDefault = true, bool alwaysOn = false) => new()
     {
         Id = id,
+        Group = group,
         DisplayName = name,
         Description = description,
         AlwaysOn = alwaysOn,

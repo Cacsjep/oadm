@@ -64,6 +64,7 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
             MenuTaskCount = p.MenuTaskCount,
             AlwaysOn = p.Origin.AlwaysOn,
             Description = p.Origin.Description ?? string.Empty,
+            Group = p.Group.ToString(),
         }));
         return reply;
     }

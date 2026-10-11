@@ -1390,13 +1390,17 @@ is always on.
   plugin is turned off.". Tasks of the package already queued or running finish.
 - gRPC `PluginService.ListPackages` (any user: clients hide toolbar entries of packages that are off) /
   `SetPackageEnabled` (Admin, audited "Turned plugin on" / "Turned plugin off", target the plugin name);
-  `PluginPackageInfo.always_on = 8`, `description = 9`.
+  `PluginPackageInfo.always_on = 8`, `description = 9`, `group = 10` (`PluginPackageState.Group`: the rail group of the
+  package's core plugin with a page, else of its first core plugin; without a core plugin "Extensions", like the rail).
 - Client: `Plugins/PluginPackageStore` (loaded on every connect; `Changed` reloads the rail pages and the task catalog
   and hides the toolbar entries of packages that are off: `DeviceToolbar.ApplyPackageStates`, the package of a client
   part from the plugin.json next to its dll, `IClientPluginRegistry.PackageOf`). Rail page **Plugins** (Admin only,
   key `HostPages.Plugins`, icon `plugin`, below Credentials; subtitle "A plugin that is off shows no page, menu entry or
   toolbar button."; `Settings/PluginsPageView` + `PluginsViewModel`): one card with a DataGrid On (check box), Plugin,
-  Description, sorted by name; always-on packages are not listed (user decision 2026-10-10); a refused change is undone with the reason below the list. Other clients see a change
+  Description, grouped like the navigation rail (user decision 2026-10-11: one collapsible group per rail group that has
+  plugins, in rail order, the same look as the device grid's tag groups without color, theme `DataGrid.groups`; sorted by
+  name inside a group; the view groups in code-behind with `DataGridCollectionView` + `PluginsViewModel.Groups`);
+  always-on packages are not listed (user decision 2026-10-10); a refused change is undone with the reason below the list. Other clients see a change
   on their next connect. Fake mode: `FakeOadmApi.Plugins.cs` (PKI, Restart, System report always on).
 - Tests: `tests/Oadm.Server.Tests/PluginPackageTests` (default off, live start / stop, menus, roles, audit, stored
   choice, always on, the bundled manifests: off by default, always on, descriptions), `tests/Oadm.Client.Tests/

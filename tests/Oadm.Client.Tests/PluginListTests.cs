@@ -67,6 +67,22 @@ public sealed class PluginListTests
     }
 
     [Fact]
+    public async Task The_plugins_are_grouped_like_the_navigation_rail()
+    {
+        using var api = new FakeOadmApi(TimeSpan.Zero);
+        var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
+        var vm = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance);
+        await store.LoadAsync(CancellationToken.None);
+
+        // Rail order, only groups with plugins (Reporting keeps Snapshot report; System report is always on).
+        Assert.Equal(["Servers", "Automation", "Security", "Monitoring", "Reporting"], vm.Groups.Select(g => g.ToString()));
+        Assert.Equal(
+            ["DHCP server", "NTP server", "Device triggers", "VAPIX Commander", "Hardening scan", "I/O Monitor", "Image Health Dashboard", "Metadata Monitor", "Snapshot report"],
+            vm.Plugins.Select(p => p.Name));
+        Assert.Equal("Extensions", PluginGroupKey.Parse("NoSuchGroup").ToString()); // like the rail
+    }
+
+    [Fact]
     public async Task A_refused_change_is_undone_and_explained()
     {
         using var api = new FakeOadmApi(TimeSpan.Zero);
@@ -95,7 +111,7 @@ public sealed class PluginListTests
             var plugins = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance);
             await store.LoadAsync(CancellationToken.None);
 
-            var window = new Window { Width = 1100, Height = 420, Content = new PluginsPageView { DataContext = plugins } };
+            var window = new Window { Width = 1100, Height = 760, Content = new PluginsPageView { DataContext = plugins } };
             window.Show();
             Dispatcher.UIThread.RunJobs();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
@@ -106,6 +122,8 @@ public sealed class PluginListTests
             Assert.Contains("Hardening scan", texts);
             Assert.Contains("Shows the events a camera sends, live.", texts);
             Assert.DoesNotContain("PKI", texts);
+            Assert.Contains("Servers", texts); // group headers like the navigation rail
+            Assert.Contains("Monitoring", texts);
 
             WriteableBitmap? frame = window.CaptureRenderedFrame();
             Assert.NotNull(frame);

@@ -54,6 +54,12 @@ public sealed record RegisteredCorePlugin(ICorePlugin Plugin, PluginOrigin Origi
 /// </summary>
 public sealed record PluginPackageState(PluginOrigin Origin, bool Enabled, bool HasPage, int MenuTaskCount)
 {
+    /// <summary>
+    /// The rail group of the package (Plugins page): the group of its core plugin with a page, else of its first core
+    /// plugin; a package without a core plugin (only tasks or actions) is <see cref="CorePluginGroup.Extensions"/>.
+    /// </summary>
+    public CorePluginGroup Group { get; init; } = CorePluginGroup.Extensions;
+
     public string Id => Origin.PackageId;
 }
 
@@ -160,7 +166,10 @@ public sealed partial class PluginRegistry
                     o,
                     IsEnabledLocked(o),
                     _cores.Exists(c => SamePackage(c.Origin, o) && SafeHasPage(c.Plugin)),
-                    _tasks.Count(t => SamePackage(t.Origin, o) && SafeShowInMenus(t.Plugin))))];
+                    _tasks.Count(t => SamePackage(t.Origin, o) && SafeShowInMenus(t.Plugin)))
+                {
+                    Group = PackageGroup(o),
+                })];
             }
         }
     }
@@ -252,6 +261,27 @@ public sealed partial class PluginRegistry
 
     private static bool SamePackage(PluginOrigin a, PluginOrigin b) =>
         string.Equals(a.PackageId, b.PackageId, StringComparison.OrdinalIgnoreCase);
+
+    private CorePluginGroup PackageGroup(PluginOrigin origin)
+    {
+        var cores = _cores.Where(c => SamePackage(c.Origin, origin)).ToList();
+        var core = cores.Find(c => SafeHasPage(c.Plugin)) ?? cores.FirstOrDefault();
+        if (core is null)
+        {
+            return CorePluginGroup.Extensions;
+        }
+
+        try
+        {
+            return Enum.IsDefined(core.Plugin.Group) ? core.Plugin.Group : CorePluginGroup.Extensions;
+        }
+#pragma warning disable CA1031 // Plugin code is untrusted.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return CorePluginGroup.Extensions;
+        }
+    }
 
     private static bool SafeHasPage(ICorePlugin plugin)
     {

@@ -31,6 +31,7 @@ public sealed class PluginPackageTests
         var dashboard = packages.Single(p => p.Id == "test.dashboard");
         Assert.Equal(("Dashboard", false, false, true), (dashboard.DisplayName, dashboard.Enabled, dashboard.EnabledByDefault, dashboard.HasPage));
         Assert.Equal(1, packages.Single(p => p.Id == "test.restart").MenuTaskCount);
+        Assert.Equal("Extensions", packages.Single(p => p.Id == "test.restart").Group); // no core plugin: Extensions, like the rail
         var invoke = new Proto.InvokeRequest { PluginId = "test.dashboard", Method = "ping" };
         var off = await Assert.ThrowsAsync<RpcException>(async () => await host.Plugins.InvokeAsync(invoke));
         Assert.Equal((StatusCode.FailedPrecondition, "The Dashboard plugin is turned off."), (off.StatusCode, off.Status.Detail));
@@ -58,6 +59,20 @@ public sealed class PluginPackageTests
         Assert.False(registry.IsEnabled("test.dashboard"));
         await host.Get<PluginActivation>().LoadAsync(CancellationToken.None);
         Assert.True(registry.IsEnabled("test.dashboard"));
+    }
+
+    [Fact]
+    public async Task APackageReportsTheRailGroupOfItsCorePlugin()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var registry = host.Get<PluginRegistry>();
+        registry.RegisterCorePlugin(new CountingCorePlugin("test.ntp") { Group = CorePluginGroup.Servers }, new PluginOrigin("test.ntp", "1.0.0", null) { DisplayName = "NTP" });
+        registry.RegisterCorePlugin(new CountingCorePlugin("test.monitor") { Group = CorePluginGroup.Monitoring }, new PluginOrigin("test.monitor", "1.0.0", null) { DisplayName = "Monitor" });
+
+        var packages = (await host.Plugins.ListPackagesAsync(new Proto.Empty())).Packages;
+
+        Assert.Equal("Servers", packages.Single(p => p.Id == "test.ntp").Group);
+        Assert.Equal("Monitoring", packages.Single(p => p.Id == "test.monitor").Group);
     }
 
     [Fact]
@@ -168,6 +183,8 @@ public sealed class PluginPackageTests
         public Action<CancellationToken>? OnStart { get; init; }
 
         public string Id => id;
+
+        public CorePluginGroup Group { get; init; } = CorePluginGroup.Extensions;
 
         public string DisplayName => id;
 

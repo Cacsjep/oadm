@@ -1563,6 +1563,28 @@
       </ControlTemplate>
     </Setter>
   </Style>
+  <!-- A grouped grid (Plugins page): chevron + the group name (the group key's text), collapsible; the same look as the
+       tag groups without the color -->
+  <Style Selector="DataGrid.groups DataGridRowGroupHeader">
+    <Setter Property="Background" Value="{StaticResource Oadm.CardBackgroundBrush}" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.GridRowHeight}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="Template">
+      <ControlTemplate x:DataType="collections:DataGridCollectionViewGroup">
+        <dgp:DataGridFrozenGrid Name="PART_Root" Background="{TemplateBinding Background}" MinHeight="{TemplateBinding MinHeight}"
+                                ColumnDefinitions="Auto,Auto,Auto,Auto,*" RowDefinitions="*,Auto">
+          <Rectangle Name="PART_IndentSpacer" Grid.Column="1" />
+          <ToggleButton Name="PART_ExpanderButton" Grid.Column="2" Classes="groupExpander" Margin="8,0,0,0" Focusable="False" />
+          <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0,0,0">
+            <TextBlock Classes="groupHeader" Text="{Binding Key}" />
+            <TextBlock Name="PART_PropertyNameElement" IsVisible="False" />
+            <TextBlock Name="PART_ItemCountElement" IsVisible="False" />
+          </StackPanel>
+          <DataGridRowHeader Name="PART_RowHeader" Grid.RowSpan="2" dgp:DataGridFrozenGrid.IsFrozen="True" />
+        </dgp:DataGridFrozenGrid>
+      </ControlTemplate>
+    </Setter>
+  </Style>
   <!-- Expand / collapse of a group: chevron right (collapsed) or down (expanded) -->
   <Style Selector="ToggleButton.groupExpander">
     <Setter Property="Cursor" Value="Hand" />

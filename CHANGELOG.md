@@ -6,6 +6,10 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+### Changed
+
+- The **Plugins** page groups the plugins like the navigation rail: Servers, Automation, Security, Monitoring, Reporting.
+
 ## [2.1.1] - 2026-10-11
 
 ### Fixed
