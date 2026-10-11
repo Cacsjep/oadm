@@ -213,8 +213,11 @@
       <x:Double x:Key="Oadm.FormLabelWidthCompact">120</x:Double>
       <x:Double x:Key="Oadm.FormInputWidth">280</x:Double>
       <Thickness x:Key="Oadm.FieldMessageMargin">0,4,0,0</Thickness>
-      <CornerRadius x:Key="Oadm.CardCornerRadius">16</CornerRadius>
-      <CornerRadius x:Key="Oadm.ControlCornerRadius">8</CornerRadius>
+      <!-- Corner radii as in Microsoft's Fluent geometry: 8 for containers and layers (cards, menus, flyouts), 4 for
+           everything inside a page (buttons, inputs, rows, tiles); round elements keep their own radius. -->
+      <CornerRadius x:Key="Oadm.CardCornerRadius">8</CornerRadius>
+      <CornerRadius x:Key="Oadm.OverlayCornerRadius">8</CornerRadius>
+      <CornerRadius x:Key="Oadm.ControlCornerRadius">4</CornerRadius>
       <CornerRadius x:Key="Oadm.PillCornerRadius">10</CornerRadius>
       <CornerRadius x:Key="Oadm.ProgressCornerRadius">3</CornerRadius>
       <Thickness x:Key="Oadm.CardPadding">20</Thickness>
@@ -1131,7 +1134,7 @@
     <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
     <Setter Property="BorderThickness" Value="0" />
-    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="CornerRadius" Value="3" />
     <Setter Property="MinWidth" Value="28" />
     <Setter Property="Padding" Value="8,4" />
     <Setter Property="HorizontalContentAlignment" Value="Center" />
@@ -1233,12 +1236,12 @@
     <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
     <Setter Property="MinWidth" Value="{StaticResource Oadm.MenuMinWidth}" />
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
-    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.OverlayCornerRadius}" />
   </Style>
   <Style Selector="FlyoutPresenter">
     <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
-    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.OverlayCornerRadius}" />
   </Style>
   <Style Selector="MenuItem">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />

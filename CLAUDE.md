@@ -658,7 +658,7 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   header (core plugin pages, Users, Credentials, About, Settings) is the shared `Controls/PageTitleBar` (title, grey
   side subtitle, trailing content); host pages never repeat the page title in a card heading.
 - Content in rounded cards: background `#181818` (only slightly lighter than the window),
-  corner radius 16, padding 20-24, 16 px gap. The device grid sits in one card, the tasks
+  corner radius 8 (Microsoft Fluent geometry: 8 for cards, menus and flyouts, 4 for buttons, inputs and rows inside a page), padding 20-24, 16 px gap. The device grid sits in one card, the tasks
   pane in a second card below it, separated by a draggable splitter so the user can resize
   the tasks pane; the split is persisted per client.
 - Accent violet `#6C5CE7` (hover `#7D6EF0`), used for selection, progress bars, primary
