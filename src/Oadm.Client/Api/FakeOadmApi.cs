@@ -99,6 +99,11 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         // nothing to reconnect
     }
 
+    public void Reconnect()
+    {
+        // nothing to reconnect
+    }
+
     /// <summary>Simulates the server going away (calls fail with Unavailable, streams break) and coming back.</summary>
     public void SetOnline(bool online)
     {

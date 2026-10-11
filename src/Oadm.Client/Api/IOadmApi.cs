@@ -14,6 +14,9 @@ public interface IOadmApi
     /// <summary>Points the API at a different server. Running streams fail and are re-established by the caller.</summary>
     void SetServerAddress(string address);
 
+    /// <summary>A new connection to the same server (after it could not be reached, or a certificate was trusted).</summary>
+    void Reconnect();
+
     /// <summary>The session token sent as "authorization: Bearer" with every call; null before login.</summary>
     string? AccessToken { get; set; }
 

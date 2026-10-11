@@ -42,6 +42,7 @@ public sealed class LoginTests
 
         public Fixture()
         {
+            LoginViewModel.ConnectFeedback = TimeSpan.Zero; // no visible pause in tests
             Api.ServerAddress.Returns("https://localhost:5080");
             Api.GetAuthStatusAsync(Arg.Any<CancellationToken>()).Returns(new AuthStatus { ServerName = "srv", Version = "1.0" });
             Dialogs.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(ci =>
@@ -156,6 +157,7 @@ public sealed class LoginTests
         Assert.Null(vm.ServerProblem);
         Assert.True(vm.IsFirstAdminMode); // the answer of the server applies, like when the window opens
         Assert.Equal(2, calls);
+        f.Api.Received(1).Reconnect(); // a fresh connection: the failed one would wait out the gRPC reconnect backoff
     }
 
     [Fact]

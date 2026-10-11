@@ -64,6 +64,10 @@ public sealed partial class LoginViewModel : ValidatingViewModel
 
     /// <summary>Raised on the UI thread after a successful login; the app opens the main window.</summary>
     private bool _initialized;
+    private bool _connectionFailed;
+
+    /// <summary>How long "Connecting to ..." shows at least (each Connect again visibly tries again; tests set zero).</summary>
+    internal static TimeSpan ConnectFeedback { get; set; } = TimeSpan.FromMilliseconds(500);
 
     public event EventHandler? LoggedIn;
 
@@ -209,7 +213,7 @@ public sealed partial class LoginViewModel : ValidatingViewModel
             {
                 ApplyStatus(status);
             }
-        }).ConfigureAwait(true);
+        }, ConnectFeedback).ConfigureAwait(true);
     }
 
     private bool CanSubmit() => !IsBusy && Validation.IsValidFor(Fields);
@@ -312,7 +316,7 @@ public sealed partial class LoginViewModel : ValidatingViewModel
             }
             catch (RpcException ex)
             {
-                ServerProblem = UnreachableText(address);
+                ServerProblem = Unreachable(address);
                 LogConnectFailed(_logger, address, ex.Status.Detail);
             }
         }).ConfigureAwait(true);
@@ -352,13 +356,13 @@ public sealed partial class LoginViewModel : ValidatingViewModel
                         CanForgetServer = true;
                         return null;
                     default:
-                        ServerProblem = UnreachableText(address);
+                        ServerProblem = Unreachable(address);
                         return null;
                 }
             }
         }
 
-        ServerProblem = UnreachableText(address);
+        ServerProblem = Unreachable(address);
         return null;
     }
 
@@ -406,7 +410,7 @@ public sealed partial class LoginViewModel : ValidatingViewModel
                 Validation.SetServerError(nameof(UserName), message);
                 break;
             default:
-                ServerProblem = UnreachableText(ServerAddress.Trim());
+                ServerProblem = Unreachable(ServerAddress.Trim());
                 LogConnectFailed(_logger, ServerAddress, message);
                 break;
         }
@@ -445,12 +449,28 @@ public sealed partial class LoginViewModel : ValidatingViewModel
         LoggedIn?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// Points the API at the server. After the server could not be reached a fresh connection is opened: the old one
+    /// waits out the gRPC reconnect backoff (up to minutes) and fails every call at once in that time, so a click on
+    /// Connect again or Log in would seem to do nothing although the server is up now.
+    /// </summary>
     private void PointApiAt(string address)
     {
         _api.SetServerAddress(address);
+        if (_connectionFailed)
+        {
+            _connectionFailed = false;
+            _api.Reconnect();
+        }
     }
 
-    private async Task RunBusyAsync(string text, Func<Task> work)
+    private string Unreachable(string address)
+    {
+        _connectionFailed = true;
+        return UnreachableText(address);
+    }
+
+    private async Task RunBusyAsync(string text, Func<Task> work, TimeSpan minimum = default)
     {
         IsBusy = true;
         BusyText = text;
@@ -458,7 +478,7 @@ public sealed partial class LoginViewModel : ValidatingViewModel
         CanForgetServer = false;
         try
         {
-            await work().ConfigureAwait(true);
+            await Task.WhenAll(work(), minimum > TimeSpan.Zero ? Task.Delay(minimum) : Task.CompletedTask).ConfigureAwait(true);
         }
         finally
         {
