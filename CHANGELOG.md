@@ -6,6 +6,8 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+## [2.0.0] - 2026-10-11
+
 ### Added
 
 - **Event rules** (new page under Automation): IF events THEN actions. Events: device unreachable, credentials required,
@@ -28,6 +30,15 @@ version and date, and the release workflow copies it into the GitHub release.
   each device. Uses the same export and import as the camera's web interface.
 - Image Health Dashboard: count cards above the table for Good, Detected, Pending, Detection off and Errors (app not
   running or camera not reachable).
+- Event rules: the dialog is a wizard (Rule, When, Then, Overview). Devices are chosen in one device picker: the device
+  of the event, all devices, or any mix of tags and single devices (a tag also covers devices tagged later).
+- Device triggers can use all devices and tags too; new and newly tagged devices join by themselves.
+- The event log is on the Event rules page below the rules, with **Delete all** for administrators.
+- Run VAPIX command fills the event's values into the command: type `{carID}` or `{port}` as a field's value.
+- VAPIX Commander: the request body is colored while you type (JSON, XML) and **Reset** starts a new raw request.
+- Import configuration: a separate area **Connection settings** (HTTPS, HTTP port, login method, IEEE 802.1X, IPv6, web
+  interface), off by default and with a warning.
+- Log in: a refresh icon next to the server tries again, e.g. when the server was not running yet.
 
 ### Changed
 
@@ -35,6 +46,23 @@ version and date, and the release workflow copies it into the GitHub release.
 - Cameras with older AXIS OS (8.x, before 8.50) can be added and managed: OADM recognizes them by their login prompt and
   reads what they support from their parameters, so Upgrade firmware, Users, Network settings, Date and time and
   Applications are available for them.
+- Every dialog has a header with its title and a close button, no window title bar; dialogs no longer move or resize.
+- Event rule limits are called **Dead time** and **Flood limit**; their meaning is in an info icon next to the field.
+- Form fields show their error as soon as you leave them, also when they were left empty.
+- Device triggers has a new icon.
+
+### Fixed
+
+- Event rules: one slow device no longer delays the actions of other devices; duplicating a rule with two actions of
+  the same type works; actions wait until the plugins have started; rule states survive a restart.
+- Device triggers: fewer device requests on large sites, no connections left open after turning the plugin off, a
+  refused filter affects only its own trigger.
+- Import configuration no longer copies the multicast addresses of one camera to the others, and one failed settings
+  area no longer stops the rest.
+- I/O Monitor: the live view keeps running after a login or certificate change and after a short connection drop.
+- "Open in new window" opens one window, also after logging out and in again.
+- The device picker keeps a chosen tag that no device has yet.
+- The event log stays live after the connection to the server drops.
 
 ## [1.5.0] - 2026-10-10
 
@@ -169,6 +197,7 @@ version and date, and the release workflow copies it into the GitHub release.
 - The splash logo's lens is centered in its ring.
 - The server publish no longer contains an IIS `web.config` and other unused web files.
 
+[2.0.0]: https://github.com/Cacsjep/oadm/releases/tag/v2.0.0
 [1.5.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.5.0
 [1.4.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.4.0
 [1.3.0]: https://github.com/Cacsjep/oadm/releases/tag/v1.3.0
