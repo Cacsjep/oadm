@@ -1,0 +1,11 @@
+<Project>
+
+  <!-- xunit.runner.visualstudio 4.x adds its own copy of xunit.abstractions.dll (same file, newer timestamp) next to the
+       one xunit's package reference already copies. Both go to the same output file, so every build copied it twice and on
+       Windows the second copy often failed with "access denied" while the virus scanner held the first. The reference
+       copy is enough. -->
+  <ItemGroup Condition="'$(NuGetPackageRoot)' != ''">
+    <None Remove="$(NuGetPackageRoot)xunit.runner.visualstudio\*\build\*\xunit.abstractions.dll" />
+  </ItemGroup>
+
+</Project>
