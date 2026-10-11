@@ -8,7 +8,7 @@ using Proto = Oadm.Contracts.V1;
 
 namespace Oadm.Server.Tests;
 
-/// <summary>Production hardening 3: the key replacement reaches the clients through ServerSettings.key_replaced.</summary>
+/// <summary>"Security and access", master key: the key replacement reaches the clients through ServerSettings.key_replaced.</summary>
 public sealed class KeyReplacedNoticeTests
 {
     private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);

@@ -30,7 +30,7 @@ public sealed record VapixConnectionOptions
     /// <summary>
     /// Also offer Basic authentication over plain HTTP (Digest stays preferred when the device offers it).
     /// Only the add page's automatic login sets this, and only for a device that passed the anonymous
-    /// Axis check (user decision, see "Production hardening" in CLAUDE.md); everything else keeps Basic HTTPS only.
+    /// Axis check (see "Security and access" in CLAUDE.md); everything else keeps Basic HTTPS only.
     /// </summary>
     public bool AllowBasicOverHttp { get; init; }
 }

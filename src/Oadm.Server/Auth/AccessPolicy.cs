@@ -14,7 +14,7 @@ public enum Access
 }
 
 /// <summary>
-/// The role table of the gRPC API (CLAUDE.md "Production hardening", Roles). Everything not listed needs a login
+/// The role table of the gRPC API (CLAUDE.md "Security and access", Roles). Everything not listed needs a login
 /// (Operator); core plugin methods are checked again per method (<c>ICorePlugin.RequiredRole</c>).
 /// </summary>
 public static class AccessPolicy

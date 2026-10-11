@@ -56,7 +56,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<ServerSettingsStore>();
         services.AddSingleton<IPluginSettingsProvider, DbPluginSettingsProvider>();
 
-        // Users, sessions and the audit log (Production hardening: access)
+        // Users, sessions and the audit log ("Security and access" in CLAUDE.md)
         services.TryAddSingleton(_ => new PasswordHasher());
         services.AddSingleton<LoginThrottle>();
         services.AddSingleton<AuthTokenStore>();

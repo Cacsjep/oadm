@@ -3,7 +3,7 @@ using Oadm.Sdk.Plugins;
 namespace Oadm.Plugins.DhcpServer;
 
 /// <summary>
-/// Core plugin "DHCP server" (spec <c>docs/specs/dhcp-server.md</c>): an RFC 2131 DHCP server on one IPv4 interface with
+/// Core plugin "DHCP server" (see the plugin README): an RFC 2131 DHCP server on one IPv4 interface with
 /// a dynamic range, static leases, an in-use probe before offering, a check for other DHCP servers and rate limits.
 /// Settings and leases are stored server side and restored on start; the server starts disabled.
 /// Page backend methods: <see cref="DhcpServerMethods"/>; live events: state and lease changes.

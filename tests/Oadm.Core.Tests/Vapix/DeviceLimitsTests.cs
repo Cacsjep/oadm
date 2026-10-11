@@ -6,7 +6,7 @@ using Oadm.Sdk.Vapix;
 
 namespace Oadm.Core.Tests.Vapix;
 
-/// <summary>Production hardening 4: size limits for device answers and XML.</summary>
+/// <summary>"Security and access", crash handling and limits: size limits for device answers and XML.</summary>
 public sealed class DeviceLimitsTests
 {
     private static readonly Uri Base = new("https://10.0.0.48/");

@@ -8,6 +8,8 @@ must feel at home: same workflows, same information, but our own modern dark Flu
 - Main branch: `main`.
 - Language of UI and code: English.
 
+Every rule here is agreed with the maintainer; change one only after asking.
+
 # Tech Stack
 
 | Area | Choice |
@@ -25,7 +27,7 @@ Cross-platform is a day-one requirement: Windows, Linux, macOS. No Windows-only 
 (no DPAPI, no registry, no WMI). Paths via `Path.Combine`, data folder via
 `Environment.SpecialFolder.LocalApplicationData/Oadm` unless `--Oadm:DataDir=<folder>` or env
 `OADM_DATA_DIR` sets it (the installed services always do, see Packaging). Every release must build on all three
-(CI matrix: `ci.yml` and `package.yml` run only for release tags `v*.*.*`, user decision 2026-10-08) and the server must run as a plain console process on all three.
+(CI matrix: `ci.yml` and `package.yml` run only for release tags `v*.*.*`) and the server must run as a plain console process on all three.
 
 # Packaging
 
@@ -42,11 +44,10 @@ package and runtime pack with license, copyright, project and where it is used (
 license texts from `packaging/notices/licenses/` (MIT, Apache-2.0, BSD-2/3-Clause, OFL-1.1, LGPL-2.1; Apache-2.0,
 LGPL-2.1 and OFL-1.1 always) and the license and notice files the packages ship (root `LICENSE*`/`NOTICE*`/
 `THIRD-PARTY-NOTICES*`, the nuspec license file, `legal/**`), deduplicated by content; a license without a text is a
-warning. `LICENSE.txt`, `NOTICE.txt` (the root `NOTICE`: "Copyright 2026 The OADM contributors", user decision
-2026-10-08; `LICENSE` keeps the Apache appendix template unchanged), `LGPL-2.1.txt` and `TERMS.md` are written next to
+warning. `LICENSE.txt`, `NOTICE.txt` (the root `NOTICE`: "Copyright 2026 The OADM contributors"; `LICENSE` keeps the Apache appendix template unchanged), `LGPL-2.1.txt` and `TERMS.md` are written next to
 each exe too (MSI folders, the .pkg app's `Contents/Resources`, .deb `/usr/share/doc/<package>/`); the About page starts
 its license sentence with the same copyright line.
-**Terms of use** (`/TERMS.md`, user decision 2026-10-08: plain-language disclaimer, "as is", no liability for device
+**Terms of use** (`/TERMS.md`, plain-language disclaimer, "as is", no liability for device
 changes, not affiliated with Axis; text fixed by the user) come before the license everywhere the license is shown:
 MSI license page (`packaging/windows/License.rtf` = TERMS.md then LICENSE, built by `make-ui-assets.py`, accepted as
 before), .pkg license page (productbuild `<license>` from `--resources`, TERMS.md then LICENSE), .deb
@@ -64,7 +65,7 @@ builds the three installers; installs, checks and removes the MSI and the .deb p
 "Client only"; checks the .pkg's choices and payload without installing) -> job `release` (needs both; the GitHub
 release of the tag with the installers and `SHA256SUMS.txt`):
 - **Windows MSI** (WiX Toolset 6 via the `WixToolset.Sdk` MSBuild SDK, `packaging/windows/`, not in
-  Oadm.sln; WiX 7 not used, it requires the OSMF EULA), x64 only (no ARM, user decision 2026-10-08), per machine: `Program Files\OADM\Server`
+  Oadm.sln; WiX 7 not used, it requires the OSMF EULA), x64 only (no ARM), per machine: `Program Files\OADM\Server`
   and `\Client`, Windows service "OADM Server" (`OadmServer`, automatic, LocalSystem, restart on failure,
   `--Oadm:DataDir="%ProgramData%\OADM"`), Start menu shortcut, one firewall rule TCP 5080 for `Oadm.Server.exe`, profiles
   Domain and Private (`Profile="[OADM_FW_PROFILE]"` = 3), fixed UpgradeCode + MajorUpgrade (same version reinstall
@@ -79,7 +80,7 @@ release of the tag with the installers and `SHA256SUMS.txt`):
   maintainer scripts: postinst enables and starts it like dh_installsystemd and works without systemd; prerm stops it;
   data kept even on purge), `oadm-client` (`/opt/oadm/client`, `/usr/bin/oadm-client`, `oadm.desktop` + hicolor icon,
   X11 libraries as Depends); both files in one `apt install` = "Server and client", `oadm-client` alone = "Client
-  only". No metapackage (user decision 2026-10-08: without an apt repository it only added a third file; the `oadm` of
+  only". No metapackage (without an apt repository it only added a third file; the `oadm` of
   0.0.3..1.0.0 is removed on upgrade through `Breaks: oadm`). Both take over the files of the former single package `oadm`
   (`Replaces: oadm (<< 0.0.3~)`, `Breaks: oadm`). Each has `/usr/share/doc/<package>/{copyright,THIRD-PARTY-NOTICES.txt,
   LGPL-2.1.txt}`. Pre-release versions are written `1.2.0~rc.1`. No .rpm.
@@ -95,7 +96,7 @@ release of the tag with the installers and `SHA256SUMS.txt`):
   integrates with the SCM and systemd (`Oadm.Server.Hosting.ServiceHosting`: `AddWindowsService`, `AddSystemd`,
   content root = app folder; no-ops on a console). `ServiceHosting.IsRunningAsService()` (Windows service, systemd, or
   macOS with `OADM_SERVICE=launchd`; `OadmServerHostOptions.ServiceMode` overrides it, tests) switches on the service
-  hardening of "Production hardening / 5": folder checks (`FolderGuard`), netsh firewall rules for plugins, no
+  hardening of "Security and access": folder checks (`FolderGuard`), netsh firewall rules for plugins, no
   development plugin folder. Services set `DOTNET_BUNDLE_EXTRACT_BASE_DIR` to a folder
   only the service account can write (`%ProgramData%\OADM\runtime`, `/var/cache/oadm`,
   `/Library/Application Support/OADM/runtime`), never a shared temp folder.
@@ -103,19 +104,19 @@ release of the tag with the installers and `SHA256SUMS.txt`):
 - Icons: the app icon is `icon/oadm-app-icon-<size>.png` (16-1024); `packaging/icons/make-icons.py`
   builds `oadm.ico` (client exe, MSI, shortcuts), `oadm.icns` (macOS), `oadm.png` / `oadm-256.png` (Linux, window icon of
   every client window) from it.
-Supply chain and security (user decisions 2026-10-09): every GitHub Action is pinned by its full commit hash (the version as
+Supply chain and security: every GitHub Action is pinned by its full commit hash (the version as
 a comment); `.github/dependabot.yml` opens weekly pull requests for the Actions (new hashes) and the NuGet packages
 (grouped: Avalonia, gRPC, Microsoft, Serilog, test packages; ignored: JsonSchema.Net 9+ and WixToolset 7+, whose license
 moved to the OSMF EULA); a vulnerable transitive npm package of the website is pinned with an `overrides` entry in
-`website/package.json` (postcss-selector-parser 7.1.6, 2026-10-11) until its parent updates; Dependabot alerts and security updates, private
+`website/package.json` (postcss-selector-parser 7.1.6) until its parent updates; Dependabot alerts and security updates, private
 vulnerability reporting and secret scanning with push protection are on; `SECURITY.md` says how to report; `codeql.yml`
 runs CodeQL (C#) on pushes to main, pull requests and weekly; `pr.yml` builds and unit-tests every pull request on Linux
-(Timing tests excluded); changes only in `website/` (user decision 2026-10-09) skip CodeQL and the .NET build and tests
+(Timing tests excluded); changes only in `website/` skip CodeQL and the .NET build and tests
 (`pr.yml` still reports its required check, with the steps skipped); rulesets on `main`: no force push or deletion (everyone), changes through a pull request with
 the passing check "tests ubuntu-latest" (administrators bypass); minimal issue templates (bug, feature) and pull request
 template (one line); checkout runs with `persist-credentials: false`, workflow permissions
 are `contents: read` except the release job (`contents: write`).
-Website (user decision 2026-10-09): landing page and user docs in `website/` with Astro Starlight (MkDocs Material is in
+Website: landing page and user docs in `website/` with Astro Starlight (MkDocs Material is in
 maintenance mode), base `/oadm`, published to https://cacsjep.github.io/oadm/ by `pages.yml` on pushes to main that change
 `website/` and after every successful `release` run (`workflow_run`, so the static download links and "What's new in
 vX" match the new release; the browser also re-reads the latest release with `cache: 'no-store'`) (deploy job `pages: write`, `id-token: write`); npm versions pinned exactly, Dependabot npm group `website`;
@@ -191,10 +192,8 @@ docs/                  ADM reference screenshots, protocol notes
 Two processes, like ADM:
 
 - **Oadm.Server** owns the truth: device table, credentials, task table, discovery, polling,
-  plugin execution. Listens on `http://0.0.0.0:5080` (gRPC, h2c) by default, configurable.
-  No authentication in Goal 1. The API is designed so a token/auth interceptor can be added
-  later without changing the service contracts (auth travels in gRPC metadata, never in
-  messages).
+  plugin execution. Listens on `https://0.0.0.0:5080` (gRPC over TLS) by default, configurable. Clients log in; the
+  token travels in gRPC metadata, never in messages (see "Security and access").
 - **Oadm.Client** is a thin UI: no device logic, no VAPIX calls. Everything goes through gRPC.
   It subscribes to `DeviceService.Watch` and `TaskService.Watch` streams (with snapshot end marker; the
   task snapshot is limited to `TaskStore.MaxTasks` = 10,000 plus the active tasks) and keeps an
@@ -210,7 +209,7 @@ Two processes, like ADM:
 
 - Every call needs `authorization: Bearer <token>` in the metadata (plus `oadm-client-machine`), except
   `AuthService.Status`, `Login`, `CreateFirstAdmin`; UNAUTHENTICATED without a valid token, PERMISSION_DENIED for a
-  missing role (`Oadm.Server.Auth.AccessPolicy`, see "Production hardening" 1).
+  missing role (`Oadm.Server.Auth.AccessPolicy`, see "Security and access" 1).
 - `AuthService` (`auth.proto`): `Status` (server name, version, `needs_first_admin`, `setup_code_required` when the
   caller is not loopback), `Login(user, password, remember)` -> {token, UserInfo} (UNAUTHENTICATED one message for
   wrong password / unknown / disabled user, RESOURCE_EXHAUSTED while locked), `CreateFirstAdmin(user, password,
@@ -289,7 +288,7 @@ Two processes, like ADM:
   the status detail is the user message).
 - `FileService`: `Upload` (client stream: header {name, size} then 256 KB data chunks; returns
   id, name, size, SHA-256; INVALID_ARGUMENT, RESOURCE_EXHAUSTED over `Uploads.MaxMegabytes`, over the 10 GB of
-  all uploads together or when less than 1 GB of disk would stay free, see "Production hardening" 4),
+  all uploads together or when less than 1 GB of disk would stay free, see "Security and access" 4),
   `Delete(fileId)`. Uploads live in `<datafolder>/uploads/<id>.bin` + `<id>.json`, are deleted
   after `Uploads.RetentionHours` (checked every 15 min) and reach tasks through `IUploadedFiles`.
 - `PluginService`: `ListCorePlugins` (navigation pages; `CorePluginInfo.no_page = 4` for a core plugin without a page,
@@ -361,7 +360,7 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   (Queued, Running, Done, Failed, Cancelled, DoneWithWarnings), Owner (client machine/user name),
   CreatedUtc, StartedUtc, FinishedUtc, Progress (0-100), PayloadJson (column kept but always NULL:
   payloads may carry secrets and are never persisted; the migration clears old values),
-  ScheduledUtc (nullable, unused in Goal 1). Indexes: CreatedUtc (paging, newest first), BatchId, Status
+  ScheduledUtc (nullable, unused). Indexes: CreatedUtc (paging, newest first), BatchId, Status
   (migration `TaskStatusIndex`: active tasks for startup recovery and every Watch snapshot).
 - `TaskDeviceResult`: TaskId, DeviceId, Status, Message (last progress message, warning or
   error), Progress. Exactly one row per task (proto `TaskInfo.device_id` = its DeviceId).
@@ -399,7 +398,7 @@ is ignored because devices are usually reached by IP address.
 
 # Device Discovery
 
-## Zero-conf: mDNS / Bonjour only (Goal 1)
+## Zero-conf: mDNS / Bonjour only
 
 Browse `_axis-video._tcp.local`. Verified on AXIS OS 12.11: the TXT record has exactly one
 key `macaddress=<SERIAL>`, the instance name is `<Bonjour.FriendlyName> - <SERIAL>`, SRV
@@ -409,8 +408,7 @@ Must work on all three OS and on multiple NICs (bind one socket per interface). 
 page runs at most `Discovery.ZeroConfSeconds` (default 30, 5..300; `DiscoveryService.StartZeroConf(duration)`,
 timer from the server's TimeProvider) or until `StopScan`: browsing stops, the probes already started
 finish, watchers get scan_finished, the devices stay in the session until `Stop`. Without a duration
-(server start, periodic re-find) it runs until stopped. SSDP and WS-Discovery
-are explicitly out of scope for Goal 1.
+(server start, periodic re-find) it runs until stopped. No SSDP or WS-Discovery.
 
 ## Following moved devices
 
@@ -424,9 +422,9 @@ OADM keeps a device managed when its address changes (`Oadm.Core.Devices.DeviceA
   every 5 minutes (first run 30 s after start), only while at least one device is Unreachable and addressed by
   IP, a 15 s zero-conf session looks for those serials; a device announced at another address is verified
   there the same way and moved (`TryRelocateAsync`). This covers DHCP changes, where the new address is unknown.
-- **By a DHCP lease** (user decision 2026-10-08): when the DHCP server plugin ACKs a lease to the MAC (= serial) of a
+- **By a DHCP lease**: when the DHCP server plugin ACKs a lease to the MAC (= serial) of a
   managed device and the address differs from the record, the plugin calls `IDeviceAutoAdd.FollowAsync`
-  (`ICorePluginContext.AutoAdd`, see "DHCP server plugin"): the server verifies the device at the leased address the same
+  (`ICorePluginContext.AutoAdd`, see "DHCP server"): the server verifies the device at the leased address the same
   way and moves it right away, also while the device still counts as reachable (`TryRelocateAsync(..., requireUnreachable:
   false)`; a lease proves the change). Not verified yet (the device is still starting): one retry after 30 s. Logged
   and audited ("Device moved", user "system", "DHCP server: from A to B"). Works whether or not the automatic add is on.
@@ -448,7 +446,7 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
   `/config/rest/virtualhost/v1` and the 401 headers). The client offers Digest only over
   HTTP and Basic or Digest over HTTPS. Basic is never sent over plain HTTP, with one exception: the add
   page's automatic login to a device that passed the anonymous Axis check (`AllowBasicOverHttp`, see
-  "Production hardening" 2).
+  "Security and access" 2).
 - Factory-default check without credentials: `systemready.cgi` returns `needsetup` (yes =
   no admin user yet) and `passphrasepolicy` (none, length, complex).
 - Prefer HTTPS, fall back to HTTP if 443 is closed. Store which scheme worked.
@@ -462,12 +460,11 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
   have no handshake to observe: the full refresh reads the web server certificate over VAPIX instead
   (`WebServerCertificateReader`: SOAP `GetWebServerTlsConfiguration` at `/vapix/services` names it and its CA certificates,
   REST cert v1 `certificates/<alias>` and `ca_certificates/<alias>` return the PEM; AXIS OS 11.11+, read-only, verified on
-  10.0.0.48) and rates it the same way (nothing is pinned); cleared when HTTPS is off or the API is missing (user decision
-  2026-10-08). Cross-platform APIs only.
-- **Old AXIS OS** (verified read-only on an AXIS Q6154-E with 8.40.104, loan camera, 2026-10-10;
+  the development camera) and rates it the same way (nothing is pinned); cleared when HTTPS is off or the API is missing. Cross-platform APIs only.
+- **Old AXIS OS** (verified read-only on an AXIS Q6154-E with 8.40.104;
   `tests/Oadm.Server.Tests/Hardware/OldFirmwareHardwareTests`, opt-in with `OADM_OLD_CAMERA_URL` / `_USER` / `_PASSWORD`):
   no `apidiscovery.cgi` (404, it came with 8.50), no anonymous `getAllUnrestrictedProperties` (401: the Axis check uses the
-  realm, see "Production hardening" 2), no `systemready.cgi`, `time.cgi`, `ntp.cgi`, `/config`; `network_settings.cgi`
+  realm, see "Security and access" 2), no `systemready.cgi`, `time.cgi`, `ntp.cgi`, `/config`; `network_settings.cgi`
   without `getNetworkInfo`. Authenticated `basicdeviceinfo` (incl. Soc), `param.cgi`, `firmwaremanagement.cgi` (1.0),
   `pwdgrp.cgi`, `applications/list.cgi` work. `VapixClient.GetApiListAsync` answers a 404 with `LegacyApiList` from the
   `param.cgi` group `Properties` (param-cgi 1.0 always, fwmgr from `Properties.FirmwareManagement.Version`, application
@@ -476,7 +473,7 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
   and time run; PKI (11.11) and Device configuration (12.5) stay greyed with their reason. Writes on such firmware are not
   tested yet; the discovered row has no model (no anonymous properties); a factory-default 8.x device is not recognized
   (no systemready).
-- Endpoints used in Goal 1:
+- Endpoints of the core:
   - `basicdeviceinfo.cgi` -> SerialNumber, ProdNbr, ProdShortName, Version, HardwareID
   - `param.cgi?action=list&group=Network.BootProto,Network.UPnP.FriendlyName,Network.Interface.I0.dot1x.Enabled,HTTPS.Enabled`
     -> DHCP, UPnP name, 802.1X, HTTPS (`HTTPS.Enabled=yes|no` still exists on 12.x)
@@ -494,7 +491,7 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
 
 # Add Devices Page (fast add, no wizard)
 
-User decision: maximum technician satisfaction. Adding devices is one page, no steps; the server
+Goal: maximum technician satisfaction. Adding devices is one page, no steps; the server
 logs in to every device it finds with the credentials the technician already has.
 
 Toolbar (toolbar plugins, see "Toolbar plugins"): the **Add** menu entries Discovery, Network range, Add manually and
@@ -510,13 +507,13 @@ controls: title bar, one card, footer) in four modes:
   (zero-conf: a new session; range: the same range again; found devices stay, deduplicated by serial; a
   "Checking" of the new search never hides the result or selection of an earlier one). The text then
   says "Scan finished, N devices found" or "Scan stopped, N devices found" ("1 device found"), plus ", M already added" when
-  devices OADM already manages answered: those are not listed at all (user decision 2026-10-08) and not in the summary.
+  devices OADM already manages answered: those are not listed at all and not in the summary.
   Add manually has neither button.
 - **Add manually**: Address input (IP or host name, optional port and scheme,
   `https://camera.example.com:8443`); Enter or Find probes that address (`ProbeAddress`); every
   address adds a row; "No Axis device answered at X." when nothing answers. The entered address
   (host[:port]) becomes the device address on add, regardless of `Devices.UseHostName`.
-- **Import devices** (user decision 2026-10-08, built-in icon button after Add manually, icon download): the
+- **Import devices** (built-in icon button after Add manually, icon download): the
   client asks for a CSV file (open picker through `IDialogService.OpenFileAsync`) and reads it with
   `Discovery/DeviceImportFile` (O(n)): the Export devices CSV or any CSV with an address column (header names
   case-insensitive: Address, IP address, IP, Host name; optional **User name** and **Password**; other columns
@@ -553,7 +550,7 @@ Login failed (error, reason as tooltip), Unreachable (error), Added (ok, row gre
 listed, see above).
 Only addable devices can be checked: authenticated ones, and factory-default ones
 once a first password is entered. **Add** (footer, "Add 3 devices") commits the checked devices
-in one click and the page always closes (user decision: no "Keep open" option).
+in one click and the page always closes (no "Keep open" option).
 Every password field (login editor, first password + confirm) is `ui:PasswordBox` with the eye button.
 
 - **Login failed**: a click on the row or the "Log in" link opens the inline editor below the list
@@ -595,7 +592,7 @@ stored; RetryAuth credentials travel only client -> server and are kept in serve
 credential list when asked). Adding devices is not a task; the first full refresh is queued in the
 background as before.
 
-Automatic add by core plugins (user decision 2026-10-08; the DHCP server's "Automatically add Axis devices that get an
+Automatic add by core plugins (the DHCP server's "Automatically add Axis devices that get an
 address"): the SDK service `IDeviceAutoAdd` (`ICorePluginContext.AutoAdd`, DIM null) is implemented by
 `Oadm.Server.AddDevices.DeviceAutoAddService` on the same code as this page, no second pipeline: `AddAsync(address,
 expectedSerial, source)` runs the anonymous probe (`VapixProbe`; nothing = Unreachable, another serial = SerialMismatch),
@@ -625,7 +622,7 @@ tried in the same run. Unreachable attempts count neither as attempt nor as reje
 Reference: MultiDrive (Avalonia showcase), `docs/style-reference-multidrive.png`, https://multidrive.io/.
 Dark only, calm and spacious, no gradients inside the app (one exception: the soft glow of the start splash).
 
-- Start splash (user decision 2026-10-08, approved mockup `mockups/loading/index.html`): `Shell/SplashWindow` (borderless,
+- Start splash (approved mockup `mockups/loading/index.html`): `Shell/SplashWindow` (borderless,
   520x560, centered) with `Controls/SplashLogo` (the app icon built from seven hexagons: the outer six fly in one after another,
   each drawn as an accent outline that fills; then the center hexagon, the lens ring and the lens opening like an iris; a soft
   glow (`Oadm.SplashGlowBrush`) breathing behind it, one scan line sweep, one lens blink; complete after 2.3 s), the wordmark
@@ -633,27 +630,26 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   (`SplashViewModel`: Starting, Connecting to <server> (+ resuming a remembered login), Loading devices (main streams started,
   waits for the first device list, at most 15 s), Ready). `AppShell.StartupAsync` keeps it at least 2.7 s (logo and wordmark
   complete), then fades it out (0.35 s) and shows the login window (nobody remembered; the login view model is already
-  initialized) or the main window. Log out shows the login window directly, without the splash. Tests: `SplashTests`
-  (headless renders `client-splash-building.png`, `client-splash.png`; the headless render clock follows real time).
+  initialized) or the main window. Log out shows the login window directly, without the splash. Tests: `SplashTests`.
 
 - Window: starts maximized. Custom title bar (ExtendClientAreaToDecorationsHint), app name
   top-left, window buttons top-right, background near-black `#141414`. Caption button hover
   is a neutral grey slightly lighter than the title bar (never the system blue/accent); the
   close button hovers red like Windows. No connection indicator in the title bar; a banner
   appears only while the server is unreachable.
-- Left navigation rail: expanded by default (user decision 2026-10-08; collapsed: icons only, ~56 px, tooltips with the label),
+- Left navigation rail: expanded by default (collapsed: icons only, ~56 px, tooltips with the label),
   expand/collapse toggle at the bottom of the rail; expanded ~220 px with icon + label.
-  Selected item as rounded pill `#2A2A2A`. Plugin pages (not host pages, user decision 2026-10-10) have a context menu
+  Selected item as rounded pill `#2A2A2A`. Plugin pages (not host pages) have a context menu
   **Open in new window** on their rail entry: the plugin creates another, independent view (own context, streams, state)
-  shown in `Shell/PluginWindow` (an empty title bar: the page header names the page, user decision 2026-10-11; window title
+  shown in `Shell/PluginWindow` (an empty title bar: the page header names the page; window title
   "<page> · OADM" for the task bar; page padding, not modal, as many as wanted); the windows close
   with the main window, on logout and when the plugin is turned off; a closed window (or a removed rail page) disposes its
   page: the plugin context drops every `DevicesChanged` subscription and the view's DataContext is disposed when it is
   `IDisposable`; the main window unsubscribes from the shell view model when it closes (a new main window per login) (`MainWindowViewModel.PluginWindowRequested` /
-  `ClosePluginWindowsRequested`; tests `PluginWindowTests`, headless `client-plugin-window.png`). Entries top: Devices, then one per Core plugin
+  `ClosePluginWindowsRequested`; tests `PluginWindowTests`). Entries top: Devices, then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (VAPIX
   Commander, Device triggers), Security (PKI, Hardening scan), Monitoring (Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
-  no page), Maintenance, Integrations, Utilities, Extensions (default, third-party); user decision 2026-10-08): only groups
+  no page), Maintenance, Integrations, Utilities, Extensions (default, third-party)): only groups
   with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
   each group, collapsed = a separator at each group start. Pinned bottom, top to bottom: Users, Credentials and Plugins (Admin only: hidden for operators, follow the session
   role live), Logs, Settings, About (icons `users`, `key`, `plugin`, `logs`, `settings`, `info`), then the logged-in user (an initial
@@ -673,14 +669,14 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   tasks, task steps, logs, add page, plugin dialogs) use `ui:StatusChip` = a small icon colored
   by the status (check ok green, warning amber, error red, running violet and spinning, information blue "i" (`IsInfo`,
   something happened, nothing to check), neutral grey) with plain text in the normal text color to its right, plus optional detail text
-  (e.g. the error message). Colour marks exceptions (layout review 2026-10-08): the device grid's first-column
+  (e.g. the error message). Colour marks exceptions: the device grid's first-column
   device icon is neutral for OK and colored only for warning and error statuses, the Status column is plain text, and
   certificates that are fine (more than 30 days left, Trusted) are plain text without an icon. Tasks pane: the Status column shows only the
   colored icon, with the error or warning message right of it when there is one; finished tasks
   show no progress bar. Count badges stay a small solid violet pill.
 - Window chrome: title bar and caption buttons are 32 px high (caption buttons 46x32), exactly
-  like the Windows default. Main window minimum size 1800x720 (user decision 2026-10-08).
-- Dialogs (user decision 2026-10-11, every dialog window incl. `ui:MessageWindow`, the device picker and the login
+  like the Windows default. Main window minimum size 1800x720.
+- Dialogs (every dialog window incl. `ui:MessageWindow`, the device picker and the login
   window): no system title bar (`WindowDecorations="BorderOnly"`); the first row is `ui:DialogTitleBar`, the title as a
   heading and an X top right that closes the window, aligned with the content. Modal, not movable and fixed size
   (`CanResize="False"`: a resizable border-only window shows a white resize strip on top on Windows), like a dialog on a
@@ -703,7 +699,7 @@ Layout, top to bottom:
    window, live view open) move into a **More** menu (icon `more`, right of the toolbar). Right-aligned: the AXIS OS
    release notes link (icon only, toolbar controls with the class `trailing` go here), **Group by tag** icon button (icon
    `groupBy`, class `active` while on), Columns icon button (tooltip "Choose columns") and search box (host parts);
-   everything fits on one line at the 1800 px minimum window width with the rail expanded and the live view closed. User decisions 2026-10-08: one primary **Add** button with a menu Discovery (zero-conf scan), Network range,
+   everything fits on one line at the 1800 px minimum window width with the rail expanded and the live view closed. One primary **Add** button with a menu Discovery (zero-conf scan), Network range,
    Manual, Import from file instead of four buttons; every toolbar entry is a button with text (only Columns, Group by tag
    and the release notes link are icons). The empty Devices page shows a primary **Add devices** button with the same
    menu.
@@ -712,10 +708,10 @@ Layout, top to bottom:
    client, horizontal scroll, multi-select, right-click context menu: the core actions (Open web
    interface, Refresh, **Log in**, **Set password**, **Tags**), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
    by name, with a group icon: Applications app, Maintenance settings, Network network, Security key,
-   Users users, Video video, others plugin; a group is a submenu even with one entry, user decision)
+   Users users, Video video, others plugin; a group is a submenu even with one entry)
    holding **every** menu Task plugin (`ShowInMenus`), sorted by name, with their icons. A plugin whose `CanRun` is
    false for any selected device stays visible but **disabled** (theme's disabled menu look) with the reason as tooltip
-   (`ToolTip.ShowOnDisabled`; user decision 2026-10-08): one device the plugin's text, e.g. "Needs AXIS OS 11.11 or
+   (`ToolTip.ShowOnDisabled`): one device the plugin's text, e.g. "Needs AXIS OS 11.11 or
    later (this device has 11.9.65)"; several devices the most common reason without the device detail and how many of
    the selected devices it concerns, plus the number of other reasons ("Needs AXIS OS 11.11 or later: 3 of 5 selected
    devices (+1 other reason)", `TaskPluginCatalog.NotRunnableReason`, O(selection)); a group whose entries are all
@@ -723,9 +719,8 @@ Layout, top to bottom:
    of an open submenu stays highlighted. Entries never end with "..." (the host appends none and strips "..." / "…" defensively,
    `TaskPluginNames.Normalize`). Menus and submenus are at least `Oadm.MenuMinWidth` (240) wide (theme).
    The toolbar task buttons have no groups; one the selection cannot run is disabled with the same reason as tooltip
-   (`IToolbarContext.CannotRunTaskReason`; no tooltip without a selection). Headless screenshot
-   `client-context-menu-unsupported.png`.
-   **Log in** (icon `key`, user decision 2026-10-08) is shown only while the selection holds a device with status
+   (`IToolbarContext.CannotRunTaskReason`; no tooltip without a selection).
+   **Log in** (icon `key`) is shown only while the selection holds a device with status
    Credentials required (not Password not set: "Set password" below) and follows the status live; it
    applies to those devices of the selection. A rejected stored credential only shows as that status (polling), there
    are no automatic retries. Dialog `Devices/DeviceLoginWindow` (`DeviceLoginViewModel`, single operation:
@@ -739,8 +734,8 @@ Layout, top to bottom:
    10.0.0.48, 10.0.0.49" (other reasons: "2 of 3 devices failed: 10.0.0.48 (wrong user name or password), 10.0.0.49
    (Unreachable - ...)", at most 5 named, "+N more"). Fake mode accepts every password except "wrong" (10.0.0.23 is
    Credentials required). Tests: `tests/Oadm.Server.Tests/DeviceLoginTests` (+ Perf 5,000 devices in one call),
-   `tests/Oadm.Client.Tests/DeviceLoginTests` (headless `client-device-login.png`, `client-device-login-failed.png`).
-   **Set password** (icon `lock`, user decision 2026-10-08) is shown only while the selection holds a device with status
+   `tests/Oadm.Client.Tests/DeviceLoginTests`.
+   **Set password** (icon `lock`) is shown only while the selection holds a device with status
    Password not set (e.g. added by the DHCP server's automatic add) and follows the status live; it applies to those
    devices. Dialog `Devices/DeviceSetPasswordWindow` (`DeviceSetPasswordViewModel`, single operation, 460 px, like the add
    page's first-password editor): "10.0.0.40 (AXIS F9111) has no password yet (factory default)." / "3 devices have no
@@ -751,8 +746,7 @@ Layout, top to bottom:
    call with the `ui:ProgressRow`; all took it: the dialog closes; otherwise those devices leave the dialog and the result
    stands below the password ("1 of 3 devices failed: 10.0.0.41 (The device already has a password. Nothing was
    changed)"). Fake mode sets it in memory (10.0.0.40 is Password not set, policy "complex"). Tests:
-   `tests/Oadm.Server.Tests/SetFirstPasswordTests`, `tests/Oadm.Client.Tests/DeviceSetPasswordTests` (headless
-   `client-set-password.png`).
+   `tests/Oadm.Server.Tests/SetFirstPasswordTests`, `tests/Oadm.Client.Tests/DeviceSetPasswordTests`.
    **Tags** (icon `tag`, one or many devices) opens the Tags dialog, see "Device tags".
 5. Resizable, collapsible bottom pane **Tasks** (no tabs), one row per task (= per device).
    Columns: Name (3*, min 260 px), Device (110 px), Status (3*, min 280 px: icon plus message), Current step, Start time, Owner, Progress (bar).
@@ -780,7 +774,7 @@ streaming comes later.
 
 Clicking the device icon (first grid column) of a video device opens the live video in a panel
 on the right of the device card, inside the main window, so nobody has to log in to the camera
-web UI. Reference screenshot: headless `client-liveview.png`.
+web UI.
 
 - Panel: reusable `Controls/LiveViewPanel` in a card next to the device card (about 65 : 35,
   resizable with the vertical `paneSplitter`; the device card keeps at least 900 px, toolbar entries that do not fit go
@@ -798,7 +792,7 @@ web UI. Reference screenshot: headless `client-liveview.png`.
   `Image.I<n>.Name` (view areas on single-sensor cameras, sensors and quad view on multisensor
   cameras, inputs on encoders). With more than one source the header shows a segmented switch
   ("1 2 ...", tooltip = name); switching restarts the stream with `camera=<n>`; the choice is
-  remembered per device for the client session. 10.0.0.48 reports one sensor
+  remembered per device for the client session. The development camera (AXIS P3265-V) reports one sensor
   (`ImageSource.NbrOfSources=1`), 8 view areas, of which "View Area 1" (full frame) and
   "View Area 2" (cropped) are enabled.
 - Transport: the server opens RTSP/1.0 over TCP to port 554 with RTP interleaved on the same
@@ -810,7 +804,7 @@ web UI. Reference screenshot: headless `client-liveview.png`.
 - Negotiation: H.265 > H.264 among the codecs the camera lists in `Properties.Image.Format` and
   the client can decode; when opening a codec fails the next is tried. No MJPEG. Resolution: the
   largest of the source's resolutions with the sensor aspect that fits the requested box (default
-  1920x1080), always 25 fps (user decision: full HD at 25 fps decodes in software on any current PC or
+  1920x1080), always 25 fps (full HD at 25 fps decodes in software on any current PC or
   laptop).
 - Sharing: one upstream camera connection per (device, camera, codec, resolution, fps) shared by
   all viewers, opened on the first and closed when the last viewer leaves. A joining viewer gets
@@ -824,9 +818,9 @@ web UI. Reference screenshot: headless `client-liveview.png`.
   1, 2, 4, 8, 10 s; permanent errors (unknown device, credentials, no common codec, certificate
   changed) stop with the server's message. If FFmpeg cannot be loaded the panel shows
   "Video decoder not available on this platform" (no fallback).
-- Fake mode replays recorded 10.0.0.48 video (H.265 or H.264) and reports two view areas for the
+- Fake mode replays recorded video of the development camera (H.265 or H.264) and reports two view areas for the
   P3265-V and four sensors plus quad view for the P3727-PLE.
-- Measured on 10.0.0.48 at 640x360, 10 fps: first frame 0.3-0.6 s after the request through the
+- Measured on the development camera at 640x360, 10 fps: first frame 0.3-0.6 s after the request through the
   server; about 160-250 kbit/s for both H.264 and H.265 (scene dependent, keyframe every second).
 
 Device grid columns, default order (Address first: installers find a device by address and model; the column chooser
@@ -840,7 +834,7 @@ and the saved per-client order cover other preferences):
 | Status | computed, see enum |
 | MAC address | SerialNumber from basicdeviceinfo |
 | Firmware | Version |
-| SoC | basicdeviceinfo `Soc` (status poll and full refresh), shown in Axis spelling: "Axis Artpec-8" = "ARTPEC-8", other chips as reported (`DeviceSocText`); empty until read; in the search and the export (user decision 2026-10-10) |
+| SoC | basicdeviceinfo `Soc` (status poll and full refresh), shown in Axis spelling: "Axis Artpec-8" = "ARTPEC-8", other chips as reported (`DeviceSocText`); empty until read; in the search and the export |
 | Tags | the device's tags as chips (`c:TagChipList`, `Border.tagChip`: the name in the tag color on a subtle pill), "+N" when they do not fit, tooltip with every tag; sorted by "Building A; PTZ" |
 | DHCP | Network.BootProto == dhcp -> Yes/No |
 | HTTPS | HTTPS enabled -> Enabled/Disabled |
@@ -863,7 +857,7 @@ client).
 
 # Device tags
 
-Built-in feature (not a plugin), user decisions 2026-10-08. Technicians label devices ("Building A", "PTZ") and work
+Built-in feature (not a plugin). Technicians label devices ("Building A", "PTZ") and work
 with the labels in the grid, the search, the export and the import; plugins read them through `IDeviceInfo.Tags`.
 
 - **Definitions**: a name (1..32 characters, trimmed, unique case-insensitive, no ";" and no control characters) and a
@@ -888,7 +882,7 @@ with the labels in the grid, the search, the export and the import; plugins read
   name order and "No tag" last, header "● Building A · 42 devices" in the tag color (theme style
   `DataGrid.tagGroups DataGridRowGroupHeader`, chevron expander `ToggleButton.groupExpander`); the Tags column is hidden
   while grouping (the group header names the tag). **A device with several tags
-  appears under every one of them** (user decision): the rows are `DeviceTagRow` wrappers (device x tag, `Tags/
+  appears under every one of them**: the rows are `DeviceTagRow` wrappers (device x tag, `Tags/
   DeviceTagGrouping`), grouped by Avalonia's `DataGridCollectionView` with the groups as explicit `GroupKeys` (so the group
   order stays when the user sorts a column; sorting works within the groups). Every grid column binds through
   `IDeviceGridItem.Row`, so device rows and wrappers share the columns. The grid selection goes to `SelectedGridItems`;
@@ -903,30 +897,28 @@ with the labels in the grid, the search, the export and the import; plugins read
   color. A tag longer than 32 characters is the line's problem.
 - **Fake mode**: Building A (blue), Building C (green), PTZ (amber), Outdoor (teal) on the sample devices; every
   `TagService` call works in memory (`FakeOadmApi.Tags.cs`).
-- **Tests**: `tests/Oadm.Server.Tests/TagServiceTests` (create, validation, uniqueness, SetDeviceTags add / remove /
-  created definitions / 20-tag limit with rollback, rename and delete rewrite devices, legacy names, Watch, roles,
-  audit) + Perf `TagScaleTests` (5,000 devices: SetDeviceTags 4.4 s, rename 2.2 s, delete 2.0 s, list 35 ms);
-  `tests/Oadm.Client.Tests/DeviceTagsTests` (store, rows, search, dialog three states, validation, admin-only actions,
-  group mode rows and distinct selection, export / import, fake mode), `DeviceTagsHeadlessTests` (headless
-  `client-tags-column.png`, `client-tags-group-mode.png`, `client-tags-dialog.png`), Perf `TagGroupScaleTests`.
+- **Tests**: `tests/Oadm.Server.Tests/TagServiceTests` + Perf `TagScaleTests` (5,000 devices: SetDeviceTags 4.4 s, rename
+  2.2 s, delete 2.0 s, list 35 ms); `tests/Oadm.Client.Tests/DeviceTagsTests`, `DeviceTagsHeadlessTests`, Perf
+  `TagGroupScaleTests`.
 
 # Event rules
 
-Built-in feature (not a plugin), user decisions 2026-10-10, spec `docs/specs/event-rules.md`: "IF events THEN actions".
+Built-in feature (not a plugin): "IF events THEN actions".
 Events and actions come from plugins (SDK `Oadm.Sdk.Events`, `Oadm.Sdk.Actions`), the server keeps the rules, evaluates
 them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventService` (`events.proto`), client
 `EventRules/`.
 
 | Topic | Decision |
 |---|---|
-| Built-in events | Only what OADM already knows (`BuiltInEvents`, stateful per device): Device unreachable, Credentials required, Certificate changed (device status from polling), Certificate expires soon (30 days or less, fixed), Certificate expired (rechecked hourly). Every other device event comes from the opt-in plugin **Device triggers** (any event a device offers, see "Device triggers"; user decision 2026-10-10: also the AXIS Image Health Analytics detections, the Image Health Dashboard is a live display only). |
+| Built-in events | Only what OADM already knows (`BuiltInEvents`, stateful per device): Device unreachable, Credentials required, Certificate changed (device status from polling), Certificate expires soon (30 days or less, fixed), Certificate expired (rechecked hourly). Every other device event comes from the opt-in plugin **Device triggers** (any event a device offers, see "Device triggers"; also the AXIS Image Health Analytics detections, the Image Health Dashboard is a live display only). |
 | Kinds | Stateful (on / off per device or for the server) or stateless (one shot). Off is the default; a stateful source sends one full report (`ReplaceStates`) per type after every start ("ready"), then `SetState` per change or `ReplaceStates` again; a source that is turned off counts as everything off. |
 | Simple mode | Conditions must all hold. The first is the trigger ("When": an event, devices All / chosen / tags); further ones ("And") are stateful events (on "the same device", or "any" of All / chosen / tags) or schedules (weekdays + from / to in server time, over midnight allowed). Only the trigger may be one-shot. Advanced AND / OR later on the same model. |
 | Rule state | All events stateful: the rule is on per subject (the trigger's device, or the server) while all conditions hold. One-shot trigger: the rule fires while the others hold. |
 | Actions | One to five per rule, run in the listed order on each edge, each on its targets in parallel (16 at once for all rules, 30 s per run); a failure is logged and the next one runs; no retry. Edges run in order per rule and subject (a "turns off" never overtakes its "turns on"; edges with actions on chosen / tag / all devices also in order among themselves); different devices never wait for each other. Targets: the device of the event, chosen devices, devices with tags, all devices. Actions on chosen / tag / all devices run when the first subject turns on and when the last one turns off; actions on the event's device and actions without devices run per subject. |
-| Limits | Per rule, editable (user decision 2026-10-11, security names): **Dead time** per device (default 10 s between two "turns on"), **Max per minute** (default 60 runs per minute for the whole rule; user decision 2026-10-11, was "Flood limit"); a suppressed "turns on" also suppresses its "turns off"; "Rule paused" logged once a minute. |
+| Limits | Per rule, editable (security names): **Dead time** per device (default 10 s between two "turns on"), **Max per minute** (default 60 runs per minute for the whole rule); a suppressed "turns on" also suppresses its "turns off"; "Rule paused" logged once a minute. |
 | Changes | Turning off, changing or deleting a rule that is on runs its off actions first; a changed rule is then evaluated fresh. A removed device goes off. A plugin turned off: its events go off, rules show "Not available: <plugin> is turned off". |
-| Restart | The subjects each rule was on for are stored (`EventRuleStates`); a rule is evaluated once every event type it uses is ready (or after 2 minutes); only real differences run actions. |
+| Loops | Actions never fire events themselves; a device an action changes may send an event later, which the dead time keeps bounded. |
+| Restart | The subjects each rule was on for are stored (`EventRuleStates`); a rule is evaluated once every event type it uses is ready (or after 2 minutes); only real differences run actions; one-shot events missed while the server was down are not replayed. |
 | Roles | Administrators create, change, copy, turn on / off and delete rules (audited "Created / Changed / Deleted / Turned ... event rule"); operators read rules and the log. |
 | Log | Own event log (`EventLogEntries`), never tasks: events a rule uses, rule edges, every action run with its result; 30 days or 100,000 entries (`Events.LogRetentionDays`, `Events.LogMaxEntries`, hourly). |
 
@@ -940,8 +932,8 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   `ActionInvocation.GetPairs`); `VisibleWhenValue` may list several values "basic|digest"), `Validate`, `Describe`,
   `RunsOn(edge)`, `ExecuteAsync(IActionContext, ActionInvocation)`; `IActionContext` gives a pre-authenticated `Vapix` for
   the target, the plugin's settings, `Log` and `Text(text)` / `Text(text, PlaceholderEscape)` (None, Json, Xml, Url: each
-  value escaped for the format it goes into, user decision 2026-10-11). The placeholders are one list,
-  `Oadm.Sdk.Actions.ActionPlaceholders.Fixed` (user decision 2026-10-11: everything OADM knows): {rule} {event} {state}
+  value escaped for the format it goes into). The placeholders are one list,
+  `Oadm.Sdk.Actions.ActionPlaceholders.Fixed` (everything OADM knows): {rule} {event} {state}
   {time} {date} {timeUtc}, device {device} {address} {hostName} {model} {serial} {mac} {firmware} {category} {tags}
   {status} {webUrl} (the action's device, else the event's device), then every value of the event by its name; filled in
   one pass (`ActionPlaceholders.Fill`: a value holding "{x}" is never filled again, unknown names stay). The client draws the settings form from `Fields` (`ActionSettings` checks
@@ -971,7 +963,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   limits, with "sample" (or the first listed value) for every value of the trigger and the trigger's first chosen device as
   the device of the event; empty passwords take the stored ones of the rule's action; nothing in the event log; reply ok +
   message).
-- **Notifications** (user decisions 2026-10-11, bundled always-on package `oadm.notifications`,
+- **Notifications** (bundled always-on package `oadm.notifications`,
   `plugins/Oadm.Plugins.Notifications`, server only, plugin `README.md`): **Send HTTP request** (method, URL, query and
   header rows, login None / Basic / Digest / Bearer token, body type None / JSON / XML / Text / Form in the code editor,
   "Allow untrusted certificates", timeout, success = 2xx) and **Send email** (MailKit; mail server, port, STARTTLS / TLS /
@@ -983,33 +975,31 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   = state differs from the normal state; inputs refused; the log names the port, "Output 1 (RELAY) active") when listed,
   else `port.cgi` (`action=n:/`, `n:\`, `n:/ms\` (answers after the pulse: the action asks for the pulse + 15 s through
   `IActionPlugin.MaxRunTime`), `checkactive=n` for Toggle; `checkoutput` is refused by the A9210). Output n = port "n-1".
-  Verified with the opt-in `OutputHardwareWriteTests` (`OADM_OUTPUT_WRITE_URL` / `_USER` / `_PASSWORD` / `_PORT`) on a loan
-  AXIS A9210 (AXIS OS 12.10.73.2, io-port-management 1.1, output 1 = RELAY), every mode on both APIs, 2026-10-10. **Run VAPIX command** (contributed by VAPIX
+  Verified with the opt-in `OutputHardwareWriteTests` (`OADM_OUTPUT_WRITE_URL` / `_USER` / `_PASSWORD` / `_PORT`) on an
+  AXIS A9210 (AXIS OS 12.10.73.2, io-port-management 1.1, output 1 = RELAY), every mode on both APIs. **Run VAPIX command** (contributed by VAPIX
   Commander, available while it is on): a saved command (stored values and passwords) or a library command whose fields all
   have defaults, optional second command when the rule turns off, "Allow dangerous commands" required for dangerous ones;
-  device safety like a rollout (cached API list, fresh one before a write). The event's values reach the command (user
-  decision 2026-10-11): a text field of the saved command whose value holds placeholders ("{carID}", "{port}", "{device}")
+  device safety like a rollout (cached API list, fresh one before a write). The event's values reach the command: a text field of the saved command whose value holds placeholders ("{carID}", "{port}", "{device}")
   is filled before the field checks and the send (`RunCommandAction.FillEventValues`; passwords never). Event type
   descriptions list their values one per line ("Values:" then "• {name}"), shown in the info icon of the rule dialog.
 - **Client**: rail page **Event rules** (key `HostPages.EventRules`, icon `zap`, group Automation before the plugin pages of
   that group; `EventRulesViewModel` + `EventRulesView`): rules on top, the **Event log** card below with a splitter, like the Devices
-  page and its tasks (user decision 2026-10-11, no tabs). **Rules** (toolbar New rule first, Edit, Duplicate,
+  page and its tasks (no tabs). **Rules** (toolbar New rule first, Edit, Duplicate,
   Delete (red, confirmed); search on the right; grid On check box (administrators), Name, When, Then, State chip (On ok, waiting accent, problem
   warning), Last run; double click edits; search; status "3 rules · 2 turned on · 1 active now"; live through
   `WatchRules`) and **Event log** (title, Refresh, **Delete all** (administrators, red, confirmed; gRPC `ClearLog`, audited
   "Cleared event log"), search, virtualized grid Time, Type, What, Device, Rule, Result chip + message (events and rule edges
   the blue info icon, Done ok, Failed error, Skipped warning; a skip message does not repeat "Skipped");
   newest 10,000, live through `WatchLog`, read and watched again after a drop with the rules' backoff (1, 2, 4 ... 15 s);
-  errors of rule actions stand below the rules list, errors reading the log below the log). Rule dialog `RuleEditorWindow` (`RuleEditorViewModel`), a wizard (user decision 2026-10-11) with
+  errors of rule actions stand below the rules list, errors reading the log below the log). Rule dialog `RuleEditorWindow` (`RuleEditorViewModel`), a wizard with
   the steps as a segmented switch (a step opens when every step before it is complete): **1 Rule** (Name and Turned on in
   one row, Limits), **2 When** (Conditions: "When" / "And" rows, Add event, Add schedule, day toggles), **3 Then** (Actions:
   "Then" rows: action, On (targets), the settings form (code fields in `ui:CodeEditor`, name / value rows with Add and
   remove icons, every setting `FormField.wide`), move up / down, remove; actions without devices have **Send test** with
-  the result chip next to it (`TestAction`); Add action up to five; right of the actions the **Placeholders** card (user
-  decision 2026-10-11: a list with copy buttons): "Event: <trigger>" with the trigger's values, then Rule and Device from
+  the result chip next to it (`TestAction`); Add action up to five; right of the actions the **Placeholders** card (a list with copy buttons): "Event: <trigger>" with the trigger's values, then Rule and Device from
   `ActionPlaceholders.Fixed`, each "{name}" + a short description + a copy icon; window 1160 wide), **4 Overview** (one
   short line per part: Name, State, When, And, Then, Limits; Save). Footer Back / Next (disabled with the step's first
-  problem as tooltip) and Save on the overview. The devices of a condition or an action have no mode drop-down (user decision 2026-10-11): one purple
+  problem as tooltip) and Save on the overview. The devices of a condition or an action have no mode drop-down: one purple
   button that says what is chosen ("Choose devices" while nothing is, else "Selected devices: All" / "Selected devices: Tag
   Building A and 3 devices", `DeviceSelectorTexts.Brief`; the addresses as tooltip; the same button in the trigger editor)
   opens the shared `DevicePickerWindow` with every option (`DevicePickerOptions.Full`): "The same device" / "The
@@ -1019,13 +1009,9 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   or tag"). The limits are **Dead time (s)** and **Max per minute** with their explanation in an info icon
   (`FormField.Info`); errors below their field; a server refusal below the overview. Fake mode (`FakeOadmApi.Events.cs`): catalog, three sample rules,
   a sample log.
-- **Tests**: `tests/Oadm.Core.Tests/Events` (engine edges per device and aggregate, same / any device conditions, schedule
-  with a fake clock, one-shot triggers, cooldown and runs per minute, rule off / change / delete, built-in device and
-  certificate events, removed device, ready wait and timeout, restart, plugin turned off, action order and failures,
-  refused device status, server-wide events, tags, secrets, copy, validation, summaries, log retention, schedules over
-  midnight), `tests/Oadm.Plugins.Outputs.Tests`, `RunCommandActionTests` (VAPIX Commander),
-  `tests/Oadm.Client.Tests/EventRulesTests` (page, roles, log, dialog, 5,000 devices; headless `event-rules-page.png`,
-  `event-rules-editor.png`, `-when.png`, `-then.png`, `-overview.png`, `event-rules-editor-errors.png`).
+- **Tests**: `tests/Oadm.Core.Tests/Events` (the engine with a fake clock), `tests/Oadm.Server.Tests/EventServiceTests`,
+  `tests/Oadm.Plugins.Outputs.Tests` (+ opt-in `OutputHardwareWriteTests`), `tests/Oadm.Plugins.Notifications.Tests`,
+  `RunCommandActionTests` (VAPIX Commander), `tests/Oadm.Client.Tests/EventRulesTests` (5,000 devices).
 
 # Tasks
 
@@ -1078,7 +1064,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   (the message survives as the device result). Payloads are never persisted or logged.
 - Task log: `ctx.Log(level, message)`, warnings, failures, precondition errors and credential
   changes; live from memory while the task runs (`GetLog`), from TaskLogEntries afterwards.
-- Scheduling, retry and recurrence are out of scope for Goal 1.
+- No scheduling, retry or recurrence.
 
 # Plugin System
 
@@ -1098,209 +1084,61 @@ Two kinds of plugins, one packaging format, one loader.
 
 ## SDK (Oadm.Sdk, no UI dependencies)
 
-```csharp
-public interface IPlugin
-{
-    string Id { get; }                 // "oadm.restart", "oadm.ntp"
-    string DisplayName { get; }            // task plugins: max 32 chars (TaskPluginNames.MaxDisplayNameLength), no trailing "..."
-    string? IconKey { get; }
-}
+The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugins/Plugins.cs`,
+`src/Oadm.Sdk/Plugins/TaskSteps.cs`, `src/Oadm.Sdk/Devices/IDeviceInfo.cs`; usage and samples in `plugins/README.md`.
+New members are default interface members (DIM), so older plugins keep loading; a DIM that the host does not offer
+returns null or throws `NotSupportedException`.
 
-public interface IDeviceInfo          // read-only device view for plugins
-{
-    Guid Id { get; }
-    string Serial { get; }
-    string Address { get; }
-    string? HostName { get; }
-    string? Model { get; }
-    string? FirmwareVersion { get; }
-    DeviceStatus Status { get; }
-    DeviceCategory Category { get; }   // Camera, Speaker, Radar, IoModule, ...
-    bool HasVideo { get; }             // filter in CanRun, e.g. snapshot only for video devices
-    IReadOnlyList<DeviceApi> Apis { get; }   // apidiscovery list of the last full refresh
-    string? CredentialUserName => null;      // user OADM stores for the device (server side), never the password
-    DateTime? CertNotAfterUtc => null;       // HTTPS certificate end of validity (server side)
-    string? CertTrustName => null;           // "Trusted", "SelfSigned", "Untrusted", "Expired"; null unknown/HTTP
-    bool? DhcpEnabled => null;               // device table values (server and client rows); null = not known
-    bool? HttpsEnabled => null;
-    bool? Dot1xEnabled => null;
-    IReadOnlyList<string> Tags => [];        // the device's tag names (sorted), server and client; colors are not in the SDK
-}
+- `IPlugin`: `Id` ("oadm.restart"), `DisplayName`, `IconKey`.
+- `IDeviceInfo`: the read-only device view for plugins (server and client): id, serial, address, host name, model,
+  firmware, status, category, `HasVideo`, `Apis` (API list of the last full refresh), `CredentialUserName` (never a
+  password), certificate end and trust, `DhcpEnabled` / `HttpsEnabled` / `Dot1xEnabled` (null = not known), `Tags`.
+- `ITaskPlugin`: `Group` (context menu submenu, `TaskGroups`), `ShowInToolbar`, `RequiresDialog`, `CanRun` (cached data
+  only) and `NotSupportedReason` (only when `CanRun` is false: plain language, what is missing and what to do, a device
+  detail last as " (this device ...)"; empty or throwing = "Not supported on this device"; helpers `TaskSupportReasons`),
+  `MaxParallelDevices` (only lowers the setting), `ShowInMenus` (false: started by its core plugin only), `GetTaskName`
+  (see Tasks), `ExecuteAsync`. Optional `ITaskPluginQuery.QueryAsync`: read-only reads for the dialog
+  (`ITaskQueryContext.Devices`: every managed device).
+- `ICorePlugin`: `TaskPlugins` (contributed tasks), `StartAsync` / `StopAsync`, `InvokeAsync` (the page backend),
+  `HasPage` (false: no rail entry), `Group` (`CorePluginGroup`: the rail group), `RequiredRole` / `IsAudited` per method.
+- `ITaskExecutionContext`: `Vapix` (pre-authenticated for the device), `Logger`, `Owner` (the contributing core plugin),
+  `Files` (uploads by id), steps (`PlanSteps`, `BeginStep` -> `ITaskStep` with `ReportProgress`, `Complete`, `Warn`,
+  `Skip`, `Fail`; disposing without an end = Done, an escaping exception = Failed; helpers `StepAsync`, `SkipStep`;
+  `TaskStepList` is the state machine, `tests/Shared/StepRun.cs` runs a plugin with the engine's end rules),
+  `ReportProgress`, `ReportWarning` (Done with warnings), `Log` (never secrets), `MarkCredentialsInvalid`,
+  `UpdateCredentialsAsync`, `CreateClientForAsync` (the device at another address, caller disposes),
+  `UpdateDeviceAddressAsync` and `UpdateDeviceTlsAsync` (the server verifies serial and certificate first, else
+  `DeviceIdentityException` and the record stays; see "Following moved devices" and the PKI tasks).
+- `ICorePluginContext`: `Devices`, `Vapix` (client factory), `Tasks` (start and cancel tasks), `Settings` (namespaced per
+  plugin), `Logger`, `PluginDirectory` (never `Assembly.Location`), `Secrets` (AES-256-GCM with the master key),
+  `Events` (live events to the plugin's page), `TrustAnchors` (CAs the server trusts when rating device certificates),
+  `EventStreams` (a device's RTSP event stream with the stored credentials; the RTSP port per device), `Firewall` (UDP
+  rules, Windows service only; `FirewallRuleKeeper`), `DataDirectory` (`<datafolder>/plugin-data/<id>`: working files, never a
+  shared temp folder; the plugin cleans up), `EventPublisher` (event rules), `AutoAdd` (add or follow an Axis device like
+  the add page).
+- Event rules: `IEventSource`, `IDynamicEventSource`, `IEventPublisher`, `IActionPlugin`, `IActionSource` (see "Event
+  rules").
 
-public interface ITaskPlugin : IPlugin
-{
-    string Group => TaskGroups.General; // context menu submenu; TaskGroups.Applications, General, Maintenance,
-                                       // Network, Security, Users, Video, or any new name
-    bool ShowInToolbar { get; }
-    bool RequiresDialog { get; }       // client opens the matching ITaskPluginDialog first
-    bool CanRun(IDeviceInfo device);
-    string? NotSupportedReason(IDeviceInfo device) => null; // only when CanRun is false: plain language, what is missing
-                                       // and what to do ("Needs AXIS OS 11.11 or later (this device has 11.9.65)",
-                                       // "Needs the Time API"); a device detail goes last as " (this device ...)", left
-                                       // out in summaries; null/empty/throwing = "Not supported on this device" (logged
-                                       // once). Helpers: TaskSupportReasons (ForStatus, NeedsFirmware, NeedsApi, Of)
-    int? MaxParallelDevices => null;   // concurrent tasks of this plugin, only lowers Tasks.MaxParallelPerPlugin; null = the setting (16)
-    bool ShowInMenus => true;          // false: not in context menu/toolbar (ListTaskPlugins skips it); started by its core plugin
-    string GetTaskName(string? payloadJson) => DisplayName;  // task list name: exactly what this task does, max 48, no secrets
-    Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct);
-}
-
-public interface ITaskPluginQuery     // optional on task plugins: read-only reads for the dialog
-{
-    Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct);
-}
-
-public interface ICorePlugin : IPlugin
-{
-    IReadOnlyList<ITaskPlugin> TaskPlugins { get; }   // tasks this core plugin contributes
-    Task StartAsync(ICorePluginContext ctx, CancellationToken ct);
-    Task StopAsync(CancellationToken ct);
-    Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct); // UI page backend
-    bool HasPage => true;              // false: no rail entry (CorePluginInfo.no_page), e.g. a toolbar-only plugin
-    CorePluginGroup Group => CorePluginGroup.Extensions; // rail group: Servers, Automation, Security, Monitoring, Reporting,
-                                       // Maintenance, Integrations, Utilities, Extensions (CorePluginInfo.group = 5)
-}
-
-public interface ITaskExecutionContext
-{
-    Guid TaskId { get; }
-    IVapixClient Vapix { get; }        // pre-authenticated for the current device
-    ILogger Logger { get; }
-    ICorePlugin? Owner { get; }        // set when the task was contributed by a Core plugin
-    IUploadedFiles Files { get; }      // uploads referenced by id in the payload
-    void ReportProgress(int percent, string? message = null);   // optional with steps; wins over the derived progress
-    void PlanSteps(params string[] names) { }                   // DIM: pending steps shown up front
-    ITaskStep BeginStep(string name);                           // DIM default: a detached step (third-party contexts)
-    void ReportWarning(string message);                         // device ends DoneWithWarnings
-    void Log(TaskLogLevel level, string message);               // per-task log, never secrets
-    void MarkCredentialsInvalid();     // device lost OADM's credentials: delete them, refresh
-    Task UpdateCredentialsAsync(string userName, string password, CancellationToken ct); // store new ones; Vapix is swapped
-    Task<IVapixClient> CreateClientForAsync(string address, CancellationToken ct);       // DIM: device at another address (same credentials, scheme, pin); caller disposes
-    Task<bool> UpdateDeviceAddressAsync(string newAddress, CancellationToken ct);         // DIM: server verifies the serial, moves the record, Vapix is swapped; false = host name kept
-    Task UpdateDeviceTlsAsync(string scheme, string? expectedFingerprintSha256, CancellationToken ct); // DIM: after a web server change: "https" + the
-                                       // new certificate's SHA-256 (null = pin what is presented) or "http"; server connects that way, verifies serial
-                                       // and certificate, stores scheme, pin and certificate details (no CertificateChanged), Vapix is swapped
-}
-// DIM defaults throw NotSupportedException. UpdateDeviceAddressAsync and UpdateDeviceTlsAsync throw DeviceIdentityException (Oadm.Sdk.Plugins)
-// when the device at the new address has another serial or does not answer; the record stays unchanged.
-// ITaskQueryContext has IDeviceRepository? Devices (DIM null): all managed devices, read-only.
-
-public interface ITaskStep : IDisposable   // Dispose without an end = Done; escaping exception = Failed
-{
-    string Name { get; }
-    TaskStepState State { get; }       // Pending, Running, Done, Warning, Skipped, Failed
-    void ReportProgress(int percent, string? detail = null);    // "37 of 82 MB"
-    void Complete(string? detail = null);                       // Done, detail = result ("AXIS OS 12.11.77")
-    void Warn(string message);         // Warning + ctx.ReportWarning (task ends Done with warnings)
-    void Skip(string reason);          // did not apply
-    void Fail(string message);         // records the failure; throw to fail the task
-}
-// Helpers (TaskStepExtensions): ctx.StepAsync(name, async step => ...) (Done / Failed + rethrow),
-// ctx.SkipStep(name, reason). Pattern: using var step = ctx.BeginStep("Send restart"); ...
-// TaskStepList (Oadm.Sdk.Plugins) is the state machine behind it, used by the engine and by test
-// fakes; tests/Shared/StepRun.cs runs a plugin with the engine's end rules for step assertions.
-
-public interface ICorePluginContext
-{
-    IDeviceRepository Devices { get; }
-    IVapixClientFactory Vapix { get; }
-    ITaskRunner Tasks { get; }         // core plugins may start tasks themselves; Cancel(taskId) (DIM false)
-    ISettingsStore Settings { get; }   // namespaced per plugin
-    ILogger Logger { get; }
-    string? PluginDirectory => null;   // folder the plugin was loaded from (data files); never Assembly.Location
-    ISecretProtector? Secrets => null; // Protect/Unprotect(value, purpose): AES-256-GCM with the master key
-    IPluginEvents? Events => null;     // Publish(topic, payloadJson): live events to the plugin's page (PluginService.Watch)
-    ITrustAnchors? TrustAnchors => null; // Set(der[]): CAs the server trusts when rating device certificates (per plugin)
-    IDeviceEventStreams? EventStreams => null; // OpenAsync(deviceId): the device's RTSP event stream with the stored
-                                       // credentials (never handed out): XML documents, LostDocuments, dispose = TEARDOWN;
-                                       // Get/SetRtspPortAsync(deviceId): the device's RTSP port (port forward, null = 554)
-    IFirewallRules? Firewall => null;  // Open/CloseAsync(FirewallRule): inbound allow rule for the server exe, Domain +
-                                       // Private; only the Windows service offers it (netsh), else null. Helper:
-                                       // FirewallRuleKeeper.SyncAsync(enabled) (Oadm.Sdk.Network)
-    string? DataDirectory => null;     // <datafolder>/plugin-data/<id>, created on first use: working files (downloads,
-                                       // archives) in the admin-only data folder, never a shared temp folder; plugin cleans up
-    IEventPublisher? EventPublisher => null; // event rules: SetState / Fire / ReplaceStates of the plugin's IEventSource types
-    IDeviceAutoAdd? AutoAdd => null;   // AddAsync(address, expectedSerial, source): add an Axis device like the add page
-                                       // (Axis check, factory default check, credential list login) -> DeviceAutoAddOutcome;
-                                       // FollowAsync(serial, address, source): move a managed device's record -> DeviceFollowResult
-}
-```
-
-Task plugin names and groups: `DisplayName` is at most `TaskPluginNames.MaxDisplayNameLength` (32)
-characters and never ends with "..." (dialog tasks too); it is the menu and toolbar name only, the tasks
-pane shows `GetTaskName` (see Tasks). The server registry (`RegisteredTaskPlugin.DisplayName`
-/ `.Group`) strips trailing "..." / "…" and shortens longer names to 31 characters + "…", logging a
-warning for either; empty groups become `General`, groups are shortened the same way. The task name in
-the tasks pane, `TaskPluginInfo` and the client menu and toolbar use the normalized name. Bundled plugins:
-Restart, Upgrade firmware, Date and time, Export configuration and Import configuration (Maintenance), Applications (ACAP) (Applications), Users (Users), Network
-settings and Assign IP address (Network), the nine PKI tasks (Security, contributed by `oadm.pki`); `TaskPluginNamesTests` checks every plugin deployed to
-`artifacts/plugins`.
+Task plugin names and groups: `DisplayName` is at most `TaskPluginNames.MaxDisplayNameLength` (32) characters and never
+ends with "..." (dialog tasks too); it is the menu and toolbar name only, the tasks pane shows `GetTaskName`. The server
+registry strips trailing "..." / "…" and shortens longer names to 31 characters + "…" (logged); empty groups become
+`General`. Bundled task plugins: Restart, Upgrade firmware, Date and time, Export and Import configuration (Maintenance),
+Applications (ACAP) (Applications), Users (Users), Network settings and Assign IP address (Network), the PKI tasks
+(Security, contributed by `oadm.pki`); `TaskPluginNamesTests` checks every plugin deployed to `artifacts/plugins`.
 
 ## Client SDK (Oadm.Sdk.Client)
 
-```csharp
-public interface ITaskPluginDialog
-{
-    string PluginId { get; }
-    Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner); // payload JSON, null = cancel
-}
+The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`; usage in `plugins/README.md`. Everything runs on
+the UI thread.
 
-public interface ITaskDialogContext   // server access of a dialog, bound to its plugin id
-{
-    Task<string?> QueryAsync(Guid deviceId, string method, string? payloadJson, CancellationToken ct); // TaskService.Query
-    Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct); // FileService.Upload, progress 0..1
-}
-
-public interface ICorePluginPage
-{
-    string PluginId { get; }
-    Control CreateView(ICorePluginClientContext ctx);  // page shown in the navigation rail
-    bool HasOwnCards => false;         // true: the view lays out its own cards, no host card around it
-    bool ShowTasksPane => false;       // true: the shared tasks pane (TasksPaneLayout) sits below the page,
-                                       // so rollouts are watched without switching pages (VAPIX Commander)
-}
-
-public interface ICorePluginClientContext  // UI thread; all but InvokeAsync have defaults
-{
-    Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct); // PluginService.Invoke
-    IAsyncEnumerable<PluginEvent> WatchEventsAsync(CancellationToken ct); // PluginService.Watch; default empty (poll)
-    IReadOnlyList<IDeviceInfo> Devices { get; }          // + DevicesChanged
-    IReadOnlyList<IDeviceInfo> SelectedDevices { get; }  // selection of the Devices page
-    string OwnerName { get; }                            // "user@machine" for tasks the page starts
-    Task ShowMessageAsync(string title, string message);
-    Task<bool> ConfirmAsync(string title, string message, string confirmText);
-    Task OpenAsync(string hostPage);                     // HostPages.Devices etc.
-    Window? Owner { get; }
-}
-
-public interface IToolbarPlugin          // a part of the Devices page toolbar
-{
-    string Id { get; }                   // "oadm.toolbar.scan"; built-in ids are reserved
-    int Order { get; }                   // within the group
-    ToolbarGroup Group { get; }          // Add, Manage, Tasks, Plugins (left to right, separator between)
-    Control CreateControl(IToolbarContext ctx);   // any Avalonia control, created once
-}
-
-public interface IToolbarContext         // UI thread
-{
-    IReadOnlyList<IDeviceInfo> SelectedDevices { get; }  // + SelectionChanged
-    IReadOnlyList<IDeviceInfo> Devices { get; }          // + DevicesChanged
-    IReadOnlyList<ToolbarTaskPlugin> TaskPlugins { get; } // + TaskPluginsChanged
-    bool CanRunTask(string pluginId);
-    string? CannotRunTaskReason(string pluginId);  // DIM null: the context menu tooltip text for the selection
-    Task<IReadOnlyList<string>?> RunTaskAsync(string pluginId, CancellationToken ct); // like the context menu
-    Task OpenAsync(string hostPage);     // HostPages.AddScan, AddIpRange, AddManually, Devices, Logs, Settings
-    Task RemoveDevicesAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
-    Task RefreshDevicesAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct); // DIM: full refresh now (DeviceService.Refresh)
-    Task ShowMessageAsync(string title, string message);
-    Task<bool> ConfirmAsync(string title, string message, string confirmText);
-    Task<string?> QueryAsync(string pluginId, Guid deviceId, string method, string? payloadJson, CancellationToken ct);
-    Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct);
-    Task<string?> InvokePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct);
-                                         // DIM (default NotSupportedException): a core plugin's InvokeAsync (PluginService.Invoke)
-    Window? Owner { get; }
-}
-```
+- `ITaskPluginDialog.ShowAsync(ctx, devices, owner)` returns the payload JSON (null = cancel); `ITaskDialogContext` gives
+  `QueryAsync` (TaskService.Query) and `UploadAsync` (FileService.Upload with progress).
+- `ICorePluginPage.CreateView(ctx)`: the rail page; `HasOwnCards` (the view lays out its own cards), `ShowTasksPane` (the
+  shared tasks pane below the page). `ICorePluginClientContext`: `InvokeAsync`, `WatchEventsAsync` (PluginService.Watch),
+  `Devices` + `DevicesChanged`, `SelectedDevices`, `OwnerName`, `ShowMessageAsync`, `ConfirmAsync`, `OpenAsync`, `Owner`.
+- `IToolbarPlugin` (`Id`, `Order`, `Group`: Add, Manage, Tasks, Plugins; `CreateControl` once) with `IToolbarContext`
+  (selection, devices, task plugins, `CanRunTask` / `CannotRunTaskReason`, `RunTaskAsync`, `OpenAsync`,
+  `RemoveDevicesAsync`, `RefreshDevicesAsync`, `QueryAsync`, `UploadAsync`, `InvokePluginAsync`, messages).
 
 ### Toolbar plugins
 
@@ -1311,8 +1149,7 @@ group Add, primary, icon `add`, a `MenuFlyout` with Discovery (`HostPages.AddSca
 Page")), Remove (Manage; confirmation, the context menu
 uses the same flow), **Refresh** (Manage, order 5, icon `refresh`, enabled with a selection; `IToolbarContext.RefreshDevicesAsync`
 = one `DeviceService.Refresh` for the whole selection: the server queues a full refresh per device; the context menu entry
-"Refresh" uses the same flow), **Export** (Manage, order 10, icon `export`, `HostPages.ExportDevices`,
-user decision 2026-10-08: the selected devices, or every device the search shows when none is selected, the
+"Refresh" uses the same flow), **Export** (Manage, order 10, icon `export`, `HostPages.ExportDevices`, the selected devices, or every device the search shows when none is selected, the
 tooltip says which; `Devices/DeviceListCsv`: header + every grid column as text (MAC address, Status, Address,
 Host name, Model, Firmware, SoC, Category, Product type, DHCP, HTTPS, Certificate expires as ISO date yyyy-MM-dd,
 Certificate, IEEE 802.1X) in the grid's unsorted order, RFC 4180 quoting (`Infrastructure/Csv`), CRLF, UTF-8 with
@@ -1365,17 +1202,16 @@ answers is unchanged. Used by the System report for server reports.
 
 ### Plugins on and off
 
-User decision 2026-10-09: the rail page **Plugins** lists every plugin package (one plugin folder = one row: its core
+The rail page **Plugins** lists every plugin package (one plugin folder = one row: its core
 plugins, contributed and standalone tasks and client parts together) and administrators turn each on or off; the change
-applies at once without a restart. User decision 2026-10-10: own rail page (not a Settings card), core functionality
+applies at once without a restart. Own rail page (not a Settings card); core functionality
 is always on.
 - Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
-  **Off by default: Device triggers, Hardening scan, Image Health Dashboard, I/O Monitor and Metadata Monitor** (user
-  decisions; Metadata Monitor and Device triggers 2026-10-10). The administrator's choices are the
+  **Off by default: Device triggers, Hardening scan, Image Health Dashboard, I/O Monitor and Metadata Monitor**. The administrator's choices are the
   server setting `Plugins.Enabled` (JSON object package id -> on; packages without a choice use their default),
   applied before the core plugins start (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
 - **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade firmware, Date and time, Applications
-  (ACAP), Users, Network settings, PKI, System report, Device configuration, Outputs and Notifications (core functionality, user decision 2026-10-10). Enabled whatever
+  (ACAP), Users, Network settings, PKI, System report, Device configuration, Outputs and Notifications (core functionality). Enabled whatever
   the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers FAILED_PRECONDITION "<name> is always on.".
   Switchable: Snapshot report, VAPIX Commander, Metadata Monitor, NTP server, DHCP server, Hardening scan, Image Health
   Dashboard, I/O Monitor, Device triggers. Third-party plugins are switchable unless their manifest says otherwise.
@@ -1397,14 +1233,20 @@ is always on.
   part from the plugin.json next to its dll, `IClientPluginRegistry.PackageOf`). Rail page **Plugins** (Admin only,
   key `HostPages.Plugins`, icon `plugin`, below Credentials; subtitle "A plugin that is off shows no page, menu entry or
   toolbar button."; `Settings/PluginsPageView` + `PluginsViewModel`): one card with a DataGrid On (check box), Plugin,
-  Description, grouped like the navigation rail (user decision 2026-10-11: one collapsible group per rail group that has
+  Description, grouped like the navigation rail (one collapsible group per rail group that has
   plugins, in rail order, the same look as the device grid's tag groups without color, theme `DataGrid.groups`; sorted by
   name inside a group; the view groups in code-behind with `DataGridCollectionView` + `PluginsViewModel.Groups`);
-  always-on packages are not listed (user decision 2026-10-10); a refused change is undone with the reason below the list. Other clients see a change
+  always-on packages are not listed; a refused change is undone with the reason below the list. Other clients see a change
   on their next connect. Fake mode: `FakeOadmApi.Plugins.cs` (PKI, Restart, System report always on).
-- Tests: `tests/Oadm.Server.Tests/PluginPackageTests` (default off, live start / stop, menus, roles, audit, stored
-  choice, always on, the bundled manifests: off by default, always on, descriptions), `tests/Oadm.Client.Tests/
-  PluginListTests` (always on, headless `client-plugins-page.png`), `ShellTests` (rail entry admin only).
+- Tests: `tests/Oadm.Server.Tests/PluginPackageTests` (also the bundled manifests: off by default, always on,
+  descriptions), `tests/Oadm.Client.Tests/PluginListTests`, `ShellTests`.
+
+## Plugin documentation
+
+Every plugin has its own `README.md` in its folder (`plugins/<name>/README.md`): decisions, page and dialog, steps and
+task names, device API and verified device behavior, settings, tests. CLAUDE.md keeps a short entry per plugin: id, what
+it does, rail or menu group, on or off by default, the rules that must never break (device safety, secrets, roles,
+limits) and a pointer to the README. A new plugin gets both in the same change; a changed decision updates both.
 
 ## HARD RULE: device safety for task plugins
 
@@ -1431,994 +1273,252 @@ state through `ITaskDialogContext.QueryAsync`), `IUploadedFiles` (dialog uploads
 `ITaskDialogContext.UploadAsync`, task reads by id), `ReportWarning` (Done with warnings) and
 `Log` (persisted per-task log).
 
-## First plugin: Restart
+## Task plugins
 
-`plugins/Oadm.Plugins.Restart`: `ShowInToolbar = true`, `RequiresDialog = false`, calls
-`restart.cgi`, then polls basicdeviceinfo until the device answers again (timeout 3 min).
-Steps: Check device (basicdeviceinfo; unreachable fails "Nothing was changed"), Send restart, Wait for
-the device to go offline, Wait for the device to come back, Verify device (serial number; a different
-one is a Warning). No client assembly needed.
+Every task plugin describes its steps, task names, dialog and device API in its own `README.md` (`plugins/<name>/`).
+Common to all: every device request and every wait is a named step; every successful task ends with the engine's step
+**Completed**; names follow "Tasks" (no secrets, at most 48 characters).
 
-Steps of the other task plugins (details in each plugin README):
-- Every successful task ends with the engine's step Completed (not listed below).
-- Users: Check compatibility, Read password policy, Identify OADM account, Read users, Validate change,
-  Add/Update/Remove user <name> (one per write; Remove of several users: one "Remove user <name>" each,
-  all validated before the first one), Verify users. Names: "Add user joe", "Change password joe",
-  "Change role joe", "Change user joe", "Remove user joe", "Remove users joe, ann". Dialog: Remove picks
-  the users in the Existing users list (multi-select, no user name field; the OADM account and the last
-  administrator are greyed with a tooltip and cannot be selected), no general lock-out warning text; the left card lists
-  the chosen users ("Users to remove") with a one-line note on the protected accounts; Remove users is the red danger
-  button.
-- Network: Check compatibility, Read current settings, Read IPv6 address mode, Validate settings, Check
-  address is free, Set host name, Set DNS, Set IPv6 (+ Enable IPv6), Set IPv4 (order as written), Wait for the
-  settings to apply, Check reachability, Wait for the device at the new address, Verify device identity, Update
-  OADM device address; unchanged sections Skipped "Keep unchanged". Names: "Set static IP 10.0.0.60" / "Set
-  static IP addresses", "Switch to DHCP", "Set DNS servers", "Set host name <name>", "Change IPv6 settings"
-  when only that section changes, else "Change network settings".
-- Assign IP address: Check compatibility, Read current settings, Validate settings, Check address is free, Set
-  DNS, Set IPv4, Wait for the settings to apply, Check reachability, Wait for the device at the new address,
-  Verify device identity, Update OADM device address. Names: "Assign IP 10.0.0.60" / "Assign IP addresses",
-  "Assign IP via DHCP".
-- Check address is free (both): before the first write every new static address (IPv4, IPv6) is probed with
-  `IAddressProbe` (ICMP echo via `System.Net.NetworkInformation.Ping`, 2 tries x 1 s, plus a TCP connect to
-  80/443; the device's own current addresses are not probed). An answer fails the step "10.0.0.60 is already in
-  use (answers ping). Nothing was changed." and nothing is sent; Skipped for DHCP. The dialogs' query
-  `checkAddresses` uses the same probe.
-- Firmware: Check compatibility, Read device info, Validate file, Read firmware status, Upload firmware
-  (byte progress), Install firmware (until offline), Wait for the device to come back, Verify version, Read
-  commit state, Commit firmware (retries add "Wait before retrying the commit" and "(attempt n)" steps).
-  File checks never look at the content (real images start with gzip/tar-like bytes, e.g. AXIS OS 10.12
-  `M3206-LVE_10_12_338.bin`): only `.bin`, 1 MB..2 GB and product/version from the download name when it
-  follows the pattern; the device verifies product and signature itself. Names: "Upgrade firmware to
-  12.11.77", "Downgrade firmware to 10.12.236", "Install firmware 12.11.77" (mixed), "Install firmware"
-  (version unknown), + " (factory default)".
-- Date and time: Check compatibility, Read current time settings, Read NTP settings, Validate settings, Set time zone,
-  Set NTP configuration / Turn off NTP, Set date and time, Verify time settings, Verify NTP settings (like ADM the time
-  zone and the time mode are always planned; values the device already has are Skipped "Already ...").
-- ACAP install: Check compatibility, Read package, Read device info, Read SDK version,
-  Read unsigned application setting, Read installed applications, Check package, Upload
-  package (byte progress), Verify installation (+ Start application, Verify application state); remove,
-  start, stop: Check compatibility, Read installed applications, <action> application, Verify ....
-  Names: "Install <app> <version>", "Upgrade <app> to <version>", "Remove|Start|Stop <app>".
-- Import configuration: Read configuration file, Check compatibility, Import <area> (one per settings area: network and
-  system settings, event rules, schedules, MQTT events, time zone, power settings, password policy), Import connection
-  settings (only when chosen, always last), Verify configuration. Name "Import configuration <file name>".
-- Restart: name "Restart device". VAPIX Commander rollout: the command name or "<first> +N more".
+- **Restart** (`oadm.restart`, always on, toolbar and context menu, no dialog): `restart.cgi`, then waits until the
+  device went offline and answers again (3 min); a different serial afterwards is a Warning. Task name "Restart device".
+- **Users**, **Upgrade firmware**, **Date and time**, **Applications (ACAP)**, **Network settings**, **Assign IP
+  address**, **Export / Import configuration**: in their READMEs. A new static address (IPv4, IPv6) is probed
+  before the first write (`IAddressProbe`: ping, 2 tries x 1 s, plus TCP 80 / 443; the device's own addresses are not
+  probed); an answer fails "<address> is already in use (answers ping). Nothing was changed.".
 
-## Network settings plugin
+## Network settings and Assign IP address
 
-`plugins/Oadm.Plugins.Network` (+ `.Client`), id `oadm.network`, context menu (group Network) "Network settings",
-dialog with IPv4 / IPv6 / DNS / Host name sections (each "Keep unchanged" by default). One device: IP address
-fields; several devices: no IP range field, the new IPv4 address and (static IPv6 only) the new IPv6 address are
-set per row in the shared address table (columns "New IP address", "New IPv6 address"; IPv4 suggested from the
-first device's current address and subnet), subnet mask, gateway and prefix length stay shared fields. Errors are
-shown once: below their field (`INotifyDataErrorInfo`) or in the row's Status column, never as a list; Apply is
-disabled with a tooltip saying why. No "Current: ..." info lines (the fields are prefilled). Apply on a risky
-change (address, subnet, gateway, DHCP switch, IPv6 change over IPv6) asks in the host's shared confirmation
-window `ui:MessageWindow` ("The devices may become unreachable", Cancel / Apply); no inline acknowledgement. Uses network-settings 1.x (`getNetworkInfo`, `setIPv4AddressConfiguration`,
-`setResolverConfiguration`, `setHostnameConfiguration`, `setIPv6AddressConfiguration` >= 1.6) and
-param.cgi `Network.*` for the IPv6 address mode and for devices without network-settings. Writes the
-address family OADM connects with last. After a new static address (IPv4, or IPv6 when OADM connects over
-IPv6) OADM follows the device: it polls the new address (90 s), verifies the serial number and moves the
-device record (`UpdateDeviceAddressAsync`); not answering, another serial or a refused move end as Warning
-with the record unchanged; host names are kept. DHCP keeps the record (step "Update OADM device address"
-Skipped "OADM finds the device again at its new address."), the
-periodic re-find moves it. Decision table and verified device behavior: plugin `README.md`.
+`plugins/Oadm.Plugins.Network` (+ `.Client`), always on; details, the VAPIX decision table and the verified device
+behavior: plugin `README.md`.
 
-## Assign IP address plugin
+- **Network settings** (`oadm.network`, context menu Network): IPv4 / IPv6 / DNS / Host name sections, each "Keep
+  unchanged" by default; several devices get their new addresses per row in the shared address table
+  (`AddressAssignmentGrid`). **Assign IP address** (`oadm.network.assign-ip`, context menu and toolbar): a clone of ADM's
+  "Assign IP address to selected devices": DHCP, or an IP range in ADM / ACS syntax (`IpRangeExpression`) with suggested
+  addresses that skip the router, managed devices and addresses in use (query `checkAddresses`).
+- Rules that must hold: a risky change (address, subnet, router, DHCP switch, IPv6 over IPv6) asks in `ui:MessageWindow`
+  ("The devices may become unreachable"); conflicts block Apply / Finish; a new static address is probed before the first
+  write; the address family OADM connects with is written last; after a new static address OADM follows the device (90 s,
+  serial verified, `UpdateDeviceAddressAsync`; otherwise a Warning and the record stays); with DHCP the periodic re-find
+  moves the record.
 
-Same package, id `oadm.network.assign-ip`, context menu (group Network) and toolbar **Assign IP address**, a clone of
-ADM's "Assign IP address to selected devices" (research and sources in the Network plugin `README.md`):
-- Page 1: "Obtain IP addresses automatically (DHCP)" (Finish here) or "Assign the following IP address
-  range" with **IP range**, **Subnet mask**, **Default router** (prefilled from the first device), optional
-  DNS servers (domain name and search domains of each device kept). One device: "Assign the following IP
-  address", field "IP address".
-- IP range syntax as ADM/ACS (`IpRangeExpression`): `192.168.0.*`, `10.*.1.*`, `192.168.0.10-192.168.0.20`,
-  `192.168.0.10-20`, `10.10-30.1.101`, `10.10-30.1.*`, comma lists; a single address alone is a start address.
-- Page 2 "New IP addresses": the shared `AddressAssignmentGrid` (MAC address, Model, Current IP address, New IP
-  address editable in the cell, Status chip), devices in the grid order the host passes. Suggestions skip
-  network/broadcast addresses, the router, other managed devices' addresses and addresses in use (query
-  `checkAddresses`: managed devices plus ping and a TCP connect to 80/443 from the server, rows "In use (answers
-  ping)"; **Check addresses** is a secondary button left above the table next to a summary "4 ready, 1 conflict").
-  Status is the widest column (2.5*, rows grow to two lines), MAC address and Model have fixed widths. "Not enough addresses: ..." below the table when the range is too
-  small; conflicts (duplicate, outside the subnet, used by a managed device, in use) are red chips only in the
-  Status column and block Finish. Field errors (IP range, subnet mask, default router, DNS) below their field; no
-  error list, no current-values info line. Finish asks in the shared `ui:MessageWindow` with the reachability
-  warning (Cancel / Finish); no inline acknowledgement.
-- Payload: `NetworkPayload` with `ipv4` (+ `dns` with `keepDomains`) only; one task per device with the
-  Network plugin's steps for DNS and IPv4 and the follow-the-device steps.
-- "Network settings" shares range parsing, suggestion, conflicts, validation, warnings and the table.
+## Snapshot report (core plugin)
 
-## Snapshot report plugin (core plugin)
+`plugins/Oadm.Plugins.SnapshotReport` (+ `.Client`), id `oadm.snapshot-report`, rail page **Snapshot report** (group
+Reporting, icon `snapshot`), on by default, switchable. The yearly maintenance check: current snapshots of every video
+source of the managed video devices, checked fast and exported as a PDF report (PDFsharp + MigraDoc, MIT). Details:
+plugin `README.md`.
 
-`plugins/Oadm.Plugins.SnapshotReport` (+ `.Client`), id `oadm.snapshot-report`, rail page **Snapshot
-report** (icon `snapshot`). Purpose: the yearly maintenance check. The technician sees current
-snapshots of every video source of the managed video devices, checks them fast and exports a PDF report.
-Read-only for devices (param.cgi reads and image.cgi snapshots).
-
-- Sources: the live view discovery, exposed to plugins as `IVapixClient.GetVideoSourcesAsync()` (SDK
-  `VideoSource(Camera, Name, Sensor, Resolutions)`; Core implements it with `GetImageCapabilitiesAsync`).
-  Only `IDeviceInfo.HasVideo` devices. One source = one tile titled with the address; several = one tile
-  per source "<address> - <label>": the view area name ("View Area 2", "Quad view"), or "Sensor n"
-  (encoders "Channel n") for empty or generic "Camera n" names. Devices in IPv4 order. A device whose
-  sources cannot be read (or whose status is CredentialsRequired / PasswordNotSet / CertificateChanged,
-  checked without a request) is one error tile. Sources are cached 5 minutes for the snapshots.
-- Snapshot: `GET /axis-cgi/jpg/image.cgi?camera=N&resolution=WxH` (JPEG API) with the stored
-  credentials, server side. Resolution: the largest of the source that fits the box with the sensor
-  aspect (`VideoResolutions.Choose`, shared with the live view): grid 1280x720, report 1920x1080
-  (`SnapshotReportPluginInfo`). Verified on 10.0.0.48 (AXIS OS 12.11): 1280x720 about 125 KB in
-  0.1-0.3 s, camera=1/2 are the two view areas, a missing camera answers HTTP 400 with an HTML
-  "400 Bad Request" page. At most 4 device requests at a time (all callers), 3 s timeout each (user decision 2026-10-09).
-  Errors are short texts (shared with every plugin: SDK `DeviceMessages`): "Timeout after 3 s", "Unauthorized - HTTP 401 (check the credentials)", "Forbidden - HTTP 403 (administrator rights are required)",
-  "Bad Request - HTTP 400", "Unreachable - <socket error>", "The device has no video source 3", or the
-  VAPIX text the device sent ("Error: ...").
-- `InvokeAsync` methods (`SnapshotReportMethods`, JSON camelCase, models in `Shared/`): `listSources`
-  ({deviceIds}, empty = all) -> tiles with device facts; `snapshot` ({deviceId, camera, maxWidth,
-  maxHeight}) -> {jpegBase64, width, height, capturedUtc, error}; `generateReport` ({site, technician,
-  date, items[{deviceId, camera}]}) starts a background job (fresh report-size snapshots, then the
-  PDF) and returns its status; `reportStatus` ({jobId}) -> state running/done/failed, done/total,
-  message, size, pages, failed; `readReport` ({jobId, offset}) -> 2 MB base64 chunks (a report is larger
-  than one gRPC message); `deleteReport`. Jobs live in server memory, 30 minutes after last use.
-- Page: toolbar **Create snapshots** (user decision 2026-10-09: opening the page contacts no device; the first load starts only
-  with this button, the page shows "No snapshots yet" until then; disabled afterwards), Refresh all (enabled after the first load), "Select all" check box, **Export PDF** (primary); picture size slider labeled "Size"
-  with its px value (200-720 px) and `ui:SearchBox` on the right; status line "14 pictures from 9 cameras · 13 selected
-  · 3 failed"; `ui:ProgressRow` while loading ("Loading snapshots 5 of 14", 4 at a time). Tiles
-  (`Border.tile`, accent outline on hover or keyboard focus; selection is the check box only) in a wrap panel: picture (`Button.picture` on
-  `Border.liveViewSurface`, Stretch Uniform; click = large preview window with facts and "Take new
-  snapshot"), check box + title + refresh icon button, facts line (model · firmware · MAC), then the
-  capture time and size, or a `ui:StatusChip` (Loading accent, error red with the message). A failed
-  snapshot keeps the older picture. All tiles start selected.
-- Export dialog: Site / customer (required), Technician, Date (yyyy-MM-dd, today), file name preview;
-  site and technician (and the last folder) remembered per client in
-  `LocalApplicationData/Oadm/plugins/oadm.snapshot-report/export.json`. Export asks for the file first
-  (save dialog), then shows the job progress and downloads the PDF; failed snapshots keep the dialog
-  open with a warning.
-- PDF (PDFsharp + MigraDoc 6, MIT; QuestPDF rejected for its license; Roboto embedded): A4 portrait.
-  Cover: "Maintenance report", site, technician, date, creation time and OADM version, summary (cameras,
-  video sources, online, offline or not OK, snapshots taken / failed), firmware versions with counts,
-  certificates expired or expiring within 30 days. Then two snapshots per page: heading "<title> ·
-  <model>", the JPEG as sent by the device (embedded unchanged, DCTDecode) in a 17 x 8.5 cm box, facts
-  table (model, MAC, address/host name, firmware, status, certificate, snapshot time and size, source);
-  a failed snapshot is a grey box "No snapshot: <error>". Footer "<site> · <date> · Maintenance report"
-  and "Page n of m". About 250 KB per full-HD snapshot.
-- Fake mode (`FakeOadmApi.SnapshotReport.cs`): the core plugin is listed, tiles come from the fake live
-  view sources (P3265-V two view areas, P3727-PLE four sensors + quad view, error tiles for the devices
-  with a bad status), pictures are generated JPEGs, the PDF is a one-page placeholder.
-- Tests: `tests/Oadm.Plugins.SnapshotReport.Tests` (source expansion, request and error mapping, PDF parsed
-  back with PDFsharp: pages, cover text via ToUnicode, DCT images; view models; headless screenshots
-  `snapshot-report-page.png`, `-preview.png`, `-export.png`; hardware test through the in-process server
-  writing `snapshot-report-10.0.0.48.pdf` to `OADM_SCREENSHOT_DIR`).
+- Rules that must hold: read-only for devices (param.cgi reads and image.cgi snapshots with the stored credentials,
+  server side); opening the page contacts no device (**Create snapshots** starts the first load); at most 4 device
+  requests at a time, 3 s each; devices with Credentials required, Password not set or Certificate changed are one error
+  tile without a request; error texts from the shared `DeviceMessages`; report jobs live in server memory (30 minutes
+  after last use), the PDF is read in 2 MB chunks.
+- Tests: `tests/Oadm.Plugins.SnapshotReport.Tests` (PDF parsed back with PDFsharp); hardware test through the in-process
+  server writing the PDF to `OADM_SCREENSHOT_DIR`.
 
 ## VAPIX Commander (core plugin)
 
-`plugins/Oadm.Plugins.VapixCommander` (+ `.Client`), id `oadm.vapix-commander`, rail page **VAPIX
-Commander** (icon `command`). A technician picks one or more VAPIX commands, fills their fields and rolls
-them out to any number of devices, or sends one now to one device (Postman-like). Command format v1 and
-JSON schema: `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md` + `command.schema.json` (the contract; category
-`Custom` for saved commands, optional `response.errorPattern`).
+`plugins/Oadm.Plugins.VapixCommander` (+ `.Client`), id `oadm.vapix-commander`, rail page **VAPIX Commander** (group
+Automation, icon `command`), on by default, switchable. Pick VAPIX commands from a library (161 bundled, `Library/*.json`)
+or saved ones, fill their fields and roll them out to many devices, or send one to one device. Details: plugin
+`README.md`; command format: `Schema/command-format.md` + `command.schema.json` (the contract).
 
-- Library: every `Library/*.json` next to the plugin assembly (`ICorePluginContext.PluginDirectory`,
-  fallback `AppContext.BaseDirectory/Library`), loaded once at start with strict JSON (unknown
-  properties are errors) and `CommandValidator`; broken files and invalid or duplicate commands are
-  skipped, logged and listed on the page ("N library entries could not be loaded"). The bundled library
-  (161 commands, separate commit) is checked by `tests/Oadm.Plugins.VapixCommander.Library.Tests` and
-  `BundledLibraryTests` (every command loads and validates with this engine).
-- Saved commands: server side in plugin setting `savedCommands` (one JSON document, at most 500),
-  shared by all clients, editable (renaming replaces), deletable, export/import as a library file
-  (`formatVersion` 1, category of the commands or `Custom`; import keeps valid ids, same id replaces,
-  invalid ones are reported). Password field values are encrypted with the server master key through
-  the SDK `ISecretProtector` (`ICorePluginContext.Secrets`, AES-256-GCM, purpose
-  `vapix-commander:<id>:<field>`), never listed, never exported; without a protector they are dropped.
-  A saved command lists `storedSecretFields`; leaving such a field empty uses the stored value.
-- Engine (server, payload in memory only, password values never logged, masked as `***` in request
-  lines and bodies shown to the user): `FieldValues` checks values per type (integer, number, boolean,
-  enum, string/password with pattern and min/max length; numbers min/max) before anything is sent;
-  `CommandRenderer` fills `{{field}}` in path (URL-escaped), query (escaped, "," and ":" kept), headers
-  (no Authorization/Cookie/Host), body (json: a value that is exactly `{{field}}` is typed; form;
-  text; xml: XML-escaped; SOAP content type for envelopes) and extract paths; booleans are yes/no for
-  `param-cgi`, true/false elsewhere, unless `trueValue`/`falseValue`; timeout via
-  `VapixRequestOptions.Timeout` (default 15 s, max 600 s). `CommandExecutor` sends with the factory's
-  cached client (never disposed by the plugin), decodes the body as UTF-8 itself (Axis sends
-  `charset=utf8`), shows binary answers as "image/jpeg, 123.4 KB", pretty-prints JSON/XML (cut at
-  256 KB) and interprets per kind (`ResponseInterpreter`, table in command-format.md). Errors: device
-  text (`# Error: ...` line, JSON `message (code N)`, REST error/problem+json, SOAP fault, Axis
-  `GeneralError`, first text line, HTML title) or transport text ("Timeout after 15 s", "Unreachable -
-  Connection refused", "Unreachable - no route to the device", "TLS/certificate error: ...", "Unauthorized - HTTP 401 (check
-  the credentials)", "Not Found - HTTP 404 (API not available on this firmware)", "Bad Request - HTTP 400:
-  <device text>", "Server error - HTTP 500: <device text>"). HTTP 204 / empty 2xx is success.
-- Rollout: page method `rollout` validates every command and value first (nothing starts on an error),
-  writes need `confirmed`, then `ITaskRunner.RunAsync` with the contributed, hidden task plugin
-  `oadm.vapix-commander.run` (`ShowInMenus = false`; one task per device, owner = client user). Steps:
-  **Check compatibility** (fresh `GetApiListAsync` when a command writes or nothing is cached, else
-  the cached API list; detail "All 3 commands supported (fresh API list)"), then one step per command
-  named like the command ("(2)" for repeats) with the extracted result ("Product: P3265-V") or the
-  error as detail. An incompatible command fails its step "Missing API x. Nothing was sent."; a failed
-  command does not stop the others on that device; the task ends Failed with "<command>: <error>"
-  (+N more failed) as the device message (tasks pane, next to the error icon), every request is logged
-  (masked). **Stop on first error** (`RolloutRegistry`, server memory): the first failure aborts the
-  rollout; the failing device skips its remaining commands ("Not run: stopped on the first error."),
-  tasks not started yet are cancelled (`ITaskRunner.Cancel`, "Cancelled before start."), running
-  devices finish their current command, skip the rest ("Not run: the rollout stopped after an error on
-  another device.") and end Cancelled.
-- Page methods (`CommanderMethods`, camelCase JSON, records in `CommanderContract.cs`): `listLibrary`,
-  `listSaved`, `save`, `delete`, `export`, `import`, `tryRequest` (deviceId, command ref
-  library/saved/inline, values, confirmed; read-only commands run at once, writes need `confirmed` and
-  re-check a fresh API list; refuses CertificateChanged devices and cached-incompatible ones; returns
-  status, reason, duration, headers, pretty body, request line and the interpreted result),
-  `checkCompatibility` (deviceIds x command refs against the cached `device.Apis`: Compatible, Missing
-  API, Version too old, API list not read yet, Needs a video device), `rollout`. User-level problems come
-  back as `error` in the reply, not as gRPC errors.
-- Page (`HasOwnCards`: three cards, shared controls only, compact icon buttons = `Button.toolbar.iconOnly`
-  + `ui:OadmIcon` with a tooltip): **Library** card (**+** "New command" and Import icons right of the title, library messages (import, export, save, delete) in a status chip
-  under the title, SearchBox filling the card width (`ui|SearchBox.stretch`, also in Target devices), TreeView
-  Built-in / Saved by category without any badges (no counts, no write / dangerous: the tooltip, the Kind
-  column of the rollout set, the header of the selected command ("Write · dangerous · <description>") and
-  the run confirmation say it). A single click on a command adds it to the rollout set, a click on a group
-  only expands / collapses it (a double click is one action; it acts when the button goes down, because selecting a
-  row can scroll the tree and lose the tap); Enter does the same for the selected node.
-  Saved commands show Edit (pen), Export and Delete icons on hover of their row (Delete key on a selected saved
-  command); no "Add to rollout" and no "Export all" buttons); middle card **Rollout set** (title, "Send to" and
-  **Send** for the selected row; no Raw request tab, user decision 2026-10-11) (DataGrid #, Command, Category, Kind, Source and an icon column with
-  per-row Move up, Move down, Save with values (saved copy in Custom with the entered values, opens the
-  name editor for that row) and Remove, disabled when not possible (first row up, last row down); a
-  "Remove all" icon in that column's header; no button row. Keyboard on the grid: Delete removes the
-  selected row, Ctrl+Up / Ctrl+Down move it. Selecting a row shows its field form below, checked like
-  the server while typing; `ui:PasswordBox` for passwords); **Send** shows the result card below it
-  (`TryResultView`, shared with the request builder).
-- **Request builder** (user decision 2026-10-11: its own dialog `RequestBuilderWindow` / `RequestBuilderViewModel`,
-  1360x760, so the rollout set and the editor no longer share a card): the Library's **+** asks first "Start from
-  scratch" (an empty request: no path, rows, body or fields; the path field shows an example) or "Start from an
-  existing command" (search + virtualized list of every built-in and saved command, double
-  click = Next; the copy is always saved as a new command, a saved one named "<name> (copy)"); the pen icon of a saved
-  command opens it directly ("Edit command", no first step) and **Save** replaces it (`SaveCommandRequest.PreviousId`;
-  no "Save as new": that is **+** from the saved command). The left side is `RawEditorView` (`RawEditorViewModel`):
-  Name, Category, Description, then the request: method, path, query and header tables (the header table is hidden for
-  GET unless the command has headers; Make field and Remove are icons in each row), body type + body (hidden for GET
-  unless the command has a body; the body in `ui:CodeEditor`, JSON and XML colored while typing), timeout, response
-  kind, fields from `{{placeholders}}` typed by hand (a placeholder renamed or broken while typing keeps its field's
-  label, type and value; a field's remove icon puts its value back in place of the placeholder, typed in a JSON body),
-  requires prefilled from the path (param.cgi -> param-cgi 1.0, `/config/rest/<api>/v<n>` -> `<api> n.0`, known CGIs),
-  changes-the-device (prefilled from method/action) and dangerous; a loaded command keeps what the editor does not show
-  (choices, limits, docs, extracts). The right side: "Send to <device>" + **Send** (checks everything but name and
-  category) and the result card. Footer Cancel, Back (new command), Next / **Save** (disabled with the first problem as
-  tooltip; a refused save left of it). No unsaved request goes to the rollout set: save it, then click it in the library.
-  The result card (status chip, "HTTP 200 OK · 84 ms · address", interpreted result, request
-  line, body and headers in `ui:CodeView`s). The body language comes from the response content type
-  (else from the text: param.cgi key=value); JSON and XML are always shown pretty-printed (2 spaces,
-  also when the device sends them minified) with a **Pretty / Raw** switch (default Pretty; Raw = the
-  exact device text from `TryOutcome.RawBody`, which the server sends only when it differs from the
-  pretty body), content type and "Cut at 256 KB." next to it. **Target devices** card (Devices page
-  selection preselected; buttons Devices page selection, All (matching the search), Compatible, None;
-  SearchBox; compatibility summary "4,812 compatible · 188 not compatible · 12 not checked"; per device
-  a check box and one status chip (up to two lines): "Compatible" or the first problem "<command>: Missing API x (+N
-  more)", tooltip = every command). The run controls are docked at the bottom of this card (no separate
-  Run bar card): status chip of the last action only for errors (a started rollout shows no message: its tasks appear
-  in the Tasks pane below the page, user decision 2026-10-08), summary "3
-  commands × 2 devices · 1 write", **Stop on first error** (default on), **Run on N devices**: a
-  confirmation lists every command with its kind, incompatible devices and the stop mode when a command
-  writes; dangerous commands need a second explicit confirmation.
-- Scale (a site can have thousands of devices): the target list is virtualized (`ItemsControl` with
-  `VirtualizingStackPanel`, only visible rows exist); `Targets` / `VisibleTargets` are replaced as whole
-  lists (one reset, no per-item collection events), sorted by IPv4 address numerically; the selection is
-  counted incrementally and All / None / Devices page selection / Compatible set the flags in one O(n)
-  pass with a single notification; compatibility is computed on the client from each device's cached
-  API list (`Compatibility.Check`, the server re-checks a fresh list before writes), no request per
-  device. 5000 devices: filter, select all, devices page selection, compatibility and select compatible
-  each stay under 200 ms (test).
-- Tests: `tests/Oadm.Plugins.VapixCommander.Tests` (rendering of all field types, typed JSON, booleans
-  per kind, validation, every response kind incl. error texts and transport mapping with a fake device,
-  stop on first error through the real task engine and core plugin host, saved CRUD / encryption /
-  export / import, compatibility, page view models against the in-process plugin (library click, per-row
-  rollout actions and their disabled states, 5000-device timing), bundled library,
-  headless screenshots `plugin-vapix-commander-rollout.png` (library + rollout set with four rows), `-new.png` (request builder, first step),
-  `-try-error.png`, `-raw.png`, `-try-json.png`, `-try-json-raw.png`, `-try-xml.png`, `-try-paramcgi.png`,
-  `-many-devices.png` (5000 devices, asserts that only a few rows are realized)); `tests/Oadm.Client.Tests/CodeViewTests`
-  (detection, pretty-printing, tokens, fallbacks, size limits, rendering and copy);
-  `tests/Oadm.Server.Tests/VapixCommanderServerTests` (PluginService routing, hidden task) and the
-  read-only hardware test `VapixCommanderHardwareTests` (param.cgi list Brand and basicdeviceinfo, Try
-  and a rollout on 10.0.0.48 through the in-process server). Not in fake mode (`--fake`) yet.
+- Rules that must hold: every value is checked before anything is sent; requests stay on the device (paths through
+  `CommandValidator.IsDevicePath`); payloads stay in memory, passwords are never logged (`***` in request lines and
+  bodies), saved passwords are encrypted with the master key and never listed or exported; a rollout checks every
+  command first (nothing starts on an error), writes need a confirmation, dangerous commands a second one, and each
+  device re-checks a fresh API list before a write ("Missing API x. Nothing was sent."). The response kind decides how
+  success, errors and values are read (Axis devices answer errors with HTTP 200).
+- Page: Library (search, tree Built-in / Saved; a click adds a command to the rollout set; **+** opens the request
+  builder, the pen edits a saved command), Rollout set (grid with per-row icons, field form, Send with the result card)
+  and Target devices (compatibility from the cached API lists, Stop on first error, Run on N devices); the tasks pane
+  below the page. The request builder is its own dialog: start from scratch or from an existing command, send it to
+  try, save (a saved command is replaced in place).
+- Saved commands: plugin setting `savedCommands`, at most 500, shared by all clients, export / import as library files.
+- Methods are Operator; `tryRequest` and `rollout` are audited. Scale: 5,000 target devices, every list action under
+  200 ms (test).
+- Tests: `tests/Oadm.Plugins.VapixCommander.Tests`, `.Library.Tests`; read-only hardware test `VapixCommanderHardwareTests`.
 
-## NTP server plugin (core plugin)
+## NTP server (core plugin)
 
-`plugins/Oadm.Plugins.NtpServer` (+ `.Client`), id `oadm.ntp-server`, rail page **NTP server** (icon `clock`). Spec and
-decisions: `docs/specs/ntp-server.md`. Own RFC 5905 server-mode implementation (SNTPv4 compatible), no library.
-- Time source (user decision): without an upstream OADM is a fully valid NTP server on its own clock, like chrony's
-  `local stratum 10`: LI 0, stratum 10, reference id `LOCL`, reference timestamp = now, root delay 0, root dispersion
-  10 ms; never LI 3 / stratum 16, no OS clock-sync detection. With an upstream (one host name or IP, optional
-  `host:port`): stratum = upstream + 1, reference id = upstream IPv4 address (IPv6: first 4 bytes of its MD5), root delay
-  and dispersion accumulated (+15 ppm per second since the last sync). The OS clock is served, never set.
-- Upstream (`UpstreamMonitor`, own loop, fully decoupled: requests are always answered at once from the current
-  `TimeSourceState`, an immutable record the responder reads without locks): one query in flight, hard timeout 2 s per
-  query, DNS with its own 3 s timeout (also when the resolver ignores the token) cached 5 min and kept stale on DNS
-  failure; a fresh socket per query; answers must come from the queried address and port and carry our transmit
-  timestamp as originate (16 random low bits), else ignored; sanity checks: mode 4, stratum 1..15, LI != 3, non-zero
-  timestamps, round trip < timeout; Kiss-o'-Death (stratum 0) rejected. Good answer: poll 64 s, doubling to 1024 s after 4
-  good answers in a row. Failure: retry after 2, 4, 8 ... s up to the poll interval; after 3 failures in a row the
-  upstream is not reachable: local mode (stratum 10) + warning, back automatically on the next good answer; while 1-2
-  failures the last good upstream state is still served. KoD RATE doubles the poll interval, DENY/RSTR wait 1024 s.
-- Protocol: UDP 123 (`NtpServerOptions.Port`, tests use 0 = random port on 127.0.0.1), IPv4 and IPv6 in separate sockets.
-  Mode 3 requests of version 3 and 4 with a transmit timestamp get one 48-byte mode 4 answer (VN and poll echoed,
-  precision from the Stopwatch resolution, originate = request transmit, receive taken when the datagram is read,
-  transmit set right before sending); everything else (modes 1/2/5/6/7, other versions, < 48 bytes) is dropped silently.
-  NTP era handling (2036) in `NtpTimestamp`. The receive loop reuses one buffer, one answer buffer and one
-  `SocketAddress`; the client key is read from the sockaddr bytes (no allocation per packet). Windows: SIO_UDP_CONNRESET off.
-- Abuse protection (`NtpRateLimiter`): token bucket per client IP, burst 8, refill 1 per 2 s; over it: drop, one
-  Kiss-o'-Death RATE per client per minute, one "Rate limited" log entry per client per minute. Global cap 2,000
-  requests/s (dropped, status "Too many requests, dropping" for 10 s). Client table LRU, at most 10,000 entries, idle
-  entries expire after 10 min. No allow list, no NTS in v1.
-- Settings (plugin setting `config`: enabled, interfaceId, interfaceName, upstream) stored server side and restored on
-  server start. Interfaces from the SDK `IServerNetworkInterfaces` (every up, non-loopback interface with an address;
-  "All interfaces" binds 0.0.0.0 and [::]; an interface binds all its addresses except IPv6 link-local). A failed bind
-  (port in use, interface gone) is retried every 30 s while enabled.
-- Status line (one at a time, `ui:StatusChip`, detail as tooltip): `Running on 10.0.0.17:123` / `Running on all
-  interfaces, port 123` (ok), `Stopped` (neutral), `Port 123 is in use by another program` (error; Windows +
-  " (Windows Time service)" when `sc query W32Time` says RUNNING, tooltip: net stop w32time; Windows has no privileged
-  ports, so AccessDenied there also means in use), `Insufficient permission to use port 123` (error; Linux tooltip: run
-  as root or `sudo setcap 'cap_net_bind_service=+ep' <server exe>`; macOS: run with sudo or choose All interfaces),
-  `Interface <name> is not available` (error; AddressNotAvailable or the interface is gone), then warnings in this
-  order: `Too many requests, dropping`, `Upstream <host> does not answer, using this computer's time`, `Server clock differs
-  from upstream by 3.2 s` (> 1 s). Mapping in `NtpStatusTexts.ForBindError` (SocketError x OS).
-- Request log: last 40 in memory (`RequestLog` ring buffer of value entries, no table): time, client, offset (client
-  transmit minus server receive; "-" beyond one day, e.g. clients that randomize the transmit timestamp), result Answered
-  / Rate limited. Pushed live (see `ICorePluginContext.Events`, batched every 500 ms); the page resolves the device column
-  ("P3265-V (10.0.0.48)") from the client's device list (O(n) per device change).
-- Page methods (`NtpServerMethods`): `getState` -> `NtpState` (config, status, interfaces, requests, upstream, stratum,
-  port); `save` ({enabled, interfaceId, upstream}) validates the upstream with one query (same timeouts; the running
-  server keeps serving) and replies {saved, upstreamError, upstreamResult, state}; an upstream that does not answer is
-  not saved (error under the field). Events: `state` (status/upstream changed), `requests` (new entries).
-- Page (one card in the host card, subtitle in the host page header, status chip left of the Save button); Enable NTP server;
-  Listen on (select, refreshed when the page opens); Upstream server (optional, checked while typing, field errors under
-  the field, "Checking <host>" accent chip while Save runs, "Answered: 3 ms off, 12 ms round trip" after
-  it, a line "Serving stratum 3 from ..." / "Serving the server clock ..."); Save (primary); "Last requests" DataGrid
-  (Time, Client, Device, Offset, Result chip). The view model watches the events while the view is attached; when the
-  stream ends or fails (or the host has none: fake mode) it re-reads the state every 2 s.
-- Task "Use OADM as NTP server" (contributed, id `oadm.ntp-server.use`, group Maintenance, no dialog, `CanRun`: ntp 1.x
-  or param.cgi): the address is the selected interface's address of the device's family, with "All interfaces" the
-  local address the server routes to the device with (UDP connect, no packet). Steps: Check compatibility (fails "The
-  OADM NTP server is not running ... Nothing was changed." when it is off), Read NTP settings, Set NTP server <addr>
-  (Skipped "Already uses <addr>"), Verify NTP settings (Warning on a mismatch). Name "Use OADM NTP server 10.0.0.17"
-  ("Use OADM NTP server" with All interfaces). The VAPIX requests are the Date and time plugin's (`TimePlanner`,
-  `TimeClient`; its `Model/` and `Vapix/` sources are compiled into the NTP assembly, because a project reference would
-  put `Oadm.Plugins.DateTime.Server.dll` into this plugin folder, where the loader would register Date and time twice).
-- Per OS: Windows needs nothing but a free port 123 (W32Time holds it on many machines: stop it, then OADM serves; the
-  firewall must allow inbound UDP 123); Linux needs root or `cap_net_bind_service` (chronyd/ntpd must not hold 123);
-  macOS needs sudo for a single interface (wildcard binds below 1024 are allowed without root since 10.14).
-- Tests: `tests/Oadm.Plugins.NtpServer.Tests` (codec round trip, era wrap, invalid input; responses incl. local mode and
-  ignored modes; rate limiter burst/refill/LRU/global; status per SocketError and OS; interface listing; upstream
-  client against `FakeUpstream`: timeout, slow and late answers, wrong origin, other port, KoD RATE/DENY,
-  unsynchronized, DNS failure/hang/cache; monitor fallback and recovery; in-process loopback integration: valid mode 4
-  answer a client accepts, rate limiting with one KoD, answers within 100 ms while the upstream hangs, upstream
-  validation on Save, persistence across restart, port in use retried, missing interface; the task against the Date and
-  time fake camera; page view model; headless screenshots `ntp-server-page.png`, `-errors.png`,
-  `-upstream-warning.png`, `-checking.png`). A hardware test where 10.0.0.48 queries OADM is a device write and is not
-  written/run without explicit user approval.
+`plugins/Oadm.Plugins.NtpServer` (+ `.Client`), id `oadm.ntp-server`, rail page **NTP server** (group Servers, icon
+`clock`), on by default, switchable. Own RFC 5905 server-mode implementation (SNTPv4 compatible) on UDP
+123, no library; contributes the task **Use OADM as NTP server**. Details: plugin `README.md`.
 
-## DHCP server plugin (core plugin)
+- Rules that must hold: requests are always answered at once from the current time source state, never waiting for the
+  upstream; without an upstream OADM serves its own clock as stratum 10 (never "unsynchronized"); the OS clock is served,
+  never set; an upstream is validated with one query before it is saved; abuse protection per client IP (burst 8, 1 per
+  2 s, one Kiss-o'-Death RATE a minute) and 2,000 requests/s overall; a failed bind is retried every 30 s; status texts
+  in plain words (`NtpStatusTexts`: port in use, permission, interface missing, upstream not answering).
+- Roles: `save` is Admin and audited. The Windows service opens UDP 123 in the firewall while enabled.
+- Tests: `tests/Oadm.Plugins.NtpServer.Tests` (loopback with random ports, never port 123 on a real interface).
 
-`plugins/Oadm.Plugins.DhcpServer` (+ `.Client`), id `oadm.dhcp-server`, rail page **DHCP server** (icon `network`). Spec and
-decisions: `docs/specs/dhcp-server.md`; layout, per-OS setup and the manual test plan: `plugins/Oadm.Plugins.DhcpServer/README.md`.
-Own RFC 2131 / 2132 implementation, IPv4 only, one interface, no relay agents (relayed messages are ignored and logged).
-- Settings (plugin setting `config`: enabled, interfaceId, interfaceName, rangeStart, rangeEnd, autoAddAxisDevices) restored
-  on server start; the plugin starts disabled. Leases (plugin setting `leases`, a JSON list of static and bound/expired/released leases,
-  never offers) are written at most every 2 s when changed and on stop; they survive restarts.
-- Derived, never asked: mask from the interface prefix, router = the interface's IPv4 gateway when it is in the subnet,
-  DNS = the interface's IPv4 DNS servers, domain = its DNS suffix, lease 24 h (T1 50 %, T2 87.5 %), server id = the
-  interface address. Shown as one line: "Clients get mask 255.255.255.0, router 10.0.0.138, DNS 10.0.0.138, lease 24 h"
-  ("no router" / "no DNS", ", domain x" when there is one). Server, router and DNS addresses inside the range are skipped.
-- Protocol (`DhcpEngine`): DISCOVER -> OFFER (static lease first, then the client's previous lease, the requested
-  address, the next free address from a rotating cursor, then the oldest expired/released lease); REQUEST selecting
-  (another server id: our offer is withdrawn), init-reboot (NAK for a wrong address or network, silent without a
-  record), renewing/rebinding (NAK without a lease); DECLINE and in-use probe hits mark the address as a conflict for 1 h;
-  RELEASE keeps the record (the device gets the same address again); INFORM -> ACK without lease time. Replies go to
-  ciaddr when set, else broadcast (also NAKs and clients without the broadcast flag: no portable ARP injection).
-  Parameter request list honored for 1, 3, 6, 15 (51/53/54/58/59 always); host name (12) echoed and stored.
-- Before a new address is offered the Network plugin's probe (ping + TCP 80/443, `AddressProbe.cs` compiled in) runs
-  with 2.5 s timeout, at most 32 probes at once (busy: no answer, the client retries), up to 3 addresses per request.
-  Static leases are never probed (the user decided).
-- Abuse protection: per MAC token bucket (burst 10, 1 per 3 s, one log line per device per minute), global 500
-  messages/s, table LRU 10,000 MACs with 10 min idle expiry (shared `KeyedRateLimiter`); at most 64 messages in
-  flight; one pending offer per MAC (re-offered without a new probe), offers expire after 60 s, pending offers capped at
-  half the pool (min 16) so a flood of new MACs cannot take the pool. Receive buffer reused, reply buffers pooled.
-- Sockets per OS (`UdpDhcpSocketFactory`): Windows binds the interface address (broadcasts of the interface arrive);
-  Linux 0.0.0.0 + `SO_BINDTODEVICE` (root or `cap_net_raw` before kernel 5.7); macOS 0.0.0.0 + `IP_BOUND_IF`; packets
-  of other interfaces are dropped via IP_PKTINFO. A loopback binding never sends broadcasts (tests). Injectable
-  `IDhcpSocketFactory`; tests use `FakeDhcpNetwork` (in memory) and loopback with random ports, never port 67 on a real
-  interface.
-- Other DHCP servers (`OtherServerCheck`): a discover with the broadcast flag and a random locally administered MAC from
-  UDP 68 (address reuse), offers collected for 3 s, the own address and the own server (it ignores the probe MAC) not
-  counted. Runs on Save when enabling (not when already serving on that interface), every 10 min while running and at
-  server start. Found on Save: nothing saved, the page asks with the shared confirmation popup "Another DHCP server
-  (10.0.0.1) answers on this network. Running two DHCP servers causes address conflicts. Enable anyway?" and saves again
-  with the servers confirmed; confirmed servers are stored per interface (`config.acceptedOtherServers`) and never warn
-  again: after "Enable anyway" the status says `Running on ...`. Only a server that was not confirmed turns it into a warning.
-- Status line (`DhcpStatusTexts`, `ui:StatusChip` left of the Save button, detail as tooltip; plain language, protocol details
-  only in the server log): `Running on Ethernet (10.0.0.17/24)`, `Stopped`, `Port 67 is in use by another program`
-  (Windows tooltip names the running DHCP Server role or Internet Connection Sharing, via `sc query DHCPServer` /
-  `SharedAccess`; AccessDenied on Windows also means in use; Linux: dnsmasq, isc-dhcp-server, NetworkManager + `ss`;
-  macOS: bootpd/Internet Sharing + `lsof`), `Insufficient permission to use port 67` (Linux: root or `setcap
-  'cap_net_bind_service,cap_net_raw=+ep'`; macOS: sudo), `Interface <name> is not available`, `Range is not inside the
-  interface subnet` (the interface address changed; re-checked every 30 s like a failed bind), `Another DHCP server
-  answers on this network (<ip>)` (warning), `Address pool exhausted` (warning, 5 min after a request found no address
-  or while no address is free).
-- Page methods (`DhcpServerMethods`): `getState` (config, status, interfaces with an IPv4 address, per interface the
-  derived values, all leases, lease version), `save` (field errors per field; `otherServers` when a confirmation is
-  needed), `saveStatic` (add/edit, field errors "Mac", "Address", "Name"), `makeStatic`, `deleteStatic`, `release`
-  (forgets a dynamic lease). Events: `state` (status changed), `leases` (changed + removed leases with the lease version,
-  batched every 500 ms, split above 2,000 entries; the page ignores versions it already has).
-- Page (`DhcpServerView`, subtitle in the host page header via `ui:PageHeader`, status chip left of Save, no card title): Enable
-  DHCP server; Listen on (`InterfaceSelection`, IPv4 interfaces only, "Ethernet - 10.0.0.17/24 (Intel I219)"); Start
-  address / End address (`ui:FormField`, errors under the fields while typing: "Must be inside the subnet 10.0.0.0/24.",
-  "Must be after the start address.", network/broadcast/server address, at most 65,536 addresses); the derived
-  line directly under End address, the auto-add check box below it aligned with the inputs; Save (disabled with the reason as tooltip; status "Checking for other DHCP servers" while saving). Leases:
-  summary "6 leases, 2 static", shared `SearchBox`, "+ Static lease"; one virtualized DataGrid (MAC address, IP address
-  sorted numerically, Host name / device, Type, Expires "in 23 h" / "Expired" / "Released" / "-", row actions as link
-  buttons: Edit, Delete for static; Make static, Release for dynamic; Delete and Release are red and confirmed). Managed devices
-  by MAC = serial number (else by address) show "P3265-V (managed)". Rows update in place; search and structural changes
-  rebuild the list with one reset (O(n), 5,000 leases tested).
-- **Automatically add Axis devices that get an address** (user decision 2026-10-08; check box below End address, config
-  `autoAddAxisDevices`, default off, saved with Save, Admin like the other settings): after every ACK (new or renewed lease)
-  the engine calls `DhcpEngine.Leased(mac, address)`, which only queues (`Serving/DhcpDeviceAutoAdd`, never blocks the
-  receive loop). Only MAC addresses of Axis blocks (`Serving/AxisOui`, the one list: 00:40:8C, AC:CC:8E, B8:A4:4F,
-  E8:27:25 from the IEEE registry) are handled, once per MAC and lease change (the same address again is skipped), at
-  most 4 at a time, at most 10,000 waiting: `IDeviceAutoAdd.FollowAsync` first (a managed device at another address is
-  moved, also with the setting off), then for an unmanaged device with the setting on `AddAsync(ip, serial = MAC, "DHCP
-  server")` (see "Add Devices Page"). Unreachable (the camera answers HTTP a few seconds after DHCP) or a moved device not
-  verified yet: one retry after 30 s, dropped when the lease changed meanwhile. Results are logged; the lease list shows
-  the managed device as before ("P3265-V (managed)").
-- Static lease dialog (`StaticLeaseWindow`, `ValidatingViewModel`): MAC address, IP address (inside the subnet, may be
-  outside the range, not the server address, not reserved or actively leased by another device), optional name (max 63);
-  errors under the fields while typing, the server's answer under the field too.
-- Tests: `tests/Oadm.Plugins.DhcpServer.Tests` (codec round trip with all options, overload, concatenation, malformed
-  input and random garbage; state machine incl. selecting/other server, init-reboot, renew/rebind, decline, release,
-  inform, probe conflicts, offer expiry, pending offer cap, probe concurrency; lease store: allocation, static priority,
-  collisions, expiry, reclaim, persistence, 5,000 leases; rate limits; status texts per OS; the whole service on the
-  in-memory network: full exchange, unicast renew, live events, restart persistence, page actions, other server +
-  confirmation, port in use retried, Windows service named, interface address change, pool exhausted, flood, malformed
-  datagrams; real socket on loopback; page view model incl. 5,000 leases; `AutoAddTests` with a fake `IDeviceAutoAdd`:
-  Axis blocks only, once per lease change, setting off adds nothing but follows, managed devices never added, one retry,
-  4 at a time, engine never blocked, the whole server on the in-memory network; headless screenshots `dhcp-server-page.png`,
-  `dhcp-server-auto-add.png`,
-  `-page-errors.png`, `-page-other-server.png`, `dhcp-server-other-server-confirm.png`, `dhcp-server-static-lease-dialog.png`).
+## DHCP server (core plugin)
 
-## PKI plugin (core plugin)
+`plugins/Oadm.Plugins.DhcpServer` (+ `.Client`), id `oadm.dhcp-server`, rail page **DHCP server** (group Servers, icon
+`network`), on by default, switchable, starts disabled. Own RFC 2131 / 2132 implementation, IPv4 only, one interface, no
+relay agents; static leases, the lease list, and optionally adding Axis devices that get an address. Details, per-OS
+setup and the manual test plan: plugin `README.md`.
 
-`plugins/Oadm.Plugins.Pki` (+ `.Client`), id `oadm.pki`, rail page **PKI** (icon `shield`). Spec and decisions:
-`docs/specs/pki.md`, device API research `tests/Oadm.Plugins.Pki.Tests/Fixtures/`. Part 1: the CA, its page and the server's trust;
-part 2: the contributed Security tasks (below), the only writers of the `issued` registry.
-- CA store (plugin settings): `ca` (id = SHA-256 of the certificate, source generated/imported, certificate and chain PEM,
-  key as PKCS#8 PEM encrypted with `ICorePluginContext.Secrets`, purpose `pki:ca:<id>`), `previousCas` (public parts, at
-  most 10, newest first, expired ones dropped), `issued` (`{serialNumber, deviceId, purpose https|dot1x, caId, notAfterUtc,
-  issuedUtc, alias}`; per device and purpose the newest counts; `IssuedRegistry` keeps changes in memory and writes at
-  most every 2 s and on stop, entries ended more than 30 days ago are dropped), `config`. Without `Secrets` the plugin keeps no CA
-  ("CA cannot be stored on this server"); a key that cannot be decrypted (other master key) is the error state "CA key
-  cannot be read" with Generate / Import only, nothing is overwritten.
-- First start: the default CA "OADM Root CA <machine name>" in the background (status "Creating the certificate
-  authority"). Generate (`CaGenerator`, `CertificateRequest` only): RSA 4096, SHA-256 PKCS#1 v1.5, 16 random positive
-  serial bytes, NotBefore now - 5 min, BasicConstraints CA (critical), KeyUsage keyCertSign + cRLSign (critical), SKI +
-  AKI, 1..30 years (default 10), off the request thread.
-- Import (`CaImporter`): PKCS#12 + password (also the Back up file) or PEM certificate(s) + key (in the file or a separate
-  PEM: PKCS#8, PKCS#1, SEC1, encrypted PKCS#8), at most 1 MB, password never stored or logged. Checks with field errors
-  (`File`, `Password`, `KeyFile`, `KeyPassword`): readable / password right, exactly one certificate with a matching key,
-  a CA (keyCertSign when KeyUsage is present), RSA >= 2048 or ECDSA P-256 / P-384, valid now and NotAfter >= now +
-  device validity + 1 year ("This CA expires on <date>, before certificates it would issue."). The other certificates on
-  the issuer path become the chain.
-- Replace (generate or import): without `confirmed` and with an existing CA the reply is `needsConfirmation` with
-  `devicesWithCurrentCa` (also for 0 devices, and only after all checks passed, so the page asks after the field
-  checks); the page asks "N devices have certificates from the current CA. They keep working until they are renewed.
-  Replace the CA?" (only "Replace the CA?" for 0). The old CA moves to
-  `previousCas`, the anchors are updated, a `state` event is published.
-- Trust anchors: the active CA, its chain and the previous CAs (+ chains) go to `ctx.TrustAnchors`, so device
-  certificates they issued are **Trusted** in the device grid without an OS change (lazy, next full refresh).
-- Export `.crt` (PEM, with the chain) / `.cer` (DER, CA only), previous CAs as well; Back up = PKCS#12 with key and chain,
-  AES-256-CBC + SHA-256, 100,000 iterations, password >= 8 (twice in the dialog), warning popup, logged "CA backup exported".
-- OS trust store (`TrustStore/`, `TrustStoreInstallers.ForServer` / `.ForClient`, one class per OS behind
-  `IProcessRunner` and `IMachineRootStore`, 30 s per tool, output to the log): Windows LocalMachine Root (client without
-  admin: `certutil -addstore Root` with runas), Debian/Ubuntu `/usr/local/share/ca-certificates/oadm-<fp16>.crt` +
-  `update-ca-certificates`, RHEL/Fedora `/etc/pki/ca-trust/source/anchors` + `update-ca-trust extract`, SUSE
-  `/etc/pki/trust/anchors` + `update-ca-certificates` (client without root: one `pkexec /bin/sh -c` prompt, without pkexec
-  the error shows the exact `sudo` command), macOS System keychain `security add-trusted-cert -d -r trustRoot` (client:
-  `osascript ... with administrator privileges`), check `find-certificate -Z -a`, remove `delete-certificate -Z <sha1>`.
-  Texts: "Permission denied: the server must run as administrator / root", "No supported certificate tool found
-  (update-ca-certificates or update-ca-trust)", "<tool> failed: <first line>", "The installation was cancelled.".
-  Tests use fakes only; nothing ever touches a real trust store.
-- Settings (`config`, `PkiValidation` shared by server and page): `deviceCertValidityDays` 365 (1..3650, shortened to the
-  CA's end when issuing, logged), `expiryWarningDays` 30 (1..365), `dot1x.eapolVersion` 1|2, `dot1x.identity`
-  mac|hostName|custom, `dot1x.customIdentity` (1..64 printable, placeholders `{serial}` `{hostName}` only),
-  `dot1x.radiusCa` oadm|imported + `radiusCaPem` (`importRadiusCa` checks a PEM/DER CA certificate, Save stores it).
-- Page methods (`PkiMethods`, camelCase, errors as `{errors: {Field: message}}` or `{error}`): `getState` (status, ca,
-  previousCas, config, serverTrustInstalled (checked every call), counts, radiusCa, `simulated` in fake mode), `generate`,
-  `import`, `previewReplace`, `exportPublic`, `exportPrevious`, `removePrevious`, `backup`, `installServerTrust`,
-  `saveSettings`, `importRadiusCa`; event `state` after every change.
-- Page (`HasOwnCards`, subtitle "Issues device certificates for HTTPS and IEEE 802.1X.", header chip "CA valid until
-  <date>" ok / "CA expires in N days" warning (within `expiryWarningDays`) / "CA expired", "CA key cannot be read" error):
-  cards Certificate authority (name, validity, key, fingerprint selectable, chain of an intermediate, "Trusted root store"
-  chips for the server and this computer, the source (Generated / Imported) as a "Source" row, buttons Install in trusted
-  root store, Export public certificate (PEM / DER menu), Back up, a separator, then Generate new CA, Import CA), Device certificates (the two fields; no issued-devices summary line,
-  user decision 2026-10-08), IEEE 802.1X (EAPOL version, EAP identity + custom field, RADIUS server CA
-  with Import... / View, one Save for both cards at the end of the IEEE 802.1X card, inputs 460 px wide), Previous certificate authorities (only when there are any: Name, Valid
-  until, Replaced, Export / Remove links, Remove red and confirmed). Dialogs `GenerateCaWindow`, `ImportCaWindow` (FileRow, key
-  FileRow only for a certificate without key), `BackupWindow`: `ValidatingViewModel`, errors under the fields, the
-  confirmation popups owned by the dialog. Last export folder per client in
-  `LocalApplicationData/Oadm/plugins/oadm.pki/client.json`. Fake mode (`FakeOadmApi.Pki.cs`): in-memory CA + one previous
-  CA, server store simulated, this computer never touched.
-- Tests: `tests/Oadm.Plugins.Pki.Tests` (generator extensions, importer formats and every check, service with real secret
-  protector, event hub and anchor registry: default CA, restart, other master key, no secrets, replace + confirmation,
-  previous CAs cap/expiry/remove, export, backup restore, settings, RADIUS CA, status texts; trust store installers per
-  OS with the fake runner; page view model incl. dialogs; fake mode; headless screenshots `pki-page.png`,
-  `pki-page-imported-intermediate.png`, `pki-generate-dialog.png`, `pki-import-dialog-errors.png`, `pki-backup-dialog.png`);
-  `tests/Oadm.Core.Tests/Vapix/TrustAnchorTests.cs` (anchored leaf / intermediate Trusted, self-signed stays, registry,
-  lazy re-rating in `CertificatePinning`, host context).
+- Rules that must hold: before a new address is offered it is probed (ping + TCP 80 / 443; static leases are not
+  probed); another DHCP server on the network is checked on Save, every 10 minutes and at start, and enabling next to one
+  needs an explicit "Enable anyway"; abuse protection per MAC and overall, pending offers capped at half the pool; mask,
+  router, DNS and domain come from the interface, never asked; leases survive restarts; the automatic add uses the add
+  page's pipeline on the server (Axis MAC blocks only, the Axis check before any credential, the credential list only)
+  and follows managed devices to their new address also when it is off; tests never send DHCP on a real interface.
+- Roles: `save`, `saveStatic`, `deleteStatic`, `makeStatic`, `release` are Admin and audited. The Windows service opens
+  UDP 67 in the firewall while enabled.
+- Tests: `tests/Oadm.Plugins.DhcpServer.Tests` (in-memory network and loopback with random ports).
 
-### PKI Security tasks (part 2, contributed by `oadm.pki`)
+## PKI (core plugin)
 
-Context menu group **Security** (icon key), no toolbar, `CanRun` on cached data only: AXIS OS >= 11.11 from the firmware
-version (+ network-settings 1.x in `Apis` for 802.1X). Device APIs (`Device/`): REST `cert` v1 (`CertApi`: `config/discover`
-must list `cert.v1` released, read fresh before the first write, cached 10 min for queries; else "Needs AXIS OS 11.11 or
-later. Nothing was changed."), SOAP web server TLS (`WebServerTls`: `aweb:Get/SetWebServerTlsConfiguration` at
-`/vapix/services`, ciphers sent back as read), network_settings.cgi (`NetworkInfoApi`: getNetworkInfo, setWired8021X
-Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fallback).
-- Issuing (`CertificateDeployment.IssueAsync`, `DeviceCertificateIssuer`): key on the device (`create_certificate` RSA-2048 in
-  the default keystore) -> `get_csr` -> OADM signs (its own subject `CN=<OADM address>`, SAN IP addresses, host name, FQDN,
-  `axis-<serial>.local`; never the CSR's; CSR key RSA >= 2048 or EC; EKU serverAuth / clientAuth; KeyUsage digitalSignature +
-  keyEncipherment; AKI = CA SKI; 16 random serial bytes; validity `deviceCertValidityDays` from now - 5 min, capped at the
-  CA) -> `PATCH certificates/<alias>`; the entry goes into `issued`. A failure after the key was created deletes the
-  unfinished key again. Aliases `OADM HTTPS|802.1X <yyyyMMdd-HHmmss>`, CA `OADM CA <8 hex>`, RADIUS CA `OADM RADIUS CA <8
-  hex>`, manual installs `OADM import <ts>`, percent-encoded in URLs. CA certificates are matched by fingerprint (an
-  existing alias is reused). "Remove previous OADM certificate" deletes older OADM certificates of the purpose that
-  nothing uses (alias prefix + registry serial or the CA as issuer), never others.
-- **Enable HTTPS** (`oadm.pki.https-enable`, no dialog, name "Enable HTTPS"): Check compatibility, Read web server
-  settings, Read network settings (Skipped without network-settings), Install CA certificate (Skipped "Already
-  installed"), Create key on the device, Get certificate request, Sign certificate, Install certificate, Switch web server
-  to the new certificate (policy kept; HTTP only becomes HTTP and HTTPS), Verify HTTPS (`ctx.UpdateDeviceTlsAsync("https",
-  fingerprint)`, retried up to 60 s while the web server restarts: OADM pins the new certificate, scheme https), Remove
-  previous OADM certificate.
-- **Disable HTTPS** (`oadm.pki.https-disable`, confirmation "Video systems that use HTTPS lose the connection to these
-  devices.", name "Disable HTTPS"): Check compatibility (fails when `Network.HTTP.AuthenticationPolicy=basic`: OADM sends no
-  Basic over HTTP), Read web server settings, Set HTTP only (policy `Http`, certificates stay; Skipped "Already HTTP only"),
-  Verify (`UpdateDeviceTlsAsync("http")`).
-- **Enable IEEE 802.1X** (`oadm.pki.dot1x-enable`, confirmation "Devices on ports that enforce 802.1X become
-  unreachable if authentication fails.", name "Enable IEEE 802.1X"): Check compatibility (CA chain must end in a root, the
-  RADIUS CA of the page, cert v1, network-settings with `wired.8021X`, identity 1..128), Check device clock (> 5 min off:
-  "The device clock is 12 min off. Set the date and time first. Nothing was changed."), Install CA certificates (RADIUS
-  server CA + the OADM CA chain), Create key / Get request / Sign / Install certificate, Set 802.1X configuration (enabled,
-  EAP-TLS, identity MAC = serial / host name / custom with `{serial}` `{hostName}`, EAPoLv<n>, certClient, certsCA = RADIUS
-  CA aliases), Verify 802.1X settings (read back, mismatch = Warning), Remove previous OADM certificate.
-- **Disable IEEE 802.1X** (`oadm.pki.dot1x-disable`, name "Disable IEEE 802.1X"): Check compatibility, Set 802.1X off
-  (Skipped "Already off"), Verify; certificates stay.
-- **Renew certificates** (`oadm.pki.renew`, name "Renew certificates"): Check compatibility, Read certificates, Read web
-  server settings, Read network settings, then per purpose whose current certificate is OADM's the enable flow with
-  prefixed steps ("HTTPS: Create key on the device", "IEEE 802.1X: ..."; 802.1X adds Check device clock and runs only
-  while 802.1X is on); otherwise one Skipped step "Renew HTTPS certificate" / "Renew IEEE 802.1X certificate" with the
-  reason ("No OADM HTTPS certificate on this device").
-- **View certificates** (`oadm.pki.view`, dialog only, never a task) and **Delete certificates**
-  (`oadm.pki.delete`): `CertificatesWindow` (virtualized DataGrid grouped Client / Server / CA / devices that could not be
-  read; MAC address, Address, Name, Issued by, Issued to, Valid to, In use (HTTPS, 802.1X), Source OADM / Other;
-  SearchBox; Refresh), read through the query `listCertificates` (read-only, at most 4 devices at a time, progress row,
-  rows appear progressively, list replaced as a whole at most every 300 ms). Delete mode: check boxes; in use and Axis
-  factory (802.1AR) certificates greyed with a tooltip; Select all / none (O(n)); confirmation popup; payload = aliases per
-  device. Task steps: Check compatibility, Read certificates (validates every choice before the first delete: exists, not
-  in use, not factory), Delete certificate <alias> (one each), Verify. Names "Delete certificate <alias>" / "Delete N
-  certificates" (distinct aliases).
-- **Install certificates** (`oadm.pki.install`): `InstallCertificatesWindow`: Use for (HTTPS / IEEE 802.1X / CA
-  certificates only), .pfx / .p12 files (one password for all, `CertificateFiles`: wrong password under the field), table
-  File, Certificate, Device, Status chip; a file must match exactly one selected device by MAC (serial in any notation, also
-  `axis-<serial>`), IP or host name / FQDN in CN or SAN, one file per device; problems block Install. Install confirms,
-  uploads (`UploadAsync`) and sends `{purpose, password, files[{deviceId, fileId, fileName}]}` (CA only: deviceId empty =
-  every device). Steps: Check compatibility, Read certificate file, then HTTPS: Read web server settings, Install
-  certificate (`install_from_pkcs12`), Switch web server, Verify HTTPS; 802.1X: Check device clock, Install CA
-  certificates, Install certificate, Set 802.1X configuration, Verify 802.1X settings; CA only: Install CA certificates.
-  A device without a file ends Done with warnings, nothing sent. Name "Install certificate <file>" / "Install N
-  certificates".
-- **Install CA certificates** (`oadm.pki.install-ca`, icon `upload`, user request 2026-10-08: install one or more CA
-  certificates on many devices, no OADM CA needed): `InstallCaCertificatesWindow` (`InstallCaCertificatesViewModel`):
-  **Add files** (several at once, again for more; PEM .crt / .pem / .cer incl. bundles with several certificates, DER
-  .cer / .crt / .der, at most 1 MB each, read by the shared `CaCertificateFiles`), a virtualized table with one row per
-  certificate (Name = subject CN, Issued by, Valid to, SHA-256 (first 8 bytes, tooltip the whole one), File, Status chip,
-  Remove icon): the same certificate in several files is one row with both file names; a row's problem stays in its Status
-  column ("Not a CA certificate": no BasicConstraints CA or no keyCertSign when KeyUsage is present, "Expired", "Not valid
-  yet", "Cannot be read" / "No certificate" for a file). Rows with a problem are left out; Install is disabled with the
-  reason as tooltip while no usable certificate is listed or more than 150 (`CaCertificateFiles.MaxCertificates`, one
-  step each within the 200 steps of a task; the reason also directly below the table), confirms in `ui:MessageWindow`
-  ("Install 3 CA certificates on 12 devices? ...") and returns `InstallCaPayload` {certificates [{name, pem}]} (public
-  data in memory, no upload). Steps: Check compatibility (the payload is checked again first: every certificate a CA,
-  valid now, duplicates merged, else Failed "<name>: <reason> Nothing was changed." without a request; then cert v1 from a
-  fresh `config/discover`), Read installed CA certificates, Install CA certificate <name> (one each, "(2)" for an equal
-  name; Skipped "Already installed" when the device has the fingerprint under any alias; alias "OADM CA <8 hex>" like
-  the enable flows, "-2" when another certificate holds that alias), Verify CA certificates (every fingerprint listed,
-  else Warning). Name "Install CA certificate <name>" / "Install N CA certificates".
-- Not done: the device grid's "Trusted (OADM CA)" / "Issued by a previous CA" texts and `expiryWarningDays` in the
-  Certificate expires column (OADM certificates already rate **Trusted** through the trust anchors). Task names do not
-  distinguish Enable from Update or one renewed purpose (the name is fixed per run, before the device is read).
-- Tests (`tests/Oadm.Plugins.Pki.Tests`): parsers and request bodies against the recorded 10.0.0.48 answers (linked from
-  `tests/Oadm.Plugins.Pki.Tests/Fixtures`), every task against `FakeCamera` (stateful REST cert v1 with real keys and CSRs, SOAP web
-  server, network_settings.cgi, time.cgi) incl. compatibility failures with no writes, clock, chain, cleanup, renew,
-  delete refusals, manual install, Install CA certificates (`InstallCaTests`: PEM bundles, DER, non-CA, expired,
-  garbage, installs / skips existing / no writes on an old device or an invalid payload); registry batching; dialog view
-  models (5,000 devices: unit check plus a Perf test with 190,000 certificates; Install CA certificates with 5,000
-  devices); headless screenshots `pki-view-certificates.png`, `pki-delete-certificates.png`,
-  `pki-install-manual.png`, `pki-install-ca.png`, `pki-dot1x-confirm.png`; `tests/Oadm.Client.Tests/SecurityMenuTests` (`pki-security-menu.png`);
-  `tests/Oadm.Server.Tests/DeviceTlsTests` (UpdateDeviceTlsAsync with the fake network presenting real certificates).
-  `HardwareWriteTests` is an opt-in skeleton (`OADM_PKI_HARDWARE_WRITE=1`, `Category=HardwareWrite`), not written yet.
+`plugins/Oadm.Plugins.Pki` (+ `.Client`), id `oadm.pki`, rail page **PKI** (group Security, icon `shield`), always on.
+One certificate authority for device certificates (generated on first start or imported), the server's trust in it, and
+the Security tasks of the context menu: Enable / Disable HTTPS, Enable / Disable IEEE 802.1X, Renew certificates, View,
+Delete and Install certificates, Install CA certificates. Details: plugin `README.md`; device API research:
+`tests/Oadm.Plugins.Pki.Tests/Fixtures/`.
+
+- Rules that must hold: the CA key is stored only encrypted with the master key (without `Secrets` no CA is kept; a key
+  that cannot be decrypted is the state "CA key cannot be read", nothing is overwritten); replacing the CA asks how many
+  devices have certificates from the current one; the CA and its previous CAs are trust anchors, so OADM-issued device
+  certificates rate **Trusted** without an OS change; keys of device certificates are created on the device, OADM signs
+  with its own subject and SAN (never the CSR's); every task checks AXIS OS 11.11+ (cert v1 from a fresh
+  `config/discover`) before the first write and fails "Nothing was changed" otherwise; Enable HTTPS pins the new
+  certificate through `UpdateDeviceTlsAsync`; 802.1X checks the device clock first; only OADM's own certificates that
+  nothing uses are removed; passwords of imports and backups are never stored or logged; nothing in tests touches a real
+  trust store.
+- Roles: everything but `getState` is Admin and audited; "Install in trusted root store" on the server asks with the CA's
+  SHA-256 fingerprint.
+- Tests: `tests/Oadm.Plugins.Pki.Tests` (every task against a stateful fake camera); opt-in `HardwareWriteTests`
+  (`OADM_PKI_HARDWARE_WRITE=1`, not written yet).
 
 ## Metadata Monitor (core plugin)
 
-`plugins/Oadm.Plugins.MetadataMonitor` (+ `.Client`), id `oadm.metadata-monitor`, rail page **Metadata Monitor** (icon
-`activity`), **off by default** (user decision 2026-10-10). A port of the AXIS Metadata Monitor tool: pick one camera, Start, and watch its event stream live, the way a
-technician checks which events a device sends (I/O ports, virtual inputs, storage, temperature, tampering, ACAP events).
-Read-only for devices. Decided with the user on 2026-10-08:
+`plugins/Oadm.Plugins.MetadataMonitor` (+ `.Client`), id `oadm.metadata-monitor`, rail page **Metadata Monitor** (group
+Monitoring, icon `activity`), **off by default**. A port of the AXIS Metadata Monitor tool: pick one camera, Start, and
+watch its event stream live (I/O ports, virtual inputs, storage, temperature, tampering, ACAP events). Details: plugin
+`README.md`.
 
-| Topic | Decision |
-|---|---|
-| Who connects | The **server** opens the RTSP metadata stream with the stored credentials (like the live view); passwords never reach the client. |
-| Content | **Events only**: exactly `rtsp://<device>/axis-media/media.amp?video=0&audio=0&event=on` (no analytics scene data, no free address field). |
-| Cameras | **One camera at a time**; switching the camera stops the running stream. |
-| Saving | **No saving**: no export, no capture files. A single message can be copied from the detail view. |
-
-- **Transport (server, `Oadm.Core/LiveView` RTSP client reused):** RTSP/1.0 over TCP to port 554, RTP interleaved, Digest
-  with the stored credentials (Basic never on plain RTSP), DESCRIBE / SETUP of the one `application` media
-  (`vnd.onvif.metadata`) / PLAY, keep-alive (GET_PARAMETER or OPTIONS before the session timeout), TEARDOWN on Stop.
-  RTP payload: XML fragments of one `tt:MetadataStream` document per message, the RTP marker bit ends a document;
-  fragments are joined by sequence number, a gap drops the document (counted, "1 message lost"). At most 1 MB per
-  document. Devices with status CertificateChanged / CredentialsRequired / PasswordNotSet are refused with the device
-  status text. One stream per page session; the server ends it when the page's watch ends (client closed or switched
-  page) or after Stop. Reconnect with backoff 1, 2, 4, 8, 10 s on a broken connection, status "Reconnecting".
-- **Parsing (server):** every `wsnt:NotificationMessage` in a document becomes one message: topic (`wsnt:Topic`, namespace
-  prefixes resolved, `tns1:` / `tnsaxis:` dropped for the tree text: `Device/IO/VirtualInput`), UTC time and
-  `PropertyOperation` (Initialized, Changed, Deleted) of `tt:Message`, `Source` / `Key` / `Data` SimpleItems (name, value),
-  the raw XML of the notification (pretty-printed for the detail view), and the capture time (server receive time).
-  Category = "Event". Malformed XML becomes one message with Category "Invalid" and the raw text.
-- **Info text** (like the AXIS tool's Info column): `[INIT] port = 33; active = 0;` = `[INIT]` / `[CHANGED]` / `[DELETED]`
-  from the property operation, then every Source, Key and Data item as `name = value;` in document order.
-- **Page methods / events (`MetadataMethods`):** `start` ({deviceId}) -> {streamId} or `error` ("The device has no event
-  stream", "Unauthorized - HTTP 401 (check the credentials)", "Unreachable - ..."), `stop`, `keepAlive` (every 5 s while running). Messages are pushed through `ICorePluginContext.Events`
-  (topic `messages`, batched every 250 ms, at most 500 per batch; above that the oldest of the batch are dropped and counted)
-  and a `state` event (Connecting, Live, Reconnecting, Stopped, Error + text, message count, lost count).
-- **Page (client, `HasOwnCards` false: one card):** `ui:PageHeader.Subtitle` "Shows the events a camera sends, live.".
-  One toolbar row (fits the 1280 px minimum window with the rail expanded; user decision): camera select (managed video
-  and I/O devices, sorted by IPv4, type to jump, "P3265-V (10.0.0.48)") with the primary **Start** / **Stop** directly
-  right of it, `ui:SearchBox` filter (live, case-insensitive
-  over topic, info and raw XML; "Filter events"), **Clear** (empties the list, the stream keeps running), **Autoscroll**
-  toggle (on: the newest row stays visible; scrolling up turns it off, scrolling to the end turns it on again) and the
-  count ("134 messages", "5 of 15 messages"); on the right the status chip (Connecting accent, Live ok "Live", plus
-  " · 3 messages lost" when documents were lost, Reconnecting warning, Error red with the text). The empty list says
-  "Choose a camera and press Start."; the detail pane and its splitter appear only while a message is selected.
-  List (virtualized DataGrid, `RangeObservableCollection`, batches appended in one step): Seq# (per stream, from 1),
-  Timestamp (UTC, the message's UtcTime, `yyyy-MM-dd HH:mm:ss.fff`), Event topic, Capture time (UTC, `HH:mm:ss.fff`),
-  Property operation, Info (star width); Category is hidden (always "Event"). No raw Data column (it is in the detail view). The client keeps the newest **10,000**
-  messages (oldest removed in one step).
-  Detail (below the list, splitter, height persisted per client): the selected message's XML in `ui:CodeView` (Xml,
-  always pretty-printed and highlighted, no Raw switch: user decision) with a copy button (copies the pretty XML).
-- **Scale:** a camera can send hundreds of Initialized messages at Start (every virtual input); batching, one collection
-  change per batch and the virtualized grid keep the UI responsive; filter is O(n) over at most 10,000 rows. Test with
-  10,000 messages and a burst of 2,000 in one batch.
-- **Tests:** RTP metadata depacketizer from recorded packets of 10.0.0.48 (`OADM_RECORD_RTP_DIR`, read-only stream), XML
-  parsing incl. namespaces, multiple notifications per document, malformed XML, Info text; server stream lifecycle with a
-  fake RTSP source (start, stop, reconnect, refused statuses, watch ended); page view model (filter, clear, autoscroll,
-  10,000 cap, selection survives batches); headless screenshots `metadata-monitor-page.png` (live list + detail),
-  `-error.png`; read-only hardware test against 10.0.0.48 (Start, at least one Initialized message, Stop).
-- **Implementation:** SDK `IDeviceEventStreams` on `ICorePluginContext.EventStreams` (DIM null; `IDeviceEventSource`,
-  `DeviceMetadataDocument`, `DeviceStreamException` with Unreachable / Unauthorized / NotSupported / Protocol), implemented
-  by `Oadm.Core.LiveView.DeviceEventStreams` (device address + `CredentialStore`) on `RtspMetadataSource` (Core
-  `LiveView/Rtsp`: the live view's `RtspClient`, `SdpMetadataTrack` for the `m=application ... vnd.onvif.metadata` media,
-  OPTIONS keep-alive on a timer every half session timeout (at most 10 s), a silence watchdog (no packet and no keep-alive
-  answer for 2 x keep-alive + 5 s = connection lost; event streams can be quiet for minutes, `RtspClient.SinceLastReceive`))
-  and `Rtp/MetadataDepacketizer` (a gap drops the document it hits; a packet after a gap is kept only when it starts a new
-  XML document). 10.0.0.48 (AXIS OS 12.11) sends one document per RTP packet, one notification per document, an empty
-  `tt:MetadataStream` first and 128 Initialized messages at PLAY (64 virtual inputs, PTZ, storage, temperature, ...),
-  the first about 2.6 s after Start through the server. Plugin: `MetadataMonitorPlugin` (sessions per page,
-  `MetadataMonitorOptions`), `Streaming/MonitorSession` (read loop, reconnect, batches split below the 1 M character event
-  limit, raw XML per message cut at 256 K characters), `Parsing/MetadataParser` (XDocument without DTDs, prefixes resolved
-  by namespace: `tns1:` / `tnsaxis:` dropped, other prefixes kept). Device refusals use the snapshot report's status
-  texts ("Credentials required - the device rejects the stored credentials", ...). A page's stream also ends without its
-  keep-alive: the page calls `keepAlive` ({streamId}) every 5 s while a stream runs, the server stops streams without one
-  for 20 s (client closed or gone; switching pages stops the stream at once). Page layout: two rows (camera search,
-  camera select with the primary **Start** / **Stop** right of it, the status chip on the right; below: filter, Clear,
-  Autoscroll, message count on the right) because one row does not fit the 1280 px minimum window. Autoscroll follows the
-  grid's vertical scroll bar (wheel and bar: at the end on, above off); the selection is kept through the grid's Reset of
-  each batch. Detail height in `LocalApplicationData/Oadm/plugins/oadm.metadata-monitor/client.json`; copy = the shown
-  text (pretty or raw) through the TopLevel clipboard. Fake mode (`FakeOadmApi.MetadataMonitor.cs`): generated burst
-  (64 virtual inputs, digital input, storage, temperature) then a change every 1.5 s, statuses refused like the server.
-  Test project `tests/Oadm.Plugins.MetadataMonitor.Tests` (parser, lifecycle with `FakeEventStreams`, view model, fake
-  mode, headless screenshots, Perf `ScaleTests`, hardware `MetadataHardwareTests` through the in-process server and gRPC
-  Watch); Core: `MetadataDepacketizerTests`, `RtspMetadataSourceTests` (scripted RTSP server), `DeviceEventStreamsTests`,
-  `MetadataRecorderTests` (Hardware; re-records `Fixtures/LiveView/events.sdp` + `.rtp` with `OADM_RECORD_RTP_DIR`).
-
-- **RTSP port** (user decision 2026-10-09): a field next to the camera select ("RTSP port", empty = 554, error below
-  the field for anything but 1..65535) for cameras behind NAT whose RTSP port is forwarded to another port. `start`
-  ({deviceId, rtspPort}) stores it on the server for the device (`IDeviceEventStreams.SetRtspPortAsync`, server setting
-  `Devices.RtspPorts` = JSON object device id -> port, written by `Oadm.Core.LiveView.DeviceEventStreams`; null or 554
-  removes it), `getRtspPort` ({deviceId}) prefills the field when a camera is chosen; every event stream of the device
-  uses it. Verified with a loan AXIS Q3548-LVE behind NAT (RTSP 554 forwarded to 32077).
+- Rules that must hold: read-only for devices; the server opens the RTSP event stream with the stored credentials
+  (Digest, never Basic on plain RTSP; SDK `ICorePluginContext.EventStreams`), passwords never reach the client; events
+  only (`media.amp?video=0&audio=0&event=on`), one camera at a time, nothing saved; refused statuses without a request;
+  a stream ends with Stop, a page switch or 20 s without the page's keep-alive; the client keeps the newest 10,000
+  messages; XML through `DeviceXml` (1 MB, no DTD). The RTSP port can be set per device (`Devices.RtspPorts`) for
+  cameras behind NAT.
+- Tests: `tests/Oadm.Plugins.MetadataMonitor.Tests` (+ Perf `ScaleTests`, hardware `MetadataHardwareTests`); Core
+  `MetadataDepacketizerTests`, `RtspMetadataSourceTests`, `DeviceEventStreamsTests`.
 
 ## Image Health Dashboard (core plugin)
 
 `plugins/Oadm.Plugins.ImageHealth` (+ `.Client`), id `oadm.image-health`, rail page **Image Health Dashboard** (group
-Monitoring, icon `eye`), **off by default** (`plugin.json` `enabledByDefault: false`). One table with the status of
-AXIS Image Health Analytics (AIHA) on every camera that has the app. Read-only for devices. Plugin `README.md`.
-Decided with the user on 2026-10-09:
+Monitoring, icon `eye`), **off by default**. One table with the AXIS Image Health Analytics status of every camera that
+has the app, with five count cards (Good, Detected, Pending, Detection off, Errors). Details: plugin `README.md`.
 
-| Topic | Decision |
-|---|---|
-| Source | The app's own HTTP status, `GET /local/AXISImageHealthAnalytics/v1/status` with the stored credentials (no event stream). |
-| When | On request: the page checks once when it opens, **Refresh** checks again, **Auto refresh** (check box, off by default) every 10 s while the page is open. Nothing in the background and no events (user decision 2026-10-10: a live display only; event rules use the app's own events through Device triggers, verified on a loan AXIS Q6411-LE with AXIS OS 13.0.88: Image Health Analytics - Blur, Block, Redirect, Under-Exposure, Unsuitability and Any-Active-Events (on/off, "active"; also as ONVIF variants "(Onvif)")). |
-| Load | 24 cameras at a time, 3 s per request (200 cameras = about 9 rounds). |
-| Not running | A camera with the app installed but stopped stays in the table as **Not running**. |
-
-- **Device API** (verified on an AXIS Q3548-LVE, AXIS OS 12.11.118, AIHA 3.2.2): 200 with JSON
-  `{"block":"normal","blur":"detected","redirect":"pending","status":"none","status_criticity":"info",
-  "under-exposure":"normal","unsuitability":"suitable"}` while the app runs; 503 (HTML) when it is installed but stopped;
-  404 without the app; 401 without credentials. Values: normal / pending / detected / disabled; unsuitability suitable /
-  unsuitable. Shown as **OK** (ok chip), **Pending** (warning: the app waits to confirm), **Detected** (error), **Off**
-  (neutral: turned off in the app); another value as sent (`DetectionStates.FromRaw`). `status` / `status_criticity` are
-  not shown.
-- **Server** (`Monitoring/ImageHealthMonitor`): `check` starts a check unless one runs and returns the state at once;
-  `getState` returns it without a request. A check lists the video devices (`HasVideo`), asks each once
-  (`Parallel.ForEachAsync`, `CheckParallelism` 24, `RequestTimeout` 3 s), keeps rows in memory between checks and
-  updates them in place: running (five detections), Not running (503, detections cleared), error (refused status
-  without a request: Credentials required, Password not set, Certificate changed, Unreachable; or the HTTP / timeout /
-  network text of `DeviceMessages`); 404 = without the app (counted, row removed); devices removed from OADM leave.
-  `ChangedUtc` = when a detection changed between two answers of the running app. Events (500 ms): `rows`
-  ({rows, removed}) and `state` (checking, checked, total, running, notRunning, withoutApp, failed, checkedUtc).
-- **Page** (`HasOwnCards`, subtitle "AXIS Image Health Analytics on every camera."): a row of five count cards
-  (`ui:StatCard`, user decision 2026-10-10): **Good** (ok, "of 12 cameras"), **Detected** (error), **Pending** (warning),
-  **Detection off** (neutral), each with "Blur 2 · Block 1", and **Errors** (error, "1 not running · 2 could not be
-  checked"); every camera with the app counts in exactly one of Good, Detected, Pending and Errors, the worst state wins
-  (Errors > Detected > Pending > Good; a detection turned off in the app is no problem, user decision 2026-10-11: such a
-  camera is Good, and **Detection off** counts the checked cameras with a detection off on top, `ImageHealthCounts`, O(n)), colored only while the count is above 0, all cameras regardless of the search. Below
-  them the table card: Refresh, Auto refresh, SearchBox; progress row "Checking cameras 120 of 200"; summary "2 cameras
-  without the app · 5 shown · checked 19:34:14"; virtualized DataGrid (`wrapRows`)
-  Address, Model, Blur, Block, Redirect, Under-exposure, Unsuitability (status chips, sortable by severity), Last change,
-  App (Running ok, Not running red, Checking accent, error text red). Empty: "No camera has AXIS Image Health
-  Analytics." Rows updated in place by device id; search, new and removed rows one reset (O(n), 5,000 tested).
-- Not in fake mode yet.
-- Tests: `tests/Oadm.Plugins.ImageHealth.Tests` (the three recorded answers, disabled / unsuitable / other values,
-  check lifecycle: no request without a check, Not running, removed app, changes timed, one check at a time, 24 at a
-  time with 200 cameras, failures; view model: one check on show, Auto refresh off by default and only while shown,
-  5,000 rows; headless `image-health-dashboard.png`; read-only hardware test `ImageHealthHardwareTests` through the
-  in-process server and the real page over gRPC, using the dev camera whose note mentions AIHA, renders
-  `image-health-dashboard-live.png`).
+- Rules that must hold: read-only for devices (`GET /local/AXISImageHealthAnalytics/v1/status` with the stored
+  credentials); only on request (the page opens, Refresh, Auto refresh every 10 s while the page is shown, off by
+  default), nothing in the background and no events (event rules use the app's own events through Device triggers); 24
+  cameras at a time, 3 s each; a stopped app stays as **Not running**; a detection turned off is no problem (the camera
+  counts as Good); refused statuses without a request. Methods `check` and `getState` are Operator.
+- Tests: `tests/Oadm.Plugins.ImageHealth.Tests` (+ read-only hardware test `ImageHealthHardwareTests`). Not in fake mode.
 
 ## I/O Monitor (core plugin)
 
 `plugins/Oadm.Plugins.IoMonitor` (+ `.Client`), id `oadm.io-monitor`, rail page **I/O Monitor** (group Monitoring, icon
-`toggle`), **off by default**. User decision 2026-10-10: a simple, fast live display of the inputs and outputs of one
-device; no events, no actions, no switching. Details in its `README.md`.
-- Devices with `io-port-management` 1.x in their API list; the server reads `getPorts` every 200 ms while a page shows the
-  device (stored credentials, 3 s timeout, 1 s after a failure) and pushes only changes (topic `ports`); `start` / `stop` /
-  `keepAlive` (5 s; stopped after 20 s without; the reply `{running}` is false for an unknown stream, then the page starts
-  again), at most 20 devices at once (pages showing the same device share one reading and count once; no start after the
-  plugin stopped); each read takes the client from the VAPIX client factory (never kept or disposed); after a failure the
-  next read starts 1 s later; refused statuses without a request.
-- Page: device picker, status chip, and the device drawn as a faceplate (user request: an illustration, not cards): rows
-  INPUTS and OUTPUTS of terminals, each the contact drawn open or closed (green while active), the port name and the port
-  number as "Set output" counts; tooltip open / closed and normal state (no LEDs, no glow: user feedback). Theme:
-  `Border.ioFaceplate` and `Border.ioTerminalBlock` (no own backgrounds: user feedback), `StackPanel.ioTerminal`, `Canvas.ioContact`, `Path.ioContactLever(.active)`.
-- Verified read-only on a loan AXIS A9210 (AXIS OS 12.10.73.2). Fake mode: the A9188 at 10.0.0.30. Tests:
-  `tests/Oadm.Plugins.IoMonitor.Tests` (keep-alive retry and restart, device list changes keep the stream, headless `io-monitor-page.png`, hardware `io-monitor-live.png`).
+`toggle`), **off by default**. A simple, fast live display of the inputs and outputs of one device, drawn as a faceplate;
+no events, no actions, no switching. Details: plugin `README.md`.
+
+- Rules that must hold: read-only (`getPorts` of `io-port-management` 1.x every 200 ms while a page shows the device, 3 s
+  per request, 1 s pause after a failure); one reading per device shared by every page; stopped after 20 s without the
+  page's keep-alive; at most 20 devices at once; refused statuses without a request; the VAPIX client always from the
+  factory, never kept or disposed.
+- Tests: `tests/Oadm.Plugins.IoMonitor.Tests` (+ read-only hardware test `IoMonitorHardwareTests`).
 
 ## Device triggers (core plugin)
 
 `plugins/Oadm.Plugins.DeviceTriggers` (+ `.Client`), id `oadm.device-triggers`, rail page **Device triggers** (group
-Automation, icon `flame`), **off by default**. Spec and device research: `docs/specs/device-triggers.md`; details: plugin
-`README.md`. User decisions 2026-10-10:
+Automation, icon `flame`), **off by default**. A trigger is an event the chosen devices offer (I/O ports, virtual inputs,
+temperature, storage, Object Analytics scenarios, other apps), optionally narrowed per source item; every trigger is an
+event of the event rules, plus "<Trigger>: connection lost". Decisions, device research and details: plugin `README.md`.
 
-| Topic | Decision |
-|---|---|
-| What | A trigger = an event that the chosen devices offer (from the device's own event list: I/O ports, virtual inputs, temperature, storage, Object Analytics scenarios, other apps), optionally narrowed per source item (port, disk, channel, ...) to one value or Any. Every trigger is an event of the event rules. |
-| Event list | Read live from the devices every time a trigger is created or edited, never cached (an app that is stopped or removed has no events). The editor offers every event any of its devices offers (2026-10-11); a device that was read and lacks the chosen event stays listed with the reason and blocks Save; a device that cannot be read now stays and is used anyway. Save waits only for the chosen devices once the event is known; devices whose API list was not read yet are read too. |
-| Devices | User decision 2026-10-11: the shared device picker with All devices, tags and single devices together (stored as `AllDevices`, `Tags`, `DeviceIds`). The plugin resolves the devices after every change and every 30 s (`ResolveInterval`): new and newly tagged devices that can send events join; a device of a tag or of all devices that does not offer the event is left out quietly ("Does not offer this event", no "connection lost"); a chosen device without the event blocks Save. Devices removed from OADM leave the trigger. |
-| Stream | WebSocket event stream (VAPIX `event-streaming-over-websocket`), one permanent connection per device for all its turned-on triggers, also without a rule. At most 16 devices connect at once (`DeviceTriggersOptions.ConnectParallelism`); a trigger change sets a new filter only on devices whose triggers changed. A filter the device refuses (2104) is a problem of its triggers only. Turned-off triggers keep their event types and report them as off at once; a turned-on trigger without devices reports off at once. |
-| State | On/off events: on while at least one matching source is on. One-shot events stay one-shot. The event's values are placeholders in actions. No value comparisons in v1. |
-| Connection lost | Every trigger has a second event "&lt;Trigger&gt;: connection lost" per device: on after 30 s without events (connection, login, event no longer on the device), off with the next report. During a problem the trigger keeps its last state. |
-| Event gone | The event list of a connected device is read again every 5 minutes and on every reconnect. |
-| Roles | Administrators create, change, copy, turn on / off and delete (audited); operators see triggers and states. |
+- Rules that must hold: the event list is read live from the devices for every create and edit, never cached; devices
+  come from the shared device picker (All devices, tags, single devices), resolved after every change and every 30 s; one
+  permanent WebSocket per device (session token from `wssession.cgi`, the pinned certificate), at most 16 connecting at
+  once, a new filter only where triggers changed; a refused filter is a problem of its own triggers only; turned-off and
+  empty triggers report off at once (rules never wait for a report that cannot come); a problem keeps the last state and
+  turns "connection lost" on after 30 s; refused statuses are not contacted. Administrators change triggers (audited),
+  operators see them.
+- Tests: `tests/Oadm.Plugins.DeviceTriggers.Tests` (fake camera speaking the WebSocket protocol); opt-in write test
+  (virtual input 64, Object Analytics test alarm; `OADM_TRIGGER_URL` / `_USER` / `_PASSWORD`, `OADM_TRIGGER_OA_SCENARIO`).
 
-- **Device side** (verified on 10.0.0.48, AXIS P3265-V, AXIS OS 12.11, and a loan AXIS Q6411-LE, AXIS OS 13.0.88, with AXIS Image Health Analytics, 2026-10-10): `aev:GetEventInstances` (SOAP, 42
-  usable events, `isProperty` = on/off, `isPropertyState` the state item, topics marked `isApplicationData` left out); the
-  stream `/vapix/ws-data-stream?sources=events` with a one-time `wssession.cgi` token (valid 15 s); `events:configure`
-  answers `data: {}` or error 2104, then the current state of every matching on/off event (the report; OADM waits 1.5 s);
-  an unknown topic is accepted silently; the device sends nothing while idle and answers pings (OADM pings every 10 s); 30
-  parallel connections worked. SDK: `IVapixClient.ConnectWebSocketAsync(path, keepAlive)` (session token, the client's
-  certificate pin; a refused login or upgrade (401 / 403) is `UnauthorizedAccessException` with the shared Unauthorized /
-  Forbidden text), `IDynamicEventSource`.
-- **Apps** (loan AXIS Q6411-LE, AXIS OS 13.0.88, 2026-10-10): AXIS Image Health Analytics declares "Image Health
-  Analytics - Blur / Block / Redirect / Under-Exposure / Unsuitability / Any-Active-Events" (on/off `active`).
-  AXIS Object Analytics declares per scenario `Device1Scenario<id>` named like the scenario plus `Device1ScenarioANY`:
-  motion, fence and tailgating are on/off (`active`, `scenarioType`, `classTypes`, `objectId`, `triggerTime`),
-  crossline counting and occupancy are one-shot with the counts (`total`, `totalHuman`, ... / `human`, `car`, ...),
-  occupancy adds `Device1Scenario<id>Threshold` (on/off). The scenario's **Test alarm** (`sendAlarmEvent`) turns a
-  motion / fence / tailgating scenario on for about 6 s; counting scenarios send nothing. Apps that are stopped have no
-  events (the trigger shows "The event is no longer on the device").
-- **Page** (own cards): triggers (On, Name, Event, Devices, State "On for 1 of 3 · 1 connection lost", Last event; New
-  trigger, Edit, Duplicate, Delete) and the devices of the selected trigger (Connection chip with the problem, State, Last
-  event), live through the plugin's `changed` events. Dialog `TriggerEditorWindow` (user decisions 2026-10-11; fixed size, no device count): Name and
-  Turned on in one row; Devices card with **Choose devices** (the shared `DevicePickerWindow`: add, and remove by
-  unchoosing; a new trigger has no devices; devices without the stream API are greyed there with the reason) and only the
-  trigger's devices (virtualized: Address, Model, Events "42 events" / "Does not offer this event" / warning "Not read:
-  <reason>. It stays in the trigger."). OK in the picker reads the event lists of the added devices at once (the server 16
-  at a time, progress row); editing a trigger reads all its devices. User decisions 2026-10-11: the Event select offers
-  every event any device offers (not only the common ones); a device that cannot be read now (offline, login refused)
-  stays and does not block Save (OADM connects once it answers; the event of a trigger being edited stays even when no
-  device can be read); a device that was read and lacks the chosen event blocks Save. Event (`ComboBox.grouped`, fixed width
-  (the open list keeps the width of the box, long names wrap and the list scrolls), grouped like the device's own event page: every app event (topics below
-  `CameraApplicationPlatform`, `AcapOnvifEvent` or `tns1:RuleEngine`: Object Analytics, Video Motion Detection incl. VMD 3,
-  Image Health Analytics, ...)
-  in one group "Applications", otherwise the section below the top level ("Device status", "Input ports"); the event's own
-  name below; "Turns on and off" /
-  "Happens once"), one select per source item (Any or a value); Save disabled with the first problem as tooltip.
-- **Fake mode** (`FakeOadmApi.DeviceTriggers.cs`): three sample triggers, event lists per device kind.
-- **Tests**: `tests/Oadm.Plugins.DeviceTriggers.Tests` (fake camera speaking the WebSocket protocol in memory; page and
-  dialog; headless `device-triggers-page.png`, `device-triggers-editor.png`; hardware read test and the opt-in write test
-  switching virtual input 64 and the Object Analytics test alarm (`OADM_TRIGGER_OA_SCENARIO`), `OADM_TRIGGER_URL` /
-  `_USER` / `_PASSWORD`; read-only app event test for Image Health and Object Analytics), `tests/Oadm.Core.Tests/Events/
-  DynamicEventTypesTests`, `tests/Oadm.Core.Tests/Vapix/VapixWebSocketTests`.
+## System report (core plugin without a page)
 
-## System report plugin (core plugin without a page)
+`plugins/Oadm.Plugins.SystemReport` (+ `.Client`), id `oadm.system-report`, always on, a toolbar button **System report**
+like ADM's "Get system report": the server downloads the server report of every selected device and the client saves
+one ZIP for Axis support. Details: plugin `README.md`.
 
-`plugins/Oadm.Plugins.SystemReport` (+ `.Client`), id `oadm.system-report`, like ADM's "Get system report" (user decision
-2026-10-08: a toolbar button, no rail page). The server downloads the server report of every selected device and the
-client saves one ZIP for Axis support. Read-only for devices.
-- Device request: `GET /axis-cgi/serverreport.cgi?mode=zip_with_image` (report + snapshot, what Axis support asks for;
-  video devices) else `mode=zip`; zip_with_image answering 400/404/500/501 or 200 without a ZIP is retried as zip. Stored
-  credentials, the account must be an administrator (403 = "Forbidden - HTTP 403 (administrator rights are
-  required)"). Answer streamed to disk (`VapixRequestOptions.StreamResponse`), must start with a ZIP signature, at most 256
-  MB, 5 minutes per device, at most 4 devices at a time (all jobs together). Verified read-only on 10.0.0.48 (P3265-V, AXIS
-  OS 12.11): `application/zip`, chunked, zip_with_image about 0.3 MB in 34-37 s (`serverreport_cgi.txt` 1.3 MB unpacked +
-  `serverreport_image.jpg`), zip about 0.16 MB in 31 s; `Content-Disposition: attachment; filename=Axis_SR_<date>_<time>_<MAC>.zip`.
-  Devices with CertificateChanged / CredentialsRequired / PasswordNotSet are refused without a request (snapshot report
-  texts); unknown ids "The device was removed from OADM.".
-- Jobs (`SystemReportJobs`, server memory, files in `ICorePluginContext.DataDirectory/jobs/<job id>/`, leftovers deleted at
-  start): one file per device, then `bundle.zip` = every report stored unchanged (no compression) as
-  `<address>_<MAC>_<model without "AXIS ">_<yyyyMMdd-HHmmss UTC>.zip` (other characters than letters, digits, '.', '-' become
-  '-', a name used twice gets "-2") plus `summary.txt` (created time, OADM version, counts, one line per report with
-  address, MAC, model, size and mode, then the failures with their reason). Dropped 30 minutes after the last use (checked
-  every minute and on each call), on `delete` and when the plugin stops. 1..5,000 devices per job.
-- Methods (`SystemReportMethods`, camelCase, models in `Shared/`): `start` ({deviceIds}) -> status with every device;
-  `status` ({jobId, sinceVersion}) -> state running/packing/done/failed, total, finished, failed, size, version and only the
-  devices changed after `sinceVersion` (5,000 devices: no full list per poll); `read` ({jobId, offset}) -> 2 MB base64
-  chunks; `delete`. All Operator; `start` is audited ("Plugin action", "System report", "start").
-- Client (`SystemReportToolbarPlugin`, group Tasks, order 100, `ui:ToolbarButton` "System report" with text, icon `file`,
-  enabled with a selection, tooltip "System report: download the system reports of the selected devices for Axis support,
-  in one ZIP file"): save dialog first (`oadm-system-reports-<yyyy-MM-dd>.zip`), then `SystemReportWindow` (title bar, card
-  "Devices" with the summary "6 devices · 2 done · 1 failed", `ui:ProgressRow` "Downloading system reports 4 of 6" /
-  "Putting the reports into one file" / "Saving the file 40 %" / "Saved <path>", result chip "N system reports saved, M
-  failed. summary.txt in the file lists the failures.", virtualized DataGrid Address, MAC address, Model, Status chip
-  (Waiting, Downloading accent, Done ok + size, Failed red + reason)); polls every 500 ms, rows updated in place by id;
-  Cancel (or closing the window) deletes the server job ("Cancelled. The file is incomplete; delete it."), then Close.
-  Fake mode (`FakeOadmApi.SystemReport.cs`): 600 ms per device, four at a time, bad statuses fail, small generated ZIPs.
-- Tests: `tests/Oadm.Plugins.SystemReport.Tests` (downloader: modes, fallback, 401/403 not retried, refused statuses,
-  timeout, unreachable, a 20 MB answer streamed past the 16 MB limit, the 256 MB cap; jobs: bundle content and summary,
-  failures, 4 at a time, status deltas, chunked read, delete, 30 min expiry, stop and crash leftovers, 5,000 devices;
-  client view model against the real plugin and fake mode, cancel, toolbar flow; headless `system-report-dialog.png`;
-  read-only hardware test `SystemReportHardwareTests` through the in-process server), `tests/Oadm.Server.Tests/
-  SystemReportServerTests` (no_page, operator call, audit, data folder).
+- Rules that must hold: read-only for devices (`serverreport.cgi`, `zip_with_image` for video devices, else `zip`); the
+  answer is streamed to disk in the plugin's data folder (`VapixRequestOptions.StreamResponse`), must start with a ZIP
+  signature, at most 256 MB and 5 minutes per device, at most 4 devices at a time for all jobs; refused statuses without
+  a request; jobs live 30 minutes after their last use, their files are deleted then, on `delete` and when the plugin
+  stops; 1..5,000 devices per job, status polls carry only the changed devices; methods are Operator, `start` is audited.
+- Tests: `tests/Oadm.Plugins.SystemReport.Tests` (+ read-only hardware test `SystemReportHardwareTests`),
+  `tests/Oadm.Server.Tests/SystemReportServerTests`.
 
 ## Hardening scan (core plugin)
 
-`plugins/Oadm.Plugins.HardeningScan` (+ `.Client`), id `oadm.hardening-scan`, rail page **Hardening scan** (icon
-`clipboardCheck`), **off by default** (user decision 2026-10-09, see "Plugins on and off"). Spec, check table, evidence from 10.0.0.48 and the decisions: plugin `README.md`. One read-only scan of every
-managed device against the AXIS OS Hardening Guide in its two levels; one icon column per check (pass / warn / fail / read
-error / does not apply); the items that cannot be checked remotely are not shown on the page (user decision 2026-10-08).
-- Decisions (user, 2026-10-08): B2 latest AXIS OS = information only (version shown, not rated); the extras X1-X6 (HTTPS only,
-  802.1X, brute-force protection, access log, signed video, NTS) only in Extended; SSH on = fail, web interface / discovery /
-  DHCP = warn; Bonjour = warn with a tooltip that OADM's Scan and re-find use it; no audit entry (every method Operator); SDK
-  `IDeviceInfo.DhcpEnabled` / `HttpsEnabled` / `Dot1xEnabled` (DIM null) from the device table; last results kept per device
-  and level (plugin setting `results`, at most 10,000 devices per level); scheduled scans later.
-- Reads (strictly read-only): one `param.cgi action=list` with every group (`# Error` lines = not available; the group after
-  one may lack `root.`), `pwdgrp.cgi action=get`, `GET /config/discover` and the REST GETs it lists (user-management v2,
-  firewall v1, lldp v1; Extended: snmp v1, oidcsetup v1), `getNTPInfo`, `disks/list.cgi`, `applications/list.cgi` +
-  `config.cgi action=get`, Extended: SOAP `GetWebServerTlsConfiguration`. Readers of the Users, Date and time, ACAP, PKI and
-  Snapshot report plugins compiled in (never project references). 15 s per request, 2 min per device, 16 devices at once
-  (plugin setting `config.parallelism` 1..64). One failed read marks only its checks; an unreachable or refusing device is read
-  once. CertificateChanged / CredentialsRequired / PasswordNotSet / Unreachable devices are not contacted (B2, B15, E3 from the
-  cache).
-- Methods `getState` (compact: one state character per column + short values), `startScan {level, deviceIds}` (a running scan
-  is returned), `cancelScan`, `getDetail`; events `progress` and `results` (500 ms, at most 1,000 rows each).
-- Page: Basic / Extended switch, Scan all, Scan selected (Devices page selection), Stop, Export CSV (UTF-8 BOM, two columns per
-  check: result and value), status filter, search, progress row, summary "N devices · scanned · pass · with warnings · failed ·
-  not reachable", virtualized grid (frozen icon (red only for a device that could not be scanned; Score and the check columns show the
-  results), Address, Model, AXIS OS, Score (right-aligned), Last scan; one column per check (B2 "Latest OS"), sortable by
-  state, tooltips built when they open, column order / widths / level / detail height per client), detail pane "Selected
-  device" (its checks; Result sortable by severity, failed first; Found and Recommendation wrap to two lines). The
-  remembered detail height is fitted to the page, so the result grid always keeps at least 160 px (a height dragged on a
-  tall screen once pushed the grid over the toolbar at 1800x900). Fake mode: `FakeOadmApi.HardeningScan.cs`.
-- Tests: `tests/Oadm.Plugins.HardeningScan.Tests` (every rule from the recorded answers and variants, read-only fake camera,
-  scan jobs, 5,000-device view model, CSV, method roles, fake mode, headless `hardening-scan-basic.png` / `-extended.png`,
-  read-only hardware test against 10.0.0.48).
+`plugins/Oadm.Plugins.HardeningScan` (+ `.Client`), id `oadm.hardening-scan`, rail page **Hardening scan** (group
+Security, icon `clipboardCheck`), **off by default**. One read-only scan of every managed device against the AXIS OS
+Hardening Guide in its two levels (Basic, Extended), one icon column per check, CSV export. Check table, evidence and
+decisions: plugin `README.md`.
 
-## Date and time plugin
+- Rules that must hold: strictly read-only (GETs and list calls only); 15 s per request, 2 min per device, 16 devices at
+  once; one failed read marks only its checks; Certificate changed, Credentials required, Password not set and
+  Unreachable devices are not contacted; items that cannot be checked remotely are not shown; the latest AXIS OS is
+  information only; every method is Operator and not audited; results kept per device and level (at most 10,000).
+- Tests: `tests/Oadm.Plugins.HardeningScan.Tests` (+ read-only hardware test).
 
-`plugins/Oadm.Plugins.DateTime` (+ `.Client`), id `oadm.datetime`, context menu (group Maintenance, icon `clock`)
-**Date and time**: a clone of the ADM / AXIS Camera Station "Set date and time" dialog (the ADM manual has no date and
-time chapter; wording from the ACS 5 manual, sources in the plugin `README.md`), for any number of devices.
-- Dialog "Set date and time" behaves **exactly like ADM** (user decision): no "Keep unchanged" anywhere, OK always
-  writes the time zone and the selected time mode to every selected device. Compact like ADM's dialog (user decision
-  2026-10-09): a single-operation dialog (`Border.dialogBody`, 500 px, `SizeToContent="Height"`, no cards), one column
-  with the headings (`TextBlock.sectionTitle`) **Device time** (the first selected device's time as read-only text,
-  ticking every second without another request, read-only query `getTimeSettings`; the device "10.0.0.48 · P3265-V" /
-  ", first of 12 devices" next to the heading; "Reading the device time" or the read error in a `ui:StatusChip`), **Time
-  zone** (one virtualized `ComboBox` of the 313 IANA zones of AXIS OS 12.11, sorted by UTC offset, items "(UTC+01:00)
-  Vienna", type a city to jump to it (`TextSearch.TextBinding` = City); offsets from the OS time zone database, read
-  from this year's offset change instants so all three OS agree (`ZoneYear`); a zone the OS does not know, e.g.
-  Antarctica/Troll on Windows Server 2025, is listed last without offset ("Troll") and set by IANA id only; "Automatically
-  adjust for daylight saving time changes" below it) and **Time mode**: three radio buttons, each with its input below
-  it, indented (`StackPanel.optionDetail`), the inputs of the other modes disabled: Synchronize with server computer time
-  (the server time in this computer's zone and the difference to the device, ticking; NTP off, the OADM server's UTC
-  sent once per device at execution time, the devices get the server's time zone, the zone drop-down is disabled),
-  Synchronize with NTP server ("Obtain from DHCP" check box; one text field for up to 5 servers separated by commas,
-  new lines also accepted; "Use NTS (Network Time Security)" only when a selected device has ntp 1.5+, then the field
-  takes NTS KE servers), Set manually (date and time fields + "Use this computer's time", in the device's zone, NTP
-  off). Defaults when the dialog opens: time zone = the first device's current IANA zone (the OADM server's zone when
-  the device has none, e.g. a POSIX zone), time mode = the first device's mode (NTP if enabled, otherwise Set
-  manually). OK (disabled with the reason as tooltip until a zone is chosen and every field is valid; every error
-  directly below its input, the zone error below the drop-down); device notes are O(n) summaries of the cached API lists,
-  one small line below the chosen mode's input ("500 of the selected devices have no Time API ..."). Devices without
-  the Time API fail setting the clock with "Nothing was changed" (no legacy date.cgi).
-- APIs: time-service 1.x (`getDateTimeInfo`, `setTimeZone`, `setPosixTimeZone` for DST off, `setDateTime`), ntp 1.x
-  (`getNTPInfo`, `setNTPClientConfiguration`; NTS from 1.5), param.cgi `Time.*` for older firmware (time zone as POSIX,
-  one NTP server; no date and time without the Time API; date.cgi is not used). Decision table and what 10.0.0.48
-  reports: plugin `README.md`. Payload (`DateTimePayload`): `timeZone` (required except server time), `mode` (Ntp,
-  ServerTime, Manual; required), `ntp`, `manualDateTime`, `daylightSaving`, `timeZoneUnchanged` (name hint). Values the
-  device already has are skipped; every write is verified by reading again (Warning on a mismatch or a clock more than
-  3 s off).
-- Task names (`GetTaskName(payloadJson)` on the plugin class): "Change date and time", or the most specific name when
-  only the time mode differs from the device (one device whose zone and DST are kept, `timeZoneUnchanged`): "Set NTP
-  servers 10.0.0.17, pool.ntp.org", "Set NTP servers from DHCP", "Set NTS KE servers ...", "Set date and time
-  2026-10-07 18:00"; "Sync with server time" for server time mode.
-- Tests: `tests/Oadm.Plugins.DateTime.Tests` (request bodies per API version, recorded 10.0.0.48 fixtures, validation,
-  time zones and POSIX conversion, step sequences against a stateful fake device, view model with 5000 devices, headless
-  screenshots `datetime-dialog-single.png`, `-multi-errors.png`, `-server-time.png`, `-nts-error.png`; the drop-down's
-  type-to-search and that its open list realizes only the visible rows).
+## Date and time
 
-## Device configuration plugin
+`plugins/Oadm.Plugins.DateTime` (+ `.Client`), id `oadm.datetime`, always on, context menu (Maintenance, icon `clock`)
+**Date and time**: a clone of the ADM / AXIS Camera Station "Set date and time" dialog for any number of devices (time
+zone from the 313 IANA zones of AXIS OS, daylight saving, time mode: server time, NTP (DHCP, up to 5 servers, NTS from ntp
+1.5) or manual). Details, the VAPIX decision table and the device research: plugin `README.md`.
 
-`plugins/Oadm.Plugins.DeviceConfig` (+ `.Client`), id `oadm.device-config`, always on, context menu (group Maintenance)
-**Export configuration** and **Import configuration**, AXIS OS 12.5 or later (`CanRun` from the cached firmware version).
-Spec, device research and decisions: `docs/specs/device-config.md`. User decisions 2026-10-10:
+- Rules that must hold: behaves exactly like ADM (no "Keep unchanged": OK writes the time zone and the chosen time mode
+  to every selected device); values the device already has are skipped; every write is verified by reading again;
+  devices without the Time API fail setting the clock with "Nothing was changed" (no `date.cgi`); task names say what
+  changes ("Set NTP servers ...", "Sync with server time", else "Change date and time").
 
-| Topic | Decision |
-|---|---|
-| Device API | Only the device's own `GET /config/rest/$export` and `PATCH /config/rest/$import` (+ `/config/discover`), like the web interface; the device validates, OADM shows its answer. No own schema check, no dry run (the API has none). |
-| Mode | Merge only (`importType=merge`); "default" can reset network settings. |
-| Identity | Never imported: host name, IP address, subnet, router, broadcast, DHCP on/off, Bonjour / UPnP names, volatile host name, IPv6 address and router, 802.1X identity, the multicast addresses (`Network.RTPCollection` Video/AudioAddress, derived from the MAC), plus read-only values (DHCP vendor class, SNMP engine boots, power status). Also left out after the write tests: `Time.POSIXTimeZone` / `DST` / `ObtainFromDHCP` (they override the time zone area), `MediaClipCollection` (clips are not in the file) and `Rotation` where the file has auto rotation on (writing it turns auto rotation off). `ConfigIdentity`. |
-| Connection settings | User decision 2026-10-11: HTTPS on and its port, HTTP port, HTTP/HTTPS per user group, login method, IEEE 802.1X on/off, IPv6 on/off and the web interface (`ConfigIdentity.ConnectionPaths`) are their own area "Connection settings", unchecked by default, with a warning chip; unchecked they are left out of the write and the verify like identity values; checked they are written last in the step "Import connection settings" and the Import confirmation adds "The devices may become unreachable." |
-| Backup | None by OADM; whoever wants a way back exports first. |
-| Model | Same model only (file `metadata.prodNbr` vs the device); other AXIS OS versions allowed. |
-| Files | One `.json` for every selected device of its model, or the ZIP of an export where each device gets the entry with its MAC address in the name. |
+## Device configuration
 
-- **Export**: dialog only (never a task); save dialog first (`<address>_<MAC>_<model>_config.json` for one device,
-  `oadm-config-<date>.zip` for several, `summary.txt` with the failures), then `ExportConfigWindow` (like System report);
-  the client reads each device through the read-only query `export` (8 at a time) and writes the device's answer unchanged.
-- **Import**: `ImportConfigWindow`: file (`ui:FileRow`), settings areas as check boxes with notes (identity stays, no
-  passwords in the file, other models left out), for a ZIP a virtualized device table (Ready, No file for this device, Two
-  files for this device, Not a device configuration file, Other model); Import confirms, uploads the file and returns
-  `ImportPayload` (file id, sections, device -> ZIP entry, device -> reason left out). Task steps: see "Steps of the other
-  task plugins"; one PATCH per area (`{"data":{"<key>":{...}}}`), device warnings = step Warning, an error (also a timeout or lost connection, shared
-  device texts) fails its step while the other areas still run; a changed certificate stops the task; a device that cannot
-  be read in Verify fails that step; the server checks that a ZIP entry's name carries the device's MAC address. Verify configuration exports again and compares (differences = Warning).
-- Device answers (write tests on AXIS M3098-LV and Q3546-LVE, AXIS OS 12.11.118, table in the spec): a wrong value type answers
-  200 "success" with the warning "Failed to import <key>: ..." and imports nothing of the area = step Failed; "Failed to set
-  property: root.X" = the rest was set, step Warning; "Field 'x' has been removed from the request" = unknown property left out
-  (counted, not a verify difference). After a full parameter import the web server resets connections for under a second:
-  `ConfigApi` retries connection errors for 30 s. `ImportHardwareWriteTests` (opt-in, `OADM_CONFIG_WRITE_URL` / `_USER` /
-  `_PASSWORD`) imports a camera's own export back and expects no change.
-- Not in fake mode. Tests: `tests/Oadm.Plugins.DeviceConfig.Tests` (recorded 10.0.0.48 export and discover, stateful fake
-  camera, both view models incl. Perf 5,000 devices / files, headless `device-config-export.png`,
-  `device-config-import-other-model.png`, `device-config-import-zip.png`).
+`plugins/Oadm.Plugins.DeviceConfig` (+ `.Client`), id `oadm.device-config`, always on, context menu (Maintenance)
+**Export configuration** and **Import configuration**, AXIS OS 12.5 or later. Uses only the device's own configuration
+export and import (`/config/rest/$export`, `$import`), like its web interface. Decisions, device research, steps and the
+write tests on hardware: plugin `README.md`.
 
-## Applications (ACAP) plugin
+- Rules that must hold: merge only; the network identity (host name, addresses, router, DHCP, device names, the multicast
+  addresses) and read-only values are never imported; "Connection settings" (HTTPS, ports, login method, 802.1X, IPv6,
+  web interface) are their own area, off by default, with a warning, written last when chosen; the same model only
+  ("Nothing was changed" otherwise); no backup by OADM (export first); the device validates and OADM shows its answer per
+  area, one failed area does not stop the others; a ZIP entry must carry the device's MAC address; Export is a dialog,
+  never a task.
+- Tests: `tests/Oadm.Plugins.DeviceConfig.Tests`; opt-in `ImportHardwareWriteTests` (`OADM_CONFIG_WRITE_URL` / `_USER` /
+  `_PASSWORD`).
 
-`plugins/Oadm.Plugins.Acap` (+ `.Client`), id `oadm.acap`, context menu (group Applications) "Applications (ACAP)",
-dialog. Lists installed applications (query `listApplications`), start/stop/remove (remove asks for
-confirmation) and install/upgrade of an uploaded `.eap` on all selected devices. Uses the classic
-Application API (`application 1.x`: list/upload/control/config.cgi). Before uploading it reads the
-package manifest and refuses (nothing changed) on architecture mismatch, AXIS OS outside the
-package's range or below its manifest schema minimum, root apps on AXIS OS 12+, and downgrades
-without the explicit option. Decision table and research in `plugins/Oadm.Plugins.Acap/README.md`.
+## Applications (ACAP)
+
+`plugins/Oadm.Plugins.Acap` (+ `.Client`), id `oadm.acap`, always on, context menu (Applications) **Applications
+(ACAP)**: lists the installed applications, starts, stops and removes them (remove confirmed) and installs or upgrades
+an uploaded `.eap` on all selected devices (classic Application API 1.x). Decision table and research: plugin `README.md`.
+
+- Rules that must hold: before uploading it reads the package manifest and refuses ("Nothing was changed") a wrong
+  architecture, an AXIS OS outside the package's range or below its schema minimum, root apps on AXIS OS 12+ and a
+  downgrade without the explicit option.
 
 # Settings
 
-Server-side in `Setting`. Goal 1 keys: `Polling.IntervalSeconds` (60, 5..86400),
+Server-side in `Setting`. Keys: `Polling.IntervalSeconds` (60, 5..86400),
 `Polling.FullRefreshMinutes` (10, 1..1440), `Events.LogRetentionDays` (30, 0..3650) and `Events.LogMaxEntries` (100000, 0 or
 100..1000000): event log retention (server-only), `Scan.Parallelism` (32, Settings page "Addresses scanned at once"), `Scan.TimeoutMs` (1500),
 `Discovery.ZeroConfSeconds` (30, 5..300: a zero-conf scan of the add page ends after this time; Settings
@@ -2447,246 +1547,190 @@ subtitle "Version and licenses.", `Settings/AboutPageView` around the card `Sett
 terms of use (card title, a scrollable block with wider line spacing), client version, server version (`ServerSettings.server_version`), the
 sentence on the Apache-2.0 license, "Show licenses" shows `THIRD-PARTY-NOTICES.txt` (next to the exe, the macOS app's
 `Contents/Resources`, or `THIRD-PARTY-NOTICES.md` in a checkout) in a read-only `ui:CodeView` (Plain). There is no "This client" card:
-the server address is set with `--server` or in the client settings file (user decision 2026-10-08). Client-side
+the server address is set with `--server` or in the client settings file. Client-side
 (local JSON in LocalApplicationData): server address, device grid column layout and group mode
 (`GroupDevicesByTag`), bottom pane state.
 
-# Security
+# Security and access
 
-- Device passwords: AES-256-GCM, key in `<datafolder>/master.key` (0600 on Unix), random
-  nonce per record, stored as `nonce|ciphertext|tag`. OS keyring integration is a later goal. A missing or different
-  key is replaced at startup (warn and continue, `Security.KeyCheck`, see "Production hardening" 3).
-- Device credentials never leave the server; gRPC returns only "has credentials" (and, for the prefill of the "Log in"
-  dialog, the stored user name the selected devices share; never a password). The credential list
-  (same AES-256-GCM, entry id as associated data) lists only ids and user names; the one exception is the
-  explicit reveal of a credential list entry (`SettingsService.RevealCredential`, Credentials page eye / copy
-  button; user decision 2026-10-08; Admin only and in the audit log, see "Production hardening"). Credentials the
-  technician types for a login (RetryAuth, the device context menu's "Log in") or a first password travel
-  only client -> server.
-- Clients log in over TLS with users and roles (see "Production hardening"); the server binds to all interfaces so a client on another
-  machine can connect.
+## Secrets
+
+- Device passwords: AES-256-GCM, key in `<datafolder>/master.key` (0600 on Unix), random nonce per record, stored as
+  `nonce|ciphertext|tag` (no OS keyring). The credential list uses the same, with the entry id as associated data.
+- Device credentials never leave the server; gRPC returns only "has credentials" and, for the prefill of the "Log in"
+  dialog, the stored user name the selected devices share. The credential list returns ids and user names only; the one
+  exception is the explicit reveal of an entry (`SettingsService.RevealCredential`, eye and copy buttons of the Credentials
+  page): Admin only, every reveal in the audit log, refused while no user exists. Credentials typed for a login (RetryAuth,
+  the context menu's "Log in") or a first password travel only client -> server.
 - Never log passwords or digest headers.
 
-# Production hardening (decided with the user on 2026-10-08)
+## TLS
 
-Source: the overall and security audits of 2026-10-08 (local, not in git). Every point below is a user decision; details
-marked *(default)* were filled in and can be changed. This section wins over older text in this file where they differ.
+- On first start the server creates a self-signed certificate (ECDSA P-256, CN = server name, SAN = host name, every
+  interface address and localhost, 20 years) and keeps it in `server-tls.json` (certificate PEM + private key encrypted
+  with the master key, purpose `oadm:server-tls`). On Windows the key is instead one persisted named CNG key "OADM Server
+  TLS <hash of the data folder>" (machine key store as a service, else the user store; not exportable; opened by name on
+  every start, overwritten on regenerate) and the file holds its name. A key that cannot be read (e.g. after a master key
+  replacement) creates a new certificate and logs that clients must use Forget server. `--Oadm:RegenerateTlsCertificate`
+  makes a new one.
+- Kestrel serves HTTP/2 over TLS on the listen URL (default `https://0.0.0.0:5080`; an `http://` URL is accepted for tests
+  and logs a warning; a stored listen URL equal to the old default `http://0.0.0.0:5080` reads as the https default). The
+  server binds to all interfaces so clients on other machines can connect.
+- The client pins the certificate's SHA-256 per "host:port" on first connect (`Oadm.Contracts.Security.ServerCertificatePinning`,
+  `client-settings.json` `PinnedServers`; `OadmChannel` creates the pinned channel and adds the token). The fingerprint
+  is confirmed in the shared confirmation window ("Trust this server?", two lines of 16 pairs); a changed certificate is
+  refused with "The server certificate changed ..." and **Forget server** re-pins. An address without scheme means https.
 
-## 1. Access: TLS, users, roles, login (replaces "No authentication in Goal 1")
+## Users, roles and sessions
 
-- **TLS on the gRPC endpoint.** On first start the server creates a self-signed certificate (ECDSA P-256, CN = server
-  name, SAN = host name + all interface addresses + localhost, 20 years) and keeps it in the data folder
-  (`server-tls.json`: certificate PEM + private key encrypted with the master key). Kestrel serves HTTP/2 over TLS on the
-  listen URL (default `https://0.0.0.0:5080`; an `http://` URL is still accepted for tests and logs a warning). The
-  client pins the certificate's SHA-256 per server on first connect (trust on first use, the fingerprint is shown and
-  confirmed in the login window) and refuses a changed certificate with "The server certificate changed" (Forget server
-  re-pins). *(default)* Regenerating the certificate is a server command line option `--Oadm:RegenerateTlsCertificate`.
-- **Users and roles.** Table `Users` (Id, UserName unique case-insensitive 1..64, PasswordHash = PBKDF2-SHA256 with
-  210,000 iterations and a 16-byte salt, Role Admin | Operator, Disabled, CreatedUtc, LastLoginUtc). Passwords: no
-  strength rule, only not empty (user decision). **First administrator**: while no user exists, the login window offers "Create the
-  first administrator"; the server accepts this only from a loopback client, or from a remote client that enters the
-  one-time setup code the server writes to `<datafolder>/setup-code.txt` (admin-only file) and logs at startup *(default)*.
-- **Tokens.** `AuthService.Login(user, password, remember)` returns an opaque random token (32 bytes, base64url); the server
-  stores only its SHA-256 with user, client address, expiry (8 h sliding, 30 days with "Remember me") *(default)*. Clients
-  send `authorization: Bearer <token>` in gRPC metadata (the contracts stay unchanged, see Architecture). A server
-  interceptor answers UNAUTHENTICATED without a valid token (only `AuthService.Login`, `AuthService.Status` (server name,
-  version, "no users yet") and first-admin setup are open) and PERMISSION_DENIED for a missing role. `Logout` revokes.
-  Failed logins: 5 per user per 5 minutes, then 5 minutes locked, logged *(default)*. Task `Owner` = authenticated user
-  name + "@" + the client machine name the client sends (no longer whatever the client claims).
-- **Roles.** **Admin**: everything. **Operator**: devices (watch, add, remove, refresh, credentials of a device, "Log in", "Set password", web UI
-  link, tagging devices and creating tags), discovery, tasks (run, cancel, delete own and others; not Delete all), live view, uploads, plugin pages that do
-  not change server configuration (Snapshot report, VAPIX Commander, Metadata Monitor, System report, PKI read and device
-  certificate tasks). **Admin only**: `SettingsService.Set`, credential list (add, remove, reveal), users, `TaskService.DeleteAll`,
-  PKI (generate, import, backup, export, install in the server root store, PKI settings), DHCP and NTP save / static
-  leases / release, renaming, recoloring and deleting a tag definition (`TagService.Update` / `Delete`), turning plugins on
-  or off (`PluginService.SetPackageEnabled`). Core plugins declare their method roles through a new SDK member
-  `ICorePlugin.RequiredRole(string method)` (DIM default Operator); the host checks it before `InvokeAsync`.
-- **Credential reveal**: Admin only, every reveal in the audit log; without a login (no users yet) it is refused.
-- **PKI "Install in trusted root store" on the server**: Admin only; the confirmation shows the CA's SHA-256 fingerprint;
-  logged in the audit log. The client-side install is unchanged.
-- **Login window (client).** Shown at start: Server (default `localhost:5080`, remembered, list of recent servers), User
-  name, Password (`ui:PasswordBox`), "Remember me" (keeps the token in the client settings, never the password), Log in;
-  no product mark above the form (user decision 2026-10-09), a narrower label column (`StackPanel.compactForm`), and **Quit** on the left
-  (it ends the app when nobody logged in); a refresh icon right of the server field ("Connect again", user decision
-  2026-10-11) repeats the start (resume a remembered login, else the server's status) without restarting the client, e.g.
-  when the server was not running yet.
-  First connect to a server: fingerprint confirmation. No users yet: "Create the first administrator" (+ setup code for
-  remote servers). The rail shows the logged-in user with Log out at the bottom. Replaces the removed "This client"
-  card: the server address is chosen here. `--server` still preselects it. Fake mode has no login (user "admin").
-- **Users page** (rail page **Users**, Admin only, subtitle "Who can log in to this server and what they may do."): list (user, role, last login, disabled), add, change role,
-  reset password, disable, delete; never the last enabled admin, never yourself.
-- **Audit log.** Table `AuditEntries` (TimeUtc, UserName, ClientAddress, Action, Target, Detail; retention 365 days or
-  200,000 entries *(default)*). Logged: login ok/failed, logout, user changes, settings changes, credential list
-  add/remove/reveal, PKI actions, DHCP/NTP save, task runs (plugin, device count), Delete all, device remove, device login
-  ("Log in": user name, device and success counts), first password set ("Set password": counts), device added
-  automatically / device moved (user "system", DHCP server), tags (created, renamed, color changed, deleted; tagging:
-  "Tagged 12 devices: +Building A -PTZ"), plugins turned on / off, VAPIX Commander send / rollout. Logs page gets an **Audit** tab (Admin only, virtualized, SearchBox).
-- **Implementation** (done 2026-10-08):
-  - Server: `Oadm.Server.Auth` (`AuthInterceptor` on every call sets `Oadm.Core.Auth.CallerContext` for the call, so
-    `TaskEngine.RunAsync` and core plugin task runs take the owner "user@machine" from it; `AccessPolicy` role table;
-    `AuthGrpcService`, `UserGrpcService`, `AuditGrpcService`; `ServerTlsCertificate` (`server-tls.json`, key AES-GCM
-    with the master key, purpose `oadm:server-tls`; on Windows instead one persisted named CNG key "OADM Server TLS <hash of the data folder>" (machine key store as a service, else the user store; not exportable; opened by name on every start, overwritten on regenerate, so no start leaves a key file behind) and the file holds its name; a key that cannot be decrypted or opened, e.g. after a master key
-    replacement, creates a new certificate and logs that clients must use Forget server); `AuthMaintenanceHostedService`
-    hourly: audit retention, expired sessions; `InProcessAccess.CreateTokenAsync` for in-process hosts (tests, hardware
-    tests)). Core: `Oadm.Core.Auth` (`UserStore`, `PasswordHasher`, `AuthTokenStore` (table AuthTokens: token SHA-256,
-    user, client address, remember, expiry; sliding expiry cached in memory, written at most once per minute),
-    `LoginThrottle`, `AuthManager` (login, first administrator, setup code), `AuditLog`); migration `UsersAndAudit`
-    (Users, AuthTokens, AuditEntries). A stored listen URL equal to the old default `http://0.0.0.0:5080` reads as the
-    new https default.
-  - Plugin methods: the host checks `ICorePlugin.RequiredRole(method)` in `PluginService.Invoke` (a throwing plugin
-    counts as Admin) and audits calls where `ICorePlugin.IsAudited(method)` (DIM: the Admin methods) as action "Plugin
-    action", target the plugin name, detail the method. Admin: PKI everything except `getState`, DHCP `save` /
-    `saveStatic` / `deleteStatic` / `makeStatic` / `release`, NTP `save`. VAPIX Commander stays Operator; `tryRequest`
-    and `rollout` are audited. The PKI page asks before "Install in trusted root store" with the CA's SHA-256
-    fingerprint (`ui:MessageWindow`).
-  - Client: `Shell/AppShell` shows `LoginWindow` (`LoginViewModel`: server as editable select with the recent servers,
-    user name, password, confirm password + setup code in first-administrator mode, Remember me; errors below the fields,
-    connection problems below the server field) before the main window, and again after Log out or when a call answers
-    UNAUTHENTICATED ("Your session has ended. Log in again."). TLS trust: `Oadm.Contracts.Security.ServerCertificatePinning`
-    (pins in `client-settings.json` `PinnedServers` by "host:port"; `OadmChannel` creates the pinned channel and adds the
-    token); the fingerprint is confirmed in the shared confirmation window ("Trust this server?", two lines of 16 pairs);
-    a changed certificate shows "The server certificate changed ..." with **Forget server**. Remember me keeps
-    {user, token} per server in `RememberedLogins` and resumes with `AuthService.Me` at start. An address without scheme
-    means https; `http://` stays possible for tests. Rail bottom: user (initial avatar + name, tooltip "Logged in as ... (role) on ...") and
-    Log out. `UserSession.IsAdmin` hides the Users and Credentials rail pages, shows the server settings as plain text (with the
-    sentence "Only administrators can change server settings.") and hides the Audit tab for operators; the server checks again.
-    Users page `Settings/UsersPageView` around the card `Settings/UsersCardView` (loaded on every connect; DataGrid; row actions as icon buttons in fixed places: Make administrator / operator, Reset
-    password (inline editor directly below the list), Disable / Enable, Delete (red), with confirmations; the own row
-    offers only Reset password; the headings "New password for <user>" and "Add user" use the section title style). Audit tab `Logging/AuditLogViewModel`
-    (newest 10,000, O(n) search, Refresh). Fake mode signs in as "admin" (Administrator) without a login window.
-  - Tests: `tests/Oadm.Server.Tests/AuthTests` (unauthenticated / operator / admin per service, role table against the
-    contracts, plugin method roles + audit, first administrator loopback and setup code, login / logout / owner,
-    throttling, session expiry, user rules, audit entries and retention), `TlsPinningTests` (real Kestrel with TLS:
-    TOFU, restart keeps the certificate, changed certificate, regenerate); `MethodRoleTests` in the DHCP, NTP, PKI and
-    VAPIX Commander test projects; `tests/Oadm.Client.Tests/LoginTests` (login, wrong password, first administrator,
-    fingerprint trust / refusal / changed / Forget server, remembered session, pin store, Users page, Audit tab with
-    5,000 entries; headless screenshots `login-window.png`, `login-first-admin.png`, `login-fingerprint-confirm.png`,
-    `client-users-page.png`, `logs-audit-tab.png`). `TestServerHost` calls as the administrator "admin"
-    (`InvokerFor(token)` / `InvokerForUserAsync(name, role)` for others, `createAdmin: false` for an empty user table,
-    PBKDF2 with 1,000 iterations for speed).
+Code: server `Oadm.Server.Auth` (`AuthInterceptor`, `AccessPolicy`, `AuthGrpcService`, `UserGrpcService`,
+`AuditGrpcService`, `ServerTlsCertificate`, `AuthMaintenanceHostedService`, `InProcessAccess.CreateTokenAsync` for
+in-process hosts), core `Oadm.Core.Auth` (`UserStore`, `PasswordHasher`, `AuthTokenStore`, `LoginThrottle`,
+`AuthManager`: login, first administrator, setup code; `AuditLog`; `CallerContext`), migration `UsersAndAudit` (Users,
+AuthTokens, AuditEntries); client `Shell/AppShell`, `LoginViewModel`, `Settings/UsersCardView`,
+`Logging/AuditLogViewModel`.
 
-## 2. Automatic login on the add page
+- Table `Users`: Id, UserName (unique case-insensitive, 1..64), PasswordHash (PBKDF2-SHA256, 210,000 iterations, 16-byte
+  salt), Role Admin | Operator, Disabled, CreatedUtc, LastLoginUtc. Passwords have no strength rule, only not empty.
+- **First administrator**: while no user exists, the login window offers "Create the first administrator"; the server
+  accepts it from a loopback client, or from a remote client with the one-time setup code the server writes to
+  `<datafolder>/setup-code.txt` (admin-only file) and logs at startup.
+- **Tokens**: `AuthService.Login(user, password, remember)` returns an opaque random token (32 bytes, base64url); the
+  server stores only its SHA-256 with user, client address and expiry (8 h sliding, 30 days with "Remember me"; table
+  `AuthTokens`, the sliding expiry is cached and written at most once a minute). Clients send `authorization: Bearer
+  <token>` in the gRPC metadata. `AuthInterceptor` answers UNAUTHENTICATED without a valid token (open: `AuthService.Status`,
+  `Login`, `CreateFirstAdmin`) and PERMISSION_DENIED for a missing role (`AccessPolicy`); it sets `CallerContext`, so a
+  task's Owner is "<user>@<client machine>". `Logout` revokes. Failed logins: 5 per user in 5 minutes, then 5 minutes
+  locked, logged. `AuthMaintenanceHostedService` removes expired sessions and old audit entries hourly.
+- **Roles.** Admin: everything. Operator: devices (watch, add, remove, refresh, credentials of a device, "Log in", "Set
+  password", web UI link, tagging devices and creating tags), discovery, tasks (run, cancel, delete; not Delete all),
+  live view, uploads, plugin pages that do not change server configuration (Snapshot report, VAPIX Commander, Metadata
+  Monitor, System report, PKI read and device certificate tasks). Admin only: `SettingsService.Set`, the credential list
+  (add, remove, reveal), users, `TaskService.DeleteAll`, PKI (generate, import, backup, export, install in the server
+  root store, settings), DHCP and NTP save / static leases / release, renaming, recoloring and deleting tag definitions,
+  turning plugins on or off, event rules (change, test).
+- **Plugin methods**: `ICorePlugin.RequiredRole(method)` (DIM Operator; a throwing plugin counts as Admin) is checked in
+  `PluginService.Invoke`; calls where `ICorePlugin.IsAudited(method)` (DIM: the Admin methods) are audited as "Plugin
+  action" (target the plugin, detail the method). Admin: PKI everything except `getState`, DHCP `save` / `saveStatic` /
+  `deleteStatic` / `makeStatic` / `release`, NTP `save`. VAPIX Commander stays Operator; `tryRequest` and `rollout` are
+  audited. "Install in trusted root store" on the server asks with the CA's SHA-256 fingerprint and is audited.
+- **Audit log**: table `AuditEntries` (TimeUtc, UserName, ClientAddress, Action, Target, Detail), 365 days or 200,000
+  entries. Logged: login ok / failed, logout, user changes, settings changes, credential list add / remove / reveal, PKI
+  actions, DHCP / NTP save, task runs (plugin, device count), Delete all, device remove, device login and first password
+  (counts), devices added or moved automatically (user "system"), tags ("Tagged 12 devices: +Building A -PTZ"), plugins
+  on / off, event rules, VAPIX Commander send / rollout. The Logs page has an **Audit** tab (Admin only, newest 10,000,
+  virtualized, search).
 
-- **Axis check first** (user decision): before any credential is sent, the device must answer the anonymous VAPIX
-  `basicdeviceinfo.cgi` `getAllUnrestrictedProperties` with a valid Axis answer (12-hex serial number, ProdNbr). Only
-  then OADM logs in: **HTTPS first** (Digest, then Basic), then HTTP (Digest, then Basic). User decision: such a verified
-  Axis device may get Basic over plain HTTP when it offers nothing else. Known residual risk (recorded on the user's
-  request): a device that imitates the anonymous answer passes the check. **Old AXIS OS** (user decision 2026-10-10):
-  AXIS OS 8.x answers the anonymous call with 401; then the login challenge's realm `AXIS_<serial>` must name the
-  discovered serial (`DiscoveryAuthenticator.JudgeRealm`, `VapixAuthenticationException.RealmSerial`), same residual risk.
-- **Candidates: credential list only** (+ credentials typed in the session). Passwords of managed devices are never
-  tried on new devices. At most 10 rejected credentials per device (unchanged).
-- Implemented in `DiscoveryAuthenticator` (`Judge`, `LoginSchemes`) and `VapixConnectionOptions.AllowBasicOverHttp`
-  (set only there); details in "Add Devices Page". Tests: `AxisCheckTests` (every failing answer: 404, no serial, no
-  ProdNbr, other serial, 401: no credential request at all, also for RetryAuth; HTTPS first with the check before the
-  first credential; HTTP only with Basic allowed), `FastAddTests.PasswordsOfManagedDevicesAreNeverTriedOnNewDevices`,
-  read-only hardware test `FastAddHardwareTests.TheRealCameraPassesTheAnonymousAxisCheck` (10.0.0.48 passes on both
-  schemes).
+## Client: login and users
 
-## 3. Data safety
+- `Shell/AppShell` shows `LoginWindow` (`LoginViewModel`) before the main window, again after Log out and when a call
+  answers UNAUTHENTICATED ("Your session has ended. Log in again."). Fields: Server (editable select with the recent
+  servers, default `localhost:5080`; `--server` preselects it), User name, Password (`ui:PasswordBox`), Remember me (keeps
+  {user, token} per server in `RememberedLogins`, never the password; resumed with `AuthService.Me` at start), Log in;
+  first-administrator mode adds Confirm password and, for remote servers, the setup code. Errors below the fields,
+  connection problems below the server field; a narrow label column (`StackPanel.compactForm`), no product mark, **Quit**
+  on the left; a refresh icon right of the server field ("Connect again") repeats the start without restarting the client.
+  Fake mode signs in as "admin" without the window.
+- The rail shows the logged-in user (initial avatar + name, tooltip "Logged in as ... (role) on ...") with Log out.
+  `UserSession.IsAdmin` hides the Users, Credentials and Plugins pages and the Audit tab for operators and shows the
+  server settings as plain text ("Only administrators can change server settings."); the server checks again.
+- **Users page** (Admin only, subtitle "Who can log in to this server and what they may do."; `Settings/UsersPageView` +
+  `UsersCardView`): users with role, last login, disabled; row icon buttons Make administrator / operator, Reset password
+  (inline editor below the list), Disable / Enable, Delete (red), each confirmed; never the last enabled administrator,
+  never yourself (the own row offers only Reset password). The headings "New password for <user>" and "Add user" use
+  the section title style.
 
-- `master.key` missing or not matching (a key check value is stored in `Setting` `Security.KeyCheck` = HMAC of a fixed
-  label): **warn and continue** (user decision). The server creates a new key, logs an error naming how many device
-  credentials and credential list entries became unreadable, deletes those unreadable rows, sets the affected devices to
-  CredentialsRequired, and the client shows a banner "The server's key was replaced: N devices need their credentials
-  again" until dismissed. The PKI shows its existing "CA key cannot be read" state.
-- Implemented in `Oadm.Core.Security.MasterKeyCheck`, run by `DatabaseInitializer` after the migrations (before
-  anything is served). Key check = base64 HMAC-SHA256 of "OADM master key check v1" with the key
-  (`CredentialProtector.ComputeKeyCheck`), stored as JSON string. Replaced when: master.key is missing, has the wrong
-  size, or does not match the stored value; without a stored value (data of older versions) when encrypted rows exist
-  and none of them decrypts. An existing file is never deleted: it is renamed to `master.key.replaced-<UTC time>` before
-  the new key is written (`MasterKeyFile.Replace`); the running `CredentialProtector` switches to the new key. One
-  transaction deletes the unreadable `DeviceCredentials` and `CredentialListEntries` rows, sets those devices to
-  CredentialsRequired, stores the new check value and the notice `Security.KeyReplaced` ({id, replacedUtc, devices,
-  credentialListEntries}); the error log names the counts and that plugin secrets of the old key (saved command
-  passwords, CA keys, the TLS key) cannot be read either. Server -> client: `ServerSettings.key_replaced = 20`
-  (`KeyReplacedNotice` id, message, devices, credential_list_entries, replaced) in every `SettingsService.Get`/`Set`
-  reply. The client reads it on every connect and shows it as a warning banner (`Border.banner.warning`, the shared
-  banner style, text + "Dismiss" link) below the connection banner; dismissed ids are kept in the client settings
-  (`DismissedKeyNotices`), so a later replacement shows again. Banner text: "The server's key was replaced: 3 devices
-  need their credentials again." (+ ", 1 credential list entry was removed."). Tests: `MasterKeyCheckTests` (same key,
-  missing / different / wrong-size key: counts, rows removed, statuses, backup file, new key checked on the next
-  start; legacy data without check value), `MasterKeyFileTests`, `KeyReplacedNoticeTests` (gRPC),
-  `CrashHandlingTests.The_key_replaced_banner_shows_until_dismissed_on_this_client`.
+## Automatic login on the add page
 
-## 4. Robustness
+- **Axis check first**: before any credential is sent, the device must answer the anonymous `basicdeviceinfo.cgi`
+  `getAllUnrestrictedProperties` with a 12-hex serial number equal to the discovered one and a ProdNbr. AXIS OS 8.x
+  answers 401 there; then the realm `AXIS_<serial>` of the login challenge must name the discovered serial
+  (`DiscoveryAuthenticator.JudgeRealm`, `VapixAuthenticationException.RealmSerial`). Then **HTTPS first** (Digest, then Basic), then HTTP (Digest, then Basic): such a
+  verified device may get Basic over plain HTTP when it offers nothing else (`VapixConnectionOptions.AllowBasicOverHttp`,
+  set only there; `DiscoveryAuthenticator.Judge`, `LoginSchemes`). Known residual risk: a device that imitates the anonymous answer or the realm passes the check.
+- Candidates: the credential list and credentials typed on the page; passwords of managed devices are never tried on new
+  devices; at most 10 rejected credentials per device. Details in "Add Devices Page".
+- Tests: `AxisCheckTests`, `FastAddTests`; read-only hardware test `FastAddHardwareTests` (the development camera passes
+  on both schemes).
 
-- **Client crashes**: plugin dialogs, pages and toolbar plugins run inside try/catch; an error shows in `ui:MessageWindow`
-  ("The <plugin> dialog failed: <message>") and the client keeps running. Global handlers
-  (`AppDomain.UnhandledException`, `TaskScheduler.UnobservedTaskException`, `Dispatcher.UIThread.UnhandledException`)
-  log every error with the log file path; only truly fatal errors end the app, after logging.
-  Implemented: `TaskPluginRunner` (dialog: "The <name> dialog failed: <message>", nothing runs),
-  `MainWindowViewModel.SyncCorePluginPages` (page: the rail entry stays, the page shows "The <name> page failed:
-  <message>" and the message window says the same; the other pages load), `DeviceToolbar` (entry left out, "The
-  toolbar entry <id> failed: <message>"). `Infrastructure/CrashHandling` holds the three handlers, installed by Program
-  only (the process handlers before Avalonia starts, the UI handler in `AfterSetup`; tests see their exceptions): every
-  error is logged with today's client log file (`<datafolder>/logs/client-yyyyMMdd.log`); a UI thread error is marked
-  handled and shown once at a time in `MessageWindow` ("Something went wrong", the message, "OADM keeps running. Details
-  are in the client log: <path>"); fatal errors (out of memory, access violation, invalid program, bad image) are logged
-  as Critical and end the app; unobserved task errors are logged and observed. Tests: `CrashHandlingTests`.
-- **Limits**: HTTP answers from devices at most 16 MB (firmware and ACAP uploads exempt from the request side only), XML
-  documents at most 1 MB with DTD processing prohibited, RTSP / video access units at most 8 MB, uploads: 10 GB of disk
-  for all uploads together (user decision) and at least 1 GB free disk, oldest uploads removed first, RESOURCE_EXHAUSTED
-  otherwise. Streamed answers (`VapixRequestOptions.StreamResponse`, server reports) go to disk with the caller's own
-  limit (System report: 256 MB per device).
-  Implemented: `VapixClient.MaxResponseBytes` (HttpClient `MaxResponseContentBufferSize`; over it
-  `VapixResponseTooLargeException` "The device answer is larger than 16 MB and was not read."); every XML from a device
-  goes through the SDK `Oadm.Sdk.Vapix.DeviceXml.Parse` / `ParseElement` (1 MB of characters, DTD prohibited, no
-  resolver; callers' settings cannot lift the limits; ACAP, PKI, Metadata Monitor, VAPIX Commander; `CodeView` keeps
-  its own 512 K plain-text limit with DTD prohibited); `NalDepacketizer.MaxAccessUnitBytes` (8 MB: a larger access
-  unit is discarded at once and dropped like a damaged one, the stream resumes at the next keyframe,
-  `OversizedAccessUnits`); `UploadStore.QuotaBytes` / `MinFreeDiskBytes`: a new upload reserves its declared size
-  (uploads in progress count), removes the oldest finished uploads (by file time) until the quota and the free disk
-  space fit, else `UploadRejectedException { TooLarge }` = RESOURCE_EXHAUSTED; a single upload may still be up to
-  `Uploads.MaxMegabytes`, so a large one removes older ones. Free space unknown (network share): only the quota applies.
-- **VAPIX Commander**: every request must go to the device's own address: paths with `\`, `//` or an authority are
-  rejected; `VapixClient.SendAsync` refuses absolute URIs to another host.
-  Implemented: `CommandValidator.IsDevicePath` (starts with one "/", no "\", no "//" anywhere, no "@" before the query,
-  no "..", no spaces or control characters; field error `CommandValidator.PathProblem` "The path must start with / and
-  stay on the device: no "..", "//", "\" or host name."), checked again by `CommandRenderer` after the field values
-  are filled in. `VapixClient.SendAsync` throws `ArgumentException` before sending when the resolved URI has another
-  scheme, host or port, user info, or a relative URI contains "\" (relative "/path" parsed as an implicit file URI on
-  Unix counts as relative, like HttpClient). Tests: `DeviceLimitsTests`, `DepacketizerTests`, `UploadStoreTests`,
-  `RendererTests` (paths `/\/host`, `//host/x`, absolute URL, and the client refusing other hosts).
+## Master key
 
-## 5. Installation and release
+- A key check value is stored in `Setting` `Security.KeyCheck` (base64 HMAC-SHA256 of "OADM master key check v1" with
+  the key, `CredentialProtector.ComputeKeyCheck`). `Oadm.Core.Security.MasterKeyCheck` runs in `DatabaseInitializer` after
+  the migrations, before anything is served. The key is replaced (**warn and continue**) when `master.key` is missing,
+  has the wrong size or does not match the stored value, or, without a stored value, when encrypted rows exist and none
+  decrypts.
+- An existing file is renamed to `master.key.replaced-<UTC time>`, never deleted (`MasterKeyFile.Replace`); the running
+  `CredentialProtector` switches to the new key. One transaction deletes the unreadable `DeviceCredentials` and
+  `CredentialListEntries` rows, sets those devices to Credentials required, stores the new check value and the notice
+  `Security.KeyReplaced` ({id, replacedUtc, devices, credentialListEntries}). The error log names the counts and that
+  plugin secrets of the old key (saved command passwords, CA keys, the TLS key) cannot be read either; the PKI shows "CA
+  key cannot be read".
+- `ServerSettings.key_replaced = 20` (`KeyReplacedNotice`) in every `SettingsService.Get` / `Set` reply; the client shows
+  a warning banner below the connection banner ("The server's key was replaced: 3 devices need their credentials
+  again." + ", 1 credential list entry was removed.", `Border.banner.warning`) with Dismiss; dismissed ids are kept per client
+  (`DismissedKeyNotices`), so a later replacement shows again.
 
-- **Firewall (Windows)**: the MSI opens only TCP 5080, profiles Domain and Private. The NTP and DHCP plugins add their UDP
-  rule (123 / 67, Domain and Private) when enabled and remove it when disabled (`netsh advfirewall`, the server runs as
-  SYSTEM); Linux and macOS unchanged. *Implemented:* SDK `ICorePluginContext.Firewall` (`IFirewallRules`, null unless
-  the server runs as the Windows service) and `FirewallRuleKeeper` (first sync always applies, so a rule left by a crash
-  is removed at start; later only changes; errors logged, never fatal, retried on the next change). Rules
-  `FirewallRule.ForService("NTP", Udp, 123)` = "OADM Server (NTP, UDP 123)" and "OADM Server (DHCP, UDP 67)", synced in
-  the services' ApplyAsync and closed on stop. Server: `NetshFirewallRules` (`delete rule name=...` then `add rule
-  name=... dir=in action=allow protocol=UDP localport=123 program=<exe> profile=domain,private enable=yes`; delete
-  ignores "No rules match"), commands through `ICommandRunner` (fake in tests).
-- **Folders** (user decision: service account stays SYSTEM / root): the server checks at start that its data folder,
-  runtime extraction folder and every plugin folder it loads are writable only by admins / root (Windows ACL, Unix owner
-  root and no group/world write); a folder that is not is fixed when possible (Windows: ACL reset by SYSTEM) or skipped
-  with an error (plugins) / refused (data folder). The development plugin folder (`artifacts/plugins`) is only used when
-  the server does not run as an installed service. *Implemented:* `Oadm.Server.Hosting.FolderGuard` over
-  `IFolderPermissions` (fake in tests): `WindowsFolderPermissions` (System.Security.AccessControl; owner and every
-  entry below must be SYSTEM / Administrators / TrustedInstaller, no allow entry with write, append, delete, change
-  permissions, take ownership or generic write/all for anyone else, CREATOR OWNER allowed; fix: owner Administrators,
-  protected ACL SYSTEM + Administrators full control (+ Users read and execute for plugin folders), children reset to
-  inherit) and `UnixFolderPermissions` (`find <dir> ! -type l ( ! -user 0 -o -perm -0020 -o -perm -0002 )`; fix
-  `chown -R 0:0`, `chmod -R go-w`). Step 0 of `OadmServerHost.StartAsync`: data folder and
-  `DOTNET_BUNDLE_EXTRACT_BASE_DIR` (unless inside it), an unfixable one throws; `PluginLoader.FolderCheck` skips an
-  unfixable plugin folder with a load error. Only in service mode.
-- **Installer choice**: each installer offers "Server and client" (default) or "Client only": MSI features (Server
-  optional), `.deb` split into `oadm-server` and `oadm-client` (no metapackage), `.pkg`
-  choices. *Implemented*, details in "Packaging".
-- **Licenses**: at publish a complete notices file is generated from every NuGet package (license expression or file
-  from the package) and the bundled assets (FFmpeg LGPL-2.1 full text, Inter OFL, .NET runtime notices); `LICENSE`,
-  `THIRD-PARTY-NOTICES.txt` and the LGPL text ship in all three installers. The client gets an **About**
-  page (rail): terms of use, version, server version, license texts. *Implemented* (`tools/Oadm.Notices`, see
-  "Packaging"; About page, see "Settings").
-- **One release workflow** (`release.yml`, on tags `v*.*.*` only, replaces ci.yml and package.yml): tests on Windows,
-  Linux, macOS (timeout 30 min, hang detection) -> the three installers -> the GitHub release, only when everything
-  passed. v0.0.1 stays a normal release (user decision). *Implemented*, plus `SHA256SUMS.txt` in the release.
-- **Not now** (user decisions): installer signing (SHA-256 checksums are published with each release instead),
-  least-privilege service accounts, database backup before migrations.
-- **Hardware write tests**: done by the user by hand on a spare camera.
+## Limits
+
+- Device HTTP answers at most 16 MB (`VapixClient.MaxResponseBytes` = HttpClient `MaxResponseContentBufferSize`; over it
+  `VapixResponseTooLargeException` "The device answer is larger than 16 MB and was not read."). Streamed answers (`VapixRequestOptions.StreamResponse`) go to disk with the caller's own limit (System
+  report: 256 MB per device). Upload requests (firmware, ACAP) are streamed and not limited.
+- XML from a device only through `Oadm.Sdk.Vapix.DeviceXml.Parse` / `ParseElement`: 1 MB of characters, DTD prohibited,
+  no resolver; callers cannot lift the limits. `CodeView` keeps its own 512 K plain-text limit.
+- RTSP / video access units at most 8 MB (`NalDepacketizer.MaxAccessUnitBytes`: a larger one is dropped like a damaged
+  one and counted in `OversizedAccessUnits`, the stream resumes at the next keyframe).
+- Uploads: 10 GB for all uploads together and at least 1 GB free disk (`UploadStore.QuotaBytes` / `MinFreeDiskBytes`): a
+  new upload reserves its declared size and removes the oldest finished uploads until both fit, else
+  `UploadRejectedException { TooLarge }` = RESOURCE_EXHAUSTED;
+  a single upload may be up to `Uploads.MaxMegabytes`. Free space unknown (network share): only the quota applies.
+- Requests stay on the device: `VapixClient.SendAsync` refuses (before sending) an absolute URI with another scheme, host
+  or port or with user info, and a relative URI with "\". VAPIX Commander paths must pass `CommandValidator.IsDevicePath`
+  (one leading "/", no "\", "//", "..", "@" before the query, spaces or control characters; "The path must start with /
+  and stay on the device: no "..", "//", "\" or host name.", `CommandValidator.PathProblem`), checked again after the
+  fields are filled in. Tests `DeviceLimitsTests`, `RendererTests` (`/\/host`, `//host/x`, an absolute URL).
+
+## Crash handling (client)
+
+- Plugin dialogs, pages and toolbar entries run inside try/catch: "The <name> dialog failed: <message>" (nothing runs,
+  `TaskPluginRunner`), a page shows "The <name> page failed: <message>" and its rail entry stays (the other pages load,
+  `MainWindowViewModel.SyncCorePluginPages`), a failing toolbar entry is left out ("The toolbar entry <id> failed:
+  <message>", `DeviceToolbar`).
+- `Infrastructure/CrashHandling` (installed by Program only: the process handlers before Avalonia starts, the UI handler
+  in `AfterSetup`; handlers for `AppDomain.UnhandledException`, `TaskScheduler.UnobservedTaskException` and
+  `Dispatcher.UIThread.UnhandledException`) logs every unhandled error with the client log file path
+  (`<datafolder>/logs/client-yyyyMMdd.log`); a UI thread error is handled and shown once
+  at a time in `ui:MessageWindow` ("Something went wrong", the message, "OADM keeps running. Details are in the client
+  log: <path>"); fatal errors (out of memory, access violation, invalid program, bad image) are logged as Critical and
+  end the app; unobserved task errors are logged and observed.
+
+## Service: firewall and folders
+
+- **Firewall (Windows service only)**: the MSI opens TCP 5080 (Domain, Private). The NTP and DHCP plugins open their UDP
+  rule ("OADM Server (NTP, UDP 123)", "OADM Server (DHCP, UDP 67)", Domain and Private, for the server exe) when enabled
+  and remove it when disabled: SDK `ICorePluginContext.Firewall` (`IFirewallRules`, null outside the Windows service) and
+  `FirewallRuleKeeper` (the first sync always applies, so a rule left by a crash is removed at start; errors logged,
+  retried on the next change; `FirewallRule.ForService("NTP", Udp, 123)`); server `NetshFirewallRules` (`netsh
+  advfirewall`: `delete rule name=...`, which ignores "No rules match", then `add rule ... dir=in action=allow
+  protocol=UDP localport=<port> program=<exe> profile=domain,private`) through `ICommandRunner`.
+- **Folders** (the service runs as SYSTEM / root): at start (step 0 of `OadmServerHost.StartAsync`, service mode only)
+  the data folder, the runtime extraction folder and every plugin folder must be writable only by administrators / root
+  (`Oadm.Server.Hosting.FolderGuard` over `IFolderPermissions`: `WindowsFolderPermissions`, `UnixFolderPermissions`). Windows: owner and every entry SYSTEM / Administrators / TrustedInstaller, no
+  write, append, delete, change permissions or take ownership for anyone else (CREATOR OWNER allowed); fixed by owner
+  Administrators and a protected ACL SYSTEM + Administrators full control (+ Users read and execute for plugin folders).
+  Unix: owner root, no group or world write (`find <dir> ! -type l ( ! -user 0 -o -perm -0020 -o -perm -0002 )`; fixed
+  by `chown -R 0:0`, `chmod -R go-w`). An unfixable data folder stops the start, an unfixable plugin folder is skipped
+  with a load error (`PluginLoader.FolderCheck`). The development plugin folder
+  (`artifacts/plugins`) is used only outside service mode.
+
+## Tests
+
+`tests/Oadm.Server.Tests`: `AuthTests` (every service per role, the role table against the contracts, plugin method
+roles, first administrator, sessions, throttling, audit), `TlsPinningTests` (real Kestrel with TLS), `MasterKeyCheckTests`,
+`MasterKeyFileTests`, `KeyReplacedNoticeTests`, `DeviceLimitsTests`, `UploadStoreTests`; `MethodRoleTests` in the DHCP,
+NTP, PKI and VAPIX Commander test projects; `tests/Oadm.Client.Tests`: `LoginTests`, `CrashHandlingTests`.
+`TestServerHost` calls as the administrator "admin" (`InvokerFor(token)` / `InvokerForUserAsync(name, role)` for others,
+`createAdmin: false` for an empty user table, PBKDF2 with 1,000 iterations for speed).
 
 # Wording
 
@@ -2732,14 +1776,13 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   param.cgi `key=value` highlighted with `# Error` lines red, `Language` Auto/Json/Xml/KeyValue/Plain with
   Auto from the content type then the text, `IsFormatted` false = exact text; unparsable text plain, above
   512 K characters plain; monospace `Oadm.FontFamilyMono`, no wrapping, selectable and copyable; colors
-  `Oadm.Code.*Brush`; logic in `CodeText` without UI), `CodeEditor` (every editable code field, user decision 2026-10-11: a monospace text box for
+  `Oadm.Code.*Brush`; logic in `CodeText` without UI), `CodeEditor` (every editable code field, a monospace text box for
   typing, caret, selection and undo with the same text drawn colored on top, aligned and scrolled with it; `Language`
   Json / Xml / KeyValue / Plain; never re-indented; the coloring of `CodeView` through `CodeHighlight`, also for JSON and
   XML that do not parse yet (`CodeText.Prepare(colorUnparsed: true)`: typing, an HTML body with several elements)), `FormField` (every labeled form row: label,
   input, error or hint below the input; classes `wide` and `inline`), `StatCard` (every monitoring count card: status icon +
   title, large count, small detail line; `IsOk` / `IsWarning` / `IsError` color icon and count, set only while the count
-  needs attention), `DevicePickerWindow` + `DevicePickerViewModel` (every "choose devices" dialog, user decision 2026-10-11:
-  every managed device in address order, search over address, model, MAC and host name, Select all / Select none for what the
+  needs attention), `DevicePickerWindow` + `DevicePickerViewModel` (every "choose devices" dialog, every managed device in address order, search over address, model, MAC and host name, Select all / Select none for what the
   search shows, the count "12 of 4,812 devices chosen", chosen devices can be unchosen, devices that cannot be used greyed
   with the reason; virtualized, 5,000 devices tested; `DevicePickerWindow.ShowAsync` returns the ids or null; with
   `DevicePickerOptions` a left column offers the device of the event, All devices, or Chosen devices and tags with the tag
@@ -2748,7 +1791,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   tag of the initial choice and `DevicePickerOptions.TagNames` (the rule editor passes the defined tags), count 0 when no
   device has it; summary "1 tag: 42 of 5,000 devices" / "2 tags and 3 devices: ...") and
   `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
-  puts one right of the input instead of a long hint, user decision 2026-10-11), `WizardSteps` + `WizardStepItem` (the step
+  puts one right of the input instead of a long hint), `WizardSteps` + `WizardStepItem` (the step
   row of every wizard: numbered dot and name, thin line between, current accent, done with a check, a step opens when
   every step before it is complete; theme `Button.wizardStep`, `Border.wizardDot`, `TextBlock.wizardLabel`,
   `Border.wizardLine`), `GroupedChoice` with `ComboBox.grouped` (every grouped select field: grey group headers that cannot be chosen, the
@@ -2767,7 +1810,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   `DataValidationErrors` styled in `OadmTheme.axaml` from `INotifyDataErrorInfo`. Form view models derive from
   `Oadm.Sdk.Client.Validation.ValidatingViewModel` (rules per property on its `FormValidator`: `Rule`, `Rules`,
   `ShowAll`, `Reset`, `SetServerError`); errors show once the field was edited, the user left it (`FormField` on lost focus tells
-  `IFormFieldVisits.FieldLeft` the bound property, user decision 2026-10-11: an empty required field says so) or a submit was
+  `IFormFieldVisits.FieldLeft` the bound property, an empty required field says so) or a submit was
   tried, never on an untouched form; submit buttons stay disabled while any error exists and their tooltip says why. Usage:
   `plugins/README.md` "Validation".
 - **HARD RULE, scale to thousands of devices.** A site can have 1000+ cameras. Every list of
@@ -2801,7 +1844,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
     budget, and write their measured times to the test output.
   - Tests: `[Trait("Category", "Timing")]` for tests that depend on real elapsed time or machine speed (short real
     timeouts, `Task.Delay` races, time budgets outside Perf); they run locally (`manage test unit`, `manage test timing`),
-    not in the release workflow (user decision 2026-10-09). New tests prefer a fake `TimeProvider`.
+    not in the release workflow. New tests prefer a fake `TimeProvider`.
 - Core plugin pages never repeat the page title in a card heading: the description goes into
   the host page header via `ui:PageHeader.Subtitle` (2 px top margin, theme); the status never sits top right in the page
   header but directly left of the Save button it reports on (or next to the value it describes, e.g. the CA validity on the
@@ -2813,10 +1856,10 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
 - Button and menu labels never end with "..." / "…", also when they open a dialog or a file picker ("Back up", "Import CA",
   "Choose file"). Actions inside a card are filled buttons (`Button.secondary` with `ui:IconLabel`, primary for the main
   one); the flat `ui:ToolbarButton` is only for toolbars.
-- One accent button per view (exception, user decision 2026-10-11: the purple "Selected devices" button of the event rule and
+- One accent button per view (exception, the purple "Selected devices" button of the event rule and
   trigger dialogs): while an inline editor is open, its button (Retry, Create tag) is the primary one and the
   footer's main button turns secondary. A disabled primary keeps its role: the accent at about 35 % with dimmed text.
-- **Destructive actions are red** (layout review 2026-10-08): `Button.danger` (red fill, white text) instead of primary for
+- **Destructive actions are red**: `Button.danger` (red fill, white text) instead of primary for
   buttons that delete or remove (Remove users, Delete certificates), `Button.toolbar.danger` for flat toolbar and icon
   buttons (Delete all, Delete tag, credential Remove, user Delete), `Button.link.danger` for row links (DHCP Delete and
   Release, PKI Remove). `ui:MessageWindow` makes its confirm button red when the confirm text starts with Delete, Remove
@@ -2832,8 +1875,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   weight, color, padding or alignment in views. No special cases such as a bold selected rail
   item or a greyed toggle unless the spec says so. When a mismatch is found, fix the shared
   style or control, not the single view.
-- Tests never assert exact positions, sizes, pixel offsets or column widths of controls (user decision 2026-10-08:
-  overkill); headless screenshots are for looking, assertions check behaviour, content and rules.
+- Tests never assert exact positions, sizes, pixel offsets or column widths of controls (overkill); headless screenshots are for looking, assertions check behaviour, content and rules.
 - UI is verified only with Avalonia headless tests rendering offscreen (screenshots via
   `OADM_SCREENSHOT_DIR`). Never automate the real desktop: no simulated clicks or drags, no
   capturing real windows on a developer machine.
@@ -2845,37 +1887,11 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
 - This file is the single source of truth for the spec. When a decision changes, change it
   here in the same PR.
 
-# Goal 1 - Definition of Done
+# Not built yet
 
-1. `dotnet run --project src/Oadm.Server` starts on Windows, Linux, macOS and creates its
-   SQLite database and master key.
-2. `dotnet run --project src/Oadm.Client` connects and shows the empty Manage devices window.
-3. Add devices via zero-conf (mDNS), IP range and manual address on the fast add page, with
-   automatic login from the credential list, setting a password on a factory-default device and
-   logging in to others inline.
-4. Added devices appear in the grid with all columns the device provides; status refreshes on
-   the configured interval.
-5. Right-click or toolbar **Restart** runs the Restart task plugin loaded from the plugins
-   folder, with progress visible in the Tasks tab.
-6. Remove device, refresh, search and column chooser work.
-7. Tests green on CI for all three OS.
-
-Milestones in order: (1) solution skeleton + contracts + CI, (2) VAPIX client + fixtures,
-(3) persistence + crypto, (4) discovery, (5) gRPC services + task engine, (6) client shell and
-device grid, (7) add page, (8) plugin loader + Restart plugin, (9) polish and docs.
-
-# Open Points to Verify on Real Hardware
-
-Resolved on AXIS P3265-V, AXIS OS 12.11.77 (see VAPIX section): HTTPS parameter, first
-password over HTTP, mDNS TXT keys. Still open:
-- Success response of `pwdgrp.cgi` on a factory-default device (needs a reset camera).
-- `restart.cgi` end to end through the Restart plugin.
-
-# Later Goals (not now)
-
-Client authentication and users, SSDP/WS-Discovery, scheduling/retry, Core plugins (NTP,
-DHCP, IDP) with their UI pages, backup/restore, warranty
-and replacement data from Axis online services, installers/packaging, localization.
+SSDP and WS-Discovery, scheduled and repeated tasks (retry, recurrence), backup and restore, warranty and replacement data
+from Axis online services, localization, installer signing (checksums instead), OS keyring for the master key,
+least-privilege service accounts, database backup before migrations.
 
 # Resources
 

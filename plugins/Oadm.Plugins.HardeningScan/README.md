@@ -8,7 +8,7 @@ Scans every managed device against the **AXIS OS Hardening Guide**
 The grid has one column per check and a pass / warn / fail icon per device. Read-only: `param.cgi action=list`, VAPIX
 `get*` / `list` methods, `config/rest` GETs and the SOAP `Get*` read. Never a write.
 
-## Decisions (user, 2026-10-08)
+## Decisions
 
 1. **Latest AXIS OS (B2)** is information only: the column shows the version, no rating (OADM has no source for the current
    AXIS OS versions yet).
@@ -23,7 +23,7 @@ The grid has one column per check and a pass / warn / fail icon per device. Read
    time after a restart.
 8. **Scheduled scans later** (with the general scheduling goal); v1 scans on demand.
 
-## Evidence (10.0.0.48, AXIS P3265-V, AXIS OS 12.11.77, read-only, 2026-10-08)
+## Evidence (AXIS P3265-V, AXIS OS 12.11.77, read-only)
 
 All reads answered 200 over HTTP Digest. Recorded answers (secrets blanked: SNMP communities, OAuth verify field; LLDP
 neighbors trimmed) in `tests/Oadm.Plugins.HardeningScan.Tests/Fixtures/` (`config/discover` is linked from the PKI tests):
@@ -55,7 +55,7 @@ Findings that shaped the design:
 Every grid cell is an icon-only `ui:StatusChip`: pass green, warning amber, fail red, read error red, does not apply / info
 neutral, empty = not scanned at that level. Its tooltip (built when it opens) gives the state and value found, the rule,
 the guide's recommendation with its section, and a note (Bonjour). "Does not apply" = the model or firmware lacks the
-feature or API. Info rows are not shown on the page (user decision 2026-10-08).
+feature or API. Info rows are not shown on the page.
 
 ### Basic
 
@@ -109,7 +109,8 @@ of the level is Warn or Fail.
 - `Device/DeviceFactsReader.cs`: param.cgi (one call, all groups of both levels), pwdgrp get, `config/discover` once, then the
   REST GETs it lists (user-management v2, firewall v1, lldp v1; Extended: snmp v1, oidcsetup v1), `getNTPInfo` (ntp API) or
   the Time parameters, `disks/list.cgi` (disk-management API or an SD slot), applications list + AllowUnsigned (application
-  API), Extended: the SOAP web server read. 15 s per request, no retries, 2 min per device. A failed read sets only its
+  API), Extended: the SOAP web server read. 15 s per request, no retries, 2 min per device, 16 devices at once (plugin
+  setting `config.parallelism`, 1..64). A failed read sets only its
   checks to Error ("Timeout after 15 s", "Unauthorized - HTTP 401 (check the credentials)": the shared SDK `DeviceMessages` texts). When param.cgi gets no
   answer or is refused, the other reads are skipped with the same text (row status). Readers compiled in from other plugins
   (`<Compile Include ... Link>`, never a project reference): Users `PwdgrpApi`, Date and time `Model/` + `Vapix/`, ACAP
@@ -141,7 +142,8 @@ of the level is Warn or Fail.
   from the catalog), sortable by state (fail first). Column order and widths, the level and the detail height are remembered
   in `LocalApplicationData/Oadm/plugins/oadm.hardening-scan/client.json`.
 - Below a splitter: **Selected device** (result, check, value found + detail from `getDetail`, recommendation) or **Not checked
-  automatically** (the info rows of the level with the guide's text and a link to the guide).
+  automatically** (the info rows of the level with the guide's text and a link to the guide). The remembered detail
+  height is fitted to the page, so the result grid always keeps at least 160 px.
 - Scale: rows indexed by device id, results applied per changed row, summary and per-column counters updated per changed row,
   cells are one byte per column (`HardeningRow.States`), tooltips built when they open, filter and search O(n) with one reset.
 
@@ -166,7 +168,7 @@ devices, catalog), `ParserTests`, `ScanServiceTests` (bounded parallelism, devic
 across a restart, removed devices, event batches, parallelism setting, store bound; the fake camera records a violation for
 any request that is not a read), `PageViewModelTests` (5,000 devices: state, filter, search, level switch, a 1,000-row batch;
 levels merged by scan time; CSV; tooltips), `MethodRoleTests`, `FakeModeTests`, `HeadlessPageTests` (`hardening-scan-basic.png`,
-`hardening-scan-extended.png`), and `HardeningHardwareTests` (`Category=Hardware`, one Extended scan of 10.0.0.48 through the
+`hardening-scan-extended.png`), and `HardeningHardwareTests` (`Category=Hardware`, one Extended scan of the development camera through the
 in-process server, read-only).
 
 ## Outlook (not v1): Fix

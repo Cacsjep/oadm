@@ -19,7 +19,7 @@ using Oadm.Sdk.Devices;
 
 namespace Oadm.Client.Tests;
 
-/// <summary>Production hardening 4: broken plugin parts and unhandled errors never take the client down.</summary>
+/// <summary>"Security and access", crash handling and limits: broken plugin parts and unhandled errors never take the client down.</summary>
 public sealed class CrashHandlingTests
 {
     [Fact]

@@ -16,7 +16,7 @@ public sealed class HardwareWriteFactAttribute : FactAttribute
 
 /// <summary>
 /// Skeleton of the opt-in hardware write tests of the PKI tasks (HARD RULE: write tests only on explicit request). The open
-/// points from docs/specs/pki.md that only a real device answers:
+/// points of the PKI plugin that only a real device answers:
 /// 1. POST /config/rest/cert/v1/create_certificate (RSA-2048, default keystore SE0) + get_csr + PATCH certificates/&lt;alias&gt;
 ///    with the OADM-signed PEM (also: does PATCH accept a PEM chain?), POST ca_certificates.
 /// 2. SOAP aweb:SetWebServerTlsConfiguration with the new alias (policy unchanged), the TLS handshake then presents it; and

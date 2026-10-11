@@ -139,7 +139,7 @@ cancellable) and returns `{"fileId","fileName","factoryDefaultMode","allowDowngr
 
 ## Recorded on hardware (read-only)
 
-AXIS P3265-V, AXIS OS 12.11.77 (10.0.0.48), fixtures in `tests/Oadm.Plugins.Firmware.Tests/Fixtures`:
+AXIS P3265-V, AXIS OS 12.11.77 (the development camera), fixtures in `tests/Oadm.Plugins.Firmware.Tests/Fixtures`:
 
 - `apidiscovery`: `fwmgr 1.10` "Firmware Management" official.
 - `getSupportedVersions`: `["1.10"]`.

@@ -11,7 +11,7 @@ using Oadm.Sdk.Devices;
 
 namespace Oadm.Core.Tests.Security;
 
-/// <summary>Production hardening 3: a missing or different master.key is replaced, unreadable credentials removed.</summary>
+/// <summary>"Security and access", master key: a missing or different master.key is replaced, unreadable credentials removed.</summary>
 public sealed class MasterKeyCheckTests : IDisposable
 {
     private readonly string _dir = TestDatabase.NewTempDirectory();

@@ -50,7 +50,7 @@ How OADM clones it (`DateTimeWindow`):
 | Synchronize with server computer time | Below the radio button: the server time and the difference to the device ("device and server agree", "device is 3.2 s ahead"). NTP off; the OADM server's UTC time is sent once per device when its task runs (like ACS). |
 | Synchronize with NTP server: Obtain from DHCP / Use server | Below the radio button: an **Obtain from DHCP** check box and one field for up to 5 host names or addresses, separated by commas. **Use NTS (Network Time Security)** when a selected device supports it (the field then takes NTS KE servers). |
 | Set manually | Below the radio button: date, time and "Use this computer's time", in the device's time zone; NTP off. |
-| (always writes everything) | Same, **exactly like ADM** (user decision): no "Keep unchanged"; OK writes the time zone and the selected time mode to every selected device. The time mode starts at the first device's mode (NTP if enabled, else Set manually). The steps skip values a device already has ("Already ..."). |
+| (always writes everything) | Same, **exactly like ADM**: no "Keep unchanged"; OK writes the time zone and the selected time mode to every selected device. The time mode starts at the first device's mode (NTP if enabled, else Set manually). The steps skip values a device already has ("Already ..."). |
 | OK | OK, disabled with the reason as tooltip until a time zone is chosen and every field is valid. Each error sits below its input; the time zone error below the drop-down. Device notes ("500 of the selected devices have no Time API ...") are one small line below the chosen mode's input. |
 
 ## VAPIX research
@@ -74,7 +74,7 @@ How OADM clones it (`DateTimeWindow`):
   `/config/discover`, not in `apidiscovery.cgi`, so `CanRun` cannot see them. Not used yet; the successor when time.cgi
   goes away (AXIS OS 13). Recorded in the fixtures for reference.
 
-## What 10.0.0.48 reports (AXIS P3265-V, AXIS OS 12.11.77, read-only)
+## What the development camera reports (AXIS P3265-V, AXIS OS 12.11.77, read-only)
 
 - `apidiscovery`: `time-service 1.1`, `ntp 1.5`, `param-cgi 1.0`. `getSupportedVersions` lists only 1.1 / 1.5, but a
   request with apiVersion 1.0 is answered (as 1.1 / 1.5). apiVersion 2.0 = error 4001 "The specified version is not
@@ -109,6 +109,15 @@ How OADM clones it (`DateTimeWindow`):
 version verified with NTS fields (no history is published). All `Require(...)` calls run in the Validate step, before
 the first write. Like ADM the time zone and the time mode are always planned; values the device already has are not
 written ("Already Europe/Vienna", "Already set").
+
+## Dialog details
+
+- Each time mode's input sits below its radio button, indented (`StackPanel.optionDetail`); the inputs of the other modes
+  are disabled.
+- The time zone drop-down jumps to a city as you type (`TextSearch.TextBinding` = City).
+- Every write is verified by reading again: a mismatch or a device clock more than 3 s off is a Warning.
+- While the first device's time is read, "Reading the device time" (or the read error) shows in a `ui:StatusChip`
+  next to the heading **Device time**.
 
 ## Per-device steps
 
@@ -170,4 +179,4 @@ from tzdata (with end times like 1:59:59.999) and keep history (Asia/Kolkata's 1
 instants agree on every OS. Each transition becomes `Mm.w.d/time` in the local time in force before it (start in
 standard, end in daylight saving time). A fourth weekday that is also the last of the month is "last" (week 5) unless
 the next six years match "fourth" more often. POSIX strings follow the device's style: Europe/Vienna =
-`<UTC1>-1<UTC2>-2,M3.5.0/2:00:00,M10.5.0/3:00:00` (exactly what 10.0.0.48 reports), Asia/Kolkata = `<UTC530>-5:30`.
+`<UTC1>-1<UTC2>-2,M3.5.0/2:00:00,M10.5.0/3:00:00` (exactly what the development camera reports), Asia/Kolkata = `<UTC530>-5:30`.

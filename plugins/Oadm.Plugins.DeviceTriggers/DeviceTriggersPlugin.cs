@@ -10,7 +10,7 @@ using Oadm.Sdk.Vapix;
 namespace Oadm.Plugins.DeviceTriggers;
 
 /// <summary>
-/// Core plugin "Device triggers" (off by default; user decisions 2026-10-10, <c>docs/specs/device-triggers.md</c>). An
+/// Core plugin "Device triggers" (off by default; see the plugin README). An
 /// administrator picks an event that the chosen devices offer (read live from them), optionally narrowed to source values;
 /// OADM keeps a permanent WebSocket event stream to each device (<see cref="TriggerRuntime"/>) and publishes every trigger
 /// as two event types for the event rules: the trigger itself and "&lt;Trigger&gt;: connection lost". The types change

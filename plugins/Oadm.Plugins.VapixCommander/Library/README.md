@@ -40,7 +40,7 @@ of `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md`, validated aga
 - **Indexes**: `source` = `ImageSource.I#` (0-based sensor), `channel` = `Image.I#` (0-based video
   channel), `camera` = VAPIX camera number (1-based, ptz.cgi, overlays, Zipstream).
 - **JSON APIs** send `"apiVersion": "1.0"` (`"2.0"` for supervised I/O) and `"context": "oadm"`.
-  Axis devices answer with the highest minor they support (10.0.0.48 answers 1.38 to a 1.0
+  Axis devices answer with the highest minor they support (the development camera answers 1.38 to a 1.0
   network-settings request), so the lowest major.0 works on every firmware that has the method.
 - **requires** names the `apidiscovery.cgi getApiList` id with `minVersion` `<major>.0`.
   Legacy CGIs without an own id (`systemlog.cgi`, `serverreport.cgi`, `geolocation/*.cgi`,
@@ -66,15 +66,15 @@ of `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md`, validated aga
 ## Verification
 
 Every parameter, method and response path was checked against developer.axis.com and, where possible
-without writing, against the dev camera **10.0.0.48** (AXIS P3265-V Dome Camera, AXIS OS 12.11.77):
+without writing, against the development camera (AXIS P3265-V Dome Camera, AXIS OS 12.11.77):
 
-- **Readers**: all 59 were executed on 10.0.0.48 by the hardware test (HTTP 2xx, no VAPIX error, every
+- **Readers**: all 59 were executed on the development camera by the hardware test (HTTP 2xx, no VAPIX error, every
   `response.extract` resolved). `image.light.info` reached the device, which answers with its documented
   error 1005 "No light hardware found" (the model lists `light-control` but has no IR light).
 - **param.cgi setters**: every parameter name and every enum/boolean value the command can send was
-  checked against `param.cgi?action=listdefinitions&listformat=xmlschema` read on 10.0.0.48 (the
+  checked against `param.cgi?action=listdefinitions&listformat=xmlschema` read on the development camera (the
   device's own type definitions). They were never sent.
-- **Other setters**: method and parameter names are from the VAPIX documentation. 10.0.0.48 lists
+- **Other setters**: method and parameter names are from the VAPIX documentation. The development camera lists
   their API and its readers work there; the setter itself was never sent (the camera is read-only for
   this work).
 
@@ -104,7 +104,7 @@ dotnet test tests/Oadm.Plugins.VapixCommander.Library.Tests --filter Category!=H
 dotnet test tests/Oadm.Plugins.VapixCommander.Library.Tests --filter Category=Hardware
 ```
 
-### Notes from 10.0.0.48
+### Notes from the development camera
 
 - JSON CGIs answer `Content-Type: application/json; charset=utf8`; .NET `ReadAsStringAsync` throws on
   `utf8`, so clients must decode the bytes as UTF-8 themselves.
@@ -116,7 +116,7 @@ dotnet test tests/Oadm.Plugins.VapixCommander.Library.Tests --filter Category=Ha
   `Error:` text; with PTZ disabled `query=presetposcam` answers "PTZ disabled" without `Error:`, and
   `query=position` answers 204 with an empty body.
 - The legacy `Network.IPAddress` (192.168.0.90) is the stored static address, not the active one
-  (10.0.0.48 via DHCP); use `network.info.get` (`devices.0.IPv4.addresses`).
+  (the development camera via DHCP); use `network.info.get` (`devices.0.IPv4.addresses`).
 - Many APIs exist only as REST under `/config/rest/...` (SNMP, firewall, LLDP, cert, crypto policy,
   network-time-sync, user-management v2, action rules v2). They are listed by `/config/discover`, not by
   `getApiList`, so `requires` cannot express them; the library uses the param.cgi/JSON equivalents.
@@ -153,164 +153,164 @@ Gaps in format v1 found while writing the library:
 
 | Id | Name | Category | Writes | Verification |
 |---|---|---|---|---|
-| `common.device.info` | Get device information | Common | no | executed on 10.0.0.48 |
-| `common.firmware.status` | Get firmware status | Common | no | executed on 10.0.0.48 |
-| `common.identify.flash` | Identify device (flash status LED) | Common | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `common.identify.get` | Get status LED setting | Common | no | executed on 10.0.0.48 |
-| `common.statusled.set` | Set status LED | Common | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `common.systemready.get` | Get system ready status | Common | no | executed on 10.0.0.48 |
-| `system.geolocation.get` | Get geolocation | System | no | executed on 10.0.0.48 |
-| `system.geolocation.set` | Set geolocation | System | yes | docs only (API present on 10.0.0.48, never sent) |
-| `system.power.dynamic.get` | Get dynamic power mode | System | no | executed on 10.0.0.48 |
-| `system.power.dynamic.set` | Set dynamic power mode | System | yes | docs only (API present on 10.0.0.48, never sent) |
-| `system.power.status` | Get power consumption | System | no | executed on 10.0.0.48 |
-| `system.remotesyslog.disable` | Disable remote syslog | System | yes | docs only (API present on 10.0.0.48, never sent) |
-| `system.remotesyslog.enable` | Enable remote syslog | System | yes | docs only (API present on 10.0.0.48, never sent) |
-| `system.remotesyslog.get` | Get remote syslog | System | no | executed on 10.0.0.48 |
-| `system.remotesyslog.setup` | Set remote syslog server | System | yes | docs only (API present on 10.0.0.48, never sent) |
-| `system.temperature.get` | Get temperatures | System | no | executed on 10.0.0.48 |
-| `system.webserver.get` | Get web server settings | System | no | executed on 10.0.0.48 |
-| `network.bonjour.get` | Get Bonjour (mDNS) | Network | no | executed on 10.0.0.48 |
-| `network.bonjour.set` | Set Bonjour (mDNS) | Network | yes | docs only (API present on 10.0.0.48, never sent) |
-| `network.discovery.get` | Get discovery protocols | Network | no | executed on 10.0.0.48 |
-| `network.dns.set` | Set DNS server | Network | yes (dangerous) | docs only (API present on 10.0.0.48, never sent) |
-| `network.hostname.set` | Set host name | Network | yes (dangerous) | docs only (API present on 10.0.0.48, never sent) |
-| `network.info.get` | Get network settings | Network | no | executed on 10.0.0.48 |
-| `network.ipv6.set` | Enable or disable IPv6 | Network | yes (dangerous) | docs only (API present on 10.0.0.48, never sent) |
-| `network.qos.get` | Get QoS (DSCP) | Network | no | executed on 10.0.0.48 |
-| `network.qos.set` | Set QoS (DSCP) | Network | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `network.rtsp.get` | Get RTSP settings | Network | no | executed on 10.0.0.48 |
-| `network.rtsp.set` | Set RTSP server | Network | yes (dangerous) | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `network.snmp.get` | Get SNMP settings | Network | no | executed on 10.0.0.48 |
-| `network.snmp.trap.set` | Set SNMP trap receiver | Network | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `network.snmp.v2c.set` | Set SNMP v1/v2c | Network | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `network.upnp.set` | Set UPnP | Network | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `security.anonymousviewer.set` | Set anonymous viewer access | Security | yes (dangerous) | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `security.bruteforce.get` | Get brute-force protection | Security | no | executed on 10.0.0.48 |
-| `security.bruteforce.set` | Set brute-force protection | Security | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `security.httpauth.set` | Set HTTP authentication policy | Security | yes (dangerous) | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `security.httpheaders.get` | Get custom HTTP headers | Security | no | executed on 10.0.0.48 |
-| `security.https.get` | Get HTTPS settings | Security | no | executed on 10.0.0.48 |
-| `security.https.policy.set` | Set HTTPS connection policy | Security | yes (dangerous) | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `security.ssh.get` | Get SSH state | Security | no | executed on 10.0.0.48 |
-| `security.ssh.set` | Enable or disable SSH | Security | yes | docs only (API present on 10.0.0.48, never sent) |
-| `users.add` | Add user | Users | yes (dangerous) | docs only (API present on 10.0.0.48, never sent) |
-| `users.list` | List users | Users | no | executed on 10.0.0.48 |
-| `users.password.set` | Change user password | Users | yes (dangerous) | docs only (API present on 10.0.0.48, never sent) |
-| `users.remove` | Remove user | Users | yes (dangerous) | docs only (API present on 10.0.0.48, never sent) |
-| `users.role.set` | Change user role | Users | yes (dangerous) | docs only (API present on 10.0.0.48, never sent) |
-| `time.datetime.set` | Set date and time (UTC) | Time | yes | docs only (API present on 10.0.0.48, never sent) |
-| `time.get` | Get date and time | Time | no | executed on 10.0.0.48 |
-| `time.ntp.dhcp.set` | Use NTP servers from DHCP | Time | yes | docs only (API present on 10.0.0.48, never sent) |
-| `time.ntp.disable` | Disable NTP | Time | yes | docs only (API present on 10.0.0.48, never sent) |
-| `time.ntp.get` | Get NTP status | Time | no | executed on 10.0.0.48 |
-| `time.ntp.static.set` | Set NTP server | Time | yes | docs only (API present on 10.0.0.48, never sent) |
-| `time.posixtimezone.set` | Set POSIX time zone | Time | yes | docs only (API present on 10.0.0.48, never sent) |
-| `time.timezone.set` | Set time zone | Time | yes | docs only (API present on 10.0.0.48, never sent) |
-| `video.bitrate.abr.set` | Set bitrate mode ABR | Video | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `video.bitrate.mbr.set` | Set bitrate mode MBR | Video | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `video.bitrate.vbr.set` | Set bitrate mode VBR | Video | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `video.capturemode.get` | Get capture modes | Video | no | executed on 10.0.0.48 |
-| `video.capturemode.set` | Set capture mode | Video | yes (dangerous) | docs only (API present on 10.0.0.48, never sent) |
-| `video.compression.set` | Set default compression | Video | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `video.fps.set` | Set default frame rate | Video | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `video.gop.set` | Set GOP length | Video | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `video.overlay.remove` | Remove overlay | Video | yes | docs only (API present on 10.0.0.48, never sent) |
-| `video.overlay.text.add` | Add text overlay | Video | yes | docs only (API present on 10.0.0.48, never sent) |
-| `video.overlay.text.set` | Change text overlay text | Video | yes | docs only (API present on 10.0.0.48, never sent) |
-| `video.overlays.list` | List overlays | Video | no | executed on 10.0.0.48 |
-| `video.powerlinefrequency.set` | Set power line frequency | Video | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `video.privacymasks.list` | List privacy masks | Video | no | executed on 10.0.0.48 |
-| `video.resolution.set` | Set default resolution | Video | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `video.rotation.set` | Set image rotation | Video | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `video.signed.set` | Set signed video | Video | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `video.stream.get` | Get video stream settings | Video | no | executed on 10.0.0.48 |
-| `video.streamingindicator.get` | Get video streaming indicator | Video | no | executed on 10.0.0.48 |
-| `video.streamprofile.create` | Create stream profile | Video | yes | docs only (API present on 10.0.0.48, never sent) |
-| `video.streamprofile.remove` | Remove stream profile | Video | yes | docs only (API present on 10.0.0.48, never sent) |
-| `video.streamprofiles.list` | List stream profiles | Video | no | executed on 10.0.0.48 |
-| `video.streams.status` | Get active streams | Video | no | executed on 10.0.0.48 |
-| `video.zipstream.get` | Get Zipstream status | Video | no | executed on 10.0.0.48 |
-| `video.zipstream.gop.set` | Set Zipstream dynamic GOP | Video | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `video.zipstream.strength.set` | Set Zipstream strength | Video | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `image.brightness.set` | Set brightness | Image | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `image.contrast.set` | Set contrast | Image | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `image.daynight.dwell.set` | Set day/night dwell times | Image | yes | docs only (API present on 10.0.0.48, never sent) |
-| `image.daynight.get` | Get day/night configuration | Image | no | executed on 10.0.0.48 |
-| `image.daynight.shiftlevel.set` | Set day/night shift level | Image | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `image.defog.set` | Set defog | Image | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `image.exposure.mode.set` | Set exposure mode | Image | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `image.exposure.priority.set` | Set exposure priority | Image | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `image.exposure.zone.set` | Set exposure zone | Image | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `image.ircut.set` | Set IR cut filter | Image | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `image.light.capabilities` | Get light (IR) capabilities | Image | no | executed on 10.0.0.48 |
-| `image.light.disable` | Disable light (IR) | Image | yes | docs only (API present on 10.0.0.48, never sent) |
-| `image.light.enable` | Enable light (IR) | Image | yes | docs only (API present on 10.0.0.48, never sent) |
-| `image.light.info` | Get light (IR) information | Image | no | executed on 10.0.0.48 (device answers documented error: no light hardware) |
-| `image.light.intensity.set` | Set light (IR) intensity | Image | yes | docs only (API present on 10.0.0.48, never sent) |
-| `image.maxgain.set` | Set maximum gain | Image | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `image.optics.autofocus` | Run autofocus | Image | yes | docs only (API present on 10.0.0.48, never sent) |
-| `image.optics.focus.set` | Set focus position | Image | yes | docs only (API present on 10.0.0.48, never sent) |
-| `image.optics.get` | Get focus and zoom | Image | no | executed on 10.0.0.48 |
-| `image.optics.zoom.set` | Set zoom (magnification) | Image | yes | docs only (API present on 10.0.0.48, never sent) |
-| `image.saturation.set` | Set saturation | Image | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `image.settings.get` | Get image settings | Image | no | executed on 10.0.0.48 |
-| `image.sharpness.set` | Set sharpness | Image | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `image.wdr.set` | Set WDR | Image | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `image.whitebalance.set` | Set white balance | Image | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `ptz.digital.set` | Enable digital PTZ | PTZ | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `ptz.home` | Go to home position | PTZ | yes | docs only (API present on 10.0.0.48, never sent) |
-| `ptz.home.set` | Set current position as home | PTZ | yes | docs only (API present on 10.0.0.48, never sent) |
-| `ptz.limits.get` | Get PTZ limits | PTZ | no | executed on 10.0.0.48 |
-| `ptz.move.absolute` | Move to position | PTZ | yes | docs only (API present on 10.0.0.48, never sent) |
-| `ptz.position.get` | Get PTZ position | PTZ | no | executed on 10.0.0.48 |
-| `ptz.preset.goto` | Go to preset | PTZ | yes | docs only (API present on 10.0.0.48, never sent) |
-| `ptz.preset.remove` | Remove preset | PTZ | yes | docs only (API present on 10.0.0.48, never sent) |
-| `ptz.preset.save` | Save current position as preset | PTZ | yes | docs only (API present on 10.0.0.48, never sent) |
-| `ptz.presets.list` | List PTZ presets | PTZ | no | executed on 10.0.0.48 |
-| `audio.clip.play` | Play audio clip | Audio | yes | docs only (API present on 10.0.0.48, never sent) |
-| `audio.clip.stop` | Stop audio clip | Audio | yes | docs only (API present on 10.0.0.48, never sent) |
-| `audio.clips.list` | List audio clips | Audio | no | executed on 10.0.0.48 |
-| `audio.devices.get` | Get audio device settings | Audio | no | executed on 10.0.0.48 |
-| `audio.encoding.set` | Set audio encoding | Audio | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `audio.input.set` | Set audio input | Audio | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `audio.output.set` | Set audio output gain | Audio | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `audio.settings.get` | Get audio settings | Audio | no | executed on 10.0.0.48 |
-| `io.output.pulse` | Pulse output | I/O | yes | docs only (API present on 10.0.0.48, never sent) |
-| `io.output.set` | Set output state | I/O | yes | docs only (API present on 10.0.0.48, never sent) |
-| `io.port.name.set` | Rename I/O port | I/O | yes | docs only (API present on 10.0.0.48, never sent) |
-| `io.ports.active` | Check I/O ports active | I/O | no | executed on 10.0.0.48 |
-| `io.ports.get` | Get I/O ports | I/O | no | executed on 10.0.0.48 |
-| `io.supervised.count` | Get supervised I/O ports | I/O | no | executed on 10.0.0.48 |
-| `io.supervised.get` | Get supervised input state | I/O | no | executed on 10.0.0.48 |
-| `io.supervised.set` | Set input supervision | I/O | yes | docs only (API present on 10.0.0.48, never sent) |
-| `io.virtualinput.activate` | Activate virtual input | I/O | yes | docs only (API present on 10.0.0.48, never sent) |
-| `io.virtualinput.deactivate` | Deactivate virtual input | I/O | yes | docs only (API present on 10.0.0.48, never sent) |
-| `events.actionrules.list` | List action rules | Events | no | executed on 10.0.0.48 |
-| `events.mqtt.client.activate` | Connect MQTT client | Events | yes | docs only (API present on 10.0.0.48, never sent) |
-| `events.mqtt.client.configure` | Configure MQTT client | Events | yes | docs only (API present on 10.0.0.48, never sent) |
-| `events.mqtt.client.deactivate` | Disconnect MQTT client | Events | yes | docs only (API present on 10.0.0.48, never sent) |
-| `events.mqtt.client.get` | Get MQTT client status | Events | no | executed on 10.0.0.48 |
-| `events.mqtt.publication.get` | Get MQTT event publication | Events | no | executed on 10.0.0.48 |
-| `events.mqtt.publication.set` | Publish events to MQTT | Events | yes | docs only (API present on 10.0.0.48, never sent) |
-| `events.tampering.get` | Get tampering detection | Events | no | executed on 10.0.0.48 |
-| `events.tampering.set` | Set tampering detection | Events | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `storage.cleanup.set` | Set storage cleanup | Storage | yes | param names and values checked on 10.0.0.48 (listdefinitions, not sent) |
-| `storage.disks.list` | List storage disks | Storage | no | executed on 10.0.0.48 |
-| `storage.format` | Format disk | Storage | yes (dangerous) | docs only (API present on 10.0.0.48, never sent) |
-| `storage.mount` | Mount disk | Storage | yes | docs only (API present on 10.0.0.48, never sent) |
-| `storage.networkshares.list` | List network shares | Storage | no | executed on 10.0.0.48 |
-| `storage.recordings.list` | List recordings | Storage | no | executed on 10.0.0.48 |
-| `storage.sd.get` | Get SD card settings | Storage | no | executed on 10.0.0.48 |
-| `storage.unmount` | Unmount disk | Storage | yes | docs only (API present on 10.0.0.48, never sent) |
-| `apps.list` | List applications | Applications | no | executed on 10.0.0.48 |
-| `apps.remove` | Remove application | Applications | yes (dangerous) | docs only (API present on 10.0.0.48, never sent) |
-| `apps.start` | Start application | Applications | yes | docs only (API present on 10.0.0.48, never sent) |
-| `apps.stop` | Stop application | Applications | yes | docs only (API present on 10.0.0.48, never sent) |
-| `maintenance.auditlog.get` | Get audit log | Maintenance | no | executed on 10.0.0.48 |
-| `maintenance.factorydefault` | Factory default | Maintenance | yes (dangerous) | docs only (API present on 10.0.0.48, never sent) |
-| `maintenance.firmware.commit` | Commit firmware | Maintenance | yes | docs only (API present on 10.0.0.48, never sent) |
-| `maintenance.firmware.rollback` | Roll back firmware | Maintenance | yes (dangerous) | docs only (API present on 10.0.0.48, never sent) |
-| `maintenance.restart` | Restart device | Maintenance | yes (dangerous) | docs only (API present on 10.0.0.48, never sent) |
-| `maintenance.serverreport.get` | Get server report | Maintenance | no | executed on 10.0.0.48 |
-| `maintenance.systemlog.get` | Get system log | Maintenance | no | executed on 10.0.0.48 |
+| `common.device.info` | Get device information | Common | no | executed on the development camera |
+| `common.firmware.status` | Get firmware status | Common | no | executed on the development camera |
+| `common.identify.flash` | Identify device (flash status LED) | Common | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `common.identify.get` | Get status LED setting | Common | no | executed on the development camera |
+| `common.statusled.set` | Set status LED | Common | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `common.systemready.get` | Get system ready status | Common | no | executed on the development camera |
+| `system.geolocation.get` | Get geolocation | System | no | executed on the development camera |
+| `system.geolocation.set` | Set geolocation | System | yes | docs only (API present on the development camera, never sent) |
+| `system.power.dynamic.get` | Get dynamic power mode | System | no | executed on the development camera |
+| `system.power.dynamic.set` | Set dynamic power mode | System | yes | docs only (API present on the development camera, never sent) |
+| `system.power.status` | Get power consumption | System | no | executed on the development camera |
+| `system.remotesyslog.disable` | Disable remote syslog | System | yes | docs only (API present on the development camera, never sent) |
+| `system.remotesyslog.enable` | Enable remote syslog | System | yes | docs only (API present on the development camera, never sent) |
+| `system.remotesyslog.get` | Get remote syslog | System | no | executed on the development camera |
+| `system.remotesyslog.setup` | Set remote syslog server | System | yes | docs only (API present on the development camera, never sent) |
+| `system.temperature.get` | Get temperatures | System | no | executed on the development camera |
+| `system.webserver.get` | Get web server settings | System | no | executed on the development camera |
+| `network.bonjour.get` | Get Bonjour (mDNS) | Network | no | executed on the development camera |
+| `network.bonjour.set` | Set Bonjour (mDNS) | Network | yes | docs only (API present on the development camera, never sent) |
+| `network.discovery.get` | Get discovery protocols | Network | no | executed on the development camera |
+| `network.dns.set` | Set DNS server | Network | yes (dangerous) | docs only (API present on the development camera, never sent) |
+| `network.hostname.set` | Set host name | Network | yes (dangerous) | docs only (API present on the development camera, never sent) |
+| `network.info.get` | Get network settings | Network | no | executed on the development camera |
+| `network.ipv6.set` | Enable or disable IPv6 | Network | yes (dangerous) | docs only (API present on the development camera, never sent) |
+| `network.qos.get` | Get QoS (DSCP) | Network | no | executed on the development camera |
+| `network.qos.set` | Set QoS (DSCP) | Network | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `network.rtsp.get` | Get RTSP settings | Network | no | executed on the development camera |
+| `network.rtsp.set` | Set RTSP server | Network | yes (dangerous) | param names and values checked on the development camera (listdefinitions, not sent) |
+| `network.snmp.get` | Get SNMP settings | Network | no | executed on the development camera |
+| `network.snmp.trap.set` | Set SNMP trap receiver | Network | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `network.snmp.v2c.set` | Set SNMP v1/v2c | Network | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `network.upnp.set` | Set UPnP | Network | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `security.anonymousviewer.set` | Set anonymous viewer access | Security | yes (dangerous) | param names and values checked on the development camera (listdefinitions, not sent) |
+| `security.bruteforce.get` | Get brute-force protection | Security | no | executed on the development camera |
+| `security.bruteforce.set` | Set brute-force protection | Security | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `security.httpauth.set` | Set HTTP authentication policy | Security | yes (dangerous) | param names and values checked on the development camera (listdefinitions, not sent) |
+| `security.httpheaders.get` | Get custom HTTP headers | Security | no | executed on the development camera |
+| `security.https.get` | Get HTTPS settings | Security | no | executed on the development camera |
+| `security.https.policy.set` | Set HTTPS connection policy | Security | yes (dangerous) | param names and values checked on the development camera (listdefinitions, not sent) |
+| `security.ssh.get` | Get SSH state | Security | no | executed on the development camera |
+| `security.ssh.set` | Enable or disable SSH | Security | yes | docs only (API present on the development camera, never sent) |
+| `users.add` | Add user | Users | yes (dangerous) | docs only (API present on the development camera, never sent) |
+| `users.list` | List users | Users | no | executed on the development camera |
+| `users.password.set` | Change user password | Users | yes (dangerous) | docs only (API present on the development camera, never sent) |
+| `users.remove` | Remove user | Users | yes (dangerous) | docs only (API present on the development camera, never sent) |
+| `users.role.set` | Change user role | Users | yes (dangerous) | docs only (API present on the development camera, never sent) |
+| `time.datetime.set` | Set date and time (UTC) | Time | yes | docs only (API present on the development camera, never sent) |
+| `time.get` | Get date and time | Time | no | executed on the development camera |
+| `time.ntp.dhcp.set` | Use NTP servers from DHCP | Time | yes | docs only (API present on the development camera, never sent) |
+| `time.ntp.disable` | Disable NTP | Time | yes | docs only (API present on the development camera, never sent) |
+| `time.ntp.get` | Get NTP status | Time | no | executed on the development camera |
+| `time.ntp.static.set` | Set NTP server | Time | yes | docs only (API present on the development camera, never sent) |
+| `time.posixtimezone.set` | Set POSIX time zone | Time | yes | docs only (API present on the development camera, never sent) |
+| `time.timezone.set` | Set time zone | Time | yes | docs only (API present on the development camera, never sent) |
+| `video.bitrate.abr.set` | Set bitrate mode ABR | Video | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `video.bitrate.mbr.set` | Set bitrate mode MBR | Video | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `video.bitrate.vbr.set` | Set bitrate mode VBR | Video | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `video.capturemode.get` | Get capture modes | Video | no | executed on the development camera |
+| `video.capturemode.set` | Set capture mode | Video | yes (dangerous) | docs only (API present on the development camera, never sent) |
+| `video.compression.set` | Set default compression | Video | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `video.fps.set` | Set default frame rate | Video | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `video.gop.set` | Set GOP length | Video | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `video.overlay.remove` | Remove overlay | Video | yes | docs only (API present on the development camera, never sent) |
+| `video.overlay.text.add` | Add text overlay | Video | yes | docs only (API present on the development camera, never sent) |
+| `video.overlay.text.set` | Change text overlay text | Video | yes | docs only (API present on the development camera, never sent) |
+| `video.overlays.list` | List overlays | Video | no | executed on the development camera |
+| `video.powerlinefrequency.set` | Set power line frequency | Video | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `video.privacymasks.list` | List privacy masks | Video | no | executed on the development camera |
+| `video.resolution.set` | Set default resolution | Video | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `video.rotation.set` | Set image rotation | Video | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `video.signed.set` | Set signed video | Video | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `video.stream.get` | Get video stream settings | Video | no | executed on the development camera |
+| `video.streamingindicator.get` | Get video streaming indicator | Video | no | executed on the development camera |
+| `video.streamprofile.create` | Create stream profile | Video | yes | docs only (API present on the development camera, never sent) |
+| `video.streamprofile.remove` | Remove stream profile | Video | yes | docs only (API present on the development camera, never sent) |
+| `video.streamprofiles.list` | List stream profiles | Video | no | executed on the development camera |
+| `video.streams.status` | Get active streams | Video | no | executed on the development camera |
+| `video.zipstream.get` | Get Zipstream status | Video | no | executed on the development camera |
+| `video.zipstream.gop.set` | Set Zipstream dynamic GOP | Video | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `video.zipstream.strength.set` | Set Zipstream strength | Video | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `image.brightness.set` | Set brightness | Image | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `image.contrast.set` | Set contrast | Image | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `image.daynight.dwell.set` | Set day/night dwell times | Image | yes | docs only (API present on the development camera, never sent) |
+| `image.daynight.get` | Get day/night configuration | Image | no | executed on the development camera |
+| `image.daynight.shiftlevel.set` | Set day/night shift level | Image | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `image.defog.set` | Set defog | Image | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `image.exposure.mode.set` | Set exposure mode | Image | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `image.exposure.priority.set` | Set exposure priority | Image | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `image.exposure.zone.set` | Set exposure zone | Image | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `image.ircut.set` | Set IR cut filter | Image | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `image.light.capabilities` | Get light (IR) capabilities | Image | no | executed on the development camera |
+| `image.light.disable` | Disable light (IR) | Image | yes | docs only (API present on the development camera, never sent) |
+| `image.light.enable` | Enable light (IR) | Image | yes | docs only (API present on the development camera, never sent) |
+| `image.light.info` | Get light (IR) information | Image | no | executed on the development camera (device answers documented error: no light hardware) |
+| `image.light.intensity.set` | Set light (IR) intensity | Image | yes | docs only (API present on the development camera, never sent) |
+| `image.maxgain.set` | Set maximum gain | Image | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `image.optics.autofocus` | Run autofocus | Image | yes | docs only (API present on the development camera, never sent) |
+| `image.optics.focus.set` | Set focus position | Image | yes | docs only (API present on the development camera, never sent) |
+| `image.optics.get` | Get focus and zoom | Image | no | executed on the development camera |
+| `image.optics.zoom.set` | Set zoom (magnification) | Image | yes | docs only (API present on the development camera, never sent) |
+| `image.saturation.set` | Set saturation | Image | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `image.settings.get` | Get image settings | Image | no | executed on the development camera |
+| `image.sharpness.set` | Set sharpness | Image | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `image.wdr.set` | Set WDR | Image | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `image.whitebalance.set` | Set white balance | Image | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `ptz.digital.set` | Enable digital PTZ | PTZ | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `ptz.home` | Go to home position | PTZ | yes | docs only (API present on the development camera, never sent) |
+| `ptz.home.set` | Set current position as home | PTZ | yes | docs only (API present on the development camera, never sent) |
+| `ptz.limits.get` | Get PTZ limits | PTZ | no | executed on the development camera |
+| `ptz.move.absolute` | Move to position | PTZ | yes | docs only (API present on the development camera, never sent) |
+| `ptz.position.get` | Get PTZ position | PTZ | no | executed on the development camera |
+| `ptz.preset.goto` | Go to preset | PTZ | yes | docs only (API present on the development camera, never sent) |
+| `ptz.preset.remove` | Remove preset | PTZ | yes | docs only (API present on the development camera, never sent) |
+| `ptz.preset.save` | Save current position as preset | PTZ | yes | docs only (API present on the development camera, never sent) |
+| `ptz.presets.list` | List PTZ presets | PTZ | no | executed on the development camera |
+| `audio.clip.play` | Play audio clip | Audio | yes | docs only (API present on the development camera, never sent) |
+| `audio.clip.stop` | Stop audio clip | Audio | yes | docs only (API present on the development camera, never sent) |
+| `audio.clips.list` | List audio clips | Audio | no | executed on the development camera |
+| `audio.devices.get` | Get audio device settings | Audio | no | executed on the development camera |
+| `audio.encoding.set` | Set audio encoding | Audio | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `audio.input.set` | Set audio input | Audio | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `audio.output.set` | Set audio output gain | Audio | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `audio.settings.get` | Get audio settings | Audio | no | executed on the development camera |
+| `io.output.pulse` | Pulse output | I/O | yes | docs only (API present on the development camera, never sent) |
+| `io.output.set` | Set output state | I/O | yes | docs only (API present on the development camera, never sent) |
+| `io.port.name.set` | Rename I/O port | I/O | yes | docs only (API present on the development camera, never sent) |
+| `io.ports.active` | Check I/O ports active | I/O | no | executed on the development camera |
+| `io.ports.get` | Get I/O ports | I/O | no | executed on the development camera |
+| `io.supervised.count` | Get supervised I/O ports | I/O | no | executed on the development camera |
+| `io.supervised.get` | Get supervised input state | I/O | no | executed on the development camera |
+| `io.supervised.set` | Set input supervision | I/O | yes | docs only (API present on the development camera, never sent) |
+| `io.virtualinput.activate` | Activate virtual input | I/O | yes | docs only (API present on the development camera, never sent) |
+| `io.virtualinput.deactivate` | Deactivate virtual input | I/O | yes | docs only (API present on the development camera, never sent) |
+| `events.actionrules.list` | List action rules | Events | no | executed on the development camera |
+| `events.mqtt.client.activate` | Connect MQTT client | Events | yes | docs only (API present on the development camera, never sent) |
+| `events.mqtt.client.configure` | Configure MQTT client | Events | yes | docs only (API present on the development camera, never sent) |
+| `events.mqtt.client.deactivate` | Disconnect MQTT client | Events | yes | docs only (API present on the development camera, never sent) |
+| `events.mqtt.client.get` | Get MQTT client status | Events | no | executed on the development camera |
+| `events.mqtt.publication.get` | Get MQTT event publication | Events | no | executed on the development camera |
+| `events.mqtt.publication.set` | Publish events to MQTT | Events | yes | docs only (API present on the development camera, never sent) |
+| `events.tampering.get` | Get tampering detection | Events | no | executed on the development camera |
+| `events.tampering.set` | Set tampering detection | Events | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `storage.cleanup.set` | Set storage cleanup | Storage | yes | param names and values checked on the development camera (listdefinitions, not sent) |
+| `storage.disks.list` | List storage disks | Storage | no | executed on the development camera |
+| `storage.format` | Format disk | Storage | yes (dangerous) | docs only (API present on the development camera, never sent) |
+| `storage.mount` | Mount disk | Storage | yes | docs only (API present on the development camera, never sent) |
+| `storage.networkshares.list` | List network shares | Storage | no | executed on the development camera |
+| `storage.recordings.list` | List recordings | Storage | no | executed on the development camera |
+| `storage.sd.get` | Get SD card settings | Storage | no | executed on the development camera |
+| `storage.unmount` | Unmount disk | Storage | yes | docs only (API present on the development camera, never sent) |
+| `apps.list` | List applications | Applications | no | executed on the development camera |
+| `apps.remove` | Remove application | Applications | yes (dangerous) | docs only (API present on the development camera, never sent) |
+| `apps.start` | Start application | Applications | yes | docs only (API present on the development camera, never sent) |
+| `apps.stop` | Stop application | Applications | yes | docs only (API present on the development camera, never sent) |
+| `maintenance.auditlog.get` | Get audit log | Maintenance | no | executed on the development camera |
+| `maintenance.factorydefault` | Factory default | Maintenance | yes (dangerous) | docs only (API present on the development camera, never sent) |
+| `maintenance.firmware.commit` | Commit firmware | Maintenance | yes | docs only (API present on the development camera, never sent) |
+| `maintenance.firmware.rollback` | Roll back firmware | Maintenance | yes (dangerous) | docs only (API present on the development camera, never sent) |
+| `maintenance.restart` | Restart device | Maintenance | yes (dangerous) | docs only (API present on the development camera, never sent) |
+| `maintenance.serverreport.get` | Get server report | Maintenance | no | executed on the development camera |
+| `maintenance.systemlog.get` | Get system log | Maintenance | no | executed on the development camera |

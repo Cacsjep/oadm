@@ -6,7 +6,7 @@ using Proto = Oadm.Contracts.V1;
 namespace Oadm.Server.Tests;
 
 /// <summary>
-/// Production hardening 2: the add page sends a credential only to a device that passed the anonymous Axis
+/// "Security and access", automatic login: the add page sends a credential only to a device that passed the anonymous Axis
 /// check, HTTPS first, then HTTP; Basic over plain HTTP only to such a verified device.
 /// </summary>
 public sealed class AxisCheckTests

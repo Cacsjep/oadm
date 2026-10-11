@@ -3,8 +3,7 @@
 Core plugin with a rail page (group Monitoring, icon `toggle`), **off by default**. The page picks one device with inputs
 or outputs and draws it as a faceplate: an INPUTS and an OUTPUTS row of terminals, each with its contact drawn open or
 closed (green while active, no LEDs, no glow), the port name and the port number as "Set output" counts them (port "0" =
-Port 1); the tooltip says open / closed and the normal state. Read-only for devices; no events, no actions (user decision
-2026-10-10: simple and fast).
+Port 1); the tooltip says open / closed and the normal state. Read-only for devices; no events, no actions (simple and fast).
 
 - Devices: those whose API list has `io-port-management` 1.x (cameras, I/O modules, door controllers).
 - Server: while a page shows a device, `getPorts` (`POST /axis-cgi/io/portmanagement.cgi`) every 200 ms with the stored
@@ -20,8 +19,9 @@ Port 1); the tooltip says open / closed and the normal state. Read-only for devi
 - Page: device picker, status chip (Connecting, Live, Error + text) and the device as a faceplate: INPUTS and OUTPUTS rows
   of terminals (contact drawn open / closed and green while active, name, port number); another device or leaving the page
   stops the reading, a change of the device list does not (unless the shown device was removed). A failed keep-alive is
-  retried with the next one.
-- Verified read-only on a loan AXIS A9210 (AXIS OS 12.10.73.2): RELAY, O1-O3, I1-I5, two configurable I/O ports
+  retried with the next one. Theme: `Border.ioFaceplate` and `Border.ioTerminalBlock` (no own backgrounds),
+  `StackPanel.ioTerminal`, `Canvas.ioContact`, `Path.ioContactLever(.active)`.
+- Verified read-only on an AXIS A9210 (AXIS OS 12.10.73.2): RELAY, O1-O3, I1-I5, two configurable I/O ports
   (`IoMonitorHardwareTests`, `OADM_IO_URL` / `_USER` / `_PASSWORD`).
 - Tests: `tests/Oadm.Plugins.IoMonitor.Tests` (recorded A9210 answer, pushes only on change, errors and recovery, stop
   and lease, refusals, device limit and concurrent starts, shared reading of one device, replaced clients, 1 s wait after

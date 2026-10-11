@@ -4,7 +4,7 @@ using Oadm.Sdk.Plugins;
 namespace Oadm.Plugins.NtpServer;
 
 /// <summary>
-/// Core plugin "NTP server" (spec <c>docs/specs/ntp-server.md</c>): an RFC 5905 server-mode responder on the selected
+/// Core plugin "NTP server" ("NTP server" in CLAUDE.md): an RFC 5905 server-mode responder on the selected
 /// interface, answering from the server clock (stratum 10, "LOCL") or an optional upstream (stratum + 1). Settings are
 /// stored server side and restored on start. Contributes the task "Use OADM as NTP server".
 /// Page backend methods: <see cref="NtpServerMethods"/>; live events: state and request log.

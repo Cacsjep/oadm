@@ -73,12 +73,13 @@ Manifest schema -> minimum AXIS OS: 1.0-1.2 10.7, 1.3 10.9, 1.3.1 11.0, 1.4.0 11
 | Start / Stop | Already in the requested state -> Done, no write. Errors 6/7 treated as success. Not installed -> Done with warning (multi-device selections). Status verified afterwards. |
 | Query | `listApplications` (read-only): API check, basicdeviceinfo, `EmbeddedDevelopment.Version`, `config.cgi get AllowUnsigned`, `list.cgi`. Returns `{device: facts, applications: [...]}`. |
 | Payload | `{action: install|remove|start|stop, application, fileId, sha256, version, allowDowngrade, startAfterInstall}`; no secrets. |
-| Hardware tests | None for writes. Only read-only calls were made against 10.0.0.48 during development. |
+| Hardware tests | None for writes. Only read-only calls were made against the development camera. |
 
 ## Task steps
 
 Every device request and every wait is a named step (`AcapTaskPlugin.Steps`, planned up front); task progress comes
-from the steps. Steps that do not apply end Skipped with the reason.
+from the steps. Steps that do not apply end Skipped with the reason. Task names: "Install <app> <version>", "Upgrade
+<app> to <version>", "Remove <app>", "Start <app>", "Stop <app>".
 
 | Action | Steps |
 |---|---|

@@ -39,7 +39,7 @@ public sealed record FolderCheck(string Path, FolderVerdict Verdict, string? Pro
 /// <summary>
 /// Checks the folders the server runs code or keeps secrets from (data folder, native library extraction folder, plugin
 /// folders) when it runs as the installed service (SYSTEM / root): writable only by administrators / root, else the
-/// permissions are reset, else the folder is refused. Spec "Production hardening / 5. Installation and release".
+/// permissions are reset, else the folder is refused. Spec: CLAUDE.md "Security and access", folders.
 /// </summary>
 public sealed partial class FolderGuard(IFolderPermissions permissions, ILogger<FolderGuard> logger)
 {

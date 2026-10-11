@@ -99,7 +99,8 @@ role (Administrator, Operator, Viewer) and PTZ, the existing users of the first 
 query `listUsers`, with a note when several devices are selected), and a summary for N devices. Clicking a
 user in Add or Change fills the user name (still editable) and switches Add to Change. In Remove mode the
 users are picked in the Existing users list (click, Ctrl/Shift for several; the window forwards the grid
-selection to `SetSelectedUsers`). Users missing on other selected devices are skipped there with a
-warning. Plain Avalonia controls with the host theme
+selection to `SetSelectedUsers`); there is no user name field, the left card lists the chosen users ("Users to remove")
+with a one-line note on the protected accounts, and **Remove users** is the red danger button. Users missing on other
+selected devices are skipped there with a warning. Plain Avalonia controls with the host theme
 classes (`primary`, `secondary`, `fieldLabel`, `card`, ...), no colors or font sizes of its own.
 Returns the payload JSON; the password lives only in memory.

@@ -1,7 +1,81 @@
 # DHCP server (core plugin `oadm.dhcp-server`)
 
-Spec: `docs/specs/dhcp-server.md`, summary in `CLAUDE.md` "DHCP server plugin". Own RFC 2131 / RFC 2132 implementation
+Summary in `CLAUDE.md` "DHCP server". Own RFC 2131 / RFC 2132 implementation
 (no library), IPv4 only, one interface, starts disabled.
+
+## How it works
+
+- Settings (plugin setting `config`: enabled, interfaceId, interfaceName, rangeStart, rangeEnd, autoAddAxisDevices) restored
+  on server start; the plugin starts disabled. Leases (plugin setting `leases`, a JSON list of static and bound/expired/released leases,
+  never offers) are written at most every 2 s when changed and on stop; they survive restarts.
+- Derived, never asked: mask from the interface prefix, router = the interface's IPv4 gateway when it is in the subnet,
+  DNS = the interface's IPv4 DNS servers, domain = its DNS suffix, lease 24 h (T1 50 %, T2 87.5 %), server id = the
+  interface address. Shown as one line: "Clients get mask 255.255.255.0, router 10.0.0.138, DNS 10.0.0.138, lease 24 h"
+  ("no router" / "no DNS", ", domain x" when there is one). Server, router and DNS addresses inside the range are skipped.
+- Protocol (`DhcpEngine`): DISCOVER -> OFFER (static lease first, then the client's previous lease, the requested
+  address, the next free address from a rotating cursor, then the oldest expired/released lease); REQUEST selecting
+  (another server id: our offer is withdrawn), init-reboot (NAK for a wrong address or network, silent without a
+  record), renewing/rebinding (NAK without a lease); DECLINE and in-use probe hits mark the address as a conflict for 1 h;
+  RELEASE keeps the record (the device gets the same address again); INFORM -> ACK without lease time. Replies go to
+  ciaddr when set, else broadcast (also NAKs and clients without the broadcast flag: no portable ARP injection).
+  Parameter request list honored for 1, 3, 6, 15 (51/53/54/58/59 always); host name (12) echoed and stored.
+- Before a new address is offered the Network plugin's probe (ping + TCP 80/443, `AddressProbe.cs` compiled in) runs
+  with 2.5 s timeout, at most 32 probes at once (busy: no answer, the client retries), up to 3 addresses per request.
+  Static leases are never probed.
+- Abuse protection: per MAC token bucket (burst 10, 1 per 3 s, one log line per device per minute), global 500
+  messages/s, table LRU 10,000 MACs with 10 min idle expiry (shared `KeyedRateLimiter`); at most 64 messages in
+  flight; one pending offer per MAC (re-offered without a new probe), offers expire after 60 s, pending offers capped at
+  half the pool (min 16) so a flood of new MACs cannot take the pool. Receive buffer reused, reply buffers pooled.
+- Sockets per OS (`UdpDhcpSocketFactory`): Windows binds the interface address (broadcasts of the interface arrive);
+  Linux 0.0.0.0 + `SO_BINDTODEVICE` (root or `cap_net_raw` before kernel 5.7); macOS 0.0.0.0 + `IP_BOUND_IF`; packets
+  of other interfaces are dropped via IP_PKTINFO. A loopback binding never sends broadcasts (tests). Injectable
+  `IDhcpSocketFactory`; tests use `FakeDhcpNetwork` (in memory) and loopback with random ports, never port 67 on a real
+  interface.
+- Other DHCP servers (`OtherServerCheck`): a discover with the broadcast flag and a random locally administered MAC from
+  UDP 68 (address reuse), offers collected for 3 s, the own address and the own server (it ignores the probe MAC) not
+  counted. Runs on Save when enabling (not when already serving on that interface), every 10 min while running and at
+  server start. Found on Save: nothing saved, the page asks with the shared confirmation popup "Another DHCP server
+  (10.0.0.1) answers on this network. Running two DHCP servers causes address conflicts. Enable anyway?" and saves again
+  with the servers confirmed; confirmed servers are stored per interface (`config.acceptedOtherServers`) and never warn
+  again: after "Enable anyway" the status says `Running on ...`. Only a server that was not confirmed turns it into a warning.
+- Status line (`DhcpStatusTexts`, `ui:StatusChip` left of the Save button, detail as tooltip; plain language, protocol details
+  only in the server log): `Running on Ethernet (10.0.0.17/24)`, `Stopped`, `Port 67 is in use by another program`
+  (Windows tooltip names the running DHCP Server role or Internet Connection Sharing, via `sc query DHCPServer` /
+  `SharedAccess`; AccessDenied on Windows also means in use; Linux: dnsmasq, isc-dhcp-server, NetworkManager + `ss`;
+  macOS: bootpd/Internet Sharing + `lsof`), `Insufficient permission to use port 67` (Linux: root or `setcap
+  'cap_net_bind_service,cap_net_raw=+ep'`; macOS: sudo), `Interface <name> is not available`, `Range is not inside the
+  interface subnet` (the interface address changed; re-checked every 30 s like a failed bind), `Another DHCP server
+  answers on this network (<ip>)` (warning), `Address pool exhausted` (warning, 5 min after a request found no address
+  or while no address is free).
+- Page methods (`DhcpServerMethods`): `getState` (config, status, interfaces with an IPv4 address, per interface the
+  derived values, all leases, lease version), `save` (field errors per field; `otherServers` when a confirmation is
+  needed), `saveStatic` (add/edit, field errors "Mac", "Address", "Name"), `makeStatic`, `deleteStatic`, `release`
+  (forgets a dynamic lease). Events: `state` (status changed), `leases` (changed + removed leases with the lease version,
+  batched every 500 ms, split above 2,000 entries; the page ignores versions it already has).
+- Page (`DhcpServerView`, subtitle in the host page header via `ui:PageHeader`, status chip left of Save, no card title): Enable
+  DHCP server; Listen on (`InterfaceSelection`, IPv4 interfaces only, "Ethernet - 10.0.0.17/24 (Intel I219)"); Start
+  address / End address (`ui:FormField`, errors under the fields while typing: "Must be inside the subnet 10.0.0.0/24.",
+  "Must be after the start address.", network/broadcast/server address, at most 65,536 addresses); the derived
+  line directly under End address, the auto-add check box below it aligned with the inputs; Save (disabled with the reason as tooltip; status "Checking for other DHCP servers" while saving). Leases:
+  summary "6 leases, 2 static", shared `SearchBox`, "+ Static lease"; one virtualized DataGrid (MAC address, IP address
+  sorted numerically, Host name / device, Type, Expires "in 23 h" / "Expired" / "Released" / "-", row actions as link
+  buttons: Edit, Delete for static; Make static, Release for dynamic; Delete and Release are red and confirmed). Managed devices
+  by MAC = serial number (else by address) show "P3265-V (managed)". Rows update in place; search and structural changes
+  rebuild the list with one reset (O(n), 5,000 leases tested).
+- Static lease dialog (`StaticLeaseWindow`, `ValidatingViewModel`): MAC address, IP address (inside the subnet, may be
+  outside the range, not the server address, not reserved or actively leased by another device), optional name (max 63);
+  errors under the fields while typing, the server's answer under the field too.
+- Tests: `tests/Oadm.Plugins.DhcpServer.Tests` (codec round trip with all options, overload, concatenation, malformed
+  input and random garbage; state machine incl. selecting/other server, init-reboot, renew/rebind, decline, release,
+  inform, probe conflicts, offer expiry, pending offer cap, probe concurrency; lease store: allocation, static priority,
+  collisions, expiry, reclaim, persistence, 5,000 leases; rate limits; status texts per OS; the whole service on the
+  in-memory network: full exchange, unicast renew, live events, restart persistence, page actions, other server +
+  confirmation, port in use retried, Windows service named, interface address change, pool exhausted, flood, malformed
+  datagrams; real socket on loopback; page view model incl. 5,000 leases; `AutoAddTests` with a fake `IDeviceAutoAdd`:
+  Axis blocks only, once per lease change, setting off adds nothing but follows, managed devices never added, one retry,
+  4 at a time, engine never blocked, the whole server on the in-memory network; headless screenshots `dhcp-server-page.png`,
+  `dhcp-server-auto-add.png`,
+  `-page-errors.png`, `-page-other-server.png`, `dhcp-server-other-server-confirm.png`, `dhcp-server-static-lease-dialog.png`).
 
 ## Layout
 
@@ -18,8 +92,8 @@ Spec: `docs/specs/dhcp-server.md`, summary in `CLAUDE.md` "DHCP server plugin". 
 
 Check box "Automatically add Axis devices that get an address" (config `autoAddAxisDevices`, default off, saved with
 Save). After every ACK the engine hands MAC and address to `DhcpDeviceAutoAdd`, which only queues (the receive loop never
-waits). Only MAC addresses of the Axis blocks in `AxisOui` (00:40:8C, AC:CC:8E, B8:A4:4F, E8:27:25, IEEE registry
-2026-10-08) are handled, once per MAC and lease change, 4 at a time:
+waits). Only MAC addresses of the Axis blocks in `AxisOui` (00:40:8C, AC:CC:8E, B8:A4:4F, E8:27:25, from the IEEE
+registry) are handled, once per MAC and lease change, 4 at a time:
 
 1. `ctx.AutoAdd.FollowAsync(serial = MAC, address)`: a managed device at another address is verified there by the server
    (serial with the stored credentials) and its record moved, whether the check box is on or not; devices reached by

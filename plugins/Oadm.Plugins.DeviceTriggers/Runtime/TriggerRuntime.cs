@@ -5,7 +5,7 @@ using Oadm.Sdk.Plugins;
 namespace Oadm.Plugins.DeviceTriggers.Runtime;
 
 /// <summary>
-/// The live side of the device triggers (user decisions 2026-10-10, <c>docs/specs/device-triggers.md</c>): one
+/// The live side of the device triggers (see the plugin README): one
 /// permanent WebSocket per device carrying every turned-on trigger of that device (<see cref="DeviceConnection"/>), the
 /// on/off state per trigger and device, and the second event "&lt;Trigger&gt;: connection lost".
 /// <list type="bullet">

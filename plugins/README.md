@@ -382,8 +382,8 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
 
 ### Samples
 
-Each spec is in `CLAUDE.md` under the plugin's name unless noted; NTP server, DHCP server and PKI also have one in
-`docs/specs/` (`ntp-server.md`, `dhcp-server.md`, `pki.md`).
+Each plugin has a short entry in `CLAUDE.md` and its own `README.md` with the details (decisions, page and dialog, steps
+and task names, device API and verified behavior, settings, tests). A new plugin adds both.
 
 | Plugin | Id | Shows how to |
 |---|---|---|
@@ -398,7 +398,7 @@ Each spec is in `CLAUDE.md` under the plugin's name unless noted; NTP server, DH
 
 ## Event rule actions and events
 
-The event rules (built into the server, "Event rules" in `CLAUDE.md`, spec `docs/specs/event-rules.md`) run actions
+The event rules (built into the server, "Event rules" in `CLAUDE.md`) run actions
 when events happen. Both sides are plugins.
 
 ### Writing an action

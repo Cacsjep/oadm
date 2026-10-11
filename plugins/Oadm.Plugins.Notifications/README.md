@@ -3,8 +3,6 @@
 Plugin id `oadm.notifications`, server only, always on. Two event rule actions without devices: they run once per rule
 edge (and, when "Also send when the rule turns off" is checked, on the off edge of a stateful rule).
 
-User decisions 2026-10-11:
-
 | Topic | Decision |
 |---|---|
 | Mail server | Part of every **Send email** action (host, port, encryption, login). No shared setting: an action stands on its own and is copied with its rule. |

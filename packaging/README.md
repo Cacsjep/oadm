@@ -12,7 +12,7 @@ when the jobs before it passed:
    runner, as "Server and client" and as "Client only"; the .pkg is checked without installing it.
 3. `release`: the GitHub release of the tag with the installers and `SHA256SUMS.txt`.
 
-Installers are not signed (user decision); check downloads against `SHA256SUMS.txt`.
+Installers are not signed; check downloads against `SHA256SUMS.txt`.
 
 Every installer offers **"Server and client"** (default) or **"Client only"**:
 - MSI: page "Choose what to install" (features `Server` and `Client`; the client is always installed). Silent:

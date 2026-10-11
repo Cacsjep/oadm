@@ -1,7 +1,7 @@
 # Outputs (`oadm.outputs`)
 
 Bundled, always on, server only. Contributes the event rule action **Set output** (`SetOutputAction`): switches an output
-port of a device, for example the relay of a camera or an I/O module. Spec: `docs/specs/event-rules.md`, "Event rules"
+port of a device, for example the relay of a camera or an I/O module. Spec: "Event rules"
 in `CLAUDE.md`.
 
 | Mode | On / fired | Turns off |
@@ -18,6 +18,6 @@ in `CLAUDE.md`.
   pulse, so the action asks for the pulse + 15 s: `MaxRunTime`), `checkactive=<n>` for Toggle (`checkoutput` is refused).
 - Output n is port "n-1" of the port management API; on an AXIS A9210 output 1 is the RELAY, outputs 4, 5, 7 are O1-O3.
   The event log line names the port ("Output 1 (RELAY) active").
-- Verified on a loan AXIS A9210 (AXIS OS 12.10.73.2) with the opt-in `OutputHardwareWriteTests` (`OADM_OUTPUT_WRITE_URL`,
+- Verified on an AXIS A9210 (AXIS OS 12.10.73.2) with the opt-in `OutputHardwareWriteTests` (`OADM_OUTPUT_WRITE_URL`,
   `_USER`, `_PASSWORD`, optional `_PORT`): every mode through both APIs, read back, ends inactive. Tests:
   `tests/Oadm.Plugins.Outputs.Tests`.

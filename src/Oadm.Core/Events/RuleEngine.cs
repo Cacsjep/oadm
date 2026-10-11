@@ -34,7 +34,7 @@ public sealed class RuleEngineOptions
 public sealed record RuleRuntimeStatus(Guid RuleId, int ActiveCount, string? WaitingFor, DateTime? LastFiredUtc);
 
 /// <summary>
-/// The event rules engine (user decisions 2026-10-10, <c>docs/specs/event-rules.md</c>). One loop owns all state:
+/// The event rules engine ("Event rules" in CLAUDE.md). One loop owns all state:
 /// the current on states of every stateful event (per type and device), the managed devices, and per rule the subjects
 /// (devices the trigger fired for) it is on for. Publishers and the device feed only queue commands.
 /// <list type="bullet">
