@@ -9,8 +9,7 @@
         Width="500" SizeToContent="Height" CanResize="False"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+        WindowDecorations="BorderOnly">
   <!-- Compact clone of the ADM "Set date and time" dialog, one column: Device time, Time zone, Time mode (each radio
        button with its input below it; inputs of the other modes are disabled). Like ADM, OK always writes the time
        zone and the time mode. Single operation: title bar, Border.dialogBody, footer. Every error below its field. -->

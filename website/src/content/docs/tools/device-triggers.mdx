@@ -7,6 +7,7 @@ import { Aside, Steps } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
 import page from '../../../assets/screens/device-triggers-page.png';
 import editor from '../../../assets/screens/device-triggers-editor.png';
+import picker from '../../../assets/screens/device-picker.png';
 
 A device trigger makes an event of your devices available to the [event rules](../event-rules/): a digital input, a
 virtual input, an Object Analytics scenario, a blur detected by AXIS Image Health Analytics, a storage alert, a
@@ -26,17 +27,24 @@ change and delete triggers.
 
 1. Open **Device triggers** in the navigation rail and choose **New trigger**.
 2. Give it a name, for example "Gate open". Rules show the trigger by this name.
-3. Check the devices and choose **Read events**. OADM asks each device which events it offers right now.
-4. Choose the **Event**. The list has the events all chosen devices offer.
-5. Optionally narrow it down, for example **Port number** 3 or **Scenario 1**. **Any** means every port or scenario.
+3. Choose **Choose devices**: **All devices**, or any mix of tags and single devices, then **OK**. A tag also covers
+   devices you tag later; with **All devices** new devices join by themselves. OADM then asks each device which events it
+   offers right now.
+4. Choose the **Event**. The list has every event the devices offer, grouped like on the device.
+5. Optionally narrow it down, for example **Port number** 3. **Any** means every port.
 6. Choose **Save**.
 
 </Steps>
 
 <Image src={editor} alt="The trigger dialog with two devices and the virtual input event on port 3" class="screen" />
 
-A device that does not offer the chosen event stays in the list with **Does not offer this event**. Remove it or choose
-another event. Devices with older AXIS OS that cannot send events this way are greyed.
+<Image src={picker} alt="Add devices: the device list with search, Select all and Select none" class="screen" />
+
+A device you chose one by one that does not offer the chosen event shows **Does not offer this event**: take it out
+with **Choose devices** or choose another event. A device that came in through a tag or **All devices** and does not offer
+the event is simply left out. A device that cannot be read right now, for example because it is offline, shows why and stays
+in the trigger: OADM connects as soon as it answers. Devices with older AXIS OS that cannot send events this way are
+greyed in the device list.
 
 ## Use it in a rule
 

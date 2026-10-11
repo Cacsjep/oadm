@@ -34,6 +34,9 @@ public sealed class DeviceTriggersOptions
     /// <summary>Removed devices leave their triggers; the device list is read this often.</summary>
     public TimeSpan DeviceSweepInterval { get; init; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>Triggers on all devices or tags pick up new and newly tagged devices this often.</summary>
+    public TimeSpan ResolveInterval { get; init; } = TimeSpan.FromSeconds(30);
+
     /// <summary>Devices whose event lists the editor reads at the same time.</summary>
     public int ReadParallelism { get; init; } = 16;
 

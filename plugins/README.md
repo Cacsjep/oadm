@@ -140,15 +140,14 @@ uploads a file (progress 0.0 to 1.0) and returns its id for the payload. Failure
 Dialogs use the host look (HARD RULE: reuse controls, no style differences):
 
 - Window and layout like the add devices dialog: explicit `Width`/`Height` (e.g. 1040 x 700),
-  `ExtendClientAreaToDecorationsHint="True"`,
-  `ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}"`, a root grid of title bar, cards with
+  `WindowDecorations="BorderOnly"` and `CanResize="False"` (no system title bar; dialogs are modal, fixed size and do not move), a root grid of title bar, cards with
   `Margin="16,0"` (`16,16,16,0` for each further card) and the footer. A dialog with a single form has no card: the form
   sits in `Border.dialogBody`, the window has a fixed width and `SizeToContent="Height"`.
 - Controls from `Oadm.Sdk.Client.Controls` (`xmlns:ui="using:Oadm.Sdk.Client.Controls"`), never hand-built copies:
 
   | Control | Use for |
   |---|---|
-  | `ui:DialogTitleBar Text="..."` | first row of every dialog window (title, draggable, caption buttons) |
+  | `ui:DialogTitleBar Text="..."` | first row of every dialog window (the title as a heading, an X that closes the window) |
   | `ui:CardHeader Title Description` | heading of every card; child controls go right of the title (e.g. a device picker). Class `flush` when the content below is optional and adds `Margin="{DynamicResource Oadm.GapTop}"` itself |
   | `ui:DialogFooter CancelCommand` | last row: Cancel left; children are the right-hand buttons (`Button.secondary` for Back, one `Button.primary`) |
   | `ui:IconLabel Icon Text` | every icon + text row, e.g. button content |
@@ -160,6 +159,11 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
   | `MessageWindow.ConfirmAsync(owner, title, message, confirmText)` / `ShowMessageAsync` | **every confirmation or message popup** (the host uses the same window); e.g. the Network dialogs confirm risky changes on Apply / Finish, no inline warning with a check box |
   | `ui:StatusChip Text IsOk IsWarning IsError IsAccent` | every status value (colored icon + text), in grid cells with `Margin="10,0"` |
   | `ui:StatCard Title Value Detail IsOk IsWarning IsError` | monitoring count card (large count, detail line); set the status only while the count needs attention |
+  | `DevicePickerWindow.ShowAsync(owner, devices, selected, unavailableReason)` | every "choose devices" dialog: search, Select all / none, count, unchoose; returns the chosen ids or null (Cancel); `unavailableReason` greys devices with the text |
+  | `DevicePickerWindow.ShowChoiceAsync(owner, devices, initial, DevicePickerOptions.Full(eventDeviceText))` | the same picker with All devices, tags and (optional) the device of the event; returns a `DeviceChoice` (All, EventDevice, or Chosen with `DeviceIds` and `Tags`: a tag means every device with it) |
+  | `ui:FormField Info="..."` / `ui:InfoIcon Text="..."` | the explanation of a field as an info icon right of the input (hover and click), instead of a long hint |
+  | `ui:WizardSteps ItemsSource="{Binding Steps}"` | the step row of a wizard (`WizardStepItem`: index, name, current step, can open, open) |
+  | `ComboBox Classes="grouped"` + `GroupedChoice.Build(items, group, text)` | a select field with grey group headers and indented choices (bind `SelectedItem` to a `GroupedChoice`, its `Value` is the item) |
   | `ui:FileRow FileName Details Error Command` | a chosen local file with its "Choose file" button; sizes with `FileSizeText.Format` |
   | `ui:ProgressRow Value Text IsActive` | upload or scan progress (0 to 100) with its status text |
   | `ui:OadmIcon Data` | a single icon |
@@ -215,7 +219,7 @@ directly below the table.
   - `IsValidFor(...)` / `FirstErrorOf(...)` for part of a form (e.g. an inline editor).
 
   A view model that cannot change its base class owns a `FormValidator` and forwards `INotifyDataErrorInfo` to it.
-- An error shows once the field was edited or a submit was tried, never on an untouched form. Rules always run: submit
+- An error shows once the field was edited, the user left it (`ui:FormField` reports the bound property on lost focus) or a submit was tried, never on an untouched form. Rules always run: submit
   buttons stay disabled while any error exists (`IsFormValid`, or the command's `CanExecute` with
   `Validation.IsValid`), and their tooltip says why (`FormError` or `FirstErrorOf`, with
   `ToolTip.ShowOnDisabled="True"`). Override `OnValidationChanged` to refresh commands.
@@ -234,7 +238,7 @@ resolve them at compile time, so use `DynamicResource` (`Icon="{DynamicResource 
 `Icon.server`, `Icon.externalLink`, `Icon.more`, `Icon.key`, `Icon.lock`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
 `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.network`, `Icon.firmware`, `Icon.users`,
 `Icon.user`, `Icon.logout`, `Icon.audit`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
-`Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.toggle`, `Icon.zap`, `Icon.bell`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`,
+`Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.toggle`, `Icon.zap`, `Icon.bell`, `Icon.flame`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`,
 `Icon.device.camera`, `Icon.device.encoder`,
 `Icon.device.speaker`, `Icon.device.audio`, `Icon.device.intercom`, `Icon.device.radar`,
 `Icon.device.io`, `Icon.device.door`, `Icon.device.generic`.

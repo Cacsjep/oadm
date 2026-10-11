@@ -8,8 +8,8 @@
         Width="820" Height="800" MinWidth="680" MinHeight="480"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+        CanResize="False"
+        WindowDecorations="BorderOnly">
   <!-- Layout of the add devices wizard: title bar, cards, button row. Shared controls and theme classes only.
        Every section card: title, "Configuration" choice, then the fields of a static setting. Field errors appear
        below their input (INotifyDataErrorInfo), row errors in the Devices table; risky changes are confirmed on Apply. -->

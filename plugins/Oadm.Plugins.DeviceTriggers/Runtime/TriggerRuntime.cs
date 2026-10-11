@@ -204,6 +204,54 @@ internal sealed class TriggerRuntime : IAsyncDisposable
         }
     }
 
+    /// <summary>The text of a device that came in through a tag or all devices and does not offer the trigger's event.</summary>
+    public const string NotOfferedText = "Does not offer this event";
+
+    /// <summary>
+    /// A device of a tag or of all devices does not offer the event of <paramref name="triggers"/>: left out quietly (off,
+    /// no "connection lost"), shown as <see cref="NotOfferedText"/>; it counts as reported for the event rules.
+    /// </summary>
+    public void NotOffered(Guid device, IReadOnlyCollection<Guid> triggers)
+    {
+        ArgumentNullException.ThrowIfNull(triggers);
+        lock (_sync)
+        {
+            foreach (var (trigger, slot) in SlotsOf(device))
+            {
+                if (!triggers.Contains(trigger))
+                {
+                    continue;
+                }
+
+                if (slot.IsOn)
+                {
+                    slot.IsOn = false;
+                    slot.OnData = null;
+                    Publisher?.SetState(DeviceTriggersPluginInfo.TypeId(trigger), device, false);
+                }
+
+                if (slot.LostOn)
+                {
+                    slot.LostOn = false;
+                    Publisher?.SetState(DeviceTriggersPluginInfo.LostTypeId(trigger), device, false);
+                }
+
+                slot.Sources.Clear();
+                slot.Settled = true;
+                slot.Healthy = true;
+                slot.ProblemSince = null;
+                if (slot.Connection != TriggerConnection.Off || slot.Problem != NotOfferedText)
+                {
+                    slot.Connection = TriggerConnection.Off;
+                    slot.Problem = NotOfferedText;
+                    _dirty.Add(trigger);
+                }
+
+                CheckReady(trigger);
+            }
+        }
+    }
+
     /// <summary>
     /// A problem with some (or, for null, all) triggers of a device. The last state stays; "connection lost" follows after
     /// <see cref="DeviceTriggersOptions.LostDelay"/>.

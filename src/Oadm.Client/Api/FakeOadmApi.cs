@@ -953,7 +953,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         new CorePluginInfo { Id = MetadataMonitorPluginId, DisplayName = "Metadata Monitor", IconKey = "activity", Group = "Monitoring" },
         new CorePluginInfo { Id = HardeningScanPluginId, DisplayName = "Hardening scan", IconKey = "clipboardCheck", Group = "Security" },
         new CorePluginInfo { Id = IoMonitorPluginId, DisplayName = "I/O Monitor", IconKey = "toggle", Group = "Monitoring" },
-        new CorePluginInfo { Id = DeviceTriggersPluginId, DisplayName = "Device triggers", IconKey = "bell", Group = "Automation" },
+        new CorePluginInfo { Id = DeviceTriggersPluginId, DisplayName = "Device triggers", IconKey = "flame", Group = "Automation" },
     ];
 
     public Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) => pluginId switch

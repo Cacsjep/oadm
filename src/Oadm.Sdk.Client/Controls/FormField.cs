@@ -1,5 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Data;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
@@ -17,6 +20,8 @@ namespace Oadm.Sdk.Client.Controls;
 /// Column widths come from the theme (<c>Oadm.FormLabelWidth</c>, <c>Oadm.FormInputWidth</c>); class
 /// <c>wide</c> lets the input fill the row, class <c>inline</c> sizes the label to its text (fields in one
 /// line, e.g. IP range From / To). An empty label keeps the label column, so a check box lines up with the inputs.
+/// <see cref="Info"/> adds an <see cref="InfoIcon"/> right of the input: the explanation on hover and click, so the row
+/// needs no long hint.
 /// </summary>
 public sealed class FormField : Grid
 {
@@ -28,6 +33,9 @@ public sealed class FormField : Grid
 
     public static readonly StyledProperty<string?> ErrorProperty =
         AvaloniaProperty.Register<FormField, string?>(nameof(Error));
+
+    public static readonly StyledProperty<string?> InfoProperty =
+        AvaloniaProperty.Register<FormField, string?>(nameof(Info));
 
     public static readonly StyledProperty<Control?> InputProperty =
         AvaloniaProperty.Register<FormField, Control?>(nameof(Input));
@@ -50,6 +58,7 @@ public sealed class FormField : Grid
     private readonly Panel _labelHost = new() { VerticalAlignment = VerticalAlignment.Top };
     private readonly TextBlock _label = new() { TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly TextBlock _message = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly InfoIcon _info = new() { VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(6, 0, 0, 0) };
     private readonly HashSet<Control> _inputErrors = [];
     private bool _hasError;
 
@@ -66,11 +75,47 @@ public sealed class FormField : Grid
         _message.Classes.Add("fieldMessage");
         SetColumn(_message, 1);
         SetRow(_message, 1);
+        SetColumn(_info, 2);
+        _info.IsVisible = false;
         Children.Add(_labelHost);
         Children.Add(_message);
+        Children.Add(_info);
         UpdateColumns();
         UpdateLabel();
         UpdateMessage();
+        AddHandler(LostFocusEvent, OnInputLostFocus, RoutingStrategies.Bubble);
+    }
+
+    /// <summary>
+    /// Leaving an input shows its error (Vuetify-like "blur"): the property bound to the left text box or select is told to
+    /// the form view model (<see cref="Validation.IFormFieldVisits"/>), so an empty required field says so once the user
+    /// was in it, not only after it was edited.
+    /// </summary>
+    private void OnInputLostFocus(object? sender, RoutedEventArgs e)
+    {
+        for (var control = e.Source as Control; control is not null && !ReferenceEquals(control, this); control = control.Parent as Control)
+        {
+            AvaloniaProperty? property = control switch
+            {
+                TextBox => TextBox.TextProperty,
+                SelectingItemsControl => SelectingItemsControl.SelectedItemProperty,
+                _ => null,
+            };
+            if (property is null)
+            {
+                continue;
+            }
+
+            // The binding's path ("Name"): Avalonia exposes it as the expression's public Description (no trimming here).
+            var expression = BindingOperations.GetBindingExpressionBase(control, property);
+            if (expression?.GetType().GetProperty("Description")?.GetValue(expression) is string { Length: > 0 } path
+                && control.DataContext is Validation.IFormFieldVisits form)
+            {
+                form.FieldLeft(path);
+            }
+
+            return;
+        }
     }
 
     public string? Label
@@ -94,6 +139,13 @@ public sealed class FormField : Grid
     {
         get => GetValue(ErrorProperty);
         set => SetValue(ErrorProperty, value);
+    }
+
+    /// <summary>What the field means, shown by an info icon right of the input (hover and click).</summary>
+    public string? Info
+    {
+        get => GetValue(InfoProperty);
+        set => SetValue(InfoProperty, value);
     }
 
     /// <summary>The input (XAML content).</summary>
@@ -169,6 +221,10 @@ public sealed class FormField : Grid
         {
             UpdateMessage();
         }
+        else if (change.Property == InfoProperty)
+        {
+            _info.Text = Info;
+        }
     }
 
     private static void OnInputHasErrorsChanged(Control control, AvaloniaPropertyChangedEventArgs e)
@@ -196,14 +252,14 @@ public sealed class FormField : Grid
         bool autoLabel = double.IsNaN(LabelWidth);
         var label = autoLabel ? GridLength.Auto : new GridLength(LabelWidth);
         var input = double.IsNaN(InputWidth) ? new GridLength(1, GridUnitType.Star) : new GridLength(InputWidth);
-        ColumnDefinitions = new ColumnDefinitions { new ColumnDefinition(label), new ColumnDefinition(input) };
+        ColumnDefinitions = new ColumnDefinitions { new ColumnDefinition(label), new ColumnDefinition(input), new ColumnDefinition(GridLength.Auto) };
         HorizontalAlignment = double.IsNaN(InputWidth) ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
     }
 
     /// <summary>A row narrower than label + input (e.g. a half-width card) shrinks the input, never clips it.</summary>
     protected override Size MeasureOverride(Size constraint)
     {
-        if (!double.IsNaN(InputWidth) && ColumnDefinitions.Count == 2)
+        if (!double.IsNaN(InputWidth) && ColumnDefinitions.Count == 3)
         {
             double width = InputWidth;
             if (!double.IsInfinity(constraint.Width) && !double.IsNaN(LabelWidth))

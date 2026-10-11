@@ -8,8 +8,8 @@
         Width="900" Height="720" MinWidth="680" MinHeight="480"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+        CanResize="False"
+        WindowDecorations="BorderOnly">
   <!-- Clone of ADM's "Assign IP address": page 1 DHCP or IP range, page 2 the new addresses. Shared controls and
        theme classes only; the table is the AddressAssignmentGrid shared with "Network settings...". Field errors
        below their input, row errors in the table; Finish confirms in the shared message window. -->

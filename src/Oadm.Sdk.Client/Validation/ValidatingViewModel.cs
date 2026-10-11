@@ -23,7 +23,7 @@ namespace Oadm.Sdk.Client.Validation;
 /// }
 /// </code>
 /// </example>
-public abstract class ValidatingViewModel : ObservableObject, INotifyDataErrorInfo
+public abstract class ValidatingViewModel : ObservableObject, INotifyDataErrorInfo, IFormFieldVisits
 {
     private bool _isFormValid = true;
     private string? _formError;
@@ -50,6 +50,18 @@ public abstract class ValidatingViewModel : ObservableObject, INotifyDataErrorIn
     public string? FormError => _formError;
 
     public IEnumerable GetErrors(string? propertyName) => Validation.GetErrors(propertyName);
+
+    /// <summary>
+    /// The user left the input of <paramref name="propertyName"/> (<see cref="Controls.FormField"/> on lost focus): its error
+    /// shows now, also when the field was never edited (an empty required field, user decision 2026-10-11).
+    /// </summary>
+    public void FieldLeft(string propertyName)
+    {
+        if (Validation.Fields.Contains(propertyName))
+        {
+            Validation.ShowAll(propertyName);
+        }
+    }
 
     /// <summary>The visible error of a property (tests, code-behind free views).</summary>
     public string? ErrorOf(string propertyName) => Validation[propertyName];

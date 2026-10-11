@@ -8,8 +8,8 @@
         Width="760" MinWidth="640" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+        CanResize="False"
+        WindowDecorations="BorderOnly">
   <!-- Title bar, one card (form + progress), footer. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:ExportReportViewModel.Title}" />

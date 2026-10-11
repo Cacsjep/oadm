@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Collections;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Client.Validation;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Vapix;
@@ -42,7 +43,14 @@ public sealed partial class TriggerDeviceChoice : ObservableObject
 
     internal string SearchText { get; }
 
+    /// <summary>In the trigger: chosen, through a tag or through All devices.</summary>
     [ObservableProperty] public partial bool IsChecked { get; set; }
+
+    /// <summary>"Chosen", "Tag Building A", "All devices".</summary>
+    [ObservableProperty] public partial string IncludedBy { get; internal set; } = string.Empty;
+
+    /// <summary>Came in through a tag or All devices: without the event it is left out, it does not block Save.</summary>
+    [ObservableProperty] public partial bool IsImplicit { get; internal set; }
 
     [ObservableProperty] public partial string StatusText { get; private set; } = string.Empty;
 
@@ -52,12 +60,18 @@ public sealed partial class TriggerDeviceChoice : ObservableObject
 
     [ObservableProperty] public partial bool IsError { get; private set; }
 
-    internal void SetStatus(string text, bool ok = false, bool accent = false, bool error = false)
+    [ObservableProperty] public partial bool IsWarning { get; private set; }
+
+    /// <summary>Its event list is being read now.</summary>
+    [ObservableProperty] public partial bool IsReading { get; internal set; }
+
+    internal void SetStatus(string text, bool ok = false, bool accent = false, bool error = false, bool warning = false)
     {
         StatusText = text;
         IsOk = ok;
         IsAccent = accent;
         IsError = error;
+        IsWarning = warning;
     }
 
     partial void OnIsCheckedChanged(bool value) => _changed();
@@ -66,7 +80,7 @@ public sealed partial class TriggerDeviceChoice : ObservableObject
 /// <summary>An event the chosen devices offer, for the event select.</summary>
 public sealed record TriggerEventOption(DeviceEvent Event)
 {
-    public string Text => Event.Name;
+    public string Text => Event.Title;
 
     public override string ToString() => Text;
 }
@@ -109,10 +123,15 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
     private readonly IReadOnlyList<string> _otherNames;
     private readonly List<TriggerDeviceChoice> _devices;
     private readonly Dictionary<Guid, TriggerDeviceChoice> _byId;
+    private readonly Dictionary<Guid, IReadOnlyList<string>> _tagsOf;
     private readonly Dictionary<string, DeviceEvent> _events = new(StringComparer.Ordinal);
     private readonly Dictionary<Guid, HashSet<string>?> _offered = []; // null = read failed
     private readonly CancellationTokenSource _closing = new();
+    private readonly HashSet<Guid> _explicit = [];
+    private IReadOnlyList<string> _tags = [];
+    private bool _allDevices;
     private int _chosen;
+    private int _reads;
     private bool _silent;
 
     public TriggerEditorViewModel(ICorePluginClientContext ctx, TriggerDefinition? trigger, IReadOnlyList<string> otherNames)
@@ -122,22 +141,16 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
         _otherNames = otherNames ?? [];
         Name = trigger?.Name ?? string.Empty;
         Enabled = trigger?.Enabled ?? true;
-        var chosen = trigger?.DeviceIds.ToHashSet() ?? [];
+        _explicit.UnionWith(trigger?.DeviceIds ?? []);
+        _tags = trigger?.Tags ?? [];
+        _allDevices = trigger?.AllDevices ?? false;
         _devices = [.. ctx.Devices
             .Select(d => new TriggerDeviceChoice(d, OnDeviceChecked))
-            .OrderBy(d => chosen.Contains(d.Id) ? 0 : 1)
-            .ThenBy(d => d.Supported ? 0 : 1)
+            .OrderBy(d => d.Supported ? 0 : 1)
             .ThenBy(d => AddressKey(d.Address), StringComparer.Ordinal)];
         _byId = _devices.ToDictionary(d => d.Id);
-        _silent = true;
-        foreach (var device in _devices.Where(d => chosen.Contains(d.Id)))
-        {
-            device.IsChecked = true;
-            _chosen++;
-        }
-
-        _silent = false;
-        VisibleDevices.ReplaceAll(_devices);
+        _tagsOf = ctx.Devices.ToDictionary(d => d.Id, d => d.Tags);
+        ApplyChoice();
         Validation.Rule(nameof(Name), () => TriggerValidation.NameProblem(Name, _otherNames));
         Validation.Validate();
         UpdateSummary();
@@ -162,22 +175,33 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
 
     [ObservableProperty] public partial bool Enabled { get; set; }
 
+    /// <summary>The devices of the trigger (chosen with Add devices), in address order.</summary>
     public RangeObservableCollection<TriggerDeviceChoice> VisibleDevices { get; } = [];
 
-    [ObservableProperty] public partial string DeviceSearch { get; set; } = string.Empty;
+    public bool HasNoDevices => VisibleDevices.Count == 0;
+
+    /// <summary>Opens the shared device picker (the window sets it; tests replace it). True = OK.</summary>
+    public Func<DevicePickerViewModel, Task<bool>>? ShowPicker { get; set; }
 
     [ObservableProperty] public partial string DevicesSummary { get; private set; } = string.Empty;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Problem), nameof(CanSave), nameof(DevicesError), nameof(EventError))]
-    [NotifyCanExecuteChangedFor(nameof(ReadEventsCommand))]
     public partial bool IsReading { get; private set; }
+
+    /// <summary>The progress row shows while several devices are read at once (editing a trigger).</summary>
+    [ObservableProperty] public partial bool ShowReadProgress { get; private set; }
 
     [ObservableProperty] public partial double ReadProgress { get; private set; }
 
     [ObservableProperty] public partial string ReadText { get; private set; } = string.Empty;
 
     public RangeObservableCollection<TriggerEventOption> EventOptions { get; } = [];
+
+    /// <summary>The event select: <see cref="EventOptions"/> grouped like the event list of the device itself.</summary>
+    public RangeObservableCollection<GroupedChoice> EventChoices { get; } = [];
+
+    [ObservableProperty] public partial GroupedChoice? SelectedEventChoice { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Problem), nameof(CanSave), nameof(EventKindText), nameof(EventError), nameof(DevicesError), nameof(HasFilters))]
@@ -223,7 +247,7 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
     {
         get
         {
-            if (TriggerValidation.DevicesProblem(_chosen) is { } count)
+            if (TriggerValidation.DevicesProblem(_explicit.Count, _tags.Count, _allDevices) is { } count)
             {
                 return count;
             }
@@ -233,22 +257,12 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
                 return "Wait until the events are read.";
             }
 
+            // Devices that could not be read (offline, login refused) stay: OADM connects once they answer
+            // (user decision 2026-10-11). Only a device that was read and lacks the event cannot stay.
             var chosen = Chosen().ToList();
-            var unread = chosen.Count(d => !_offered.ContainsKey(d.Id));
-            if (unread > 0)
-            {
-                return unread == 1 ? "Read the events of the chosen device first." : $"Read the events of the {unread} chosen devices first.";
-            }
-
-            var failed = chosen.Where(d => _offered[d.Id] is null).Select(d => d.Address).ToList();
-            if (failed.Count > 0)
-            {
-                return $"Remove the devices whose events could not be read: {Names(failed)}.";
-            }
-
             if (SelectedEvent?.Event is { } e)
             {
-                var missing = chosen.Where(d => !_offered[d.Id]!.Contains(e.Topic)).Select(d => d.Address).ToList();
+                var missing = chosen.Where(d => !d.IsImplicit && _offered.GetValueOrDefault(d.Id) is { } topics && !topics.Contains(e.Topic)).Select(d => d.Address).ToList();
                 if (missing.Count > 0)
                 {
                     return $"Remove the devices that do not offer this event: {Names(missing)}.";
@@ -261,10 +275,10 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
 
     private string? EventProblem => IsReading || DevicesProblem is not null ? null
         : SelectedEvent is not null ? null
-        : EventOptions.Count == 0 ? "The chosen devices have no event in common." : "Choose an event.";
+        : EventOptions.Count == 0 ? "No events yet: none of the devices could be read." : "Choose an event.";
 
-    /// <summary>Reads the event lists of the chosen devices; editing a trigger reads its devices at once.</summary>
-    public Task StartAsync() => IsNew ? Task.CompletedTask : ReadAsync();
+    /// <summary>Editing a trigger reads the event lists of its devices at once (live, never cached).</summary>
+    public Task StartAsync() => IsNew ? Task.CompletedTask : ReadAsync([.. Chosen().Where(d => d.Supported).Select(d => d.Id)]);
 
     public void Dispose()
     {
@@ -272,25 +286,64 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
         _closing.Dispose();
     }
 
-    partial void OnDeviceSearchChanged(string value)
+    /// <summary>
+    /// "Choose devices": the shared device picker with the devices of the trigger chosen (unchoose to remove); devices that
+    /// cannot send events this way are greyed with the reason. OK applies the choice in one step and reads the event lists
+    /// of the added devices at once (the server reads 16 at a time).
+    /// </summary>
+    [RelayCommand]
+    private async Task ChooseDevicesAsync()
     {
-        var text = value.Trim();
-        VisibleDevices.ReplaceAll(text.Length == 0 ? _devices : _devices.Where(d => d.SearchText.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList());
+        if (ShowPicker is not { } show)
+        {
+            return;
+        }
+
+        var initial = _allDevices ? DeviceChoice.AllDevices : DeviceChoice.Devices(_explicit, _tags);
+        var picker = new DevicePickerViewModel(
+            _ctx.Devices,
+            initial,
+            new DevicePickerOptions { AllowAll = true, AllowTags = true },
+            d => _byId.TryGetValue(d.Id, out var choice) && !choice.Supported ? DeviceTriggersPluginInfo.NotSupportedReason : null);
+        if (!await show(picker).ConfigureAwait(true))
+        {
+            return;
+        }
+
+        var result = picker.Choice;
+        _allDevices = result.Kind == DeviceChoiceKind.All;
+        _explicit.Clear();
+        _explicit.UnionWith(result.DeviceIds);
+        _tags = result.Tags;
+        ApplyChoice();
+        ShowErrors = true;
+        DevicesServerError = null;
+        RefreshEvents();
+        await ReadAsync([.. Chosen().Where(d => d.Supported && !d.IsReading && !_offered.ContainsKey(d.Id)).Select(d => d.Id)]).ConfigureAwait(true);
+    }
+
+    partial void OnSelectedEventChoiceChanged(GroupedChoice? value)
+    {
+        if (value?.Value is TriggerEventOption option && !ReferenceEquals(option, SelectedEvent))
+        {
+            SelectedEvent = option;
+        }
     }
 
     partial void OnSelectedEventChanged(TriggerEventOption? value)
     {
+        var choice = value is null ? null : EventChoices.FirstOrDefault(c => ReferenceEquals(c.Value, value));
+        if (!ReferenceEquals(choice, SelectedEventChoice))
+        {
+            SelectedEventChoice = choice;
+        }
+
         var previous = Filters.ToDictionary(f => f.Item.Name, f => f.Selected.Value);
         var initial = _initial?.Topic == value?.Event.Topic ? _initial?.Filters.ToDictionary(f => f.Name, f => f.Value) : null;
         Filters.ReplaceAll(value?.Event.Sources.Select(s => new FilterRowViewModel(s, initial?.GetValueOrDefault(s.Name) ?? previous.GetValueOrDefault(s.Name))).ToList() ?? []);
         OnPropertyChanged(nameof(HasFilters));
         UpdateStatuses();
     }
-
-    [RelayCommand(CanExecute = nameof(CanRead))]
-    private Task ReadEventsAsync() => ReadAsync();
-
-    private bool CanRead() => !IsReading;
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(this, false);
@@ -318,7 +371,9 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
             Filters = [.. filters.Select(f => new TriggerFilter(f.Item.Name, f.Selected.Value!))],
             FilterText = string.Join(", ", filters.Select(f => $"{f.Label}: {f.Selected.Text}")),
             Values = [.. e.Sources.Concat(e.Data).Select(i => i.Name).Distinct(StringComparer.Ordinal)],
-            DeviceIds = [.. Chosen().Select(d => d.Id)],
+            DeviceIds = [.. _explicit],
+            Tags = [.. _tags],
+            AllDevices = _allDevices,
         };
         IsSaving = true;
         ServerError = null;
@@ -363,36 +418,94 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
         }
 
         _chosen = _devices.Count(d => d.IsChecked);
+        VisibleDevices.ReplaceAll([.. Chosen()]);
+        OnPropertyChanged(nameof(HasNoDevices));
         ShowErrors = true;
         DevicesServerError = null;
         UpdateSummary();
         RefreshEvents();
     }
 
-    private void UpdateSummary() =>
-        DevicesSummary = _chosen == 0 ? "None chosen" : string.Create(CultureInfo.CurrentCulture, $"{_chosen:N0} {(_chosen == 1 ? "device" : "devices")} chosen");
-
-    /// <summary>Live read of the chosen devices' event lists (devices read before in this dialog are read again).</summary>
-    private async Task ReadAsync()
+    /// <summary>
+    /// The devices in the trigger from the choice: the chosen ones, plus every device that can send events with one of the
+    /// tags or, with All devices, every such device (one pass over all devices).
+    /// </summary>
+    private void ApplyChoice()
     {
-        var ids = Chosen().Where(d => d.Supported).Select(d => d.Id).ToList();
+        _silent = true;
+        foreach (var device in _devices)
+        {
+            var chosen = _explicit.Contains(device.Id);
+            var tag = !chosen && !_allDevices && _tags.Count > 0 && device.Supported
+                ? _tags.FirstOrDefault(t => _tagsOf.GetValueOrDefault(device.Id)?.Contains(t, StringComparer.OrdinalIgnoreCase) == true)
+                : null;
+            var all = !chosen && _allDevices && device.Supported;
+            device.IsChecked = chosen || tag is not null || all;
+            device.IsImplicit = !chosen && device.IsChecked;
+            device.IncludedBy = chosen ? "Chosen" : tag is not null ? "Tag " + tag : all ? "All devices" : string.Empty;
+        }
+
+        _silent = false;
+        _chosen = _devices.Count(d => d.IsChecked);
+        VisibleDevices.ReplaceAll([.. Chosen()]);
+        OnPropertyChanged(nameof(HasNoDevices));
+        UpdateSummary();
+    }
+
+    private void UpdateSummary()
+    {
+        var parts = new List<string>();
+        if (_allDevices)
+        {
+            parts.Add("All devices");
+        }
+
+        if (_tags.Count > 0)
+        {
+            parts.Add((_tags.Count == 1 ? "Tag " : "Tags ") + string.Join(", ", _tags));
+        }
+
+        if (_explicit.Count > 0)
+        {
+            parts.Add(string.Create(CultureInfo.CurrentCulture, $"{_explicit.Count:N0} chosen {(_explicit.Count == 1 ? "device" : "devices")}"));
+        }
+
+        DevicesSummary = parts.Count == 0 ? "No devices yet"
+            : string.Join(" and ", parts) + string.Create(CultureInfo.CurrentCulture, $": {_chosen:N0} {(_chosen == 1 ? "device" : "devices")} now");
+        DevicesButtonText = parts.Count == 0 ? "Choose devices"
+            : "Selected devices: " + (_allDevices ? "All" : DeviceSelectorTexts.Brief(_explicit.Count, _tags, _explicit.Count == 1 ? _byId.GetValueOrDefault(_explicit.First())?.Address : null));
+    }
+
+    /// <summary>"Choose devices", or what is chosen: "Selected devices: All", "Selected devices: Tag Gate and 2 devices".</summary>
+    [ObservableProperty] public partial string DevicesButtonText { get; private set; } = "Choose devices";
+
+    /// <summary>Live read of event lists (a device read before in this dialog is read again). Reads may overlap.</summary>
+    private async Task ReadAsync(IReadOnlyList<Guid> ids)
+    {
         if (ids.Count == 0)
         {
-            ShowErrors = true;
             return;
         }
 
+        _reads++;
         IsReading = true;
+        ShowReadProgress = ids.Count > 1;
         ReadProgress = 0;
         ReadText = $"Reading events 0 of {ids.Count:N0}";
         foreach (var id in ids)
         {
+            _byId[id].IsReading = true;
             _byId[id].SetStatus("Reading", accent: true);
         }
 
         try
         {
             var status = TriggerJson.Deserialize<ReadStatusReply>(await _ctx.InvokeAsync(DeviceTriggersMethods.StartRead, TriggerJson.Serialize(new StartReadRequest(ids)), _closing.Token).ConfigureAwait(true));
+            if (string.IsNullOrEmpty(status.JobId))
+            {
+                throw new InvalidOperationException("The server did not read the events.");
+            }
+
             while (!status.Finished)
             {
                 await Task.Delay(ReadPollInterval, _closing.Token).ConfigureAwait(true);
@@ -413,16 +526,23 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
 #pragma warning restore CA1031
         {
             ReadText = string.Empty;
+            var message = DeviceTriggersViewModel.Message(ex);
             foreach (var id in ids.Where(i => !_offered.ContainsKey(i)))
             {
-                _byId[id].SetStatus(string.Empty);
+                _offered[id] = null;
+                _byId[id].SetStatus(NotRead(message), warning: true);
             }
-
-            ServerError = DeviceTriggersViewModel.Message(ex);
         }
         finally
         {
-            IsReading = false;
+            foreach (var id in ids)
+            {
+                _byId[id].IsReading = false;
+            }
+
+            _reads--;
+            IsReading = _reads > 0;
+            ShowReadProgress = ShowReadProgress && IsReading;
             ShowErrors = true;
             RefreshEvents();
         }
@@ -440,7 +560,7 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
             _offered[device.DeviceId] = device.Error is null ? [.. device.Events.Select(i => status.Events[i].Topic)] : null;
             if (_byId.TryGetValue(device.DeviceId, out var choice) && device.Error is { } error)
             {
-                choice.SetStatus(error, error: true);
+                choice.SetStatus(NotRead(error), warning: true);
             }
         }
     }
@@ -452,33 +572,42 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
             : item)],
     };
 
-    /// <summary>The events every chosen, read device offers (O(devices x events)); keeps the choice when it stays possible.</summary>
+    /// <summary>
+    /// Every event any device of the trigger offers (O(devices x events)); keeps the choice. The event of a trigger being
+    /// edited stays even when none of its devices can be read now (offline): it is shown from the stored trigger.
+    /// </summary>
     private void RefreshEvents()
     {
-        var read = Chosen().Where(d => _offered.TryGetValue(d.Id, out var topics) && topics is not null).Select(d => _offered[d.Id]!).ToList();
-        HashSet<string>? common = null;
-        foreach (var topics in read)
+        var shown = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var device in Chosen())
         {
-            if (common is null)
+            if (_offered.GetValueOrDefault(device.Id) is { } topics)
             {
-                common = [.. topics];
-            }
-            else
-            {
-                common.IntersectWith(topics);
+                shown.UnionWith(topics);
             }
         }
 
-        // The chosen event stays even when a device lacks it: that device shows "Does not offer this event" and must go.
         var wanted = SelectedEvent?.Event.Topic ?? _initial?.Topic;
-        var shown = new HashSet<string>(common ?? [], StringComparer.Ordinal);
-        if (wanted is not null && _events.ContainsKey(wanted) && read.Any(t => t.Contains(wanted)))
+        if (wanted is not null && _initial is { } initial && initial.Topic == wanted && !_events.ContainsKey(wanted) && _chosen > 0)
+        {
+            _events[wanted] = new DeviceEvent(
+                initial.Topic,
+                initial.EventName,
+                initial.Stateful,
+                initial.StateItem,
+                [.. initial.Filters.Select(f => new EventItem(f.Name, null, [new EventValue(f.Value, null)]))],
+                []);
+        }
+
+        if (wanted is not null && _events.ContainsKey(wanted) && (shown.Contains(wanted) || _initial?.Topic == wanted))
         {
             shown.Add(wanted);
         }
 
         var options = shown.Where(_events.ContainsKey).Select(t => new TriggerEventOption(_events[t])).OrderBy(o => o.Text, StringComparer.CurrentCultureIgnoreCase).ToList();
         EventOptions.ReplaceAll(options);
+        EventChoices.ReplaceAll(GroupedChoice.Build(options, o => o.Event.Group, o => o.Text));
+        SelectedEventChoice = SelectedEvent is null ? null : EventChoices.FirstOrDefault(c => c.Value is TriggerEventOption o && o.Event.Topic == SelectedEvent.Event.Topic);
         var keep = options.FirstOrDefault(o => o.Event.Topic == wanted);
         if (!ReferenceEquals(keep, SelectedEvent))
         {
@@ -505,7 +634,14 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
 
             if (topic is not null && !topics.Contains(topic))
             {
-                choice.SetStatus("Does not offer this event", error: true);
+                if (choice.IsImplicit)
+                {
+                    choice.SetStatus("Does not offer this event (left out)"); // a device of a tag or all devices
+                }
+                else
+                {
+                    choice.SetStatus("Does not offer this event", error: true);
+                }
             }
             else
             {
@@ -517,6 +653,9 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
         OnPropertyChanged(nameof(CanSave));
         OnPropertyChanged(nameof(DevicesError));
     }
+
+    /// <summary>"Not read: Unreachable - ... It stays in the trigger." (a device that cannot be read now may stay).</summary>
+    private static string NotRead(string reason) => $"Not read: {reason.TrimEnd('.')}. It stays in the trigger.";
 
     private static string Names(List<string> addresses) =>
         string.Join(", ", addresses.Take(3)) + (addresses.Count > 3 ? $" and {addresses.Count - 3} more" : string.Empty);

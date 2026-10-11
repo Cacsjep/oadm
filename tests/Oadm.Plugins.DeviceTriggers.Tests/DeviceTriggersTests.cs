@@ -22,6 +22,7 @@ public sealed class DeviceTriggersTests
 
         var input = Assert.Single(events, e => e.Topic == Fixture.VirtualInput);
         Assert.Equal("Device › Input ports › Virtual input", input.Name);
+        Assert.Equal(("Input ports", "Virtual input"), (input.Group, input.Title));
         Assert.True(input.Stateful);
         Assert.Equal("active", input.StateItem);
         var port = Assert.Single(input.Sources);
@@ -50,8 +51,13 @@ public sealed class DeviceTriggersTests
 
         var blur = Assert.Single(events, e => e.Topic == "tnsaxis:CameraApplicationPlatform/AXISImageHealthAnalytics/Blur");
         Assert.Equal(("Image Health Analytics - Blur", true, "active"), (blur.Name, blur.Stateful, blur.StateItem));
+        Assert.Equal(("Applications", "Image Health Analytics - Blur"), (blur.Group, blur.Title)); // the app names no levels
         var any = Assert.Single(events, e => e.Topic == "tnsaxis:CameraApplicationPlatform/AXISImageHealthAnalytics/Any-Active-Events");
         Assert.True(any.Stateful);
+        var onvif = events.Where(e => e.Topic.StartsWith("tns1:AcapOnvifEvent", StringComparison.Ordinal)).ToList();
+        Assert.NotEmpty(onvif);
+        Assert.All(onvif, e => Assert.Equal("Applications", e.Group)); // every app event in one group, also the ONVIF copies
+        Assert.Equal(("Applications", "VMD 3"), DeviceEvent.GroupAndTitle("tns1:RuleEngine/tnsaxis:VMD3/vmd3_video_1", "Video Motion Detection 3 › VMD 3"));
         string[] detections = ["Blur", "Block", "Redirect", "Under-Exposure", "Unsuitability", "Any-Active-Events"];
         Assert.All(detections, n => Assert.Contains(events, e => e.Topic == "tnsaxis:CameraApplicationPlatform/AXISImageHealthAnalytics/" + n && e.Stateful));
     }
@@ -189,6 +195,35 @@ public sealed class DeviceTriggersTests
     }
 
     [Fact]
+    public async Task TagsAndAllDevicesFollowNewDevicesAndLeaveOutDevicesWithoutTheEvent()
+    {
+        await using var rig = new Rig();
+        var tagged = rig.AddDevice("10.0.0.48", tags: ["Gate"]);
+        var untagged = rig.AddDevice("10.0.0.49");
+        var withoutEvent = rig.AddDevice("10.0.0.50", tags: ["gate"]);
+        var noApi = rig.AddDevice("10.0.0.51", hasApi: false, tags: ["Gate"]);
+        await rig.StartAsync();
+        rig.Cameras[withoutEvent.Id].Declarations = Fixture.Recorded.Replace("<VirtualInput ", "<VirtualInputGone ", StringComparison.Ordinal).Replace("</VirtualInput>", "</VirtualInputGone>", StringComparison.Ordinal);
+
+        var trigger = await rig.SaveAsync(Fixture.VirtualInputTrigger("Gate open", []) with { Tags = ["Gate"] });
+        await Wait.UntilAsync(() => rig.Publisher.Lines.Any(l => l.StartsWith("replace trigger", StringComparison.Ordinal)), "the full report");
+
+        var states = rig.Plugin.Runtime!.StatesOf(rig.Plugin.Resolved(trigger));
+        Assert.Equal(new[] { tagged.Id, withoutEvent.Id }.Order(), states.Select(s => s.DeviceId).Order()); // not untagged, not without the API
+        Assert.Equal(Oadm.Plugins.DeviceTriggers.Runtime.TriggerRuntime.NotOfferedText, states.Single(s => s.DeviceId == withoutEvent.Id).Problem);
+        await Task.Delay(600); // longer than the lost delay
+        Assert.DoesNotContain(rig.Publisher.Lines, l => l.Contains($"lost {withoutEvent.Id} on", StringComparison.Ordinal));
+
+        var later = rig.AddDevice("10.0.0.52", tags: ["Gate"]);
+        await Wait.UntilAsync(() => rig.Plugin.Runtime!.StatesOf(rig.Plugin.Resolved(rig.Plugin.Triggers.Single())).Any(s => s.DeviceId == later.Id), "the newly tagged device joined");
+
+        await rig.SaveAsync(rig.Plugin.Triggers.Single() with { Tags = [], AllDevices = true });
+        await Wait.UntilAsync(() => rig.Plugin.Runtime!.StatesOf(rig.Plugin.Resolved(rig.Plugin.Triggers.Single())).Any(s => s.DeviceId == untagged.Id), "all devices");
+        Assert.DoesNotContain(rig.Plugin.Resolved(rig.Plugin.Triggers.Single()).DeviceIds, id => id == noApi.Id);
+        Assert.Empty(rig.Plugin.Triggers.Single().DeviceIds); // the stored trigger keeps only the choice
+    }
+
+    [Fact]
     public async Task DevicesOadmCannotLogInToAreNotContacted()
     {
         await using var rig = new Rig();
@@ -257,7 +292,7 @@ public sealed class DeviceTriggersTests
         var reply = await rig.CallAsync<SaveReply>(DeviceTriggersMethods.Save, new SaveRequest(Fixture.VirtualInputTrigger(" gate OPEN ", []) with { Id = Guid.Empty, Topic = "" }));
         Assert.Equal("Another trigger has this name.", reply.Errors![TriggerValidation.NameField]);
         Assert.Equal("Choose an event.", reply.Errors[TriggerValidation.EventField]);
-        Assert.Equal("Choose at least one device.", reply.Errors[TriggerValidation.DevicesField]);
+        Assert.Equal("Choose at least one device or tag.", reply.Errors[TriggerValidation.DevicesField]);
 
         reply = await rig.CallAsync<SaveReply>(DeviceTriggersMethods.Save, new SaveRequest(Fixture.VirtualInputTrigger("Old camera", [old.Id]) with { Id = Guid.Empty }));
         Assert.Equal("10.0.0.20: " + DeviceTriggersPluginInfo.NotSupportedReason + ".", reply.Errors![TriggerValidation.DevicesField]);

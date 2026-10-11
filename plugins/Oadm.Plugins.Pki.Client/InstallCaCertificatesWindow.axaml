@@ -8,8 +8,8 @@
         Width="1100" Height="620" MinWidth="860" MinHeight="460"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+        CanResize="False"
+        WindowDecorations="BorderOnly">
   <!-- Title bar, one card (Add files, summary, certificate table with the error directly below it), footer. Shared controls only. -->
   <Grid RowDefinitions="Auto,*,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:InstallCaCertificatesViewModel.Title}" />

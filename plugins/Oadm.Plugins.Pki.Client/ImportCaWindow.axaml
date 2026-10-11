@@ -8,8 +8,8 @@
         Width="720" MinWidth="600" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+        CanResize="False"
+        WindowDecorations="BorderOnly">
   <!-- Title bar, one card (file, password, optional key file), footer. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:ImportCaViewModel.Title}" />

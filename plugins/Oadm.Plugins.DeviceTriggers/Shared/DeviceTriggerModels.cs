@@ -9,7 +9,7 @@ public static class DeviceTriggersPluginInfo
 {
     public const string PluginId = "oadm.device-triggers";
     public const string DisplayName = "Device triggers";
-    public const string IconKey = "bell";
+    public const string IconKey = "flame";
 
     /// <summary>Group of the trigger events in the rule dialog.</summary>
     public const string EventGroup = "Device triggers";
@@ -92,7 +92,51 @@ public sealed record EventItem(string Name, string? DisplayName, IReadOnlyList<E
 /// ("tns1:Device/tnsaxis:IO/VirtualInput"), <see cref="Name"/> the device's display path ("Device › Input ports ›
 /// Virtual input"). Stateful events are on or off: <see cref="StateItem"/> is the data item holding the state.
 /// </summary>
-public sealed record DeviceEvent(string Topic, string Name, bool Stateful, string? StateItem, IReadOnlyList<EventItem> Sources, IReadOnlyList<EventItem> Data);
+public sealed record DeviceEvent(string Topic, string Name, bool Stateful, string? StateItem, IReadOnlyList<EventItem> Sources, IReadOnlyList<EventItem> Data)
+{
+    /// <summary>The group of the event picker ("Input ports", "Device status"); every app event (Object Analytics, Video
+    /// Motion Detection, Image Health Analytics, ...) is in "Applications" (user decision 2026-10-11).</summary>
+    [JsonIgnore]
+    public string Group => GroupAndTitle(Topic, Name).Group;
+
+    /// <summary>The event's own name in the picker ("Virtual input", "Image Health Analytics - Blur").</summary>
+    [JsonIgnore]
+    public string Title => GroupAndTitle(Topic, Name).Title;
+
+    /// <summary>
+    /// Apps publish their events below these topics: ACAP events (<c>tnsaxis:CameraApplicationPlatform</c>), their ONVIF
+    /// copies (<c>tns1:AcapOnvifEvent</c>) and the analytics rules (<c>tns1:RuleEngine</c>, e.g. VMD 3).
+    /// </summary>
+    public static bool IsAppTopic(string topic) =>
+        topic.Contains("CameraApplicationPlatform", StringComparison.Ordinal)
+        || topic.Contains("AcapOnvifEvent", StringComparison.Ordinal)
+        || topic.StartsWith("tns1:RuleEngine/", StringComparison.Ordinal);
+
+    internal static (string Group, string Title) GroupAndTitle(string topic, string name)
+    {
+        // Like the device's own event page: all apps in one group, the event with its own name; otherwise the section
+        // below the top level ("Device status", "Input ports"), or the top level for two levels ("Video source").
+        var parts = name.Split(" › ");
+        if (IsAppTopic(topic))
+        {
+            return (AppsGroup, parts[^1]);
+        }
+
+        if (parts.Length > 2)
+        {
+            return (parts[1], parts[^1]);
+        }
+
+        if (parts.Length == 2)
+        {
+            return (parts[0], parts[1]);
+        }
+
+        return ("Other", name);
+    }
+
+    public const string AppsGroup = "Applications";
+}
 
 /// <summary>One source item narrowed to one value (missing items mean "Any").</summary>
 public sealed record TriggerFilter(string Name, string Value);
@@ -123,7 +167,25 @@ public sealed record TriggerDefinition
     /// <summary>Names of the event's source and data items: the placeholders ({port}) rules can use.</summary>
     public IReadOnlyList<string> Values { get; init; } = [];
 
+    /// <summary>Devices chosen one by one (user decision 2026-10-11: plus <see cref="Tags"/> or <see cref="AllDevices"/>).</summary>
     public IReadOnlyList<Guid> DeviceIds { get; init; } = [];
+
+    /// <summary>Every device with one of these tags, also devices tagged later.</summary>
+    public IReadOnlyList<string> Tags { get; init; } = [];
+
+    /// <summary>Every managed device that can send events, also devices added later.</summary>
+    public bool AllDevices { get; init; }
+
+    /// <summary>
+    /// Server only, not stored: the devices that came in through <see cref="Tags"/> or <see cref="AllDevices"/>. Such a
+    /// device without the event is left out quietly ("Does not offer this event"), never "connection lost".
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlySet<Guid> Implicit { get; init; } = new HashSet<Guid>();
+
+    /// <summary>Whether a device with <paramref name="deviceTags"/> belongs to the trigger through all devices or a tag.</summary>
+    public bool CoversImplicitly(IEnumerable<string> deviceTags) =>
+        AllDevices || (Tags.Count > 0 && deviceTags.Any(t => Tags.Contains(t, StringComparer.OrdinalIgnoreCase)));
 }
 
 /// <summary>A trigger in the list with its live counts.</summary>
@@ -224,9 +286,9 @@ public static class TriggerValidation
         return otherNames.Any(o => string.Equals(o.Trim(), text, StringComparison.OrdinalIgnoreCase)) ? "Another trigger has this name." : null;
     }
 
-    public static string? DevicesProblem(int count) => count switch
+    public static string? DevicesProblem(int count, int tags = 0, bool allDevices = false) => count switch
     {
-        0 => "Choose at least one device.",
+        0 when tags == 0 && !allDevices => "Choose at least one device or tag.",
         > DeviceTriggersPluginInfo.MaxDevicesPerTrigger => $"At most {DeviceTriggersPluginInfo.MaxDevicesPerTrigger:N0} devices.",
         _ => null,
     };
@@ -245,7 +307,7 @@ public static class TriggerValidation
             errors[EventField] = "Choose an event.";
         }
 
-        if (DevicesProblem(trigger.DeviceIds.Distinct().Count()) is { } devices)
+        if (DevicesProblem(trigger.DeviceIds.Distinct().Count(), trigger.Tags.Count, trigger.AllDevices) is { } devices)
         {
             errors[DevicesField] = devices;
         }

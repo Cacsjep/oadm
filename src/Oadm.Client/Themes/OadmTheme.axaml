@@ -438,7 +438,7 @@
   </Style>
   <!-- Body of a single-operation dialog (one form, no card), padded like ui:MessageWindow. -->
   <Style Selector="Border.dialogBody">
-    <Setter Property="Padding" Value="24,4,24,16" />
+    <Setter Property="Padding" Value="16,4,16,16" />
   </Style>
   <Style Selector="Border.separator">
     <Setter Property="Height" Value="1" />
@@ -761,6 +761,52 @@
   <Style Selector="ComboBox:pointerover /template/ Border#Background">
     <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  </Style>
+
+  <!-- Grouped select field (ComboBox.grouped with ui:GroupedChoice items): grey group headers that cannot be chosen,
+       the choices indented below them; the closed box shows the chosen text without indent. -->
+  <Style Selector="ComboBox.grouped">
+    <!-- A fixed width: the box fills its form row and the open list keeps that width (long names wrap, the list scrolls) -->
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="ItemTemplate">
+      <DataTemplate x:DataType="ui:GroupedChoice">
+        <TextBlock Classes="groupedChoice" Classes.groupHeader="{Binding IsHeader}" Text="{Binding Text}" TextWrapping="Wrap" />
+      </DataTemplate>
+    </Setter>
+    <Setter Property="SelectionBoxItemTemplate">
+      <DataTemplate x:DataType="ui:GroupedChoice">
+        <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis" />
+      </DataTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ComboBox.grouped ComboBoxItem" x:DataType="ui:GroupedChoice">
+    <Setter Property="IsEnabled" Value="{Binding IsSelectable}" />
+  </Style>
+  <Style Selector="TextBlock.groupedChoice">
+    <Setter Property="Margin" Value="16,0,0,0" />
+  </Style>
+  <Style Selector="TextBlock.groupedChoice.groupHeader">
+    <Setter Property="Margin" Value="0,4,0,0" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="ComboBox.grouped /template/ Popup#PART_Popup">
+    <Setter Property="Width" Value="{Binding Bounds.Width, RelativeSource={RelativeSource TemplatedParent}}" />
+  </Style>
+  <Style Selector="ComboBox.grouped ComboBoxItem:disabled">
+    <Setter Property="Opacity" Value="1" />
+  </Style>
+
+  <!-- The shared device picker (ui:DevicePickerWindow): a plain list on the card, rows aligned with the header,
+       a line between rows like the grids -->
+  <Style Selector="ListBox.devicePicker">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="ListBox.devicePicker ListBoxItem">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
   </Style>
 
   <!-- Validation (Vuetify-like): the error of an input is small red text directly below it, aligned with its
@@ -1091,6 +1137,65 @@
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
   </Style>
 
+  <!-- Wizard steps (ui:WizardSteps): numbered dot + name per step, thin line between; current accent, done with a check -->
+  <Style Selector="Button.wizardStep">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="4" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.wizardStep:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="Button.wizardStep:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+  </Style>
+  <Style Selector="Border.wizardDot">
+    <Setter Property="Width" Value="24" />
+    <Setter Property="Height" Value="24" />
+    <Setter Property="CornerRadius" Value="12" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Border.wizardDot.done">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="Border.wizardDot.current">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="TextBlock.wizardNumber">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Border.wizardDot.current TextBlock.wizardNumber">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="ui|OadmIcon.wizardCheck">
+    <Setter Property="Width" Value="12" />
+    <Setter Property="Height" Value="12" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="TextBlock.wizardLabel">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.wizardLabel.later">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.wizardLabel.current">
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Border.wizardLine">
+    <Setter Property="Width" Value="40" />
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Margin" Value="8,0" />
+    <Setter Property="Background" Value="{StaticResource Oadm.BorderBrush}" />
+  </Style>
+  <Style Selector="Border.wizardLine.done">
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+
   <!-- Device icon cell: opens the live view of video devices -->
   <Style Selector="Button.liveViewIcon">
     <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
@@ -1151,10 +1256,11 @@
     <Setter Property="HorizontalContentAlignment" Value="Left" />
   </Style>
 
-  <!-- Dialog windows (add devices page, task plugin dialogs): title bar, card headings, button row -->
+  <!-- Dialog windows (WindowDecorations BorderOnly, no system title bar): header with the title as a heading and an X
+       on the right, aligned with the content; card headings, button row -->
   <Style Selector="ui|DialogTitleBar">
-    <Setter Property="Height" Value="{StaticResource Oadm.TitleBarHeight}" />
-    <Setter Property="Padding" Value="24,0" />
+    <Setter Property="Padding" Value="16,20,16,12" />
+    <Setter Property="Background" Value="Transparent" />
   </Style>
   <Style Selector="ui|CardHeader">
     <Setter Property="Margin" Value="0,0,0,16" />
@@ -1275,8 +1381,10 @@
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
     <Setter Property="HorizontalAlignment" Value="Center" />
   </Style>
+  <!-- When / And / Then rows of the rule dialog: outlined, no fill (user decision 2026-10-11) -->
   <Style Selector="Border.ruleItem">
-    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
     <Setter Property="Padding" Value="14" />
   </Style>

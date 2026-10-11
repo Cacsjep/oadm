@@ -135,7 +135,7 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rul
     {
         var ids = rules
             .SelectMany(r => r.Conditions.Select(c => c.Devices).Concat(r.Actions.Select(a => a.Targets)))
-            .Where(s => s.Mode == DeviceSelectorMode.Devices && s.DeviceIds.Count == 1)
+            .Where(s => s.IsChoice && s.DeviceIds.Count == 1)
             .Select(s => s.DeviceIds[0])
             .ToHashSet();
         var names = new Dictionary<Guid, string>();

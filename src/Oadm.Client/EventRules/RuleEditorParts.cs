@@ -2,10 +2,13 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Actions;
 using Oadm.Sdk.Client.Collections;
+using Oadm.Sdk.Client.Controls;
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Events;
 
 namespace Oadm.Client.EventRules;
@@ -40,140 +43,136 @@ public sealed record ChoiceOption<T>(T Value, string Text)
     public override string ToString() => Text;
 }
 
-/// <summary>One entry of a pick list (a device or a tag) with its check box.</summary>
-public sealed partial class PickItem(string key, string text) : ObservableObject
-{
-    public string Key { get; } = key;
-
-    public string Text { get; } = text;
-
-    [ObservableProperty] public partial bool IsChecked { get; set; }
-}
-
 /// <summary>
-/// A searchable list with check boxes (devices or tags), virtualized in the view; search, count and select-all are O(n)
-/// over the items, one reset per filter.
+/// Which devices a condition or an action is about (user decision 2026-10-11: no mode drop-down): <see cref="ChooseDevicesCommand"/>
+/// opens the shared <see cref="DevicePickerWindow"/> with the device of the event (when offered), All devices, or chosen
+/// devices and tags together. The choice shows as one line ("Tag Building A and 3 devices: 10.0.0.48, ...").
 /// </summary>
-public sealed partial class PickListViewModel : ObservableObject
-{
-    private readonly List<PickItem> _all;
-    private readonly string _noun;
-    private readonly string _nounPlural;
-
-    public PickListViewModel(IEnumerable<PickItem> items, string noun, string nounPlural)
-    {
-        _all = [.. items];
-        _noun = noun;
-        _nounPlural = nounPlural;
-        foreach (var item in _all)
-        {
-            item.PropertyChanged += (_, e) =>
-            {
-                if (e.PropertyName == nameof(PickItem.IsChecked))
-                {
-                    UpdateCount();
-                    Changed?.Invoke(this, EventArgs.Empty);
-                }
-            };
-        }
-
-        Visible.ReplaceAll(_all);
-        UpdateCount();
-    }
-
-    public event EventHandler? Changed;
-
-    public RangeObservableCollection<PickItem> Visible { get; } = [];
-
-    [ObservableProperty] public partial string SearchText { get; set; } = string.Empty;
-
-    [ObservableProperty] public partial string SummaryText { get; private set; } = string.Empty;
-
-    public bool IsEmpty => _all.Count == 0;
-
-    public IReadOnlyList<string> CheckedKeys => [.. _all.Where(i => i.IsChecked).Select(i => i.Key)];
-
-    /// <summary>Checks the given keys; the checked items move to the top so a saved choice is visible at once.</summary>
-    public void Check(IEnumerable<string> keys)
-    {
-        var set = keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var item in _all)
-        {
-            item.IsChecked = set.Contains(item.Key);
-        }
-
-        var ordered = _all.OrderBy(i => i.IsChecked ? 0 : 1).ToList(); // stable
-        _all.Clear();
-        _all.AddRange(ordered);
-        OnSearchTextChanged(SearchText);
-    }
-
-    partial void OnSearchTextChanged(string value)
-    {
-        var text = value.Trim();
-        Visible.ReplaceAll(text.Length == 0 ? _all : _all.Where(i => i.Text.Contains(text, StringComparison.OrdinalIgnoreCase)).ToList());
-    }
-
-    private void UpdateCount()
-    {
-        var count = _all.Count(i => i.IsChecked);
-        SummaryText = count == 0 ? "None chosen" : string.Create(CultureInfo.CurrentCulture, $"{count:N0} {(count == 1 ? _noun : _nounPlural)} chosen");
-    }
-}
-
-/// <summary>Which devices a condition or an action means: a mode plus a device or tag list.</summary>
 public sealed partial class DeviceSelectorViewModel : ObservableObject
 {
-    public DeviceSelectorViewModel(IReadOnlyList<ChoiceOption<DeviceSelectorMode>> modes, PickListViewModel devices, PickListViewModel tags, DeviceSelector? initial)
-    {
-        Modes = modes;
-        Devices = devices;
-        Tags = tags;
-        var mode = initial?.Mode ?? modes[0].Value;
-        SelectedMode = modes.FirstOrDefault(m => m.Value == mode) ?? modes[0];
-        if (initial is not null)
-        {
-            Devices.Check(initial.DeviceIds.Select(id => id.ToString()));
-            Tags.Check(initial.Tags);
-        }
+    private const int NamedDevices = 3;
+    private readonly IReadOnlyList<IDeviceInfo> _devices;
+    private readonly Func<DevicePickerViewModel, Task<bool>>? _showPicker;
 
-        Devices.Changed += (_, _) => Changed?.Invoke(this, EventArgs.Empty);
-        Tags.Changed += (_, _) => Changed?.Invoke(this, EventArgs.Empty);
+    public DeviceSelectorViewModel(
+        IReadOnlyList<IDeviceInfo> devices,
+        DevicePickerOptions options,
+        DeviceChoice fallback,
+        DeviceSelector? initial,
+        Func<DevicePickerViewModel, Task<bool>>? showPicker = null)
+    {
+        _devices = devices;
+        Options = options;
+        _showPicker = showPicker;
+        Choice = initial is null ? fallback : FromSelector(initial);
     }
 
     public event EventHandler? Changed;
 
-    public IReadOnlyList<ChoiceOption<DeviceSelectorMode>> Modes { get; }
-
-    public PickListViewModel Devices { get; }
-
-    public PickListViewModel Tags { get; }
+    public DevicePickerOptions Options { get; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsDevices), nameof(IsTags))]
-    public partial ChoiceOption<DeviceSelectorMode> SelectedMode { get; set; }
+    [NotifyPropertyChangedFor(nameof(ChosenText), nameof(ButtonText), nameof(IsEventDevice), nameof(Problem))]
+    public partial DeviceChoice Choice { get; private set; }
 
-    public bool IsDevices => SelectedMode.Value == DeviceSelectorMode.Devices;
+    public bool IsEventDevice => Choice.Kind == DeviceChoiceKind.EventDevice;
 
-    public bool IsTags => SelectedMode.Value == DeviceSelectorMode.Tags;
+    /// <summary>The chosen devices one by one (tests, summaries).</summary>
+    public IReadOnlyCollection<Guid> ChosenIds => Choice.DeviceIds;
 
-    /// <summary>"Choose at least one device." while the list mode has nothing chosen.</summary>
-    public string? Problem => SelectedMode.Value switch
+    /// <summary>"All devices", "The device of the event", "No devices chosen", "Tag Building A and 3 devices: 10.0.0.48, ...".</summary>
+    public string ChosenText => Choice.Kind switch
     {
-        DeviceSelectorMode.Devices when Devices.CheckedKeys.Count == 0 => "Choose at least one device.",
-        DeviceSelectorMode.Tags when Tags.CheckedKeys.Count == 0 => "Choose at least one tag.",
-        _ => null,
+        DeviceChoiceKind.All => "All devices",
+        DeviceChoiceKind.EventDevice => Options.EventDeviceText ?? "The device of the event",
+        _ => DescribeChosen(),
     };
 
-    partial void OnSelectedModeChanged(ChoiceOption<DeviceSelectorMode> value) => Changed?.Invoke(this, EventArgs.Empty);
+    /// <summary>
+    /// The button (user decision 2026-10-11): "Choose devices" while nothing is chosen, else "Selected devices: All",
+    /// "Selected devices: Tag Building A and 3 devices". The full choice with addresses is its tooltip.
+    /// </summary>
+    public string ButtonText => Choice.IsEmpty ? "Choose devices" : "Selected devices: " + ShortText();
 
-    public DeviceSelector ToSelector() => new()
+    private string ShortText() => Choice.Kind switch
     {
-        Mode = SelectedMode.Value,
-        DeviceIds = SelectedMode.Value == DeviceSelectorMode.Devices ? [.. Devices.CheckedKeys.Select(Guid.Parse)] : [],
-        Tags = SelectedMode.Value == DeviceSelectorMode.Tags ? [.. Tags.CheckedKeys] : [],
+        DeviceChoiceKind.All => "All",
+        DeviceChoiceKind.EventDevice => Options.EventDeviceText ?? "The device of the event",
+        _ => DeviceSelectorTexts.Brief(Choice.DeviceIds.Count, Choice.Tags, Choice.DeviceIds.Count == 1 ? _devices.FirstOrDefault(d => d.Id == Choice.DeviceIds[0])?.Address : null),
     };
+
+    /// <summary>"Choose at least one device or tag." while nothing is chosen.</summary>
+    public string? Problem => Choice.IsEmpty ? "Choose at least one device or tag." : null;
+
+    /// <summary>Replaces the choice (the picker's OK, tests).</summary>
+    public void SetChoice(DeviceChoice choice)
+    {
+        Choice = choice;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Replaces the chosen devices (tests).</summary>
+    public void SetChosen(IEnumerable<Guid> ids) => SetChoice(DeviceChoice.Devices(ids));
+
+    /// <summary>"Choose devices": the shared device picker with the current choice; OK takes the new one.</summary>
+    [RelayCommand]
+    private async Task ChooseDevicesAsync()
+    {
+        if (_showPicker is null)
+        {
+            return;
+        }
+
+        var picker = new DevicePickerViewModel(_devices, Choice, Options);
+        if (await _showPicker(picker).ConfigureAwait(true))
+        {
+            SetChoice(picker.Choice);
+        }
+    }
+
+    /// <summary>Short text for the overview.</summary>
+    public string Summary() => ChosenText;
+
+    public DeviceSelector ToSelector() => Choice.Kind switch
+    {
+        DeviceChoiceKind.All => new DeviceSelector { Mode = DeviceSelectorMode.All },
+        DeviceChoiceKind.EventDevice => new DeviceSelector { Mode = DeviceSelectorMode.EventDevice },
+        _ => new DeviceSelector { Mode = DeviceSelectorMode.Devices, DeviceIds = [.. Choice.DeviceIds], Tags = [.. Choice.Tags] },
+    };
+
+    private static DeviceChoice FromSelector(DeviceSelector selector) => selector.Mode switch
+    {
+        DeviceSelectorMode.All => DeviceChoice.AllDevices,
+        DeviceSelectorMode.EventDevice => DeviceChoice.EventDevice,
+        _ => DeviceChoice.Devices(selector.DeviceIds, selector.Tags),
+    };
+
+    private string DescribeChosen()
+    {
+        var ids = Choice.DeviceIds.ToHashSet();
+        var tags = Choice.Tags.Count == 0 ? null : (Choice.Tags.Count == 1 ? "Tag " : "Tags ") + string.Join(", ", Choice.Tags);
+        string? devices = null;
+        if (ids.Count > 0)
+        {
+            var known = _devices.Where(d => ids.Contains(d.Id)).Take(NamedDevices).ToList();
+            var more = ids.Count - known.Count;
+            devices = ids.Count == 1 && known.Count == 1
+                ? Describe(known[0])
+                : string.Create(CultureInfo.CurrentCulture, $"{ids.Count:N0} {(ids.Count == 1 ? "device" : "devices")}")
+                    + (known.Count > 0 ? ": " + string.Join(", ", known.Select(d => d.Address)) : string.Empty)
+                    + (more > 0 && known.Count > 0 ? string.Create(CultureInfo.CurrentCulture, $" +{more:N0} more") : string.Empty);
+        }
+
+        return tags is not null && devices is not null ? $"{tags} and {(ids.Count == 1 ? devices : char.ToLowerInvariant(devices[0]) + devices[1..])}"
+            : tags ?? devices ?? "No devices chosen";
+    }
+
+    private static string Describe(IDeviceInfo device) =>
+        string.IsNullOrEmpty(device.Model) ? device.Address : $"{device.Address} · {device.Model.Replace("AXIS ", string.Empty, StringComparison.Ordinal)}";
 }
+
+/// <summary>One line of the rule overview: "When", "Input ports: Digital input · All devices".</summary>
+public sealed record OverviewLine(string Label, string Text);
 
 /// <summary>A day toggle of a schedule.</summary>
 public sealed partial class DayToggle(DayOfWeek day) : ObservableObject

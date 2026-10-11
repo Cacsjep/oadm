@@ -9,8 +9,8 @@
         Width="1120" Height="740" MinWidth="900" MinHeight="580"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+        CanResize="False"
+        WindowDecorations="BorderOnly">
   <!-- One page, no steps: input (range / address), live list with login results, inline editor, Add. Shared controls only. -->
   <Grid RowDefinitions="Auto,*,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{x:Static disc:AddDevicesViewModel.Title}" />

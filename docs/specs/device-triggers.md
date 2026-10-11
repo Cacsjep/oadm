@@ -11,7 +11,7 @@ permanent WebSocket event stream to each device and hands the event to the event
 |---|---|
 | Event pick | Devices first. The editor reads the event list of the chosen devices **live every time** a trigger is created or edited (never cached: an app that is stopped or removed has no events). It offers the events **all** chosen devices have; a device without it is shown with the reason and cannot stay in the trigger. |
 | Narrowing | Each source item of the event (port, disk, channel, scenario, ...) is a select with the values the device lists, or **Any**. Sent to the device as its content filter. No data value conditions in v1. |
-| Devices | A fixed list of chosen devices (no tags). A device removed from OADM leaves the trigger. |
+| Devices | All devices, tags and chosen devices together (2026-10-11, the shared device picker). Devices of a tag or of all devices join and leave with the device table (every 30 s); such a device without the event is left out quietly. A device removed from OADM leaves the trigger. |
 | State | On/off events: the trigger is on per device while at least one matching source is on (Any port: on while any matching port is on). One-shot events stay one-shot. |
 | Values | Every source and data item becomes a placeholder for actions (`{port}`, `{total}`, the device's item name) and is shown in the event log. |
 | Connection lost | Every trigger automatically has a second, on/off event **"<Trigger>: connection lost"** per device: on when OADM receives no events of the trigger from the device for 30 s (connection down, login rejected, event no longer on the device), off once the stream works again. The reason goes to the event log and the page. |

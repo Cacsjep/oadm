@@ -9,8 +9,7 @@
         Width="540" SizeToContent="Height" CanResize="False"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+        WindowDecorations="BorderOnly">
   <!-- A list with its editors: title bar, one card (intro, search + New tag, new tag editor, tag list, edit editor), footer. -->
   <Grid RowDefinitions="Auto,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="Tags" />

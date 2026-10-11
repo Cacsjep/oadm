@@ -8,8 +8,8 @@
         Width="900" Height="600" MinWidth="720" MinHeight="420"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+        CanResize="False"
+        WindowDecorations="BorderOnly">
   <!-- Like the System report window: progress, one row per device with its state, Cancel / Close. -->
   <Grid RowDefinitions="Auto,*,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:ExportConfigViewModel.Title}" />

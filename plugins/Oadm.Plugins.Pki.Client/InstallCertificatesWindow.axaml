@@ -8,8 +8,8 @@
         Width="1040" Height="680" MinWidth="820" MinHeight="520"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
+        CanResize="False"
+        WindowDecorations="BorderOnly">
   <!-- Title bar, one card (purpose, files, password, file -> device table), footer. Shared controls only. -->
   <Grid RowDefinitions="Auto,*,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:InstallCertificatesViewModel.Title}" />

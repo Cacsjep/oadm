@@ -105,6 +105,8 @@ internal sealed record TestDevice(string Address, string? Model = "P3265-V", boo
 {
     public Guid Id { get; init; } = Guid.NewGuid();
 
+    public IReadOnlyList<string> Tags { get; init; } = [];
+
     public string Serial => "ACCC8E000001";
 
     public string? HostName => null;
@@ -490,11 +492,12 @@ internal sealed class FakeContext(FakeDevices devices, FakeCameras cameras, IPlu
 /// <summary>The plugin with fake devices and cameras and short timings.</summary>
 internal sealed class Rig : IAsyncDisposable
 {
-    public Rig(DeviceTriggersOptions? options = null)
+    /// <param name="lostDelay">"Connection lost" after this (default 400 ms; tests that look at the state before it use more).</param>
+    public Rig(DeviceTriggersOptions? options = null, TimeSpan? lostDelay = null)
     {
         Plugin = new DeviceTriggersPlugin(options ?? new DeviceTriggersOptions
         {
-            LostDelay = TimeSpan.FromMilliseconds(400),
+            LostDelay = lostDelay ?? TimeSpan.FromMilliseconds(400),
             SettleTime = TimeSpan.FromMilliseconds(150),
             RequestTimeout = TimeSpan.FromSeconds(5),
             KeepAlive = TimeSpan.FromSeconds(10),
@@ -503,6 +506,7 @@ internal sealed class Rig : IAsyncDisposable
             TickInterval = TimeSpan.FromMilliseconds(20),
             DeviceSweepInterval = TimeSpan.FromMilliseconds(100),
             RecheckInterval = TimeSpan.FromMinutes(5),
+            ResolveInterval = TimeSpan.FromMilliseconds(100),
         });
     }
 
@@ -527,9 +531,9 @@ internal sealed class Rig : IAsyncDisposable
         return this;
     }
 
-    public TestDevice AddDevice(string address, bool hasApi = true, DeviceStatus status = DeviceStatus.Ok)
+    public TestDevice AddDevice(string address, bool hasApi = true, DeviceStatus status = DeviceStatus.Ok, IReadOnlyList<string>? tags = null)
     {
-        var device = new TestDevice(address, HasApi: hasApi, Status: status);
+        var device = new TestDevice(address, HasApi: hasApi, Status: status) { Tags = tags ?? [] };
         Devices.Add(device);
         return device;
     }

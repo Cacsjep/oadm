@@ -105,7 +105,7 @@ public sealed class PluginWindowTests
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Dispatcher.UIThread.RunJobs();
             var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
-            Assert.Contains("Monitor · OADM", texts);
+            Assert.DoesNotContain("Monitor · OADM", texts); // the title bar is empty, the page header names the page
             Assert.Contains("Copy 2", texts);
             Assert.Equal("Monitor · OADM", window.Title);
             WriteableBitmap? frame = window.CaptureRenderedFrame();

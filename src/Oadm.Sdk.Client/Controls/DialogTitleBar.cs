@@ -1,15 +1,13 @@
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Chrome;
-using Avalonia.Input;
 using Avalonia.Layout;
 
 namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>
-/// The title bar of every dialog window (extended client area): the window title on the left,
-/// draggable, caption buttons drawn by the platform decorations on the right. Height and padding
-/// come from the theme (<c>ui|DialogTitleBar</c>).
+/// The header of every dialog window (a window with <c>WindowDecorations="BorderOnly"</c>, no system title bar): the
+/// title as a heading and an X that closes the window, aligned with the content. Like a dialog on a web page it does
+/// not move and is modal (user decision 2026-10-11). Padding comes from the theme (<c>ui|DialogTitleBar</c>).
 /// </summary>
 public sealed class DialogTitleBar : Border
 {
@@ -20,9 +18,15 @@ public sealed class DialogTitleBar : Border
 
     public DialogTitleBar()
     {
-        _text.Classes.Add("appName");
-        Child = _text;
-        WindowDecorationProperties.SetElementRole(this, WindowDecorationsElementRole.TitleBar);
+        _text.Classes.Add("cardTitle");
+        var close = new Button { VerticalAlignment = VerticalAlignment.Center };
+        close.Classes.Add("toolbar");
+        close.Classes.Add("iconOnly");
+        close.Content = new OadmIcon { Data = ToolbarButton.ResolveIcon("close") };
+        ToolTip.SetTip(close, "Close");
+        close.Click += (_, _) => (TopLevel.GetTopLevel(this) as Window)?.Close();
+        Grid.SetColumn(close, 1);
+        Child = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { _text, close } };
     }
 
     public string? Text

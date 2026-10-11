@@ -1,6 +1,6 @@
 # Device triggers (`oadm.device-triggers`)
 
-Core plugin with a rail page (group Automation, icon `bell`), **off by default**. Spec and decisions:
+Core plugin with a rail page (group Automation, icon `flame`), **off by default**. Spec and decisions:
 `docs/specs/device-triggers.md`. An administrator picks an event that the chosen devices offer (I/O ports, virtual inputs,
 temperature, storage, Object Analytics scenarios, events of other apps), optionally narrowed to source values; OADM keeps
 one WebSocket event stream per device and publishes every trigger as two event types for the event rules.
@@ -26,9 +26,14 @@ one WebSocket event stream per device and publishes every trigger as two event t
   stored in the plugin setting `triggers`; at most 200 triggers, 5,000 devices each. Devices removed from OADM leave their
   triggers (checked every 30 s).
 - **Page**: triggers (On, Name, Event, Devices, State, Last event; New trigger, Edit, Duplicate, Delete) and the devices of
-  the selected one (Connection, State, Last event). Dialog: name, turned on, devices with Read events, event (the events
-  all chosen devices offer; a device without the chosen event is shown "Does not offer this event" and blocks Save), one
-  select per source item (Any or a value).
+  the selected one (Connection, State, Last event). Dialog: name and turned on in one row, Choose devices (the shared device
+  picker with All devices, tags and single devices; OK reads the event lists of the devices that joined at once), the
+  trigger's devices with "Included by" (Chosen, Tag X, All devices) and their event count or why they were not read (they
+  stay), the event (grouped select of every event any device offers; a chosen device that was read and lacks the event is
+  shown "Does not offer this event" and blocks Save, a device of a tag or of all devices is left out), one select per
+  source item (Any or a value). Server: `AllDevices` / `Tags` are resolved after every change and every 30 s
+  (`DeviceTriggersOptions.ResolveInterval`, `TriggerDefinition.Implicit`); `TriggerRuntime.NotOffered` leaves such a
+  device out without "connection lost".
 - Verified on 10.0.0.48 (AXIS P3265-V, AXIS OS 12.11): 42 events, token login over HTTPS, the report after the filter,
   and virtual input 64 on and off (`DeviceTriggersHardwareTests`, `OADM_TRIGGER_URL` / `_USER` / `_PASSWORD`; the write
   test is `Category=HardwareWrite`).

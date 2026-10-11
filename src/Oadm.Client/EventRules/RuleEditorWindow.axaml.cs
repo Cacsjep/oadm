@@ -15,6 +15,11 @@ public partial class RuleEditorWindow : Window
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         DataContext = viewModel;
+        viewModel.ShowPicker = async picker =>
+        {
+            var window = new Oadm.Sdk.Client.Controls.DevicePickerWindow(picker);
+            return await window.ShowDialog<bool>(this).ConfigureAwait(true);
+        };
         viewModel.CloseRequested += (_, ok) => Close(ok);
         if (viewModel.IsNew)
         {

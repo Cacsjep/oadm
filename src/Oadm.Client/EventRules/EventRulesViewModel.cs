@@ -194,12 +194,6 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
     public bool IsAdmin => _session?.IsAdmin ?? true;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsLogTab))]
-    public partial bool IsRulesTab { get; private set; } = true;
-
-    public bool IsLogTab => !IsRulesTab;
-
-    [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(EditCommand), nameof(DuplicateCommand), nameof(DeleteCommand))]
     public partial RuleRowViewModel? SelectedRule { get; set; }
 
@@ -254,12 +248,6 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
             active.Dispose();
         }
     }
-
-    [RelayCommand]
-    private void ShowRules() => IsRulesTab = true;
-
-    [RelayCommand]
-    private void ShowLog() => IsRulesTab = false;
 
     private bool CanChange => IsAdmin;
 

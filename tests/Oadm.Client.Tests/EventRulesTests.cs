@@ -12,6 +12,7 @@ using Oadm.Client.Dialogs;
 using Oadm.Client.EventRules;
 using Oadm.Client.Infrastructure;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Events;
 
 namespace Oadm.Client.Tests;
@@ -127,9 +128,38 @@ public sealed class EventRulesTests
         editor.AddScheduleCommand.Execute(null);
         var action = editor.RuleActions[0];
         action.SelectedAction = action.Actions.Single(a => a.Id == "oadm.outputs.set");
-        action.Targets.SelectedMode = action.Targets.Modes.Single(m => m.Value == DeviceSelectorMode.Devices);
-        Assert.Equal("Choose at least one device.", action.Problem);
-        action.Targets.Devices.Visible.First(d => d.Text.StartsWith("10.0.0.30", StringComparison.Ordinal)).IsChecked = true;
+        Assert.Equal("The device of the event", action.Targets.ChosenText); // default: no drop-down, the picker decides
+        action.Targets.SetChoice(DeviceChoice.Devices([]));
+        Assert.Equal("Choose at least one device or tag.", action.Problem);
+        editor.ShowPicker = picker =>
+        {
+            Assert.True(picker.HasChoices);
+            Assert.True(picker.IsChosen);
+            picker.SearchText = "10.0.0.30";
+            picker.SelectAllCommand.Execute(null);
+            return Task.FromResult(true);
+        };
+        await action.Targets.ChooseDevicesCommand.ExecuteAsync(null);
+        Assert.StartsWith("10.0.0.30", action.Targets.ChosenText, StringComparison.Ordinal);
+
+        // Tags and devices together: the tag's devices show checked with the tag, the choice keeps both.
+        var trigger2 = editor.Conditions[0].Selector;
+        editor.ShowPicker = picker =>
+        {
+            picker.IsChosen = true;
+            var tag = picker.Tags.First(t => t.Name == "Building A");
+            tag.IsChecked = true;
+            Assert.Contains(picker.Visible, d => d.CoveredBy == "Tag Building A" && d.Chosen && !d.CanToggle);
+            picker.SearchText = "10.0.0.30";
+            picker.SelectAllCommand.Execute(null);
+            return Task.FromResult(true);
+        };
+        await trigger2.ChooseDevicesCommand.ExecuteAsync(null);
+        Assert.StartsWith("Tag Building A and ", trigger2.ChosenText, StringComparison.Ordinal);
+        Assert.Equal(["Building A"], trigger2.ToSelector().Tags);
+        Assert.Single(trigger2.ToSelector().DeviceIds);
+        trigger2.SetChoice(DeviceChoice.AllDevices);
+        Assert.Equal("All devices", trigger2.ChosenText);
 
         // Pulse shows "Seconds"; Follow needs a rule that turns on and off (this one does).
         var seconds = action.Fields.Single(f => f.Key == "seconds");
@@ -210,23 +240,31 @@ public sealed class EventRulesTests
     }
 
     [Fact]
-    public async Task Five_thousand_devices_fill_the_pick_list_and_filter_fast()
+    public async Task Five_thousand_devices_are_chosen_in_the_shared_picker_fast()
     {
         var (api, _, _, _) = await CreateAsync();
         var store = new DeviceStore();
         store.Reset(Enumerable.Range(0, 5_000).Select(i => new Device { Id = Guid.NewGuid().ToString(), Address = $"10.1.{i / 256}.{i % 256}", Model = "P3265-V", Serial = i.ToString("X12", System.Globalization.CultureInfo.InvariantCulture) }));
         var watch = System.Diagnostics.Stopwatch.StartNew();
         var editor = new RuleEditorViewModel(api, await api.GetEventCatalogAsync(CancellationToken.None), null, store);
-        var list = editor.RuleActions[0].Targets.Devices;
-        list.SearchText = "10.1.3.";
-        foreach (var item in list.Visible)
+        var targets = editor.RuleActions[0].Targets;
+        DevicePickerViewModel? shown = null;
+        editor.ShowPicker = picker =>
         {
-            item.IsChecked = true;
-        }
+            shown = picker;
+            picker.IsChosen = true;
+            picker.SearchText = "10.1.3.";
+            picker.SelectAllCommand.Execute(null);
+            return Task.FromResult(true);
+        };
+        await targets.ChooseDevicesCommand.ExecuteAsync(null);
 
         watch.Stop();
-        Assert.Equal(256, list.Visible.Count);
-        Assert.Equal("256 devices chosen", list.SummaryText);
+        Assert.Equal(256, shown!.SelectedIds.Count);
+        Assert.Equal(256, targets.ChosenIds.Count);
+        Assert.StartsWith("256 devices: 10.1.3.", targets.ChosenText, StringComparison.Ordinal);
+        Assert.EndsWith("+253 more", targets.ChosenText, StringComparison.Ordinal);
+        Assert.Equal(256, targets.ToSelector().DeviceIds.Count);
         Assert.True(watch.ElapsedMilliseconds < 3_000, $"{watch.ElapsedMilliseconds} ms");
         api.Dispose();
     }
@@ -238,7 +276,7 @@ public sealed class EventRulesTests
         var done = await HeadlessSession.Shared.Dispatch(async () =>
         {
             var (api, _, _, page) = await CreateAsync();
-            var window = new Window { Width = 1500, Height = 640, Content = new Avalonia.Controls.Border { Padding = new Avalonia.Thickness(20), Child = new EventRulesView { DataContext = page } } };
+            var window = new Window { Width = 1500, Height = 900, Content = new Avalonia.Controls.Border { Padding = new Avalonia.Thickness(20), Child = new EventRulesView { DataContext = page } } };
             Oadm.Client.App.ApplyCrispText(window);
             window.Show();
             await TestSupport.WaitUntilAsync(() =>
@@ -250,15 +288,12 @@ public sealed class EventRulesTests
             Pump();
             var texts = window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text ?? string.Empty).ToList();
             Assert.Contains("Person in the yard: warning lamp", texts);
+            Assert.Contains("Event log", texts); // rules and the log on one page, like the Devices page and its tasks
             Capture(window, outDir, "event-rules-page.png");
-
-            page.ShowLogCommand.Execute(null);
-            Pump();
-            Capture(window, outDir, "event-rules-log.png");
             window.Close();
 
             var editor = await page.CreateEditorAsync(page.Rules.Single(r => r.Name == "Person in the yard: warning lamp").Id);
-            var dialog = new RuleEditorWindow { Height = 1500 };
+            var dialog = new RuleEditorWindow();
             dialog.Attach(editor!);
             Oadm.Client.App.ApplyCrispText(dialog);
             dialog.Show();
@@ -269,19 +304,52 @@ public sealed class EventRulesTests
             });
             Pump();
             Capture(dialog, outDir, "event-rules-editor.png");
+            editor!.NextCommand.Execute(null);
+            Pump();
+            Capture(dialog, outDir, "event-rules-editor-when.png");
+            editor.NextCommand.Execute(null);
+            Pump();
+            Capture(dialog, outDir, "event-rules-editor-then.png");
+            editor.NextCommand.Execute(null);
+            Pump();
+            Assert.True(editor.IsOverviewStep);
+            var overview = dialog.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text ?? string.Empty).ToList();
+            Assert.Contains("When", overview);
+            Assert.Contains("Then", overview);
+            Capture(dialog, outDir, "event-rules-editor-overview.png");
             dialog.Close();
 
             var empty = await page.CreateEditorAsync(null);
-            var errors = new RuleEditorWindow { Height = 900 };
+            var errors = new RuleEditorWindow();
             errors.Attach(empty!);
             Oadm.Client.App.ApplyCrispText(errors);
             errors.Show();
-            await empty!.SaveCommand.ExecuteAsync(null);
+            Assert.False(empty!.NextCommand.CanExecute(null)); // no name yet
+            empty.Name = "Door";
+            empty.NextCommand.Execute(null);
+            Assert.True(empty.IsWhenStep);
+            Assert.False(empty.NextCommand.CanExecute(null));
+            Assert.Equal("Choose an event.", empty.StepProblem);
+            empty.Conditions[0].ShowErrors = true;
             Pump();
             var errorTexts = errors.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text ?? string.Empty).ToList();
             Assert.Contains("Choose an event.", errorTexts);
-            Assert.Contains("Choose an action.", errorTexts);
             Capture(errors, outDir, "event-rules-editor-errors.png");
+
+            // The shared device picker with every option: the device of the event, all devices, tags and devices.
+            var devices = empty.DeviceList;
+            var tagged = devices.First(d => d.Tags.Count > 0);
+            var picker = new DevicePickerWindow(new DevicePickerViewModel(
+                devices,
+                DeviceChoice.Devices([devices.First(d => d.Tags.Count == 0).Id], [tagged.Tags[0]]),
+                DevicePickerOptions.Full("The device of the event")));
+            Oadm.Client.App.ApplyCrispText(picker);
+            picker.Show();
+            Pump();
+            var pickerTexts = picker.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text ?? string.Empty).ToList();
+            Assert.Contains("Tag " + tagged.Tags[0], pickerTexts);
+            Capture(picker, outDir, "device-picker-choices.png");
+            picker.Close();
             errors.Close();
             api.Dispose();
             return true;

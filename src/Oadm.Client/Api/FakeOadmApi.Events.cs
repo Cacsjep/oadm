@@ -446,9 +446,19 @@ public sealed partial class FakeOadmApi
     {
         DeviceSelectorMode.All => "all devices",
         DeviceSelectorMode.EventDevice => sameDevice,
-        DeviceSelectorMode.Tags => (selector.Tags.Count == 1 ? "tag " : "tags ") + string.Join(", ", selector.Tags),
-        _ when selector.DeviceIds.Count == 1 && _devices.FirstOrDefault(d => d.Id == selector.DeviceIds[0].ToString()) is { } device
-            => $"{device.Address} ({device.Model.Replace("AXIS ", string.Empty, StringComparison.Ordinal)})",
-        _ => $"{selector.DeviceIds.Count} devices",
+        _ => FakeChoiceText(selector),
     };
+
+    private string FakeChoiceText(DeviceSelector selector)
+    {
+        var tags = selector.Tags.Count == 0 ? null : (selector.Tags.Count == 1 ? "tag " : "tags ") + string.Join(", ", selector.Tags);
+        var devices = selector.DeviceIds.Count switch
+        {
+            0 => null,
+            1 when _devices.FirstOrDefault(d => d.Id == selector.DeviceIds[0].ToString()) is { } device
+                => $"{device.Address} ({device.Model.Replace("AXIS ", string.Empty, StringComparison.Ordinal)})",
+            _ => $"{selector.DeviceIds.Count} devices",
+        };
+        return tags is not null && devices is not null ? $"{tags} and {devices}" : tags ?? devices ?? "no devices";
+    }
 }

@@ -69,7 +69,7 @@ public static class RuleTexts
         return text + " on " + Selector(action.Targets, deviceName, sameDevice: "the event's device");
     }
 
-    /// <summary>"all devices", "10.0.0.70", "3 devices", "tag Building A", "tags A, B".</summary>
+    /// <summary>"all devices", "10.0.0.70", "3 devices", "tag Building A", "tags A, B", "tag Building A and 2 devices".</summary>
     public static string Selector(DeviceSelector selector, Func<Guid, string?> deviceName, string sameDevice)
     {
         ArgumentNullException.ThrowIfNull(selector);
@@ -78,10 +78,20 @@ public static class RuleTexts
         {
             DeviceSelectorMode.All => "all devices",
             DeviceSelectorMode.EventDevice => sameDevice,
-            DeviceSelectorMode.Tags => (selector.Tags.Count == 1 ? "tag " : "tags ") + string.Join(", ", selector.Tags),
-            _ when selector.DeviceIds.Count == 1 => deviceName(selector.DeviceIds[0]) ?? "1 device",
+            _ => Choice(selector, deviceName),
+        };
+    }
+
+    private static string Choice(DeviceSelector selector, Func<Guid, string?> deviceName)
+    {
+        var tags = selector.Tags.Count == 0 ? null : (selector.Tags.Count == 1 ? "tag " : "tags ") + string.Join(", ", selector.Tags);
+        var devices = selector.DeviceIds.Count switch
+        {
+            0 => null,
+            1 => deviceName(selector.DeviceIds[0]) ?? "1 device",
             _ => string.Create(CultureInfo.InvariantCulture, $"{selector.DeviceIds.Count} devices"),
         };
+        return tags is not null && devices is not null ? $"{tags} and {devices}" : tags ?? devices ?? "no devices";
     }
 
     /// <summary>"Mon-Fri 08:00-18:00", "Every day 22:00-06:00", "Mon, Wed 08:00-12:00".</summary>

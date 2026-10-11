@@ -183,7 +183,7 @@ public sealed class RuleEngineTests
         rig.Publisher.SetState(EventRulesRig.Blur, camera.Id, true);
         await rig.SettleAsync();
         Assert.Equal(3, rig.OnDevice.Edges.Count);
-        Assert.Contains(await rig.LogLinesAsync(), l => l.Kind == EventLogKind.Rule && l.Result == EventLogResult.Skipped && l.Message.Contains("less than 10 s", StringComparison.Ordinal));
+        Assert.Contains(await rig.LogLinesAsync(), l => l.Kind == EventLogKind.Rule && l.Result == EventLogResult.Skipped && l.Message.Contains("dead time (10 s", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -409,6 +409,24 @@ public sealed class RuleEngineTests
         await rig.Devices.UpdateAsync(camera.Id, d => d.Tags = ["Building A"], CancellationToken.None);
         await rig.SettleAsync();
         Assert.Equal([(ActionEdge.TurnedOn, (Guid?)camera.Id)], rig.OnDevice.Edges);
+    }
+
+    [Fact]
+    public async Task AChoiceOfTagsAndDevicesSelectsBoth()
+    {
+        await using var rig = await EventRulesRig.StartAsync();
+        var tagged = await rig.AddDeviceAsync("10.0.0.1");
+        var listed = await rig.AddDeviceAsync("10.0.0.2");
+        var other = await rig.AddDeviceAsync("10.0.0.3");
+        await rig.Devices.UpdateAsync(tagged.Id, d => d.Tags = ["Building A"], CancellationToken.None);
+        rig.Publisher.ReplaceStates(EventRulesRig.Blur, [tagged.Id, listed.Id, other.Id]);
+        var rule = EventRulesRig.Rule(EventRulesRig.Blur, rig.OnEventDevice());
+        rule.Conditions[0].Devices = new DeviceSelector { Mode = DeviceSelectorMode.Devices, DeviceIds = [listed.Id], Tags = ["building a"] };
+        await rig.SaveAsync(rule);
+
+        Assert.Equal(new[] { tagged.Id, listed.Id }.Order(), rig.OnDevice.Edges.Select(e => e.Device!.Value).Order()); // not the other device
+        Assert.True(new DeviceSelector { Mode = DeviceSelectorMode.Devices }.IsEmptyChoice);
+        Assert.True(rule.Conditions[0].Devices.ChoiceMatches(tagged.Id, ["BUILDING A"]));
     }
 
     [Fact]

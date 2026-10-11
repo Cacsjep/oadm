@@ -8,8 +8,8 @@
         Width="1040" Height="820" MinWidth="640" MinHeight="520"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="{StaticResource Oadm.TitleBarHeight}">
+        CanResize="False"
+        WindowDecorations="BorderOnly">
   <Grid RowDefinitions="Auto,Auto,0,3*,16,2*,Auto">
     <ui:DialogTitleBar Text="{Binding Title}" />
 

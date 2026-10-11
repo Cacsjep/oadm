@@ -9,13 +9,12 @@
         WindowStartupLocation="CenterScreen"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="{StaticResource Oadm.TitleBarHeight}">
-  <!-- A plugin page in a window of its own (rail entry, "Open in new window"): the main window's title bar and page
-       padding around the same page view. -->
+  <!-- A plugin page in a window of its own (rail entry, "Open in new window"): an empty title bar (the page header names
+       the page; user decision 2026-10-11) and the page padding around the same page view. The window title stays for the
+       task bar. -->
   <Grid RowDefinitions="Auto,*">
     <Border Grid.Row="0" Height="{StaticResource Oadm.TitleBarHeight}" Background="{StaticResource Oadm.WindowBackgroundBrush}"
-            chrome:WindowDecorationProperties.ElementRole="TitleBar">
-      <TextBlock Classes="appName" Text="{Binding WindowTitle}" Margin="20,0,0,0" VerticalAlignment="Center" />
-    </Border>
+            chrome:WindowDecorationProperties.ElementRole="TitleBar" />
     <shell:CorePluginPageView Grid.Row="1" Margin="{StaticResource Oadm.PagePadding}" />
   </Grid>
 </Window>

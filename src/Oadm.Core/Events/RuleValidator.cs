@@ -94,12 +94,12 @@ public static class RuleValidator
 
         if (rule.CooldownSeconds is < 0 or > 3600)
         {
-            return "The wait between two runs must be 0 to 3600 seconds.";
+            return "The dead time must be 0 to 3600 seconds.";
         }
 
         if (rule.MaxRunsPerMinute is < 1 or > 1000)
         {
-            return "The runs per minute must be 1 to 1000.";
+            return "The flood limit must be 1 to 1000 runs per minute.";
         }
 
         return null;
@@ -163,8 +163,7 @@ public static class RuleValidator
         {
             DeviceSelectorMode.EventDevice when index == 0 => $"{position}: choose which devices.",
             DeviceSelectorMode.EventDevice when trigger is not { DeviceScope: true } => $"{position}: \"the same device\" needs a device event as the first condition.",
-            DeviceSelectorMode.Devices when condition.Devices.DeviceIds.Count == 0 => $"{position}: choose at least one device.",
-            DeviceSelectorMode.Tags when condition.Devices.Tags.Count == 0 => $"{position}: choose at least one tag.",
+            DeviceSelectorMode.Devices or DeviceSelectorMode.Tags when condition.Devices.IsEmptyChoice => $"{position}: choose at least one device or tag.",
             _ => null,
         };
     }
@@ -199,8 +198,7 @@ public static class RuleValidator
             var targetProblem = action.Targets.Mode switch
             {
                 DeviceSelectorMode.EventDevice when !trigger.DeviceScope => "the trigger is not about a device; choose the devices.",
-                DeviceSelectorMode.Devices when action.Targets.DeviceIds.Count == 0 => "choose at least one device.",
-                DeviceSelectorMode.Tags when action.Targets.Tags.Count == 0 => "choose at least one tag.",
+                DeviceSelectorMode.Devices or DeviceSelectorMode.Tags when action.Targets.IsEmptyChoice => "choose at least one device or tag.",
                 _ => null,
             };
             if (targetProblem is not null)

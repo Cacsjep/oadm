@@ -123,6 +123,8 @@ Developer commands: one entry point per shell at the repo root, `./manage.sh` (b
 `.\manage.ps1` (PowerShell 5.1/7), verb + target (`build`, `run`, `test`, `publish`, `package`, `clean`,
 `info`), `manage <verb> help` at every level. Both read their help texts from
 `scripts/manage-help.txt`; any new verb, target or option goes into both scripts and that file.
+The plugins (`build`, `run` server / client) are built in one MSBuild run in parallel through a generated solution filter
+`artifacts/plugins.slnf` (every `plugins/*/*.csproj`, which must be in `Oadm.sln`).
 Native AOT and trimming are deliberately NOT used for the host apps: AOT cannot load managed
 plugin assemblies at runtime and trimming removes framework APIs plugins rely on. Small
 helper tools without plugin loading may use Native AOT.
@@ -147,7 +149,8 @@ src/
   Oadm.Sdk.Client/     client-side plugin SDK: dialog/page/toolbar interfaces, ITaskDialogContext,
                        IToolbarContext, shared controls (Controls/: IconLabel, SearchBox, OadmIcon,
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow,
-                       ToolbarButton, ToolbarSeparator, PasswordBox, MessageWindow, FormField),
+                       ToolbarButton, ToolbarSeparator, PasswordBox, MessageWindow, FormField, DevicePickerWindow,
+                       GroupedChoice),
                        form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection,
                        Collections/RangeObservableCollection (bulk list of the host grids and plugin pages)
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)
@@ -639,7 +642,8 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   expand/collapse toggle at the bottom of the rail; expanded ~220 px with icon + label.
   Selected item as rounded pill `#2A2A2A`. Plugin pages (not host pages, user decision 2026-10-10) have a context menu
   **Open in new window** on their rail entry: the plugin creates another, independent view (own context, streams, state)
-  shown in `Shell/PluginWindow` (title bar "<page> · OADM", page padding, not modal, as many as wanted); the windows close
+  shown in `Shell/PluginWindow` (an empty title bar: the page header names the page, user decision 2026-10-11; window title
+  "<page> · OADM" for the task bar; page padding, not modal, as many as wanted); the windows close
   with the main window, on logout and when the plugin is turned off (`MainWindowViewModel.PluginWindowRequested` /
   `ClosePluginWindowsRequested`; tests `PluginWindowTests`, headless `client-plugin-window.png`). Entries top: Devices, then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (VAPIX
@@ -671,6 +675,11 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   show no progress bar. Count badges stay a small solid violet pill.
 - Window chrome: title bar and caption buttons are 32 px high (caption buttons 46x32), exactly
   like the Windows default. Main window minimum size 1800x720 (user decision 2026-10-08).
+- Dialogs (user decision 2026-10-11, every dialog window incl. `ui:MessageWindow`, the device picker and the login
+  window): no system title bar (`WindowDecorations="BorderOnly"`); the first row is `ui:DialogTitleBar`, the title as a
+  heading and an X top right that closes the window, aligned with the content. Modal, not movable and fixed size
+  (`CanResize="False"`: a resizable border-only window shows a white resize strip on top on Windows), like a dialog on a
+  web page. The main window and plugin windows keep the custom title bar.
 - Text fields, number fields and select fields: text vertically centered (measured; select
   fields need the Inter correction, text boxes do not).
 - Icons: one outline icon set (Fluent System Icons / Lucide geometry), monochrome
@@ -910,7 +919,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 | Simple mode | Conditions must all hold. The first is the trigger ("When": an event, devices All / chosen / tags); further ones ("And") are stateful events (on "the same device", or "any" of All / chosen / tags) or schedules (weekdays + from / to in server time, over midnight allowed). Only the trigger may be one-shot. Advanced AND / OR later on the same model. |
 | Rule state | All events stateful: the rule is on per subject (the trigger's device, or the server) while all conditions hold. One-shot trigger: the rule fires while the others hold. |
 | Actions | One to five per rule, run in the listed order on each edge, each on its targets in parallel (16 at once for all rules, 30 s per run); a failure is logged and the next one runs; no retry. Targets: the device of the event, chosen devices, devices with tags, all devices. Actions on chosen / tag / all devices run when the first subject turns on and when the last one turns off; actions on the event's device and actions without devices run per subject. |
-| Limits | Per rule, editable: wait between runs per device (default 10 s), runs per minute (default 60); a suppressed "turns on" also suppresses its "turns off"; "Rule paused" logged once a minute. |
+| Limits | Per rule, editable (user decision 2026-10-11, security names): **Dead time** per device (default 10 s between two "turns on"), **Flood limit** (default 60 runs per minute for the whole rule); a suppressed "turns on" also suppresses its "turns off"; "Rule paused" logged once a minute. |
 | Changes | Turning off, changing or deleting a rule that is on runs its off actions first; a changed rule is then evaluated fresh. A removed device goes off. A plugin turned off: its events go off, rules show "Not available: <plugin> is turned off". |
 | Restart | The subjects each rule was on for are stored (`EventRuleStates`); a rule is evaluated once every event type it uses is ready (or after 2 minutes); only real differences run actions. |
 | Roles | Administrators create, change, copy, turn on / off and delete rules (audited "Created / Changed / Deleted / Turned ... event rule"); operators read rules and the log. |
@@ -953,15 +962,25 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   have defaults, optional second command when the rule turns off, "Allow dangerous commands" required for dangerous ones;
   device safety like a rollout (cached API list, fresh one before a write).
 - **Client**: rail page **Event rules** (key `HostPages.EventRules`, icon `zap`, group Automation before the plugin pages of
-  that group; `EventRulesViewModel` + `EventRulesView`): segmented tabs **Rules** (toolbar New rule, Edit, Duplicate,
-  Delete (red, confirmed); grid On check box (administrators), Name, When, Then, State chip (On ok, waiting accent, problem
+  that group; `EventRulesViewModel` + `EventRulesView`): rules on top, the **Event log** card below with a splitter, like the Devices
+  page and its tasks (user decision 2026-10-11, no tabs). **Rules** (toolbar New rule first, Edit, Duplicate,
+  Delete (red, confirmed); search on the right; grid On check box (administrators), Name, When, Then, State chip (On ok, waiting accent, problem
   warning), Last run; double click edits; search; status "3 rules · 2 turned on · 1 active now"; live through
-  `WatchRules`) and **Event log** (Refresh, search, virtualized grid Time, Type, What, Device, Rule, Result chip + message;
-  newest 10,000, live through `WatchLog`). Rule dialog `RuleEditorWindow` (`RuleEditorViewModel`, cards Rule (name, Turned
-  on), Conditions ("When" / "And" rows, Add event, Add schedule, day toggles), Actions ("Then" rows: action, On (targets),
-  the settings form, move up / down, remove; Add action up to five), Limits); device and tag lists are searchable
-  virtualized check lists (`PickListView`, chosen ones first); errors below their field; Save disabled with the first
-  problem as tooltip; a server refusal below the cards. Fake mode (`FakeOadmApi.Events.cs`): catalog, three sample rules,
+  `WatchRules`) and **Event log** (title, Refresh, search, virtualized grid Time, Type, What, Device, Rule, Result chip + message;
+  newest 10,000, live through `WatchLog`). Rule dialog `RuleEditorWindow` (`RuleEditorViewModel`), a wizard (user decision 2026-10-11) with
+  the steps as a segmented switch (a step opens when every step before it is complete): **1 Rule** (Name and Turned on in
+  one row, Limits), **2 When** (Conditions: "When" / "And" rows, Add event, Add schedule, day toggles), **3 Then** (Actions:
+  "Then" rows: action, On (targets), the settings form, move up / down, remove; Add action up to five), **4 Overview** (one
+  short line per part: Name, State, When, And, Then, Limits; Save). Footer Back / Next (disabled with the step's first
+  problem as tooltip) and Save on the overview. The devices of a condition or an action have no mode drop-down (user decision 2026-10-11): one purple
+  button that says what is chosen ("Choose devices" while nothing is, else "Selected devices: All" / "Selected devices: Tag
+  Building A and 3 devices", `DeviceSelectorTexts.Brief`; the addresses as tooltip; the same button in the trigger editor)
+  opens the shared `DevicePickerWindow` with every option (`DevicePickerOptions.Full`): "The same device" / "The
+  device of the event", All devices, or chosen devices and tags together; the event's and the action's description sit in an info icon right of their
+  select; the When / And / Then rows are outlined (`Border.ruleItem`, no fill). Server: `DeviceSelectorMode.Devices` (and the older `Tags`) = the listed devices
+  plus every device with one of the tags (`DeviceSelector.ChoiceMatches`, `IsEmptyChoice`: "choose at least one device
+  or tag"). The limits are **Dead time (s)** and **Flood limit (runs per minute)** with their explanation in an info icon
+  (`FormField.Info`); errors below their field; a server refusal below the overview. Fake mode (`FakeOadmApi.Events.cs`): catalog, three sample rules,
   a sample log.
 - **Tests**: `tests/Oadm.Core.Tests/Events` (engine edges per device and aggregate, same / any device conditions, schedule
   with a fake clock, one-shot triggers, cooldown and runs per minute, rule off / change / delete, built-in device and
@@ -969,7 +988,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   refused device status, server-wide events, tags, secrets, copy, validation, summaries, log retention, schedules over
   midnight), `tests/Oadm.Plugins.Outputs.Tests`, `RunCommandActionTests` (VAPIX Commander),
   `tests/Oadm.Client.Tests/EventRulesTests` (page, roles, log, dialog, 5,000 devices; headless `event-rules-page.png`,
-  `event-rules-log.png`, `event-rules-editor.png`, `event-rules-editor-errors.png`).
+  `event-rules-editor.png`, `-when.png`, `-then.png`, `-overview.png`, `event-rules-editor-errors.png`).
 
 # Tasks
 
@@ -2119,14 +2138,14 @@ device; no events, no actions, no switching. Details in its `README.md`.
 ## Device triggers (core plugin)
 
 `plugins/Oadm.Plugins.DeviceTriggers` (+ `.Client`), id `oadm.device-triggers`, rail page **Device triggers** (group
-Automation, icon `bell`), **off by default**. Spec and device research: `docs/specs/device-triggers.md`; details: plugin
+Automation, icon `flame`), **off by default**. Spec and device research: `docs/specs/device-triggers.md`; details: plugin
 `README.md`. User decisions 2026-10-10:
 
 | Topic | Decision |
 |---|---|
 | What | A trigger = an event that the chosen devices offer (from the device's own event list: I/O ports, virtual inputs, temperature, storage, Object Analytics scenarios, other apps), optionally narrowed per source item (port, disk, channel, ...) to one value or Any. Every trigger is an event of the event rules. |
-| Event list | Read live from the devices every time a trigger is created or edited, never cached (an app that is stopped or removed has no events). The editor offers the events all chosen devices have; a device without the chosen event stays listed with the reason and blocks Save. |
-| Devices | Chosen devices only (no tags); devices removed from OADM leave the trigger. |
+| Event list | Read live from the devices every time a trigger is created or edited, never cached (an app that is stopped or removed has no events). The editor offers every event any of its devices offers (2026-10-11); a device that was read and lacks the chosen event stays listed with the reason and blocks Save; a device that cannot be read now stays and is used anyway. |
+| Devices | User decision 2026-10-11: the shared device picker with All devices, tags and single devices together (stored as `AllDevices`, `Tags`, `DeviceIds`). The plugin resolves the devices after every change and every 30 s (`ResolveInterval`): new and newly tagged devices that can send events join; a device of a tag or of all devices that does not offer the event is left out quietly ("Does not offer this event", no "connection lost"); a chosen device without the event blocks Save. Devices removed from OADM leave the trigger. |
 | Stream | WebSocket event stream (VAPIX `event-streaming-over-websocket`), one permanent connection per device for all its turned-on triggers, also without a rule. |
 | State | On/off events: on while at least one matching source is on. One-shot events stay one-shot. The event's values are placeholders in actions. No value comparisons in v1. |
 | Connection lost | Every trigger has a second event "&lt;Trigger&gt;: connection lost" per device: on after 30 s without events (connection, login, event no longer on the device), off with the next report. During a problem the trigger keeps its last state. |
@@ -2150,10 +2169,21 @@ Automation, icon `bell`), **off by default**. Spec and device research: `docs/sp
   events (the trigger shows "The event is no longer on the device").
 - **Page** (own cards): triggers (On, Name, Event, Devices, State "On for 1 of 3 · 1 connection lost", Last event; New
   trigger, Edit, Duplicate, Delete) and the devices of the selected trigger (Connection chip with the problem, State, Last
-  event), live through the plugin's `changed` events. Dialog `TriggerEditorWindow`: Name, Turned on, devices (virtualized,
-  search, **Read events** with progress, per device "42 events" / the error / "Does not offer this event"; devices
-  without the stream API greyed), Event (what all chosen devices offer, "Turns on and off" / "Happens once"), one select
-  per source item (Any or a value); Save disabled with the first problem as tooltip.
+  event), live through the plugin's `changed` events. Dialog `TriggerEditorWindow` (user decisions 2026-10-11; fixed size, no device count): Name and
+  Turned on in one row; Devices card with **Choose devices** (the shared `DevicePickerWindow`: add, and remove by
+  unchoosing; a new trigger has no devices; devices without the stream API are greyed there with the reason) and only the
+  trigger's devices (virtualized: Address, Model, Events "42 events" / "Does not offer this event" / warning "Not read:
+  <reason>. It stays in the trigger."). OK in the picker reads the event lists of the added devices at once (the server 16
+  at a time, progress row); editing a trigger reads all its devices. User decisions 2026-10-11: the Event select offers
+  every event any device offers (not only the common ones); a device that cannot be read now (offline, login refused)
+  stays and does not block Save (OADM connects once it answers; the event of a trigger being edited stays even when no
+  device can be read); a device that was read and lacks the chosen event blocks Save. Event (`ComboBox.grouped`, fixed width
+  (the open list keeps the width of the box, long names wrap and the list scrolls), grouped like the device's own event page: every app event (topics below
+  `CameraApplicationPlatform`, `AcapOnvifEvent` or `tns1:RuleEngine`: Object Analytics, Video Motion Detection incl. VMD 3,
+  Image Health Analytics, ...)
+  in one group "Applications", otherwise the section below the top level ("Device status", "Input ports"); the event's own
+  name below; "Turns on and off" /
+  "Happens once"), one select per source item (Any or a value); Save disabled with the first problem as tooltip.
 - **Fake mode** (`FakeOadmApi.DeviceTriggers.cs`): three sample triggers, event lists per device kind.
 - **Tests**: `tests/Oadm.Plugins.DeviceTriggers.Tests` (fake camera speaking the WebSocket protocol in memory; page and
   dialog; headless `device-triggers-page.png`, `device-triggers-editor.png`; hardware read test and the opt-in write test
@@ -2639,7 +2669,19 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   `Oadm.Code.*Brush`; logic in `CodeText` without UI; editable bodies stay `TextBox.code`), `FormField` (every labeled form row: label,
   input, error or hint below the input; classes `wide` and `inline`), `StatCard` (every monitoring count card: status icon +
   title, large count, small detail line; `IsOk` / `IsWarning` / `IsError` color icon and count, set only while the count
-  needs attention). Before
+  needs attention), `DevicePickerWindow` + `DevicePickerViewModel` (every "choose devices" dialog, user decision 2026-10-11:
+  every managed device in address order, search over address, model, MAC and host name, Select all / Select none for what the
+  search shows, the count "12 of 4,812 devices chosen", chosen devices can be unchosen, devices that cannot be used greyed
+  with the reason; virtualized, 5,000 devices tested; `DevicePickerWindow.ShowAsync` returns the ids or null; with
+  `DevicePickerOptions` a left column offers the device of the event, All devices, or Chosen devices and tags with the tag
+  list (the devices of a chosen tag show checked with "Tag <name>"), `ShowChoiceAsync` / `DevicePickerViewModel.Choice`
+  return a `DeviceChoice` {Kind All / EventDevice / Chosen, DeviceIds, Tags}) and
+  `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
+  puts one right of the input instead of a long hint, user decision 2026-10-11), `WizardSteps` + `WizardStepItem` (the step
+  row of every wizard: numbered dot and name, thin line between, current accent, done with a check, a step opens when
+  every step before it is complete; theme `Button.wizardStep`, `Border.wizardDot`, `TextBlock.wizardLabel`,
+  `Border.wizardLine`), `GroupedChoice` with `ComboBox.grouped` (every grouped select field: grey group headers that cannot be chosen, the
+  choices indented below them, like the event list of a device). Before
   writing new XAML, check both `Controls/` folders and reuse; if a second place needs something
   that exists only inline, extract it into a control first.
 - Plugin projects copy their output to `artifacts/plugins/<id>/` after every build. A running
@@ -2653,8 +2695,9 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   table). Labeled rows are `ui:FormField` (label, input, hint or error below the input); the error itself is Avalonia's
   `DataValidationErrors` styled in `OadmTheme.axaml` from `INotifyDataErrorInfo`. Form view models derive from
   `Oadm.Sdk.Client.Validation.ValidatingViewModel` (rules per property on its `FormValidator`: `Rule`, `Rules`,
-  `ShowAll`, `Reset`, `SetServerError`); errors show once the field was edited or a submit was tried, never on an
-  untouched form; submit buttons stay disabled while any error exists and their tooltip says why. Usage:
+  `ShowAll`, `Reset`, `SetServerError`); errors show once the field was edited, the user left it (`FormField` on lost focus tells
+  `IFormFieldVisits.FieldLeft` the bound property, user decision 2026-10-11: an empty required field says so) or a submit was
+  tried, never on an untouched form; submit buttons stay disabled while any error exists and their tooltip says why. Usage:
   `plugins/README.md` "Validation".
 - **HARD RULE, scale to thousands of devices.** A site can have 1000+ cameras. Every list of
   devices, discovered devices, tasks, sources or tiles is virtualized (DataGrid, virtualizing
@@ -2699,7 +2742,8 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
 - Button and menu labels never end with "..." / "…", also when they open a dialog or a file picker ("Back up", "Import CA",
   "Choose file"). Actions inside a card are filled buttons (`Button.secondary` with `ui:IconLabel`, primary for the main
   one); the flat `ui:ToolbarButton` is only for toolbars.
-- One accent button per view: while an inline editor is open, its button (Retry, Create tag) is the primary one and the
+- One accent button per view (exception, user decision 2026-10-11: the purple "Selected devices" button of the event rule and
+  trigger dialogs): while an inline editor is open, its button (Retry, Create tag) is the primary one and the
   footer's main button turns secondary. A disabled primary keeps its role: the accent at about 35 % with dimmed text.
 - **Destructive actions are red** (layout review 2026-10-08): `Button.danger` (red fill, white text) instead of primary for
   buttons that delete or remove (Remove users, Delete certificates), `Button.toolbar.danger` for flat toolbar and icon

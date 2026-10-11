@@ -41,7 +41,7 @@ public sealed record RuleRuntimeStatus(Guid RuleId, int ActiveCount, string? Wai
 /// <item>A stateful rule turns on for a subject when all conditions hold and off when one ends; a stateless trigger
 /// fires while the others hold. Actions on "the device of the event" (and actions without devices) run per subject;
 /// actions on chosen / tag / all devices run when the first subject turns on and when the last one turns off.</item>
-/// <item>Limits per rule: a cooldown per subject between two "turns on", and runs per minute. A suppressed "turns on"
+/// <item>Limits per rule: the dead time per subject between two "turns on", and the flood limit (runs per minute). A suppressed "turns on"
 /// also suppresses its "turns off".</item>
 /// <item>Restart: the subjects a rule was on for are stored. A rule is evaluated once every event type it uses is ready
 /// (its source reported with ReplaceStates, or the source is off, or <see cref="RuleEngineOptions.SourceReadyTimeout"/>
@@ -572,8 +572,8 @@ public sealed partial class RuleEngine : IAsyncDisposable
     private bool Selects(DeviceSelector selector, Guid device) => selector.Mode switch
     {
         DeviceSelectorMode.All => _devices.ContainsKey(device),
-        DeviceSelectorMode.Devices => selector.DeviceIds.Contains(device),
-        DeviceSelectorMode.Tags => _devices.TryGetValue(device, out var info) && selector.Tags.Any(info.Tags.Contains),
+        DeviceSelectorMode.Devices or DeviceSelectorMode.Tags =>
+            selector.DeviceIds.Contains(device) || (selector.Tags.Count > 0 && _devices.TryGetValue(device, out var info) && selector.Tags.Any(info.Tags.Contains)),
         _ => false,
     };
 
@@ -671,7 +671,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
         var cooldown = TimeSpan.FromSeconds(runtime.Definition.CooldownSeconds);
         if (cooldown > TimeSpan.Zero && runtime.LastOnEdge.TryGetValue(subject, out var last) && now - last < cooldown)
         {
-            return string.Create(CultureInfo.InvariantCulture, $"Skipped: less than {runtime.Definition.CooldownSeconds} s after the last run");
+            return string.Create(CultureInfo.InvariantCulture, $"Skipped: dead time ({runtime.Definition.CooldownSeconds} s after the last run)");
         }
 
         while (runtime.Runs.Count > 0 && now - runtime.Runs.Peek() >= TimeSpan.FromMinutes(1))
@@ -685,10 +685,10 @@ public sealed partial class RuleEngine : IAsyncDisposable
             {
                 runtime.LastPauseLog = now;
                 _log.Write(EventLogKind.System, EventLogResult.Skipped, "Rule paused", ruleId: runtime.Id, rule: runtime.Name,
-                    message: string.Create(CultureInfo.InvariantCulture, $"Too many events: at most {runtime.Definition.MaxRunsPerMinute} runs per minute"));
+                    message: string.Create(CultureInfo.InvariantCulture, $"Flood limit: at most {runtime.Definition.MaxRunsPerMinute} runs per minute"));
             }
 
-            return "Skipped: too many events";
+            return "Skipped: flood limit";
         }
 
         runtime.Runs.Enqueue(now);
@@ -1044,7 +1044,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
             Types = Definition.Conditions.Where(c => c.Kind == RuleConditionKind.Event && c.EventTypeId is not null)
                 .Select(c => c.EventTypeId!).ToHashSet(StringComparer.OrdinalIgnoreCase);
             HasSchedule = Definition.Conditions.Any(c => c.Kind == RuleConditionKind.Schedule);
-            UsesTags = Definition.Conditions.Any(c => c.Devices.Mode == DeviceSelectorMode.Tags);
+            UsesTags = Definition.Conditions.Any(c => c.Devices.IsChoice && c.Devices.Tags.Count > 0);
         }
 
         public RuleDefinition Definition { get; }

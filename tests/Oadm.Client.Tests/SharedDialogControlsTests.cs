@@ -1,7 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
-using Avalonia.Controls.Chrome;
 using Avalonia.Media;
 using Avalonia.Threading;
 
@@ -38,7 +37,9 @@ public sealed class SharedDialogControlsTests
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
-            Assert.Equal(WindowDecorationsElementRole.TitleBar, WindowDecorationProperties.GetElementRole(title));
+            // Dialog header: the title as a heading and an X that closes the window (no system title bar, does not move).
+            var titleGrid = Assert.IsType<Grid>(title.Child);
+            Assert.Contains("cardTitle", titleGrid.Children.OfType<TextBlock>().Single().Classes);
             Assert.False(header.Children.OfType<TextBlock>().Single(t => t.Classes.Contains("secondary")).IsVisible);
 
             // Status = colored icon + plain text, no chip border.
@@ -66,7 +67,8 @@ public sealed class SharedDialogControlsTests
             Assert.True(footer.CancelButton.IsCancel);
             footer.CancelButton.Command!.Execute(null);
             Assert.True(cancelled);
-            window.Close();
+            titleGrid.Children.OfType<Button>().Single().RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.False(window.IsVisible);
             return Task.CompletedTask;
         }, CancellationToken.None);
     }

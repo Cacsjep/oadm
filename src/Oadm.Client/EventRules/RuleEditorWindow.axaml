@@ -5,32 +5,46 @@
         x:Class="Oadm.Client.EventRules.RuleEditorWindow"
         x:DataType="vm:RuleEditorViewModel"
         Title="{Binding Title}"
-        Width="820" Height="860" MinHeight="500"
+        Width="820" Height="760"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
-  <!-- Several sections: title bar, cards (rule, conditions, actions, limits) in a scroll area, footer. -->
-  <Grid RowDefinitions="Auto,*,Auto">
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- A wizard (user decision 2026-10-11): title bar, the step switch, one step at a time in a scroll area, footer with
+       Back / Next, Save on the overview. -->
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
 
-    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+    <ui:WizardSteps Grid.Row="1" ItemsSource="{Binding Steps}" Margin="12,0,16,12" />
+
+    <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
       <StackPanel Spacing="{DynamicResource Oadm.Gap}" Margin="16,0,16,8">
 
-        <!-- Rule -->
-        <Border Classes="card">
-          <StackPanel Classes="form">
-            <ui:FormField Label="Name">
-              <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="64" />
-            </ui:FormField>
-            <ui:FormField>
-              <CheckBox Content="Turned on" IsChecked="{Binding Enabled}" />
-            </ui:FormField>
+        <!-- 1 Rule: name, turned on, limits against event storms -->
+        <Border Classes="card" IsVisible="{Binding IsRuleStep}">
+          <StackPanel Spacing="16">
+            <StackPanel Orientation="Horizontal" Spacing="24">
+              <ui:FormField Label="Name">
+                <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="64" />
+              </ui:FormField>
+              <CheckBox Content="Turned on" IsChecked="{Binding Enabled}" VerticalAlignment="Top" />
+            </StackPanel>
+            <StackPanel Classes="form">
+              <TextBlock Classes="sectionTitle" Text="Limits" />
+              <ui:FormField Label="Dead time (s)" InputWidth="120"
+                            Info="After the rule ran for a device, that device is ignored for this many seconds. Stops a flickering event from running the actions again and again.">
+                <TextBox Text="{Binding Cooldown}" />
+              </ui:FormField>
+              <ui:FormField Label="Flood limit (runs per minute)" InputWidth="120"
+                            Info="At most this many runs per minute for all devices together. Further events are skipped and noted in the event log.">
+                <TextBox Text="{Binding MaxRuns}" />
+              </ui:FormField>
+            </StackPanel>
           </StackPanel>
         </Border>
 
-        <!-- Conditions: "When" (the trigger) and any number of "And" -->
-        <Border Classes="card">
+        <!-- 2 When: the trigger and any number of "And" -->
+        <Border Classes="card" IsVisible="{Binding IsWhenStep}">
           <StackPanel Spacing="12">
             <ui:CardHeader Title="Conditions" Description="{Binding StateHint}" />
             <ItemsControl ItemsSource="{Binding Conditions}">
@@ -45,9 +59,11 @@
                       <StackPanel Grid.Column="1" Spacing="8">
                         <!-- Event -->
                         <StackPanel Spacing="8" IsVisible="{Binding IsEvent}">
-                          <ComboBox ItemsSource="{Binding EventTypes}" SelectedItem="{Binding SelectedEventType}" PlaceholderText="Choose an event"
-                                    HorizontalAlignment="Stretch" />
-                          <TextBlock Classes="secondary" Text="{Binding EventDescription}" IsVisible="{Binding EventDescription, Converter={x:Static ObjectConverters.IsNotNull}}" TextWrapping="Wrap" />
+                          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                            <ComboBox ItemsSource="{Binding EventTypes}" SelectedItem="{Binding SelectedEventType}" PlaceholderText="Choose an event"
+                                      HorizontalAlignment="Stretch" />
+                            <ui:InfoIcon Grid.Column="1" Text="{Binding EventDescription}" />
+                          </Grid>
                           <Panel IsVisible="{Binding ShowSelector}">
                             <vm:DeviceSelectorView DataContext="{Binding Selector}" />
                           </Panel>
@@ -103,8 +119,8 @@
           </StackPanel>
         </Border>
 
-        <!-- Actions: one to five, in this order -->
-        <Border Classes="card">
+        <!-- 3 Then: one to five actions, in this order -->
+        <Border Classes="card" IsVisible="{Binding IsThenStep}">
           <StackPanel Spacing="12">
             <ui:CardHeader Title="Actions" Description="They run in this order." />
             <ItemsControl ItemsSource="{Binding RuleActions}">
@@ -117,8 +133,10 @@
                     <Grid ColumnDefinitions="64,*,Auto" ColumnSpacing="12">
                       <TextBlock Grid.Column="0" Classes="sectionTitle" Text="Then" VerticalAlignment="Top" Margin="0,6,0,0" />
                       <StackPanel Grid.Column="1" Spacing="8">
-                        <ComboBox ItemsSource="{Binding Actions}" SelectedItem="{Binding SelectedAction}" PlaceholderText="Choose an action" HorizontalAlignment="Stretch" />
-                        <TextBlock Classes="secondary" Text="{Binding Description}" IsVisible="{Binding Description, Converter={x:Static ObjectConverters.IsNotNull}}" TextWrapping="Wrap" />
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                          <ComboBox ItemsSource="{Binding Actions}" SelectedItem="{Binding SelectedAction}" PlaceholderText="Choose an action" HorizontalAlignment="Stretch" />
+                          <ui:InfoIcon Grid.Column="1" Text="{Binding Description}" />
+                        </Grid>
                         <StackPanel Spacing="6" IsVisible="{Binding ShowTargets}">
                           <TextBlock Classes="fieldLabel" Text="On" />
                           <vm:DeviceSelectorView DataContext="{Binding Targets}" />
@@ -170,25 +188,34 @@
           </StackPanel>
         </Border>
 
-        <!-- Limits against event storms -->
-        <Border Classes="card">
-          <StackPanel Classes="form">
-            <ui:CardHeader Title="Limits" />
-            <ui:FormField Label="Wait between runs" Hint="Seconds per device before the rule can run again">
-              <TextBox Text="{Binding Cooldown}" Width="120" HorizontalAlignment="Left" />
-            </ui:FormField>
-            <ui:FormField Label="Runs per minute" Hint="At most, for the whole rule">
-              <TextBox Text="{Binding MaxRuns}" Width="120" HorizontalAlignment="Left" />
-            </ui:FormField>
+        <!-- 4 Overview: the whole rule in short lines, then Save -->
+        <Border Classes="card" IsVisible="{Binding IsOverviewStep}">
+          <StackPanel Spacing="12">
+            <ui:CardHeader Title="Overview" Description="{Binding StateHint}" />
+            <ItemsControl ItemsSource="{Binding Overview}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel Spacing="10" /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:OverviewLine">
+                  <Grid ColumnDefinitions="80,*" ColumnSpacing="12">
+                    <TextBlock Grid.Column="0" Classes="fieldLabel" Text="{Binding Label}" />
+                    <TextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Classes="error" Text="{Binding ServerError}" IsVisible="{Binding HasServerError}" TextWrapping="Wrap" />
           </StackPanel>
         </Border>
-
-        <TextBlock Classes="error" Text="{Binding ServerError}" IsVisible="{Binding HasServerError}" TextWrapping="Wrap" />
       </StackPanel>
     </ScrollViewer>
 
-    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
-      <Button Classes="primary" IsDefault="True" Content="Save" Command="{Binding SaveCommand}"
+    <ui:DialogFooter Grid.Row="3" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="secondary" Content="Back" Command="{Binding BackCommand}" IsVisible="{Binding CanGoBack}" />
+      <Button Classes="primary" IsDefault="True" Content="Next" Command="{Binding NextCommand}" IsVisible="{Binding !IsOverviewStep}"
+              ToolTip.Tip="{Binding StepProblem}" ToolTip.ShowOnDisabled="True" />
+      <Button Classes="primary" IsDefault="True" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding IsOverviewStep}"
               ToolTip.Tip="{Binding Problem}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>
   </Grid>

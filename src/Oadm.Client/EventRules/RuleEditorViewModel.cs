@@ -11,7 +11,9 @@ using Oadm.Client.Api;
 using Oadm.Client.Devices;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Actions;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Client.Validation;
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Events;
 
 namespace Oadm.Client.EventRules;
@@ -30,10 +32,9 @@ public sealed partial class ConditionViewModel : ObservableObject
         Kind = kind;
         IsTrigger = isTrigger;
         EventTypes = isTrigger ? owner.AllEventTypes : [.. owner.AllEventTypes.Where(t => t.Stateful)];
-        IReadOnlyList<ChoiceOption<DeviceSelectorMode>> modes = isTrigger
-            ? [new(DeviceSelectorMode.All, "All devices"), new(DeviceSelectorMode.Devices, "Chosen devices"), new(DeviceSelectorMode.Tags, "Devices with tags")]
-            : [new(DeviceSelectorMode.EventDevice, "The same device"), new(DeviceSelectorMode.All, "Any device"), new(DeviceSelectorMode.Devices, "Any of the chosen devices"), new(DeviceSelectorMode.Tags, "Any device with tags")];
-        Selector = new DeviceSelectorViewModel(modes, owner.NewDeviceList(), owner.NewTagList(), initial?.Devices);
+        Selector = isTrigger
+            ? new DeviceSelectorViewModel(owner.DeviceList, DevicePickerOptions.Full(), DeviceChoice.AllDevices, initial?.Devices, owner.PickDevicesAsync)
+            : new DeviceSelectorViewModel(owner.DeviceList, DevicePickerOptions.Full("The same device"), DeviceChoice.EventDevice, initial?.Devices, owner.PickDevicesAsync);
         Selector.Changed += (_, _) => owner.Revalidate();
         foreach (var day in new[] { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday })
         {
@@ -107,7 +108,7 @@ public sealed partial class ConditionViewModel : ObservableObject
                 return "Choose an event.";
             }
 
-            if (ShowSelector && Selector.SelectedMode.Value == DeviceSelectorMode.EventDevice && _owner.Trigger?.SelectedEventType?.DeviceScope != true)
+            if (ShowSelector && Selector.IsEventDevice && _owner.Trigger?.SelectedEventType?.DeviceScope != true)
             {
                 return "\"The same device\" needs a device event as the first condition.";
             }
@@ -153,6 +154,25 @@ public sealed partial class ConditionViewModel : ObservableObject
             Data = Filters.Where(f => f.Value.Trim().Length > 0).ToDictionary(f => f.Name, f => f.Value.Trim()),
         };
 
+    /// <summary>One line for the overview: "Input ports: Digital input · Chosen devices: 10.0.0.48 · port = 1".</summary>
+    internal string Summary()
+    {
+        if (IsSchedule)
+        {
+            var days = string.Join(", ", Days.Where(d => d.IsChecked).Select(d => d.Text));
+            return $"Schedule: {days}, {From.Trim()} to {To.Trim()}";
+        }
+
+        var parts = new List<string> { SelectedEventType?.Text ?? "No event" };
+        if (ShowSelector)
+        {
+            parts.Add(Selector.Summary());
+        }
+
+        parts.AddRange(Filters.Where(f => f.Value.Trim().Length > 0).Select(f => $"{f.Label} = {f.Value.Trim()}"));
+        return string.Join(" · ", parts);
+    }
+
     private static bool IsTime(string text) =>
         TimeOnly.TryParseExact(text.Trim(), ["HH:mm", "H:mm"], CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
 }
@@ -170,10 +190,11 @@ public sealed partial class RuleActionViewModel : ObservableObject
         _initial = initial;
         Key = initial?.Key ?? Guid.NewGuid();
         Targets = new DeviceSelectorViewModel(
-            [new(DeviceSelectorMode.EventDevice, "The device of the event"), new(DeviceSelectorMode.Devices, "Chosen devices"), new(DeviceSelectorMode.Tags, "Devices with tags"), new(DeviceSelectorMode.All, "All devices")],
-            owner.NewDeviceList(),
-            owner.NewTagList(),
-            initial?.Targets);
+            owner.DeviceList,
+            DevicePickerOptions.Full("The device of the event"),
+            DeviceChoice.EventDevice,
+            initial?.Targets,
+            owner.PickDevicesAsync);
         Targets.Changed += (_, _) => owner.Revalidate();
         _loading = true;
         SelectedAction = owner.Actions.FirstOrDefault(a => a.Id == initial?.ActionId);
@@ -214,7 +235,7 @@ public sealed partial class RuleActionViewModel : ObservableObject
                 return "Choose an action.";
             }
 
-            if (ShowTargets && Targets.SelectedMode.Value == DeviceSelectorMode.EventDevice && _owner.Trigger?.SelectedEventType?.DeviceScope == false)
+            if (ShowTargets && Targets.IsEventDevice && _owner.Trigger?.SelectedEventType?.DeviceScope == false)
             {
                 return "The trigger is not about a device; choose the devices.";
             }
@@ -319,6 +340,29 @@ public sealed partial class RuleActionViewModel : ObservableObject
         return settings;
     }
 
+    /// <summary>One line for the overview: "Set output · Chosen devices: 10.0.0.30 · Output: 1, Mode: Pulse".</summary>
+    internal string Summary()
+    {
+        var parts = new List<string> { SelectedAction?.Text ?? "No action" };
+        if (ShowTargets)
+        {
+            parts.Add(Targets.Summary());
+        }
+
+        var settings = Fields
+            .Where(f => f.IsVisible && !f.IsPassword)
+            .Select(f => (f.Label, Text: f.IsBool ? (f.IsChecked ? "Yes" : "No") : f.IsChoice ? f.SelectedChoice?.Text ?? string.Empty : f.Text.Trim()))
+            .Where(f => f.Text.Length > 0)
+            .Select(f => $"{f.Label}: {f.Text}")
+            .ToList();
+        if (settings.Count > 0)
+        {
+            parts.Add(string.Join(", ", settings));
+        }
+
+        return string.Join(" · ", parts);
+    }
+
     internal RuleAction ToAction() => new()
     {
         Key = Key,
@@ -337,8 +381,6 @@ public sealed partial class RuleActionViewModel : ObservableObject
 public sealed partial class RuleEditorViewModel : ValidatingViewModel
 {
     private readonly IOadmApi _api;
-    private readonly IReadOnlyList<PickItem> _deviceItems;
-    private readonly IReadOnlyList<string> _tagNames;
     private readonly RuleDefinition _original;
     private bool _revalidating;
 
@@ -349,8 +391,8 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
         ArgumentNullException.ThrowIfNull(devices);
         AllEventTypes = [.. catalog.EventTypes.OrderBy(t => t.Group == "Device status" ? 0 : 1).ThenBy(t => t.Group).ThenBy(t => t.DisplayName).Select(t => new EventTypeOption(t))];
         Actions = [.. catalog.Actions.OrderBy(a => a.DisplayName, StringComparer.CurrentCultureIgnoreCase).Select(a => new ActionOption(a))];
-        _deviceItems = [.. devices.Devices.OrderBy(d => d.Address, StringComparer.Ordinal).Select(d => new PickItem(d.Id, string.IsNullOrEmpty(d.Model) ? d.Address : $"{d.Address} · {d.Model}"))];
-        _tagNames = [.. devices.Tags.Tags.Select(t => t.Name).OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase)];
+        DeviceList = [.. devices.Devices];
+        Steps = [.. StepNames.Select((name, i) => new WizardStepItem(i, name, () => Step, CanOpen, GoTo))];
         _original = detail is null ? new RuleDefinition { Enabled = true } : RuleDefinition.FromJson(detail.DefinitionJson);
         IsNew = detail is null;
 
@@ -436,10 +478,135 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
     public bool CanAddCondition => Conditions.Count < RuleDefinition.MaxConditions;
 
     /// <summary>The first problem of the whole rule (Save tooltip), null when it can be saved.</summary>
-    public string? Problem =>
-        FormError
-        ?? Conditions.Select(c => c.Problem).FirstOrDefault(p => p is not null)
-        ?? RuleActions.Select(a => a.Problem ?? (a.HasFieldErrors ? $"{a.SelectedAction?.Entry.DisplayName}: {a.Fields.First(f => f.IsVisible && f.Problem is not null).Label}: {a.Fields.First(f => f.IsVisible && f.Problem is not null).Problem}" : null)).FirstOrDefault(p => p is not null);
+    public string? Problem => ProblemOf(RuleStep) ?? ProblemOf(WhenStep) ?? ProblemOf(ThenStep);
+
+    // Wizard (user decision 2026-10-11): 1 Rule (name, turned on, limits), 2 When (conditions), 3 Then (actions),
+    // 4 Overview (everything in short lines, Save). Next is disabled with the step's first problem as tooltip.
+    public const int RuleStep = 0;
+    public const int WhenStep = 1;
+    public const int ThenStep = 2;
+    public const int OverviewStep = 3;
+
+    private static readonly string[] StepNames = ["Rule", "When", "Then", "Overview"];
+
+    public IReadOnlyList<WizardStepItem> Steps { get; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRuleStep), nameof(IsWhenStep), nameof(IsThenStep), nameof(IsOverviewStep), nameof(CanGoBack), nameof(StepProblem))]
+    [NotifyCanExecuteChangedFor(nameof(NextCommand))]
+    public partial int Step { get; private set; }
+
+    public bool IsRuleStep => Step == RuleStep;
+
+    public bool IsWhenStep => Step == WhenStep;
+
+    public bool IsThenStep => Step == ThenStep;
+
+    public bool IsOverviewStep => Step == OverviewStep;
+
+    public bool CanGoBack => Step > RuleStep;
+
+    /// <summary>The first problem of the shown step (Next tooltip).</summary>
+    public string? StepProblem => Step == OverviewStep ? null : ProblemOf(Step);
+
+    /// <summary>The overview: one line per part of the rule.</summary>
+    public ObservableCollection<OverviewLine> Overview { get; } = [];
+
+    internal string? ProblemOf(int step) => step switch
+    {
+        RuleStep => FormError,
+        WhenStep => Conditions.Select(c => c.Problem).FirstOrDefault(p => p is not null),
+        ThenStep => RuleActions.Select(a => a.Problem ?? (a.HasFieldErrors ? $"{a.SelectedAction?.Entry.DisplayName}: {a.Fields.First(f => f.IsVisible && f.Problem is not null).Label}: {a.Fields.First(f => f.IsVisible && f.Problem is not null).Problem}" : null)).FirstOrDefault(p => p is not null),
+        _ => null,
+    };
+
+    /// <summary>A step can be opened when every step before it is complete (going back always works).</summary>
+    internal bool CanOpen(int step) => step <= Step || Enumerable.Range(0, step).All(s => ProblemOf(s) is null);
+
+    private bool CanGoNext() => Step < OverviewStep && ProblemOf(Step) is null;
+
+    [RelayCommand(CanExecute = nameof(CanGoNext))]
+    private void Next() => GoTo(Step + 1);
+
+    [RelayCommand]
+    private void Back()
+    {
+        if (Step > RuleStep)
+        {
+            GoTo(Step - 1);
+        }
+    }
+
+    internal void GoTo(int step)
+    {
+        if (step < RuleStep || step > OverviewStep || !CanOpen(step))
+        {
+            return;
+        }
+
+        ShowErrorsOf(Step);
+        if (step == OverviewStep)
+        {
+            BuildOverview();
+        }
+
+        Step = step;
+        foreach (var item in Steps)
+        {
+            item.Refresh();
+        }
+    }
+
+    private void ShowErrorsOf(int step)
+    {
+        switch (step)
+        {
+            case RuleStep:
+                Validation.ShowAll();
+                break;
+            case WhenStep:
+                foreach (var condition in Conditions)
+                {
+                    condition.ShowErrors = true;
+                }
+
+                break;
+            case ThenStep:
+                foreach (var action in RuleActions)
+                {
+                    action.ShowAllErrors();
+                }
+
+                break;
+        }
+
+        Revalidate();
+    }
+
+    private void BuildOverview()
+    {
+        var lines = new List<OverviewLine>
+        {
+            new("Name", Name.Trim()),
+            new("State", Enabled ? "Turned on" : "Turned off"),
+        };
+        for (var i = 0; i < Conditions.Count; i++)
+        {
+            lines.Add(new(i == 0 ? "When" : "And", Conditions[i].Summary()));
+        }
+
+        foreach (var action in RuleActions)
+        {
+            lines.Add(new("Then", action.Summary()));
+        }
+
+        lines.Add(new("Limits", string.Create(CultureInfo.CurrentCulture, $"Dead time {Cooldown.Trim()} s, flood limit {MaxRuns.Trim()} runs per minute")));
+        Overview.Clear();
+        foreach (var line in lines)
+        {
+            Overview.Add(line);
+        }
+    }
 
     /// <summary>The saved rule after Save (the dialog closed with true).</summary>
     public RuleDetail? Saved { get; private set; }
@@ -521,11 +688,15 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
         MaxRunsPerMinute = int.TryParse(MaxRuns, NumberStyles.Integer, CultureInfo.InvariantCulture, out var runs) ? runs : RuleDefinition.DefaultMaxRunsPerMinute,
     };
 
-    internal PickListViewModel NewDeviceList() =>
-        new(_deviceItems.Select(i => new PickItem(i.Key, i.Text)), "device", "devices");
+    /// <summary>Every managed device, for the shared device picker of conditions and actions.</summary>
+    internal IReadOnlyList<IDeviceInfo> DeviceList { get; }
 
-    internal PickListViewModel NewTagList() =>
-        new(_tagNames.Select(n => new PickItem(n, n)), "tag", "tags");
+    /// <summary>Shows the shared device picker (set by the window); true = OK.</summary>
+    public Func<DevicePickerViewModel, Task<bool>>? ShowPicker { get; set; }
+
+    internal Task<bool> PickDevicesAsync(DevicePickerViewModel picker) =>
+        ShowPicker is { } show ? show(picker) : Task.FromResult(false);
+
 
     internal void RemoveCondition(ConditionViewModel condition)
     {
@@ -599,6 +770,13 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
             OnPropertyChanged(nameof(IsStateful));
             OnPropertyChanged(nameof(StateHint));
             OnPropertyChanged(nameof(Problem));
+            OnPropertyChanged(nameof(StepProblem));
+            NextCommand.NotifyCanExecuteChanged();
+            foreach (var item in Steps)
+            {
+                item.Refresh();
+            }
+
             OnPropertyChanged(nameof(CanAddAction));
             OnPropertyChanged(nameof(CanAddCondition));
         }
@@ -608,5 +786,14 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
         }
     }
 
-    protected override void OnValidationChanged() => OnPropertyChanged(nameof(Problem));
+    protected override void OnValidationChanged()
+    {
+        OnPropertyChanged(nameof(Problem));
+        OnPropertyChanged(nameof(StepProblem));
+        NextCommand.NotifyCanExecuteChanged();
+        foreach (var item in Steps ?? [])
+        {
+            item.Refresh();
+        }
+    }
 }

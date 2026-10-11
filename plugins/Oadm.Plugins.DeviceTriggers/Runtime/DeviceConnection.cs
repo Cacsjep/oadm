@@ -196,10 +196,16 @@ internal sealed partial class DeviceConnection : IAsyncDisposable
                     offered = await ReadOfferedAsync(vapix, ct).ConfigureAwait(false); // a trigger for an event read before this session
                 }
 
-                var missing = triggers.Where(t => !offered.Contains(t.Topic)).Select(t => t.Id).ToList();
+                var missing = triggers.Where(t => !offered.Contains(t.Topic) && !t.Implicit.Contains(_deviceId)).Select(t => t.Id).ToList();
                 if (missing.Count > 0)
                 {
                     _runtime.Problem(_deviceId, missing, "The event is no longer on the device");
+                }
+
+                var notOffered = triggers.Where(t => !offered.Contains(t.Topic) && t.Implicit.Contains(_deviceId)).Select(t => t.Id).ToList();
+                if (notOffered.Count > 0)
+                {
+                    _runtime.NotOffered(_deviceId, notOffered); // a device of a tag or of all devices without this event
                 }
 
                 filtered = [.. triggers.Where(t => offered.Contains(t.Topic))];

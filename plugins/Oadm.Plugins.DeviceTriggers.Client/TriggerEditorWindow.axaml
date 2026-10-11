@@ -6,63 +6,54 @@
         x:DataType="vm:TriggerEditorViewModel"
         Title="{Binding Title}"
         Width="860" Height="860" MinHeight="560"
+        CanResize="False"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="{DynamicResource Oadm.TitleBarHeight}">
-  <!-- Several sections: title bar, cards (trigger, devices, event) in a scroll area, footer. -->
+        WindowDecorations="BorderOnly">
+  <!-- Dialog header (title + X, no system title bar), then the cards trigger, devices, event in a scroll area, footer. -->
   <Grid RowDefinitions="Auto,*,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
 
     <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
       <StackPanel Spacing="{DynamicResource Oadm.Gap}" Margin="16,0,16,8">
 
-        <!-- Trigger -->
+        <!-- Trigger: name and turned on in one row -->
         <Border Classes="card">
-          <StackPanel Classes="form">
+          <StackPanel Orientation="Horizontal" Spacing="24">
             <ui:FormField Label="Name">
               <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="64" />
             </ui:FormField>
-            <ui:FormField>
-              <CheckBox Content="Turned on" IsChecked="{Binding Enabled}" />
-            </ui:FormField>
+            <CheckBox Content="Turned on" IsChecked="{Binding Enabled}" VerticalAlignment="Top" />
           </StackPanel>
         </Border>
 
         <!-- Devices: thousands possible, virtualized; the event list of each chosen device is read live. -->
         <Border Classes="card">
           <StackPanel Spacing="10">
-            <ui:CardHeader Title="Devices" Description="Choose the devices, then read their events." />
-            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
-              <ui:SearchBox Grid.Column="0" Text="{Binding DeviceSearch}" Placeholder="Search devices" Width="NaN" HorizontalAlignment="Stretch" />
-              <TextBlock Grid.Column="1" Classes="secondary" VerticalAlignment="Center" Text="{Binding DevicesSummary}" />
-              <Button Grid.Column="2" Classes="secondary" Command="{Binding ReadEventsCommand}">
-                <ui:IconLabel Icon="{StaticResource Icon.refresh}" Text="Read events" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+              <ui:CardHeader Grid.Column="0" Title="Devices" Description="{Binding DevicesSummary}" />
+              <Button Grid.Column="1" Classes="primary" VerticalAlignment="Top" Command="{Binding ChooseDevicesCommand}">
+                <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding DevicesButtonText}" />
               </Button>
             </Grid>
-            <ui:ProgressRow Value="{Binding ReadProgress}" Text="{Binding ReadText}" IsActive="{Binding IsReading}" IsVisible="{Binding IsReading}" />
+            <ui:ProgressRow Value="{Binding ReadProgress}" Text="{Binding ReadText}" IsActive="{Binding IsReading}" IsVisible="{Binding ShowReadProgress}" />
             <DataGrid x:Name="DeviceGrid" Height="240" Classes="wrapRows" ItemsSource="{Binding VisibleDevices}" IsReadOnly="True" SelectionMode="Single"
                       CanUserSortColumns="False" CanUserReorderColumns="False">
               <DataGrid.Columns>
-                <DataGridTemplateColumn Header="" Width="40">
-                  <DataGridTemplateColumn.CellTemplate>
-                    <DataTemplate x:DataType="vm:TriggerDeviceChoice">
-                      <CheckBox IsChecked="{Binding IsChecked}" IsEnabled="{Binding Supported}" HorizontalAlignment="Center" />
-                    </DataTemplate>
-                  </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Address" Width="140" Binding="{Binding Address}" x:DataType="vm:TriggerDeviceChoice" />
                 <DataGridTextColumn Header="Model" Width="150" Binding="{Binding Model}" x:DataType="vm:TriggerDeviceChoice" />
+                <DataGridTextColumn Header="Included by" Width="140" Binding="{Binding IncludedBy}" x:DataType="vm:TriggerDeviceChoice" />
                 <DataGridTemplateColumn Header="Events" Width="*">
                   <DataGridTemplateColumn.CellTemplate>
                     <DataTemplate x:DataType="vm:TriggerDeviceChoice">
-                      <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsOk}" IsAccent="{Binding IsAccent}" IsError="{Binding IsError}" MaxLines="2"
+                      <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsOk}" IsAccent="{Binding IsAccent}" IsError="{Binding IsError}" IsWarning="{Binding IsWarning}" MaxLines="2"
                                      IsVisible="{Binding StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                     </DataTemplate>
                   </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
               </DataGrid.Columns>
             </DataGrid>
+            <TextBlock Classes="secondary" Text="Choose devices to pick the devices of this trigger." IsVisible="{Binding HasNoDevices}" />
             <TextBlock Classes="error" Text="{Binding DevicesError}" IsVisible="{Binding DevicesError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" />
           </StackPanel>
         </Border>
@@ -70,9 +61,9 @@
         <!-- Event: what all chosen devices offer, narrowed per source item -->
         <Border Classes="card">
           <StackPanel Classes="form">
-            <ui:FormField Label="Event" Hint="{Binding EventKindText}" Error="{Binding EventError}">
-              <ComboBox ItemsSource="{Binding EventOptions}" SelectedItem="{Binding SelectedEvent}" PlaceholderText="Choose an event"
-                        HorizontalAlignment="Stretch" />
+            <ui:FormField Classes="wide" Label="Event" Hint="{Binding EventKindText}" Error="{Binding EventError}">
+              <ComboBox Classes="grouped" ItemsSource="{Binding EventChoices}" SelectedItem="{Binding SelectedEventChoice}" PlaceholderText="Choose an event"
+                        MaxDropDownHeight="420" />
             </ui:FormField>
             <ItemsControl ItemsSource="{Binding Filters}" IsVisible="{Binding HasFilters}">
               <ItemsControl.ItemsPanel>

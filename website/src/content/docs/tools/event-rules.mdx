@@ -6,7 +6,8 @@ description: Run actions when events happen, for example switch a relay while a 
 import { Steps, Aside } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
 import page from '../../../assets/screens/event-rules-page.png';
-import editor from '../../../assets/screens/event-rules-editor.png';
+import editor from '../../../assets/screens/event-rules-editor-when.png';
+import overview from '../../../assets/screens/event-rules-editor-overview.png';
 
 An event rule says: **when** this happens, **then** do that. For example: while a camera reports blur during working
 hours, switch on the warning lamp on the I/O box and show an overlay on the camera.
@@ -21,26 +22,27 @@ Administrators create and change rules. Operators see the rules and the event lo
 
 <Steps>
 
-1. Open **Event rules** in the navigation rail and click **New rule**.
+1. Open **Event rules** in the navigation rail and click **New rule**. The rule is made in four steps; **Next** goes
+   on once a step is complete.
 
-2. Enter a name.
+2. **Rule**: enter a name. **Dead time** and **Flood limit** can stay as they are.
 
-3. Under **Conditions**, choose the event in **When**, and which devices it is about: all devices, chosen devices or
-   devices with tags.
-
-4. Add more conditions if you need them. They all must hold:
+3. **When**: choose the event, then the devices with the purple button (**Choose devices**, later **Selected devices**): all devices, or any mix of tags and single devices. A tag also
+   covers devices you tag later. Add more conditions if you need them. They all must hold:
    - **Add event**: another event, on the same device or on any device you choose. Example: blur, and the camera is
      reachable.
    - **Add schedule**: weekdays and a time window. Example: Monday to Friday, 08:00 to 18:00.
 
-5. Under **Actions**, choose up to five actions. They run in the order of the list. For each one choose where it runs:
-   on the device of the event, on chosen devices, on devices with tags or on all devices.
+4. **Then**: choose up to five actions. They run in the order of the list. With **Choose devices** pick where each one
+   runs: on the device of the event, on all devices, or on tags and single devices.
 
-6. Click **Save**.
+5. **Overview**: check the rule and click **Save**.
 
 </Steps>
 
-<Image src={editor} alt="The rule dialog with a trigger, a schedule and two actions" class="screen" />
+<Image src={editor} alt="The When step with an event and a schedule" class="screen" />
+
+<Image src={overview} alt="The overview of a rule before saving" class="screen" />
 
 ## Events
 
@@ -76,14 +78,15 @@ one and off when the last one ends.
 
 ## Event log
 
-The **Event log** tab lists what happened: the events your rules use, when a rule turned on, off or ran, and every
+The **Event log** below the rules lists what happened: the events your rules use, when a rule turned on, off or ran, and every
 action with its result. The newest entries come first and new ones appear live. OADM keeps the log for 30 days or
 100,000 entries.
 
 ## Good to know
 
-- **Wait between runs** (default 10 s per device) and **Runs per minute** (default 60 for the whole rule) protect against
-  a flapping camera. Runs beyond them are skipped and logged.
+- **Dead time** (default 10 s): after the rule ran for a device, that device is ignored for this long. **Flood
+  limit** (default 60 runs per minute for the whole rule): further events are skipped. Both protect against a flickering
+  camera; skipped runs are noted in the event log.
 - After a server restart OADM checks every event again and runs only what changed while it was down.
 - A failed action is logged; the next action of the rule still runs. OADM does not retry.
 - Devices that need a login, have no password yet or have a changed certificate are skipped.

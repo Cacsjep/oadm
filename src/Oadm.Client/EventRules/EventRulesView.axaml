@@ -5,20 +5,15 @@
              xmlns:vm="using:Oadm.Client.EventRules"
              x:Class="Oadm.Client.EventRules.EventRulesView"
              x:DataType="vm:EventRulesViewModel">
-  <Grid RowDefinitions="Auto,*">
+  <!-- Rules on top, the event log below with a splitter (like the Devices page and its tasks; user decision 2026-10-11) -->
+  <Grid RowDefinitions="Auto,*,Auto,320">
     <c:PageTitleBar Grid.Row="0" Title="Event rules" Subtitle="Run actions when events happen." Margin="0,0,0,16" />
 
     <!-- Rules -->
-    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" IsVisible="{Binding IsRulesTab}">
+    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" MinHeight="200">
       <Grid RowDefinitions="Auto,Auto,*,Auto">
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="16">
-          <Border Grid.Column="0" Classes="segmented">
-            <StackPanel Orientation="Horizontal">
-              <Button Classes="segment" Classes.selected="{Binding IsRulesTab}" Content="Rules" Command="{Binding ShowRulesCommand}" />
-              <Button Classes="segment" Classes.selected="{Binding IsLogTab}" Content="Event log" Command="{Binding ShowLogCommand}" />
-            </StackPanel>
-          </Border>
-          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="16">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
             <ui:ToolbarButton Text="New rule" IconKey="add" IsPrimary="True" Command="{Binding NewRuleCommand}"
                               ToolTip.Tip="{Binding ReadOnlyHint}" ToolTip.ShowOnDisabled="True" />
             <ui:ToolbarButton Text="Edit" IconKey="edit" Command="{Binding EditCommand}" />
@@ -62,17 +57,16 @@
       </Grid>
     </Border>
 
+    <GridSplitter Grid.Row="2" Classes="paneSplitter" />
+
     <!-- Event log -->
-    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" IsVisible="{Binding IsLogTab}">
+    <Border Grid.Row="3" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" MinHeight="160">
       <Grid RowDefinitions="Auto,Auto,*,Auto">
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="16">
-          <Border Grid.Column="0" Classes="segmented">
-            <StackPanel Orientation="Horizontal">
-              <Button Classes="segment" Classes.selected="{Binding IsRulesTab}" Content="Rules" Command="{Binding ShowRulesCommand}" />
-              <Button Classes="segment" Classes.selected="{Binding IsLogTab}" Content="Event log" Command="{Binding ShowLogCommand}" />
-            </StackPanel>
-          </Border>
-          <ui:ToolbarButton Grid.Column="1" Text="Refresh" IconKey="refresh" Command="{Binding RefreshLogCommand}" />
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="16">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16">
+            <TextBlock Classes="cardTitle" Text="Event log" VerticalAlignment="Center" />
+            <ui:ToolbarButton Text="Refresh" IconKey="refresh" Command="{Binding RefreshLogCommand}" />
+          </StackPanel>
           <ui:SearchBox Grid.Column="3" Text="{Binding LogSearchText}" Placeholder="Search the log" />
         </Grid>
 

@@ -1,0 +1,265 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Templates;
+using Avalonia.Data;
+using Avalonia.Layout;
+using Avalonia.Media;
+
+using Oadm.Sdk.Devices;
+
+namespace Oadm.Sdk.Client.Controls;
+
+/// <summary>
+/// The shared device picker of every dialog that needs a set of devices (host and plugins, one window, never a copy):
+/// title bar, one card with the count and a search, Select all / Select none for the devices the search shows, and a
+/// virtualized list with a check box per device (address, model; a device that cannot be chosen is greyed with the
+/// reason), then Cancel / OK. With <see cref="DevicePickerOptions"/> a column on the left offers the device of the event,
+/// All devices, or Chosen devices and tags with the tag list (devices of a chosen tag show checked with the tag).
+/// Open it with <see cref="ShowAsync"/>; the view model is <see cref="DevicePickerViewModel"/>.
+/// </summary>
+public sealed class DevicePickerWindow : Window
+{
+    private readonly DialogTitleBar _title = new();
+
+    public DevicePickerWindow(DevicePickerViewModel viewModel)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
+        ViewModel = viewModel;
+        DataContext = viewModel;
+        Width = viewModel.HasChoices ? 1000 : 760;
+        Height = 640;
+        CanResize = false;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        ShowInTaskbar = false;
+        WindowDecorations = WindowDecorations.BorderOnly;
+        Heading = "Choose devices";
+
+        var summary = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+        summary.Classes.Add("secondary");
+        summary.Bind(TextBlock.TextProperty, new Binding(nameof(DevicePickerViewModel.Summary)));
+        var all = Action("Select all", "check", nameof(DevicePickerViewModel.SelectAllCommand), "Choose every device the search shows");
+        var none = Action("Select none", "close", nameof(DevicePickerViewModel.SelectNoneCommand), "Unchoose every device the search shows");
+        var search = new SearchBox { Placeholder = "Search devices", VerticalAlignment = VerticalAlignment.Center };
+        search.Bind(SearchBox.TextProperty, new Binding(nameof(DevicePickerViewModel.SearchText)) { Mode = BindingMode.TwoWay });
+        var bar = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto"), ColumnSpacing = 8 };
+        Grid.SetColumn(all, 0);
+        Grid.SetColumn(none, 1);
+        Grid.SetColumn(search, 3);
+        bar.Children.AddRange([all, none, search]);
+        summary.Margin = new Thickness(2, 12, 0, 0);
+
+        var header = Row(new TextBlock(), Header("Address"), Header("Model"), Header(string.Empty));
+        header.Margin = new Thickness(0, 12, 0, 4);
+
+        var list = new ListBox
+        {
+            SelectionMode = SelectionMode.Single,
+            ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingStackPanel()),
+            ItemTemplate = new FuncDataTemplate<DevicePickItem>((_, _) => ItemRow(), supportsRecycling: true),
+        };
+        list.Classes.Add("devicePicker");
+        list.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(DevicePickerViewModel.Visible)));
+        var empty = new TextBlock { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        empty.Classes.Add("secondary");
+        empty.Bind(TextBlock.TextProperty, new Binding(nameof(DevicePickerViewModel.EmptyText)));
+        empty.Bind(IsVisibleProperty, new Binding(nameof(DevicePickerViewModel.IsEmpty)));
+        var listArea = new Panel { Children = { list, empty } };
+
+        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*") };
+        Grid.SetRow(summary, 1);
+        Grid.SetRow(header, 2);
+        Grid.SetRow(listArea, 3);
+        body.Children.AddRange([bar, summary, header, listArea]);
+        body.Bind(IsEnabledProperty, new Binding(nameof(DevicePickerViewModel.IsChosen)));
+        Control content = body;
+        if (viewModel.HasChoices)
+        {
+            var choices = Choices(viewModel);
+            var split = new Grid { ColumnDefinitions = new ColumnDefinitions("240,*"), ColumnSpacing = 24 };
+            Grid.SetColumn(body, 1);
+            split.Children.AddRange([choices, body]);
+            content = split;
+        }
+
+        var card = new Border { Child = content, Margin = new Thickness(16, 0, 16, 8) };
+        card.Classes.Add("card");
+
+        var ok = new Button { Content = "OK", IsDefault = true };
+        ok.Classes.Add("primary");
+        ok.Click += (_, _) => Close(true);
+        var footer = new DialogFooter();
+        footer.CancelButton.Click += (_, _) => Close(false);
+        footer.Actions.Add(ok);
+
+        var root = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
+        Grid.SetRow(card, 1);
+        Grid.SetRow(footer, 2);
+        root.Children.AddRange([_title, card, footer]);
+        Content = root;
+    }
+
+    public DevicePickerViewModel ViewModel { get; }
+
+    /// <summary>The window title (title bar and task switcher).</summary>
+    public string? Heading
+    {
+        get => _title.Text;
+        set
+        {
+            _title.Text = value;
+            Title = value;
+        }
+    }
+
+    /// <summary>
+    /// Shows the picker with all devices, tags and (with <see cref="DevicePickerOptions.EventDeviceText"/>) the device of
+    /// the event; returns the choice, or null when cancelled.
+    /// </summary>
+    public static async Task<DeviceChoice?> ShowChoiceAsync(
+        Window owner,
+        IEnumerable<IDeviceInfo> devices,
+        DeviceChoice initial,
+        DevicePickerOptions options,
+        string heading = "Choose devices")
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        var window = new DevicePickerWindow(new DevicePickerViewModel(devices, initial, options)) { Heading = heading };
+        return await window.ShowDialog<bool>(owner).ConfigureAwait(true) ? window.ViewModel.Choice : null;
+    }
+
+    /// <summary>
+    /// Shows the picker over <paramref name="owner"/>; returns the chosen devices (in list order), or null when cancelled.
+    /// </summary>
+    public static async Task<IReadOnlyList<Guid>?> ShowAsync(
+        Window owner,
+        IEnumerable<IDeviceInfo> devices,
+        IEnumerable<Guid>? selected = null,
+        Func<IDeviceInfo, string?>? unavailableReason = null,
+        string heading = "Choose devices")
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        var window = new DevicePickerWindow(new DevicePickerViewModel(devices, selected, unavailableReason)) { Heading = heading };
+        return await window.ShowDialog<bool>(owner).ConfigureAwait(true) ? window.ViewModel.SelectedIds : null;
+    }
+
+    /// <summary>The left column: the device of the event, All devices, Chosen devices and tags, and the tag list.</summary>
+    private static Control Choices(DevicePickerViewModel viewModel)
+    {
+        var group = "choice-" + Guid.NewGuid().ToString("N");
+        var panel = new StackPanel { Spacing = 8 };
+        if (viewModel.Options.EventDeviceText is { } eventText)
+        {
+            panel.Children.Add(Radio(eventText, nameof(DevicePickerViewModel.IsEventDevice), group));
+        }
+
+        if (viewModel.Options.AllowAll)
+        {
+            panel.Children.Add(Radio("All devices", nameof(DevicePickerViewModel.IsAll), group));
+        }
+
+        panel.Children.Add(Radio(viewModel.Options.AllowTags ? "Chosen devices and tags" : "Chosen devices", nameof(DevicePickerViewModel.IsChosen), group));
+        if (!viewModel.Options.AllowTags)
+        {
+            return panel;
+        }
+
+        var title = new TextBlock { Text = "Tags", Margin = new Thickness(0, 12, 0, 0) };
+        title.Classes.Add("sectionTitle");
+        var tags = new ListBox
+        {
+            SelectionMode = SelectionMode.Single,
+            ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingStackPanel()),
+            ItemTemplate = new FuncDataTemplate<TagPickItem>((_, _) => TagRow(), supportsRecycling: true),
+        };
+        tags.Classes.Add("devicePicker");
+        tags.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(DevicePickerViewModel.Tags)));
+        tags.Bind(IsVisibleProperty, new Binding(nameof(DevicePickerViewModel.HasTags)));
+        var none = new TextBlock { Text = "No tags yet. Tag devices on the Devices page.", TextWrapping = TextWrapping.Wrap };
+        none.Classes.Add("secondary");
+        none.Bind(IsVisibleProperty, new Binding(nameof(DevicePickerViewModel.ShowNoTags)));
+        var tagArea = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
+        var tagBody = new Panel { Children = { tags, none } };
+        Grid.SetRow(tagBody, 1);
+        tagArea.Children.AddRange([title, tagBody]);
+        tagArea.Bind(IsEnabledProperty, new Binding(nameof(DevicePickerViewModel.IsChosen)));
+
+        var column = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
+        Grid.SetRow(tagArea, 1);
+        column.Children.AddRange([panel, tagArea]);
+        return column;
+    }
+
+    private static RadioButton Radio(string text, string property, string group)
+    {
+        var radio = new RadioButton { Content = text, GroupName = group };
+        radio.Bind(Avalonia.Controls.Primitives.ToggleButton.IsCheckedProperty, new Binding(property) { Mode = BindingMode.TwoWay });
+        return radio;
+    }
+
+    private static Grid TagRow()
+    {
+        var check = new CheckBox();
+        check.Bind(Avalonia.Controls.Primitives.ToggleButton.IsCheckedProperty, new Binding(nameof(TagPickItem.IsChecked)) { Mode = BindingMode.TwoWay });
+        check.Bind(ContentControl.ContentProperty, new Binding(nameof(TagPickItem.Name)));
+        var count = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 4, 0) };
+        count.Classes.Add("secondary");
+        count.Bind(TextBlock.TextProperty, new Binding(nameof(TagPickItem.CountText)));
+        ToolTip.SetTip(count, "Devices with this tag");
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), MinHeight = 32 };
+        Grid.SetColumn(count, 1);
+        row.Children.AddRange([check, count]);
+        return row;
+    }
+
+    private static Button Action(string text, string icon, string command, string tip)
+    {
+        var button = new Button { Content = new IconLabel { Text = text, Icon = ToolbarButton.ResolveIcon(icon) } };
+        button.Classes.Add("secondary");
+        button.Bind(Button.CommandProperty, new Binding(command));
+        ToolTip.SetTip(button, tip);
+        return button;
+    }
+
+    private static TextBlock Header(string text)
+    {
+        var header = new TextBlock { Text = text };
+        header.Classes.Add("secondary");
+        return header;
+    }
+
+    /// <summary>The columns of the list: check box, address, model, reason.</summary>
+    private static Grid Row(Control check, Control address, Control model, Control rest)
+    {
+        var row = new Grid { ColumnDefinitions = new ColumnDefinitions("40,160,180,*"), MinHeight = 32 };
+        Grid.SetColumn(address, 1);
+        Grid.SetColumn(model, 2);
+        Grid.SetColumn(rest, 3);
+        foreach (var cell in new[] { check, address, model, rest })
+        {
+            cell.VerticalAlignment = VerticalAlignment.Center;
+        }
+
+        row.Children.AddRange([check, address, model, rest]);
+        return row;
+    }
+
+    private static Grid ItemRow()
+    {
+        var check = new CheckBox { HorizontalAlignment = HorizontalAlignment.Center };
+        check.Bind(Avalonia.Controls.Primitives.ToggleButton.IsCheckedProperty, new Binding(nameof(DevicePickItem.Chosen)) { Mode = BindingMode.TwoWay });
+        check.Bind(IsEnabledProperty, new Binding(nameof(DevicePickItem.CanToggle)));
+        var address = new TextBlock();
+        address.Bind(TextBlock.TextProperty, new Binding(nameof(DevicePickItem.Address)));
+        var model = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
+        model.Bind(TextBlock.TextProperty, new Binding(nameof(DevicePickItem.Model)));
+        var reason = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
+        reason.Classes.Add("secondary");
+        reason.Bind(TextBlock.TextProperty, new Binding(nameof(DevicePickItem.Note)));
+        reason.Bind(ToolTip.TipProperty, new Binding(nameof(DevicePickItem.Note)));
+        var row = Row(check, address, model, reason);
+        row.Bind(OpacityProperty, new Binding(nameof(DevicePickItem.IsAvailable)) { Converter = AvailableOpacity });
+        return row;
+    }
+
+    private static readonly Avalonia.Data.Converters.FuncValueConverter<bool, double> AvailableOpacity = new(available => available ? 1.0 : 0.5);
+}

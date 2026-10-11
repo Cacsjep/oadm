@@ -235,7 +235,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
 
     private async Task<IReadOnlyList<Guid>> ResolveTargetsAsync(DeviceSelector selector, CancellationToken ct)
     {
-        if (selector.Mode == DeviceSelectorMode.Devices)
+        if (selector.IsChoice && selector.Tags.Count == 0)
         {
             return [.. selector.DeviceIds.Distinct()];
         }
@@ -244,7 +244,8 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         return selector.Mode switch
         {
             DeviceSelectorMode.All => [.. all.Select(d => d.Id)],
-            DeviceSelectorMode.Tags => [.. all.Where(d => d.Tags.Any(t => selector.Tags.Contains(t, StringComparer.OrdinalIgnoreCase))).Select(d => d.Id)],
+            DeviceSelectorMode.Devices or DeviceSelectorMode.Tags =>
+                [.. selector.DeviceIds.Concat(all.Where(d => selector.ChoiceMatches(d.Id, d.Tags)).Select(d => d.Id)).Distinct()],
             _ => [],
         };
     }

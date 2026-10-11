@@ -5,12 +5,14 @@ using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.VisualTree;
 
 using Oadm.Client.Api;
 using Oadm.Client.Devices;
 using Oadm.Core.Plugins;
 using Oadm.Plugins.DeviceTriggers.Client;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 
@@ -27,7 +29,7 @@ public sealed class PageTests(ITestOutputHelper output)
     [Fact]
     public async Task The_page_lists_triggers_with_their_state_and_the_devices_of_the_selected_one()
     {
-        await using var rig = new Rig();
+        await using var rig = new Rig(lostDelay: TimeSpan.FromSeconds(3)); // long enough to see the state before "connection lost"
         var a = rig.AddDevice("10.0.0.48");
         var b = rig.AddDevice("10.0.0.49", status: DeviceStatus.CredentialsRequired);
         rig.Cameras[a.Id].SetState(Fixture.VirtualInput, Port3, On);
@@ -65,47 +67,75 @@ public sealed class PageTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task The_dialog_reads_the_events_of_the_chosen_devices_and_saves_the_trigger()
+    public async Task Choosing_devices_reads_their_events_and_offers_every_event_any_of_them_has()
     {
         await using var rig = new Rig();
         var a = rig.AddDevice("10.0.0.48");
         var b = rig.AddDevice("10.0.0.49");
+        var offline = rig.AddDevice("10.0.0.50");
         var old = rig.AddDevice("10.0.0.20", hasApi: false);
         rig.Cameras[b.Id].Declarations = WithoutVirtualInput();
+        rig.Cameras[offline.Id].Refuse = new HttpRequestException("Connection refused");
         await rig.StartAsync();
         TriggerEditorViewModel.ReadPollInterval = TimeSpan.FromMilliseconds(20);
         var ctx = new PageContext(rig.Plugin, rig.Hub, await rig.Devices.ListAsync(CancellationToken.None));
         using var editor = new TriggerEditorViewModel(ctx, null, ["Existing"]);
+        Guid[] pick = [a.Id, b.Id, offline.Id];
+        DevicePickerViewModel? shown = null;
+        editor.ShowPicker = picker =>
+        {
+            shown = picker;
+            picker.SelectNoneCommand.Execute(null);
+            foreach (var item in picker.Visible.Where(i => pick.Contains(i.Id)))
+            {
+                item.IsChecked = true;
+            }
 
-        var choiceOld = editor.VisibleDevices.Single(d => d.Id == old.Id);
-        Assert.False(choiceOld.Supported);
-        Assert.Equal(DeviceTriggersPluginInfo.NotSupportedReason, choiceOld.StatusText);
+            return Task.FromResult(true);
+        };
+
+        Assert.Empty(editor.VisibleDevices); // a new trigger starts without devices
+        Assert.True(editor.HasNoDevices);
         Assert.Equal("Enter a name.", editor.Problem);
-
         editor.Name = "Gate open";
-        editor.VisibleDevices.Single(d => d.Id == a.Id).IsChecked = true;
-        Assert.Equal("Read the events of the chosen device first.", editor.Problem);
-        await editor.ReadEventsCommand.ExecuteAsync(null);
-        Assert.Equal(42, editor.EventOptions.Count);
+        Assert.Equal("Choose at least one device or tag.", editor.Problem);
+
+        // OK in the picker reads the events of the chosen devices at once (the server 16 at a time).
+        await editor.ChooseDevicesCommand.ExecuteAsync(null);
+        var pickOld = shown!.Visible.Single(i => i.Id == old.Id);
+        Assert.Equal((false, DeviceTriggersPluginInfo.NotSupportedReason), (pickOld.IsAvailable, pickOld.UnavailableReason));
+        Assert.Equal(3, editor.VisibleDevices.Count);
         Assert.Equal("42 events", editor.VisibleDevices.Single(d => d.Id == a.Id).StatusText);
+        var down = editor.VisibleDevices.Single(d => d.Id == offline.Id);
+        Assert.True(down.IsWarning);
+        Assert.StartsWith("Not read: Unreachable", down.StatusText, StringComparison.Ordinal);
+        Assert.EndsWith("It stays in the trigger.", down.StatusText, StringComparison.Ordinal);
+
+        // Every event any device offers: the virtual input comes from 10.0.0.48 only.
+        Assert.Contains(editor.EventOptions, o => o.Event.Topic == Fixture.VirtualInput);
+        Assert.Equal(43, editor.EventOptions.Count); // the 42 of 10.0.0.48 plus the renamed one of 10.0.0.49
         Assert.Equal("Choose an event.", editor.Problem);
 
-        editor.SelectedEvent = editor.EventOptions.Single(o => o.Event.Topic == Fixture.VirtualInput);
+        // The select is grouped like the device lists its events: grey headers, the short names below them.
+        var group = editor.EventChoices.First(c => c.IsHeader && c.Text == "Input ports");
+        var groupIndex = editor.EventChoices.IndexOf(group);
+        Assert.Contains(editor.EventChoices.Skip(groupIndex + 1).TakeWhile(c => !c.IsHeader), c => c.Text == "Virtual input");
+        Assert.All(editor.EventChoices.Where(c => c.IsHeader), h => Assert.False(h.IsSelectable));
+        editor.SelectedEventChoice = editor.EventChoices.Single(c => !c.IsHeader && ((TriggerEventOption)c.Value!).Event.Topic == Fixture.VirtualInput);
+        Assert.Equal(Fixture.VirtualInput, editor.SelectedEvent?.Event.Topic);
         Assert.Equal("Turns on and off. Rules can use it as \"When\" and \"And\".", editor.EventKindText);
         var port = Assert.Single(editor.Filters);
         Assert.Equal(("Port number", 65), (port.Label, port.Options.Count)); // Any + 64
         port.Selected = port.Options.Single(o => o.Value == "3");
 
-        // A second device without the event: it stays listed with the reason and blocks Save.
-        editor.VisibleDevices.Single(d => d.Id == b.Id).IsChecked = true;
-        Assert.Equal("Read the events of the chosen device first.", editor.Problem);
-        await editor.ReadEventsCommand.ExecuteAsync(null);
-        Assert.Equal(Fixture.VirtualInput, editor.SelectedEvent!.Event.Topic);
+        // 10.0.0.49 was read and lacks the event: it blocks Save. The offline device may stay.
         Assert.Equal("Does not offer this event", editor.VisibleDevices.Single(d => d.Id == b.Id).StatusText);
         Assert.Equal("Remove the devices that do not offer this event: 10.0.0.49.", editor.Problem);
         Assert.Equal(editor.Problem, editor.DevicesError);
 
-        editor.VisibleDevices.Single(d => d.Id == b.Id).IsChecked = false;
+        pick = [a.Id, offline.Id]; // unchoose 10.0.0.49 in the picker
+        await editor.ChooseDevicesCommand.ExecuteAsync(null);
+        Assert.Equal([a.Id, offline.Id], editor.VisibleDevices.Select(d => d.Id));
         Assert.Null(editor.Problem);
         var closed = false;
         editor.CloseRequested += (_, ok) => closed = ok;
@@ -117,7 +147,26 @@ public sealed class PageTests(ITestOutputHelper output)
         Assert.Equal([new TriggerFilter("port", "3")], saved.Filters);
         Assert.Equal("Port number: 3", saved.FilterText);
         Assert.Equal(["port", "active"], saved.Values);
-        Assert.Equal([a.Id], saved.DeviceIds);
+        Assert.Equal([a.Id, offline.Id], saved.DeviceIds);
+    }
+
+    [Fact]
+    public async Task Editing_a_trigger_whose_devices_are_offline_keeps_its_event()
+    {
+        await using var rig = new Rig();
+        var a = rig.AddDevice("10.0.0.48");
+        await rig.StartAsync();
+        var trigger = await rig.SaveAsync(Fixture.VirtualInputTrigger("Gate open", [a.Id], "5"));
+        rig.Cameras[a.Id].Refuse = new HttpRequestException("Connection refused");
+        TriggerEditorViewModel.ReadPollInterval = TimeSpan.FromMilliseconds(20);
+        using var editor = new TriggerEditorViewModel(new PageContext(rig.Plugin, rig.Hub, await rig.Devices.ListAsync(CancellationToken.None)), trigger, []);
+
+        await editor.StartAsync();
+
+        Assert.True(Assert.Single(editor.VisibleDevices).IsWarning);
+        Assert.Equal(Fixture.VirtualInput, editor.SelectedEvent?.Event.Topic);
+        Assert.Equal("5", Assert.Single(editor.Filters).Selected.Value);
+        Assert.Null(editor.Problem);
     }
 
     [Fact]
@@ -140,25 +189,52 @@ public sealed class PageTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void The_dialog_lists_and_searches_5000_devices_fast()
+    public async Task The_dialog_takes_5000_devices_from_the_picker_fast()
     {
         var devices = Enumerable.Range(0, 5000).Select(i => (IDeviceInfo)new TestDevice($"10.1.{i / 250}.{i % 250 + 1}")).ToList();
         var ctx = new PageContext(null, null, devices);
         var watch = Stopwatch.StartNew();
         using var editor = new TriggerEditorViewModel(ctx, null, []);
         var created = watch.ElapsedMilliseconds;
-        editor.DeviceSearch = "10.1.7.";
-        var searched = watch.ElapsedMilliseconds - created;
-        foreach (var device in editor.VisibleDevices)
+        editor.ShowPicker = picker =>
         {
-            device.IsChecked = true;
-        }
-
-        var checkedAll = watch.ElapsedMilliseconds - created - searched;
-        output.WriteLine($"create {created} ms, search {searched} ms, check {editor.VisibleDevices.Count} {checkedAll} ms");
+            picker.SearchText = "10.1.7.";
+            picker.SelectAllCommand.Execute(null);
+            picker.SearchText = string.Empty;
+            return Task.FromResult(true);
+        };
+        await editor.ChooseDevicesCommand.ExecuteAsync(null);
+        var picked = watch.ElapsedMilliseconds - created;
+        output.WriteLine($"create {created} ms, pick 250 of 5,000 {picked} ms");
         Assert.Equal(250, editor.VisibleDevices.Count);
-        Assert.Equal("250 devices chosen", editor.DevicesSummary);
+        Assert.Equal("250 chosen devices: 250 devices now", editor.DevicesSummary);
         Assert.True(watch.ElapsedMilliseconds < 3000, $"took {watch.ElapsedMilliseconds} ms");
+    }
+
+    [Fact]
+    public async Task A_tag_takes_its_devices_and_a_tagged_device_without_the_event_does_not_block_save()
+    {
+        var devices = new List<IDeviceInfo>
+        {
+            new TestDevice("10.0.0.1") { Tags = ["Gate"] },
+            new TestDevice("10.0.0.2"),
+            new TestDevice("10.0.0.3", HasApi: false) { Tags = ["Gate"] },
+        };
+        var ctx = new PageContext(null, null, devices);
+        using var editor = new TriggerEditorViewModel(ctx, null, []);
+        editor.ShowPicker = picker =>
+        {
+            Assert.True(picker.HasChoices);
+            Assert.Null(picker.Options.EventDeviceText); // triggers have no "device of the event"
+            picker.Tags.Single(t => t.Name == "Gate").IsChecked = true;
+            return Task.FromResult(true);
+        };
+        await editor.ChooseDevicesCommand.ExecuteAsync(null);
+
+        var row = Assert.Single(editor.VisibleDevices); // the device without the stream API is not taken by the tag
+        Assert.Equal(("10.0.0.1", "Tag Gate", true), (row.Address, row.IncludedBy, row.IsImplicit));
+        Assert.Equal("Tag Gate: 1 device now", editor.DevicesSummary);
+        Assert.NotEqual("Choose at least one device or tag.", editor.Problem);
     }
 
     [Fact]
@@ -179,9 +255,15 @@ public sealed class PageTests(ITestOutputHelper output)
         TriggerEditorViewModel.ReadPollInterval = TimeSpan.FromMilliseconds(20);
         using var editor = new TriggerEditorViewModel(ctx, null, [.. vm.Triggers.Select(t => t.Name)]);
         editor.Name = "Person at the door";
-        editor.VisibleDevices.Single(d => d.Address == "10.0.0.48").IsChecked = true;
-        await editor.ReadEventsCommand.ExecuteAsync(null);
-        editor.SelectedEvent = editor.EventOptions.Single(o => o.Text == "AXIS Object Analytics › Scenario 1");
+        editor.ShowPicker = picker =>
+        {
+            picker.Visible.Single(i => i.Address == "10.0.0.48").IsChecked = true;
+            return Task.FromResult(true);
+        };
+        await editor.ChooseDevicesCommand.ExecuteAsync(null);
+        Assert.Contains(editor.EventChoices, c => c.IsHeader && c.Text == "Applications");
+        Assert.DoesNotContain(editor.EventChoices, c => c.IsHeader && c.Text is "AXIS Object Analytics" or "Video Motion Detection");
+        editor.SelectedEvent = editor.EventOptions.Single(o => o.Text == "Object Analytics: Scenario 1");
         await editor.SaveCommand.ExecuteAsync(null);
         await vm.ReloadAsync();
         Assert.Equal(4, vm.Triggers.Count);
@@ -194,8 +276,8 @@ public sealed class PageTests(ITestOutputHelper output)
         var done = await session.Dispatch(async () =>
         {
             await using var rig = new Rig();
-            var a = rig.AddDevice("10.0.0.48");
-            var b = rig.AddDevice("10.0.0.31");
+            var a = rig.AddDevice("10.0.0.48", tags: ["Gate"]);
+            var b = rig.AddDevice("10.0.0.31", tags: ["Gate", "Outdoor"]);
             var c = rig.AddDevice("10.0.0.23", status: DeviceStatus.CredentialsRequired);
             rig.AddDevice("10.0.0.20", hasApi: false);
             rig.Cameras[a.Id].SetState(Fixture.VirtualInput, Port3, On);
@@ -238,9 +320,30 @@ public sealed class PageTests(ITestOutputHelper output)
             dialog.Attach(editor);
             dialog.Show();
             await editor.StartAsync();
-            editor.VisibleDevices.Single(d => d.Address == "10.0.0.23").IsChecked = false;
             Headless.Pump();
             Headless.Capture(dialog, "device-triggers-editor.png");
+
+            // The grouped event list, open (headless draws a popup in a top level of its own).
+            var events = dialog.GetVisualDescendants().OfType<ComboBox>().First(c => c.Classes.Contains("grouped"));
+            events.IsDropDownOpen = true;
+            Headless.Pump();
+            if (events.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.Popup>().FirstOrDefault()?.Child is { } content && TopLevel.GetTopLevel(content) is { } list)
+            {
+                Headless.Capture(list, "device-triggers-event-list.png");
+            }
+
+            events.IsDropDownOpen = false;
+
+            // The shared device picker the dialog opens with Choose devices: All devices, tags and single devices.
+            var picker = new DevicePickerWindow(new DevicePickerViewModel(
+                await rig.Devices.ListAsync(CancellationToken.None),
+                DeviceChoice.Devices(editor.VisibleDevices.Select(d => d.Id)),
+                new DevicePickerOptions { AllowAll = true, AllowTags = true },
+                d => d.Apis.Any(a => a.Id == DeviceTriggersPluginInfo.ApiId) ? null : DeviceTriggersPluginInfo.NotSupportedReason)) { Heading = "Devices of the trigger" };
+            picker.Show();
+            Headless.Pump();
+            Headless.Capture(picker, "device-picker.png");
+            picker.Close();
             dialog.Close();
             editor.Dispose();
             return true;

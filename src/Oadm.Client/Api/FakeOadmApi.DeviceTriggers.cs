@@ -203,7 +203,8 @@ public sealed partial class FakeOadmApi
             FakeEvent(FakeDigitalInput, "Device › Input ports › Digital input port", true, "state", [("port", "Port", Enumerable.Range(0, 8).Select(i => (i.ToString(CultureInfo.InvariantCulture), (string?)$"Port {i + 1}")).ToArray())], ["state"]),
             FakeEvent(FakeTampering, "Video source › Camera tampering", false, null, [("channel", "Channel", [("1", null)])], ["tampering"]),
             FakeEvent(FakeStorage, "Storage › Storage disruption", true, "disruption", [("disk_id", "Disk", [("SD_DISK", null), ("NetworkShare", null)])], ["disruption"]),
-            FakeEvent(FakeScenario1, "AXIS Object Analytics › Scenario 1", true, "active", [], ["active"]),
+            FakeEvent(FakeScenario1, "AXIS Object Analytics › Object Analytics: Scenario 1", true, "active", [], ["active"]),
+            FakeEvent("tnsaxis:CameraApplicationPlatform/VMD/Camera1ProfileANY", "Video Motion Detection › VMD 4: Any Profile", true, "active", [], ["active"]),
         };
         var devices = new JsonArray();
         foreach (var id in ids)
@@ -215,7 +216,7 @@ public sealed partial class FakeOadmApi
                 refusal = Oadm.Sdk.Devices.DeviceMessages.Unreachable("No route to host");
             }
 
-            int[] offered = device?.Model.Contains("A9188", StringComparison.Ordinal) == true ? [0, 1] : device?.Category == DeviceCategory.Camera ? [0, 1, 2, 3, 4] : [0, 1, 3];
+            int[] offered = device?.Model.Contains("A9188", StringComparison.Ordinal) == true ? [0, 1] : device?.Category == DeviceCategory.Camera ? [0, 1, 2, 3, 4, 5] : [0, 1, 3];
             devices.Add(new JsonObject
             {
                 ["deviceId"] = id,

@@ -10,10 +10,13 @@ public enum DeviceSelectorMode
     /// <summary>Every managed device.</summary>
     All = 0,
 
-    /// <summary>The devices in <see cref="DeviceSelector.DeviceIds"/>.</summary>
+    /// <summary>
+    /// A choice (user decision 2026-10-11, tags and devices together): the devices in <see cref="DeviceSelector.DeviceIds"/>
+    /// and every device with at least one of <see cref="DeviceSelector.Tags"/>.
+    /// </summary>
     Devices = 1,
 
-    /// <summary>Devices with at least one of <see cref="DeviceSelector.Tags"/>.</summary>
+    /// <summary>Older rules: the same as <see cref="Devices"/> (devices with a tag, plus listed devices).</summary>
     Tags = 2,
 
     /// <summary>
@@ -32,6 +35,21 @@ public sealed class DeviceSelector
     public List<string> Tags { get; set; } = [];
 
     public DeviceSelector Clone() => new() { Mode = Mode, DeviceIds = [.. DeviceIds], Tags = [.. Tags] };
+
+    /// <summary>A choice of devices and tags (<see cref="DeviceSelectorMode.Devices"/> or the older Tags).</summary>
+    [JsonIgnore]
+    public bool IsChoice => Mode is DeviceSelectorMode.Devices or DeviceSelectorMode.Tags;
+
+    /// <summary>A choice with neither devices nor tags.</summary>
+    [JsonIgnore]
+    public bool IsEmptyChoice => IsChoice && DeviceIds.Count == 0 && Tags.Count == 0;
+
+    /// <summary>Whether a device with <paramref name="deviceTags"/> belongs to a choice: listed, or one of its tags chosen.</summary>
+    public bool ChoiceMatches(Guid deviceId, IEnumerable<string> deviceTags)
+    {
+        ArgumentNullException.ThrowIfNull(deviceTags);
+        return DeviceIds.Contains(deviceId) || (Tags.Count > 0 && deviceTags.Any(t => Tags.Contains(t, StringComparer.OrdinalIgnoreCase)));
+    }
 }
 
 public enum RuleConditionKind

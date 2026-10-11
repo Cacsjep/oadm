@@ -13,7 +13,7 @@ namespace Oadm.Sdk.Client.Controls;
 public sealed class MessageWindow : Window
 {
     private readonly DialogTitleBar _title = new();
-    private readonly TextBlock _message = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(24, 4, 24, 24) };
+    private readonly TextBlock _message = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(16, 4, 16, 24) };
     private readonly Button _confirm = new() { IsDefault = true };
     private readonly DialogFooter _footer = new();
 
@@ -24,8 +24,7 @@ public sealed class MessageWindow : Window
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowInTaskbar = false;
-        ExtendClientAreaToDecorationsHint = true;
-        Bind(ExtendClientAreaTitleBarHeightHintProperty, this.GetResourceObservable("Oadm.TitleBarHeight"));
+        WindowDecorations = WindowDecorations.BorderOnly;
         _confirm.Classes.Add("primary");
         _confirm.Click += (_, _) => Close(true);
         _footer.CancelButton.Click += (_, _) => Close(false);

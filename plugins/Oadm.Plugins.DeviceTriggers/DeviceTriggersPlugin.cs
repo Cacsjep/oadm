@@ -25,6 +25,8 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
     private readonly SemaphoreSlim _write = new(1, 1);
     private readonly Lock _sync = new();
     private List<TriggerDefinition> _triggers = [];
+    private Dictionary<Guid, Resolution> _resolved = [];
+    private ITimer? _resolveTimer;
     private ICorePluginContext? _ctx;
     private TriggerRuntime? _runtime;
     private EventListReads? _reads;
@@ -100,13 +102,20 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         _runtime.Changed += (_, ids) => ctx.Events?.Publish(DeviceTriggersMethods.ChangedTopic, TriggerJson.Serialize(new ChangedEvent([.. ids])));
         _runtime.DevicesRemoved += (_, ids) => _ = RemoveDevicesAsync(ids);
         EventTypesChanged?.Invoke(this, EventArgs.Empty);
-        _runtime.Apply(stored);
+        await ResolveAsync(ct).ConfigureAwait(false);
+        _resolveTimer = _time.CreateTimer(_ => _ = ResolveSafelyAsync(), null, _options.ResolveInterval, _options.ResolveInterval);
         var enabled = stored.Count(t => t.Enabled);
         LogStarted(Logger, stored.Count, enabled);
     }
 
     public async Task StopAsync(CancellationToken ct)
     {
+        if (_resolveTimer is { } timer)
+        {
+            _resolveTimer = null;
+            await timer.DisposeAsync().ConfigureAwait(false);
+        }
+
         if (_running is { } running)
         {
             _running = null;
@@ -139,7 +148,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             {
                 var id = TriggerJson.Deserialize<IdRequest>(payloadJson).Id;
                 var trigger = Triggers.FirstOrDefault(t => t.Id == id);
-                return TriggerJson.Serialize(new GetReply(trigger, trigger is null || _runtime is null ? [] : _runtime.StatesOf(trigger)));
+                return TriggerJson.Serialize(new GetReply(trigger, trigger is null || _runtime is null ? [] : _runtime.StatesOf(Resolved(trigger))));
             }
 
             case DeviceTriggersMethods.StartRead:
@@ -211,8 +220,18 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
 
     private TriggerSummary Summary(TriggerDefinition trigger)
     {
-        var (on, lost, waiting, last) = _runtime?.CountsOf(trigger) ?? (0, 0, 0, null);
-        return new TriggerSummary(trigger.Id, trigger.Name, trigger.Enabled, trigger.EventName, trigger.FilterText, trigger.Stateful, trigger.DeviceIds.Count, on, lost, waiting, last);
+        var resolved = Resolved(trigger);
+        var (on, lost, waiting, last) = _runtime?.CountsOf(resolved) ?? (0, 0, 0, null);
+        return new TriggerSummary(trigger.Id, trigger.Name, trigger.Enabled, trigger.EventName, trigger.FilterText, trigger.Stateful, resolved.DeviceIds.Count, on, lost, waiting, last);
+    }
+
+    /// <summary>The trigger with every device it covers now (chosen, tagged, all); the stored one until resolved.</summary>
+    internal TriggerDefinition Resolved(TriggerDefinition trigger)
+    {
+        lock (_sync)
+        {
+            return _resolved.TryGetValue(trigger.Id, out var resolved) ? resolved.Value : trigger;
+        }
     }
 
     private async Task<SaveReply> SaveAsync(ICorePluginContext ctx, TriggerDefinition? incoming, CancellationToken ct)
@@ -226,6 +245,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         {
             Name = incoming.Name.Trim(),
             DeviceIds = [.. (incoming.DeviceIds ?? []).Distinct()],
+            Tags = [.. (incoming.Tags ?? []).Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).Distinct(StringComparer.OrdinalIgnoreCase)],
             Filters = [.. (incoming.Filters ?? []).Where(f => !string.IsNullOrEmpty(f.Name) && !string.IsNullOrEmpty(f.Value)).DistinctBy(f => f.Name)],
             Values = [.. (incoming.Values ?? []).Where(v => !string.IsNullOrWhiteSpace(v)).Distinct(StringComparer.Ordinal)],
             FilterText = incoming.FilterText ?? string.Empty,
@@ -351,9 +371,78 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             EventTypesChanged?.Invoke(this, EventArgs.Empty);
         }
 
-        _runtime?.Apply(updated);
+        await ResolveAsync(ct).ConfigureAwait(false);
         ctx.Events?.Publish(DeviceTriggersMethods.ChangedTopic, TriggerJson.Serialize(new ChangedEvent([])));
     }
+
+    /// <summary>
+    /// Resolves every trigger to the devices it covers now: the chosen ones, plus with <see cref="TriggerDefinition.AllDevices"/>
+    /// or <see cref="TriggerDefinition.Tags"/> every managed device (with that tag) that can send events. Runs after every
+    /// change and every <see cref="DeviceTriggersOptions.ResolveInterval"/>, so new and newly tagged devices join; the
+    /// connections follow only when a set changed.
+    /// </summary>
+    private async Task ResolveAsync(CancellationToken ct)
+    {
+        if (_ctx is not { } ctx || _runtime is not { } runtime)
+        {
+            return;
+        }
+
+        var stored = Triggers;
+        var devices = stored.Any(t => t.AllDevices || t.Tags.Count > 0) ? await ctx.Devices.ListAsync(ct).ConfigureAwait(false) : [];
+        var next = new Dictionary<Guid, Resolution>();
+        var changed = false;
+        lock (_sync)
+        {
+            foreach (var trigger in stored)
+            {
+                var resolved = trigger;
+                if (trigger.AllDevices || trigger.Tags.Count > 0)
+                {
+                    var chosen = trigger.DeviceIds.ToHashSet();
+                    var implicitIds = devices
+                        .Where(d => !chosen.Contains(d.Id) && trigger.CoversImplicitly(d.Tags) && CanSendEvents(d))
+                        .Select(d => d.Id)
+                        .ToHashSet();
+                    resolved = trigger with { DeviceIds = [.. trigger.DeviceIds, .. implicitIds], Implicit = implicitIds };
+                }
+
+                var previous = _resolved.GetValueOrDefault(trigger.Id);
+                changed |= previous is null || !ReferenceEquals(previous.Source, trigger) || !previous.Value.DeviceIds.SequenceEqual(resolved.DeviceIds);
+                next[trigger.Id] = previous is not null && ReferenceEquals(previous.Source, trigger) && previous.Value.DeviceIds.SequenceEqual(resolved.DeviceIds)
+                    ? previous
+                    : new Resolution(trigger, resolved);
+            }
+
+            changed |= next.Count != _resolved.Count;
+            _resolved = next;
+        }
+
+        if (changed)
+        {
+            runtime.Apply([.. next.Values.Select(r => r.Value)]);
+        }
+    }
+
+    private async Task ResolveSafelyAsync()
+    {
+        try
+        {
+            await ResolveAsync(_running?.Token ?? CancellationToken.None).ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // The next round tries again.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogResolveFailed(Logger, ex);
+        }
+    }
+
+    /// <summary>A device of a tag or of all devices: the stream API listed, or its API list not read yet.</summary>
+    private static bool CanSendEvents(IDeviceInfo device) =>
+        device.Apis.Count == 0 || device.Apis.Supports(DeviceTriggersPluginInfo.ApiId, DeviceTriggersPluginInfo.ApiVersion);
+
+    private sealed record Resolution(TriggerDefinition Source, TriggerDefinition Value);
 
     /// <summary>Devices removed from OADM leave their triggers (user decision).</summary>
     private async Task RemoveDevicesAsync(IReadOnlyCollection<Guid> devices)
@@ -412,6 +501,9 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Device triggers: the stored triggers could not be read")]
     private static partial void LogLoadFailed(ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Device triggers: the devices of the triggers could not be read")]
+    private static partial void LogResolveFailed(ILogger logger, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Device triggers: removed devices could not be taken out of the triggers")]
     private static partial void LogRemoveFailed(ILogger logger, Exception ex);

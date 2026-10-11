@@ -4,14 +4,9 @@
              xmlns:vm="using:Oadm.Client.EventRules"
              x:Class="Oadm.Client.EventRules.DeviceSelectorView"
              x:DataType="vm:DeviceSelectorViewModel">
-  <!-- Which devices: a mode, then the device or tag list for "chosen" and "with tags". -->
-  <StackPanel Spacing="8">
-    <ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" MinWidth="260" />
-    <Panel IsVisible="{Binding IsDevices}">
-      <vm:PickListView DataContext="{Binding Devices}" />
-    </Panel>
-    <Panel IsVisible="{Binding IsTags}">
-      <vm:PickListView DataContext="{Binding Tags}" />
-    </Panel>
-  </StackPanel>
+  <!-- Which devices: one purple button that says what is chosen ("Selected devices: Tag Building A") and opens the shared
+       device picker (the device of the event, All devices, or chosen devices and tags); the addresses as tooltip. -->
+  <Button Classes="primary" HorizontalAlignment="Left" Command="{Binding ChooseDevicesCommand}" ToolTip.Tip="{Binding ChosenText}">
+    <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding ButtonText}" />
+  </Button>
 </UserControl>
