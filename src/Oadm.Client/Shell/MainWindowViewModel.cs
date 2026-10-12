@@ -697,6 +697,9 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
         }
     }
 
+    public Task<Oadm.Sdk.Plugins.PluginDownload> OpenDownloadAsync(string method, string? payloadJson, CancellationToken ct) =>
+        _api.DownloadCorePluginAsync(_pluginId, method, payloadJson, ct);
+
     public Task ShowMessageAsync(string title, string message) => _host.ShowMessageAsync(title, message);
 
     public Task<bool> ConfirmAsync(string title, string message, string confirmText) => _host.ConfirmAsync(title, message, confirmText);

@@ -73,6 +73,15 @@ public interface ICorePluginClientContext
     /// </summary>
     IAsyncEnumerable<Oadm.Sdk.Plugins.PluginEvent> WatchEventsAsync(CancellationToken ct) => AsyncEnumerable.Empty<Oadm.Sdk.Plugins.PluginEvent>();
 
+    /// <summary>
+    /// A file the server part sends (<c>ICorePluginDownloads</c>, gRPC PluginService.Download): the suggested name, the
+    /// length when known and the bytes as a stream. Read <see cref="Oadm.Sdk.Plugins.PluginDownload.Content"/> with your own
+    /// token and dispose the download (that ends the call). Errors arrive as <c>RpcException</c> like
+    /// <see cref="InvokeAsync"/>. Default (older hosts): <see cref="NotSupportedException"/>.
+    /// </summary>
+    Task<Oadm.Sdk.Plugins.PluginDownload> OpenDownloadAsync(string method, string? payloadJson, CancellationToken ct) =>
+        throw new NotSupportedException("This host has no plugin downloads.");
+
     /// <summary>All managed devices (client mirror of the device table), see <see cref="DevicesChanged"/>.</summary>
     IReadOnlyList<IDeviceInfo> Devices => [];
 

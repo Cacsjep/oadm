@@ -424,6 +424,36 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public IAsyncEnumerable<PluginEvent> WatchCorePluginAsync(string pluginId, CancellationToken ct) =>
         ReadAll(C.Plugins.Watch(new WatchPluginRequest { PluginId = pluginId }, cancellationToken: ct), ct);
 
+    public async Task<Oadm.Sdk.Plugins.PluginDownload> DownloadCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct)
+    {
+        // The call lives as long as the returned stream (not ct): the caller reads it with its own token.
+        AsyncServerStreamingCall<DownloadChunk> call = C.Plugins.Download(new InvokeRequest { PluginId = pluginId, Method = method, PayloadJson = payloadJson ?? "" }, cancellationToken: CancellationToken.None);
+        try
+        {
+            if (!await call.ResponseStream.MoveNext(ct).ConfigureAwait(false))
+            {
+                throw new RpcException(new Status(StatusCode.Unavailable, "The server sent no file."));
+            }
+
+            DownloadChunk header = call.ResponseStream.Current;
+            return new Oadm.Sdk.Plugins.PluginDownload(
+                new DownloadChunkStream(call),
+                string.IsNullOrWhiteSpace(header.FileName) ? "download" : header.FileName,
+                header.Length >= 0 ? header.Length : null);
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.Unauthenticated)
+        {
+            call.Dispose();
+            OnUnauthenticated("stream");
+            throw;
+        }
+        catch
+        {
+            call.Dispose();
+            throw;
+        }
+    }
+
     private static DeviceIds ToIds(IEnumerable<string> ids)
     {
         var message = new DeviceIds();

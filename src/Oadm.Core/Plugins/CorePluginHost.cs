@@ -250,9 +250,46 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     /// </summary>
     public async Task<string?> InvokeAsync(string pluginId, string method, string? payloadJson, CancellationToken ct)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
         ArgumentException.ThrowIfNullOrWhiteSpace(method);
+        var plugin = RunningPlugin(pluginId);
+        try
+        {
+            return await plugin.InvokeAsync(method, payloadJson, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogInvokeFailed(ex, pluginId, method);
+            throw;
+        }
+    }
 
+    /// <summary>
+    /// Opens a file of a running core plugin (<see cref="ICorePluginDownloads"/>, gRPC PluginService.Download). Throws
+    /// like <see cref="InvokeAsync"/>; <see cref="NotSupportedException"/> for a plugin without downloads.
+    /// </summary>
+    public async Task<PluginDownload> OpenDownloadAsync(string pluginId, string method, string? payloadJson, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(method);
+        if (RunningPlugin(pluginId) is not ICorePluginDownloads downloads)
+        {
+            throw new NotSupportedException($"The plugin '{pluginId}' has no downloads.");
+        }
+
+        try
+        {
+            return await downloads.OpenDownloadAsync(method, payloadJson, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogInvokeFailed(ex, pluginId, method);
+            throw;
+        }
+    }
+
+    /// <summary>The running plugin of <paramref name="pluginId"/>; KeyNotFound for an unknown one, InvalidOperation when off or stopped.</summary>
+    private ICorePlugin RunningPlugin(string pluginId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
         if (!_registry.TryGetCorePlugin(pluginId, out var registered))
         {
             if (_registry.AllCorePlugins.FirstOrDefault(c => string.Equals(c.Id, pluginId, StringComparison.OrdinalIgnoreCase)) is { } off)
@@ -268,15 +305,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
             throw new InvalidOperationException($"Core plugin '{pluginId}' is not running.");
         }
 
-        try
-        {
-            return await entry.Plugin.InvokeAsync(method, payloadJson, ct).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            LogInvokeFailed(ex, pluginId, method);
-            throw;
-        }
+        return entry.Plugin;
     }
 
     /// <summary>

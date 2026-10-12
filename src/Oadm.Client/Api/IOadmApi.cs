@@ -218,4 +218,11 @@ public interface IOadmApi
 
     /// <summary>Live events of a core plugin (PluginService.Watch) until cancelled. Default: none (the page polls).</summary>
     IAsyncEnumerable<PluginEvent> WatchCorePluginAsync(string pluginId, CancellationToken ct) => AsyncEnumerable.Empty<PluginEvent>();
+
+    /// <summary>
+    /// A file of a core plugin (PluginService.Download): name, length and the bytes as a stream read with the caller's
+    /// token; disposing it ends the call. Default (fake mode without the plugin): not supported.
+    /// </summary>
+    Task<Oadm.Sdk.Plugins.PluginDownload> DownloadCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) =>
+        throw new NotSupportedException("This connection has no plugin downloads.");
 }

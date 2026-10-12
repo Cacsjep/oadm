@@ -16,7 +16,7 @@ public enum Access
 
     /// <summary>
     /// A login here; the call checks the permission itself because it depends on the request: the plugin of
-    /// PluginService.Invoke and Watch, the task plugin of TaskService.Run and Query.
+    /// PluginService.Invoke, Watch and Download, the task plugin of TaskService.Run and Query.
     /// </summary>
     InCall,
 
@@ -142,6 +142,7 @@ public static class AccessPolicy
         ["/oadm.v1.PluginService/ListPackages"] = AccessRule.SignedIn,
         ["/oadm.v1.PluginService/Invoke"] = AccessRule.InCall,
         ["/oadm.v1.PluginService/Watch"] = AccessRule.InCall,
+        ["/oadm.v1.PluginService/Download"] = AccessRule.InCall,
         ["/oadm.v1.PluginService/SetPackageEnabled"] = AccessRule.Admin,
 
         // Server settings and the credential list are Administrator only; every role reads the settings (About, read-only page).
