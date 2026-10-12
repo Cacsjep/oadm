@@ -199,6 +199,21 @@ internal sealed class WebTabBrowser : Panel, IDisposable
     private Uri? _lastPage;
     private bool _shown;
     private DateTime _lastRestart = DateTime.MinValue;
+
+    /// <summary>The message the page sends when its history changed (<see cref="HistoryHook"/>).</summary>
+    private const string HistoryMessage = "oadm:history";
+
+    /// <summary>
+    /// The web interfaces are single-page apps: moving around adds history entries without a page load, and the native
+    /// browser raises no event the control passes on. After every page load this hook in the page reports pushState,
+    /// replaceState, back / forward and hash changes through the control's message channel (invokeCSharpAction on every
+    /// platform), and Back is checked then. Installed once per document.
+    /// </summary>
+    private const string HistoryHook =
+        "(function(){if(window.__oadmHistory){return;}window.__oadmHistory=1;"
+        + "var post=function(){try{invokeCSharpAction('" + HistoryMessage + "');}catch(e){}};"
+        + "['pushState','replaceState'].forEach(function(n){var o=history[n];history[n]=function(){var r=o.apply(this,arguments);post();return r;};});"
+        + "window.addEventListener('popstate',post);window.addEventListener('hashchange',post);})();";
     private readonly StatusChip _status = new() { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MaxLines = 4 };
 
     public WebTabBrowser(WebTab tab)
@@ -212,6 +227,7 @@ internal sealed class WebTabBrowser : Panel, IDisposable
         Children.Add(_browser);
         Children.Add(_status);
         _tab.PropertyChanged += OnTabChanged;
+        _browser.WebMessageReceived += OnWebMessageReceived;
         Apply();
         if (_tab.Address is { } address)
         {
@@ -244,10 +260,32 @@ internal sealed class WebTabBrowser : Panel, IDisposable
         _shown = true;
     }
 
+    private void UpdateHistory()
+    {
+        if (!_tab.IsActive)
+        {
+            return;
+        }
+
+        var canGoBack = _browser.CanGoBack;
+        if (canGoBack != _tab.CanGoBack)
+        {
+            _tab.CanGoBack = canGoBack;
+            HistoryChanged?.Invoke();
+        }
+    }
+
+    private void OnWebMessageReceived(object? sender, WebMessageReceivedEventArgs e)
+    {
+        if (e.Body == HistoryMessage)
+        {
+            UpdateHistory();
+        }
+    }
+
     private async void OnNavigationCompleted(object? sender, WebViewNavigationCompletedEventArgs e)
     {
-        _tab.CanGoBack = _browser.CanGoBack;
-        HistoryChanged?.Invoke();
+        UpdateHistory();
         if (e.Request is not { } page)
         {
             return;
@@ -268,10 +306,12 @@ internal sealed class WebTabBrowser : Panel, IDisposable
 
                 return;
             }
+
+            await _browser.InvokeScript(HistoryHook).ConfigureAwait(true);
         }
         catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException or NotSupportedException)
         {
-            // The browser closed meanwhile, or cannot run scripts: nothing to repair.
+            // The browser closed meanwhile, or cannot run scripts: nothing to repair, Back follows page loads only.
         }
 
         if (e.IsSuccess)
@@ -285,6 +325,11 @@ internal sealed class WebTabBrowser : Panel, IDisposable
         if (e.PropertyName == nameof(WebTab.Address) && _tab.Address is { } address)
         {
             _browser.Navigate(address);
+        }
+
+        if (e.PropertyName == nameof(WebTab.IsActive))
+        {
+            UpdateHistory();
         }
 
         Apply();
@@ -312,6 +357,7 @@ internal sealed class WebTabBrowser : Panel, IDisposable
 
     public void Dispose()
     {
+        _browser.WebMessageReceived -= OnWebMessageReceived;
         _tab.PropertyChanged -= OnTabChanged;
         _browser.NewWindowRequested -= OnNewWindowRequested;
         _browser.NavigationCompleted -= OnNavigationCompleted;

@@ -43,7 +43,10 @@ interface of the managed devices in browser tabs inside OADM, logged in with the
   and stops its relays when the page closes.
 - **Page** (`Oadm.Plugins.WebView.Client`): `WebViewPageViewModel` (tree rows in one reset, tabs, presets, Custom with
   `ValidatingViewModel`), `WebViewPageView` (code-behind owns one `NativeWebView` per tab, kept alive while hidden; links
-  that open a new window open in the same tab).
+  that open a new window open in the same tab). Back follows the browser's history: the web interfaces are single-page
+  apps whose steps load no page, and the control passes on no history event, so after every page load a small script in
+  the page reports pushState, replaceState, back / forward and hash changes through the control's message channel
+  (`invokeCSharpAction`), and Back is checked then. No limit of our own: the browser keeps about 50 entries per tab.
 - **Browser runtime** (`WebRuntime.Check`, `WebViewAdapterInfo`): WebView2 on Windows, WKWebView on macOS, WPE WebKit or
   WebKitGTK on Linux. Missing: the page says what to install ("The Microsoft Edge WebView2 Runtime is not installed ...",
   the apt / dnf / pacman package of WebKitGTK 4.1). The `oadm-client` .deb recommends `libwebkit2gtk-4.1-0`.
