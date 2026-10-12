@@ -24,7 +24,6 @@ const security = [
 
 <section class="trust-band not-content" aria-labelledby="trust-security">
 	<h2 id="trust-security" class="landing-title">Security</h2>
-	<p class="landing-lead">Device credentials stay on the server. Every access is controlled and logged.</p>
 	<div class="trust-grid">
 		{security.map((s) => (
 			<div class="trust-item">
@@ -69,7 +68,7 @@ const security = [
 		padding: 1.1rem 1.2rem;
 		border: 1px solid var(--sl-color-gray-5);
 		border-radius: 12px;
-		background: color-mix(in srgb, var(--sl-color-black) 80%, transparent);
+		background: transparent;
 	}
 	.trust-item svg {
 		width: 22px;

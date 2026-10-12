@@ -211,10 +211,13 @@ img.screen {
 	cursor: pointer;
 }
 
-/* Landing page: the independence note, part of the hero text above the buttons. */
+/* Landing page: the independence note, below the download buttons. */
+.sl-markdown-content .independent,
 .independent {
 	display: block;
-	margin-top: 1rem;
+	max-width: 40rem;
+	margin: 1.25rem auto 0;
+	text-align: center;
 	color: var(--sl-color-accent-high);
 	font-size: 12px;
 	line-height: 1.5;
@@ -226,8 +229,20 @@ img.screen {
 	padding-bottom: 0;
 }
 
-/* The first content panel after the hero adds its own top padding; the download row follows the hero closely. */
-html[data-has-hero] .content-panel:has(.downloads) {
+/* The animation is the hero: Starlight's hero keeps the page title as the heading for search engines and screen
+   readers, but is not shown (the animation's first scene says the same). */
+html[data-has-hero] .hero {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+/* The first content panel after the hero adds its own top padding; the animation follows the top bar closely. */
+html[data-has-hero] .content-panel:has(.motion) {
 	padding-top: 0;
 }
 
@@ -348,7 +363,7 @@ header .social-icons::after {
 	padding: 1rem 1.1rem;
 	border: 1px solid var(--sl-color-gray-5);
 	border-radius: 12px;
-	background: color-mix(in srgb, var(--sl-color-black) 80%, transparent);
+	background: transparent;
 }
 
 .plugin-points strong {

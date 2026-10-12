@@ -1,6 +1,6 @@
 ---
-// The entry sequence of the landing page: centered thin lines of sliced typography, first the main claims, then every
-// feature by name with one sentence. Text only. Pure HTML, CSS and the Web Animations API: every animation spans the
+// The hero of the landing page: centered thin lines of sliced typography, first the main claim (the page's title, held
+// longer), then every feature by name with one sentence. Text only. Pure HTML, CSS and the Web Animations API: every animation spans the
 // whole loop, so the sequence pauses and resumes as one when it leaves the screen; prefers-reduced-motion shows the
 // first line, still.
 import '@fontsource-variable/inter';
@@ -12,8 +12,7 @@ const feature = (name: string, text: string): Line => ({ html: `${name}<small>${
 
 // The sequence, in order.
 const scenes: Line[] = [
-	line('Open source.<br /><em>Every platform.</em>', 2.4),
-	line('Built to be <em>extended.</em>'),
+	{ html: 'Open source<br /><em>AXIS device management.</em><small>Built by Professionals. For Professionals.</small>', seconds: 4.5 },
 	line('Your own tools.<br /><em>As plugins.</em>'),
 	{ html: 'Every feature is <em>a plugin.</em><small>Turn it on or off.</small>', seconds: 2.7 },
 	feature('VAPIX Commander', 'Any VAPIX command, rolled out to hundreds of devices.'),
@@ -46,7 +45,7 @@ const config = JSON.stringify({ loop, scenes: timed.map(({ at, until }) => ({ at
 ---
 
 <div class="motion not-content" data-motion={config} role="img"
-	aria-label="OADM: open source, for every platform, built to be extended. VAPIX Commander, event rules, device triggers, snapshot report, hardening scan, DHCP and NTP server, Metadata Monitor, Image Health Dashboard, I/O Monitor, Web View, live view, Live View and tags.">
+	aria-label="Open source AXIS device management. Built by Professionals. For Professionals. VAPIX Commander, event rules, device triggers, snapshot report, hardening scan, DHCP and NTP server, Metadata Monitor, Image Health Dashboard, I/O Monitor, Web View, live view, Live View and tags.">
 	{timed.map((scene) => (
 		<div class="m-line" data-scene>
 			<span class="m-measure" set:html={scene.html} />
@@ -60,7 +59,7 @@ const config = JSON.stringify({ loop, scenes: timed.map(({ at, until }) => ({ at
 		position: relative;
 		width: 100%;
 		max-width: 72rem;
-		height: clamp(13rem, 26vw, 20rem);
+		height: clamp(15rem, 28vw, 21rem);
 		margin: 0 auto 2rem;
 		overflow: hidden;
 		container-type: inline-size;
