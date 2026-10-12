@@ -211,12 +211,12 @@ img.screen {
 	cursor: pointer;
 }
 
-/* Landing page: the independence note, below the download buttons. */
+/* Landing page: the independence note, right below the animation. */
 .sl-markdown-content .independent,
 .independent {
 	display: block;
 	max-width: 40rem;
-	margin: 1.25rem auto 0;
+	margin: 0 auto;
 	text-align: center;
 	color: var(--sl-color-accent-high);
 	font-size: 12px;
