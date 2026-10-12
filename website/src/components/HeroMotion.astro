@@ -12,7 +12,8 @@ const feature = (name: string, text: string): Line => ({ html: `${name}<small>${
 
 // The sequence, in order.
 const scenes: Line[] = [
-	{ html: 'Open source<br /><em>AXIS device management.</em><small>Built by Professionals. For Professionals.</small>', seconds: 4.5 },
+	// The opening claim, larger than the other scenes.
+	{ html: '<span class="m-hero">Open source<br /><em>AXIS device management.</em></span><small>Built by Professionals. For Professionals.</small>', seconds: 4.5 },
 	line('Your own tools.<br /><em>As plugins.</em>'),
 	{ html: 'Every feature is <em>a plugin.</em><small>Turn it on or off.</small>', seconds: 2.7 },
 	feature('VAPIX Commander', 'Any VAPIX command, rolled out to hundreds of devices.'),
@@ -59,7 +60,7 @@ const config = JSON.stringify({ loop, scenes: timed.map(({ at, until }) => ({ at
 		position: relative;
 		width: 100%;
 		max-width: 72rem;
-		height: clamp(12rem, 20vw, 15.5rem);
+		height: clamp(13rem, 22vw, 18rem);
 		margin: 0 auto 0.5rem;
 		overflow: hidden;
 		container-type: inline-size;
@@ -103,6 +104,10 @@ const config = JSON.stringify({ loop, scenes: timed.map(({ at, until }) => ({ at
 	}
 	.m-line :global(.m-slice) {
 		will-change: transform, opacity, filter;
+	}
+	.m-line :global(.m-hero) {
+		display: block;
+		font-size: 1.2em;
 	}
 </style>
 
