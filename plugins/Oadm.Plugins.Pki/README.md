@@ -156,3 +156,10 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   `pki-install-manual.png`, `pki-install-ca.png`, `pki-dot1x-confirm.png`; `tests/Oadm.Client.Tests/SecurityMenuTests` (`pki-security-menu.png`);
   `tests/Oadm.Server.Tests/DeviceTlsTests` (UpdateDeviceTlsAsync with the fake network presenting real certificates).
   `HardwareWriteTests` is an opt-in skeleton (`OADM_PKI_HARDWARE_WRITE=1`, `Category=HardwareWrite`), not written yet.
+
+## Permissions
+
+`oadm.pki:show` (`getState`), `:manage` "Manage the certificate authority" (every other method except
+`installServerTrust`) and `:trustServer` "Trust it on the server" (`installServerTrust`). The page hides the CA actions
+and locks the settings without "manage", and hides "Install in trusted root store" without "trustServer". The Security
+tasks have one key each (`task:oadm.pki....`). Operator default: show and the tasks.

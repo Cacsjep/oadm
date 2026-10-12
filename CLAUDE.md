@@ -210,15 +210,24 @@ Two processes, like ADM:
 ## gRPC services (Oadm.Contracts)
 
 - Every call needs `authorization: Bearer <token>` in the metadata (plus `oadm-client-machine`), except
-  `AuthService.Status`, `Login`, `CreateFirstAdmin`; UNAUTHENTICATED without a valid token, PERMISSION_DENIED for a
-  missing role (`Oadm.Server.Auth.AccessPolicy`, see "Security and access" 1).
+  `AuthService.Status`, `Login`, `CreateFirstAdmin`; UNAUTHENTICATED without a valid token, PERMISSION_DENIED with what the
+  role lacks (`Oadm.Server.Auth.AccessPolicy`, see "Security and access", Roles and permissions).
 - `AuthService` (`auth.proto`): `Status` (server name, version, `needs_first_admin`, `setup_code_required` when the
   caller is not loopback), `Login(user, password, remember)` -> {token, UserInfo} (UNAUTHENTICATED one message for
   wrong password / unknown / disabled user, RESOURCE_EXHAUSTED while locked), `CreateFirstAdmin(user, password,
   setup_code, remember)` (FAILED_PRECONDITION users exist, PERMISSION_DENIED setup code, INVALID_ARGUMENT), `Logout`
-  (revokes the call's token), `Me`. `UserService` (Admin): `List`, `Add`, `Update` (optional role / disabled, new
-  password; ends the user's sessions), `Delete`; FAILED_PRECONDITION for the own account or the last enabled
+  (revokes the call's token), `Me`, `WatchSession` (the caller's user with role and permissions now and after every
+  change). `UserInfo` carries `role` (the two-value role of older clients: ADMIN for Administrator), `role_id`,
+  `role_name`, and for the caller `permissions` + `all_permissions`. `UserService` (Admin): `List`, `Add` (`role_id`, else
+  `role`), `Update` (optional `role_id` / `role` / disabled, new password; a password or disabling ends the user's
+  sessions, a role applies to the next call), `Delete`; FAILED_PRECONDITION for the own account or the last enabled
   administrator. `AuditService` (Admin): `List(limit, offset)` newest first + `total_count` (limit 0 = 10,000).
+- `RoleService` (`roles.proto`, Admin except `Mine`): `GetMatrix` (every `PermissionInfo` {key, name, description, group,
+  icon_key, operator_default, viewer_default, full_device_control, available} in matrix order and every `RoleInfo` {id,
+  name, description, kind, permissions, user_count}), `SaveRoles(roles)` (create = empty id, change; one transaction;
+  FAILED_PRECONDITION for the Administrator role, INVALID_ARGUMENT names / over 50 roles), `DeleteRole(id)` (custom roles
+  without users), `Mine` (the caller's role name and its permissions with names). `ServerSettings.roles_notice = 22`
+  (administrators only): what operators lost with the upgrade to roles.
 - `DeviceService`: `List` (legacy: one message with every device, 23 MB for 5,000 devices with their
   API lists; clients do not use it), `Watch(WatchDevicesRequest)` (stream of DeviceChanged events: one
   ADDED per device, then with `snapshot_end_marker = 1` one `SNAPSHOT_END` (kind 4, no device), then live
@@ -1108,10 +1117,16 @@ returns null or throws `NotSupportedException`.
   only) and `NotSupportedReason` (only when `CanRun` is false: plain language, what is missing and what to do, a device
   detail last as " (this device ...)"; empty or throwing = "Not supported on this device"; helpers `TaskSupportReasons`),
   `MaxParallelDevices` (only lowers the setting), `ShowInMenus` (false: started by its core plugin only), `GetTaskName`
-  (see Tasks), `ExecuteAsync`. Optional `ITaskPluginQuery.QueryAsync`: read-only reads for the dialog
-  (`ITaskQueryContext.Devices`: every managed device).
+  (see Tasks), `Permissions` (`PermissionDefinition` {Key, Name, Description, OperatorDefault, ViewerDefault,
+  FullDeviceControl}: finer rights inside the task, "task:<id>:<key>"; empty = one "task:<id>") and
+  `RequiredPermissions(payload)` (the keys one run needs; no answer = all declared), `ExecuteAsync`. Optional
+  `ITaskPluginQuery.QueryAsync`: read-only reads for the dialog (`ITaskQueryContext.Devices`: every managed device).
+  Declared today: Upgrade firmware (upgrade, factoryDefault, downgrade), Users (add, update, remove), Applications (install,
+  downgrade, startStop, remove), Import configuration (import, connection).
 - `ICorePlugin`: `TaskPlugins` (contributed tasks), `StartAsync` / `StopAsync`, `InvokeAsync` (the page backend),
-  `HasPage` (false: no rail entry), `Group` (`CorePluginGroup`: the rail group), `RequiredRole` / `IsAudited` per method.
+  `HasPage` (false: no rail entry), `Group` (`CorePluginGroup`: the rail group), `RequiredRole` / `IsAudited` per method,
+  `Permissions` (named rights "<id>:<key>"; "show" is automatic for a page, declared only to change its defaults; empty
+  = "manage" for the Admin methods) and `RequiredPermission(method)` (see "Plugin methods" under Security and access).
 - `ITaskExecutionContext`: `Vapix` (pre-authenticated for the device), `Logger`, `Owner` (the contributing core plugin),
   `Files` (uploads by id), steps (`PlanSteps`, `BeginStep` -> `ITaskStep` with `ReportProgress`, `Complete`, `Warn`,
   `Skip`, `Fail`; disposing without an end = Done, an escaping exception = Failed; helpers `StepAsync`, `SkipStep`;
@@ -1143,14 +1158,18 @@ The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`; usage in 
 the UI thread.
 
 - `ITaskPluginDialog.ShowAsync(ctx, devices, owner)` returns the payload JSON (null = cancel); `ITaskDialogContext` gives
-  `QueryAsync` (TaskService.Query) and `UploadAsync` (FileService.Upload with progress).
+  `QueryAsync` (TaskService.Query), `UploadAsync` (FileService.Upload with progress) and `Has(permission)` (the dialog
+  hides the choices the role lacks: Users modes, firmware factory default and downgrade, application actions, the
+  connection settings area).
 - `ICorePluginPage.CreateView(ctx)`: the rail page; `HasOwnCards` (the view lays out its own cards), `ShowTasksPane` (the
   shared tasks pane below the page). `ICorePluginClientContext`: `InvokeAsync`, `WatchEventsAsync` (PluginService.Watch),
   `Devices` + `DevicesChanged`, `SelectedDevices`, `OwnerName`, `ShowMessageAsync`, `ConfirmAsync`, `OpenAsync`, `Owner`,
-  `DeviceWeb` (`IDeviceWebAccess`: a device's web interface for an embedded browser through the server, see "Web View").
-- `IToolbarPlugin` (`Id`, `Order`, `Group`: Add, Manage, Tasks, Plugins; `CreateControl` once) with `IToolbarContext`
-  (selection, devices, task plugins, `CanRunTask` / `CannotRunTaskReason`, `RunTaskAsync`, `OpenAsync`,
-  `RemoveDevicesAsync`, `RefreshDevicesAsync`, `QueryAsync`, `UploadAsync`, `InvokePluginAsync`, messages).
+  `DeviceWeb` (`IDeviceWebAccess`: a device's web interface for an embedded browser through the server, see "Web View"),
+  `Has(permission)` + `PermissionsChanged` (pages hide or lock what the role lacks, e.g. Save of the NTP / DHCP server).
+- `IToolbarPlugin` (`Id`, `Order`, `Group`: Add, Manage, Tasks, Plugins; `CreateControl` once; `RequiredPermission`:
+  the entry hides while the role lacks it) with `IToolbarContext` (selection, devices, task plugins, `CanRunTask` /
+  `CannotRunTaskReason`, `RunTaskAsync`, `OpenAsync`, `RemoveDevicesAsync`, `RefreshDevicesAsync`, `QueryAsync`,
+  `UploadAsync`, `InvokePluginAsync`, `Has` + `PermissionsChanged`, messages).
 
 ### Toolbar plugins
 
@@ -1500,7 +1519,8 @@ login. Decisions, the relay and tests: plugin `README.md`.
   address `127.1.x.y`, so the devices' login cookies never mix; macOS 127.0.0.1, `Oadm.Client/DeviceWeb/DeviceWebRelay`), the server sends every request and WebSocket to the device with the
   stored login and the pinned certificate (`DeviceWebService`); only the browser that opened the relay's one-time start
   address gets its session cookie (others 403, another Host 400); requests stay on the device; refused statuses are not
-  contacted; every open is audited; Operator.
+  contacted; every open is audited. Permissions "oadm.web-view:show" and "oadm.web-view:open" (full device control), both
+  off for the built-in Operator by default; without "open" the page says "Your role does not allow opening devices."
 - Page: left card: the page select (Web interface, Image Health Analytics, Object Analytics, License Plate Verifier,
   Custom with a path field, error below it; it shows the active tab's page, changing it opens the page in the active tab,
   new tabs use the page chosen last), the search, the devices grouped by tag (like Group by tag, "No tag" last, no
@@ -1613,15 +1633,16 @@ the server address is set with `--server` or in the client settings file. Client
 
 ## Users, roles and sessions
 
-Code: server `Oadm.Server.Auth` (`AuthInterceptor`, `AccessPolicy`, `AuthGrpcService`, `UserGrpcService`,
-`AuditGrpcService`, `ServerTlsCertificate`, `AuthMaintenanceHostedService`, `InProcessAccess.CreateTokenAsync` for
-in-process hosts), core `Oadm.Core.Auth` (`UserStore`, `PasswordHasher`, `AuthTokenStore`, `LoginThrottle`,
-`AuthManager`: login, first administrator, setup code; `AuditLog`; `CallerContext`), migration `UsersAndAudit` (Users,
-AuthTokens, AuditEntries); client `Shell/AppShell`, `LoginViewModel`, `Settings/UsersCardView`,
-`Logging/AuditLogViewModel`.
+Code: server `Oadm.Server.Auth` (`AuthInterceptor`, `AccessPolicy`, `CallerStreams`, `AuthGrpcService`, `UserGrpcService`,
+`RoleGrpcService`, `AuditGrpcService`, `ServerTlsCertificate`, `AuthMaintenanceHostedService`,
+`InProcessAccess.CreateTokenAsync` for in-process hosts), core `Oadm.Core.Auth` (`UserStore`, `RoleStore`,
+`PermissionCatalog` + `HostPermissions`, `RolesUpgradeNotice`, `PasswordHasher`, `AuthTokenStore`, `LoginThrottle`,
+`AuthManager`: login, first administrator, setup code; `AuditLog`; `CallerContext`), migrations `UsersAndAudit` (Users,
+AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`, `UserSession`, `MyRoleWindow`,
+`Settings/UsersCardView` + `RolesCardView`, `Logging/AuditLogViewModel`. Spec and decisions: `docs/rbac-spec-draft.md`.
 
 - Table `Users`: Id, UserName (unique case-insensitive, 1..64), PasswordHash (PBKDF2-SHA256, 210,000 iterations, 16-byte
-  salt), Role Admin | Operator, Disabled, CreatedUtc, LastLoginUtc. Passwords have no strength rule, only not empty.
+  salt), RoleId (table `Roles`), Disabled, CreatedUtc, LastLoginUtc. Passwords have no strength rule, only not empty.
 - **First administrator**: while no user exists, the login window offers "Create the first administrator"; the server
   accepts it from a loopback client, or from a remote client with the one-time setup code the server writes to
   `<datafolder>/setup-code.txt` (admin-only file) and logs at startup.
@@ -1629,23 +1650,47 @@ AuthTokens, AuditEntries); client `Shell/AppShell`, `LoginViewModel`, `Settings/
   server stores only its SHA-256 with user, client address and expiry (8 h sliding, 30 days with "Remember me"; table
   `AuthTokens`, the sliding expiry is cached and written at most once a minute). Clients send `authorization: Bearer
   <token>` in the gRPC metadata. `AuthInterceptor` answers UNAUTHENTICATED without a valid token (open: `AuthService.Status`,
-  `Login`, `CreateFirstAdmin`) and PERMISSION_DENIED for a missing role (`AccessPolicy`); it sets `CallerContext`, so a
-  task's Owner is "<user>@<client machine>". `Logout` revokes. Failed logins: 5 per user in 5 minutes, then 5 minutes
-  locked, logged. `AuthMaintenanceHostedService` removes expired sessions and old audit entries hourly.
-- **Roles.** Admin: everything. Operator: devices (watch, add, remove, refresh, credentials of a device, "Log in", "Set
-  password", web UI link, the Web View, tagging devices and creating tags), discovery, tasks (run, cancel, delete; not Delete all),
-  live view, uploads, plugin pages that do not change server configuration (Snapshot report, VAPIX Commander, Metadata
-  Monitor, System report, PKI read and device certificate tasks). Admin only: `SettingsService.Set`, the credential list
-  (add, remove, reveal), users, `TaskService.DeleteAll`, PKI (generate, import, backup, export, install in the server
-  root store, settings), DHCP and NTP save / static leases / release, renaming, recoloring and deleting tag definitions,
-  turning plugins on or off, event rules (change, test).
-- **Plugin methods**: `ICorePlugin.RequiredRole(method)` (DIM Operator; a throwing plugin counts as Admin) is checked in
-  `PluginService.Invoke`; calls where `ICorePlugin.IsAudited(method)` (DIM: the Admin methods) are audited as "Plugin
-  action" (target the plugin, detail the method). Admin: PKI everything except `getState`, DHCP `save` / `saveStatic` /
-  `deleteStatic` / `makeStatic` / `release`, NTP `save`. VAPIX Commander stays Operator; `tryRequest` and `rollout` are
-  audited. "Install in trusted root store" on the server asks with the CA's SHA-256 fingerprint and is audited.
+  `Login`, `CreateFirstAdmin`) and PERMISSION_DENIED with what the role lacks ("Your role does not allow: Delete tasks.",
+  `AccessPolicy.DeniedMessage`); it sets `CallerContext` (user, role, the role's `PermissionSet`), so a task's Owner is
+  "<user>@<client machine>". `Logout` revokes. Failed logins: 5 per user in 5 minutes, then 5 minutes locked, logged.
+  `AuthMaintenanceHostedService` removes expired sessions and old audit entries hourly. A new password or a disabled user
+  ends the sessions; a new role applies to the next call (`AuthTokenStore.SetRole`).
+- **Roles and permissions.** Every user has one role (table `Roles`: Id, Name 1..64 unique case-insensitive,
+  Description 0..200, Kind Administrator / Operator / Viewer / Custom, PermissionsJson = the granted keys, KnownJson = every
+  key the role has seen, CreatedUtc, ChangedUtc; at most 50 custom roles). Built-in roles with fixed ids
+  (`BuiltInRoles`): **Administrator** (every permission, also later ones; not editable, not deletable), **Operator**
+  (editable, "Reset to default") and **Viewer** (devices, live view and the monitoring pages; editable). The migration
+  `Roles` maps the old Admin to Administrator and everyone else to Operator. A permission is a key: host keys
+  (`HostPermissionKeys` in the SDK: `devices.addRemove`, `devices.refresh`, `devices.login`, `devices.webInterface`,
+  `devices.liveView`, `devices.export`, `tags.assign`, `tags.manage`, `tasks.cancel`, `tasks.delete`, `tasks.deleteAll`,
+  `events.view`, `events.manage`, `events.clearLog`), "<plugin id>:<key>" for core plugins (every page gets "show"
+  automatically) and "task:<id>" / "task:<id>:<key>" for task plugins. `PermissionCatalog.Build` collects them from every
+  loaded plugin (on or off) at start; `RoleStore.SyncCatalogAsync` gives a role a permission it has not seen once: Operator
+  and Viewer by the permission's default, custom roles nothing, so a limited role never gains a right by itself. Keys a
+  role has but no loaded plugin declares are kept. **Administrator only, never grantable**: users and roles, the
+  credential list (list, add, remove, reveal), plugins on / off, `SettingsService.Set`, the audit log. Every gRPC method
+  has a rule in `AccessPolicy` (Open, SignedIn, a permission, InCall, Admin; a test checks that every contract method is
+  listed, an unlisted one is Admin): device list, tags, tasks list and settings Get need only a login; plugin calls and
+  task runs are checked in the call (`InCall`). The operator default withholds the risky rights (decisions 9 and 11):
+  Web View, remove users on devices, firmware factory default and downgrade, application downgrade and removal, connection
+  settings import; event rules, tag management and Delete all stay off as before. `RolesUpgradeNotice` records what
+  operators lost at the first start of an installation that had users; administrators see it as a banner with "Check
+  roles" until they dismiss it (per client).
+- **Open streams**: `CallerStreams` registers every streaming call; a role change ends the streams the role no longer
+  allows (the HTTP request is aborted, the client reconnects and is refused), a user with another role gets all streams
+  ended. `AuthService.WatchSession` (never ended by it) sends the user with role and permissions after every change.
+- **Plugin methods**: `CorePluginHost.AccessOf` resolves the permission of a page method: the plugin's
+  `RequiredPermission(method)` when it names a declared key or "show"; otherwise Operator methods need "show" (a login
+  for a plugin without a page) and Admin methods "manage" (automatic for a plugin that declares nothing but answers
+  `RequiredRole` itself). Anything else, and a plugin that throws, is Administrator only. `PluginService.Watch` needs
+  "show"; `ListCorePlugins` leaves out pages the role may not show. Calls where `ICorePlugin.IsAudited(method)` (DIM: the
+  Admin methods) are audited as "Plugin action" (target the plugin, detail the method); VAPIX Commander `tryRequest`
+  and `rollout` are audited; "Install in trusted root store" on the server asks with the CA's SHA-256 fingerprint and is
+  audited. `TaskService.Run` needs every key `PermissionCatalog.RunKeys` names for the payload (refused before any task
+  starts), `Query` any key of the task; `ListTaskPlugins` leaves out tasks without a key.
 - **Audit log**: table `AuditEntries` (TimeUtc, UserName, ClientAddress, Action, Target, Detail), 365 days or 200,000
-  entries. Logged: login ok / failed, logout, user changes, settings changes, credential list add / remove / reveal, PKI
+  entries. Logged: login ok / failed, logout, user changes, roles ("Created role", "Changed role" with "+Web View: Open
+  devices, -Restart", "Deleted role"), settings changes, credential list add / remove / reveal, PKI
   actions, DHCP / NTP save, task runs (plugin, device count), Delete all, device remove, device login and first password
   (counts), devices added or moved automatically (user "system"), tags ("Tagged 12 devices: +Building A -PTZ"), plugins
   on / off, event rules, VAPIX Commander send / rollout, Web View ("Opened web interface", the device). The Logs page has an **Audit** tab (Admin only, newest 10,000,
@@ -1661,14 +1706,32 @@ AuthTokens, AuditEntries); client `Shell/AppShell`, `LoginViewModel`, `Settings/
   connection problems below the server field; a narrow label column (`StackPanel.compactForm`), no product mark, **Quit**
   on the left; a refresh icon right of the server field ("Connect again") repeats the start without restarting the client.
   Fake mode signs in as "admin" without the window.
-- The rail shows the logged-in user (initial avatar + name, tooltip "Logged in as ... (role) on ...") with Log out.
-  `UserSession.IsAdmin` hides the Users, Credentials and Plugins pages and the Audit tab for operators and shows the
-  server settings as plain text ("Only administrators can change server settings."); the server checks again.
-- **Users page** (Admin only, subtitle "Who can log in to this server and what they may do."; `Settings/UsersPageView` +
-  `UsersCardView`): users with role, last login, disabled; row icon buttons Make administrator / operator, Reset password
-  (inline editor below the list), Disable / Enable, Delete (red), each confirmed; never the last enabled administrator,
-  never yourself (the own row offers only Reset password). The headings "New password for <user>" and "Add user" use
-  the section title style.
+- The rail shows the logged-in user (initial avatar + name, tooltip "Logged in as ... (role) on ...") with Log out; a
+  click on the user opens **Your role** (`Shell/MyRoleWindow`, `MyRoleViewModel`, `RoleService.Mine`): the role's name
+  and what it allows, grouped like the matrix, read-only. `UserSession` keeps role name and permission keys
+  (`Has(key)`, `PermissionsChanged`), fed by Login / Me and the session stream (`ServerConnection`); a server without
+  roles sends none and counts as before (Administrator everything, others everything but the Administrator-only parts).
+  `UserSession.IsAdmin` (the Administrator role) hides the Users, Credentials and Plugins pages and the Audit tab and
+  shows the server settings as plain text ("Only administrators can change server settings."). Everything else follows
+  the permissions live: toolbar entries (`IToolbarPlugin.RequiredPermission`, `DeviceToolbar.ApplyPermissions`), the
+  context menu entries, the live view click, the tasks pane's Cancel / Delete / Delete all, the Event rules rail entry
+  (`events.view`) and its changes, tag administration, the rail's plugin pages and the task menu (reloaded from the
+  server, which filters them). The server checks every call again.
+- **Users page** (Admin only, subtitle "Who can log in to this server and what each role may do."; `Settings/UsersPageView`
+  = the users card on top and the roles card below with a splitter): **+ User** above the list, then users with role
+  (plain text), last login, state; row icon buttons Edit user, Change password, Disable / Enable, Delete (red; Disable
+  and Delete confirmed; the own row offers only Change password); never the last enabled administrator, never yourself.
+  Add user (user name, password, role), Edit user (the role; Administrator with a hint) and Change password (new +
+  confirm) are one single-operation dialog `Settings/UserFormWindow` (`UsersViewModel.Form`), errors and refusals below
+  the fields. **Roles
+  card** (`RolesCardView`, `RolesViewModel`): the permission matrix, rows = permissions in groups (Devices, Tasks, Event
+  rules, then one group per plugin in rail order; collapsible, a three-state check box per role for the whole group),
+  columns = roles (built in code-behind; header with name, "3 users" and a menu Rename, Copy, Reset to default, Delete),
+  the name column frozen; the permission's explanation as the tooltip of its name, an amber warning icon right after
+  the name for full device control (tooltip `RolesCardView.FullDeviceControlTip`), "Plugin is off" for rights of a
+  plugin that is off. Toolbar New role, Save, Discard, search; changes are collected and saved together after one
+  confirmation that lists them per role; a new role, a copy and a rename open the dialog `Settings/RoleFormWindow`
+  (Name, Description, Start from) and stay "Not saved" until Save.
 
 ## Automatic login on the add page
 

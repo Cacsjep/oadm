@@ -8,7 +8,7 @@
   <!-- Inside the host's page card: toolbar, status line, progress, tile grid. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,Auto,*">
     <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-      <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+      <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" IsVisible="{Binding MayReport}">
         <ui:ToolbarButton IconKey="snapshot" Text="Create snapshots" Command="{Binding CreateSnapshotsCommand}"
                           ToolTip.Tip="Take a picture of every camera" />
         <ui:ToolbarButton IconKey="refresh" Text="Refresh all" Command="{Binding RefreshAllCommand}"

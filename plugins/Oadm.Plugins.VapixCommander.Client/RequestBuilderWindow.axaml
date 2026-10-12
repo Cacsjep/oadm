@@ -50,7 +50,7 @@
                   </DataTemplate>
                 </ComboBox.ItemTemplate>
               </ComboBox>
-              <Button Grid.Column="2" Classes="secondary" Command="{Binding SendCommand}" ToolTip.Tip="Changes ask first">
+              <Button Grid.Column="2" Classes="secondary" Command="{Binding SendCommand}" ToolTip.Tip="Changes ask first" IsVisible="{Binding MaySend}">
                 <ui:IconLabel Icon="{DynamicResource Icon.send}" Text="Send" />
               </Button>
             </Grid>
@@ -68,7 +68,7 @@
       <Button Classes="secondary" Content="Back" Command="{Binding BackCommand}" IsVisible="{Binding CanGoBack}" />
       <Button Classes="primary" Content="Next" Command="{Binding NextCommand}" IsVisible="{Binding IsChoosing}"
               ToolTip.Tip="{Binding NextBlockedReason}" ToolTip.ShowOnDisabled="True" />
-      <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding IsBuilding}"
+      <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding CanShowSave}"
               ToolTip.Tip="{Binding Raw.BlockedReason}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>
   </Grid>

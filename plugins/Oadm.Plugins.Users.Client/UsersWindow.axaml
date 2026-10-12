@@ -23,9 +23,9 @@
             <StackPanel Classes="form">
               <ui:FormField Label="Action">
                 <StackPanel Orientation="Horizontal" Spacing="16">
-                  <RadioButton GroupName="mode" Content="Add" IsChecked="{Binding IsAdd}" />
-                  <RadioButton GroupName="mode" Content="Change" IsChecked="{Binding IsChange}" />
-                  <RadioButton GroupName="mode" Content="Remove" IsChecked="{Binding IsRemove}" />
+                  <RadioButton GroupName="mode" Content="Add" IsChecked="{Binding IsAdd}" IsVisible="{Binding MayAdd}" />
+                  <RadioButton GroupName="mode" Content="Change" IsChecked="{Binding IsChange}" IsVisible="{Binding MayChange}" />
+                  <RadioButton GroupName="mode" Content="Remove" IsChecked="{Binding IsRemove}" IsVisible="{Binding MayRemove}" />
                 </StackPanel>
               </ui:FormField>
 

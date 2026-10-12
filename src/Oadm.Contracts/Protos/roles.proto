@@ -1,0 +1,70 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+
+// Roles and their permissions (the permission matrix of the Users page). Administrator only, except Mine.
+// INVALID_ARGUMENT for names, descriptions and too many roles; NOT_FOUND; FAILED_PRECONDITION for a change of the
+// Administrator role, deleting a built-in role or a role users have.
+service RoleService {
+  // Every permission (rows) and every role (columns).
+  rpc GetMatrix (Empty) returns (RoleMatrix);
+  // Creates and changes roles in one transaction (the matrix's Save); reply: the whole matrix.
+  rpc SaveRoles (SaveRolesRequest) returns (RoleMatrix);
+  // A custom role no user has; reply: the whole matrix.
+  rpc DeleteRole (RoleIdRequest) returns (RoleMatrix);
+  // The caller's role and what it allows, with names (the "my rights" window of every user).
+  rpc Mine (Empty) returns (MyRole);
+}
+
+enum RoleKind {
+  ROLE_KIND_CUSTOM = 0;
+  ROLE_KIND_ADMINISTRATOR = 1;   // every permission, not editable
+  ROLE_KIND_OPERATOR = 2;        // editable, "Reset to default"
+  ROLE_KIND_VIEWER = 3;          // editable, "Reset to default"
+}
+
+// One row of the matrix.
+message PermissionInfo {
+  string key = 1;                   // "devices.addRemove", "oadm.dhcp-server:manage", "task:oadm.users:remove"
+  string name = 2;
+  string description = 3;
+  string group = 4;                 // "Devices", "Tasks", "Event rules" or a plugin's name
+  string icon_key = 5;              // of the group (a plugin's icon)
+  bool operator_default = 6;
+  bool viewer_default = 7;
+  bool full_device_control = 8;     // the matrix warns
+  bool available = 9;               // false: its plugin is turned off (the right stays in the roles)
+}
+
+message RoleInfo {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  RoleKind kind = 4;
+  repeated string permissions = 5;  // granted keys; empty for the Administrator role (it has all)
+  int32 user_count = 6;
+}
+
+message RoleMatrix {
+  repeated PermissionInfo permissions = 1;   // in matrix order (groups as shown)
+  repeated RoleInfo roles = 2;               // Administrator, Operator, Viewer, then custom roles
+}
+
+// id empty: a new role.
+message RoleChange {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated string permissions = 4;
+}
+
+message SaveRolesRequest { repeated RoleChange roles = 1; }
+
+message RoleIdRequest { string id = 1; }
+
+message MyRole {
+  string role_name = 1;
+  bool all_permissions = 2;
+  repeated PermissionInfo permissions = 3;   // what the role allows, in matrix order
+}

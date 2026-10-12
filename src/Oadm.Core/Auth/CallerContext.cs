@@ -6,12 +6,19 @@ namespace Oadm.Core.Auth;
 /// <param name="ClientAddress">Remote IP address of the client.</param>
 /// <param name="ClientMachine">Machine name the client sent (oadm-client-machine), shortened and cleaned.</param>
 /// <param name="TokenHash">SHA-256 of the session token (Logout revokes it).</param>
-public sealed record AuthenticatedCaller(Guid UserId, string UserName, UserRole Role, string ClientAddress, string ClientMachine, string TokenHash)
+/// <param name="Permissions">What the caller's role allows, at the start of the call.</param>
+public sealed record AuthenticatedCaller(Guid UserId, string UserName, Guid RoleId, PermissionSet Permissions, string ClientAddress, string ClientMachine, string TokenHash)
 {
     /// <summary>Task owner: "&lt;user&gt;@&lt;client machine&gt;" (the user is authenticated, the machine is what the client says).</summary>
     public string Owner => string.IsNullOrEmpty(ClientMachine) ? UserName : UserName + "@" + ClientMachine;
 
-    public bool IsAdmin => Role == UserRole.Admin;
+    /// <summary>The caller has the Administrator role (every permission, the Administrator-only areas).</summary>
+    public bool IsAdmin => BuiltInRoles.IsAdministrator(RoleId);
+
+    /// <summary>Admin for the Administrator role, Operator for every other.</summary>
+    public UserRole Role => IsAdmin ? UserRole.Admin : UserRole.Operator;
+
+    public bool Has(string permission) => Permissions.Has(permission);
 }
 
 /// <summary>

@@ -204,3 +204,9 @@ imports a camera's own export with the real task and VAPIX client and passes on 
 
 - 12.5-12.9 with the feature flag off: which status `$export` answers (404 assumed).
 - Importing into another camera of the same model (the two test cameras are different models).
+
+## Permissions
+
+Import keys `task:oadm.device-config.import:import` (every import) and `:connection` (the "Connection settings" area);
+without the second the area is not offered. Export has the one key `task:oadm.device-config.export`. Operator default:
+import and export, not connection settings.

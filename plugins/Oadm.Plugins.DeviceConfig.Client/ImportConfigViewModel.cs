@@ -99,11 +99,13 @@ public sealed partial class ImportConfigViewModel : ObservableObject
 
     /// <param name="upload">Uploads the chosen file to the server (<c>ITaskDialogContext.UploadAsync</c>).</param>
     /// <param name="confirm">The shared confirmation window (title, message, confirm text).</param>
+    /// <param name="has">The user's permissions (<c>ITaskDialogContext.Has</c>); null: everything.</param>
     public ImportConfigViewModel(
         IReadOnlyList<IDeviceInfo> devices,
         IConfigFileSource files,
         Func<string, IProgress<double>, CancellationToken, Task<UploadedFile>> upload,
-        Func<string, string, string, Task<bool>> confirm)
+        Func<string, string, string, Task<bool>> confirm,
+        Func<string, bool>? has = null)
     {
         ArgumentNullException.ThrowIfNull(devices);
         ArgumentNullException.ThrowIfNull(files);
@@ -114,7 +116,11 @@ public sealed partial class ImportConfigViewModel : ObservableObject
         _files = files;
         _upload = upload;
         _confirm = confirm;
+        MayImportConnection = has?.Invoke(Oadm.Sdk.Plugins.PermissionKeys.Task(DeviceConfigIds.Import, DeviceConfigPermissions.Connection)) ?? true;
     }
+
+    /// <summary>The role may import the connection settings; without it that area is not offered.</summary>
+    public bool MayImportConnection { get; }
 
     public string Scope => _devices.Count == 1
         ? $"Into {_devices[0].Address} ({ModelNames.Display(_devices[0].Model)})."
@@ -335,6 +341,11 @@ public sealed partial class ImportConfigViewModel : ObservableObject
 
     private void AddSection(ImportSectionOption option)
     {
+        if (option.Key == ConfigSections.Connection && !MayImportConnection)
+        {
+            return;
+        }
+
         // The connection settings can cut OADM off: the user has to choose them.
         option.IsChecked = option.Key != ConfigSections.Connection;
         option.PropertyChanged += (_, _) => Refresh();

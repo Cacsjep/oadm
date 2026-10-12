@@ -155,3 +155,9 @@ Never run these on a production network: a second DHCP server hands out wrong ad
 
 Automated tests (`tests/Oadm.Plugins.DhcpServer.Tests`) cover all of this on an in-memory network (`FakeDhcpNetwork`) and
 on loopback with random ports. They never send DHCP traffic on a real interface.
+
+## Permissions
+
+`oadm.dhcp-server:show` (the page, `getState`) and `:manage` "Change the DHCP server" (`save`, `saveStatic`,
+`deleteStatic`, `makeStatic`, `release`). Without "manage" the form is read-only and Save, Static lease and the lease
+actions are hidden. Operator default: show only.

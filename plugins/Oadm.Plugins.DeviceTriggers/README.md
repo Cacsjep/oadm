@@ -145,3 +145,9 @@ Verified on an AXIS Q6411-LE (AXIS OS 13.0.88): AXIS Image Health Analytics decl
   trigger, turned-off and empty triggers report at once, 5,000 devices,
   removed devices, live read, roles, page and dialog view models incl. 5,000 devices, fake mode, headless
   `device-triggers-page.png`, `device-triggers-editor.png`). Fake mode: `FakeOadmApi.DeviceTriggers.cs`.
+
+## Permissions
+
+`oadm.device-triggers:show` (list, details, reading a device's events) and `:manage` "Change triggers" (`save`,
+`delete`, `setEnabled`, `duplicate`). Without "manage" the toolbar is hidden and the on switches are locked. Operator
+default: show only. Refusals show the server's text ("Your role does not allow: ...").

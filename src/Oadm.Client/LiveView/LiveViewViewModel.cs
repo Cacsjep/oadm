@@ -130,8 +130,23 @@ public sealed partial class LiveViewViewModel : ObservableObject, IDisposable
     /// <summary>Background stream task of the current session (tests await it).</summary>
     internal Task Running { get; private set; } = Task.CompletedTask;
 
+    /// <summary>The user's role may watch live view ("devices.liveView"); without it the device icons do nothing and an open panel closes.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ToggleCommand))]
+    public partial bool IsAllowed { get; set; } = true;
+
+    partial void OnIsAllowedChanged(bool value)
+    {
+        if (!value && IsOpen)
+        {
+            Close();
+        }
+    }
+
+    private bool CanToggle(DeviceRowViewModel? device) => IsAllowed;
+
     /// <summary>Opens the panel for a device; the same device again closes it, another switches.</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanToggle))]
     private void Toggle(DeviceRowViewModel? device)
     {
         if (device is null)

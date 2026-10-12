@@ -87,10 +87,18 @@ public sealed partial class DevicesViewModel : ObservableObject
         _logger = logger;
         _session = session;
         Toolbar = toolbar;
-        ToolbarContext = new ToolbarContext(store, SelectedDevices, catalog, runner, api, dialogs, OpenHostPageAsync, () => tasks.ShowTasksCommand.Execute(null));
+        ToolbarContext = new ToolbarContext(store, SelectedDevices, catalog, runner, api, dialogs, OpenHostPageAsync, () => tasks.ShowTasksCommand.Execute(null))
+        {
+            Session = session,
+        };
         Columns = columns;
         Tasks = tasks;
         LiveView = liveView;
+        if (session is not null)
+        {
+            LiveView.IsAllowed = session.Has(HostPermissionKeys.DevicesLiveView);
+            session.PermissionsChanged += OnPermissionsChanged;
+        }
 
         store.Devices.CollectionChanged += OnDevicesChanged;
         store.Changed += (_, e) =>
@@ -265,7 +273,7 @@ public sealed partial class DevicesViewModel : ObservableObject
             return;
         }
 
-        var dialog = new DeviceTagsViewModel(_api, _store.Tags, [.. SelectedDevices], _store.Devices, _session?.IsAdmin ?? false, _dialogs.ConfirmAsync);
+        var dialog = new DeviceTagsViewModel(_api, _store.Tags, [.. SelectedDevices], _store.Devices, Can(HostPermissionKeys.TagsManage), _dialogs.ConfirmAsync);
         await _dialogs.ShowDeviceTagsAsync(dialog).ConfigureAwait(true);
     }
 
@@ -522,27 +530,39 @@ public sealed partial class DevicesViewModel : ObservableObject
             return;
         }
 
-        ContextMenuEntries.Add(new MenuEntryViewModel
+        // Every entry follows the role's permissions (the server checks each call again).
+        if (Can(HostPermissionKeys.DevicesWebInterface))
         {
-            Header = "Open web interface",
-            IconKey = "externalLink",
-            Command = OpenWebUiCommand,
-            IsEnabled = count == 1,
-        });
-        ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Refresh", IconKey = "refresh", Command = RefreshCommand });
+            ContextMenuEntries.Add(new MenuEntryViewModel
+            {
+                Header = "Open web interface",
+                IconKey = "externalLink",
+                Command = OpenWebUiCommand,
+                IsEnabled = count == 1,
+            });
+        }
+
+        if (Can(HostPermissionKeys.DevicesRefresh))
+        {
+            ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Refresh", IconKey = "refresh", Command = RefreshCommand });
+        }
+
         _selectionNeedsLogin = SelectionNeedsLogin();
-        if (_selectionNeedsLogin)
+        if (_selectionNeedsLogin && Can(HostPermissionKeys.DevicesLogin))
         {
             ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Log in", IconKey = "key", Command = LogInCommand });
         }
 
         _selectionNeedsPassword = SelectionNeedsPassword();
-        if (_selectionNeedsPassword)
+        if (_selectionNeedsPassword && Can(HostPermissionKeys.DevicesLogin))
         {
             ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Set password", IconKey = "lock", Command = SetPasswordCommand });
         }
 
-        ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Tags", IconKey = "tag", Command = EditTagsCommand });
+        if (Can(HostPermissionKeys.TagsAssign))
+        {
+            ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Tags", IconKey = "tag", Command = EditTagsCommand });
+        }
 
         IReadOnlyList<TaskPluginInfo> plugins = _catalog.Plugins;
         if (plugins.Count > 0)
@@ -556,8 +576,27 @@ public sealed partial class DevicesViewModel : ObservableObject
         }
 
         // Remove last, after its own separator: away from the everyday entries.
-        ContextMenuEntries.Add(MenuEntryViewModel.Separator());
-        ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Remove", IconKey = "remove", Command = RemoveCommand });
+        if (Can(HostPermissionKeys.DevicesAddRemove))
+        {
+            ContextMenuEntries.Add(MenuEntryViewModel.Separator());
+            ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Remove", IconKey = "remove", Command = RemoveCommand });
+        }
+
+        // No leading separator when only task groups follow.
+        if (ContextMenuEntries.Count > 0 && ContextMenuEntries[0].IsSeparator)
+        {
+            ContextMenuEntries.RemoveAt(0);
+        }
+    }
+
+    /// <summary>The role allows <paramref name="permission"/> (without a session, in tests: everything).</summary>
+    private bool Can(string permission) => _session?.Has(permission) ?? true;
+
+    /// <summary>A role change: the context menu and the live view follow at once.</summary>
+    private void OnPermissionsChanged(object? sender, EventArgs e)
+    {
+        RebuildContextMenu();
+        LiveView.IsAllowed = Can(HostPermissionKeys.DevicesLiveView);
     }
 
     private bool SelectionNeedsLogin() => SelectedDevices.Any(d => d.ContractStatus == DeviceStatus.CredentialsRequired);

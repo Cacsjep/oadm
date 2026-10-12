@@ -28,11 +28,11 @@
                   ToolTip.Tip="Basic plus the Extended hardening checks" />
         </StackPanel>
       </Border>
-      <ui:ToolbarButton Grid.Column="1" IsPrimary="True" IconKey="start" Text="Scan all" Command="{Binding ScanAllCommand}"
+      <ui:ToolbarButton Grid.Column="1" IsPrimary="True" IconKey="start" Text="Scan all" Command="{Binding ScanAllCommand}" IsVisible="{Binding MayScan}"
                         ToolTip.Tip="{Binding ScanTip}" ToolTip.ShowOnDisabled="True" />
-      <ui:ToolbarButton Grid.Column="2" IconKey="devices" Text="{Binding ScanSelectedText}" Command="{Binding ScanSelectedCommand}"
+      <ui:ToolbarButton Grid.Column="2" IconKey="devices" Text="{Binding ScanSelectedText}" Command="{Binding ScanSelectedCommand}" IsVisible="{Binding MayScan}"
                         ToolTip.Tip="{Binding ScanSelectedTip}" ToolTip.ShowOnDisabled="True" />
-      <ui:ToolbarButton Grid.Column="3" IconKey="stop" Text="Stop" Command="{Binding StopCommand}"
+      <ui:ToolbarButton Grid.Column="3" IconKey="stop" Text="Stop" Command="{Binding StopCommand}" IsVisible="{Binding MayScan}"
                         ToolTip.Tip="Stop the scan; the devices scanned so far keep their results" ToolTip.ShowOnDisabled="True" />
       <ui:ToolbarButton Grid.Column="4" IconKey="export" Text="Export CSV" Command="{Binding ExportCommand}"
                         ToolTip.Tip="Save the shown rows with every check of this level as a CSV file" />

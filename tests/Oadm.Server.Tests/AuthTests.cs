@@ -63,7 +63,6 @@ public sealed class AuthTests
 
         Assert.Equal(StatusCode.OK, await CodeOf(async () => await new Proto.DeviceService.DeviceServiceClient(op).ListAsync(new Proto.Empty())));
         Assert.Equal(StatusCode.OK, await CodeOf(async () => await settings.GetAsync(new Proto.Empty())));
-        Assert.Equal(StatusCode.OK, await CodeOf(async () => await settings.ListCredentialsAsync(new Proto.Empty())));
         Assert.Equal(StatusCode.OK, await CodeOf(async () => await new Proto.TaskService.TaskServiceClient(op).ListAsync(new Proto.ListTasksRequest())));
         Assert.Equal(StatusCode.OK, await CodeOf(async () => await new Proto.TaskService.TaskServiceClient(op).ListTaskPluginsAsync(new Proto.ListTaskPluginsRequest())));
         Assert.Equal(StatusCode.OK, await CodeOf(async () => await new Proto.PluginService.PluginServiceClient(op).ListCorePluginsAsync(new Proto.Empty())));
@@ -71,6 +70,7 @@ public sealed class AuthTests
 
         var entry = await host.Settings.AddCredentialAsync(new Proto.AddCredentialRequest { UserName = "root", Password = "Pass-word-1" });
         Assert.Equal(StatusCode.PermissionDenied, await CodeOf(async () => await settings.SetAsync(new Proto.ServerSettings { PollingIntervalSeconds = 30 })));
+        Assert.Equal(StatusCode.PermissionDenied, await CodeOf(async () => await settings.ListCredentialsAsync(new Proto.Empty())));
         Assert.Equal(StatusCode.PermissionDenied, await CodeOf(async () => await settings.AddCredentialAsync(new Proto.AddCredentialRequest { UserName = "a", Password = "b-password-1" })));
         Assert.Equal(StatusCode.PermissionDenied, await CodeOf(async () => await settings.RemoveCredentialAsync(new Proto.CredentialEntryId { Id = entry.Id })));
         Assert.Equal(StatusCode.PermissionDenied, await CodeOf(async () => await settings.RevealCredentialAsync(new Proto.CredentialEntryId { Id = entry.Id })));
@@ -87,34 +87,37 @@ public sealed class AuthTests
     }
 
     [Fact]
-    public void TheRoleTableNamesRealMethods()
+    public void TheAccessTableListsEveryMethodOfTheContracts()
     {
         var methods = new[]
         {
             Proto.AuthService.Descriptor, Proto.UserService.Descriptor, Proto.AuditService.Descriptor, Proto.SettingsService.Descriptor,
             Proto.TaskService.Descriptor, Proto.DeviceService.Descriptor, Proto.PluginService.Descriptor, Proto.DiscoveryService.Descriptor,
             Proto.AddDevicesService.Descriptor, Proto.FileService.Descriptor, Proto.LiveViewService.Descriptor, Proto.TagService.Descriptor,
-            Proto.EventService.Descriptor,
+            Proto.EventService.Descriptor, Proto.RoleService.Descriptor, Proto.DeviceWebService.Descriptor,
         }.SelectMany(s => s.Methods.Select(m => $"/{s.FullName}/{m.Name}")).ToHashSet();
 
+        // Both ways: no made-up entry, and no method that falls back to Administrator only by accident.
         Assert.All(AccessPolicy.ListedMethods, m => Assert.Contains(m, methods));
+        Assert.All(methods, m => Assert.Contains(m, AccessPolicy.ListedMethods));
+        Assert.Equal(AccessRule.Admin, AccessPolicy.For("/oadm.v1.NewService/Unknown"));
+
         Assert.Equal(
             ["/oadm.v1.AuthService/CreateFirstAdmin", "/oadm.v1.AuthService/Login", "/oadm.v1.AuthService/Status"],
-            methods.Where(m => AccessPolicy.For(m) == Access.Open).Order(StringComparer.Ordinal).ToArray());
-        Assert.Equal(Access.Admin, AccessPolicy.For("/oadm.v1.UserService/Delete"));
-        Assert.Equal(Access.Admin, AccessPolicy.For("/oadm.v1.AuditService/List"));
-        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.DeviceService/Remove"));
-        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.DeviceService/LogIn"));
-        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.DeviceService/GetCredentialUserName"));
-        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.DeviceService/SetFirstPassword"));
-        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.DeviceService/GetPassphrasePolicies"));
-        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.TaskService/Delete"));
-        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.TagService/List"));
-        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.TagService/Watch"));
-        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.TagService/Create"));
-        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.TagService/SetDeviceTags"));
-        Assert.Equal(Access.Admin, AccessPolicy.For("/oadm.v1.TagService/Update"));
-        Assert.Equal(Access.Admin, AccessPolicy.For("/oadm.v1.TagService/Delete"));
+            methods.Where(m => AccessPolicy.For(m).Access == Access.Open).Order(StringComparer.Ordinal).ToArray());
+        Assert.Equal(AccessRule.Admin, AccessPolicy.For("/oadm.v1.UserService/Delete"));
+        Assert.Equal(AccessRule.Admin, AccessPolicy.For("/oadm.v1.AuditService/List"));
+        Assert.Equal(AccessRule.Admin, AccessPolicy.For("/oadm.v1.RoleService/SaveRoles"));
+        Assert.Equal(AccessRule.SignedIn, AccessPolicy.For("/oadm.v1.RoleService/Mine"));
+        Assert.Equal(AccessRule.Needs(HostPermissions.DevicesAddRemove), AccessPolicy.For("/oadm.v1.DeviceService/Remove"));
+        Assert.Equal(AccessRule.Needs(HostPermissions.DevicesLogin), AccessPolicy.For("/oadm.v1.DeviceService/LogIn"));
+        Assert.Equal(AccessRule.Needs(HostPermissions.DevicesLogin), AccessPolicy.For("/oadm.v1.DeviceService/SetFirstPassword"));
+        Assert.Equal(AccessRule.Needs(HostPermissions.TasksDelete), AccessPolicy.For("/oadm.v1.TaskService/Delete"));
+        Assert.Equal(AccessRule.SignedIn, AccessPolicy.For("/oadm.v1.TagService/List"));
+        Assert.Equal(AccessRule.Needs(HostPermissions.TagsAssign), AccessPolicy.For("/oadm.v1.TagService/SetDeviceTags"));
+        Assert.Equal(AccessRule.Needs(HostPermissions.TagsManage), AccessPolicy.For("/oadm.v1.TagService/Delete"));
+        Assert.Equal(AccessRule.InCall, AccessPolicy.For("/oadm.v1.TaskService/Run"));
+        Assert.Equal(AccessRule.Needs(AccessPolicy.WebViewOpen), AccessPolicy.For("/oadm.v1.DeviceWebService/Open"));
     }
 
     [Fact]
@@ -122,6 +125,7 @@ public sealed class AuthTests
     {
         await using var host = await TestServerHost.StartAsync();
         host.Get<PluginRegistry>().RegisterCorePlugin(new RolePlugin(), new PluginOrigin("tests", "1.0.0", null));
+        await host.Get<RoleStore>().SyncCatalogAsync(PermissionCatalog.Build(host.Get<PluginRegistry>()), CancellationToken.None);
         await host.Get<CorePluginHost>().StartAllAsync(CancellationToken.None);
         var op = new Proto.PluginService.PluginServiceClient(await host.InvokerForUserAsync(OperatorName, UserRole.Operator));
 
@@ -129,7 +133,7 @@ public sealed class AuthTests
         Assert.Equal("read", read.PayloadJson);
         var denied = await Assert.ThrowsAsync<RpcException>(async () => await op.InvokeAsync(new Proto.InvokeRequest { PluginId = "test.roles", Method = "save" }));
         Assert.Equal(StatusCode.PermissionDenied, denied.StatusCode);
-        Assert.Equal("Only administrators can do this.", denied.Status.Detail);
+        Assert.Equal("Your role does not allow: Role test: Change settings.", denied.Status.Detail);
 
         var saved = await host.Plugins.InvokeAsync(new Proto.InvokeRequest { PluginId = "test.roles", Method = "save" });
         Assert.Equal("save", saved.PayloadJson);
@@ -317,8 +321,8 @@ public sealed class AuthTests
         annaUsers = new Proto.UserService.UserServiceClient(host.InvokerFor(annaToken));
         await annaUsers.UpdateAsync(new Proto.UpdateUserRequest { Id = self.Id, Role = Proto.UserRole.Operator });
         var last = await Assert.ThrowsAsync<RpcException>(async () => await host.Users.ListAsync(new Proto.Empty()));
-        Assert.Equal(StatusCode.Unauthenticated, last.StatusCode); // the role change ended admin's session
-        var lastAdmin = await Assert.ThrowsAsync<AuthException>(() => host.Get<UserStore>().UpdateAsync(Guid.Parse(anna.Id), null, true, null, null, CancellationToken.None));
+        Assert.Equal(StatusCode.PermissionDenied, last.StatusCode); // the new role applies to the next call
+        var lastAdmin = await Assert.ThrowsAsync<AuthException>(() => host.Get<UserStore>().UpdateAsync(Guid.Parse(anna.Id), (Guid?)null, true, null, null, CancellationToken.None));
         Assert.Contains("last enabled administrator", lastAdmin.Message, StringComparison.Ordinal);
 
         var changes = (await annaUsers.ListAsync(new Proto.Empty())).Users;

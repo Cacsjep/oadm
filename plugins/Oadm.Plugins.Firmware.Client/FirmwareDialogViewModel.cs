@@ -99,20 +99,34 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         _ctx = ctx;
         _files = files;
         Devices = new ObservableCollection<FirmwareDeviceRow>(devices.Select(d => new FirmwareDeviceRow(d)));
+
+        // Only what the user's role allows: a factory default and a downgrade are rights of their own.
+        MayFactoryDefault = ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Task(FirmwarePermissions.TaskPluginId, FirmwarePermissions.FactoryDefault));
+        MayDowngrade = ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Task(FirmwarePermissions.TaskPluginId, FirmwarePermissions.Downgrade));
+        Modes = MayFactoryDefault ? AllModes : [AllModes[0]];
         SelectedMode = Modes[0];
     }
+
+    /// <summary>The role may reset devices with the upgrade ("task:oadm.firmware:factoryDefault").</summary>
+    public bool MayFactoryDefault { get; }
+
+    /// <summary>The role may install older firmware ("task:oadm.firmware:downgrade").</summary>
+    public bool MayDowngrade { get; }
 
     /// <summary>Raised with the payload JSON (or null when cancelled) when the dialog should close.</summary>
     public event EventHandler<string?>? CloseRequested;
 
     public ObservableCollection<FirmwareDeviceRow> Devices { get; }
 
-    public IReadOnlyList<FactoryDefaultModeOption> Modes { get; } =
+    private static readonly FactoryDefaultModeOption[] AllModes =
     [
         new(FactoryDefaultMode.None, "None, keep all settings (recommended)"),
         new(FactoryDefaultMode.Soft, "Soft, reset settings but keep network settings"),
         new(FactoryDefaultMode.Hard, "Hard, reset everything including the IP address"),
     ];
+
+    /// <summary>The factory default choices the role may use (only "None" without the permission).</summary>
+    public IReadOnlyList<FactoryDefaultModeOption> Modes { get; }
 
     public string Title { get; } = "Upgrade firmware";
 

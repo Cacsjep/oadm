@@ -32,7 +32,9 @@ public sealed class EventRulesTests
         var dialogs = Substitute.For<IDialogService>();
         dialogs.ConfirmAsync(default!, default!, default!).ReturnsForAnyArgs(true);
         var session = new Shell.UserSession();
-        session.SignIn(new UserInfo { UserName = isAdmin ? "admin" : "op", Role = isAdmin ? UserRole.Admin : UserRole.Operator }, "fake");
+        session.SignIn(isAdmin
+            ? new UserInfo { UserName = "admin", Role = UserRole.Admin, RoleId = FakeOadmApi.AdministratorRoleId, AllPermissions = true }
+            : new UserInfo { UserName = "op", Role = UserRole.Operator, RoleId = FakeOadmApi.OperatorRoleId, Permissions = { "events.view" } }, "fake");
         var page = new EventRulesViewModel(api, dialogs, store, new ImmediateUiDispatcher(), session);
         return (api, store, dialogs, page);
     }
@@ -91,7 +93,7 @@ public sealed class EventRulesTests
         Assert.False(page.EditCommand.CanExecute(null));
         Assert.False(page.DeleteCommand.CanExecute(null));
         Assert.All(page.Rules, r => Assert.False(r.CanToggle));
-        Assert.Equal("Only administrators can change event rules.", page.ReadOnlyHint);
+        Assert.Equal("Your role does not allow changing event rules.", page.ReadOnlyHint);
         api.Dispose();
     }
 

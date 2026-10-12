@@ -14,14 +14,19 @@ namespace Oadm.Client.Plugins;
 public sealed class TaskDialogContext : ITaskDialogContext
 {
     private readonly IOadmApi _api;
+    private readonly Func<string, bool>? _has;
 
-    public TaskDialogContext(IOadmApi api, string pluginId)
+    /// <param name="has">The user's permissions (<see cref="Shell.UserSession.Has"/>); null: everything.</param>
+    public TaskDialogContext(IOadmApi api, string pluginId, Func<string, bool>? has = null)
     {
         ArgumentNullException.ThrowIfNull(api);
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
         _api = api;
+        _has = has;
         PluginId = pluginId;
     }
+
+    public bool Has(string permission) => _has?.Invoke(permission) ?? true;
 
     public string PluginId { get; }
 

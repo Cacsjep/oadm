@@ -66,7 +66,7 @@
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16">
             <TextBlock Classes="cardTitle" Text="Event log" VerticalAlignment="Center" />
             <ui:ToolbarButton Text="Refresh" IconKey="refresh" Command="{Binding RefreshLogCommand}" />
-            <Button Classes="toolbar danger" Command="{Binding ClearLogCommand}" IsVisible="{Binding IsAdmin}">
+            <Button Classes="toolbar danger" Command="{Binding ClearLogCommand}" IsVisible="{Binding MayClearLog}">
               <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete all" Spacing="8" />
             </Button>
           </StackPanel>

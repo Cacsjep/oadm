@@ -47,6 +47,9 @@ public static class AuditActions
     public const string RuleTurnedOn = "Turned event rule on";
     public const string RuleTurnedOff = "Turned event rule off";
     public const string WebInterfaceOpened = "Opened web interface";
+    public const string RoleCreated = "Created role";
+    public const string RoleChanged = "Changed role";
+    public const string RoleDeleted = "Deleted role";
 }
 
 /// <summary>

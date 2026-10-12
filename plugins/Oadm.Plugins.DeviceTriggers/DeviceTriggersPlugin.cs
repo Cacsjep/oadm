@@ -86,6 +86,12 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
 
     public UserRole RequiredRole(string method) => DeviceTriggersMethods.IsAdminMethod(method) ? UserRole.Admin : UserRole.Operator;
 
+    /// <summary>Changing triggers is one right ("manage", the Admin methods); seeing them is "show".</summary>
+    public IReadOnlyList<PermissionDefinition> Permissions { get; } =
+    [
+        new(PermissionKeys.Manage, "Change triggers", "Create, change, turn on or off, copy and delete triggers.") { OperatorDefault = false },
+    ];
+
     public async Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);

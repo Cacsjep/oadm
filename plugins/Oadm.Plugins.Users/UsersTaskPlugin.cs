@@ -261,6 +261,23 @@ public sealed partial class UsersTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
     private static string RemoveStepName(string userName) => $"Remove user {userName}";
 
+    /// <summary>Adding, changing and removing accounts on the devices are rights of their own.</summary>
+    public IReadOnlyList<PermissionDefinition> Permissions { get; } =
+    [
+        new(UsersPermissions.Add, "Add users on devices", "Create accounts on the devices.") { FullDeviceControl = true },
+        new(UsersPermissions.Update, "Change users on devices", "Change the password and role of accounts on the devices.") { FullDeviceControl = true },
+        new(UsersPermissions.Remove, "Remove users on devices", "Delete accounts from the devices.") { OperatorDefault = false, FullDeviceControl = true },
+    ];
+
+    /// <summary>The permission of the run's mode: add, change or remove.</summary>
+    public IReadOnlyList<string>? RequiredPermissions(string? payloadJson) => UsersJson.ParsePayload(payloadJson).Mode switch
+    {
+        UsersMode.Add => [UsersPermissions.Add],
+        UsersMode.Change => [UsersPermissions.Update],
+        UsersMode.Remove => [UsersPermissions.Remove],
+        _ => null,
+    };
+
     /// <summary>
     /// The task name: "Add user joe", "Change password joe" (only the password), "Change role joe" (only role
     /// or PTZ), "Change user joe" (both), "Remove user joe" / "Remove users joe, ann". Never the password.

@@ -88,7 +88,8 @@ public sealed class ImportConfigDialog : ITaskPluginDialog
             devices,
             new StorageConfigFileSource(window),
             ctx.UploadAsync,
-            (title, message, confirm) => MessageWindow.ConfirmAsync(window, title, message, confirm)));
+            (title, message, confirm) => MessageWindow.ConfirmAsync(window, title, message, confirm),
+            ctx.Has));
         return await window.ShowDialog<string?>(owner).ConfigureAwait(true);
     }
 }

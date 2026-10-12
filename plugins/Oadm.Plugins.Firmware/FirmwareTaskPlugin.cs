@@ -42,7 +42,7 @@ public sealed record FirmwareTaskTimings
 /// </summary>
 public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
 {
-    public const string PluginId = "oadm.firmware";
+    public const string PluginId = FirmwarePermissions.TaskPluginId;
     public const string StatusQuery = "status";
 
     private readonly FirmwareTaskTimings _timings;
@@ -85,6 +85,35 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
     /// more parallel uploads only share the server's link (each one slower, more upload timeouts).
     /// </summary>
     public int? MaxParallelDevices => MaxParallelUpgrades;
+
+    /// <summary>
+    /// Upgrade keeping the settings, an upgrade with a factory default and a downgrade are rights of their own: the last
+    /// two reset the device.
+    /// </summary>
+    public IReadOnlyList<PermissionDefinition> Permissions { get; } =
+    [
+        new(FirmwarePermissions.Upgrade, "Upgrade firmware", "Install new firmware on devices; their settings stay."),
+        new(FirmwarePermissions.FactoryDefault, "Upgrade with factory default", "Reset the devices to factory default together with the upgrade.") { OperatorDefault = false },
+        new(FirmwarePermissions.Downgrade, "Downgrade firmware", "Install older firmware; this always resets the devices to factory default.") { OperatorDefault = false },
+    ];
+
+    /// <summary>Every run needs "upgrade"; a factory default and "Allow downgrade" need their own.</summary>
+    public IReadOnlyList<string>? RequiredPermissions(string? payloadJson)
+    {
+        var payload = FirmwarePayload.Parse(payloadJson);
+        var keys = new List<string> { FirmwarePermissions.Upgrade };
+        if (payload.FactoryDefaultMode != FactoryDefaultMode.None)
+        {
+            keys.Add(FirmwarePermissions.FactoryDefault);
+        }
+
+        if (payload.AllowDowngrade)
+        {
+            keys.Add(FirmwarePermissions.Downgrade);
+        }
+
+        return keys;
+    }
 
     /// <summary>"Upgrade firmware to 12.11.77" etc., see <see cref="FirmwarePayload.TaskName"/>.</summary>
     public string GetTaskName(string? payloadJson)

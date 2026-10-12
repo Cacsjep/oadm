@@ -36,3 +36,8 @@ client saves one ZIP for Axis support. Read-only for devices.
   client view model against the real plugin and fake mode, cancel, toolbar flow; headless `system-report-dialog.png`;
   read-only hardware test `SystemReportHardwareTests` through the in-process server), `tests/Oadm.Server.Tests/
   SystemReportServerTests` (no_page, operator call, audit, data folder).
+
+## Permissions
+
+No page, so no "show": one key `oadm.system-report:download` for every method; the toolbar button
+(`SystemReportToolbarPlugin.RequiredPermission`) hides without it. Operator default: on.

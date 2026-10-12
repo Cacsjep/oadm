@@ -16,6 +16,7 @@ public sealed class SystemReportServerTests
     {
         await using var host = await TestServerHost.StartAsync();
         Assert.True(host.Get<PluginRegistry>().RegisterCorePlugin(new SystemReportPlugin(), new PluginOrigin(SystemReportPluginInfo.PluginId, "0.1.0", null)));
+        await host.Get<Core.Auth.RoleStore>().SyncCatalogAsync(Core.Auth.PermissionCatalog.Build(host.Get<PluginRegistry>()), CancellationToken.None);
         await host.Get<CorePluginHost>().StartAllAsync(CancellationToken.None);
 
         var listed = Assert.Single((await host.Plugins.ListCorePluginsAsync(new Proto.Empty())).Plugins);

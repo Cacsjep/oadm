@@ -37,6 +37,7 @@ public partial class MainWindow : Window
         {
             _vm.PluginWindowRequested -= OnPluginWindowRequested;
             _vm.ClosePluginWindowsRequested -= OnClosePluginWindowsRequested;
+            _vm.MyRoleRequested -= OnMyRoleRequested;
         }
 
         _vm = vm;
@@ -44,10 +45,14 @@ public partial class MainWindow : Window
         {
             vm.PluginWindowRequested += OnPluginWindowRequested;
             vm.ClosePluginWindowsRequested += OnClosePluginWindowsRequested;
+            vm.MyRoleRequested += OnMyRoleRequested;
         }
     }
 
     private void OnPluginWindowRequested(object? sender, CorePluginPageViewModel page) => OpenPluginWindow(page);
+
+    /// <summary>"Your role": a modal dialog over the main window.</summary>
+    private void OnMyRoleRequested(object? sender, MyRoleViewModel role) => _ = new MyRoleWindow { DataContext = role }.ShowDialog(this);
 
     private void OnClosePluginWindowsRequested(object? sender, string? pluginId) => ClosePluginWindows(pluginId);
 

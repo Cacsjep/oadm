@@ -25,4 +25,15 @@ public sealed class WebViewPlugin : ICorePlugin
 
     public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
         throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
+
+    /// <summary>
+    /// Opening devices (DeviceWebService) is a right of its own and off for operators by default: the relay logs in with the
+    /// stored device login, so whoever opens a device can change everything on it.
+    /// </summary>
+    public IReadOnlyList<PermissionDefinition> Permissions { get; } =
+    [
+        // The page is of no use without "open": off for operators by default as well.
+        new(PermissionKeys.Show, "Show the page", "See the Web View page.") { OperatorDefault = false },
+        new("open", "Open devices", "Open the web interface of devices in tabs, logged in with the stored login.") { OperatorDefault = false, FullDeviceControl = true },
+    ];
 }

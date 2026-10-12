@@ -5,6 +5,7 @@ using Avalonia.Layout;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Client.Devices.Toolbar;
 
@@ -40,6 +41,8 @@ public sealed class AddToolbarPlugin : IToolbarPlugin
     }
 
     public string Id => "oadm.toolbar.add";
+
+    public string? RequiredPermission => HostPermissionKeys.DevicesAddRemove;
     public int Order => 0;
     public ToolbarGroup Group => ToolbarGroup.Add;
 
@@ -58,6 +61,8 @@ public sealed class RefreshToolbarPlugin : IToolbarPlugin
     public const string Tooltip = "Read the selected devices again";
 
     public string Id => "oadm.toolbar.refresh";
+
+    public string? RequiredPermission => HostPermissionKeys.DevicesRefresh;
     public int Order => 5;
     public ToolbarGroup Group => ToolbarGroup.Manage;
 
@@ -97,6 +102,8 @@ public sealed class RefreshToolbarPlugin : IToolbarPlugin
 public sealed class RemoveToolbarPlugin : IToolbarPlugin
 {
     public string Id => "oadm.toolbar.remove";
+
+    public string? RequiredPermission => HostPermissionKeys.DevicesAddRemove;
     public int Order => 0;
     public ToolbarGroup Group => ToolbarGroup.Manage;
 
@@ -150,6 +157,8 @@ public sealed class ExportToolbarPlugin : IToolbarPlugin
     public const string Text = "Export";
 
     public string Id => "oadm.toolbar.export";
+
+    public string? RequiredPermission => HostPermissionKeys.DevicesExport;
     public int Order => 10;
     public ToolbarGroup Group => ToolbarGroup.Manage;
 

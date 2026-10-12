@@ -31,6 +31,7 @@ public sealed class ToolbarContext : IToolbarContext
     private readonly IDialogService _dialogs;
     private readonly Func<string, Task> _openPage;
     private readonly Action _showTasks;
+    private Shell.UserSession? _session;
 
     public ToolbarContext(
         DeviceStore store,
@@ -57,6 +58,32 @@ public sealed class ToolbarContext : IToolbarContext
         store.Changed += (_, _) => DevicesChanged?.Invoke(this, EventArgs.Empty);
         catalog.Changed += (_, _) => TaskPluginsChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>Raised after the user's role or its permissions changed.</summary>
+    public event EventHandler? PermissionsChanged;
+
+    /// <summary>The logged-in user whose permissions <see cref="Has"/> answers (set by the Devices page).</summary>
+    public Shell.UserSession? Session
+    {
+        get => _session;
+        set
+        {
+            if (_session is not null)
+            {
+                _session.PermissionsChanged -= OnPermissionsChanged;
+            }
+
+            _session = value;
+            if (_session is not null)
+            {
+                _session.PermissionsChanged += OnPermissionsChanged;
+            }
+        }
+    }
+
+    public bool Has(string permission) => _session?.Has(permission) ?? true;
+
+    private void OnPermissionsChanged(object? sender, EventArgs e) => PermissionsChanged?.Invoke(this, EventArgs.Empty);
 
     public IReadOnlyList<IDeviceInfo> SelectedDevices => [.. _selection];
 

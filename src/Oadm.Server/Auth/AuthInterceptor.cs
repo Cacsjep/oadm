@@ -10,39 +10,51 @@ using Oadm.Sdk.Plugins;
 namespace Oadm.Server.Auth;
 
 /// <summary>
-/// Checks every gRPC call: a valid bearer token (UNAUTHENTICATED without), the role of <see cref="AccessPolicy"/>
-/// (PERMISSION_DENIED), then runs the call with the caller in <see cref="CallerContext"/> (task owner, audit log).
+/// Checks every gRPC call: a valid bearer token (UNAUTHENTICATED without), the rule of <see cref="AccessPolicy"/> against
+/// the permissions of the caller's role (PERMISSION_DENIED with what is missing), then runs the call with the caller in
+/// <see cref="CallerContext"/> (task owner, audit log, the checks inside plugin and task calls). Streaming calls are
+/// registered in <see cref="CallerStreams"/>, which ends them when a role change no longer allows them.
 /// </summary>
-public sealed partial class AuthInterceptor(AuthTokenStore tokens, ILogger<AuthInterceptor> logger) : Interceptor
+public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore roles, CallerStreams streams, ILogger<AuthInterceptor> logger) : Interceptor
 {
+    /// <summary>The session stream reports role changes itself; it is never ended by one.</summary>
+    private const string WatchSessionMethod = "/oadm.v1.AuthService/WatchSession";
+
     public const string NotLoggedInMessage = "Log in to the server first.";
     public const string AdminOnlyMessage = "Only administrators can do this.";
 
     public override async Task<TResponse> UnaryServerHandler<TRequest, TResponse>(TRequest request, ServerCallContext context, UnaryServerMethod<TRequest, TResponse> continuation)
     {
         ArgumentNullException.ThrowIfNull(continuation);
-        using var scope = CallerContext.Use(await AuthorizeAsync(context).ConfigureAwait(false));
+        var (caller, _) = await AuthorizeAsync(context).ConfigureAwait(false);
+        using var scope = CallerContext.Use(caller);
         return await continuation(request, context).ConfigureAwait(false);
     }
 
     public override async Task<TResponse> ClientStreamingServerHandler<TRequest, TResponse>(IAsyncStreamReader<TRequest> requestStream, ServerCallContext context, ClientStreamingServerMethod<TRequest, TResponse> continuation)
     {
         ArgumentNullException.ThrowIfNull(continuation);
-        using var scope = CallerContext.Use(await AuthorizeAsync(context).ConfigureAwait(false));
+        var (caller, rule) = await AuthorizeAsync(context).ConfigureAwait(false);
+        using var scope = CallerContext.Use(caller);
+        using var stream = OpenStream(caller, rule, context);
         return await continuation(requestStream, context).ConfigureAwait(false);
     }
 
     public override async Task ServerStreamingServerHandler<TRequest, TResponse>(TRequest request, IServerStreamWriter<TResponse> responseStream, ServerCallContext context, ServerStreamingServerMethod<TRequest, TResponse> continuation)
     {
         ArgumentNullException.ThrowIfNull(continuation);
-        using var scope = CallerContext.Use(await AuthorizeAsync(context).ConfigureAwait(false));
+        var (caller, rule) = await AuthorizeAsync(context).ConfigureAwait(false);
+        using var scope = CallerContext.Use(caller);
+        using var stream = OpenStream(caller, rule, context);
         await continuation(request, responseStream, context).ConfigureAwait(false);
     }
 
     public override async Task DuplexStreamingServerHandler<TRequest, TResponse>(IAsyncStreamReader<TRequest> requestStream, IServerStreamWriter<TResponse> responseStream, ServerCallContext context, DuplexStreamingServerMethod<TRequest, TResponse> continuation)
     {
         ArgumentNullException.ThrowIfNull(continuation);
-        using var scope = CallerContext.Use(await AuthorizeAsync(context).ConfigureAwait(false));
+        var (caller, rule) = await AuthorizeAsync(context).ConfigureAwait(false);
+        using var scope = CallerContext.Use(caller);
+        using var stream = OpenStream(caller, rule, context);
         await continuation(requestStream, responseStream, context).ConfigureAwait(false);
     }
 
@@ -71,12 +83,44 @@ public sealed partial class AuthInterceptor(AuthTokenStore tokens, ILogger<AuthI
     public static AuthenticatedCaller RequireCaller() =>
         CallerContext.Current ?? throw new RpcException(new Status(StatusCode.Unauthenticated, NotLoggedInMessage));
 
-    private async Task<AuthenticatedCaller?> AuthorizeAsync(ServerCallContext context)
+    /// <summary>
+    /// The check inside a call (<see cref="Access.InCall"/>): PERMISSION_DENIED with what is missing unless the caller has
+    /// <paramref name="permission"/>. Without a caller (in-process calls that set none) it allows.
+    /// </summary>
+    public static void Require(string permission, PermissionCatalog catalog)
     {
-        var access = AccessPolicy.For(context.Method);
-        if (access == Access.Open)
+        if (CallerContext.Current is { } caller && !caller.Has(permission))
+        {
+            throw new RpcException(new Status(StatusCode.PermissionDenied, AccessPolicy.DeniedMessage(permission, catalog)));
+        }
+    }
+
+    /// <summary>Like <see cref="Require(string, PermissionCatalog)"/> for what only the Administrator role may do.</summary>
+    public static void RequireAdmin()
+    {
+        if (CallerContext.Current is { IsAdmin: false })
+        {
+            throw new RpcException(new Status(StatusCode.PermissionDenied, AdminOnlyMessage));
+        }
+    }
+
+    private IDisposable? OpenStream(AuthenticatedCaller? caller, AccessRule rule, ServerCallContext context)
+    {
+        if (caller is null || context.Method == WatchSessionMethod)
         {
             return null;
+        }
+
+        var http = context.GetHttpContext();
+        return streams.Open(caller, rule, context.Method, http.Abort);
+    }
+
+    private async Task<(AuthenticatedCaller? Caller, AccessRule Rule)> AuthorizeAsync(ServerCallContext context)
+    {
+        var rule = AccessPolicy.For(context.Method);
+        if (rule.Access == Access.Open)
+        {
+            return (null, rule);
         }
 
         var header = context.RequestHeaders.GetValue(OadmMetadata.Authorization);
@@ -94,15 +138,16 @@ public sealed partial class AuthInterceptor(AuthTokenStore tokens, ILogger<AuthI
             throw new RpcException(new Status(StatusCode.Unauthenticated, "Your session has ended. Log in again."));
         }
 
-        var caller = new AuthenticatedCaller(session.UserId, session.UserName, session.Role, ClientAddressOf(context),
+        var permissions = await roles.PermissionsOfAsync(session.RoleId, context.CancellationToken).ConfigureAwait(false);
+        var caller = new AuthenticatedCaller(session.UserId, session.UserName, session.RoleId, permissions, ClientAddressOf(context),
             CleanMachineName(context.RequestHeaders.GetValue(OadmMetadata.ClientMachine)), session.TokenHash);
-        if (access == Access.Admin && caller.Role != UserRole.Admin)
+        if (!AccessPolicy.Allows(rule, caller))
         {
             LogDenied(caller.UserName, context.Method);
-            throw new RpcException(new Status(StatusCode.PermissionDenied, AdminOnlyMessage));
+            throw new RpcException(new Status(StatusCode.PermissionDenied, AccessPolicy.DeniedMessage(rule, roles.Catalog)));
         }
 
-        return caller;
+        return (caller, rule);
     }
 
     /// <summary>Letters, digits, '-', '_' and '.', at most 64 characters (it ends up in the task owner).</summary>

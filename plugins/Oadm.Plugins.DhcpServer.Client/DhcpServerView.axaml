@@ -10,10 +10,10 @@
   <!-- One card (the host's page card): settings form, then the lease list. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,*">
     <StackPanel Grid.Row="0" Classes="form">
-      <CheckBox Content="Enable DHCP server" IsChecked="{Binding IsEnabled}" />
+      <CheckBox Content="Enable DHCP server" IsChecked="{Binding IsEnabled}" IsEnabled="{Binding MayManage}" />
 
       <ui:FormField Label="Listen on" InputWidth="460" Error="{Binding InterfaceError}">
-        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Listen.Items}" SelectedItem="{Binding Listen.Selected}"
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Listen.Items}" SelectedItem="{Binding Listen.Selected}" IsEnabled="{Binding MayManage}"
                   ToolTip.Tip="The interface the cameras are connected to. Only interfaces with an IPv4 address are listed.">
           <ComboBox.ItemTemplate>
             <DataTemplate x:DataType="net:InterfaceOption">
@@ -24,10 +24,10 @@
       </ui:FormField>
 
       <ui:FormField Label="Start address">
-        <TextBox Text="{Binding RangeStart}" PlaceholderText="e.g. 10.0.0.100" />
+        <TextBox Text="{Binding RangeStart}" PlaceholderText="e.g. 10.0.0.100" IsReadOnly="{Binding !MayManage}" />
       </ui:FormField>
       <ui:FormField Label="End address">
-        <TextBox Text="{Binding RangeEnd}" PlaceholderText="e.g. 10.0.0.199" />
+        <TextBox Text="{Binding RangeEnd}" PlaceholderText="e.g. 10.0.0.199" IsReadOnly="{Binding !MayManage}" />
       </ui:FormField>
 
       <!-- What the clients of this range get, directly under the range; then the auto-add option, aligned with the inputs -->
@@ -36,13 +36,13 @@
       </ui:FormField>
 
       <ui:FormField Classes="wide">
-        <CheckBox Content="Automatically add Axis devices that get an address" IsChecked="{Binding AutoAddAxisDevices}"
+        <CheckBox Content="Automatically add Axis devices that get an address" IsChecked="{Binding AutoAddAxisDevices}" IsEnabled="{Binding MayManage}"
                   ToolTip.Tip="Logs in with the credential list. Managed devices are always followed." />
       </ui:FormField>
 
       <ui:FormField InputWidth="460">
         <DockPanel>
-          <Button DockPanel.Dock="Right" Classes="primary" Content="Save" Command="{Binding SaveCommand}"
+          <Button DockPanel.Dock="Right" Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding MayManage}"
                   ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
           <ui:StatusChip HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0"
                          Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"
@@ -56,7 +56,7 @@
       <TextBlock Grid.Column="0" Classes="sectionTitle" Text="Leases" VerticalAlignment="Center" />
       <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding LeaseSummary}" VerticalAlignment="Center" Margin="12,0,0,0" />
       <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" Placeholder="Search MAC, IP address, name" Width="260" Margin="0,0,8,0" />
-      <ui:ToolbarButton Grid.Column="3" IconKey="add" Text="Static lease" Command="{Binding AddStaticCommand}"
+      <ui:ToolbarButton Grid.Column="3" IconKey="add" Text="Static lease" Command="{Binding AddStaticCommand}" IsVisible="{Binding MayManage}"
                         ToolTip.Tip="Reserve an IP address for a device (by its MAC address)" />
     </Grid>
 
@@ -72,7 +72,8 @@
           <DataGridTemplateColumn Width="190" CanUserSort="False" x:DataType="vm:LeaseRowViewModel">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate x:DataType="vm:LeaseRowViewModel">
-                <StackPanel Orientation="Horizontal" Spacing="16" Margin="10,0">
+                <StackPanel Orientation="Horizontal" Spacing="16" Margin="10,0"
+                            IsVisible="{Binding $parent[UserControl].((vm:DhcpServerViewModel)DataContext).MayManage}">
                   <Button Classes="link" Content="Edit" IsVisible="{Binding IsStatic}"
                           Command="{Binding $parent[UserControl].((vm:DhcpServerViewModel)DataContext).EditStaticCommand}" CommandParameter="{Binding}"
                           ToolTip.Tip="Change the MAC address, IP address or name" />

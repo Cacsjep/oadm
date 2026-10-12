@@ -193,6 +193,33 @@ public sealed partial class UsersDialogViewModel : ValidatingViewModel
         }
     }
 
+    /// <summary>The role may add users on devices ("task:oadm.users:add").</summary>
+    [ObservableProperty]
+    private bool _mayAdd = true;
+
+    /// <summary>The role may change users on devices ("task:oadm.users:update").</summary>
+    [ObservableProperty]
+    private bool _mayChange = true;
+
+    /// <summary>The role may remove users on devices ("task:oadm.users:remove").</summary>
+    [ObservableProperty]
+    private bool _mayRemove = true;
+
+    /// <summary>
+    /// Offers only the modes the user's role allows (the server refuses the others) and starts in the first of them.
+    /// </summary>
+    public void ApplyPermissions(Func<string, bool> has)
+    {
+        ArgumentNullException.ThrowIfNull(has);
+        MayAdd = has(Oadm.Sdk.Plugins.PermissionKeys.Task(UsersTaskPlugin.PluginId, UsersPermissions.Add));
+        MayChange = has(Oadm.Sdk.Plugins.PermissionKeys.Task(UsersTaskPlugin.PluginId, UsersPermissions.Update));
+        MayRemove = has(Oadm.Sdk.Plugins.PermissionKeys.Task(UsersTaskPlugin.PluginId, UsersPermissions.Remove));
+        if ((IsAdd && !MayAdd) || (IsChange && !MayChange) || (IsRemove && !MayRemove))
+        {
+            Mode = MayAdd ? UsersMode.Add : MayChange ? UsersMode.Change : UsersMode.Remove;
+        }
+    }
+
     /// <summary>Add and Change type the user name; Remove picks the users in the Existing users list.</summary>
     public bool ShowUserName => !IsRemove;
 

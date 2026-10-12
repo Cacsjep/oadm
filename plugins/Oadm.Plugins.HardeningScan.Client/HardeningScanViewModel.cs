@@ -71,6 +71,7 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
     public HardeningScanViewModel(ICorePluginClientContext ctx, HardeningClientSettingsStore? settingsStore = null, TimeProvider? time = null)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
+        _ctx.PermissionsChanged += (_, _) => OnPropertyChanged(nameof(MayScan));
         _time = time ?? TimeProvider.System;
         SettingsStore = settingsStore ?? new HardeningClientSettingsStore();
         Settings = SettingsStore.Load();
@@ -353,6 +354,9 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
 
     [RelayCommand(CanExecute = nameof(CanScan))]
     private Task ScanAllAsync() => StartScanAsync([]);
+
+    /// <summary>The role may start and stop scans ("oadm.hardening-scan:scan"); the results show either way.</summary>
+    public bool MayScan => _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(HardeningScanPluginInfo.PluginId, "scan"));
 
     [RelayCommand(CanExecute = nameof(CanScanSelected))]
     private Task ScanSelectedAsync() => StartScanAsync([.. _ctx.SelectedDevices.Select(d => d.Id)]);

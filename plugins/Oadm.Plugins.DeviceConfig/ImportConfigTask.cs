@@ -57,6 +57,19 @@ public sealed class ImportConfigTask : ITaskPlugin
 
     public string? NotSupportedReason(IDeviceInfo device) => DeviceConfigSupport.NotSupportedReason(device);
 
+    /// <summary>Importing the connection settings (HTTPS, ports, login method, 802.1X) is a right of its own.</summary>
+    public IReadOnlyList<PermissionDefinition> Permissions { get; } =
+    [
+        new(DeviceConfigPermissions.Import, "Import configuration", "Import settings from a configuration file, without the connection settings."),
+        new(DeviceConfigPermissions.Connection, "Import connection settings", "Also import HTTPS, ports, login method and IEEE 802.1X; devices can become unreachable.") { OperatorDefault = false },
+    ];
+
+    /// <summary>Every import needs "import"; one with the connection settings area also "connection".</summary>
+    public IReadOnlyList<string>? RequiredPermissions(string? payloadJson) =>
+        ImportPayload.Parse(payloadJson).Sections.Contains(ConfigSections.Connection)
+            ? [DeviceConfigPermissions.Import, DeviceConfigPermissions.Connection]
+            : [DeviceConfigPermissions.Import];
+
     public string GetTaskName(string? payloadJson)
     {
         try

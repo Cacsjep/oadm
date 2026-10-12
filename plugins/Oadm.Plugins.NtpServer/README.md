@@ -73,3 +73,9 @@ implementation (SNTPv4 compatible), no library.
   time fake camera; page view model; headless screenshots `ntp-server-page.png`, `-errors.png`,
   `-upstream-warning.png`, `-checking.png`). A hardware test where the development camera queries OADM is a device write and is not
   written/run without explicit user approval.
+
+## Permissions
+
+`oadm.ntp-server:show` (the page, `getState`) and `:manage` "Change the NTP server" (`save`). Without "manage" the form
+is read-only and Save is hidden. Operator default: show only. The task "Use OADM as NTP server" is
+`task:oadm.ntp-server.use`.

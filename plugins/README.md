@@ -380,6 +380,29 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
 - **Fake mode**: add the plugin's backend to `FakeOadmApi` (`FakeCorePlugins`, `InvokeCorePluginAsync`) so `--fake`
   shows the page.
 
+### Permissions
+
+Administrators give users roles; a role is a set of permissions in the matrix of the Users page. A plugin declares what
+an administrator should be able to give or withhold. The server checks every call; the client only hides what the role
+lacks.
+
+- **Core plugins**: every page gets "<id>:show" automatically (see the page, read its state, watch its events). Declare
+  named rights with `Permissions` (`PermissionDefinition(key, name, description)`, `OperatorDefault` (default true),
+  `ViewerDefault`, `FullDeviceControl` for rights that act with the stored device login) and map methods to them with
+  `RequiredPermission(method)`: a declared key or `PermissionKeys.Show`. Without an answer `RequiredRole` decides
+  (Operator = "show", Admin = "manage"); a plugin that declares nothing but answers `RequiredRole` gets an automatic
+  "manage". Declare "show" only to change its defaults (Web View: off for Operator).
+- **Task plugins**: one permission "task:<id>" by default. A task whose choices differ in risk declares `Permissions`
+  and answers `RequiredPermissions(payloadJson)` with the keys a run needs (Users: add / update / remove). The run is
+  refused before any task starts when the role lacks one; no answer means every declared key.
+- **Keys**: letters and digits, starting with a letter, at most 32 characters, unique within the plugin. They are stored
+  in roles: never rename one. A new permission reaches the built-in Operator and Viewer by its defaults, custom roles
+  get it only when an administrator ticks it.
+- **Client**: `ICorePluginClientContext.Has(key)` + `PermissionsChanged` (pages), `ITaskDialogContext.Has(key)` (task
+  dialogs), `IToolbarContext.Has(key)` and `IToolbarPlugin.RequiredPermission` (toolbar entries). Build keys with
+  `PermissionKeys.Of(pluginId, key)` and `PermissionKeys.Task(taskId, key)`; host keys are `HostPermissionKeys`.
+  Hide actions the role lacks and lock inputs that only lead to them (the NTP server page: inputs read-only, no Save).
+
 ### Samples
 
 Each plugin has a short entry in `CLAUDE.md` and its own `README.md` with the details (decisions, page and dialog, steps

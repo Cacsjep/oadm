@@ -24,7 +24,15 @@ public enum CorePluginState
 public sealed record CorePluginStatus(string PluginId, CorePluginState State, string? Error);
 
 /// <summary>Who may call a core plugin page method and whether the call goes to the audit log.</summary>
-public sealed record CorePluginMethodAccess(UserRole RequiredRole, bool Audited, string PluginName);
+/// <param name="RequiredRole">The plugin's own answer (<see cref="ICorePlugin.RequiredRole"/>).</param>
+public sealed record CorePluginMethodAccess(UserRole RequiredRole, bool Audited, string PluginName)
+{
+    /// <summary>The permission key the method needs ("oadm.dhcp-server:manage"); null with <see cref="AdminOnly"/> false: a login.</summary>
+    public string? Permission { get; init; }
+
+    /// <summary>Only the Administrator role (a plugin that names no usable permission for an Admin method, or that throws).</summary>
+    public bool AdminOnly { get; init; }
+}
 
 /// <summary>
 /// Starts and stops the registered core plugins and routes UI-page calls (<see cref="InvokeAsync"/>).
@@ -272,9 +280,12 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     }
 
     /// <summary>
-    /// The access rule of a page method: the role it needs (<see cref="ICorePlugin.RequiredRole"/>), whether calls are
-    /// audited (<see cref="ICorePlugin.IsAudited"/>) and the plugin's display name. A plugin that throws while
-    /// answering needs <see cref="UserRole.Admin"/> (fail closed). Null for an unknown plugin.
+    /// The access rule of a page method: the permission it needs, whether calls are audited
+    /// (<see cref="ICorePlugin.IsAudited"/>) and the plugin's display name. The permission is the plugin's
+    /// <see cref="ICorePlugin.RequiredPermission"/> when it names a declared one or "show"; without an answer the role
+    /// decides: Operator methods need "show" (a login for a plugin without a page), Admin methods "manage" (the automatic
+    /// permission of a plugin that declares none). Anything else, and a plugin that throws, is Administrator only (fail
+    /// closed). Null for an unknown plugin.
     /// </summary>
     public CorePluginMethodAccess? AccessOf(string pluginId, string method)
     {
@@ -286,14 +297,51 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         var plugin = registered.Plugin;
         try
         {
-            return new CorePluginMethodAccess(plugin.RequiredRole(method), plugin.IsAudited(method), plugin.DisplayName ?? registered.Id);
+            var role = plugin.RequiredRole(method);
+            var access = new CorePluginMethodAccess(role, plugin.IsAudited(method), plugin.DisplayName ?? registered.Id);
+            var declared = Auth.PermissionCatalog.DeclaredOf(plugin);
+            var named = plugin.RequiredPermission(method);
+            string? key = named switch
+            {
+                PermissionKeys.Show when plugin.HasPage => PermissionKeys.Show,
+                null when role == UserRole.Operator => plugin.HasPage ? PermissionKeys.Show : string.Empty,
+                null when declared.Count == 0 || declared.Any(p => p.Key == PermissionKeys.Manage) => PermissionKeys.Manage,
+                not null when declared.Any(p => p.Key == named) => named,
+                _ => null,
+            };
+            return key switch
+            {
+                null => access with { AdminOnly = true },
+                "" => access,
+                _ => access with { Permission = PermissionKeys.Of(registered.Id, key) },
+            };
         }
 #pragma warning disable CA1031 // A broken plugin answer must not open the method.
         catch (Exception ex)
 #pragma warning restore CA1031
         {
             LogInvokeFailed(ex, pluginId, method);
-            return new CorePluginMethodAccess(UserRole.Admin, true, registered.Id);
+            return new CorePluginMethodAccess(UserRole.Admin, true, registered.Id) { AdminOnly = true };
+        }
+    }
+
+    /// <summary>The "show" permission of a plugin's page ("oadm.io-monitor:show"), or null for a plugin without a page.</summary>
+    public string? ShowPermissionOf(string pluginId)
+    {
+        if (!_registry.TryGetCorePlugin(pluginId, out var registered))
+        {
+            return null;
+        }
+
+        try
+        {
+            return registered.Plugin.HasPage ? PermissionKeys.Of(registered.Id, PermissionKeys.Show) : null;
+        }
+#pragma warning disable CA1031 // Like the rail: a broken plugin has its page.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return PermissionKeys.Of(registered.Id, PermissionKeys.Show);
         }
     }
 

@@ -179,3 +179,8 @@ policy", "Enable remote syslog over TLS", "Disable SNMP v1/v2c", "Enable RTSPS".
 "Enable HTTPS" (E3, X1) and "Enable IEEE 802.1X" (X2), Date and time / "Use OADM as NTP server" (B6), Network settings static
 IP (B5), Upgrade firmware (B2), Applications remove / stop (B8). A "Fix" action on a column would open the matching task
 for the failing devices.
+
+## Permissions
+
+`oadm.hardening-scan:show` (results, details, export) and `:scan` "Run scans" (`startScan`, `cancelScan`). Without
+"scan" the scan buttons are hidden. Operator default: both. Off by default as a package.

@@ -66,3 +66,10 @@ interface of the managed devices in browser tabs inside OADM, logged in with the
 - `tests/Oadm.Plugins.WebView.Tests`: tree, tabs, Close all, Back, presets and Custom, refusals, removed devices, missing
   runtime, 5,000 devices, the shared device icon; headless `web-view-page.png`, `web-view-custom-error.png`, `web-view-runtime-missing.png`
   (the native browser needs a real window: a stand-in shows where the page goes).
+
+## Permissions
+
+`oadm.web-view:show` (the page) and `:open` "Open devices" (`DeviceWebService.Open` and `Exchange`, full device control:
+the relay logs in with the stored login). Both are off for the built-in Operator by default (the plugin declares "show"
+to change its default). Without "open" a click on a device does nothing and the page says "Your role does not allow
+opening devices."

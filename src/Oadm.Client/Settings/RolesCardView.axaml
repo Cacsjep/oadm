@@ -1,0 +1,32 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:settings="using:Oadm.Client.Settings"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             x:Class="Oadm.Client.Settings.RolesCardView"
+             x:DataType="settings:RolesViewModel">
+  <!-- Roles card of the Users page: the permission matrix (rows = permissions in groups, one column per role; the role
+       columns are built in code-behind from Columns). Changes are saved together; a new role, a copy and a rename open
+       the role dialog (RoleFormWindow). -->
+  <Border Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" MinHeight="200">
+    <Grid RowDefinitions="Auto,*,Auto">
+      <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+          <TextBlock Classes="cardTitle" Text="Roles" VerticalAlignment="Center" Margin="0,0,12,0" />
+          <ui:ToolbarButton Text="New role" IconKey="add" Command="{Binding NewRoleCommand}" />
+          <ui:ToolbarSeparator />
+          <ui:ToolbarButton Text="Save" IconKey="save" IsPrimary="True" Command="{Binding SaveCommand}"
+                            ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
+          <ui:ToolbarButton Text="Discard" IconKey="cancel" Command="{Binding DiscardCommand}" />
+        </StackPanel>
+        <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" Placeholder="Search permissions" />
+      </Grid>
+
+      <DataGrid x:Name="Matrix" Grid.Row="1" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single"
+                CanUserSortColumns="False" CanUserReorderColumns="False" CanUserResizeColumns="True" FrozenColumnCount="1"
+                Margin="0,12,0,0" />
+
+      <TextBlock Grid.Row="2" Classes="error" TextWrapping="Wrap" Text="{Binding ErrorText}" Margin="0,8,0,0"
+                 IsVisible="{Binding ErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+    </Grid>
+  </Border>
+</UserControl>

@@ -29,7 +29,8 @@ internal static class AuthMapping
         },
         ex.Message));
 
-    public static Proto.UserInfo ToProto(UserRecord user)
+    /// <summary>A user with its role (id, name and the two-value role older clients know).</summary>
+    public static async Task<Proto.UserInfo> ToProtoAsync(UserRecord user, RoleStore roles, CancellationToken ct)
     {
         var info = new Proto.UserInfo
         {
@@ -38,6 +39,8 @@ internal static class AuthMapping
             Role = ToProto(user.Role),
             Disabled = user.Disabled,
             Created = Timestamp.FromDateTime(DateTime.SpecifyKind(user.CreatedUtc, DateTimeKind.Utc)),
+            RoleId = user.RoleId.ToString(),
+            RoleName = await roles.NameOfAsync(user.RoleId, ct).ConfigureAwait(false),
         };
         if (user.LastLoginUtc is { } last)
         {
@@ -46,6 +49,22 @@ internal static class AuthMapping
 
         return info;
     }
+
+    /// <summary>The caller's own user: <see cref="ToProtoAsync"/> plus what the role allows.</summary>
+    public static async Task<Proto.UserInfo> SelfAsync(UserRecord user, RoleStore roles, CancellationToken ct)
+    {
+        var info = await ToProtoAsync(user, roles, ct).ConfigureAwait(false);
+        var permissions = await roles.PermissionsOfAsync(user.RoleId, ct).ConfigureAwait(false);
+        info.AllPermissions = permissions.IsAll;
+        info.Permissions.AddRange(permissions.Keys.Order(StringComparer.Ordinal));
+        return info;
+    }
+
+    /// <summary>The role of a request: <paramref name="roleId"/> when set, else the two-value role of older clients.</summary>
+    public static Guid RoleIdOf(string? roleId, Proto.UserRole role) =>
+        string.IsNullOrEmpty(roleId) ? BuiltInRoles.IdOf(FromProto(role))
+        : Guid.TryParse(roleId, out var id) ? id
+        : throw new AuthException(AuthError.InvalidArgument, "Unknown role.");
 
     public static Proto.UserRole ToProto(UserRole role) => role == UserRole.Admin ? Proto.UserRole.Admin : Proto.UserRole.Operator;
 
@@ -58,7 +77,7 @@ internal static class AuthMapping
 }
 
 /// <summary>gRPC AuthService: status, login, logout and the first administrator.</summary>
-public sealed class AuthGrpcService(AuthManager auth, UserStore users, AuthTokenStore tokens, AuditLog audit, ServerSettingsStore settings) : Proto.AuthService.AuthServiceBase
+public sealed class AuthGrpcService(AuthManager auth, UserStore users, RoleStore roles, AuthTokenStore tokens, AuditLog audit, ServerSettingsStore settings) : Proto.AuthService.AuthServiceBase
 {
     private static readonly string Version =
         typeof(AuthGrpcService).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "?";
@@ -81,7 +100,7 @@ public sealed class AuthGrpcService(AuthManager auth, UserStore users, AuthToken
         try
         {
             var result = await auth.LoginAsync(request.UserName, request.Password, request.Remember, AuthInterceptor.ClientAddressOf(context), context.CancellationToken).ConfigureAwait(false);
-            return new Proto.LoginReply { Token = result.Token, User = AuthMapping.ToProto(result.User) };
+            return new Proto.LoginReply { Token = result.Token, User = await AuthMapping.SelfAsync(result.User, roles, context.CancellationToken).ConfigureAwait(false) };
         }
         catch (AuthException ex)
         {
@@ -95,7 +114,7 @@ public sealed class AuthGrpcService(AuthManager auth, UserStore users, AuthToken
         {
             var result = await auth.CreateFirstAdminAsync(request.UserName, request.Password, request.SetupCode,
                 AuthInterceptor.IsLoopback(context), request.Remember, AuthInterceptor.ClientAddressOf(context), context.CancellationToken).ConfigureAwait(false);
-            return new Proto.LoginReply { Token = result.Token, User = AuthMapping.ToProto(result.User) };
+            return new Proto.LoginReply { Token = result.Token, User = await AuthMapping.SelfAsync(result.User, roles, context.CancellationToken).ConfigureAwait(false) };
         }
         catch (AuthException ex)
         {
@@ -114,19 +133,74 @@ public sealed class AuthGrpcService(AuthManager auth, UserStore users, AuthToken
     public override async Task<Proto.UserInfo> Me(Proto.Empty request, ServerCallContext context)
     {
         var caller = AuthInterceptor.RequireCaller();
-        var user = await users.FindByNameAsync(caller.UserName, context.CancellationToken).ConfigureAwait(false)
-            ?? throw new RpcException(new Status(StatusCode.Unauthenticated, "Your session has ended. Log in again."));
-        return AuthMapping.ToProto(UserRecord.From(user));
+        return await SelfAsync(caller, context.CancellationToken).ConfigureAwait(false)
+            ?? throw new RpcException(new Status(StatusCode.Unauthenticated, SessionEndedMessage));
+    }
+
+    /// <summary>
+    /// The caller's user now, then again after every change of its role or of the role's permissions. Ends with
+    /// UNAUTHENTICATED when the user is gone or disabled.
+    /// </summary>
+    public override async Task WatchSession(Proto.Empty request, IServerStreamWriter<Proto.UserInfo> responseStream, ServerCallContext context)
+    {
+        var caller = AuthInterceptor.RequireCaller();
+        var ct = context.CancellationToken;
+        var signal = System.Threading.Channels.Channel.CreateBounded<bool>(new System.Threading.Channels.BoundedChannelOptions(1)
+        {
+            FullMode = System.Threading.Channels.BoundedChannelFullMode.DropWrite,
+        });
+        void OnRoles(object? sender, IReadOnlyCollection<Guid> ids) => signal.Writer.TryWrite(true);
+        void OnUsers(object? sender, EventArgs e) => signal.Writer.TryWrite(true);
+        roles.Changed += OnRoles;
+        users.Changed += OnUsers;
+        try
+        {
+            string? last = null;
+            do
+            {
+                var info = await SelfAsync(caller, ct).ConfigureAwait(false)
+                    ?? throw new RpcException(new Status(StatusCode.Unauthenticated, SessionEndedMessage));
+                var text = info.ToString();
+                if (text != last)
+                {
+                    last = text;
+                    await responseStream.WriteAsync(info, ct).ConfigureAwait(false);
+                }
+            }
+            while (await signal.Reader.WaitToReadAsync(ct).ConfigureAwait(false) && signal.Reader.TryRead(out _));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The client stopped watching.
+        }
+        finally
+        {
+            roles.Changed -= OnRoles;
+            users.Changed -= OnUsers;
+        }
+    }
+
+    private const string SessionEndedMessage = "Your session has ended. Log in again.";
+
+    /// <summary>The caller's user with role and permissions, or null when it is gone or disabled.</summary>
+    private async Task<Proto.UserInfo?> SelfAsync(AuthenticatedCaller caller, CancellationToken ct)
+    {
+        var user = await users.FindByNameAsync(caller.UserName, ct).ConfigureAwait(false);
+        return user is null || user.Disabled || user.Id != caller.UserId ? null : await AuthMapping.SelfAsync(UserRecord.From(user), roles, ct).ConfigureAwait(false);
     }
 }
 
 /// <summary>gRPC UserService (Admin only, see <see cref="AccessPolicy"/>). Every change goes to the audit log.</summary>
-public sealed class UserGrpcService(UserStore users, AuditLog audit) : Proto.UserService.UserServiceBase
+public sealed class UserGrpcService(UserStore users, RoleStore roles, AuditLog audit) : Proto.UserService.UserServiceBase
 {
     public override async Task<Proto.UserList> List(Proto.Empty request, ServerCallContext context)
     {
         var reply = new Proto.UserList();
-        reply.Users.AddRange((await users.ListAsync(context.CancellationToken).ConfigureAwait(false)).Select(AuthMapping.ToProto));
+        foreach (var user in await users.ListAsync(context.CancellationToken).ConfigureAwait(false))
+        {
+            reply.Users.Add(await AuthMapping.ToProtoAsync(user, roles, context.CancellationToken).ConfigureAwait(false));
+        }
+
         return reply;
     }
 
@@ -134,9 +208,11 @@ public sealed class UserGrpcService(UserStore users, AuditLog audit) : Proto.Use
     {
         try
         {
-            var user = await users.AddAsync(request.UserName, request.Password, AuthMapping.FromProto(request.Role), context.CancellationToken).ConfigureAwait(false);
-            await audit.WriteAsync(AuditActions.UserAdded, user.UserName, "Role " + user.Role, context.CancellationToken).ConfigureAwait(false);
-            return AuthMapping.ToProto(user);
+            var roleId = AuthMapping.RoleIdOf(request.RoleId, request.Role);
+            var user = await users.AddAsync(request.UserName, request.Password, roleId, context.CancellationToken).ConfigureAwait(false);
+            var info = await AuthMapping.ToProtoAsync(user, roles, context.CancellationToken).ConfigureAwait(false);
+            await audit.WriteAsync(AuditActions.UserAdded, user.UserName, "Role " + info.RoleName, context.CancellationToken).ConfigureAwait(false);
+            return info;
         }
         catch (AuthException ex)
         {
@@ -149,9 +225,12 @@ public sealed class UserGrpcService(UserStore users, AuditLog audit) : Proto.Use
         var id = GrpcGuard.ParseId(request.Id, "user id");
         try
         {
+            Guid? roleId = request.HasRoleId ? AuthMapping.RoleIdOf(request.RoleId, request.Role)
+                : request.HasRole ? BuiltInRoles.IdOf(AuthMapping.FromProto(request.Role))
+                : null;
             var (user, changes) = await users.UpdateAsync(
                 id,
-                request.HasRole ? AuthMapping.FromProto(request.Role) : null,
+                roleId,
                 request.HasDisabled ? request.Disabled : null,
                 string.IsNullOrEmpty(request.NewPassword) ? null : request.NewPassword,
                 AuthInterceptor.RequireCaller().UserId,
@@ -161,7 +240,7 @@ public sealed class UserGrpcService(UserStore users, AuditLog audit) : Proto.Use
                 await audit.WriteAsync(AuditActions.UserChanged, user.UserName, changes, context.CancellationToken).ConfigureAwait(false);
             }
 
-            return AuthMapping.ToProto(user);
+            return await AuthMapping.ToProtoAsync(user, roles, context.CancellationToken).ConfigureAwait(false);
         }
         catch (AuthException ex)
         {

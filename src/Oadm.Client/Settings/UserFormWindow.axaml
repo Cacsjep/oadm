@@ -1,0 +1,50 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:settings="using:Oadm.Client.Settings"
+        x:Class="Oadm.Client.Settings.UserFormWindow"
+        x:DataType="settings:UsersViewModel"
+        Title="{Binding FormTitle}"
+        Width="460" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <!-- Add user, Edit user and Change password of the Users page: single operation, the form in Border.dialogBody.
+       Errors and the server's refusals below the fields. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding FormTitle}" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <!-- Add user -->
+        <ui:FormField Label="User name" IsVisible="{Binding IsAddForm}">
+          <TextBox x:Name="UserNameBox" Text="{Binding NewUserName}" MaxLength="64" />
+        </ui:FormField>
+        <ui:FormField Label="Password" IsVisible="{Binding IsAddForm}">
+          <ui:PasswordBox Text="{Binding NewPassword}" />
+        </ui:FormField>
+        <ui:FormField Label="Role" IsVisible="{Binding IsAddForm}">
+          <ComboBox ItemsSource="{Binding Roles}" SelectedItem="{Binding NewRole}" HorizontalAlignment="Stretch" />
+        </ui:FormField>
+
+        <!-- Edit user -->
+        <ui:FormField Label="Role" IsVisible="{Binding IsEditForm}" Hint="{Binding EditRoleHint}">
+          <ComboBox x:Name="EditRoleBox" ItemsSource="{Binding Roles}" SelectedItem="{Binding EditRole}" HorizontalAlignment="Stretch" />
+        </ui:FormField>
+
+        <!-- Change password -->
+        <ui:FormField Label="New password" IsVisible="{Binding IsPasswordForm}">
+          <ui:PasswordBox x:Name="ResetBox" Text="{Binding ResetPassword}" />
+        </ui:FormField>
+        <ui:FormField Label="Confirm password" IsVisible="{Binding IsPasswordForm}">
+          <ui:PasswordBox Text="{Binding ResetConfirm}" />
+        </ui:FormField>
+      </StackPanel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CloseFormCommand}">
+      <Button Classes="primary" IsDefault="True" Content="{Binding FormButton}" Command="{Binding SaveFormCommand}"
+              ToolTip.Tip="{Binding FormBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

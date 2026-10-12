@@ -6,12 +6,15 @@ using Oadm.Sdk.Plugins;
 namespace Oadm.Core.Auth;
 
 /// <summary>A user as listed to administrators (never the password hash).</summary>
-public sealed record UserRecord(Guid Id, string UserName, UserRole Role, bool Disabled, DateTime CreatedUtc, DateTime? LastLoginUtc)
+public sealed record UserRecord(Guid Id, string UserName, Guid RoleId, bool Disabled, DateTime CreatedUtc, DateTime? LastLoginUtc)
 {
+    /// <summary>Admin for the Administrator role, Operator for every other (the SDK's and older clients' view).</summary>
+    public UserRole Role => BuiltInRoles.IsAdministrator(RoleId) ? UserRole.Admin : UserRole.Operator;
+
     public static UserRecord From(UserEntity e)
     {
         ArgumentNullException.ThrowIfNull(e);
-        return new(e.Id, e.UserName, e.Role, e.Disabled, e.CreatedUtc, e.LastLoginUtc);
+        return new(e.Id, e.UserName, e.RoleId, e.Disabled, e.CreatedUtc, e.LastLoginUtc);
     }
 }
 
@@ -19,7 +22,7 @@ public sealed record UserRecord(Guid Id, string UserName, UserRole Role, bool Di
 /// The users table (Settings page card Users, Admin only). Names are unique case-insensitively, 1..64 characters;
 /// passwords any length up to <see cref="MaxPasswordLength"/> (no strength rule). The last enabled administrator can never be demoted,
 /// disabled or deleted, and nobody can change the role, the state or the existence of their own account. A changed
-/// password, role or state ends the user's sessions.
+/// password or a disabled user ends the user's sessions; a changed role applies to the user's next call.
 /// </summary>
 public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, PasswordHasher hasher, AuthTokenStore tokens, TimeProvider time) : IDisposable
 {
@@ -31,6 +34,9 @@ public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, Passwo
 
     /// <summary>Raised after users were added, changed or deleted.</summary>
     public event EventHandler? Changed;
+
+    /// <summary>Raised with the user's id after an administrator gave a user another role.</summary>
+    public event EventHandler<Guid>? UserRoleChanged;
 
     /// <summary>The trimmed name, or an <see cref="AuthException"/> (InvalidArgument) with the reason.</summary>
     public static string ValidateUserName(string? userName)
@@ -85,27 +91,30 @@ public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, Passwo
         return await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.NormalizedName == normalized, ct).ConfigureAwait(false);
     }
 
-    public async Task<UserRecord> AddAsync(string userName, string password, UserRole role, CancellationToken ct)
+    public async Task<UserRecord> AddAsync(string userName, string password, Guid roleId, CancellationToken ct)
     {
-        var entity = await CreateAsync(userName, password, role, onlyIfNoUsers: false, ct).ConfigureAwait(false);
+        var entity = await CreateAsync(userName, password, roleId, onlyIfNoUsers: false, ct).ConfigureAwait(false);
         return UserRecord.From(entity);
     }
+
+    /// <summary>Adds a user with a built-in role (Admin = Administrator, Operator = Operator).</summary>
+    public Task<UserRecord> AddAsync(string userName, string password, UserRole role, CancellationToken ct) =>
+        AddAsync(userName, password, BuiltInRoles.IdOf(role), ct);
 
     /// <summary>
     /// Creates a user. With <paramref name="onlyIfNoUsers"/> (first administrator) it fails with Precondition when a
     /// user exists, checked in the same write lock.
     /// </summary>
-    public async Task<UserEntity> CreateAsync(string userName, string password, UserRole role, bool onlyIfNoUsers, CancellationToken ct)
+    public Task<UserEntity> CreateAsync(string userName, string password, UserRole role, bool onlyIfNoUsers, CancellationToken ct) =>
+        CreateAsync(userName, password, BuiltInRoles.IdOf(role), onlyIfNoUsers, ct);
+
+    /// <inheritdoc cref="CreateAsync(string, string, UserRole, bool, CancellationToken)"/>
+    public async Task<UserEntity> CreateAsync(string userName, string password, Guid roleId, bool onlyIfNoUsers, CancellationToken ct)
     {
         var name = ValidateUserName(userName);
         if (PasswordError(password) is { } error)
         {
             throw new AuthException(AuthError.InvalidArgument, error);
-        }
-
-        if (!Enum.IsDefined(role))
-        {
-            throw new AuthException(AuthError.InvalidArgument, "Unknown role.");
         }
 
         var hash = hasher.Hash(password);
@@ -116,6 +125,11 @@ public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, Passwo
             if (onlyIfNoUsers && await db.Users.AnyAsync(ct).ConfigureAwait(false))
             {
                 throw new AuthException(AuthError.Precondition, "The first administrator exists already. Log in instead.");
+            }
+
+            if (!await db.Roles.AnyAsync(r => r.Id == roleId, ct).ConfigureAwait(false))
+            {
+                throw new AuthException(AuthError.InvalidArgument, "Unknown role.");
             }
 
             var normalized = Normalize(name);
@@ -130,7 +144,7 @@ public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, Passwo
                 UserName = name,
                 NormalizedName = normalized,
                 PasswordHash = hash,
-                Role = role,
+                RoleId = roleId,
                 CreatedUtc = time.GetUtcNow().UtcDateTime,
             };
             db.Users.Add(entity);
@@ -149,16 +163,15 @@ public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, Passwo
     /// Changes role, state and / or password (null / empty = keep). <paramref name="actorId"/> is the administrator doing
     /// it: role and state of the own account cannot be changed. Returns the user and what changed ("role Admin, password").
     /// </summary>
-    public async Task<(UserRecord User, string Changes)> UpdateAsync(Guid id, UserRole? role, bool? disabled, string? newPassword, Guid? actorId, CancellationToken ct)
+    public Task<(UserRecord User, string Changes)> UpdateAsync(Guid id, UserRole? role, bool? disabled, string? newPassword, Guid? actorId, CancellationToken ct) =>
+        UpdateAsync(id, role is { } r ? BuiltInRoles.IdOf(r) : null, disabled, newPassword, actorId, ct);
+
+    /// <inheritdoc cref="UpdateAsync(Guid, UserRole?, bool?, string?, Guid?, CancellationToken)"/>
+    public async Task<(UserRecord User, string Changes)> UpdateAsync(Guid id, Guid? roleId, bool? disabled, string? newPassword, Guid? actorId, CancellationToken ct)
     {
         if (!string.IsNullOrEmpty(newPassword) && PasswordError(newPassword) is { } error)
         {
             throw new AuthException(AuthError.InvalidArgument, error);
-        }
-
-        if (role is { } r && !Enum.IsDefined(r))
-        {
-            throw new AuthException(AuthError.InvalidArgument, "Unknown role.");
         }
 
         var hash = string.IsNullOrEmpty(newPassword) ? null : hasher.Hash(newPassword);
@@ -169,22 +182,28 @@ public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, Passwo
             var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct).ConfigureAwait(false)
                 ?? throw new AuthException(AuthError.NotFound, "The user does not exist (any more).");
             var changes = new List<string>();
-            var roleChanges = role is { } newRole && newRole != user.Role;
+            var roleChanges = roleId is { } newRole && newRole != user.RoleId;
+            if (roleChanges && !await db.Roles.AnyAsync(r => r.Id == roleId!.Value, ct).ConfigureAwait(false))
+            {
+                throw new AuthException(AuthError.InvalidArgument, "Unknown role.");
+            }
+
             var stateChanges = disabled is { } newState && newState != user.Disabled;
             if ((roleChanges || stateChanges) && actorId == user.Id)
             {
                 throw new AuthException(AuthError.Precondition, "You cannot change the role or state of your own account.");
             }
 
-            if ((roleChanges && role != UserRole.Admin) || (stateChanges && disabled == true))
+            if ((roleChanges && !BuiltInRoles.IsAdministrator(roleId!.Value)) || (stateChanges && disabled == true))
             {
                 await RequireAnotherEnabledAdminAsync(db, user, ct).ConfigureAwait(false);
             }
 
             if (roleChanges)
             {
-                user.Role = role!.Value;
-                changes.Add("role " + user.Role);
+                user.RoleId = roleId!.Value;
+                var roleName = await db.Roles.Where(r => r.Id == user.RoleId).Select(r => r.Name).FirstAsync(ct).ConfigureAwait(false);
+                changes.Add("role " + roleName);
             }
 
             if (stateChanges)
@@ -202,8 +221,21 @@ public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, Passwo
             if (changes.Count > 0)
             {
                 await db.SaveChangesAsync(ct).ConfigureAwait(false);
-                await tokens.RevokeUserAsync(user.Id, ct).ConfigureAwait(false);
+                if (hash is not null || user.Disabled)
+                {
+                    await tokens.RevokeUserAsync(user.Id, ct).ConfigureAwait(false);
+                }
+                else if (roleChanges)
+                {
+                    // The new role applies to the next call; the sessions stay.
+                    tokens.SetRole(user.Id, user.RoleId);
+                }
+
                 Changed?.Invoke(this, EventArgs.Empty);
+                if (roleChanges)
+                {
+                    UserRoleChanged?.Invoke(this, user.Id);
+                }
             }
 
             return (UserRecord.From(user), string.Join(", ", changes));
@@ -253,12 +285,13 @@ public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, Passwo
 
     private static async Task RequireAnotherEnabledAdminAsync(OadmDbContext db, UserEntity user, CancellationToken ct)
     {
-        if (user.Role != UserRole.Admin || user.Disabled)
+        if (!BuiltInRoles.IsAdministrator(user.RoleId) || user.Disabled)
         {
             return;
         }
 
-        if (!await db.Users.AnyAsync(u => u.Id != user.Id && u.Role == UserRole.Admin && !u.Disabled, ct).ConfigureAwait(false))
+        var admin = BuiltInRoles.AdministratorId;
+        if (!await db.Users.AnyAsync(u => u.Id != user.Id && u.RoleId == admin && !u.Disabled, ct).ConfigureAwait(false))
         {
             throw new AuthException(AuthError.Precondition, $"{user.UserName} is the last enabled administrator. Add or enable another administrator first.");
         }

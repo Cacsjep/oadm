@@ -85,6 +85,22 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
     /// <summary>Sending a request and rolling out commands reach devices: both go to the audit log.</summary>
     public bool IsAudited(string method) => method is CommanderMethods.TryRequest or CommanderMethods.Rollout;
 
+    /// <summary>Sending to one device, rolling out and the saved commands are rights of their own; reading is "show".</summary>
+    public IReadOnlyList<PermissionDefinition> Permissions { get; } =
+    [
+        new("send", "Send to one device", "Send a command or a request of your own to one device and see its answer.") { FullDeviceControl = true },
+        new("rollout", "Run on many devices", "Run the commands of the rollout set on the chosen devices.") { FullDeviceControl = true },
+        new("saved", "Change saved commands", "Save, change, delete and import the saved commands everyone shares."),
+    ];
+
+    public string? RequiredPermission(string method) => method switch
+    {
+        CommanderMethods.TryRequest => "send",
+        CommanderMethods.Rollout => "rollout",
+        CommanderMethods.Save or CommanderMethods.Delete or CommanderMethods.Import => "saved",
+        _ => PermissionKeys.Show,
+    };
+
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(method);

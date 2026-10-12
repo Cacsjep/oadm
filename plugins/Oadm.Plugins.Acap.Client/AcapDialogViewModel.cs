@@ -109,10 +109,30 @@ public sealed partial class AcapDialogViewModel : ObservableObject
 
         _ctx = ctx;
         _picker = picker;
+
+        // Only what the user's role allows (the server refuses the rest): each action is a right of its own.
+        MayInstall = ctx.Has(Key(AcapPermissions.Install));
+        MayDowngrade = ctx.Has(Key(AcapPermissions.Downgrade));
+        MayStartStop = ctx.Has(Key(AcapPermissions.StartStop));
+        MayRemove = ctx.Has(Key(AcapPermissions.Remove));
         Devices = devices.Select(d => new DeviceChoice(d)).ToList();
         SelectedDevice = Devices[0];
         _initialized = true;
     }
+
+    /// <summary>The role may install and upgrade applications.</summary>
+    public bool MayInstall { get; }
+
+    /// <summary>The role may install an older version ("Allow downgrade").</summary>
+    public bool MayDowngrade { get; }
+
+    /// <summary>The role may start and stop applications.</summary>
+    public bool MayStartStop { get; }
+
+    /// <summary>The role may remove applications.</summary>
+    public bool MayRemove { get; }
+
+    private static string Key(string permission) => Oadm.Sdk.Plugins.PermissionKeys.Task(AcapPlugin.Id, permission);
 
     /// <summary>Raised with the payload JSON, or null when the dialog was cancelled.</summary>
     public event EventHandler<string?>? CloseRequested;

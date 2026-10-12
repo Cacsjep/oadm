@@ -584,11 +584,23 @@
     <Setter Property="IsVisible" Value="True" />
   </Style>
   <!-- The logged-in user at the bottom of the rail: an initial avatar and the name in primary text, not clickable -->
-  <Style Selector="Border.railUser">
+  <!-- The user at the bottom of the rail: looks like text, a click opens "Your role" -->
+  <Style Selector="Button.railUser">
     <Setter Property="Padding" Value="10,7" />
     <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Cursor" Value="Hand" />
   </Style>
-  <Style Selector="Border.railUser TextBlock">
+  <Style Selector="Button.railUser:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.NavHoverBrush}" />
+  </Style>
+  <Style Selector="Button.railUser:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.NavSelectedBrush}" />
+  </Style>
+  <Style Selector="Button.railUser TextBlock">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
   </Style>
@@ -1194,6 +1206,20 @@
   <Style Selector="Button.segment.selected /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+  </Style>
+
+  <!-- A list that only shows (Your role): no background of its own, rows cannot be selected -->
+  <Style Selector="ListBox.readOnlyList">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="ListBox.readOnlyList ListBoxItem">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Focusable" Value="False" />
+  </Style>
+  <Style Selector="ListBox.readOnlyList ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter, ListBox.readOnlyList ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
   </Style>
 
   <!-- Web View: the device tree (tag groups and devices, one list) and the browser tabs above the page -->

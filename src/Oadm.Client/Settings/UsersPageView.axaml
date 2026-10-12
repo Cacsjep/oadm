@@ -4,13 +4,14 @@
              xmlns:c="using:Oadm.Client.Controls"
              x:Class="Oadm.Client.Settings.UsersPageView"
              x:DataType="settings:UsersViewModel">
-  <!-- Navigation page Users (Admin only): page header and the users card. -->
-  <Grid RowDefinitions="Auto,*" RowSpacing="16">
-    <c:PageTitleBar Title="Users" Subtitle="Who can log in to this server and what they may do." />
+  <!-- Navigation page Users (Admin only): the users card on top, the roles card (permission matrix) below with a
+       splitter, like the Devices page and its tasks. -->
+  <Grid RowDefinitions="Auto,*,Auto,*">
+    <c:PageTitleBar Grid.Row="0" Title="Users" Subtitle="Who can log in to this server and what each role may do." Margin="0,0,0,16" />
     <ScrollViewer Grid.Row="1">
-      <StackPanel Spacing="16" MaxWidth="1000" HorizontalAlignment="Left">
-        <settings:UsersCardView />
-      </StackPanel>
+      <settings:UsersCardView MaxWidth="1000" HorizontalAlignment="Left" VerticalAlignment="Top" />
     </ScrollViewer>
+    <GridSplitter Grid.Row="2" Classes="paneSplitter" />
+    <settings:RolesCardView Grid.Row="3" DataContext="{Binding RolesCard}" />
   </Grid>
 </UserControl>

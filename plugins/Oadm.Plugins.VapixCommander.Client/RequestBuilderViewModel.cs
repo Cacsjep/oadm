@@ -36,6 +36,15 @@ public sealed partial class RequestBuilderViewModel : ObservableObject
     private readonly string? _editId;
 
     /// <summary>A new command: the first step asks where to start.</summary>
+    /// <summary>The role may send the request to a device ("oadm.vapix-commander:send").</summary>
+    public bool MaySend => _host.Has(CommanderViewModel.Permission("send"));
+
+    /// <summary>The role may save the request as a command ("oadm.vapix-commander:saved").</summary>
+    public bool MaySave => _host.Has(CommanderViewModel.Permission("saved"));
+
+    /// <summary>Save shows while building and when the role may save.</summary>
+    public bool CanShowSave => IsBuilding && MaySave;
+
     public RequestBuilderViewModel(ICommanderBackend backend, ICorePluginClientContext host, IReadOnlyList<CommandListItem> commands,
         IReadOnlyList<TargetDeviceViewModel> devices, TargetDeviceViewModel? device)
         : this(backend, host, commands, devices, device, edit: null)
@@ -90,7 +99,7 @@ public sealed partial class RequestBuilderViewModel : ObservableObject
     // ---------------------------------------------------------------- step 1: where to start
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsBuilding), nameof(CanGoBack))]
+    [NotifyPropertyChangedFor(nameof(IsBuilding), nameof(CanGoBack), nameof(CanShowSave))]
     public partial bool IsChoosing { get; private set; } = true;
 
     public bool IsBuilding => !IsChoosing;

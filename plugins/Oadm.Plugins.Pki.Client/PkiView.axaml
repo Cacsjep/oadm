@@ -54,11 +54,11 @@
           </StackPanel>
 
           <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8" Margin="{DynamicResource Oadm.GapTop}">
-            <Button Classes="secondary" Command="{Binding InstallTrustCommand}"
+            <Button Classes="secondary" Command="{Binding InstallTrustCommand}" IsVisible="{Binding MayTrustServer}"
                     ToolTip.Tip="Install the CA certificate as trusted root on the server and on this computer (asks for administrator rights)">
               <ui:IconLabel Icon="{DynamicResource Icon.check}" Text="Install in trusted root store" />
             </Button>
-            <Button Classes="secondary" IsEnabled="{Binding HasCa}"
+            <Button Classes="secondary" IsEnabled="{Binding HasCa}" IsVisible="{Binding MayManage}"
                     ToolTip.Tip="Save the CA certificate without its key">
               <ui:IconLabel Icon="{DynamicResource Icon.export}" Text="Export public certificate" />
               <Button.Flyout>
@@ -68,17 +68,17 @@
                 </MenuFlyout>
               </Button.Flyout>
             </Button>
-            <Button Classes="secondary" Command="{Binding BackupCommand}"
+            <Button Classes="secondary" Command="{Binding BackupCommand}" IsVisible="{Binding MayManage}"
                     ToolTip.Tip="Save the CA with its private key in a password-protected file">
               <ui:IconLabel Icon="{DynamicResource Icon.save}" Text="Back up" />
             </Button>
             <!-- Everyday actions above, the two that replace the CA after the separator -->
-            <Border Classes="vseparator" />
-            <Button Classes="secondary" Command="{Binding GenerateCommand}"
+            <Border Classes="vseparator" IsVisible="{Binding MayManage}" />
+            <Button Classes="secondary" Command="{Binding GenerateCommand}" IsVisible="{Binding MayManage}"
                     ToolTip.Tip="Create a new certificate authority">
               <ui:IconLabel Icon="{DynamicResource Icon.refresh}" Text="Generate new CA" />
             </Button>
-            <Button Classes="secondary" Command="{Binding ImportCommand}"
+            <Button Classes="secondary" Command="{Binding ImportCommand}" IsVisible="{Binding MayManage}"
                     ToolTip.Tip="Use your own CA (root or intermediate) from a .pfx / .p12 file or PEM files">
               <ui:IconLabel Icon="{DynamicResource Icon.upload}" Text="Import CA" />
             </Button>
@@ -88,7 +88,7 @@
 
       <!-- ============================== Device certificates ============================== -->
       <Border Classes="card">
-        <StackPanel Classes="form">
+        <StackPanel Classes="form" IsEnabled="{Binding MayManage}">
           <ui:CardHeader Title="Device certificates" />
           <ui:FormField Label="Certificate validity (days)" InputWidth="460">
             <TextBox Text="{Binding DeviceCertValidityDays}" />
@@ -102,7 +102,7 @@
 
       <!-- ============================== IEEE 802.1X ============================== -->
       <Border Classes="card">
-        <StackPanel Classes="form">
+        <StackPanel Classes="form" IsEnabled="{Binding MayManage}">
           <ui:CardHeader Title="IEEE 802.1X" />
           <ui:FormField Label="EAPOL version" InputWidth="460">
             <ComboBox ItemsSource="{Binding EapolChoices}" SelectedItem="{Binding EapolVersion}">
@@ -172,7 +172,8 @@
               <DataGridTemplateColumn Width="170" x:DataType="vm:PreviousCaRowViewModel">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="vm:PreviousCaRowViewModel">
-                    <StackPanel Orientation="Horizontal" Spacing="16" Margin="10,0">
+                    <StackPanel Orientation="Horizontal" Spacing="16" Margin="10,0"
+                                IsVisible="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).MayManage}">
                       <Button Classes="link" Content="Export"
                               Command="{Binding $parent[UserControl].((vm:PkiViewModel)DataContext).ExportPreviousCommand}" CommandParameter="{Binding}"
                               ToolTip.Tip="Save this CA certificate (PEM, public only)" />

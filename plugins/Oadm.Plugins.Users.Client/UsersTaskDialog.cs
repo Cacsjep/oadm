@@ -17,6 +17,7 @@ public sealed class UsersTaskDialog : ITaskPluginDialog
         ArgumentNullException.ThrowIfNull(owner);
 
         var vm = new UsersDialogViewModel(devices);
+        vm.ApplyPermissions(ctx.Has);
         using var loading = new CancellationTokenSource();
         var window = new UsersWindow { DataContext = vm };
         var load = vm.LoadAsync(ctx, loading.Token);

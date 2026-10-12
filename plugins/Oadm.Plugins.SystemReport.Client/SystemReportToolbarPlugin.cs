@@ -29,6 +29,9 @@ public sealed class SystemReportToolbarPlugin : IToolbarPlugin
 
     public string Id => "oadm.system-report.toolbar";
 
+    /// <summary>The server checks the same permission on every call of the plugin.</summary>
+    public string? RequiredPermission => "oadm.system-report:download";
+
     public int Order => 100;
 
     public ToolbarGroup Group => ToolbarGroup.Tasks;

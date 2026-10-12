@@ -132,7 +132,11 @@ public sealed partial class DeviceTriggersViewModel : ObservableObject, IDisposa
     public DeviceTriggersViewModel(ICorePluginClientContext ctx)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
+        _ctx.PermissionsChanged += (_, _) => OnPropertyChanged(nameof(MayManage));
     }
+
+    /// <summary>The role may change triggers ("oadm.device-triggers:manage"); without it the page only shows them.</summary>
+    public bool MayManage => _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(DeviceTriggersPluginInfo.PluginId, Oadm.Sdk.Plugins.PermissionKeys.Manage));
 
     /// <summary>Opens the editor; returns true when the trigger was saved (tests replace it).</summary>
     public Func<TriggerEditorViewModel, Task<bool>> ShowEditor { get; set; } = async editor =>
@@ -234,11 +238,6 @@ public sealed partial class DeviceTriggersViewModel : ObservableObject, IDisposa
     internal static string Message(Exception ex)
     {
         ArgumentNullException.ThrowIfNull(ex);
-        if (ex.GetType().GetProperty("StatusCode")?.GetValue(ex)?.ToString() == "PermissionDenied")
-        {
-            return "Only administrators can change device triggers.";
-        }
-
         var detail = ex.GetType().GetProperty("Status")?.GetValue(ex) is { } status
             ? status.GetType().GetProperty("Detail")?.GetValue(status) as string
             : null;

@@ -121,6 +121,7 @@ public static partial class OadmServerHost
         var app = builder.Build();
         app.MapGrpcService<AuthGrpcService>();
         app.MapGrpcService<UserGrpcService>();
+        app.MapGrpcService<RoleGrpcService>();
         app.MapGrpcService<AuditGrpcService>();
         app.MapGrpcService<DeviceGrpcService>();
         app.MapGrpcService<TagGrpcService>();
@@ -171,6 +172,7 @@ public static partial class OadmServerHost
 
         // Access: TLS certificate of the gRPC endpoint, audit and session cleanup
         services.AddSingleton<ServerTlsCertificate>();
+        services.AddSingleton<CallerStreams>();
         services.AddHostedService<AuthMaintenanceHostedService>();
 
         // Installed service (SYSTEM / root): admin-only folders, firewall rules of the NTP and DHCP plugins (Windows).
@@ -370,6 +372,12 @@ public static partial class OadmServerHost
         {
             LogPluginError(logger, error.Source, error.Message);
         }
+
+        // 2b. Roles: every permission the loaded plugins declare (on or off); a role gets the default of a new one once.
+        var hadUsers = await sp.GetRequiredService<Core.Auth.UserStore>().HasUsersAsync(ct).ConfigureAwait(false);
+        var catalog = Core.Auth.PermissionCatalog.Build(registry);
+        var sync = await sp.GetRequiredService<Core.Auth.RoleStore>().SyncCatalogAsync(catalog, ct).ConfigureAwait(false);
+        await Core.Auth.RolesUpgradeNotice.RecordAsync(sp.GetRequiredService<ServerSettingsStore>(), sync, hadUsers, catalog, sp.GetRequiredService<TimeProvider>(), ct).ConfigureAwait(false);
 
         // 3. Tasks left running by a previous process (the parallel task limit is loaded first).
         await sp.GetRequiredService<TaskParallelismSetting>().LoadAsync(ct).ConfigureAwait(false);

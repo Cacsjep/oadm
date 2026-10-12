@@ -43,6 +43,15 @@ message ServerSettings {
   KeyReplacedNotice key_replaced = 20;
   // Read only: the server's version ("1.2.0"), filled in Get and Set replies, ignored in a Set (About and licenses).
   string server_version = 21;
+  // Read only, only for the Administrator role: what operators lost with the upgrade to roles (banner until dismissed,
+  // remembered per client by id).
+  RolesUpgradeNotice roles_notice = 22;
+}
+
+// The upgrade to roles took rights from the Operator role (docs/rbac-spec-draft.md, decisions 9 and 11).
+message RolesUpgradeNotice {
+  string id = 1;
+  repeated string operator_lost = 2;   // names as the permission matrix shows them
 }
 
 // The server replaced its master key: stored device credentials and credential list entries it could not read

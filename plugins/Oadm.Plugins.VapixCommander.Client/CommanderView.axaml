@@ -15,10 +15,10 @@
       <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="10">
         <ui:CardHeader Title="Library" Description="{Binding LibrarySummary}">
           <StackPanel Orientation="Horizontal">
-            <Button Classes="toolbar iconOnly" Command="{Binding NewCommandCommand}" ToolTip.Tip="New command">
+            <Button Classes="toolbar iconOnly" Command="{Binding NewCommandCommand}" ToolTip.Tip="New command" IsVisible="{Binding MayBuild}">
               <ui:OadmIcon Data="{DynamicResource Icon.add}" />
             </Button>
-            <Button Classes="toolbar iconOnly" Command="{Binding ImportCommand}" ToolTip.Tip="Import commands from a file">
+            <Button Classes="toolbar iconOnly" Command="{Binding ImportCommand}" ToolTip.Tip="Import commands from a file" IsVisible="{Binding MaySaved}">
               <ui:OadmIcon Data="{DynamicResource Icon.upload}" />
             </Button>
           </StackPanel>
@@ -48,6 +48,7 @@
                 <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                 <StackPanel Grid.Column="1" Classes="rowActions" Orientation="Horizontal" IsVisible="{Binding IsSaved}">
                   <Button Classes="toolbar iconOnly" ToolTip.Tip="Edit this saved command"
+                          IsVisible="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).MaySaved}"
                           Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).EditSavedCommand}" CommandParameter="{Binding}">
                     <ui:OadmIcon Data="{DynamicResource Icon.edit}" />
                   </Button>
@@ -56,6 +57,7 @@
                     <ui:OadmIcon Data="{DynamicResource Icon.export}" />
                   </Button>
                   <Button Classes="toolbar iconOnly" ToolTip.Tip="Delete this saved command"
+                          IsVisible="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).MaySaved}"
                           Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).DeleteSavedCommand}" CommandParameter="{Binding}">
                     <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
                   </Button>
@@ -82,7 +84,7 @@
                 </DataTemplate>
               </ComboBox.ItemTemplate>
             </ComboBox>
-            <Button Classes="secondary" Command="{Binding TryCommand}" ToolTip.Tip="Send the selected command to this device now (read-only commands run immediately, changes ask first)">
+            <Button Classes="secondary" Command="{Binding TryCommand}" IsVisible="{Binding MaySend}" ToolTip.Tip="Send the selected command to this device now (read-only commands run immediately, changes ask first)">
               <ui:IconLabel Icon="{DynamicResource Icon.send}" Text="Send" />
             </Button>
           </StackPanel>
@@ -121,6 +123,7 @@
                         <ui:OadmIcon Data="{DynamicResource Icon.chevronDown}" />
                       </Button>
                       <Button Classes="toolbar iconOnly" ToolTip.Tip="Save a copy with these values" CommandParameter="{Binding}"
+                              IsVisible="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).MaySaved}"
                               Command="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).SavePresetCommand}">
                         <ui:OadmIcon Data="{DynamicResource Icon.save}" />
                       </Button>
@@ -232,7 +235,7 @@
           <TextBlock Classes="secondary" Text="{Binding RunSummary}" TextWrapping="Wrap" />
           <CheckBox Content="Stop on first error" IsChecked="{Binding StopOnFirstError}"
                     ToolTip.Tip="Stop all devices after the first failure" />
-          <Button Classes="primary" HorizontalAlignment="Right" Command="{Binding RunCommand}">
+          <Button Classes="primary" HorizontalAlignment="Right" Command="{Binding RunCommand}" IsVisible="{Binding MayRollout}">
             <ui:IconLabel Icon="{DynamicResource Icon.start}" Text="{Binding RunText}" />
           </Button>
         </StackPanel>

@@ -22,15 +22,30 @@ public sealed partial class TasksViewModel : ObservableObject
     private readonly IDialogService _dialogs;
     private readonly IClientSettingsStore _settings;
     private readonly ILogger<TasksViewModel> _logger;
+    private readonly Shell.UserSession? _session;
 
     public const double DefaultPaneHeight = 260;
     public const double MinPaneHeight = 120;
 
     public TasksViewModel(TaskStore store, DeviceStore devices, IOadmApi api, IDialogService dialogs,
-        IClientSettingsStore settings, ILogger<TasksViewModel> logger)
+        IClientSettingsStore settings, ILogger<TasksViewModel> logger, Shell.UserSession? session = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(settings);
+        _session = session;
+        if (session is not null)
+        {
+            // A role change: the pane's buttons follow what the role allows now.
+            session.PermissionsChanged += (_, _) =>
+            {
+                OnPropertyChanged(nameof(MayCancel));
+                OnPropertyChanged(nameof(MayDelete));
+                OnPropertyChanged(nameof(MayDeleteAll));
+                NotifySelectionCommands();
+                DeleteAllCommand.NotifyCanExecuteChanged();
+            };
+        }
+
         _store = store;
         _devices = devices;
         _api = api;
@@ -105,9 +120,18 @@ public sealed partial class TasksViewModel : ObservableObject
     [RelayCommand]
     private void ShowTasks() => IsExpanded = true;
 
+    /// <summary>The role may cancel tasks ("tasks.cancel"; without a session, in tests: yes).</summary>
+    public bool MayCancel => _session?.Has(Oadm.Sdk.Plugins.HostPermissionKeys.TasksCancel) ?? true;
+
+    /// <summary>The role may delete single tasks ("tasks.delete").</summary>
+    public bool MayDelete => _session?.Has(Oadm.Sdk.Plugins.HostPermissionKeys.TasksDelete) ?? true;
+
+    /// <summary>The role may delete the whole task list ("tasks.deleteAll").</summary>
+    public bool MayDeleteAll => _session?.Has(Oadm.Sdk.Plugins.HostPermissionKeys.TasksDeleteAll) ?? true;
+
     private bool HasSelection => SelectedTask is not null;
-    private bool CanCancel => SelectedTask?.IsActive == true;
-    private bool CanDelete => SelectedTask is { IsActive: false };
+    private bool CanCancel => MayCancel && SelectedTask?.IsActive == true;
+    private bool CanDelete => MayDelete && SelectedTask is { IsActive: false };
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private async Task DetailsAsync()
@@ -158,7 +182,7 @@ public sealed partial class TasksViewModel : ObservableObject
         }
     }
 
-    private bool HasTasks => Tasks.Count > 0;
+    private bool HasTasks => MayDeleteAll && Tasks.Count > 0;
 
     [RelayCommand(CanExecute = nameof(HasTasks))]
     private async Task DeleteAllAsync()

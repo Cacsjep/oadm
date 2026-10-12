@@ -74,6 +74,16 @@ public sealed class PkiPlugin : ICorePlugin, IAsyncDisposable
     /// </summary>
     public UserRole RequiredRole(string method) => method == PkiMethods.GetState ? UserRole.Operator : UserRole.Admin;
 
+    /// <summary>The certificate authority ("manage") and the server's trust in it ("trustServer") are rights of their own.</summary>
+    public IReadOnlyList<PermissionDefinition> Permissions { get; } =
+    [
+        new(PermissionKeys.Manage, "Manage the certificate authority", "Create, import, back up and export the certificate authority and change its settings.") { OperatorDefault = false },
+        new(PkiPermissions.TrustServer, "Trust it on the server", "Install the certificate authority in the trusted root store of the server computer.") { OperatorDefault = false },
+    ];
+
+    /// <summary>Installing the CA in the server's root store needs "trustServer"; the other Admin methods "manage".</summary>
+    public string? RequiredPermission(string method) => method == PkiMethods.InstallServerTrust ? PkiPermissions.TrustServer : null;
+
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
         var service = _service ?? throw new InvalidOperationException("The PKI plugin is not running.");

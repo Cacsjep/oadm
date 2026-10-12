@@ -22,6 +22,12 @@ public interface ITaskDialogContext
     /// <paramref name="progress"/> receives the fraction sent, from 0.0 to 1.0 (not a percentage).
     /// </summary>
     Task<Oadm.Sdk.Plugins.UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct);
+
+    /// <summary>
+    /// Whether the user's role allows <paramref name="permission"/>, e.g. "task:oadm.users:remove": the dialog hides or
+    /// disables the choices the role lacks (the server refuses the run anyway). Default (older hosts): true.
+    /// </summary>
+    bool Has(string permission) => true;
 }
 
 /// <summary>UI page of a core plugin, shown in the navigation rail.</summary>
@@ -100,4 +106,17 @@ public interface ICorePluginClientContext
     /// View plugin). Null when the host has none (older hosts).
     /// </summary>
     IDeviceWebAccess? DeviceWeb => null;
+
+    /// <summary>
+    /// Whether the user's role allows <paramref name="permission"/>, e.g. "oadm.dhcp-server:manage": the page hides or
+    /// disables what the role lacks (the server refuses the call anyway). Default (older hosts): true.
+    /// </summary>
+    bool Has(string permission) => true;
+
+    /// <summary>Raised on the UI thread after the user's role or its permissions changed (ask <see cref="Has"/> again).</summary>
+    event EventHandler? PermissionsChanged
+    {
+        add { }
+        remove { }
+    }
 }

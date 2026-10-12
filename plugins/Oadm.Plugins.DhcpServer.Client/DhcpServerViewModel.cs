@@ -47,6 +47,11 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         _ctx.DevicesChanged += (_, _) => OnDevicesChanged();
+        _ctx.PermissionsChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(MayManage));
+            SaveCommand.NotifyCanExecuteChanged();
+        };
         BuildDeviceMaps();
         Listen.PropertyChanged += (_, e) =>
         {
@@ -329,7 +334,13 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
         }
     }
 
-    private bool CanSave() => !IsSaving && IsFormValid;
+    private bool CanSave() => !IsSaving && IsFormValid && MayManage;
+
+    /// <summary>
+    /// The role may change the DHCP server ("oadm.dhcp-server:manage": settings, static leases, release); without it the
+    /// page only shows.
+    /// </summary>
+    public bool MayManage => _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(DhcpServerPluginInfo.PluginId, Oadm.Sdk.Plugins.PermissionKeys.Manage));
 
     [RelayCommand]
     private async Task AddStaticAsync()

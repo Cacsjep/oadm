@@ -69,6 +69,14 @@ public sealed class SystemReportPlugin : ICorePlugin, IDisposable
     /// <summary>Starting a job is written to the audit log (user, client, plugin, method); reads are not.</summary>
     public bool IsAudited(string method) => method == SystemReportMethods.Start;
 
+    /// <summary>No page: the toolbar button is the one right.</summary>
+    public IReadOnlyList<PermissionDefinition> Permissions { get; } =
+    [
+        new("download", "Download system reports", "Download the system reports of the selected devices as one ZIP file for Axis support."),
+    ];
+
+    public string? RequiredPermission(string method) => "download";
+
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
         var jobs = _jobs ?? throw new InvalidOperationException("The system report plugin is not running.");

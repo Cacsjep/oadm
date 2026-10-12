@@ -31,6 +31,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly NavItemViewModel _usersItem;
     private readonly NavItemViewModel _credentialsItem;
     private readonly NavItemViewModel? _pluginsItem;
+    private readonly NavItemViewModel? _eventRulesItem;
     private readonly NavItemViewModel _logsItem;
     private readonly NavItemViewModel _settingsItem;
     private readonly NavItemViewModel _aboutItem;
@@ -93,13 +94,27 @@ public sealed partial class MainWindowViewModel : ObservableObject
         NavItems.Add(_devicesItem);
         if (eventRules is not null)
         {
-            // Built-in page in the Automation group, before the plugin pages of that group.
-            NavItems.Add(new NavItemViewModel(HostPages.EventRules, "Event rules", "zap", eventRules)
+            // Built-in page in the Automation group, before the plugin pages of that group; shown while the role may see
+            // event rules.
+            _eventRulesItem = new NavItemViewModel(HostPages.EventRules, "Event rules", "zap", eventRules)
             {
                 GroupTitle = CorePluginGroup.Automation.ToString(),
                 GroupOrder = (int)CorePluginGroup.Automation,
-            });
+            };
+            SyncEventRulesItem();
         }
+
+        // A role change (session stream): the toolbar, the rail and the task menu follow what the role allows now.
+        Devices.Toolbar.ApplyPermissions(session.Has);
+        session.PermissionsChanged += (_, _) =>
+        {
+            Devices.Toolbar.ApplyPermissions(session.Has);
+            SyncEventRulesItem();
+            if (session.IsLoggedIn)
+            {
+                _ = ReloadPluginsAsync();
+            }
+        };
 
         _usersItem = new NavItemViewModel(HostPages.Users, "Users", "users", users);
         _credentialsItem = new NavItemViewModel(HostPages.Credentials, "Credentials", "key", credentials);
@@ -130,6 +145,18 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public string UserTooltip => Session.IsLoggedIn
         ? $"Logged in as {Session.UserName} ({Session.RoleText}) on {Session.ServerAddress}"
         : "Not logged in";
+
+    /// <summary>Raised with a loaded "Your role" view model; the window shows it (a click on the user in the rail).</summary>
+    public event EventHandler<MyRoleViewModel>? MyRoleRequested;
+
+    /// <summary>The user in the rail: what the user's role allows.</summary>
+    [RelayCommand]
+    private async Task ShowMyRoleAsync()
+    {
+        var role = new MyRoleViewModel(_api);
+        await role.LoadAsync().ConfigureAwait(true);
+        MyRoleRequested?.Invoke(this, role);
+    }
 
     public static string AppName => "OADM";
 
@@ -181,6 +208,54 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         _keyNoticeId = notice.Id;
         KeyNoticeText = notice.Message;
+    }
+
+    /// <summary>
+    /// Banner for administrators after the upgrade to roles: what the Operator role no longer has, with a link to the Users
+    /// page; null = no banner. Dismissed per client like the key notice.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRolesNotice))]
+    public partial string? RolesNoticeText { get; private set; }
+
+    public bool HasRolesNotice => RolesNoticeText is not null;
+
+    private string? _rolesNoticeId;
+
+    [RelayCommand]
+    private void DismissRolesNotice()
+    {
+        if (_rolesNoticeId is { } id && !_settings.Current.DismissedKeyNotices.Contains(id))
+        {
+            _settings.Current.DismissedKeyNotices.Add(id);
+            _settings.Save();
+        }
+
+        RolesNoticeText = null;
+    }
+
+    /// <summary>The banner's "Check roles": the Users page with the permission matrix.</summary>
+    [RelayCommand]
+    private void OpenRoles()
+    {
+        if (BottomNavItems.Contains(_usersItem))
+        {
+            Navigate(_usersItem);
+        }
+    }
+
+    /// <summary>Shows the notice of the upgrade to roles (administrators only get it) unless this client dismissed it.</summary>
+    internal void ApplyRolesNotice(RolesUpgradeNotice? notice)
+    {
+        if (notice is null || string.IsNullOrEmpty(notice.Id) || notice.OperatorLost.Count == 0 || _settings.Current.DismissedKeyNotices.Contains(notice.Id))
+        {
+            _rolesNoticeId = null;
+            RolesNoticeText = null;
+            return;
+        }
+
+        _rolesNoticeId = notice.Id;
+        RolesNoticeText = "With roles, operators no longer have: " + string.Join(", ", notice.OperatorLost) + ".";
     }
 
     partial void OnIsNavExpandedChanged(bool value)
@@ -329,6 +404,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             ServerSettings settings = await _api.GetSettingsAsync(CancellationToken.None).ConfigureAwait(true);
             ApplyKeyNotice(settings.KeyReplaced);
+            ApplyRolesNotice(settings.RolesNotice);
         }
         catch (Exception ex)
         {
@@ -347,6 +423,33 @@ public sealed partial class MainWindowViewModel : ObservableObject
         catch (Exception ex)
         {
             LogCorePluginsFailed(_logger, ex.Message);
+        }
+    }
+
+    /// <summary>The Event rules entry shows while the role may see event rules; a hidden page that was open falls back to Devices.</summary>
+    private void SyncEventRulesItem()
+    {
+        if (_eventRulesItem is null)
+        {
+            return;
+        }
+
+        bool wanted = Session.Has(Oadm.Sdk.Plugins.HostPermissionKeys.EventsView);
+        bool shown = NavItems.Contains(_eventRulesItem);
+        if (wanted && !shown)
+        {
+            NavItems.Insert(Math.Min(1, NavItems.Count), _eventRulesItem);
+            OrderCorePluginPages();
+        }
+        else if (!wanted && shown)
+        {
+            NavItems.Remove(_eventRulesItem);
+            if (_eventRulesItem.IsSelected)
+            {
+                Navigate(_devicesItem);
+            }
+
+            UpdateNavGroups();
         }
     }
 
@@ -485,6 +588,7 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
     private readonly string _pluginId;
     private readonly IToolbarContext _host;
     private EventHandler? _devicesChanged;
+    private readonly List<EventHandler?> _permissionHandlers = [];
     private Oadm.Client.DeviceWeb.DeviceWebAccess? _deviceWeb;
     private bool _hostSubscribed;
     private bool _disposed;
@@ -499,6 +603,27 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
     public IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo> Devices => _host.Devices;
 
     public IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo> SelectedDevices => _host.SelectedDevices;
+
+    public bool Has(string permission) => _host.Has(permission);
+
+    /// <summary>The host's permission changes, while the page lives (a closed page unsubscribes on Dispose).</summary>
+    public event EventHandler? PermissionsChanged
+    {
+        add
+        {
+            if (!_disposed)
+            {
+                _host.PermissionsChanged += value;
+                _permissionHandlers.Add(value);
+            }
+        }
+
+        remove
+        {
+            _host.PermissionsChanged -= value;
+            _permissionHandlers.Remove(value);
+        }
+    }
 
     public event EventHandler? DevicesChanged
     {
@@ -534,6 +659,12 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
 
         _disposed = true;
         _devicesChanged = null;
+        foreach (EventHandler? handler in _permissionHandlers)
+        {
+            _host.PermissionsChanged -= handler;
+        }
+
+        _permissionHandlers.Clear();
         _deviceWeb?.Dispose();
         _deviceWeb = null;
         if (_hostSubscribed)

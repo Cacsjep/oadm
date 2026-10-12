@@ -28,6 +28,20 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
     private int _selectedCount;
     private bool _bulkSelection;
 
+    /// <summary>The role may send to one device ("oadm.vapix-commander:send"): Send and the request builder's Send.</summary>
+    public bool MaySend => _host.Has(Permission("send"));
+
+    /// <summary>The role may run the rollout set on many devices ("oadm.vapix-commander:rollout").</summary>
+    public bool MayRollout => _host.Has(Permission("rollout"));
+
+    /// <summary>The role may change the saved commands ("oadm.vapix-commander:saved").</summary>
+    public bool MaySaved => _host.Has(Permission("saved"));
+
+    /// <summary>The request builder is useful to try a request or to save one.</summary>
+    public bool MayBuild => MaySend || MaySaved;
+
+    internal static string Permission(string key) => Oadm.Sdk.Plugins.PermissionKeys.Of(VapixCommanderPlugin.PluginId, key);
+
     public CommanderViewModel(ICommanderBackend backend, ICorePluginClientContext host)
     {
         ArgumentNullException.ThrowIfNull(backend);
@@ -37,6 +51,13 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         Validation.Rule(nameof(PresetName), () => IsPresetOpen ? CommandNameError(PresetName) : null);
         RolloutItems.CollectionChanged += (_, _) => OnRolloutChanged();
         host.DevicesChanged += (_, _) => SyncDevices();
+        host.PermissionsChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(MaySend));
+            OnPropertyChanged(nameof(MayRollout));
+            OnPropertyChanged(nameof(MaySaved));
+            OnPropertyChanged(nameof(MayBuild));
+        };
         SyncDevices();
         UseDevicesSelection();
     }

@@ -159,3 +159,9 @@ Never run against hardware: upload, commit, any factory default. Still to verify
 - `ITaskDialogContext.UploadAsync` does not document the unit of `IProgress<double>`; the dialog accepts 0..1 or 0..100.
 - A plugin cannot mark the device for a full refresh with a new status after a factory default (the device becomes
   PasswordNotSet); the full refresh after the task covers it partly.
+
+## Permissions
+
+Keys `task:oadm.firmware:upgrade` (every run), `:factoryDefault` (a soft or hard factory default) and `:downgrade`
+("Allow downgrade"). The dialog offers the factory default select and "Allow downgrade" only with their permission.
+Operator default: upgrade only.

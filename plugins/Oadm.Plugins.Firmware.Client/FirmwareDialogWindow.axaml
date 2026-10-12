@@ -63,11 +63,11 @@
       <StackPanel>
         <ui:CardHeader Title="Options" />
         <StackPanel Classes="form">
-          <ui:FormField Label="Factory default" InputWidth="360">
+          <ui:FormField Label="Factory default" InputWidth="360" IsVisible="{Binding MayFactoryDefault}">
             <ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" />
           </ui:FormField>
           <TextBlock Classes="warning" TextWrapping="Wrap" Text="{Binding ModeWarning}" IsVisible="{Binding HasModeWarning}" />
-          <CheckBox IsChecked="{Binding AllowDowngrade}" Content="Allow downgrade to an older AXIS OS version (requires a factory default)" />
+          <CheckBox IsChecked="{Binding AllowDowngrade}" Content="Allow downgrade to an older AXIS OS version (requires a factory default)" IsVisible="{Binding MayDowngrade}" />
           <ui:ProgressRow Value="{Binding UploadProgress}" Text="{Binding UploadText}" IsVisible="{Binding IsUploading}" />
         </StackPanel>
       </StackPanel>

@@ -20,6 +20,12 @@ public interface IDialogService
 
     /// <summary>Shows the "Set password" dialog of factory-default devices; true when all took the password.</summary>
     Task<bool> ShowDeviceSetPasswordAsync(Oadm.Client.Devices.DeviceSetPasswordViewModel setPassword);
+    /// <summary>The Add user, Edit user or Change password dialog of the Users page (<see cref="Oadm.Client.Settings.UsersViewModel.Form"/>).</summary>
+    Task ShowUserFormAsync(Oadm.Client.Settings.UsersViewModel users);
+
+    /// <summary>The dialog for a new role, a copy or a rename (<see cref="Oadm.Client.Settings.RolesViewModel.IsEditorOpen"/>).</summary>
+    Task ShowRoleFormAsync(Oadm.Client.Settings.RolesViewModel roles);
+
     /// <summary>Shows the Tags dialog of the selected devices; true when tags were applied.</summary>
     Task<bool> ShowDeviceTagsAsync(Oadm.Client.Tags.DeviceTagsViewModel tags);
 

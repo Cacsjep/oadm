@@ -25,6 +25,17 @@ public sealed class SnapshotReportPlugin : ICorePlugin, IDisposable
 
     public IReadOnlyList<ITaskPlugin> TaskPlugins => [];
 
+    /// <summary>
+    /// Creating snapshots and the PDF reads every camera: a right of its own, which the built-in Viewer also has (the
+    /// page shows nothing without it).
+    /// </summary>
+    public IReadOnlyList<PermissionDefinition> Permissions { get; } =
+    [
+        new("report", "Create snapshots and reports", "Take a current picture of every camera and export the PDF report.") { ViewerDefault = true },
+    ];
+
+    public string? RequiredPermission(string method) => method == SnapshotReportMethods.ListSources ? PermissionKeys.Show : "report";
+
     /// <summary>The OADM version printed on the report cover (host application version).</summary>
     public static string HostVersion
     {

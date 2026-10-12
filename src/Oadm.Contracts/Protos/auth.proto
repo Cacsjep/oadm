@@ -6,8 +6,8 @@ import "google/protobuf/timestamp.proto";
 
 // Login, logout and the first administrator. The token travels as "authorization: Bearer <token>" in the gRPC
 // metadata of every other call (never in messages); the client also sends "oadm-client-machine: <machine name>".
-// Open without a token: Status, Login, CreateFirstAdmin. Everything else needs a valid token (UNAUTHENTICATED), the
-// admin-only calls the Admin role (PERMISSION_DENIED).
+// Open without a token: Status, Login, CreateFirstAdmin. Everything else needs a valid token (UNAUTHENTICATED) and the
+// permission of the call (PERMISSION_DENIED with what the role lacks; see roles.proto).
 service AuthService {
   // Server name, version and whether the first administrator still has to be created.
   rpc Status (Empty) returns (AuthStatus);
@@ -19,11 +19,14 @@ service AuthService {
   rpc CreateFirstAdmin (CreateFirstAdminRequest) returns (LoginReply);
   // Revokes the token of the call.
   rpc Logout (Empty) returns (Empty);
-  // The user of the token (a remembered token is checked with this at client start).
+  // The user of the token (a remembered token is checked with this at client start), with role and permissions.
   rpc Me (Empty) returns (UserInfo);
+  // The user of the token now, then again whenever its role or the role's permissions change (the client reloads
+  // what it shows). Never ended by a role change itself.
+  rpc WatchSession (Empty) returns (stream UserInfo);
 }
 
-// Users and roles (Admin only). Never the last enabled administrator, never the caller's own account
+// Users (Admin only). Never the last enabled administrator, never the caller's own account
 // (FAILED_PRECONDITION with the reason); INVALID_ARGUMENT for names and passwords; NOT_FOUND.
 service UserService {
   rpc List (Empty) returns (UserList);
@@ -37,6 +40,7 @@ service AuditService {
   rpc List (ListAuditRequest) returns (AuditList);
 }
 
+// The two-value role older clients know: ADMIN for the Administrator role, OPERATOR for every other role.
 enum UserRole {
   USER_ROLE_OPERATOR = 0;
   USER_ROLE_ADMIN = 1;
@@ -74,6 +78,12 @@ message UserInfo {
   bool disabled = 4;
   google.protobuf.Timestamp created = 5;
   google.protobuf.Timestamp last_login = 6;   // unset: never logged in
+  string role_id = 7;
+  string role_name = 8;                       // "Operator"
+  // Only in Login, CreateFirstAdmin, Me and WatchSession (the caller's own): what the role allows. all_permissions for the
+  // Administrator role (every permission, also later ones; permissions is then empty).
+  repeated string permissions = 9;
+  bool all_permissions = 10;
 }
 
 message UserList { repeated UserInfo users = 1; }
@@ -81,16 +91,18 @@ message UserList { repeated UserInfo users = 1; }
 message AddUserRequest {
   string user_name = 1;
   string password = 2;
-  UserRole role = 3;
+  UserRole role = 3;          // older clients; role_id wins when set
+  string role_id = 4;
 }
 
-// Partial update: unset fields keep their value; an empty new_password keeps the password. A changed password, role
-// or a disabled user ends the user's sessions.
+// Partial update: unset fields keep their value; an empty new_password keeps the password. A changed password or a
+// disabled user ends the user's sessions; a new role applies to the user's next call.
 message UpdateUserRequest {
   string id = 1;
-  optional UserRole role = 2;
+  optional UserRole role = 2;     // older clients; role_id wins when set
   optional bool disabled = 3;
   string new_password = 4;
+  optional string role_id = 5;
 }
 
 message UserIdRequest { string id = 1; }

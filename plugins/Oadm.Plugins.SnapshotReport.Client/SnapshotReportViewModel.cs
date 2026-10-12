@@ -78,10 +78,14 @@ public sealed partial class SnapshotReportViewModel : ObservableObject, IDisposa
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(ui);
         _ctx = ctx;
+        _ctx.PermissionsChanged += (_, _) => OnPropertyChanged(nameof(MayReport));
         _ui = ui;
         _settings = settings ?? new ExportSettingsStore();
         _time = time ?? TimeProvider.System;
     }
+
+    /// <summary>The role may take snapshots and create the PDF ("oadm.snapshot-report:report").</summary>
+    public bool MayReport => _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(SnapshotReportPluginInfo.PluginId, "report"));
 
     public ObservableCollection<SnapshotTileViewModel> Tiles { get; } = [];
 

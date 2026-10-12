@@ -153,8 +153,8 @@ public sealed class SetFirstPasswordTests
         network.Add("10.9.3.9", FakeSerials.Make(9), password: null);
         await using var host = await TestServerHost.StartAsync(network);
         var device = await AddAsync(host, "10.9.3.9", 9);
-        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.DeviceService/SetFirstPassword"));
-        Assert.Equal(Access.Operator, AccessPolicy.For("/oadm.v1.DeviceService/GetPassphrasePolicies"));
+        Assert.Equal(AccessRule.Needs(Core.Auth.HostPermissions.DevicesLogin), AccessPolicy.For("/oadm.v1.DeviceService/SetFirstPassword"));
+        Assert.Equal(AccessRule.Needs(Core.Auth.HostPermissions.DevicesLogin), AccessPolicy.For("/oadm.v1.DeviceService/GetPassphrasePolicies"));
 
         var anonymous = new Proto.DeviceService.DeviceServiceClient(host.InvokerFor(null));
         var denied = await Assert.ThrowsAsync<RpcException>(async () => await anonymous.SetFirstPasswordAsync(Request(NewPassword, device)));

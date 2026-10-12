@@ -213,6 +213,9 @@ public static class WebViewTexts
 {
     public const string NoDevices = "No devices yet. Add devices on the Devices page.";
 
+    /// <summary>The role lacks "Open devices".</summary>
+    public const string NotAllowed = "Your role does not allow opening devices.";
+
     public const string NoTabs = "Click a device on the left to open its web interface.";
 
     public const string NoTag = "No tag";

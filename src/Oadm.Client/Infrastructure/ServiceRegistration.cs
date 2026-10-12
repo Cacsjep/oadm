@@ -53,7 +53,14 @@ public static class ServiceRegistration
             if (options.UseFake)
             {
                 // Fake mode has no login: the administrator "admin".
-                session.SignIn(new Contracts.V1.UserInfo { UserName = FakeOadmApi.FakeUserName, Role = Contracts.V1.UserRole.Admin }, "fake");
+                session.SignIn(new Contracts.V1.UserInfo
+                {
+                    UserName = FakeOadmApi.FakeUserName,
+                    Role = Contracts.V1.UserRole.Admin,
+                    RoleId = FakeOadmApi.AdministratorRoleId,
+                    RoleName = "Administrator",
+                    AllPermissions = true,
+                }, "fake");
             }
 
             return session;
@@ -84,12 +91,18 @@ public static class ServiceRegistration
         services.AddSingleton<CredentialsViewModel>();
         services.AddSingleton<LogsViewModel>();
         services.AddSingleton<AuditLogViewModel>();
+        services.AddSingleton(sp => new RolesViewModel(
+            sp.GetRequiredService<IOadmApi>(),
+            sp.GetRequiredService<IDialogService>(),
+            sp.GetRequiredService<UserSession>(),
+            sp.GetRequiredService<ServerConnection>()));
         services.AddSingleton(sp => new UsersViewModel(
             sp.GetRequiredService<IOadmApi>(),
             sp.GetRequiredService<IDialogService>(),
             sp.GetRequiredService<UserSession>(),
             sp.GetRequiredService<ILogger<UsersViewModel>>(),
-            sp.GetRequiredService<ServerConnection>()));
+            sp.GetRequiredService<ServerConnection>(),
+            sp.GetRequiredService<RolesViewModel>()));
         services.AddSingleton<Func<AddDevicesMode, AddDevicesViewModel>>(sp => mode => new AddDevicesViewModel(
             sp.GetRequiredService<IOadmApi>(),
             sp.GetRequiredService<IUiDispatcher>(),

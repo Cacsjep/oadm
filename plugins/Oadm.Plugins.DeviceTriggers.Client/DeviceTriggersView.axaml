@@ -10,7 +10,7 @@
     <Border Grid.Row="0" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}">
       <Grid RowDefinitions="Auto,Auto,*,Auto">
         <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
-          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" IsVisible="{Binding MayManage}">
             <ui:ToolbarButton Text="New trigger" IconKey="add" IsPrimary="True" Command="{Binding NewTriggerCommand}" />
             <ui:ToolbarButton Text="Edit" IconKey="edit" Command="{Binding EditCommand}" />
             <ui:ToolbarButton Text="Duplicate" IconKey="copy" Command="{Binding DuplicateCommand}" />
@@ -30,7 +30,8 @@
             <DataGridTemplateColumn Header="On" Width="60" SortMemberPath="Enabled">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:TriggerRowViewModel">
-                  <CheckBox IsChecked="{Binding Enabled}" HorizontalAlignment="Center" ToolTip.Tip="Turn the trigger on or off" />
+                  <CheckBox IsChecked="{Binding Enabled}" HorizontalAlignment="Center" ToolTip.Tip="Turn the trigger on or off"
+                            IsEnabled="{Binding $parent[UserControl].((vm:DeviceTriggersViewModel)DataContext).MayManage}" />
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>

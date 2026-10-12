@@ -11,11 +11,12 @@ using Proto = Oadm.Contracts.V1;
 namespace Oadm.Server.Plugins;
 
 /// <summary>
-/// gRPC PluginService: core plugin pages and their backend calls. Invoke checks the role the plugin requires for the
-/// method (<see cref="ICorePlugin.RequiredRole"/>, PERMISSION_DENIED) and writes audited calls to the audit log.
-/// ListPackages / SetPackageEnabled: the plugin list of the Settings page (<see cref="PluginActivation"/>).
+/// gRPC PluginService: core plugin pages and their backend calls. Invoke checks the permission the plugin requires for
+/// the method (<see cref="CorePluginHost.AccessOf"/>, PERMISSION_DENIED) and writes audited calls to the audit log;
+/// Watch and ListCorePlugins follow the page's "show" permission. ListPackages / SetPackageEnabled: the Plugins page
+/// (<see cref="PluginActivation"/>).
 /// </summary>
-public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost host, AuditLog audit, PluginActivation activation) : Proto.PluginService.PluginServiceBase
+public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost host, AuditLog audit, PluginActivation activation, RoleStore roles) : Proto.PluginService.PluginServiceBase
 {
     public override Task<Proto.PluginPackageList> ListPackages(Proto.Empty request, ServerCallContext context) =>
         Task.FromResult(PackageList());
@@ -71,8 +72,12 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
 
     public override Task<Proto.CorePluginList> ListCorePlugins(Proto.Empty request, ServerCallContext context)
     {
+        // A page the caller's role may not show is left out (no rail entry); plugins without a page stay (toolbar parts).
+        var caller = CallerContext.Current;
         var reply = new Proto.CorePluginList();
-        reply.Plugins.AddRange(registry.CorePlugins.Select(Mappers.ToProto));
+        reply.Plugins.AddRange(registry.CorePlugins
+            .Where(p => caller is null || host.ShowPermissionOf(p.Id) is not { } show || caller.Has(show))
+            .Select(Mappers.ToProto));
         return Task.FromResult(reply);
     }
 
@@ -86,6 +91,12 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
         if (!registry.TryGetCorePlugin(request.PluginId, out var registered))
         {
             throw GrpcGuard.NotFound($"Unknown core plugin '{request.PluginId}'.");
+        }
+
+        // Live events of a page are what the page shows: they need its "show" permission.
+        if (host.ShowPermissionOf(registered.Id) is { } show)
+        {
+            Auth.AuthInterceptor.Require(show, roles.Catalog);
         }
 
         try
@@ -114,9 +125,13 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
         }
 
         var access = host.AccessOf(request.PluginId, request.Method);
-        if (access is not null && access.RequiredRole == UserRole.Admin && CallerContext.Current is { IsAdmin: false })
+        if (access is { AdminOnly: true })
         {
-            throw new RpcException(new Status(StatusCode.PermissionDenied, Auth.AuthInterceptor.AdminOnlyMessage));
+            Auth.AuthInterceptor.RequireAdmin();
+        }
+        else if (access?.Permission is { } permission)
+        {
+            Auth.AuthInterceptor.Require(permission, roles.Catalog);
         }
 
         try

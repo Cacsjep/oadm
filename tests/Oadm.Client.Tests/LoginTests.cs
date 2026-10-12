@@ -275,40 +275,67 @@ public sealed class LoginTests
         session.SignIn(new UserInfo { UserName = FakeOadmApi.FakeUserName, Role = UserRole.Admin }, "fake");
         var vm = new UsersViewModel(api, dialogs, session, NullLogger<UsersViewModel>.Instance);
         await vm.LoadAsync();
-        Assert.Equal(5, vm.Users.Count);
-        Assert.Equal("5 users, 2 administrators, 1 disabled", vm.Summary);
+        Assert.Equal(6, vm.Users.Count);
+        Assert.Equal(["Administrator", "Operator", "Viewer", "Contractor"], vm.Roles.Select(r => r.Title));
+        Assert.Equal("Operator", vm.NewRole?.Title);
+        Assert.Equal("Contractor", vm.Users.Single(u => u.UserName == "contractor").RoleText);
         UserRowViewModel self = vm.Users.Single(u => u.UserName == "admin");
         Assert.True(self.IsSelf);
         Assert.False(self.CanChange);
 
+        // "+ User" opens the Add user dialog; it closes after the add.
+        vm.OpenAddCommand.Execute(null);
+        Assert.Equal(UserForm.Add, vm.Form);
+        Assert.Equal("Add user", vm.FormTitle);
+        _ = dialogs.Received(1).ShowUserFormAsync(vm);
+        Assert.False(vm.SaveFormCommand.CanExecute(null));
         Assert.False(vm.AddUserCommand.CanExecute(null));
         vm.NewUserName = "tech3";
         vm.NewPassword = "short";
         Assert.Null(vm.ErrorOf(nameof(vm.NewPassword))); // no strength rule
         vm.NewPassword = "Tech3-pass-123";
-        await vm.AddUserCommand.ExecuteAsync(null);
+        await vm.SaveFormCommand.ExecuteAsync(null);
         Assert.Contains(vm.Users, u => u.UserName == "tech3" && !u.IsAdmin);
-        Assert.Equal("", vm.NewUserName);
+        Assert.Equal(UserForm.None, vm.Form);
 
+        vm.OpenAddCommand.Execute(null);
+        Assert.Equal("", vm.NewUserName);
         vm.NewUserName = "TECH3";
         vm.NewPassword = "Tech3-pass-123";
         await vm.AddUserCommand.ExecuteAsync(null);
         Assert.Equal("A user named TECH3 exists already.", vm.ErrorOf(nameof(vm.NewUserName)));
+        Assert.Equal(UserForm.Add, vm.Form); // a refusal keeps the dialog open
+        vm.CloseFormCommand.Execute(null);
 
+        // Edit user: the role; not offered for the own account.
+        vm.OpenEditCommand.Execute(self);
+        Assert.Equal(UserForm.None, vm.Form);
         UserRowViewModel tech3 = vm.Users.Single(u => u.UserName == "tech3");
-        await vm.ToggleRoleCommand.ExecuteAsync(tech3);
+        vm.OpenEditCommand.Execute(tech3);
+        Assert.Equal(UserForm.Edit, vm.Form);
+        Assert.Equal("Edit tech3", vm.FormTitle);
+        Assert.Equal("Operator", vm.EditRole?.Title);
+        Assert.Null(vm.EditRoleHint);
+        vm.EditRole = vm.Roles.Single(r => r.Kind == RoleKind.Administrator);
+        Assert.NotNull(vm.EditRoleHint);
+        await vm.SaveFormCommand.ExecuteAsync(null);
+        Assert.Equal(UserForm.None, vm.Form);
         Assert.True(vm.Users.Single(u => u.UserName == "tech3").IsAdmin);
+        Assert.Equal("Administrator", vm.Users.Single(u => u.UserName == "tech3").RoleText);
+        Assert.Equal(3, vm.RolesCard.Columns.Single(c => c.Kind == RoleKind.Administrator).UserCount);
         await vm.ToggleDisabledCommand.ExecuteAsync(vm.Users.Single(u => u.UserName == "tech1"));
         Assert.True(vm.Users.Single(u => u.UserName == "tech1").IsDisabled);
 
         vm.OpenResetCommand.Execute(vm.Users.Single(u => u.UserName == "tech2"));
-        Assert.Equal("New password for tech2", vm.ResetTitle);
+        Assert.Equal(UserForm.Password, vm.Form);
+        Assert.Equal("New password for tech2", vm.FormTitle);
         vm.ResetPassword = "Tech2-pass-new";
         vm.ResetConfirm = "different";
         Assert.False(vm.SaveResetCommand.CanExecute(null));
         vm.ResetConfirm = "Tech2-pass-new";
-        await vm.SaveResetCommand.ExecuteAsync(null);
+        await vm.SaveFormCommand.ExecuteAsync(null);
         Assert.False(vm.IsResetOpen);
+        Assert.Equal(UserForm.None, vm.Form);
 
         await vm.DeleteCommand.ExecuteAsync(vm.Users.Single(u => u.UserName == "contractor"));
         Assert.DoesNotContain(vm.Users, u => u.UserName == "contractor");
@@ -416,24 +443,40 @@ public sealed class LoginTests
             confirmWindow.Close();
             owner.Close();
 
-            // Users page (Admin only): page header, then the users card.
+            // Users page (Admin only): page header, the users card, the roles card (permission matrix) below.
             var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
             var dialogs = Substitute.For<IDialogService>();
             var user = new UserSession();
             user.SignIn(new UserInfo { UserName = "admin", Role = UserRole.Admin }, "fake");
             var users = new UsersViewModel(api, dialogs, user, NullLogger<UsersViewModel>.Instance);
             await users.LoadAsync();
-            users.OpenResetCommand.Execute(users.Users.Single(u => u.UserName == "tech2"));
-            users.NewUserName = "tech3";
-            users.NewPassword = "short";
-            var usersWindow = new Window { Width = 1000, Height = 900, Content = new UsersPageView { DataContext = users, Margin = new Avalonia.Thickness(16) } };
+            var usersWindow = new Window { Width = 1500, Height = 1200, Content = new UsersPageView { DataContext = users, Margin = new Avalonia.Thickness(16) } };
             usersWindow.Show();
             Dispatcher.UIThread.RunJobs();
-            Assert.Contains(usersWindow.GetVisualDescendants().OfType<DataGrid>().Single().GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "anna.berg");
+            Capture(usersWindow, outDir, "client-users-page.png");
+            Assert.Contains(usersWindow.GetVisualDescendants().OfType<DataGrid>().First().GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "anna.berg");
             List<string> pageTexts = usersWindow.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? "").ToList();
-            Assert.Contains("Who can log in to this server and what they may do.", pageTexts);
+            Assert.Contains("Who can log in to this server and what each role may do.", pageTexts);
+            Assert.Contains("Contractor", pageTexts); // a role column of the matrix
+            Assert.Contains("Rename and delete tags", pageTexts);
             Assert.Equal(1, pageTexts.Count(t => t == "Users")); // the page title only, no card title repeating it
             Capture(usersWindow, outDir, "client-users-page.png");
+
+            // The dialogs of the users card: Add user, Edit user, Change password.
+            users.OpenAddCommand.Execute(null);
+            users.NewUserName = "tech3";
+            var addWindow = new UserFormWindow();
+            addWindow.Attach(users);
+            addWindow.Show();
+            Capture(addWindow, outDir, "client-user-add.png");
+            users.OpenEditCommand.Execute(users.Users.Single(u => u.UserName == "contractor"));
+            Assert.False(addWindow.IsVisible); // the form changed: the add window closed
+            var editWindow = new UserFormWindow();
+            editWindow.Attach(users);
+            editWindow.Show();
+            Capture(editWindow, outDir, "client-user-edit.png");
+            editWindow.Close();
+            Assert.Equal(UserForm.None, users.Form); // the X closes the form
             usersWindow.Close();
 
             // Audit tab of the Logs page.

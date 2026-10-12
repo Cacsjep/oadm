@@ -50,7 +50,7 @@ public sealed partial class RuleRowViewModel(EventRulesViewModel owner, RuleSumm
 
     public DateTime LastFiredSortKey => Summary.LastFired?.ToDateTime() ?? DateTime.MinValue;
 
-    public bool CanToggle => owner.IsAdmin && !IsBusy;
+    public bool CanToggle => owner.MayChange && !IsBusy;
 
     public string SearchText => $"{Name} {ConditionsText} {ActionsText}";
 
@@ -188,6 +188,7 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
         if (session is not null)
         {
             session.PropertyChanged += OnSessionChanged;
+            session.PermissionsChanged += OnPermissionsChanged;
         }
     }
 
@@ -195,7 +196,11 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
 
     public RangeObservableCollection<EventLogRowViewModel> LogEntries { get; } = [];
 
-    public bool IsAdmin => _session?.IsAdmin ?? true;
+    /// <summary>The role may change event rules ("events.manage"; without a session, in tests: yes).</summary>
+    public bool MayChange => _session?.Has(Oadm.Sdk.Plugins.HostPermissionKeys.EventsManage) ?? true;
+
+    /// <summary>The role may delete the event log ("events.clearLog").</summary>
+    public bool MayClearLog => _session?.Has(Oadm.Sdk.Plugins.HostPermissionKeys.EventsClearLog) ?? true;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(EditCommand), nameof(DuplicateCommand), nameof(DeleteCommand))]
@@ -226,10 +231,10 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
     public bool ShowRulesEmpty => Rules.Count == 0;
 
     public string RulesEmptyText => _rulesById.Count == 0
-        ? IsAdmin ? "No event rules yet. Click New rule." : "No event rules yet."
+        ? MayChange ? "No event rules yet. Click New rule." : "No event rules yet."
         : "No rule matches the search.";
 
-    public string ReadOnlyHint => IsAdmin ? string.Empty : "Only administrators can change event rules.";
+    public string ReadOnlyHint => MayChange ? string.Empty : "Your role does not allow changing event rules.";
 
     partial void OnSearchTextChanged(string value) => FilterRules();
 
@@ -261,9 +266,9 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
         }
     }
 
-    private bool CanChange => IsAdmin;
+    private bool CanChange => MayChange;
 
-    private bool CanChangeSelected => IsAdmin && SelectedRule is not null;
+    private bool CanChangeSelected => MayChange && SelectedRule is not null;
 
     [RelayCommand(CanExecute = nameof(CanChange))]
     private async Task NewRuleAsync()
@@ -362,8 +367,8 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Delete all (administrators, red, confirmed): every entry of the event log goes, for every client.</summary>
-    [RelayCommand(CanExecute = nameof(CanChange))]
+    /// <summary>Delete all (the role may delete the event log; red, confirmed): every entry of the event log goes, for every client.</summary>
+    [RelayCommand(CanExecute = nameof(MayClearLog))]
     private async Task ClearLogAsync()
     {
         if (!await _dialogs.ConfirmAsync("Delete all", "Delete every entry of the event log? Other clients see the empty log too.", "Delete all").ConfigureAwait(true))
@@ -391,7 +396,7 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
 
     internal async Task SetEnabledAsync(RuleRowViewModel row, bool enabled)
     {
-        if (!IsAdmin)
+        if (!MayChange)
         {
             row.Revert();
             return;
@@ -640,12 +645,18 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
 
     private void OnSessionChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(UserSession.IsAdmin))
+        if (e.PropertyName == nameof(UserSession.IsAdmin))
         {
-            return;
+            OnPermissionsChanged(sender, EventArgs.Empty);
         }
+    }
 
-        OnPropertyChanged(nameof(IsAdmin));
+    /// <summary>A role change: what the page offers follows the role at once.</summary>
+    private void OnPermissionsChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(MayChange));
+        OnPropertyChanged(nameof(MayClearLog));
+        ClearLogCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(ReadOnlyHint));
         OnPropertyChanged(nameof(RulesEmptyText));
         NewRuleCommand.NotifyCanExecuteChanged();

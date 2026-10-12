@@ -57,3 +57,8 @@ Read-only for devices (param.cgi reads and image.cgi snapshots).
   back with PDFsharp: pages, cover text via ToUnicode, DCT images; view models; headless screenshots
   `snapshot-report-page.png`, `-preview.png`, `-export.png`; hardware test through the in-process server
   writing `snapshot-report-<camera>.pdf` to `OADM_SCREENSHOT_DIR`).
+
+## Permissions
+
+`oadm.snapshot-report:show` (`listSources`) and `:report` "Create snapshots and reports" (snapshots and the PDF). Both are
+on for Operator and the built-in Viewer (the page only reads cameras). Without "report" the toolbar is hidden.

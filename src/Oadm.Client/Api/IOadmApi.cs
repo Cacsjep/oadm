@@ -30,11 +30,25 @@ public interface IOadmApi
     Task LogoutAsync(CancellationToken ct);
     Task<UserInfo> GetCurrentUserAsync(CancellationToken ct);
 
+    /// <summary>The logged-in user with role and permissions now, then again after every change of them.</summary>
+    IAsyncEnumerable<UserInfo> WatchSessionAsync(CancellationToken ct);
+
     // UserService (Admin only)
     Task<IReadOnlyList<UserInfo>> ListUsersAsync(CancellationToken ct);
-    Task<UserInfo> AddUserAsync(string userName, string password, UserRole role, CancellationToken ct);
+    Task<UserInfo> AddUserAsync(string userName, string password, string roleId, CancellationToken ct);
     Task<UserInfo> UpdateUserAsync(UpdateUserRequest request, CancellationToken ct);
     Task DeleteUserAsync(string id, CancellationToken ct);
+
+    // RoleService (Admin only, except GetMyRoleAsync)
+    Task<RoleMatrix> GetRoleMatrixAsync(CancellationToken ct);
+
+    /// <summary>Creates (empty id) and changes roles in one transaction; the whole matrix comes back.</summary>
+    Task<RoleMatrix> SaveRolesAsync(IReadOnlyList<RoleChange> roles, CancellationToken ct);
+
+    Task<RoleMatrix> DeleteRoleAsync(string id, CancellationToken ct);
+
+    /// <summary>The caller's role and what it allows (every user).</summary>
+    Task<MyRole> GetMyRoleAsync(CancellationToken ct);
 
     // AuditService (Admin only)
     /// <summary>The newest <paramref name="limit"/> audit entries, newest first, and the total count.</summary>

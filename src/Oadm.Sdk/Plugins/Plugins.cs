@@ -77,6 +77,21 @@ public interface ITaskPlugin : IPlugin
     string GetTaskName(string? payloadJson) => DisplayName;
 
     /// <summary>
+    /// Finer rights inside this task for choices that differ in risk, e.g. Users "add", "update" and "remove". Empty (the
+    /// default): the task has one permission, "task:&lt;id&gt;". With permissions declared there is no plain "task:&lt;id&gt;":
+    /// the menu entry shows when the role has at least one of them, and each run needs the ones
+    /// <see cref="RequiredPermissions"/> names.
+    /// </summary>
+    IReadOnlyList<PermissionDefinition> Permissions => [];
+
+    /// <summary>
+    /// The keys of <see cref="Permissions"/> one run needs, from its payload (the run is refused before any task starts
+    /// when the role lacks one). Called only for a plugin that declares permissions; null, empty or an exception means
+    /// every declared permission (fail closed). Read the payload only, never contact devices.
+    /// </summary>
+    IReadOnlyList<string>? RequiredPermissions(string? payloadJson) => null;
+
+    /// <summary>
     /// Runs once per device. Return normally for Done, call <see cref="ITaskExecutionContext.ReportWarning"/>
     /// for Done with warnings, throw for Failed. <paramref name="payloadJson"/> comes from the dialog;
     /// it is kept in memory only and never persisted, so it may carry secrets such as passwords.
@@ -118,6 +133,22 @@ public interface ICorePlugin : IPlugin
     /// Default: the methods that need <see cref="UserRole.Admin"/>.
     /// </summary>
     bool IsAudited(string method) => RequiredRole(method) == UserRole.Admin;
+
+    /// <summary>
+    /// Named rights of this plugin for the permission matrix, e.g. VAPIX Commander "send" and "rollout". A plugin with a
+    /// page also gets <see cref="PermissionKeys.Show"/> automatically (on for Operator, for Viewer on monitoring and
+    /// reporting pages); declare "show" only to change those defaults, its name and text are the host's. Empty (the
+    /// default): the host adds <see cref="PermissionKeys.Manage"/> for the methods that need <see cref="UserRole.Admin"/>.
+    /// </summary>
+    IReadOnlyList<PermissionDefinition> Permissions => [];
+
+    /// <summary>
+    /// The permission a user needs to call <paramref name="method"/>: a key of <see cref="Permissions"/>, or
+    /// <see cref="PermissionKeys.Show"/>. Null (the default) falls back to <see cref="RequiredRole"/>: Operator methods need
+    /// "show" (or only a login for a plugin without a page), Admin methods need "manage". An unknown key or an exception
+    /// means Administrator only (fail closed).
+    /// </summary>
+    string? RequiredPermission(string method) => null;
 }
 
 /// <summary>Role of an OADM user. Admin may do everything; Operator works with devices and tasks.</summary>

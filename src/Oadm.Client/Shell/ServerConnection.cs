@@ -31,15 +31,17 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
     private readonly TaskStore _tasks;
     private readonly IUiDispatcher _ui;
     private readonly ILogger<ServerConnection> _logger;
+    private readonly UserSession? _session;
     private CancellationTokenSource? _cts;
 
-    public ServerConnection(IOadmApi api, DeviceStore devices, TaskStore tasks, IUiDispatcher ui, ILogger<ServerConnection> logger)
+    public ServerConnection(IOadmApi api, DeviceStore devices, TaskStore tasks, IUiDispatcher ui, ILogger<ServerConnection> logger, UserSession? session = null)
     {
         _api = api;
         _devices = devices;
         _tasks = tasks;
         _ui = ui;
         _logger = logger;
+        _session = session;
         StatusText = "Connecting to " + api.ServerAddress;
     }
 
@@ -66,6 +68,10 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
         _ = Task.Run(() => DeviceLoopAsync(ct), ct);
         _ = Task.Run(() => TaskLoopAsync(ct), ct);
         _ = Task.Run(() => TagLoopAsync(ct), ct);
+        if (_session is not null)
+        {
+            _ = Task.Run(() => SessionLoopAsync(_session, ct), ct);
+        }
     }
 
     /// <summary>Re-points the API and restarts both streams.</summary>
@@ -220,6 +226,47 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
                 await foreach (TagList list in _api.WatchTagsAsync(ct).ConfigureAwait(false))
                 {
                     batcher.Add(list);
+                    delay = MinDelay;
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception)
+            {
+                // the device loop reports the connection state; just retry
+            }
+
+            try
+            {
+                await Task.Delay(delay, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            delay = TimeSpan.FromTicks(Math.Min(MaxDelay.Ticks, delay.Ticks * 2));
+        }
+    }
+
+    /// <summary>
+    /// The session stream (AuthService.WatchSession): the user's role and permissions now and after every change, applied
+    /// on the UI thread; the pages then show or hide what the role allows. A server older than roles is retried like the
+    /// other streams (its session never changes).
+    /// </summary>
+    private async Task SessionLoopAsync(UserSession session, CancellationToken ct)
+    {
+        TimeSpan delay = MinDelay;
+        var batcher = new ChangeBatcher<UserInfo>(_ui, users => session.Update(users[^1]));
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await foreach (UserInfo user in _api.WatchSessionAsync(ct).ConfigureAwait(false))
+                {
+                    batcher.Add(user);
                     delay = MinDelay;
                 }
             }

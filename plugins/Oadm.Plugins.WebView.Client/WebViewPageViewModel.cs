@@ -39,12 +39,24 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
         SelectedPreset = WebPagePreset.All[0];
         Validation.Rule(nameof(CustomPath), () => !SelectedPreset.IsCustom || IsDevicePath(CustomPath.Trim()) ? null : WebViewTexts.CustomPathInvalid);
         _ctx.DevicesChanged += OnDevicesChanged;
+        _ctx.PermissionsChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(MayOpen));
+            OnPropertyChanged(nameof(ShowNotAllowed));
+            OnPropertyChanged(nameof(ShowNoTabs));
+        };
         Rebuild();
     }
 
     public WebRuntimeState Runtime { get; }
 
     public bool IsRuntimeMissing => !Runtime.IsAvailable;
+
+    /// <summary>The role may open devices ("oadm.web-view:open": the relay acts with the stored login).</summary>
+    public bool MayOpen => _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(WebViewPluginInfo.PluginId, "open"));
+
+    /// <summary>The page says why nothing opens (the runtime message wins).</summary>
+    public bool ShowNotAllowed => !MayOpen && !IsRuntimeMissing;
 
     internal IDeviceWebAccess? Access => _ctx.DeviceWeb;
 
@@ -75,7 +87,7 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
 
     public bool HasTabs => ActiveTab is not null;
 
-    public bool ShowNoTabs => !HasTabs && Runtime.IsAvailable;
+    public bool ShowNoTabs => !HasTabs && Runtime.IsAvailable && MayOpen;
 
     public bool HasDevices => _ctx.Devices.Count > 0;
 
@@ -159,7 +171,7 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
     [RelayCommand]
     private void OpenDevice(WebTreeDevice? row)
     {
-        if (row is null || !Runtime.IsAvailable || _life.IsCancellationRequested)
+        if (row is null || !Runtime.IsAvailable || !MayOpen || _life.IsCancellationRequested)
         {
             return;
         }

@@ -29,20 +29,20 @@
 
         <!-- Toolbar: same buttons as the Devices page -->
         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4" Margin="0,0,0,10">
-          <Button Classes="toolbar" Command="{Binding StartCommand}">
+          <Button Classes="toolbar" Command="{Binding StartCommand}" IsVisible="{Binding MayStartStop}">
             <ui:IconLabel Icon="{DynamicResource Icon.start}" Text="Start" />
           </Button>
-          <Button Classes="toolbar" Command="{Binding StopCommand}">
+          <Button Classes="toolbar" Command="{Binding StopCommand}" IsVisible="{Binding MayStartStop}">
             <ui:IconLabel Icon="{DynamicResource Icon.stop}" Text="Stop" />
           </Button>
-          <Button Classes="toolbar danger" Command="{Binding RemoveCommand}">
+          <Button Classes="toolbar danger" Command="{Binding RemoveCommand}" IsVisible="{Binding MayRemove}">
             <ui:IconLabel Icon="{DynamicResource Icon.remove}" Text="Remove" />
           </Button>
-          <Border Classes="vseparator" />
+          <Border Classes="vseparator" IsVisible="{Binding MayStartStop}" />
           <Button Classes="toolbar" Command="{Binding RefreshCommand}">
             <ui:IconLabel Icon="{DynamicResource Icon.refresh}" Text="Refresh" />
           </Button>
-          <Button Classes="toolbar" Command="{Binding PickPackageCommand}" ToolTip.Tip="Choose an ACAP package (.eap) to install on the selected devices">
+          <Button Classes="toolbar" Command="{Binding PickPackageCommand}" ToolTip.Tip="Choose an ACAP package (.eap) to install on the selected devices" IsVisible="{Binding MayInstall}">
             <ui:IconLabel Icon="{DynamicResource Icon.upload}" Text="Install or upgrade" />
           </Button>
         </StackPanel>
@@ -102,7 +102,7 @@
           </DataGrid>
           <StackPanel Orientation="Horizontal" Spacing="24" IsVisible="{Binding HasPackage}">
             <CheckBox Content="Start after install" IsChecked="{Binding StartAfterInstall}" />
-            <CheckBox Content="Allow downgrade" IsChecked="{Binding AllowDowngrade}" />
+            <CheckBox Content="Allow downgrade" IsChecked="{Binding AllowDowngrade}" IsVisible="{Binding MayDowngrade}" />
             <TextBlock Classes="secondary" Text="{Binding CompatibilitySummary}" />
           </StackPanel>
           <ui:ProgressRow Value="{Binding UploadProgress}" Text="{Binding UploadStatus}" IsVisible="{Binding IsBusy}" />

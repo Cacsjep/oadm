@@ -24,6 +24,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
     public const int TaskLogEntryMaxLength = 2000;
     public DbSet<Setting> Settings => Set<Setting>();
     public DbSet<UserEntity> Users => Set<UserEntity>();
+    public DbSet<RoleEntity> Roles => Set<RoleEntity>();
     public DbSet<AuthTokenEntity> AuthTokens => Set<AuthTokenEntity>();
     public DbSet<AuditEntryEntity> AuditEntries => Set<AuditEntryEntity>();
     public DbSet<TagDefinition> TagDefinitions => Set<TagDefinition>();
@@ -173,9 +174,27 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(u => u.NormalizedName).IsRequired().HasMaxLength(UserStore.MaxUserNameLength);
             e.HasIndex(u => u.NormalizedName).IsUnique();
             e.Property(u => u.PasswordHash).IsRequired().HasMaxLength(256);
-            e.Property(u => u.Role).HasConversion<string>().HasMaxLength(16);
+            e.Ignore(u => u.Role);
+            e.HasIndex(u => u.RoleId);
+            e.HasOne<RoleEntity>().WithMany().HasForeignKey(u => u.RoleId).OnDelete(DeleteBehavior.Restrict);
             e.Property(u => u.CreatedUtc).HasConversion(UtcConverter);
             e.Property(u => u.LastLoginUtc).HasConversion(NullableUtcConverter);
+        });
+
+        modelBuilder.Entity<RoleEntity>(e =>
+        {
+            e.ToTable("Roles");
+            e.HasKey(r => r.Id);
+            e.Property(r => r.Id).ValueGeneratedNever();
+            e.Property(r => r.Name).IsRequired().HasMaxLength(RoleStore.MaxNameLength);
+            e.Property(r => r.NormalizedName).IsRequired().HasMaxLength(RoleStore.MaxNameLength);
+            e.HasIndex(r => r.NormalizedName).IsUnique();
+            e.Property(r => r.Description).IsRequired().HasMaxLength(RoleStore.MaxDescriptionLength);
+            e.Property(r => r.Kind).HasConversion<string>().HasMaxLength(16);
+            e.Property(r => r.PermissionsJson).IsRequired();
+            e.Property(r => r.KnownJson).IsRequired();
+            e.Property(r => r.CreatedUtc).HasConversion(UtcConverter);
+            e.Property(r => r.ChangedUtc).HasConversion(UtcConverter);
         });
 
         modelBuilder.Entity<AuthTokenEntity>(e =>

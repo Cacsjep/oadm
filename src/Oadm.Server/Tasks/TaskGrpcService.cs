@@ -3,6 +3,7 @@ using Grpc.Core;
 using Oadm.Core.Auth;
 using Oadm.Core.Plugins;
 using Oadm.Core.Tasks;
+using Oadm.Server.Auth;
 using Oadm.Server.Common;
 using Oadm.Server.Mapping;
 
@@ -17,6 +18,7 @@ public sealed partial class TaskGrpcService(
     TaskPluginQueries queries,
     PluginRegistry registry,
     AuditLog audit,
+    RoleStore roles,
     IHostApplicationLifetime lifetime,
     ILogger<TaskGrpcService> logger) : Proto.TaskService.TaskServiceBase
 {
@@ -35,6 +37,14 @@ public sealed partial class TaskGrpcService(
     public override async Task<Proto.TaskQueryReply> Query(Proto.TaskQueryRequest request, ServerCallContext context)
     {
         var deviceId = GrpcGuard.ParseId(request.DeviceId, "device id");
+
+        // The dialog's reads: any permission of the task (a role that may run some of its choices opens the dialog).
+        if (registry.TryGetTaskPlugin(request.PluginId, out var plugin) && CallerContext.Current is { } caller
+            && !caller.Permissions.HasAny(PermissionCatalog.TaskKeys(plugin.Plugin)))
+        {
+            throw new RpcException(new Status(StatusCode.PermissionDenied, AccessPolicy.DeniedMessage(PermissionCatalog.TaskKeys(plugin.Plugin)[0], roles.Catalog)));
+        }
+
         try
         {
             var result = await queries.QueryAsync(
@@ -65,13 +75,20 @@ public sealed partial class TaskGrpcService(
     /// <summary>
     /// Context-menu entries incl. core-plugin contributions, with the devices each one can run on.
     /// The runnable sets come from the <see cref="TaskPluginRunnableCache"/>; with <c>compact</c> each
-    /// plugin carries the shorter of the runnable or the not-runnable ids.
+    /// plugin carries the shorter of the runnable or the not-runnable ids. A task the caller's role cannot run (none of
+    /// its permissions) is left out: the client shows no entry for it.
     /// </summary>
     public override async Task<Proto.TaskPluginList> ListTaskPlugins(Proto.ListTaskPluginsRequest request, ServerCallContext context)
     {
+        var caller = CallerContext.Current;
         var reply = new Proto.TaskPluginList();
         foreach (var entry in await runnable.GetAsync(context.CancellationToken).ConfigureAwait(false))
         {
+            if (caller is not null && !caller.Permissions.HasAny(PermissionCatalog.TaskKeys(entry.Plugin.Plugin)))
+            {
+                continue;
+            }
+
             try
             {
                 reply.Plugins.Add(Mappers.ToProto(entry, request.Compact));
@@ -90,6 +107,17 @@ public sealed partial class TaskGrpcService(
     public override async Task<Proto.RunTaskReply> Run(Proto.RunTaskRequest request, ServerCallContext context)
     {
         var ids = GrpcGuard.ParseIds(request.DeviceIds, "device id");
+        var payload = string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson;
+
+        // Every permission this run needs (from its payload), before any task is created.
+        if (registry.TryGetTaskPlugin(request.PluginId, out var task))
+        {
+            foreach (var key in PermissionCatalog.RunKeys(task.Plugin, payload))
+            {
+                AuthInterceptor.Require(key, roles.Catalog);
+            }
+        }
+
         try
         {
             var taskIds = await engine.RunAsync(

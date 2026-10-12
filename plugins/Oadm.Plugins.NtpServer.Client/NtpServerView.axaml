@@ -10,11 +10,11 @@
   <!-- One card (the host's page card): header with the status line, settings form, last requests. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,Auto,*">
     <StackPanel Grid.Row="1" Classes="form">
-      <CheckBox Content="Enable NTP server" IsChecked="{Binding IsEnabled}" />
+      <CheckBox Content="Enable NTP server" IsChecked="{Binding IsEnabled}" IsEnabled="{Binding MayManage}" />
 
       <!-- Same shared form rows and widths as the DHCP server page. -->
       <ui:FormField Label="Listen on" InputWidth="460">
-        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Listen.Items}" SelectedItem="{Binding Listen.Selected}"
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Listen.Items}" SelectedItem="{Binding Listen.Selected}" IsEnabled="{Binding MayManage}"
                   ToolTip.Tip="The interface the cameras reach this server on. All interfaces listens on every address.">
           <ComboBox.ItemTemplate>
             <DataTemplate x:DataType="net:InterfaceOption">
@@ -26,7 +26,7 @@
 
       <ui:FormField Label="Upstream server" InputWidth="460">
         <StackPanel>
-          <TextBox Text="{Binding Upstream}" PlaceholderText="Optional, e.g. pool.ntp.org"
+          <TextBox Text="{Binding Upstream}" PlaceholderText="Optional, e.g. pool.ntp.org" IsReadOnly="{Binding !MayManage}"
                    ToolTip.Tip="Empty: cameras get this computer's time." />
           <ui:StatusChip Text="{Binding CheckingText}" IsAccent="True" IsVisible="{Binding IsCheckingUpstream}" Margin="0,6,0,0" />
           <ui:StatusChip Text="{Binding UpstreamResult}" IsOk="True" IsVisible="{Binding HasUpstreamResult}" Margin="0,6,0,0" />
@@ -40,7 +40,7 @@
 
       <ui:FormField InputWidth="460">
         <DockPanel>
-          <Button DockPanel.Dock="Right" Classes="primary" Content="Save" Command="{Binding SaveCommand}"
+          <Button DockPanel.Dock="Right" Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding MayManage}"
                   ToolTip.Tip="Check the upstream server, store the settings and apply them" />
           <ui:StatusChip HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0"
                          Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"

@@ -44,6 +44,12 @@ public interface IToolbarPlugin
 
     /// <summary>Creates the control on the UI thread. Keep the context to react to selection changes.</summary>
     Control CreateControl(IToolbarContext ctx);
+
+    /// <summary>
+    /// The permission the entry needs ("devices.addRemove", "oadm.system-report:download"); the host hides the entry while
+    /// the user's role lacks it and shows it again when the role changes. Null (the default): every user sees it.
+    /// </summary>
+    string? RequiredPermission => null;
 }
 
 /// <summary>Host pages a toolbar plugin can open (<see cref="IToolbarContext.OpenAsync"/>).</summary>
@@ -130,6 +136,16 @@ public interface IToolbarContext
     /// Default (older hosts): null.
     /// </summary>
     string? CannotRunTaskReason(string pluginId) => null;
+
+    /// <summary>Whether the user's role allows <paramref name="permission"/> ("devices.refresh"). Default (older hosts): true.</summary>
+    bool Has(string permission) => true;
+
+    /// <summary>Raised on the UI thread after the user's role or its permissions changed.</summary>
+    event EventHandler? PermissionsChanged
+    {
+        add { }
+        remove { }
+    }
 
     /// <summary>
     /// Runs a task plugin on the selection like the context menu does: its dialog first when it has

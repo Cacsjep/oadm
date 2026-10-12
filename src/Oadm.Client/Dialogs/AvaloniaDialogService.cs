@@ -14,7 +14,7 @@ using Oadm.Sdk.Devices;
 
 namespace Oadm.Client.Dialogs;
 
-public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLauncher, IClipboardService
+public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? session = null) : IDialogService, IUrlLauncher, IClipboardService
 {
     public async Task ShowMessageAsync(string title, string message)
     {
@@ -61,6 +61,34 @@ public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLa
         var window = new Devices.DeviceLoginWindow();
         window.Attach(login);
         return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
+    }
+
+    public async Task ShowUserFormAsync(Settings.UsersViewModel users)
+    {
+        ArgumentNullException.ThrowIfNull(users);
+        if (CurrentOwner() is not { } owner)
+        {
+            users.CloseForm();
+            return;
+        }
+
+        var window = new Settings.UserFormWindow();
+        window.Attach(users);
+        await window.ShowDialog(owner).ConfigureAwait(true);
+    }
+
+    public async Task ShowRoleFormAsync(Settings.RolesViewModel roles)
+    {
+        ArgumentNullException.ThrowIfNull(roles);
+        if (CurrentOwner() is not { } owner)
+        {
+            roles.CancelEditorCommand.Execute(null);
+            return;
+        }
+
+        var window = new Settings.RoleFormWindow();
+        window.Attach(roles);
+        await window.ShowDialog(owner).ConfigureAwait(true);
     }
 
     public async Task<bool> ShowDeviceSetPasswordAsync(Devices.DeviceSetPasswordViewModel setPassword)
@@ -110,7 +138,7 @@ public sealed class AvaloniaDialogService(IOadmApi api) : IDialogService, IUrlLa
             return null;
         }
 
-        return await dialog.ShowAsync(new TaskDialogContext(api, dialog.PluginId), devices, owner).ConfigureAwait(true);
+        return await dialog.ShowAsync(new TaskDialogContext(api, dialog.PluginId, session is null ? null : session.Has), devices, owner).ConfigureAwait(true);
     }
 
     public async Task ShowTaskDetailsAsync(TaskDetailsViewModel details)

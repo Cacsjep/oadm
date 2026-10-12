@@ -40,9 +40,18 @@ public sealed partial class SettingsGrpcService(
         }
     }
 
-    /// <summary>Adds the key replacement notice (production hardening 3) when the server had to replace its master key.</summary>
+    /// <summary>
+    /// Adds the key replacement notice (production hardening 3) when the server had to replace its master key, and for the
+    /// Administrator role the notice of the upgrade to roles.
+    /// </summary>
     private async Task<Proto.ServerSettings> WithNoticeAsync(Proto.ServerSettings settings, CancellationToken ct)
     {
+        if (CallerContext.Current is { IsAdmin: true } && await RolesUpgradeNotice.ReadAsync(store, ct).ConfigureAwait(false) is { } roles)
+        {
+            settings.RolesNotice = new Proto.RolesUpgradeNotice { Id = roles.Id };
+            settings.RolesNotice.OperatorLost.AddRange(roles.OperatorLost);
+        }
+
         if (await MasterKeyCheck.ReadNoticeAsync(store, ct).ConfigureAwait(false) is { } notice)
         {
             settings.KeyReplaced = new Proto.KeyReplacedNotice

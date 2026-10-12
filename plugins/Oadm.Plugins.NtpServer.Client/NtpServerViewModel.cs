@@ -59,8 +59,16 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         _ctx.DevicesChanged += (_, _) => OnDevicesChanged();
+        _ctx.PermissionsChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(MayManage));
+            SaveCommand.NotifyCanExecuteChanged();
+        };
         BuildDeviceMap();
     }
+
+    /// <summary>The role may change the NTP server ("oadm.ntp-server:manage"); without it the form is read-only.</summary>
+    public bool MayManage => _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(NtpServerPluginInfo.PluginId, Oadm.Sdk.Plugins.PermissionKeys.Manage));
 
     public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged;
 
@@ -251,7 +259,7 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
         }
     }
 
-    private bool CanSave() => !IsSaving;
+    private bool CanSave() => !IsSaving && MayManage;
 
     partial void OnUpstreamChanged(string value)
     {

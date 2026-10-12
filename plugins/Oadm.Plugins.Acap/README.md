@@ -96,3 +96,8 @@ from the steps. Steps that do not apply end Skipped with the reason. Task names:
 - Dialogs cannot use the shared controls (`IconLabel`, `SearchBox`) yet; they use plain controls with the theme classes
   until these move to `Oadm.Sdk.Client.Controls`.
 - The dialog cannot learn the server-side task result or refresh after the task.
+
+## Permissions
+
+Keys `task:oadm.acap:install`, `:downgrade` (install with "Allow downgrade"), `:startStop` and `:remove`. The dialog
+hides the buttons and the option the role lacks. Operator default: install and start / stop.

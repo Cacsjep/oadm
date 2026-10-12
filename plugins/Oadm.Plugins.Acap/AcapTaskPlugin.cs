@@ -50,6 +50,29 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
     public bool RequiresDialog => true;
 
+    /// <summary>Installing, downgrading, starting and stopping, and removing applications are rights of their own.</summary>
+    public IReadOnlyList<PermissionDefinition> Permissions { get; } =
+    [
+        new(AcapPermissions.Install, "Install and upgrade applications", "Install applications on devices or upgrade them."),
+        new(AcapPermissions.Downgrade, "Downgrade applications", "Install an older version of an application.") { OperatorDefault = false },
+        new(AcapPermissions.StartStop, "Start and stop applications", "Start and stop applications that are installed."),
+        new(AcapPermissions.Remove, "Remove applications", "Delete applications from devices; their settings are lost.") { OperatorDefault = false },
+    ];
+
+    /// <summary>The permission of the run's action; an install with "Allow downgrade" also needs "downgrade".</summary>
+    public IReadOnlyList<string>? RequiredPermissions(string? payloadJson)
+    {
+        var payload = AcapPayload.Parse(payloadJson);
+        return payload.Action switch
+        {
+            AcapAction.Install when payload.AllowDowngrade => [AcapPermissions.Install, AcapPermissions.Downgrade],
+            AcapAction.Install => [AcapPermissions.Install],
+            AcapAction.Start or AcapAction.Stop => [AcapPermissions.StartStop],
+            AcapAction.Remove => [AcapPermissions.Remove],
+            _ => null,
+        };
+    }
+
     /// <summary>"Install AXIS Video Motion Detection 4.5.2", "Upgrade ... to ...", "Remove ...", "Start ...", "Stop ...".</summary>
     public string GetTaskName(string? payloadJson)
     {

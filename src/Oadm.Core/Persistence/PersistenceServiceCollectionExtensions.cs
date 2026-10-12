@@ -61,6 +61,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<LoginThrottle>();
         services.AddSingleton<AuthTokenStore>();
         services.AddSingleton<UserStore>();
+        services.AddSingleton<RoleStore>();
         services.AddSingleton<AuditLog>();
         services.AddSingleton<AuthManager>();
 

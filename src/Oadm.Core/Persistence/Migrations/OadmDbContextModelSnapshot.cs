@@ -88,6 +88,53 @@ namespace Oadm.Core.Persistence.Migrations
                     b.ToTable("AuthTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Oadm.Core.Auth.RoleEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ChangedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("KnownJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PermissionsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("Roles", (string)null);
+                });
+
             modelBuilder.Entity("Oadm.Core.Auth.UserEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -112,9 +159,7 @@ namespace Oadm.Core.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Role")
-                        .IsRequired()
-                        .HasMaxLength(16)
+                    b.Property<Guid>("RoleId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("UserName")
@@ -126,6 +171,8 @@ namespace Oadm.Core.Persistence.Migrations
 
                     b.HasIndex("NormalizedName")
                         .IsUnique();
+
+                    b.HasIndex("RoleId");
 
                     b.ToTable("Users", (string)null);
                 });
@@ -596,6 +643,15 @@ namespace Oadm.Core.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Oadm.Core.Auth.UserEntity", b =>
+                {
+                    b.HasOne("Oadm.Core.Auth.RoleEntity", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

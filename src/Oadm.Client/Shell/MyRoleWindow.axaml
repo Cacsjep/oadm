@@ -1,0 +1,41 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:shell="using:Oadm.Client.Shell"
+        x:Class="Oadm.Client.Shell.MyRoleWindow"
+        x:DataType="shell:MyRoleViewModel"
+        Title="Your role"
+        Width="520" Height="560" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <!-- The user's own role and what it allows, read-only, grouped like the permission matrix of the Users page. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding RoleName, StringFormat='Your role: {0}'}" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12">
+        <TextBlock Grid.Row="0" Classes="secondary" TextWrapping="Wrap" Text="{Binding Intro}" />
+        <ListBox Grid.Row="1" Classes="readOnlyList" ItemsSource="{Binding Rows}" SelectionMode="Single">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="shell:MyRoleRow">
+              <Panel>
+                <TextBlock Classes="groupHeader" Text="{Binding Title}" IsVisible="{Binding IsGroup}" Margin="0,8,0,2" />
+                <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsPermission}" Margin="16,2,0,2">
+                  <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                  <ui:InfoIcon Text="{Binding Description}" />
+                  <ui:OadmIcon Classes="warn" Data="{StaticResource Icon.status.warning}" IsVisible="{Binding FullDeviceControl}"
+                               VerticalAlignment="Center" ToolTip.Tip="Full control of the devices: it acts with their stored login." />
+                </StackPanel>
+              </Panel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <TextBlock Grid.Row="2" Classes="error" TextWrapping="Wrap" Text="{Binding ErrorText}"
+                   IsVisible="{Binding ErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      </Grid>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelText="Close" CancelCommand="{Binding $parent[shell:MyRoleWindow].CloseCommand}" />
+  </Grid>
+</Window>

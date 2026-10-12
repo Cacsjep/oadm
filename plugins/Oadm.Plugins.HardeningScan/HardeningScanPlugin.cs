@@ -61,6 +61,14 @@ public sealed class HardeningScanPlugin : ICorePlugin, IAsyncDisposable
     /// <summary>No audit entry for a scan.</summary>
     public bool IsAudited(string method) => false;
 
+    /// <summary>Starting a scan contacts every device: a right of its own; seeing results is "show".</summary>
+    public IReadOnlyList<PermissionDefinition> Permissions { get; } =
+    [
+        new("scan", "Run scans", "Start and stop a scan of the devices (it only reads them)."),
+    ];
+
+    public string? RequiredPermission(string method) => method is HardeningMethods.StartScan or HardeningMethods.CancelScan ? "scan" : PermissionKeys.Show;
+
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
         var service = _service ?? throw new InvalidOperationException("The hardening scan plugin is not running.");

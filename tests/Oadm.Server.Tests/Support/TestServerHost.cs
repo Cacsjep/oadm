@@ -74,6 +74,10 @@ internal sealed class TestServerHost : IAsyncDisposable
     public async Task<CallInvoker> InvokerForUserAsync(string userName, Oadm.Sdk.Plugins.UserRole role) =>
         InvokerFor(await InProcessAccess.CreateTokenAsync(App.Services, userName, role));
 
+    /// <summary>Creates (if needed) a user with the role (any role id) and returns an invoker that calls as that user.</summary>
+    public async Task<CallInvoker> InvokerForRoleAsync(string userName, Guid roleId) =>
+        InvokerFor(await InProcessAccess.CreateTokenAsync(App.Services, userName, roleId));
+
     public string DataDirectory { get; }
 
     public FakeAxisNetwork Network { get; }

@@ -104,3 +104,9 @@ with a one-line note on the protected accounts, and **Remove users** is the red 
 selected devices are skipped there with a warning. Plain Avalonia controls with the host theme
 classes (`primary`, `secondary`, `fieldLabel`, `card`, ...), no colors or font sizes of its own.
 Returns the payload JSON; the password lives only in memory.
+
+## Permissions
+
+Keys `task:oadm.users:add`, `:update`, `:remove` (all three full device control). `RequiredPermissions` names the
+key of the payload's mode; the dialog shows only the modes the role has and starts in the first of them. Operator
+default: add and update, not remove.

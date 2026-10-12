@@ -139,3 +139,11 @@ task engine, saved commands (encryption, export, import), compatibility, the pag
 `tests/Oadm.Server.Tests/VapixCommanderServerTests` (routing, hidden task); read-only hardware test
 `VapixCommanderHardwareTests` (param.cgi list Brand and basicdeviceinfo, Send and a rollout on the development camera
 through the in-process server). Not in fake mode.
+
+## Permissions
+
+`oadm.vapix-commander:show` (library, saved commands, compatibility), `:send` "Send to one device" (`tryRequest`),
+`:rollout` "Run on many devices" (`rollout`) and `:saved` "Change saved commands" (`save`, `delete`, `import`). Send and
+rollout are full device control. The page hides Send, Run, New command (unless send or saved), Import, edit / delete of
+saved commands and "Save a copy" accordingly; the request builder hides Send and Save. Operator default: all. The event
+rule action "Run VAPIX command" runs as the server and follows "Change event rules".

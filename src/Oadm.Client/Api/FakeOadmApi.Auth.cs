@@ -49,7 +49,9 @@ public sealed partial class FakeOadmApi
         lock (_gate)
         {
             SeedAuthLocked();
-            return Task.FromResult(_users.First(u => u.UserName == FakeUserName).Clone());
+            UserInfo me = _users.First(u => u.UserName == FakeUserName).Clone();
+            me.AllPermissions = true;
+            return Task.FromResult(me);
         }
     }
 
@@ -63,7 +65,7 @@ public sealed partial class FakeOadmApi
         }
     }
 
-    public Task<UserInfo> AddUserAsync(string userName, string password, UserRole role, CancellationToken ct)
+    public Task<UserInfo> AddUserAsync(string userName, string password, string roleId, CancellationToken ct)
     {
         lock (_gate)
         {
@@ -85,9 +87,12 @@ public sealed partial class FakeOadmApi
                 throw new RpcException(new Status(StatusCode.InvalidArgument, $"A user named {name} exists already."));
             }
 
-            var user = new UserInfo { Id = Guid.NewGuid().ToString(), UserName = name, Role = role, Created = Timestamp.FromDateTime(DateTime.UtcNow) };
+            RoleInfo role = _roles.FirstOrDefault(r => r.Id == roleId)
+                ?? throw new RpcException(new Status(StatusCode.InvalidArgument, "Unknown role."));
+            var user = new UserInfo { Id = Guid.NewGuid().ToString(), UserName = name, Created = Timestamp.FromDateTime(DateTime.UtcNow) };
+            SetRole(user, role);
             _users.Add(user);
-            AuditLocked("Added user", name, "Role " + (role == UserRole.Admin ? "Admin" : "Operator"));
+            AuditLocked("Added user", name, "Role " + role.Name);
             return Task.FromResult(user.Clone());
         }
     }
@@ -101,21 +106,26 @@ public sealed partial class FakeOadmApi
             SeedAuthLocked();
             UserInfo user = _users.FirstOrDefault(u => u.Id == request.Id)
                 ?? throw new RpcException(new Status(StatusCode.NotFound, "The user does not exist (any more)."));
-            bool roleChanges = request.HasRole && request.Role != user.Role;
+            string? roleId = request.HasRoleId ? request.RoleId
+                : request.HasRole ? (request.Role == UserRole.Admin ? AdministratorRoleId : OperatorRoleId)
+                : null;
+            RoleInfo? newRole = roleId is null ? null : _roles.FirstOrDefault(r => r.Id == roleId)
+                ?? throw new RpcException(new Status(StatusCode.InvalidArgument, "Unknown role."));
+            bool roleChanges = newRole is not null && newRole.Id != user.RoleId;
             bool stateChanges = request.HasDisabled && request.Disabled != user.Disabled;
             if ((roleChanges || stateChanges) && user.UserName == FakeUserName)
             {
                 throw new RpcException(new Status(StatusCode.FailedPrecondition, "You cannot change the role or state of your own account."));
             }
 
-            if (((roleChanges && request.Role != UserRole.Admin) || (stateChanges && request.Disabled)) && IsLastAdminLocked(user))
+            if (((roleChanges && newRole!.Kind != RoleKind.Administrator) || (stateChanges && request.Disabled)) && IsLastAdminLocked(user))
             {
                 throw new RpcException(new Status(StatusCode.FailedPrecondition, $"{user.UserName} is the last enabled administrator. Add or enable another administrator first."));
             }
 
             if (roleChanges)
             {
-                user.Role = request.Role;
+                SetRole(user, newRole!);
             }
 
             if (stateChanges)
@@ -179,6 +189,13 @@ public sealed partial class FakeOadmApi
         }
     }
 
+    private static void SetRole(UserInfo user, RoleInfo role)
+    {
+        user.RoleId = role.Id;
+        user.RoleName = role.Name;
+        user.Role = role.Kind == RoleKind.Administrator ? UserRole.Admin : UserRole.Operator;
+    }
+
     private bool IsLastAdminLocked(UserInfo user) =>
         user.Role == UserRole.Admin && !user.Disabled && !_users.Any(u => u != user && u.Role == UserRole.Admin && !u.Disabled);
 
@@ -202,21 +219,28 @@ public sealed partial class FakeOadmApi
         }
 
         _authSeeded = true;
+        SeedRolesLocked();
         DateTime now = DateTime.UtcNow;
-        UserInfo User(string name, UserRole role, bool disabled, double daysAgo, double? lastLoginHoursAgo) => new()
+        UserInfo User(string name, string roleId, bool disabled, double daysAgo, double? lastLoginHoursAgo)
         {
-            Id = Guid.NewGuid().ToString(),
-            UserName = name,
-            Role = role,
-            Disabled = disabled,
-            Created = Timestamp.FromDateTime(now.AddDays(-daysAgo)),
-            LastLogin = lastLoginHoursAgo is { } h ? Timestamp.FromDateTime(now.AddHours(-h)) : null,
-        };
-        _users.Add(User(FakeUserName, UserRole.Admin, false, 120, 0));
-        _users.Add(User("anna.berg", UserRole.Admin, false, 90, 26));
-        _users.Add(User("tech1", UserRole.Operator, false, 60, 3));
-        _users.Add(User("tech2", UserRole.Operator, false, 45, null));
-        _users.Add(User("contractor", UserRole.Operator, true, 30, 400));
+            var user = new UserInfo
+            {
+                Id = Guid.NewGuid().ToString(),
+                UserName = name,
+                Disabled = disabled,
+                Created = Timestamp.FromDateTime(now.AddDays(-daysAgo)),
+                LastLogin = lastLoginHoursAgo is { } h ? Timestamp.FromDateTime(now.AddHours(-h)) : null,
+            };
+            SetRole(user, _roles.First(r => r.Id == roleId));
+            return user;
+        }
+
+        _users.Add(User(FakeUserName, AdministratorRoleId, false, 120, 0));
+        _users.Add(User("anna.berg", AdministratorRoleId, false, 90, 26));
+        _users.Add(User("tech1", OperatorRoleId, false, 60, 3));
+        _users.Add(User("tech2", OperatorRoleId, false, 45, null));
+        _users.Add(User("guard", ViewerRoleId, false, 20, 50));
+        _users.Add(User("contractor", ContractorRoleId, true, 30, 400));
 
         (string User, string Client, string Action, string Target, string Detail)[] seed =
         [

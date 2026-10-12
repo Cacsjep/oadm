@@ -21,6 +21,7 @@ public sealed partial class DeviceToolbar
     private readonly IClientPluginRegistry _registry;
     private readonly Dictionary<IToolbarPlugin, Control> _byPlugin = [];
     private Func<string?, bool> _isPackageEnabled = _ => true;
+    private Func<string, bool> _hasPermission = _ => true;
     private List<Control>? _controls;
 
     public DeviceToolbar(IEnumerable<IToolbarPlugin> builtIn, IClientPluginRegistry registry, ILogger<DeviceToolbar> logger)
@@ -85,12 +86,42 @@ public sealed partial class DeviceToolbar
     {
         ArgumentNullException.ThrowIfNull(isPackageEnabled);
         _isPackageEnabled = isPackageEnabled;
+        UpdateVisibility();
+    }
+
+    /// <summary>Hides the entries whose <see cref="IToolbarPlugin.RequiredPermission"/> the user's role lacks (after every role change).</summary>
+    public void ApplyPermissions(Func<string, bool> hasPermission)
+    {
+        ArgumentNullException.ThrowIfNull(hasPermission);
+        _hasPermission = hasPermission;
+        UpdateVisibility();
+    }
+
+    private void UpdateVisibility()
+    {
         foreach ((IToolbarPlugin plugin, Control control) in _byPlugin)
         {
-            if (_registry.PackageOf(plugin) is { } package)
-            {
-                control.IsVisible = isPackageEnabled(package);
-            }
+            control.IsVisible = IsShown(plugin);
+        }
+    }
+
+    /// <summary>The package is on (built-in entries have none) and the role has the entry's permission.</summary>
+    private bool IsShown(IToolbarPlugin plugin)
+    {
+        if (_registry.PackageOf(plugin) is { } package && !_isPackageEnabled(package))
+        {
+            return false;
+        }
+
+        try
+        {
+            return plugin.RequiredPermission is not { } permission || _hasPermission(permission);
+        }
+#pragma warning disable CA1031 // A plugin that cannot answer keeps its entry; the server checks the call anyway.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return true;
         }
     }
 
@@ -109,7 +140,7 @@ public sealed partial class DeviceToolbar
                     control.Name ??= plugin.Id;
                     controls.Add(control);
                     _byPlugin[plugin] = control;
-                    if (!_isPackageEnabled(_registry.PackageOf(plugin)))
+                    if (!IsShown(plugin))
                     {
                         control.IsVisible = false;
                     }
