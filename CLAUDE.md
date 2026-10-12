@@ -22,6 +22,7 @@ Every rule here is agreed with the maintainer; change one only after asking.
 | Tests | xUnit, NSubstitute for mocks |
 | Device API | VAPIX only (HTTP/HTTPS, digest auth). No ONVIF |
 | Live video | RTSP (server, own client) relayed as encoded H.265/H.264 over gRPC, decoded in the client with FFmpeg (LGPL, bundled) |
+| Embedded browser | `Avalonia.Controls.WebView` (MIT; WebView2, WKWebView, WPE WebKit / WebKitGTK of the OS), in the client host for the Web View plugin |
 
 Cross-platform is a day-one requirement: Windows, Linux, macOS. No Windows-only APIs
 (no DPAPI, no registry, no WMI). Paths via `Path.Combine`, data folder via
@@ -79,7 +80,7 @@ release of the tag with the installers and `SHA256SUMS.txt`):
   `Restart=on-failure`, `OADM_DATA_DIR=/var/lib/oadm`, StateDirectory 0700, optional `/etc/default/oadm-server`),
   maintainer scripts: postinst enables and starts it like dh_installsystemd and works without systemd; prerm stops it;
   data kept even on purge), `oadm-client` (`/opt/oadm/client`, `/usr/bin/oadm-client`, `oadm.desktop` + hicolor icon,
-  X11 libraries as Depends); both files in one `apt install` = "Server and client", `oadm-client` alone = "Client
+  X11 libraries as Depends, `libwebkit2gtk-4.1-0` as Recommends for the Web View); both files in one `apt install` = "Server and client", `oadm-client` alone = "Client
   only". No metapackage (without an apt repository it only added a third file; the `oadm` of
   0.0.3..1.0.0 is removed on upgrade through `Breaks: oadm`). Both take over the files of the former single package `oadm`
   (`Replaces: oadm (<< 0.0.3~)`, `Breaks: oadm`). Each has `/usr/share/doc/<package>/{copyright,THIRD-PARTY-NOTICES.txt,
@@ -152,7 +153,7 @@ src/
   Oadm.Sdk.Client/     client-side plugin SDK: dialog/page/toolbar interfaces, ITaskDialogContext,
                        IToolbarContext, shared controls (Controls/: IconLabel, SearchBox, OadmIcon,
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow,
-                       ToolbarButton, ToolbarSeparator, PasswordBox, MessageWindow, FormField, DevicePickerWindow,
+                       ToolbarButton, ToolbarSeparator, PasswordBox, MessageWindow, FormField, DevicePickerWindow, DeviceIcon,
                        GroupedChoice),
                        form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection,
                        Collections/RangeObservableCollection (bulk list of the host grids and plugin pages)
@@ -175,6 +176,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.Notifications/             event rule actions "Send email" and "Send HTTP request"
   Oadm.Plugins.IoMonitor(.Client)/        core plugin: live inputs and outputs of one device (off by default)
   Oadm.Plugins.DeviceTriggers(.Client)/   core plugin: events of the devices for the event rules (WebSocket, off by default)
+  Oadm.Plugins.WebView(.Client)/          core plugin: the web interface of the devices in tabs, logged in through the server
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
                                 (both copy their output to artifacts/plugins/<plugin id>/)
@@ -315,6 +317,11 @@ Two processes, like ADM:
   (stream of encoded access units), `ListSources(device_id)` (view areas / sensors / channels).
   See "Live view".
 - `EventService` (`events.proto`, event rules, see "Event rules").
+- `DeviceWebService` (`deviceweb.proto`, the Web View relay, see "Web View"): `Open(device_id)` (Operator; refuses
+  Certificate changed, Credentials required, Password not set with the shared text; audit "Opened web interface"),
+  `Exchange` (one bidirectional call per HTTP request or WebSocket of the embedded browser; the server sends it to the
+  device with the stored login and the pinned certificate; FAILED_PRECONDITION for Certificate changed, INVALID_ARGUMENT
+  for a path that leaves the device).
 - `TagService` (`tags.proto`, device tags, see "Device tags"): `List` (every definition sorted by name with its
   `device_count`, then names used on devices without a definition, `defined = false`), `Watch` (the whole `TagList` on
   subscribe and after every change of the definitions; small, no ChangeBatcher needed), `Create(name, color)`
@@ -639,7 +646,8 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   appears only while the server is unreachable.
 - Left navigation rail: expanded by default (collapsed: icons only, ~56 px, tooltips with the label),
   expand/collapse toggle at the bottom of the rail; expanded ~220 px with icon + label.
-  Selected item as rounded pill `#2A2A2A`. Plugin pages (not host pages) have a context menu
+  Selected item as rounded pill `#2A2A2A`. The icons of Devices and Plugins (only the icons) are in the accent color
+  (`NavItemViewModel.IsAccentIcon`, theme `ui|IconLabel.accentIcon`). Plugin pages (not host pages) have a context menu
   **Open in new window** on their rail entry: the plugin creates another, independent view (own context, streams, state)
   shown in `Shell/PluginWindow` (an empty title bar: the page header names the page; window title
   "<page> · OADM" for the task bar; page padding, not modal, as many as wanted); the windows close
@@ -649,10 +657,11 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   `ClosePluginWindowsRequested`; tests `PluginWindowTests`). Entries top: Devices, then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (VAPIX
   Commander, Device triggers), Security (PKI, Hardening scan), Monitoring (Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
-  no page), Maintenance, Integrations, Utilities, Extensions (default, third-party)): only groups
+  no page), Maintenance, Integrations, Utilities (Web View), Extensions (default, third-party)): only groups
   with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
-  each group, collapsed = a separator at each group start. Pinned bottom, top to bottom: Users, Credentials and Plugins (Admin only: hidden for operators, follow the session
-  role live), Logs, Settings, About (icons `users`, `key`, `plugin`, `logs`, `settings`, `info`), then the logged-in user (an initial
+  each group, collapsed = a separator at each group start. Pinned bottom, top to bottom: Plugins with a divider below it (it changes what the whole client offers), Users,
+  Credentials (these three Admin only: hidden for operators, follow the session role live), Logs, Settings, About (icons
+  `plugin`, `users`, `key`, `logs`, `settings`, `info`), then the logged-in user (an initial
   avatar and the name in primary text, not a navigation entry) with Log out and the expand toggle. Keys = `HostPages` (`users`, `credentials`, `plugins`, `logs`, `settings`, `about`); opening an
   admin page as operator does nothing, a hidden page that was open falls back to Devices. No Tasks page. Every page
   header (core plugin pages, Users, Credentials, About, Settings) is the shared `Controls/PageTitleBar` (title, grey
@@ -929,7 +938,8 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   Text, Multiline, Number, Bool, Choice, DynamicChoice through `ListChoicesAsync`, Password stored encrypted and never sent
   back, Code = a body in the code editor colored by `Language` or by the value of the field `LanguageKey` (json, xml, html,
   text, form), KeyValues = name / value rows stored as `[{"name","value"}]` (at most 50, one line each,
-  `ActionInvocation.GetPairs`); `VisibleWhenValue` may list several values "basic|digest"), `Validate`, `Describe`,
+  `ActionInvocation.GetPairs`); `VisibleWhenValue` may list several values "basic|digest"), `UsesPlaceholders` (the rule
+  dialog shows the Placeholders list), `Validate`, `Describe`,
   `RunsOn(edge)`, `ExecuteAsync(IActionContext, ActionInvocation)`; `IActionContext` gives a pre-authenticated `Vapix` for
   the target, the plugin's settings, `Log` and `Text(text)` / `Text(text, PlaceholderEscape)` (None, Json, Xml, Url: each
   value escaped for the format it goes into). The placeholders are one list,
@@ -996,7 +1006,8 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   one row, Limits), **2 When** (Conditions: "When" / "And" rows, Add event, Add schedule, day toggles), **3 Then** (Actions:
   "Then" rows: action, On (targets), the settings form (code fields in `ui:CodeEditor`, name / value rows with Add and
   remove icons, every setting `FormField.wide`), move up / down, remove; actions without devices have **Send test** with
-  the result chip next to it (`TestAction`); Add action up to five; right of the actions the **Placeholders** card (a list with copy buttons): "Event: <trigger>" with the trigger's values, then Rule and Device from
+  the result chip next to it (`TestAction`); Add action up to five; right of the actions the **Placeholders** card, only while an action of the rule writes texts
+  (`IActionPlugin.UsesPlaceholders`, `ActionEntry.uses_placeholders = 11`: Send email, Send HTTP request; a list with copy buttons): "Event: <trigger>" with the trigger's values, then Rule and Device from
   `ActionPlaceholders.Fixed`, each "{name}" + a short description + a copy icon; window 1160 wide), **4 Overview** (one
   short line per part: Name, State, When, And, Then, Limits; Save). Footer Back / Next (disabled with the step's first
   problem as tooltip) and Save on the overview. The devices of a condition or an action have no mode drop-down: one purple
@@ -1135,7 +1146,8 @@ the UI thread.
   `QueryAsync` (TaskService.Query) and `UploadAsync` (FileService.Upload with progress).
 - `ICorePluginPage.CreateView(ctx)`: the rail page; `HasOwnCards` (the view lays out its own cards), `ShowTasksPane` (the
   shared tasks pane below the page). `ICorePluginClientContext`: `InvokeAsync`, `WatchEventsAsync` (PluginService.Watch),
-  `Devices` + `DevicesChanged`, `SelectedDevices`, `OwnerName`, `ShowMessageAsync`, `ConfirmAsync`, `OpenAsync`, `Owner`.
+  `Devices` + `DevicesChanged`, `SelectedDevices`, `OwnerName`, `ShowMessageAsync`, `ConfirmAsync`, `OpenAsync`, `Owner`,
+  `DeviceWeb` (`IDeviceWebAccess`: a device's web interface for an embedded browser through the server, see "Web View").
 - `IToolbarPlugin` (`Id`, `Order`, `Group`: Add, Manage, Tasks, Plugins; `CreateControl` once) with `IToolbarContext`
   (selection, devices, task plugins, `CanRunTask` / `CannotRunTaskReason`, `RunTaskAsync`, `OpenAsync`,
   `RemoveDevicesAsync`, `RefreshDevicesAsync`, `QueryAsync`, `UploadAsync`, `InvokePluginAsync`, messages).
@@ -1214,7 +1226,7 @@ is always on.
   (ACAP), Users, Network settings, PKI, System report, Device configuration, Outputs and Notifications (core functionality). Enabled whatever
   the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers FAILED_PRECONDITION "<name> is always on.".
   Switchable: Snapshot report, VAPIX Commander, Metadata Monitor, NTP server, DHCP server, Hardening scan, Image Health
-  Dashboard, I/O Monitor, Device triggers. Third-party plugins are switchable unless their manifest says otherwise.
+  Dashboard, I/O Monitor, Device triggers, Web View. Third-party plugins are switchable unless their manifest says otherwise.
 - Manifest `description` (`PluginOrigin.Description`): one short sentence shown on the Plugins page; every bundled
   plugin has one.
 - `PluginRegistry`: `TaskPlugins`, `CorePlugins`, `TryGetTaskPlugin`, `TryGetCorePlugin` see only enabled packages
@@ -1231,7 +1243,7 @@ is always on.
 - Client: `Plugins/PluginPackageStore` (loaded on every connect; `Changed` reloads the rail pages and the task catalog
   and hides the toolbar entries of packages that are off: `DeviceToolbar.ApplyPackageStates`, the package of a client
   part from the plugin.json next to its dll, `IClientPluginRegistry.PackageOf`). Rail page **Plugins** (Admin only,
-  key `HostPages.Plugins`, icon `plugin`, below Credentials; subtitle "A plugin that is off shows no page, menu entry or
+  key `HostPages.Plugins`, icon `plugin`, first of the bottom entries with a divider below it; subtitle "A plugin that is off shows no page, menu entry or
   toolbar button."; `Settings/PluginsPageView` + `PluginsViewModel`): one card with a DataGrid On (check box), Plugin,
   Description, grouped like the navigation rail (one collapsible group per rail group that has
   plugins, in rail order, the same look as the device grid's tag groups without color, theme `DataGrid.groups`; sorted by
@@ -1478,6 +1490,24 @@ decisions: plugin `README.md`.
   information only; every method is Operator and not audited; results kept per device and level (at most 10,000).
 - Tests: `tests/Oadm.Plugins.HardeningScan.Tests` (+ read-only hardware test).
 
+## Web View (core plugin)
+
+`plugins/Oadm.Plugins.WebView` (+ `.Client`), id `oadm.web-view`, rail page **Web View** (group Utilities, icon `globe`), on by
+default, switchable. The web interface of the managed devices in browser tabs inside OADM, logged in with the stored
+login. Decisions, the relay and tests: plugin `README.md`.
+
+- Rules that must hold: passwords never reach the client: the embedded browser talks to a relay of its own per tab (own loopback
+  address `127.1.x.y`, so the devices' login cookies never mix; macOS 127.0.0.1, `Oadm.Client/DeviceWeb/DeviceWebRelay`), the server sends every request and WebSocket to the device with the
+  stored login and the pinned certificate (`DeviceWebService`); only the browser that opened the relay's one-time start
+  address gets its session cookie (others 403, another Host 400); requests stay on the device; refused statuses are not
+  contacted; every open is audited; Operator.
+- Page: left card: the page select (Web interface, Image Health Analytics, Object Analytics, License Plate Verifier,
+  Custom with a path field, error below it; it shows the active tab's page, changing it opens the page in the active tab,
+  new tabs use the page chosen last), the search, the devices grouped by tag (like Group by tag, "No tag" last, no
+  counts; `ui:DeviceIcon` + address). Right card: one row Close all tabs, Reload, Back (browser history), the tabs (one per
+  device, select-field height, scrolling sideways), then the page edge to edge. Without the OS browser runtime (WebView2,
+  WebKitGTK) the page says what to install.
+
 ## Date and time
 
 `plugins/Oadm.Plugins.DateTime` (+ `.Client`), id `oadm.datetime`, always on, context menu (Maintenance, icon `clock`)
@@ -1603,7 +1633,7 @@ AuthTokens, AuditEntries); client `Shell/AppShell`, `LoginViewModel`, `Settings/
   task's Owner is "<user>@<client machine>". `Logout` revokes. Failed logins: 5 per user in 5 minutes, then 5 minutes
   locked, logged. `AuthMaintenanceHostedService` removes expired sessions and old audit entries hourly.
 - **Roles.** Admin: everything. Operator: devices (watch, add, remove, refresh, credentials of a device, "Log in", "Set
-  password", web UI link, tagging devices and creating tags), discovery, tasks (run, cancel, delete; not Delete all),
+  password", web UI link, the Web View, tagging devices and creating tags), discovery, tasks (run, cancel, delete; not Delete all),
   live view, uploads, plugin pages that do not change server configuration (Snapshot report, VAPIX Commander, Metadata
   Monitor, System report, PKI read and device certificate tasks). Admin only: `SettingsService.Set`, the credential list
   (add, remove, reveal), users, `TaskService.DeleteAll`, PKI (generate, import, backup, export, install in the server
@@ -1618,7 +1648,7 @@ AuthTokens, AuditEntries); client `Shell/AppShell`, `LoginViewModel`, `Settings/
   entries. Logged: login ok / failed, logout, user changes, settings changes, credential list add / remove / reveal, PKI
   actions, DHCP / NTP save, task runs (plugin, device count), Delete all, device remove, device login and first password
   (counts), devices added or moved automatically (user "system"), tags ("Tagged 12 devices: +Building A -PTZ"), plugins
-  on / off, event rules, VAPIX Commander send / rollout. The Logs page has an **Audit** tab (Admin only, newest 10,000,
+  on / off, event rules, VAPIX Commander send / rollout, Web View ("Opened web interface", the device). The Logs page has an **Audit** tab (Admin only, newest 10,000,
   virtualized, search).
 
 ## Client: login and users
@@ -1790,7 +1820,9 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   return a `DeviceChoice` {Kind All / EventDevice / Chosen, DeviceIds, Tags}; with tags it lists the devices' tags, every
   tag of the initial choice and `DevicePickerOptions.TagNames` (the rule editor passes the defined tags), count 0 when no
   device has it; summary "1 tag: 42 of 5,000 devices" / "2 tags and 3 devices: ...") and
-  `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
+  `DeviceIcon` (every device icon in a list: the category icon `Icon.device.*`, neutral when OK, amber for Credentials
+  required / Password not set / Certificate changed, red for Unreachable, `ShowStatusToolTip` = the status message on
+  hover; device grid, Web View), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
   puts one right of the input instead of a long hint), `WizardSteps` + `WizardStepItem` (the step
   row of every wizard: numbered dot and name, thin line between, current accent, done with a check, a step opens when
   every step before it is complete; theme `Button.wizardStep`, `Border.wizardDot`, `TextBlock.wizardLabel`,

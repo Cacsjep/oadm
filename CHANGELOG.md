@@ -6,6 +6,19 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+### Added
+
+- **Web View**: the web interface of the devices in tabs inside OADM, already logged in. Devices grouped by tag, one
+  tab per device, Back and Reload, and a page select for the web interface, Image Health Analytics, Object Analytics,
+  License Plate Verifier or any other path on the device. The login stays on the server.
+
+### Changed
+
+- Logs and the task details: information entries show the blue info icon.
+- Event rules: the **Placeholders** list shows only next to actions that write texts (Send email, Send HTTP request).
+- Navigation: **Plugins** moved to the top of the bottom entries, with a divider; the icons of **Devices** and
+  **Plugins** are purple.
+
 ## [2.2.0] - 2026-10-11
 
 ### Changed
