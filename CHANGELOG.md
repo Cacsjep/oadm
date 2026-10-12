@@ -6,6 +6,8 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+## [2.5.0] - 2026-10-12
+
 ### Added
 
 - **Live View** page: saved views of several cameras at once, opened in tabs. Create a view, drag cameras from the list
