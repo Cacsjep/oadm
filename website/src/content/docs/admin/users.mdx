@@ -1,33 +1,72 @@
 ---
 title: Users and roles
-description: Who can log in to the server, what they may do, and the audit log.
+description: Who can log in to the server, what each role may do, and the audit log.
 ---
 
 import { Image } from 'astro:assets';
 import users from '../../../assets/screens/client-users-page.png';
+import matrix from '../../../assets/screens/client-roles-matrix.png';
+import yourRole from '../../../assets/screens/client-your-role.png';
 import credentials from '../../../assets/screens/client-page-credentials.png';
 import audit from '../../../assets/screens/logs-audit-tab.png';
 
-Everyone logs in to the server with their own user. Two roles:
+Everyone logs in to the server with their own user. Every user has one role, and the role decides what the user may do.
 
-| | Operator | Administrator |
-|---|---|---|
-| Add, remove, refresh devices, log in to devices | Yes | Yes |
-| Run, cancel and delete tasks | Yes | Yes |
-| Live view, Snapshot report, VAPIX Commander, Metadata Monitor, System report, Hardening scan | Yes | Yes |
-| Tag devices, create tags | Yes | Yes |
-| Rename, recolor, delete tags | | Yes |
-| Settings, Credentials, Users, Delete all tasks | | Yes |
-| PKI certificate authority and settings, NTP and DHCP server settings | | Yes |
+| Role | What it may do |
+|---|---|
+| **Administrator** | Everything, also what plugins add later. Cannot be changed. |
+| **Operator** | Works with devices and tasks. Changeable; **Reset to default** brings back the defaults. |
+| **Viewer** | Sees the devices, live view and the monitoring pages. Changes nothing. Changeable. |
+| Your own roles | What you tick in the matrix. Start empty or as a copy of another role. |
+
+Users, roles, the credential list, server settings, turning plugins on or off and the audit log are for administrators
+only. No other role can get them.
 
 ## Users page
 
-<Image src={users} alt="Users page" class="screen" />
+<Image src={users} alt="Users page with the users on top and the roles below" class="screen" />
 
-Add users, change their role, reset a password, disable or delete them. You cannot delete or disable yourself or the
-last administrator.
+**+ User** adds a user. The buttons of a row edit the user's role, change the password, disable or delete the user. You
+cannot change your own role or delete yourself, and the last administrator stays. A new role applies to the user's next
+action, without logging in again.
 
 Five wrong passwords in five minutes lock a user for five minutes.
+
+## Roles
+
+<Image src={matrix} alt="The permission matrix: permissions as rows, roles as columns" class="screen" />
+
+Below the users, every permission is a row and every role a column. The permissions are grouped like the client:
+**Devices**, **Tasks**, **Event rules**, then one group per plugin. A check box in a group row gives or takes the whole
+group. Point at a permission to see what it allows. A warning icon marks permissions that act on the devices with
+their stored login, such as removing users on devices or opening the web interface in **Web View**: whoever has them
+can change anything on the device.
+
+- **New role** asks for a name and whether to start empty or from another role.
+- The menu of a role column renames, copies, resets (Operator, Viewer) or deletes it. A role users have cannot be
+  deleted.
+- **Save** saves every change at once, after a confirmation that lists what changes per role. **Discard** goes back.
+
+Some tasks have more than one permission, so a role can do the everyday part only: **Upgrade firmware** (upgrade, with
+factory default, downgrade), **Users** on devices (add, change, remove), **Applications (ACAP)** (install, downgrade,
+start and stop, remove) and **Import configuration** (settings, connection settings). The dialogs show only what the
+role may do.
+
+A plugin installed later brings its permissions: Operator and Viewer get the plugin's defaults, your own roles get
+nothing until you tick it.
+
+## Your role
+
+<Image src={yourRole} alt="Your role window" class="screen" />
+
+Click your name at the bottom of the navigation rail to see your role and what it allows.
+
+## After the update to roles
+
+Existing administrators become **Administrator**, everyone else **Operator**. The Operator role no longer has the risky
+parts: Web View, removing users on devices, firmware downgrades and factory defaults, downgrading and removing
+applications, and importing connection settings. Administrators see this once as a notice with **Check roles**; tick
+what your operators need.
 
 ## Credentials page
 
@@ -40,5 +79,5 @@ password; every reveal is in the audit log.
 
 <Image src={audit} alt="Audit tab on the Logs page" class="screen" />
 
-**Logs** > **Audit** (administrators) lists who did what: logins, user and settings changes, credential reveals, task
-runs, removed devices, PKI and server changes. Entries are kept 365 days.
+**Logs** > **Audit** (administrators) lists who did what: logins, user, role and settings changes, credential reveals,
+task runs, removed devices, PKI and server changes. Entries are kept 365 days.

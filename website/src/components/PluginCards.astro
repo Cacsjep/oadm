@@ -1,7 +1,7 @@
 ---
 // Landing page: one card per plugin with a picture of its page (from the headless tests), its name and one sentence.
 // A click opens a detail window with the large picture and a link to the plugin's docs page (without JavaScript the
-// card is that link). Order as in the navigation rail.
+// card is that link). Order as in the navigation rail; built-in features link their own docs page (href).
 import { Image, getImage } from 'astro:assets';
 import ntp from '../assets/screens/ntp-server-page.png';
 import dhcp from '../assets/screens/dhcp-server-page.png';
@@ -14,6 +14,7 @@ import imageHealth from '../assets/screens/image-health-dashboard.png';
 import io from '../assets/screens/io-monitor-page.png';
 import snapshot from '../assets/screens/snapshot-report-page.png';
 import webView from '../assets/screens/web-view-page.png';
+import roles from '../assets/screens/client-roles-matrix.png';
 
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
@@ -29,6 +30,7 @@ const plugins = [
 	{ name: 'I/O Monitor', page: 'io-monitor', image: io, text: 'The inputs and outputs of a device, live.' },
 	{ name: 'Snapshot report', page: 'snapshot-report', image: snapshot, text: 'Every camera at a glance, a PDF for the customer.' },
 	{ name: 'Web View', page: 'web-view', image: webView, text: 'The web interface of every device in tabs, already logged in. Set up apps like Object Analytics on many cameras, one tab after the other.' },
+	{ name: 'Users and roles', href: 'admin/users', image: roles, text: 'Give every user exactly the rights they need: Administrator, Operator, Viewer or roles of your own.' },
 ];
 
 const large = await Promise.all(plugins.map(async (p) => (await getImage({ src: p.image, width: 1600, format: 'webp' })).src));
@@ -36,7 +38,7 @@ const large = await Promise.all(plugins.map(async (p) => (await getImage({ src: 
 
 <div class="plugin-cards not-content">
 	{plugins.map((p, i) => (
-		<a class="plugin-card" href={`${base}tools/${p.page}/`} data-large={large[i]}>
+		<a class="plugin-card" href={`${base}${p.href ?? `tools/${p.page}`}/`} data-large={large[i]}>
 			<span class="plugin-shot">
 				<Image src={p.image} alt="" width={720} />
 			</span>
