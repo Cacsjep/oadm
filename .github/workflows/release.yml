@@ -183,8 +183,8 @@ jobs:
             $p
           }
           $msi = (Get-ChildItem artifacts/packages/*.msi | Select-Object -First 1).FullName
-          $p = Invoke-Limited msiexec.exe "/i `"$msi`" /qn /l*v install.log" install.log
-          if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 80; throw "install failed: $($p.ExitCode)" }
+          $p = Invoke-Limited msiexec.exe "/i `"$msi`" /qn /norestart /l*v install.log" install.log
+          if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 80; throw "install failed: $($p.ExitCode) (3010 = restart required)" }
           $svc = Get-Service OadmServer
           "service: $($svc.Status) $($svc.StartType)"
           $ok = $false
@@ -223,8 +223,12 @@ jobs:
           # WinExe: Start-Process returns at once; Invoke-Limited waits for the exit code.
           $d = Invoke-Limited 'C:\Program Files\OADM\Client\Oadm.Client.exe' '--check-decoder' '' 120
           if ($d.ExitCode -ne 0) { throw "decoder check failed: $($d.ExitCode)" }
-          $p = Invoke-Limited msiexec.exe "/x `"$msi`" /qn /l*v uninstall.log" uninstall.log
-          if ($p.ExitCode -ne 0) { Get-Content uninstall.log -Tail 80; throw "uninstall failed: $($p.ExitCode)" }
+          # Stop the service first, so its exe is not in use while the files are removed (a file in use asks for a
+          # restart; /norestart turns that into exit code 3010 instead of a restart of the runner).
+          Stop-Service OadmServer -ErrorAction SilentlyContinue
+          (Get-Service OadmServer).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(60))
+          $p = Invoke-Limited msiexec.exe "/x `"$msi`" /qn /norestart /l*v uninstall.log" uninstall.log
+          if ($p.ExitCode -ne 0) { Get-Content uninstall.log -Tail 80; throw "uninstall failed: $($p.ExitCode) (3010 = restart required)" }
           if (Get-Service OadmServer -ErrorAction SilentlyContinue) { throw 'service still installed' }
           if (Get-NetFirewallRule -DisplayName 'OADM Server*' -ErrorAction SilentlyContinue) { throw 'firewall rule left behind' }
           if (-not (Test-Path C:\ProgramData\OADM\master.key)) { throw 'data folder was removed' }
@@ -250,16 +254,16 @@ jobs:
             $p
           }
           $msi = (Get-ChildItem artifacts/packages/*.msi | Select-Object -First 1).FullName
-          $p = Invoke-Limited msiexec.exe "/i `"$msi`" ADDLOCAL=Client /qn /l*v install-client.log" install-client.log
-          if ($p.ExitCode -ne 0) { Get-Content install-client.log -Tail 80; throw "install failed: $($p.ExitCode)" }
+          $p = Invoke-Limited msiexec.exe "/i `"$msi`" ADDLOCAL=Client /qn /norestart /l*v install-client.log" install-client.log
+          if ($p.ExitCode -ne 0) { Get-Content install-client.log -Tail 80; throw "install failed: $($p.ExitCode) (3010 = restart required)" }
           if (Get-Service OadmServer -ErrorAction SilentlyContinue) { throw 'client only must not install the service' }
           if (Test-Path 'C:\Program Files\OADM\Server') { throw 'client only must not install the server' }
           if (Get-NetFirewallRule -DisplayName 'OADM Server*' -ErrorAction SilentlyContinue) { throw 'client only must not add a firewall rule' }
           if (-not (Test-Path 'C:\Program Files\OADM\Client\THIRD-PARTY-NOTICES.txt')) { throw 'client license texts missing' }
           $d = Invoke-Limited 'C:\Program Files\OADM\Client\Oadm.Client.exe' '--check-decoder' '' 120
           if ($d.ExitCode -ne 0) { throw "decoder check failed: $($d.ExitCode)" }
-          $p = Invoke-Limited msiexec.exe "/x `"$msi`" /qn /l*v uninstall-client.log" uninstall-client.log
-          if ($p.ExitCode -ne 0) { Get-Content uninstall-client.log -Tail 80; throw "uninstall failed: $($p.ExitCode)" }
+          $p = Invoke-Limited msiexec.exe "/x `"$msi`" /qn /norestart /l*v uninstall-client.log" uninstall-client.log
+          if ($p.ExitCode -ne 0) { Get-Content uninstall-client.log -Tail 80; throw "uninstall failed: $($p.ExitCode) (3010 = restart required)" }
           if (Test-Path 'C:\Program Files\OADM\Client\Oadm.Client.exe') { throw 'client still installed' }
           'client only: install, decoder, uninstall ok'
 
