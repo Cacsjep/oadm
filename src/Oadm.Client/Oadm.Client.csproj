@@ -29,6 +29,9 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.4" />
     <!-- DataGrid ships on its own version line since Avalonia 12; 12.0.0 targets Avalonia >= 12.0.0. -->
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
+    <!-- The embedded browser of the Web View plugin (WebView2, WKWebView, WebKitGTK / WPE; MIT). In the host because
+         plugins share every Avalonia assembly from it. -->
+    <PackageReference Include="Avalonia.Controls.WebView" Version="12.1.0" />
     <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3">
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>

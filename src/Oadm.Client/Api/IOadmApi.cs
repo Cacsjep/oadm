@@ -148,6 +148,13 @@ public interface IOadmApi
     /// <summary>Video sources (view areas, sensors, encoder channels) of a device.</summary>
     Task<IReadOnlyList<LiveViewSource>> ListLiveViewSourcesAsync(string deviceId, CancellationToken ct);
 
+    // DeviceWebService (Web View: the device's web interface through the server)
+    /// <summary>Checks that the device can be opened and writes the audit entry.</summary>
+    Task<OpenDeviceWebReply> OpenDeviceWebAsync(string deviceId, CancellationToken ct);
+
+    /// <summary>One request or WebSocket of the embedded browser (Exchange).</summary>
+    IDeviceWebCall ExchangeDeviceWeb(CancellationToken ct);
+
     // PluginService
     Task<IReadOnlyList<CorePluginInfo>> ListCorePluginsAsync(CancellationToken ct);
     Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct);

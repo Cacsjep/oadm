@@ -95,8 +95,7 @@
                             Command="{Binding $parent[UserControl].((dev:DevicesViewModel)DataContext).LiveView.ToggleCommand}"
                             CommandParameter="{Binding Row}">
                     <Panel Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center" Background="Transparent" ToolTip.Tip="{Binding Row.CategoryTooltip}">
-                      <ui:OadmIcon Data="{Binding Row.CategoryIconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   Classes.warn="{Binding Row.IsStatusWarning}" Classes.error="{Binding Row.IsStatusError}" />
+                      <ui:DeviceIcon Category="{Binding Row.SdkCategory}" Status="{Binding Row.SdkStatus}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Panel>
                     </Button>
                   </DataTemplate>

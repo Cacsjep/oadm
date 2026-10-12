@@ -234,7 +234,7 @@ resolve them at compile time, so use `DynamicResource` (`Icon="{DynamicResource 
 
 `Icon.devices`, `Icon.tasks`, `Icon.settings`, `Icon.plugin`, `Icon.add`, `Icon.range`,
 `Icon.remove`, `Icon.refresh`, `Icon.restart`, `Icon.identify`, `Icon.columns`, `Icon.search`,
-`Icon.details`, `Icon.cancel`, `Icon.chevronDown`, `Icon.chevronRight`, `Icon.chevronUp`, `Icon.close`, `Icon.check`,
+`Icon.details`, `Icon.cancel`, `Icon.chevronDown`, `Icon.chevronLeft`, `Icon.chevronRight`, `Icon.chevronUp`, `Icon.globe`, `Icon.close`, `Icon.check`,
 `Icon.tag`, `Icon.groupBy`, `Icon.edit`, `Icon.braces`,
 `Icon.server`, `Icon.externalLink`, `Icon.more`, `Icon.key`, `Icon.lock`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
 `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.network`, `Icon.firmware`, `Icon.users`,
@@ -487,6 +487,17 @@ filter on.
 with a one-time session token (`wssession.cgi`), so the stored credentials never reach the plugin. The socket pings every
 `keepAlive` and aborts when no pong comes back (devices send nothing on a quiet stream). The caller disposes the socket;
 reconnect with a backoff when it breaks.
+
+### Device web interfaces in a page
+
+`ctx.DeviceWeb` (`IDeviceWebAccess` on `ICorePluginClientContext`, null on older hosts) opens the web interface of a
+managed device for an embedded browser (`Avalonia.Controls.WebView`, shipped by the client host; reference it with
+`ExcludeAssets="runtime"`). `OpenAsync(deviceId, ct)` asks the server (refused statuses throw
+`DeviceWebRefusedException` with the shared text; the server writes "Opened web interface" to the audit log) and starts a
+relay on 127.0.0.1 with its own port: open `session.StartAddress(path)` in the browser once (it hands the browser a
+session cookie, other programs get 403), later paths under `session.Origin`. Every request and WebSocket goes through
+the server (gRPC `DeviceWebService`), which adds the stored login and checks the pinned certificate. Dispose the session
+when the tab closes; the host stops every relay of a page when the page closes. Used by the Web View plugin.
 
 ### Host support for service plugins (NTP, DHCP, ...)
 

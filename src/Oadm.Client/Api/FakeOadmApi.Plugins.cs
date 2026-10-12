@@ -20,6 +20,7 @@ public sealed partial class FakeOadmApi
         Package(HardeningScanPluginId, "Hardening scan", "Checks devices against the AXIS OS hardening guide.", "Security", hasPage: true, tasks: 0, enabledByDefault: false),
         Package(IoMonitorPluginId, "I/O Monitor", "Shows the inputs and outputs of a device, live.", "Monitoring", hasPage: true, tasks: 0, enabledByDefault: false),
         Package(DeviceTriggersPluginId, "Device triggers", "Uses events of the devices in event rules.", "Automation", hasPage: true, tasks: 0, enabledByDefault: false),
+        Package(WebViewPluginId, "Web View", "Opens the web interface of the devices in tabs, logged in with the stored login.", "Utilities", hasPage: true, tasks: 0),
         Package("oadm.vapix-commander", "VAPIX Commander", "Sends VAPIX commands to many devices at once.", "Automation", hasPage: true, tasks: 0),
         Package("oadm.ntp-server", "NTP server", "Serves the time to devices from this server.", "Servers", hasPage: true, tasks: 1),
         Package("oadm.dhcp-server", "DHCP server", "Hands out IP addresses and can add new Axis devices automatically.", "Servers", hasPage: true, tasks: 0),

@@ -94,4 +94,10 @@ public interface ICorePluginClientContext
 
     /// <summary>Main window, owner for the plugin's own dialogs and file pickers.</summary>
     Window? Owner => null;
+
+    /// <summary>
+    /// The web interface of managed devices for an embedded browser, relayed by the server with the stored login (Web
+    /// View plugin). Null when the host has none (older hosts).
+    /// </summary>
+    IDeviceWebAccess? DeviceWeb => null;
 }

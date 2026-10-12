@@ -1,0 +1,65 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+
+// The web interface of a device, relayed by the server (Web View plugin). The client runs a small HTTP relay on
+// 127.0.0.1 for the embedded browser; every request and WebSocket of the page goes through Exchange, and the server
+// sends it to the device with the stored login and the pinned certificate. Passwords never reach the client.
+service DeviceWebService {
+  // Checks that the device can be opened (status) and writes the audit entry "Opened web interface".
+  rpc Open (OpenDeviceWebRequest) returns (OpenDeviceWebReply);
+  // One call per HTTP request or WebSocket: the client sends the request head, then body chunks and end; the server
+  // answers with the response head, then body chunks and end. A WebSocket carries messages both ways after the head.
+  rpc Exchange (stream DeviceWebFrame) returns (stream DeviceWebFrame);
+}
+
+message OpenDeviceWebRequest { string device_id = 1; }
+
+message OpenDeviceWebReply {
+  bool ok = 1;
+  string message = 2;   // why the device cannot be opened (Certificate changed, Credentials required, ...)
+}
+
+message WebHeader {
+  string name = 1;
+  string value = 2;
+}
+
+message DeviceWebRequestHead {
+  string device_id = 1;
+  string method = 2;
+  string path_and_query = 3;            // "/camera/index.html?x=1": always on the device
+  repeated WebHeader headers = 4;       // without hop-by-hop headers, Host and Authorization
+  bool has_body = 5;                    // body chunks follow, then end
+  bool websocket = 6;                   // a WebSocket upgrade
+  repeated string sub_protocols = 7;    // Sec-WebSocket-Protocol of the page
+}
+
+message DeviceWebResponseHead {
+  int32 status = 1;                     // 101 for an accepted WebSocket
+  string reason = 2;
+  repeated WebHeader headers = 3;       // without hop-by-hop headers; Location made relative to the device
+  string sub_protocol = 4;              // the WebSocket sub-protocol the device chose
+}
+
+message DeviceWebSocketMessage {
+  bytes data = 1;
+  bool text = 2;
+  bool end_of_message = 3;
+}
+
+message DeviceWebSocketClose {
+  int32 status = 1;
+  string description = 2;
+}
+
+message DeviceWebFrame {
+  oneof kind {
+    DeviceWebRequestHead request = 1;
+    DeviceWebResponseHead response = 2;
+    bytes body = 3;                     // up to 64 KB
+    bool end = 4;                       // the body is complete
+    DeviceWebSocketMessage message = 5;
+    DeviceWebSocketClose close = 6;
+  }
+}

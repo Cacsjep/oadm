@@ -382,12 +382,6 @@ public sealed partial class DevicePickerViewModel : ObservableObject
         OnPropertyChanged(nameof(ChosenCount));
     }
 
-    /// <summary>IPv4 addresses in numeric order, other addresses after them.</summary>
-    internal static string AddressKey(string address)
-    {
-        var parts = address.Split(':')[0].Split('.');
-        return parts.Length == 4 && parts.All(p => byte.TryParse(p, NumberStyles.None, CultureInfo.InvariantCulture, out _))
-            ? string.Join('.', parts.Select(p => p.PadLeft(3, '0')))
-            : "~" + address;
-    }
+    /// <summary>IPv4 addresses in numeric order, other addresses after them (<see cref="DeviceOrder.AddressKey"/>).</summary>
+    internal static string AddressKey(string address) => DeviceOrder.AddressKey(address);
 }

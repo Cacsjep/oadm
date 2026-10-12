@@ -366,6 +366,11 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<IReadOnlyList<LiveViewSource>> ListLiveViewSourcesAsync(string deviceId, CancellationToken ct) =>
         (await C.LiveView.ListSourcesAsync(new LiveViewSourcesRequest { DeviceId = deviceId }, cancellationToken: ct)).Sources;
 
+    public async Task<OpenDeviceWebReply> OpenDeviceWebAsync(string deviceId, CancellationToken ct) =>
+        await C.DeviceWeb.OpenAsync(new OpenDeviceWebRequest { DeviceId = deviceId }, cancellationToken: ct);
+
+    public IDeviceWebCall ExchangeDeviceWeb(CancellationToken ct) => new GrpcDeviceWebCall(C.DeviceWeb.Exchange(cancellationToken: ct));
+
     public async Task<IReadOnlyList<CorePluginInfo>> ListCorePluginsAsync(CancellationToken ct) =>
         (await C.Plugins.ListCorePluginsAsync(new Empty(), cancellationToken: ct)).Plugins;
 
@@ -474,6 +479,7 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public PluginService.PluginServiceClient Plugins { get; } = new(channel);
         public FileService.FileServiceClient Files { get; } = new(channel);
         public LiveViewService.LiveViewServiceClient LiveView { get; } = new(channel);
+        public DeviceWebService.DeviceWebServiceClient DeviceWeb { get; } = new(channel);
         public TagService.TagServiceClient Tags { get; } = new(channel);
         public EventService.EventServiceClient Events { get; } = new(channel);
     }

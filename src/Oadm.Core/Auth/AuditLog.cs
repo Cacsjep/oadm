@@ -46,6 +46,7 @@ public static class AuditActions
     public const string EventActionTested = "Tested event rule action";
     public const string RuleTurnedOn = "Turned event rule on";
     public const string RuleTurnedOff = "Turned event rule off";
+    public const string WebInterfaceOpened = "Opened web interface";
 }
 
 /// <summary>

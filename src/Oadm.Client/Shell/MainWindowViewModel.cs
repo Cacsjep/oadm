@@ -485,6 +485,7 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
     private readonly IToolbarContext _host;
     private EventHandler? _devicesChanged;
     private bool _hostSubscribed;
+    private Oadm.Client.DeviceWeb.DeviceWebAccess? _deviceWeb;
     private bool _disposed;
 
     public CorePluginClientContext(IOadmApi api, string pluginId, IToolbarContext host)
@@ -560,3 +561,7 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
 
     public Task OpenAsync(string hostPage) => _host.OpenAsync(hostPage);
 }
+
+    /// <summary>The page's relays of device web interfaces; stopped when the page closes.</summary>
+    public IDeviceWebAccess? DeviceWeb =>
+        _disposed ? null : _deviceWeb ??= new Oadm.Client.DeviceWeb.DeviceWebAccess(_api, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);

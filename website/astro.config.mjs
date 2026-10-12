@@ -68,6 +68,7 @@ export default defineConfig({
 						{ label: 'Metadata Monitor', slug: 'tools/metadata-monitor' },
 						{ label: 'Image Health Dashboard', slug: 'tools/image-health-dashboard' },
 						{ label: 'I/O Monitor', slug: 'tools/io-monitor' },
+						{ label: 'Web View', slug: 'tools/web-view' },
 						{ label: 'PKI', slug: 'tools/pki' },
 						{ label: 'NTP server', slug: 'tools/ntp-server' },
 						{ label: 'DHCP server', slug: 'tools/dhcp-server' },

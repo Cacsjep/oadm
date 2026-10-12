@@ -132,6 +132,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<FileGrpcService>();
         app.MapGrpcService<LiveViewGrpcService>();
         app.MapGrpcService<EventGrpcService>();
+        app.MapGrpcService<Oadm.Server.DeviceWeb.DeviceWebGrpcService>();
         if (app.Environment.IsDevelopment())
         {
             app.MapGrpcReflectionService();

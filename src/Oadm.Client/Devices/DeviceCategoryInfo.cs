@@ -5,32 +5,11 @@ namespace Oadm.Client.Devices;
 /// <summary>Icon key (theme geometry <c>Icon.device.*</c>) and display text of a device category.</summary>
 public static class DeviceCategoryInfo
 {
-    public static string ToIconKey(DeviceCategory category) => category switch
-    {
-        DeviceCategory.Camera => "device.camera",
-        DeviceCategory.Encoder => "device.encoder",
-        DeviceCategory.Speaker => "device.speaker",
-        DeviceCategory.Audio => "device.audio",
-        DeviceCategory.Intercom => "device.intercom",
-        DeviceCategory.Radar => "device.radar",
-        DeviceCategory.IoModule => "device.io",
-        DeviceCategory.DoorController => "device.door",
-        _ => "device.generic",
-    };
+    /// <summary>The shared mapping of <see cref="Oadm.Sdk.Client.Controls.DeviceIcon.IconKey"/>.</summary>
+    public static string ToIconKey(DeviceCategory category) => Oadm.Sdk.Client.Controls.DeviceIcon.IconKey(ToSdk(category));
 
-    public static string ToText(DeviceCategory category) => category switch
-    {
-        DeviceCategory.Camera => "Camera",
-        DeviceCategory.Encoder => "Video encoder",
-        DeviceCategory.Speaker => "Speaker",
-        DeviceCategory.Audio => "Audio device",
-        DeviceCategory.Intercom => "Intercom",
-        DeviceCategory.Radar => "Radar",
-        DeviceCategory.IoModule => "I/O module",
-        DeviceCategory.DoorController => "Door controller",
-        DeviceCategory.Other => "Other device",
-        _ => "Unknown device type",
-    };
+    /// <summary>The shared text of <see cref="Oadm.Sdk.Client.Controls.DeviceIcon.CategoryText"/>.</summary>
+    public static string ToText(DeviceCategory category) => Oadm.Sdk.Client.Controls.DeviceIcon.CategoryText(ToSdk(category));
 
     /// <summary>Tooltip of the icon: category, plus the raw ProdType when it adds information ("Camera (Dome Camera)").</summary>
     public static string ToTooltip(DeviceCategory category, string? productType)

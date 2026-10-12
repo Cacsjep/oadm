@@ -186,9 +186,12 @@ internal sealed class FakeAxisDevice
                 return Text("OK");
 
             default:
-                return new HttpResponseMessage(HttpStatusCode.NotFound);
+                return WebPage?.Invoke(request, body, authorized) ?? new HttpResponseMessage(HttpStatusCode.NotFound);
         }
     }
+
+    /// <summary>Pages of the web interface (Web View relay tests): request, body, whether the login was right.</summary>
+    public Func<HttpRequestMessage, string, bool, HttpResponseMessage?>? WebPage { get; set; }
 
     private string BasicDeviceInfoJson() => Serialize(new
     {

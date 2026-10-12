@@ -94,6 +94,9 @@ public sealed class VapixClient : IVapixClient, IDisposable
 
     public Uri BaseAddress { get; }
 
+    /// <summary>The login of the handler, for the one place the handler cannot answer: WebSocket upgrades (relay).</summary>
+    internal NetworkCredential? Credentials { get; init; }
+
     /// <summary>Certificate pinning state; null for HTTP or custom handlers.</summary>
     public CertificatePinning? Pinning { get; }
 
@@ -114,7 +117,7 @@ public sealed class VapixClient : IVapixClient, IDisposable
         var baseAddress = BuildBaseAddress(options.Scheme, options.Address);
         var pinning = new CertificatePinning(options.PinnedCertificateFingerprint) { TrustAnchors = options.TrustAnchors };
         var handler = CreateHandler(baseAddress, options.Credentials, pinning, options.AllowBasicOverHttp);
-        return new VapixClient(baseAddress, handler, pinning, options.Timeout);
+        return new VapixClient(baseAddress, handler, pinning, options.Timeout) { Credentials = options.Credentials };
     }
 
     /// <summary>
@@ -436,6 +439,200 @@ public sealed class VapixClient : IVapixClient, IDisposable
 
             throw;
         }
+    }
+
+    /// <summary>
+    /// A WebSocket of the device's own web interface (Web View relay): the upgrade goes through this client's handler, so
+    /// the stored login answers the device's challenge and the certificate pin applies. Unlike
+    /// <see cref="ConnectWebSocketAsync"/> no session token is added: the page brings its own. <paramref name="headers"/>
+    /// are the page's headers (Origin, Cookie, User-Agent); the WebSocket headers themselves are set by the socket.
+    /// </summary>
+    /// <exception cref="ArgumentException">The path does not stay on the device.</exception>
+    public async Task<System.Net.WebSockets.ClientWebSocket> ConnectRelayWebSocketAsync(
+        string pathAndQuery, IReadOnlyList<string> subProtocols, IEnumerable<KeyValuePair<string, string>> headers, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pathAndQuery);
+        ArgumentNullException.ThrowIfNull(subProtocols);
+        ArgumentNullException.ThrowIfNull(headers);
+        if (!pathAndQuery.StartsWith('/') || pathAndQuery.StartsWith("//", StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The path must start with one /.", nameof(pathAndQuery));
+        }
+
+        EnsureSameDevice(new Uri(pathAndQuery, UriKind.Relative));
+        var target = new Uri(BaseAddress, pathAndQuery);
+        var builder = new UriBuilder(target) { Scheme = target.Scheme == Uri.UriSchemeHttps ? "wss" : "ws", Port = target.Port };
+        var headerList = headers.ToList();
+        var (socket, challenges) = await TryConnectAsync(builder.Uri, subProtocols, headerList, null, ct).ConfigureAwait(false);
+        if (socket is not null)
+        {
+            return socket;
+        }
+
+        // 401: the handler does not answer login challenges of WebSocket upgrades; answer it with the stored login.
+        var authorization = Credentials is null ? null
+            : WebSocketLogin.Answer(challenges, target.PathAndQuery, Credentials, target.Scheme == Uri.UriSchemeHttps);
+        if (authorization is null)
+        {
+            throw new VapixAuthenticationException($"{pathAndQuery}: HTTP 401", HttpStatusCode.Unauthorized);
+        }
+
+        (socket, _) = await TryConnectAsync(builder.Uri, subProtocols, headerList, authorization, ct).ConfigureAwait(false);
+        return socket ?? throw new VapixAuthenticationException($"{pathAndQuery}: HTTP 401", HttpStatusCode.Unauthorized);
+    }
+
+    /// <summary>One upgrade; on 401 null and the device's challenges, other failures throw.</summary>
+    private async Task<(System.Net.WebSockets.ClientWebSocket? Socket, IReadOnlyList<string> Challenges)> TryConnectAsync(
+        Uri uri, IReadOnlyList<string> subProtocols, IReadOnlyList<KeyValuePair<string, string>> headers, string? authorization, CancellationToken ct)
+    {
+        var socket = new System.Net.WebSockets.ClientWebSocket();
+        socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
+        socket.Options.CollectHttpResponseDetails = true;
+        foreach (var protocol in subProtocols)
+        {
+            socket.Options.AddSubProtocol(protocol);
+        }
+
+        foreach (var (name, value) in headers)
+        {
+            try
+            {
+                socket.Options.SetRequestHeader(name, value);
+            }
+            catch (ArgumentException)
+            {
+                // a header the socket sets itself
+            }
+        }
+
+        if (authorization is not null)
+        {
+            socket.Options.SetRequestHeader("Authorization", authorization);
+        }
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(_timeout);
+        try
+        {
+            await socket.ConnectAsync(uri, _http, timeoutCts.Token).ConfigureAwait(false);
+            return (socket, []);
+        }
+        catch (Exception ex)
+        {
+            var status = socket.HttpStatusCode;
+            var challenges = socket.HttpResponseHeaders is { } responseHeaders
+                && responseHeaders.TryGetValue("WWW-Authenticate", out var values) ? values.ToList() : [];
+            socket.Dispose();
+            if (Pinning?.MismatchFingerprint is { } actual)
+            {
+                throw new CertificateChangedException(Pinning.PinnedFingerprint ?? string.Empty, actual.Length == 0 ? null : actual, ex);
+            }
+
+            if (status == HttpStatusCode.Unauthorized)
+            {
+                return (null, challenges);
+            }
+
+            throw;
+        }
+    }
+
+    private IReadOnlyList<string>? _relayChallenges;
+    private int _relayNonceCount;
+
+    /// <summary>
+    /// A request of the device's web interface (Web View relay), logged in like a browser: the login goes with the first
+    /// try (Basic over HTTPS, Digest with the device's last challenge), because some pages of the web interface hand out a
+    /// session cookie with every 401 and reject a second try with the old one (<c>login.cgi</c>). On a 401 the device's new
+    /// cookies and challenge are taken and the request is sent once more. <paramref name="build"/> creates the request
+    /// (again for the second try; its body must be rewindable); <paramref name="pageCookie"/> is the page's Cookie header.
+    /// Returns the answer and the cookies the device set on the refused try (the page gets them too).
+    /// </summary>
+    public async Task<(HttpResponseMessage Response, IReadOnlyList<string> SetCookies)> SendRelayAsync(
+        Func<HttpRequestMessage> build, string? pageCookie, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(build);
+        var https = BaseAddress.Scheme == Uri.UriSchemeHttps;
+        var first = build();
+        var target = new Uri(BaseAddress, first.RequestUri!).PathAndQuery;
+        SetRelayHeaders(first, Preemptive(first.Method.Method, target, https), pageCookie);
+        var response = await SendAsync(first, ct).ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.Unauthorized || Credentials is null)
+        {
+            return (response, []);
+        }
+
+        var challenges = response.Headers.WwwAuthenticate.Select(h => h.ToString()).ToList();
+        var setCookies = response.Headers.TryGetValues("Set-Cookie", out var values) ? values.ToList() : [];
+        var authorization = WebSocketLogin.Answer(challenges, target, Credentials, https, method: first.Method.Method);
+        if (authorization is null)
+        {
+            return (response, []);
+        }
+
+        _relayChallenges = challenges;
+        Volatile.Write(ref _relayNonceCount, 1);
+        response.Dispose();
+        var second = build();
+        SetRelayHeaders(second, authorization, MergeCookies(pageCookie, setCookies));
+        return (await SendAsync(second, ct).ConfigureAwait(false), setCookies);
+    }
+
+    /// <summary>The login for the first try: Digest with the last challenge (next nonce count), else Basic over HTTPS.</summary>
+    private string? Preemptive(string method, string target, bool https)
+    {
+        if (Credentials is null)
+        {
+            return null;
+        }
+
+        if (_relayChallenges is { } challenges)
+        {
+            return WebSocketLogin.Answer(challenges, target, Credentials, https, method: method, nonceCount: Interlocked.Increment(ref _relayNonceCount));
+        }
+
+        return https ? WebSocketLogin.Answer(["Basic"], target, Credentials, https) : null;
+    }
+
+    private static void SetRelayHeaders(HttpRequestMessage request, string? authorization, string? cookie)
+    {
+        request.Headers.Remove("Cookie");
+        if (!string.IsNullOrEmpty(cookie))
+        {
+            request.Headers.TryAddWithoutValidation("Cookie", cookie);
+        }
+
+        if (authorization is not null)
+        {
+            request.Headers.TryAddWithoutValidation("Authorization", authorization);
+        }
+    }
+
+    /// <summary>The page's cookies with the ones the device just set (same name: the new value wins).</summary>
+    internal static string MergeCookies(string? pageCookie, IReadOnlyList<string> setCookies)
+    {
+        var cookies = new List<KeyValuePair<string, string>>();
+        foreach (var part in (pageCookie ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var eq = part.IndexOf('=', StringComparison.Ordinal);
+            cookies.Add(eq > 0 ? KeyValuePair.Create(part[..eq], part[(eq + 1)..]) : KeyValuePair.Create(part, string.Empty));
+        }
+
+        foreach (var set in setCookies)
+        {
+            var pair = set.Split(';', 2)[0].Trim();
+            var eq = pair.IndexOf('=', StringComparison.Ordinal);
+            if (eq <= 0)
+            {
+                continue;
+            }
+
+            var name = pair[..eq];
+            cookies.RemoveAll(c => c.Key == name);
+            cookies.Add(KeyValuePair.Create(name, pair[(eq + 1)..]));
+        }
+
+        return string.Join("; ", cookies.Select(c => c.Key + "=" + c.Value));
     }
 
     /// <summary>The shared refusal text of a WebSocket login, like other requests: 403 Forbidden, otherwise Unauthorized.</summary>

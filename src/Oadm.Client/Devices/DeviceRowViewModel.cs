@@ -61,12 +61,22 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
     [ObservableProperty] public partial string DhcpText { get; private set; } = "";
     [ObservableProperty] public partial string HttpsText { get; private set; } = "";
     [ObservableProperty] public partial string Dot1xText { get; private set; } = "";
-    [ObservableProperty] public partial ContractStatus ContractStatus { get; private set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SdkStatus))]
+    public partial ContractStatus ContractStatus { get; private set; }
+
+    /// <summary>The status for the shared <c>ui:DeviceIcon</c>.</summary>
+    public SdkStatus SdkStatus => DeviceStatusInfo.ToSdk(ContractStatus);
+
+    /// <summary>The category for the shared <c>ui:DeviceIcon</c>.</summary>
+    public Oadm.Sdk.Devices.DeviceCategory SdkCategory => DeviceCategoryInfo.ToSdk(Category);
     [ObservableProperty] public partial string StatusText { get; private set; } = "";
     [ObservableProperty] public partial PillKind StatusKind { get; private set; }
     [ObservableProperty] public partial bool HasCredentials { get; private set; }
     [ObservableProperty] public partial string Scheme { get; private set; } = "";
-    [ObservableProperty] public partial DeviceCategory Category { get; private set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SdkCategory))]
+    public partial DeviceCategory Category { get; private set; }
     [ObservableProperty] public partial string? ProductType { get; private set; }
 
     /// <summary>SoC of the device, "ARTPEC-8" (<see cref="DeviceSocText"/>); null until the server read it.</summary>

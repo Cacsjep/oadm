@@ -132,5 +132,6 @@ write_docs "$ROOT" oadm-client "$CLIENT_DIR"
 build_package "$ROOT" oadm-client "$CLIENT_DEPENDS" "Description: Open AXIS Device Management client
  OADM manages Axis network devices. This package is the desktop client; it
  connects to an OADM server on this or another computer. Start it from the
- application menu or as oadm-client." "$TAKES_OVER" \
+ application menu or as oadm-client." "$TAKES_OVER
+Recommends: libwebkit2gtk-4.1-0" \
   opt/oadm/client/Oadm.Client
