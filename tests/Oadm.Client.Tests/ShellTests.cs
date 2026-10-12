@@ -197,6 +197,10 @@ public sealed class LogsViewModelTests
         Assert.Equal(3, vm.Entries.Count);
         Assert.Equal("Restart failed on 10.0.0.30", vm.Entries[0].Message);
 
+        // Information is the blue info icon, warnings amber, errors red.
+        Assert.Equal([false, false, true], vm.Entries.Select(e => e.IsInfo).ToArray());
+        Assert.True(vm.Entries[0].IsError);
+        Assert.True(vm.Entries[1].IsWarning);
         vm.SelectedLevel = LogsViewModel.Levels.Single(l => l.Title == "Warnings and errors");
         Assert.Equal(["Error", "Warning"], vm.Entries.Select(e => e.Level).ToArray());
         Assert.Equal("2 of 3 entries", vm.StatusLine);

@@ -26,6 +26,7 @@ public sealed record TaskLogRow(DateTime Time, string LevelText, PillKind LevelK
     public string TimeText => Time.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture);
     public bool IsWarning => LevelKind == PillKind.Warning;
     public bool IsError => LevelKind == PillKind.Error;
+    public bool IsInfo => LevelKind == PillKind.Neutral;
 }
 
 /// <summary>

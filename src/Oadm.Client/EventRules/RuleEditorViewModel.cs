@@ -797,6 +797,9 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
     /// </summary>
     [ObservableProperty] public partial IReadOnlyList<PlaceholderGroup> PlaceholderGroups { get; private set; } = [];
 
+    /// <summary>The panel shows only while an action of the rule writes texts with placeholders (email, webhook).</summary>
+    [ObservableProperty] public partial bool ShowPlaceholders { get; private set; }
+
     private string? _placeholderTrigger = "\0";
 
     private void RefreshPlaceholders()
@@ -883,6 +886,7 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
         {
             var stateful = IsStateful;
             RefreshPlaceholders();
+            ShowPlaceholders = RuleActions.Any(a => a.SelectedAction?.Entry.UsesPlaceholders == true);
             for (var i = 0; i < RuleActions.Count; i++)
             {
                 RuleActions[i].Title = string.Create(CultureInfo.InvariantCulture, $"Action {i + 1}");

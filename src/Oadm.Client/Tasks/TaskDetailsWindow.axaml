@@ -91,7 +91,8 @@
             <DataGridTemplateColumn Header="Level" Width="120">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="tasks:TaskLogRow">
-                  <ui:StatusChip Text="{Binding LevelText}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" />
+                  <ui:StatusChip Text="{Binding LevelText}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}"
+                                 IsInfo="{Binding IsInfo}" />
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>

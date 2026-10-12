@@ -121,6 +121,7 @@ message ActionEntry {
   repeated ActionFieldEntry fields = 8;
   bool available = 9;
   string source_name = 10;
+  bool uses_placeholders = 11;  // the rule dialog shows the Placeholders list for this action
 }
 
 message EventCatalog {

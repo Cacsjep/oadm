@@ -13,6 +13,9 @@ public sealed record LogEntry(DateTime Time, string Level, string Message)
     public string TimeText => Time.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture);
     public bool IsError => Level is "Error" or "Fatal";
     public bool IsWarning => Level == "Warning";
+
+    /// <summary>Information: the blue info icon (something happened, nothing to check).</summary>
+    public bool IsInfo => Level == "Information";
 }
 
 /// <summary>Recent client log lines for the Log tab. Fed by a Serilog sink.</summary>

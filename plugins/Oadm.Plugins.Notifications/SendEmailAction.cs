@@ -37,6 +37,8 @@ public sealed partial class SendEmailAction : IActionPlugin
 
     public bool SupportsTurnOff => true;
 
+    public bool UsesPlaceholders => true;
+
     public IReadOnlyList<ActionField> Fields { get; } =
     [
         ActionField.Text("host", "Mail server", required: true),

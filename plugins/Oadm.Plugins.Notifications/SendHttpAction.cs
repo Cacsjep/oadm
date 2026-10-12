@@ -36,6 +36,8 @@ public sealed class SendHttpAction : IActionPlugin
 
     public bool SupportsTurnOff => true;
 
+    public bool UsesPlaceholders => true;
+
     public IReadOnlyList<ActionField> Fields { get; } =
     [
         ActionField.Choice("method", "Method", [new("GET", "GET"), new("POST", "POST"), new("PUT", "PUT"), new("PATCH", "PATCH"), new("DELETE", "DELETE")], "POST"),

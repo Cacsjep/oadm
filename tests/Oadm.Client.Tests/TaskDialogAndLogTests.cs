@@ -97,9 +97,11 @@ public sealed class TaskDialogAndLogTests
         Assert.Equal("3 log entries", details.LogStatus);
         TaskLogRow first = details.Log[0];
         Assert.Equal("Info", first.LevelText);
+        Assert.True(first.IsInfo); // the blue info icon
         Assert.Equal("", first.Device); // task-level entry
         TaskLogRow warning = details.Log.Single(r => r.IsWarning);
         Assert.Equal("Warning", warning.LevelText);
+        Assert.False(warning.IsInfo);
         Assert.Equal(devices.Find(warned.DeviceId)!.DisplayAddress, warning.Device);
         Assert.Contains(details.Rows, r => r.IsStateWarning && r.StateText == "Done with warnings");
     }

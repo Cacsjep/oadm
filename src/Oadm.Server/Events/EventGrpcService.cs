@@ -246,6 +246,7 @@ public sealed class EventGrpcService(
             IconKey = plugin.IconKey ?? string.Empty,
             NeedsDevice = plugin.NeedsDevice,
             SupportsTurnOff = Safe(() => plugin.SupportsTurnOff),
+            UsesPlaceholders = Safe(() => plugin.UsesPlaceholders),
             Available = action.Available,
             SourceName = action.SourceName,
         };

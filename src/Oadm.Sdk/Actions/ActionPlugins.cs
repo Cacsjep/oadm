@@ -236,6 +236,12 @@ public interface IActionPlugin : IPlugin
     /// </summary>
     bool SupportsTurnOff => false;
 
+    /// <summary>
+    /// True: the action's texts are written for placeholders ({device}, {event}, the event's values), so the rule dialog
+    /// shows the Placeholders list next to it (email, webhook). False hides the list for this action.
+    /// </summary>
+    bool UsesPlaceholders => false;
+
     IReadOnlyList<ActionField> Fields { get; }
 
     /// <summary>

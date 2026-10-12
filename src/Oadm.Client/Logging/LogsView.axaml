@@ -35,7 +35,8 @@
             <DataGridTemplateColumn Header="Level" Width="120">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="log:LogEntry">
-                  <ui:StatusChip Text="{Binding Level}" IsError="{Binding IsError}" IsWarning="{Binding IsWarning}" />
+                  <ui:StatusChip Text="{Binding Level}" IsError="{Binding IsError}" IsWarning="{Binding IsWarning}"
+                                 IsInfo="{Binding IsInfo}" />
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>

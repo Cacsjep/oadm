@@ -120,7 +120,7 @@
         </Border>
 
         <!-- 3 Then: one to five actions, in this order; the placeholders the texts can use on the right -->
-        <Grid ColumnDefinitions="*,300" ColumnSpacing="{DynamicResource Oadm.Gap}" IsVisible="{Binding IsThenStep}">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{DynamicResource Oadm.Gap}" IsVisible="{Binding IsThenStep}">
         <Border Classes="card">
           <StackPanel Spacing="12">
             <ui:CardHeader Title="Actions" Description="They run in this order." />
@@ -226,7 +226,7 @@
         </Border>
 
         <!-- Placeholders: what the texts of an action can use; each one copies with its button -->
-        <Border Grid.Column="1" Classes="card" VerticalAlignment="Top">
+        <Border Grid.Column="1" Classes="card" Width="300" VerticalAlignment="Top" IsVisible="{Binding ShowPlaceholders}">
           <StackPanel Spacing="10">
             <ui:CardHeader Title="Placeholders" Description="Use them in the texts of an action." />
             <ItemsControl ItemsSource="{Binding PlaceholderGroups}">

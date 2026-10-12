@@ -315,7 +315,11 @@ public sealed class EventRulesTests
 
             // Send HTTP request: JSON body colored, query and header rows, a test with sample values.
             var http = editor.RuleActions[0];
+            Assert.False(editor.ShowPlaceholders); // no action chosen yet
+            http.SelectedAction = http.Actions.Single(a => a.Id == "oadm.outputs.set");
+            Assert.False(editor.ShowPlaceholders); // Set output has no texts
             http.SelectedAction = http.Actions.Single(a => a.Id == "oadm.notifications.http");
+            Assert.True(editor.ShowPlaceholders);
             Assert.False(http.ShowTargets);
             Assert.True(http.CanTest);
             http.Fields.Single(f => f.Key == "url").Text = "https://hooks.example.com/oadm";

@@ -94,7 +94,7 @@ public sealed partial class FakeOadmApi
     {
         var http = new ActionEntry
         {
-            Id = "oadm.notifications.http", DisplayName = "Send HTTP request", Group = "Notifications", IconKey = "send", NeedsDevice = false, SupportsTurnOff = true,
+            Id = "oadm.notifications.http", DisplayName = "Send HTTP request", Group = "Notifications", IconKey = "send", NeedsDevice = false, SupportsTurnOff = true, UsesPlaceholders = true,
             Description = "Sends a request to a web service, for example a webhook of Teams, Slack or a building system.", Available = true, SourceName = "Notifications",
         };
         http.Fields.Add(Choice("method", "Method", "POST", ("GET", "GET"), ("POST", "POST"), ("PUT", "PUT"), ("PATCH", "PATCH"), ("DELETE", "DELETE")));
@@ -123,7 +123,7 @@ public sealed partial class FakeOadmApi
     {
         var email = new ActionEntry
         {
-            Id = "oadm.notifications.email", DisplayName = "Send email", Group = "Notifications", IconKey = "send", NeedsDevice = false, SupportsTurnOff = true,
+            Id = "oadm.notifications.email", DisplayName = "Send email", Group = "Notifications", IconKey = "send", NeedsDevice = false, SupportsTurnOff = true, UsesPlaceholders = true,
             Description = "Sends an email through your mail server.", Available = true, SourceName = "Notifications",
         };
         email.Fields.Add(new ActionFieldEntry { Key = "host", Label = "Mail server", Kind = ActionFieldKind.ActionFieldText, Required = true, MaxLength = 1000 });
