@@ -221,7 +221,7 @@ img.screen {
 	color: var(--sl-color-accent-high);
 	font-size: 12px;
 	line-height: 1.5;
-	font-weight: 500;
+	font-weight: 400;
 }
 
 /* Landing page download row: one compact button per system, Linux with its two packages. */
@@ -241,9 +241,15 @@ html[data-has-hero] .hero {
 	white-space: nowrap;
 }
 
-/* The first content panel after the hero adds its own top padding; the animation follows the top bar closely. */
+/* The first content panel after the hero adds its own top padding; the animation follows the top bar closely. The
+   hidden hero's own panel takes no room. */
 html[data-has-hero] .content-panel:has(.motion) {
 	padding-top: 0;
+}
+
+html[data-has-hero] .content-panel:has(.hero) {
+	padding: 0;
+	border: 0;
 }
 
 .downloads {
