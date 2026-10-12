@@ -19,7 +19,7 @@ downloads them to the client machine, one folder per camera.
 | Errors | A recording that fails (deleted meanwhile, camera gone) counts in its row ("18 downloaded, 2 failed", the last reason as detail) and the next one runs. A folder that cannot be written (disk full) stops the download with the reason below the table. |
 | Lifetime | The view model lives as long as the rail page: switching pages does not stop a download; logging out or turning the plugin off stops it. Stop ends the current file (its `.part` is deleted) and keeps the finished ones. |
 | Roles | "Show the page" (Operator and Viewer: search), **Export recordings** (`export`: Operator yes, Viewer no). Every downloaded recording is audited ("Plugin action", "Exported recording: 10.0.0.48, 2026-10-12 18:09:25 to 2026-10-12 18:09:35 UTC"). |
-| Refusals | Certificate changed, Credentials required and Password not set are not contacted (shared `DeviceMessages`). Not a video device, no edge storage (`Properties.LocalStorage.LocalStorage`), no export (`Properties.LocalStorage.ExportRecording`, AXIS OS 5.60+) are the row's problem. Nothing found on a camera whose disks are all not in use (`disks/list.cgi`, no status "OK"): "No SD card or network share". |
+| Refusals | Certificate changed, Credentials required and Password not set are not contacted (shared `DeviceMessages`). Not a video device, no edge storage (`Properties.LocalStorage.LocalStorage`), no export (`Properties.LocalStorage.ExportRecording`, AXIS OS 5.60+) are the row's problem. Every search also reads the disk list (`disks/list.cgi`): a card that failed, is encrypted and cannot be opened, is not in use, read-only or locked is named next to the recordings found ("12 recordings found" as warning, "The SD card failed"), or is the row's status when nothing was found; no disk present: "No SD card or network share". A full card is no problem (the camera removes the oldest recordings). |
 | Scale | At most 50,000 recordings per camera and search (pages of 1,000); the grid is virtualized; 5,000 cameras tested. |
 
 ## Device API (read-only; Viewer and above)
@@ -34,7 +34,7 @@ Verified on an AXIS P3265-V (AXIS OS 12.11, export schema 1.4) and an AXIS camer
 | `record/list.cgi?recordingid=all&sortorder=ascending&startatresultnumber=N&maxnumberofresults=1000&starttime&stoptime` | the recordings that overlap the range, their times cut to it; `startatresultnumber` counts from 0, `numberofrecordings` = matches; a recording that still records has an empty stop |
 | `record/export/properties.cgi?schemaversion=1&recordingid&diskid&exportformat&starttime&stoptime` | `EstimatedFileSize` in kB (-1 unknown); errors as HTTP 200 `GeneralError` (110 recording not found) |
 | `record/export/exportrecording.cgi` (same parameters) | the file, chunked, `Content-Disposition` with the name; HTTP 400 for a recording that is gone; streamed (`VapixRequestOptions.StreamResponse`, 60 s until the headers) |
-| `disks/list.cgi?diskid=all` | only after a search found nothing: a disk with status "OK" |
+| `disks/list.cgi?diskid=all` | with every search: the state of the SD card and network share (status, read-only, locked; "disconnected" = not there) |
 
 ## Methods
 
@@ -52,4 +52,4 @@ a headless screenshot (`edge-recording-export.png`, `-download.png`), Perf (5,00
 test through the in-process server and the real gRPC client (searches the last two minutes of every dev camera and
 downloads them). Server: `tests/Oadm.Server.Tests/PluginDownloadTests` (the SDK file stream). Fake mode
 (`FakeOadmApi.EdgeRecording.cs`): a 10 s clip every 40 minutes, continuous hours on the Q6135-LE, no edge storage on
-the M3106-L Mk II.
+the M3106-L Mk II, a read-only card on the Q1656-LE.

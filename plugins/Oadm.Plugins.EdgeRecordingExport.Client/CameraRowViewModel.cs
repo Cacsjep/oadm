@@ -98,12 +98,16 @@ public sealed partial class CameraRowViewModel : ObservableObject
         }
         else if (result.Recordings.Count == 0)
         {
-            Status(result.NoDisk ? "No SD card or network share" : "No recordings");
+            Status(result.DiskProblem ?? "No recordings", warning: result.DiskProblem is not null and not EdgeRecordingExport.Recordings.EdgeRecordingTexts.NoDisk);
         }
         else if (result.Truncated)
         {
             Status(EdgeRecordingFormat.Count(result.Recordings.Count, "recording") + " found", warning: true,
                 detail: string.Create(CultureInfo.CurrentCulture, $"Only the first {EdgeRecordingInfo.MaxRecordingsPerCamera:N0} are listed. Choose a shorter range."));
+        }
+        else if (result.DiskProblem is { } disk)
+        {
+            Status(EdgeRecordingFormat.Count(result.Recordings.Count, "recording") + " found", warning: true, detail: disk);
         }
         else
         {

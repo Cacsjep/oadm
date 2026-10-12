@@ -148,6 +148,9 @@ internal sealed class FakeCamera : IVapixClient
     /// <summary>An SD card in use (disks/list.cgi "OK"); false: like a camera without a card.</summary>
     public bool HasDisk { get; set; } = true;
 
+    /// <summary>Attributes of the SD card in the disk list instead of the P3265-V's (e.g. <c>status="failed"</c>).</summary>
+    public string? SdCard { get; set; }
+
     /// <summary>Recordings whose export answers HTTP 400 (deleted meanwhile).</summary>
     public HashSet<string> Missing { get; } = [];
 
@@ -195,7 +198,9 @@ internal sealed class FakeCamera : IVapixClient
         Requests.Enqueue(uri);
         if (uri == EdgeStorageRequests.DisksUri)
         {
-            return Task.FromResult(Xml(Recorded.Read(HasDisk ? "p3265-disks.xml" : "no-sd-card-disks.xml")));
+            return Task.FromResult(Xml(SdCard is { } card
+                ? $"<root><disks><disk diskid=\"SD_DISK\" {card}/><disk diskid=\"NetworkShare\" status=\"disconnected\"/></disks></root>"
+                : Recorded.Read(HasDisk ? "p3265-disks.xml" : "no-sd-card-disks.xml")));
         }
 
         var path = uri.Split('?')[0];

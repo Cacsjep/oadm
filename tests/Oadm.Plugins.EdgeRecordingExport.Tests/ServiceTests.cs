@@ -69,10 +69,15 @@ public sealed class ServiceTests
         var withoutCard = new FakeCamera { HasDisk = false };
         var a = await SearchAsync(rig, rig.Add(withCard, "10.0.0.1").Id);
         var b = await SearchAsync(rig, rig.Add(withoutCard, "10.0.0.2").Id);
-        Assert.Equal((0, false, null), (a.Recordings.Count, a.NoDisk, a.Problem));
-        Assert.Equal((0, true, null), (b.Recordings.Count, b.NoDisk, b.Problem));
+        Assert.Equal((0, null, null), (a.Recordings.Count, a.DiskProblem, a.Problem));
+        Assert.Equal((0, "No SD card or network share", null), (b.Recordings.Count, b.DiskProblem, b.Problem));
         Assert.DoesNotContain(withCard.Requests, r => r.StartsWith(EdgeStorageRequests.PropertiesPath, StringComparison.Ordinal));
-        Assert.DoesNotContain(FakeCamera.WithClips(1, TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(1)).Requests, r => r == EdgeStorageRequests.DisksUri);
+
+        // A card problem is reported next to the recordings that were found.
+        var failing = FakeCamera.WithClips(2, TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(10));
+        failing.SdCard = "status=\"failed\"";
+        var c = await SearchAsync(rig, rig.Add(failing, "10.0.0.3").Id);
+        Assert.Equal((2, "The SD card failed"), (c.Recordings.Count, c.DiskProblem));
     }
 
     [Fact]

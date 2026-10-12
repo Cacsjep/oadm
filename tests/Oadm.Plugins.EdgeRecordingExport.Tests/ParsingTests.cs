@@ -40,10 +40,19 @@ public sealed class ParsingTests
     }
 
     [Fact]
-    public void A_disk_is_in_use_when_one_says_OK()
+    public void The_disk_list_says_what_is_wrong_with_the_SD_card_or_network_share()
     {
-        Assert.True(EdgeStorageParsing.HasDiskInUse(Recorded.Read("p3265-disks.xml")));
-        Assert.False(EdgeStorageParsing.HasDiskInUse(Recorded.Read("no-sd-card-disks.xml"))); // SD_DISK and NetworkShare "disconnected"
+        Assert.Null(EdgeStorageParsing.DiskProblem(Recorded.Read("p3265-disks.xml")));
+        Assert.Equal("No SD card or network share", EdgeStorageParsing.DiskProblem(Recorded.Read("no-sd-card-disks.xml"))); // both "disconnected"
+        static string? Sd(string attributes) => EdgeStorageParsing.DiskProblem($"<root><disks><disk diskid=\"SD_DISK\" {attributes}/></disks></root>");
+        Assert.Equal("The SD card failed", Sd("status=\"failed\""));
+        Assert.Equal("The SD card is encrypted and cannot be opened", Sd("status=\"wrong passphrase\""));
+        Assert.Equal("The SD card is not in use", Sd("status=\"connected\""));
+        Assert.Null(Sd("status=\"OK\" full=\"yes\"")); // the camera removes the oldest recordings
+        Assert.Equal("The SD card is read-only", Sd("status=\"OK\" full=\"yes\" readonly=\"yes\""));
+        Assert.Equal("The SD card is locked", Sd("status=\"OK\" locked=\"yes\""));
+        Assert.Equal("The network share failed", EdgeStorageParsing.DiskProblem(
+            "<root><disks><disk diskid=\"SD_DISK\" status=\"OK\"/><disk diskid=\"NetworkShare\" status=\"failed\"/></disks></root>"));
     }
 
     [Fact]

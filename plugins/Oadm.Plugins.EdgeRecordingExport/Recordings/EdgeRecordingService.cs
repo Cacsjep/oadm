@@ -74,14 +74,15 @@ public sealed partial class EdgeRecordingService(ICorePluginContext ctx, EdgeRec
 
             var format = await FormatAsync(client, ct).ConfigureAwait(false);
             var (recordings, truncated) = await ListAsync(client, request, ct).ConfigureAwait(false);
+            var disk = await DiskProblemAsync(client, ct).ConfigureAwait(false);
             if (recordings.Count == 0)
             {
-                return new SearchResult(device.Id, [], 0, format, null, NoDisk: !await HasDiskAsync(client, ct).ConfigureAwait(false));
+                return new SearchResult(device.Id, [], 0, format, null, DiskProblem: disk);
             }
 
             var bytes = await EstimateAsync(client, recordings, format, ct).ConfigureAwait(false);
             LogSearched(ctx.Logger, device.Address, recordings.Count);
-            return new SearchResult(device.Id, recordings, bytes, format, null, truncated);
+            return new SearchResult(device.Id, recordings, bytes, format, null, truncated, disk);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
@@ -181,16 +182,16 @@ public sealed partial class EdgeRecordingService(ICorePluginContext ctx, EdgeRec
         }
     }
 
-    /// <summary>Whether a disk is in use; true when the camera does not say (nothing to add to "No recordings" then).</summary>
-    private async Task<bool> HasDiskAsync(IVapixClient client, CancellationToken ct)
+    /// <summary>The problem of the SD card or network share; null when they are fine or the camera does not say.</summary>
+    private async Task<string?> DiskProblemAsync(IVapixClient client, CancellationToken ct)
     {
         try
         {
-            return EdgeStorageParsing.HasDiskInUse(await GetStringAsync(client, EdgeStorageRequests.DisksUri, ct).ConfigureAwait(false));
+            return EdgeStorageParsing.DiskProblem(await GetStringAsync(client, EdgeStorageRequests.DisksUri, ct).ConfigureAwait(false));
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
-            return true;
+            return null;
         }
     }
 
@@ -354,4 +355,6 @@ public static class EdgeRecordingTexts
     public const string NotExported = "The camera did not send the recording. It may have been deleted meanwhile";
 
     public const string Unreadable = "The camera sent an answer OADM cannot read";
+
+    public const string NoDisk = "No SD card or network share";
 }

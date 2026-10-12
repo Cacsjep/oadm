@@ -22,6 +22,9 @@ public sealed class ViewModelTests
         var b = rig.Add(FakeCamera.WithClips(1, TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(10)), "10.0.0.5", tags: "Building A");
         rig.Add(new FakeCamera { LocalStorage = false }, "10.0.0.7", tags: "Building A");
         rig.Add(new FakeCamera { HasDisk = false }, "10.0.0.8", tags: "Building A");
+        var readOnly = FakeCamera.WithClips(1, TimeSpan.FromMinutes(1), TimeSpan.FromSeconds(10));
+        readOnly.SdCard = "status=\"OK\" readonly=\"yes\"";
+        rig.Add(readOnly, "10.0.0.6", tags: "Building A");
         rig.Add(null, "10.0.0.9", category: DeviceCategory.Speaker, tags: "Building A"); // not a video device: never listed
         vm.AllRecordings = true;
         Assert.False(vm.CanSearch);
@@ -31,9 +34,10 @@ public sealed class ViewModelTests
         Assert.Equal("Selected cameras: Tag Building A and 10.0.0.48", vm.CamerasText);
         await vm.SearchCommand.ExecuteAsync(null);
 
-        Assert.Equal(["10.0.0.5", "10.0.0.7", "10.0.0.8", "10.0.0.48"], vm.Rows.Select(r => r.Address)); // address order
-        Assert.Equal("4 cameras · 4 recordings · about 7.8 MB · 1 not searched", vm.SummaryText);
-        Assert.Equal("No SD card or network share", vm.Rows[2].StatusText);
+        Assert.Equal(["10.0.0.5", "10.0.0.6", "10.0.0.7", "10.0.0.8", "10.0.0.48"], vm.Rows.Select(r => r.Address)); // address order
+        Assert.Equal("5 cameras · 5 recordings · about 9.8 MB · 1 not searched", vm.SummaryText);
+        Assert.Equal(("No SD card or network share", false), (vm.Rows[3].StatusText, vm.Rows[3].IsWarning));
+        Assert.Equal(("1 recording found", true, "The SD card is read-only"), (vm.Rows[1].StatusText, vm.Rows[1].IsWarning, vm.Rows[1].StatusDetail));
         var row = vm.Rows.Single(r => r.Device.Id == a.Id);
         Assert.Equal(("3 recordings found", true, "3", "about 5.9 MB"), (row.StatusText, row.IsOk, row.RecordingsText, row.SizeText));
         var failed = vm.Rows.Single(r => r.Address == "10.0.0.7");

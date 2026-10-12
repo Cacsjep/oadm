@@ -10,7 +10,7 @@ namespace Oadm.Client.Api;
 
 /// <summary>
 /// Fake Edge Recording Export so <c>--fake</c> and the tests show recordings: every video device with status OK has a
-/// 10 s recording every 40 minutes (the Q6135-LE records continuously in hour pieces, the M3106-L Mk II has no SD card), sizes
+/// 10 s recording every 40 minutes (the Q6135-LE records continuously in hour pieces, the M3106-L Mk II has no SD card, the Q1656-LE's card is read-only), sizes
 /// at about 4 Mbit/s, and a download sends that many bytes (an MP4 header and zeros) at about 40 MB/s, named like the
 /// camera names its files. JSON of the plugin (camelCase).
 /// </summary>
@@ -94,6 +94,11 @@ public sealed partial class FakeOadmApi
                 ["type"] = continuous ? "continuous" : "triggered",
             });
             bytes += (long)(((cutEnd ?? now) - cutStart).TotalSeconds * FakeBytesPerSecond);
+        }
+
+        if (device.Model.Contains("Q1656", StringComparison.Ordinal))
+        {
+            result["diskProblem"] = "The SD card is read-only";
         }
 
         result["estimatedBytes"] = bytes;

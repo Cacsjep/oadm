@@ -44,8 +44,8 @@ public sealed record SearchRequest(Guid DeviceId, DateTimeOffset? StartUtc, Date
 /// What a search found on one camera: the recordings (oldest first, their times cut to the range), the estimated size of
 /// all of them in bytes (null when the camera cannot estimate it), the file format the export uses ("mp4", "matroska"),
 /// or the problem in plain words (nothing found then). <paramref name="Truncated"/>: more recordings than
-/// <see cref="EdgeRecordingInfo.MaxRecordingsPerCamera"/> (only the first are listed). <paramref name="NoDisk"/>: nothing
-/// found and no SD card or network share is in use.
+/// <see cref="EdgeRecordingInfo.MaxRecordingsPerCamera"/> (only the first are listed). <paramref name="DiskProblem"/>: what is
+/// wrong with the SD card or network share ("The SD card failed", "No SD card or network share"), null when it is fine.
 /// </summary>
 public sealed record SearchResult(
     Guid DeviceId,
@@ -54,7 +54,7 @@ public sealed record SearchResult(
     string? Format,
     string? Problem,
     bool Truncated = false,
-    bool NoDisk = false);
+    string? DiskProblem = null);
 
 /// <summary>
 /// One recording: id and disk as the camera names them, start and stop (stop null while it records), the video source
