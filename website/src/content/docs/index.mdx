@@ -11,16 +11,10 @@ hero:
   tagline: Built by Professionals. For Professionals.<span class="independent">Independent open-source project. Not affiliated with or endorsed by Axis Communications AB. AXIS is a trademark of Axis AB.</span>
 ---
 
-import { Image } from 'astro:assets';
 import Downloads from '../../components/Downloads.astro';
 import TopBar from '../../components/TopBar.astro';
 import HeroMotion from '../../components/HeroMotion.astro';
-import snapshotReport from '../../assets/screens/snapshot-report-page.png';
-import commander from '../../assets/screens/plugin-vapix-commander-rollout.png';
-import hardening from '../../assets/screens/hardening-scan-basic.png';
-import metadata from '../../assets/screens/metadata-monitor-page.png';
-import tags from '../../assets/screens/client-tags-group-mode.png';
-import dhcp from '../../assets/screens/dhcp-server-page.png';
+import PluginCards from '../../components/PluginCards.astro';
 
 <TopBar />
 
@@ -30,28 +24,7 @@ import dhcp from '../../assets/screens/dhcp-server-page.png';
 
 <p class="section-lead">Explore the plugins</p>
 
-<div class="extras">
-	<a href="tools/ntp-server/">NTP server</a>
-	<a href="tools/dhcp-server/">DHCP server</a>
-	<a href="tools/vapix-commander/">VAPIX Commander</a>
-	<a href="tools/device-triggers/">Device triggers</a>
-	<a href="tools/hardening-scan/">Hardening scan</a>
-	<a href="tools/metadata-monitor/">Metadata Monitor</a>
-	<a href="tools/image-health-dashboard/">Image Health Dashboard</a>
-	<a href="tools/io-monitor/">I/O Monitor</a>
-	<a href="tools/snapshot-report/">Snapshot report</a>
-	<a href="tools/system-report/">System report</a>
-	<a href="tools/web-view/">Web View</a>
-</div>
-
-<div class="gallery">
-	<figure><Image src={snapshotReport} alt="Snapshot report" class="screen" /><figcaption>Snapshot report</figcaption></figure>
-	<figure><Image src={commander} alt="VAPIX Commander" class="screen" /><figcaption>VAPIX Commander</figcaption></figure>
-	<figure><Image src={hardening} alt="Hardening scan" class="screen" /><figcaption>Hardening scan</figcaption></figure>
-	<figure><Image src={metadata} alt="Metadata Monitor" class="screen" /><figcaption>Metadata Monitor</figcaption></figure>
-	<figure><Image src={tags} alt="Device list grouped by tag" class="screen" /><figcaption>Tags</figcaption></figure>
-	<figure><Image src={dhcp} alt="DHCP server" class="screen" /><figcaption>DHCP server</figcaption></figure>
-</div>
+<PluginCards />
 
 <section class="plugins-section">
 	<h2>Extend OADM with plugins</h2>

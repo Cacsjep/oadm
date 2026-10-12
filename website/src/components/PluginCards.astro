@@ -1,0 +1,212 @@
+---
+// Landing page: one card per plugin with a picture of its page (from the headless tests), its name and one sentence.
+// A click opens a detail window with the large picture and a link to the plugin's docs page (without JavaScript the
+// card is that link). Order as in the navigation rail.
+import { Image, getImage } from 'astro:assets';
+import ntp from '../assets/screens/ntp-server-page.png';
+import dhcp from '../assets/screens/dhcp-server-page.png';
+import commander from '../assets/screens/plugin-vapix-commander-rollout.png';
+import rules from '../assets/screens/event-rules-page.png';
+import triggers from '../assets/screens/device-triggers-page.png';
+import hardening from '../assets/screens/hardening-scan-basic.png';
+import metadata from '../assets/screens/metadata-monitor-page.png';
+import imageHealth from '../assets/screens/image-health-dashboard.png';
+import io from '../assets/screens/io-monitor-page.png';
+import snapshot from '../assets/screens/snapshot-report-page.png';
+import webView from '../assets/screens/web-view-page.png';
+
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+
+const plugins = [
+	{ name: 'NTP server', page: 'ntp-server', image: ntp, text: 'The time for every device, from this server.' },
+	{ name: 'DHCP server', page: 'dhcp-server', image: dhcp, text: 'Addresses for sites without infrastructure. New Axis devices add themselves.' },
+	{ name: 'VAPIX Commander', page: 'vapix-commander', image: commander, text: 'Any VAPIX command, rolled out to hundreds of devices.' },
+	{ name: 'Event rules', page: 'event-rules', image: rules, text: 'Switch a relay, send an email or a command when something happens.' },
+	{ name: 'Device triggers', page: 'device-triggers', image: triggers, text: 'Any event of your devices in event rules.' },
+	{ name: 'Hardening scan', page: 'hardening-scan', image: hardening, text: 'Every device against the AXIS OS Hardening Guide.' },
+	{ name: 'Metadata Monitor', page: 'metadata-monitor', image: metadata, text: 'The events a camera sends, live.' },
+	{ name: 'Image Health Dashboard', page: 'image-health-dashboard', image: imageHealth, text: 'Blur, blocked or redirected views of every camera.' },
+	{ name: 'I/O Monitor', page: 'io-monitor', image: io, text: 'The inputs and outputs of a device, live.' },
+	{ name: 'Snapshot report', page: 'snapshot-report', image: snapshot, text: 'Every camera at a glance, a PDF for the customer.' },
+	{ name: 'Web View', page: 'web-view', image: webView, text: 'The web interface of every device in tabs, already logged in. Set up apps like Object Analytics on many cameras, one tab after the other.' },
+];
+
+const large = await Promise.all(plugins.map(async (p) => (await getImage({ src: p.image, width: 1600, format: 'webp' })).src));
+---
+
+<div class="plugin-cards not-content">
+	{plugins.map((p, i) => (
+		<a class="plugin-card" href={`${base}tools/${p.page}/`} data-large={large[i]}>
+			<span class="plugin-shot">
+				<Image src={p.image} alt="" width={720} />
+			</span>
+			<span class="plugin-body">
+				<strong>{p.name}</strong>
+				<span>{p.text}</span>
+			</span>
+		</a>
+	))}
+</div>
+
+<dialog class="plugin-detail not-content" aria-labelledby="plugin-detail-name">
+	<div class="plugin-detail-box">
+		<button type="button" class="plugin-detail-close" aria-label="Close">×</button>
+		<img class="plugin-detail-shot" alt="" />
+		<div class="plugin-detail-body">
+			<div>
+				<strong id="plugin-detail-name"></strong>
+				<span class="plugin-detail-text"></span>
+			</div>
+			<a class="dl plugin-detail-docs" href="">Open the docs</a>
+		</div>
+	</div>
+</dialog>
+
+<script>
+	// A card opens the detail window instead of the docs page; the window links to the docs.
+	const dialog = document.querySelector<HTMLDialogElement>('.plugin-detail');
+	if (dialog) {
+		const shot = dialog.querySelector<HTMLImageElement>('.plugin-detail-shot')!;
+		const name = dialog.querySelector<HTMLElement>('#plugin-detail-name')!;
+		const text = dialog.querySelector<HTMLElement>('.plugin-detail-text')!;
+		const docs = dialog.querySelector<HTMLAnchorElement>('.plugin-detail-docs')!;
+		document.querySelectorAll<HTMLAnchorElement>('.plugin-card').forEach((card) =>
+			card.addEventListener('click', (event) => {
+				event.preventDefault();
+				shot.src = card.dataset.large!;
+				shot.alt = card.querySelector('strong')!.textContent ?? '';
+				name.textContent = shot.alt;
+				text.textContent = card.querySelector('.plugin-body span')!.textContent;
+				docs.href = card.href;
+				dialog.showModal();
+			}),
+		);
+		dialog.querySelector('.plugin-detail-close')!.addEventListener('click', () => dialog.close());
+		// A click outside the box (on the backdrop) closes it.
+		dialog.addEventListener('click', (event) => {
+			if (event.target === dialog) dialog.close();
+		});
+		dialog.addEventListener('close', () => shot.removeAttribute('src'));
+	}
+</script>
+
+<style>
+	.plugin-cards {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+		gap: 1rem;
+	}
+	.plugin-card {
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		border: 1px solid transparent;
+		border-radius: 0 0 12px 12px;
+		background: var(--sl-color-gray-6);
+		text-decoration: none;
+		transition: border-color 0.15s;
+	}
+	.plugin-card:hover {
+		border-color: var(--sl-color-accent);
+	}
+	/* The top left of the page: its title and toolbar say what it is */
+	.plugin-shot {
+		display: block;
+		aspect-ratio: 16 / 9;
+		overflow: hidden;
+		border-bottom: 1px solid var(--sl-color-gray-5);
+	}
+	.plugin-shot :global(img) {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		object-position: top left;
+		transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+		transform-origin: top left;
+	}
+	.plugin-card:hover .plugin-shot :global(img) {
+		transform: scale(1.04);
+	}
+	.plugin-body {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		padding: 0.9rem 1rem 1rem;
+	}
+	.plugin-body strong {
+		color: var(--sl-color-white);
+		font-weight: 600;
+	}
+	.plugin-body span {
+		color: var(--sl-color-gray-3);
+		font-size: var(--sl-text-sm);
+		line-height: 1.45;
+	}
+
+	/* The detail window: the large picture, the name and sentence, the docs link */
+	/* Centered in the window: the site's reset sets every margin to 0, the browser centers dialogs with margin: auto */
+	.plugin-detail {
+		position: fixed;
+		inset: 0;
+		margin: auto;
+		width: min(72rem, calc(100vw - 2rem));
+		height: fit-content;
+		max-width: none;
+		max-height: calc(100vh - 2rem);
+		padding: 0;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 12px;
+		background: var(--sl-color-gray-6);
+		color: var(--sl-color-gray-2);
+		overflow: auto;
+	}
+	.plugin-detail::backdrop {
+		background: rgb(0 0 0 / 0.75);
+		backdrop-filter: blur(4px);
+	}
+	.plugin-detail-box {
+		position: relative;
+	}
+	.plugin-detail-shot {
+		display: block;
+		width: 100%;
+		height: auto;
+		border-bottom: 1px solid var(--sl-color-gray-5);
+	}
+	.plugin-detail-body {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem 2rem;
+		padding: 1.25rem 1.5rem 1.5rem;
+	}
+	.plugin-detail-body > div {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+	.plugin-detail-body strong {
+		color: var(--sl-color-white);
+		font-size: var(--sl-text-xl);
+		font-weight: 600;
+	}
+	.plugin-detail-close {
+		position: absolute;
+		top: 0.75rem;
+		right: 0.75rem;
+		width: 2.25rem;
+		height: 2.25rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--sl-color-black) 80%, transparent);
+		color: var(--sl-color-white);
+		font-size: 1.4rem;
+		line-height: 1;
+		cursor: pointer;
+	}
+	.plugin-detail-close:hover {
+		border-color: var(--sl-color-accent);
+	}
+</style>
