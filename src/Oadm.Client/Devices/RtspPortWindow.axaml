@@ -1,0 +1,33 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Client.Devices"
+        x:Class="Oadm.Client.Devices.RtspPortWindow"
+        x:DataType="vm:RtspPortViewModel"
+        Title="RTSP port in OADM"
+        Width="460" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <!-- "OADM > RTSP port" of the device context menu: single operation. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="RTSP port in OADM" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Intro}" />
+        <ui:FormField Label="RTSP port" Hint="{Binding Hint}">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBox x:Name="PortBox" Width="120" Text="{Binding PortText}" PlaceholderText="554" IsEnabled="{Binding IsIdle}" />
+            <Button Classes="secondary" Content="Use default" Command="{Binding UseDefaultCommand}" IsEnabled="{Binding IsIdle}" />
+          </StackPanel>
+        </ui:FormField>
+      </StackPanel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" IsDefault="True" Content="Save" Command="{Binding SaveCommand}"
+              ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

@@ -1,0 +1,25 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:lv="using:Oadm.Client.LiveView"
+             x:Class="Oadm.Client.LiveView.PtzBar"
+             x:DataType="lv:PtzViewModel">
+  <!-- PTZ over the bottom of the live picture (Border.opticsBar, like zoom and focus): Home, the presets, zoom; the
+       camera's refusal below. Moving and centering happen on the picture itself (PtzOverlay). -->
+  <Border Classes="opticsBar">
+    <StackPanel Spacing="6">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="10">
+        <Button Grid.Column="0" Classes="toolbar iconOnly" Command="{Binding HomeCommand}" ToolTip.Tip="Home" IsVisible="{Binding CanGoHome}">
+          <ui:OadmIcon Data="{StaticResource Icon.home}" />
+        </Button>
+        <ComboBox Grid.Column="1" Width="170" ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset}"
+                  PlaceholderText="Presets" IsVisible="{Binding HasPresets}" />
+        <TextBlock Grid.Column="2" Classes="opticsLabel" Text="Zoom" IsVisible="{Binding CanZoom}" />
+        <Slider Grid.Column="3" Classes="optics" Minimum="1" Maximum="9999" Value="{Binding Zoom}" IsVisible="{Binding CanZoom}"
+                ToolTip.Tip="Wide to tele, or the mouse wheel on the picture" />
+      </Grid>
+      <ui:StatusChip Text="{Binding StatusText}" IsError="True"
+                     IsVisible="{Binding StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+    </StackPanel>
+  </Border>
+</UserControl>

@@ -323,8 +323,16 @@ Two processes, like ADM:
   logged as "Credential list password of <user> revealed", never the password). Credential entries carry id,
   user name and created time, never a password.
 - `LiveViewService`: `Watch(device_id, max_width, max_height, fps, accepted_codecs, camera)`
-  (stream of encoded access units), `ListSources(device_id)` (view areas / sensors / channels).
-  See "Live view".
+  (stream of encoded access units), `ListSources(device_id)` (view areas / sensors / channels),
+  `GetOptics(device_id)` (live view permission; zoom and focus state, `supported` false for a camera without them, one
+  OADM cannot log in to or that does not answer, never an error), `SetOptics(device_id, one of magnification,
+  focus_position, focus_window, autofocus, reset_focus)` ("Optics Control"; INVALID_ARGUMENT unless exactly one,
+  FAILED_PRECONDITION with the camera's refusal; audited "Changed zoom or focus"), `GetRtspPort(device_ids)` (any user:
+  the shared port, 554 = default, `mixed`) and `SetRtspPort(device_ids, port)` ("Optics Control"; 0 or 554 = default;
+  stored in OADM, the devices are not changed; audited "Changed RTSP port in OADM"), `GetPtz(device_id, camera)` (live
+  view permission; presets, home, move, zoom, center of a PTZ channel, `supported` false otherwise, never an error) and
+  `MovePtz(device_id, camera, move, x, y, value, preset)` ("Optics Control"; not audited, a drag sends several a second;
+  FAILED_PRECONDITION "The camera refused: <camera text>"). See "Live view".
 - `EventService` (`events.proto`, event rules, see "Event rules").
 - `DeviceWebService` (`deviceweb.proto`, the Web View relay, see "Web View"): `Open(device_id)` (Operator; refuses
   Certificate changed, Credentials required, Password not set with the shared text; audit "Opened web interface"),
@@ -766,6 +774,8 @@ Layout, top to bottom:
    changed)"). Fake mode sets it in memory (10.0.0.40 is Password not set, policy "complex"). Tests:
    `tests/Oadm.Server.Tests/SetFirstPasswordTests`, `tests/Oadm.Client.Tests/DeviceSetPasswordTests`.
    **Tags** (icon `tag`, one or many devices) opens the Tags dialog, see "Device tags".
+   **OADM** (icon `settings`, after the task groups, before Remove): settings of OADM itself for the selected devices,
+   rarely needed; today **RTSP port** (video devices, "Optics Control"), see "Live view".
 5. Resizable, collapsible bottom pane **Tasks** (no tabs), one row per task (= per device).
    Columns: Name (3*, min 260 px), Device (110 px), Status (3*, min 280 px: icon plus message), Current step, Start time, Owner, Progress (bar).
    An empty history says "No tasks yet. Right-click devices to run one." **Current step** is
@@ -797,10 +807,44 @@ web UI.
 - Panel: reusable `Controls/LiveViewPanel` in a card next to the device card (about 65 : 35,
   resizable with the vertical `paneSplitter`; the device card keeps at least 900 px, toolbar entries that do not fit go
   into the More menu, Address and Status keep minimum widths so they stay readable; the panel at least 320 px). Slides in from the right (250 ms, cubic ease-out).
-  Header: `IconLabel` with video icon and model, subtitle address, serial and (with several
-  sources) the source name, source switch, close button. Below: state chip (Connecting,
-  Reconnecting, Error; none while live: the picture says it) and detail text (codec, resolution, fps, or the reason). Picture
-  `Stretch=Uniform` on a dark rounded surface.
+  Header, one row: `IconLabel` with video icon and the model (" · <source name>" with several sources), the detail text
+  (codec, resolution, fps, or the reason; small, grey, right-aligned, tooltip), the state chip (Connecting, Reconnecting,
+  Error; none while live: the picture says it), source switch, close button. Picture `Stretch=Uniform` on a dark rounded
+  surface.
+- **Zoom and focus** (`LiveView/OpticsViewModel`, `OpticsBar`, `FocusAreaOverlay`; server `Core/LiveView/IDeviceOptics`,
+  `VapixClient.Optics.cs`, Optics Control API `axis-cgi/opticscontrol.cgi`): a bar over the bottom of the picture
+  (`Border.opticsBar`, overlay brush) only for a camera with remote zoom or focus (`getCapabilities`: zoom with
+  `maxMagnification`, focus) and a role with "Optics Control"; other cameras show nothing, no error. Zoom slider 1 to the
+  maximum, Focus slider near to far (0..1 on the device), small knobs (`Slider.optics`), no values shown; icon buttons
+  Autofocus (`Icon.focus`), Autofocus area (`Icon.focusArea`: the current area drawn over the picture, dimmed around it,
+  a drag draws a new one; Set sends it and runs autofocus, Cancel puts the camera's area back) and Reset focus (`reset`
+  focus, then autofocus). A slider is sent once it rests for 300 ms and keeps the user's value (the camera answers while
+  the lens still moves); autofocus waits for the camera (about 4 s, 45 s timeout) and its refusal shows in the bar
+  ("The camera could not find focus. ..."). The server checks the fresh capabilities and clamps every value before
+  sending (zoom 1..maximum, focus 0..1, the area inside the picture with at least 5 % per side); refused statuses
+  without a request. Per source: the lens of the live view source's sensor (`OpticsRequest.sensor` = the 0-based
+  `LiveViewSource.sensor` = opticsId, else the first optics); switching the source reads it again. Verified on the AXIS P3265-V (AXIS OS 12.11, API 1.3): set calls
+  answer at once, zoom also moves focus, out-of-range values are error 2104; opt-in `OpticsHardwareWriteTests`
+  (`OADM_OPTICS_WRITE=1`, puts zoom, focus and area back). Fake mode: the P3265-V models have zoom and focus.
+- **PTZ** (`LiveView/PtzViewModel`, `PtzOverlay`, `PtzBar`; server `Core/LiveView/DevicePtz`, `VapixClient.Ptz.cs`, PTZ API
+  `axis-cgi/com/ptz.cgi`): for a camera with `Properties.PTZ.PTZ=yes` (these have no Optics Control) and a role with
+  "Optics Control", per channel (the live view's source; both channels of a bispectral camera move the same head) what
+  `info=1` lists: a circle with a cross in the middle of the picture: dragging from it moves the camera
+  (`continuouspantiltmove`, speed by the distance, reach half the picture, 8 % dead zone, up on screen = tilt up), repeated
+  every 300 ms with `timeout=1` so the camera stops by itself 1 s after the last (a lost client never leaves it turning),
+  release sends a stop; the mouse wheel zooms (`rzoom`, 400 steps a notch, sent once the wheel rests); a click elsewhere
+  centers the camera on that point (`center`, thousandths of the picture). The bar (`Border.opticsBar`): Home
+  (`move=home`, `Icon.home`), the presets (`query=presetposall&format=json`, choosing one = `gotoserverpresetname`) and a
+  zoom slider (`zoom=1..9999`); the zoom is read again after a move. Errors are HTTP 200 "Error:..." (`PtzException`).
+  Verified with an AXIS Q6411-LE of the AXIS Virtual Loan Tool (AXIS OS 13.0.88) behind port forwards; opt-in
+  `PtzHardwareWriteTests` (`OADM_PTZ_URL`, `_USER`, `_PASSWORD`, `_RTSP_PORT`; also streams over the forwarded RTSP port).
+  Fake mode: the Q6135-LE (10.0.0.22) is a PTZ camera with three presets.
+- **RTSP port** (context menu **OADM > RTSP port**, video devices, "Optics Control"; `Devices/RtspPortWindow` +
+  `RtspPortViewModel`, single operation): the port OADM connects to for live view and events of the selection, for
+  cameras behind a port forward (AXIS Virtual Loan Tool, NAT); one call for the selection; empty or 554 = default,
+  "Use default"; "The devices use different ports." when they differ. Stored in the server setting `Devices.RtspPorts`
+  (`DeviceEventStreams`), read by the live view (`AxisLiveVideoSourceFactory`) and the Metadata Monitor; nothing is
+  written to the devices. A saved port reopens the shown live view.
 - Open/close: the icon of the shown device or the close button or Escape closes the panel and
   stops the stream; another device's icon switches. Removing the shown device closes it. The icon
   cell has a hover state and the tooltip "Live view"; devices without video are disabled
@@ -1435,8 +1479,8 @@ watch its event stream live (I/O ports, virtual inputs, storage, temperature, ta
   (Digest, never Basic on plain RTSP; SDK `ICorePluginContext.EventStreams`), passwords never reach the client; events
   only (`media.amp?video=0&audio=0&event=on`), one camera at a time, nothing saved; refused statuses without a request;
   a stream ends with Stop, a page switch or 20 s without the page's keep-alive; the client keeps the newest 10,000
-  messages; XML through `DeviceXml` (1 MB, no DTD). The RTSP port can be set per device (`Devices.RtspPorts`) for
-  cameras behind NAT.
+  messages; XML through `DeviceXml` (1 MB, no DTD). The RTSP port of a camera behind a port forward is set in the
+  device list (**OADM > RTSP port**); Start never changes it (an older client's port is ignored).
 - Tests: `tests/Oadm.Plugins.MetadataMonitor.Tests` (+ Perf `ScaleTests`, hardware `MetadataHardwareTests`); Core
   `MetadataDepacketizerTests`, `RtspMetadataSourceTests`, `DeviceEventStreamsTests`.
 
@@ -1662,7 +1706,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   (editable, "Reset to default") and **Viewer** (devices, live view and the monitoring pages; editable). The migration
   `Roles` maps the old Admin to Administrator and everyone else to Operator. A permission is a key: host keys
   (`HostPermissionKeys` in the SDK: `devices.addRemove`, `devices.refresh`, `devices.login`, `devices.webInterface`,
-  `devices.liveView`, `devices.export`, `tags.assign`, `tags.manage`, `tasks.cancel`, `tasks.delete`, `tasks.deleteAll`,
+  `devices.liveView`, `devices.opticsControl` ("Optics Control": zoom, focus and the RTSP port), `devices.export`, `tags.assign`, `tags.manage`, `tasks.cancel`, `tasks.delete`, `tasks.deleteAll`,
   `events.view`, `events.manage`, `events.clearLog`), "<plugin id>:<key>" for core plugins (every page gets "show"
   automatically) and "task:<id>" / "task:<id>:<key>" for task plugins. `PermissionCatalog.Build` collects them from every
   loaded plugin (on or off) at start; `RoleStore.SyncCatalogAsync` gives a role a permission it has not seen once: Operator
@@ -1693,7 +1737,8 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   devices, -Restart", "Deleted role"), settings changes, credential list add / remove / reveal, PKI
   actions, DHCP / NTP save, task runs (plugin, device count), Delete all, device remove, device login and first password
   (counts), devices added or moved automatically (user "system"), tags ("Tagged 12 devices: +Building A -PTZ"), plugins
-  on / off, event rules, VAPIX Commander send / rollout, Web View ("Opened web interface", the device). The Logs page has an **Audit** tab (Admin only, newest 10,000,
+  on / off, event rules, VAPIX Commander send / rollout, Web View ("Opened web interface", the device), zoom and focus ("Changed zoom or
+  focus", "Zoom 1.50"), RTSP port ("Changed RTSP port in OADM"). The Logs page has an **Audit** tab (Admin only, newest 10,000,
   virtualized, search).
 
 ## Client: login and users

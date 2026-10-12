@@ -1,0 +1,41 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:lv="using:Oadm.Client.LiveView"
+             x:Class="Oadm.Client.LiveView.OpticsBar"
+             x:DataType="lv:OpticsViewModel">
+  <!-- Zoom and focus over the bottom of the live picture (Border.opticsBar): one row of sliders and buttons, the camera's
+       answer below. While the autofocus area is edited the row offers Set and Cancel. -->
+  <Border Classes="opticsBar">
+    <StackPanel Spacing="6">
+      <Grid ColumnDefinitions="Auto,*,Auto,*,Auto" ColumnSpacing="10" IsVisible="{Binding !IsEditingArea}">
+        <!-- Zoom: Wide .. Tele -->
+        <TextBlock Grid.Column="0" Classes="opticsLabel" Text="Zoom" IsVisible="{Binding HasZoom}" />
+        <Slider Grid.Column="1" Classes="optics" Minimum="1" Maximum="{Binding MaxZoom}" Value="{Binding Zoom}"
+                IsVisible="{Binding HasZoom}" ToolTip.Tip="Wide to tele" />
+        <!-- Focus: Near .. Far -->
+        <TextBlock Grid.Column="2" Classes="opticsLabel" Text="Focus" IsVisible="{Binding HasFocus}" />
+        <Slider Grid.Column="3" Classes="optics" Minimum="0" Maximum="100" Value="{Binding Focus}"
+                IsVisible="{Binding HasFocus}" IsEnabled="{Binding !IsBusy}" ToolTip.Tip="Near to far" />
+        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="2" IsVisible="{Binding HasFocus}">
+          <Button Classes="toolbar iconOnly" Command="{Binding AutofocusCommand}" ToolTip.Tip="Autofocus">
+            <ui:OadmIcon Data="{StaticResource Icon.focus}" />
+          </Button>
+          <Button Classes="toolbar iconOnly" Command="{Binding EditAreaCommand}" ToolTip.Tip="Autofocus area">
+            <ui:OadmIcon Data="{StaticResource Icon.focusArea}" />
+          </Button>
+          <Button Classes="toolbar iconOnly" Command="{Binding ResetFocusCommand}" ToolTip.Tip="Reset focus">
+            <ui:OadmIcon Data="{StaticResource Icon.refresh}" />
+          </Button>
+        </StackPanel>
+      </Grid>
+      <!-- Autofocus area: the frame over the picture is dragged anew, then Set -->
+      <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" IsVisible="{Binding IsEditingArea}">
+        <Button Classes="primary" Content="Set" Command="{Binding ApplyAreaCommand}" />
+        <Button Classes="secondary" Content="Cancel" Command="{Binding CancelAreaCommand}" />
+      </StackPanel>
+      <ui:StatusChip Text="{Binding StatusText}" IsError="{Binding IsError}" IsAccent="{Binding IsBusy}"
+                     IsVisible="{Binding StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+    </StackPanel>
+  </Border>
+</UserControl>

@@ -33,6 +33,7 @@ public static class HostPermissions
     public const string DevicesLogin = HostPermissionKeys.DevicesLogin;
     public const string DevicesWebInterface = HostPermissionKeys.DevicesWebInterface;
     public const string DevicesLiveView = HostPermissionKeys.DevicesLiveView;
+    public const string DevicesOpticsControl = HostPermissionKeys.DevicesOpticsControl;
     public const string DevicesExport = HostPermissionKeys.DevicesExport;
     public const string TagsAssign = HostPermissionKeys.TagsAssign;
     public const string TagsManage = HostPermissionKeys.TagsManage;
@@ -51,6 +52,7 @@ public static class HostPermissions
         Host(DevicesLogin, "Log in to devices", "Log in with another user name and password, and set the first password of new devices.", DevicesGroup, 0, true, false, fullControl: true),
         Host(DevicesWebInterface, "Open the web interface", "Open a device's web interface in the browser.", DevicesGroup, 0, true, false),
         Host(DevicesLiveView, "Live view", "Click a camera in the device list to see its video.", DevicesGroup, 0, true, true),
+        Host(DevicesOpticsControl, "Optics Control", "Zoom and focus cameras in the live view, and set the RTSP port OADM uses for a device.", DevicesGroup, 0, true, false),
         Host(DevicesExport, "Export the device list", "Save the device list as a CSV file.", DevicesGroup, 0, true, false),
         Host(TagsAssign, "Tag devices", "Give devices tags and create new tags.", DevicesGroup, 0, true, false),
         Host(TagsManage, "Rename and delete tags", "Rename, recolor and delete tags on every device.", DevicesGroup, 0, false, false),

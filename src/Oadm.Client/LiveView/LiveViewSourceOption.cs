@@ -5,8 +5,11 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace Oadm.Client.LiveView;
 
 /// <summary>One video source (view area, sensor or encoder channel) in the live view source switch.</summary>
-public sealed partial class LiveViewSourceOption(int camera, string name) : ObservableObject
+public sealed partial class LiveViewSourceOption(int camera, string name, int sensor = 0) : ObservableObject
 {
+    /// <summary>0-based image source (sensor) of the source: its lens for zoom and focus.</summary>
+    public int Sensor { get; } = sensor;
+
     /// <summary>1-based VAPIX camera number.</summary>
     public int Camera { get; } = camera;
 

@@ -381,6 +381,24 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<IReadOnlyList<LiveViewSource>> ListLiveViewSourcesAsync(string deviceId, CancellationToken ct) =>
         (await C.LiveView.ListSourcesAsync(new LiveViewSourcesRequest { DeviceId = deviceId }, cancellationToken: ct)).Sources;
 
+    public async Task<OpticsState> GetOpticsAsync(string deviceId, int sensor, CancellationToken ct) =>
+        await C.LiveView.GetOpticsAsync(new OpticsRequest { DeviceId = deviceId, Sensor = sensor }, cancellationToken: ct);
+
+    public async Task<OpticsState> SetOpticsAsync(SetOpticsRequest request, CancellationToken ct) =>
+        await C.LiveView.SetOpticsAsync(request, cancellationToken: ct);
+
+    public async Task<PtzState> GetPtzAsync(string deviceId, int camera, CancellationToken ct) =>
+        await C.LiveView.GetPtzAsync(new PtzRequest { DeviceId = deviceId, Camera = camera }, cancellationToken: ct);
+
+    public async Task MovePtzAsync(MovePtzRequest request, CancellationToken ct) =>
+        await C.LiveView.MovePtzAsync(request, cancellationToken: ct);
+
+    public async Task<RtspPortReply> GetRtspPortAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct) =>
+        await C.LiveView.GetRtspPortAsync(new RtspPortRequest { DeviceIds = { deviceIds } }, cancellationToken: ct);
+
+    public async Task<RtspPortReply> SetRtspPortAsync(IReadOnlyCollection<string> deviceIds, int port, CancellationToken ct) =>
+        await C.LiveView.SetRtspPortAsync(new SetRtspPortRequest { DeviceIds = { deviceIds }, Port = port }, cancellationToken: ct);
+
     public async Task<OpenDeviceWebReply> OpenDeviceWebAsync(string deviceId, CancellationToken ct) =>
         await C.DeviceWeb.OpenAsync(new OpenDeviceWebRequest { DeviceId = deviceId }, cancellationToken: ct);
 

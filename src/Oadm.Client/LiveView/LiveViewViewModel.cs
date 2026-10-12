@@ -60,7 +60,15 @@ public sealed partial class LiveViewViewModel : ObservableObject, IDisposable
         _ui = ui;
         _logger = logger;
         _time = time ?? TimeProvider.System;
+        Optics = new OpticsViewModel(api, _time);
+        Ptz = new PtzViewModel(api, _time);
     }
+
+    /// <summary>PTZ of the shown camera (the circle over the picture and the bar; only PTZ cameras).</summary>
+    public PtzViewModel Ptz { get; }
+
+    /// <summary>Zoom and focus of the shown camera (the bar over the picture; only cameras that have them).</summary>
+    public OpticsViewModel Optics { get; }
 
     /// <summary>Requested stream size and rate (the server picks the closest camera resolution).</summary>
     public int MaxWidth { get; set; } = LiveViewDefaults.Width;
@@ -101,9 +109,8 @@ public sealed partial class LiveViewViewModel : ObservableObject, IDisposable
         _ => PillKind.Neutral,
     };
 
-    public string Title => Device is null ? "" : string.IsNullOrEmpty(Device.Model) ? Device.Serial : Device.Model;
-
-    public string Subtitle
+    /// <summary>The model, plus the source name while the device has several ("P3265-V · View Area 2").</summary>
+    public string Title
     {
         get
         {
@@ -112,8 +119,9 @@ public sealed partial class LiveViewViewModel : ObservableObject, IDisposable
                 return "";
             }
 
+            var model = string.IsNullOrEmpty(Device.Model) ? Device.Serial : Device.Model;
             var source = HasSourceChoice ? Sources.FirstOrDefault(s => s.IsSelected)?.Name : null;
-            return source is null ? $"{Device.DisplayAddress}  ·  {Device.Serial}" : $"{Device.DisplayAddress}  ·  {Device.Serial}  ·  {source}";
+            return source is null ? model : $"{model}  ·  {source}";
         }
     }
 
@@ -179,6 +187,8 @@ public sealed partial class LiveViewViewModel : ObservableObject, IDisposable
         }
 
         StartStream(Device, option.Camera);
+        _ = Ptz.LoadAsync(Device.Id, option.Camera);
+        _ = Optics.LoadAsync(Device.Id, option.Sensor);
     }
 
     [RelayCommand]
@@ -191,6 +201,8 @@ public sealed partial class LiveViewViewModel : ObservableObject, IDisposable
         Camera = 0;
         IsOpen = false;
         Device = null;
+        Optics.Clear();
+        Ptz.Clear();
         SetState(LiveViewState.Closed, "", "");
         SwapImage(null);
     }
@@ -203,7 +215,9 @@ public sealed partial class LiveViewViewModel : ObservableObject, IDisposable
         HasSourceChoice = false;
         Device = device;
         IsOpen = true;
+        _ = Optics.LoadAsync(device.Id);
         StartStream(device, _chosenCamera.GetValueOrDefault(device.Id));
+        _ = Ptz.LoadAsync(device.Id, Camera);
         if (State != LiveViewState.Error)
         {
             LoadSources(device);
@@ -238,6 +252,8 @@ public sealed partial class LiveViewViewModel : ObservableObject, IDisposable
         StopSession();
         StopSourcesLoad();
         SwapImage(null);
+        Optics.Dispose();
+        Ptz.Dispose();
     }
 
     private void LoadSources(DeviceRowViewModel device)
@@ -259,11 +275,15 @@ public sealed partial class LiveViewViewModel : ObservableObject, IDisposable
                     Sources.Clear();
                     foreach (var source in sources)
                     {
-                        Sources.Add(new LiveViewSourceOption(source.Camera, source.Name));
+                        Sources.Add(new LiveViewSourceOption(source.Camera, source.Name, source.Sensor));
                     }
 
                     HasSourceChoice = Sources.Count > 1;
                     MarkSelected();
+                    if (Sources.FirstOrDefault(s => s.IsSelected) is { Sensor: > 0 } selected)
+                    {
+                        _ = Optics.LoadAsync(device.Id, selected.Sensor); // the lens of the remembered source's sensor
+                    }
                 });
             }
             catch (Exception ex) when (ex is RpcException or OperationCanceledException or IOException or HttpRequestException)
@@ -292,16 +312,12 @@ public sealed partial class LiveViewViewModel : ObservableObject, IDisposable
             option.IsSelected = option.Camera == camera;
         }
 
-        OnPropertyChanged(nameof(Subtitle));
-    }
-
-    partial void OnHasSourceChoiceChanged(bool value) => OnPropertyChanged(nameof(Subtitle));
-
-    partial void OnDeviceChanged(DeviceRowViewModel? value)
-    {
         OnPropertyChanged(nameof(Title));
-        OnPropertyChanged(nameof(Subtitle));
     }
+
+    partial void OnHasSourceChoiceChanged(bool value) => OnPropertyChanged(nameof(Title));
+
+    partial void OnDeviceChanged(DeviceRowViewModel? value) => OnPropertyChanged(nameof(Title));
 
     partial void OnStateChanged(LiveViewState value) => OnPropertyChanged(nameof(StateKind));
 

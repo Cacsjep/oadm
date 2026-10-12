@@ -97,6 +97,8 @@ public sealed partial class DevicesViewModel : ObservableObject
         if (session is not null)
         {
             LiveView.IsAllowed = session.Has(HostPermissionKeys.DevicesLiveView);
+            LiveView.Optics.CanControl = session.Has(HostPermissionKeys.DevicesOpticsControl);
+            LiveView.Ptz.CanControl = session.Has(HostPermissionKeys.DevicesOpticsControl);
             session.PermissionsChanged += OnPermissionsChanged;
         }
 
@@ -275,6 +277,31 @@ public sealed partial class DevicesViewModel : ObservableObject
 
         var dialog = new DeviceTagsViewModel(_api, _store.Tags, [.. SelectedDevices], _store.Devices, Can(HostPermissionKeys.TagsManage), _dialogs.ConfirmAsync);
         await _dialogs.ShowDeviceTagsAsync(dialog).ConfigureAwait(true);
+    }
+
+    /// <summary>The context menu's submenu of OADM's own settings for the selected devices.</summary>
+    public const string OadmMenuHeader = "OADM";
+
+    public const string RtspPortMenuHeader = "RTSP port";
+
+    /// <summary>
+    /// Context menu "OADM > RTSP port": the port OADM uses for live view and events of the selected video devices (a port
+    /// forward); stored in OADM, the devices are not changed.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(HasSelection))]
+    private async Task EditRtspPortAsync()
+    {
+        var targets = SelectedDevices.Where(d => d.HasVideo).ToList();
+        if (targets.Count == 0)
+        {
+            return;
+        }
+
+        bool saved = await _dialogs.ShowRtspPortAsync(new RtspPortViewModel(_api, targets)).ConfigureAwait(true);
+        if (saved && LiveView.IsOpen && LiveView.Device is { } shown && targets.Contains(shown))
+        {
+            LiveView.Open(shown); // the open stream switches to the new port
+        }
     }
 
     /// <summary>The selected devices that reject their stored credentials (O(selection)).</summary>
@@ -575,6 +602,23 @@ public sealed partial class DevicesViewModel : ObservableObject
             }
         }
 
+        // OADM: settings of OADM itself for these devices (nothing is written to the devices), rarely needed: a submenu
+        // after the task groups. RTSP port: video devices only.
+        if (Can(HostPermissionKeys.DevicesOpticsControl) && SelectedDevices.Any(d => d.HasVideo))
+        {
+            if (plugins.Count == 0)
+            {
+                ContextMenuEntries.Add(MenuEntryViewModel.Separator());
+            }
+
+            ContextMenuEntries.Add(new MenuEntryViewModel
+            {
+                Header = OadmMenuHeader,
+                IconKey = "settings",
+                Items = [new MenuEntryViewModel { Header = RtspPortMenuHeader, IconKey = "video", Command = EditRtspPortCommand }],
+            });
+        }
+
         // Remove last, after its own separator: away from the everyday entries.
         if (Can(HostPermissionKeys.DevicesAddRemove))
         {
@@ -597,6 +641,8 @@ public sealed partial class DevicesViewModel : ObservableObject
     {
         RebuildContextMenu();
         LiveView.IsAllowed = Can(HostPermissionKeys.DevicesLiveView);
+        LiveView.Optics.CanControl = Can(HostPermissionKeys.DevicesOpticsControl);
+        LiveView.Ptz.CanControl = Can(HostPermissionKeys.DevicesOpticsControl);
     }
 
     private bool SelectionNeedsLogin() => SelectedDevices.Any(d => d.ContractStatus == DeviceStatus.CredentialsRequired);

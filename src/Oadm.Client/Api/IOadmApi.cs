@@ -162,6 +162,24 @@ public interface IOadmApi
     /// <summary>Video sources (view areas, sensors, encoder channels) of a device.</summary>
     Task<IReadOnlyList<LiveViewSource>> ListLiveViewSourcesAsync(string deviceId, CancellationToken ct);
 
+    /// <summary>Zoom and focus of a camera; <c>supported</c> false for one without them.</summary>
+    Task<OpticsState> GetOpticsAsync(string deviceId, int sensor, CancellationToken ct);
+
+    /// <summary>One zoom or focus change; the reply is the camera's state afterwards (FAILED_PRECONDITION: the camera's refusal).</summary>
+    Task<OpticsState> SetOpticsAsync(SetOpticsRequest request, CancellationToken ct);
+
+    /// <summary>What a PTZ camera offers on a channel; <c>supported</c> false for a camera without PTZ.</summary>
+    Task<PtzState> GetPtzAsync(string deviceId, int camera, CancellationToken ct);
+
+    /// <summary>One PTZ command (FAILED_PRECONDITION: the camera's refusal).</summary>
+    Task MovePtzAsync(MovePtzRequest request, CancellationToken ct);
+
+    /// <summary>The RTSP port OADM uses for the devices (554 = default) and whether they differ.</summary>
+    Task<RtspPortReply> GetRtspPortAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct);
+
+    /// <summary>Stores the RTSP port OADM uses for the devices (0 or 554 = default); the devices are not changed.</summary>
+    Task<RtspPortReply> SetRtspPortAsync(IReadOnlyCollection<string> deviceIds, int port, CancellationToken ct);
+
     // DeviceWebService (Web View: the device's web interface through the server)
     /// <summary>Checks that the device can be opened and writes the audit entry.</summary>
     Task<OpenDeviceWebReply> OpenDeviceWebAsync(string deviceId, CancellationToken ct);

@@ -1,0 +1,1 @@
+{"apiVersion": "1.3", "method": "getCapabilities", "data": {"numberOfOptics": 1,"optics": [{"opticsId": "0", "maxMagnification": 2.7057, "capabilities": ["zoom", "focus", "irCutFilter", "calibrateFocus", "calibrateZoom", "compensateTemperature", "compensateIr"]}]}}

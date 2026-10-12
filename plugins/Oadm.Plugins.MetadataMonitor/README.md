@@ -81,9 +81,8 @@ Read-only for devices.
   Watch); Core: `MetadataDepacketizerTests`, `RtspMetadataSourceTests` (scripted RTSP server), `DeviceEventStreamsTests`,
   `MetadataRecorderTests` (Hardware; re-records `Fixtures/LiveView/events.sdp` + `.rtp` with `OADM_RECORD_RTP_DIR`).
 
-- **RTSP port**: a field next to the camera select ("RTSP port", empty = 554, error below
-  the field for anything but 1..65535) for cameras behind NAT whose RTSP port is forwarded to another port. `start`
-  ({deviceId, rtspPort}) stores it on the server for the device (`IDeviceEventStreams.SetRtspPortAsync`, server setting
-  `Devices.RtspPorts` = JSON object device id -> port, written by `Oadm.Core.LiveView.DeviceEventStreams`; null or 554
-  removes it), `getRtspPort` ({deviceId}) prefills the field when a camera is chosen; every event stream of the device
-  uses it. Verified with an AXIS Q3548-LVE behind NAT (RTSP 554 forwarded to 32077).
+- **RTSP port**: cameras behind NAT whose RTSP port is forwarded to another port get it in the device list, context menu
+  **OADM > RTSP port** (permission "Optics Control"; server setting `Devices.RtspPorts` = JSON object device id -> port,
+  written by `Oadm.Core.LiveView.DeviceEventStreams`). Every event stream of the device and the live view use it. The page
+  has no port field any more: `start` ignores the `rtspPort` an older client sends and never changes the stored port;
+  `getRtspPort` ({deviceId}) still answers. Verified with an AXIS Q3548-LVE behind NAT (RTSP 554 forwarded to 32077).

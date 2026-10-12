@@ -6,6 +6,21 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+### Added
+
+- Live view: **zoom and focus** for cameras with a remote zoom or focus lens, in a bar over the picture: Zoom and Focus
+  sliders, **Autofocus**, **Autofocus area** (drag a frame over the picture) and **Reset focus**. Needs the new
+  permission **Optics Control** (Operator has it).
+- Live view: **PTZ cameras** move by dragging from the circle in the middle of the picture, zoom with the mouse wheel,
+  center on a click, and go to **Home** or a preset from the bar.
+- **RTSP port per camera**: right-click a camera, **OADM** > **RTSP port**, for cameras behind a port forward such as the
+  AXIS Virtual Loan Tool. The live view and the Metadata Monitor use it; nothing changes on the camera.
+
+### Changed
+
+- Live view: one header row with the model, codec, resolution and frame rate; the address and MAC address are gone.
+- Metadata Monitor: the RTSP port field moved to the device list (**OADM** > **RTSP port**).
+
 ## [2.4.0] - 2026-10-12
 
 ### Added

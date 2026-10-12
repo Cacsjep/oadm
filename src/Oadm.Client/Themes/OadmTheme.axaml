@@ -829,6 +829,11 @@
     <Setter Property="VerticalContentAlignment" Value="Center" />
     <Setter Property="Padding" Value="10,3,8,0" />
   </Style>
+  <!-- The placeholder ("Presets", "Choose a camera") sits at the height of a chosen item's text (measured: 1 px lower
+       without). Its margin is bound to the padding in the template, so it is moved by a transform. -->
+  <Style Selector="ComboBox /template/ TextBlock#PlaceholderTextBlock">
+    <Setter Property="RenderTransform" Value="translate(0px, -1px)" />
+  </Style>
   <Style Selector="ComboBox:pointerover /template/ Border#Background">
     <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.TextDisabledBrush}" />
@@ -1152,6 +1157,29 @@
     <Setter Property="ClipToBounds" Value="True" />
     <Setter Property="MinHeight" Value="120" />
   </Style>
+  <!-- Zoom and focus bar over the bottom of the live picture (LiveView/OpticsBar): the dark overlay, small labels and
+       values, sliders that take the rest of the row. -->
+  <Style Selector="Border.opticsBar">
+    <Setter Property="Background" Value="{StaticResource Oadm.OverlayBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="12,6" />
+    <Setter Property="Margin" Value="8" />
+  </Style>
+  <Style Selector="TextBlock.opticsLabel">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Slider.optics">
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="MinWidth" Value="80" />
+    <Setter Property="Margin" Value="0,-8" />
+  </Style>
+  <!-- A small knob (12 px instead of Fluent's 20) -->
+  <Style Selector="Slider.optics /template/ Thumb">
+    <Setter Property="Width" Value="12" />
+    <Setter Property="Height" Value="12" />
+  </Style>
+
   <!-- Picture tile (snapshot report grid): raised surface, accent outline when selected.
        The picture inside sits on a Border.liveViewSurface. -->
   <Style Selector="Border.tile">

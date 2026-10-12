@@ -103,6 +103,23 @@ public sealed class HeadlessSmokeTests
                 live.SelectSourceCommand.Execute(live.Sources[1]);
                 await PumpUntilAsync(() => live.Camera == 2 && live.Image is not null && live.State == LiveView.LiveViewState.Live);
                 Capture(window, outDir, "client-liveview-source2.png");
+
+                // Zoom and focus over the picture (the fake P3265-V has both, like 10.0.0.48), then the autofocus area.
+                await PumpUntilAsync(() => live.Optics.IsVisible);
+                Assert.Equal(2.7057, live.Optics.MaxZoom);
+                Capture(window, outDir, "client-liveview-optics.png");
+                live.Optics.EditAreaCommand.Execute(null);
+                live.Optics.Area = new Avalonia.Rect(0.3, 0.2, 0.35, 0.4);
+                await PumpUntilAsync(() => live.Optics.IsEditingArea);
+                Capture(window, outDir, "client-liveview-focus-area.png");
+                live.Optics.CancelAreaCommand.Execute(null);
+
+                // A PTZ camera (the fake Q6135-LE): the circle in the middle, Home, presets and zoom.
+                Devices.DeviceRowViewModel ptz = vm.Devices.FilteredDevices.First(d => d.Model?.Contains("Q6135", StringComparison.Ordinal) == true);
+                live.ToggleCommand.Execute(ptz);
+                await PumpUntilAsync(() => live.Ptz.IsVisible && live.Image is not null && live.State == LiveView.LiveViewState.Live);
+                Assert.False(live.Optics.IsVisible);
+                Capture(window, outDir, "client-liveview-ptz.png");
             }
             else
             {
@@ -110,7 +127,7 @@ public sealed class HeadlessSmokeTests
                 Capture(window, outDir, "client-liveview.png");
             }
 
-            live.ToggleCommand.Execute(camera);
+            live.CloseCommand.Execute(null);
             Assert.False(live.IsOpen);
             await PumpUntilAsync(() => true);
 

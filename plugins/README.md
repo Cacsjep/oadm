@@ -237,7 +237,7 @@ resolve them at compile time, so use `DynamicResource` (`Icon="{DynamicResource 
 `Icon.details`, `Icon.cancel`, `Icon.chevronDown`, `Icon.chevronLeft`, `Icon.chevronRight`, `Icon.chevronUp`, `Icon.globe`, `Icon.close`, `Icon.check`,
 `Icon.tag`, `Icon.groupBy`, `Icon.edit`, `Icon.braces`,
 `Icon.server`, `Icon.externalLink`, `Icon.more`, `Icon.key`, `Icon.lock`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
-`Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.network`, `Icon.metronome`, `Icon.firmware`, `Icon.users`,
+`Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.focus`, `Icon.focusArea`, `Icon.home`, `Icon.network`, `Icon.metronome`, `Icon.firmware`, `Icon.users`,
 `Icon.user`, `Icon.logout`, `Icon.audit`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
 `Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.toggle`, `Icon.zap`, `Icon.bell`, `Icon.flame`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`,
 `Icon.device.camera`, `Icon.device.encoder`,

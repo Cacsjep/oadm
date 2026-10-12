@@ -50,6 +50,8 @@ public static class AuditActions
     public const string RoleCreated = "Created role";
     public const string RoleChanged = "Changed role";
     public const string RoleDeleted = "Deleted role";
+    public const string OpticsChanged = "Changed zoom or focus";
+    public const string RtspPortChanged = "Changed RTSP port in OADM";
 }
 
 /// <summary>

@@ -45,7 +45,7 @@ public sealed record VapixConnectionOptions
 /// Digest only for http:// and Basic or Digest for https://, so Basic never travels in clear text,
 /// except for the add page's login to a verified Axis device (<see cref="VapixConnectionOptions.AllowBasicOverHttp"/>).
 /// </remarks>
-public sealed class VapixClient : IVapixClient, IDisposable
+public sealed partial class VapixClient : IVapixClient, IDisposable
 {
     /// <summary>Parameters read by <see cref="GetNetworkInfoAsync"/>.</summary>
     public static readonly IReadOnlyList<string> NetworkInfoParameters =

@@ -2,6 +2,7 @@ syntax = "proto3";
 package oadm.v1;
 option csharp_namespace = "Oadm.Contracts.V1";
 import "google/protobuf/timestamp.proto";
+import "Protos/common.proto";
 
 // Live video of one device, relayed by the server. The server pulls RTSP from the camera with the
 // stored credentials (they never reach the client) and shares one upstream connection per
@@ -10,6 +11,102 @@ import "google/protobuf/timestamp.proto";
 service LiveViewService {
   rpc Watch (LiveViewRequest) returns (stream LiveViewFrame);
   rpc ListSources (LiveViewSourcesRequest) returns (LiveViewSources); // read-only: param.cgi Properties.Image + Image
+  // Zoom and focus of cameras with a remote zoom or focus lens (Optics Control API). Get: live view permission;
+  // Set: "Optics Control". A device without zoom or focus answers supported = false, never an error.
+  rpc GetOptics (OpticsRequest) returns (OpticsState);
+  rpc SetOptics (SetOpticsRequest) returns (OpticsState);
+  // The RTSP port OADM uses for a device (live view, events), stored in OADM only; the device is not changed.
+  // Get: any user; Set: "Optics Control".
+  rpc GetRtspPort (RtspPortRequest) returns (RtspPortReply);
+  // PTZ cameras (ptz.cgi): presets, home, continuous pan and tilt, zoom, center on a point. Get: live view permission
+  // (supported = false for a camera without PTZ, never an error); Move: "Optics Control".
+  rpc GetPtz (PtzRequest) returns (PtzState);
+  rpc MovePtz (MovePtzRequest) returns (Empty);
+  rpc SetRtspPort (SetRtspPortRequest) returns (RtspPortReply);
+}
+
+message OpticsRequest {
+  string device_id = 1;
+  int32 sensor = 2;   // 0-based image source of the live view's source (LiveViewSource.sensor): its lens
+}
+
+// The autofocus area as fractions of the picture (0..1).
+message OpticsWindow {
+  double x = 1;
+  double y = 2;
+  double width = 3;
+  double height = 4;
+}
+
+message OpticsState {
+  bool supported = 1;            // zoom or focus
+  bool has_zoom = 2;
+  bool has_focus = 3;
+  double max_magnification = 4;  // zoom from 1 (wide) to this (tele)
+  double magnification = 5;
+  double focus_position = 6;     // 0 near .. 1 far
+  OpticsWindow focus_window = 7; // unset when the device does not report one
+  bool zoom_moving = 8;
+  bool focus_moving = 9;
+}
+
+// One change; the reply is the state read again afterwards.
+message SetOpticsRequest {
+  string device_id = 1;
+  optional double magnification = 2;
+  optional double focus_position = 3;
+  OpticsWindow focus_window = 4;  // set: new autofocus area, then autofocus
+  bool autofocus = 5;
+  bool reset_focus = 6;           // focus to its default position, then autofocus
+  int32 sensor = 7;               // as OpticsRequest.sensor
+}
+
+message PtzRequest {
+  string device_id = 1;
+  int32 camera = 2;   // 1-based channel of the live view; 0 = 1
+}
+
+message PtzState {
+  bool supported = 1;
+  bool can_move = 2;      // continuous pan and tilt
+  bool can_zoom = 3;
+  bool can_center = 4;
+  bool can_go_home = 5;
+  repeated string presets = 6;
+  int32 zoom = 7;         // 1..9999
+}
+
+enum PtzMove {
+  PTZ_MOVE_UNSPECIFIED = 0;
+  PTZ_MOVE_CONTINUOUS = 1;  // x, y: -100..100 speed; the camera stops by itself after 1 s without the next
+  PTZ_MOVE_STOP = 2;
+  PTZ_MOVE_ZOOM = 3;        // value: 1..9999
+  PTZ_MOVE_ZOOM_BY = 4;     // value: -9999..9999 steps
+  PTZ_MOVE_CENTER = 5;      // x, y: 0..1 of the picture
+  PTZ_MOVE_HOME = 6;
+  PTZ_MOVE_PRESET = 7;      // preset: name
+}
+
+message MovePtzRequest {
+  string device_id = 1;
+  int32 camera = 2;
+  PtzMove move = 3;
+  double x = 4;
+  double y = 5;
+  int32 value = 6;
+  string preset = 7;
+}
+
+message RtspPortRequest { repeated string device_ids = 1; }
+
+message RtspPortReply {
+  int32 port = 1;   // the port the devices share; 554 = default
+  bool mixed = 2;   // the devices have different ports
+}
+
+message SetRtspPortRequest {
+  repeated string device_ids = 1;
+  int32 port = 2;   // 1..65535; 0 or 554 = default
 }
 
 // A streamable video source of a device: a view area, a sensor of a multisensor camera or a

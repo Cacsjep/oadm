@@ -110,9 +110,6 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
 
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);
 
-    /// <summary>A port outside 1..65535.</summary>
-    public const string RtspPortError = "Enter a port from 1 to 65535.";
-
     /// <summary>The refusal text for a device status, or null when the stream may be opened.</summary>
     internal static string? RefusalFor(DeviceStatus status) => status switch
     {
@@ -142,24 +139,7 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
             return new StartReply(null, refusal);
         }
 
-        if (request.RtspPort is < 1 or > 65535)
-        {
-            return new StartReply(null, RtspPortError);
-        }
-
-        try
-        {
-            await streams.SetRtspPortAsync(deviceId, request.RtspPort, ct).ConfigureAwait(false);
-        }
-        catch (NotSupportedException) when (request.RtspPort is null or 554)
-        {
-            // a host without stored ports: the default port needs nothing stored
-        }
-        catch (NotSupportedException)
-        {
-            return new StartReply(null, "This OADM server cannot use another RTSP port");
-        }
-
+        // The stream uses the RTSP port set with "OADM > RTSP port" (Optics Control); Start never changes it.
         if (_sessions.Count >= _options.MaxStreams)
         {
             return new StartReply(null, $"Too many event streams are open ({_options.MaxStreams}); stop one first");

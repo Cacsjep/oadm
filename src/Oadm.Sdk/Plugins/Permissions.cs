@@ -35,6 +35,7 @@ public static class HostPermissionKeys
     public const string DevicesLogin = "devices.login";
     public const string DevicesWebInterface = "devices.webInterface";
     public const string DevicesLiveView = "devices.liveView";
+    public const string DevicesOpticsControl = "devices.opticsControl";
     public const string DevicesExport = "devices.export";
     public const string TagsAssign = "tags.assign";
     public const string TagsManage = "tags.manage";

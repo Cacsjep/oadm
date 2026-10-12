@@ -59,7 +59,7 @@ public sealed class LiveViewViewModelTests
 
         Assert.True(vm.IsOpen);
         Assert.Equal(LiveViewState.Connecting, vm.State);
-        Assert.Equal("P3265-V", vm.Title);
+        Assert.StartsWith("P3265-V", vm.Title, StringComparison.Ordinal); // " · View Area 1" once the sources are read
         var stream = await StreamAsync(0);
         Assert.Equal("a", stream.Request.DeviceId);
         Assert.Equal([VideoCodec.H265, VideoCodec.H264], stream.Request.AcceptedCodecs);
@@ -83,7 +83,7 @@ public sealed class LiveViewViewModelTests
         Assert.Equal("View Area 2", vm.Sources[1].Name);
         Assert.True(vm.Sources[0].IsSelected);
         Assert.False(vm.Sources[1].IsSelected);
-        Assert.EndsWith("View Area 1", vm.Subtitle, StringComparison.Ordinal);
+        Assert.EndsWith("View Area 1", vm.Title, StringComparison.Ordinal);
         Assert.Equal(0, (await StreamAsync(0)).Request.Camera); // server default
     }
 
@@ -94,7 +94,7 @@ public sealed class LiveViewViewModelTests
         vm.ToggleCommand.Execute(_camB);
         await TestSupport.WaitUntilAsync(() => vm.Sources.Count == 1);
         Assert.False(vm.HasSourceChoice);
-        Assert.DoesNotContain("Camera", vm.Subtitle, StringComparison.Ordinal);
+        Assert.DoesNotContain("Camera", vm.Title, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public sealed class LiveViewViewModelTests
         second.Send(VideoCodec.H264, camera: 2);
         await TestSupport.WaitUntilAsync(() => vm.State == LiveViewState.Live);
         Assert.Equal(2, vm.Camera);
-        Assert.EndsWith("View Area 2", vm.Subtitle, StringComparison.Ordinal);
+        Assert.EndsWith("View Area 2", vm.Title, StringComparison.Ordinal);
     }
 
     [Fact]

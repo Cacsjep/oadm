@@ -66,8 +66,8 @@ public static class MessageCategories
 }
 
 /// <summary>
-/// Opens the event stream of a device. <paramref name="RtspPort"/>: the device's RTSP port when it is forwarded (camera
-/// behind NAT), null = 554; stored on the server for the device (the Image Health Dashboard uses it too).
+/// Opens the event stream of a device on the RTSP port OADM stores for it ("OADM > RTSP port" of the device list).
+/// <paramref name="RtspPort"/> is ignored (older clients sent the port of their own field).
 /// </summary>
 public sealed record StartRequest(Guid DeviceId, int? RtspPort = null);
 

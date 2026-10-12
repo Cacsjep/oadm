@@ -1,0 +1,1 @@
+{"apiVersion": "1.3", "method": "setMagnification", "error": {"code": 2104, "message": "Invalid parameter value specified", "details": {"opticsId": "0"}}}

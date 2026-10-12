@@ -81,6 +81,12 @@ public static class AccessPolicy
         ["/oadm.v1.DeviceWebService/Exchange"] = AccessRule.Needs(WebViewOpen),
         ["/oadm.v1.LiveViewService/Watch"] = AccessRule.Needs(HostPermissions.DevicesLiveView),
         ["/oadm.v1.LiveViewService/ListSources"] = AccessRule.Needs(HostPermissions.DevicesLiveView),
+        ["/oadm.v1.LiveViewService/GetOptics"] = AccessRule.Needs(HostPermissions.DevicesLiveView),
+        ["/oadm.v1.LiveViewService/SetOptics"] = AccessRule.Needs(HostPermissions.DevicesOpticsControl),
+        ["/oadm.v1.LiveViewService/GetRtspPort"] = AccessRule.SignedIn,
+        ["/oadm.v1.LiveViewService/GetPtz"] = AccessRule.Needs(HostPermissions.DevicesLiveView),
+        ["/oadm.v1.LiveViewService/MovePtz"] = AccessRule.Needs(HostPermissions.DevicesOpticsControl),
+        ["/oadm.v1.LiveViewService/SetRtspPort"] = AccessRule.Needs(HostPermissions.DevicesOpticsControl),
 
         // Adding devices.
         ["/oadm.v1.DiscoveryService/StartZeroConf"] = AccessRule.Needs(HostPermissions.DevicesAddRemove),

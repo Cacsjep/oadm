@@ -207,6 +207,8 @@ public static partial class OadmServerHost
         services.AddHostedService<TaskRetentionHostedService>();
         // Live view: RTSP upstreams shared between viewers
         services.AddSingleton<ILiveVideoSourceFactory, AxisLiveVideoSourceFactory>();
+        services.AddSingleton<IDeviceOptics, AxisDeviceOptics>();
+        services.AddSingleton<IDevicePtz, DevicePtz>();
         services.AddSingleton(new LiveViewHubOptions());
         services.AddSingleton<LiveViewHub>();
         // Device event streams (RTSP metadata) for core plugins such as the Metadata Monitor

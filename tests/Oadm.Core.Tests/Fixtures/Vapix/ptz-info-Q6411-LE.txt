@@ -1,0 +1,27 @@
+Available commands
+:
+{camera=[n]}
+whoami=yes
+center=[x],[y]
+   imagewidth=[n]
+   imageheight=[n]
+areazoom=[x],[y],[z]
+   imagewidth=[n]
+   imageheight=[n]
+move={ home | up | down | left | right | upleft | upright | downleft | downright | stop }
+pan=[abspos]
+tilt=[abspos]
+zoom=[n]
+focus=[n]
+rpan=[offset]
+rtilt=[offset]
+rzoom=[offset]
+continuouspantiltmove=[x-speed],[y-speed]
+   proportionalspeed={ disabled }
+   timeout=[seconds]
+continuouszoommove=[speed]
+gotoserverpresetname=[name]
+gotoserverpresetno=[n]
+speed=[n]
+query={ speed | position | limits | presetposcam | presetposcamdata | presetposall | status | attributes | auxiliary }
+   format={ json }
