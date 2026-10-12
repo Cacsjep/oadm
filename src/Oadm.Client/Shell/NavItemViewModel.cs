@@ -9,6 +9,12 @@ public sealed partial class NavItemViewModel(string key, string title, string ic
     public string Key { get; } = key;
     public string Title { get; } = title;
     public string IconKey { get; } = iconKey;
+
+    /// <summary>Plugins (first of the bottom entries): a divider below it.</summary>
+    public bool HasSeparatorAfter => Key == Oadm.Sdk.Client.HostPages.Plugins;
+
+    /// <summary>Devices and Plugins: the icon (only the icon) in the accent color.</summary>
+    public bool IsAccentIcon => Key is Oadm.Sdk.Client.HostPages.Devices or Oadm.Sdk.Client.HostPages.Plugins;
     public object Page { get; } = page;
 
     [ObservableProperty] public partial bool IsSelected { get; set; }

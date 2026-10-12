@@ -276,7 +276,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// </summary>
     private void SyncBottomNavItems()
     {
-        NavItemViewModel[] adminItems = _pluginsItem is null ? [_usersItem, _credentialsItem] : [_usersItem, _credentialsItem, _pluginsItem];
+        // Plugins first, with a divider below it: turning plugins on and off changes what the whole client offers.
+        NavItemViewModel[] adminItems = _pluginsItem is null ? [_usersItem, _credentialsItem] : [_pluginsItem, _usersItem, _credentialsItem];
         NavItemViewModel[] wanted = Session.IsAdmin
             ? [.. adminItems, _logsItem, _settingsItem, _aboutItem]
             : [_logsItem, _settingsItem, _aboutItem];
@@ -484,8 +485,8 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
     private readonly string _pluginId;
     private readonly IToolbarContext _host;
     private EventHandler? _devicesChanged;
-    private bool _hostSubscribed;
     private Oadm.Client.DeviceWeb.DeviceWebAccess? _deviceWeb;
+    private bool _hostSubscribed;
     private bool _disposed;
 
     public CorePluginClientContext(IOadmApi api, string pluginId, IToolbarContext host)
@@ -533,6 +534,8 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
 
         _disposed = true;
         _devicesChanged = null;
+        _deviceWeb?.Dispose();
+        _deviceWeb = null;
         if (_hostSubscribed)
         {
             _host.DevicesChanged -= OnHostDevicesChanged;
@@ -560,8 +563,8 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
     public Task<bool> ConfirmAsync(string title, string message, string confirmText) => _host.ConfirmAsync(title, message, confirmText);
 
     public Task OpenAsync(string hostPage) => _host.OpenAsync(hostPage);
-}
 
     /// <summary>The page's relays of device web interfaces; stopped when the page closes.</summary>
     public IDeviceWebAccess? DeviceWeb =>
         _disposed ? null : _deviceWeb ??= new Oadm.Client.DeviceWeb.DeviceWebAccess(_api, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+}

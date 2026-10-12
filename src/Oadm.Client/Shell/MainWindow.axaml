@@ -91,14 +91,19 @@
         <ItemsControl DockPanel.Dock="Bottom" ItemsSource="{Binding BottomNavItems}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="shell:NavItemViewModel">
-              <Button Classes="nav" Classes.selected="{Binding IsSelected}" Margin="0,2"
-                      Command="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).NavigateCommand}"
-                      CommandParameter="{Binding}"
-                      ToolTip.Tip="{Binding Title}" ToolTip.Placement="Right"
-                      ToolTip.ServiceEnabled="{Binding !$parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}">
-                <ui:IconLabel Icon="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Text="{Binding Title}" Spacing="12"
-                             IsTextVisible="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}" />
-              </Button>
+              <StackPanel>
+                <Button Classes="nav" Classes.selected="{Binding IsSelected}" Margin="0,2"
+                        Command="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).NavigateCommand}"
+                        CommandParameter="{Binding}"
+                        ToolTip.Tip="{Binding Title}" ToolTip.Placement="Right"
+                        ToolTip.ServiceEnabled="{Binding !$parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}">
+                  <ui:IconLabel Icon="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Text="{Binding Title}" Spacing="12"
+                               Classes.accentIcon="{Binding IsAccentIcon}"
+                               IsTextVisible="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}" />
+                </Button>
+                <!-- Plugins: a divider below it -->
+                <Border Classes="separator" Margin="4,6" IsVisible="{Binding HasSeparatorAfter}" />
+              </StackPanel>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
@@ -125,6 +130,7 @@
                   </Button.ContextMenu>
                   <Grid ColumnDefinitions="*,Auto">
                     <ui:IconLabel Grid.Column="0" Icon="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Text="{Binding Title}" Spacing="12"
+                                 Classes.accentIcon="{Binding IsAccentIcon}"
                                  IsTextVisible="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}" />
                     <Border Grid.Column="1" Classes="badge" IsVisible="{Binding HasBadge}">
                       <TextBlock Text="{Binding Badge}" />

@@ -40,18 +40,19 @@ public sealed class ShellNavigationTests
     }
 
     [Fact]
-    public void Administrators_see_users_credentials_and_plugins_above_logs()
+    public void Administrators_see_plugins_first_then_users_and_credentials_above_logs()
     {
         using var f = new DevicesFixture();
         using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
         MainWindowViewModel vm = CreateShell(f, connection, SignedIn(UserRole.Admin));
 
-        Assert.Equal(["users", "credentials", "plugins", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
-        Assert.Equal(["Users", "Credentials", "Plugins", "Logs", "Settings", "About"], vm.BottomNavItems.Select(n => n.Title).ToArray());
-        Assert.Equal(["users", "key", "plugin", "logs", "settings", "info"], vm.BottomNavItems.Select(n => n.IconKey).ToArray());
-        Assert.IsType<UsersViewModel>(vm.BottomNavItems[0].Page);
-        Assert.IsType<CredentialsViewModel>(vm.BottomNavItems[1].Page);
-        Assert.IsType<PluginsViewModel>(vm.BottomNavItems[2].Page);
+        Assert.Equal(["plugins", "users", "credentials", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
+        Assert.Equal(["Plugins", "Users", "Credentials", "Logs", "Settings", "About"], vm.BottomNavItems.Select(n => n.Title).ToArray());
+        Assert.Equal(["plugin", "users", "key", "logs", "settings", "info"], vm.BottomNavItems.Select(n => n.IconKey).ToArray());
+        Assert.IsType<PluginsViewModel>(vm.BottomNavItems[0].Page);
+        Assert.True(vm.BottomNavItems[0].HasSeparatorAfter); // a divider below Plugins
+        Assert.IsType<UsersViewModel>(vm.BottomNavItems[1].Page);
+        Assert.IsType<CredentialsViewModel>(vm.BottomNavItems[2].Page);
         Assert.IsType<SettingsViewModel>(vm.BottomNavItems[4].Page);
         Assert.IsType<AboutViewModel>(vm.BottomNavItems[5].Page);
     }
@@ -78,7 +79,7 @@ public sealed class ShellNavigationTests
         // Back to an administrator: the entries come back, the current page stays.
         vm.NavigateCommand.Execute(vm.BottomNavItems.Single(n => n.Key == "about"));
         session.SignIn(new UserInfo { UserName = "anna", Role = UserRole.Admin }, "https://localhost:5080");
-        Assert.Equal(["users", "credentials", "plugins", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
+        Assert.Equal(["plugins", "users", "credentials", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
         Assert.IsType<AboutViewModel>(vm.CurrentPage);
         Assert.True(vm.BottomNavItems[5].IsSelected);
     }
@@ -196,11 +197,11 @@ public sealed class LogsViewModelTests
 
         Assert.Equal(3, vm.Entries.Count);
         Assert.Equal("Restart failed on 10.0.0.30", vm.Entries[0].Message);
-
         // Information is the blue info icon, warnings amber, errors red.
         Assert.Equal([false, false, true], vm.Entries.Select(e => e.IsInfo).ToArray());
         Assert.True(vm.Entries[0].IsError);
         Assert.True(vm.Entries[1].IsWarning);
+
         vm.SelectedLevel = LogsViewModel.Levels.Single(l => l.Title == "Warnings and errors");
         Assert.Equal(["Error", "Warning"], vm.Entries.Select(e => e.Level).ToArray());
         Assert.Equal("2 of 3 entries", vm.StatusLine);

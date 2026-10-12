@@ -115,7 +115,7 @@ public sealed class HeadlessSmokeTests
             await PumpUntilAsync(() => true);
 
             // Fake mode is the administrator: every host page is in the bottom group of the rail.
-            Assert.Equal(["users", "credentials", "plugins", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
+            Assert.Equal(["plugins", "users", "credentials", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
             var pageTitles = new Dictionary<string, string>
             {
                 ["users"] = "Who can log in to this server and what they may do.",
