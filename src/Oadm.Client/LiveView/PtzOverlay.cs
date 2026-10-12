@@ -70,7 +70,8 @@ public sealed class PtzOverlay : Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
-        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed || Ptz is not { } ptz)
+        // Only the left button starts, and only once: another button or a second finger during a drag never takes over.
+        if (_press is not null || e.GetCurrentPoint(this).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed || Ptz is not { } ptz)
         {
             return;
         }
@@ -111,7 +112,7 @@ public sealed class PtzOverlay : Control
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
-        if (_press is not { } press || Ptz is not { } ptz)
+        if (_press is not { } press || e.InitialPressMouseButton != MouseButton.Left || Ptz is not { } ptz)
         {
             return;
         }
@@ -140,6 +141,51 @@ public sealed class PtzOverlay : Control
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
         base.OnPointerCaptureLost(e);
+        if (_joystick)
+        {
+            Ptz?.EndDrag();
+        }
+
+        _press = null;
+        _pointer = null;
+        _joystick = false;
+        InvalidateVisual();
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        if (TopLevel.GetTopLevel(this) is WindowBase window)
+        {
+            window.Deactivated += OnWindowDeactivated;
+        }
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this) is WindowBase window)
+        {
+            window.Deactivated -= OnWindowDeactivated;
+        }
+
+        EndJoystick();
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == IsVisibleProperty && !IsVisible)
+        {
+            EndJoystick();
+        }
+    }
+
+    /// <summary>Another window took the focus (Alt+Tab, a message): a drag stops, the release may never come here.</summary>
+    private void OnWindowDeactivated(object? sender, EventArgs e) => EndJoystick();
+
+    private void EndJoystick()
+    {
         if (_joystick)
         {
             Ptz?.EndDrag();

@@ -990,8 +990,17 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 ?? throw new RpcException(new Status(StatusCode.NotFound, "device not found"));
         }
 
-        static LiveViewSource Source(int camera, string name, int sensor, int w, int h) =>
-            new() { Camera = camera, Name = name, Sensor = sensor, MaxWidth = w, MaxHeight = h };
+        // Like a camera: the largest resolution and the usual smaller ones of the same aspect.
+        static LiveViewSource Source(int camera, string name, int sensor, int w, int h)
+        {
+            var source = new LiveViewSource { Camera = camera, Name = name, Sensor = sensor, MaxWidth = w, MaxHeight = h };
+            foreach (var width in new[] { w, 1920, 1280, 800, 640, 480, 320 }.Where(x => x <= w).Distinct())
+            {
+                source.Resolutions.Add(new LiveViewResolution { Width = width, Height = width * h / w });
+            }
+
+            return source;
+        }
 
         IReadOnlyList<LiveViewSource> sources = model switch
         {

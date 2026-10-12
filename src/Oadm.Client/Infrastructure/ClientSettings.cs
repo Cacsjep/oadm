@@ -37,6 +37,15 @@ public sealed class ClientSettings
     /// <summary>Device grid group mode: a group per tag.</summary>
     public bool GroupDevicesByTag { get; set; }
 
+    /// <summary>Settings "Decode video on the graphics card" (live view); on by default, tested at every start.</summary>
+    public bool GpuDecoding { get; set; } = true;
+
+    /// <summary>Settings "Show video details over the picture" (codec, resolution, frame rate, bitrate, decoder).</summary>
+    public bool ShowVideoDetails { get; set; }
+
+    /// <summary>Settings "Frame rate (adaptive quality)", 1..30.</summary>
+    public int AdaptiveFps { get; set; } = 20;
+
     /// <summary>Height of the tasks pane set with the splitter, in pixels. 0 = default.</summary>
     public double TasksPaneHeight { get; set; }
 

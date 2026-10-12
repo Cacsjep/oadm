@@ -1157,6 +1157,72 @@
     <Setter Property="ClipToBounds" Value="True" />
     <Setter Property="MinHeight" Value="120" />
   </Style>
+  <!-- Live video (LiveView/LiveVideoView): small dark plates over the picture at its edges; the hover parts show only while
+       the pointer is over the picture -->
+  <Style Selector="Border.liveVideo :is(Control).videoHover">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector="Border.liveVideo:pointerover :is(Control).videoHover">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
+  <Style Selector="Border.videoOverlay">
+    <Setter Property="Background" Value="{StaticResource Oadm.OverlayBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="2" />
+  </Style>
+  <Style Selector="Border.videoOverlay.videoError">
+    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="Margin" Value="16" />
+  </Style>
+  <Style Selector=":is(Control).videoCorner">
+    <Setter Property="Margin" Value="8" />
+  </Style>
+  <Style Selector="StackPanel.videoCorner">
+    <Setter Property="Spacing" Value="4" />
+  </Style>
+  <Style Selector="StackPanel.videoWaiting">
+    <Setter Property="Spacing" Value="12" />
+    <Setter Property="Margin" Value="16" />
+  </Style>
+  <Style Selector="Border.videoOverlay.videoReason">
+    <Setter Property="Padding" Value="10,6" />
+    <Setter Property="MaxWidth" Value="420" />
+  </Style>
+  <Style Selector="TextBlock.videoReason">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="TextAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBlock.videoDetails">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="Margin" Value="6,2" />
+  </Style>
+  <Style Selector="Border.videoOverlay ui|StatusChip">
+    <Setter Property="Margin" Value="4,0" />
+  </Style>
+  <Style Selector="Window.fullscreenVideo">
+    <Setter Property="Background" Value="{StaticResource Oadm.VideoBackgroundBrush}" />
+  </Style>
+  <Style Selector="Window.fullscreenVideo Border.liveViewSurface">
+    <Setter Property="CornerRadius" Value="0" />
+  </Style>
+  <!-- Indeterminate progress ring (ui:ProgressRing): accent arc on a faint circle, one turn per second -->
+  <Style Selector="ui|ProgressRing[IsVisible=True]">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="Track" Value="{StaticResource Oadm.BorderBrush}" />
+    <Style.Animations>
+      <Animation Duration="0:0:1" IterationCount="Infinite">
+        <KeyFrame Cue="0%">
+          <Setter Property="RotateTransform.Angle" Value="0" />
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="RotateTransform.Angle" Value="360" />
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
   <!-- Zoom and focus bar over the bottom of the live picture (LiveView/OpticsBar): the dark overlay, small labels and
        values, sliders that take the rest of the row. -->
   <Style Selector="Border.opticsBar">

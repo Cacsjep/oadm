@@ -176,16 +176,8 @@
     <c:LiveViewPanel x:Name="LivePanel" Grid.Column="2"
                      IsOpen="{Binding LiveView.IsOpen}"
                      Title="{Binding LiveView.Title}"
-                     StateText="{Binding LiveView.StateText}"
-                     StateKind="{Binding LiveView.StateKind}"
-                     DetailText="{Binding LiveView.DetailText}"
-                     Source="{Binding LiveView.Image}"
                      CloseCommand="{Binding LiveView.CloseCommand}"
-                     Sources="{Binding LiveView.Sources}"
-                     HasSourceChoice="{Binding LiveView.HasSourceChoice}"
-                     SelectSourceCommand="{Binding LiveView.SelectSourceCommand}"
-                     Optics="{Binding LiveView.Optics}"
-                     Ptz="{Binding LiveView.Ptz}" />
+                     Video="{Binding LiveView.Video}" />
     </Grid>
     </tasks:TasksPaneLayout.MainContent>
     </tasks:TasksPaneLayout>

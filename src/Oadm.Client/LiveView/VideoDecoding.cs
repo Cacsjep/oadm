@@ -24,6 +24,12 @@ public interface IVideoDecoder : IDisposable
     /// none (decoder delay, or damaged data the decoder skipped). Never throws on bad data.
     /// </summary>
     LiveImage? Decode(LiveViewFrame frame);
+
+    /// <summary>True while the pictures come from the graphics card.</summary>
+    bool UsesGpu => false;
+
+    /// <summary>Why the graphics card does not decode this stream although "Decode video on the graphics card" is on; null otherwise.</summary>
+    string? GpuProblem => null;
 }
 
 /// <summary>Creates decoders and reports which codecs the client can decode.</summary>

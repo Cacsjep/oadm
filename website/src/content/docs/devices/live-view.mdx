@@ -8,6 +8,7 @@ import { Image } from 'astro:assets';
 import live from '../../../assets/screens/client-liveview-optics.png';
 import area from '../../../assets/screens/client-liveview-focus-area.png';
 import ptz from '../../../assets/screens/client-liveview-ptz.png';
+import panel from '../../../assets/screens/client-liveview-panel.png';
 
 <Aside type="caution" title="Camera behind a port forward? Set its RTSP port">
 OADM reaches the video and the events of a camera on port 554. Cameras behind a router that forwards another port, for
@@ -19,14 +20,30 @@ example a camera of the **AXIS Virtual Loan Tool**, need their port in OADM: rig
 
 - Click the device icon of a camera, encoder or intercom. The video opens on the right.
 - Click another device's icon to switch, the same icon, the close button or Escape to close.
-- Cameras with several sensors or view areas show buttons **1**, **2**, ... in the header to switch the source. OADM
-  remembers the choice per device until you close the client.
-- The header shows the codec, resolution and frame rate, or why there is no video.
-- Drag the divider to give the video more room.
+- Drag the divider to give the video more room. The resolution follows the size of the picture; the picture never goes
+  black while it changes.
+- The video stops when you cannot see it (another page, a minimized window) and starts again when you come back.
+
+## Over the picture
+
+<Image src={panel} alt="Live view with fullscreen, quality, the source buttons, the details and the zoom and focus bar" class="screen" />
+
+Point at the picture to see its buttons:
+
+- **Fullscreen** (top left), or double-click the picture. Esc or a double-click closes it.
+- **Adaptive** or **Full** (top left): Adaptive takes the resolution that fits the picture, Full the largest the camera
+  has. Adaptive uses the frame rate set in **Settings** > **This computer** (20 by default).
+- **1**, **2**, ... (top right) on cameras with several sensors or view areas switch the source. OADM remembers the
+  choice per device until you close the client.
+- **Controls** (bottom right) opens zoom and focus, or the PTZ controls.
+
+**Show video details over the picture** in **Settings** > **This computer** adds codec, resolution, frame rate, bitrate
+and whether the graphics card or the processor decodes.
 
 ## Zoom and focus
 
-Cameras with a remote zoom or focus lens show a bar over the bottom of the picture. Cameras without one show nothing.
+Cameras with a remote zoom or focus lens have the **Controls** button at the bottom right of the picture. It opens a
+bar over the bottom of the picture. Cameras without a remote lens have no button.
 
 - **Zoom** goes from wide to tele, **Focus** from near to far. The camera moves once you let go of the slider.
 - **Autofocus** (focus icon) lets the camera focus by itself.
@@ -42,7 +59,8 @@ You need the permission **Optics Control** (Operator has it). Every change is in
 
 <Image src={ptz} alt="PTZ camera in the live view with the circle in the middle" class="screen" />
 
-PTZ cameras show a circle in the middle of the picture and a bar with **Home**, the presets and a zoom slider.
+On PTZ cameras the **Controls** button opens a circle in the middle of the picture and a bar with **Home**, the presets
+and a zoom slider.
 
 - **Move**: drag from the circle. The further you drag, the faster the camera turns. Let go to stop.
 - **Zoom**: the mouse wheel over the picture, or the zoom slider.
@@ -68,6 +86,18 @@ behind one public address, a lab with port forwards.
 
 The port is stored in OADM only; nothing on the camera changes. The live view and the
 [Metadata Monitor](../../tools/metadata-monitor/) use it. Changing it needs the permission **Optics Control**.
+
+## Decoding on the graphics card
+
+The client decodes the video on the graphics card when it can, so many cameras run smoothly. It tests the graphics card
+at every start; when that does not work, the processor decodes and an orange warning icon shows at the top right of the
+picture. Point at it to see what to do:
+
+- **Linux**: install the video driver of the graphics card, see [Install](../../start/install/).
+- **Any system**: update the graphics driver, or turn off **Decode video on the graphics card** in **Settings** > **This
+  computer**. The processor then decodes without the warning.
+
+With **Show video details over the picture** on, the details say **GPU** or **Processor**.
 
 ## Good to know
 

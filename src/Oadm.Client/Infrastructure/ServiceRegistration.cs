@@ -107,7 +107,11 @@ public static class ServiceRegistration
             sp.GetRequiredService<IOadmApi>(),
             sp.GetRequiredService<IUiDispatcher>(),
             sp.GetRequiredService<ILogger<AddDevicesViewModel>>(),
-            mode));
+            mode)
+        {
+            // The credential list is Administrator only (the server checks it too).
+            CanSaveToCredentialList = sp.GetService<UserSession>()?.IsAdmin ?? true,
+        });
 
         // Toolbar plugins: the built-in ones are registered like plugin parts; DeviceToolbar adds those of client plugins.
         foreach (Oadm.Sdk.Client.IToolbarPlugin plugin in BuiltInToolbarPlugins.All)
@@ -116,7 +120,9 @@ public static class ServiceRegistration
         }
 
         services.AddSingleton<DeviceToolbar>();
+        services.AddSingleton<GpuDecodingService>();
         services.AddSingleton<IVideoDecoderFactory, FfmpegVideoDecoderFactory>();
+        services.AddSingleton(sp => new LiveVideoSettings(sp.GetService<IClientSettingsStore>()));
         services.AddSingleton<LiveViewViewModel>();
         services.AddSingleton<DevicesViewModel>();
         services.AddSingleton<MainWindowViewModel>();

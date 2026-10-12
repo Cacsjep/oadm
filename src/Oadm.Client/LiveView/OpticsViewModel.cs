@@ -24,8 +24,17 @@ public sealed partial class OpticsViewModel(IOadmApi api, TimeProvider? time = n
     private CancellationTokenSource? _pendingFocus;
     private bool _applying;
 
+    /// <summary>Counts loads: an answer for an earlier device or lens is not applied.</summary>
+    private int _generation;
+
     /// <summary>How long a slider must rest before its value is sent.</summary>
     public TimeSpan Debounce { get; init; } = TimeSpan.FromMilliseconds(300);
+
+    /// <summary>The place shows the zoom slider (<see cref="LiveVideoOptions.OpticsZoom"/>).</summary>
+    public bool AllowZoom { get; init; } = true;
+
+    /// <summary>The place shows focus with autofocus, area and reset (<see cref="LiveVideoOptions.OpticsFocus"/>).</summary>
+    public bool AllowFocus { get; init; } = true;
 
     /// <summary>The role has "Optics Control" (set by the device page from the session).</summary>
     [ObservableProperty]
@@ -107,6 +116,7 @@ public sealed partial class OpticsViewModel(IOadmApi api, TimeProvider? time = n
         Cancel(ref _load);
         Cancel(ref _pendingZoom);
         Cancel(ref _pendingFocus);
+        _generation++;
         _deviceId = null;
         IsSupported = false;
         HasZoom = false;
@@ -176,6 +186,7 @@ public sealed partial class OpticsViewModel(IOadmApi api, TimeProvider? time = n
 
     private async Task SearchAsync(SetOpticsRequest request)
     {
+        var generation = _generation;
         IsBusy = true;
         SetStatus("Focusing", false);
         try
@@ -184,10 +195,13 @@ public sealed partial class OpticsViewModel(IOadmApi api, TimeProvider? time = n
         }
         finally
         {
-            IsBusy = false;
-            if (!IsError)
+            if (generation == _generation) // another lens meanwhile: its own state stays
             {
-                SetStatus("", false);
+                IsBusy = false;
+                if (!IsError)
+                {
+                    SetStatus("", false);
+                }
             }
         }
     }
@@ -230,10 +244,11 @@ public sealed partial class OpticsViewModel(IOadmApi api, TimeProvider? time = n
 
         request.DeviceId = deviceId;
         request.Sensor = _sensor;
+        var generation = _generation;
         try
         {
             var state = await api.SetOpticsAsync(request, CancellationToken.None).ConfigureAwait(true);
-            if (_deviceId == deviceId)
+            if (generation == _generation)
             {
                 SetStatus("", false);
                 if (applyAnswer)
@@ -244,14 +259,17 @@ public sealed partial class OpticsViewModel(IOadmApi api, TimeProvider? time = n
         }
         catch (RpcException ex)
         {
-            if (_deviceId == deviceId)
+            if (generation == _generation)
             {
                 SetStatus(string.IsNullOrEmpty(ex.Status.Detail) ? "The camera did not answer." : ex.Status.Detail, true);
             }
         }
-        catch (Exception ex) when (ex is IOException or HttpRequestException)
+        catch (Exception ex) when (ex is IOException or HttpRequestException or ObjectDisposedException or InvalidOperationException)
         {
-            SetStatus("The camera did not answer.", true);
+            if (generation == _generation)
+            {
+                SetStatus("The camera did not answer.", true);
+            }
         }
     }
 
@@ -261,8 +279,8 @@ public sealed partial class OpticsViewModel(IOadmApi api, TimeProvider? time = n
         _applying = true;
         try
         {
-            HasZoom = state.HasZoom;
-            HasFocus = state.HasFocus;
+            HasZoom = state.HasZoom && AllowZoom;
+            HasFocus = state.HasFocus && AllowFocus;
             MaxZoom = Math.Max(1, state.MaxMagnification);
             Zoom = Math.Clamp(state.Magnification, 1, MaxZoom);
             Focus = Math.Clamp(state.FocusPosition, 0, 1) * 100;

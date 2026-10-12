@@ -8,9 +8,24 @@
   <!-- Every labeled input is a ui:FormField: its error appears directly below the input. Fields are grouped under
        small headings; Save sits in the input column. Operators see the values as plain text, without Save. -->
   <Grid RowDefinitions="Auto,*" RowSpacing="16">
-    <c:PageTitleBar Title="Settings" Subtitle="How the server polls, scans and runs tasks." />
+    <c:PageTitleBar Title="Settings" Subtitle="How the server polls, scans and runs tasks, and how this computer shows video." />
     <ScrollViewer Grid.Row="1">
       <StackPanel Spacing="16" MaxWidth="760" HorizontalAlignment="Left">
+        <!-- This computer: saved at once, for every user (client-settings.json) -->
+        <Border Classes="card">
+          <StackPanel Classes="form">
+            <TextBlock Classes="sectionTitle" Text="This computer" />
+            <ui:FormField Classes="wide" Label="Live view" Hint="{Binding GpuDecodingHint}">
+              <CheckBox IsChecked="{Binding GpuDecoding}" Content="Decode video on the graphics card" />
+            </ui:FormField>
+            <ui:FormField Classes="wide">
+              <CheckBox IsChecked="{Binding Video.ShowDetails}" Content="Show video details over the picture" />
+            </ui:FormField>
+            <ui:FormField Label="Frame rate (adaptive quality)" Hint="Frames per second when the resolution follows the size">
+              <NumericUpDown Minimum="1" Maximum="30" Increment="1" FormatString="0" Value="{Binding Video.AdaptiveFps}" />
+            </ui:FormField>
+          </StackPanel>
+        </Border>
         <Border Classes="card">
           <StackPanel Spacing="16">
             <!-- Administrators: the form -->

@@ -55,6 +55,10 @@ sudo apt install ./oadm-client_*.deb                       # client only
 - Uninstall: `sudo apt remove oadm-server oadm-client`.
 - The notice "Download is performed unsandboxed as root ... couldn't be accessed by user '_apt'" is harmless: apt
   cannot read your private home folder and reads the file as root instead. To avoid it, install from `/tmp`.
+- Live view on the graphics card: the client needs the video driver of the graphics card, else the processor decodes
+  and the live view shows "GPU decoding not available". Intel: `sudo apt install intel-media-va-driver` (older Intel:
+  `i965-va-driver`), AMD: `sudo apt install mesa-va-drivers`, NVIDIA: the NVIDIA driver. Windows and macOS need nothing
+  extra.
 
 ### macOS
 

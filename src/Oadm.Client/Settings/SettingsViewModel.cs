@@ -24,17 +24,83 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     private readonly ILogger<SettingsViewModel> _logger;
     private readonly UserSession? _session;
 
+    private bool _gpuDecoding;
+
+    /// <summary>
+    /// "Decode video on the graphics card" (this computer, saved at once, every user): the live view decodes on the graphics
+    /// card when the test at the start passed, else on the processor with a warning.
+    /// </summary>
+    public bool GpuDecoding
+    {
+        get => _gpuDecoding;
+        set
+        {
+            if (!SetProperty(ref _gpuDecoding, value))
+            {
+                return;
+            }
+
+            if (_clientSettings is not null)
+            {
+                _clientSettings.Current.GpuDecoding = value;
+                _clientSettings.Save();
+            }
+
+            _gpu?.SetEnabled(value);
+            OnPropertyChanged(nameof(GpuDecodingHint));
+        }
+    }
+
+    /// <summary>The test's result below the check box.</summary>
+    public string GpuDecodingHint => !GpuDecoding ? "The processor decodes the live view."
+        : _gpu?.Status is not { } status ? "Used when the graphics card can decode the video."
+        : status.State switch
+        {
+            LiveView.GpuDecodingState.Checking => "Testing the graphics card",
+            LiveView.GpuDecodingState.NotChecked => "Used when the graphics card can decode the video.",
+            LiveView.GpuDecodingState.Available => "The graphics card decodes " + string.Join(" and ", status.Codecs.OrderBy(c => c).Select(c => c == VideoCodec.H265 ? "H.265" : "H.264")) + ".",
+            _ => status.Problem ?? LiveView.GpuDecodingTexts.Generic,
+        };
+
+    /// <summary>Live video on this computer: details over the picture, the adaptive frame rate.</summary>
+    public LiveView.LiveVideoSettings Video { get; }
+
     /// <summary>Server settings can only be changed by administrators (the server checks it too).</summary>
     public bool IsAdmin => _session?.IsAdmin ?? true;
 
     public bool IsOperator => !IsAdmin;
 
-    public SettingsViewModel(IOadmApi api, ServerConnection connection, ILogger<SettingsViewModel> logger, UserSession? session = null)
+    private readonly Infrastructure.IClientSettingsStore? _clientSettings;
+    private readonly LiveView.GpuDecodingService? _gpu;
+    private readonly Infrastructure.IUiDispatcher? _ui;
+
+    public SettingsViewModel(IOadmApi api, ServerConnection connection, ILogger<SettingsViewModel> logger, UserSession? session = null,
+        Infrastructure.IClientSettingsStore? clientSettings = null, LiveView.GpuDecodingService? gpu = null, Infrastructure.IUiDispatcher? ui = null,
+        LiveView.LiveVideoSettings? video = null)
     {
+        Video = video ?? new LiveView.LiveVideoSettings(clientSettings);
         ArgumentNullException.ThrowIfNull(connection);
         _api = api;
         _logger = logger;
         _session = session;
+        _clientSettings = clientSettings;
+        _gpu = gpu;
+        _ui = ui;
+        _gpuDecoding = clientSettings?.Current.GpuDecoding ?? true;
+        if (gpu is not null)
+        {
+            gpu.Changed += (_, _) =>
+            {
+                if (_ui is null)
+                {
+                    OnPropertyChanged(nameof(GpuDecodingHint));
+                }
+                else
+                {
+                    _ui.Post(() => OnPropertyChanged(nameof(GpuDecodingHint)));
+                }
+            };
+        }
         connection.Connected += (_, _) => _ = LoadAsync();
         if (session is not null)
         {

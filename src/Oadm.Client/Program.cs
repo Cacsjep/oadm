@@ -14,9 +14,16 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        // Linux: the bundled FFmpeg's VA-API looks for the graphics drivers in the system folders (before FFmpeg loads).
+        LiveView.HwDevice.PrepareEnvironment();
         if (args.Contains(LiveView.DecoderSelfCheck.Argument, StringComparer.OrdinalIgnoreCase))
         {
             return LiveView.DecoderSelfCheck.Run(Console.Out);
+        }
+
+        if (args.Contains(LiveView.GpuDecodingCheck.Argument, StringComparer.OrdinalIgnoreCase))
+        {
+            return LiveView.GpuDecodingCheck.Run(Console.Out);
         }
 
         AppOptions options = AppOptions.Parse(args);

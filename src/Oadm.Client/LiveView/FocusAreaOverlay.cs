@@ -108,6 +108,12 @@ public sealed class FocusAreaOverlay : Control
         }
     }
 
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        _dragStart = null;
+    }
+
     private IBrush Brush(string key, Color fallback) =>
         this.TryFindResource(key, ActualThemeVariant, out var value) && value is IBrush brush ? brush : new SolidColorBrush(fallback);
 }

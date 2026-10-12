@@ -167,6 +167,58 @@ public sealed class OpticsAndRtspPortTests
     }
 
     [Fact]
+    public async Task A_drag_sends_one_move_at_a_time_and_the_stop_always_comes_last()
+    {
+        var api = Substitute.For<IOadmApi>();
+        api.GetPtzAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(new PtzState
+        {
+            Supported = true, CanMove = true, CanZoom = true, Presets = { "Gate" }, Zoom = 1,
+        });
+        var sent = new List<MovePtzRequest>();
+        var slow = new TaskCompletionSource();
+        api.MovePtzAsync(Arg.Any<MovePtzRequest>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            lock (sent)
+            {
+                sent.Add(call.Arg<MovePtzRequest>().Clone());
+                return sent.Count == 1 ? slow.Task : Task.CompletedTask; // the camera answers the first move late
+            }
+        });
+        using var vm = new PtzViewModel(api) { Debounce = TimeSpan.Zero, RefreshDelay = TimeSpan.FromHours(1), RepeatInterval = TimeSpan.FromHours(1) };
+        await vm.LoadAsync("ptz", 1);
+
+        vm.BeginDrag();
+        vm.DragTo(0.5, 0);
+        vm.DragTo(0.6, 0);
+        vm.DragTo(0.7, 0);
+        vm.EndDrag();
+        Assert.Single(sent); // nothing more while the first is on its way
+        slow.SetResult();
+        await TestSupport.WaitUntilAsync(() => sent.Count == 2);
+        await Task.Delay(50);
+        Assert.Equal([PtzMove.Continuous, PtzMove.Stop], sent.Select(r => r.Move)); // the moves in between are skipped
+
+        // The same preset again goes there again; wheel notches never carry over to another camera.
+        sent.Clear();
+        vm.SelectedPreset = "Gate";
+        Assert.Null(vm.SelectedPreset);
+        vm.SelectedPreset = "Gate";
+        await TestSupport.WaitUntilAsync(() => sent.Count(r => r.Move == PtzMove.Preset) == 2);
+        using var wheel = new PtzViewModel(api) { Debounce = TimeSpan.FromHours(1), RefreshDelay = TimeSpan.FromHours(1) };
+        await wheel.LoadAsync("ptz", 1);
+        wheel.Wheel(3);
+        await wheel.LoadAsync("ptz", 2); // another source before the wheel rested
+        sent.Clear();
+        var next = new PtzViewModel(api) { Debounce = TimeSpan.Zero, RefreshDelay = TimeSpan.FromHours(1) };
+        using (next)
+        {
+            await next.LoadAsync("ptz", 2);
+        }
+
+        Assert.DoesNotContain(sent, r => r.Move == PtzMove.ZoomBy);
+    }
+
+    [Fact]
     public async Task The_rtsp_port_dialog_reads_checks_and_saves_the_port_for_the_selection()
     {
         var api = Substitute.For<IOadmApi>();
@@ -216,7 +268,7 @@ public sealed class OpticsAndRtspPortTests
 
         session.Update(new UserInfo { UserName = "tech", Role = UserRole.Operator, RoleId = FakeOadmApi.ViewerRoleId, RoleName = "Viewer", Permissions = { "devices.liveView" } });
         Assert.DoesNotContain(f.Devices.ContextMenuEntries, e => e.Header == DevicesViewModel.OadmMenuHeader);
-        Assert.False(f.Devices.LiveView.Optics.CanControl);
+        Assert.False(f.Devices.LiveView.Video.Optics.CanControl);
     }
 
     private static Device Video(string id, string address)

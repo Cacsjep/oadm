@@ -16,9 +16,39 @@ version and date, and the release workflow copies it into the GitHub release.
 - **RTSP port per camera**: right-click a camera, **OADM** > **RTSP port**, for cameras behind a port forward such as the
   AXIS Virtual Loan Tool. The live view and the Metadata Monitor use it; nothing changes on the camera.
 
+- Live view: **decoding on the graphics card** (Settings > This computer > "Decode video on the graphics card", on by
+  default). The client tests the graphics card at every start in a separate process; when it does not work the processor
+  decodes and the live view shows what to do (Linux: install the video driver of the graphics card).
+
+- Live view: **fullscreen** (button top left or double-click; Esc closes) with a stream of its own at the size of the
+  screen, and **Adaptive** or **Full** quality (button top left).
+- Settings > This computer: **Show video details over the picture** (codec, resolution, frame rate, bitrate, graphics
+  card or processor) and **Frame rate (adaptive quality)**, 20 by default.
+
+### Fixed
+
+- A logout, a new password or a disabled user now ends that user's open live views, Web View pages and event streams at
+  once; a role change can no longer be missed while the user is busy.
+- Users page: unsaved changes of the permission matrix survive a reconnect and adding a user; a save made on an older
+  matrix is refused instead of undoing another administrator's change; rows no longer show the wrong permission after
+  collapsing a group or searching.
+- Web View: devices that need a login or a password get no requests from open tabs; turning the plugin off stops open
+  tabs; tabs close when the role loses "Open devices"; Reload works every time; tab titles follow a moved device; large
+  uploads through the web interface keep the server's disk from filling up.
+- PTZ: a drag can no longer leave the camera turning (a second button, Alt+Tab, closed controls), the stop is never
+  overtaken by a late move, and choosing the same preset again goes there again.
+- Zoom and focus: an answer for the previous source no longer lands on the new one.
+- RTSP port: setting it for many cameras is one write, and the live view really uses the new port at once.
+- Add devices: "Save to credential list" is for administrators only.
+
 ### Changed
 
-- Live view: one header row with the model, codec, resolution and frame rate; the address and MAC address are gone.
+- Live view: the resolution follows the size of the picture and changes without a gap: the old picture stays until the
+  new one is there. The video stops 2 seconds after it is hidden (another page, a minimized window) and starts again
+  when shown.
+- Live view: the picture area shows only the picture, a progress ring or an error. Fullscreen, quality and the source
+  buttons show when you point at the picture; zoom, focus and PTZ open with a button at the bottom right. The header
+  shows the model and the source name.
 - Metadata Monitor: the RTSP port field moved to the device list (**OADM** > **RTSP port**).
 
 ## [2.4.0] - 2026-10-12

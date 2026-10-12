@@ -1,0 +1,87 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:lv="using:Oadm.Client.LiveView"
+             x:Class="Oadm.Client.LiveView.LiveVideoView"
+             x:DataType="lv:LiveVideoViewModel">
+  <!-- One live video: the picture (Stretch Uniform) on the dark surface and what sits over it. The picture area shows only
+       the picture, the progress ring or the error; everything else is small and at the edges:
+       top left on hover fullscreen and quality, top right the GPU warning and (on hover) the channel switch,
+       bottom left the details (setting), bottom right the controls button with the zoom and focus or PTZ bar left of it. -->
+  <Border x:Name="Surface" Classes="liveViewSurface liveVideo">
+    <Panel x:Name="Picture">
+      <Image Source="{Binding Image}" Stretch="Uniform" />
+      <lv:FocusAreaOverlay Area="{Binding Optics.Area, Mode=TwoWay}" PictureSize="{Binding PictureSize}"
+                           IsVisible="{Binding ShowFocusArea}" />
+      <lv:PtzOverlay Ptz="{Binding Ptz}" PictureSize="{Binding PictureSize}" IsVisible="{Binding ShowPtz}" />
+
+      <!-- The ring; while reconnecting the reason below it -->
+      <StackPanel Classes="videoWaiting" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding ShowRing}">
+        <ui:ProgressRing HorizontalAlignment="Center" IsVisible="{Binding ShowRing}" />
+        <Border Classes="videoOverlay videoReason" IsVisible="{Binding IsReconnecting}">
+          <TextBlock Classes="videoReason" Text="{Binding StatusText}" />
+        </Border>
+      </StackPanel>
+      <Border Classes="videoOverlay videoError" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasError}">
+        <ui:StatusChip IsError="True" Text="{Binding StatusText}" MaxLines="4" />
+      </Border>
+
+      <!-- Top left, on hover: fullscreen, quality -->
+      <StackPanel Classes="videoHover videoCorner" HorizontalAlignment="Left" VerticalAlignment="Top" Orientation="Horizontal">
+        <Border Classes="videoOverlay" IsVisible="{Binding AllowFullscreen}">
+          <Button x:Name="FullscreenButton" Classes="toolbar iconOnly" Command="{Binding ToggleFullscreenCommand}">
+            <ui:OadmIcon x:Name="FullscreenIcon" Data="{StaticResource Icon.maximize}" />
+          </Button>
+        </Border>
+        <Border Classes="videoOverlay" IsVisible="{Binding AllowQualitySwitch}">
+          <Button Classes="toolbar" Content="{Binding QualityText}" ToolTip.Tip="{Binding QualityTip}"
+                  Command="{Binding ToggleQualityCommand}" />
+        </Border>
+      </StackPanel>
+
+      <!-- Top right: the GPU warning (always), the channel switch (on hover) -->
+      <StackPanel Classes="videoCorner" HorizontalAlignment="Right" VerticalAlignment="Top" Orientation="Horizontal">
+        <Panel Classes="videoHover">
+          <Border Classes="segmented videoOverlay" IsVisible="{Binding ShowSourceSwitch}">
+            <ItemsControl ItemsSource="{Binding Sources}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="2" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="lv:LiveViewSourceOption">
+                  <Button Classes="segment" Classes.selected="{Binding IsSelected}" Content="{Binding Label}"
+                          ToolTip.Tip="{Binding Name}" CommandParameter="{Binding}"
+                          Command="{Binding $parent[lv:LiveVideoView].((lv:LiveVideoViewModel)DataContext).SelectSourceCommand}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+        </Panel>
+        <Border Classes="videoOverlay" IsVisible="{Binding HasDecodingWarning}">
+          <ui:StatusChip x:Name="GpuWarning" IsWarning="True" Text="" ToolTip.Tip="{Binding DecodingWarning}" />
+        </Border>
+      </StackPanel>
+
+      <!-- Bottom: the zoom and focus or PTZ bar over the full width; below it the details left, the controls button right -->
+      <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Bottom">
+        <lv:OpticsBar Grid.Row="0" Grid.ColumnSpan="3" DataContext="{Binding Optics}"
+                      IsVisible="{Binding $parent[lv:LiveVideoView].((lv:LiveVideoViewModel)DataContext).ShowOpticsBar, FallbackValue=False}" />
+        <lv:PtzBar Grid.Row="0" Grid.ColumnSpan="3" DataContext="{Binding Ptz}"
+                   IsVisible="{Binding $parent[lv:LiveVideoView].((lv:LiveVideoViewModel)DataContext).ShowPtz, FallbackValue=False}" />
+        <Border Grid.Row="1" Grid.Column="0" Classes="videoOverlay videoCorner" VerticalAlignment="Bottom" IsVisible="{Binding ShowDetails}">
+          <TextBlock Classes="videoDetails" Text="{Binding DetailsText}" />
+        </Border>
+        <Panel Grid.Row="1" Grid.Column="2" Classes.videoHover="{Binding !IsControlsOpen}" VerticalAlignment="Bottom">
+          <Border Classes="videoOverlay videoCorner" IsVisible="{Binding HasControls}">
+            <Button x:Name="ControlsButton" Classes="toolbar iconOnly" Classes.active="{Binding IsControlsOpen}"
+                    Command="{Binding ToggleControlsCommand}">
+              <ui:OadmIcon Data="{StaticResource Icon.sliders}" />
+            </Button>
+          </Border>
+        </Panel>
+      </Grid>
+    </Panel>
+  </Border>
+</UserControl>

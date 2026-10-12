@@ -21,7 +21,8 @@ public sealed partial class AppShell(
     AppOptions options,
     Func<LoginViewModel> loginFactory,
     MainWindowViewModel main,
-    ILogger<AppShell> logger)
+    ILogger<AppShell> logger,
+    LiveView.GpuDecodingService? gpu = null)
 {
     public const string SessionEndedMessage = "Your session has ended. Log in again.";
 
@@ -31,6 +32,7 @@ public sealed partial class AppShell(
     {
         ArgumentNullException.ThrowIfNull(desktop);
         _desktop = desktop;
+        gpu?.SetEnabled(settings.Current.GpuDecoding); // the GPU decoding test runs in the background, in its own process
         session.LogoutRequested += (_, e) => _ = LogoutAsync(e.Message);
         api.SessionEnded += (_, _) => Dispatcher.UIThread.Post(() => session.RequestLogout(SessionEndedMessage));
         var splash = new SplashViewModel();

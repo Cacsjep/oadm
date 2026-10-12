@@ -117,6 +117,12 @@ message LiveViewSource {
   int32 sensor = 3;        // 0-based image source (Image.I<n>.Source)
   int32 max_width = 4;     // largest resolution of this source
   int32 max_height = 5;
+  repeated LiveViewResolution resolutions = 6; // every resolution of the source (the client picks one that fits its size)
+}
+
+message LiveViewResolution {
+  int32 width = 1;
+  int32 height = 2;
 }
 
 message LiveViewSourcesRequest { string device_id = 1; }

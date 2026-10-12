@@ -97,8 +97,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         if (session is not null)
         {
             LiveView.IsAllowed = session.Has(HostPermissionKeys.DevicesLiveView);
-            LiveView.Optics.CanControl = session.Has(HostPermissionKeys.DevicesOpticsControl);
-            LiveView.Ptz.CanControl = session.Has(HostPermissionKeys.DevicesOpticsControl);
+            LiveView.Video.Settings.CanControlOptics = session.Has(HostPermissionKeys.DevicesOpticsControl);
             session.PermissionsChanged += OnPermissionsChanged;
         }
 
@@ -641,8 +640,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     {
         RebuildContextMenu();
         LiveView.IsAllowed = Can(HostPermissionKeys.DevicesLiveView);
-        LiveView.Optics.CanControl = Can(HostPermissionKeys.DevicesOpticsControl);
-        LiveView.Ptz.CanControl = Can(HostPermissionKeys.DevicesOpticsControl);
+        LiveView.Video.Settings.CanControlOptics = Can(HostPermissionKeys.DevicesOpticsControl);
     }
 
     private bool SelectionNeedsLogin() => SelectedDevices.Any(d => d.ContractStatus == DeviceStatus.CredentialsRequired);

@@ -34,6 +34,9 @@ public sealed partial class PtzViewModel(IOadmApi api, TimeProvider? time = null
     private CancellationTokenSource? _pendingWheel;
     private CancellationTokenSource? _refresh;
     private (int X, int Y) _speed;
+    private (int X, int Y)? _sent = (0, 0);
+    private bool _pumping;
+    private int _generation;
     private int _wheelSteps;
     private bool _applying;
 
@@ -46,9 +49,29 @@ public sealed partial class PtzViewModel(IOadmApi api, TimeProvider? time = null
     /// <summary>After a move the zoom slider reads the camera's zoom again after this time.</summary>
     public TimeSpan RefreshDelay { get; init; } = TimeSpan.FromSeconds(1.5);
 
+    /// <summary>Parts the place shows (<see cref="LiveVideoOptions"/>): the circle, zoom (slider and wheel), presets, Home, click to center.</summary>
+    public bool AllowMove { get; init; } = true;
+
+    public bool AllowZoom { get; init; } = true;
+
+    public bool AllowPresets { get; init; } = true;
+
+    public bool AllowHome { get; init; } = true;
+
+    public bool AllowCenter { get; init; } = true;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsVisible))]
     public partial bool CanControl { get; set; } = true;
+
+    /// <summary>The role lost Optics Control: a running drag stops at once.</summary>
+    partial void OnCanControlChanged(bool value)
+    {
+        if (!value)
+        {
+            EndDrag();
+        }
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsVisible))]
@@ -124,6 +147,10 @@ public sealed partial class PtzViewModel(IOadmApi api, TimeProvider? time = null
         Cancel(ref _pendingZoom);
         Cancel(ref _pendingWheel);
         Cancel(ref _refresh);
+        _generation++;
+        _speed = (0, 0);
+        _sent = (0, 0);
+        _wheelSteps = 0;
         _deviceId = null;
         IsSupported = false;
         IsDragging = false;
@@ -146,6 +173,7 @@ public sealed partial class PtzViewModel(IOadmApi api, TimeProvider? time = null
         var cts = new CancellationTokenSource();
         _drag = cts;
         _speed = (0, 0);
+        _sent = (0, 0);
         IsDragging = true;
         _ = RepeatAsync(cts.Token);
     }
@@ -163,7 +191,7 @@ public sealed partial class PtzViewModel(IOadmApi api, TimeProvider? time = null
         if (speed != _speed)
         {
             _speed = speed;
-            _ = SendAsync(Move(speed));
+            Pump();
         }
     }
 
@@ -178,7 +206,8 @@ public sealed partial class PtzViewModel(IOadmApi api, TimeProvider? time = null
         Cancel(ref _drag);
         IsDragging = false;
         _speed = (0, 0);
-        _ = SendAsync(new MovePtzRequest { Move = PtzMove.Stop });
+        _sent = null; // the stop always goes out, after any move still on its way
+        Pump();
         RefreshLater();
     }
 
@@ -233,6 +262,10 @@ public sealed partial class PtzViewModel(IOadmApi api, TimeProvider? time = null
         {
             _ = SendAsync(new MovePtzRequest { Move = PtzMove.Preset, Preset = value });
             RefreshLater();
+            // Back to "Presets", so choosing the same one again goes there again.
+            _applying = true;
+            SelectedPreset = null;
+            _applying = false;
         }
     }
 
@@ -260,14 +293,48 @@ public sealed partial class PtzViewModel(IOadmApi api, TimeProvider? time = null
             while (!ct.IsCancellationRequested)
             {
                 await Task.Delay(RepeatInterval, _time, ct).ConfigureAwait(true);
-                if (_speed != (0, 0))
+                if (!ct.IsCancellationRequested && _speed != (0, 0))
                 {
-                    await SendAsync(Move(_speed)).ConfigureAwait(true);
+                    _sent = null;
+                    Pump();
                 }
             }
         }
         catch (OperationCanceledException)
         {
+        }
+    }
+
+    /// <summary>
+    /// Sends the newest drag speed, one request at a time: pointer moves only replace the speed that goes next, so a
+    /// drag never floods the camera and a stop is never overtaken by a move still on its way.
+    /// </summary>
+    private void Pump()
+    {
+        if (_pumping || _deviceId is null)
+        {
+            return;
+        }
+
+        _pumping = true;
+        _ = PumpAsync();
+    }
+
+    private async Task PumpAsync()
+    {
+        var generation = _generation;
+        try
+        {
+            while (_sent != _speed && generation == _generation)
+            {
+                var speed = _speed;
+                _sent = speed;
+                await SendAsync(Move(speed)).ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            _pumping = false;
         }
     }
 
@@ -328,24 +395,28 @@ public sealed partial class PtzViewModel(IOadmApi api, TimeProvider? time = null
 
         request.DeviceId = deviceId;
         request.Camera = _camera;
+        var generation = _generation;
         try
         {
             await api.MovePtzAsync(request, CancellationToken.None).ConfigureAwait(true);
-            if (_deviceId == deviceId)
+            if (generation == _generation)
             {
                 StatusText = "";
             }
         }
         catch (RpcException ex)
         {
-            if (_deviceId == deviceId)
+            if (generation == _generation)
             {
                 StatusText = string.IsNullOrEmpty(ex.Status.Detail) ? "The camera did not answer." : ex.Status.Detail;
             }
         }
-        catch (Exception ex) when (ex is IOException or HttpRequestException)
+        catch (Exception ex) when (ex is IOException or HttpRequestException or ObjectDisposedException or InvalidOperationException)
         {
-            StatusText = "The camera did not answer.";
+            if (generation == _generation)
+            {
+                StatusText = "The camera did not answer.";
+            }
         }
     }
 
@@ -354,15 +425,15 @@ public sealed partial class PtzViewModel(IOadmApi api, TimeProvider? time = null
         _applying = true;
         try
         {
-            CanMove = state.CanMove;
-            CanZoom = state.CanZoom;
-            CanCenter = state.CanCenter;
-            CanGoHome = state.CanGoHome;
+            CanMove = state.CanMove && AllowMove;
+            CanZoom = state.CanZoom && AllowZoom;
+            CanCenter = state.CanCenter && AllowCenter;
+            CanGoHome = state.CanGoHome && AllowHome;
             Zoom = Math.Clamp(state.Zoom, 1, 9999);
             if (presets)
             {
                 Presets.Clear();
-                foreach (var preset in state.Presets)
+                foreach (var preset in AllowPresets ? state.Presets : [])
                 {
                     Presets.Add(preset);
                 }
@@ -371,7 +442,7 @@ public sealed partial class PtzViewModel(IOadmApi api, TimeProvider? time = null
                 SelectedPreset = null;
             }
 
-            IsSupported = state.Supported;
+            IsSupported = state.Supported && (CanMove || CanZoom || CanCenter || CanGoHome || HasPresets);
         }
         finally
         {
