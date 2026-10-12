@@ -59,14 +59,14 @@
 
     <Grid Grid.Row="1" ColumnDefinitions="Auto,*">
       <!-- Navigation rail: collapsed = icons with tooltips, expanded = icon + label -->
-      <DockPanel Grid.Column="0" Classes="rail" Classes.expanded="{Binding IsNavExpanded}" LastChildFill="False">
+      <DockPanel Grid.Column="0" Classes="rail" Classes.expanded="{Binding IsNavExpanded}">
         <Button DockPanel.Dock="Bottom" Classes="nav toggle" Margin="0,2"
                 Command="{Binding ToggleNavCommand}"
                 ToolTip.Tip="{Binding NavToggleText}" ToolTip.Placement="Right">
           <Panel>
-            <ui:IconLabel Icon="{StaticResource Icon.panelOpen}" Text="{Binding NavToggleText}" Spacing="12"
+            <ui:IconLabel Icon="{StaticResource Icon.panelOpen}" Text="{Binding NavToggleText}" Spacing="7"
                          IsTextVisible="False" IsVisible="{Binding !IsNavExpanded}" />
-            <ui:IconLabel Icon="{StaticResource Icon.panelClose}" Text="{Binding NavToggleText}" Spacing="12"
+            <ui:IconLabel Icon="{StaticResource Icon.panelClose}" Text="{Binding NavToggleText}" Spacing="7"
                          IsVisible="{Binding IsNavExpanded}" />
           </Panel>
         </Button>
@@ -75,12 +75,12 @@
         <Button DockPanel.Dock="Bottom" Classes="nav" Margin="0,2" Command="{Binding LogoutCommand}"
                 ToolTip.Tip="Log out" ToolTip.Placement="Right"
                 ToolTip.ServiceEnabled="{Binding !IsNavExpanded}">
-          <ui:IconLabel Icon="{StaticResource Icon.logout}" Text="Log out" Spacing="12" IsTextVisible="{Binding IsNavExpanded}" />
+          <ui:IconLabel Icon="{StaticResource Icon.logout}" Text="Log out" Spacing="7" IsTextVisible="{Binding IsNavExpanded}" />
         </Button>
         <Border DockPanel.Dock="Bottom" x:Name="RailUser" Classes="railUser" Margin="0,2"
                 ToolTip.Tip="{Binding UserTooltip}" ToolTip.Placement="Right">
           <!-- Initial avatar + name: the account, not a navigation entry -->
-          <StackPanel Orientation="Horizontal" Spacing="10">
+          <StackPanel Orientation="Horizontal" Spacing="5">
             <Border Classes="avatar">
               <TextBlock Text="{Binding UserInitial}" />
             </Border>
@@ -97,8 +97,7 @@
                         CommandParameter="{Binding}"
                         ToolTip.Tip="{Binding Title}" ToolTip.Placement="Right"
                         ToolTip.ServiceEnabled="{Binding !$parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}">
-                  <ui:IconLabel Icon="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Text="{Binding Title}" Spacing="12"
-                               Classes.accentIcon="{Binding IsAccentIcon}"
+                  <ui:IconLabel Icon="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Text="{Binding Title}" Spacing="7"
                                IsTextVisible="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}" />
                 </Button>
                 <!-- Plugins: a divider below it -->
@@ -107,7 +106,9 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
-        <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding NavItems}">
+        <!-- The pages fill the rest and scroll when there are more than fit -->
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <ItemsControl ItemsSource="{Binding NavItems}" VerticalAlignment="Top">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="shell:NavItemViewModel">
               <StackPanel>
@@ -129,8 +130,7 @@
                     </ContextMenu>
                   </Button.ContextMenu>
                   <Grid ColumnDefinitions="*,Auto">
-                    <ui:IconLabel Grid.Column="0" Icon="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Text="{Binding Title}" Spacing="12"
-                                 Classes.accentIcon="{Binding IsAccentIcon}"
+                    <ui:IconLabel Grid.Column="0" Icon="{Binding IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" Text="{Binding Title}" Spacing="7"
                                  IsTextVisible="{Binding $parent[Window].((shell:MainWindowViewModel)DataContext).IsNavExpanded}" />
                     <Border Grid.Column="1" Classes="badge" IsVisible="{Binding HasBadge}">
                       <TextBlock Text="{Binding Badge}" />
@@ -141,6 +141,7 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
+        </ScrollViewer>
       </DockPanel>
 
       <!-- Page; the connection banner shows only while the server is unreachable, the key banner after the

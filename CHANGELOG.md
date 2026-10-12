@@ -16,8 +16,9 @@ version and date, and the release workflow copies it into the GitHub release.
 
 - Logs and the task details: information entries show the blue info icon.
 - Event rules: the **Placeholders** list shows only next to actions that write texts (Send email, Send HTTP request).
-- Navigation: **Plugins** moved to the top of the bottom entries, with a divider; the icons of **Devices** and
-  **Plugins** are purple.
+- Navigation: **Plugins** moved to the top of the bottom entries, with a divider; the selected entry has a short
+  accent bar at its left edge, like Windows apps; quieter hover and selection colors, purple group names, the pages
+  scroll when they do not fit, and the icon wobbles on hover. **DHCP server** and **NTP server** have their own icons.
 
 ## [2.2.0] - 2026-10-11
 

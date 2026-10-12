@@ -1,6 +1,6 @@
 # NTP server (`oadm.ntp-server`)
 
-Core plugin (+ `.Client`), rail page **NTP server** (group Servers, icon `clock`). Own RFC 5905 server-mode
+Core plugin (+ `.Client`), rail page **NTP server** (group Servers, icon `metronome`). Own RFC 5905 server-mode
 implementation (SNTPv4 compatible), no library.
 
 - Time source: without an upstream OADM is a fully valid NTP server on its own clock, like chrony's

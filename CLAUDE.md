@@ -646,8 +646,8 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   appears only while the server is unreachable.
 - Left navigation rail: expanded by default (collapsed: icons only, ~56 px, tooltips with the label),
   expand/collapse toggle at the bottom of the rail; expanded ~220 px with icon + label.
-  Selected item as rounded pill `#2A2A2A`. The icons of Devices and Plugins (only the icons) are in the accent color
-  (`NavItemViewModel.IsAccentIcon`, theme `ui|IconLabel.accentIcon`). Plugin pages (not host pages) have a context menu
+  Selected item as rounded pill `#1C1C1C` (hover `#181818`, the icon wobbles once on hover, `Oadm.NavSelectedBrush` / `NavHoverBrush`, quieter than buttons) with a short accent bar at its left edge like WinUI's NavigationView (3 x 16 px,
+  rounded; `Button.nav` template, `Border#PART_Indicator`). Plugin pages (not host pages) have a context menu
   **Open in new window** on their rail entry: the plugin creates another, independent view (own context, streams, state)
   shown in `Shell/PluginWindow` (an empty title bar: the page header names the page; window title
   "<page> · OADM" for the task bar; page padding, not modal, as many as wanted); the windows close
@@ -659,7 +659,7 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   Commander, Device triggers), Security (PKI, Hardening scan), Monitoring (Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
   no page), Maintenance, Integrations, Utilities (Web View), Extensions (default, third-party)): only groups
   with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
-  each group, collapsed = a separator at each group start. Pinned bottom, top to bottom: Plugins with a divider below it (it changes what the whole client offers), Users,
+  each group (in the lighter accent color), collapsed = a separator at each group start; the pages scroll when they do not fit. Pinned bottom, top to bottom: Plugins with a divider below it (it changes what the whole client offers), Users,
   Credentials (these three Admin only: hidden for operators, follow the session role live), Logs, Settings, About (icons
   `plugin`, `users`, `key`, `logs`, `settings`, `info`), then the logged-in user (an initial
   avatar and the name in primary text, not a navigation entry) with Log out and the expand toggle. Keys = `HostPages` (`users`, `credentials`, `plugins`, `logs`, `settings`, `about`); opening an
@@ -1355,7 +1355,7 @@ or saved ones, fill their fields and roll them out to many devices, or send one 
 ## NTP server (core plugin)
 
 `plugins/Oadm.Plugins.NtpServer` (+ `.Client`), id `oadm.ntp-server`, rail page **NTP server** (group Servers, icon
-`clock`), on by default, switchable. Own RFC 5905 server-mode implementation (SNTPv4 compatible) on UDP
+`metronome`), on by default, switchable. Own RFC 5905 server-mode implementation (SNTPv4 compatible) on UDP
 123, no library; contributes the task **Use OADM as NTP server**. Details: plugin `README.md`.
 
 - Rules that must hold: requests are always answered at once from the current time source state, never waiting for the

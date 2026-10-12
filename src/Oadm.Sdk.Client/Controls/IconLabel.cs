@@ -31,7 +31,8 @@ public sealed class IconLabel : Grid
     public static readonly StyledProperty<double> SpacingProperty =
         AvaloniaProperty.Register<IconLabel, double>(nameof(Spacing), 8);
 
-    private readonly OadmIcon _icon = new() { VerticalAlignment = VerticalAlignment.Center };
+    // Its own rotation (none by default), so a style can animate RotateTransform.Angle of one icon (the rail's hover wobble).
+    private readonly OadmIcon _icon = new() { VerticalAlignment = VerticalAlignment.Center, RenderTransform = new Avalonia.Media.RotateTransform() };
     private readonly TextBlock _text = new() { VerticalAlignment = VerticalAlignment.Center };
 
     public IconLabel()

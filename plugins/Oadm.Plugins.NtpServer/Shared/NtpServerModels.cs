@@ -10,7 +10,7 @@ public static class NtpServerPluginInfo
 {
     public const string PluginId = "oadm.ntp-server";
     public const string DisplayName = "NTP server";
-    public const string IconKey = "clock";
+    public const string IconKey = "metronome";
 
     /// <summary>Contributed task "Use OADM as NTP server".</summary>
     public const string UseTaskId = "oadm.ntp-server.use";

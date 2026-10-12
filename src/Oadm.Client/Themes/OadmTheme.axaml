@@ -21,6 +21,9 @@
       <Color x:Key="Oadm.CardBackgroundColor">#181818</Color>
       <Color x:Key="Oadm.SurfaceRaisedColor">#2A2A2A</Color>
       <Color x:Key="Oadm.SurfaceHoverColor">#252525</Color>
+      <!-- Navigation rail: hover and the selected entry, quieter than the raised surfaces of buttons and menus -->
+      <Color x:Key="Oadm.NavHoverColor">#181818</Color>
+      <Color x:Key="Oadm.NavSelectedColor">#1C1C1C</Color>
       <Color x:Key="Oadm.InputBackgroundColor">#232323</Color>
       <Color x:Key="Oadm.BorderColor">#262626</Color>
       <Color x:Key="Oadm.InputBorderColor">#383838</Color>
@@ -108,6 +111,8 @@
       <SolidColorBrush x:Key="Oadm.CardBackgroundBrush" Color="{StaticResource Oadm.CardBackgroundColor}" />
       <SolidColorBrush x:Key="Oadm.SurfaceRaisedBrush" Color="{StaticResource Oadm.SurfaceRaisedColor}" />
       <SolidColorBrush x:Key="Oadm.SurfaceHoverBrush" Color="{StaticResource Oadm.SurfaceHoverColor}" />
+      <SolidColorBrush x:Key="Oadm.NavHoverBrush" Color="{StaticResource Oadm.NavHoverColor}" />
+      <SolidColorBrush x:Key="Oadm.NavSelectedBrush" Color="{StaticResource Oadm.NavSelectedColor}" />
       <SolidColorBrush x:Key="Oadm.InputBackgroundBrush" Color="{StaticResource Oadm.InputBackgroundColor}" />
       <SolidColorBrush x:Key="Oadm.BorderBrush" Color="{StaticResource Oadm.BorderColor}" />
       <SolidColorBrush x:Key="Oadm.InputBorderBrush" Color="{StaticResource Oadm.InputBorderColor}" />
@@ -357,7 +362,8 @@
   <Style Selector="TextBlock.navGroup">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
     <Setter Property="FontWeight" Value="SemiBold" />
-    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <!-- The rail's group names in the accent (the lighter tone: small text on the dark rail) -->
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentHoverBrush}" />
     <Setter Property="Margin" Value="12,8,0,4" />
   </Style>
   <!-- Side subheader next to a page title: small, grey, bottom aligned (margin = measured baseline offset). -->
@@ -535,6 +541,47 @@
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <!-- The pill and, like WinUI's NavigationView, a short accent bar at the left edge of the selected entry -->
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel>
+          <ContentPresenter Name="PART_ContentPresenter"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Foreground="{TemplateBinding Foreground}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+          <Border Name="PART_Indicator" Classes="navIndicator" />
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <!-- A short wobble of the icon when the pointer comes onto a rail entry (ui:IconLabel gives each icon its own RotateTransform) -->
+  <Style Selector="Button.nav:pointerover ui|OadmIcon">
+    <Style.Animations>
+      <Animation Duration="0:0:0.45" Easing="SineEaseInOut">
+        <KeyFrame Cue="0%"><Setter Property="RotateTransform.Angle" Value="0" /></KeyFrame>
+        <KeyFrame Cue="25%"><Setter Property="RotateTransform.Angle" Value="-10" /></KeyFrame>
+        <KeyFrame Cue="50%"><Setter Property="RotateTransform.Angle" Value="8" /></KeyFrame>
+        <KeyFrame Cue="75%"><Setter Property="RotateTransform.Angle" Value="-4" /></KeyFrame>
+        <KeyFrame Cue="100%"><Setter Property="RotateTransform.Angle" Value="0" /></KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <Style Selector="Button.nav /template/ Border#PART_Indicator">
+    <Setter Property="Width" Value="3" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="CornerRadius" Value="1.5" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector="Button.nav.selected /template/ Border#PART_Indicator">
+    <Setter Property="IsVisible" Value="True" />
   </Style>
   <!-- The logged-in user at the bottom of the rail: an initial avatar and the name in primary text, not clickable -->
   <Style Selector="Border.railUser">
@@ -559,14 +606,14 @@
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
   <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+    <Setter Property="Background" Value="{StaticResource Oadm.NavHoverBrush}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
   </Style>
   <Style Selector="Button.nav:pressed /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="Background" Value="{StaticResource Oadm.NavSelectedBrush}" />
   </Style>
   <Style Selector="Button.nav.selected /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="Background" Value="{StaticResource Oadm.NavSelectedBrush}" />
   </Style>
   <Style Selector="DockPanel.rail">
     <Setter Property="Width" Value="{StaticResource Oadm.NavWidthCollapsed}" />
@@ -1147,11 +1194,6 @@
   <Style Selector="Button.segment.selected /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
-  </Style>
-
-  <!-- Rail entries Devices and Plugins: only the icon in the accent color -->
-  <Style Selector="ui|IconLabel.accentIcon ui|OadmIcon">
-    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentBrush}" />
   </Style>
 
   <!-- Web View: the device tree (tag groups and devices, one list) and the browser tabs above the page -->
