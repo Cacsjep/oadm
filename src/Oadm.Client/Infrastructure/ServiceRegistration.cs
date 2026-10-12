@@ -124,6 +124,7 @@ public static class ServiceRegistration
         services.AddSingleton<IVideoDecoderFactory, FfmpegVideoDecoderFactory>();
         services.AddSingleton(sp => new LiveVideoSettings(sp.GetService<IClientSettingsStore>()));
         services.AddSingleton<LiveViewViewModel>();
+        services.AddSingleton<Oadm.Sdk.Client.ILiveVideoAccess, LiveVideoAccess>();
         services.AddSingleton<DevicesViewModel>();
         services.AddSingleton<MainWindowViewModel>();
         return services.BuildServiceProvider();

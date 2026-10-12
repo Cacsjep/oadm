@@ -380,7 +380,7 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
     /// </summary>
     public LiveVideoViewModel CreateFullscreen()
     {
-        var video = new LiveVideoViewModel(_api, _decoders, _ui, _logger, Settings, Options with { Quality = Quality, ControlsOpen = _controlsWanted }, _time, _gpu, this)
+        var video = new LiveVideoViewModel(_api, _decoders, _ui, _logger, Settings, Options with { Quality = Quality, ControlsOpen = _controlsWanted || Options.FullscreenControlsOpen }, _time, _gpu, this)
         {
             Backoff = Backoff,
         };

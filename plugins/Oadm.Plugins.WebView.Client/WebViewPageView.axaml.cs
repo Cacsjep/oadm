@@ -23,8 +23,8 @@ public sealed partial class WebViewPageView : UserControl
     public WebViewPageView()
     {
         InitializeComponent();
-        Tree.AddHandler(TappedEvent, OnTreeTapped, RoutingStrategies.Bubble, handledEventsToo: true);
-        Tree.KeyDown += OnTreeKeyDown;
+        Tree.DeviceInvoked += (_, row) => _vm?.OpenDeviceCommand.Execute(row);
+        Tree.RowsChanged += (_, _) => SelectActiveRow();
         CustomPathBox.KeyDown += OnCustomPathKeyDown;
         CustomPathBox.LostFocus += (_, _) => _vm?.ApplyCustomPathCommand.Execute(null);
     }
@@ -41,7 +41,6 @@ public sealed partial class WebViewPageView : UserControl
         if (_vm is not null)
         {
             _vm.Tabs.CollectionChanged -= OnTabsChanged;
-            _vm.TreeRows.CollectionChanged -= OnTreeRowsChanged;
             _vm.PropertyChanged -= OnViewModelChanged;
             _vm.GoBackRequested -= OnGoBackRequested;
         }
@@ -51,7 +50,6 @@ public sealed partial class WebViewPageView : UserControl
         if (_vm is not null)
         {
             _vm.Tabs.CollectionChanged += OnTabsChanged;
-            _vm.TreeRows.CollectionChanged += OnTreeRowsChanged;
             _vm.PropertyChanged += OnViewModelChanged;
             _vm.GoBackRequested += OnGoBackRequested;
             foreach (var tab in _vm.Tabs)
@@ -78,19 +76,16 @@ public sealed partial class WebViewPageView : UserControl
         }
     }
 
-    /// <summary>The tree was rebuilt (a device changed, the search): the active row stays selected.</summary>
-    private void OnTreeRowsChanged(object? sender, NotifyCollectionChangedEventArgs e) => SelectActiveRow();
-
     /// <summary>The tree shows the active tab's row selected.</summary>
     private void SelectActiveRow()
     {
         if (_vm?.ActiveTab is not { } tab)
         {
-            Tree.SelectedItem = null;
+            Tree.SelectedRow = null;
             return;
         }
 
-        Tree.SelectedItem = _vm.TreeRows.OfType<WebTreeDevice>().FirstOrDefault(r => r.Device.Id == tab.Device.Id && r.GroupKey == tab.GroupKey);
+        Tree.SelectedRow = _vm.TreeRows.OfType<DeviceTreeDevice>().FirstOrDefault(r => r.Device.Id == tab.Device.Id && r.GroupKey == tab.GroupKey);
     }
 
     private void OnTabsChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -151,45 +146,12 @@ public sealed partial class WebViewPageView : UserControl
         }
     }
 
-    private void OnTreeTapped(object? sender, TappedEventArgs e) => OpenRow((e.Source as Control)?.DataContext as WebTreeRow);
-
-    private void OnTreeKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.Key is Key.Enter or Key.Space)
-        {
-            OpenRow(Tree.SelectedItem as WebTreeRow);
-            e.Handled = true;
-        }
-    }
-
-    private void OpenRow(WebTreeRow? row)
-    {
-        switch (row)
-        {
-            case WebTreeGroup group:
-                _vm?.ToggleGroupCommand.Execute(group);
-                SelectActiveRow();
-                break;
-            case WebTreeDevice device:
-                _vm?.OpenDeviceCommand.Execute(device);
-                break;
-        }
-    }
-
     private void OnCustomPathKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
         {
             _vm?.ApplyCustomPathCommand.Execute(null);
             e.Handled = true;
-        }
-    }
-
-    private void OnTabPressed(object? sender, PointerPressedEventArgs e)
-    {
-        if ((sender as Control)?.DataContext is WebTab tab && _vm is not null)
-        {
-            _vm.ActiveTab = tab;
         }
     }
 }

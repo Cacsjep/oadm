@@ -8,6 +8,10 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Added
 
+- **Live View** page: saved views of several cameras at once, opened in tabs. Create a view, drag cameras from the list
+  into it, move and resize them on a grid, and save it for every user. Up to 16 cameras per view; "Change views" in the
+  roles decides who may create and change views.
+
 - Live view: **zoom and focus** for cameras with a remote zoom or focus lens, in a bar over the picture: Zoom and Focus
   sliders, **Autofocus**, **Autofocus area** (drag a frame over the picture) and **Reset focus**. Needs the new
   permission **Optics Control** (Operator has it).

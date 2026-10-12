@@ -77,7 +77,7 @@ public sealed class PluginListTests
         // Rail order, only groups with plugins (Reporting keeps Snapshot report; System report is always on).
         Assert.Equal(["Servers", "Automation", "Security", "Monitoring", "Reporting", "Utilities"], vm.Groups.Select(g => g.ToString()));
         Assert.Equal(
-            ["DHCP server", "NTP server", "Device triggers", "VAPIX Commander", "Hardening scan", "I/O Monitor", "Image Health Dashboard", "Metadata Monitor", "Snapshot report", "Web View"],
+            ["DHCP server", "NTP server", "Device triggers", "VAPIX Commander", "Hardening scan", "I/O Monitor", "Image Health Dashboard", "Live View", "Metadata Monitor", "Snapshot report", "Web View"],
             vm.Plugins.Select(p => p.Name));
         Assert.Equal("Extensions", PluginGroupKey.Parse("NoSuchGroup").ToString()); // like the rail
     }

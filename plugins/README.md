@@ -237,7 +237,7 @@ resolve them at compile time, so use `DynamicResource` (`Icon="{DynamicResource 
 `Icon.details`, `Icon.cancel`, `Icon.chevronDown`, `Icon.chevronLeft`, `Icon.chevronRight`, `Icon.chevronUp`, `Icon.globe`, `Icon.close`, `Icon.check`,
 `Icon.tag`, `Icon.groupBy`, `Icon.edit`, `Icon.braces`,
 `Icon.server`, `Icon.externalLink`, `Icon.more`, `Icon.key`, `Icon.lock`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
-`Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.focus`, `Icon.focusArea`, `Icon.home`, `Icon.network`, `Icon.metronome`, `Icon.firmware`, `Icon.users`,
+`Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.grid`, `Icon.gridAdd`, `Icon.focus`, `Icon.focusArea`, `Icon.home`, `Icon.network`, `Icon.metronome`, `Icon.firmware`, `Icon.users`,
 `Icon.user`, `Icon.logout`, `Icon.audit`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
 `Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.toggle`, `Icon.zap`, `Icon.bell`, `Icon.flame`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`,
 `Icon.device.camera`, `Icon.device.encoder`,
@@ -521,6 +521,22 @@ relay on 127.0.0.1 with its own port: open `session.StartAddress(path)` in the b
 session cookie, other programs get 403), later paths under `session.Origin`. Every request and WebSocket goes through
 the server (gRPC `DeviceWebService`), which adds the stored login and checks the pinned certificate. Dispose the session
 when the tab closes; the host stops every relay of a page when the page closes. Used by the Web View plugin.
+
+### Live video in a page
+
+`ctx.LiveVideo` (`ILiveVideoAccess` on `ICorePluginClientContext`, null on older hosts) creates the host's live video
+component: `Create(new LiveVideoPlace { ... })` returns an `ILiveVideo` whose `View` goes into the page; `Start(deviceId,
+camera)` shows a device's channel (0 = the first), `Close()` stops it, `CameraChosen` reports the channel buttons. The
+place turns parts on or off (channel buttons, fullscreen, quality, controls button, controls open at the start or in
+fullscreen). The server streams with the stored login; the role needs "Live view". The video stops by itself while it is
+hidden; dispose it when its place goes away (the host disposes the rest when the page closes). Used by the Live View plugin.
+
+### Shared lists and tabs
+
+`ui:DeviceTree` with a `DeviceTreeModel` (devices grouped by tag, search, optional `Filter`, `DeviceInvoked`) and
+`ui:PageTab` (title, close, active) are the device tree and the tabs of Web View and Live View; a page with devices by
+tag or with tabs uses them. `DeviceTexts.Removed(id)` names a device OADM no longer manages, `ServerErrors.Message(ex)`
+reads the user text of a failed server call without a gRPC reference.
 
 ### Host support for service plugins (NTP, DHCP, ...)
 

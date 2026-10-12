@@ -21,6 +21,7 @@ namespace Oadm.Client.Shell;
 public sealed partial class MainWindowViewModel : ObservableObject
 {
     private readonly IOadmApi _api;
+    private readonly ILiveVideoAccess? _liveVideo;
     private readonly IClientPluginRegistry _plugins;
     private readonly TaskPluginCatalog _catalog;
     private readonly PluginPackageStore? _packages;
@@ -52,8 +53,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ILogger<MainWindowViewModel> logger,
         PluginPackageStore? packages = null,
         PluginsViewModel? pluginList = null,
-        EventRules.EventRulesViewModel? eventRules = null)
+        EventRules.EventRulesViewModel? eventRules = null,
+        ILiveVideoAccess? liveVideo = null)
     {
+        _liveVideo = liveVideo;
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(clientSettings);
         Connection = connection;
@@ -301,7 +304,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return null;
         }
 
-        var context = new CorePluginClientContext(_api, rail.PluginId, Devices.ToolbarContext);
+        var context = new CorePluginClientContext(_api, rail.PluginId, Devices.ToolbarContext, _liveVideo);
         try
         {
             var view = page.CreateView(context);
@@ -479,7 +482,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             ICorePluginPage? page = _plugins.FindPage(plugin.Id);
             if (page is not null)
             {
-                context = new CorePluginClientContext(_api, plugin.Id, Devices.ToolbarContext);
+                context = new CorePluginClientContext(_api, plugin.Id, Devices.ToolbarContext, _liveVideo);
                 try
                 {
                     view = page.CreateView(context);
@@ -589,15 +592,18 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
     private readonly IToolbarContext _host;
     private EventHandler? _devicesChanged;
     private readonly List<EventHandler?> _permissionHandlers = [];
+    private readonly ILiveVideoAccess? _liveVideoHost;
     private Oadm.Client.DeviceWeb.DeviceWebAccess? _deviceWeb;
+    private Oadm.Client.LiveView.PageLiveVideoAccess? _liveVideo;
     private bool _hostSubscribed;
     private bool _disposed;
 
-    public CorePluginClientContext(IOadmApi api, string pluginId, IToolbarContext host)
+    public CorePluginClientContext(IOadmApi api, string pluginId, IToolbarContext host, ILiveVideoAccess? liveVideo = null)
     {
         _api = api;
         _pluginId = pluginId;
         _host = host;
+        _liveVideoHost = liveVideo;
     }
 
     public IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo> Devices => _host.Devices;
@@ -667,6 +673,8 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
         _permissionHandlers.Clear();
         _deviceWeb?.Dispose();
         _deviceWeb = null;
+        _liveVideo?.Dispose();
+        _liveVideo = null;
         if (_hostSubscribed)
         {
             _host.DevicesChanged -= OnHostDevicesChanged;
@@ -698,4 +706,8 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
     /// <summary>The page's relays of device web interfaces; stopped when the page closes.</summary>
     public IDeviceWebAccess? DeviceWeb =>
         _disposed ? null : _deviceWeb ??= new Oadm.Client.DeviceWeb.DeviceWebAccess(_api, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+
+    /// <summary>The page's live videos; disposed when the page closes.</summary>
+    public ILiveVideoAccess? LiveVideo =>
+        _disposed || _liveVideoHost is null ? null : _liveVideo ??= new Oadm.Client.LiveView.PageLiveVideoAccess(_liveVideoHost);
 }

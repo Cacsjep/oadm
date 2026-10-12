@@ -89,6 +89,12 @@ public sealed class CorePluginPageViewModel(string pluginId, string title, objec
 
     public bool HasSubtitle => !string.IsNullOrEmpty(Subtitle);
 
+    /// <summary>The page shows the title row (<c>ui:PageHeader.IsHidden</c> leaves it out).</summary>
+    public bool ShowHeader { get; } = view is not Avalonia.Controls.Control hidden || !Oadm.Sdk.Client.Controls.PageHeader.GetIsHidden(hidden);
+
+    /// <summary>The gap below the title row; none without it.</summary>
+    public double HeaderSpacing => ShowHeader ? 16 : 0;
+
     /// <summary>Control right of the page title (<c>ui:PageHeader.Trailing</c>), bound to the page's DataContext.</summary>
     public Avalonia.Controls.Control? HeaderTrailing { get; } = AttachTrailing(view);
 

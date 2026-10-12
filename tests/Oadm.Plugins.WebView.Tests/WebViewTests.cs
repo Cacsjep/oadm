@@ -5,6 +5,7 @@ using Avalonia.Headless;
 using Avalonia.VisualTree;
 
 using Oadm.Plugins.WebView.Client;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 
 using Xunit.Abstractions;
@@ -28,17 +29,17 @@ public sealed class WebViewTests(ITestOutputHelper output)
     {
         var (_, vm, a, b, c) = Page();
 
-        var rows = vm.TreeRows.Select(r => r is WebTreeGroup g ? $"[{g.Name}]" : ((WebTreeDevice)r).Address).ToList();
+        var rows = vm.TreeRows.Select(r => r is DeviceTreeGroup g ? $"[{g.Name}]" : ((DeviceTreeDevice)r).Address).ToList();
         Assert.Equal(["[Building A]", "10.0.0.9", "10.0.0.48", "[PTZ]", "10.0.0.48", "[No tag]", "10.0.0.120"], rows);
 
         vm.SearchText = "a9210"; // the model is searched, not shown
-        Assert.Equal(["[No tag]", "10.0.0.120"], vm.TreeRows.Select(r => r is WebTreeGroup g ? $"[{g.Name}]" : ((WebTreeDevice)r).Address));
+        Assert.Equal(["[No tag]", "10.0.0.120"], vm.TreeRows.Select(r => r is DeviceTreeGroup g ? $"[{g.Name}]" : ((DeviceTreeDevice)r).Address));
         vm.SearchText = "ptz"; // tags are searched too
-        Assert.Contains(vm.TreeRows, r => r is WebTreeGroup { Name: "PTZ" });
+        Assert.Contains(vm.TreeRows, r => r is DeviceTreeGroup { Name: "PTZ" });
 
         vm.SearchText = string.Empty;
-        vm.ToggleGroupCommand.Execute(vm.TreeRows.OfType<WebTreeGroup>().First());
-        Assert.DoesNotContain(vm.TreeRows, r => r is WebTreeDevice { GroupKey: "Building A" });
+        vm.ToggleGroupCommand.Execute(vm.TreeRows.OfType<DeviceTreeGroup>().First());
+        Assert.DoesNotContain(vm.TreeRows, r => r is DeviceTreeDevice { GroupKey: "Building A" });
         _ = (a, b, c);
     }
 
@@ -46,7 +47,7 @@ public sealed class WebViewTests(ITestOutputHelper output)
     public async Task A_click_opens_a_tab_once_per_device_with_the_page_chosen_last()
     {
         var (ctx, vm, a, b, _) = Page();
-        var rowA = vm.TreeRows.OfType<WebTreeDevice>().First(r => r.Device.Id == a.Id);
+        var rowA = vm.TreeRows.OfType<DeviceTreeDevice>().First(r => r.Device.Id == a.Id);
 
         vm.OpenDeviceCommand.Execute(rowA);
         await Task.Yield();
@@ -56,9 +57,9 @@ public sealed class WebViewTests(ITestOutputHelper output)
         Assert.Equal(ctx.Web.Sessions[0].StartAddress("/"), tab.Address);
         Assert.True(rowA.IsActive);
 
-        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<WebTreeDevice>().First(r => r.Device.Id == b.Id));
+        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<DeviceTreeDevice>().First(r => r.Device.Id == b.Id));
         Assert.Equal(2, vm.Tabs.Count);
-        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<WebTreeDevice>().Last(r => r.Device.Id == a.Id)); // under PTZ: same device, its tab
+        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<DeviceTreeDevice>().Last(r => r.Device.Id == a.Id)); // under PTZ: same device, its tab
         Assert.Equal(2, vm.Tabs.Count);
         Assert.Same(tab, vm.ActiveTab);
         Assert.Equal("PTZ", tab.GroupKey);
@@ -83,8 +84,8 @@ public sealed class WebViewTests(ITestOutputHelper output)
     public async Task Close_all_closes_every_tab_and_Back_asks_the_active_browser()
     {
         var (ctx, vm, a, b, _) = Page();
-        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<WebTreeDevice>().First(r => r.Device.Id == a.Id));
-        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<WebTreeDevice>().First(r => r.Device.Id == b.Id));
+        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<DeviceTreeDevice>().First(r => r.Device.Id == a.Id));
+        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<DeviceTreeDevice>().First(r => r.Device.Id == b.Id));
         await Task.Yield();
         var tab = vm.ActiveTab!;
 
@@ -109,7 +110,7 @@ public sealed class WebViewTests(ITestOutputHelper output)
     public async Task Custom_opens_a_valid_path_and_shows_the_error_below_the_field()
     {
         var (_, vm, a, _, _) = Page();
-        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<WebTreeDevice>().First(r => r.Device.Id == a.Id));
+        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<DeviceTreeDevice>().First(r => r.Device.Id == a.Id));
         await Task.Yield();
         var tab = vm.ActiveTab!;
 
@@ -133,12 +134,12 @@ public sealed class WebViewTests(ITestOutputHelper output)
     {
         var (ctx, vm, a, b, _) = Page();
         ctx.Web.Refused[b.Id] = DeviceMessages.CredentialsRequired;
-        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<WebTreeDevice>().First(r => r.Device.Id == b.Id));
+        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<DeviceTreeDevice>().First(r => r.Device.Id == b.Id));
         await Task.Yield();
         Assert.Equal(DeviceMessages.CredentialsRequired, vm.ActiveTab!.Error);
         Assert.Null(vm.ActiveTab.Address);
 
-        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<WebTreeDevice>().First(r => r.Device.Id == a.Id));
+        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<DeviceTreeDevice>().First(r => r.Device.Id == a.Id));
         await Task.Yield();
         ctx.Items.Remove(a);
         ctx.RaiseDevicesChanged();
@@ -157,7 +158,7 @@ public sealed class WebViewTests(ITestOutputHelper output)
         var a = new TestDevice("10.0.0.48", "P3265-V");
         var ctx = new TestContext([a]);
         var vm = new WebViewPageViewModel(ctx, new WebRuntimeState(false, Client.WebRuntime.WindowsMissing));
-        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<WebTreeDevice>().Single());
+        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<DeviceTreeDevice>().Single());
         Assert.True(vm.IsRuntimeMissing);
         Assert.Empty(vm.Tabs);
         Assert.Empty(ctx.Web.Sessions);
@@ -203,7 +204,7 @@ public sealed class WebViewTests(ITestOutputHelper output)
                 var vm = (WebViewPageViewModel)view.DataContext!;
                 var window = Headless.Host(view);
                 window.Show();
-                vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<WebTreeDevice>().First(r => r.Device.Id == a.Id));
+                vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<DeviceTreeDevice>().First(r => r.Device.Id == a.Id));
                 await Task.Yield();
                 Headless.Pump();
 
@@ -215,7 +216,7 @@ public sealed class WebViewTests(ITestOutputHelper output)
                 host.Child = page;
                 Headless.Pump();
 
-                vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<WebTreeDevice>().First(r => r.Device.Id == b.Id));
+                vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<DeviceTreeDevice>().First(r => r.Device.Id == b.Id));
                 await Task.Yield();
                 Headless.Pump();
                 Assert.Equal(2, vm.Tabs.Count);
@@ -254,8 +255,8 @@ public sealed class WebViewTests(ITestOutputHelper output)
                 var (_, vm, a, b, _) = Page();
                 var window = Headless.Host(new WebViewPageView { DataContext = vm });
                 window.Show();
-                vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<WebTreeDevice>().First(r => r.Device.Id == b.Id));
-                vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<WebTreeDevice>().First(r => r.Device.Id == a.Id));
+                vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<DeviceTreeDevice>().First(r => r.Device.Id == b.Id));
+                vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<DeviceTreeDevice>().First(r => r.Device.Id == a.Id));
                 await Task.Yield();
                 Headless.Pump();
                 Headless.Capture(window, "web-view-page.png");

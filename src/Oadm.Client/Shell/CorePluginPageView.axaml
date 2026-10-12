@@ -5,9 +5,9 @@
              xmlns:tasks="using:Oadm.Client.Tasks"
              x:Class="Oadm.Client.Shell.CorePluginPageView"
              x:DataType="shell:CorePluginPageViewModel">
-  <Grid RowDefinitions="Auto,*" RowSpacing="16">
-    <!-- Page header: title, optional subtitle and trailing content from the plugin page (ui:PageHeader). -->
-    <c:PageTitleBar Title="{Binding Title}" Subtitle="{Binding Subtitle}" Trailing="{Binding HeaderTrailing}" />
+  <Grid RowDefinitions="Auto,*" RowSpacing="{Binding HeaderSpacing}">
+    <!-- Page header: title, optional subtitle and trailing content from the plugin page (ui:PageHeader); a page may hide it. -->
+    <c:PageTitleBar Title="{Binding Title}" Subtitle="{Binding Subtitle}" Trailing="{Binding HeaderTrailing}" IsVisible="{Binding ShowHeader}" />
     <!-- Page content above; with ShowTasksPane the shared tasks pane below (same as the Devices page). -->
     <tasks:TasksPaneLayout Grid.Row="1" Tasks="{Binding Tasks}" ShowTasks="{Binding ShowTasksPane}">
       <tasks:TasksPaneLayout.MainContent>

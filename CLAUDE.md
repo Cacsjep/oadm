@@ -154,7 +154,7 @@ src/
                        IToolbarContext, shared controls (Controls/: IconLabel, SearchBox, OadmIcon,
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow,
                        ToolbarButton, ToolbarSeparator, PasswordBox, MessageWindow, FormField, DevicePickerWindow, DeviceIcon,
-                       GroupedChoice),
+                       GroupedChoice, DeviceTree, PageTab), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors,
                        form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection,
                        Collections/RangeObservableCollection (bulk list of the host grids and plugin pages)
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)
@@ -177,6 +177,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.IoMonitor(.Client)/        core plugin: live inputs and outputs of one device (off by default)
   Oadm.Plugins.DeviceTriggers(.Client)/   core plugin: events of the devices for the event rules (WebSocket, off by default)
   Oadm.Plugins.WebView(.Client)/          core plugin: the web interface of the devices in tabs, logged in through the server
+  Oadm.Plugins.LiveView(.Client)/         core plugin: saved views of several cameras (a grid of live videos), opened in tabs (off by default)
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
                                 (both copy their output to artifacts/plugins/<plugin id>/)
@@ -678,7 +679,7 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   `IDisposable`; the main window unsubscribes from the shell view model when it closes (a new main window per login) (`MainWindowViewModel.PluginWindowRequested` /
   `ClosePluginWindowsRequested`; tests `PluginWindowTests`). Entries top: Devices, then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (VAPIX
-  Commander, Device triggers), Security (PKI, Hardening scan), Monitoring (Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
+  Commander, Device triggers), Security (PKI, Hardening scan), Monitoring (Live View, Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
   no page), Maintenance, Integrations, Utilities (Web View), Extensions (default, third-party)): only groups
   with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
   each group (in the lighter accent color), collapsed = a separator at each group start; the pages scroll when they do not fit. Pinned bottom, top to bottom: Plugins with a divider below it (it changes what the whole client offers), Users,
@@ -687,7 +688,8 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   avatar and the name in primary text, not a navigation entry) with Log out and the expand toggle. Keys = `HostPages` (`users`, `credentials`, `plugins`, `logs`, `settings`, `about`); opening an
   admin page as operator does nothing, a hidden page that was open falls back to Devices. No Tasks page. Every page
   header (core plugin pages, Users, Credentials, About, Settings) is the shared `Controls/PageTitleBar` (title, grey
-  side subtitle, trailing content); host pages never repeat the page title in a card heading.
+  side subtitle, trailing content); host pages never repeat the page title in a card heading. A plugin page may leave the header row out
+  (`ui:PageHeader.IsHidden`, Live View: every pixel for the video).
 - Content in rounded cards: background `#181818` (only slightly lighter than the window),
   corner radius 8 (Microsoft Fluent geometry: 8 for cards, menus and flyouts, 4 for buttons, inputs and rows inside a page), padding 20-24, 16 px gap. The device grid sits in one card, the tasks
   pane in a second card below it, separated by a draggable splitter so the user can resize
@@ -1271,6 +1273,9 @@ the UI thread.
   shared tasks pane below the page). `ICorePluginClientContext`: `InvokeAsync`, `WatchEventsAsync` (PluginService.Watch),
   `Devices` + `DevicesChanged`, `SelectedDevices`, `OwnerName`, `ShowMessageAsync`, `ConfirmAsync`, `OpenAsync`, `Owner`,
   `DeviceWeb` (`IDeviceWebAccess`: a device's web interface for an embedded browser through the server, see "Web View"),
+  `LiveVideo` (`ILiveVideoAccess.Create(LiveVideoPlace)` -> `ILiveVideo` {View, Start(device, camera), Close, Camera,
+  CameraChosen}: the host's live video component, `Oadm.Client/LiveView/LiveVideoAccess`; the page's videos are disposed
+  with the page; see "Live View"),
   `Has(permission)` + `PermissionsChanged` (pages hide or lock what the role lacks, e.g. Save of the NTP / DHCP server).
 - `IToolbarPlugin` (`Id`, `Order`, `Group`: Add, Manage, Tasks, Plugins; `CreateControl` once; `RequiredPermission`:
   the entry hides while the role lacks it) with `IToolbarContext` (selection, devices, task plugins, `CanRunTask` /
@@ -1344,14 +1349,14 @@ plugins, contributed and standalone tasks and client parts together) and adminis
 applies at once without a restart. Own rail page (not a Settings card); core functionality
 is always on.
 - Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
-  **Off by default: Device triggers, Hardening scan, Image Health Dashboard, I/O Monitor and Metadata Monitor**. The administrator's choices are the
+  **Off by default: Device triggers, Hardening scan, Image Health Dashboard, I/O Monitor, Live View and Metadata Monitor**. The administrator's choices are the
   server setting `Plugins.Enabled` (JSON object package id -> on; packages without a choice use their default),
   applied before the core plugins start (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
 - **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade firmware, Date and time, Applications
   (ACAP), Users, Network settings, PKI, System report, Device configuration, Outputs and Notifications (core functionality). Enabled whatever
   the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers FAILED_PRECONDITION "<name> is always on.".
   Switchable: Snapshot report, VAPIX Commander, Metadata Monitor, NTP server, DHCP server, Hardening scan, Image Health
-  Dashboard, I/O Monitor, Device triggers, Web View. Third-party plugins are switchable unless their manifest says otherwise.
+  Dashboard, I/O Monitor, Device triggers, Web View, Live View. Third-party plugins are switchable unless their manifest says otherwise.
 - Manifest `description` (`PluginOrigin.Description`): one short sentence shown on the Plugins page; every bundled
   plugin has one.
 - `PluginRegistry`: `TaskPlugins`, `CorePlugins`, `TryGetTaskPlugin`, `TryGetCorePlugin` see only enabled packages
@@ -1632,7 +1637,25 @@ login. Decisions, the relay and tests: plugin `README.md`.
   new tabs use the page chosen last), the search, the devices grouped by tag (like Group by tag, "No tag" last, no
   counts; `ui:DeviceIcon` + address). Right card: one row Close all tabs, Reload, Back (browser history), the tabs (one per
   device, select-field height, scrolling sideways), then the page edge to edge. Without the OS browser runtime (WebView2,
-  WebKitGTK) the page says what to install.
+  WebKitGTK) the page says what to install. The tree and the tabs are the shared `ui:DeviceTree` and `ui:PageTab`.
+
+## Live View (core plugin)
+
+`plugins/Oadm.Plugins.LiveView` (+ `.Client`), id `oadm.live-view`, rail page **Live View** (group Monitoring, icon `grid`; New view `gridAdd`),
+**off by default**, switchable. Saved views of several cameras at once, like a VMS: a view is a grid of cameras, opened in a
+tab. Decisions, methods and tests: plugin `README.md`.
+
+- Rules that must hold: views live on the server, shared by every user (plugin setting `views`), every change pushed to
+  every open page; a save of an older version is refused (two users); the grid is 20 x 20 cells and always fills the tab,
+  a camera at least 2 x 2, never overlapping, at most 16 cameras per view and 200 views; the server checks every rule
+  again (`ViewRules`, shared with the page). Roles: "show" (Operator and Viewer), "Change views" (`manage`, Operator yes,
+  Viewer no; save and delete audited); the pictures need "Live view". Every camera is the host's live video component
+  (`ICorePluginClientContext.LiveVideo`, controls closed in the tile, open in fullscreen); only the active tab is visible,
+  so other tabs' streams rest. A removed device keeps its place and says "Removed device 1a2b3c4d".
+- Page: left card (Collapse / Expand at its bottom like the rail; collapsed a strip with the views as icons) Views (New view, the list; Edit and Delete view at the right of each row) and Cameras (search, devices with video by tag, `ui:DeviceTree`); right card
+  one row Close all tabs (editing: Name, Save, Cancel), the tabs (`ui:PageTab`), then the grid.
+  Editing: cell lines, a frame per camera (address, X; drag inside to move, an edge or a corner to resize), a camera dragged from the tree shows a
+  frame with its address where it will land: the largest free square at the drop point (up to 10 x 10), a click on a camera puts it in the first free place.
 
 ## Date and time
 
@@ -2000,7 +2023,10 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   device has it; summary "1 tag: 42 of 5,000 devices" / "2 tags and 3 devices: ...") and
   `DeviceIcon` (every device icon in a list: the category icon `Icon.device.*`, neutral when OK, amber for Credentials
   required / Password not set / Certificate changed, red for Unreachable, `ShowStatusToolTip` = the status message on
-  hover; device grid, Web View), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
+  hover; device grid, Web View, Live View), `DeviceTree` + `DeviceTreeModel` (every devices-by-tag tree: tag groups in
+  name order with a chevron, "No tag" last, a device under each of its tags, sorted by address, search over address,
+  model, MAC, host name and tags, optional filter, one reset per rebuild; Web View, Live View), `PageTab` (every tab of a
+  page with tabs: title, close button, the active one underlined; theme `Border.browserTab`), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
   puts one right of the input instead of a long hint), `WizardSteps` + `WizardStepItem` (the step
   row of every wizard: numbered dot and name, thin line between, current accent, done with a check, a step opens when
   every step before it is complete; theme `Button.wizardStep`, `Border.wizardDot`, `TextBlock.wizardLabel`,

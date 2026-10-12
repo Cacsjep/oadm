@@ -26,51 +26,6 @@ public sealed record WebPagePreset(string Name, string Path)
     ];
 }
 
-/// <summary>A row of the device tree: a tag group header or a device under it.</summary>
-public abstract partial class WebTreeRow : ObservableObject
-{
-    public abstract bool IsGroup { get; }
-}
-
-/// <summary>A tag ("No tag" for devices without one); collapsing hides its devices.</summary>
-public sealed partial class WebTreeGroup(string key, string name) : WebTreeRow
-{
-    public override bool IsGroup => true;
-
-    /// <summary>The tag name, empty for "No tag".</summary>
-    public string Key { get; } = key;
-
-    public string Name { get; } = name;
-
-    [ObservableProperty]
-    public partial bool IsExpanded { get; set; } = true;
-}
-
-/// <summary>A device under one tag group; a device with several tags has one row per tag.</summary>
-public sealed partial class WebTreeDevice(IDeviceInfo device, string groupKey) : WebTreeRow
-{
-    public override bool IsGroup => false;
-
-    public IDeviceInfo Device { get; } = device;
-
-    public string GroupKey { get; } = groupKey;
-
-    public string Address => Device.Address;
-
-    /// <summary>For the shared device icon: the category icon, colored and explained by the status.</summary>
-    public DeviceCategory Category => Device.Category;
-
-    public DeviceStatus Status => Device.Status;
-
-    /// <summary>The tab of this device is the active one.</summary>
-    [ObservableProperty]
-    public partial bool IsActive { get; set; }
-
-    /// <summary>The device has an open tab.</summary>
-    [ObservableProperty]
-    public partial bool IsOpen { get; set; }
-}
-
 /// <summary>
 /// One browser tab: one device through its relay. Changing the device (Next, Previous) opens a new relay; the address
 /// the browser shows is <see cref="Address"/>. A refused device shows <see cref="Error"/> instead of the page.
@@ -234,8 +189,6 @@ public static class WebViewTexts
     public const string NotAllowed = "Your role does not allow opening devices.";
 
     public const string NoTabs = "Click a device on the left to open its web interface.";
-
-    public const string NoTag = "No tag";
 
     public const string NotAvailable = "This OADM client cannot open web interfaces. Update the client.";
 

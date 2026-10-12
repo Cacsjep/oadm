@@ -1,0 +1,36 @@
+# Live View (`oadm.live-view`)
+
+Core plugin (+ `.Client`), rail page **Live View** (group Monitoring, icon `grid`; New view `gridAdd`), **off by default**, switchable. Saved views
+of several cameras at once, like the live view of a VMS: each view is a grid of cameras, opened in a tab.
+
+## Decisions
+
+| Topic | Decision |
+|---|---|
+| Storage | On the server, shared by every user (plugin setting `views`, JSON). A save carries the version it was made on; an older one is refused ("Another user changed the view X meanwhile. Click Cancel and make your changes again."). Every change is pushed to every open page (event `views` with the whole list). An unreadable stored list is kept as `viewsUnreadable` and the list starts empty. |
+| Grid | 20 x 20 cells that always fill the tab (no scrolling); a camera is a rectangle of cells, at least 2 x 2; cameras never overlap. |
+| Limits | 16 cameras per view (decoding stays smooth on an average PC), 200 views, names 1..64 characters, unique case-insensitive. |
+| Roles | "Show the page" (automatic, Operator and Viewer: a monitoring page), **Change views** (`manage`: create, change, delete; Operator yes, Viewer no). The pictures need the host's "Live view" right (`devices.liveView`); without it the tiles say "Your role does not allow live view.". Save and delete are audited ("Plugin action"). |
+| Page | Left card: **Views** (icon button New view; the list of names with Edit and Delete view (red, asks first) at the right of each row for "Change views"; a click opens the view's tab or brings it to the front) and **Cameras** (search, the devices with video grouped by tag, the shared `ui:DeviceTree`). Collapse / Expand at the bottom of the card, like the navigation rail: collapsed it is a narrow strip with New view and the views as icons (the name as tooltip); session only. 5 px between the tabs and the grid. Right card: one row Close all tabs (while editing also Name, Save, Cancel), then the tabs (`ui:PageTab`); below it the grid of the active view, edge to edge. A failed save stands below that row. |
+| Editing | New view opens a tab in edit mode named "View N". The grid shows its cell lines; every camera gets a frame with its address and an X (remove); dragging inside the frame moves it, dragging an edge or a corner resizes it (the cursor shows which); everything snaps to the cells and stops at other cameras. While a camera is dragged from the tree, a frame with its address shows where it will land: the largest free square at the drop point (up to 10 x 10), else the largest free square nearest to it; a click on a camera puts it in the first free place. The channel chosen with the channel buttons while editing is saved with the camera. Cancel puts the stored view back (a new view closes); closing a tab with changes asks first. |
+| Video | Each camera is the host's live video component (`ICorePluginClientContext.LiveVideo`): adaptive quality (small tiles ask for small resolutions), fullscreen with a double-click, the channel buttons, the controls button; the controls start closed in a tile and open in fullscreen. Only the active tab is visible, so the cameras of other tabs stop after 2 s and resume with the last picture. |
+| Removed devices | A camera OADM no longer manages keeps its place and shows "Removed device 1a2b3c4d" (shared `DeviceTexts.Removed`). |
+| Other users | An open view that is not edited follows another user's change (cameras of the same device and channel keep their picture); a deleted view closes its tab. An edited view keeps the user's changes; its save is then refused (version). |
+
+## Methods (`InvokeAsync`)
+
+| Method | Payload | Answer | Permission |
+|---|---|---|---|
+| `list` | none | `ViewList` {views: [`SavedView` {id, name, version, tiles: [{deviceId, camera, x, y, width, height}]}]}, sorted by name | show |
+| `save` | `SaveViewRequest` {id (empty = new), name, version, tiles} | the stored `SavedView` (version + 1) | manage |
+| `delete` | `DeleteViewRequest` {id} | none (an unknown id is nothing to do) | manage |
+
+Errors are `ArgumentException` with the user text (INVALID_ARGUMENT): the texts are `ViewRules` (shared by the page,
+which checks the name and the layout before it sends).
+
+## Tests
+
+`tests/Oadm.Plugins.LiveView.Tests`: storage, versions and every refusal of the server part; the drop placement and
+moves of `ViewLayout`; the page (new view, drop, channel, save, other users, Cancel, close with changes, roles, removed
+devices; Perf: the camera tree of 5,000 devices); a headless screenshot with fake-mode video (`plugin-live-view.png`,
+`plugin-live-view-edit.png`). Fake mode (`FakeOadmApi.LiveView.cs`): the view "Entrance" with four cameras.

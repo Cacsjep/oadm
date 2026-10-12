@@ -11,7 +11,7 @@ namespace Oadm.Client.Tasks;
 public static class TaskDeviceLabels
 {
     /// <summary>Length of the shortened device id of a removed device.</summary>
-    public const int ShortIdLength = 8;
+    public const int ShortIdLength = Oadm.Sdk.Client.DeviceTexts.ShortIdLength;
 
     /// <summary>The device grid address of <paramref name="deviceId"/>, or "Removed device &lt;short id&gt;".</summary>
     public static string Label(string deviceId, DeviceStore devices)
@@ -24,9 +24,7 @@ public static class TaskDeviceLabels
 
     public static string RemovedLabel(string deviceId)
     {
-        ArgumentNullException.ThrowIfNull(deviceId);
-        string shortId = deviceId.Length > ShortIdLength ? deviceId[..ShortIdLength] : deviceId;
-        return "Removed device " + shortId;
+        return Oadm.Sdk.Client.DeviceTexts.Removed(deviceId);
     }
 
     /// <summary>"10.0.0.48: Failed - Connection refused". Null without a device result.</summary>

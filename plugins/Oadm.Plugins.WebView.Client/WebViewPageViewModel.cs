@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Collections;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Client.Validation;
 using Oadm.Sdk.Devices;
 
@@ -26,8 +27,6 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
     private readonly ICorePluginClientContext _ctx;
     private readonly HashSet<WebTab> _closed = [];
     private readonly CancellationTokenSource _life = new();
-    private List<WebTreeDevice> _order = [];
-    private Dictionary<string, bool> _collapsed = new(StringComparer.Ordinal);
     private bool _applyingTab;
 
     public WebViewPageViewModel(ICorePluginClientContext ctx, WebRuntimeState runtime)
@@ -67,8 +66,11 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
 
     public static IReadOnlyList<WebPagePreset> Presets => WebPagePreset.All;
 
+    /// <summary>The devices grouped by tag (the shared device tree).</summary>
+    public DeviceTreeModel Tree { get; } = new();
+
     /// <summary>The tree as rows: group headers and the devices of expanded groups.</summary>
-    public RangeObservableCollection<WebTreeRow> TreeRows { get; } = [];
+    public RangeObservableCollection<DeviceTreeRow> TreeRows => Tree.Rows;
 
     public ObservableCollection<WebTab> Tabs { get; } = [];
 
@@ -174,7 +176,7 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
 
     /// <summary>A click on a device: its tab to the front, or a new tab with the page chosen last.</summary>
     [RelayCommand]
-    private void OpenDevice(WebTreeDevice? row)
+    private void OpenDevice(DeviceTreeDevice? row)
     {
         if (row is null || !Runtime.IsAvailable || !MayOpen || _life.IsCancellationRequested)
         {
@@ -195,16 +197,15 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
     }
 
     [RelayCommand]
-    private void ToggleGroup(WebTreeGroup? group)
+    private void ToggleGroup(DeviceTreeGroup? group)
     {
         if (group is null)
         {
             return;
         }
 
-        group.IsExpanded = !group.IsExpanded;
-        _collapsed[group.Key] = !group.IsExpanded;
-        Rebuild();
+        Tree.Toggle(group);
+        MarkTree();
     }
 
     [RelayCommand(CanExecute = nameof(HasTabs))]
@@ -284,77 +285,16 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
     /// <summary>Builds the tree rows in one reset: O(devices x tags).</summary>
     private void Rebuild()
     {
-        var search = SearchText.Trim();
-        var devices = _ctx.Devices
-            .Where(d => search.Length == 0 || Matches(d, search))
-            .OrderBy(d => DeviceOrder.AddressKey(d.Address), StringComparer.Ordinal)
-            .ToList();
-        var groups = new SortedDictionary<string, List<IDeviceInfo>>(StringComparer.CurrentCultureIgnoreCase);
-        var untagged = new List<IDeviceInfo>();
-        foreach (var device in devices)
-        {
-            if (device.Tags.Count == 0)
-            {
-                untagged.Add(device);
-                continue;
-            }
-
-            foreach (var tag in device.Tags)
-            {
-                if (!groups.TryGetValue(tag, out var list))
-                {
-                    groups[tag] = list = [];
-                }
-
-                list.Add(device);
-            }
-        }
-
-        var rows = new List<WebTreeRow>(devices.Count + groups.Count + 1);
-        var order = new List<WebTreeDevice>(devices.Count);
-        void Add(string key, string name, List<IDeviceInfo> members)
-        {
-            var collapsed = _collapsed.TryGetValue(key, out var c) && c;
-            rows.Add(new WebTreeGroup(key, name) { IsExpanded = !collapsed });
-            foreach (var device in members)
-            {
-                var row = new WebTreeDevice(device, key);
-                order.Add(row);
-                if (!collapsed)
-                {
-                    rows.Add(row);
-                }
-            }
-        }
-
-        foreach (var (tag, members) in groups)
-        {
-            Add(tag, tag, members);
-        }
-
-        if (untagged.Count > 0)
-        {
-            Add(string.Empty, WebViewTexts.NoTag, untagged);
-        }
-
-        _order = order;
-        TreeRows.ReplaceAll(rows);
+        Tree.Rebuild(_ctx.Devices, SearchText);
         MarkTree();
     }
-
-    private static bool Matches(IDeviceInfo device, string search) =>
-        device.Address.Contains(search, StringComparison.OrdinalIgnoreCase)
-        || (device.Model?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)
-        || device.Serial.Contains(search, StringComparison.OrdinalIgnoreCase)
-        || (device.HostName?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)
-        || device.Tags.Any(t => t.Contains(search, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Marks the rows of open devices and the active one (O(rows)).</summary>
     private void MarkTree()
     {
         var open = Tabs.Select(t => t.Device.Id).ToHashSet();
         var active = ActiveTab;
-        foreach (var row in _order)
+        foreach (var row in Tree.DeviceRows)
         {
             row.IsOpen = open.Contains(row.Device.Id);
             row.IsActive = active is not null && row.Device.Id == active.Device.Id && row.GroupKey == active.GroupKey;

@@ -35,6 +35,9 @@ public sealed record LiveVideoOptions
     /// <summary>The zoom and focus or PTZ controls are open from the start (the button closes them).</summary>
     public bool ControlsOpen { get; init; } = true;
 
+    /// <summary>Fullscreen opens with the controls open, whatever the place shows (grid tiles: closed there, open in fullscreen).</summary>
+    public bool FullscreenControlsOpen { get; init; }
+
     /// <summary>PTZ parts: the circle that moves the camera, zoom (slider and mouse wheel), presets, Home, click to center.</summary>
     public bool PtzMove { get; init; } = true;
 

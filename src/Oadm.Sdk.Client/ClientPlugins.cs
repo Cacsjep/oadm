@@ -108,6 +108,12 @@ public interface ICorePluginClientContext
     IDeviceWebAccess? DeviceWeb => null;
 
     /// <summary>
+    /// The host's live video component for the page (Live View plugin): the server streams the camera with the stored login.
+    /// Null when the host has none (older hosts). The role needs "Live view" (<c>devices.liveView</c>) to see a picture.
+    /// </summary>
+    ILiveVideoAccess? LiveVideo => null;
+
+    /// <summary>
     /// Whether the user's role allows <paramref name="permission"/>, e.g. "oadm.dhcp-server:manage": the page hides or
     /// disables what the role lacks (the server refuses the call anyway). Default (older hosts): true.
     /// </summary>

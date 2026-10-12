@@ -1,0 +1,45 @@
+---
+title: Live View
+description: Several cameras at once, in saved views.
+---
+
+import { Image } from 'astro:assets';
+import page from '../../../assets/screens/live-view-page.png';
+import edit from '../../../assets/screens/live-view-edit.png';
+
+Live View shows several cameras at once, like the live view of a video management system. Save a view once and every
+OADM user can open it.
+
+<Image src={page} alt="Live View with the view Entrance open: three cameras in a grid" class="screen" />
+
+## Open a view
+
+1. Live View is off when OADM is installed: an administrator turns it on under **Plugins**.
+2. Open **Live View** in the navigation rail.
+3. Click a view under **Views**. It opens in a tab; open more views and switch between the tabs.
+4. Double-click a camera for fullscreen. Point at a camera for its quality, channel and controls buttons, the same as in
+   the live view of the Devices page.
+
+**Collapse** at the bottom of the list makes room for the video; the views stay as icons. Only the view you look at streams; the cameras of other tabs pause and continue when you come back.
+
+## Create or change a view
+
+<Image src={edit} alt="A view in edit mode: grid lines, a frame around each camera and a camera dropped onto free space" class="screen" />
+
+1. Click the New view button next to **Views**, or the pen next to a view. The bin next to it deletes the view.
+2. Drag cameras from **Cameras** into the view. A frame shows where it will land: the largest free space where you drop it. A click on a
+   camera puts it in the first free space.
+3. Drag a camera to move it, drag one of its edges or corners to resize it, and click its X to remove it. Cameras snap to the
+   grid and never overlap.
+4. Enter a name and click **Save**. **Cancel** throws your changes away.
+
+A view holds up to 16 cameras. On a camera with several view areas or sensors, the channel you choose while editing is
+saved with the view.
+
+## Good to know
+
+- Views are stored on the OADM server and shared by every user. When someone else saves a view you have open, your tab
+  follows.
+- Who may create, change and delete views is the right **Change views** on the Users page. Viewers only open views.
+  Seeing the video needs **Live view**.
+- A camera that was removed from OADM keeps its place in the view and says so.

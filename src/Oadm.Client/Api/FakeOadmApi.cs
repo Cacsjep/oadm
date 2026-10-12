@@ -960,6 +960,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         new CorePluginInfo { Id = IoMonitorPluginId, DisplayName = "I/O Monitor", IconKey = "toggle", Group = "Monitoring" },
         new CorePluginInfo { Id = DeviceTriggersPluginId, DisplayName = "Device triggers", IconKey = "flame", Group = "Automation" },
         new CorePluginInfo { Id = WebViewPluginId, DisplayName = "Web View", IconKey = "globe", Group = "Utilities" },
+        new CorePluginInfo { Id = LiveViewPluginId, DisplayName = "Live View", IconKey = "grid", Group = "Monitoring" },
     ];
 
     public Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) => pluginId switch
@@ -971,6 +972,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         HardeningScanPluginId => InvokeHardeningScanAsync(method, payloadJson),
         IoMonitorPluginId => InvokeIoMonitorAsync(method, payloadJson),
         DeviceTriggersPluginId => InvokeDeviceTriggersAsync(method, payloadJson),
+        LiveViewPluginId => InvokeLiveViewAsync(method, payloadJson),
         _ => throw new RpcException(new Status(StatusCode.NotFound, $"Unknown core plugin '{pluginId}'.")),
     };
 

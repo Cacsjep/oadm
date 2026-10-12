@@ -67,6 +67,7 @@ export default defineConfig({
 						{ label: 'Device triggers', slug: 'tools/device-triggers' },
 						{ label: 'PKI', slug: 'tools/pki' },
 						{ label: 'Hardening scan', slug: 'tools/hardening-scan' },
+						{ label: 'Live View', slug: 'tools/live-view' },
 						{ label: 'Metadata Monitor', slug: 'tools/metadata-monitor' },
 						{ label: 'Image Health Dashboard', slug: 'tools/image-health-dashboard' },
 						{ label: 'I/O Monitor', slug: 'tools/io-monitor' },

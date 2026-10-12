@@ -22,29 +22,7 @@
         <ui:SearchBox Grid.Row="1" Classes="stretch" Text="{Binding SearchText}" Placeholder="Search devices" />
         <TextBlock Grid.Row="2" Classes="secondary" Text="{x:Static vm:WebViewTexts.NoDevices}" TextWrapping="Wrap"
                    IsVisible="{Binding !HasDevices}" />
-        <ListBox x:Name="Tree" Grid.Row="2" Classes="deviceTree" ItemsSource="{Binding TreeRows}" SelectionMode="Single"
-                 IsVisible="{Binding HasDevices}">
-          <ListBox.ItemsPanel>
-            <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
-          </ListBox.ItemsPanel>
-          <ListBox.DataTemplates>
-            <DataTemplate DataType="vm:WebTreeGroup">
-              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                <ui:OadmIcon Grid.Column="0" Width="14" Height="14" VerticalAlignment="Center"
-                             Data="{StaticResource Icon.chevronDown}" IsVisible="{Binding IsExpanded}" />
-                <ui:OadmIcon Grid.Column="0" Width="14" Height="14" VerticalAlignment="Center"
-                             Data="{StaticResource Icon.chevronRight}" IsVisible="{Binding !IsExpanded}" />
-                <TextBlock Grid.Column="1" Classes="treeGroup" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-              </Grid>
-            </DataTemplate>
-            <DataTemplate DataType="vm:WebTreeDevice">
-              <StackPanel Orientation="Horizontal" Spacing="8" Margin="20,0,0,0">
-                <ui:DeviceIcon Category="{Binding Category}" Status="{Binding Status}" ShowStatusToolTip="True" Width="16" Height="16" />
-                <TextBlock Text="{Binding Address}" VerticalAlignment="Center" />
-              </StackPanel>
-            </DataTemplate>
-          </ListBox.DataTemplates>
-        </ListBox>
+        <ui:DeviceTree x:Name="Tree" Grid.Row="2" Model="{Binding Tree}" IsVisible="{Binding HasDevices}" />
       </Grid>
     </Border>
 
@@ -70,14 +48,8 @@
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:WebTab">
-                  <Border Classes="browserTab" Classes.active="{Binding IsActive}" ToolTip.Tip="{Binding ToolTip}" PointerPressed="OnTabPressed">
-                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                      <TextBlock Text="{Binding Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                      <Button Classes="toolbar iconOnly" Command="{Binding CloseCommand}" ToolTip.Tip="Close tab" VerticalAlignment="Center">
-                        <ui:OadmIcon Width="12" Height="12" Data="{StaticResource Icon.close}" />
-                      </Button>
-                    </StackPanel>
-                  </Border>
+                  <ui:PageTab Title="{Binding Title}" IsActive="{Binding IsActive}" ToolTip.Tip="{Binding ToolTip}"
+                              ActivateCommand="{Binding ActivateCommand}" CloseCommand="{Binding CloseCommand}" />
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
