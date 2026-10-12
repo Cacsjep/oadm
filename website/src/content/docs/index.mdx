@@ -13,7 +13,7 @@ hero:
 
 import { Image } from 'astro:assets';
 import Downloads from '../../components/Downloads.astro';
-import devices from '../../assets/screens/client-liveview.png';
+import HeroMotion from '../../components/HeroMotion.astro';
 import snapshotReport from '../../assets/screens/snapshot-report-page.png';
 import commander from '../../assets/screens/plugin-vapix-commander-rollout.png';
 import hardening from '../../assets/screens/hardening-scan-basic.png';
@@ -23,26 +23,22 @@ import dhcp from '../../assets/screens/dhcp-server-page.png';
 
 <Downloads />
 
-<Image src={devices} alt="The Devices page with the live view next to the device list" class="screen hero-screen" />
+<HeroMotion />
 
-<p class="section-lead">Everything you use in AXIS Device Manager, plus what it never had.</p>
+<p class="section-lead">Explore the plugins</p>
 
 <div class="extras">
-	<a href="devices/live-view/"><strong>Live view</strong><span>Video next to the device list, every sensor and view area.</span></a>
-	<a href="tools/snapshot-report/"><strong>Snapshot report</strong><span>Check every camera at a glance, export a PDF for the customer.</span></a>
-	<a href="tools/vapix-commander/"><strong>VAPIX Commander</strong><span>Any VAPIX command, rolled out to hundreds of devices.</span></a>
-	<a href="tools/hardening-scan/"><strong>Hardening scan</strong><span>Every device against the AXIS OS Hardening Guide.</span></a>
-	<a href="tools/metadata-monitor/"><strong>Metadata Monitor</strong><span>Watch the events a camera sends, live.</span></a>
-	<a href="tools/image-health-dashboard/"><strong>Image Health Dashboard</strong><span>Blur, blocked or redirected views of every camera in one table.</span></a>
-	<a href="tools/io-monitor/"><strong>I/O Monitor</strong><span>The inputs and outputs of a device, live.</span></a>
-	<a href="tools/event-rules/"><strong>Event rules</strong><span>Switch a relay or send a command when something happens.</span></a>
-	<a href="tools/device-triggers/"><strong>Device triggers</strong><span>Any event of your devices in event rules.</span></a>
-	<a href="tools/ntp-server/"><strong>NTP and DHCP server</strong><span>Time and addresses for sites without infrastructure.</span></a>
-	<a href="tools/web-view/"><strong>Web View</strong><span>The web interface of every device in tabs, already logged in.</span></a>
-	<a href="devices/tags/"><strong>Tags</strong><span>Your own labels, search and group the list by them.</span></a>
-	<a href="start/install/"><strong>Windows, Linux, macOS</strong><span>Server and client on every system.</span></a>
-	<a href="dev/plugins/"><strong>Plugins</strong><span>Add your own tasks and pages with the same SDK.</span></a>
-	<a href="project/license/"><strong>Open source</strong><span>Apache-2.0, free for commercial use.</span></a>
+	<a href="tools/ntp-server/">NTP server</a>
+	<a href="tools/dhcp-server/">DHCP server</a>
+	<a href="tools/vapix-commander/">VAPIX Commander</a>
+	<a href="tools/device-triggers/">Device triggers</a>
+	<a href="tools/hardening-scan/">Hardening scan</a>
+	<a href="tools/metadata-monitor/">Metadata Monitor</a>
+	<a href="tools/image-health-dashboard/">Image Health Dashboard</a>
+	<a href="tools/io-monitor/">I/O Monitor</a>
+	<a href="tools/snapshot-report/">Snapshot report</a>
+	<a href="tools/system-report/">System report</a>
+	<a href="tools/web-view/">Web View</a>
 </div>
 
 <div class="gallery">

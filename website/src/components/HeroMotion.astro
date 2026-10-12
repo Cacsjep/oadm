@@ -1,0 +1,201 @@
+---
+// The entry sequence of the landing page: centered thin lines of sliced typography, first the main claims, then every
+// feature by name with one sentence. Text only. Pure HTML, CSS and the Web Animations API: every animation spans the
+// whole loop, so the sequence pauses and resumes as one when it leaves the screen; prefers-reduced-motion shows the
+// first line, still.
+import '@fontsource-variable/inter';
+
+type Line = { html: string; seconds: number };
+
+const line = (html: string, seconds = 2.1): Line => ({ html, seconds });
+const feature = (name: string, text: string): Line => ({ html: `${name}<small>${text}</small>`, seconds: 2.7 });
+
+// The sequence, in order.
+const scenes: Line[] = [
+	line('Open source.<br /><em>Every platform.</em>', 2.4),
+	line('Built to be <em>extended.</em>'),
+	line('Your own tools.<br /><em>As plugins.</em>'),
+	{ html: 'Every feature is <em>a plugin.</em><small>Turn it on or off.</small>', seconds: 2.7 },
+	feature('VAPIX Commander', 'Any VAPIX command, rolled out to hundreds of devices.'),
+	feature('Event rules', 'Switch a relay, send an email or a command when something happens.'),
+	feature('Device triggers', 'Any event of your devices in event rules.'),
+	feature('Snapshot report', 'Every camera at a glance, a PDF for the customer.'),
+	feature('Hardening scan', 'Every device against the AXIS OS Hardening Guide.'),
+	feature('DHCP server', 'Addresses for sites without infrastructure. New Axis devices add themselves.'),
+	feature('NTP server', 'The time for every device, from this server.'),
+	feature('Metadata Monitor', 'The events a camera sends, live.'),
+	feature('Image Health Dashboard', 'Blur, blocked or redirected views of every camera.'),
+	feature('I/O Monitor', 'The inputs and outputs of a device, live.'),
+	feature('Web View', 'The web interface of every device in tabs, already logged in.'),
+	feature('Live view', 'Video next to the device list.'),
+	feature('Tags', 'Your own labels. Group the list by them.'),
+];
+
+const GAP = 0.15;
+
+// Times: one scene after the other.
+let clock = 0.2;
+const timed = scenes.map((scene) => {
+	const at = clock;
+	clock += scene.seconds + GAP;
+	return { html: scene.html, at, until: at + scene.seconds };
+});
+const loop = Math.round((clock + 0.4) * 100) / 100;
+const config = JSON.stringify({ loop, scenes: timed.map(({ at, until }) => ({ at, until })) });
+---
+
+<div class="motion not-content" data-motion={config} role="img"
+	aria-label="OADM: open source, for every platform, built to be extended. VAPIX Commander, event rules, device triggers, snapshot report, hardening scan, DHCP and NTP server, Metadata Monitor, Image Health Dashboard, I/O Monitor, Web View, live view and tags.">
+	{timed.map((scene) => (
+		<div class="m-line" data-scene>
+			<span class="m-measure" set:html={scene.html} />
+		</div>
+	))}
+</div>
+
+<style>
+	/* No stage of its own: the lines sit on the page */
+	.motion {
+		position: relative;
+		width: 100%;
+		max-width: 72rem;
+		height: clamp(13rem, 26vw, 20rem);
+		margin: 0 auto 2rem;
+		overflow: hidden;
+		container-type: inline-size;
+		font-family: 'Inter Variable', var(--sl-font);
+	}
+
+	.m-line {
+		position: absolute;
+		inset: 0;
+		display: grid;
+		place-items: center;
+		text-align: center;
+		pointer-events: none;
+	}
+	.m-line .m-measure,
+	.m-line :global(.m-slice) {
+		grid-area: 1 / 1;
+		font-size: clamp(1.6rem, 6cqi, 4.4rem);
+		font-weight: 200;
+		line-height: 1.12;
+		letter-spacing: -0.02em;
+		color: var(--sl-color-white);
+	}
+	/* The whole text: it sizes the line and is shown alone once the slices are in place (no seams between them) */
+	.m-line .m-measure {
+		opacity: 0;
+	}
+	.m-line :global(em) {
+		font-style: normal;
+		font-weight: 300;
+		color: var(--sl-color-accent-high);
+	}
+	.m-line :global(small) {
+		display: block;
+		margin-top: 0.7em;
+		font-size: clamp(0.95rem, 1.9cqi, 1.35rem);
+		font-weight: 300;
+		line-height: 1.4;
+		letter-spacing: 0;
+		color: var(--sl-color-gray-2);
+	}
+	.m-line :global(.m-slice) {
+		will-change: transform, opacity, filter;
+	}
+</style>
+
+<script>
+	type Scene = { at: number; until: number };
+	type Config = { loop: number; scenes: Scene[] };
+
+	const SLICES = 6;
+	const ease = 'cubic-bezier(0.22, 1, 0.36, 1)';
+	const easeIn = 'cubic-bezier(0.55, 0, 0.75, 0.2)';
+
+	function start(root: HTMLElement) {
+		const config: Config = JSON.parse(root.dataset.motion!);
+		const loop = config.loop;
+		const all: Animation[] = [];
+
+		/** One animation over the whole loop: frames at absolute times (s), the first and last values held to the ends. */
+		const track = (el: Element, frames: [number, Keyframe][]) => {
+			const sorted = [...frames].sort((a, b) => a[0] - b[0]);
+			const keyframes: Keyframe[] = [{ ...sorted[0][1], offset: 0 }];
+			for (const [t, frame] of sorted) {
+				keyframes.push({ ...frame, offset: Math.min(1, Math.max(0, t / loop)) });
+			}
+			keyframes.push({ ...sorted[sorted.length - 1][1], offset: 1 });
+			all.push(el.animate(keyframes, { duration: loop * 1000, iterations: Infinity, easing: 'linear' }));
+		};
+
+		/**
+		 * A centered line: slices come in out of a blur while the letters pull together, sideways from alternating sides
+		 * or (every other scene) from above and below. Once all are in place the whole text stands in for them until they
+		 * leave, so the settled text has no seams.
+		 */
+		const line = (el: HTMLElement, s: Scene, vertical: boolean) => {
+			const whole = el.querySelector<HTMLElement>('.m-measure')!;
+			const html = whole.innerHTML;
+			const settled = s.at + (SLICES - 1) * 0.045 + 0.75;
+			const leaving = s.until - 0.4;
+			track(whole, [
+				[settled, { opacity: 0 }],
+				[settled + 0.01, { opacity: 1 }],
+				[leaving - 0.01, { opacity: 1 }],
+				[leaving, { opacity: 0 }],
+			]);
+			for (let i = 0; i < SLICES; i++) {
+				const slice = document.createElement('span');
+				slice.className = 'm-slice';
+				slice.innerHTML = html;
+				slice.style.clipPath = `inset(${(i * 100) / SLICES}% -20% ${100 - ((i + 1) * 100) / SLICES}% -20%)`;
+				el.appendChild(slice);
+				const side = i % 2 === 0 ? -1 : 1;
+				const from = vertical ? `translateY(${side * 40}%)` : `translateX(${side * 9}%)`;
+				const to = vertical ? `translateY(${-side * 25}%)` : `translateX(${-side * 5}%)`;
+				const begin = s.at + i * 0.045;
+				const leave = leaving + i * 0.03;
+				track(slice, [
+					[begin, { transform: from, opacity: 0, filter: 'blur(10px)', letterSpacing: '0.1em', easing: ease }],
+					[begin + 0.75, { transform: 'translate(0, 0)', opacity: 1, filter: 'blur(0)', letterSpacing: '-0.02em' }],
+					[settled, { opacity: 1 }],
+					[settled + 0.01, { opacity: 0 }],
+					[leaving - 0.01, { opacity: 0 }],
+					[leave, { transform: 'translate(0, 0)', opacity: 1, filter: 'blur(0)', letterSpacing: '-0.02em', easing: easeIn }],
+					[leave + 0.35, { transform: to, opacity: 0, filter: 'blur(8px)', letterSpacing: '0.04em' }],
+				]);
+			}
+		};
+
+		const elements = root.querySelectorAll<HTMLElement>('[data-scene]');
+		config.scenes.forEach((scene, i) => line(elements[i], scene, i % 2 === 1));
+
+		const hold = (seconds: number) =>
+			all.forEach((a) => {
+				a.currentTime = seconds * 1000;
+				a.pause();
+			});
+
+		// Reduced motion: the first line, still. ?t=6.2 holds the sequence at that second (for checking frames).
+		if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+			hold(1.6);
+			return;
+		}
+
+		const at = new URLSearchParams(location.search).get('t');
+		if (at !== null) {
+			hold(Number(at));
+			return;
+		}
+
+		// Plays only while on screen.
+		new IntersectionObserver((entries) => {
+			const visible = entries.some((e) => e.isIntersecting);
+			all.forEach((a) => (visible ? a.play() : a.pause()));
+		}).observe(root);
+	}
+
+	document.querySelectorAll<HTMLElement>('[data-motion]').forEach(start);
+</script>
