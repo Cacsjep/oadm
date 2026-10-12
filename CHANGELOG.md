@@ -6,6 +6,8 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+## [2.3.0] - 2026-10-12
+
 ### Added
 
 - **Web View**: the web interface of the devices in tabs inside OADM, already logged in. Devices grouped by tag, one
@@ -19,11 +21,6 @@ version and date, and the release workflow copies it into the GitHub release.
 - Navigation: **Plugins** moved to the top of the bottom entries, with a divider; the selected entry has a short
   accent bar at its left edge, like Windows apps; quieter hover and selection colors, purple group names, the pages
   scroll when they do not fit, and the icon wobbles on hover. **DHCP server** and **NTP server** have their own icons.
-
-## [2.2.0] - 2026-10-11
-
-### Changed
-
 - The **Plugins** page groups the plugins like the navigation rail: Servers, Automation, Security, Monitoring, Reporting.
 - Rounded corners as in Windows 11: cards, menus and flyouts 8 px, buttons, inputs and rows 4 px.
 - Avalonia 12.1.4.
@@ -248,7 +245,7 @@ version and date, and the release workflow copies it into the GitHub release.
 - The splash logo's lens is centered in its ring.
 - The server publish no longer contains an IIS `web.config` and other unused web files.
 
-[2.2.0]: https://github.com/Cacsjep/oadm/releases/tag/v2.2.0
+[2.3.0]: https://github.com/Cacsjep/oadm/releases/tag/v2.3.0
 [2.1.1]: https://github.com/Cacsjep/oadm/releases/tag/v2.1.1
 [2.1.0]: https://github.com/Cacsjep/oadm/releases/tag/v2.1.0
 [2.0.0]: https://github.com/Cacsjep/oadm/releases/tag/v2.0.0
