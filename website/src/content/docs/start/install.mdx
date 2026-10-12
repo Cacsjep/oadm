@@ -50,9 +50,9 @@ sudo apt install ./oadm-client_*.deb                       # client only
 - Data folder: `/var/lib/oadm`.
 - Uninstall: `sudo apt remove oadm-server oadm-client`.
 
-<Aside title="Live view on the graphics card">
-The client decodes the live view on the graphics card when it can. On Linux it needs the video driver of the graphics
-card; without it the processor decodes and the live view shows **GPU decoding not available**. Install the driver:
+<Aside title="Video on the graphics card">
+The client decodes video on the graphics card when it can. On Linux it needs the video driver of the graphics
+card; without it the processor decodes and the video shows **GPU decoding not available**. Install the driver:
 
 ```sh
 sudo apt install intel-media-va-driver   # Intel graphics (older Intel: i965-va-driver)

@@ -11,7 +11,7 @@ liability for changes to devices.
 
 ## Third-party components
 
-OADM uses open source packages, the Inter font and the FFmpeg decoder libraries (LGPL-2.1) for the live view.
+OADM uses open source packages, the Inter font and the FFmpeg decoder libraries (LGPL-2.1) for the live preview and Live View.
 [THIRD-PARTY-NOTICES.md](https://github.com/Cacsjep/oadm/blob/main/THIRD-PARTY-NOTICES.md) lists them. Every installer
 ships the full `THIRD-PARTY-NOTICES.txt` with every license text; the client shows it on the **About** page.
 

@@ -46,7 +46,7 @@ export default defineConfig({
 					items: [
 						{ label: 'Add devices', slug: 'devices/add' },
 						{ label: 'Devices page', slug: 'devices/devices-page' },
-						{ label: 'Live view', slug: 'devices/live-view' },
+						{ label: 'Live preview', slug: 'devices/live-view' },
 						{ label: 'Tags', slug: 'devices/tags' },
 						{ label: 'Event rules', slug: 'tools/event-rules' },
 						{ label: 'Tasks', slug: 'devices/tasks' },
