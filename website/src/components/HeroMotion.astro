@@ -27,7 +27,7 @@ const scenes: Line[] = [
 	feature('Image Health Dashboard', 'Blur, blocked or redirected views of every camera.'),
 	feature('I/O Monitor', 'The inputs and outputs of a device, live.'),
 	feature('Web View', 'The web interface of every device in tabs, already logged in. Set up apps like Object Analytics on many cameras, one tab after the other.'),
-	feature('Live view', 'Click a camera in the device list to see its video.'),
+	feature('Live preview', 'Click a camera in the device list to see its video.'),
 	feature('Live View', 'Several cameras at once in saved views, like a video wall.'),
 	feature('Edge Recording Export', 'The recordings on the SD cards of many cameras, downloaded to your computer.'),
 	feature('Tags', 'Your own labels. Group the list by them.'),
@@ -47,7 +47,7 @@ const config = JSON.stringify({ loop, scenes: timed.map(({ at, until }) => ({ at
 ---
 
 <div class="motion not-content" data-motion={config} role="img"
-	aria-label="Open source AXIS device management. Built by Professionals. For Professionals. VAPIX Commander, event rules, device triggers, snapshot report, hardening scan, DHCP and NTP server, Metadata Monitor, Image Health Dashboard, I/O Monitor, Web View, live view, Live View, Edge Recording Export and tags.">
+	aria-label="Open source AXIS device management. Built by Professionals. For Professionals. VAPIX Commander, event rules, device triggers, snapshot report, hardening scan, DHCP and NTP server, Metadata Monitor, Image Health Dashboard, I/O Monitor, Web View, live preview, Live View, Edge Recording Export and tags.">
 	{timed.map((scene) => (
 		<div class="m-line" data-scene>
 			<span class="m-measure" set:html={scene.html} />
