@@ -41,6 +41,7 @@ public sealed partial class WebViewPageView : UserControl
         if (_vm is not null)
         {
             _vm.Tabs.CollectionChanged -= OnTabsChanged;
+            _vm.TreeRows.CollectionChanged -= OnTreeRowsChanged;
             _vm.PropertyChanged -= OnViewModelChanged;
             _vm.GoBackRequested -= OnGoBackRequested;
         }
@@ -50,6 +51,7 @@ public sealed partial class WebViewPageView : UserControl
         if (_vm is not null)
         {
             _vm.Tabs.CollectionChanged += OnTabsChanged;
+            _vm.TreeRows.CollectionChanged += OnTreeRowsChanged;
             _vm.PropertyChanged += OnViewModelChanged;
             _vm.GoBackRequested += OnGoBackRequested;
             foreach (var tab in _vm.Tabs)
@@ -75,6 +77,9 @@ public sealed partial class WebViewPageView : UserControl
             SelectActiveRow();
         }
     }
+
+    /// <summary>The tree was rebuilt (a device changed, the search): the active row stays selected.</summary>
+    private void OnTreeRowsChanged(object? sender, NotifyCollectionChangedEventArgs e) => SelectActiveRow();
 
     /// <summary>The tree shows the active tab's row selected.</summary>
     private void SelectActiveRow()
@@ -199,6 +204,7 @@ internal sealed class WebTabBrowser : Panel, IDisposable
     private Uri? _lastPage;
     private bool _shown;
     private DateTime _lastRestart = DateTime.MinValue;
+    private bool _disposed;
 
     /// <summary>The message the page sends when its history changed (<see cref="HistoryHook"/>).</summary>
     private const string HistoryMessage = "oadm:history";
@@ -227,6 +233,7 @@ internal sealed class WebTabBrowser : Panel, IDisposable
         Children.Add(_browser);
         Children.Add(_status);
         _tab.PropertyChanged += OnTabChanged;
+        _tab.NavigateRequested += OnNavigateRequested;
         _browser.WebMessageReceived += OnWebMessageReceived;
         Apply();
         if (_tab.Address is { } address)
@@ -283,8 +290,21 @@ internal sealed class WebTabBrowser : Panel, IDisposable
         }
     }
 
+    private void OnNavigateRequested(object? sender, Uri page)
+    {
+        if (!_disposed)
+        {
+            _browser.Navigate(page);
+        }
+    }
+
     private async void OnNavigationCompleted(object? sender, WebViewNavigationCompletedEventArgs e)
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         UpdateHistory();
         if (e.Request is not { } page)
         {
@@ -296,6 +316,11 @@ internal sealed class WebTabBrowser : Panel, IDisposable
             // The relay refused the page because the browser lost its session cookie: open it again through the start
             // address (at most once every 10 s, so a relay that keeps refusing cannot loop).
             var title = await _browser.InvokeScript("document.title").ConfigureAwait(true);
+            if (_disposed)
+            {
+                return;
+            }
+
             if (title?.Contains(DeviceWebPages.SessionLostTitle, StringComparison.Ordinal) == true)
             {
                 if (DateTime.UtcNow - _lastRestart > TimeSpan.FromSeconds(10) && _tab.StartAddressFor(page) is { } again)
@@ -309,7 +334,9 @@ internal sealed class WebTabBrowser : Panel, IDisposable
 
             await _browser.InvokeScript(HistoryHook).ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException or NotSupportedException)
+#pragma warning disable CA1031 // A browser callback must never reach the crash handler (the tab may close meanwhile).
+        catch (Exception)
+#pragma warning restore CA1031
         {
             // The browser closed meanwhile, or cannot run scripts: nothing to repair, Back follows page loads only.
         }
@@ -357,9 +384,18 @@ internal sealed class WebTabBrowser : Panel, IDisposable
 
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         _browser.WebMessageReceived -= OnWebMessageReceived;
         _tab.PropertyChanged -= OnTabChanged;
+        _tab.NavigateRequested -= OnNavigateRequested;
         _browser.NewWindowRequested -= OnNewWindowRequested;
         _browser.NavigationCompleted -= OnNavigationCompleted;
+        Children.Remove(_browser);
+        (_browser as IDisposable)?.Dispose(); // the native browser and its processes go with the tab
     }
 }

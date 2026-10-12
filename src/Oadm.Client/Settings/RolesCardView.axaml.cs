@@ -59,7 +59,9 @@ public sealed partial class RolesCardView : UserControl
         {
             Header = "Permission",
             Width = new DataGridLength(340),
-            CellTemplate = new FuncDataTemplate<PermissionRowViewModel>((row, _) => row is null ? null : row.IsGroup ? GroupCell(row) : PermissionCell(row)),
+            // Not recycled: the cell is built from its row (group or permission, name, warning), so a reused cell would show
+            // another row after collapsing a group or searching.
+            CellTemplate = new FuncDataTemplate<PermissionRowViewModel>((row, _) => row is null ? null : row.IsGroup ? GroupCell(row) : PermissionCell(row), supportsRecycling: false),
         });
 
         for (int i = 0; i < _vm.Columns.Count; i++)
@@ -76,7 +78,7 @@ public sealed partial class RolesCardView : UserControl
                     IsThreeState = row.IsGroup,
                     [!ToggleButton.IsCheckedProperty] = new Binding($"{nameof(PermissionRowViewModel.Cells)}[{index}].{nameof(PermissionCellViewModel.IsChecked)}") { Mode = BindingMode.TwoWay },
                     [!IsEnabledProperty] = new Binding($"{nameof(PermissionRowViewModel.Cells)}[{index}].{nameof(PermissionCellViewModel.IsEnabled)}"),
-                }),
+                }, supportsRecycling: false),
             });
         }
     }
@@ -137,7 +139,7 @@ public sealed partial class RolesCardView : UserControl
     {
         var text = new StackPanel { Spacing = 0, VerticalAlignment = VerticalAlignment.Center };
         text.Children.Add(new TextBlock { [!TextBlock.TextProperty] = new Binding(nameof(RoleColumnViewModel.Name)), TextTrimming = TextTrimming.CharacterEllipsis });
-        text.Children.Add(new TextBlock { Text = role.Subtitle, Classes = { "small", "secondary" } });
+        text.Children.Add(new TextBlock { [!TextBlock.TextProperty] = new Binding(nameof(RoleColumnViewModel.Subtitle)), Classes = { "small", "secondary" } });
 
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), DataContext = role };
         ToolTip.SetTip(grid, role.DescriptionTip);

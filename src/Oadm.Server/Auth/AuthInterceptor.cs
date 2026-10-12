@@ -36,7 +36,7 @@ public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore rol
         ArgumentNullException.ThrowIfNull(continuation);
         var (caller, rule) = await AuthorizeAsync(context).ConfigureAwait(false);
         using var scope = CallerContext.Use(caller);
-        using var stream = OpenStream(caller, rule, context);
+        using var stream = await OpenStreamAsync(caller, rule, context).ConfigureAwait(false);
         return await continuation(requestStream, context).ConfigureAwait(false);
     }
 
@@ -45,7 +45,7 @@ public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore rol
         ArgumentNullException.ThrowIfNull(continuation);
         var (caller, rule) = await AuthorizeAsync(context).ConfigureAwait(false);
         using var scope = CallerContext.Use(caller);
-        using var stream = OpenStream(caller, rule, context);
+        using var stream = await OpenStreamAsync(caller, rule, context).ConfigureAwait(false);
         await continuation(request, responseStream, context).ConfigureAwait(false);
     }
 
@@ -54,7 +54,7 @@ public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore rol
         ArgumentNullException.ThrowIfNull(continuation);
         var (caller, rule) = await AuthorizeAsync(context).ConfigureAwait(false);
         using var scope = CallerContext.Use(caller);
-        using var stream = OpenStream(caller, rule, context);
+        using var stream = await OpenStreamAsync(caller, rule, context).ConfigureAwait(false);
         await continuation(requestStream, responseStream, context).ConfigureAwait(false);
     }
 
@@ -104,15 +104,40 @@ public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore rol
         }
     }
 
-    private IDisposable? OpenStream(AuthenticatedCaller? caller, AccessRule rule, ServerCallContext context)
+    /// <summary>
+    /// Registers the stream, then checks once more: a role change or a logout between the check and the registration
+    /// would otherwise leave the stream open with the old rights.
+    /// </summary>
+    private async Task<IDisposable?> OpenStreamAsync(AuthenticatedCaller? caller, AccessRule rule, ServerCallContext context)
     {
-        if (caller is null || context.Method == WatchSessionMethod)
+        if (caller is null)
         {
             return null;
         }
 
         var http = context.GetHttpContext();
-        return streams.Open(caller, rule, context.Method, http.Abort);
+        var registration = streams.Open(caller, rule, context.Method, http.Abort);
+        try
+        {
+            var session = await tokens.ValidateHashAsync(caller.TokenHash, context.CancellationToken).ConfigureAwait(false);
+            if (session is null)
+            {
+                throw new RpcException(new Status(StatusCode.Unauthenticated, "Your session has ended. Log in again."));
+            }
+
+            var permissions = await roles.PermissionsOfAsync(session.RoleId, context.CancellationToken).ConfigureAwait(false);
+            if (context.Method != WatchSessionMethod && !AccessPolicy.Allows(rule, caller with { RoleId = session.RoleId, Permissions = permissions }))
+            {
+                throw new RpcException(new Status(StatusCode.PermissionDenied, AccessPolicy.DeniedMessage(rule, roles.Catalog)));
+            }
+
+            return registration;
+        }
+        catch
+        {
+            registration.Dispose();
+            throw;
+        }
     }
 
     private async Task<(AuthenticatedCaller? Caller, AccessRule Rule)> AuthorizeAsync(ServerCallContext context)

@@ -41,6 +41,11 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
         _ctx.DevicesChanged += OnDevicesChanged;
         _ctx.PermissionsChanged += (_, _) =>
         {
+            if (!MayOpen)
+            {
+                CloseAllTabs(); // the role lost "Open devices": open pages close too
+            }
+
             OnPropertyChanged(nameof(MayOpen));
             OnPropertyChanged(nameof(ShowNotAllowed));
             OnPropertyChanged(nameof(ShowNoTabs));
@@ -258,11 +263,18 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
 
     private void OnDevicesChanged(object? sender, EventArgs e)
     {
-        // Devices removed from OADM close their tabs; changed ones keep theirs.
-        var ids = _ctx.Devices.Select(d => d.Id).ToHashSet();
-        foreach (var tab in Tabs.Where(t => !ids.Contains(t.Device.Id)).ToList())
+        // Devices removed from OADM close their tabs; changed ones keep theirs with the new address in the title.
+        var byId = _ctx.Devices.ToDictionary(d => d.Id);
+        foreach (var tab in Tabs.ToList())
         {
-            CloseTab(tab);
+            if (byId.TryGetValue(tab.Device.Id, out var device))
+            {
+                tab.Update(device);
+            }
+            else
+            {
+                CloseTab(tab);
+            }
         }
 
         Rebuild();

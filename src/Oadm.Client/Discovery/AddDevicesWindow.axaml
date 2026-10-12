@@ -154,7 +154,7 @@
                 </ui:PasswordBox.KeyBindings>
               </ui:PasswordBox>
             </ui:FormField>
-            <ui:FormField>
+            <ui:FormField IsVisible="{Binding CanSaveToCredentialList}">
               <CheckBox Content="Save to credential list" IsChecked="{Binding SaveToCredentialList}"
                         ToolTip.Tip="OADM tries it on devices it finds later" />
             </ui:FormField>

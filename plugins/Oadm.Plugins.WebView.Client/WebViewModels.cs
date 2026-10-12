@@ -142,14 +142,31 @@ public sealed partial class WebTab : ObservableObject, IDisposable
     [RelayCommand]
     private void Activate() => _owner.ActiveTab = this;
 
+    /// <summary>The browser opens this page now (Reload, another page on a running relay); also the same page again.</summary>
+    public event EventHandler<Uri>? NavigateRequested;
+
+    /// <summary>The device's record changed (address, model): the tab's title follows.</summary>
+    internal void Update(IDeviceInfo device)
+    {
+        if (device.Id == Device.Id)
+        {
+            Device = device;
+        }
+    }
+
     /// <summary>Opens <see cref="Path"/> on the device; a new relay when the device changed or none runs.</summary>
     internal async Task LoadAsync(IDeviceInfo device, CancellationToken ct)
     {
+        if (_session is null && IsLoading && Device.Id == device.Id)
+        {
+            return; // the relay starts: it opens the current Path when it is ready (one audit entry, one relay)
+        }
+
         var generation = ++_generation;
         if (_session is not null && _session.DeviceId == device.Id && Device.Id == device.Id)
         {
             Error = null;
-            Address = new Uri(_session.Origin, Path);
+            NavigateRequested?.Invoke(this, new Uri(_session.Origin, Path));
             return;
         }
 

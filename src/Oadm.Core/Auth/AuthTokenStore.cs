@@ -80,6 +80,19 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
         }
     }
 
+    /// <summary>The session of a token hash (a second check of a call that is already authorized).</summary>
+    public async Task<AuthSession?> ValidateHashAsync(string tokenHash, CancellationToken ct)
+    {
+        while (true)
+        {
+            var (done, session) = await TryValidateAsync(tokenHash, ct).ConfigureAwait(false);
+            if (done)
+            {
+                return session;
+            }
+        }
+    }
+
     /// <summary>
     /// One attempt; not done when a revoke or role change ran at the same time (the cache entry changed under it), so a
     /// revoked session or an old role never goes back into the cache.
@@ -137,35 +150,48 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
         return (true, new AuthSession(hash, cached.UserId, cached.UserName, cached.RoleId, expires));
     }
 
+    /// <summary>Sessions ended: one token (logout) or every session of a user (password, disabled, deleted).</summary>
+    public event EventHandler<EndedSessions>? SessionsEnded;
+
     /// <summary>Logout: ends one session.</summary>
     public async Task RevokeAsync(string tokenHash, CancellationToken ct)
     {
+        // The rows go first, then the cache: a call that misses the cache meanwhile finds no row, or sees the new epoch.
+        await DeleteAsync(tokenHash, ct).ConfigureAwait(false);
         Interlocked.Increment(ref _epoch);
         _cache.TryRemove(tokenHash, out _);
-        await DeleteAsync(tokenHash, ct).ConfigureAwait(false);
+        SessionsEnded?.Invoke(this, new EndedSessions(null, tokenHash));
     }
 
     /// <summary>The user's sessions take over a new role (sessions not cached read it from the database).</summary>
     public void SetRole(Guid userId, Guid roleId)
     {
         Interlocked.Increment(ref _epoch);
-        foreach (var pair in _cache.Where(p => p.Value.UserId == userId).ToList())
+        foreach (var key in _cache.Where(p => p.Value.UserId == userId).Select(p => p.Key).ToList())
         {
-            _cache.TryUpdate(pair.Key, pair.Value with { RoleId = roleId }, pair.Value);
+            // A validation may replace the entry at the same moment (sliding expiry): try again until the role is in.
+            while (_cache.TryGetValue(key, out var current) && current.RoleId != roleId
+                && !_cache.TryUpdate(key, current with { RoleId = roleId }, current))
+            {
+            }
         }
     }
 
     /// <summary>Ends every session of a user (disabled, deleted, password changed).</summary>
     public async Task RevokeUserAsync(Guid userId, CancellationToken ct)
     {
+        await using (var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false))
+        {
+            await db.AuthTokens.Where(t => t.UserId == userId).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+        }
+
         Interlocked.Increment(ref _epoch);
         foreach (var pair in _cache.Where(p => p.Value.UserId == userId).ToList())
         {
             _cache.TryRemove(pair.Key, out _);
         }
 
-        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-        await db.AuthTokens.Where(t => t.UserId == userId).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+        SessionsEnded?.Invoke(this, new EndedSessions(userId, null));
     }
 
     /// <summary>Deletes expired sessions (hourly).</summary>
@@ -195,3 +221,6 @@ public sealed class AuthTokenStore(IDbContextFactory<OadmDbContext> dbFactory, T
 
     private sealed record Cached(Guid UserId, string UserName, Guid RoleId, bool Remember, DateTime ExpiresUtc, DateTime PersistedExpiresUtc);
 }
+
+/// <summary>Which sessions ended: every session of <see cref="UserId"/>, or the one of <see cref="TokenHash"/>.</summary>
+public sealed record EndedSessions(Guid? UserId, string? TokenHash);

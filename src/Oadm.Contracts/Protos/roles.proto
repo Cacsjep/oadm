@@ -44,6 +44,7 @@ message RoleInfo {
   RoleKind kind = 4;
   repeated string permissions = 5;  // granted keys; empty for the Administrator role (it has all)
   int32 user_count = 6;
+  int64 version = 7;                // changes with every save; a save of an older version is refused
 }
 
 message RoleMatrix {
@@ -57,6 +58,7 @@ message RoleChange {
   string name = 2;
   string description = 3;
   repeated string permissions = 4;
+  int64 version = 5;   // RoleInfo.version the change was made on; 0 = no check (older clients)
 }
 
 message SaveRolesRequest { repeated RoleChange roles = 1; }

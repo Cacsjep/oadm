@@ -109,6 +109,32 @@ public sealed class DeviceWebTests
     }
 
     [Fact]
+    public async Task ARefusedDeviceGetsNoRequestAndRequestsWithoutOpenAreAuditedOnce()
+    {
+        var network = new FakeAxisNetwork();
+        var camera = network.Add("10.9.0.1", FakeSerials.Make(1), "pw");
+        var requests = 0;
+        camera.WebPage = (_, _, _) =>
+        {
+            Interlocked.Increment(ref requests);
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("ok") };
+        };
+        await using var host = await TestServerHost.StartAsync(network);
+        var refused = await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.2", 2, status: SdkDeviceStatus.CredentialsRequired);
+        var ex = await Assert.ThrowsAsync<RpcException>(() => ExchangeAsync(host, Request(refused.Id, "GET", "/")));
+        Assert.Equal(StatusCode.FailedPrecondition, ex.StatusCode);
+        Assert.Equal(Oadm.Sdk.Devices.DeviceMessages.CredentialsRequired, ex.Status.Detail);
+
+        // A client that never called Open is still in the audit log, once for its requests.
+        var device = await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.1", 1);
+        await ExchangeAsync(host, Request(device.Id, "GET", "/"));
+        await ExchangeAsync(host, Request(device.Id, "GET", "/x"));
+        Assert.Equal(2, requests);
+        var audit = (await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries;
+        Assert.Single(audit, e => e.Action == AuditActions.WebInterfaceOpened && e.Target.StartsWith("10.9.0.1", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task ADeviceWithAChangedCertificateIsRefused()
     {
         await using var host = await TestServerHost.StartAsync();
@@ -129,7 +155,8 @@ public sealed class DeviceWebTests
 
     [Theory]
     [InlineData("http://10.0.0.48/camera/index.html?a=1#x", "/camera/index.html?a=1#x")]
-    [InlineData("https://10.0.0.48/x", "https://10.0.0.48/x")]
+    [InlineData("https://10.0.0.48/x", "/x")] // the device on another scheme: still the relay
+    [InlineData("http://10.0.0.48:8080/y", "/y")]
     [InlineData("http://other/x", "http://other/x")]
     [InlineData("/already/relative", "/already/relative")]
     public void ALocationOnTheDeviceBecomesAPath(string location, string expected) =>

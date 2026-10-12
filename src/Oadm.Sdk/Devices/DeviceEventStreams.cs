@@ -25,6 +25,35 @@ public interface IDeviceEventStreams
     /// </summary>
     Task SetRtspPortAsync(Guid deviceId, int? port, CancellationToken ct) =>
         throw new NotSupportedException("This server cannot store RTSP ports.");
+
+    /// <summary>The stored RTSP ports of many devices in one read; devices on the default port are left out.</summary>
+    async Task<IReadOnlyDictionary<Guid, int>> GetRtspPortsAsync(IReadOnlyCollection<Guid> deviceIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        var ports = new Dictionary<Guid, int>();
+        foreach (var id in deviceIds)
+        {
+            if (await GetRtspPortAsync(id, ct).ConfigureAwait(false) is { } port)
+            {
+                ports[id] = port;
+            }
+        }
+
+        return ports;
+    }
+
+    /// <summary>
+    /// Stores one RTSP port for many devices in one write. With <paramref name="managed"/> the ports of devices that are
+    /// no longer managed are dropped in the same write.
+    /// </summary>
+    async Task SetRtspPortsAsync(IReadOnlyCollection<Guid> deviceIds, int? port, IReadOnlyCollection<Guid>? managed, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        foreach (var id in deviceIds)
+        {
+            await SetRtspPortAsync(id, port, ct).ConfigureAwait(false);
+        }
+    }
 }
 
 /// <summary>An open event stream; dispose to end it (RTSP TEARDOWN).</summary>

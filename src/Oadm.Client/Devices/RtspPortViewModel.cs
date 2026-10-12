@@ -66,23 +66,44 @@ public sealed partial class RtspPortViewModel : ValidatingViewModel
         SaveCommand.NotifyCanExecuteChanged();
     }
 
-    /// <summary>Reads the port the devices use now.</summary>
+    private bool _loading;
+    private bool _edited;
+
+    partial void OnPortTextChanged(string value)
+    {
+        if (!_loading)
+        {
+            _edited = true;
+        }
+    }
+
+    /// <summary>Reads the port the devices use now; Save waits for it (it must not reset a port it never saw).</summary>
     public async Task LoadAsync(CancellationToken ct)
     {
+        IsBusy = true;
         try
         {
             var reply = await _api.GetRtspPortAsync([.. _devices.Select(d => d.Id)], ct).ConfigureAwait(true);
-            PortText = reply.Mixed ? "" : reply.Port.ToString(CultureInfo.InvariantCulture);
+            if (!_edited) // the user typed meanwhile: that value stays
+            {
+                _loading = true;
+                PortText = reply.Mixed ? "" : reply.Port.ToString(CultureInfo.InvariantCulture);
+                _loading = false;
+                Validation.Reset(nameof(PortText));
+            }
+
             if (reply.Mixed)
             {
                 Hint = "The devices use different ports. Save sets this one for all of them.";
             }
-
-            Validation.Reset(nameof(PortText));
         }
-        catch (Exception ex) when (ex is RpcException or OperationCanceledException)
+        catch (Exception ex) when (ex is RpcException or OperationCanceledException or IOException or HttpRequestException)
         {
-            // The field keeps 554; Save still works.
+            Hint = "The current port could not be read. Save sets this one.";
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 
@@ -128,6 +149,10 @@ public sealed partial class RtspPortViewModel : ValidatingViewModel
         catch (RpcException ex)
         {
             Validation.SetServerError(nameof(PortText), ex.Status.Detail);
+        }
+        catch (Exception ex) when (ex is IOException or HttpRequestException)
+        {
+            Validation.SetServerError(nameof(PortText), "The server did not answer. Try again.");
         }
         finally
         {

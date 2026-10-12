@@ -239,6 +239,9 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     /// <summary>Login editor: store a working credential in the server's encrypted credential list.</summary>
     [ObservableProperty] public partial bool SaveToCredentialList { get; set; } = true;
+
+    /// <summary>Administrators only: other roles do not see "Save to credential list" and never save.</summary>
+    public bool CanSaveToCredentialList { get; init; } = true;
     [ObservableProperty] public partial string NewPassword { get; set; } = "";
     [ObservableProperty] public partial string ConfirmPassword { get; set; } = "";
 
@@ -716,7 +719,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                 DiscoveredId = row.DiscoveredId,
                 UserName = EditorUserName.Trim(),
                 Password = EditorPassword,
-                SaveToCredentialList = SaveToCredentialList,
+                SaveToCredentialList = SaveToCredentialList && CanSaveToCredentialList,
             };
             request.RelatedSessionIds.AddRange(_sessions.Where(s => s != row.SessionId));
             DiscoveredDevice reply = await _api.RetryAuthAsync(request, _cts.Token).ConfigureAwait(true);

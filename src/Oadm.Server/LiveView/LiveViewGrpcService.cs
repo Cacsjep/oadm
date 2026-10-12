@@ -98,6 +98,10 @@ public sealed class LiveViewGrpcService(
         {
             throw GrpcGuard.FailedPrecondition(ex.Message);
         }
+        catch (OperationCanceledException) when (!context.CancellationToken.IsCancellationRequested)
+        {
+            throw new RpcException(new Status(StatusCode.DeadlineExceeded, "The camera did not answer."));
+        }
         catch (Exception ex) when (ex is not OperationCanceledException and not RpcException)
         {
             throw ToRpc(ex);
@@ -174,6 +178,10 @@ public sealed class LiveViewGrpcService(
         {
             throw GrpcGuard.InvalidArgument(ex.Message);
         }
+        catch (OperationCanceledException) when (!context.CancellationToken.IsCancellationRequested)
+        {
+            throw new RpcException(new Status(StatusCode.DeadlineExceeded, "The camera did not answer."));
+        }
         catch (Exception ex) when (ex is not OperationCanceledException and not RpcException)
         {
             throw ToRpc(ex);
@@ -186,11 +194,8 @@ public sealed class LiveViewGrpcService(
     public override async Task<Proto.RtspPortReply> GetRtspPort(Proto.RtspPortRequest request, ServerCallContext context)
     {
         var ids = PortDevices(request.DeviceIds);
-        var found = new HashSet<int>();
-        foreach (var id in ids)
-        {
-            found.Add(await ports.GetRtspPortAsync(id, context.CancellationToken).ConfigureAwait(false) ?? RtspClient.DefaultPort);
-        }
+        var stored = await ports.GetRtspPortsAsync(ids, context.CancellationToken).ConfigureAwait(false);
+        var found = ids.Select(id => stored.TryGetValue(id, out var port) ? port : RtspClient.DefaultPort).ToHashSet();
 
         return new Proto.RtspPortReply { Port = found.Count == 1 ? found.First() : RtspClient.DefaultPort, Mixed = found.Count > 1 };
     }
@@ -205,27 +210,25 @@ public sealed class LiveViewGrpcService(
         }
 
         int? port = request.Port is 0 or RtspClient.DefaultPort ? null : request.Port;
-        var known = new List<Device>();
-        foreach (var id in ids)
-        {
-            if (await devices.GetAsync(id, context.CancellationToken).ConfigureAwait(false) is { } device)
-            {
-                known.Add(device);
-            }
-        }
-
+        // One read of the device ids and one write for the whole selection; ports of removed devices go in the same write.
+        var managed = await devices.ListDeviceIdsAsync(context.CancellationToken).ConfigureAwait(false);
+        var managedSet = managed.ToHashSet();
+        var known = ids.Where(managedSet.Contains).ToList();
         if (known.Count == 0)
         {
             throw GrpcGuard.NotFound("The devices were not found.");
         }
 
-        foreach (var device in known)
+        await ports.SetRtspPortsAsync(known, port, managed, context.CancellationToken).ConfigureAwait(false);
+        foreach (var id in known)
         {
-            await ports.SetRtspPortAsync(device.Id, port, context.CancellationToken).ConfigureAwait(false);
+            hub.Invalidate(id);
         }
 
-        var target = known.Count == 1 ? $"{known[0].Address} ({known[0].Serial})" : $"{known.Count} devices";
-        await audit.WriteAsync(AuditActions.RtspPortChanged, target, port is null ? "554 (default)" : port.Value.ToString(System.Globalization.CultureInfo.InvariantCulture), context.CancellationToken).ConfigureAwait(false);
+        var single = known.Count == 1 ? await devices.GetAsync(known[0], CancellationToken.None).ConfigureAwait(false) : null;
+        var target = single is not null ? $"{single.Address} ({single.Serial})" : $"{known.Count} devices";
+        // Written after the change is stored, whatever the caller does meanwhile.
+        await audit.WriteAsync(AuditActions.RtspPortChanged, target, port is null ? "554 (default)" : port.Value.ToString(System.Globalization.CultureInfo.InvariantCulture), CancellationToken.None).ConfigureAwait(false);
         return new Proto.RtspPortReply { Port = port ?? RtspClient.DefaultPort };
     }
 
@@ -287,14 +290,16 @@ public sealed class LiveViewGrpcService(
         foreach (var source in capabilities.EffectiveSources)
         {
             var largest = source.Resolutions.Count > 0 ? source.Resolutions.MaxBy(r => (long)r.Width * r.Height) : default;
-            reply.Sources.Add(new Proto.LiveViewSource
+            var item = new Proto.LiveViewSource
             {
                 Camera = source.Camera,
                 Name = source.Name,
                 Sensor = source.Sensor,
                 MaxWidth = largest.Width,
                 MaxHeight = largest.Height,
-            });
+            };
+            item.Resolutions.AddRange(source.Resolutions.Select(r => new Proto.LiveViewResolution { Width = r.Width, Height = r.Height }));
+            reply.Sources.Add(item);
         }
 
         return reply;

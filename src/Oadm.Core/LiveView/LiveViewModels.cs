@@ -11,7 +11,8 @@ public enum VideoCodecKind
 
 /// <summary>Identifies one shared upstream camera connection.</summary>
 /// <param name="Camera">1-based VAPIX camera (view area, sensor or encoder channel).</param>
-public sealed record LiveStreamKey(Guid DeviceId, VideoCodecKind Codec, ImageSize Size, int Fps, int Camera = 1);
+/// <param name="Generation">Raised by <see cref="LiveViewHub.Invalidate"/> (a new RTSP port): new viewers never join a connection on the old port.</param>
+public sealed record LiveStreamKey(Guid DeviceId, VideoCodecKind Codec, ImageSize Size, int Fps, int Camera = 1, int Generation = 0);
 
 /// <summary>
 /// One access unit (Annex B) from a camera. Instances are shared between viewers and never modified.

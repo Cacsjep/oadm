@@ -64,9 +64,13 @@ public sealed class WebViewTests(ITestOutputHelper output)
         Assert.Equal("PTZ", tab.GroupKey);
 
         // The select opens a preset in the active tab; new tabs use it too.
+        var opened = new List<Uri>();
+        tab.NavigateRequested += (_, page) => opened.Add(page);
         vm.SelectedPreset = WebPagePreset.All.Single(p => p.Name == "Object Analytics");
         Assert.Equal("/local/objectanalytics/index.html#/", tab.Path);
-        Assert.Equal(new Uri(ctx.Web.Sessions[0].Origin, "/local/objectanalytics/index.html#/"), tab.Address); // same relay
+        Assert.Equal([new Uri(ctx.Web.Sessions[0].Origin, "/local/objectanalytics/index.html#/")], opened); // same relay
+        vm.ReloadCommand.Execute(null); // Reload opens the same page again
+        Assert.Equal(2, opened.Count);
         Assert.Equal(2, ctx.Web.Sessions.Count);
 
         // Switching tabs shows that tab's page in the select without opening anything.

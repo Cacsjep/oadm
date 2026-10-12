@@ -3,6 +3,7 @@ using System.Net;
 
 using Grpc.Core;
 
+using Oadm.Core.Auth;
 using Oadm.Core.Devices;
 using Oadm.Core.Discovery;
 using Oadm.Core.Security;
@@ -89,7 +90,9 @@ public sealed partial class AddDevicesGrpcService(
 
         try
         {
-            var result = await authenticator.RetryAsync(request.SessionId, found, request.UserName, request.Password, request.SaveToCredentialList, request.RelatedSessionIds, ct).ConfigureAwait(false);
+            var result = await authenticator.RetryAsync(request.SessionId, found, request.UserName, request.Password,
+                request.SaveToCredentialList && CallerContext.Current is not { IsAdmin: false }, // the credential list is Administrator only
+                request.RelatedSessionIds, ct).ConfigureAwait(false);
             return Mappers.ToProto(found, false, 100, result);
         }
         catch (InvalidOperationException ex)

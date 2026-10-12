@@ -24,7 +24,8 @@ public sealed class RoleGrpcService(RoleStore roles, PluginRegistry registry, Au
             string.IsNullOrEmpty(r.Id) ? null : GrpcGuard.ParseId(r.Id, "role id"),
             r.Name,
             r.Description,
-            [.. r.Permissions])).ToList();
+            [.. r.Permissions],
+            r.Version)).ToList();
         try
         {
             var diffs = await roles.SaveAsync(changes, ct).ConfigureAwait(false);
@@ -103,6 +104,7 @@ public sealed class RoleGrpcService(RoleStore roles, PluginRegistry registry, Au
                 Description = role.Description,
                 Kind = (Proto.RoleKind)(int)role.Kind,
                 UserCount = role.UserCount,
+                Version = role.Version,
             };
             info.Permissions.AddRange(role.Permissions.Keys.Order(StringComparer.Ordinal));
             reply.Roles.Add(info);

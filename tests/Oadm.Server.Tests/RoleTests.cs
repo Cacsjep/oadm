@@ -232,6 +232,46 @@ public sealed class RoleTests
     }
 
     [Fact]
+    public async Task ASaveOnAnOlderVersionOfARoleIsRefused()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var loaded = (await Roles(host).GetMatrixAsync(new Proto.Empty())).Roles.Single(r => r.Kind == Proto.RoleKind.Operator);
+        Assert.NotEqual(0, loaded.Version);
+
+        // Administrator A takes a right away; B saves on the matrix both loaded before.
+        await Roles(host).SaveRolesAsync(new Proto.SaveRolesRequest
+        {
+            Roles = { new Proto.RoleChange { Id = loaded.Id, Name = "Operator", Permissions = { loaded.Permissions.Where(p => p != HostPermissions.EventsView) }, Version = loaded.Version } },
+        });
+        var stale = await Assert.ThrowsAsync<RpcException>(async () => await Roles(host).SaveRolesAsync(new Proto.SaveRolesRequest
+        {
+            Roles = { new Proto.RoleChange { Id = loaded.Id, Name = "Operator", Permissions = { loaded.Permissions }, Version = loaded.Version } },
+        }));
+        Assert.Equal(StatusCode.FailedPrecondition, stale.StatusCode);
+        Assert.Contains("Another administrator changed the role Operator", stale.Status.Detail, StringComparison.Ordinal);
+        var now = (await Roles(host).GetMatrixAsync(new Proto.Empty())).Roles.Single(r => r.Kind == Proto.RoleKind.Operator);
+        Assert.DoesNotContain(HostPermissions.EventsView, now.Permissions);
+    }
+
+    [Fact]
+    public async Task ANewPasswordEndsEveryOpenStreamOfTheUserAlsoTheSessionStream()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var opInvoker = await host.InvokerForUserAsync("tech1", UserRole.Operator);
+        using var session = new Proto.AuthService.AuthServiceClient(opInvoker).WatchSession(new Proto.Empty());
+        Assert.True(await session.ResponseStream.MoveNext());
+        using var rules = new Proto.EventService.EventServiceClient(opInvoker).WatchRules(new Proto.Empty());
+        Assert.True(await rules.ResponseStream.MoveNext());
+
+        var id = (await host.Users.ListAsync(new Proto.Empty())).Users.Single(u => u.UserName == "tech1").Id;
+        await host.Users.UpdateAsync(new Proto.UpdateUserRequest { Id = id, NewPassword = "another secret" });
+
+        await Assert.ThrowsAnyAsync<Exception>(async () => await rules.ResponseStream.MoveNext().WaitAsync(TimeSpan.FromSeconds(10)));
+        await Assert.ThrowsAnyAsync<Exception>(async () => await session.ResponseStream.MoveNext().WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(StatusCode.Unauthenticated, await CodeOf(async () => await new Proto.AuthService.AuthServiceClient(opInvoker).MeAsync(new Proto.Empty())));
+    }
+
+    [Fact]
     public async Task AUserWithAnotherRoleKeepsTheSessionAndGetsTheNewRights()
     {
         await using var host = await TestServerHost.StartAsync();

@@ -31,6 +31,7 @@ public sealed partial class LiveViewHub : IAsyncDisposable
     private readonly LiveViewHubOptions _options;
     private readonly Lock _gate = new();
     private readonly Dictionary<LiveStreamKey, Upstream> _upstreams = [];
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, int> _generations = new();
     private bool _disposed;
 
     public LiveViewHub(ILiveVideoSourceFactory factory, ILogger<LiveViewHub>? logger = null, LiveViewHubOptions? options = null)
@@ -60,6 +61,9 @@ public sealed partial class LiveViewHub : IAsyncDisposable
     /// <param name="camera">1-based VAPIX camera (view area, sensor, channel); 0 = the first enabled source.</param>
     /// <exception cref="LiveViewException">No common codec, unknown source, or every codec failed to open.</exception>
     /// <exception cref="KeyNotFoundException">The device does not exist.</exception>
+    /// <summary>The device's connection settings changed (RTSP port): later viewers get a new camera connection.</summary>
+    public void Invalidate(Guid deviceId) => _generations.AddOrUpdate(deviceId, 1, (_, generation) => generation + 1);
+
     public async Task<LiveViewSubscription> SubscribeAsync(
         Guid deviceId,
         int maxWidth,
@@ -85,7 +89,7 @@ public sealed partial class LiveViewHub : IAsyncDisposable
         Exception? failure = null;
         foreach (var codec in order)
         {
-            var key = new LiveStreamKey(deviceId, codec, size, clampedFps, source.Camera);
+            var key = new LiveStreamKey(deviceId, codec, size, clampedFps, source.Camera, _generations.GetValueOrDefault(deviceId));
             var subscription = Attach(key);
             try
             {

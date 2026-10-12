@@ -43,6 +43,7 @@ public sealed partial class DeviceWebRelay : IDeviceWebSession
     private readonly TcpListener _listener;
     private readonly CancellationTokenSource _stop = new();
     private readonly string _token;
+    private readonly string _secret;
     private readonly string _host;
     private readonly string _cookie;
     private readonly Task _accept;
@@ -55,7 +56,10 @@ public sealed partial class DeviceWebRelay : IDeviceWebSession
         _api = api;
         _logger = logger;
         DeviceId = deviceId;
-        _token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        // The start address carries _token; the session cookie carries _secret, which never appears in an address
+        // (browser history, the tab's address).
+        _token = NewSecret();
+        _secret = NewSecret();
         _listener = Listen();
         var endpoint = (IPEndPoint)_listener.LocalEndpoint;
         var port = endpoint.Port.ToString(CultureInfo.InvariantCulture);
@@ -93,6 +97,8 @@ public sealed partial class DeviceWebRelay : IDeviceWebSession
         loopback.Start();
         return loopback;
     }
+
+    private static string NewSecret() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
     public Guid DeviceId { get; }
 
@@ -160,7 +166,7 @@ public sealed partial class DeviceWebRelay : IDeviceWebSession
                     }
                 }
             }
-            catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException or SocketException or WebSocketException or InvalidDataException)
+            catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException or SocketException or WebSocketException or InvalidDataException or Grpc.Core.RpcException)
             {
                 // The browser closed the connection, the relay stopped or the request was malformed.
                 if (ex is InvalidDataException)
@@ -185,6 +191,15 @@ public sealed partial class DeviceWebRelay : IDeviceWebSession
             return await StartAsync(request, stream, ct).ConfigureAwait(false);
         }
 
+        // Pages of other relays share the cookie scope on 127.0.0.1 (macOS): a request from another origin is refused.
+        if (request.Header("Origin") is { Length: > 0 } origin && origin != "null"
+            && !string.Equals(origin.TrimEnd('/'), "http://" + _host, StringComparison.OrdinalIgnoreCase))
+        {
+            await DrainBodyAsync(request, reader, ct).ConfigureAwait(false);
+            await WriteSimpleAsync(stream, 403, "Forbidden", "Open the device from OADM.", ct).ConfigureAwait(false);
+            return !request.WantsClose;
+        }
+
         if (!HasSessionCookie(request.Header("Cookie")))
         {
             await DrainBodyAsync(request, reader, ct).ConfigureAwait(false);
@@ -207,7 +222,8 @@ public sealed partial class DeviceWebRelay : IDeviceWebSession
         var token = query["token"] ?? string.Empty;
         var path = query["path"] ?? "/";
         if (!CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(token), Encoding.ASCII.GetBytes(_token))
-            || !path.StartsWith('/') || path.StartsWith("//", StringComparison.Ordinal) || path.Contains('\\', StringComparison.Ordinal))
+            || !path.StartsWith('/') || path.StartsWith("//", StringComparison.Ordinal) || path.Contains('\\', StringComparison.Ordinal)
+            || path.Any(char.IsControl))
         {
             await WriteSimpleAsync(stream, 403, "Forbidden", "Open the device from OADM.", ct).ConfigureAwait(false);
             return false;
@@ -216,7 +232,7 @@ public sealed partial class DeviceWebRelay : IDeviceWebSession
         var head = new StringBuilder()
             .Append("HTTP/1.1 302 Found\r\n")
             .Append("Location: ").Append(path).Append("\r\n")
-            .Append("Set-Cookie: ").Append(_cookie).Append('=').Append(_token).Append("; Path=/; HttpOnly; SameSite=Strict\r\n")
+            .Append("Set-Cookie: ").Append(_cookie).Append('=').Append(_secret).Append("; Path=/; HttpOnly; SameSite=Strict\r\n")
             .Append("Cache-Control: no-store\r\nContent-Length: 0\r\n\r\n");
         await stream.WriteAsync(Encoding.ASCII.GetBytes(head.ToString()), ct).ConfigureAwait(false);
         return !request.WantsClose;
@@ -229,7 +245,7 @@ public sealed partial class DeviceWebRelay : IDeviceWebSession
             return false;
         }
 
-        var expected = Encoding.ASCII.GetBytes(_token);
+        var expected = Encoding.ASCII.GetBytes(_secret);
         foreach (var part in cookies.Split(';'))
         {
             var pair = part.Trim();

@@ -27,6 +27,7 @@ public sealed partial class RoleColumnViewModel : ObservableObject
         Id = string.IsNullOrEmpty(role.Id) ? null : role.Id;
         Kind = role.Kind;
         UserCount = role.UserCount;
+        Version = role.Version;
         _savedName = role.Name;
         _savedDescription = role.Description;
         Name = role.Name;
@@ -40,7 +41,21 @@ public sealed partial class RoleColumnViewModel : ObservableObject
 
     public RoleKind Kind { get; }
 
-    public int UserCount { get; }
+    /// <summary>The stored version this column was loaded from (a save on an older one is refused).</summary>
+    public long Version { get; }
+
+    public int UserCount { get; private set; }
+
+    /// <summary>A fresh count from the server (users added or moved); the edits of the column stay.</summary>
+    internal void UpdateUserCount(int count)
+    {
+        if (count != UserCount)
+        {
+            UserCount = count;
+            OnPropertyChanged(nameof(UserCount));
+            OnPropertyChanged(nameof(Subtitle));
+        }
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDirty))]
@@ -105,7 +120,7 @@ public sealed partial class RoleColumnViewModel : ObservableObject
 
     partial void OnDescriptionChanged(string value) => OnPropertyChanged(nameof(DescriptionTip));
 
-    public RoleChange ToChange() => new() { Id = Id ?? "", Name = Name.Trim(), Description = Description.Trim(), Permissions = { Granted.Order(StringComparer.Ordinal) } };
+    public RoleChange ToChange() => new() { Id = Id ?? "", Name = Name.Trim(), Description = Description.Trim(), Permissions = { Granted.Order(StringComparer.Ordinal) }, Version = Version };
 }
 
 /// <summary>One check box of the matrix: a permission (or a whole group) for one role.</summary>
@@ -300,7 +315,10 @@ public sealed partial class RolesViewModel : ValidatingViewModel
     partial void OnIsDirtyChanged(bool value) => OnPropertyChanged(nameof(SaveBlockedReason));
 
     [RelayCommand]
-    public async Task LoadAsync()
+    public Task LoadAsync() => LoadAsync(keepEdits: true);
+
+    /// <summary>Reads the matrix; with <paramref name="keepEdits"/> unsaved changes stay and only the user counts change.</summary>
+    public async Task LoadAsync(bool keepEdits)
     {
         if (!_session.IsAdmin)
         {
@@ -310,7 +328,24 @@ public sealed partial class RolesViewModel : ValidatingViewModel
 
         try
         {
-            Show(await _api.GetRoleMatrixAsync(CancellationToken.None).ConfigureAwait(true));
+            var matrix = await _api.GetRoleMatrixAsync(CancellationToken.None).ConfigureAwait(true);
+            if (IsDirty && keepEdits)
+            {
+                // Unsaved changes stay (a reconnect, a new user): only the user counts follow.
+                var counts = matrix.Roles.ToDictionary(r => r.Id, r => r.UserCount, StringComparer.Ordinal);
+                foreach (var column in Columns)
+                {
+                    if (column.Id is { } id && counts.TryGetValue(id, out var count))
+                    {
+                        column.UpdateUserCount(count);
+                    }
+                }
+            }
+            else
+            {
+                Show(matrix);
+            }
+
             ErrorText = null;
         }
         catch (RpcException ex)
@@ -558,7 +593,7 @@ public sealed partial class RolesViewModel : ValidatingViewModel
     private bool CanDiscard() => IsDirty;
 
     [RelayCommand(CanExecute = nameof(CanDiscard))]
-    private Task DiscardAsync() => LoadAsync();
+    private Task DiscardAsync() => LoadAsync(keepEdits: false);
 
     [RelayCommand]
     private void ToggleGroup(PermissionRowViewModel? group)

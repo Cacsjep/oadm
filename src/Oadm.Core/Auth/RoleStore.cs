@@ -38,11 +38,12 @@ public sealed class PermissionSet
 }
 
 /// <summary>A role as listed: its permissions and how many users have it.</summary>
-public sealed record RoleRecord(Guid Id, string Name, string Description, RoleKind Kind, PermissionSet Permissions, int UserCount);
+public sealed record RoleRecord(Guid Id, string Name, string Description, RoleKind Kind, PermissionSet Permissions, int UserCount, long Version = 0);
 
 /// <summary>A role to create (<see cref="Id"/> null) or to change in <see cref="RoleStore.SaveAsync"/>.</summary>
 /// <param name="Permissions">The granted keys; keys the catalog does not know are ignored (a role keeps its own unknown keys).</param>
-public sealed record RoleChange(Guid? Id, string Name, string Description, IReadOnlyCollection<string> Permissions);
+/// <param name="Version">The <see cref="RoleRecord.Version"/> the change was made on; a newer stored role refuses it (two administrators).</param>
+public sealed record RoleChange(Guid? Id, string Name, string Description, IReadOnlyCollection<string> Permissions, long Version = 0);
 
 /// <summary>What a save changed, per role, for the audit log ("+Web View: Open devices -Restart").</summary>
 public sealed record RoleDiff(string RoleName, bool Created, IReadOnlyList<string> Added, IReadOnlyList<string> Removed, bool Renamed);
@@ -53,7 +54,7 @@ public sealed record RoleDiff(string RoleName, bool Created, IReadOnlyList<strin
 /// <see cref="MaxCustomRoles"/> custom roles. Every role's permissions live in memory, so a check is one set lookup; a
 /// save replaces the snapshot and raises <see cref="Changed"/> (the server then ends streams a role no longer allows).
 /// </summary>
-public sealed class RoleStore(IDbContextFactory<OadmDbContext> dbFactory, TimeProvider time) : IDisposable
+public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory, TimeProvider time) : IDisposable
 {
     public const int MaxNameLength = 64;
     public const int MaxDescriptionLength = 200;
@@ -118,7 +119,7 @@ public sealed class RoleStore(IDbContextFactory<OadmDbContext> dbFactory, TimePr
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
         var counts = await db.Users.AsNoTracking().GroupBy(u => u.RoleId).Select(g => new { g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count, ct).ConfigureAwait(false);
-        return [.. snapshot.Ordered.Select(r => new RoleRecord(r.Id, r.Name, r.Description, r.Kind, r.Permissions, counts.GetValueOrDefault(r.Id)))];
+        return [.. snapshot.Ordered.Select(r => new RoleRecord(r.Id, r.Name, r.Description, r.Kind, r.Permissions, counts.GetValueOrDefault(r.Id), r.Version))];
     }
 
     /// <summary>
@@ -257,6 +258,12 @@ public sealed class RoleStore(IDbContextFactory<OadmDbContext> dbFactory, TimePr
                         throw new AuthException(AuthError.Precondition, "The Administrator role always has every permission and cannot change.");
                     }
 
+                    if (change.Version != 0 && change.Version != VersionOf(role))
+                    {
+                        throw new AuthException(AuthError.Precondition,
+                            $"Another administrator changed the role {role.Name} meanwhile. Click Discard and make your changes again.");
+                    }
+
                     before = ReadKeys(role.PermissionsJson);
                 }
 
@@ -362,7 +369,7 @@ public sealed class RoleStore(IDbContextFactory<OadmDbContext> dbFactory, TimePr
 
     private static string WriteKeys(IEnumerable<string> keys) => JsonSerializer.Serialize(keys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
 
-    private sealed record CachedRole(Guid Id, string Name, string Description, RoleKind Kind, DateTime CreatedUtc, PermissionSet Permissions);
+    private sealed record CachedRole(Guid Id, string Name, string Description, RoleKind Kind, DateTime CreatedUtc, PermissionSet Permissions, long Version);
 
     private sealed class Snapshot
     {
@@ -378,8 +385,14 @@ public sealed class RoleStore(IDbContextFactory<OadmDbContext> dbFactory, TimePr
 
         public static Snapshot From(IEnumerable<RoleEntity> roles) => new(roles.ToDictionary(r => r.Id, r => new CachedRole(
             r.Id, r.Name, r.Description, r.Kind, r.CreatedUtc,
-            r.Kind == RoleKind.Administrator ? PermissionSet.All : PermissionSet.Of(ReadKeys(r.PermissionsJson)))));
+            r.Kind == RoleKind.Administrator ? PermissionSet.All : PermissionSet.Of(ReadKeys(r.PermissionsJson)), VersionOf(r))));
     }
+}
+
+public sealed partial class RoleStore
+{
+    /// <summary>The version of a stored role: the time of its last change.</summary>
+    internal static long VersionOf(RoleEntity role) => role.ChangedUtc.Ticks;
 }
 
 /// <summary>What <see cref="RoleStore.SyncCatalogAsync"/> did to the Operator role.</summary>

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.WebSockets;
 
@@ -28,8 +29,22 @@ public sealed partial class DeviceWebGrpcService(
     Oadm.Core.Persistence.OadmPaths paths,
     AuditLog audit,
     IHostApplicationLifetime lifetime,
-    ILogger<DeviceWebGrpcService> logger) : Proto.DeviceWebService.DeviceWebServiceBase
+    ILogger<DeviceWebGrpcService> logger,
+    Oadm.Core.Plugins.PluginRegistry? plugins = null) : Proto.DeviceWebService.DeviceWebServiceBase
 {
+    /// <summary>The Web View plugin: the relay works only while it is on.</summary>
+    public const string WebViewPackageId = "oadm.web-view";
+
+    /// <summary>Request bodies spooled to disk at the same time (uploads through the web interface).</summary>
+    public const int MaxSpooledBodies = 4;
+
+    /// <summary>How long one "Opened web interface" entry covers a user's requests to a device.</summary>
+    public static readonly TimeSpan AuditWindow = TimeSpan.FromHours(8);
+
+    private static readonly SemaphoreSlim Spooling = new(MaxSpooledBodies, MaxSpooledBodies);
+    private static readonly ConcurrentDictionary<(string User, Guid Device), DateTime> Audited = new();
+    private static int _spoolFolderCleared;
+
     /// <summary>Largest body chunk sent to the client.</summary>
     public const int ChunkBytes = 64 * 1024;
 
@@ -52,6 +67,7 @@ public sealed partial class DeviceWebGrpcService(
 
     public override async Task<Proto.OpenDeviceWebReply> Open(Proto.OpenDeviceWebRequest request, ServerCallContext context)
     {
+        RequirePluginOn();
         var id = GrpcGuard.ParseId(request.DeviceId, "device id");
         var ct = context.CancellationToken;
         var device = await devices.GetAsync(id, ct).ConfigureAwait(false) ?? throw GrpcGuard.NotFound(DeviceMessages.Removed);
@@ -60,9 +76,35 @@ public sealed partial class DeviceWebGrpcService(
             return new Proto.OpenDeviceWebReply { Ok = false, Message = refusal };
         }
 
+        await AuditOpenAsync(device, force: true, ct).ConfigureAwait(false);
+        return new Proto.OpenDeviceWebReply { Ok = true };
+    }
+
+    private void RequirePluginOn()
+    {
+        if (plugins is not null && plugins.HasPackage(WebViewPackageId) && !plugins.IsEnabled(WebViewPackageId))
+        {
+            throw GrpcGuard.FailedPrecondition("The Web View plugin is turned off.");
+        }
+    }
+
+    /// <summary>
+    /// "Opened web interface" in the audit log: on Open, and on a request of a user that did not open the device through
+    /// Open within <see cref="AuditWindow"/> (a client that skips Open is still recorded).
+    /// </summary>
+    private async Task AuditOpenAsync(Device device, bool force, CancellationToken ct)
+    {
+        var user = CallerContext.Current?.UserName ?? "";
+        var key = (user, device.Id);
+        var now = DateTime.UtcNow;
+        if (!force && Audited.TryGetValue(key, out var last) && now - last < AuditWindow)
+        {
+            return;
+        }
+
+        Audited[key] = now;
         var target = string.IsNullOrEmpty(device.Model) ? device.Address : $"{device.Address} ({device.Model})";
         await audit.WriteAsync(AuditActions.WebInterfaceOpened, target, null, ct).ConfigureAwait(false);
-        return new Proto.OpenDeviceWebReply { Ok = true };
     }
 
     /// <summary>Why the web interface of a device cannot be opened; null when it can.</summary>
@@ -92,12 +134,15 @@ public sealed partial class DeviceWebGrpcService(
             throw GrpcGuard.InvalidArgument("The path must start with / and stay on the device.");
         }
 
+        RequirePluginOn();
         var device = await devices.GetAsync(id, ct).ConfigureAwait(false) ?? throw GrpcGuard.NotFound(DeviceMessages.Removed);
-        if (device.Status == DeviceStatus.CertificateChanged)
+        // Refused statuses are not contacted: a rejected login would be sent again with every request of the page.
+        if (Refusal(device.Status) is { } refusal)
         {
-            throw GrpcGuard.FailedPrecondition(DeviceMessages.CertificateChanged);
+            throw GrpcGuard.FailedPrecondition(refusal);
         }
 
+        await AuditOpenAsync(device, force: false, ct).ConfigureAwait(false);
         var client = await clients.GetClientAsync(device, ct).ConfigureAwait(false);
         if (head.Websocket)
         {
@@ -145,11 +190,27 @@ public sealed partial class DeviceWebGrpcService(
             return request;
         }
 
+        try
+        {
+            await SendAndRelayAsync(client, head, Build, pageCookie, responseStream, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            foreach (var request in requests)
+            {
+                request.Dispose();
+            }
+        }
+    }
+
+    private async Task SendAndRelayAsync(VapixClient client, Proto.DeviceWebRequestHead head, Func<HttpRequestMessage> build, string? pageCookie,
+        IServerStreamWriter<Proto.DeviceWebFrame> responseStream, CancellationToken ct)
+    {
         HttpResponseMessage response;
         IReadOnlyList<string> refusedCookies;
         try
         {
-            (response, refusedCookies) = await client.SendRelayAsync(Build, pageCookie, ct).ConfigureAwait(false);
+            (response, refusedCookies) = await client.SendRelayAsync(build, pageCookie, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
@@ -195,11 +256,6 @@ public sealed partial class DeviceWebGrpcService(
 
             await responseStream.WriteAsync(new Proto.DeviceWebFrame { End = true }, ct).ConfigureAwait(false);
         }
-
-        foreach (var request in requests)
-        {
-            request.Dispose();
-        }
     }
 
     /// <summary>The buffered body for one try; disposing the request leaves it open for the next try.</summary>
@@ -244,6 +300,7 @@ public sealed partial class DeviceWebGrpcService(
     {
         Stream buffer = new MemoryStream();
         long total = 0;
+        var spooling = false;
         try
         {
             while (await requestStream.MoveNext(ct).ConfigureAwait(false))
@@ -267,8 +324,20 @@ public sealed partial class DeviceWebGrpcService(
 
                 if (buffer is MemoryStream memory && total > MemoryBodyBytes)
                 {
+                    if (!await Spooling.WaitAsync(TimeSpan.FromSeconds(30), ct).ConfigureAwait(false))
+                    {
+                        throw new RpcException(new Status(StatusCode.ResourceExhausted, "Too many uploads at the same time. Try again."));
+                    }
+
+                    spooling = true;
                     var folder = Path.Combine(paths.DataDirectory, "web-relay");
+                    ClearSpoolFolderOnce(folder);
                     Directory.CreateDirectory(folder);
+                    if (FreeBytes(folder) is { } free && free < Oadm.Core.Uploads.UploadStore.MinFreeDiskBytes + MemoryBodyBytes)
+                    {
+                        throw new RpcException(new Status(StatusCode.ResourceExhausted, "The server's disk is almost full."));
+                    }
+
                     var file = new FileStream(Path.Combine(folder, Guid.NewGuid().ToString("N") + ".body"), FileMode.CreateNew, FileAccess.ReadWrite,
                         FileShare.None, 81920, FileOptions.DeleteOnClose | FileOptions.Asynchronous);
                     memory.Position = 0;
@@ -277,16 +346,122 @@ public sealed partial class DeviceWebGrpcService(
                     buffer = file;
                 }
 
+                // Every 256 MB written: the disk keeps its free gigabyte.
+                if (spooling && (total - frame.Body.Length) / (16 * MemoryBodyBytes) != total / (16 * MemoryBodyBytes)
+                    && FreeBytes(Path.Combine(paths.DataDirectory, "web-relay")) is { } left && left < Oadm.Core.Uploads.UploadStore.MinFreeDiskBytes)
+                {
+                    throw new RpcException(new Status(StatusCode.ResourceExhausted, "The server's disk is almost full."));
+                }
+
                 await buffer.WriteAsync(frame.Body.Memory, ct).ConfigureAwait(false);
             }
 
             buffer.Position = 0;
-            return buffer;
+            return spooling ? new ReleasingStream(buffer) : buffer;
         }
         catch
         {
             await buffer.DisposeAsync().ConfigureAwait(false);
+            if (spooling)
+            {
+                Spooling.Release();
+            }
+
             throw;
+        }
+    }
+
+    /// <summary>Files left by a crash (DeleteOnClose does not run then) are removed once per server start.</summary>
+    private static void ClearSpoolFolderOnce(string folder)
+    {
+        if (Interlocked.Exchange(ref _spoolFolderCleared, 1) != 0 || !Directory.Exists(folder))
+        {
+            return;
+        }
+
+        foreach (var file in Directory.EnumerateFiles(folder, "*.body"))
+        {
+            try
+            {
+                File.Delete(file);
+            }
+            catch (IOException)
+            {
+                // in use by a request of this start
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    private static long? FreeBytes(string folder)
+    {
+        try
+        {
+            return new DriveInfo(Path.GetFullPath(folder)).AvailableFreeSpace;
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
+        {
+            return null; // network share: only the size limit applies
+        }
+    }
+
+    /// <summary>A spooled body; closing it frees its slot.</summary>
+    private sealed class ReleasingStream(Stream inner) : Stream
+    {
+        private int _released;
+
+        public override bool CanRead => inner.CanRead;
+
+        public override bool CanSeek => inner.CanSeek;
+
+        public override bool CanWrite => false;
+
+        public override long Length => inner.Length;
+
+        public override long Position
+        {
+            get => inner.Position;
+            set => inner.Position = value;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => inner.ReadAsync(buffer, cancellationToken);
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => inner.ReadAsync(buffer, offset, count, cancellationToken);
+
+        public override long Seek(long offset, SeekOrigin origin) => inner.Seek(offset, origin);
+
+        public override void Flush()
+        {
+        }
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && Interlocked.Exchange(ref _released, 1) == 0)
+            {
+                inner.Dispose();
+                Spooling.Release();
+            }
+
+            base.Dispose(disposing);
+        }
+
+        public override async ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref _released, 1) == 0)
+            {
+                await inner.DisposeAsync().ConfigureAwait(false);
+                Spooling.Release();
+            }
+
+            await base.DisposeAsync().ConfigureAwait(false);
         }
     }
 
@@ -429,9 +604,11 @@ public sealed partial class DeviceWebGrpcService(
     /// <summary>A header of the device for the page: a Location on the device's own address becomes a path.</summary>
     internal static string PageValue(Uri deviceBase, string name, string value)
     {
+        // Same host on any scheme or port (http to https, another port of the device): the page stays in the relay.
         if (name.Equals("Location", StringComparison.OrdinalIgnoreCase)
             && Uri.TryCreate(value, UriKind.Absolute, out var location)
-            && string.Equals(location.GetLeftPart(UriPartial.Authority), deviceBase.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase))
+            && location.Scheme is "http" or "https"
+            && string.Equals(location.Host, deviceBase.Host, StringComparison.OrdinalIgnoreCase))
         {
             return location.PathAndQuery + location.Fragment;
         }
