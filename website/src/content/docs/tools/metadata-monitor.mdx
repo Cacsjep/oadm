@@ -16,21 +16,25 @@ which events a device sends: I/O ports, virtual inputs, storage, temperature, ta
 The Metadata Monitor is off by default. An administrator turns it on on the **Plugins** page.
 </Aside>
 
+<Aside type="caution" title="Camera behind a port forward?">
+A camera behind a router that forwards another port to its RTSP port, for example a camera of the **AXIS Virtual Loan
+Tool**, needs that port in OADM first: right-click it in the device list, **OADM** > **RTSP port**. See
+[RTSP port of a camera](../../devices/live-view/#rtsp-port-of-a-camera).
+</Aside>
+
 ## Watch events
 
 <Steps>
 
 1. Open **Metadata Monitor** in the navigation rail.
 2. Choose the camera. Type to jump to a camera in the list.
-3. If the camera is behind a router that forwards RTSP to another port, enter that port in **RTSP port**. Leave it
-   empty for the usual port 554. OADM remembers it for the camera.
-4. Click **Start**.
+3. Click **Start**.
 
    The status changes to Connecting, then Live. At the start most cameras send the current state of every event, for
    example one message per virtual input.
 
-5. Click a message to see its XML below the list. The copy button copies it.
-6. Click **Stop** when you are done.
+4. Click a message to see its XML below the list. The copy button copies it.
+5. Click **Stop** when you are done.
 
 </Steps>
 

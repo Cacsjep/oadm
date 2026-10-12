@@ -1,18 +1,73 @@
 ---
 title: Live view
-description: Watch a camera next to the device list.
+description: Watch a camera next to the device list, zoom and focus it, move PTZ cameras, and reach cameras behind a port forward.
 ---
 
+import { Aside, Steps } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
-import live from '../../../assets/screens/client-liveview.png';
+import live from '../../../assets/screens/client-liveview-optics.png';
+import area from '../../../assets/screens/client-liveview-focus-area.png';
+import ptz from '../../../assets/screens/client-liveview-ptz.png';
 
-<Image src={live} alt="Live view next to the device list" class="screen" />
+<Aside type="caution" title="Camera behind a port forward? Set its RTSP port">
+OADM reaches the video and the events of a camera on port 554. Cameras behind a router that forwards another port, for
+example a camera of the **AXIS Virtual Loan Tool**, need their port in OADM: right-click the camera in the device list,
+**OADM** > **RTSP port**. See [RTSP port of a camera](#rtsp-port-of-a-camera).
+</Aside>
+
+<Image src={live} alt="Live view next to the device list, with zoom and focus over the picture" class="screen" />
 
 - Click the device icon of a camera, encoder or intercom. The video opens on the right.
 - Click another device's icon to switch, the same icon, the close button or Escape to close.
 - Cameras with several sensors or view areas show buttons **1**, **2**, ... in the header to switch the source. OADM
   remembers the choice per device until you close the client.
+- The header shows the codec, resolution and frame rate, or why there is no video.
 - Drag the divider to give the video more room.
+
+## Zoom and focus
+
+Cameras with a remote zoom or focus lens show a bar over the bottom of the picture. Cameras without one show nothing.
+
+- **Zoom** goes from wide to tele, **Focus** from near to far. The camera moves once you let go of the slider.
+- **Autofocus** (focus icon) lets the camera focus by itself.
+- **Autofocus area** (frame icon) shows the area the camera focuses on. Drag a new frame over the picture and click
+  **Set**: the camera focuses there.
+- **Reset focus** moves focus back to its default and focuses again.
+
+<Image src={area} alt="Autofocus area drawn over the live picture" class="screen" />
+
+You need the permission **Optics Control** (Operator has it). Every change is in the audit log.
+
+## PTZ cameras
+
+<Image src={ptz} alt="PTZ camera in the live view with the circle in the middle" class="screen" />
+
+PTZ cameras show a circle in the middle of the picture and a bar with **Home**, the presets and a zoom slider.
+
+- **Move**: drag from the circle. The further you drag, the faster the camera turns. Let go to stop.
+- **Zoom**: the mouse wheel over the picture, or the zoom slider.
+- **Center**: click a point of the picture and the camera turns there.
+- **Presets**: choose one in the list and the camera goes there. **Home** goes to the home position.
+
+You need the permission **Optics Control**. If the connection to the server breaks while you drag, the camera stops by
+itself after a second.
+
+## RTSP port of a camera
+
+OADM gets the video and the events of a camera over RTSP, port 554. When a camera sits behind a router that forwards
+another port to its port 554, tell OADM that port. Typical cases: cameras of the **AXIS Virtual Loan Tool**, a remote site
+behind one public address, a lab with port forwards.
+
+<Steps>
+
+1. Right-click the camera in the device list. Several cameras at once work too.
+2. Choose **OADM** > **RTSP port**.
+3. Enter the forwarded port, for example `8554`, and click **Save**. **Use default** goes back to 554.
+
+</Steps>
+
+The port is stored in OADM only; nothing on the camera changes. The live view and the
+[Metadata Monitor](../../tools/metadata-monitor/) use it. Changing it needs the permission **Optics Control**.
 
 ## Good to know
 
