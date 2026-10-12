@@ -14,8 +14,7 @@
   <a href="https://www.linkedin.com/in/christoph-acs-70150795/"><img src="https://img.shields.io/badge/LinkedIn-Christoph-0A66C2?logo=linkedin&amp;logoColor=white" alt="LinkedIn"></a>
 </p>
 
-**OADM is an independent open source project. It is not affiliated with, sponsored by or endorsed by Axis
-Communications.**
+**OADM is an independent open source project. Not affiliated with or endorsed by Axis Communications AB. AXIS is a trademark of Axis AB..**
 
 - [For users](#for-users)
 - [For developers](#for-developers)
