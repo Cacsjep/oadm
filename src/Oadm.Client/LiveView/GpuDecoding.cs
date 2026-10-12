@@ -347,8 +347,11 @@ public sealed partial class GpuDecodingService(ILogger<GpuDecodingService> logge
             return (process, [GpuDecodingCheck.Argument]);
         }
 
+        // "dotnet Oadm.Client.dll" only when the client is the program: on Linux and macOS a test host also runs as
+        // "dotnet", with Oadm.Client.dll next to it.
         var dll = Path.Combine(AppContext.BaseDirectory, "Oadm.Client.dll");
-        return name.Equals("dotnet", StringComparison.OrdinalIgnoreCase) && File.Exists(dll) ? (process, [dll, GpuDecodingCheck.Argument]) : null;
+        var isClient = string.Equals(System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name, "Oadm.Client", StringComparison.OrdinalIgnoreCase);
+        return isClient && name.Equals("dotnet", StringComparison.OrdinalIgnoreCase) && File.Exists(dll) ? (process, [dll, GpuDecodingCheck.Argument]) : null;
     }
 
     /// <summary>Reads the test's output (also tests).</summary>
