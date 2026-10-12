@@ -32,6 +32,9 @@ public sealed record LiveVideoOptions
     /// <summary>The button that opens zoom and focus or PTZ (bottom right, cameras that have them, role with "Optics Control").</summary>
     public bool ShowControlsButton { get; init; } = true;
 
+    /// <summary>The zoom and focus or PTZ controls are open from the start (the button closes them).</summary>
+    public bool ControlsOpen { get; init; } = true;
+
     /// <summary>PTZ parts: the circle that moves the camera, zoom (slider and mouse wheel), presets, Home, click to center.</summary>
     public bool PtzMove { get; init; } = true;
 

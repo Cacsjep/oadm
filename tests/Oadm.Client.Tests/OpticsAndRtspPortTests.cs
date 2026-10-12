@@ -226,8 +226,6 @@ public sealed class OpticsAndRtspPortTests
         using var f = new DevicesFixture();
         f.SeedDevices(Video("d1", "10.0.0.48"), Video("d2", "10.0.0.49"));
         var vm = new RtspPortViewModel(api, [.. f.Store.Devices]);
-        Assert.Contains("2 devices", vm.Intro, StringComparison.Ordinal);
-        Assert.EndsWith("The device is not changed.", vm.Intro, StringComparison.Ordinal);
 
         await vm.LoadAsync(CancellationToken.None);
         Assert.Equal("", vm.PortText); // the devices differ

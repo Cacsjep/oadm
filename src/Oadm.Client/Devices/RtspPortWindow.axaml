@@ -15,7 +15,7 @@
 
     <Border Grid.Row="1" Classes="dialogBody">
       <StackPanel Classes="form">
-        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Intro}" />
+        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{x:Static vm:RtspPortViewModel.Intro}" />
         <ui:FormField Label="RTSP port" Hint="{Binding Hint}">
           <StackPanel Orientation="Horizontal" Spacing="8">
             <TextBox x:Name="PortBox" Width="120" Text="{Binding PortText}" PlaceholderText="554" IsEnabled="{Binding IsIdle}" />

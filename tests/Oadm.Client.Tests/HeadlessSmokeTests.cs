@@ -97,8 +97,8 @@ public sealed class HeadlessSmokeTests
             if (LiveView.FfmpegRuntime.Status.IsAvailable)
             {
                 await PumpUntilAsync(() => live.Image is not null && live.State == LiveView.LiveViewState.Live
-                    && live.DetailsText.Contains("fps", StringComparison.Ordinal) && live.HasSourceChoice);
-                Assert.StartsWith("H.265", live.DetailsText, StringComparison.Ordinal);
+                    && live.Details.FrameRate.Contains("fps", StringComparison.Ordinal) && live.HasSourceChoice);
+                Assert.Equal("H.265", live.Details.Codec);
                 Capture(window, outDir, "client-liveview.png");
 
                 // The P3265-V has two view areas (like 10.0.0.48): switch to the second one.
@@ -109,7 +109,7 @@ public sealed class HeadlessSmokeTests
                 // Zoom and focus over the picture (the fake P3265-V has both, like 10.0.0.48), then the autofocus area.
                 await PumpUntilAsync(() => live.Optics.IsVisible);
                 Assert.Equal(2.7057, live.Optics.MaxZoom);
-                live.ToggleControlsCommand.Execute(null); // closed until the button opens them
+                await PumpUntilAsync(() => live.ShowOpticsBar); // open from the start
                 Capture(window, outDir, "client-liveview-optics.png");
                 live.Optics.EditAreaCommand.Execute(null);
                 live.Optics.Area = new Avalonia.Rect(0.3, 0.2, 0.35, 0.4);
@@ -122,7 +122,6 @@ public sealed class HeadlessSmokeTests
                 panel.ToggleCommand.Execute(ptz);
                 await PumpUntilAsync(() => live.Ptz.IsVisible && live.Image is not null && live.State == LiveView.LiveViewState.Live);
                 Assert.False(live.Optics.IsVisible);
-                live.ToggleControlsCommand.Execute(null);
                 await PumpUntilAsync(() => live.ShowPtz);
                 Capture(window, outDir, "client-liveview-ptz.png");
             }

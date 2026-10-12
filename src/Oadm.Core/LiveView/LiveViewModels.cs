@@ -99,9 +99,10 @@ public static class LiveViewNegotiation
     }
 
     /// <summary>
-    /// Largest supported resolution that fits into maxWidth x maxHeight and keeps the sensor aspect
-    /// ratio (the aspect of the largest resolution). Falls back to the smallest of that aspect, and
-    /// to the requested box itself when the camera reported no resolutions.
+    /// A resolution the camera lists is taken as asked (the viewer chose it, e.g. 16:9 of a 4:3 sensor). Otherwise the
+    /// largest supported resolution that fits into maxWidth x maxHeight and keeps the sensor aspect ratio (the aspect
+    /// of the largest resolution). Falls back to the smallest of that aspect, and to the requested box itself when the
+    /// camera reported no resolutions.
     /// </summary>
     public static ImageSize ChooseResolution(IReadOnlyList<ImageSize> supported, int maxWidth, int maxHeight)
     {
@@ -109,6 +110,11 @@ public static class LiveViewNegotiation
         maxWidth = maxWidth > 0 ? maxWidth : DefaultWidth;
         maxHeight = maxHeight > 0 ? maxHeight : DefaultHeight;
         if (supported.Count == 0)
+        {
+            return new ImageSize(maxWidth, maxHeight);
+        }
+
+        if (supported.Contains(new ImageSize(maxWidth, maxHeight)))
         {
             return new ImageSize(maxWidth, maxHeight);
         }

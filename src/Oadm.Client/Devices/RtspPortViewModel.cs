@@ -33,11 +33,8 @@ public sealed partial class RtspPortViewModel : ValidatingViewModel
 
     public IReadOnlyList<DeviceRowViewModel> Devices => _devices;
 
-    /// <summary>"OADM connects to this port for live view and events of 10.0.0.48 (P3265-V). The device is not changed."</summary>
-    public string Intro => (_devices.Count == 1
-        ? $"OADM connects to this port for live view and events of {Label(_devices[0])}."
-        : string.Create(CultureInfo.CurrentCulture, $"OADM connects to this port for live view and events of {_devices.Count:N0} devices."))
-        + " The device is not changed.";
+    /// <summary>The line above the port field.</summary>
+    public const string Intro = "Used for live view and events. Not set on the camera.";
 
     /// <summary>The port; empty = 554.</summary>
     [ObservableProperty]
@@ -162,7 +159,4 @@ public sealed partial class RtspPortViewModel : ValidatingViewModel
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(this, false);
-
-    private static string Label(DeviceRowViewModel device) =>
-        string.IsNullOrEmpty(device.Model) ? device.DisplayAddress : $"{device.DisplayAddress} ({device.Model})";
 }

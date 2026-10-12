@@ -55,6 +55,7 @@ public sealed class NegotiationAndAuthTests
     [Theory]
     [InlineData(640, 360, "640x360")]
     [InlineData(700, 500, "640x360")]   // keeps 16:9, does not pick 640x480
+    [InlineData(640, 480, "640x480")]   // a listed size is taken as asked
     [InlineData(1280, 800, "1280x720")]
     [InlineData(100, 100, "320x180")]   // nothing fits: smallest of the sensor aspect
     [InlineData(0, 0, "1920x1080")]     // defaults: full HD

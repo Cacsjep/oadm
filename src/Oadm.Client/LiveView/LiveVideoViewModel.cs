@@ -79,12 +79,12 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
     private bool _viewVisible = true;
     private bool _covered;
     private (int Width, int Height) _viewport;
+    private bool _controlsWanted; // open or closed by the user; a camera with controls shows them so
 
     // Details: frames and bytes shown since the window started.
     private long _windowStart;
     private int _framesInWindow;
     private long _bytesAtWindowStart;
-    private string _detailsBase = "";
 
     public LiveVideoViewModel(IOadmApi api, IVideoDecoderFactory decoders, IUiDispatcher ui, ILogger logger, LiveVideoSettings settings,
         LiveVideoOptions? options = null, TimeProvider? time = null, GpuDecodingService? gpu = null)
@@ -104,6 +104,7 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
         _parent = parent;
         Settings = settings;
         Options = options ?? new LiveVideoOptions();
+        _controlsWanted = Options.ControlsOpen;
         Quality = Options.Quality;
         Optics = new OpticsViewModel(api, _time) { AllowZoom = Options.OpticsZoom, AllowFocus = Options.OpticsFocus, CanControl = settings.CanControlOptics };
         Ptz = new PtzViewModel(api, _time)
@@ -182,12 +183,12 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool ShowRing { get; private set; }
 
-    /// <summary>Codec, resolution, frame rate, bitrate and decoder (the details overlay).</summary>
+    /// <summary>Codec, resolution, frame rate, bit rate and decoding (the details card top right).</summary>
     [ObservableProperty]
-    public partial string DetailsText { get; private set; } = "";
+    public partial VideoDetails Details { get; private set; } = VideoDetails.None;
 
-    /// <summary>The details overlay shows: the setting is on and a picture is there.</summary>
-    public bool ShowDetails => Settings.ShowDetails && Image is not null && DetailsText.Length > 0;
+    /// <summary>The details card shows: the setting is on and a picture is there.</summary>
+    public bool ShowDetails => Settings.ShowDetails && Image is not null && Details != VideoDetails.None;
 
     /// <summary>
     /// Why the graphics card does not decode the stream although "Decode video on the graphics card" is on, and what to do
@@ -228,7 +229,7 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
         ? "Largest resolution. Click for adaptive quality."
         : "Resolution follows the size. Click for full quality.";
 
-    /// <summary>The zoom and focus or PTZ controls are open (closed by default).</summary>
+    /// <summary>The zoom and focus or PTZ controls are open (from the start with <see cref="LiveVideoOptions.ControlsOpen"/>).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowOpticsBar), nameof(ShowPtz))]
     public partial bool IsControlsOpen { get; private set; }
@@ -344,7 +345,7 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
         _requestedCamera = option.Camera;
         Camera = option.Camera;
         MarkSelected();
-        IsControlsOpen = false;
+        Ptz.EndDrag();
         _ = Ptz.LoadAsync(deviceId, option.Camera);
         _ = Optics.LoadAsync(deviceId, option.Sensor);
         Restart(clearPicture: true);
@@ -358,7 +359,11 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void ToggleControls() => IsControlsOpen = !IsControlsOpen && HasControls;
+    private void ToggleControls()
+    {
+        _controlsWanted = !IsControlsOpen;
+        IsControlsOpen = _controlsWanted && HasControls;
+    }
 
     [RelayCommand]
     private void ToggleFullscreen()
@@ -375,7 +380,7 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
     /// </summary>
     public LiveVideoViewModel CreateFullscreen()
     {
-        var video = new LiveVideoViewModel(_api, _decoders, _ui, _logger, Settings, Options with { Quality = Quality }, _time, _gpu, this)
+        var video = new LiveVideoViewModel(_api, _decoders, _ui, _logger, Settings, Options with { Quality = Quality, ControlsOpen = _controlsWanted }, _time, _gpu, this)
         {
             Backoff = Backoff,
         };
@@ -416,9 +421,28 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>16:9, the shape of nearly every monitor: used whenever the channel offers it.</summary>
+    public const double WideAspect = 16.0 / 9;
+
+    /// <summary>The aspect the video is shown in: 16:9 when the channel lists it, else the sensor's (the largest resolution's).</summary>
+    public static double PreferredAspect(IReadOnlyList<VideoResolution> resolutions)
+    {
+        ArgumentNullException.ThrowIfNull(resolutions);
+        return resolutions.Any(r => SameAspect(r.Aspect, WideAspect))
+            ? WideAspect
+            : resolutions.Count == 0 ? WideAspect : resolutions.MaxBy(r => (long)r.Width * r.Height).Aspect;
+    }
+
+    /// <summary>The largest resolution of the preferred aspect (Full quality).</summary>
+    public static VideoResolution LargestResolution(IReadOnlyList<VideoResolution> resolutions)
+    {
+        var aspect = PreferredAspect(resolutions);
+        return resolutions.Where(r => SameAspect(r.Aspect, aspect)).MaxBy(r => (long)r.Width * r.Height);
+    }
+
     /// <summary>
-    /// The resolution for a picture area: the smallest of the channel's resolutions (of the sensor's aspect) that fills
-    /// the area without enlarging, else the largest. Without a list the area itself (the server picks).
+    /// The resolution for a picture area: of the preferred aspect (16:9 when listed), the smallest that fills the area
+    /// without enlarging, else the largest. Without a list the area itself (the server picks).
     /// </summary>
     public static VideoResolution ChooseResolution(IReadOnlyList<VideoResolution> resolutions, int width, int height)
     {
@@ -428,19 +452,22 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
             return new VideoResolution(width, height);
         }
 
-        var largest = resolutions.MaxBy(r => (long)r.Width * r.Height);
+        var aspect = PreferredAspect(resolutions);
+        var largest = LargestResolution(resolutions);
         if (width <= 0 || height <= 0)
         {
             return largest;
         }
 
         // Shown with Stretch.Uniform: the picture takes the full width or the full height of the area.
-        var needed = Math.Min(width, height * largest.Aspect);
+        var needed = Math.Min(width, height * aspect);
         return resolutions
-            .Where(r => Math.Abs(r.Aspect - largest.Aspect) < 0.02 && r.Width >= needed * 0.95)
+            .Where(r => SameAspect(r.Aspect, aspect) && r.Width >= needed * 0.95)
             .OrderBy(r => (long)r.Width * r.Height)
             .FirstOrDefault(largest);
     }
+
+    private static bool SameAspect(double a, double b) => Math.Abs(a - b) < 0.02;
 
     private StreamTarget TargetFor(int camera)
     {
@@ -448,12 +475,12 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
         var list = source?.Resolutions ?? [];
         if (Quality == LiveVideoQuality.Full)
         {
-            var full = list.Count > 0 ? list.MaxBy(r => (long)r.Width * r.Height) : DefaultBox;
+            var full = list.Count > 0 ? LargestResolution(list) : DefaultBox;
             return new StreamTarget(camera, full.Width, full.Height, Math.Max(1, Options.MaxFps));
         }
 
         var size = list.Count == 0 ? DefaultBox
-            : _viewport == default ? VideoResolutions.Choose(list, DefaultBox.Width, DefaultBox.Height)
+            : _viewport == default ? ChooseResolution(list, DefaultBox.Width, DefaultBox.Height)
             : ChooseResolution(list, _viewport.Width, _viewport.Height);
         return new StreamTarget(camera, size.Width, size.Height, Math.Clamp(Settings.AdaptiveFps, 1, Math.Max(1, Options.MaxFps)));
     }
@@ -750,16 +777,15 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
             VideoCodec.H264 => "H.264",
             _ => picture.Codec.ToString(),
         };
-        var decoder = picture.UsesGpu ? "GPU" : "Processor";
-        var size = string.Create(CultureInfo.InvariantCulture, $"{codec}  ·  {picture.Image.Width}x{picture.Image.Height}");
+        var decoding = picture.UsesGpu ? "GPU" : "Processor";
+        var resolution = string.Create(CultureInfo.InvariantCulture, $"{picture.Image.Width}x{picture.Image.Height}");
         var bytes = Interlocked.Read(ref session.Bytes);
         if (_windowStart == 0)
         {
             _windowStart = now;
             _framesInWindow = 0;
             _bytesAtWindowStart = bytes;
-            _detailsBase = size;
-            DetailsText = $"{size}  ·  {decoder}";
+            Details = new VideoDetails(codec, resolution, VideoDetails.Measuring, VideoDetails.Measuring, decoding);
             OnPropertyChanged(nameof(ShowDetails));
             return;
         }
@@ -770,16 +796,16 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
         {
             var fps = _framesInWindow / elapsed.TotalSeconds;
             var kbit = (bytes - _bytesAtWindowStart) * 8 / 1000.0 / elapsed.TotalSeconds;
-            DetailsText = string.Create(CultureInfo.InvariantCulture, $"{size}  ·  {fps:0.0} fps  ·  {kbit:N0} kbit/s  ·  {decoder}");
-            _detailsBase = size;
+            Details = new VideoDetails(codec, resolution,
+                string.Create(CultureInfo.InvariantCulture, $"{fps:0.0} fps"),
+                string.Create(CultureInfo.InvariantCulture, $"{kbit:N0} kbit/s"), decoding);
             _framesInWindow = 0;
             _bytesAtWindowStart = bytes;
             _windowStart = now;
         }
-        else if (_detailsBase != size)
+        else if (Details.Codec != codec || Details.Resolution != resolution || Details.Decoding != decoding)
         {
-            _detailsBase = size;
-            DetailsText = $"{size}  ·  {decoder}";
+            Details = Details with { Codec = codec, Resolution = resolution, Decoding = decoding };
         }
 
         OnPropertyChanged(nameof(ShowDetails));
@@ -874,7 +900,7 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
         if (image is null)
         {
             _windowStart = 0;
-            DetailsText = "";
+            Details = VideoDetails.None;
         }
     }
 
@@ -907,10 +933,7 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
     {
         if (e.PropertyName is nameof(OpticsViewModel.IsVisible) or nameof(PtzViewModel.IsVisible))
         {
-            if (!HasControls)
-            {
-                IsControlsOpen = false;
-            }
+            IsControlsOpen = HasControls && _controlsWanted;
 
             OnPropertyChanged(nameof(HasControls));
             OnPropertyChanged(nameof(ShowOpticsBar));
@@ -1021,4 +1044,13 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
         /// <summary>Ends the stream. The token source has no timer, so it is left to the collector (never disposed under a running stream).</summary>
         public void Cancel() => Cts.Cancel();
     }
+}
+
+/// <summary>What the details card over the picture shows, one row each.</summary>
+public sealed record VideoDetails(string Codec, string Resolution, string FrameRate, string BitRate, string Decoding)
+{
+    /// <summary>Frame rate and bit rate during the first second of a stream.</summary>
+    public const string Measuring = "-";
+
+    public static readonly VideoDetails None = new("", "", "", "", "");
 }

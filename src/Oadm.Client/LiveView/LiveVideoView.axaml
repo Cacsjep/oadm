@@ -6,8 +6,8 @@
              x:DataType="lv:LiveVideoViewModel">
   <!-- One live video: the picture (Stretch Uniform) on the dark surface and what sits over it. The picture area shows only
        the picture, the progress ring or the error; everything else is small and at the edges:
-       top left on hover fullscreen and quality, top right the GPU warning and (on hover) the channel switch,
-       bottom left the details (setting), bottom right the controls button with the zoom and focus or PTZ bar left of it. -->
+       top left on hover fullscreen and quality, top right the GPU warning, (on hover) the channel switch and below them
+       the details card (setting), at the bottom in one row the zoom and focus or PTZ bar and the controls button. -->
   <Border x:Name="Surface" Classes="liveViewSurface liveVideo">
     <Panel x:Name="Picture">
       <Image Source="{Binding Image}" Stretch="Uniform" />
@@ -39,41 +39,54 @@
         </Border>
       </StackPanel>
 
-      <!-- Top right: the GPU warning (always), the channel switch (on hover) -->
-      <StackPanel Classes="videoCorner" HorizontalAlignment="Right" VerticalAlignment="Top" Orientation="Horizontal">
-        <Panel Classes="videoHover">
-          <Border Classes="segmented videoOverlay" IsVisible="{Binding ShowSourceSwitch}">
-            <ItemsControl ItemsSource="{Binding Sources}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <StackPanel Orientation="Horizontal" Spacing="2" />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="lv:LiveViewSourceOption">
-                  <Button Classes="segment" Classes.selected="{Binding IsSelected}" Content="{Binding Label}"
-                          ToolTip.Tip="{Binding Name}" CommandParameter="{Binding}"
-                          Command="{Binding $parent[lv:LiveVideoView].((lv:LiveVideoViewModel)DataContext).SelectSourceCommand}" />
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
+      <!-- Top right: the GPU warning (always), the channel switch (on hover); below them the details card -->
+      <StackPanel Classes="videoCorner" HorizontalAlignment="Right" VerticalAlignment="Top">
+        <StackPanel Classes="videoRow" HorizontalAlignment="Right" Orientation="Horizontal">
+          <Panel Classes="videoHover">
+            <Border Classes="segmented videoOverlay" IsVisible="{Binding ShowSourceSwitch}">
+              <ItemsControl ItemsSource="{Binding Sources}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="2" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="lv:LiveViewSourceOption">
+                    <Button Classes="segment" Classes.selected="{Binding IsSelected}" Content="{Binding Label}"
+                            ToolTip.Tip="{Binding Name}" CommandParameter="{Binding}"
+                            Command="{Binding $parent[lv:LiveVideoView].((lv:LiveVideoViewModel)DataContext).SelectSourceCommand}" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Border>
+          </Panel>
+          <Border Classes="videoOverlay" IsVisible="{Binding HasDecodingWarning}">
+            <ui:StatusChip x:Name="GpuWarning" IsWarning="True" Text="" ToolTip.Tip="{Binding DecodingWarning}" />
           </Border>
-        </Panel>
-        <Border Classes="videoOverlay" IsVisible="{Binding HasDecodingWarning}">
-          <ui:StatusChip x:Name="GpuWarning" IsWarning="True" Text="" ToolTip.Tip="{Binding DecodingWarning}" />
+        </StackPanel>
+        <Border Classes="videoOverlay videoDetails" HorizontalAlignment="Right" IsVisible="{Binding ShowDetails}">
+          <Grid ColumnDefinitions="Auto,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+            <TextBlock Grid.Row="0" Classes="videoDetailLabel" Text="Codec" />
+            <TextBlock Grid.Row="0" Grid.Column="1" Classes="videoDetails" Text="{Binding Details.Codec}" />
+            <TextBlock Grid.Row="1" Classes="videoDetailLabel" Text="Resolution" />
+            <TextBlock Grid.Row="1" Grid.Column="1" Classes="videoDetails" Text="{Binding Details.Resolution}" />
+            <TextBlock Grid.Row="2" Classes="videoDetailLabel" Text="Frame rate" />
+            <TextBlock Grid.Row="2" Grid.Column="1" Classes="videoDetails" Text="{Binding Details.FrameRate}" />
+            <TextBlock Grid.Row="3" Classes="videoDetailLabel" Text="Bit rate" />
+            <TextBlock Grid.Row="3" Grid.Column="1" Classes="videoDetails" Text="{Binding Details.BitRate}" />
+            <TextBlock Grid.Row="4" Classes="videoDetailLabel" Text="Decoding" />
+            <TextBlock Grid.Row="4" Grid.Column="1" Classes="videoDetails" Text="{Binding Details.Decoding}" />
+          </Grid>
         </Border>
       </StackPanel>
 
-      <!-- Bottom: the zoom and focus or PTZ bar over the full width; below it the details left, the controls button right -->
-      <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Bottom">
-        <lv:OpticsBar Grid.Row="0" Grid.ColumnSpan="3" DataContext="{Binding Optics}"
+      <!-- Bottom, one row: the zoom and focus or PTZ bar over the width, the controls button at its right end -->
+      <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Bottom">
+        <lv:OpticsBar Grid.Column="0" DataContext="{Binding Optics}"
                       IsVisible="{Binding $parent[lv:LiveVideoView].((lv:LiveVideoViewModel)DataContext).ShowOpticsBar, FallbackValue=False}" />
-        <lv:PtzBar Grid.Row="0" Grid.ColumnSpan="3" DataContext="{Binding Ptz}"
+        <lv:PtzBar Grid.Column="0" DataContext="{Binding Ptz}"
                    IsVisible="{Binding $parent[lv:LiveVideoView].((lv:LiveVideoViewModel)DataContext).ShowPtz, FallbackValue=False}" />
-        <Border Grid.Row="1" Grid.Column="0" Classes="videoOverlay videoCorner" VerticalAlignment="Bottom" IsVisible="{Binding ShowDetails}">
-          <TextBlock Classes="videoDetails" Text="{Binding DetailsText}" />
-        </Border>
-        <Panel Grid.Row="1" Grid.Column="2" Classes.videoHover="{Binding !IsControlsOpen}" VerticalAlignment="Bottom">
+        <Panel Grid.Column="1" Classes.videoHover="{Binding !IsControlsOpen}" VerticalAlignment="Center">
           <Border Classes="videoOverlay videoCorner" IsVisible="{Binding HasControls}">
             <Button x:Name="ControlsButton" Classes="toolbar iconOnly" Classes.active="{Binding IsControlsOpen}"
                     Command="{Binding ToggleControlsCommand}">

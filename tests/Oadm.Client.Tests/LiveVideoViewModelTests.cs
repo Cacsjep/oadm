@@ -58,6 +58,19 @@ public sealed class LiveVideoViewModelTests
     }
 
     [Fact]
+    public void A_4_to_3_camera_that_also_lists_16_to_9_is_shown_in_16_to_9()
+    {
+        VideoResolution[] mixed = [new(2592, 1944), new(1920, 1080), new(1280, 960), new(1280, 720), new(800, 600), new(640, 360)];
+        Assert.Equal(new VideoResolution(1280, 720), LiveVideoViewModel.ChooseResolution(mixed, 1000, 700));
+        Assert.Equal(new VideoResolution(1920, 1080), LiveVideoViewModel.LargestResolution(mixed)); // Full
+        Assert.Equal(new VideoResolution(1920, 1080), LiveVideoViewModel.ChooseResolution(mixed, 0, 0));
+
+        VideoResolution[] onlyFourToThree = [new(2592, 1944), new(1280, 960), new(800, 600)];
+        Assert.Equal(new VideoResolution(1280, 960), LiveVideoViewModel.ChooseResolution(onlyFourToThree, 1000, 700));
+        Assert.Equal(new VideoResolution(2592, 1944), LiveVideoViewModel.LargestResolution(onlyFourToThree));
+    }
+
+    [Fact]
     public async Task Start_asks_for_the_resolution_of_the_size_at_the_adaptive_frame_rate_and_shows_the_picture()
     {
         using var video = Create();
@@ -74,7 +87,7 @@ public sealed class LiveVideoViewModelTests
         Assert.Equal(LiveViewState.Live, video.State);
         Assert.False(video.ShowRing);
         Assert.False(video.HasError);
-        Assert.StartsWith("H.265  ·  640x360", video.DetailsText, StringComparison.Ordinal);
+        Assert.Equal(("H.265", "640x360"), (video.Details.Codec, video.Details.Resolution));
         Assert.False(video.ShowDetails); // the setting is off by default
         _settings.ShowDetails = true;
         Assert.True(video.ShowDetails);
@@ -333,7 +346,7 @@ public sealed class LiveVideoViewModelTests
         _fakes.Decoders.UsesGpu = true;
         using (var video = await LiveAsync())
         {
-            Assert.EndsWith("GPU", video.DetailsText, StringComparison.Ordinal);
+            Assert.Equal("GPU", video.Details.Decoding);
             Assert.False(video.HasDecodingWarning);
         }
 
@@ -344,7 +357,7 @@ public sealed class LiveVideoViewModelTests
         (await _fakes.StreamAsync(1)).Send();
         await TestSupport.WaitUntilAsync(() => cpu.HasDecodingWarning);
         Assert.Equal(GpuDecodingTexts.LinuxDriver, cpu.DecodingWarning);
-        Assert.EndsWith("Processor", cpu.DetailsText, StringComparison.Ordinal);
+        Assert.Equal("Processor", cpu.Details.Decoding);
         cpu.Stop();
         Assert.False(cpu.HasDecodingWarning);
     }
@@ -360,15 +373,13 @@ public sealed class LiveVideoViewModelTests
     }
 
     [Fact]
-    public async Task The_controls_are_closed_until_the_button_opens_them_and_options_hide_parts()
+    public async Task The_controls_open_with_the_camera_the_button_closes_them_and_options_hide_parts()
     {
         _fakes.Api.GetOpticsAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(new OpticsState { Supported = true, HasZoom = true, HasFocus = true, MaxMagnification = 3 });
         using var video = await LiveAsync();
         await TestSupport.WaitUntilAsync(() => video.HasControls);
-        Assert.False(video.IsControlsOpen);
-        Assert.False(video.ShowOpticsBar);
-        video.ToggleControlsCommand.Execute(null);
+        Assert.True(video.IsControlsOpen); // open from the start
         Assert.True(video.ShowOpticsBar);
         Assert.False(video.ShowPtz);
 
@@ -376,6 +387,18 @@ public sealed class LiveVideoViewModelTests
         Assert.False(video.HasControls);
         Assert.False(video.IsControlsOpen);
         _settings.CanControlOptics = true;
+        Assert.True(video.IsControlsOpen); // the user did not close them
+
+        video.ToggleControlsCommand.Execute(null);
+        Assert.False(video.ShowOpticsBar);
+        _settings.CanControlOptics = false;
+        _settings.CanControlOptics = true;
+        Assert.False(video.IsControlsOpen); // closed by the user stays closed
+
+        using var closed = Create(Instant with { ControlsOpen = false });
+        closed.Start("b");
+        await TestSupport.WaitUntilAsync(() => closed.HasControls);
+        Assert.False(closed.IsControlsOpen);
 
         using var noFocus = Create(Instant with { OpticsFocus = false });
         noFocus.Start("b");
@@ -396,9 +419,9 @@ public sealed class LiveVideoViewModelTests
             .Returns(new PtzState { Supported = true, CanMove = true, CanZoom = true, Presets = { "Gate" } });
         using var video = await LiveAsync();
         await TestSupport.WaitUntilAsync(() => video.HasControls);
-        Assert.False(video.ShowPtz);
-        video.ToggleControlsCommand.Execute(null);
         Assert.True(video.ShowPtz);
+        video.ToggleControlsCommand.Execute(null);
+        Assert.False(video.ShowPtz);
 
         using var noPresets = Create(Instant with { PtzPresets = false, PtzMove = false });
         noPresets.Start("b");

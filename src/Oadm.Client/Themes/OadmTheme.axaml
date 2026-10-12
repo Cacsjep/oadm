@@ -1177,7 +1177,7 @@
   <Style Selector=":is(Control).videoCorner">
     <Setter Property="Margin" Value="8" />
   </Style>
-  <Style Selector="StackPanel.videoCorner">
+  <Style Selector="StackPanel.videoCorner, StackPanel.videoRow">
     <Setter Property="Spacing" Value="4" />
   </Style>
   <Style Selector="StackPanel.videoWaiting">
@@ -1193,10 +1193,20 @@
     <Setter Property="TextWrapping" Value="Wrap" />
     <Setter Property="TextAlignment" Value="Center" />
   </Style>
-  <Style Selector="TextBlock.videoDetails">
+  <!-- The details card top right: label and value rows -->
+  <Style Selector="Border.videoOverlay.videoDetails">
+    <Setter Property="Padding" Value="10,6" />
+  </Style>
+  <Style Selector="TextBlock.videoDetails, TextBlock.videoDetailLabel">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="Margin" Value="0,1" />
+  </Style>
+  <Style Selector="TextBlock.videoDetails">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
-    <Setter Property="Margin" Value="6,2" />
+  </Style>
+  <Style Selector="TextBlock.videoDetailLabel">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="Margin" Value="0,1,12,1" />
   </Style>
   <Style Selector="Border.videoOverlay ui|StatusChip">
     <Setter Property="Margin" Value="4,0" />
@@ -1229,7 +1239,7 @@
     <Setter Property="Background" Value="{StaticResource Oadm.OverlayBrush}" />
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
     <Setter Property="Padding" Value="12,6" />
-    <Setter Property="Margin" Value="8" />
+    <Setter Property="Margin" Value="8,8,0,8" /><!-- the controls button follows at the right in the same row -->
   </Style>
   <Style Selector="TextBlock.opticsLabel">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />

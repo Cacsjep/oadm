@@ -824,12 +824,17 @@ web UI.
   (connecting without a picture, reconnecting with the reason below it, or a new stream slow to deliver) or the error
   (`ui:StatusChip`). Over it, small plates at the edges (`Border.videoOverlay`): top left on hover fullscreen and the
   quality button (**Adaptive**: the smallest resolution of the channel's list that fills the picture's size in device
-  pixels without enlarging, at the adaptive frame rate; **Full**: the largest at `MaxFps`; default Adaptive); top right the
+  pixels without enlarging, at the adaptive frame rate; **Full**: the largest at `MaxFps`; default Adaptive; both take
+  **16:9** whenever the channel lists 16:9 resolutions (almost every monitor is 16:9, also a 4:3 sensor offers them), else
+  the sensor's aspect: `LiveVideoViewModel.PreferredAspect`); top right the
   orange GPU warning icon (always, what to do as tooltip) and on hover the channel switch ("1 2 ...", tooltip = name; the
-  place can turn it off and set the channel); bottom left the details (codec, resolution, fps, kbit/s, GPU or Processor)
-  when the setting is on; bottom right on hover the controls button (`Icon.sliders`, only for a camera with zoom and focus
-  or PTZ and a role with "Optics Control"): it opens the zoom and focus or PTZ bar over the full width above it, closed by
-  default; the PTZ circle shows only while it is open. Hover parts: theme `Border.liveVideo:pointerover
+  place can turn it off and set the channel), below them the details card when the setting is on (`Border.videoDetails`,
+  one row each: Codec, Resolution, Frame rate, Bit rate, Decoding GPU or Processor; `VideoDetails`; top right because the
+  bottom belongs to the controls); at the bottom one row: the zoom and focus or PTZ bar over the width and at its right end
+  the controls button (`Icon.sliders`, only for a camera with zoom and focus or PTZ and a role with "Optics Control"; on
+  hover only while the controls are closed): it opens and closes the bar, **open from the start** (`LiveVideoOptions.ControlsOpen`,
+  default true; a grid tile can start closed); the user's choice holds while the component lives and goes to fullscreen; the
+  PTZ circle shows only while it is open. Hover parts: theme `Border.liveVideo:pointerover
   :is(Control).videoHover`.
   **Silent swap**: a new size (after it rests 500 ms), a new quality, a new adaptive frame rate, a finished GPU test or a
   restart after hiding opens a second stream only when its request (channel, resolution, fps) differs; the old picture
@@ -875,7 +880,8 @@ web UI.
 - **RTSP port** (context menu **OADM > RTSP port**, video devices, "Optics Control"; `Devices/RtspPortWindow` +
   `RtspPortViewModel`, single operation): the port OADM connects to for live view and events of the selection, for
   cameras behind a port forward (AXIS Virtual Loan Tool, NAT); one call for the selection; empty or 554 = default,
-  "Use default"; "The devices use different ports." when they differ; Save waits for the current port to be read (a failed
+  "Use default"; "The devices use different ports." when they differ; intro "Used for live view and events. Not set on the
+  camera."; Save waits for the current port to be read (a failed
   read says so below the field). Stored in the server setting `Devices.RtspPorts` (`DeviceEventStreams`; one read and one
   write for the whole selection, `IDeviceEventStreams.GetRtspPortsAsync` / `SetRtspPortsAsync`, ports of removed devices
   dropped in the same write), read by the live view (`AxisLiveVideoSourceFactory`) and the Metadata Monitor; nothing is
@@ -888,7 +894,7 @@ web UI.
   available: C audio, A1/A9 door and I/O controllers, D3 sensors and T accessories have no video).
 - Sources: `ListSources` returns every `Image.I<n>` that is not disabled as camera `n+1` with its
   `Image.I<n>.Name` (view areas on single-sensor cameras, sensors and quad view on multisensor
-  cameras, inputs on encoders), each with its resolutions of the sensor's aspect. With more than one source the live
+  cameras, inputs on encoders), each with every resolution it lists (all aspects; the client picks, see above). With more than one source the live
   video shows the channel switch; switching restarts the stream with `camera=<n>`; the side panel remembers the choice
   per device for the client session. The development camera (AXIS P3265-V) reports one sensor
   (`ImageSource.NbrOfSources=1`), 8 view areas, of which "View Area 1" (full frame) and
@@ -900,9 +906,9 @@ web UI.
   in `Oadm.Core/LiveView`. Video itself is not encrypted on the camera link (RTSP over HTTPS is a
   later option). Devices with status `CertificateChanged` are refused.
 - Negotiation: H.265 > H.264 among the codecs the camera lists in `Properties.Image.Format` and
-  the client can decode; when opening a codec fails the next is tried. No MJPEG. Resolution: the
-  largest of the source's resolutions with the sensor aspect that fits the requested box (the client asks for one of the
-  list, see the live video component; default 1920x1080), at the requested frame rate.
+  the client can decode; when opening a codec fails the next is tried. No MJPEG. Resolution: a size the source lists is
+  taken as asked (the client asks for one of the list, see the live video component); otherwise the largest of the
+  source's resolutions with the sensor aspect that fits the requested box (default 1920x1080), at the requested frame rate.
 - Sharing: one upstream camera connection per (device, camera, codec, resolution, fps) shared by
   all viewers, opened on the first and closed when the last viewer leaves. A joining viewer gets
   the cached GOP first (picture within one frame time). Slow viewers never buffer: a full queue

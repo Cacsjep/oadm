@@ -50,6 +50,11 @@ version and date, and the release workflow copies it into the GitHub release.
   buttons show when you point at the picture; zoom, focus and PTZ open with a button at the bottom right. The header
   shows the model and the source name.
 - Metadata Monitor: the RTSP port field moved to the device list (**OADM** > **RTSP port**).
+- Live view: the video uses 16:9 whenever the camera offers it, also on cameras with a 4:3 sensor.
+- Live view: the video details are a small card at the top right with one line each (codec, resolution, frame rate,
+  bit rate, decoding), so the zoom, focus and PTZ controls keep the bottom.
+- Live view: zoom, focus and PTZ are shown when the live view opens, in one row with the **Controls** button.
+- RTSP port dialog: a shorter text above the port.
 
 ## [2.4.0] - 2026-10-12
 

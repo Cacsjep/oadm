@@ -42,7 +42,7 @@ public sealed class LiveVideoViewHeadlessTests
             Assert.True(await UntilAsync(() => video.Image is not null && video.HasControls));
 
             // The size decides the resolution: the picture is about 700 px wide, not full HD.
-            Assert.InRange(video.DetailsText.Length, 1, 200);
+            Assert.NotEqual(VideoDetails.None, video.Details);
             var hover = Find<StackPanel>(window, s => s.Classes.Contains("videoHover"));
             Assert.False(hover.IsVisible);
             var picture = window.GetVisualDescendants().OfType<Panel>().First(p => p.Name == "Picture");
@@ -52,10 +52,7 @@ public sealed class LiveVideoViewHeadlessTests
             Assert.False(Find<ProgressRing>(window, _ => true).IsEffectivelyVisible);
             Assert.True(Find<TextBlock>(window, t => t.Classes.Contains("videoDetails")).IsEffectivelyVisible);
 
-            Assert.False(Find<OpticsBar>(window, _ => true).IsVisible); // closed by default
-            video.ToggleControlsCommand.Execute(null);
-            Dispatcher.UIThread.RunJobs();
-            Assert.True(Find<OpticsBar>(window, _ => true).IsVisible);
+            Assert.True(Find<OpticsBar>(window, _ => true).IsVisible); // open from the start
             Save(window, "client-liveview-panel.png");
             window.Close();
             return true;
