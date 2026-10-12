@@ -6,6 +6,34 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+## [2.4.0] - 2026-10-12
+
+### Added
+
+- **Roles and permissions**: every user has one role. **Administrator** may do everything, **Operator** works with
+  devices and tasks, **Viewer** sees the devices, live view and the monitoring pages. Create roles of your own in the
+  permission matrix on the **Users** page: one row per permission, grouped by Devices, Tasks, Event rules and plugin,
+  one column per role. A warning icon marks permissions with full control of the devices.
+- Finer rights inside tasks: **Upgrade firmware** (upgrade, with factory default, downgrade), **Users** on devices
+  (add, change, remove), **Applications (ACAP)** (install, downgrade, start and stop, remove) and **Import
+  configuration** (settings, connection settings). The dialogs show only what the role may do.
+- Plugin pages follow the role: a role sees only the pages it may show, and Save of the NTP and DHCP server, the
+  certificate authority, triggers, scans and VAPIX Commander's Send and Run need their own permissions.
+- **Your role**: click your name at the bottom of the navigation rail to see what your role allows.
+- A new role applies to the user's next action, without logging in again.
+
+### Changed
+
+- **After the update the Operator role has less**: Web View, removing users on devices, firmware downgrades and
+  factory defaults, downgrading and removing applications, and importing connection settings are off. Administrators see
+  a notice with **Check roles** once; tick what your operators need.
+- **Users** page: **+ User** adds a user; Edit user, Change password and New role open dialogs. The users on top, the
+  roles below, split in half.
+
+### Fixed
+
+- A session ended by Log out, a new password or a disabled user could stay valid on the server until it expired.
+
 ## [2.3.0] - 2026-10-12
 
 ### Added
