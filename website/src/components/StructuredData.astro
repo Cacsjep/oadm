@@ -1,0 +1,28 @@
+---
+// Tells search engines that OADM is a free software application (name, systems, version, download, license), so a result
+// can show it as such. Read from the latest release when the site is built.
+import { latestRelease, repo } from '../lib/release';
+
+const { version, url } = await latestRelease();
+const site = new URL(import.meta.env.BASE_URL, Astro.site).href;
+
+const data = {
+	'@context': 'https://schema.org',
+	'@type': 'SoftwareApplication',
+	name: 'OADM - Open AXIS Device Management',
+	alternateName: 'OADM',
+	description: 'Free, open source alternative to AXIS Device Manager for Windows, Linux and macOS.',
+	applicationCategory: 'UtilitiesApplication',
+	operatingSystem: 'Windows, Linux, macOS',
+	url: site,
+	downloadUrl: url,
+	...(version ? { softwareVersion: version.replace(/^v/, '') } : {}),
+	license: 'https://www.apache.org/licenses/LICENSE-2.0',
+	isAccessibleForFree: true,
+	offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
+	image: `${site}og-image.png`,
+	codeRepository: `https://github.com/${repo}`,
+};
+---
+
+<script type="application/ld+json" set:html={JSON.stringify(data)} />

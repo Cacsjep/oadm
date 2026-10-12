@@ -13,7 +13,15 @@ export default defineConfig({
 			logo: { src: './src/assets/logo.png', alt: 'OADM' },
 			favicon: '/favicon.png',
 			customCss: ['./src/styles/oadm.css'],
-			head: [{ tag: 'script', attrs: { src: '/oadm/lightbox.js', defer: true } }],
+			head: [
+				{ tag: 'script', attrs: { src: '/oadm/lightbox.js', defer: true } },
+				// The picture a shared link shows (LinkedIn, Teams, X, Slack): 1200 x 630, absolute URL.
+				{ tag: 'meta', attrs: { property: 'og:image', content: 'https://cacsjep.github.io/oadm/og-image.png' } },
+				{ tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
+				{ tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
+				{ tag: 'meta', attrs: { property: 'og:image:alt', content: 'OADM: open source AXIS device management for Windows, Linux and macOS' } },
+				{ tag: 'meta', attrs: { name: 'twitter:image', content: 'https://cacsjep.github.io/oadm/og-image.png' } },
+			],
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/Cacsjep/oadm' },
 				{ icon: 'linkedin', label: 'LinkedIn', href: 'https://www.linkedin.com/in/christoph-acs-70150795/' },

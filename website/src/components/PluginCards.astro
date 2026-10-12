@@ -40,7 +40,7 @@ const large = await Promise.all(plugins.map(async (p) => (await getImage({ src: 
 	{plugins.map((p, i) => (
 		<a class="plugin-card" href={`${base}tools/${p.page}/`} data-large={large[i]}>
 			<span class="plugin-shot">
-				<Image src={p.image} alt="" width={720} />
+				<Image src={p.image} alt={`${p.name} page of OADM`} width={720} />
 			</span>
 			<span class="plugin-body">
 				<strong>{p.name}</strong>

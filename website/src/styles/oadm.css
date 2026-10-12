@@ -141,12 +141,29 @@ html[data-has-hero] header site-search {
 	color: var(--sl-color-gray-3);
 }
 
-/* Landing page: what ADM does not have, as a compact grid of links. */
-.section-lead {
+/* Landing page: one heading and intro style for every section (plugins, security, scale, extend). */
+.sl-markdown-content .landing-title,
+.landing-title {
+	margin: 0;
+	color: var(--sl-color-white);
+	font-size: var(--sl-text-3xl);
 	text-align: center;
-	font-size: var(--sl-text-xl);
-	color: var(--sl-color-accent-high);
-	margin-block: 3rem 1.5rem;
+}
+
+.sl-markdown-content .landing-lead,
+.landing-lead {
+	max-width: 44rem;
+	margin: 0 auto;
+	color: var(--sl-color-gray-2);
+	text-align: center;
+}
+
+.landing-head {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 1rem;
+	margin-block: 5rem 1.75rem;
 }
 
 /* Screenshots open at full size (public/lightbox.js). */
@@ -306,7 +323,7 @@ header .social-icons::after {
 	flex-direction: column;
 	align-items: center;
 	gap: 1rem;
-	margin-top: 4rem;
+	margin-top: 5rem;
 	text-align: center;
 }
 
@@ -314,14 +331,9 @@ header .social-icons::after {
 	margin: 0;
 }
 
-.plugins-lead {
-	max-width: 44rem;
-	color: var(--sl-color-gray-2);
-}
-
 .plugin-points {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+	grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr));
 	gap: 0.75rem;
 	width: 100%;
 	margin-block: 0.5rem !important;

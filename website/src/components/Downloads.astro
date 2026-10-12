@@ -3,30 +3,9 @@
 // browser, so a new release shows up without a website rebuild. Without either, they open the release page.
 import { Icon } from '@astrojs/starlight/components';
 
-const repo = 'Cacsjep/oadm';
-const releasePage = `https://github.com/${repo}/releases/latest`;
+import { latestRelease, releasePage, repo } from '../lib/release';
 
-type Asset = { name: string; browser_download_url: string };
-let version = '';
-let releaseUrl = releasePage;
-let assets: Asset[] = [];
-try {
-	const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
-		// The Pages workflow passes its token, so the build is not held up by the limit for anonymous requests.
-		headers: {
-			Accept: 'application/vnd.github+json',
-			...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
-		},
-	});
-	if (response.ok) {
-		const release = await response.json();
-		version = release.tag_name ?? '';
-		releaseUrl = release.html_url ?? releasePage;
-		assets = release.assets ?? [];
-	}
-} catch {
-	// Offline build: the buttons open the release page.
-}
+const { version, url: releaseUrl, assets } = await latestRelease();
 
 const find = (pattern: RegExp) => assets.find((a) => pattern.test(a.name))?.browser_download_url ?? releasePage;
 const links = {

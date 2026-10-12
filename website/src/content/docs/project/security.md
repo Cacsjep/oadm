@@ -14,6 +14,13 @@ description: How OADM protects devices and their passwords, and how to report a 
 - OADM remembers each device's HTTPS certificate and stops talking to a device whose certificate changed.
 - Tasks check that a device supports a change before the first write.
 
+## How the code is checked
+
+- The source code is open. Every change to the main branch and every pull request is scanned with CodeQL.
+- Dependabot watches every dependency for known vulnerabilities and proposes updates every week.
+- Secret scanning stops passwords or keys from being pushed to the repository.
+- Every release lists a SHA-256 checksum for each download (`SHA256SUMS.txt`).
+
 ## Report a vulnerability
 
 Report security problems privately, not in a public issue: open the repository's

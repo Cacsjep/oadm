@@ -1,11 +1,19 @@
 ---
 title: OADM
-description: Open source alternative to AXIS Device Manager for Windows, Linux and macOS.
+description: Free, open source alternative to AXIS Device Manager for Windows, Linux and macOS. Add Axis devices, upgrade firmware, manage certificates and watch live video.
 template: splash
 editUrl: false
 head:
   - tag: title
     content: OADM - Open AXIS Device Management
+  - tag: meta
+    attrs:
+      property: og:type
+      content: website
+  - tag: meta
+    attrs:
+      property: og:title
+      content: OADM - Open AXIS Device Management
 hero:
   title: Extensible. Feature-rich. Cross‑platform.<br />Open source AXIS device management.
   tagline: Built by Professionals. For Professionals.<span class="independent">Independent open-source project. Not affiliated with or endorsed by Axis Communications AB. AXIS is a trademark of Axis AB.</span>
@@ -15,6 +23,9 @@ import Downloads from '../../components/Downloads.astro';
 import TopBar from '../../components/TopBar.astro';
 import HeroMotion from '../../components/HeroMotion.astro';
 import PluginCards from '../../components/PluginCards.astro';
+import TrustBands from '../../components/TrustBands.astro';
+import SiteFooter from '../../components/SiteFooter.astro';
+import StructuredData from '../../components/StructuredData.astro';
 
 <TopBar />
 
@@ -22,13 +33,18 @@ import PluginCards from '../../components/PluginCards.astro';
 
 <HeroMotion />
 
-<p class="section-lead">Explore the plugins</p>
+<div class="landing-head not-content">
+	<h2 class="landing-title">Explore the plugins</h2>
+	<p class="landing-lead">Click a plugin for a closer look.</p>
+</div>
 
 <PluginCards />
 
+<TrustBands />
+
 <section class="plugins-section">
-	<h2>Extend OADM with plugins</h2>
-	<p class="plugins-lead">Anyone can write a plugin. Plugins use the same SDK as the built-in features: device tasks in the context menu, own pages and toolbar buttons.</p>
+	<h2 class="landing-title">Extend OADM with plugins</h2>
+	<p class="landing-lead">Anyone can write a plugin. Plugins use the same SDK as the built-in features: device tasks in the context menu, own pages and toolbar buttons.</p>
 	<div class="plugin-points">
 		<div><strong>Start from a working plugin</strong><span>Copy a built-in plugin and change what you need.</span></div>
 		<div><strong>Build it with AI</strong><span>The repository includes the spec and rules an AI assistant needs to write a plugin with you. <a href="dev/ai-plugins/">How it works</a></span></div>
@@ -36,3 +52,7 @@ import PluginCards from '../../components/PluginCards.astro';
 	</div>
 	<a class="dl" href="dev/plugins/">Plugin guide</a>
 </section>
+
+<SiteFooter />
+
+<StructuredData />

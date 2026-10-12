@@ -1,0 +1,154 @@
+---
+// The landing page's footer: the product, the docs, developer and project links in four columns, then the copyright,
+// the license, the current version and the trademark note.
+import { Icon } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+
+import logo from '../assets/logo.png';
+
+import { latestRelease, repo } from '../lib/release';
+
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const github = `https://github.com/${repo}`;
+const { version, url: releaseUrl } = await latestRelease();
+const year = new Date().getFullYear();
+
+const columns = [
+	{
+		title: 'Product',
+		links: [
+			{ label: 'Download', href: releaseUrl },
+			{ label: "What's new", href: releaseUrl },
+			{ label: 'Changelog', href: `${github}/blob/main/CHANGELOG.md` },
+			{ label: 'Install', href: `${base}start/install/` },
+		],
+	},
+	{
+		title: 'Documentation',
+		links: [
+			{ label: 'Get started', href: `${base}start/first-start/` },
+			{ label: 'Add devices', href: `${base}devices/add/` },
+			{ label: 'Plugins', href: `${base}tools/overview/` },
+			{ label: 'Users and roles', href: `${base}admin/users/` },
+		],
+	},
+	{
+		title: 'Developers',
+		links: [
+			{ label: 'Write a plugin', href: `${base}dev/plugins/` },
+			{ label: 'Build a plugin with AI', href: `${base}dev/ai-plugins/` },
+			{ label: 'Build from source', href: `${base}dev/build/` },
+			{ label: 'Source code', href: github },
+		],
+	},
+	{
+		title: 'Project',
+		links: [
+			{ label: 'Security', href: `${base}project/security/` },
+			{ label: 'License', href: `${base}project/license/` },
+			{ label: 'FAQ', href: `${base}project/faq/` },
+			{ label: 'Report a bug', href: `${github}/issues/new/choose` },
+		],
+	},
+];
+---
+
+<footer class="site-footer not-content">
+	<div class="footer-top">
+		<div class="footer-brand">
+			<span class="footer-name"><Image src={logo} alt="" width={28} height={28} /><strong>OADM</strong></span>
+			<span>Open AXIS Device Management. Free and open source for Windows, Linux and macOS.</span>
+			<div class="footer-social">
+				<a href={github} aria-label="GitHub"><Icon name="github" /></a>
+				<a href="https://www.linkedin.com/in/christoph-acs-70150795/" aria-label="LinkedIn"><Icon name="linkedin" /></a>
+			</div>
+		</div>
+		{columns.map((c) => (
+			<nav class="footer-column" aria-label={c.title}>
+				<strong>{c.title}</strong>
+				{c.links.map((l) => <a href={l.href}>{l.label}</a>)}
+			</nav>
+		))}
+	</div>
+	<div class="footer-bottom">
+		<span>© {year} The OADM contributors · <a href={`${base}project/license/`}>Apache-2.0</a>{version && <> · <a href={releaseUrl}>{version}</a></>}</span>
+		<span>Not affiliated with or endorsed by Axis Communications AB. AXIS is a trademark of Axis AB.</span>
+	</div>
+</footer>
+
+<style>
+	.site-footer {
+		position: relative;
+		margin-top: 6rem;
+		box-shadow: 0 0 0 100vmax var(--sl-color-black);
+		clip-path: inset(0 -100vmax -100vmax);
+		background: var(--sl-color-black);
+		padding-top: 2.5rem;
+		border-top: 1px solid var(--sl-color-gray-5);
+		font-size: var(--sl-text-sm);
+	}
+	.footer-top {
+		display: grid;
+		grid-template-columns: 2fr repeat(4, 1fr);
+		gap: 2rem;
+	}
+	.footer-brand,
+	.footer-column {
+		display: flex;
+		flex-direction: column;
+		gap: 0.55rem;
+	}
+	.footer-name {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.6rem;
+	}
+	.footer-name img {
+		border-radius: 6px;
+	}
+	.footer-brand strong {
+		color: var(--sl-color-white);
+		font-size: var(--sl-text-lg);
+	}
+	.footer-brand span {
+		max-width: 18rem;
+		color: var(--sl-color-gray-3);
+	}
+	.footer-column strong {
+		margin-bottom: 0.2rem;
+		color: var(--sl-color-white);
+	}
+	.site-footer a {
+		color: var(--sl-color-gray-3);
+		text-decoration: none;
+		transition: color 0.15s;
+	}
+	.site-footer a:hover {
+		color: var(--sl-color-white);
+	}
+	.footer-social {
+		display: flex;
+		gap: 0.9rem;
+		margin-top: 0.4rem;
+		font-size: 1.15rem;
+	}
+	.footer-bottom {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		gap: 0.5rem 2rem;
+		margin-top: 2.5rem;
+		padding-block: 1.25rem 2rem;
+		border-top: 1px solid var(--sl-color-gray-5);
+		color: var(--sl-color-gray-4);
+		font-size: var(--sl-text-xs);
+	}
+	@media (max-width: 50rem) {
+		.footer-top {
+			grid-template-columns: 1fr 1fr;
+		}
+		.footer-brand {
+			grid-column: 1 / -1;
+		}
+	}
+</style>
