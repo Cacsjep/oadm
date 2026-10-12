@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ExportRecordingResponse SchemaVersion="1.4"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xsi:noNamespaceSchemaLocation= "http://www.axis.com/vapix/http_cgi/exportrecording1.xsd">
+  <GeneralError>
+    <ErrorCode>110</ErrorCode>
+    <ErrorDescription>Recording not found.</ErrorDescription>
+  </GeneralError>
+</ExportRecordingResponse>

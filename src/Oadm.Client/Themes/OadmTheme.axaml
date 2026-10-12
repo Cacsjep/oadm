@@ -1738,6 +1738,12 @@
   <Style Selector="StackPanel.inputRow > :is(Control), Grid.inputRow > :is(Control)">
     <Setter Property="VerticalAlignment" Value="Top" />
   </Style>
+  <!-- Radio buttons and check boxes in an input row: the height of the inputs, centered on their middle -->
+  <Style Selector="StackPanel.inputRow > RadioButton, StackPanel.inputRow > CheckBox">
+    <Setter Property="Height" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
   <!-- Several inputs in one form field (e.g. API and version): the field's row spacing applies, not the row margin -->
   <Style Selector="ui|FormField StackPanel.inputRow">
     <Setter Property="Margin" Value="0" />

@@ -237,7 +237,7 @@ resolve them at compile time, so use `DynamicResource` (`Icon="{DynamicResource 
 `Icon.details`, `Icon.cancel`, `Icon.chevronDown`, `Icon.chevronLeft`, `Icon.chevronRight`, `Icon.chevronUp`, `Icon.globe`, `Icon.close`, `Icon.check`,
 `Icon.tag`, `Icon.groupBy`, `Icon.edit`, `Icon.braces`,
 `Icon.server`, `Icon.externalLink`, `Icon.more`, `Icon.key`, `Icon.lock`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
-`Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.grid`, `Icon.gridAdd`, `Icon.focus`, `Icon.focusArea`, `Icon.home`, `Icon.network`, `Icon.metronome`, `Icon.firmware`, `Icon.users`,
+`Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.grid`, `Icon.gridAdd`, `Icon.hardDriveDownload`, `Icon.focus`, `Icon.focusArea`, `Icon.home`, `Icon.network`, `Icon.metronome`, `Icon.firmware`, `Icon.users`,
 `Icon.user`, `Icon.logout`, `Icon.audit`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
 `Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.toggle`, `Icon.zap`, `Icon.bell`, `Icon.flame`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`,
 `Icon.device.camera`, `Icon.device.encoder`,
@@ -530,6 +530,18 @@ camera)` shows a device's channel (0 = the first), `Close()` stops it, `CameraCh
 place turns parts on or off (channel buttons, fullscreen, quality, controls button, controls open at the start or in
 fullscreen). The server streams with the stored login; the role needs "Live view". The video stops by itself while it is
 hidden; dispose it when its place goes away (the host disposes the rest when the page closes). Used by the Live View plugin.
+
+### Files for the page (downloads)
+
+A core plugin that also implements `ICorePluginDownloads` sends files to its page: `OpenDownloadAsync(method, payload,
+ct)` returns a `PluginDownload` {`Content` stream, `FileName`, `Length` when known, `AuditDetail`, an optional owner such
+as the device response the stream belongs to}. The host checks `RequiredPermission(method)` like an Invoke, writes the
+audit entry when `IsAudited(method)` (detail = `AuditDetail`), copies the stream to the client in 256 KB chunks without
+compression (gRPC `PluginService.Download`, nothing stored on the server) and disposes the download at the end or when
+the client goes away. Errors like Invoke: `ArgumentException` = invalid argument, `InvalidOperationException` = failed
+precondition with the message. On the page `await using var file = await ctx.OpenDownloadAsync(method, payload, ct)`,
+read `file.Content` with your own token (it is the gRPC stream; disposing ends the call). For a device answer, open the
+request with `VapixRequestOptions.StreamResponse` and pass the response as owner. Used by Edge Recording Export.
 
 ### Shared lists and tabs
 

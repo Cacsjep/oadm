@@ -1,0 +1,100 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.EdgeRecordingExport.Client"
+             x:Class="Oadm.Plugins.EdgeRecordingExport.Client.EdgeRecordingView"
+             x:DataType="vm:EdgeRecordingViewModel"
+             ui:PageHeader.Subtitle="Recordings on the cameras' SD cards and network shares.">
+  <!-- Own card (ICorePluginPage.HasOwnCards): cameras and range, Search; summary, progress with Stop; one row per camera;
+       Download. Shared controls and theme classes only. -->
+  <Border Classes="card">
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+      <StackPanel Grid.Row="0" Classes="inputRow">
+        <Button Classes="primary" Command="{Binding ChooseCamerasCommand}" IsEnabled="{Binding IsIdle}"
+                ToolTip.Tip="Video devices, by address or tag">
+          <ui:IconLabel Icon="{StaticResource Icon.video}" Text="{Binding CamerasText}" />
+        </Button>
+        <RadioButton GroupName="range" Content="All recordings" IsChecked="{Binding AllRecordings}" IsEnabled="{Binding IsIdle}" />
+        <RadioButton GroupName="range" Content="Time range" IsChecked="{Binding IsRange}" IsEnabled="{Binding IsIdle}" />
+        <ui:FormField Classes="inline" Label="From" InputWidth="160" IsEnabled="{Binding IsRange}">
+          <TextBox Text="{Binding StartText}" PlaceholderText="yyyy-mm-dd hh:mm" IsEnabled="{Binding IsIdle}">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+        </ui:FormField>
+        <ui:FormField Classes="inline" Label="To" InputWidth="160" IsEnabled="{Binding IsRange}">
+          <TextBox Text="{Binding StopText}" PlaceholderText="yyyy-mm-dd hh:mm" IsEnabled="{Binding IsIdle}">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+        </ui:FormField>
+        <Button x:Name="SearchButton" Classes="secondary" VerticalAlignment="Top" Command="{Binding SearchCommand}" IsEnabled="{Binding CanSearch}"
+                ToolTip.Tip="{Binding SearchTip}" ToolTip.ShowOnDisabled="True">
+          <ui:IconLabel Icon="{StaticResource Icon.search}" Text="Search" />
+        </Button>
+      </StackPanel>
+
+      <TextBlock Grid.Row="1" Classes="secondary" Margin="0,0,0,10" Text="{Binding SummaryText}"
+                 IsVisible="{Binding SummaryText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+      <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,0,0,10" IsVisible="{Binding ShowProgress}">
+        <ui:ProgressRow Value="{Binding ProgressValue}" Text="{Binding ProgressText}" IsActive="{Binding IsBusy}" />
+        <ui:ToolbarButton x:Name="StopButton" Grid.Column="1" Margin="12,0,0,0" Text="Stop" IconKey="stop" Command="{Binding StopCommand}"
+                          ToolTip.Tip="Finished files stay" />
+      </Grid>
+
+      <!-- Thousands of cameras: virtualized, rows updated in place. -->
+      <DataGrid x:Name="CameraGrid" Grid.Row="3" Classes="wrapRows" ItemsSource="{Binding Rows}"
+                IsReadOnly="True" CanUserSortColumns="True" CanUserResizeColumns="True" SelectionMode="Single">
+        <DataGrid.Columns>
+          <DataGridTemplateColumn Header="Address" Width="170" CanUserSort="True" SortMemberPath="AddressSortKey">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="vm:CameraRowViewModel">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                  <ui:DeviceIcon Category="{Binding Device.Category}" Status="{Binding Device.Status}" ShowStatusToolTip="True" />
+                  <TextBlock Text="{Binding Address}" VerticalAlignment="Center" />
+                </StackPanel>
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTextColumn Header="Model" Width="130" Binding="{Binding Model}" x:DataType="vm:CameraRowViewModel" />
+          <DataGridTextColumn Width="130" Binding="{Binding RecordingsText}" SortMemberPath="RecordingCount"
+                              CellStyleClasses="number" x:DataType="vm:CameraRowViewModel">
+            <DataGridTextColumn.Header>
+              <TextBlock Classes="numberHeader" Text="Recordings" />
+            </DataGridTextColumn.Header>
+          </DataGridTextColumn>
+          <DataGridTextColumn Width="120" Binding="{Binding SizeText}" SortMemberPath="SizeSortKey"
+                              CellStyleClasses="number" x:DataType="vm:CameraRowViewModel">
+            <DataGridTextColumn.Header>
+              <TextBlock Classes="numberHeader" Text="Size" />
+            </DataGridTextColumn.Header>
+          </DataGridTextColumn>
+          <DataGridTextColumn Header="First recording" Width="160" Binding="{Binding FirstText}" x:DataType="vm:CameraRowViewModel" />
+          <DataGridTextColumn Header="Last recording" Width="160" Binding="{Binding LastText}" x:DataType="vm:CameraRowViewModel" />
+          <DataGridTemplateColumn Header="Status" Width="*" MinWidth="260" CanUserSort="True" SortMemberPath="StatusSortKey">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="vm:CameraRowViewModel">
+                <ui:StatusChip Text="{Binding StatusText}" Detail="{Binding StatusDetail}" MaxLines="2"
+                               IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" IsAccent="{Binding IsBusy}" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+        </DataGrid.Columns>
+      </DataGrid>
+      <TextBlock Grid.Row="3" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:EdgeRecordingViewModel.EmptyText}"
+                 IsVisible="{Binding ShowEmpty}" />
+
+      <!-- A failure of the whole download (folder not writable) directly below the table; Download on the right. -->
+      <Grid Grid.Row="4" ColumnDefinitions="*,Auto" Margin="0,10,0,0">
+        <TextBlock Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" VerticalAlignment="Center" />
+        <Button x:Name="DownloadButton" Grid.Column="1" Classes="primary" Command="{Binding DownloadCommand}" IsEnabled="{Binding CanDownload}"
+                ToolTip.Tip="{Binding DownloadTip}" ToolTip.ShowOnDisabled="True">
+          <ui:IconLabel Icon="{StaticResource Icon.download}" Text="Download" />
+        </Button>
+      </Grid>
+    </Grid>
+  </Border>
+</UserControl>

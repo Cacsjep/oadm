@@ -53,6 +53,8 @@
   <!-- Lucide grid-3x3 (Live View) and grid-2x2-plus (New view) -->
   <StreamGeometry x:Key="Icon.grid">M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2H5a2 2 0 0 1 -2 -2V5a2 2 0 0 1 2 -2z M3 9h18 M3 15h18 M9 3v18 M15 3v18</StreamGeometry>
   <StreamGeometry x:Key="Icon.gridAdd">M12 3v17a1 1 0 0 1 -1 1H5a2 2 0 0 1 -2 -2V5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v6a1 1 0 0 1 -1 1H3 M16 19h6 M19 22v-6</StreamGeometry>
+  <!-- Lucide hard-drive-download: Edge Recording Export -->
+  <StreamGeometry x:Key="Icon.hardDriveDownload">M12 2v8 M16 6l-4 4 -4 -4 M4 14h16a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2H4a2 2 0 0 1 -2 -2v-4a2 2 0 0 1 2 -2z M6 18h.01 M10 18h.01</StreamGeometry>
   <StreamGeometry x:Key="Icon.video">M16 13l5.223 3.482a0.5 0.5 0 0 0 0.777 -0.416V7.87a0.5 0.5 0 0 0 -0.752 -0.432L16 10.5 M4 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2H4a2 2 0 0 1 -2 -2V8a2 2 0 0 1 2 -2z</StreamGeometry>
   <StreamGeometry x:Key="Icon.deleteAll">M3 6h18 M19 6v14c0 1 -1 2 -2 2H7c-1 0 -2 -1 -2 -2V6 M8 6V4c0 -1 1 -2 2 -2h4c1 0 2 1 2 2v2 M10 11v6 M14 11v6</StreamGeometry>
   <!-- Task plugin and dialog actions -->

@@ -178,6 +178,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.DeviceTriggers(.Client)/   core plugin: events of the devices for the event rules (WebSocket, off by default)
   Oadm.Plugins.WebView(.Client)/          core plugin: the web interface of the devices in tabs, logged in through the server
   Oadm.Plugins.LiveView(.Client)/         core plugin: saved views of several cameras (a grid of live videos), opened in tabs (off by default)
+  Oadm.Plugins.EdgeRecordingExport(.Client)/ core plugin: downloads the recordings on the cameras' SD cards to the client (off by default)
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
                                 (both copy their output to artifacts/plugins/<plugin id>/)
@@ -311,9 +312,15 @@ Two processes, like ADM:
   object, FAILED_PRECONDITION not running, INVALID_ARGUMENT for an `ArgumentException` of the
   plugin, INTERNAL otherwise; the status detail is the message), `Watch(plugin_id)` (stream of `PluginEvent`
   {plugin_id, topic, payload_json} the plugin publishes through `ICorePluginContext.Events` from the call on; NOT_FOUND
-  unknown plugin; `Oadm.Core.Plugins.PluginEventHub` fans out with 256 events buffered per watcher, oldest dropped).
+  unknown plugin; `Oadm.Core.Plugins.PluginEventHub` fans out with 256 events buffered per watcher, oldest dropped),
+  `Download(InvokeRequest)` (stream of `DownloadChunk` {file_name, length (-1 unknown), data}: a file of a core plugin that
+  implements `ICorePluginDownloads`, e.g. a recording export passed on from a camera; the first message carries the name
+  and length, every data message at most 256 KB, uncompressed, nothing stored on the server; the permission, the audit
+  (detail `PluginDownload.AuditDetail`) and the errors of Invoke; UNIMPLEMENTED for a plugin without downloads; the
+  download is disposed at the end or when the client goes away; tests `PluginDownloadTests`).
   Users: "Snapshot report", "VAPIX Commander", "NTP server", "DHCP server", "PKI", "Metadata Monitor", "Hardening scan",
-  "Image Health Dashboard", "I/O Monitor", "Device triggers", "System report" (from its toolbar button through `IToolbarContext.InvokePluginAsync`).
+  "Image Health Dashboard", "I/O Monitor", "Device triggers", "Edge Recording Export" (search; its downloads through
+  `Download`), "System report" (from its toolbar button through `IToolbarContext.InvokePluginAsync`).
   `ListPackages` (every loaded plugin package with id, display name, version, enabled, enabled_by_default, has_page,
   menu_task_count, always_on, description; any user) and `SetPackageEnabled(id, enabled)` (Admin; NOT_FOUND unknown package; reply: the whole
   list), see "Plugins on and off".
@@ -680,7 +687,7 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   `ClosePluginWindowsRequested`; tests `PluginWindowTests`). Entries top: Devices, then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (VAPIX
   Commander, Device triggers), Security (PKI, Hardening scan), Monitoring (Live View, Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
-  no page), Maintenance, Integrations, Utilities (Web View), Extensions (default, third-party)): only groups
+  no page), Maintenance (Edge Recording Export), Integrations, Utilities (Web View), Extensions (default, third-party)): only groups
   with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
   each group (in the lighter accent color), collapsed = a separator at each group start; the pages scroll when they do not fit. Pinned bottom, top to bottom: Plugins with a divider below it (it changes what the whole client offers), Users,
   Credentials (these three Admin only: hidden for operators, follow the session role live), Logs, Settings, About (icons
@@ -1275,7 +1282,8 @@ the UI thread.
   `DeviceWeb` (`IDeviceWebAccess`: a device's web interface for an embedded browser through the server, see "Web View"),
   `LiveVideo` (`ILiveVideoAccess.Create(LiveVideoPlace)` -> `ILiveVideo` {View, Start(device, camera), Close, Camera,
   CameraChosen}: the host's live video component, `Oadm.Client/LiveView/LiveVideoAccess`; the page's videos are disposed
-  with the page; see "Live View"),
+  with the page; see "Live View"), `OpenDownloadAsync(method, payload, ct)` (a file of the server part through
+  `PluginService.Download`: `PluginDownload` {Content, FileName, Length}; the page reads the stream and disposes it),
   `Has(permission)` + `PermissionsChanged` (pages hide or lock what the role lacks, e.g. Save of the NTP / DHCP server).
 - `IToolbarPlugin` (`Id`, `Order`, `Group`: Add, Manage, Tasks, Plugins; `CreateControl` once; `RequiredPermission`:
   the entry hides while the role lacks it) with `IToolbarContext` (selection, devices, task plugins, `CanRunTask` /
@@ -1349,14 +1357,14 @@ plugins, contributed and standalone tasks and client parts together) and adminis
 applies at once without a restart. Own rail page (not a Settings card); core functionality
 is always on.
 - Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
-  **Off by default: Device triggers, Hardening scan, Image Health Dashboard, I/O Monitor, Live View and Metadata Monitor**. The administrator's choices are the
+  **Off by default: Device triggers, Edge Recording Export, Hardening scan, Image Health Dashboard, I/O Monitor, Live View and Metadata Monitor**. The administrator's choices are the
   server setting `Plugins.Enabled` (JSON object package id -> on; packages without a choice use their default),
   applied before the core plugins start (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
 - **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade firmware, Date and time, Applications
   (ACAP), Users, Network settings, PKI, System report, Device configuration, Outputs and Notifications (core functionality). Enabled whatever
   the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers FAILED_PRECONDITION "<name> is always on.".
   Switchable: Snapshot report, VAPIX Commander, Metadata Monitor, NTP server, DHCP server, Hardening scan, Image Health
-  Dashboard, I/O Monitor, Device triggers, Web View, Live View. Third-party plugins are switchable unless their manifest says otherwise.
+  Dashboard, I/O Monitor, Device triggers, Web View, Live View, Edge Recording Export. Third-party plugins are switchable unless their manifest says otherwise.
 - Manifest `description` (`PluginOrigin.Description`): one short sentence shown on the Plugins page; every bundled
   plugin has one.
 - `PluginRegistry`: `TaskPlugins`, `CorePlugins`, `TryGetTaskPlugin`, `TryGetCorePlugin` see only enabled packages
@@ -1656,6 +1664,25 @@ tab. Decisions, methods and tests: plugin `README.md`.
   one row Close all tabs (editing: Name, Save, Cancel), the tabs (`ui:PageTab`), then the grid.
   Editing: cell lines, a frame per camera (address, X; drag inside to move, an edge or a corner to resize), a camera dragged from the tree shows a
   frame with its address where it will land: the largest free square at the drop point (up to 10 x 10), a click on a camera puts it in the first free place.
+
+## Edge Recording Export (core plugin)
+
+`plugins/Oadm.Plugins.EdgeRecordingExport` (+ `.Client`), id `oadm.edge-recording-export`, rail page **Edge Recording
+Export** (group Maintenance, icon `hardDriveDownload`), **off by default**, switchable. Choose cameras (the shared device
+picker, video devices only, tags allowed), all recordings or a range in this computer's time, Search, then Download into
+a chosen folder: a folder per camera ("10.0.0.48 P3265-V B8A44F631339"), the camera's file names. Decisions, device API
+and tests: plugin `README.md`.
+
+- Rules that must hold: read-only for the cameras (list, capabilities, properties, export, disks; Viewer rights on the
+  device suffice); the files travel camera -> server -> client through `PluginService.Download`, never stored on the
+  server, never client to camera; one recording at a time; each recording cut to the range exactly as the camera listed
+  it; MP4 when offered, else Matroska; files written as `.part` and renamed when complete, existing files skipped, so a
+  stopped run starts again; refused statuses are not contacted; at most 50,000 recordings per camera and search, sizes
+  estimated from at most 40 recordings per camera.
+- Roles: "show" (Operator and Viewer: search), "Export recordings" (`export`, Operator yes, Viewer no); every downloaded
+  recording is audited with the camera and the times.
+- Tests: `tests/Oadm.Plugins.EdgeRecordingExport.Tests` (+ Perf 5,000 cameras, read-only hardware test that searches and
+  downloads the last two minutes of the dev cameras through the in-process server).
 
 ## Date and time
 
@@ -2092,8 +2119,8 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
 - Button and menu labels never end with "..." / "…", also when they open a dialog or a file picker ("Back up", "Import CA",
   "Choose file"). Actions inside a card are filled buttons (`Button.secondary` with `ui:IconLabel`, primary for the main
   one); the flat `ui:ToolbarButton` is only for toolbars.
-- One accent button per view (exception, the purple "Selected devices" button of the event rule and
-  trigger dialogs): while an inline editor is open, its button (Retry, Create tag) is the primary one and the
+- One accent button per view (exception, the purple device choice button: "Selected devices" of the event rule and
+  trigger dialogs, "Selected cameras" of Edge Recording Export): while an inline editor is open, its button (Retry, Create tag) is the primary one and the
   footer's main button turns secondary. A disabled primary keeps its role: the accent at about 35 % with dimmed text.
 - **Destructive actions are red**: `Button.danger` (red fill, white text) instead of primary for
   buttons that delete or remove (Remove users, Delete certificates), `Button.toolbar.danger` for flat toolbar and icon

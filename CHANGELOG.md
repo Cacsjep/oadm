@@ -6,6 +6,15 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+### Added
+
+- **Edge Recording Export** page: download the recordings on the SD cards and network shares of your cameras to this
+  computer. Choose cameras (also by tag), all recordings or a time range, and Search shows per camera how many
+  recordings there are and about how large they are. Download saves them one after the other into a folder per camera,
+  as MP4 where the camera offers it; a stopped download continues where it ended. Off by default (Plugins page);
+  "Export recordings" in the roles decides who may download (Operator has it).
+- Plugins can send files to their page through the server (`ICorePluginDownloads`, gRPC `PluginService.Download`).
+
 ## [2.5.0] - 2026-10-12
 
 ### Added

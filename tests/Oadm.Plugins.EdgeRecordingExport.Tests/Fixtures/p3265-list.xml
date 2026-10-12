@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.axis.com/vapix/http_cgi/recording/list1.xsd">
+<recordings totalnumberofrecordings="129" numberofrecordings="7">
+<recording diskid="SD_DISK" recordingid="20261012_200925_A3A0_B8A44F631339" starttime="2026-10-12T18:09:30.000000Z" starttimelocal="2026-10-12T20:09:30.000000+02:00" stoptime="2026-10-12T18:09:35.676474Z" stoptimelocal="2026-10-12T20:09:35.676474+02:00" recordingtype="triggered" eventid="re" eventtrigger="Record video" recordingstatus="completed" source="1" locked="No" recordinggroupid="">
+<video mimetype="video/x-h264" source="1" resolution="1920x1080" framerate="30:1" width="1920" height="1080"/>
+</recording>
+<recording diskid="SD_DISK" recordingid="20261012_200935_7FF7_B8A44F631339" starttime="2026-10-12T18:09:35.776480Z" starttimelocal="2026-10-12T20:09:35.776480+02:00" stoptime="2026-10-12T18:09:45.676455Z" stoptimelocal="2026-10-12T20:09:45.676455+02:00" recordingtype="triggered" eventid="re" eventtrigger="Record video" recordingstatus="completed" source="1" locked="No" recordinggroupid="">
+<video mimetype="video/x-h264" source="1" resolution="1920x1080" framerate="30:1" width="1920" height="1080"/>
+</recording>
+<recording diskid="SD_DISK" recordingid="20261012_200945_09A6_B8A44F631339" starttime="2026-10-12T18:09:45.776460Z" starttimelocal="2026-10-12T20:09:45.776460+02:00" stoptime="2026-10-12T18:09:55.643122Z" stoptimelocal="2026-10-12T20:09:55.643122+02:00" recordingtype="triggered" eventid="re" eventtrigger="Record video" recordingstatus="completed" source="1" locked="No" recordinggroupid="">
+<video mimetype="video/x-h264" source="1" resolution="1920x1080" framerate="30:1" width="1920" height="1080"/>
+</recording>
+</recordings>
+</root>

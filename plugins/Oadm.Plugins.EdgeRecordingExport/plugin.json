@@ -1,0 +1,8 @@
+{
+  "id": "oadm.edge-recording-export",
+  "version": "0.1.0",
+  "minSdkVersion": "0.1.0",
+  "displayName": "Edge Recording Export",
+  "description": "Downloads the recordings on the cameras' SD cards to this computer.",
+  "enabledByDefault": false
+}

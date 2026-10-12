@@ -1,0 +1,47 @@
+---
+title: Edge Recording Export
+description: Download the recordings on your cameras' SD cards to this computer.
+---
+
+import { Image } from 'astro:assets';
+import page from '../../../assets/screens/edge-recording-export.png';
+import download from '../../../assets/screens/edge-recording-export-download.png';
+
+Edge Recording Export downloads the recordings that cameras keep on their SD card or network share, from many cameras at
+once, into a folder on this computer.
+
+<Image src={page} alt="Edge Recording Export after a search: five cameras with their recordings, sizes and status" class="screen" />
+
+## Find recordings
+
+1. Edge Recording Export is off when OADM is installed: an administrator turns it on under **Plugins**.
+2. Open **Edge Recording Export** in the navigation rail.
+3. Click **Choose cameras** and pick cameras or tags. The button then shows what is chosen. Only devices with video are listed.
+4. Choose **All recordings**, or **Time range** with **From** and **To** (for example `2026-10-12 08:00`). The times are
+   this computer's time.
+5. Click **Search**. Each camera shows how many recordings it has in that time, about how large they are, and the first
+   and last recording.
+
+A recording that only partly falls into the time range is cut to it.
+
+## Download
+
+<Image src={download} alt="A download in progress: the progress bar, the current recording and Stop" class="screen" />
+
+1. Click **Download** and choose a folder.
+2. OADM downloads one recording after the other. Each camera gets its own folder, for example
+   `10.0.0.48 P3265-V B8A44F631339`, and each file keeps the name the camera gives it.
+3. **Stop** ends the download. The finished files stay; the next **Download** into the same folder skips them and
+   continues.
+
+The download keeps running while you work on other pages. It ends when you log out.
+
+## Good to know
+
+- Files are MP4 when the camera offers it, otherwise Matroska (`.mkv`). Both play in VLC; MP4 also plays in the players
+  of Windows and macOS.
+- The recordings travel from the camera through the OADM server to this computer. The camera's password never reaches
+  this computer, and nothing is stored on the server.
+- Who may download is the right **Export recordings** on the Users page (Operator has it, Viewer does not). Every
+  downloaded recording is in the audit log.
+- Cameras that need a login, have no password yet or show **Certificate changed** are not asked.
