@@ -121,7 +121,7 @@ Website: landing page and user docs in `website/` with Astro Starlight (MkDocs M
 maintenance mode), base `/oadm`, published to https://cacsjep.github.io/oadm/ by `pages.yml` on pushes to main that change
 `website/` and after every successful `release` run (`workflow_run`, so the static download links and "What's new in
 vX" match the new release; the browser also re-reads the latest release with `cache: 'no-store'`) (deploy job `pages: write`, `id-token: write`); npm versions pinned exactly, Dependabot npm group `website`;
-screenshots in `website/src/assets/screens/` come from the headless tests (`OADM_SCREENSHOT_DIR`), click to enlarge; dark only (no theme switch); the landing page has no top bar, its download buttons link the latest release files (Linux = both .deb); texts follow "Wording".
+screenshots in `website/src/assets/screens/` come from the headless tests (`OADM_SCREENSHOT_DIR`), click to enlarge; dark only (no theme switch); the landing page has its own slim top bar instead of the docs header (`TopBar.astro`: GitHub and LinkedIn left, Documentation and Bug report right, fixed, no border), its download buttons link the latest release files (Linux = both .deb); texts follow "Wording".
 
 Developer commands: one entry point per shell at the repo root, `./manage.sh` (bash) and
 `.\manage.ps1` (PowerShell 5.1/7), verb + target (`build`, `run`, `test`, `publish`, `package`, `clean`,

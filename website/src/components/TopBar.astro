@@ -1,0 +1,70 @@
+---
+// The landing page's top bar (the docs header is hidden there): social links on the left, Documentation and Bug
+// report on the right. Fixed at the top, so it stays while the page scrolls.
+import { Icon } from '@astrojs/starlight/components';
+
+const repo = 'Cacsjep/oadm';
+// Absolute links with the site base: relative ones break when the page is opened without its trailing slash.
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+---
+
+<nav class="top-bar not-content" aria-label="Main">
+	<div class="top-bar-inner">
+		<div class="top-bar-social">
+			<a href={`https://github.com/${repo}`} aria-label="GitHub"><Icon name="github" /></a>
+			<a href="https://www.linkedin.com/in/christoph-acs-70150795/" aria-label="LinkedIn"><Icon name="linkedin" /></a>
+		</div>
+		<div class="top-bar-links">
+			<a href={`${base}tools/overview/`}><Icon name="puzzle" />Plugins</a>
+			<a href={`${base}start/install/`}><Icon name="open-book" />Documentation</a>
+			<a href={`https://github.com/${repo}/issues/new/choose`}><Icon name="comment" />Bug report</a>
+		</div>
+	</div>
+</nav>
+
+<style>
+	.top-bar {
+		position: fixed;
+		inset: 0 0 auto 0;
+		z-index: 10;
+		height: var(--sl-nav-height);
+		background: color-mix(in srgb, var(--sl-color-black) 85%, transparent);
+		backdrop-filter: blur(12px);
+	}
+	.top-bar-inner {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		height: 100%;
+		max-width: 72rem;
+		margin-inline: auto;
+		padding-inline: 1rem;
+	}
+	.top-bar a {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.45rem;
+		color: var(--sl-color-gray-2);
+		font-size: var(--sl-text-sm);
+		font-weight: 500;
+		text-decoration: none;
+		transition: color 0.15s;
+	}
+	.top-bar a:hover {
+		color: var(--sl-color-white);
+	}
+	.top-bar-social,
+	.top-bar-links {
+		display: flex;
+		align-items: center;
+		gap: 1.5rem;
+	}
+	.top-bar-social {
+		gap: 1rem;
+	}
+	.top-bar-social :global(svg) {
+		width: 1.25rem;
+		height: 1.25rem;
+	}
+</style>

@@ -339,28 +339,9 @@ html[data-has-hero] .content-panel:has(.downloads) {
 	gap: 0.4rem;
 }
 
-.dl-social {
-	display: flex;
-	gap: 1rem;
-	margin-top: 0.25rem;
-}
-
-.dl-social a {
-	color: var(--sl-color-gray-3);
-}
-
-.dl-social a:hover {
-	color: var(--sl-color-white);
-}
-
-.dl-social svg {
-	width: 1.4rem;
-	height: 1.4rem;
-}
-
-/* Landing page: no top bar at all. */
+/* Landing page: its own top bar (TopBar.astro) instead of the docs header. */
 html[data-has-hero] {
-	--sl-nav-height: 0rem;
+	--sl-nav-height: 3.5rem;
 }
 
 html[data-has-hero] header.header {

@@ -1,0 +1,27 @@
+---
+title: Plugins
+description: Every plugin that comes with OADM.
+---
+
+Each plugin has its own page in OADM, grouped like in the navigation rail. Administrators turn plugins on or off on the
+[Plugins page](../../admin/plugins/).
+
+| Group | Plugin | What it does | Default |
+|---|---|---|---|
+| Servers | [NTP server](../ntp-server/) | Serves the time to your devices. | On |
+| | [DHCP server](../dhcp-server/) | Gives addresses to your devices and adds new Axis devices automatically. | On |
+| Automation | [VAPIX Commander](../vapix-commander/) | Sends VAPIX commands to one device or rolls them out to many. | On |
+| | [Device triggers](../device-triggers/) | Any event of your devices in event rules. | Off |
+| Security | [PKI](../pki/) | A certificate authority for HTTPS and IEEE 802.1X certificates of your devices. | Always on |
+| | [Hardening scan](../hardening-scan/) | Checks every device against the AXIS OS hardening guide. | Off |
+| Monitoring | [Metadata Monitor](../metadata-monitor/) | The events a camera sends, live. | Off |
+| | [Image Health Dashboard](../image-health-dashboard/) | The AXIS Image Health Analytics status of every camera. | Off |
+| | [I/O Monitor](../io-monitor/) | The inputs and outputs of a device, live. | Off |
+| Reporting | [Snapshot report](../snapshot-report/) | A current picture of every camera and a PDF maintenance report. | On |
+| | [System report](../system-report/) | The system reports of many devices in one ZIP file for Axis support. | Always on |
+| Utilities | [Web View](../web-view/) | The web interface of your devices in tabs, already logged in. | On |
+
+The everyday device work (restart, firmware, date and time, users, network settings and more) is in the device context
+menu: see [Device tasks](../../tasks/overview/).
+
+Want your own? See [Write a plugin](../../dev/plugins/).
