@@ -41,7 +41,7 @@ public sealed class LiveViewPanel : UserControl
         _close.Classes.Add("toolbar");
         _close.Classes.Add("iconOnly");
         _close.Content = new OadmIcon();
-        ToolTip.SetTip(_close, "Close live view (Esc)");
+        ToolTip.SetTip(_close, "Close live preview (Esc)");
 
         var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 0, 0, 12) };
         header.Children.Add(_title);

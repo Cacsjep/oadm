@@ -90,7 +90,7 @@
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:IDeviceGridItem">
                     <!-- Click: live view (video devices only) -->
-                    <Button Classes="liveViewIcon" ToolTip.Tip="Live view"
+                    <Button Classes="liveViewIcon" ToolTip.Tip="Live preview"
                             IsEnabled="{Binding Row, Converter={x:Static lv:LiveViewSupport.IsSupportedConverter}}"
                             Command="{Binding $parent[UserControl].((dev:DevicesViewModel)DataContext).LiveView.ToggleCommand}"
                             CommandParameter="{Binding Row}">

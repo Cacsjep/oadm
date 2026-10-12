@@ -898,7 +898,7 @@ web UI.
   the stream key carries a generation per device, new viewers never join a connection on the old port).
 - Open/close: the icon of the shown device or the close button or Escape closes the panel and
   stops the stream; another device's icon switches. Removing the shown device closes it. The icon
-  cell has a hover state and the tooltip "Live view"; devices without video are disabled
+  cell has a hover state and the tooltip "Live preview"; devices without video are disabled
   (`LiveViewSupport.IsSupported`, a model heuristic until the device category from the server is
   available: C audio, A1/A9 door and I/O controllers, D3 sensors and T accessories have no video).
 - Sources: `ListSources` returns every `Image.I<n>` that is not disabled as camera `n+1` with its
