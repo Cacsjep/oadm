@@ -14,6 +14,7 @@ import imageHealth from '../assets/screens/image-health-dashboard.png';
 import io from '../assets/screens/io-monitor-page.png';
 import snapshot from '../assets/screens/snapshot-report-page.png';
 import webView from '../assets/screens/web-view-page.png';
+import liveView from '../assets/screens/live-view-page.png';
 
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
@@ -28,6 +29,7 @@ const plugins = [
 	{ name: 'Image Health Dashboard', page: 'image-health-dashboard', image: imageHealth, text: 'Blur, blocked or redirected views of every camera.' },
 	{ name: 'I/O Monitor', page: 'io-monitor', image: io, text: 'The inputs and outputs of a device, live.' },
 	{ name: 'Snapshot report', page: 'snapshot-report', image: snapshot, text: 'Every camera at a glance, a PDF for the customer.' },
+	{ name: 'Live View', page: 'live-view', image: liveView, text: 'Several cameras at once in saved views, like a video wall. Drag cameras in, save, open in tabs.' },
 	{ name: 'Web View', page: 'web-view', image: webView, text: 'The web interface of every device in tabs, already logged in. Set up apps like Object Analytics on many cameras, one tab after the other.' },
 ];
 

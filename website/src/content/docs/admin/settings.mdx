@@ -1,6 +1,6 @@
 ---
 title: Settings
-description: The server settings on the Settings page.
+description: The server settings and the settings of this computer on the Settings page.
 ---
 
 import { Image } from 'astro:assets';
@@ -8,7 +8,19 @@ import settings from '../../../assets/screens/client-page-settings.png';
 
 <Image src={settings} alt="Settings page" class="screen" />
 
-Administrators change the settings; operators see them. They apply to every client of the server.
+## This computer
+
+The first card is for the computer you sit at. Every user can change it, and it is saved at once.
+
+| Setting | Default | What it does |
+|---|---|---|
+| Decode video on the graphics card | On | Live video is decoded by the graphics card when it can; the hint below says what the test found. An orange icon over the video says what to do when the processor decodes instead. |
+| Show video details over the picture | Off | A card at the top right of the live video with codec, resolution, frame rate, bit rate and decoding. |
+| Frame rate (adaptive quality) | 20 | Frames per second when the resolution follows the size of the picture (1 to 30). |
+
+## Server
+
+Administrators change the server settings; operators see them. They apply to every client of the server.
 
 | Setting | Default | What it does |
 |---|---|---|
@@ -24,5 +36,5 @@ Administrators change the settings; operators see them. They apply to every clie
 
 ## On this computer
 
-Each client also keeps its own settings on the computer: the servers you used, the device list columns, group by tag
-and the size of the tasks pane.
+Each client also keeps its own settings on the computer: the servers you used, the device list columns, group by tag,
+the size of the tasks pane and the **This computer** card above.
