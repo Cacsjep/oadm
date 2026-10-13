@@ -71,7 +71,6 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             Read(rows, SettingKeys.ServerName, defaults.ServerName),
             ListenUrlOf(Read(rows, SettingKeys.ListenUrl, defaults.ListenUrl)),
             Read(rows, SettingKeys.PollingFullRefreshMinutes, defaults.FullRefreshMinutes),
-            Read(rows, SettingKeys.DevicesUseHostName, defaults.UseHostName),
             Read(rows, SettingKeys.DiscoveryZeroConfSeconds, defaults.ZeroConfSeconds),
             Read(rows, SettingKeys.TasksMaxParallelPerPlugin, defaults.MaxParallelTasksPerPlugin));
     }
@@ -88,7 +87,6 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.ServerName] = JsonSerializer.Serialize(settings.ServerName),
             [SettingKeys.ListenUrl] = JsonSerializer.Serialize(settings.ListenUrl),
             [SettingKeys.PollingFullRefreshMinutes] = JsonSerializer.Serialize(settings.FullRefreshMinutes),
-            [SettingKeys.DevicesUseHostName] = JsonSerializer.Serialize(settings.UseHostName),
             [SettingKeys.DiscoveryZeroConfSeconds] = JsonSerializer.Serialize(settings.ZeroConfSeconds),
             [SettingKeys.TasksMaxParallelPerPlugin] = JsonSerializer.Serialize(settings.MaxParallelTasksPerPlugin),
         };
@@ -209,13 +207,6 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
                 }
 
                 break;
-            case SettingKeys.DevicesUseHostName:
-                if (value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-                {
-                    throw new ArgumentException($"'{key}' must be true or false.", nameof(valueJson));
-                }
-
-                break;
             case SettingKeys.ListenUrl:
                 if (value.ValueKind != JsonValueKind.String
                     || !Uri.TryCreate(value.GetString(), UriKind.Absolute, out var uri)
@@ -255,7 +246,6 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.TasksMaxHistory] = JsonSerializer.Serialize(ServerSettings.DefaultTasksMaxHistory),
             [SettingKeys.EventsLogRetentionDays] = JsonSerializer.Serialize(ServerSettings.DefaultEventsLogRetentionDays),
             [SettingKeys.EventsLogMaxEntries] = JsonSerializer.Serialize(ServerSettings.DefaultEventsLogMaxEntries),
-            [SettingKeys.DevicesUseHostName] = JsonSerializer.Serialize(d.UseHostName),
             [SettingKeys.DiscoveryZeroConfSeconds] = JsonSerializer.Serialize(d.ZeroConfSeconds),
             [SettingKeys.TasksMaxParallelPerPlugin] = JsonSerializer.Serialize(d.MaxParallelTasksPerPlugin),
         };

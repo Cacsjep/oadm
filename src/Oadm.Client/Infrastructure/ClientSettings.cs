@@ -34,6 +34,9 @@ public sealed class ClientSettings
 
     public bool BottomPaneExpanded { get; set; } = true;
 
+    /// <summary>Add page "Use DNS names instead of IP addresses" (Discovery and Network range).</summary>
+    public bool AddByDnsName { get; set; }
+
     /// <summary>Device grid group mode: a group per tag.</summary>
     public bool GroupDevicesByTag { get; set; }
 

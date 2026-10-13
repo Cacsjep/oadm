@@ -228,13 +228,6 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     [ObservableProperty] public partial string ServerName { get; set; } = "";
     [ObservableProperty] public partial string ListenUrl { get; set; } = "";
 
-    /// <summary>Devices.UseHostName: newly added devices are addressed by host name when one is known.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(DeviceAddressText))]
-    public partial bool UseHostName { get; set; }
-
-    /// <summary>The device address choice as text (operators see the settings read-only).</summary>
-    public string DeviceAddressText => UseHostName ? "Host name when available, otherwise IP address" : "IP address";
     [ObservableProperty] public partial string? ServerMessage { get; private set; }
     [ObservableProperty] public partial bool ServerMessageIsError { get; private set; }
 
@@ -294,7 +287,6 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             MaxParallelTasksPerPlugin = (int)(MaxParallelTasksPerPlugin ?? DefaultParallelTasks),
             ServerName = ServerName.Trim(),
             ListenUrl = ListenUrl.Trim(),
-            UseHostName = UseHostName,
         };
         try
         {
@@ -326,7 +318,6 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         MaxParallelTasksPerPlugin = settings.HasMaxParallelTasksPerPlugin ? settings.MaxParallelTasksPerPlugin : DefaultParallelTasks; // unset = older server
         ServerName = settings.ServerName;
         ListenUrl = settings.ListenUrl;
-        UseHostName = settings.UseHostName;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Server settings saved")]

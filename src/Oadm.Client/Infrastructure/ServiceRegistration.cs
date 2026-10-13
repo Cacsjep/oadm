@@ -113,7 +113,8 @@ public static class ServiceRegistration
             sp.GetRequiredService<IOadmApi>(),
             sp.GetRequiredService<IUiDispatcher>(),
             sp.GetRequiredService<ILogger<AddDevicesViewModel>>(),
-            mode)
+            mode,
+            sp.GetService<IClientSettingsStore>())
         {
             // The credential list is Administrator only (the server checks it too).
             CanSaveToCredentialList = sp.GetService<UserSession>()?.IsAdmin ?? true,

@@ -79,10 +79,6 @@
                             Hint="Discovery on the add devices page ends after this time; Scan again starts it again">
                 <NumericUpDown Minimum="5" Maximum="300" Increment="5" FormatString="0" Value="{Binding ZeroConfSeconds}" />
               </ui:FormField>
-              <ui:FormField Classes="wide" Label="Device address">
-                <CheckBox IsChecked="{Binding UseHostName}" Content="Use host name when available, otherwise IP address"
-                          ToolTip.Tip="Applies to devices added from now on. Host names keep devices reachable when DHCP changes their address, but need working DNS" />
-              </ui:FormField>
             </StackPanel>
             <StackPanel Classes="form" IsVisible="{Binding IsOperator}">
               <ui:FormField Label="Addresses scanned at once">
@@ -93,9 +89,6 @@
               </ui:FormField>
               <ui:FormField Label="Discovery duration (s)">
                 <TextBlock Text="{Binding ZeroConfSeconds}" />
-              </ui:FormField>
-              <ui:FormField Classes="wide" Label="Device address">
-                <TextBlock Text="{Binding DeviceAddressText}" />
               </ui:FormField>
             </StackPanel>
           </StackPanel>

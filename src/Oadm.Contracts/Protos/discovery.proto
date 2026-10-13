@@ -63,4 +63,7 @@ message DiscoveredDevice {
   string auth_detail = 17;       // reason for LOGIN_FAILED / UNREACHABLE, user facing
   string passphrase_policy = 18; // factory default only: systemready passphrasepolicy (none, length, complex)
   string entered_address = 19;   // MANUAL: the address as entered (host[:port]); used as the device address on add
+  // The DNS name (FQDN) of address, verified (it resolves back to address); empty when DNS has none or the lookup did not
+  // finish yet. The device address on add when CommitRequest.use_host_name is set.
+  string dns_name = 20;
 }

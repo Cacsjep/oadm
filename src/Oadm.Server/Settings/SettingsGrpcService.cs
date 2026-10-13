@@ -145,7 +145,6 @@ public sealed partial class SettingsGrpcService(
         Add("Parallel tasks per plugin", before.MaxParallelTasksPerPlugin, after.MaxParallelTasksPerPlugin);
         Add("Server name", before.ServerName, after.ServerName);
         Add("Listen URL", before.ListenUrl, after.ListenUrl);
-        Add("Use host name", before.UseHostName, after.UseHostName);
         return changes.Count == 0 ? "No change" : string.Join(", ", changes);
     }
 

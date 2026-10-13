@@ -67,6 +67,8 @@ public sealed record DeviceProbeResult(
 /// <param name="LastSeenUtc">Last time any source reported the device.</param>
 /// <param name="ProductType">ProdType, null until known.</param>
 /// <param name="EnteredAddress">Manual probe only: the address as the user entered it (host[:port]); becomes the device address on add.</param>
+/// <param name="DnsName">The verified DNS name of <paramref name="Address"/> (<see cref="IDnsNameLookup"/>), null when DNS has none or
+/// the lookup did not finish yet; the device address on add when the page asks for DNS names.</param>
 public sealed record DiscoveredDevice(
     string DiscoveredId,
     string Serial,
@@ -79,7 +81,8 @@ public sealed record DiscoveredDevice(
     DiscoverySources Sources,
     DateTimeOffset LastSeenUtc,
     string? ProductType = null,
-    string? EnteredAddress = null)
+    string? EnteredAddress = null,
+    string? DnsName = null)
 {
     /// <summary>The address to connect to: the entered one (may carry a port or host name), else the IP.</summary>
     public string ConnectAddress => EnteredAddress ?? Address.ToString();

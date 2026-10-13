@@ -75,12 +75,16 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     private int _starting;
     private bool _anyStopped;
 
-    public AddDevicesViewModel(IOadmApi api, IUiDispatcher ui, ILogger<AddDevicesViewModel> logger, AddDevicesMode mode)
+    private readonly IClientSettingsStore? _clientSettings;
+
+    public AddDevicesViewModel(IOadmApi api, IUiDispatcher ui, ILogger<AddDevicesViewModel> logger, AddDevicesMode mode, IClientSettingsStore? clientSettings = null)
     {
         _api = api;
         _ui = ui;
         _logger = logger;
         Mode = mode;
+        _clientSettings = clientSettings;
+        _useDnsNames = clientSettings?.Current.AddByDnsName ?? false;
         Rows.CollectionChanged += OnRowsChanged;
         FilteredRows.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ShowEmptyText));
 
@@ -139,6 +143,38 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     public bool IsRangeMode => Mode == AddDevicesMode.IpRange;
     public bool IsManualMode => Mode == AddDevicesMode.Manual;
     public bool IsImportMode => Mode == AddDevicesMode.Import;
+
+    /// <summary>Discovery and Network range offer DNS names; Add manually and imports keep the address as typed.</summary>
+    public bool ShowDnsNameChoice => IsScanMode || IsRangeMode;
+
+    private bool _useDnsNames;
+
+    /// <summary>
+    /// "Use DNS names instead of IP addresses" (remembered on this computer): the list shows the devices' DNS names and they
+    /// are added by them; a device without a DNS name is added by its IP address.
+    /// </summary>
+    public bool UseDnsNames
+    {
+        get => _useDnsNames;
+        set
+        {
+            if (!SetProperty(ref _useDnsNames, value))
+            {
+                return;
+            }
+
+            foreach (var row in Rows)
+            {
+                row.ShowDnsName = value;
+            }
+
+            if (_clientSettings is not null)
+            {
+                _clientSettings.Current.AddByDnsName = value;
+                _clientSettings.Save();
+            }
+        }
+    }
 
     public static string Title => "Add devices";
 
@@ -573,7 +609,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             IsBusy = true;
             foreach (IGrouping<string, DiscoveredRowViewModel> session in selected.GroupBy(r => r.SessionId))
             {
-                var request = new CommitRequest { SessionId = session.Key };
+                var request = new CommitRequest { SessionId = session.Key, UseHostName = ShowDnsNameChoice && UseDnsNames };
                 foreach (DiscoveredRowViewModel row in session)
                 {
                     request.DiscoveredIds.Add(row.DiscoveredId);
@@ -916,7 +952,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             }
             else if (row is null)
             {
-                row = new DiscoveredRowViewModel(found, sessionId);
+                row = new DiscoveredRowViewModel(found, sessionId) { ShowDnsName = ShowDnsNameChoice && UseDnsNames };
                 row.PropertyChanged += OnRowPropertyChanged;
                 _rowsById.TryAdd(row.DiscoveredId, row);
                 Rows.Add(row);

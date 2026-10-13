@@ -28,13 +28,18 @@ public sealed class DiscoveryService : IAsyncDisposable
     private readonly ILogger _logger;
     private readonly TimeProvider _time;
     private readonly ConcurrentDictionary<string, Session> _sessions = new(StringComparer.Ordinal);
+    private readonly IDnsNameLookup? _dnsNames; // null: no DNS names (tests)
+
+    /// <summary>DNS name lookups at the same time, for every session together.</summary>
+    private readonly SemaphoreSlim _dnsLimit = new(16);
 
     public DiscoveryService(
         IMdnsBrowser browser,
         RangeScanner scanner,
         IDeviceProbe probe,
         ILogger<DiscoveryService>? logger = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IDnsNameLookup? dnsNames = null)
     {
         ArgumentNullException.ThrowIfNull(browser);
         ArgumentNullException.ThrowIfNull(scanner);
@@ -44,6 +49,7 @@ public sealed class DiscoveryService : IAsyncDisposable
         _probe = probe;
         _logger = logger ?? NullLogger<DiscoveryService>.Instance;
         _time = timeProvider ?? TimeProvider.System;
+        _dnsNames = dnsNames;
     }
 
     /// <summary>Timeout used when probing addresses seen via mDNS.</summary>
@@ -179,6 +185,7 @@ public sealed class DiscoveryService : IAsyncDisposable
         {
             await StopAsync(id).ConfigureAwait(false);
         }
+        _dnsLimit.Dispose();
     }
 
     private Session CreateSession(DiscoverySessionKind kind)
@@ -351,8 +358,55 @@ public sealed class DiscoveryService : IAsyncDisposable
         if (changed is not null)
         {
             session.Broadcast(new DiscoveryEvent(changed, session.Handle.Kind == DiscoverySessionKind.ZeroConf ? 0 : session.Progress, false));
+            if (_dnsNames is null || changed.EnteredAddress is not null || changed.DnsName is not null)
+            {
+                return;
+            }
+
+            if (!session.ClaimDnsLookup(changed, out var known))
+            {
+                // Looked up before (the device came back to this address): the name found then, without asking DNS again.
+                if (known is not null)
+                {
+                    PublishDnsName(session, changed.Serial, changed.Address, known);
+                }
+
+                return;
+            }
+
+            _ = LookupDnsNameAsync(session, changed.Serial, changed.Address);
         }
     }
+
+    /// <summary>The DNS name of a found device's IP, once per device and address (manual entries keep what was typed).</summary>
+    private async Task LookupDnsNameAsync(Session session, string serial, IPAddress address)
+    {
+        var ct = session.Stop.Token;
+        try
+        {
+            await _dnsLimit.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                var name = SystemDnsNameLookup.Normalize(await _dnsNames!.LookupAsync(address, ct).ConfigureAwait(false));
+                session.SetDnsName(serial, address, name);
+                if (name is not null)
+                {
+                    PublishDnsName(session, serial, address, name);
+                }
+            }
+            finally
+            {
+                _dnsLimit.Release();
+            }
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+        {
+            // session stopped
+        }
+    }
+
+    private void PublishDnsName(Session session, string serial, IPAddress address, string name) =>
+        Publish(session, new DeviceObservation(serial, address, null, null, null, null, null, DiscoverySources.None) { DnsName = name });
 
     /// <summary>A partial view of a device from one source; null fields mean "not known by this source".</summary>
     internal sealed record DeviceObservation(
@@ -367,6 +421,9 @@ public sealed class DiscoveryService : IAsyncDisposable
         string? ProductType = null,
         string? EnteredAddress = null)
     {
+        /// <summary>The verified DNS name of <see cref="Address"/>, from the lookup.</summary>
+        public string? DnsName { get; init; }
+
         public static DeviceObservation FromProbe(DeviceProbeResult r, DiscoverySources source)
             => new(r.Serial, r.Address, null, r.Model, r.FirmwareVersion, r.Scheme, r.Status, source, r.ProductType);
     }
@@ -380,7 +437,7 @@ public sealed class DiscoveryService : IAsyncDisposable
     {
         if (existing is null)
         {
-            return new DiscoveredDevice(o.Serial, o.Serial, o.Address, o.HostName, o.Model, o.FirmwareVersion, o.Status ?? DiscoveredDeviceStatus.Unknown, o.Scheme, o.Source, now, o.ProductType, o.EnteredAddress);
+            return new DiscoveredDevice(o.Serial, o.Serial, o.Address, o.HostName, o.Model, o.FirmwareVersion, o.Status ?? DiscoveredDeviceStatus.Unknown, o.Scheme, o.Source, now, o.ProductType, o.EnteredAddress, o.DnsName);
         }
 
         var merged = existing with
@@ -394,6 +451,10 @@ public sealed class DiscoveryService : IAsyncDisposable
             Status = o.Status ?? existing.Status,
             Sources = existing.Sources | o.Source,
             EnteredAddress = o.EnteredAddress ?? existing.EnteredAddress,
+
+            // A name belongs to the address it was looked up for: a new address drops it (and is looked up again).
+            DnsName = o.DnsName is { } name && o.Address.Equals(existing.Address) ? name
+                : o.Address.Equals(existing.Address) ? existing.DnsName : null,
             LastSeenUtc = existing.LastSeenUtc,
         };
 
@@ -454,6 +515,28 @@ public sealed class DiscoveryService : IAsyncDisposable
                 return (_devices.Values.ToList(), _completed);
             }
         }
+
+        // Per device and address: the DNS name found (null: none, or the lookup still runs).
+        private readonly ConcurrentDictionary<string, string?> _dnsLookups = new(StringComparer.Ordinal);
+
+        /// <summary>True once per device and address (the caller starts the lookup); later <paramref name="known"/> is the name it found.</summary>
+        public bool ClaimDnsLookup(DiscoveredDevice device, out string? known)
+        {
+            var key = DnsKey(device.Serial, device.Address);
+            if (_dnsLookups.TryAdd(key, null))
+            {
+                known = null;
+                return true;
+            }
+
+            known = _dnsLookups.GetValueOrDefault(key);
+            return false;
+        }
+
+        /// <summary>The result of the lookup <see cref="ClaimDnsLookup"/> started.</summary>
+        public void SetDnsName(string serial, IPAddress address, string? name) => _dnsLookups[DnsKey(serial, address)] = name;
+
+        private static string DnsKey(string serial, IPAddress address) => serial + "|" + address;
 
         public DiscoveredDevice? Merge(DeviceObservation observation, DateTimeOffset now)
         {

@@ -26,7 +26,7 @@ namespace Oadm.Server.AddDevices;
 /// (<see cref="DiscoveryAuthenticator"/>); the automatic login with known credentials runs while
 /// the page watches discovery.</para>
 /// <para><b>Commit</b> stores each device (serial unique; the entered address of "Add manually",
-/// else host name or IP per the server setting <c>Devices.UseHostName</c>), pins the certificate
+/// else the verified DNS name when the request asks for DNS names and the device has one, else the IP), pins the certificate
 /// fingerprint from the probe, sets the initial root password on factory-default devices when one
 /// is given (per device from <c>initial_passwords</c>, else <c>initial_root_password</c>; over HTTPS
 /// when the device offers it), stores credentials (initial password as root, else explicit request
@@ -120,7 +120,7 @@ public sealed partial class AddDevicesGrpcService(
         var selected = await ResolveAsync(request.SessionId, request.DiscoveredIds, ct).ConfigureAwait(false);
         var serverSettings = await settings.GetServerSettingsAsync(ct).ConfigureAwait(false);
         var serverName = serverSettings.ServerName;
-        var useHostName = serverSettings.UseHostName; // CommitRequest.use_host_name is unused
+        var useHostName = request.UseHostName; // the add page's "Use DNS names instead of IP addresses"
         var added = new ConcurrentDictionary<string, (Guid Id, SdkDeviceStatus Status)>();
 
         await Parallel.ForEachAsync(selected, new ParallelOptions { MaxDegreeOfParallelism = Parallelism, CancellationToken = ct }, async (found, token) =>
@@ -181,9 +181,6 @@ public sealed partial class AddDevicesGrpcService(
         return usable.FirstOrDefault(c => string.Equals(c.DiscoveredId, discoveredId, StringComparison.OrdinalIgnoreCase))
             ?? usable.FirstOrDefault(c => string.IsNullOrEmpty(c.DiscoveredId));
     }
-
-    /// <summary>The connection address (see <see cref="DeviceAdder.ChooseAddress"/>).</summary>
-    internal static (string Address, string? HostName) ChooseAddress(DiscoveredDevice found, bool useHostName) => DeviceAdder.ChooseAddress(found, useHostName);
 
     /// <summary>Selected discovered devices that are known and not managed yet, in request order.</summary>
     private async Task<List<DiscoveredDevice>> ResolveAsync(string sessionId, IEnumerable<string> discoveredIds, CancellationToken ct)

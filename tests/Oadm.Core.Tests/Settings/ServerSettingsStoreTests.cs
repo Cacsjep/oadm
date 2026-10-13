@@ -56,7 +56,7 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
     [Fact]
     public async Task SetServerSettingsWritesAll()
     {
-        var wanted = new ServerSettings(30, 8, 3000, "oadm-lab", "http://127.0.0.1:6000", 20, UseHostName: true, ZeroConfSeconds: 120, MaxParallelTasksPerPlugin: 64);
+        var wanted = new ServerSettings(30, 8, 3000, "oadm-lab", "http://127.0.0.1:6000", 20, ZeroConfSeconds: 120, MaxParallelTasksPerPlugin: 64);
 
         await _store.SetServerSettingsAsync(wanted, CancellationToken.None);
 
@@ -69,7 +69,6 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
     [InlineData(SettingKeys.ScanTimeoutMs, "1.5")]
     [InlineData(SettingKeys.ServerName, "\"\"")]
     [InlineData(SettingKeys.ListenUrl, "\"not a url\"")]
-    [InlineData(SettingKeys.DevicesUseHostName, "1")]
     [InlineData(SettingKeys.DiscoveryZeroConfSeconds, "4")]
     [InlineData(SettingKeys.DiscoveryZeroConfSeconds, "301")]
     [InlineData(SettingKeys.TasksMaxParallelPerPlugin, "0")]
@@ -123,17 +122,6 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
         using var loaded = new Oadm.Core.Tasks.TaskParallelismSetting(_store);
         await loaded.LoadAsync(CancellationToken.None);
         Assert.Equal(3, loaded.Current);
-    }
-
-    [Fact]
-    public async Task UseHostNameDefaultsToFalse()
-    {
-        Assert.False((await _store.GetServerSettingsAsync(CancellationToken.None)).UseHostName);
-        Assert.False(await _store.GetAsync<bool>(SettingKeys.DevicesUseHostName, CancellationToken.None));
-
-        await _store.SetAsync(SettingKeys.DevicesUseHostName, true, CancellationToken.None);
-
-        Assert.True((await _store.GetServerSettingsAsync(CancellationToken.None)).UseHostName);
     }
 
     [Fact]

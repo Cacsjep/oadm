@@ -44,7 +44,6 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         MaxParallelTasksPerPlugin = 16,
         ServerName = "acs",
         ListenUrl = "https://0.0.0.0:5080",
-        UseHostName = false,
         ServerVersion = FakeServerVersion,
     };
     private bool _online = true;
@@ -313,8 +312,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
             ThrowIfOffline();
             Device device = _devices.Find(d => d.Id == deviceId)
                 ?? throw new RpcException(new Status(StatusCode.NotFound, "device not found"));
-            string host = device.UseHostName && device.HostName.Length > 0 ? device.HostName : device.Address;
-            return Task.FromResult($"{device.Scheme}://{host}/");
+            return Task.FromResult($"{device.Scheme}://{device.Address}/");
         }
     }
 
@@ -640,10 +638,12 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                     DeviceStatus.Unreachable => DeviceStatus.Unreachable,
                     _ => DeviceStatus.CredentialsRequired,
                 };
-                string address = found.EnteredAddress.Length > 0 ? found.EnteredAddress : found.Address;
+                // Like the server: the entered address as typed, else the DNS name when asked for and known, else the IP.
+                string address = found.EnteredAddress.Length > 0 ? found.EnteredAddress
+                    : request.UseHostName && found.DnsName.Length > 0 ? found.DnsName : found.Address;
                 Device device = CreateDevice(found.Serial, address, found.Model, "12.11.77", status);
-                device.HostName = found.HostName;
-                device.UseHostName = _settings.UseHostName && found.HostName.Length > 0; // the server setting, not the request
+                device.HostName = found.DnsName;
+                device.UseHostName = !IPAddress.TryParse(address.Split(':')[0], out _);
                 device.HasCredentials = credentials is not null || initial.Length > 0 || found.AuthState == AuthState.Authenticated;
                 _devices.Add(device);
                 reply.DeviceIds.Add(device.Id);
@@ -931,10 +931,9 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 throw new RpcException(new Status(StatusCode.InvalidArgument, "'Tasks.MaxParallelPerPlugin' must be an integer between 1 and 256."));
             }
 
-            bool useHostName = settings.HasUseHostName ? settings.UseHostName : _settings.UseHostName; // unset keeps it, like the server
             int maxParallel = settings.HasMaxParallelTasksPerPlugin ? settings.MaxParallelTasksPerPlugin : _settings.MaxParallelTasksPerPlugin;
             _settings = settings.Clone();
-            _settings.UseHostName = useHostName;
+            _settings.ClearUseHostName(); // no longer a server setting
             _settings.MaxParallelTasksPerPlugin = maxParallel;
             _settings.ServerVersion = FakeServerVersion;
             return Task.FromResult(_settings.Clone());
@@ -1367,6 +1366,8 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
             Serial = serial,
             Address = address,
             HostName = "axis-" + serial.ToLowerInvariant() + ".local",
+            // DNS knows every sample camera but the factory-default ones (no DHCP name yet).
+            DnsName = status == DeviceStatus.PasswordNotSet ? "" : "axis-" + serial.ToLowerInvariant() + ".site.example",
             Model = model,
             Status = status,
             AlreadyManaged = alreadyManaged,

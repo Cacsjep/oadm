@@ -54,6 +54,42 @@ public sealed class AddDevicesPageTests : IDisposable
     }
 
     [Fact]
+    public async Task Dns_names_replace_the_ip_addresses_when_chosen_and_the_choice_is_remembered()
+    {
+        var settings = new InMemoryClientSettingsStore();
+        await using var page = new AddDevicesViewModel(_api, new ImmediateUiDispatcher(), NullLogger<AddDevicesViewModel>.Instance, AddDevicesMode.Scan, settings);
+        await page.OpenAsync();
+        await TestSupport.WaitUntilAsync(() => page.Rows.Count == 11 && page.Rows.All(r => r.AuthState != AuthState.Pending));
+        Assert.True(page.ShowDnsNameChoice);
+        Assert.False(page.UseDnsNames);
+        DiscoveredRowViewModel row = Row(page, "10.0.0.92");
+        string dnsName = row.DnsName;
+        Assert.EndsWith(".site.example", dnsName);
+        Assert.Equal("", row.AddressTip);
+
+        page.UseDnsNames = true;
+
+        Assert.True(settings.Current.AddByDnsName);
+        Assert.Equal(dnsName, row.Address);
+        Assert.Equal("IP address 10.0.0.92", row.AddressTip);
+        Assert.Equal("10.0.0.90", page.Rows.Single(r => r.IpAddress == "10.0.0.90").Address); // no DNS name: the IP
+        page.SearchText = "10.0.0.92"; // the IP still finds the row
+        Assert.Single(page.FilteredRows);
+        page.SearchText = "";
+
+        page.SelectAllAuthenticatedCommand.Execute(null);
+        await page.AddCommand.ExecuteAsync(null);
+
+        IReadOnlyList<Device> devices = await _api.ListDevicesAsync(CancellationToken.None);
+        Assert.Contains(devices, d => d.Address == dnsName && d.UseHostName);
+
+        await using var again = new AddDevicesViewModel(_api, new ImmediateUiDispatcher(), NullLogger<AddDevicesViewModel>.Instance, AddDevicesMode.IpRange, settings);
+        Assert.True(again.UseDnsNames);
+        await using var manual = new AddDevicesViewModel(_api, new ImmediateUiDispatcher(), NullLogger<AddDevicesViewModel>.Instance, AddDevicesMode.Manual, settings);
+        Assert.False(manual.ShowDnsNameChoice); // typed addresses are kept as typed
+    }
+
+    [Fact]
     public async Task Only_authenticated_devices_can_be_selected_and_are_added_in_one_click()
     {
         await using AddDevicesViewModel page = await OpenScanAsync();

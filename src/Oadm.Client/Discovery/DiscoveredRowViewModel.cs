@@ -99,8 +99,43 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
 
     [ObservableProperty] public partial string Serial { get; private set; } = "";
 
-    /// <summary>The entered address for "Add manually", else the IP address.</summary>
+    /// <summary>
+    /// The address the device is added with: the entered one for "Add manually" and imports, else the DNS name when the page
+    /// shows DNS names and the device has one, else the IP address.
+    /// </summary>
     [ObservableProperty] public partial string Address { get; private set; } = "";
+
+    /// <summary>The IP address the device answered at (empty for an import line before its probe).</summary>
+    [ObservableProperty] public partial string IpAddress { get; private set; } = "";
+
+    /// <summary>The verified DNS name of the IP address; empty when DNS has none (or the lookup did not finish yet).</summary>
+    [ObservableProperty] public partial string DnsName { get; private set; } = "";
+
+    private string _enteredAddress = "";
+    private bool _showDnsName;
+
+    /// <summary>"Use DNS names instead of IP addresses" of the page (set for every row in one pass).</summary>
+    public bool ShowDnsName
+    {
+        get => _showDnsName;
+        set
+        {
+            if (_showDnsName != value)
+            {
+                _showDnsName = value;
+                UpdateAddress();
+            }
+        }
+    }
+
+    /// <summary>The IP address under the DNS name (tooltip of the address).</summary>
+    public string AddressTip => Address != IpAddress && IpAddress.Length > 0 ? "IP address " + IpAddress : string.Empty;
+
+    private void UpdateAddress()
+    {
+        Address = _enteredAddress.Length > 0 ? _enteredAddress : _showDnsName && DnsName.Length > 0 ? DnsName : IpAddress;
+        OnPropertyChanged(nameof(AddressTip));
+    }
     [ObservableProperty] public partial string HostName { get; private set; } = "";
     [ObservableProperty] public partial string Model { get; private set; } = "";
     [ObservableProperty] public partial DeviceStatus Status { get; private set; }
@@ -161,7 +196,10 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(device);
         Serial = device.Serial;
-        Address = device.EnteredAddress.Length > 0 ? device.EnteredAddress : device.Address;
+        _enteredAddress = device.EnteredAddress;
+        IpAddress = device.Address;
+        DnsName = device.DnsName;
+        UpdateAddress();
         HostName = device.HostName;
         if (device.Model.Length > 0 || Model.Length == 0)
         {
@@ -212,6 +250,8 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
         string term = search.Trim();
         return Serial.Contains(term, StringComparison.OrdinalIgnoreCase)
             || Address.Contains(term, StringComparison.OrdinalIgnoreCase)
+            || IpAddress.Contains(term, StringComparison.OrdinalIgnoreCase)
+            || DnsName.Contains(term, StringComparison.OrdinalIgnoreCase)
             || HostName.Contains(term, StringComparison.OrdinalIgnoreCase)
             || Model.Contains(term, StringComparison.OrdinalIgnoreCase)
             || ChipText.Contains(term, StringComparison.OrdinalIgnoreCase);

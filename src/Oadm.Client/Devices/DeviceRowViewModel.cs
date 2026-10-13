@@ -122,7 +122,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
         Address = device.Address;
         HostName = string.IsNullOrEmpty(device.HostName) ? null : device.HostName;
         UseHostName = device.UseHostName;
-        DisplayAddress = device.UseHostName && !string.IsNullOrEmpty(device.HostName) ? device.HostName : device.Address;
+        DisplayAddress = device.Address; // the IP address or the DNS / host name the device was added with
         Model = device.Model;
         FirmwareVersion = device.FirmwareVersion;
         DhcpText = device.HasDhcpEnabled ? (device.DhcpEnabled ? "Yes" : "No") : "";

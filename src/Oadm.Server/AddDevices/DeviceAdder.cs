@@ -59,7 +59,7 @@ public sealed partial class DeviceAdder(
                 {
                     Serial = found.Serial,
                     Address = address,
-                    UseHostName = useHostName,
+                    UseHostName = !IPAddress.TryParse(EnteredAddress.TryParse(address, out var parsed, out _) ? parsed!.Host : address, out _),
                     HostName = hostName,
                     Model = probed?.Model ?? found.Model,
                     FirmwareVersion = probed?.FirmwareVersion ?? found.FirmwareVersion,
@@ -129,25 +129,23 @@ public sealed partial class DeviceAdder(
         return probed?.IsFactoryDefault ?? found.Status == DiscoveredDeviceStatus.PasswordNotSet;
     }
 
-    /// <summary>The connection address: the entered address of "Add manually", else the host name when asked for and known, else the IP.</summary>
-    public static (string Address, string? HostName) ChooseAddress(DiscoveredDevice found, bool useHostName)
+    /// <summary>
+    /// The connection address and the DNS name kept with the device: the entered address of "Add manually" or an imported line
+    /// as typed; otherwise the verified DNS name (<see cref="DiscoveredDevice.DnsName"/>) when the page asks for DNS names
+    /// (<paramref name="useDnsName"/>) and the device has one, else the IP address. mDNS ".local" names are never used.
+    /// </summary>
+    public static (string Address, string? HostName) ChooseAddress(DiscoveredDevice found, bool useDnsName)
     {
         ArgumentNullException.ThrowIfNull(found);
         if (!string.IsNullOrWhiteSpace(found.EnteredAddress))
         {
             var host = EnteredAddress.TryParse(found.EnteredAddress, out var entered, out _) ? entered!.Host : null;
             var isName = host is not null && !IPAddress.TryParse(host, out _);
-            return (found.EnteredAddress, isName ? host : found.HostName);
+            return (found.EnteredAddress, isName ? host : null);
         }
 
-        var hostName = found.HostName;
-        if (!string.IsNullOrWhiteSpace(hostName) && !hostName.Contains('.', StringComparison.Ordinal))
-        {
-            hostName += ".local"; // mDNS names come without the domain
-        }
-
-        var address = useHostName && !string.IsNullOrWhiteSpace(hostName) ? hostName : found.Address.ToString();
-        return (address, string.IsNullOrWhiteSpace(hostName) ? null : hostName);
+        var dnsName = Oadm.Core.Discovery.SystemDnsNameLookup.Normalize(found.DnsName);
+        return (useDnsName && dnsName is not null ? dnsName : found.Address.ToString(), dnsName);
     }
 
     private async Task<SdkDeviceStatus> SetInitialPasswordAsync(Device device, string password, CancellationToken ct)

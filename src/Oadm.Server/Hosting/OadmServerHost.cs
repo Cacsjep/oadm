@@ -334,12 +334,14 @@ public static partial class OadmServerHost
         services.AddSingleton<VapixDeviceProbe>(sp => new VapixDeviceProbe(logger: sp.GetService<ILogger<VapixDeviceProbe>>()));
         services.AddSingleton<IDeviceProbe>(sp => sp.GetRequiredService<VapixDeviceProbe>());
         services.AddSingleton<RangeScanner>();
+        services.AddSingleton<IDnsNameLookup>(SystemDnsNameLookup.Instance);
         services.AddSingleton(sp => new CoreDiscoveryService(
             sp.GetRequiredService<IMdnsBrowser>(),
             sp.GetRequiredService<RangeScanner>(),
             sp.GetRequiredService<IDeviceProbe>(),
             sp.GetService<ILogger<CoreDiscoveryService>>(),
-            sp.GetRequiredService<TimeProvider>()));
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<IDnsNameLookup>()));
         services.AddSingleton<IDiscoveryBackend, CoreDiscoveryBackend>();
         services.AddSingleton<DiscoveryAuthenticator>();
         // Adding devices: the add page's Commit and the automatic add of core plugins (DHCP server) share DeviceAdder.

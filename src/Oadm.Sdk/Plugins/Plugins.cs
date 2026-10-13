@@ -229,7 +229,7 @@ public interface ITaskExecutionContext
     /// (throws <see cref="DeviceIdentityException"/> otherwise, the record is unchanged), keeps credentials and
     /// certificate pin, publishes the change and queues a full refresh; afterwards <see cref="Vapix"/> uses the
     /// new address. Returns false when nothing was changed because OADM reaches the device by host name
-    /// (setting Devices.UseHostName) or the record already has that address.
+    /// (added by its DNS name or a typed name) or the record already has that address.
     /// </summary>
     Task<bool> UpdateDeviceAddressAsync(string newAddress, CancellationToken ct) =>
         throw new NotSupportedException("This context cannot change the device address.");

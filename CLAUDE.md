@@ -274,7 +274,8 @@ Two processes, like ADM:
   saved to the list, never logged; `DiscoveryAuthenticator.AddSessionCredential`), `WatchDiscovered` (stream; every device with its automatic login result
   `auth_state = 14` (PENDING, AUTHENTICATED, PASSWORD_NOT_SET, LOGIN_FAILED, UNREACHABLE,
   ALREADY_ADDED), `auth_user_name = 15`, `credential_id = 16` ("list:<id>",
-  "entered"), `auth_detail = 17`, `passphrase_policy = 18`, `entered_address = 19`; every scan
+  "entered"), `auth_detail = 17`, `passphrase_policy = 18`, `entered_address = 19`, `dns_name = 20` (the verified DNS name of the
+  address, see "Add Devices Page"); every scan
   (zero-conf after `Discovery.ZeroConfSeconds`, range scans, address probes, or `StopScan`) ends with
   scan_finished and the stream ends once every login of the session finished; watching a finished
   session again replays its devices with their current login result, then streams the logins still
@@ -285,7 +286,8 @@ Two processes, like ADM:
   to the stream; on success the credential is tried on the failed devices of the session and of the
   related sessions, see "Add Devices Page"; NOT_FOUND, FAILED_PRECONDITION factory default / already
   added, INVALID_ARGUMENT),
-  `Commit(session_id, discovered_ids, initial_passwords map = 6, initial_root_password)` (reply:
+  `Commit(session_id, discovered_ids, initial_passwords map = 6, initial_root_password, use_host_name = 3)` (the page's
+  "Use DNS names instead of IP addresses"; reply:
   `device_ids`, `results = 3` with discovered_id, device_id, status), `Prepare` (legacy, unused).
   See "Add Devices Page".
 - `TaskService`: `ListTaskPlugins(ListTaskPluginsRequest)` (context-menu entries incl. those contributed by Core
@@ -378,7 +380,7 @@ SQLite runs with the WAL journal (`DatabaseInitializer`) and `synchronous=NORMAL
 crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
 
 - `Device`: Id (Guid), Serial (= MAC, unique, upper hex, no separators), Address,
-  UseHostName (bool), HostName, Model (ProdNbr), FirmwareVersion, DhcpEnabled, HttpsEnabled,
+  UseHostName (bool: Address is a name, not an IP), HostName (the verified DNS name or the typed name), Model (ProdNbr), FirmwareVersion, DhcpEnabled, HttpsEnabled,
   Dot1xEnabled, UpnpFriendlyName, ServerName, Status (enum below), Scheme (http/https),
   ProductType (raw basicdeviceinfo ProdType, e.g. "Dome Camera"), Soc (raw basicdeviceinfo Soc, e.g. "Axis Artpec-8",
   max 64, migration `DeviceSoc`; proto `soc = 29`), Category (enum below),
@@ -473,7 +475,7 @@ OADM keeps a device managed when its address changes (`Oadm.Core.Devices.DeviceA
   way and moves it right away, also while the device still counts as reachable (`TryRelocateAsync(..., requireUnreachable:
   false)`; a lease proves the change). Not verified yet (the device is still starting): one retry after 30 s. Logged
   and audited ("Device moved", user "system", "DHCP server: from A to B"). Works whether or not the automatic add is on.
-- Devices addressed by host name (`Devices.UseHostName`) keep their host name; their record never moves.
+- Devices addressed by a name (added by their DNS name or a typed host name) keep it; their record never moves.
 
 ## IP range scan
 
@@ -559,7 +561,7 @@ controls: title bar, one card, footer) in four modes:
 - **Add manually**: Address input (IP or host name, optional port and scheme,
   `https://camera.example.com:8443`); Enter or Find probes that address (`ProbeAddress`); every
   address adds a row; "No Axis device answered at X." when nothing answers. The entered address
-  (host[:port]) becomes the device address on add, regardless of `Devices.UseHostName`.
+  (host[:port]) becomes the device address on add, as typed.
 - **Import devices** (built-in icon button after Add manually, icon download): the
   client asks for a CSV file (open picker through `IDialogService.OpenFileAsync`) and reads it with
   `Discovery/DeviceImportFile` (O(n)): the Export devices CSV or any CSV with an address column (header names
@@ -584,7 +586,17 @@ controls: title bar, one card, footer) in four modes:
   credential list"). Then the technician reviews and clicks Add as usual. Scale: 10,000 lines are listed,
   filtered and selected in one reset each (test).
 
-List: checkbox (40 px; shown only for rows that can be added), category icon (36 px), Address (140), MAC address (150),
+**DNS names**: Discovery and Network range have the check box **Use DNS names instead of IP addresses** (in the scan
+progress row, left of Stop / Scan again; remembered per client, `ClientSettings.AddByDnsName`). The server looks up the DNS name of every found IP
+(`Oadm.Core.Discovery.IDnsNameLookup`, `SystemDnsNameLookup`: reverse lookup, a full name with a domain, not ".local" or
+".arpa", that resolves back to the same IP; 3 s, 16 at a time, once per device and address, never for typed addresses;
+`DiscoveredDevice.DnsName`, dropped when the address changes). Checked, the Address column shows the DNS name (tooltip
+"IP address x"; the search also finds the IP) and `Commit(use_host_name)` adds those devices by it
+(`DeviceAdder.ChooseAddress`); a device without a DNS name is added by IP. The address a device is added with stays its
+address (no switching later, the grid shows it). Add manually and Import from file keep the typed address. Tests:
+`DiscoveryServiceTests` (fake lookup), `AddDevicesServiceTests`, `AddDevicesPageTests`.
+
+List: checkbox (40 px; shown only for rows that can be added), category icon (36 px), Address (200), MAC address (150),
 Model (160), Login (status, star: takes the rest so status and detail sit right after Model; rows grow so the reason
 shows on up to two lines, grid class `wrapRows`), Action (auto, at the right edge). An empty list says what to do first ("Enter a range and press Scan.", "Enter an address and press Find."). Scan
 and Find are filled secondary buttons. A page error (Add or discovery failed) stands directly below the list. The scan
@@ -1799,11 +1811,9 @@ delete, one Removed change per task; server-only, not on the settings page yet),
 time, read live by the task engine, plugin `MaxParallelDevices` can only lower it; proto
 `optional int32 max_parallel_tasks_per_plugin = 9` so a partial `Set` keeps it; Settings page "Parallel
 tasks per plugin" with the hint "How many devices a task runs on at the same time, e.g. restarts or
-firmware updates."), `Devices.UseHostName` (bool, false: add devices by host name when one is
-known, otherwise by IP address; proto `optional bool use_host_name = 7` so a partial `Set`
-keeps it). Settings page in the client exposes them (four cards Polling, Discovery, Tasks, Server, saved
-together by Save and Reload at the end of the Server card; operators see the values as plain text without Save and Reload); `Devices.UseHostName` is the checkbox
-"Use host name when available, otherwise IP address". Rail page **Credentials** (Admin only, subtitle "Passwords OADM
+firmware updates."). The former `Devices.UseHostName` is gone: the add page chooses DNS names or IP addresses
+per add (see "Add Devices Page"); proto `use_host_name = 7` is kept unused for its field number. Settings page in the client exposes them (four cards Polling, Discovery, Tasks, Server, saved
+together by Save and Reload at the end of the Server card; operators see the values as plain text without Save and Reload). Rail page **Credentials** (Admin only, subtitle "Passwords OADM
 tries when it adds devices.", `Settings/CredentialsViewModel` + `CredentialsView`, one card without title): entries (key icon, user name, password masked as 8 bullets, eye icon button "Show password" /
 "Hide password" that loads it with `RevealCredential` and masks (and forgets) it on the second click, copy icon
 button "Copy password" (clipboard of the window, loaded on demand, not shown), added time, Remove as a red icon button), a separator, then the add form under the heading "Add credential" (user

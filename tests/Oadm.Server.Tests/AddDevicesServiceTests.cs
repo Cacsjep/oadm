@@ -177,32 +177,58 @@ public sealed class AddDevicesServiceTests
     }
 
     [Fact]
-    public async Task CommitTakesUseHostNameFromTheServerSettingNotTheRequest()
+    public async Task CommitUsesTheDnsNameOnlyWhenTheRequestAsksForIt()
     {
-        await using var host = await TestServerHost.StartAsync(Network());
-        var (session, devices) = await TestHelpers.ScanAsync(host, "10.9.0.1", "10.9.0.2");
+        var network = Network();
+        network.DnsNames["10.9.0.1"] = "Axis-1.Site.Example.";
+        network.DnsNames["10.9.0.2"] = "axis-2.site.example";
+        await using var host = await TestServerHost.StartAsync(network);
+        var (session, devices) = await TestHelpers.ScanAsync(host, "10.9.0.1", "10.9.0.3");
+        var byIp = devices.ToDictionary(d => d.Address);
 
-        // The request flag is unused: setting false wins over a true request.
-        await host.AddDevices.CommitAsync(new Proto.CommitRequest { SessionId = session, UseHostName = true, DiscoveredIds = { devices[0].DiscoveredId } });
-        // Setting true: stored on the device; range scan results have no host name, so the IP stays the address.
-        await host.Settings.SetAsync(new Proto.ServerSettings { UseHostName = true });
-        await host.AddDevices.CommitAsync(new Proto.CommitRequest { SessionId = session, DiscoveredIds = { devices[1].DiscoveredId } });
+        // The lookup's name reaches the discovered list (normalized); 10.9.0.3 has none.
+        var watched = (await TestHelpers.WatchToEndAsync(host, session)).Values.ToDictionary(d => d.Address);
+        Assert.Equal("axis-1.site.example", watched["10.9.0.1"].DnsName);
+        Assert.Equal("", watched["10.9.0.3"].DnsName);
 
-        var list = (await host.Devices.ListAsync(new Proto.Empty())).Devices.ToDictionary(d => d.Address);
-        Assert.False(list["10.9.0.1"].UseHostName);
-        Assert.True(list["10.9.0.2"].UseHostName);
-        Assert.True((await host.Settings.GetAsync(new Proto.Empty())).UseHostName);
+        await host.AddDevices.CommitAsync(new Proto.CommitRequest
+        {
+            SessionId = session,
+            UseHostName = true,
+            DiscoveredIds = { byIp["10.9.0.1"].DiscoveredId, byIp["10.9.0.3"].DiscoveredId },
+            InitialRootPassword = "initial-Pass1", // 10.9.0.3 is factory default
+        });
+        await host.AddDevices.CommitAsync(new Proto.CommitRequest { SessionId = session, DiscoveredIds = { byIp["10.9.0.2"].DiscoveredId } });
+
+        var list = (await host.Devices.ListAsync(new Proto.Empty())).Devices.ToDictionary(d => d.Serial);
+        var first = list[byIp["10.9.0.1"].Serial];
+        Assert.Equal("axis-1.site.example", first.Address);
+        Assert.True(first.UseHostName);
+        var withoutName = list[byIp["10.9.0.3"].Serial];
+        Assert.Equal("10.9.0.3", withoutName.Address); // no DNS name: the IP
+        Assert.False(withoutName.UseHostName);
+        var notAsked = list[byIp["10.9.0.2"].Serial];
+        Assert.Equal("10.9.0.2", notAsked.Address);
+        Assert.Equal("axis-2.site.example", notAsked.HostName); // kept with the device
+        Assert.False(notAsked.UseHostName);
     }
 
     [Fact]
-    public async Task UseHostNameStoresTheHostNameAsAddress()
+    public void ChooseAddressTakesTheEnteredAddressElseTheDnsNameWhenAskedElseTheIp()
     {
         var found = new Core.Discovery.DiscoveredDevice(
-            "ACCC8E000001", "ACCC8E000001", System.Net.IPAddress.Parse("10.9.0.1"), "axis-accc8e000001", null, null,
-            Core.Discovery.DiscoveredDeviceStatus.CredentialsRequired, "https", Core.Discovery.DiscoverySources.Mdns, DateTimeOffset.UtcNow);
+            "ACCC8E000001", "ACCC8E000001", System.Net.IPAddress.Parse("10.9.0.1"), "axis-accc8e000001.local", null, null,
+            Core.Discovery.DiscoveredDeviceStatus.CredentialsRequired, "https", Core.Discovery.DiscoverySources.Mdns, DateTimeOffset.UtcNow,
+            DnsName: "axis-accc8e000001.site.example");
 
-        Assert.Equal(("axis-accc8e000001.local", "axis-accc8e000001.local"), AddDevices.AddDevicesGrpcService.ChooseAddress(found, useHostName: true));
-        Assert.Equal(("10.9.0.1", "axis-accc8e000001.local"), AddDevices.AddDevicesGrpcService.ChooseAddress(found, useHostName: false));
-        Assert.Equal(("10.9.0.1", null), AddDevices.AddDevicesGrpcService.ChooseAddress(found with { HostName = null }, useHostName: true));
+        Assert.Equal(("axis-accc8e000001.site.example", "axis-accc8e000001.site.example"), AddDevices.DeviceAdder.ChooseAddress(found, useDnsName: true));
+        Assert.Equal(("10.9.0.1", "axis-accc8e000001.site.example"), AddDevices.DeviceAdder.ChooseAddress(found, useDnsName: false));
+
+        // The mDNS name is never used; without a DNS name the IP stays.
+        Assert.Equal(("10.9.0.1", null), AddDevices.DeviceAdder.ChooseAddress(found with { DnsName = null }, useDnsName: true));
+
+        // Entered addresses are kept as typed; a typed name is the host name.
+        Assert.Equal(("cam.example.com:8443", "cam.example.com"), AddDevices.DeviceAdder.ChooseAddress(found with { EnteredAddress = "cam.example.com:8443" }, useDnsName: false));
+        Assert.Equal(("10.9.0.7", null), AddDevices.DeviceAdder.ChooseAddress(found with { EnteredAddress = "10.9.0.7" }, useDnsName: true));
     }
 }

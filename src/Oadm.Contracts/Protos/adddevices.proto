@@ -42,7 +42,9 @@ message DeviceCredentials {
 message CommitRequest {
   string session_id = 1;
   repeated string discovered_ids = 2;
-  bool use_host_name = 3;            // unused, ignored: the server setting Devices.UseHostName decides
+  // "Use DNS names instead of IP addresses" of the add page: devices found by Discovery or Network range are added by
+  // their DNS name (DiscoveredDevice.dns_name) when they have one, else by IP. Entered addresses are kept as typed.
+  bool use_host_name = 3;
   string initial_root_password = 4;  // factory-default devices without an entry in initial_passwords; empty = none
   // Explicit credentials (legacy). Without them the server uses the credential that worked in the
   // automatic login or RetryAuth of the session.

@@ -27,9 +27,6 @@ public static class SettingKeys
 
     /// <summary>Most event log entries kept (default 100,000, 0 = no limit, else at least 100).</summary>
     public const string EventsLogMaxEntries = "Events.LogMaxEntries";
-    /// <summary>Add devices by host name when one is known, otherwise by IP address. Bool, default false.</summary>
-    public const string DevicesUseHostName = "Devices.UseHostName";
-
     /// <summary>A zero-conf scan of the add page ends after this many seconds. Int, default 30, 5..300.</summary>
     public const string DiscoveryZeroConfSeconds = "Discovery.ZeroConfSeconds";
 
@@ -88,7 +85,6 @@ public sealed record ServerSettings(
     string ServerName,
     string ListenUrl,
     int FullRefreshMinutes = ServerSettings.DefaultFullRefreshMinutes,
-    bool UseHostName = ServerSettings.DefaultUseHostName,
     int ZeroConfSeconds = ServerSettings.DefaultZeroConfSeconds,
     int MaxParallelTasksPerPlugin = ServerSettings.DefaultMaxParallelTasksPerPlugin)
 {
@@ -113,7 +109,6 @@ public sealed record ServerSettings(
     public const int MaxTasksMaxHistory = 1_000_000;
     public const int DefaultEventsLogRetentionDays = 30;
     public const int DefaultEventsLogMaxEntries = 100_000;
-    public const bool DefaultUseHostName = false;
     public const int DefaultZeroConfSeconds = 30;
     public const int MinZeroConfSeconds = 5;
     public const int MaxZeroConfSeconds = 300;
@@ -128,7 +123,6 @@ public sealed record ServerSettings(
         DefaultServerName(),
         DefaultListenUrl,
         DefaultFullRefreshMinutes,
-        DefaultUseHostName,
         DefaultZeroConfSeconds,
         DefaultMaxParallelTasksPerPlugin);
 

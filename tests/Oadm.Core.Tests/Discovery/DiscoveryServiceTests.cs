@@ -249,6 +249,85 @@ public class DiscoveryServiceTests
         Assert.Equal("P3265-V", moved.Model);
     }
 
+    [Fact]
+    public async Task FoundDevicesGetTheirDnsNameOncePerAddress()
+    {
+        var browser = new FakeMdnsBrowser();
+        var probe = new FakeProbe(new Dictionary<string, DeviceProbeResult>
+        {
+            ["10.0.0.48"] = FakeProbe.Device("10.0.0.48", "B8A44F631339"),
+            ["10.0.0.49"] = FakeProbe.Device("10.0.0.49", "B8A44F631339"),
+        });
+        var dns = new FakeDnsNames { ["10.0.0.48"] = "cam-48.site.example", ["10.0.0.49"] = "cam-49.site.example" };
+        await using var service = new DiscoveryService(browser, new RangeScanner(probe), probe, dnsNames: dns);
+        var session = service.StartZeroConf();
+
+        browser.Announce("10.0.0.48", "B8A44F631339");
+        var device = await WaitForAsync(service, session.Id, d => d.DnsName is not null);
+        Assert.Equal("cam-48.site.example", device.DnsName);
+
+        // The device moved: the old name is dropped and the new address is looked up.
+        browser.Announce("10.0.0.49", "B8A44F631339");
+        device = await WaitForAsync(service, session.Id, d => d.DnsName == "cam-49.site.example");
+        Assert.Equal(IPAddress.Parse("10.0.0.49"), device.Address);
+        Assert.Equal(["10.0.0.48", "10.0.0.49"], dns.Asked.Order());
+
+        // Back at the first address: the name found then, without a second lookup.
+        browser.Announce("10.0.0.48", "B8A44F631339");
+        device = await WaitForAsync(service, session.Id, d => d.DnsName == "cam-48.site.example");
+        Assert.Equal(IPAddress.Parse("10.0.0.48"), device.Address);
+        Assert.Equal(2, dns.Asked.Count);
+    }
+
+    [Fact]
+    public async Task EnteredAddressesAreNotLookedUp()
+    {
+        var probe = new FakeProbe(new Dictionary<string, DeviceProbeResult> { ["10.0.0.48"] = FakeProbe.Device("10.0.0.48", "B8A44F631339") });
+        var dns = new FakeDnsNames { ["10.0.0.48"] = "cam-48.site.example" };
+        await using var service = new DiscoveryService(new FakeMdnsBrowser(), new RangeScanner(probe), probe, dnsNames: dns);
+
+        var session = service.StartAddressProbe("10.0.0.48", ct => probe.ProbeAsync(IPAddress.Parse("10.0.0.48"), TimeSpan.FromSeconds(1), ct));
+        var events = await Collect(service, session.Id);
+
+        Assert.All(events.Where(e => e.Device is not null), e => Assert.Null(e.Device!.DnsName));
+        Assert.Empty(dns.Asked);
+    }
+
+    [Fact]
+    public void MergeKeepsTheDnsNameOnlyForItsAddress()
+    {
+        var t0 = DateTimeOffset.UnixEpoch;
+        var seen = new DiscoveryService.DeviceObservation("B8A44F631339", IPAddress.Parse("10.0.0.48"), null, null, null, null, null, DiscoverySources.RangeScan);
+        var named = DiscoveryService.Merge(DiscoveryService.Merge(null, seen, t0), seen with { DnsName = "cam.site.example" }, t0)!;
+        Assert.Equal("cam.site.example", named.DnsName);
+
+        Assert.Null(DiscoveryService.Merge(named, seen, t0)); // a later observation keeps it: no change
+        Assert.Null(DiscoveryService.Merge(named, seen with { Address = IPAddress.Parse("10.0.0.49") }, t0)!.DnsName);
+    }
+
+    [Theory]
+    [InlineData("Axis-B8A44F631339.Site.Example.", "axis-b8a44f631339.site.example")]
+    [InlineData("cam.example.com", "cam.example.com")]
+    [InlineData("axis-b8a44f631339", null)] // no domain
+    [InlineData("axis-b8a44f631339.local", null)] // mDNS
+    [InlineData("10.0.0.48", null)]
+    [InlineData("48.0.0.10.in-addr.arpa.", null)] // reverse zone name
+    [InlineData("bad name.example", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void DnsNamesAreNormalized(string? name, string? expected) => Assert.Equal(expected, SystemDnsNameLookup.Normalize(name));
+
+    private sealed class FakeDnsNames : Dictionary<string, string>, IDnsNameLookup
+    {
+        public System.Collections.Concurrent.ConcurrentBag<string> Asked { get; } = [];
+
+        public Task<string?> LookupAsync(IPAddress address, CancellationToken ct)
+        {
+            Asked.Add(address.ToString());
+            return Task.FromResult(TryGetValue(address.ToString(), out var name) ? name : null);
+        }
+    }
+
     private static async Task<List<DiscoveryEvent>> Collect(DiscoveryService service, string sessionId)
     {
         using var cts = new CancellationTokenSource(TestTimeout);

@@ -129,6 +129,8 @@ internal sealed class TestServerHost : IAsyncDisposable
                 services.AddSingleton(new PasswordHasher(1_000));
                 services.RemoveAll<IMdnsBrowser>();
                 services.AddSingleton<IMdnsBrowser, SilentMdnsBrowser>();
+                services.RemoveAll<IDnsNameLookup>();
+                services.AddSingleton(network.CreateDnsLookup());
                 if (!useRealNetwork)
                 {
                     services.RemoveAll<IVapixConnector>();

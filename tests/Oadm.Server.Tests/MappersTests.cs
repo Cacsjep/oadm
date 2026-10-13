@@ -225,12 +225,9 @@ public sealed class MappersTests
         Assert.Equal(current with { ServerName = "new" }, Mappers.FromProto(new Proto.ServerSettings { ServerName = " new " }, current));
         Assert.Equal(10, Mappers.ToProto(current).FullRefreshMinutes);
         Assert.Equal(current with { FullRefreshMinutes = 25 }, Mappers.FromProto(new Proto.ServerSettings { FullRefreshMinutes = 25 }, current));
-        Assert.True(Mappers.ToProto(current).HasUseHostName);
-        Assert.False(Mappers.ToProto(current).UseHostName);
-        var withHostName = current with { UseHostName = true };
-        Assert.Equal(withHostName, Mappers.FromProto(new Proto.ServerSettings { UseHostName = true }, current));
-        Assert.Equal(withHostName, Mappers.FromProto(new Proto.ServerSettings { ServerName = "srv" }, withHostName)); // unset keeps it
-        Assert.Equal(current, Mappers.FromProto(new Proto.ServerSettings { UseHostName = false }, withHostName));
+        // use_host_name is no longer a server setting: never sent, ignored in a Set.
+        Assert.False(Mappers.ToProto(current).HasUseHostName);
+        Assert.Equal(current, Mappers.FromProto(new Proto.ServerSettings { UseHostName = true }, current));
 
         // Tasks.MaxParallelPerPlugin: optional, unset keeps the stored value.
         Assert.Equal(16, current.MaxParallelTasksPerPlugin);

@@ -164,18 +164,18 @@ public sealed class StoreTests
     }
 
     [Fact]
-    public void Task_devices_use_the_host_name_like_the_device_grid()
+    public void Task_devices_use_the_address_like_the_device_grid()
     {
         var devices = new DeviceStore();
-        Device device = TestSupport.Device("d1", "A", "10.0.0.48", "M");
-        device.HostName = "axis-a.local";
+        Device device = TestSupport.Device("d1", "A", "axis-a.site.example", "M"); // added by its DNS name
+        device.HostName = "axis-a.site.example";
         device.UseHostName = true;
         devices.Reset([device]);
         var store = new TaskStore(devices);
 
         store.Reset([TaskOn("t", ("d1", TaskState.Done, ""))]);
 
-        Assert.Equal("axis-a.local", store.Find("t")!.DeviceText);
+        Assert.Equal("axis-a.site.example", store.Find("t")!.DeviceText);
         Assert.Equal(devices.Find("d1")!.DisplayAddress, store.Find("t")!.DeviceText);
     }
 

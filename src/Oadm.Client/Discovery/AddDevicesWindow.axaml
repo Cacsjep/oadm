@@ -64,13 +64,23 @@
           <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" />
         </Grid>
 
-        <!-- Scan progress; Stop while a zero-conf or range scan runs, Scan again once it finished or was stopped -->
-        <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,0,0,10"
-              IsVisible="{Binding ScanStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-          <ui:ProgressRow Value="{Binding ScanProgress}" Text="{Binding ScanStatusText}" IsActive="{Binding IsScanning}" ShowBar="{Binding IsScanning}" />
-          <ui:ToolbarButton x:Name="StopScanButton" Grid.Column="1" Margin="12,0,0,0" Text="Stop" IconKey="stop" Command="{Binding StopScanCommand}"
+        <!-- Scan progress, the DNS name choice (Discovery, Network range); Stop while a zero-conf or range scan runs, Scan again
+             once it finished or was stopped -->
+        <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,10">
+          <Grid.IsVisible>
+            <MultiBinding Converter="{x:Static BoolConverters.Or}">
+              <Binding Path="ScanStatusText" Converter="{x:Static StringConverters.IsNotNullOrEmpty}" />
+              <Binding Path="ShowDnsNameChoice" />
+            </MultiBinding>
+          </Grid.IsVisible>
+          <ui:ProgressRow Value="{Binding ScanProgress}" Text="{Binding ScanStatusText}" IsActive="{Binding IsScanning}" ShowBar="{Binding IsScanning}"
+                          IsVisible="{Binding ScanStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <CheckBox Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0" IsVisible="{Binding ShowDnsNameChoice}"
+                    IsChecked="{Binding UseDnsNames}" Content="Use DNS names instead of IP addresses"
+                    ToolTip.Tip="Devices without a DNS name are added by IP address" />
+          <ui:ToolbarButton x:Name="StopScanButton" Grid.Column="2" Margin="12,0,0,0" Text="Stop" IconKey="stop" Command="{Binding StopScanCommand}"
                             IsVisible="{Binding ShowStop}" ToolTip.Tip="Found devices stay in the list" />
-          <ui:ToolbarButton x:Name="ScanAgainButton" Grid.Column="1" Margin="12,0,0,0" Text="Scan again" IconKey="refresh" Command="{Binding ScanAgainCommand}"
+          <ui:ToolbarButton x:Name="ScanAgainButton" Grid.Column="2" Margin="12,0,0,0" Text="Scan again" IconKey="refresh" Command="{Binding ScanAgainCommand}"
                             IsVisible="{Binding ShowScanAgain}" ToolTip.Tip="Found devices stay in the list" />
         </Grid>
 
@@ -98,7 +108,13 @@
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
-            <DataGridTextColumn Header="Address" Width="140" Binding="{Binding Address}" x:DataType="disc:DiscoveredRowViewModel" />
+            <DataGridTemplateColumn Header="Address" Width="200" SortMemberPath="Address">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="disc:DiscoveredRowViewModel">
+                  <TextBlock Classes="cellText" Text="{Binding Address}" ToolTip.Tip="{Binding AddressTip}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
             <DataGridTextColumn Header="MAC address" Width="150" Binding="{Binding Serial}" x:DataType="disc:DiscoveredRowViewModel" />
             <DataGridTextColumn Header="Model" Width="160" Binding="{Binding Model}" x:DataType="disc:DiscoveredRowViewModel" />
             <DataGridTemplateColumn Header="Login" Width="*" SortMemberPath="ChipText">

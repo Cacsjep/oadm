@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 
+using Oadm.Core.Discovery;
 using Oadm.Core.Vapix;
 
 namespace Oadm.Server.Tests.Support;
@@ -253,6 +254,18 @@ internal sealed class FakeAxisNetwork
 
     /// <summary>Anonymous handler (probes).</summary>
     public HttpMessageHandler CreateHandler(NetworkCredential? credentials = null, CertificatePinning? pinning = null) => new Handler(this, credentials, pinning);
+
+    /// <summary>DNS names of addresses (IP -> FQDN) for the discovery's DNS lookup; no real DNS in tests.</summary>
+    public ConcurrentDictionary<string, string> DnsNames { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The discovery's DNS lookup over <see cref="DnsNames"/>.</summary>
+    public IDnsNameLookup CreateDnsLookup() => new DnsLookup(this);
+
+    private sealed class DnsLookup(FakeAxisNetwork network) : IDnsNameLookup
+    {
+        public Task<string?> LookupAsync(IPAddress address, CancellationToken ct) =>
+            Task.FromResult(network.DnsNames.TryGetValue(address.ToString(), out var name) ? name : null);
+    }
 
     /// <summary><see cref="IVapixConnector"/> that sends the connection's credentials to the fake device.</summary>
     public IVapixConnector CreateConnector() => new Connector(this);

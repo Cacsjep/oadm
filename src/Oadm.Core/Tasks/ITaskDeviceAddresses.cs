@@ -35,7 +35,7 @@ public enum DeviceAddressChangeResult
     /// <summary>The record already had that address.</summary>
     Unchanged = 1,
 
-    /// <summary>OADM reaches the device by host name (Devices.UseHostName); the host name is kept.</summary>
+    /// <summary>OADM reaches the device by host name (added by its DNS name or a typed name); the host name is kept.</summary>
     KeptHostName = 2,
 
     /// <summary>No managed device has that serial number.</summary>
