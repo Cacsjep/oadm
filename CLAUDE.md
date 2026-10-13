@@ -1760,8 +1760,8 @@ time, read live by the task engine, plugin `MaxParallelDevices` can only lower i
 tasks per plugin" with the hint "How many devices a task runs on at the same time, e.g. restarts or
 firmware updates."), `Devices.UseHostName` (bool, false: add devices by host name when one is
 known, otherwise by IP address; proto `optional bool use_host_name = 7` so a partial `Set`
-keeps it). Settings page in the client exposes them (one card, fields grouped under the headings Polling, Discovery,
-Tasks, Server; Save and Reload in the input column; operators see the values as plain text without Save and Reload); `Devices.UseHostName` is the checkbox
+keeps it). Settings page in the client exposes them (four cards Polling, Discovery, Tasks, Server, saved
+together by Save and Reload at the end of the Server card; operators see the values as plain text without Save and Reload); `Devices.UseHostName` is the checkbox
 "Use host name when available, otherwise IP address". Rail page **Credentials** (Admin only, subtitle "Passwords OADM
 tries when it adds devices.", `Settings/CredentialsViewModel` + `CredentialsView`, one card without title): entries (key icon, user name, password masked as 8 bullets, eye icon button "Show password" /
 "Hide password" that loads it with `RevealCredential` and masks (and forgets) it on the second click, copy icon
