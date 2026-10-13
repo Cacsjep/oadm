@@ -16,19 +16,18 @@
         </Button>
         <RadioButton GroupName="range" Content="All recordings" IsChecked="{Binding AllRecordings}" IsEnabled="{Binding IsIdle}" />
         <RadioButton GroupName="range" Content="Time range" IsChecked="{Binding IsRange}" IsEnabled="{Binding IsIdle}" />
-        <ui:FormField Classes="inline" Label="From" InputWidth="160" IsEnabled="{Binding IsRange}">
-          <TextBox Text="{Binding StartText}" PlaceholderText="yyyy-mm-dd hh:mm" IsEnabled="{Binding IsIdle}">
-            <TextBox.KeyBindings>
-              <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}" />
-            </TextBox.KeyBindings>
-          </TextBox>
+        <!-- Date and time pickers per row; the row's error below both (FormField.Error: a group of inputs). -->
+        <ui:FormField Classes="inline" Label="From" InputWidth="358" IsEnabled="{Binding IsRange}" Error="{Binding StartErrorText}">
+          <StackPanel Orientation="Horizontal" Spacing="8" IsEnabled="{Binding IsIdle}">
+            <DatePicker x:Name="StartDatePicker" SelectedDate="{Binding StartDate}" />
+            <TimePicker x:Name="StartTimePicker" SelectedTime="{Binding StartTime}" ClockIdentifier="24HourClock" />
+          </StackPanel>
         </ui:FormField>
-        <ui:FormField Classes="inline" Label="To" InputWidth="160" IsEnabled="{Binding IsRange}">
-          <TextBox Text="{Binding StopText}" PlaceholderText="yyyy-mm-dd hh:mm" IsEnabled="{Binding IsIdle}">
-            <TextBox.KeyBindings>
-              <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}" />
-            </TextBox.KeyBindings>
-          </TextBox>
+        <ui:FormField Classes="inline" Label="To" InputWidth="358" IsEnabled="{Binding IsRange}" Error="{Binding StopErrorText}">
+          <StackPanel Orientation="Horizontal" Spacing="8" IsEnabled="{Binding IsIdle}">
+            <DatePicker x:Name="StopDatePicker" SelectedDate="{Binding StopDate}" />
+            <TimePicker x:Name="StopTimePicker" SelectedTime="{Binding StopTime}" ClockIdentifier="24HourClock" />
+          </StackPanel>
         </ui:FormField>
         <Button x:Name="SearchButton" Classes="secondary" VerticalAlignment="Top" Command="{Binding SearchCommand}" IsEnabled="{Binding CanSearch}"
                 ToolTip.Tip="{Binding SearchTip}" ToolTip.ShowOnDisabled="True">

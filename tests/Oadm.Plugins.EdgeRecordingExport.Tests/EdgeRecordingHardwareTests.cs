@@ -76,8 +76,10 @@ public sealed class EdgeRecordingHardwareTests
             };
             using var vm = new EdgeRecordingViewModel(new GrpcPageContext(api, devices))
             {
-                StartText = DateTime.Now.AddMinutes(-2).ToString(EdgeRecordingFormat.InputFormat, CultureInfo.InvariantCulture),
-                StopText = DateTime.Now.ToString(EdgeRecordingFormat.InputFormat, CultureInfo.InvariantCulture),
+                StartDate = DateTime.Today,
+                StartTime = DateTime.Now.AddMinutes(-2).TimeOfDay,
+                StopDate = DateTime.Today,
+                StopTime = DateTime.Now.AddMinutes(1).TimeOfDay,
                 PickFolder = () => Task.FromResult<string?>(folder.Path),
             };
             vm.SetChoice(DeviceChoice.AllDevices);

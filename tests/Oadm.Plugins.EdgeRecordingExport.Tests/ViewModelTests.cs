@@ -51,14 +51,16 @@ public sealed class ViewModelTests
     {
         var (rig, vm) = Page();
         vm.SetChoice(DeviceChoice.AllDevices);
-        vm.StartText = "2026-10-12 08:00";
-        vm.StopText = "2026-10-12 07:00";
-        Assert.Equal("The stop must be after the start.", vm.ErrorOf(nameof(vm.StopText)));
-        vm.StopText = "tomorrow";
-        Assert.Equal("Enter the stop as yyyy-mm-dd hh:mm.", vm.ErrorOf(nameof(vm.StopText)));
+        vm.StartDate = new DateTime(2026, 10, 12);
+        vm.StartTime = TimeSpan.FromHours(8);
+        vm.StopDate = new DateTime(2026, 10, 12);
+        vm.StopTime = TimeSpan.FromHours(7); // the time picker shows the error of its row
+        Assert.Equal("The stop must be after the start.", vm.StopErrorText);
+        vm.StopDate = null;
+        Assert.Equal("Choose the stop date.", vm.StopErrorText);
         Assert.False(vm.CanSearch);
         vm.AllRecordings = true;
-        Assert.Null(vm.ErrorOf(nameof(vm.StopText)));
+        Assert.Null(vm.StopErrorText);
         Assert.True(vm.CanSearch);
         Assert.Equal("Selected cameras: All", vm.CamerasText);
         Assert.Empty(rig.Devices.Items);
@@ -192,8 +194,8 @@ public sealed class ViewModelTests
     public void Sizes_and_times_read_well()
     {
         Assert.Equal(("about 48 GB", "Unknown", "512 bytes"), (EdgeRecordingFormat.AboutSize(48L * 1024 * 1024 * 1024), EdgeRecordingFormat.AboutSize(null), EdgeRecordingFormat.Size(512)));
-        var local = EdgeRecordingFormat.ParseLocal("2026-10-12 08:00");
+        var local = EdgeRecordingFormat.Combine(new DateTimeOffset(new DateTime(2026, 10, 12)), TimeSpan.FromHours(8));
         Assert.Equal(new DateTimeOffset(new DateTime(2026, 10, 12, 8, 0, 0, DateTimeKind.Local)), local);
-        Assert.Null(EdgeRecordingFormat.ParseLocal("12.10.2026"));
+        Assert.Null(EdgeRecordingFormat.Combine(null, TimeSpan.FromHours(8)));
     }
 }

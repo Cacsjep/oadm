@@ -9,7 +9,7 @@ downloads them to the client machine, one folder per camera.
 | Topic | Decision |
 |---|---|
 | Cameras | The shared device picker (`DevicePickerWindow.ShowChoiceAsync`, All, chosen devices and tags), listing video devices only; a tag means its video devices at the time of the search. |
-| Range | "All recordings" or From / To in this computer's time (`yyyy-mm-dd hh:mm`, errors below the fields), sent as UTC; the same moment for cameras in other time zones. |
+| Range | "All recordings" or From / To in this computer's time (Avalonia's `DatePicker` + `TimePicker`, 24 hours, styled in the theme; the row's error below both pickers through `FormField.Error`), sent as UTC; the same moment for cameras in other time zones. |
 | Search | One `search` call per camera from the page, 4 cameras at a time; the server keeps no state. Each row: recordings found, estimated size, first and last recording, status. A total line "12 cameras · 340 recordings · about 48 GB · 1 not searched". |
 | Cut | The camera cuts the listed start and stop of every recording to the range; the export uses exactly those times (from the key frame before the start). "All recordings" exports whole recordings; one that still records ends at the moment of the request. |
 | Size | `properties.cgi` per recording estimates its export in kB. With many recordings (10 s clips make 8,640 a day) only 40 spread over the list are asked and the rest is extrapolated by duration ("about"). No estimate at all = "Unknown" (progress then by file count). |

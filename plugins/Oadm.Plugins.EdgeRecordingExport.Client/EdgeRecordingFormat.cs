@@ -5,9 +5,6 @@ namespace Oadm.Plugins.EdgeRecordingExport.Client;
 /// <summary>The page's texts for sizes, counts and times (this computer's time).</summary>
 public static class EdgeRecordingFormat
 {
-    /// <summary>The format of the start and stop fields: "2026-10-12 08:00".</summary>
-    public const string InputFormat = "yyyy-MM-dd HH:mm";
-
     /// <summary>"1 recording", "340 recordings".</summary>
     public static string Count(int count, string noun) =>
         string.Create(CultureInfo.CurrentCulture, $"{count:N0} {noun}{(count == 1 ? string.Empty : "s")}");
@@ -36,17 +33,9 @@ public static class EdgeRecordingFormat
     public static string Local(DateTimeOffset time) =>
         time.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
 
-    /// <summary>Reads "2026-10-12 08:00" (seconds optional) as this computer's time; null when it is not a time.</summary>
-    public static DateTimeOffset? ParseLocal(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return null;
-        }
-
-        string[] formats = ["yyyy-MM-dd HH:mm", "yyyy-MM-dd H:mm", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd H:mm:ss", "yyyy-MM-dd"];
-        return DateTime.TryParseExact(text.Trim(), formats, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var local)
-            ? new DateTimeOffset(local).ToUniversalTime()
+    /// <summary>A day of the date picker and a time of day of the time picker as this computer's time, in UTC; null when one is missing.</summary>
+    public static DateTimeOffset? Combine(DateTimeOffset? date, TimeSpan? time) =>
+        date is { } day && time is { } of
+            ? new DateTimeOffset(DateTime.SpecifyKind(day.Date + of, DateTimeKind.Local)).ToUniversalTime()
             : null;
-    }
 }

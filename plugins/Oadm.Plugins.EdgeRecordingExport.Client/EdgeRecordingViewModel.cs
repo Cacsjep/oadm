@@ -36,12 +36,14 @@ public sealed partial class EdgeRecordingViewModel : ValidatingViewModel, IDispo
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         _ui = SynchronizationContext.Current;
-        var now = DateTime.Now;
-        StartText = now.Date.ToString(EdgeRecordingFormat.InputFormat, CultureInfo.InvariantCulture);
-        StopText = now.Date.AddDays(1).ToString(EdgeRecordingFormat.InputFormat, CultureInfo.InvariantCulture);
+        var today = new DateTimeOffset(DateTime.Today);
+        StartDate = today;
+        StartTime = TimeSpan.Zero;
+        StopDate = today.AddDays(1);
+        StopTime = TimeSpan.Zero;
         Validation
-            .Rule(nameof(StartText), () => AllRecordings ? null : EdgeRecordingFormat.ParseLocal(StartText) is null ? "Enter the start as yyyy-mm-dd hh:mm." : null)
-            .Rule(nameof(StopText), StopError);
+            .Rule(nameof(StartDate), StartError)
+            .Rule(nameof(StopDate), StopError);
         Validation.Validate();
         _ctx.PermissionsChanged += OnPermissionsChanged;
     }
@@ -69,11 +71,34 @@ public sealed partial class EdgeRecordingViewModel : ValidatingViewModel, IDispo
         set => AllRecordings = !value;
     }
 
+    /// <summary>The start day (date picker; the time of day comes from <see cref="StartTime"/>).</summary>
     [ObservableProperty]
-    public partial string StartText { get; set; }
+    public partial DateTimeOffset? StartDate { get; set; }
+
+    /// <summary>The start time of day (time picker, 24 hours).</summary>
+    [ObservableProperty]
+    public partial TimeSpan? StartTime { get; set; }
 
     [ObservableProperty]
-    public partial string StopText { get; set; }
+    public partial DateTimeOffset? StopDate { get; set; }
+
+    [ObservableProperty]
+    public partial TimeSpan? StopTime { get; set; }
+
+    /// <summary>The start in this computer's time, as UTC; null while a part is missing.</summary>
+    public DateTimeOffset? RangeStart => EdgeRecordingFormat.Combine(StartDate, StartTime);
+
+    public DateTimeOffset? RangeStop => EdgeRecordingFormat.Combine(StopDate, StopTime);
+
+    /// <summary>The visible error of the From row (below its pickers).</summary>
+    public string? StartErrorText => ErrorOf(nameof(StartDate));
+
+    public string? StopErrorText => ErrorOf(nameof(StopDate));
+
+    // A time picker belongs to the date picker of its row: the row's error shows once either was changed.
+    partial void OnStartTimeChanged(TimeSpan? value) => Validation.Touch(nameof(StartDate));
+
+    partial void OnStopTimeChanged(TimeSpan? value) => Validation.Touch(nameof(StopDate));
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsIdle), nameof(IsBusy))]
@@ -165,7 +190,7 @@ public sealed partial class EdgeRecordingViewModel : ValidatingViewModel, IDispo
     [RelayCommand]
     private async Task SearchAsync()
     {
-        Validation.ShowAll(nameof(StartText), nameof(StopText));
+        Validation.ShowAll(nameof(StartDate), nameof(StopDate));
         if (!CanSearch)
         {
             return;
@@ -178,8 +203,8 @@ public sealed partial class EdgeRecordingViewModel : ValidatingViewModel, IDispo
             return;
         }
 
-        var start = AllRecordings ? null : EdgeRecordingFormat.ParseLocal(StartText);
-        var stop = AllRecordings ? null : EdgeRecordingFormat.ParseLocal(StopText);
+        var start = AllRecordings ? null : RangeStart;
+        var stop = AllRecordings ? null : RangeStop;
         var rows = cameras.Select(d => new CameraRowViewModel(d)).OrderBy(r => r.AddressSortKey, StringComparer.Ordinal).ToList();
         Rows.ReplaceAll(rows);
         OnPropertyChanged(nameof(ShowEmpty));
@@ -344,6 +369,8 @@ public sealed partial class EdgeRecordingViewModel : ValidatingViewModel, IDispo
     protected override void OnValidationChanged()
     {
         base.OnValidationChanged();
+        OnPropertyChanged(nameof(StartErrorText));
+        OnPropertyChanged(nameof(StopErrorText));
         RaiseCommands();
     }
 
@@ -456,6 +483,9 @@ public sealed partial class EdgeRecordingViewModel : ValidatingViewModel, IDispo
         SummaryText = text;
     }
 
+    private string? StartError() =>
+        AllRecordings ? null : StartDate is null ? "Choose the start date." : StartTime is null ? "Choose the start time." : null;
+
     private string? StopError()
     {
         if (AllRecordings)
@@ -463,12 +493,12 @@ public sealed partial class EdgeRecordingViewModel : ValidatingViewModel, IDispo
             return null;
         }
 
-        if (EdgeRecordingFormat.ParseLocal(StopText) is not { } stop)
+        if (StopDate is null || StopTime is null)
         {
-            return "Enter the stop as yyyy-mm-dd hh:mm.";
+            return StopDate is null ? "Choose the stop date." : "Choose the stop time.";
         }
 
-        return EdgeRecordingFormat.ParseLocal(StartText) is { } start && start >= stop ? "The stop must be after the start." : null;
+        return RangeStart is { } start && RangeStop is { } stop && start >= stop ? "The stop must be after the start." : null;
     }
 
     private string? SingleAddress() =>

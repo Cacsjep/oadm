@@ -44,8 +44,8 @@ public sealed class HeadlessTests
         Headless.Capture(window, "edge-recording-export-empty.png");
 
         vm.SetChoice(DeviceChoice.Devices([], ["Building A"]));
-        vm.StartText = "2026-10-12 00:00";
-        vm.StopText = "2026-10-13 00:00";
+        vm.StartDate = new DateTime(2026, 10, 12);
+        vm.StopDate = new DateTime(2026, 10, 13);
         await vm.SearchCommand.ExecuteAsync(null);
         Assert.True(await Headless.UntilAsync(() => vm.IsIdle && vm.Rows.Count == 5));
         Headless.Pump();
@@ -54,6 +54,8 @@ public sealed class HeadlessTests
         var grid = view.GetVisualDescendants().OfType<DataGrid>().Single();
         Assert.Equal(5, grid.ItemsSource!.Cast<object>().Count());
         Assert.Contains("Tag Building A", vm.CamerasText, StringComparison.Ordinal);
+        Assert.Equal(new DateTimeOffset(new DateTime(2026, 10, 12)), view.GetVisualDescendants().OfType<DatePicker>().Single(p => p.Name == "StartDatePicker").SelectedDate);
+        Assert.Equal(TimeSpan.Zero, view.GetVisualDescendants().OfType<TimePicker>().Single(p => p.Name == "StopTimePicker").SelectedTime);
         var download = view.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "DownloadButton");
         Assert.True(download.IsEnabled);
         Assert.EndsWith(" recordings found", vm.Rows.Single(r => r.Device.Id == a.Id).StatusText, StringComparison.Ordinal);

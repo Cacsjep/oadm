@@ -105,6 +105,47 @@
       <SolidColorBrush x:Key="CaptionButtonForeground" Color="{StaticResource Oadm.TextPrimaryColor}" />
       <x:Double x:Key="CaptionButtonWidth">46</x:Double>
       <x:Double x:Key="CaptionButtonHeight">32</x:Double>
+      <!-- Date and time pickers (Fluent): the colors of every input field, the accent for the chosen row of the flyout -->
+      <StaticResource x:Key="DatePickerButtonBackground" ResourceKey="Oadm.InputBackgroundBrush" />
+      <StaticResource x:Key="DatePickerButtonBackgroundPointerOver" ResourceKey="Oadm.InputBackgroundBrush" />
+      <StaticResource x:Key="DatePickerButtonBackgroundPressed" ResourceKey="Oadm.InputBackgroundBrush" />
+      <StaticResource x:Key="DatePickerButtonBackgroundDisabled" ResourceKey="Oadm.InputBackgroundBrush" />
+      <StaticResource x:Key="DatePickerButtonBorderBrush" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="DatePickerButtonBorderBrushPointerOver" ResourceKey="Oadm.TextDisabledBrush" />
+      <StaticResource x:Key="DatePickerButtonBorderBrushPressed" ResourceKey="Oadm.AccentBrush" />
+      <StaticResource x:Key="DatePickerButtonBorderBrushDisabled" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="DatePickerButtonForeground" ResourceKey="Oadm.TextPrimaryBrush" />
+      <StaticResource x:Key="DatePickerButtonForegroundPointerOver" ResourceKey="Oadm.TextPrimaryBrush" />
+      <StaticResource x:Key="DatePickerButtonForegroundPressed" ResourceKey="Oadm.TextPrimaryBrush" />
+      <StaticResource x:Key="DatePickerButtonForegroundDisabled" ResourceKey="Oadm.TextDisabledBrush" />
+      <StaticResource x:Key="DatePickerSpacerFill" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="DatePickerSpacerFillDisabled" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="DatePickerFlyoutPresenterBackground" ResourceKey="Oadm.SurfaceRaisedBrush" />
+      <StaticResource x:Key="DatePickerFlyoutPresenterBorderBrush" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="DatePickerFlyoutPresenterHighlightFill" ResourceKey="Oadm.AccentMutedBrush" />
+      <StaticResource x:Key="DatePickerFlyoutPresenterSpacerFill" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="TimePickerButtonBackground" ResourceKey="Oadm.InputBackgroundBrush" />
+      <StaticResource x:Key="TimePickerButtonBackgroundPointerOver" ResourceKey="Oadm.InputBackgroundBrush" />
+      <StaticResource x:Key="TimePickerButtonBackgroundPressed" ResourceKey="Oadm.InputBackgroundBrush" />
+      <StaticResource x:Key="TimePickerButtonBackgroundDisabled" ResourceKey="Oadm.InputBackgroundBrush" />
+      <StaticResource x:Key="TimePickerButtonBorderBrush" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="TimePickerButtonBorderBrushPointerOver" ResourceKey="Oadm.TextDisabledBrush" />
+      <StaticResource x:Key="TimePickerButtonBorderBrushPressed" ResourceKey="Oadm.AccentBrush" />
+      <StaticResource x:Key="TimePickerButtonBorderBrushDisabled" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="TimePickerButtonForeground" ResourceKey="Oadm.TextPrimaryBrush" />
+      <StaticResource x:Key="TimePickerButtonForegroundPointerOver" ResourceKey="Oadm.TextPrimaryBrush" />
+      <StaticResource x:Key="TimePickerButtonForegroundPressed" ResourceKey="Oadm.TextPrimaryBrush" />
+      <StaticResource x:Key="TimePickerButtonForegroundDisabled" ResourceKey="Oadm.TextDisabledBrush" />
+      <StaticResource x:Key="TimePickerSpacerFill" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="TimePickerSpacerFillDisabled" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="TimePickerFlyoutPresenterBackground" ResourceKey="Oadm.SurfaceRaisedBrush" />
+      <StaticResource x:Key="TimePickerFlyoutPresenterBorderBrush" ResourceKey="Oadm.InputBorderBrush" />
+      <StaticResource x:Key="TimePickerFlyoutPresenterHighlightFill" ResourceKey="Oadm.AccentMutedBrush" />
+      <StaticResource x:Key="TimePickerFlyoutPresenterSpacerFill" ResourceKey="Oadm.InputBorderBrush" />
+      <!-- Picker text centered in the field (the theme centers the text blocks; no padding above or below) -->
+      <Thickness x:Key="DatePickerHostPadding">0</Thickness>
+      <Thickness x:Key="DatePickerHostMonthPadding">10,0,0,0</Thickness>
+      <Thickness x:Key="TimePickerHostPadding">0</Thickness>
 
       <!-- Brushes -->
       <SolidColorBrush x:Key="Oadm.WindowBackgroundBrush" Color="{StaticResource Oadm.WindowBackgroundColor}" />
@@ -828,6 +869,24 @@
          Inter correction (top padding 3 moves the centered line 1.5 px down), unlike text boxes. -->
     <Setter Property="VerticalContentAlignment" Value="Center" />
     <Setter Property="Padding" Value="10,3,8,0" />
+  </Style>
+  <!-- Date and time pickers: the height, corners and text size of every input; narrower than Fluent's 296 px default -->
+  <Style Selector="DatePicker, TimePicker">
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Height" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <Style Selector="DatePicker /template/ TextBlock, TimePicker /template/ TextBlock">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="DatePicker">
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="Width" Value="240" />
+  </Style>
+  <Style Selector="TimePicker">
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="Width" Value="110" />
   </Style>
   <!-- The placeholder ("Presets", "Choose a camera") sits at the height of a chosen item's text (measured: 1 px lower
        without). Its margin is bound to the padding in the template, so it is moved by a transform. -->
