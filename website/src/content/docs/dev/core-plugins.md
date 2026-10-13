@@ -1,0 +1,504 @@
+---
+title: Core plugins and pages
+description: Services on the server with their own page in the navigation rail, toolbar buttons, settings and live events.
+---
+
+A core plugin runs inside the server for as long as it runs: an NTP server, a CA, a table of every SD card. It usually
+has a page in the navigation rail. The page calls the server part with `InvokeAsync` and gets live updates through
+events. A core plugin can also contribute task plugins, actions and event types.
+
+## The server part: `ICorePlugin`
+
+| Member | Purpose |
+|---|---|
+| `Id`, `DisplayName`, `IconKey` | Identity, the rail entry's name and icon |
+| `Group` | The rail group: `Servers`, `Automation`, `Security`, `Monitoring`, `Reporting`, `Maintenance`, `Integrations`, `Utilities`, `Extensions` (default) |
+| `HasPage` | False: no rail entry (a toolbar button or only tasks) |
+| `TaskPlugins` | Task plugins it contributes; they reach the owner through `ctx.Owner` |
+| `StartAsync(ctx, ct)`, `StopAsync(ct)` | When the server starts or stops, and when an administrator turns the plugin on or off |
+| `InvokeAsync(method, payloadJson, ct)` | The backend of the page: JSON in, JSON out |
+| `Permissions`, `RequiredPermission(method)` | Named rights for the role matrix, see [Permissions](#permissions) |
+| `IsAudited(method)` | Write the call to the audit log |
+
+`StartAsync` must return fast. Never wait for a device or the network there: start a background loop instead. A
+plugin that throws on start is marked as failed; the others keep running.
+
+### What the server gives it: `ICorePluginContext`
+
+| Member | Use |
+|---|---|
+| `Devices` | Every managed device (`ListAsync`, `FindAsync`), see [Devices and VAPIX](../devices/) |
+| `Vapix` | `CreateAsync(deviceId, ct)`: a logged-in client. The host caches it; never dispose it |
+| `Tasks` | `RunAsync(pluginId, deviceIds, payload, owner, ct)` starts tasks, `Cancel(taskId)` |
+| `Settings` | `GetAsync` / `SetAsync(key, json)`: the plugin's own settings in the server database |
+| `Logger` | The server log |
+| `Secrets` | `Protect` / `Unprotect`: encrypt what you store in the settings with the server's key |
+| `Events` | `Publish(topic, json)`: live events to every page that watches |
+| `DataDirectory` | A private folder for working files, inside the protected data folder |
+| `PluginDirectory` | The plugin's folder, for data files you ship. Never use `Assembly.Location` |
+| `EventStreams` | RTSP event streams of devices |
+| `EventPublisher` | Events for the event rules, see [Event rules](../event-rules/#publish-events) |
+| `TrustAnchors` | CA certificates the server trusts when it rates device certificates (PKI) |
+| `AutoAdd` | Add a device the plugin saw on the network, through the add page's checks (DHCP server) |
+| `Firewall` | Open a UDP port in the Windows firewall while the service is on (NTP, DHCP) |
+
+Every member after `Logger` may be null on an older host or where it does not apply. Check before you use it.
+
+### `InvokeAsync` errors
+
+Throw the exception that says what went wrong; its message reaches the page:
+
+| Exception | The page gets |
+|---|---|
+| `ArgumentException` | INVALID_ARGUMENT: bad input |
+| `KeyNotFoundException` | NOT_FOUND: an unknown object |
+| `InvalidOperationException` | FAILED_PRECONDITION: a wrong state |
+| anything else | INTERNAL |
+
+Keep each answer small. Hand out large results in parts and run long work as a background job that the page watches
+through events or polls.
+
+## Example: a firmware overview
+
+The server part keeps a state with a version number. `getState` returns it, `refresh` reads every device in the
+background and publishes each new state:
+
+```csharp
+using System.Text.Json;
+
+using Oadm.Sdk.Devices;
+using Oadm.Sdk.Plugins;
+
+namespace Oadm.Plugins.UpnpName;
+
+public sealed record FirmwareState(int Version, IReadOnlyList<FirmwareRow> Rows, bool Reading);
+public sealed record FirmwareRow(Guid DeviceId, string Address, string? Version, string? Error);
+
+public sealed class FirmwareOverviewPlugin : ICorePlugin, IDisposable
+{
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private readonly Lock _gate = new();
+    private ICorePluginContext? _ctx;
+    private FirmwareState _state = new(0, [], false);
+    private CancellationTokenSource? _stop;
+
+    public string Id => "acme.firmware-overview";
+    public string DisplayName => "Firmware overview";
+    public string? IconKey => "firmware";
+    public CorePluginGroup Group => CorePluginGroup.Maintenance;
+    public IReadOnlyList<ITaskPlugin> TaskPlugins => [];
+
+    public Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
+    {
+        _ctx = ctx;
+        _stop = new CancellationTokenSource();
+        return Task.CompletedTask; // never wait for devices here: start background work instead
+    }
+
+    public async Task StopAsync(CancellationToken ct)
+    {
+        if (_stop is { } stop)
+        {
+            await stop.CancelAsync();
+            stop.Dispose();
+            _stop = null;
+        }
+    }
+
+    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
+    {
+        switch (method)
+        {
+            case "getState":
+                lock (_gate)
+                {
+                    return Task.FromResult<string?>(JsonSerializer.Serialize(_state, Json));
+                }
+
+            case "refresh":
+                _ = Task.Run(() => RefreshAsync(_stop!.Token), CancellationToken.None); // long work runs in the background
+                return Task.FromResult<string?>(null);
+
+            default:
+                throw new ArgumentException("Unknown method " + method); // INVALID_ARGUMENT on the page
+        }
+    }
+
+    private async Task RefreshAsync(CancellationToken ct)
+    {
+        var ctx = _ctx!;
+        Publish(s => s with { Reading = true });
+        var rows = new List<FirmwareRow>();
+        foreach (var device in await ctx.Devices.ListAsync(ct))
+        {
+            if (DeviceMessages.Refusal(device.Status, refuseUnreachable: true) is { } refusal)
+            {
+                rows.Add(new FirmwareRow(device.Id, device.Address, null, refusal));
+                continue;
+            }
+
+            try
+            {
+                var vapix = await ctx.Vapix.CreateAsync(device.Id, ct);
+                rows.Add(new FirmwareRow(device.Id, device.Address, (await vapix.GetBasicDeviceInfoAsync(ct)).Version, null));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                rows.Add(new FirmwareRow(device.Id, device.Address, null, ex.Message));
+            }
+        }
+
+        Publish(s => s with { Rows = rows, Reading = false });
+    }
+
+    public void Dispose() => _stop?.Dispose();
+
+    private void Publish(Func<FirmwareState, FirmwareState> change)
+    {
+        string json;
+        lock (_gate)
+        {
+            _state = change(_state) with { Version = _state.Version + 1 };
+            json = JsonSerializer.Serialize(_state, Json);
+        }
+
+        _ctx?.Events?.Publish("state", json); // to every page that watches; never blocks
+    }
+}
+```
+
+A real plugin reads with bounded parallelism (see [Devices and VAPIX](../devices/#on-the-server)).
+
+## The page: `ICorePluginPage`
+
+The client part implements `ICorePluginPage` with the same `PluginId`. `CreateView` returns an Avalonia control. The
+host puts it in a card below the page title.
+
+| Member | Purpose |
+|---|---|
+| `PluginId`, `Title` | The server part's id and the page title |
+| `CreateView(ctx)` | The page's view, once per view |
+| `HasOwnCards` | True: the view lays out its own cards (`Border.card`), e.g. count cards above a table |
+| `ShowTasksPane` | True: the shared tasks pane below the page, for pages that start tasks |
+
+The page's context, `ICorePluginClientContext`:
+
+| Member | Use |
+|---|---|
+| `InvokeAsync(method, payload, ct)` | Call the server part. Failures are `RpcException`; `ServerErrors.Message(ex)` gives the text |
+| `WatchEventsAsync(ct)` | The live events of the server part |
+| `OpenDownloadAsync(method, payload, ct)` | A file from the server part, see [Downloads](#downloads) |
+| `Devices`, `SelectedDevices`, `DevicesChanged` | The client's copy of the device table and the Devices page selection |
+| `Has(permission)`, `PermissionsChanged` | Hide or lock what the user's role does not allow |
+| `ShowMessageAsync`, `ConfirmAsync`, `Owner` | The host's message window and the owner for your own dialogs |
+| `OpenAsync(hostPage)` | Open a host page, e.g. `HostPages.Devices` |
+| `OwnerName` | "user@machine", the owner of tasks the page starts |
+| `LiveVideo`, `DeviceWeb` | The host's live video and the device web interface, see below |
+
+### Read, then watch
+
+Events can be lost when the connection drops, so a page always works like this: subscribe, read the full state, apply
+events (ignoring older ones by version), and when the stream ends, wait and do it again. The loop also covers a server
+restart.
+
+```csharp
+using System.Collections.ObjectModel;
+using System.Text.Json;
+
+using Avalonia.Controls;
+
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+
+using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Collections;
+
+namespace Oadm.Plugins.UpnpName.Client;
+
+public sealed class FirmwareOverviewPage : ICorePluginPage
+{
+    public string PluginId => "acme.firmware-overview";
+    public string Title => "Firmware overview";
+
+    // Called once per view: the rail page and every "Open in new window" get their own context and view model.
+    public Control CreateView(ICorePluginClientContext ctx) => new FirmwareOverviewView { DataContext = new FirmwareOverviewViewModel(ctx) };
+}
+
+public sealed partial class FirmwareOverviewViewModel(ICorePluginClientContext ctx) : ObservableObject, IDisposable
+{
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private readonly CancellationTokenSource _stop = new();
+    private int _version = -1;
+
+    public RangeObservableCollection<FirmwareRow> Rows { get; } = [];
+
+    [ObservableProperty]
+    public partial bool IsReading { get; private set; }
+
+    [ObservableProperty]
+    public partial string? ErrorText { get; private set; }
+
+    private Task? _run;
+
+    /// <summary>Starts once, when the view is first shown: watch the events, read the state, read again after a drop.</summary>
+    public void Start() => _run ??= RunAsync();
+
+    private async Task RunAsync()
+    {
+        while (!_stop.IsCancellationRequested)
+        {
+            try
+            {
+                var events = ctx.WatchEventsAsync(_stop.Token);              // subscribe first,
+                Apply(await ctx.InvokeAsync("getState", null, _stop.Token)); // then read the full state
+                await foreach (var item in events)
+                {
+                    if (item.Topic == "state")
+                    {
+                        Apply(item.PayloadJson);
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (_stop.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                ErrorText = ServerErrors.Message(ex);
+            }
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), _stop.Token); // the connection dropped: read and watch again
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task RefreshAsync()
+    {
+        try
+        {
+            await ctx.InvokeAsync("refresh", null, _stop.Token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            ErrorText = ServerErrors.Message(ex);
+        }
+    }
+
+    private void Apply(string? json)
+    {
+        if (json is null || JsonSerializer.Deserialize<FirmwareState>(json, Json) is not { } state || state.Version <= _version)
+        {
+            return; // an older state than the one shown
+        }
+
+        _version = state.Version;
+        IsReading = state.Reading;
+        ErrorText = null;
+        Rows.ReplaceAll(state.Rows); // one reset for the whole list
+    }
+
+    public void Dispose()
+    {
+        _stop.Cancel();
+        _stop.Dispose();
+    }
+}
+```
+
+The view binds to it with the shared controls. The page description goes into the host's page header
+(`ui:PageHeader.Subtitle`), never into a card heading:
+
+```xml
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.UpnpName.Client"
+             xmlns:m="using:Oadm.Plugins.UpnpName"
+             x:Class="Oadm.Plugins.UpnpName.Client.FirmwareOverviewView"
+             x:DataType="vm:FirmwareOverviewViewModel"
+             ui:PageHeader.Subtitle="The AXIS OS of every device.">
+  <Grid RowDefinitions="Auto,*,Auto">
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4">
+      <ui:ToolbarButton IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}" />
+      <ui:ProgressRow IsActive="{Binding IsReading}" IsVisible="{Binding IsReading}" Text="Reading devices" />
+    </StackPanel>
+
+    <DataGrid Grid.Row="1" Margin="0,8,0,0" ItemsSource="{Binding Rows}" IsReadOnly="True" CanUserSortColumns="True">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Address" Width="160" Binding="{Binding Address}" x:DataType="m:FirmwareRow" />
+        <DataGridTextColumn Header="AXIS OS" Width="140" Binding="{Binding Version}" x:DataType="m:FirmwareRow" />
+        <DataGridTemplateColumn Header="Problem" Width="*">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate x:DataType="m:FirmwareRow">
+              <ui:StatusChip Text="{Binding Error}" IsError="True" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" />
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+      </DataGrid.Columns>
+    </DataGrid>
+
+    <TextBlock Grid.Row="2" Margin="0,8,0,0" Classes="error" Text="{Binding ErrorText}" TextWrapping="Wrap"
+               IsVisible="{Binding ErrorText, Converter={x:Static ObjectConverters.IsNotNull}}" />
+  </Grid>
+</UserControl>
+```
+
+```csharp
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Markup.Xaml;
+
+namespace Oadm.Plugins.UpnpName.Client;
+
+public sealed partial class FirmwareOverviewView : UserControl
+{
+    public FirmwareOverviewView() => AvaloniaXamlLoader.Load(this);
+
+    // The host disposes the view model (IDisposable) when the page or its window closes: that ends the watch.
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        if (DataContext is FirmwareOverviewViewModel model)
+        {
+            model.Start();
+        }
+    }
+}
+```
+
+### Several views at once
+
+The rail entry's context menu has **Open in new window**, so `CreateView` can be called several times, each with its own
+context. Keep all state in the view model of that view, never in static fields. A server resource that one view
+starts (a stream, a job) gets its own id: the start method returns it, events carry it, and the view ignores events of
+other ids. Give such resources a lease: the view sends a keep-alive, and the server ends the resource when the
+keep-alives stop (a closed client). The Metadata Monitor and the I/O Monitor work like this.
+
+## Settings and secrets
+
+```csharp
+// Store one JSON document on Save; read it in StartAsync so the service comes back after a restart.
+await ctx.Settings.SetAsync("config", JsonSerializer.Serialize(config), ct);
+var json = await ctx.Settings.GetAsync("config", ct);
+
+// A password in the settings: encrypted with the server's key, the purpose binds it to its place.
+var stored = ctx.Secrets?.Protect(password, "acme.mail:smtp")
+    ?? throw new InvalidOperationException("This server cannot store passwords.");
+var plain = ctx.Secrets!.Unprotect(stored, "acme.mail:smtp");
+```
+
+Never send a stored password back to the page. Show that one is set, and keep it when the page sends an empty field.
+
+## Tasks from a page
+
+A core plugin can run its own tasks on many devices, like VAPIX Commander's rollouts. Contribute a task plugin with
+`ShowInMenus => false` (not in the context menu), start it with `ctx.Tasks.RunAsync`, and set `ShowTasksPane` on the
+page so the user watches the tasks below it. Pass `ctx.OwnerName` from the page in the payload so the tasks show who
+started them.
+
+```csharp
+public IReadOnlyList<ITaskPlugin> TaskPlugins { get; }   // e.g. [new RolloutTask(this)]
+
+var ids = await ctx.Tasks.RunAsync(RolloutTask.PluginId, deviceIds, payloadJson, owner, ct);
+```
+
+## Downloads
+
+A core plugin that also implements `ICorePluginDownloads` sends files to its page without storing them on the server:
+
+```csharp
+public Task<PluginDownload> OpenDownloadAsync(string method, string? payloadJson, CancellationToken ct);
+```
+
+Return a `PluginDownload` with the stream, the file name and the length when known. The host checks the permission,
+writes the audit entry and copies the stream to the client in 256 KB parts. The page reads it with
+`await using var file = await ctx.OpenDownloadAsync(method, payload, ct)` and copies `file.Content` to disk. Edge
+Recording Export passes recordings from the camera straight to the client this way.
+
+## Live video and web interfaces
+
+- `ctx.LiveVideo.Create(new LiveVideoPlace { ... })` returns the host's live video component: put its `View` into the
+  page and call `Start(deviceId, camera)`. It streams through the server with the stored login, stops while hidden and
+  handles fullscreen, quality and zoom and focus. Used by Live View.
+- `ctx.DeviceWeb.OpenAsync(deviceId, ct)` opens a device's web interface for an embedded browser through the server,
+  logged in, without the password reaching the client. Used by Web View.
+
+## Toolbar buttons
+
+A toolbar plugin adds a control to the Devices toolbar. It lives in a `*.Client.dll`:
+
+```csharp
+public sealed class SampleToolbarPlugin : IToolbarPlugin
+{
+    public string Id => "acme.sample.toolbar";
+    public int Order => 0;
+    public ToolbarGroup Group => ToolbarGroup.Plugins;
+
+    public Control CreateControl(IToolbarContext ctx)
+    {
+        var button = new ToolbarButton { IconKey = "plugin" };
+        void Update()
+        {
+            button.Text = $"Sample ({ctx.SelectedDevices.Count})";
+            button.IsEnabled = ctx.SelectedDevices.Count > 0;
+        }
+
+        ctx.SelectionChanged += (_, _) => Update();
+        button.Click += async (_, _) => await ctx.RunTaskAsync("acme.sample.task", CancellationToken.None);
+        Update();
+        return button;
+    }
+}
+```
+
+`IToolbarContext` gives the selection and the devices with their change events, `RunTaskAsync` (with the task's dialog),
+`InvokePluginAsync` (a core plugin's `InvokeAsync`), `QueryAsync`, `UploadAsync`, `RefreshDevicesAsync`, the host's
+messages and `Owner`. A button with server work behind it pairs with a core plugin that sets `HasPage => false`, like
+the System report. The toolbar must stay on one line at the minimum window width: one short label.
+
+## Permissions
+
+Every page gets the permission "show" (see the page, read its state, watch its events) by itself. Declare named rights
+for what changes something, and map methods to them:
+
+```csharp
+public IReadOnlyList<PermissionDefinition> Permissions { get; } =
+[
+    new("manage", "Change storage settings", "Set retention and run checks on the SD cards."),
+    new("format", "Format and encrypt storage", "Erase SD cards.") { OperatorDefault = false, FullDeviceControl = true },
+];
+
+public string? RequiredPermission(string method) => method switch
+{
+    "getState" or "refresh" => PermissionKeys.Show,
+    "change" => "manage",
+    "format" => "format",
+    _ => null, // falls back to RequiredRole(method)
+};
+```
+
+The server checks every call; the page asks `ctx.Has(PermissionKeys.Of(PluginId, "format"))` to hide the buttons. A
+method without an answer falls back to `RequiredRole(method)`: Operator methods need "show", Admin methods "manage".
+An unknown key or an exception means administrators only.
+
+## Look at the built-in plugins
+
+| Plugin | Shows how to |
+|---|---|
+| Image Health Dashboard, Edge storage | A table read on request, count cards, `DeviceSweep` / `SweepRows` |
+| NTP server, DHCP server | A network service, saved settings, a live log, a contributed task, the firewall |
+| VAPIX Commander | A three-card page, saved items with encrypted secrets, rollouts as hidden tasks |
+| Metadata Monitor, I/O Monitor | One stream per view with a lease, a live list of 10,000 items |
+| System report | No page, a toolbar button, a background job, files in the data folder |
+| PKI | Secrets, trust anchors, eight contributed tasks, several dialogs |
+| Live View, Web View | The host's live video and device web interface, tabs, the device tree |
+
+Each has a `README.md` in its folder with its decisions and details.

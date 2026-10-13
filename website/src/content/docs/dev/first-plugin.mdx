@@ -1,0 +1,647 @@
+---
+title: Your first plugin
+description: A task plugin with a dialog and tests, step by step.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+This walk-through builds **Set UPnP name**: a task in the device context menu that gives one or many devices a new UPnP
+name (the name Windows shows in its network list). It has everything a real task plugin needs: a dialog with
+validation, a read-only query that prefills it, an API check, named steps, a check after the write and tests.
+
+The code on this page compiles and its tests pass against the current SDK. Use it as the starting point for your own
+task.
+
+<Aside>
+This is a sample, not a built-in plugin. OADM does not ship it.
+</Aside>
+
+## What the user sees
+
+1. They select devices, right-click and choose **Network > Set UPnP name**.
+2. A dialog opens with the current name of the first device. They type a new name; an empty name shows its error below
+   the field and OK stays disabled.
+3. One task per device appears in the tasks pane as "Set UPnP name Entrance", with the steps Check compatibility, Read
+   the current name, Set the name, Verify the name.
+
+<Steps>
+
+1. **Create the projects.** Three folders, each project added to `Oadm.sln`:
+
+   ```text
+   plugins/Oadm.Plugins.UpnpName/            server part
+   plugins/Oadm.Plugins.UpnpName.Client/     dialog
+   tests/Oadm.Plugins.UpnpName.Tests/        tests
+   ```
+
+2. **Describe the plugin** in `plugins/Oadm.Plugins.UpnpName/plugin.json`:
+
+   ```json
+   {
+     "id": "acme.upnp-name",
+     "version": "1.0.0",
+     "minSdkVersion": "0.1.0",
+     "displayName": "Set UPnP name",
+     "description": "Sets the name devices show in the network list of Windows."
+   }
+   ```
+
+   And the project file, `Oadm.Plugins.UpnpName.csproj`:
+
+   ```xml
+   <Project Sdk="Microsoft.NET.Sdk">
+     <PropertyGroup>
+       <AssemblyName>Oadm.Plugins.UpnpName.Server</AssemblyName>
+       <RootNamespace>Oadm.Plugins.UpnpName</RootNamespace>
+       <EnableDynamicLoading>true</EnableDynamicLoading>
+       <OadmPluginId>acme.upnp-name</OadmPluginId>
+       <OadmPluginOutputDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'artifacts', 'plugins', '$(OadmPluginId)'))</OadmPluginOutputDir>
+     </PropertyGroup>
+
+     <ItemGroup>
+       <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
+         <Private>false</Private>
+         <ExcludeAssets>runtime</ExcludeAssets>
+       </ProjectReference>
+     </ItemGroup>
+
+     <ItemGroup>
+       <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+     </ItemGroup>
+
+     <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
+       <ItemGroup>
+         <_OadmPluginFiles Include="$(OutDir)**\*" />
+       </ItemGroup>
+       <Copy SourceFiles="@(_OadmPluginFiles)"
+             DestinationFiles="@(_OadmPluginFiles->'$(OadmPluginOutputDir)%(RecursiveDir)%(Filename)%(Extension)')"
+             SkipUnchangedFiles="true" />
+     </Target>
+   </Project>
+   ```
+
+3. **Share the payload and the rules.** The dialog and the task agree on one payload record and one validation rule.
+   The client part references the server project, so this file is written once (`UpnpName.cs`):
+
+   ```csharp
+   using System.Text.Json;
+
+   namespace Oadm.Plugins.UpnpName;
+
+   /// <summary>What the dialog sends and the query answers. Shared by the server and the client part.</summary>
+   public sealed record UpnpNamePayload(string Name);
+
+   public static class UpnpName
+   {
+       public const string PluginId = "acme.upnp-name";
+       public const string Parameter = "Network.UPnP.FriendlyName";
+       public const int MaxLength = 64;
+
+       public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+       /// <summary>Why the name cannot be used, or null. The dialog and the task use the same rule.</summary>
+       public static string? Problem(string? name)
+       {
+           var text = name?.Trim() ?? "";
+           if (text.Length == 0)
+           {
+               return "Enter a name.";
+           }
+
+           if (text.Length > MaxLength)
+           {
+               return $"Use at most {MaxLength} characters.";
+           }
+
+           return text.Any(char.IsControl) ? "The name cannot contain control characters." : null;
+       }
+   }
+   ```
+
+4. **Write the task** (`UpnpNameTaskPlugin.cs`). `CanRun` decides from cached data whether the menu entry is enabled;
+   `ExecuteAsync` runs once per device on the server; `QueryAsync` answers the dialog without changing anything.
+
+   ```csharp
+   using System.Text;
+   using System.Text.Json;
+
+   using Oadm.Sdk.Devices;
+   using Oadm.Sdk.Plugins;
+   using Oadm.Sdk.Vapix;
+
+   namespace Oadm.Plugins.UpnpName;
+
+   public sealed class UpnpNameTaskPlugin : ITaskPlugin, ITaskPluginQuery
+   {
+       private const string StepCheck = "Check compatibility";
+       private const string StepRead = "Read the current name";
+       private const string StepSet = "Set the name";
+       private const string StepVerify = "Verify the name";
+
+       public string Id => UpnpName.PluginId;
+       public string DisplayName => "Set UPnP name";
+       public string? IconKey => "edit";
+       public string Group => TaskGroups.Network;
+       public bool ShowInToolbar => false;
+       public bool RequiresDialog => true;
+
+       // Cached data only: the status and the API list of the last full refresh.
+       public bool CanRun(IDeviceInfo device) =>
+           device.Status is DeviceStatus.Ok or DeviceStatus.Unknown && device.Apis.Supports("param-cgi", "1.0");
+
+       public string? NotSupportedReason(IDeviceInfo device) =>
+           TaskSupportReasons.ForStatus(device.Status) ?? TaskSupportReasons.NeedsApi("the parameter API", device);
+
+       public string GetTaskName(string? payloadJson)
+       {
+           var payload = Read(payloadJson);
+           return payload is null ? DisplayName : "Set UPnP name " + payload.Name.Trim();
+       }
+
+       public async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)
+       {
+           // Validate everything before the first request.
+           var name = Read(payloadJson)?.Name.Trim();
+           if (UpnpName.Problem(name) is { } problem)
+           {
+               throw new ArgumentException(problem + " Nothing was changed.");
+           }
+
+           ctx.PlanSteps(StepCheck, StepRead, StepSet, StepVerify);
+
+           await ctx.StepAsync(StepCheck, async _ =>
+               (await ctx.Vapix.GetApiListAsync(ct)).Require("param-cgi", "1.0"));
+
+           var current = await ctx.StepAsync(StepRead, async step =>
+           {
+               var value = await ReadNameAsync(ctx.Vapix, ct);
+               step.Complete(value.Length == 0 ? "No name" : value);
+               return value;
+           });
+
+           if (current == name)
+           {
+               ctx.SkipStep(StepSet, "The device already has this name");
+               ctx.SkipStep(StepVerify, "Nothing was changed");
+               return;
+           }
+
+           await ctx.StepAsync(StepSet, _ => WriteNameAsync(ctx.Vapix, name!, ct));
+
+           using var verify = ctx.BeginStep(StepVerify);
+           var after = await ReadNameAsync(ctx.Vapix, ct);
+           if (after == name)
+           {
+               verify.Complete(after);
+           }
+           else
+           {
+               verify.Warn($"The device reports \"{after}\" after the change.");
+           }
+       }
+
+       // Read-only: the dialog shows the current name of the first selected device.
+       public async Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
+           method switch
+           {
+               "current" => JsonSerializer.Serialize(new UpnpNamePayload(await ReadNameAsync(ctx.Vapix, ct)), UpnpName.Json),
+               _ => throw new ArgumentException("Unknown query " + method),
+           };
+
+       private static async Task<string> ReadNameAsync(IVapixClient vapix, CancellationToken ct)
+       {
+           var values = await vapix.ListParametersAsync([UpnpName.Parameter], ct);
+           return values.TryGetValue(UpnpName.Parameter, out var value) ? value : "";
+       }
+
+       private static async Task WriteNameAsync(IVapixClient vapix, string name, CancellationToken ct)
+       {
+           // Values go in the POST body, never in the URL.
+           var body = "action=update&" + Uri.EscapeDataString(UpnpName.Parameter) + "=" + Uri.EscapeDataString(name);
+           using var request = new HttpRequestMessage(HttpMethod.Post, "/axis-cgi/param.cgi")
+           {
+               Content = new StringContent(body, Encoding.UTF8, "application/x-www-form-urlencoded"),
+           };
+           using var response = await vapix.SendAsync(request, ct);
+           var text = await response.Content.ReadAsStringAsync(ct);
+           if (!response.IsSuccessStatusCode || !text.TrimStart().StartsWith("OK", StringComparison.Ordinal))
+           {
+               throw new InvalidOperationException("The device refused the name: " + text.Trim());
+           }
+       }
+
+       private static UpnpNamePayload? Read(string? json)
+       {
+           try
+           {
+               return string.IsNullOrEmpty(json) ? null : JsonSerializer.Deserialize<UpnpNamePayload>(json, UpnpName.Json);
+           }
+           catch (JsonException)
+           {
+               return null;
+           }
+       }
+   }
+   ```
+
+   What to notice:
+   - The input is checked before the first request, and the API again with a fresh list before the write.
+   - Each request is a step. A name that is already set skips the write instead of sending it again.
+   - Errors are exceptions with a plain message; the step that was running shows it, the following steps are skipped.
+   - The value goes in the POST body. Answers of Axis devices can say "Error" with HTTP 200, so the text is checked too.
+
+5. **Write the dialog.** The client loader finds `ITaskPluginDialog` by its `PluginId`. The project file
+   (`Oadm.Plugins.UpnpName.Client.csproj`):
+
+   ```xml
+   <Project Sdk="Microsoft.NET.Sdk">
+     <PropertyGroup>
+       <AssemblyName>Oadm.Plugins.UpnpName.Client</AssemblyName>
+       <RootNamespace>Oadm.Plugins.UpnpName.Client</RootNamespace>
+       <EnableDynamicLoading>true</EnableDynamicLoading>
+       <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+       <OadmPluginId>acme.upnp-name</OadmPluginId>
+       <OadmPluginOutputDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'artifacts', 'plugins', '$(OadmPluginId)'))</OadmPluginOutputDir>
+     </PropertyGroup>
+
+     <ItemGroup>
+       <PackageReference Include="Avalonia" Version="12.1.4" ExcludeAssets="runtime" />
+       <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" ExcludeAssets="runtime" />
+       <ProjectReference Include="..\..\src\Oadm.Sdk.Client\Oadm.Sdk.Client.csproj">
+         <Private>false</Private>
+         <ExcludeAssets>runtime</ExcludeAssets>
+       </ProjectReference>
+       <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
+         <Private>false</Private>
+         <ExcludeAssets>runtime</ExcludeAssets>
+       </ProjectReference>
+       <ProjectReference Include="..\Oadm.Plugins.UpnpName\Oadm.Plugins.UpnpName.csproj" />
+     </ItemGroup>
+
+     <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
+       <ItemGroup>
+         <_OadmPluginFiles Include="$(OutDir)**\*" />
+       </ItemGroup>
+       <Copy SourceFiles="@(_OadmPluginFiles)"
+             DestinationFiles="@(_OadmPluginFiles->'$(OadmPluginOutputDir)%(RecursiveDir)%(Filename)%(Extension)')"
+             SkipUnchangedFiles="true" />
+     </Target>
+   </Project>
+   ```
+
+   The dialog (`UpnpNameDialog.cs`) opens the window, prefills it through the query and returns the payload:
+
+   ```csharp
+   using System.Text.Json;
+
+   using Avalonia.Controls;
+
+   using Oadm.Sdk.Client;
+   using Oadm.Sdk.Devices;
+
+   namespace Oadm.Plugins.UpnpName.Client;
+
+   /// <summary>Found by the client loader: opens before the task runs and returns the payload (null = cancelled).</summary>
+   public sealed class UpnpNameDialog : ITaskPluginDialog
+   {
+       public string PluginId => UpnpName.PluginId;
+
+       public async Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner)
+       {
+           var model = new UpnpNameViewModel(devices.Count);
+           var window = new UpnpNameWindow { DataContext = model };
+
+           // Prefill with the name of the first device; the dialog works without it.
+           using var cts = new CancellationTokenSource();
+           _ = model.LoadAsync(token => ctx.QueryAsync(devices[0].Id, "current", null, token), cts.Token);
+
+           var ok = await window.ShowDialog<bool>(owner);
+           await cts.CancelAsync();
+           return ok ? JsonSerializer.Serialize(new UpnpNamePayload(model.Name.Trim()), UpnpName.Json) : null;
+       }
+   }
+   ```
+
+   The view model (`UpnpNameViewModel.cs`) holds the rule; the error shows below the field and OK stays disabled while
+   it is there:
+
+   ```csharp
+   using System.Text.Json;
+
+   using CommunityToolkit.Mvvm.ComponentModel;
+   using CommunityToolkit.Mvvm.Input;
+
+   using Oadm.Sdk.Client.Validation;
+
+   namespace Oadm.Plugins.UpnpName.Client;
+
+   public sealed partial class UpnpNameViewModel : ValidatingViewModel
+   {
+       public UpnpNameViewModel(int deviceCount)
+       {
+           Intro = deviceCount == 1 ? "The name the device shows in the network list." : $"The name {deviceCount} devices show in the network list.";
+           Validation.Rule(nameof(Name), () => UpnpName.Problem(Name));
+           Validation.Validate();
+       }
+
+       public string Intro { get; }
+
+       [ObservableProperty]
+       public partial string Name { get; set; } = "";
+
+       /// <summary>The window closes with true (OK) or false (Cancel).</summary>
+       public event Action<bool>? CloseRequested;
+
+       public async Task LoadAsync(Func<CancellationToken, Task<string?>> query, CancellationToken ct)
+       {
+           try
+           {
+               var json = await query(ct);
+               if (Name.Length == 0 && json is not null && JsonSerializer.Deserialize<UpnpNamePayload>(json, UpnpName.Json) is { } current)
+               {
+                   Name = current.Name;
+                   Validation.Reset(nameof(Name)); // a prefilled value shows no error yet
+               }
+           }
+           catch (Exception ex) when (ex is not OutOfMemoryException)
+           {
+               // No prefill: the user types the name.
+           }
+       }
+
+       [RelayCommand(CanExecute = nameof(IsFormValid))]
+       private void Apply() => CloseRequested?.Invoke(true);
+
+       [RelayCommand]
+       private void Cancel() => CloseRequested?.Invoke(false);
+
+       protected override void OnValidationChanged() => ApplyCommand.NotifyCanExecuteChanged();
+   }
+   ```
+
+   The window (`UpnpNameWindow.axaml`) uses the shared title bar, form field and footer, so it looks like every other
+   OADM dialog:
+
+   ```xml
+   <Window xmlns="https://github.com/avaloniaui"
+           xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+           xmlns:ui="using:Oadm.Sdk.Client.Controls"
+           xmlns:vm="using:Oadm.Plugins.UpnpName.Client"
+           x:Class="Oadm.Plugins.UpnpName.Client.UpnpNameWindow"
+           x:DataType="vm:UpnpNameViewModel"
+           Title="Set UPnP name"
+           Width="500" SizeToContent="Height" CanResize="False"
+           WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+           WindowDecorations="BorderOnly">
+     <Grid RowDefinitions="Auto,Auto,Auto">
+       <ui:DialogTitleBar Grid.Row="0" Text="Set UPnP name" />
+
+       <Border Grid.Row="1" Classes="dialogBody">
+         <StackPanel Classes="form">
+           <TextBlock Classes="secondary" Text="{Binding Intro}" TextWrapping="Wrap" />
+           <ui:FormField Label="Name">
+             <TextBox Text="{Binding Name}" />
+           </ui:FormField>
+         </StackPanel>
+       </Border>
+
+       <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+         <Button Classes="primary" Content="OK" Command="{Binding ApplyCommand}" IsDefault="True"
+                 ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+       </ui:DialogFooter>
+     </Grid>
+   </Window>
+   ```
+
+   ```csharp
+   using Avalonia.Controls;
+   using Avalonia.Markup.Xaml;
+
+   namespace Oadm.Plugins.UpnpName.Client;
+
+   public sealed partial class UpnpNameWindow : Window
+   {
+       public UpnpNameWindow() => AvaloniaXamlLoader.Load(this);
+
+       protected override void OnDataContextChanged(EventArgs e)
+       {
+           base.OnDataContextChanged(e);
+           if (DataContext is UpnpNameViewModel model)
+           {
+               model.CloseRequested += ok => Close(ok);
+           }
+       }
+   }
+   ```
+
+6. **Test it without a device.** A fake camera answers the two param.cgi calls, a fake context records the steps.
+   `StepRun` (linked from `tests/Shared`) ends the task like the server does. The project file:
+
+   ```xml
+   <Project Sdk="Microsoft.NET.Sdk">
+     <PropertyGroup>
+       <IsPackable>false</IsPackable>
+       <!-- test method names use underscores -->
+       <NoWarn>$(NoWarn);CA1707;CA2007</NoWarn>
+     </PropertyGroup>
+
+     <ItemGroup>
+       <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+       <PackageReference Include="xunit" Version="2.9.3" />
+       <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
+     </ItemGroup>
+
+     <ItemGroup>
+       <Using Include="Xunit" />
+       <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj" />
+       <ProjectReference Include="..\..\plugins\Oadm.Plugins.UpnpName\Oadm.Plugins.UpnpName.csproj" />
+       <!-- Runs a task like the server's task engine ends it: success adds "Completed", a failure skips the rest. -->
+       <Compile Include="..\Shared\StepRun.cs" Link="Shared\StepRun.cs" />
+     </ItemGroup>
+   </Project>
+   ```
+
+   The fakes (`Fakes.cs`):
+
+   ```csharp
+   using System.Net;
+
+   using Microsoft.Extensions.Logging;
+   using Microsoft.Extensions.Logging.Abstractions;
+
+   using Oadm.Sdk.Devices;
+   using Oadm.Sdk.Plugins;
+   using Oadm.Sdk.Vapix;
+
+   namespace Oadm.Plugins.UpnpName.Tests;
+
+   /// <summary>A camera that knows the param.cgi list and update calls.</summary>
+   internal sealed class FakeCamera : IVapixClient
+   {
+       public Dictionary<string, string> Parameters { get; } = new() { [UpnpName.Parameter] = "AXIS P3265-V - B8A44F631339" };
+       public IReadOnlyList<DeviceApi> Apis { get; set; } = [new("param-cgi", "1.0")];
+       public int Writes { get; private set; }
+
+       public Uri BaseAddress { get; } = new("https://192.0.2.10/");
+
+       public Task<IReadOnlyList<DeviceApi>> GetApiListAsync(CancellationToken ct) => Task.FromResult(Apis);
+
+       public Task<IReadOnlyDictionary<string, string>> ListParametersAsync(IEnumerable<string> groups, CancellationToken ct) =>
+           Task.FromResult<IReadOnlyDictionary<string, string>>(
+               Parameters.Where(p => groups.Any(g => p.Key.StartsWith(g, StringComparison.Ordinal))).ToDictionary());
+
+       public async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+       {
+           var body = await request.Content!.ReadAsStringAsync(ct);
+           foreach (var pair in body.Split('&').Skip(1)) // after "action=update"
+           {
+               var parts = pair.Split('=', 2);
+               Parameters[Uri.UnescapeDataString(parts[0])] = Uri.UnescapeDataString(parts[1]);
+           }
+
+           Writes++;
+           return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("OK") };
+       }
+
+       public Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct) => throw new NotSupportedException();
+
+       public Task RestartAsync(CancellationToken ct) => throw new NotSupportedException();
+   }
+
+   internal sealed record FakeDevice(DeviceStatus Status = DeviceStatus.Ok, IReadOnlyList<DeviceApi>? ApiList = null) : IDeviceInfo
+   {
+       public Guid Id { get; } = Guid.NewGuid();
+       public string Serial => "B8A44F631339";
+       public string Address => "192.0.2.10";
+       public string? HostName => null;
+       public string? Model => "P3265-V";
+       public string? FirmwareVersion => "12.11.77";
+       public DeviceCategory Category => DeviceCategory.Camera;
+       public bool HasVideo => true;
+       public IReadOnlyList<DeviceApi> Apis => ApiList ?? [new("param-cgi", "1.0")];
+   }
+
+   /// <summary>The task context of the server, recording steps and warnings.</summary>
+   internal sealed class FakeTaskContext(IVapixClient vapix) : ITaskExecutionContext
+   {
+       public TaskStepList Steps { get; } = new();
+       public List<string> Warnings { get; } = [];
+
+       public Guid TaskId { get; } = Guid.NewGuid();
+       public IVapixClient Vapix => vapix;
+       public ILogger Logger => NullLogger.Instance;
+       public ICorePlugin? Owner => null;
+       public IUploadedFiles Files => throw new NotSupportedException();
+
+       public void PlanSteps(params string[] names) => Steps.Plan(names);
+       public ITaskStep BeginStep(string name) => Steps.Begin(name);
+       public void ReportProgress(int percent, string? message = null) { }
+       public void ReportWarning(string message) => Warnings.Add(message);
+       public void Log(TaskLogLevel level, string message) { }
+   }
+   ```
+
+   The tests (`UpnpNameTaskPluginTests.cs`):
+
+   ```csharp
+   using Oadm.Sdk.Devices;
+   using Oadm.Sdk.Vapix;
+   using Oadm.Tests.Shared;
+
+   namespace Oadm.Plugins.UpnpName.Tests;
+
+   public sealed class UpnpNameTaskPluginTests
+   {
+       private readonly UpnpNameTaskPlugin _plugin = new();
+
+       [Fact]
+       public async Task Sets_and_verifies_the_name()
+       {
+           var camera = new FakeCamera();
+           var ctx = new FakeTaskContext(camera);
+
+           await StepRun.RunAsync(ctx.Steps, () => _plugin.ExecuteAsync(ctx, new FakeDevice(), """{"name":"Entrance"}""", CancellationToken.None));
+
+           Assert.Equal("Entrance", camera.Parameters[UpnpName.Parameter]);
+           Assert.Equal(
+               ["Check compatibility: Done", "Read the current name: Done", "Set the name: Done", "Verify the name: Done", "Completed: Done"],
+               StepRun.Lines(ctx.Steps));
+       }
+
+       [Fact]
+       public async Task The_same_name_is_not_written_again()
+       {
+           var camera = new FakeCamera();
+           camera.Parameters[UpnpName.Parameter] = "Entrance";
+           var ctx = new FakeTaskContext(camera);
+
+           await StepRun.RunAsync(ctx.Steps, () => _plugin.ExecuteAsync(ctx, new FakeDevice(), """{"name":"Entrance"}""", CancellationToken.None));
+
+           Assert.Equal(0, camera.Writes);
+           Assert.Equal("Set the name: Skipped", StepRun.Lines(ctx.Steps)[2]);
+       }
+
+       [Fact]
+       public async Task A_device_without_the_API_is_not_changed()
+       {
+           var camera = new FakeCamera { Apis = [] };
+           var ctx = new FakeTaskContext(camera);
+
+           await Assert.ThrowsAsync<DeviceNotCompatibleException>(() =>
+               StepRun.RunAsync(ctx.Steps, () => _plugin.ExecuteAsync(ctx, new FakeDevice(), """{"name":"Entrance"}""", CancellationToken.None)));
+
+           Assert.Equal(0, camera.Writes);
+           Assert.Equal("Check compatibility: Failed", StepRun.Lines(ctx.Steps)[0]);
+       }
+
+       [Fact]
+       public async Task An_empty_name_fails_before_any_request()
+       {
+           var camera = new FakeCamera();
+           var ctx = new FakeTaskContext(camera);
+
+           var error = await Assert.ThrowsAsync<ArgumentException>(() =>
+               _plugin.ExecuteAsync(ctx, new FakeDevice(), """{"name":" "}""", CancellationToken.None));
+
+           Assert.Contains("Nothing was changed", error.Message, StringComparison.Ordinal);
+           Assert.Equal(0, camera.Writes);
+       }
+
+       [Fact]
+       public void The_menu_entry_says_why_it_cannot_run()
+       {
+           Assert.True(_plugin.CanRun(new FakeDevice()));
+           Assert.False(_plugin.CanRun(new FakeDevice(DeviceStatus.Unreachable)));
+           Assert.Equal("The device does not answer", _plugin.NotSupportedReason(new FakeDevice(DeviceStatus.Unreachable)));
+           Assert.False(_plugin.CanRun(new FakeDevice(ApiList: [])));
+       }
+
+       [Fact]
+       public void The_task_name_says_what_happens() =>
+           Assert.Equal("Set UPnP name Entrance", _plugin.GetTaskName("""{"name":"Entrance"}"""));
+   }
+   ```
+
+   ```sh
+   dotnet test tests/Oadm.Plugins.UpnpName.Tests
+   ```
+
+7. **Try it.** Build and start OADM from the checkout. The build copies both parts to
+   `artifacts/plugins/acme.upnp-name/`, where the server and the client load them:
+
+   ```sh
+   ./manage.sh build plugins
+   ./manage.sh run dev
+   ```
+
+   Right-click a device: **Network > Set UPnP name**. The task needs a real device; the read-only part is safe to try on
+   any camera, the write changes only its UPnP name.
+
+</Steps>
+
+## Next steps
+
+- Add a `README.md` to the plugin folder: what it does, the steps, the device API and on which device and AXIS OS you
+  verified it.
+- Read [Task plugins](../tasks/) for uploads, permissions, credentials and following a device to a new address.
+- Read [Testing](../testing/) for headless screenshots of the dialog and tests against a real camera.

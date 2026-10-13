@@ -32,10 +32,12 @@ export default defineConfig({
 				ThemeProvider: './src/components/DarkTheme.astro',
 				ThemeSelect: './src/components/NoThemeSelect.astro',
 				SiteTitle: './src/components/BackHome.astro',
+				Sidebar: './src/components/Sidebar.astro',
 			},
 			sidebar: [
 				{
 					label: 'Get started',
+					collapsed: true,
 					items: [
 						{ label: 'Install', slug: 'start/install' },
 						{ label: 'First start', slug: 'start/first-start' },
@@ -43,6 +45,7 @@ export default defineConfig({
 				},
 				{
 					label: 'Devices',
+					collapsed: true,
 					items: [
 						{ label: 'Add devices', slug: 'devices/add' },
 						{ label: 'Devices page', slug: 'devices/devices-page' },
@@ -54,6 +57,7 @@ export default defineConfig({
 				},
 				{
 					label: 'Device tasks',
+					collapsed: true,
 					items: [
 						{ label: 'Overview', slug: 'tasks/overview' },
 						{ label: 'Upgrade firmware', slug: 'tasks/firmware' },
@@ -67,6 +71,7 @@ export default defineConfig({
 				},
 				{
 					label: 'Plugins',
+					collapsed: true,
 					items: [
 						{ label: 'Overview', slug: 'tools/overview' },
 						{ label: 'NTP server', slug: 'tools/ntp-server' },
@@ -88,6 +93,7 @@ export default defineConfig({
 				},
 				{
 					label: 'Administration',
+					collapsed: true,
 					items: [
 						{ label: 'Users and roles', slug: 'admin/users' },
 						{ label: 'Turn plugins on or off', slug: 'admin/plugins' },
@@ -98,14 +104,24 @@ export default defineConfig({
 				},
 				{
 					label: 'Developers',
+					collapsed: true,
 					items: [
+						{ label: 'Overview', slug: 'dev/overview' },
 						{ label: 'Build from source', slug: 'dev/build' },
-						{ label: 'Write a plugin', slug: 'dev/plugins' },
+						{ label: 'Plugin basics', slug: 'dev/plugins' },
+						{ label: 'Your first plugin', slug: 'dev/first-plugin' },
+						{ label: 'Devices and VAPIX', slug: 'dev/devices' },
+						{ label: 'Task plugins', slug: 'dev/tasks' },
+						{ label: 'Core plugins and pages', slug: 'dev/core-plugins' },
+						{ label: 'Event rules', slug: 'dev/event-rules' },
+						{ label: 'UI kit', slug: 'dev/ui' },
+						{ label: 'Testing', slug: 'dev/testing' },
 						{ label: 'Build a plugin with AI', slug: 'dev/ai-plugins' },
 					],
 				},
 				{
 					label: 'Project',
+					collapsed: true,
 					items: [
 						{ label: 'FAQ', slug: 'project/faq' },
 						{ label: 'Security', slug: 'project/security' },

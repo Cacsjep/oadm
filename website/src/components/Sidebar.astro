@@ -1,0 +1,19 @@
+---
+// Starlight's sidebar without its session state: every group starts collapsed and only the group of the current
+// page is open (Starlight opens it), also after following a link from another section.
+import MobileMenuFooter from 'virtual:starlight/components/MobileMenuFooter';
+import SidebarSublist from '@astrojs/starlight/components/SidebarSublist.astro';
+
+const { sidebar } = Astro.locals.starlightRoute;
+---
+
+<SidebarSublist sublist={sidebar} />
+
+<div class="md:sl-hidden">
+	<MobileMenuFooter />
+</div>
+
+<script>
+	// Keep the current page in view in a long sidebar.
+	document.querySelector('#starlight__sidebar [aria-current="page"]')?.scrollIntoView({ block: 'nearest' });
+</script>
