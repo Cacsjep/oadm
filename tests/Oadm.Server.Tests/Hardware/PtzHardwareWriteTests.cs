@@ -13,7 +13,7 @@ namespace Oadm.Server.Tests.Hardware;
 /// PTZ of the live view and the RTSP port of a camera behind a port forward, through the in-process server: reads the
 /// presets, pans with a continuous move that stops by itself, zooms, centers, goes home, and streams video over the
 /// forwarded RTSP port. Verified with an AXIS Q6411-LE of the AXIS Virtual Loan Tool (AXIS OS 13.0.88). Moves the camera:
-/// runs only with <c>OADM_PTZ_URL</c> (e.g. http://195.60.68.14:12090), <c>OADM_PTZ_USER</c>, <c>OADM_PTZ_PASSWORD</c> and
+/// runs only with <c>OADM_PTZ_URL</c> (e.g. http://camera.example:12090), <c>OADM_PTZ_USER</c>, <c>OADM_PTZ_PASSWORD</c> and
 /// <c>OADM_PTZ_RTSP_PORT</c> set.
 /// </summary>
 [Trait("Category", "HardwareWrite")]

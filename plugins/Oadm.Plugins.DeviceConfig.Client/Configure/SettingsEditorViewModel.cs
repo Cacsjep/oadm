@@ -320,6 +320,7 @@ public sealed partial class SettingsEditorViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(parameters);
         _rows = [.. parameters
             .Where(p => allowDangerous || !DangerousParameters.IsDangerous(p.Definition.Name))
+            .Where(p => !DangerousParameters.IsAddress(p.Definition.Name))
             .Where(p => !severalDevices || !DangerousParameters.IsPerDevice(p.Definition.Name))
             .Select(p => new ParamRowViewModel(p, values?.GetValueOrDefault(p.Definition.Name), OnRowChanged))];
         _groups = [.. _rows.GroupBy(r => r.Group, StringComparer.Ordinal).Select(g =>

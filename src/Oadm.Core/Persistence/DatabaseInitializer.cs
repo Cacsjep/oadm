@@ -55,7 +55,8 @@ public sealed partial class DatabaseInitializer(
     private async Task CopyBeforeUpgradeAsync(string lastMigration, CancellationToken ct)
     {
         var stamp = (time ?? TimeProvider.System).GetUtcNow().ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
-        var target = Path.Combine(BeforeUpgradeDirectory, $"oadm-{lastMigration}-{stamp}.db");
+        // The time first, so the names sort by time (a restored older database must not be pruned at once).
+        var target = Path.Combine(BeforeUpgradeDirectory, $"oadm-{stamp}-{lastMigration}.db");
         await new Backup.BackupArchive(paths).CopyDatabaseAsync(target, ct).ConfigureAwait(false);
         foreach (var old in Directory.GetFiles(BeforeUpgradeDirectory, "oadm-*.db").Order(StringComparer.Ordinal).SkipLast(5))
         {

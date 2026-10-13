@@ -32,7 +32,7 @@ keeps the data folder (devices, credentials, settings, PKI).
 ### Windows
 
 1. Download `OADM-<version>-win-x64.msi` and double-click it.
-2. Accept the terms and the license, then choose **Server and client** or **Client only**.
+2. Choose **Server and client** or **Client only**. The client asks you to accept the terms of use on its first start.
 3. Finish. With the server, the Windows service **OADM Server** starts now and on every boot.
 
 - Client: Start menu > **OADM**.
@@ -100,8 +100,9 @@ holds the port (for example Windows Time on 123), the plugin's page says so and 
 ## Data and backup
 
 The data folder holds the database, the plugin settings (including the PKI's certificate authority) and `master.key`,
-which encrypts all stored passwords. Back up the whole folder: without `master.key` the passwords cannot be read. The
-PKI page can also back up the CA to a password-protected file.
+which encrypts all stored passwords. Back up the server with **Settings > Backup and restore**: one password-protected
+file with the devices, passwords, users, settings and plugin data, also every day automatically. A backup restores on
+another computer too. The PKI page can also back up the CA on its own.
 
 ## Logs and troubleshooting
 

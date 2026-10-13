@@ -445,7 +445,7 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
         using (var step = ctx.BeginStep(Steps.CheckLicense))
         {
             var mac = LicenseKey.NormalizeMac(device.Serial);
-            var entry = mac is null ? null : payload.KeyFor(mac);
+            var entry = mac is null ? null : FittingKey(payload.KeysFor(mac), app.Version);
             string? problem = null;
             if (entry is null)
             {
@@ -456,7 +456,7 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 try
                 {
                     key = LicenseKey.Parse(entry.Xml);
-                    problem = KeyProblem(key, mac!, app, DateOnly.FromDateTime(_time.GetUtcNow().UtcDateTime));
+                    problem = KeyProblem(key, mac!, app, DateOnly.FromDateTime(_time.GetUtcNow().UtcDateTime), payload.LicenseApplicationId);
                 }
                 catch (FormatException ex)
                 {
@@ -520,8 +520,31 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
         }
     }
 
-    /// <summary>Why <paramref name="key"/> cannot be installed for <paramref name="app"/> on the device <paramref name="mac"/>; null when it can.</summary>
-    public static string? KeyProblem(LicenseKey key, string mac, InstalledApplication app, DateOnly today)
+    /// <summary>The key that fits the installed version, else the first (its problem then says why).</summary>
+    private static LicenseKeyEntry? FittingKey(IReadOnlyList<LicenseKeyEntry> entries, string? installedVersion)
+    {
+        foreach (var entry in entries)
+        {
+            try
+            {
+                if (LicenseKey.Parse(entry.Xml).Fits(installedVersion))
+                {
+                    return entry;
+                }
+            }
+            catch (FormatException)
+            {
+            }
+        }
+
+        return entries.Count > 0 ? entries[0] : null;
+    }
+
+    /// <summary>
+    /// Why <paramref name="key"/> cannot be installed for <paramref name="app"/> on the device <paramref name="mac"/>; null when it
+    /// can. The application id is the device's, else <paramref name="expectedApplicationId"/> (the package's or the chosen one).
+    /// </summary>
+    public static string? KeyProblem(LicenseKey key, string mac, InstalledApplication app, DateOnly today, string? expectedApplicationId = null)
     {
         ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(app);
@@ -530,7 +553,10 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
             return $"The key is for the device {key.DeviceId}, not {mac}.";
         }
 
-        if (app.ApplicationId is { Length: > 0 } id && id != "0" && key.ApplicationId != id)
+        var id = app.ApplicationId is { Length: > 0 } reported && reported != "0" ? reported
+            : expectedApplicationId is { Length: > 0 } expected && expected != "0" ? expected
+            : null;
+        if (id is not null && key.ApplicationId != id)
         {
             return $"The key is for another application (ID {key.ApplicationId}; {app.DisplayName} has ID {id}).";
         }

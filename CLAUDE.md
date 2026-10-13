@@ -50,7 +50,7 @@ each exe too (MSI folders, the .pkg app's `Contents/Resources`, .deb `/usr/share
 its license sentence with the same copyright line.
 **Terms of use** (`/TERMS.md`, plain-language disclaimer, "as is", no liability for device
 changes, not affiliated with Axis; text fixed by the user) are accepted on the **first start of the client** on each
-computer, before the splash and any connection (`Shell/TermsWindow` + `TermsViewModel`: the text, Quit / Accept, the X
+computer, before the splash and any connection (`Shell/TermsWindow` + `TermsViewModel`: the terms and the license below them, Quit / Accept, the X
 quits; `ClientSettings.AcceptedTerms` = SHA-256 of the text, so changed terms ask again). The installers show no license
 page (decision 2026-10-13: silent and command-line installs skipped it, Debian packages never ask; every user runs the
 client). TERMS.md also stands at the top of the client's About page (embedded resource `Oadm.Client.TERMS.md`), in
@@ -163,6 +163,11 @@ src/
   Oadm.Client/         Avalonia app: views, view models, gRPC client, plugin loader
 plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.Restart/   first Task plugin (server only)
+  Oadm.Plugins.Firmware(.Client)/         Upgrade firmware
+  Oadm.Plugins.Users(.Client)/            Users (accounts on the devices)
+  Oadm.Plugins.DateTime(.Client)/         Date and time
+  Oadm.Plugins.Network(.Client)/          Network settings, Assign IP address
+  Oadm.Plugins.Acap(.Client)/             Applications (ACAP) and their license keys
   Oadm.Plugins.SnapshotReport(.Client)/   first Core plugin: rail page + PDF maintenance report
   Oadm.Plugins.VapixCommander(.Client)/   core plugin: VAPIX command library, raw requests, rollouts
   Oadm.Plugins.NtpServer(.Client)/        core plugin: NTP server (RFC 5905 server mode) + "Use OADM as NTP server"
@@ -172,7 +177,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.SystemReport(.Client)/     core plugin without a page: toolbar "System report" (server reports in one ZIP)
   Oadm.Plugins.HardeningScan(.Client)/    core plugin: read-only scan against the AXIS OS hardening guide (off by default)
   Oadm.Plugins.ImageHealth(.Client)/      core plugin: Image Health Dashboard, AXIS Image Health Analytics status of every camera (off by default)
-  Oadm.Plugins.DeviceConfig(.Client)/     Maintenance tasks: Export configuration / Import configuration (device config files)
+  Oadm.Plugins.DeviceConfig(.Client)/     Maintenance: Export / Import configuration, Configure devices, Create configuration file
   Oadm.Plugins.Outputs/                   event rule action "Set output" (relays, outputs)
   Oadm.Plugins.Notifications/             event rule actions "Send email" and "Send HTTP request"
   Oadm.Plugins.IoMonitor(.Client)/        core plugin: live inputs and outputs of one device (off by default)
@@ -1742,7 +1747,7 @@ zone from the 313 IANA zones of AXIS OS, daylight saving, time mode: server time
 **Export configuration** and **Import configuration** (AXIS OS 12.5 or later: the device's own configuration export and
 import, `/config/rest/$export`, `$import`, like its web interface), **Configure devices** and **Create configuration file**
 (ADM's Configure Devices: any AXIS OS with `param.cgi`). Decisions, device research, steps and the write tests on hardware:
-plugin `README.md`; Configure devices spec: `docs/configure-devices-spec-draft.md`.
+plugin `README.md`.
 
 - Rules that must hold: merge only; the network identity (host name, addresses, router, DHCP, device names, the multicast
   addresses) and read-only values are never imported; "Connection settings" (HTTPS, ports, login method, 802.1X, IPv6,
@@ -1754,9 +1759,10 @@ plugin `README.md`; Configure devices spec: `docs/configure-devices-spec-draft.m
   are read once per model and AXIS OS (one `listdefinitions` request while it stays below the 1 MB XML limit, else per
   group); internal, hidden, read-only, constant, write-only and write-level-7 parameters are never offered; each device
   checks every value against its own definition before writing and skips what it does not have (Done with warnings); the
-  dangerous parameters (`DangerousParameters`: network identity and connection) carry a warning, are confirmed, need their
-  own right (Operator no) and are written last; addresses and names that must differ per device are not offered when several
-  devices are selected; the source device keeps its own rules, schedules and stream profiles (skipped there); a rule or stream profile with the same name is replaced, a schedule with the
+  dangerous parameters (`DangerousParameters`: network identity and connection, incl. the web server ports and HTTP / HTTPS
+  policy, HTTP/2 and the web interface) carry a warning, are confirmed, need their own right (Operator no) and are written
+  last; the device's IP addresses are never written (Network settings and Assign IP address check a new address and
+  follow the device); names that must differ per device are not offered when several devices are selected; the source device keeps its own rules, schedules and stream profiles (skipped there); a rule or stream profile with the same name is replaced, a schedule with the
   same name and recurrence used again (applying twice changes nothing more); ADM files are read and written byte for byte
   (format 3, known from files only, ADM is never decompiled), passwords in them like ADM; password values never reach a log
   or an error text. **Create configuration file** is a dialog for one device, never a task.
@@ -1818,7 +1824,7 @@ mode (`GroupDevicesByTag`), bottom pane state, `GpuDecoding`, `ShowVideoDetails`
 
 # Backup and restore
 
-Settings page card **Backup and restore** (Administrator only, never grantable; spec `docs/backup-restore-spec-draft.md`).
+Settings page card **Backup and restore** (Administrator only, never grantable).
 Core `Oadm.Core.Backup` (`BackupFile`, `BackupArchive`), server `Oadm.Server.Backup` (`BackupManager`, `BackupGrpcService`,
 `BackupScheduleHostedService`, `ServerRestart`), gRPC `BackupService` (`backup.proto`), client `Backup/` (`BackupViewModel` +
 `BackupCardView`, `BackupPasswordWindow`, `RestoreWindow`).
@@ -1834,7 +1840,7 @@ Core `Oadm.Core.Backup` (`BackupFile`, `BackupArchive`), server `Oadm.Server.Bac
 - **Versions**: a backup's last migration must be one of this build's: an older one is upgraded by the normal migrations
   at the next start (**migrations are never deleted**), a newer one is refused before the password ("This backup is from
   OADM x, newer than this server (y). Update OADM to x or later first."). Before every migration of an existing database the
-  server copies it to `backups/before-upgrade/oadm-<last migration>-<time>.db` (newest five kept, `DatabaseInitializer`).
+  server copies it to `backups/before-upgrade/oadm-<time>-<last migration>.db` (newest five kept, `DatabaseInitializer`).
 - **Restore**: the backup is checked and unpacked to `restore/staged` (only `oadm.db`, `master.key` and `plugin-data/...`
   entries inside the folder; a wrong password or a damaged file changes nothing), then a safety backup of the current state
   with the same password (`backups/oadm-backup-<time>-before-restore`, newest five), running tasks cancelled, audit
@@ -1900,7 +1906,7 @@ Code: server `Oadm.Server.Auth` (`AuthInterceptor`, `AccessPolicy`, `CallerStrea
 `PermissionCatalog` + `HostPermissions`, `RolesUpgradeNotice`, `PasswordHasher`, `AuthTokenStore`, `LoginThrottle`,
 `AuthManager`: login, first administrator, setup code; `AuditLog`; `CallerContext`), migrations `UsersAndAudit` (Users,
 AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`, `UserSession`, `MyRoleWindow`,
-`Settings/UsersCardView` + `RolesCardView`, `Logging/AuditLogViewModel`. Spec and decisions: `docs/rbac-spec-draft.md`.
+`Settings/UsersCardView` + `RolesCardView`, `Logging/AuditLogViewModel`.
 
 - Table `Users`: Id, UserName (unique case-insensitive, 1..64), PasswordHash (PBKDF2-SHA256, 210,000 iterations, 16-byte
   salt), RoleId (table `Roles`), Disabled, CreatedUtc, LastLoginUtc. Passwords have no strength rule, only not empty.
@@ -1932,7 +1938,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   credential list (list, add, remove, reveal), plugins on / off, `SettingsService.Set`, the audit log. Every gRPC method
   has a rule in `AccessPolicy` (Open, SignedIn, a permission, InCall, Admin; a test checks that every contract method is
   listed, an unlisted one is Admin): device list, tags, tasks list and settings Get need only a login; plugin calls and
-  task runs are checked in the call (`InCall`). The operator default withholds the risky rights (decisions 9 and 11):
+  task runs are checked in the call (`InCall`). The operator default withholds the risky rights:
   Web View, remove users on devices, firmware factory default and downgrade, application downgrade and removal, connection
   settings import; event rules, tag management and Delete all stay off as before. `RolesUpgradeNotice` records what
   operators lost at the first start of an installation that had users; administrators see it as a banner with "Check

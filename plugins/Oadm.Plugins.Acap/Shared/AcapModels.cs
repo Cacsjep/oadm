@@ -63,6 +63,12 @@ public sealed record AcapPayload
     /// </summary>
     public IReadOnlyList<LicenseKeyEntry> LicenseKeys { get; init; } = [];
 
+    /// <summary>
+    /// The application id the keys are for (the package's or the chosen application's), used when the device does not report
+    /// an id for the installed application; null = not known.
+    /// </summary>
+    public string? LicenseApplicationId { get; init; }
+
     /// <summary>Friendly name of the application ("AXIS Video Motion Detection"); only names the task.</summary>
     public string? AppDisplayName { get; init; }
 
@@ -117,27 +123,35 @@ public sealed record AcapPayload
         return payload;
     }
 
-    private Dictionary<string, LicenseKeyEntry>? _keysByMac;
+    private Dictionary<string, List<LicenseKeyEntry>>? _keysByMac;
 
-    /// <summary>The key of the device with this MAC address (normalized), null without one. Indexed once per payload.</summary>
-    public LicenseKeyEntry? KeyFor(string mac)
+    /// <summary>The first key of the device with this MAC address (normalized), null without one.</summary>
+    public LicenseKeyEntry? KeyFor(string mac) => KeysFor(mac) is { Count: > 0 } keys ? keys[0] : null;
+
+    /// <summary>Every key of the device with this MAC address (normalized; one per version range). Indexed once per payload.</summary>
+    public IReadOnlyList<LicenseKeyEntry> KeysFor(string mac)
     {
         var index = _keysByMac;
         if (index is null)
         {
-            index = new Dictionary<string, LicenseKeyEntry>(StringComparer.Ordinal);
+            index = new Dictionary<string, List<LicenseKeyEntry>>(StringComparer.Ordinal);
             foreach (var key in LicenseKeys)
             {
                 if (LicenseKey.NormalizeMac(key.DeviceId) is { } normalized)
                 {
-                    index.TryAdd(normalized, key);
+                    if (!index.TryGetValue(normalized, out var list))
+                    {
+                        index[normalized] = list = [];
+                    }
+
+                    list.Add(key);
                 }
             }
 
             _keysByMac = index;
         }
 
-        return index.GetValueOrDefault(mac);
+        return index.TryGetValue(mac, out var keys) ? keys : [];
     }
 
     /// <summary>Parses and validates a payload. Throws <see cref="ArgumentException"/> for invalid input; nothing has been changed then.</summary>

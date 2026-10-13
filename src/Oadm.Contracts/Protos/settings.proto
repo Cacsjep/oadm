@@ -48,7 +48,7 @@ message ServerSettings {
   RolesUpgradeNotice roles_notice = 22;
 }
 
-// The upgrade to roles took rights from the Operator role (docs/rbac-spec-draft.md, decisions 9 and 11).
+// The upgrade to roles took rights from the Operator role (CLAUDE.md "Users, roles and sessions").
 message RolesUpgradeNotice {
   string id = 1;
   repeated string operator_lost = 2;   // names as the permission matrix shows them

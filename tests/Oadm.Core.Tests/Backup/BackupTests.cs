@@ -229,13 +229,47 @@ public sealed class BackupTests
                 Assert.NotEmpty(await ctx.Roles.ToListAsync()); // the Roles migration ran on the restored database
             }
 
-            Assert.Single(Directory.GetFiles(Path.Combine(targetDir, "backups", "before-upgrade"), "oadm-*_EventRules-*.db"));
+            Assert.Single(Directory.GetFiles(Path.Combine(targetDir, "backups", "before-upgrade"), "oadm-*-*_EventRules.db"));
             await upgraded.CloseAsync();
         }
         finally
         {
             TestDatabase.DeleteDirectory(sourceDir);
             TestDatabase.DeleteDirectory(targetDir);
+        }
+    }
+
+    [Fact]
+    public async Task ASwapCutOffByADyingProcessIsPutBackAtTheNextStart()
+    {
+        var dir = TestDatabase.NewTempDirectory();
+        try
+        {
+            var db = await TestDatabase.CreateAsync(dir);
+            var device = await AddDeviceAsync(db, "own");
+            await db.CloseAsync();
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            var key = await File.ReadAllBytesAsync(db.Paths.MasterKeyPath);
+
+            // The process died after moving the server's files out, before the staged ones came in.
+            var archive = new BackupArchive(db.Paths);
+            var previous = Path.Combine(archive.RestoreDirectory, "previous-20261013-120000");
+            Directory.CreateDirectory(previous);
+            File.Move(db.Paths.DatabasePath, Path.Combine(previous, OadmPaths.DatabaseFileName));
+            File.Move(db.Paths.MasterKeyPath, Path.Combine(previous, OadmPaths.MasterKeyFileName));
+            await File.WriteAllTextAsync(Path.Combine(archive.RestoreDirectory, BackupArchive.SwapMarkerFile), previous);
+
+            Assert.Null(archive.ApplyPending()); // nothing staged, but the interrupted swap is put back
+
+            Assert.Equal(key, await File.ReadAllBytesAsync(db.Paths.MasterKeyPath));
+            Assert.False(File.Exists(Path.Combine(archive.RestoreDirectory, BackupArchive.SwapMarkerFile)));
+            var reopened = await TestDatabase.CreateAsync(dir);
+            Assert.Equal("own", (await reopened.Get<CredentialStore>().GetAsync(device.Id, CancellationToken.None))!.Password);
+            await reopened.CloseAsync();
+        }
+        finally
+        {
+            TestDatabase.DeleteDirectory(dir);
         }
     }
 

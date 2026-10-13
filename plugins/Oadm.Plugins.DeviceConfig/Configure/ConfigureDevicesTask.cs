@@ -360,7 +360,11 @@ public sealed class ConfigureDevicesTask : ITaskPlugin, ITaskPluginQuery
             var skipped = new List<string>();
             foreach (var parameter in parameters)
             {
-                if (!definitions.TryGetValue(parameter.Name, out var definition))
+                if (DangerousParameters.IsAddress(parameter.Name))
+                {
+                    skipped.Add($"{parameter.Name} ({DangerousParameters.AddressNote.TrimEnd('.')})");
+                }
+                else if (!definitions.TryGetValue(parameter.Name, out var definition))
                 {
                     skipped.Add(parameter.Name + " (not on this device)");
                 }
@@ -370,7 +374,8 @@ public sealed class ConfigureDevicesTask : ITaskPlugin, ITaskPluginQuery
                 }
                 else
                 {
-                    apply.Add(parameter);
+                    // Checked trimmed, written trimmed (numbers, addresses, names, choices); text and passwords exactly as typed.
+                    apply.Add(definition.Kind is ParamKind.Text or ParamKind.Password ? parameter : parameter with { Value = parameter.Value?.Trim() ?? string.Empty });
                 }
             }
 
@@ -521,12 +526,19 @@ public sealed class ConfigureDevicesTask : ITaskPlugin, ITaskPluginQuery
         }
     }
 
-    /// <summary>Password parameter values and action values whose name says password: never in a log or an error.</summary>
+    /// <summary>
+    /// Password parameter values, values whose name says password, secret or community (SNMP community strings are plain
+    /// text parameters) and such action values: never in a log or an error.
+    /// </summary>
     private static IReadOnlyCollection<string> Secrets(ConfigurePayload payload, Dictionary<string, ParamDefinition> definitions) =>
     [
-        .. payload.Parameters.Where(p => definitions.GetValueOrDefault(p.Name)?.Kind == ParamKind.Password).Select(p => p.Value),
-        .. payload.Rules.SelectMany(r => r.Action.Parameters).Where(p => p.Name.Contains("pass", StringComparison.OrdinalIgnoreCase)).Select(p => p.Value),
+        .. payload.Parameters.Where(p => definitions.GetValueOrDefault(p.Name)?.Kind == ParamKind.Password || IsSecretName(p.Name)).Select(p => p.Value),
+        .. payload.Rules.SelectMany(r => r.Action.Parameters).Where(p => IsSecretName(p.Name)).Select(p => p.Value),
     ];
+
+    private static bool IsSecretName(string name) =>
+        name.Contains("pass", StringComparison.OrdinalIgnoreCase) || name.Contains("secret", StringComparison.OrdinalIgnoreCase)
+        || name.Contains("community", StringComparison.OrdinalIgnoreCase);
 
     private static string Joined(params string?[] parts) => string.Join(", ", parts.Where(p => !string.IsNullOrEmpty(p)));
 

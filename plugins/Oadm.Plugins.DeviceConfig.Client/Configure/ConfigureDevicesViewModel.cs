@@ -276,6 +276,10 @@ public sealed partial class ConfigureDevicesViewModel : ObservableObject, IDispo
                 {
                     notes.Add("The file's addresses and names are left out. " + DangerousParameters.PerDeviceNote);
                 }
+                else if (preChecked.Any(DangerousParameters.IsAddress))
+                {
+                    notes.Add("The file's IP addresses are left out. " + DangerousParameters.AddressNote);
+                }
             }
             else
             {

@@ -99,6 +99,40 @@ public sealed partial class BackupManager(
 
     public void Dispose() => _busy.Dispose();
 
+    private volatile bool _restarting;
+
+    /// <summary>One backup or restore at a time; none after a restore asked for the restart.</summary>
+    private async Task EnterAsync(CancellationToken ct)
+    {
+        await _busy.WaitAsync(ct).ConfigureAwait(false);
+        if (_restarting)
+        {
+            _busy.Release();
+            throw new BackupRefusedException("The server is restarting to restore a backup. Try again in a moment.");
+        }
+    }
+
+    /// <summary>Startup: backups that were being written when the server stopped (*.part) are removed.</summary>
+    public void RemovePartialFiles()
+    {
+        if (!Directory.Exists(Folder))
+        {
+            return;
+        }
+
+        foreach (var part in Directory.GetFiles(Folder, "*" + BackupFile.Extension + ".part"))
+        {
+            try
+            {
+                File.Delete(part);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Removed at the next start.
+            }
+        }
+    }
+
     public static string ServerVersion { get; } =
         (typeof(BackupManager).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0").Split('+')[0];
 
@@ -218,7 +252,7 @@ public sealed partial class BackupManager(
             throw new ArgumentException(problem, nameof(password));
         }
 
-        await _busy.WaitAsync(ct).ConfigureAwait(false);
+        await EnterAsync(ct).ConfigureAwait(false);
         try
         {
             return await archive.CreateAsync(output, password, await HeaderAsync(KindManual, ct).ConfigureAwait(false), Plugins(), ct).ConfigureAwait(false);
@@ -259,7 +293,7 @@ public sealed partial class BackupManager(
     {
         var schedule = await GetScheduleAsync(ct).ConfigureAwait(false);
         string? error = null;
-        await _busy.WaitAsync(ct).ConfigureAwait(false);
+        await EnterAsync(ct).ConfigureAwait(false);
         try
         {
             var password = secrets.Unprotect(schedule.ProtectedPassword ?? throw new InvalidOperationException("The automatic backups have no password."), PasswordPurpose);
@@ -363,7 +397,7 @@ public sealed partial class BackupManager(
             throw new BackupRefusedException(problem + " Nothing was changed.");
         }
 
-        await _busy.WaitAsync(ct).ConfigureAwait(false);
+        await EnterAsync(ct).ConfigureAwait(false);
         try
         {
             PendingRestoreInfo staged;
@@ -397,6 +431,7 @@ public sealed partial class BackupManager(
             }
 
             LogRestoreStaged(staged.Source, safety);
+            _restarting = true;
             restart.Request();
             return safety;
         }

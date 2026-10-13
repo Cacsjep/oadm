@@ -206,8 +206,10 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
             var missing = LegacyApiList.FromProperties(properties).Where(d => LegacyApiList.PropertyIds.Contains(d.Id) && !apis.Any(a => a.Id == d.Id));
             return [.. apis, .. missing];
         }
-        catch (VapixException ex) when (ex is not VapixAuthenticationException)
+        catch (Exception ex) when (ex is VapixException or HttpRequestException or System.Text.Json.JsonException or FormatException
+            || ex is OperationCanceledException && !ct.IsCancellationRequested)
         {
+            // The list itself was read: a failed extra read (timeout, refused, 401) never fails it.
             return apis;
         }
     }

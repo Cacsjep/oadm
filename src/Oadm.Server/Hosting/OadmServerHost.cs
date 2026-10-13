@@ -407,6 +407,7 @@ public static partial class OadmServerHost
         await Core.Auth.RolesUpgradeNotice.RecordAsync(sp.GetRequiredService<ServerSettingsStore>(), sync, hadUsers, catalog, sp.GetRequiredService<TimeProvider>(), ct).ConfigureAwait(false);
 
         // 2c. A restore this start applied: its report (Settings page) and audit entry; every login session ends.
+        sp.GetRequiredService<Backup.BackupManager>().RemovePartialFiles();
         await sp.GetRequiredService<Backup.BackupManager>().RecordRestoreAsync(ct).ConfigureAwait(false);
 
         // 3. Tasks left running by a previous process (the parallel task limit is loaded first).

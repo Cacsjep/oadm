@@ -285,7 +285,8 @@ public sealed class ConfigureDialogTests
 
         var one = Dialog(server, [first], new FakeUi());
         await one.InitializeAsync();
-        Assert.Contains(one.Editor!.Parameters, p => p.Name == "Network.IPAddress");
+        Assert.Contains(one.Editor!.Parameters, p => p.Name == "Network.HostName");
+        Assert.DoesNotContain(one.Editor.Parameters, p => p.Name == "Network.IPAddress"); // addresses only with Network settings
 
         var two = Dialog(server, [first, second], new FakeUi());
         await two.InitializeAsync();

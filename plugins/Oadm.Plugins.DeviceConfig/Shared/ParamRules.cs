@@ -127,12 +127,24 @@ public static class DangerousParameters
         "Network.UPnP.FriendlyName", "Network.DNSUpdate.DNSName", "Network.Interface.I0.Link.",
     ];
 
-    /// <summary>Names or prefixes of how OADM connects: HTTPS, ports, login method, IEEE 802.1X, RTSP, the IP address filter.</summary>
+    /// <summary>
+    /// Names or prefixes of how OADM connects: HTTPS, the web server's ports and HTTP / HTTPS policy, HTTP/2, the web
+    /// interface, login method, IEEE 802.1X, RTSP, the IP address filter.
+    /// </summary>
     private static readonly string[] Connection =
     [
         "HTTPS.", "Network.HTTP.", "Network.Interface.I0.dot1x.", "Network.RTSP.Port", "Network.RTSP.Enabled",
-        "Network.RTSP.ProtViewer", "Network.RTSPS.Port", "Network.Filter.",
+        "Network.RTSP.ProtViewer", "Network.RTSPS.Port", "Network.RTSPS.Enabled", "Network.Filter.", "System.BoaPort",
+        "System.AlternateBoaPort", "System.BoaGroupPolicy.", "System.HTTP2.", "System.WebInterfaceDisabled",
     ];
+
+    /// <summary>
+    /// The device's own addresses: never written by Configure devices (Network settings and Assign IP address check that a
+    /// new address is free and follow the device to it).
+    /// </summary>
+    private static readonly string[] Addresses = ["Network.IPAddress", "Network.IPv6.IPAddress"];
+
+    public const string AddressNote = "IP addresses are set with Network settings or Assign IP address.";
 
     /// <summary>
     /// Values that must differ per device (addresses, host name, device names): not offered when several devices are
@@ -147,6 +159,9 @@ public static class DangerousParameters
     public const string PerDeviceNote = "Addresses and names differ per device: use Network settings or Assign IP address.";
 
     public static bool IsDangerous(string name) => Reason(name) is not null;
+
+    /// <summary>The device's own address: never offered, never written (<see cref="AddressNote"/>).</summary>
+    public static bool IsAddress(string name) => Addresses.Contains(name, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The parameter must have another value on each device (not offered for several devices).</summary>
     public static bool IsPerDevice(string name) => PerDevice.Contains(name, StringComparer.OrdinalIgnoreCase);

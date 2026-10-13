@@ -8,7 +8,7 @@ namespace Oadm.Core.Tests.Vapix;
 /// <summary>PTZ of the live view against answers recorded on an AXIS Q6411-LE (AXIS OS 13.0.88, AXIS Virtual Loan Tool).</summary>
 public sealed class PtzControlTests
 {
-    private static readonly Uri Base = new("http://195.60.68.14:12090/");
+    private static readonly Uri Base = new("http://camera.example:12090/");
 
     [Fact]
     public async Task APtzCameraListsItsCommandsPresetsAndZoom()

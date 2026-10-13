@@ -56,6 +56,16 @@ public sealed class ConfigureTests
         Assert.Equal(DangerousParameters.ConnectionReason, DangerousParameters.Reason("Network.HTTP.AuthenticationPolicy"));
         Assert.Null(DangerousParameters.Reason("Network.UPnP.Enabled"));
         Assert.Null(DangerousParameters.Reason("Image.I0.Appearance.Compression"));
+
+        // The web server decides how OADM reaches the device: its ports, HTTP or HTTPS, HTTP/2, the web interface, RTSPS.
+        foreach (var name in new[] { "System.BoaPort", "System.AlternateBoaPort", "System.BoaGroupPolicy.admin", "System.HTTP2.Enabled", "System.WebInterfaceDisabled", "Network.RTSPS.Enabled" })
+        {
+            Assert.Equal(DangerousParameters.ConnectionReason, DangerousParameters.Reason(name));
+        }
+
+        // Addresses are never written here (Network settings checks them and follows the device).
+        Assert.True(DangerousParameters.IsAddress("Network.IPAddress") && DangerousParameters.IsAddress("Network.IPv6.IPAddress"));
+        Assert.False(DangerousParameters.IsAddress("Network.DNSServer1"));
     }
 
     [Fact]

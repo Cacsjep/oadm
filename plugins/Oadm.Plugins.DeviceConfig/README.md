@@ -159,7 +159,12 @@ Task name: "Import configuration <file name>" (the engine shortens to 48 charact
 
 ## Configure devices
 
-Spec and decisions Q1-Q9: `docs/configure-devices-spec-draft.md`.
+IP addresses (`Network.IPAddress`, `Network.IPv6.IPAddress`) are never offered or written here (`DangerousParameters.IsAddress`):
+Network settings and Assign IP address check that a new address is free and follow the device to it. The web server's
+ports and HTTP / HTTPS policy (`System.BoaPort`, `System.AlternateBoaPort`, `System.BoaGroupPolicy.*`), `System.HTTP2.*`,
+`System.WebInterfaceDisabled` and `Network.RTSPS.Enabled` are connection parameters (dangerous, written last). Values of
+numbers, addresses, names and choices are written trimmed; SNMP community strings and other names with "pass", "secret" or
+"community" are masked like passwords in logs and errors.
 
 ### Decisions
 

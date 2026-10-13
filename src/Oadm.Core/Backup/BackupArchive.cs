@@ -427,6 +427,7 @@ public sealed partial class BackupArchive(OadmPaths paths, ILogger<BackupArchive
     /// </summary>
     public RestoreOutcome? ApplyPending(Action<byte[], byte[]>? keyChanged = null)
     {
+        RecoverInterruptedSwap();
         var pendingPath = Path.Combine(RestoreDirectory, PendingFile);
         if (!File.Exists(pendingPath))
         {
@@ -448,6 +449,10 @@ public sealed partial class BackupArchive(OadmPaths paths, ILogger<BackupArchive
         var staged = Path.Combine(RestoreDirectory, "staged");
         var previous = Path.Combine(RestoreDirectory, "previous-" + _time.GetUtcNow().ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture));
         var moved = new List<(string From, string To)>();
+
+        // A process that dies during the moves leaves this marker: the next start puts the server's own files back.
+        var swapping = Path.Combine(RestoreDirectory, SwapMarkerFile);
+        File.WriteAllText(swapping, previous);
         RestoreOutcome outcome;
         try
         {
@@ -486,9 +491,10 @@ public sealed partial class BackupArchive(OadmPaths paths, ILogger<BackupArchive
                 {
                     Move(moved[i].To, moved[i].From, null);
                 }
-                catch (IOException)
+                catch (Exception back) when (back is IOException or UnauthorizedAccessException)
                 {
                     // Best effort: the log names the folder with the server's previous files.
+                    LogMoveBackFailed(back, moved[i].To);
                 }
             }
 
@@ -501,10 +507,50 @@ public sealed partial class BackupArchive(OadmPaths paths, ILogger<BackupArchive
             outcome = new RestoreOutcome { Restore = info, AppliedUtc = _time.GetUtcNow(), Error = ex.Message };
         }
 
+        File.Delete(swapping);
         TryDelete(staged);
         PrunePrevious();
         File.WriteAllText(Path.Combine(RestoreDirectory, ResultFile), JsonSerializer.Serialize(outcome, BackupFile.Json));
         return outcome;
+    }
+
+    /// <summary>The marker of a running swap: the folder that holds the server's own files meanwhile.</summary>
+    public const string SwapMarkerFile = "swapping.txt";
+
+    /// <summary>
+    /// A swap the process did not finish (the marker is still there): when the database or the key is missing, the server's
+    /// own files are moved back from the previous folder, so the start never comes up with an empty database and a new key.
+    /// </summary>
+    private void RecoverInterruptedSwap()
+    {
+        var marker = Path.Combine(RestoreDirectory, SwapMarkerFile);
+        if (!File.Exists(marker))
+        {
+            return;
+        }
+
+        var previous = File.ReadAllText(marker).Trim();
+        if (Directory.Exists(previous) && (!File.Exists(paths.DatabasePath) || !File.Exists(paths.MasterKeyPath)))
+        {
+            foreach (var name in new[] { OadmPaths.DatabaseFileName, OadmPaths.DatabaseFileName + "-wal", OadmPaths.DatabaseFileName + "-shm", OadmPaths.MasterKeyFileName })
+            {
+                var from = Path.Combine(previous, name);
+                if (File.Exists(from))
+                {
+                    File.Move(from, Path.Combine(paths.DataDirectory, name), overwrite: true);
+                }
+            }
+
+            var pluginData = Path.Combine(previous, "plugin-data");
+            if (Directory.Exists(pluginData) && !Directory.Exists(paths.PluginDataDirectory))
+            {
+                Directory.Move(pluginData, paths.PluginDataDirectory);
+            }
+
+            LogSwapRecovered(previous);
+        }
+
+        File.Delete(marker);
     }
 
     /// <summary>The outcome of the last applied restore that the server has not recorded yet (<see cref="ForgetOutcome"/> after).</summary>
@@ -618,4 +664,10 @@ public sealed partial class BackupArchive(OadmPaths paths, ILogger<BackupArchive
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Restoring the backup failed; the server keeps its data (replaced files, if any, are in {Previous})")]
     private partial void LogApplyFailed(Exception ex, string previous);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Restoring the backup failed and {Path} could not be put back; the server's previous files are in the restore folder")]
+    private partial void LogMoveBackFailed(Exception ex, string path);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "A restore was interrupted while files were moved; the server's own files were put back from {Previous}")]
+    private partial void LogSwapRecovered(string previous);
 }

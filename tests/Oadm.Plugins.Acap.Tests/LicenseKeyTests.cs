@@ -39,6 +39,30 @@ public sealed class LicenseKeyTests : IDisposable
 
     private static readonly AcapTaskPlugin Plugin = new(TimeSpan.FromMilliseconds(5), TimeSpan.FromMilliseconds(200), TimeProvider.System);
 
+    private static string KeyFor(int major) => Key().Replace("<MinimumMajorVersion>-1<", $"<MinimumMajorVersion>{major}<", StringComparison.Ordinal)
+        .Replace("<MaximumMajorVersion>-1<", $"<MaximumMajorVersion>{major}<", StringComparison.Ordinal);
+
+    [Fact]
+    public void Keys_of_two_major_versions_both_stay_and_the_fitting_one_is_chosen()
+    {
+        var set = LicenseKeySet.Read([("v1.xml", System.Text.Encoding.UTF8.GetBytes(KeyFor(1))), ("v2.xml", System.Text.Encoding.UTF8.GetBytes(KeyFor(2)))]);
+        Assert.Equal(2, set.Keys.Count);
+        Assert.Equal(2, set.AllByDevice("415090")["B8A44F631339"].Count);
+
+        var payload = new AcapPayload { LicenseKeys = [.. set.Keys.Select(k => new LicenseKeyEntry(k.DeviceId, k.Xml))] };
+        Assert.Equal(2, payload.KeysFor("B8A44F631339").Count);
+        Assert.True(set.Keys.Any(k => k.Fits("2.3.0")) && set.Keys.Any(k => !k.Fits("2.3.0")));
+    }
+
+    [Fact]
+    public void Without_an_application_id_on_the_device_the_package_id_is_checked()
+    {
+        var key = LicenseKey.Parse(Key(appId: "111"));
+        var app = new InstalledApplication { Name = "MissingFeatures", Version = "3.8.0", ApplicationId = "0" };
+        Assert.Null(AcapTaskPlugin.KeyProblem(key, "B8A44F631339", app, Today)); // nothing to compare: the MAC check holds
+        Assert.StartsWith("The key is for another application", AcapTaskPlugin.KeyProblem(key, "B8A44F631339", app, Today, expectedApplicationId: "415090"), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void A_key_file_names_its_device_application_and_end_date()
     {

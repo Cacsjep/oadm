@@ -226,22 +226,29 @@ public sealed partial class AcapDialogViewModel
             : string.Create(CultureInfo.InvariantCulture, $"Keys for {usable:N0} of {Devices.Count:N0} {(Devices.Count == 1 ? "device" : "devices")}.");
     }
 
-    /// <summary>The keys of the selected devices that are usable, one per device (the payload).</summary>
+    /// <summary>
+    /// The usable keys of the selected devices (the payload): every key of the device for the application that has not
+    /// expired, one per version range; the task installs the one that fits the installed version.
+    /// </summary>
     private List<LicenseKeyEntry> PayloadKeys()
     {
         var forApp = UsableKeys(LicenseApplicationId());
+        var all = LicenseKeys.AllByDevice(LicenseApplicationId());
         var today = Today();
         var keys = new List<LicenseKeyEntry>();
         foreach (var device in Devices)
         {
-            if (LicenseKey.NormalizeMac(device.Device.Serial) is { } mac && forApp.TryGetValue(mac, out var key) && !key.IsExpired(today))
+            if (LicenseKey.NormalizeMac(device.Device.Serial) is { } mac && forApp.ContainsKey(mac) && all.TryGetValue(mac, out var ofDevice))
             {
-                keys.Add(new LicenseKeyEntry(mac, key.Xml));
+                keys.AddRange(ofDevice.Where(k => !k.IsExpired(today)).Select(k => new LicenseKeyEntry(mac, k.Xml)));
             }
         }
 
         return keys;
     }
+
+    /// <summary>The application id of the keys for the payload (the task checks it when the device reports none).</summary>
+    private string? PayloadApplicationId() => LicenseApplicationId();
 
     /// <summary>The keys by device for the application (any application when the id is unknown: then only devices with one).</summary>
     private Dictionary<string, LicenseKey> UsableKeys(string? appId)
@@ -271,6 +278,7 @@ public sealed partial class AcapDialogViewModel
             Application = app.PackageName,
             AppDisplayName = app.Name,
             LicenseKeys = PayloadKeys(),
+            LicenseApplicationId = PayloadApplicationId(),
         });
     }
 }

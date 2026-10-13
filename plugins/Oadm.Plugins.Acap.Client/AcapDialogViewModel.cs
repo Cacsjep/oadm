@@ -595,6 +595,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject
                 AppDisplayName = package.DisplayName,
                 Kind = InstallKindOfAll(),
                 LicenseKeys = PayloadKeys(),
+                LicenseApplicationId = PayloadApplicationId(),
             });
         }
         catch (OperationCanceledException)

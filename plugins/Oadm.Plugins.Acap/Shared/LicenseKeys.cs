@@ -210,6 +210,26 @@ public sealed record LicenseKeySet(IReadOnlyList<LicenseKey> Keys, IReadOnlyList
         return several;
     }
 
+    /// <summary>Every key of each device for <paramref name="applicationId"/> (null = any application), one pass.</summary>
+    public Dictionary<string, List<LicenseKey>> AllByDevice(string? applicationId)
+    {
+        var map = new Dictionary<string, List<LicenseKey>>(StringComparer.Ordinal);
+        foreach (var key in Keys)
+        {
+            if (applicationId is null || key.ApplicationId == applicationId)
+            {
+                if (!map.TryGetValue(key.DeviceId, out var list))
+                {
+                    map[key.DeviceId] = list = [];
+                }
+
+                list.Add(key);
+            }
+        }
+
+        return map;
+    }
+
     /// <summary>Index by device for many lookups (one pass).</summary>
     public Dictionary<string, LicenseKey> ByDevice(string? applicationId)
     {
@@ -227,12 +247,12 @@ public sealed record LicenseKeySet(IReadOnlyList<LicenseKey> Keys, IReadOnlyList
 
     /// <summary>
     /// Reads key files (<c>.key</c>, <c>.xml</c>, any text) and ZIP files with keys. Problems of single files are listed, never
-    /// thrown; the same device and application twice keeps the key with the latest end date.
+    /// thrown; the same device, application and version range twice keeps the key with the latest end date.
     /// </summary>
     public static LicenseKeySet Read(IEnumerable<(string Name, byte[] Content)> files)
     {
         ArgumentNullException.ThrowIfNull(files);
-        var best = new Dictionary<(string, string), LicenseKey>();
+        var best = new Dictionary<(string, string, string), LicenseKey>();
         var problems = new List<LicenseKeyProblem>();
         var count = 0;
 
@@ -253,7 +273,7 @@ public sealed record LicenseKeySet(IReadOnlyList<LicenseKey> Keys, IReadOnlyList
                 }
 
                 var key = LicenseKey.Parse(Encoding.UTF8.GetString(bytes));
-                var id = (key.DeviceId, key.ApplicationId);
+                var id = (key.DeviceId, key.ApplicationId, key.VersionRangeText);
                 if (!best.TryGetValue(id, out var other) || Later(key, other))
                 {
                     best[id] = key;
@@ -269,7 +289,7 @@ public sealed record LicenseKeySet(IReadOnlyList<LicenseKey> Keys, IReadOnlyList
         {
             if (content.Length >= 4 && content[0] == 'P' && content[1] == 'K' && content[2] == 3 && content[3] == 4)
             {
-                ReadZip(name, content, Add, problems);
+                ReadZip(name, content, Add, () => count >= MaxKeys, problems);
             }
             else
             {
@@ -284,7 +304,7 @@ public sealed record LicenseKeySet(IReadOnlyList<LicenseKey> Keys, IReadOnlyList
     private static bool Later(LicenseKey key, LicenseKey other) =>
         other.ExpirationDate is { } end && (key.ExpirationDate is null || key.ExpirationDate > end);
 
-    private static void ReadZip(string name, byte[] content, Action<string, byte[]> add, List<LicenseKeyProblem> problems)
+    private static void ReadZip(string name, byte[] content, Action<string, byte[]> add, Func<bool> full, List<LicenseKeyProblem> problems)
     {
         try
         {
@@ -295,6 +315,12 @@ public sealed record LicenseKeySet(IReadOnlyList<LicenseKey> Keys, IReadOnlyList
                 if (entry.FullName.EndsWith('/') || entry.Length == 0)
                 {
                     continue;
+                }
+
+                if (full())
+                {
+                    problems.Add(new(name, $"More than {MaxKeys:N0} keys; the rest was not read."));
+                    return;
                 }
 
                 var label = name + ": " + entry.FullName;

@@ -4,8 +4,8 @@ namespace Oadm.Core.Auth;
 
 /// <summary>
 /// The one-time notice for administrators after the upgrade to roles: before roles every operator could run every task
-/// and open Web View; the built-in Operator role no longer has the risky ones (docs/rbac-spec-draft.md, decisions 9 and
-/// 11). Stored as the setting <see cref="Setting"/> on the first start with roles of an installation that had users; the
+/// and open Web View; the built-in Operator role no longer has the risky ones (CLAUDE.md "Users, roles and sessions").
+/// Stored as the setting <see cref="Setting"/> on the first start with roles of an installation that had users; the
 /// client shows it to administrators until they dismiss it (its id is remembered per client).
 /// </summary>
 /// <param name="OperatorLost">The names of what the Operator role no longer has, as the matrix shows them.</param>
