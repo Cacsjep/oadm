@@ -50,7 +50,7 @@
           <DataGrid.Columns>
             <DataGridTextColumn Header="Address" Width="150" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:StorageRowViewModel" />
             <DataGridTextColumn Header="Model" Width="150" Binding="{Binding Model}" x:DataType="vm:StorageRowViewModel" />
-            <DataGridTemplateColumn Header="SD card" Width="*" MinWidth="260" CanUserSort="True" SortMemberPath="StateSortKey">
+            <DataGridTemplateColumn Header="SD card" Width="380" CanUserSort="True" SortMemberPath="StateSortKey">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:StorageRowViewModel">
                   <ui:StatusChip Text="{Binding StateText}" MaxLines="2" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}"
@@ -63,7 +63,7 @@
                 <TextBlock Classes="numberHeader" Text="Size" />
               </DataGridTextColumn.Header>
             </DataGridTextColumn>
-            <DataGridTemplateColumn Header="Used" Width="260" CanUserSort="True" SortMemberPath="UsedPercent">
+            <DataGridTemplateColumn Header="Used" Width="*" MinWidth="260" CanUserSort="True" SortMemberPath="UsedPercent">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:StorageRowViewModel">
                   <ui:ProgressRow Value="{Binding UsedPercent}" Text="{Binding UsedText}" IsVisible="{Binding ShowUsed}" IsActive="False" />
