@@ -6,6 +6,8 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+## [2.6.0] - 2026-10-13
+
 ### Added
 
 - **Edge Recording Export** page: download the recordings on the SD cards and network shares of your cameras to this
