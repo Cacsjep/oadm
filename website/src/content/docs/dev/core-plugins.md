@@ -217,7 +217,7 @@ An unknown key or an exception means administrators only.
 | VAPIX Commander | A three-card page, saved items with encrypted secrets, rollouts as hidden tasks |
 | Metadata Monitor, I/O Monitor | One stream per view with a lease, a live list of 10,000 items |
 | System report | No page, a toolbar button, a background job, files in the data folder |
-| PKI | Secrets, trust anchors, eight contributed tasks, several dialogs |
+| PKI | Secrets, trust anchors, nine contributed tasks, several dialogs |
 | Live View, Web View | The host's live video and device web interface, tabs, the device tree |
 
 Each has a `README.md` in its folder with its decisions and details.

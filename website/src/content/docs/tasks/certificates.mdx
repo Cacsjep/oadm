@@ -94,7 +94,8 @@ Certificates a device already has are skipped. At most 150 certificates per run.
 ## What OADM checks first
 
 - The device has AXIS OS 11.11 or later, read fresh from the device.
-- A device whose certificate changed is refused until you accept the new certificate.
+- A device whose certificate changed is refused; remove it and add it again once you know why the certificate
+  changed.
 - The CA certificates are valid CA certificates and not expired.
 - For deleting: the certificate exists, is not in use and is not a factory certificate.
 

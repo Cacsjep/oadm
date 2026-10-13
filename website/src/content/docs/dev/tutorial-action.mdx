@@ -71,8 +71,9 @@ output is copied to `artifacts/plugins/<id>/`, where OADM loads plugins from whe
 - **`NeedsDevice`**: true means the rule chooses target devices and your action runs once per device, with
   `ctx.Vapix` already logged in to it. False means it runs once per rule edge, like sending an email.
 - **`SupportsTurnOff`**: the action also runs when the rule turns off (`invocation.Edge` is `TurnedOff`).
-- **`Fields`**: the settings form. Kinds: `Text`, `Multiline`, `Number`, `Bool`, `Choice`, `Password`, `Code` (a body
-  in a code editor) and `KeyValues` (name and value rows). Each can have a default, a hint and a range.
+- **`Fields`**: the settings form. Kinds: `Text`, `Multiline`, `Number`, `Bool`, `Choice`, `DynamicChoice` (choices your
+  `ListChoicesAsync` lists while the rule is edited), `Password`, `Code` (a body in a code editor) and `KeyValues` (name
+  and value rows). Each can have a default, a hint and a range.
 - **`Describe`**: the short text in the rules list ("Virtual input 64").
 - **`ExecuteAsync`**: reads the settings with `invocation.GetInt`, `Get`, `GetBool`, sends the request, and writes one
   line to the event log with `ctx.Log`. `ctx.Text(...)` fills placeholders such as `{rule}`, `{event}`, `{device}`,

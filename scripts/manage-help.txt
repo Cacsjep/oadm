@@ -158,8 +158,8 @@ Targets:
   windows   OADM-<version>-<rid>.msi (WiX Toolset, restored from NuGet). Needs Windows.
             Program Files\OADM, Windows service "OADM Server", Start menu entry;
             features Server and Client (msiexec ... ADDLOCAL=Client for the client only)
-  linux     oadm-server_, oadm-client_ and oadm_<version>_<amd64|arm64>.deb (dpkg-deb;
-            oadm = both). Needs dpkg-deb: Debian, Ubuntu or a container.
+  linux     oadm-server_<version>_<arch>.deb and oadm-client_<version>_<arch>.deb (dpkg-deb;
+            both = server and client). Needs dpkg-deb: Debian, Ubuntu or a container.
             /opt/oadm, systemd unit oadm-server.service
   macos     OADM-<version>-<rid>.pkg (pkgbuild, productbuild). Needs macOS.
             /Applications/OADM.app, LaunchDaemon com.oadm.server (choice "OADM server");

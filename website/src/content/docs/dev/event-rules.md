@@ -63,8 +63,7 @@ public sealed class OldFirmwareEvents : IEventSource
 
     public IReadOnlyList<EventTypeInfo> EventTypes { get; } =
     [
-        new(OldFirmware, "Old AXIS OS", "Firmware overview", EventKind.Stateful, EventScope.Device,
-            [new EventField("version", "AXIS OS")])
+        new(OldFirmware, "Old AXIS OS", "Firmware overview", EventKind.Stateful, EventScope.Device)
         {
             Description = "The device runs an AXIS OS older than 12.0.",
         },
@@ -92,9 +91,10 @@ public sealed class OldFirmwareEvents : IEventSource
 | `Stateless` | Something happened once: "Rollout failed" | `Fire(type, device, data)` |
 
 - **Ready.** After every start, send one `ReplaceStates` per stateful type: that tells the server your picture is
-  complete. Until then it keeps the states from before the restart and runs nothing for the type. Later send changes
+  complete. Until then (at most 2 minutes) it keeps the states from before the restart and runs nothing for the type. Later send changes
   with `SetState`, or `ReplaceStates` again whenever that is easier: the server works out what changed.
-- **Values.** The `data` of an event are its values. Actions use them as placeholders (`{version}`), conditions can
+- **Values.** The `data` of `SetState` and `Fire` are the event's values; `ReplaceStates` carries none, so publish with
+  `SetState` when actions need values. Actions use them as placeholders (`{version}`), conditions can
   filter on the declared `EventField`s.
 - **Cheap when unused.** Calls only queue. `IsWatched(type)` says whether an enabled rule uses the type; skip work
   nobody needs.

@@ -14,7 +14,7 @@
   <a href="https://www.linkedin.com/in/christoph-acs-70150795/"><img src="https://img.shields.io/badge/LinkedIn-Christoph-0A66C2?logo=linkedin&amp;logoColor=white" alt="LinkedIn"></a>
 </p>
 
-**OADM is an independent open source project. Not affiliated with or endorsed by Axis Communications AB. AXIS is a trademark of Axis AB..**
+**OADM is an independent open source project. Not affiliated with or endorsed by Axis Communications AB. AXIS is a trademark of Axis AB.**
 
 - [For users](#for-users)
 - [For developers](#for-developers)
@@ -56,7 +56,7 @@ sudo apt install ./oadm-client_*.deb                       # client only
 - The notice "Download is performed unsandboxed as root ... couldn't be accessed by user '_apt'" is harmless: apt
   cannot read your private home folder and reads the file as root instead. To avoid it, install from `/tmp`.
 - Live view on the graphics card: the client needs the video driver of the graphics card, else the processor decodes
-  and the live view shows "GPU decoding not available". Intel: `sudo apt install intel-media-va-driver` (older Intel:
+  and an orange warning icon shows over the live view. Intel: `sudo apt install intel-media-va-driver` (older Intel:
   `i965-va-driver`), AMD: `sudo apt install mesa-va-drivers`, NVIDIA: the NVIDIA driver. Windows and macOS need nothing
   extra.
 
@@ -167,7 +167,7 @@ Both scripts read their help from [`scripts/manage-help.txt`](scripts/manage-hel
 | `manage run server [--port N] [--data DIR] [--release] [--no-plugin-build]` | Build and run the server in the foreground (default `https://0.0.0.0:5080`) |
 | `manage run client [--fake] [--server URL] [--data DIR] [--release] [--no-plugin-build]` | Build the client and all plugins, then run the client; `--fake` uses sample data without a server |
 | `manage run dev [--port N] [--data DIR] [--release] [--no-plugin-build]` | Server in the background (log in `artifacts/logs/server-dev.log`), then the client; closing the client stops the server. First run: confirm the fingerprint, then create the first administrator (no setup code on the same computer) |
-| `manage test [unit\|perf\|hardware\|all] [--filter EXPR] [--release]` | Unit tests (default, what CI runs), scale tests with 5,000 devices and 50,000 tasks (`Category=Perf`, a few minutes, see [`docs/scale-audit.md`](docs/scale-audit.md)), read-only hardware tests against `dev-cameras.yaml`, or all |
+| `manage test [unit\|perf\|timing\|hardware\|all] [--filter EXPR] [--release]` | Unit tests (default, what CI runs), scale tests with 5,000 devices and 50,000 tasks (`Category=Perf`, a few minutes, see [`docs/scale-audit.md`](docs/scale-audit.md)), read-only hardware tests against `dev-cameras.yaml`, or all |
 | `manage publish [all\|server\|client] [--rid RID] [--version V]` | Self-contained single-file apps in `artifacts/publish/<app>/<rid>`, plugins next to each exe |
 | `manage package <windows\|linux\|macos> [--rid RID] [--version V]` | Installer (MSI, .deb, .pkg) in `artifacts/packages/`, see [`packaging/README.md`](packaging/README.md) |
 | `manage new <task\|page\|action> --name NAME [--id ID]` | A new plugin from the matching developer tutorial (`samples/`), renamed, in `plugins/` and `tests/` and added to `Oadm.sln`: it builds, its tests pass and it runs |

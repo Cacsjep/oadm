@@ -110,8 +110,8 @@ action with its result. The newest entries come first and new ones appear live. 
 
 ## Good to know
 
-- **Dead time** (default 10 s): after the rule ran for a device, that device is ignored for this long. **Flood
-  limit** (default 60 runs per minute for the whole rule): further events are skipped. Both protect against a flickering
+- **Dead time** (default 10 s): after the rule ran for a device, that device is ignored for this long. **Max per
+  minute** (default 60 runs per minute for the whole rule): further events are skipped. Both protect against a flickering
   camera; skipped runs are noted in the event log.
 - After a server restart OADM checks every event again and runs only what changed while it was down.
 - A failed action is logged; the next action of the rule still runs. OADM does not retry.

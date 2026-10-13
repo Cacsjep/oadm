@@ -7,7 +7,8 @@ description: How OADM protects devices and their passwords, and how to report a 
 
 - Client and server talk over TLS. The client checks the server's fingerprint on the first connection and refuses a
   changed certificate.
-- Every user logs in. Operators and administrators have different rights; changes are in the audit log.
+- Every user logs in and has a role (Administrator, Operator, Viewer or your own) that sets what they may do;
+  changes are in the audit log.
 - Device passwords are stored encrypted on the server and never reach the client.
 - When adding devices, OADM only sends a password after the device answered like an Axis device, and tries HTTPS
   first.

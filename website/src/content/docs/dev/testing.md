@@ -78,7 +78,8 @@ await session.Dispatch(() =>
 }, CancellationToken.None);
 ```
 
-`HeadlessEntry`, `Headless.Host`, `Pump` and `Capture` are in each plugin test project's `Support.cs`; copy them.
+`HeadlessEntry`, `Headless.Host`, `Pump` and `Capture` are in the `Support.cs` of a page plugin's tests, e.g.
+`tests/Oadm.Plugins.ImageHealth.Tests/Support.cs`; copy them.
 Screenshots are written only when `OADM_SCREENSHOT_DIR` is set:
 
 ```sh
@@ -116,5 +117,5 @@ and write in the plugin's `README.md` what you verified on which model and AXIS 
 ## Try it in the app
 
 - `./manage.sh run dev` builds everything and starts the server and the client. Plugins come from `artifacts/plugins/`.
-- `./manage.sh run client --fake` starts the client with sample devices and no server, for the host pages. Built-in
+- `./manage.sh run client --fake` starts the client with sample devices and no server, for the host pages. Most built-in
   plugin pages have a backend in `FakeOadmApi`; your plugin needs the real server.

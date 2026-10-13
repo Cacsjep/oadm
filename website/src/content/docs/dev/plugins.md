@@ -18,7 +18,7 @@ loads the first, the client the second. Both come from the same folder.
 | Action | `IActionPlugin` | `*.Server.dll` | A "Then" choice in the event rules |
 
 One folder can hold several of them. The PKI plugin, for example, is one core plugin with a page that also contributes
-eight task plugins to the context menu.
+nine task plugins to the context menu.
 
 ## Start from a working plugin
 
@@ -109,8 +109,9 @@ Add every project to `Oadm.sln`. The build then picks them up, and so does `mana
 </Project>
 ```
 
-The client project is the same with `AssemblyName` `Oadm.Plugins.Hello.Client`, the same `OadmPluginId`, and these
-references instead (all shared by the client host, so none of them is copied):
+The client project is the same with `AssemblyName` and `RootNamespace` `Oadm.Plugins.Hello.Client`, the same
+`OadmPluginId`, `<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>`, and these references
+instead (all shared by the client host, so none of them is copied):
 
 ```xml
 <PackageReference Include="Avalonia" Version="12.1.4" ExcludeAssets="runtime" />
@@ -133,7 +134,7 @@ Copy the versions from a built-in plugin's project file; they follow the host.
 
 - The server looks in `plugins/<id>/` next to its exe, in `<data folder>/plugins/<id>/` and, in a checkout, in
   `artifacts/plugins/<id>/`. The client looks in the same three places.
-- Each assembly loads in its own load context. Your private dependencies (NuGet packages the host does not have) go into
+- Each plugin folder loads in its own load context. Your private dependencies (NuGet packages the host does not have) go into
   the plugin folder with it.
 - The loader finds every public class that implements a plugin interface and has a public parameterless constructor.
   Contributed task plugins and actions come from their core plugin instead.

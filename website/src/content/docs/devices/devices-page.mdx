@@ -31,7 +31,7 @@ computer. OADM checks every device every 60 seconds and reads all details every 
 
 - **Add**: [Add devices](../add/).
 - **Remove**, **Refresh**, **Export** (the selected devices, or every device the search shows, as CSV).
-- **Restart**, **Assign IP address** and **System report** for the selection.
+- **Restart**, **Upgrade firmware**, **Assign IP address** and **System report** for the selection.
 - On the right: AXIS OS release notes, **Group by tag**, columns and search. The search also finds tags.
 
 Entries that do not fit move into the **More** menu.
@@ -47,6 +47,8 @@ Right-click one or more devices:
 - **Set password**: only for factory-default devices.
 - One submenu per group with the [device tasks](../../tasks/overview/). An entry the selection cannot run is grey;
   hover it to see why ("Needs AXIS OS 11.11 or later: 3 of 5 selected devices").
+- **OADM** > **RTSP port**: the port OADM uses for live view and events of cameras behind a port forward. Nothing is
+  changed on the camera.
 - **Remove**, last.
 
 <Image src={login} alt="Log in dialog for devices that reject the stored password" class="screen" />

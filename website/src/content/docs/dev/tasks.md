@@ -19,7 +19,7 @@ user picks devices + entry
                                                  ├─ RequiredPermissions(payload) checked
                                                  ├─ GetTaskName(payload) once
                                                  ├─ N tasks written, state Queued
-                                                 └─ per device, at most 16 at once:
+                                                 └─ per device, at most 16 at once per plugin:
                                                       ExecuteAsync(ctx, device, payload, ct)
 tasks pane ◄──────────── live state, steps ────── Done / Done with warnings / Failed / Cancelled
 ```

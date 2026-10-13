@@ -177,7 +177,7 @@ the table fills in. Open the page in a second window from the rail entry's conte
 2. **The state**: the row and state records, and what `ReadAsync` reads per device.
 3. **The methods**: one constant per method, one case in `InvokeAsync`, one command in the view model.
 4. **The view**: columns, buttons, a card layout of your own (set `HasOwnCards` in the page class).
-5. **Settings that stay**: store them with `ctx.Settings.SetAsync("config", json)` and read them in `StartAsync`.
+5. **Settings that stay**: store them with `ctx.Settings.SetAsync("config", json, ct)` and read them in `StartAsync`.
 6. **The tests**: one per method and per kind of device answer.
 
 ## 11. Share it
