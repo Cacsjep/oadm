@@ -326,6 +326,25 @@ public sealed class PageTests
     }
 
     [Fact]
+    public async Task A_reading_that_overtakes_the_start_reply_is_shown()
+    {
+        // The server sends a new stream's first reading at once; it can arrive before the page knows the stream id.
+        await using var rig = await new Rig().StartAsync();
+        rig.Devices.Items.Add(new TestDevice("10.0.0.70", "A9210"));
+        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items) { Watch = false };
+        using var vm = new IoMonitorViewModel(ctx);
+        IoPort relay = new("0", "RELAY", IsOutput: true, "closed", "open", "Relay", Configurable: true);
+        ctx.BeforeStartReply = id => vm.HandleEvent(new PluginEvent(
+            IoMonitorMethods.PortsTopic,
+            IoMonitorJson.Serialize(new PortsEvent(id, [relay], null, DateTimeOffset.UtcNow))));
+        vm.Activate();
+        vm.SelectedDevice = vm.Devices[0];
+
+        await Wait.UntilAsync(() => vm.IsLive);
+        Assert.True(Assert.Single(vm.Outputs).Active);
+    }
+
+    [Fact]
     public async Task A_stream_the_server_forgot_is_started_again()
     {
         await using var rig = await new Rig().StartAsync();

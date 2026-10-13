@@ -211,6 +211,12 @@ internal sealed class PluginPageContext(IoMonitorPlugin plugin, PluginEventHub h
     /// <summary>Calls of this method fail (a dropped connection) while set.</summary>
     public string? FailMethod { get; set; }
 
+    /// <summary>Runs with the new stream id before the Start reply returns (an event that overtakes the reply).</summary>
+    public Action<string>? BeforeStartReply { get; set; }
+
+    /// <summary>False: the page gets no pushed events at all.</summary>
+    public bool Watch { get; set; } = true;
+
     public event EventHandler? DevicesChanged;
 
     public void RaiseDevicesChanged() => DevicesChanged?.Invoke(this, EventArgs.Empty);
@@ -223,11 +229,23 @@ internal sealed class PluginPageContext(IoMonitorPlugin plugin, PluginEventHub h
             throw new IOException("The connection to the server was lost.");
         }
 
-        return await plugin.InvokeAsync(method, payloadJson, ct);
+        var reply = await plugin.InvokeAsync(method, payloadJson, ct);
+        if (method == IoMonitorMethods.Start && BeforeStartReply is { } before
+            && IoMonitorJson.Deserialize<StartReply>(reply).StreamId is { } streamId)
+        {
+            before(streamId);
+        }
+
+        return reply;
     }
 
     public async IAsyncEnumerable<PluginEvent> WatchEventsAsync([EnumeratorCancellation] CancellationToken ct)
     {
+        if (!Watch)
+        {
+            await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+        }
+
         await foreach (var item in hub.WatchAsync(IoMonitorPluginInfo.PluginId, ct))
         {
             yield return item;

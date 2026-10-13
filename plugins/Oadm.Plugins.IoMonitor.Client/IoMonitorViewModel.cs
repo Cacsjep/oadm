@@ -80,6 +80,11 @@ public sealed partial class IoMonitorViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _stream;
     private string? _streamId;
 
+    // Readings of streams this page does not know (yet): the server sends a new stream's first reading at once, which can
+    // arrive before the Start reply names the stream. Kept per stream id until the reply, at most MaxEarly.
+    private readonly Dictionary<string, PortsEvent> _early = new(StringComparer.Ordinal);
+    private const int MaxEarly = 16;
+
     public IoMonitorViewModel(ICorePluginClientContext ctx)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
@@ -178,9 +183,19 @@ public sealed partial class IoMonitorViewModel : ObservableObject, IDisposable
         var ports = IoMonitorJson.Deserialize<PortsEvent>(item.PayloadJson);
         if (ports.StreamId != _streamId)
         {
+            if (_streamId is null && (_early.Count < MaxEarly || _early.ContainsKey(ports.StreamId)))
+            {
+                _early[ports.StreamId] = ports; // maybe the stream this page is starting
+            }
+
             return;
         }
 
+        Apply(ports);
+    }
+
+    private void Apply(PortsEvent ports)
+    {
         ApplyPorts(ports.Ports);
         ErrorText = ports.Error;
         State = ports.Error is null ? "Live" : "Error";
@@ -246,6 +261,7 @@ public sealed partial class IoMonitorViewModel : ObservableObject, IDisposable
         }
 
         State = "Connecting";
+        _early.Clear();
         try
         {
             var json = await _ctx.InvokeAsync(IoMonitorMethods.Start, IoMonitorJson.Serialize(new StartRequest(device.Id)), CancellationToken.None).ConfigureAwait(true);
@@ -267,6 +283,12 @@ public sealed partial class IoMonitorViewModel : ObservableObject, IDisposable
             }
 
             _streamId = reply.StreamId;
+            if (_early.Remove(reply.StreamId, out var early))
+            {
+                Apply(early);
+            }
+
+            _early.Clear();
             _stream = new CancellationTokenSource();
             _ = KeepAliveAsync(reply.StreamId, _stream.Token);
         }
