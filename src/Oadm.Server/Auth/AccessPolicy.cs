@@ -152,6 +152,13 @@ public static class AccessPolicy
         ["/oadm.v1.SettingsService/AddCredential"] = AccessRule.Admin,
         ["/oadm.v1.SettingsService/RemoveCredential"] = AccessRule.Admin,
         ["/oadm.v1.SettingsService/RevealCredential"] = AccessRule.Admin,
+        ["/oadm.v1.BackupService/GetState"] = AccessRule.Admin,
+        ["/oadm.v1.BackupService/SetSchedule"] = AccessRule.Admin,
+        ["/oadm.v1.BackupService/Create"] = AccessRule.Admin,
+        ["/oadm.v1.BackupService/Download"] = AccessRule.Admin,
+        ["/oadm.v1.BackupService/Delete"] = AccessRule.Admin,
+        ["/oadm.v1.BackupService/Inspect"] = AccessRule.Admin,
+        ["/oadm.v1.BackupService/Restore"] = AccessRule.Admin,
     };
 
     /// <summary>The listed methods (a test checks them against the contracts, both ways).</summary>

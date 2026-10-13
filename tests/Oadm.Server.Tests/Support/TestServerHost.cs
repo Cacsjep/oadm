@@ -80,6 +80,9 @@ internal sealed class TestServerHost : IAsyncDisposable
 
     public string DataDirectory { get; }
 
+    /// <summary>Dispose leaves the data folder (a second host starts on it: a restart).</summary>
+    public bool KeepDataDirectory { get; set; }
+
     public FakeAxisNetwork Network { get; }
 
     public IServiceProvider Services => App.Services;
@@ -109,10 +112,11 @@ internal sealed class TestServerHost : IAsyncDisposable
     /// <param name="configureServices">Extra replacements after the defaults (e.g. a fake live video source).</param>
     /// <param name="createAdmin">False: no user exists (first-administrator tests); the clients call without a token.</param>
     /// <param name="pluginRoots">Plugin folders to load (hardware tests: <c>PluginPaths.Development()</c>); none by default.</param>
-    public static async Task<TestServerHost> StartAsync(FakeAxisNetwork? network = null, bool useRealNetwork = false, Action<IServiceCollection>? configureServices = null, bool createAdmin = true, IReadOnlyList<string>? pluginRoots = null)
+    /// <param name="dataDirectory">An existing data folder (a restart); null for a new one.</param>
+    public static async Task<TestServerHost> StartAsync(FakeAxisNetwork? network = null, bool useRealNetwork = false, Action<IServiceCollection>? configureServices = null, bool createAdmin = true, IReadOnlyList<string>? pluginRoots = null, string? dataDirectory = null)
     {
         network ??= new FakeAxisNetwork();
-        var dataDirectory = NewDataDirectory();
+        dataDirectory ??= NewDataDirectory();
         var app = OadmServerHost.Build([], new OadmServerHostOptions
         {
             DataDirectory = dataDirectory,
@@ -152,6 +156,11 @@ internal sealed class TestServerHost : IAsyncDisposable
         await OadmServerHost.StopAsync(App);
         await App.DisposeAsync();
         SqliteConnection.ClearAllPools();
+        if (KeepDataDirectory)
+        {
+            return;
+        }
+
         try
         {
             Directory.Delete(DataDirectory, recursive: true);

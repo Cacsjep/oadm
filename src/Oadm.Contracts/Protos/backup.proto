@@ -1,0 +1,88 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+import "Protos/plugins.proto";
+import "google/protobuf/timestamp.proto";
+
+// Server backup and restore (Settings page, Administrator only, audited). A backup is one file encrypted with a password
+// the administrator chooses; it holds the database, the server's key and the plugins' working files. A restore replaces
+// everything: the server makes a safety backup of its current state first, cancels running tasks, then restarts and
+// applies the backup (every user logs in again).
+service BackupService {
+  rpc GetState (Empty) returns (BackupState);
+  // Automatic backups; an empty password keeps the stored one. INVALID_ARGUMENT.
+  rpc SetSchedule (BackupSchedule) returns (BackupState);
+  // "Back up now": the backup is made on the server and streamed (first message: file name and length). INVALID_ARGUMENT.
+  rpc Create (CreateBackupRequest) returns (stream DownloadChunk);
+  // A backup kept on the server (automatic, before a restore). NOT_FOUND.
+  rpc Download (BackupName) returns (stream DownloadChunk);
+  rpc Delete (BackupName) returns (BackupState);                // NOT_FOUND
+  // Reads a backup with its password and checks every part; nothing changes. FAILED_PRECONDITION (newer OADM, damaged,
+  // wrong password: wrong_password set in the reply instead), NOT_FOUND.
+  rpc Inspect (RestoreRequest) returns (BackupInfo);
+  // Stages the backup, then the server restarts and applies it. FAILED_PRECONDITION, NOT_FOUND, INVALID_ARGUMENT.
+  rpc Restore (RestoreRequest) returns (RestoreReply);
+}
+
+message BackupSchedule {
+  bool enabled = 1;
+  string time_of_day = 2;      // "02:00", server time
+  int32 keep = 3;              // newest automatic backups kept, 1..365
+  string password = 4;         // write only; empty keeps the stored one
+}
+
+message ServerBackup {
+  string name = 1;             // file name in the server's backups folder
+  int64 size = 2;
+  google.protobuf.Timestamp created = 3;
+  string kind = 4;             // automatic, before-restore
+}
+
+message BackupState {
+  BackupSchedule schedule = 1; // password always empty
+  bool has_password = 2;       // the automatic backups have a stored password
+  repeated ServerBackup backups = 3;  // newest first
+  string folder = 4;           // where the server keeps them
+  google.protobuf.Timestamp last_automatic = 5;
+  string last_automatic_error = 6;
+  RestoreReport last_restore = 7;     // empty name = no restore yet
+  int32 active_tasks = 8;      // running or queued tasks a restore would cancel
+}
+
+// One line per area after a restore: "Devices: 4,812 restored".
+message RestoreReport {
+  string source = 1;
+  google.protobuf.Timestamp applied = 2;
+  string from_version = 3;
+  string requested_by = 4;
+  string error = 5;            // the server kept its data
+  repeated string lines = 6;
+}
+
+message CreateBackupRequest { string password = 1; }
+
+message BackupName { string name = 1; }
+
+message RestoreRequest {
+  oneof source {
+    string file_id = 1;        // uploaded with FileService.Upload
+    string name = 2;           // a backup kept on the server
+  }
+  string password = 3;
+}
+
+message BackupInfo {
+  bool wrong_password = 1;
+  string problem = 2;          // why it cannot be restored (newer OADM, damaged); empty = it can
+  string oadm_version = 3;
+  string server_name = 4;
+  google.protobuf.Timestamp created = 5;
+  repeated string lines = 6;   // "Devices: 4,812", "Users: 12", ...
+  string kind = 7;
+}
+
+message RestoreReply {
+  string message = 1;          // what happens now ("The server restarts ...")
+  string safety_backup = 2;    // name of the backup of the state before the restore
+}

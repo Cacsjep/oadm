@@ -134,6 +134,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<LiveViewGrpcService>();
         app.MapGrpcService<EventGrpcService>();
         app.MapGrpcService<Oadm.Server.DeviceWeb.DeviceWebGrpcService>();
+        app.MapGrpcService<Backup.BackupGrpcService>();
         if (app.Environment.IsDevelopment())
         {
             app.MapGrpcReflectionService();
@@ -205,6 +206,24 @@ public static partial class OadmServerHost
         services.AddSingleton<Sdk.Plugins.IUploadedFiles>(sp => sp.GetRequiredService<Core.Uploads.UploadStore>());
         services.AddHostedService<UploadCleanupHostedService>();
         services.AddHostedService<TaskRetentionHostedService>();
+
+        // Backup and restore (Settings page): automatic backups, restore staged and applied by the next start.
+        services.AddSingleton(sp => new Core.Backup.BackupArchive(
+            sp.GetRequiredService<OadmPaths>(), sp.GetRequiredService<ILogger<Core.Backup.BackupArchive>>(), sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton<Backup.IServerRestart, Backup.ServerRestart>();
+        services.AddSingleton(sp => new Backup.BackupManager(
+            sp.GetRequiredService<OadmPaths>(),
+            sp.GetRequiredService<Core.Backup.BackupArchive>(),
+            sp.GetRequiredService<ServerSettingsStore>(),
+            new Core.Security.PluginSecretProtector(sp.GetRequiredService<Core.Security.CredentialProtector>()),
+            sp.GetRequiredService<PluginRegistry>(),
+            sp.GetRequiredService<TaskEngine>(),
+            sp.GetRequiredService<Backup.IServerRestart>(),
+            sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<OadmDbContext>>(),
+            sp.GetRequiredService<Core.Auth.AuditLog>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<Backup.BackupManager>>()));
+        services.AddHostedService<Backup.BackupScheduleHostedService>();
         // Live view: RTSP upstreams shared between viewers
         services.AddSingleton<ILiveVideoSourceFactory, AxisLiveVideoSourceFactory>();
         services.AddSingleton<IDeviceOptics, AxisDeviceOptics>();
@@ -347,6 +366,12 @@ public static partial class OadmServerHost
             await folderGuard.EnsureServerFoldersAsync(ServiceHosting.ServerFolders(paths.DataDirectory), ct).ConfigureAwait(false);
         }
 
+        // 0b. A restore staged before the restart: its database, key and plugin data replace the server's (the replaced files
+        // are kept in restore/previous-*), before anything opens them. The server's own TLS key moves to the restored key.
+        var backupArchive = sp.GetRequiredService<Core.Backup.BackupArchive>();
+        backupArchive.CleanTemp();
+        backupArchive.ApplyPending((oldKey, newKey) => ServerTlsCertificate.ReencryptKey(Path.Combine(paths.DataDirectory, ServerTlsCertificate.FileName), oldKey, newKey, logger));
+
         // 1. Database and master key.
         await sp.GetRequiredService<DatabaseInitializer>().InitializeAsync(ct).ConfigureAwait(false);
 
@@ -380,6 +405,9 @@ public static partial class OadmServerHost
         var catalog = Core.Auth.PermissionCatalog.Build(registry);
         var sync = await sp.GetRequiredService<Core.Auth.RoleStore>().SyncCatalogAsync(catalog, ct).ConfigureAwait(false);
         await Core.Auth.RolesUpgradeNotice.RecordAsync(sp.GetRequiredService<ServerSettingsStore>(), sync, hadUsers, catalog, sp.GetRequiredService<TimeProvider>(), ct).ConfigureAwait(false);
+
+        // 2c. A restore this start applied: its report (Settings page) and audit entry; every login session ends.
+        await sp.GetRequiredService<Backup.BackupManager>().RecordRestoreAsync(ct).ConfigureAwait(false);
 
         // 3. Tasks left running by a previous process (the parallel task limit is loaded first).
         await sp.GetRequiredService<TaskParallelismSetting>().LoadAsync(ct).ConfigureAwait(false);

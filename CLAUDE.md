@@ -49,11 +49,12 @@ warning. `LICENSE.txt`, `NOTICE.txt` (the root `NOTICE`: "Copyright 2026 The OAD
 each exe too (MSI folders, the .pkg app's `Contents/Resources`, .deb `/usr/share/doc/<package>/`); the About page starts
 its license sentence with the same copyright line.
 **Terms of use** (`/TERMS.md`, plain-language disclaimer, "as is", no liability for device
-changes, not affiliated with Axis; text fixed by the user) come before the license everywhere the license is shown:
-MSI license page (`packaging/windows/License.rtf` = TERMS.md then LICENSE, built by `make-ui-assets.py`, accepted as
-before), .pkg license page (productbuild `<license>` from `--resources`, TERMS.md then LICENSE), .deb
-`/usr/share/doc/<package>/TERMS.md` (no interactive acceptance), the top of the client's About page
-(embedded resource `Oadm.Client.TERMS.md`), and every publish folder / installed app folder.
+changes, not affiliated with Axis; text fixed by the user) are accepted on the **first start of the client** on each
+computer, before the splash and any connection (`Shell/TermsWindow` + `TermsViewModel`: the text, Quit / Accept, the X
+quits; `ClientSettings.AcceptedTerms` = SHA-256 of the text, so changed terms ask again). The installers show no license
+page (decision 2026-10-13: silent and command-line installs skipped it, Debian packages never ask; every user runs the
+client). TERMS.md also stands at the top of the client's About page (embedded resource `Oadm.Client.TERMS.md`), in
+`/usr/share/doc/<package>/` and in every publish folder / installed app folder.
 
 Installers (`manage package <windows|linux|macos> [--rid] [--version]` into `artifacts/packages/`; layout
 table and notes in `packaging/README.md`). Every installer offers **"Server and client"** (default) or **"Client
@@ -71,7 +72,7 @@ release of the tag with the installers and `SHA256SUMS.txt`):
   `--Oadm:DataDir="%ProgramData%\OADM"`), Start menu shortcut, one firewall rule TCP 5080 for `Oadm.Server.exe`, profiles
   Domain and Private (`Profile="[OADM_FW_PROFILE]"` = 3), fixed UpgradeCode + MajorUpgrade (same version reinstall
   allowed). Features `Client` (always) and `Server` (service, firewall rule, data folder); own UI `WixUI_Oadm`
-  (welcome, license, page "Choose what to install" with the radio buttons "Server and client" / "Client only" =
+  (welcome, page "Choose what to install" with the radio buttons "Server and client" / "Client only" =
   AddLocal / Remove of `Server`, ready, progress, finish; Change in Apps and Features opens the same page, upgrades keep
   the choice through MigrateFeatureStates); silent `ADDLOCAL=Client` = client only. `%ProgramData%\OADM` is
   created for SYSTEM and Administrators only and never removed. Files are harvested from the publish folders.
@@ -1237,7 +1238,7 @@ returns null or throws `NotSupportedException`.
   `RequiredPermissions(payload)` (the keys one run needs; no answer = all declared), `ExecuteAsync`. Optional
   `ITaskPluginQuery.QueryAsync`: read-only reads for the dialog (`ITaskQueryContext.Devices`: every managed device).
   Declared today: Upgrade firmware (upgrade, factoryDefault, downgrade), Users (add, update, remove), Applications (install,
-  downgrade, startStop, remove), Import configuration (import, connection), Configure devices (configure, dangerous).
+  downgrade, startStop, remove, license), Import configuration (import, connection), Configure devices (configure, dangerous).
 - `ICorePlugin`: `TaskPlugins` (contributed tasks), `StartAsync` / `StopAsync`, `InvokeAsync` (the page backend),
   `HasPage` (false: no rail entry), `Group` (`CorePluginGroup`: the rail group), `RequiredRole` / `IsAudited` per method,
   `Permissions` (named rights "<id>:<key>"; "show" is automatic for a page, declared only to change its defaults; empty
@@ -1730,11 +1731,14 @@ plugin `README.md`; Configure devices spec: `docs/configure-devices-spec-draft.m
 
 `plugins/Oadm.Plugins.Acap` (+ `.Client`), id `oadm.acap`, always on, context menu (Applications) **Applications
 (ACAP)**: lists the installed applications, starts, stops and removes them (remove confirmed) and installs or upgrades
-an uploaded `.eap` on all selected devices (classic Application API 1.x). Decision table and research: plugin `README.md`.
+an uploaded `.eap` on all selected devices (classic Application API 1.x), and installs license key files (with the package
+or on their own, matched by the MAC address in the key). Decision table and research: plugin `README.md`.
 
 - Rules that must hold: before uploading it reads the package manifest and refuses ("Nothing was changed") a wrong
   architecture, an AXIS OS outside the package's range or below its schema minimum, root apps on AXIS OS 12+ and a
-  downgrade without the explicit option.
+  downgrade without the explicit option; a license key is sent only to the device whose MAC address it names, for the
+  installed application's id and not expired (a device without a key: Done with warnings, nothing sent); activation with a
+  license code is not offered (the device has no API for it, its web page asks Axis online).
 
 # Settings
 
@@ -1769,9 +1773,57 @@ sentence on the Apache-2.0 license, "Show licenses" shows `THIRD-PARTY-NOTICES.t
 `Contents/Resources`, or `THIRD-PARTY-NOTICES.md` in a checkout) in a read-only `ui:CodeView` (Plain). The Settings page
 starts with the card **This computer** (every user, saved at once in the client settings file): "Decode video on the
 graphics card" with the test's result as hint, "Show video details over the picture" and "Frame rate (adaptive quality)"
-(see "Live view"). The server address is set with `--server` or in the
+(see "Live view"). The page has two columns (each up to 760 px, left-aligned): This computer and the server settings left,
+the card **Backup and restore** right (administrators, see "Backup and restore"). The server
+address is set with `--server` or in the
 client settings file. Client-side (local JSON in LocalApplicationData): server address, device grid column layout and group
 mode (`GroupDevicesByTag`), bottom pane state, `GpuDecoding`, `ShowVideoDetails`, `AdaptiveFps`.
+
+# Backup and restore
+
+Settings page card **Backup and restore** (Administrator only, never grantable; spec `docs/backup-restore-spec-draft.md`).
+Core `Oadm.Core.Backup` (`BackupFile`, `BackupArchive`), server `Oadm.Server.Backup` (`BackupManager`, `BackupGrpcService`,
+`BackupScheduleHostedService`, `ServerRestart`), gRPC `BackupService` (`backup.proto`), client `Backup/` (`BackupViewModel` +
+`BackupCardView`, `BackupPasswordWindow`, `RestoreWindow`).
+
+- **File** (`.oadmbackup`, `BackupFile`): "OADMBACKUP", format byte, a plain JSON header (OADM version, server name, last
+  migration, kind, PBKDF2-SHA256 600,000 iterations, salt, nonce, key check), then the body (a ZIP) in 1 MB chunks, each
+  AES-256-GCM with its own nonce and the associated data SHA-256(header) | chunk number | last flag (no reordering, cutting
+  or header change unnoticed). The key check names a wrong password apart from a damaged file. Passwords 8..256 characters.
+- **Content** (`BackupArchive`): `manifest.json` (counts per area, plugin packages, plugin data folders), `oadm.db` (a
+  consistent `VACUUM INTO` copy without the login sessions), `master.key` (only inside the encrypted body; a backup restores
+  on another computer and every stored password and plugin secret stays readable), `plugin-data/**` (files in use skipped).
+  Not in it: the server's TLS certificate (the target keeps its own), uploads, logs.
+- **Versions**: a backup's last migration must be one of this build's: an older one is upgraded by the normal migrations
+  at the next start (**migrations are never deleted**), a newer one is refused before the password ("This backup is from
+  OADM x, newer than this server (y). Update OADM to x or later first."). Before every migration of an existing database the
+  server copies it to `backups/before-upgrade/oadm-<last migration>-<time>.db` (newest five kept, `DatabaseInitializer`).
+- **Restore**: the backup is checked and unpacked to `restore/staged` (only `oadm.db`, `master.key` and `plugin-data/...`
+  entries inside the folder; a wrong password or a damaged file changes nothing), then a safety backup of the current state
+  with the same password (`backups/oadm-backup-<time>-before-restore`, newest five), running tasks cancelled, audit
+  "Started restore", and the server restarts (`ServerRestart`: as a service it exits with code 75 two seconds later and the
+  service manager starts it again; on a console `Program` builds a new host in the process). The next start applies it in
+  step 0b of `OadmServerHost.StartAsync`, before anything opens the database or the key: the server's database, key and
+  plugin data move to `restore/previous-<time>` (newest three kept), the staged files take their place, the TLS key in
+  `server-tls.json` (Linux, macOS) is encrypted again with the restored key; any failure puts the old files back. Step 2c
+  records the report (`Backup.LastRestore`: "Devices: 4,812 restored", plugins of the backup that are not installed), ends
+  every login session and audits "Restored backup" for the administrator who asked.
+- **Automatic backups** (setting `Backup.Schedule`: on, time "HH:mm" server time, keep 1..365 (7), the password encrypted
+  with the master key, purpose `oadm:backup-schedule`): daily, checked every 30 s, a missed day made up at the next check,
+  into `<datafolder>/backups/oadm-backup-<time>-automatic.oadmbackup`; `Backup.LastAutomatic` keeps the outcome. One backup
+  or restore at a time.
+- **gRPC** `BackupService` (all Admin): `GetState`, `SetSchedule` (empty password keeps the stored one), `Create` and
+  `Download` (stream of `DownloadChunk`: name and length first, 256 KB chunks, uncompressed), `Delete`, `Inspect`
+  (`wrong_password`, `problem`, the counts), `Restore` (an upload of `FileService` or a server backup by name; names must
+  match `oadm-backup-<date>-<time>-<kind>.oadmbackup`). Audited: Created backup, Downloaded backup, Deleted backup, Changed
+  automatic backups, Started restore, Restored backup.
+- **Client**: Back up now (password + confirm, then the save picker; the file streams to disk with the progress row), Restore
+  from file (uploaded first) or a server backup's Restore (dialog: password, Check shows the counts, Restore after a
+  confirmation naming the running tasks), Automatic backups (Save is secondary: one accent button per page), the list with
+  Download, Restore, Delete (red, confirmed), the last automatic backup and the last restore report.
+- **Tests**: `tests/Oadm.Core.Tests/Backup/BackupTests` (format, another server, an older OADM upgraded, rollback, entries
+  outside the folder), `tests/Oadm.Server.Tests/BackupServiceTests` (create, check, restore with a restart, automatic,
+  schedule), `tests/Oadm.Client.Tests/BackupCardTests` (+ screenshots).
 
 # Security and access
 
@@ -2161,15 +2213,17 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   depacketizers from recorded RTP (`tests/Oadm.Core.Tests/Fixtures/LiveView`, re-record with
   `RtpRecorderTests` and `OADM_RECORD_RTP_DIR`).
   Discovery and task engine tested with fakes, no network in unit tests.
+- **EF migrations are never deleted or squashed**: a backup of any older OADM is restored by running them (see "Backup
+  and restore"); a schema change is always a new migration.
 - Commits: conventional commits (`feat:`, `fix:`, `chore:`), small and focused.
 - This file is the single source of truth for the spec. When a decision changes, change it
   here in the same PR.
 
 # Not built yet
 
-SSDP and WS-Discovery, scheduled and repeated tasks (retry, recurrence), backup and restore, warranty and replacement data
+SSDP and WS-Discovery, scheduled and repeated tasks (retry, recurrence), warranty and replacement data
 from Axis online services, localization, installer signing (checksums instead), OS keyring for the master key,
-least-privilege service accounts, database backup before migrations.
+least-privilege service accounts.
 
 # Resources
 

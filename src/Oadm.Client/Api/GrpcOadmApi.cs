@@ -424,10 +424,32 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public IAsyncEnumerable<PluginEvent> WatchCorePluginAsync(string pluginId, CancellationToken ct) =>
         ReadAll(C.Plugins.Watch(new WatchPluginRequest { PluginId = pluginId }, cancellationToken: ct), ct);
 
-    public async Task<Oadm.Sdk.Plugins.PluginDownload> DownloadCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct)
+    // The calls live as long as the returned stream (not ct): the caller reads it with its own token.
+    public Task<Oadm.Sdk.Plugins.PluginDownload> DownloadCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) =>
+        OpenDownloadAsync(C.Plugins.Download(new InvokeRequest { PluginId = pluginId, Method = method, PayloadJson = payloadJson ?? "" }, cancellationToken: CancellationToken.None), ct);
+
+    public async Task DeleteUploadAsync(string fileId, CancellationToken ct) =>
+        await C.Files.DeleteAsync(new FileIdRequest { FileId = fileId }, cancellationToken: ct);
+
+    public async Task<BackupState> GetBackupStateAsync(CancellationToken ct) => await C.Backup.GetStateAsync(new Empty(), cancellationToken: ct);
+
+    public async Task<BackupState> SetBackupScheduleAsync(BackupSchedule schedule, CancellationToken ct) => await C.Backup.SetScheduleAsync(schedule, cancellationToken: ct);
+
+    public Task<Oadm.Sdk.Plugins.PluginDownload> CreateBackupAsync(string password, CancellationToken ct) =>
+        OpenDownloadAsync(C.Backup.Create(new CreateBackupRequest { Password = password }, cancellationToken: CancellationToken.None), ct);
+
+    public Task<Oadm.Sdk.Plugins.PluginDownload> DownloadBackupAsync(string name, CancellationToken ct) =>
+        OpenDownloadAsync(C.Backup.Download(new BackupName { Name = name }, cancellationToken: CancellationToken.None), ct);
+
+    public async Task<BackupState> DeleteBackupAsync(string name, CancellationToken ct) => await C.Backup.DeleteAsync(new BackupName { Name = name }, cancellationToken: ct);
+
+    public async Task<BackupInfo> InspectBackupAsync(RestoreRequest request, CancellationToken ct) => await C.Backup.InspectAsync(request, cancellationToken: ct);
+
+    public async Task<RestoreReply> RestoreBackupAsync(RestoreRequest request, CancellationToken ct) => await C.Backup.RestoreAsync(request, cancellationToken: ct);
+
+    /// <summary>Reads the first message (name and length) of a file stream; the rest is the returned stream.</summary>
+    private async Task<Oadm.Sdk.Plugins.PluginDownload> OpenDownloadAsync(AsyncServerStreamingCall<DownloadChunk> call, CancellationToken ct)
     {
-        // The call lives as long as the returned stream (not ct): the caller reads it with its own token.
-        AsyncServerStreamingCall<DownloadChunk> call = C.Plugins.Download(new InvokeRequest { PluginId = pluginId, Method = method, PayloadJson = payloadJson ?? "" }, cancellationToken: CancellationToken.None);
         try
         {
             if (!await call.ResponseStream.MoveNext(ct).ConfigureAwait(false))
@@ -546,5 +568,6 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public DeviceWebService.DeviceWebServiceClient DeviceWeb { get; } = new(channel);
         public TagService.TagServiceClient Tags { get; } = new(channel);
         public EventService.EventServiceClient Events { get; } = new(channel);
+        public BackupService.BackupServiceClient Backup { get; } = new(channel);
     }
 }

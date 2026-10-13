@@ -5,6 +5,8 @@ description: The server settings and the settings of this computer on the Settin
 
 import { Image } from 'astro:assets';
 import settings from '../../../assets/screens/client-page-settings.png';
+import backup from '../../../assets/screens/settings-backup.png';
+import restore from '../../../assets/screens/settings-restore.png';
 
 <Image src={settings} alt="Settings page" class="screen" />
 
@@ -33,6 +35,30 @@ Administrators change the server settings; operators see them. They apply to eve
 | Parallel tasks per plugin | 16 | How many devices a task runs on at the same time, for example restarts or firmware updates. Takes effect at once. |
 | Server name | Computer name | Shown in the login window. |
 | Listen URL | `https://0.0.0.0:5080` | Address and port of the server. Takes effect after the server restarts. |
+
+## Backup and restore
+
+Administrators back up the whole server and restore it, also on a new computer. A backup holds the devices with their
+logins, users and roles, tags, event rules, settings, the credential list, the task history and the plugins' data (for
+example the PKI's certificate authority). It is one file, encrypted with a password you choose. Without the password
+nobody can read it, OADM included.
+
+<Image src={backup} alt="The backup and restore card" class="screen" />
+
+- **Back up now**: enter a password, choose where to save the file.
+- **Automatic backups**: every day at the time you choose (server time), the newest ones kept on the server
+  (**Backups kept**, 7 by default). They use the password you enter here; a restore needs it. The list below shows them, with
+  **Download**, **Restore** and **Delete**.
+- **Restore from file** or **Restore** in the list: enter the password and click **Check**. OADM reads the whole backup
+  and shows what it holds; nothing changes yet. **Restore** asks once more.
+
+<Image src={restore} alt="The restore dialog after Check" class="screen" />
+
+A restore replaces everything on the server. Before it starts, OADM saves the current state as a backup on the server
+(**Before a restore** in the list), cancels running tasks and restarts the server. Everyone logs in again. Afterwards the
+card shows what was restored.
+
+A backup of an older OADM is upgraded when it is restored. A backup of a newer OADM is refused: update OADM first.
 
 ## On this computer
 

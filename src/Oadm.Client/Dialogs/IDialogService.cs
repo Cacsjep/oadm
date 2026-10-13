@@ -48,6 +48,24 @@ public interface IDialogService
 
     /// <summary>Open file picker; reads at most <paramref name="maxBytes"/> + 1 bytes (more = <see cref="PickedFile.IsTooLarge"/>). Null when cancelled.</summary>
     Task<PickedFile?> OpenFileAsync(string title, FileType type, int maxBytes);
+
+    /// <summary>Save file picker (overwrite asked) for a large file: an empty stream to write (the caller disposes it). Null when cancelled.</summary>
+    Task<SavedFile?> CreateFileAsync(string title, string suggestedFileName, FileType type);
+
+    /// <summary>Open file picker that returns the local path (the file is uploaded from there). Null when cancelled.</summary>
+    Task<string?> PickFilePathAsync(string title, FileType type);
+
+    /// <summary>The password of "Back up now"; true when confirmed.</summary>
+    Task<bool> ShowBackupPasswordAsync(Oadm.Client.Backup.BackupPasswordViewModel password);
+
+    /// <summary>The restore dialog; true when the restore started (the server restarts).</summary>
+    Task<bool> ShowRestoreAsync(Oadm.Client.Backup.RestoreViewModel restore);
+}
+
+/// <summary>A file chosen in the save picker: its name and an empty stream to write; <see cref="Delete"/> removes it again (a failed save).</summary>
+public sealed record SavedFile(string Name, Stream Content)
+{
+    public Func<Task>? Delete { get; init; }
 }
 
 /// <summary>A file type of the pickers: "CSV file", extension "csv".</summary>

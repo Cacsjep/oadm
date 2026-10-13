@@ -1,0 +1,48 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Client.Backup"
+        x:Class="Oadm.Client.Backup.RestoreWindow"
+        x:DataType="vm:RestoreViewModel"
+        Title="Restore backup"
+        Width="580" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <!-- Restore of the Settings page: single operation. Check reads the backup (nothing changes), Restore asks once more. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="Restore backup" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <ui:FormField Label="Backup">
+          <TextBlock Text="{Binding SourceText}" TextWrapping="Wrap" />
+        </ui:FormField>
+        <ui:FormField Label="Password">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <ui:PasswordBox x:Name="PasswordField" Width="240" Text="{Binding Password}" IsEnabled="{Binding IsIdle}" />
+            <Button Classes="secondary" Content="Check" Command="{Binding CheckCommand}"
+                    ToolTip.Tip="{Binding CheckBlockedReason}" ToolTip.ShowOnDisabled="True" />
+          </StackPanel>
+        </ui:FormField>
+        <ui:ProgressRow IsVisible="{Binding IsBusy}" Text="Reading the backup" />
+        <StackPanel Spacing="4" IsVisible="{Binding IsChecked}">
+          <ui:StatusChip IsOk="True" Text="{Binding Summary}" MaxLines="2" />
+          <ItemsControl ItemsSource="{Binding Lines}" Margin="24,0,0,0">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <TextBlock Classes="secondary" Text="{Binding}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <ui:StatusChip IsWarning="True" Text="{Binding Consequences}" MaxLines="4" Margin="0,8,0,0" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" IsDefault="True" Content="Restore" Command="{Binding RestoreCommand}"
+              ToolTip.Tip="{Binding RestoreBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

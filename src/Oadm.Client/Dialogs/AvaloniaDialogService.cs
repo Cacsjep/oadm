@@ -218,6 +218,82 @@ public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? sessi
         return file.Name;
     }
 
+    public async Task<SavedFile?> CreateFileAsync(string title, string suggestedFileName, FileType type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        if (CurrentOwner()?.StorageProvider is not { } storage)
+        {
+            return null;
+        }
+
+        IStorageFile? file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = title,
+            SuggestedFileName = suggestedFileName,
+            DefaultExtension = type.Extension,
+            FileTypeChoices = [Filter(type)],
+            ShowOverwritePrompt = true,
+        }).ConfigureAwait(true);
+        if (file is null)
+        {
+            return null;
+        }
+
+        Stream stream = await file.OpenWriteAsync().ConfigureAwait(true);
+        stream.SetLength(0);
+        return new SavedFile(file.Name, stream)
+        {
+            Delete = async () =>
+            {
+                await stream.DisposeAsync().ConfigureAwait(true);
+                await file.DeleteAsync().ConfigureAwait(true);
+            },
+        };
+    }
+
+    public async Task<string?> PickFilePathAsync(string title, FileType type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        if (CurrentOwner()?.StorageProvider is not { } storage)
+        {
+            return null;
+        }
+
+        IReadOnlyList<IStorageFile> files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = false,
+            FileTypeFilter = [Filter(type), FilePickerFileTypes.All],
+        }).ConfigureAwait(true);
+        return files.Count == 0 ? null : files[0].TryGetLocalPath();
+    }
+
+    public async Task<bool> ShowBackupPasswordAsync(Backup.BackupPasswordViewModel password)
+    {
+        ArgumentNullException.ThrowIfNull(password);
+        if (CurrentOwner() is not { } owner)
+        {
+            return false;
+        }
+
+        var window = new Backup.BackupPasswordWindow();
+        window.Attach(password);
+        return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
+    }
+
+    public async Task<bool> ShowRestoreAsync(Backup.RestoreViewModel restore)
+    {
+        ArgumentNullException.ThrowIfNull(restore);
+        if (CurrentOwner() is not { } owner)
+        {
+            return false;
+        }
+
+        var window = new Backup.RestoreWindow();
+        window.Attach(restore);
+        return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
+    }
+
     public async Task<PickedFile?> OpenFileAsync(string title, FileType type, int maxBytes)
     {
         ArgumentNullException.ThrowIfNull(type);

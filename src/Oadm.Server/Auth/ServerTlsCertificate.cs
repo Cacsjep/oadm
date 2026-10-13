@@ -84,6 +84,45 @@ public sealed partial class ServerTlsCertificate(OadmPaths paths, CredentialProt
 
     public void Dispose() => _certificate?.Dispose();
 
+    /// <summary>
+    /// A restore replaced the master key: the stored TLS key (Linux, macOS) is encrypted again with the new one, so the server
+    /// keeps its certificate and clients need not confirm a new one. Windows keeps the key in the key store (nothing to do).
+    /// A file that cannot be read stays; the server then makes a new certificate.
+    /// </summary>
+    public static void ReencryptKey(string path, byte[] oldKey, byte[] newKey, ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(oldKey);
+        ArgumentNullException.ThrowIfNull(newKey);
+        if (OperatingSystem.IsWindows() || !File.Exists(path))
+        {
+            return;
+        }
+
+        try
+        {
+            var stored = JsonSerializer.Deserialize(File.ReadAllText(path), TlsFileJsonContext.Default.TlsFile);
+            if (stored is null || string.IsNullOrEmpty(stored.EncryptedKey))
+            {
+                return;
+            }
+
+            using var oldProtector = new CredentialProtector(oldKey);
+            using var newProtector = new CredentialProtector(newKey);
+            var purpose = Encoding.UTF8.GetBytes(KeyPurpose);
+            var keyPem = oldProtector.Unprotect(Convert.FromBase64String(stored.EncryptedKey), purpose);
+            stored.EncryptedKey = Convert.ToBase64String(newProtector.Protect(keyPem, purpose));
+            File.WriteAllText(path, JsonSerializer.Serialize(stored, TlsFileJsonContext.Default.TlsFile));
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or CryptographicException or FormatException)
+        {
+            LogReencryptFailed(logger, ex, path);
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The TLS key in {Path} could not be moved to the restored key; the server makes a new certificate (clients confirm it once)")]
+    private static partial void LogReencryptFailed(ILogger logger, Exception ex, string path);
+
     private X509Certificate2? TryLoad()
     {
         try

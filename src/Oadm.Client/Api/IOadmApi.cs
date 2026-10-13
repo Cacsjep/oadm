@@ -143,6 +143,9 @@ public interface IOadmApi
     /// <summary>Uploads a local file in 256 KB chunks; <paramref name="progress"/> receives 0..1.</summary>
     Task<UploadedFileInfo> UploadFileAsync(string path, IProgress<double>? progress, CancellationToken ct);
 
+    /// <summary>Removes an upload that is not needed (e.g. a backup whose restore was cancelled).</summary>
+    Task DeleteUploadAsync(string fileId, CancellationToken ct) => Task.CompletedTask;
+
     // SettingsService
     Task<ServerSettings> GetSettingsAsync(CancellationToken ct);
     Task<ServerSettings> SetSettingsAsync(ServerSettings settings, CancellationToken ct);
@@ -225,4 +228,21 @@ public interface IOadmApi
     /// </summary>
     Task<Oadm.Sdk.Plugins.PluginDownload> DownloadCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) =>
         throw new NotSupportedException("This connection has no plugin downloads.");
+
+    // BackupService (Administrator only, Settings page)
+    Task<BackupState> GetBackupStateAsync(CancellationToken ct) => throw new NotSupportedException("This connection has no backups.");
+
+    Task<BackupState> SetBackupScheduleAsync(BackupSchedule schedule, CancellationToken ct) => throw new NotSupportedException("This connection has no backups.");
+
+    /// <summary>"Back up now": the backup made on the server, streamed (the caller reads and disposes it).</summary>
+    Task<Oadm.Sdk.Plugins.PluginDownload> CreateBackupAsync(string password, CancellationToken ct) => throw new NotSupportedException("This connection has no backups.");
+
+    /// <summary>A backup kept on the server.</summary>
+    Task<Oadm.Sdk.Plugins.PluginDownload> DownloadBackupAsync(string name, CancellationToken ct) => throw new NotSupportedException("This connection has no backups.");
+
+    Task<BackupState> DeleteBackupAsync(string name, CancellationToken ct) => throw new NotSupportedException("This connection has no backups.");
+
+    Task<BackupInfo> InspectBackupAsync(RestoreRequest request, CancellationToken ct) => throw new NotSupportedException("This connection has no backups.");
+
+    Task<RestoreReply> RestoreBackupAsync(RestoreRequest request, CancellationToken ct) => throw new NotSupportedException("This connection has no backups.");
 }

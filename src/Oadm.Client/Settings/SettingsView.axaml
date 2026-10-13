@@ -3,6 +3,7 @@
              xmlns:settings="using:Oadm.Client.Settings"
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:c="using:Oadm.Client.Controls"
+             xmlns:backup="using:Oadm.Client.Backup"
              x:Class="Oadm.Client.Settings.SettingsView"
              x:DataType="settings:SettingsViewModel">
   <!-- Every labeled input is a ui:FormField: its error appears directly below the input. Fields are grouped under
@@ -10,7 +11,16 @@
   <Grid RowDefinitions="Auto,*" RowSpacing="16">
     <c:PageTitleBar Title="Settings" Subtitle="How the server polls, scans and runs tasks, and how this computer shows video." />
     <ScrollViewer Grid.Row="1">
-      <StackPanel Spacing="16" MaxWidth="760" HorizontalAlignment="Left">
+      <!-- Two columns: this computer and the server settings left, backup and restore right (administrators). -->
+      <!-- Each column grows to 760 px; on a wider window the space stays on the right (the page starts at the left). -->
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" MaxWidth="760" />
+          <ColumnDefinition Width="16" />
+          <ColumnDefinition Width="*" MaxWidth="760" />
+          <ColumnDefinition Width="0.001*" />
+        </Grid.ColumnDefinitions>
+      <StackPanel Spacing="16">
         <!-- This computer: saved at once, for every user (client-settings.json) -->
         <Border Classes="card">
           <StackPanel Classes="form">
@@ -118,8 +128,11 @@
                        TextWrapping="Wrap" IsVisible="{Binding ServerMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           </StackPanel>
         </Border>
-
       </StackPanel>
+
+      <backup:BackupCardView Grid.Column="2" VerticalAlignment="Top" DataContext="{Binding Backup}"
+                             IsVisible="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowBackup}" />
+      </Grid>
     </ScrollViewer>
   </Grid>
 </UserControl>

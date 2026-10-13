@@ -15,6 +15,18 @@ version and date, and the release workflow copies it into the GitHub release.
 - **Create configuration file** (context menu, Maintenance): save chosen settings of one device as an AXIS Device Manager
   configuration file.
 - The device picker can choose exactly one device.
+- **Applications (ACAP)** installs license key files: with the package or on their own (**Install license**). Choose many
+  key files or a ZIP; each device gets the key with its MAC address.
+
+- **Backup and restore** (Settings, administrators): back up the whole server into one password-protected file, now or
+  every day automatically, and restore it, also on another computer. A restore saves the current state first; a backup of
+  an older OADM is upgraded.
+- Before every database upgrade the server copies its database to `backups/before-upgrade`.
+
+### Changed
+
+- The client asks for the terms of use on its first start on each computer (and again when they change). The Windows
+  and macOS installers no longer show a license page, so every install method and platform is the same.
 
 ## [2.6.0] - 2026-10-13
 

@@ -29,7 +29,12 @@ It holds the database (devices, tasks, users), the plugin settings including the
 
 ## Backup
 
-Back up the whole data folder. Without `master.key` the stored passwords cannot be read.
+Use **Settings > Backup and restore**: **Back up now** or the automatic backups (kept in `backups` in the data folder).
+A backup restores on another computer too. See [Settings](../settings/#backup-and-restore).
+
+Before every database upgrade OADM copies the database to `backups/before-upgrade` (the newest five kept).
+
+Backing up the whole data folder by hand also works. Without `master.key` the stored passwords cannot be read.
 
 If `master.key` is lost or replaced, the server starts with a new key, removes the passwords it can no longer read and
 sets those devices to **Credentials required**. The client shows a banner with the number of devices. Use **Log in**

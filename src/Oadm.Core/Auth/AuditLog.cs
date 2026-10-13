@@ -52,6 +52,12 @@ public static class AuditActions
     public const string RoleDeleted = "Deleted role";
     public const string OpticsChanged = "Changed zoom or focus";
     public const string RtspPortChanged = "Changed RTSP port in OADM";
+    public const string BackupCreated = "Created backup";
+    public const string BackupDownloaded = "Downloaded backup";
+    public const string BackupDeleted = "Deleted backup";
+    public const string BackupScheduleChanged = "Changed automatic backups";
+    public const string RestoreStarted = "Started restore";
+    public const string RestoreApplied = "Restored backup";
 }
 
 /// <summary>

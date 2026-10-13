@@ -446,11 +446,11 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         }
     }
 
-    /// <summary>
-    /// Clears the history: cancels every active task, waits for them to stop, then deletes all tasks in
-    /// one store transaction and publishes one Removed per task. Returns the number deleted.
-    /// </summary>
-    public async Task<int> DeleteAllAsync(CancellationToken ct)
+    /// <summary>Queued and running tasks.</summary>
+    public int ActiveCount => _active.Count;
+
+    /// <summary>Cancels every queued and running task and waits until they stopped (Delete all, a restore).</summary>
+    public async Task CancelAllAsync(CancellationToken ct)
     {
         var active = _active.Values.ToList();
         foreach (var task in active)
@@ -459,6 +459,15 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         }
 
         await Task.WhenAll(active.Select(t => t.Completion.Task)).WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Clears the history: cancels every active task, waits for them to stop, then deletes all tasks in
+    /// one store transaction and publishes one Removed per task. Returns the number deleted.
+    /// </summary>
+    public async Task<int> DeleteAllAsync(CancellationToken ct)
+    {
+        await CancelAllAsync(ct).ConfigureAwait(false);
         var ids = await _store.ListIdsAsync(ct).ConfigureAwait(false);
         return await DeleteManyAsync(ids, ct).ConfigureAwait(false);
     }

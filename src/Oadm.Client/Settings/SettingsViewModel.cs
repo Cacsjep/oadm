@@ -65,6 +65,11 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     /// <summary>Live video on this computer: details over the picture, the adaptive frame rate.</summary>
     public LiveView.LiveVideoSettings Video { get; }
 
+    /// <summary>The card "Backup and restore" (administrators); null without a dialog service (tests).</summary>
+    public Oadm.Client.Backup.BackupViewModel? Backup { get; }
+
+    public bool ShowBackup => Backup is not null && IsAdmin;
+
     /// <summary>Server settings can only be changed by administrators (the server checks it too).</summary>
     public bool IsAdmin => _session?.IsAdmin ?? true;
 
@@ -76,9 +81,10 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
 
     public SettingsViewModel(IOadmApi api, ServerConnection connection, ILogger<SettingsViewModel> logger, UserSession? session = null,
         Infrastructure.IClientSettingsStore? clientSettings = null, LiveView.GpuDecodingService? gpu = null, Infrastructure.IUiDispatcher? ui = null,
-        LiveView.LiveVideoSettings? video = null)
+        LiveView.LiveVideoSettings? video = null, Oadm.Client.Backup.BackupViewModel? backup = null)
     {
         Video = video ?? new LiveView.LiveVideoSettings(clientSettings);
+        Backup = backup;
         ArgumentNullException.ThrowIfNull(connection);
         _api = api;
         _logger = logger;
@@ -110,6 +116,11 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
                 {
                     OnPropertyChanged(nameof(IsAdmin));
                     OnPropertyChanged(nameof(IsOperator));
+                    OnPropertyChanged(nameof(ShowBackup));
+                    if (ShowBackup && IsLoaded)
+                    {
+                        _ = Backup!.LoadAsync();
+                    }
                     SaveCommand.NotifyCanExecuteChanged();
                 }
             };
@@ -216,6 +227,10 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             Validation.Reset(ServerFields); // loaded values: nothing edited yet
             IsLoaded = true;
             ServerMessage = null;
+            if (ShowBackup)
+            {
+                await Backup!.LoadAsync().ConfigureAwait(true);
+            }
         }
         catch (Exception ex)
         {

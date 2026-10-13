@@ -1,0 +1,97 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Client.Backup"
+             x:Class="Oadm.Client.Backup.BackupCardView"
+             x:DataType="vm:BackupViewModel">
+  <!-- Settings page, administrators: backup and restore of the server. -->
+  <Border Classes="card">
+    <StackPanel Spacing="16">
+      <StackPanel Classes="form">
+        <TextBlock Classes="sectionTitle" Text="Backup and restore" />
+        <ui:FormField Classes="wide">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Classes="secondary" Command="{Binding BackUpNowCommand}">
+              <ui:IconLabel Icon="{StaticResource Icon.save}" Text="Back up now" />
+            </Button>
+            <Button Classes="secondary" Command="{Binding RestoreFromFileCommand}">
+              <ui:IconLabel Icon="{StaticResource Icon.upload}" Text="Restore from file" />
+            </Button>
+          </StackPanel>
+        </ui:FormField>
+        <ui:ProgressRow Value="{Binding Progress}" Text="{Binding Status}" IsVisible="{Binding IsBusy}" />
+        <TextBlock Text="{Binding Status}" Classes.error="{Binding StatusIsError}" Classes.secondary="{Binding !StatusIsError}" TextWrapping="Wrap"
+                   IsVisible="{Binding ShowStatus}" />
+        <ui:StatusChip IsOk="{Binding !LastRestoreFailed}" IsError="{Binding LastRestoreFailed}" Text="{Binding LastRestoreText}" MaxLines="3"
+                       IsVisible="{Binding HasLastRestore}" />
+        <ItemsControl ItemsSource="{Binding LastRestoreLines}" Margin="24,0,0,0" IsVisible="{Binding HasLastRestore}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <TextBlock Classes="secondary" Text="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+
+      <Border Classes="separator" />
+
+      <StackPanel Classes="form">
+        <TextBlock Classes="sectionTitle" Text="Automatic backups" />
+        <ui:FormField Classes="wide">
+          <CheckBox IsChecked="{Binding ScheduleEnabled}" Content="Back up the server every day" />
+        </ui:FormField>
+        <ui:FormField Label="Time" Hint="Server time">
+          <TextBox Width="100" HorizontalAlignment="Left" Text="{Binding TimeOfDay}" PlaceholderText="02:00" />
+        </ui:FormField>
+        <ui:FormField Label="Backups kept">
+          <NumericUpDown Minimum="1" Maximum="365" Increment="1" FormatString="0" Value="{Binding Keep}" />
+        </ui:FormField>
+        <ui:FormField Label="Password" Hint="A restore needs it.">
+          <ui:PasswordBox Text="{Binding SchedulePassword}" PlaceholderText="{Binding PasswordPlaceholder}" />
+        </ui:FormField>
+        <ui:FormField Label="Confirm password">
+          <ui:PasswordBox Text="{Binding ScheduleConfirmPassword}" PlaceholderText="{Binding PasswordPlaceholder}" />
+        </ui:FormField>
+        <ui:FormField Classes="wide">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Classes="secondary" Content="Save" Command="{Binding SaveScheduleCommand}"
+                    ToolTip.Tip="{Binding SaveScheduleBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            <ui:StatusChip IsOk="{Binding !LastAutomaticFailed}" IsError="{Binding LastAutomaticFailed}" Text="{Binding LastAutomaticText}" MaxLines="2"
+                           VerticalAlignment="Center" IsVisible="{Binding LastAutomaticText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </StackPanel>
+        </ui:FormField>
+      </StackPanel>
+
+      <Border Classes="separator" />
+
+      <StackPanel Spacing="8">
+        <TextBlock Classes="sectionTitle" Text="Backups on the server" />
+        <TextBlock Classes="secondary" Text="{Binding FolderText}" TextWrapping="Wrap" />
+        <ItemsControl ItemsSource="{Binding Backups}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ServerBackupRow">
+              <Grid ColumnDefinitions="140,130,90,*,Auto,Auto,Auto" ColumnSpacing="12" Margin="0,0,0,6">
+                <TextBlock Text="{Binding CreatedText}" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding KindText}" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Classes="secondary" Text="{Binding SizeText}" VerticalAlignment="Center" />
+                <Button Grid.Column="4" Classes="toolbar iconOnly" ToolTip.Tip="Download"
+                        Command="{Binding $parent[UserControl].((vm:BackupViewModel)DataContext).DownloadCommand}" CommandParameter="{Binding}">
+                  <ui:OadmIcon Data="{StaticResource Icon.download}" />
+                </Button>
+                <Button Grid.Column="5" Classes="toolbar iconOnly" ToolTip.Tip="Restore"
+                        Command="{Binding $parent[UserControl].((vm:BackupViewModel)DataContext).RestoreCommand}" CommandParameter="{Binding}">
+                  <ui:OadmIcon Data="{StaticResource Icon.upload}" />
+                </Button>
+                <Button Grid.Column="6" Classes="toolbar iconOnly danger" ToolTip.Tip="Delete"
+                        Command="{Binding $parent[UserControl].((vm:BackupViewModel)DataContext).DeleteCommand}" CommandParameter="{Binding}">
+                  <ui:OadmIcon Data="{StaticResource Icon.remove}" />
+                </Button>
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock Classes="secondary" Text="No backups on the server yet. Turn on automatic backups to make one every day." IsVisible="{Binding !HasBackups}" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</UserControl>
