@@ -1,0 +1,33 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.EdgeStorage.Client"
+        x:Class="Oadm.Plugins.EdgeStorage.Client.RetentionWindow"
+        x:DataType="vm:RetentionViewModel"
+        Title="{x:Static vm:RetentionViewModel.Title}"
+        Width="520" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Single operation: title bar, the form in Border.dialogBody, footer. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:RetentionViewModel.Title}" />
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Intro}" />
+        <ui:FormField Label="Keep recordings (days)">
+          <NumericUpDown Minimum="1" Maximum="{x:Static vm:RetentionViewModel.MaxDays}" Increment="1" FormatString="0" ParsingNumberStyle="Integer"
+                         Value="{Binding Days}" IsEnabled="{Binding DaysEnabled}" />
+        </ui:FormField>
+        <ui:FormField Classes="wide">
+          <CheckBox IsChecked="{Binding NoLimit}" Content="No age limit, keep them until the card is full" />
+        </ui:FormField>
+      </StackPanel>
+    </Border>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Set retention" Command="{Binding OkCommand}"
+              ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

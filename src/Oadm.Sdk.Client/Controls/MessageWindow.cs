@@ -71,14 +71,15 @@ public sealed class MessageWindow : Window
     }
 
     /// <summary>
-    /// True for confirm texts of irreversible actions: they start with Delete, Remove or Release ("Delete all",
-    /// "Remove", "Release"). One rule for the host and every plugin.
+    /// True for confirm texts of irreversible actions: they start with Delete, Remove, Release or Format ("Delete all",
+    /// "Remove", "Release", "Format": formatting deletes the recordings). One rule for the host and every plugin.
     /// </summary>
     public static bool IsDestructive(string? confirmText) =>
         confirmText is not null
         && (confirmText.StartsWith("Delete", StringComparison.OrdinalIgnoreCase)
             || confirmText.StartsWith("Remove", StringComparison.OrdinalIgnoreCase)
-            || confirmText.StartsWith("Release", StringComparison.OrdinalIgnoreCase));
+            || confirmText.StartsWith("Release", StringComparison.OrdinalIgnoreCase)
+            || confirmText.StartsWith("Format", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Text of the Cancel button; null or empty hides it (a plain message with OK only).</summary>
     public string? CancelText

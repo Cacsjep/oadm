@@ -196,7 +196,7 @@ internal sealed class FakeCamera : IVapixClient
         Assert.Equal(HttpMethod.Get, request.Method); // read-only
         var uri = request.RequestUri!.OriginalString;
         Requests.Enqueue(uri);
-        if (uri == EdgeStorageRequests.DisksUri)
+        if (uri == Oadm.Plugins.EdgeStorage.Disks.EdgeDisks.ListUri)
         {
             return Task.FromResult(Xml(SdCard is { } card
                 ? $"<root><disks><disk diskid=\"SD_DISK\" {card}/><disk diskid=\"NetworkShare\" status=\"disconnected\"/></disks></root>"

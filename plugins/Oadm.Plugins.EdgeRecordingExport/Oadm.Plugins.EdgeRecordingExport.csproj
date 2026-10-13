@@ -23,6 +23,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The disk list of the Edge storage plugin, shared with Hardening scan and Edge storage. -->
+    <Compile Include="..\Oadm.Plugins.EdgeStorage\Disks\*.cs" Link="Readers\EdgeStorage\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Oadm.Plugins.EdgeRecordingExport.Tests" />
   </ItemGroup>
 

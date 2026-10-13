@@ -962,6 +962,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         new CorePluginInfo { Id = WebViewPluginId, DisplayName = "Web View", IconKey = "globe", Group = "Utilities" },
         new CorePluginInfo { Id = LiveViewPluginId, DisplayName = "Live View", IconKey = "grid", Group = "Monitoring" },
         new CorePluginInfo { Id = EdgeRecordingPluginId, DisplayName = "Edge Recording Export", IconKey = "hardDriveDownload", Group = "Maintenance" },
+        new CorePluginInfo { Id = EdgeStoragePluginId, DisplayName = "Edge storage", IconKey = "hardDrive", Group = "Maintenance" },
     ];
 
     public Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) => pluginId switch
@@ -975,6 +976,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         DeviceTriggersPluginId => InvokeDeviceTriggersAsync(method, payloadJson),
         LiveViewPluginId => InvokeLiveViewAsync(method, payloadJson),
         EdgeRecordingPluginId => InvokeEdgeRecordingAsync(method, payloadJson, ct),
+        EdgeStoragePluginId => InvokeEdgeStorageAsync(method, payloadJson, ct),
         _ => throw new RpcException(new Status(StatusCode.NotFound, $"Unknown core plugin '{pluginId}'.")),
     };
 

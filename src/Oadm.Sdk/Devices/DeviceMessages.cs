@@ -71,6 +71,23 @@ public static class DeviceMessages
     public static string Timeout(TimeSpan timeout) =>
         string.Create(CultureInfo.InvariantCulture, $"Timeout after {timeout.TotalSeconds:0.#} s");
 
+    /// <summary>"Unreachable - the device does not answer": a device the polling marked Unreachable, not contacted.</summary>
+    public const string NotAnswering = "Unreachable - the device does not answer";
+
+    /// <summary>
+    /// Why a device is not contacted, or null when it may be: a changed certificate, rejected credentials or no password yet
+    /// (nothing is sent to such a device), and with <paramref name="refuseUnreachable"/> a device the polling marked
+    /// Unreachable (a read that only waits for its timeout).
+    /// </summary>
+    public static string? Refusal(DeviceStatus status, bool refuseUnreachable = false) => status switch
+    {
+        DeviceStatus.CertificateChanged => CertificateChanged,
+        DeviceStatus.CredentialsRequired => CredentialsRequired,
+        DeviceStatus.PasswordNotSet => PasswordNotSet,
+        DeviceStatus.Unreachable when refuseUnreachable => NotAnswering,
+        _ => null,
+    };
+
     /// <summary>"Unreachable - Connection refused" (a trailing period of the detail is removed).</summary>
     public static string Unreachable(string detail)
     {

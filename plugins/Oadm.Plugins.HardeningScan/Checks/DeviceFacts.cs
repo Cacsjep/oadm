@@ -1,5 +1,6 @@
 using Oadm.Plugins.Acap;
 using Oadm.Plugins.DateAndTime.Model;
+using Oadm.Plugins.EdgeStorage.Disks;
 using Oadm.Plugins.HardeningScan.Device;
 using Oadm.Plugins.Pki.Device;
 using Oadm.Plugins.Users;
@@ -64,7 +65,7 @@ public sealed class DeviceFacts
 
     public Fact<CurrentTimeSettings> Time { get; init; } = Fact.NotAvailable<CurrentTimeSettings>(NotRead);
 
-    public Fact<IReadOnlyList<DiskInfo>> Disks { get; init; } = Fact.NotAvailable<IReadOnlyList<DiskInfo>>(NotRead);
+    public Fact<IReadOnlyList<EdgeDisk>> Disks { get; init; } = Fact.NotAvailable<IReadOnlyList<EdgeDisk>>(NotRead);
 
     public Fact<IReadOnlyList<InstalledApplication>> Applications { get; init; } = Fact.NotAvailable<IReadOnlyList<InstalledApplication>>(NotRead);
 

@@ -3,6 +3,7 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using Oadm.Plugins.Shared;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Collections;
 using Oadm.Sdk.Plugins;
@@ -19,7 +20,8 @@ namespace Oadm.Plugins.ImageHealth.Client;
 public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
 {
     private readonly ICorePluginClientContext _ctx;
-    private readonly Dictionary<Guid, ImageHealthRowViewModel> _byId = [];
+    private readonly SweepRows<ImageHealthRow, ImageHealthRowViewModel> _rows =
+        new(r => r.DeviceId, r => new ImageHealthRowViewModel(r), (vm, r) => vm.Apply(r), vm => vm.SearchText, vm => vm.AddressSortKey);
     private CancellationTokenSource? _active;
     private CancellationTokenSource? _autoRefresh;
     private ImageHealthState? _state;
@@ -32,10 +34,13 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
     /// <summary>Wait before watching the events again after the stream broke.</summary>
     public static TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
 
+    /// <summary>How often the page asks for the state while a check runs (its progress events may be missed).</summary>
+    public static TimeSpan StatePollInterval { get; set; } = TimeSpan.FromSeconds(1);
+
     /// <summary>Auto refresh period (tests shorten it).</summary>
     public static TimeSpan AutoRefreshInterval { get; set; } = ImageHealthPluginInfo.AutoRefreshInterval;
 
-    public RangeObservableCollection<ImageHealthRowViewModel> Rows { get; } = [];
+    public RangeObservableCollection<ImageHealthRowViewModel> Rows => _rows.Shown;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
@@ -83,7 +88,7 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
 
         _active = new CancellationTokenSource();
         var token = _active.Token;
-        _ = WatchAsync(token);
+        _ = _ctx.RunAsync(HandleEvent, ReconnectDelay, token);
         _ = CheckAsync(token);
         SyncAutoRefresh();
     }
@@ -137,22 +142,8 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
         _state = state;
         if (replaceRows)
         {
-            var keep = new Dictionary<Guid, ImageHealthRowViewModel>(_byId);
-            _byId.Clear();
-            foreach (var row in state.Rows)
-            {
-                if (keep.TryGetValue(row.DeviceId, out var existing))
-                {
-                    existing.Apply(row);
-                    _byId[row.DeviceId] = existing;
-                }
-                else
-                {
-                    _byId[row.DeviceId] = new ImageHealthRowViewModel(row);
-                }
-            }
-
-            ApplyFilter();
+            _rows.Replace(state.Rows);
+            OnPropertyChanged(nameof(ShowEmpty));
         }
 
         IsChecking = state.Checking;
@@ -165,28 +156,9 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
     public void ApplyRows(IReadOnlyList<ImageHealthRow> rows, IReadOnlyList<Guid>? removed = null)
     {
         ArgumentNullException.ThrowIfNull(rows);
-        var structural = false;
-        foreach (var id in removed ?? [])
+        if (_rows.Apply(rows, removed))
         {
-            structural |= _byId.Remove(id);
-        }
-
-        foreach (var row in rows)
-        {
-            if (_byId.TryGetValue(row.DeviceId, out var existing))
-            {
-                existing.Apply(row);
-            }
-            else
-            {
-                _byId[row.DeviceId] = new ImageHealthRowViewModel(row);
-                structural = true;
-            }
-        }
-
-        if (structural)
-        {
-            ApplyFilter();
+            OnPropertyChanged(nameof(ShowEmpty));
         }
 
         UpdateSummary();
@@ -234,6 +206,15 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
             var json = await _ctx.InvokeAsync(ImageHealthMethods.Check, null, ct).ConfigureAwait(true);
             ApplyState(ImageHealthJson.Deserialize<ImageHealthState>(json), replaceRows: true);
             ErrorText = null;
+
+            // The end of the check comes as an event; one sent before the watch was connected is lost, so the page also
+            // asks for the state (no device access) until the check is done.
+            while (IsChecking)
+            {
+                await Task.Delay(StatePollInterval, ct).ConfigureAwait(true);
+                json = await _ctx.InvokeAsync(ImageHealthMethods.GetState, null, ct).ConfigureAwait(true);
+                ApplyState(ImageHealthJson.Deserialize<ImageHealthState>(json), replaceRows: true);
+            }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -242,27 +223,21 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            ErrorText = Message(ex);
+            ErrorText = ServerErrors.Message(ex);
+            IsChecking = false;
         }
     }
 
     private void ApplyFilter()
     {
-        var search = SearchText.Trim();
-        IEnumerable<ImageHealthRowViewModel> shown = _byId.Values;
-        if (search.Length > 0)
-        {
-            shown = shown.Where(r => r.SearchText.Contains(search, StringComparison.OrdinalIgnoreCase));
-        }
-
-        Rows.ReplaceAll(shown.OrderBy(r => r.AddressSortKey, StringComparer.Ordinal));
+        _rows.Filter(SearchText);
         OnPropertyChanged(nameof(ShowEmpty));
         UpdateSummary();
     }
 
     private void UpdateSummary()
     {
-        Counts = ImageHealthCounts.From(_byId.Values);
+        Counts = ImageHealthCounts.From(_rows.All);
         var state = _state;
         if (state is null)
         {
@@ -277,7 +252,7 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
             parts.Add(Count(state.WithoutApp, "camera without the app", "cameras without the app"));
         }
 
-        if (Rows.Count != _byId.Count)
+        if (Rows.Count != _rows.Count)
         {
             parts.Add(string.Create(CultureInfo.CurrentCulture, $"{Rows.Count:N0} shown"));
         }
@@ -290,57 +265,11 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
         SummaryText = string.Join(" · ", parts);
         EmptyText = state.Checking
             ? "Checking the cameras."
-            : _byId.Count == 0
+            : _rows.Count == 0
                 ? state.Total == 0 ? "No video devices yet." : "No camera has AXIS Image Health Analytics."
                 : "No camera matches the search.";
     }
 
     private static string Count(int n, string one, string many) =>
         string.Create(CultureInfo.CurrentCulture, $"{n:N0} {(n == 1 ? one : many)}");
-
-    private async Task WatchAsync(CancellationToken ct)
-    {
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                var events = _ctx.WatchEventsAsync(ct).GetAsyncEnumerator(ct);
-                try
-                {
-                    while (await events.MoveNextAsync().ConfigureAwait(true))
-                    {
-                        HandleEvent(events.Current);
-                    }
-                }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    return;
-                }
-#pragma warning disable CA1031 // The connection dropped: watch again after a short delay.
-                catch (Exception)
-#pragma warning restore CA1031
-                {
-                }
-                finally
-                {
-                    await events.DisposeAsync().ConfigureAwait(true);
-                }
-
-                await Task.Delay(ReconnectDelay, ct).ConfigureAwait(true);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // page hidden
-        }
-    }
-
-    /// <summary>gRPC errors carry the user message in Status.Detail; read it without a Grpc reference.</summary>
-    private static string Message(Exception ex)
-    {
-        var detail = ex.GetType().GetProperty("Status")?.GetValue(ex) is { } status
-            ? status.GetType().GetProperty("Detail")?.GetValue(status) as string
-            : null;
-        return string.IsNullOrEmpty(detail) ? ex.Message : detail;
-    }
 }

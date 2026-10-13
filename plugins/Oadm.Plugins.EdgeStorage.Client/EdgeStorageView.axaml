@@ -1,0 +1,93 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.EdgeStorage.Client"
+             x:Class="Oadm.Plugins.EdgeStorage.Client.EdgeStorageView"
+             x:DataType="vm:EdgeStorageViewModel"
+             ui:PageHeader.Subtitle="The SD cards of the cameras.">
+  <!-- Own cards (ICorePluginPage.HasOwnCards): the count cards, then one card with the tools, search, progress and one row
+       per camera with an SD card slot; the shared tasks pane below the page shows the runs. Shared controls and theme
+       classes only. -->
+  <Grid RowDefinitions="Auto,*" RowSpacing="{DynamicResource Oadm.Gap}">
+    <UniformGrid Grid.Row="0" Rows="1" ColumnSpacing="{DynamicResource Oadm.Gap}">
+      <ui:StatCard Title="OK" Value="{Binding OkText}" IsOk="{Binding HasOk}" />
+      <ui:StatCard Title="Worn" Value="{Binding WornText}" IsWarning="{Binding HasWorn}" ToolTip.Tip="Replace these SD cards soon" />
+      <ui:StatCard Title="Problems" Value="{Binding ProblemsText}" IsError="{Binding HasProblems}" ToolTip.Tip="The camera cannot use the SD card" />
+      <ui:StatCard Title="No SD card" Value="{Binding NoCardText}" />
+      <ui:StatCard Title="Not read" Value="{Binding FailedText}" IsError="{Binding HasFailed}" ToolTip.Tip="The camera could not be read" />
+    </UniformGrid>
+    <Border Grid.Row="1" Classes="card">
+      <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+            <ui:ToolbarButton IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}" ToolTip.Tip="Read every SD card again" />
+            <ui:ToolbarSeparator IsVisible="{Binding MayManage}" />
+            <ui:ToolbarButton IconKey="clipboardCheck" Text="Check" Command="{Binding CheckCommand}" IsVisible="{Binding MayManage}"
+                              ToolTip.Tip="{Binding ToolsBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            <ui:ToolbarButton IconKey="clock" Text="Set retention" Command="{Binding SetRetentionCommand}" IsVisible="{Binding MayManage}"
+                              ToolTip.Tip="{Binding ToolsBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            <ui:ToolbarSeparator IsVisible="{Binding MayFormat}" />
+            <ui:ToolbarButton IconKey="wrench" Text="Repair" Command="{Binding RepairCommand}" IsVisible="{Binding MayFormat}"
+                              ToolTip.Tip="{Binding ToolsBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            <ui:ToolbarButton IconKey="lock" Text="Encrypt" Command="{Binding EncryptCommand}" IsVisible="{Binding MayFormat}"
+                              ToolTip.Tip="{Binding ToolsBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            <ui:ToolbarButton IconKey="lockOpen" Text="Turn off encryption" Command="{Binding DecryptCommand}" IsVisible="{Binding MayFormat}"
+                              ToolTip.Tip="{Binding ToolsBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            <ui:ToolbarSeparator IsVisible="{Binding MayFormat}" />
+            <ui:ToolbarButton Classes="danger" IconKey="eraser" Text="Format" Command="{Binding FormatCommand}" IsVisible="{Binding MayFormat}"
+                              ToolTip.Tip="{Binding ToolsBlockedReason}" ToolTip.ShowOnDisabled="True" />
+          </StackPanel>
+          <ui:SearchBox Grid.Column="2" Width="220" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="Search cameras" />
+        </Grid>
+
+        <ui:ProgressRow Grid.Row="1" Margin="0,10,0,0" Value="{Binding ProgressValue}" Text="{Binding ProgressText}" IsActive="{Binding IsReading}"
+                        IsVisible="{Binding IsReading}" />
+
+
+        <!-- Thousands of cameras: virtualized, rows updated in place, the selection is the tools' target. -->
+        <DataGrid x:Name="RowGrid" Grid.Row="2" Margin="0,8,0,0" Classes="wrapRows" ItemsSource="{Binding Rows}"
+                  IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="True" CanUserResizeColumns="True" SelectionMode="Extended">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Address" Width="150" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:StorageRowViewModel" />
+            <DataGridTextColumn Header="Model" Width="150" Binding="{Binding Model}" x:DataType="vm:StorageRowViewModel" />
+            <DataGridTemplateColumn Header="SD card" Width="*" MinWidth="260" CanUserSort="True" SortMemberPath="StateSortKey">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:StorageRowViewModel">
+                  <ui:StatusChip Text="{Binding StateText}" MaxLines="2" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}"
+                                 IsError="{Binding IsProblem}" IsAccent="{Binding IsReading}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Width="100" Binding="{Binding SizeText}" SortMemberPath="SizeSortKey" CellStyleClasses="number" x:DataType="vm:StorageRowViewModel">
+              <DataGridTextColumn.Header>
+                <TextBlock Classes="numberHeader" Text="Size" />
+              </DataGridTextColumn.Header>
+            </DataGridTextColumn>
+            <DataGridTemplateColumn Header="Used" Width="260" CanUserSort="True" SortMemberPath="UsedPercent">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:StorageRowViewModel">
+                  <ui:ProgressRow Value="{Binding UsedPercent}" Text="{Binding UsedText}" IsVisible="{Binding ShowUsed}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Wear" Width="110" CanUserSort="True" SortMemberPath="WearSortKey">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:StorageRowViewModel">
+                  <Panel ToolTip.Tip="Share of the expected life of the card used">
+                    <TextBlock Text="{Binding WearText}" VerticalAlignment="Center" IsVisible="{Binding !IsWorn}" />
+                    <ui:StatusChip Text="{Binding WearText}" IsWarning="True" IsVisible="{Binding IsWorn}" />
+                  </Panel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Encrypted" Width="100" Binding="{Binding EncryptedText}" x:DataType="vm:StorageRowViewModel" />
+            <DataGridTextColumn Header="Retention" Width="120" Binding="{Binding RetentionText}" SortMemberPath="RetentionDays" x:DataType="vm:StorageRowViewModel" />
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Grid.Row="2" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding EmptyText}"
+                   IsVisible="{Binding ShowEmpty}" />
+        <TextBlock Grid.Row="3" Margin="0,8,0,0" Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

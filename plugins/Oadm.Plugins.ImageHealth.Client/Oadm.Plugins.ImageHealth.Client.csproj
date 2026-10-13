@@ -29,6 +29,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The rows of the table page, shared with Edge storage. -->
+    <Compile Include="..\Shared\SweepRows.cs" Link="Common\SweepRows.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Oadm.Plugins.ImageHealth.Tests" />
   </ItemGroup>
 

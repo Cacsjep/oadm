@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.axis.com/vapix/http_cgi/disk/list1.xsd">
+<disks numberofdisks="1" >  <disk diskid="SD_DISK" name="" totalsize="57922892" freesize="57922656" cleanuplevel="98" cleanupmaxage="7" cleanuppolicy="fifo" locked="no" full="no" readonly="no" status="OK" filesystem="ext4" group="S0" requiredfilesystem="none" encryptionenabled="false" diskencrypted="false"/>
+</disks> </root>

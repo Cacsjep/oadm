@@ -23,6 +23,7 @@ public sealed partial class FakeOadmApi
         Package(WebViewPluginId, "Web View", "Opens the web interface of the devices in tabs, logged in with the stored login.", "Utilities", hasPage: true, tasks: 0),
         Package(LiveViewPluginId, "Live View", "Saved views of several cameras at once, opened in tabs.", "Monitoring", hasPage: true, tasks: 0, enabledByDefault: false),
         Package(EdgeRecordingPluginId, "Edge Recording Export", "Downloads the recordings on the cameras' SD cards to this computer.", "Maintenance", hasPage: true, tasks: 0, enabledByDefault: false),
+        Package(EdgeStoragePluginId, "Edge storage", "Shows the SD cards of the cameras and formats, checks and encrypts them.", "Maintenance", hasPage: true, tasks: 0, enabledByDefault: false),
         Package("oadm.vapix-commander", "VAPIX Commander", "Sends VAPIX commands to many devices at once.", "Automation", hasPage: true, tasks: 0),
         Package("oadm.ntp-server", "NTP server", "Serves the time to devices from this server.", "Servers", hasPage: true, tasks: 1),
         Package("oadm.dhcp-server", "DHCP server", "Hands out IP addresses and can add new Axis devices automatically.", "Servers", hasPage: true, tasks: 0),

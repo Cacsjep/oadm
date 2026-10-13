@@ -9,18 +9,6 @@ namespace Oadm.Plugins.HardeningScan.Device;
 /// <summary>A REST API listed by <c>GET /config/discover</c> (released or beta).</summary>
 public sealed record RestApi(string Name, int Major, string? Version, string? State);
 
-/// <summary>One disk of <c>disks/list.cgi?diskid=all</c>.</summary>
-public sealed record DiskInfo(string Id, string? Group, string? Status, bool? EncryptionEnabled, bool? Encrypted)
-{
-    /// <summary>Connected and in use (status OK).</summary>
-    public bool IsConnected => string.Equals(Status, "OK", StringComparison.OrdinalIgnoreCase);
-
-    public bool IsSdCard => Id.StartsWith("SD_DISK", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>"SD card", "Network share" or the disk id.</summary>
-    public string Label => IsSdCard ? "SD card" : string.Equals(Id, "NetworkShare", StringComparison.OrdinalIgnoreCase) ? "Network share" : Id;
-}
-
 /// <summary>GET <c>/config/rest/firewall/v1</c>.</summary>
 public sealed record FirewallInfo(bool Activated, string? DefaultPolicy, IReadOnlyList<string> RuleTypes);
 
@@ -132,25 +120,6 @@ public static class DeviceParsers
     {
         var url = Text(Data(json, "oidcsetup")["BaseConfigEntity"]?["OIDC_ProviderMetadataURL"])?.Trim().Trim('"').Trim();
         return string.IsNullOrEmpty(url) ? null : url;
-    }
-
-    public static IReadOnlyList<DiskInfo> ParseDisks(string xml)
-    {
-        try
-        {
-            var document = DeviceXml.Parse(xml.Trim());
-            return [.. document.Descendants().Where(e => e.Name.LocalName == "disk").Select(d => new DiskInfo(
-                (string?)d.Attribute("diskid") ?? string.Empty,
-                (string?)d.Attribute("group"),
-                (string?)d.Attribute("status"),
-                ParamList.ParseBool((string?)d.Attribute("encryptionenabled")),
-                ParamList.ParseBool((string?)d.Attribute("diskencrypted"))))
-                .Where(d => d.Id.Length > 0)];
-        }
-        catch (XmlException ex)
-        {
-            throw new FormatException("disks/list.cgi: the device sent an unreadable answer.", ex);
-        }
     }
 
     private static string? Text(JsonNode? node) =>

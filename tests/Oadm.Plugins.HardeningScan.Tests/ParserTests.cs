@@ -1,3 +1,4 @@
+using Oadm.Plugins.EdgeStorage.Disks;
 using Oadm.Plugins.HardeningScan.Device;
 
 namespace Oadm.Plugins.HardeningScan.Tests;
@@ -70,13 +71,13 @@ public sealed class ParserTests
     [Fact]
     public void Disks_are_read_through_the_safe_xml_parser()
     {
-        var disks = DeviceParsers.ParseDisks(Fixtures.Read("disks-list.xml"));
+        var disks = EdgeDisks.Parse(Fixtures.Read("disks-list.xml"));
         Assert.Equal(2, disks.Count);
         Assert.True(disks[0].IsSdCard);
         Assert.True(disks[0].IsConnected);
         Assert.False(disks[0].Encrypted);
         Assert.Equal("S0", disks[0].Group);
         Assert.False(disks[1].IsConnected);
-        Assert.Throws<FormatException>(() => DeviceParsers.ParseDisks("<!DOCTYPE x [<!ENTITY a \"b\">]><root>&a;</root>"));
+        Assert.Throws<FormatException>(() => EdgeDisks.Parse("<!DOCTYPE x [<!ENTITY a \"b\">]><root>&a;</root>"));
     }
 }

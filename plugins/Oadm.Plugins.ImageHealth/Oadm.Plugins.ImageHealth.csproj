@@ -23,6 +23,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The on-request table of the page, shared with Edge storage. -->
+    <Compile Include="..\Shared\DeviceSweep.cs" Link="Common\DeviceSweep.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Oadm.Plugins.ImageHealth.Tests" />
   </ItemGroup>
 

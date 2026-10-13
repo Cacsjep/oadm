@@ -5,6 +5,7 @@ using System.Net.Sockets;
 
 using Microsoft.Extensions.Logging;
 
+using Oadm.Plugins.EdgeStorage.Disks;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
@@ -187,7 +188,7 @@ public sealed partial class EdgeRecordingService(ICorePluginContext ctx, EdgeRec
     {
         try
         {
-            return EdgeStorageParsing.DiskProblem(await GetStringAsync(client, EdgeStorageRequests.DisksUri, ct).ConfigureAwait(false));
+            return EdgeDisks.FirstProblem(EdgeDisks.Parse(await GetStringAsync(client, EdgeDisks.ListUri, ct).ConfigureAwait(false)));
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
@@ -356,5 +357,5 @@ public static class EdgeRecordingTexts
 
     public const string Unreadable = "The camera sent an answer OADM cannot read";
 
-    public const string NoDisk = "No SD card or network share";
+    public const string NoDisk = EdgeDisks.NoDisk;
 }

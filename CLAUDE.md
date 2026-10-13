@@ -155,7 +155,7 @@ src/
                        IToolbarContext, shared controls (Controls/: IconLabel, SearchBox, OadmIcon,
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow, LoadingOverlay,
                        ToolbarButton, ToolbarSeparator, PasswordBox, MessageWindow, FormField, DevicePickerWindow, DeviceIcon,
-                       GroupedChoice, DeviceTree, PageTab), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors,
+                       GroupedChoice, DeviceTree, PageTab), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch,
                        form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection,
                        Collections/RangeObservableCollection (bulk list of the host grids and plugin pages)
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)
@@ -180,6 +180,8 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.WebView(.Client)/          core plugin: the web interface of the devices in tabs, logged in through the server
   Oadm.Plugins.LiveView(.Client)/         core plugin: saved views of several cameras (a grid of live videos), opened in tabs (off by default)
   Oadm.Plugins.EdgeRecordingExport(.Client)/ core plugin: downloads the recordings on the cameras' SD cards to the client (off by default)
+  Oadm.Plugins.EdgeStorage(.Client)/      core plugin: the SD cards of every camera and their tools (format, check, encryption; off by default)
+  Shared/                                 source linked into several plugins (CachedApiCheck, DeviceSweep, SweepRows)
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
                                 (both copy their output to artifacts/plugins/<plugin id>/)
@@ -698,7 +700,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   `ClosePluginWindowsRequested`; tests `PluginWindowTests`). Entries top: Devices, then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (VAPIX
   Commander, Device triggers), Security (PKI, Hardening scan), Monitoring (Live View, Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
-  no page), Maintenance (Edge Recording Export), Integrations, Utilities (Web View), Extensions (default, third-party)): only groups
+  no page), Maintenance (Edge Recording Export, Edge storage), Integrations, Utilities (Web View), Extensions (default, third-party)): only groups
   with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
   each group (in the lighter accent color), collapsed = a separator at each group start; the pages scroll when they do not fit. Pinned bottom, top to bottom: Plugins with a divider below it (it changes what the whole client offers), Users,
   Credentials (these three Admin only: hidden for operators, follow the session role live), Logs, Settings, About (icons
@@ -1371,14 +1373,14 @@ plugins, contributed and standalone tasks and client parts together) and adminis
 applies at once without a restart. Own rail page (not a Settings card); core functionality
 is always on.
 - Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
-  **Off by default: Device triggers, Edge Recording Export, Hardening scan, Image Health Dashboard, I/O Monitor, Live View and Metadata Monitor**. The administrator's choices are the
+  **Off by default: Device triggers, Edge Recording Export, Edge storage, Hardening scan, Image Health Dashboard, I/O Monitor, Live View and Metadata Monitor**. The administrator's choices are the
   server setting `Plugins.Enabled` (JSON object package id -> on; packages without a choice use their default),
   applied before the core plugins start (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
 - **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade firmware, Date and time, Applications
   (ACAP), Users, Network settings, PKI, System report, Device configuration, Outputs and Notifications (core functionality). Enabled whatever
   the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers FAILED_PRECONDITION "<name> is always on.".
   Switchable: Snapshot report, VAPIX Commander, Metadata Monitor, NTP server, DHCP server, Hardening scan, Image Health
-  Dashboard, I/O Monitor, Device triggers, Web View, Live View, Edge Recording Export. Third-party plugins are switchable unless their manifest says otherwise.
+  Dashboard, I/O Monitor, Device triggers, Web View, Live View, Edge Recording Export, Edge storage. Third-party plugins are switchable unless their manifest says otherwise.
 - Manifest `description` (`PluginOrigin.Description`): one short sentence shown on the Plugins page; every bundled
   plugin has one.
 - `PluginRegistry`: `TaskPlugins`, `CorePlugins`, `TryGetTaskPlugin`, `TryGetCorePlugin` see only enabled packages
@@ -1698,6 +1700,29 @@ and tests: plugin `README.md`.
   recording is audited with the camera and the times.
 - Tests: `tests/Oadm.Plugins.EdgeRecordingExport.Tests` (+ Perf 5,000 cameras, read-only hardware test that searches and
   downloads the last two minutes of the dev cameras through the in-process server).
+
+## Edge storage (core plugin)
+
+`plugins/Oadm.Plugins.EdgeStorage` (+ `.Client`), id `oadm.edge-storage`, rail page **Edge storage** (group Maintenance,
+icon `hardDrive`), **off by default**, switchable. The SD card of every camera in one table (state, size, used, wear,
+encryption, retention, five count cards) and the tools of the camera's web interface for the selected cameras: Check, Set
+retention, Repair, Format, Encrypt, Turn off encryption, each a task per camera in the tasks pane below the page. SD
+cards only. Decisions, device API (verified on an AXIS Q1615 Mk III) and tests: plugin `README.md`.
+
+- Rules that must hold: the table is read only on request (page opens, Refresh), read-only, refused statuses not
+  contacted; the tools are hidden tasks (`ShowInMenus` false) started by the page methods `change` (check, retention) and
+  `format` (format, repair, encryption), whose rights decide (an action through the other method is refused); every run
+  asks first and says which recordings are lost; a fresh API list before the first write ("Nothing was changed"); format,
+  check and repair unmount the card first (the camera refuses them on a mounted card) and the task always mounts it again,
+  also after a failure, and ignores Cancel from the unmount on; the passphrase only in memory and the POST body, never
+  stored, logged or in a URL; retention 0..7,000 days (0 = no age limit).
+- Roles: "show" (Operator, Viewer), "Change storage settings" (`manage`, Operator yes), "Format and encrypt storage"
+  (`format`, full device control, Operator no); both run methods audited.
+- Shared code (no copies): the disk list `EdgeDisk` / `EdgeDisks` (also Edge Recording Export and Hardening scan), the
+  on-request table `plugins/Shared/DeviceSweep.cs` + `SweepRows.cs` (also Image Health Dashboard), `DeviceMessages.Refusal`
+  (SDK) and `PluginEventWatch.RunAsync` (client SDK).
+- Tests: `tests/Oadm.Plugins.EdgeStorage.Tests` (+ Perf 5,000 cameras); opt-in `StorageHardwareWriteTests`
+  (`OADM_STORAGE_WRITE_URL` / `_USER` / `_PASSWORD`, formats the card; every tool, the card ends as it started).
 
 ## Date and time
 

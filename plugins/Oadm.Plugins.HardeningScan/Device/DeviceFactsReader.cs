@@ -4,6 +4,7 @@ using System.Text;
 using Oadm.Plugins.Acap;
 using Oadm.Plugins.DateAndTime.Model;
 using Oadm.Plugins.DateAndTime.Vapix;
+using Oadm.Plugins.EdgeStorage.Disks;
 using Oadm.Plugins.HardeningScan.Checks;
 using Oadm.Plugins.Pki.Device;
 using Oadm.Plugins.Users;
@@ -58,7 +59,6 @@ public sealed class DeviceFactsReader
 
     public const string ParamPath = "axis-cgi/param.cgi";
     public const string DiscoverPath = "config/discover";
-    public const string DisksPath = "axis-cgi/disks/list.cgi?diskid=all";
 
     private readonly TimeSpan _requestTimeout;
     private readonly TimeProvider _time;
@@ -90,7 +90,7 @@ public sealed class DeviceFactsReader
                 Users = Fact.Failed<IReadOnlyList<DeviceUser>>(unreachable),
                 PasswordPolicy = Fact.Failed<string>(unreachable),
                 Time = Fact.Failed<CurrentTimeSettings>(unreachable),
-                Disks = Fact.Failed<IReadOnlyList<DiskInfo>>(unreachable),
+                Disks = Fact.Failed<IReadOnlyList<EdgeDisk>>(unreachable),
                 Applications = Fact.Failed<IReadOnlyList<InstalledApplication>>(unreachable),
                 Firewall = Fact.Failed<FirewallInfo>(unreachable),
                 Snmp = Fact.Failed<SnmpInfo>(unreachable),
@@ -134,8 +134,8 @@ public sealed class DeviceFactsReader
         var hasStorage = apis.Supports("disk-management", "1.0")
             || (parameters.IsOk && parameters.Value.Bool("Properties.LocalStorage.SDCard") == true);
         var disks = hasStorage
-            ? await ReadAsync(async ct2 => DeviceParsers.ParseDisks(await GetTextAsync(vapix, HttpMethod.Get, DisksPath, null, null, ct2).ConfigureAwait(false)), ct).ConfigureAwait(false)
-            : Fact.NotAvailable<IReadOnlyList<DiskInfo>>("No edge storage on this device");
+            ? await ReadAsync(async ct2 => EdgeDisks.Parse(await GetTextAsync(vapix, HttpMethod.Get, EdgeDisks.ListUri, null, null, ct2).ConfigureAwait(false)), ct).ConfigureAwait(false)
+            : Fact.NotAvailable<IReadOnlyList<EdgeDisk>>("No edge storage on this device");
 
         Fact<IReadOnlyList<InstalledApplication>> applications;
         bool? allowUnsigned = null;

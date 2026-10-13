@@ -26,9 +26,6 @@ public static class EdgeStorageRequests
 
     public const string ExportPath = "axis-cgi/record/export/exportrecording.cgi";
 
-    /// <summary>The disks (SD card, network share) with their state; asked with every search.</summary>
-    public const string DisksUri = "axis-cgi/disks/list.cgi?diskid=all";
-
     /// <summary>Recordings per list request.</summary>
     public const int PageSize = 1000;
 
@@ -121,53 +118,6 @@ public static class EdgeStorageParsing
         var matched = int.TryParse(Attr(recordings, "numberofrecordings"), NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : list.Count;
         return (Math.Max(matched, list.Count), list);
     }
-
-    /// <summary>
-    /// What is wrong with the disks of <c>disks/list.cgi</c> in plain words, or null when they are fine: a disk that failed,
-    /// is encrypted with an unknown passphrase, is not in use, read-only or locked (the first that applies, SD card
-    /// before network share; a full disk is normal, the camera removes the oldest recordings); <see cref="EdgeRecordingTexts.NoDisk"/> when none is present. Disks with status
-    /// "disconnected" are not there (verified: a camera without an SD card and without a network share lists both so).
-    /// </summary>
-    public static string? DiskProblem(string xml)
-    {
-        var disks = DeviceXml.Parse(xml).Descendants().Where(e => e.Name.LocalName == "disk")
-            .Where(d => !string.Equals(Attr(d, "status"), "disconnected", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(d => Attr(d, "diskid") == "SD_DISK" ? 0 : 1)
-            .ToList();
-        if (disks.Count == 0)
-        {
-            return EdgeRecordingTexts.NoDisk;
-        }
-
-        foreach (var disk in disks)
-        {
-            var name = Attr(disk, "diskid") switch
-            {
-                "SD_DISK" => "SD card",
-                "NetworkShare" => "network share",
-                _ => "disk " + Attr(disk, "diskid"),
-            };
-            var problem = Attr(disk, "status").ToLowerInvariant() switch
-            {
-                "failed" => "failed",
-                "wrong passphrase" or "no passphrase" => "is encrypted and cannot be opened",
-                "not encrypted" => "is not encrypted as the camera requires",
-                "connected" => "is not in use",
-                _ when Yes(disk, "readonly") => "is read-only",
-                _ when Yes(disk, "locked") => "is locked",
-                _ => null,
-            };
-            if (problem is not null)
-            {
-                return "The " + name + " " + problem;
-            }
-        }
-
-        return null;
-    }
-
-    private static bool Yes(XElement element, string name) =>
-        Attr(element, name) is var value && (value.Equals("yes", StringComparison.OrdinalIgnoreCase) || value.Equals("true", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>The export formats the camera offers (<c>capabilities.cgi</c>), e.g. "matroska", "mp4".</summary>
     public static IReadOnlyList<string> ParseFormats(string xml)

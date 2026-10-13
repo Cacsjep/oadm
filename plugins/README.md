@@ -240,7 +240,7 @@ resolve them at compile time, so use `DynamicResource` (`Icon="{DynamicResource 
 `Icon.details`, `Icon.cancel`, `Icon.chevronDown`, `Icon.chevronLeft`, `Icon.chevronRight`, `Icon.chevronUp`, `Icon.globe`, `Icon.close`, `Icon.check`,
 `Icon.tag`, `Icon.groupBy`, `Icon.edit`, `Icon.braces`,
 `Icon.server`, `Icon.externalLink`, `Icon.more`, `Icon.key`, `Icon.lock`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
-`Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.grid`, `Icon.gridAdd`, `Icon.hardDriveDownload`, `Icon.focus`, `Icon.focusArea`, `Icon.home`, `Icon.network`, `Icon.metronome`, `Icon.firmware`, `Icon.users`,
+`Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.grid`, `Icon.gridAdd`, `Icon.hardDriveDownload`, `Icon.hardDrive`, `Icon.wrench`, `Icon.eraser`, `Icon.lockOpen`, `Icon.focus`, `Icon.focusArea`, `Icon.home`, `Icon.network`, `Icon.metronome`, `Icon.firmware`, `Icon.users`,
 `Icon.user`, `Icon.logout`, `Icon.audit`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
 `Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.toggle`, `Icon.zap`, `Icon.bell`, `Icon.flame`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`,
 `Icon.device.camera`, `Icon.device.encoder`,
@@ -552,6 +552,19 @@ request with `VapixRequestOptions.StreamResponse` and pass the response as owner
 `ui:PageTab` (title, close, active) are the device tree and the tabs of Web View and Live View; a page with devices by
 tag or with tabs uses them. `DeviceTexts.Removed(id)` names a device OADM no longer manages, `ServerErrors.Message(ex)`
 reads the user text of a failed server call without a gRPC reference.
+
+### Table pages read on request
+
+A page with one row per device that the server reads when the page asks (Image Health Dashboard, Edge storage) uses the
+linked sources in `plugins/Shared/`: `DeviceSweep<TRow>` on the server (one sweep at a time, `Parallelism` devices at once,
+a timeout per device, rows by device id, changed and removed rows pushed in batches through the plugin's callbacks;
+`Failure(ex)` is the usual text of a failed read) and `SweepRows<TRow, TVm>` on the page (view models by id, updated in
+place, search and new rows with one reset; `AddressSortKeys.Of`). Link them with
+`<Compile Include="..\Shared\DeviceSweep.cs" Link="Common\DeviceSweep.cs" />`. Refuse devices with
+`DeviceMessages.Refusal(status, refuseUnreachable: true)` before any request, and watch the page events with
+`ctx.RunAsync(HandleEvent, retryDelay, ct)` (`PluginEventWatch`, reconnects after a drop). The disk list of the Edge storage
+API is `Oadm.Plugins.EdgeStorage.Disks` (`EdgeDisk`, `EdgeDisks.Parse`, `FirstProblem`); link
+`..\Oadm.Plugins.EdgeStorage\Disks\*.cs` instead of parsing `disks/list.cgi` again.
 
 ### Host support for service plugins (NTP, DHCP, ...)
 

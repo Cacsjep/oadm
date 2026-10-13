@@ -56,7 +56,7 @@ public sealed partial class ImageHealthRowViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(row);
         DeviceId = row.DeviceId;
         Address = row.Address;
-        AddressSortKey = AddressKey(row.Address);
+        AddressSortKey = Oadm.Plugins.Shared.AddressSortKeys.Of(row.Address);
         Model = row.Model ?? string.Empty;
         Apply(row);
     }
@@ -143,13 +143,4 @@ public sealed partial class ImageHealthRowViewModel : ObservableObject
     }
 
     private static DetectionCell Cell(DetectionCell current, string? state) => current.State == state ? current : new DetectionCell(state);
-
-    private static string AddressKey(string address)
-    {
-        var host = address.Split(':')[0];
-        var parts = host.Split('.');
-        return parts.Length == 4 && parts.All(p => byte.TryParse(p, NumberStyles.None, CultureInfo.InvariantCulture, out _))
-            ? string.Join('.', parts.Select(p => p.PadLeft(3, '0')))
-            : "~" + address;
-    }
 }

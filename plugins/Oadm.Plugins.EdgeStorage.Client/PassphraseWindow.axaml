@@ -1,0 +1,32 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.EdgeStorage.Client"
+        x:Class="Oadm.Plugins.EdgeStorage.Client.PassphraseWindow"
+        x:DataType="vm:PassphraseViewModel"
+        Title="{x:Static vm:PassphraseViewModel.Title}"
+        Width="560" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Single operation: title bar, the passphrase twice in Border.dialogBody, footer with the red action (it formats). -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:PassphraseViewModel.Title}" />
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Intro}" />
+        <ui:FormField Label="Passphrase">
+          <ui:PasswordBox Text="{Binding Passphrase}" />
+        </ui:FormField>
+        <ui:FormField Label="Confirm passphrase">
+          <ui:PasswordBox Text="{Binding ConfirmPassphrase}" />
+        </ui:FormField>
+      </StackPanel>
+    </Border>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="danger" Content="Encrypt and format" Command="{Binding OkCommand}"
+              ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

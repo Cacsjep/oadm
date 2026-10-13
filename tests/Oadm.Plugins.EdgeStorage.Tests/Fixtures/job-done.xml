@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.axis.com/vapix/http_cgi/disk/checkjob1.xsd">
+<job jobid="15" diskid="SD_DISK" action="format" result="OK" progress="100" description="OK" />
+</root>

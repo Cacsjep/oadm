@@ -10,6 +10,7 @@ public sealed class DangerButtonTests
     [InlineData("Delete all", true)]
     [InlineData("Remove", true)]
     [InlineData("Release", true)]
+    [InlineData("Format", true)]
     [InlineData("Replace", false)]
     [InlineData("Install", false)]
     [InlineData("OK", false)]
