@@ -1,6 +1,6 @@
 ---
 title: Device configuration
-description: Export the configuration of devices and import it into devices of the same model.
+description: Export and import device configurations, and set parameters, action rules and stream profiles on many devices at once.
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components';
@@ -8,10 +8,18 @@ import { Image } from 'astro:assets';
 import exportShot from '../../../assets/screens/device-config-export.png';
 import importShot from '../../../assets/screens/device-config-import-other-model.png';
 import zipShot from '../../../assets/screens/device-config-import-zip.png';
+import configureShot from '../../../assets/screens/device-config-configure.png';
+import configureOverviewShot from '../../../assets/screens/device-config-configure-overview.png';
+import createShot from '../../../assets/screens/device-config-create-file.png';
 
 **Export configuration** saves the configuration of devices to files. **Import configuration** applies such a file to
-other devices of the same model, or puts the configuration of each device back. Both are in the context menu under
-**Maintenance** and need AXIS OS 12.5 or later.
+other devices of the same model, or puts the configuration of each device back. Both need AXIS OS 12.5 or later.
+
+**Configure devices** sets chosen parameters, action rules and stream profiles on many devices at once, like ADM's
+Configure devices. **Create configuration file** saves chosen settings of one device as a file. Both work with AXIS Device
+Manager configuration files (`.cfg`) and with older AXIS OS too. See [Configure devices](#configure-devices).
+
+All four are in the context menu under **Maintenance**.
 
 OADM uses the device's own export and import, the same as **Maintenance** > **Export** / **Import** in the camera's web
 interface. Like there, a file holds part of the configuration:
@@ -75,3 +83,54 @@ The settings in the file replace the current ones. Export the devices first if y
 | Check compatibility | AXIS OS 12.5 or later, the same model as the file. Otherwise the task fails with "Nothing was changed". |
 | Import network and system settings, Import event rules, ... | One step per settings area. The device checks the values itself; its warnings or errors show in the step. A refused area does not stop the others. |
 | Verify configuration | Exports again and compares. Settings that differ make the task end with warnings. |
+
+## Configure devices
+
+<Image src={configureShot} alt="Configure devices: parameters of the source device with check boxes and their values" class="screen" />
+
+<Steps>
+
+1. Select the devices, right-click and choose **Maintenance** > **Configure devices**.
+2. The settings of the first selected device are shown. To take them from somewhere else, use **Use configuration from**:
+   **Device** (any device in OADM) or **Configuration file** (an AXIS Device Manager `.cfg` file).
+3. In **Parameters**, check what to set and enter the value. Typing a value checks the parameter. Wrong values are named
+   below the field.
+4. In **Action rules** and **Stream profiles**, check what to copy.
+5. Click **Next**, check the overview, then **Apply**. A task starts per device.
+
+</Steps>
+
+<Image src={configureOverviewShot} alt="The overview before Apply, with a warning for a dangerous setting" class="screen" />
+
+- **Different models or AXIS OS**: only the parameters every selected device has are shown, and drop-downs only offer the
+  choices every device has. **Show parameters that not every selected device has** shows the others too; devices without
+  such a parameter skip it.
+- **A file from AXIS Device Manager**: its parameters, action rules and stream profiles are checked. Parameters no selected
+  device has are named and left out.
+- **Dangerous settings** (addresses, host names, HTTPS, the login method, IEEE 802.1X) have a warning icon. Apply asks
+  before they are set, and they are set last. A role needs **Configure dangerous parameters** to see them.
+- **Addresses and names that differ per device** (IP address, host name, device names) are only offered when one device
+  is selected. For several devices, use [Network settings or Assign IP address](../network/).
+- **An action rule or stream profile with the same name** on a device is replaced. Applying the same settings again changes
+  nothing more.
+- **The source device** keeps its own action rules and stream profiles; only its parameters are set.
+
+| Step | What happens |
+|---|---|
+| Check compatibility | Reads which parameters this device has. |
+| Set parameters | Sets the checked parameters. Parameters the device does not have, or values it cannot take, are skipped and named; the task ends with warnings. |
+| Create schedules, Create action rules | Creates the rules with their actions and the schedules they use. |
+| Set stream profiles | Creates the profiles, or replaces the ones with the same name. |
+| Set connection parameters | The dangerous settings, last. |
+| Verify parameters | Reads the parameters back. Differences make the task end with warnings. |
+
+## Create configuration file
+
+<Image src={createShot} alt="Create configuration file: the settings of one device to save" class="screen" />
+
+Right-click one device and choose **Maintenance** > **Create configuration file**. Check the parameters, action rules and
+stream profiles to save, click **Next**, then **Save**. The file has the format of AXIS Device Manager, so ADM can use it too.
+
+<Aside type="caution">
+Passwords in the checked settings are saved in the file as plain text, as in AXIS Device Manager. Keep the file safe.
+</Aside>

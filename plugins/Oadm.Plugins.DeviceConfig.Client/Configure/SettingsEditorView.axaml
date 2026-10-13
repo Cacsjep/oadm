@@ -1,0 +1,121 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.DeviceConfig.Client.Configure"
+             xmlns:dc="using:Oadm.Plugins.DeviceConfig"
+             x:Class="Oadm.Plugins.DeviceConfig.Client.Configure.SettingsEditorView"
+             x:DataType="vm:SettingsEditorViewModel">
+  <!-- The three parts like ADM's tabs (segmented switch); the parameter list virtualized, groups collapsible. Shared controls,
+       theme classes only. -->
+  <Grid RowDefinitions="Auto,*" RowSpacing="12">
+    <Border Classes="segmented" HorizontalAlignment="Left">
+      <StackPanel Orientation="Horizontal">
+        <Button Classes="segment" Classes.selected="{Binding IsParametersTab}" Content="{Binding ParametersTabText}" Command="{Binding ShowParametersCommand}" />
+        <Button Classes="segment" Classes.selected="{Binding IsRulesTab}" Content="{Binding RulesTabText}" Command="{Binding ShowRulesCommand}" />
+        <Button Classes="segment" Classes.selected="{Binding IsProfilesTab}" Content="{Binding ProfilesTabText}" Command="{Binding ShowProfilesCommand}" />
+      </StackPanel>
+    </Border>
+
+    <!-- Parameters -->
+    <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*" RowSpacing="10" IsVisible="{Binding IsParametersTab}">
+      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+        <ui:SearchBox Classes="stretch" Text="{Binding SearchText}" Placeholder="Search parameters" />
+        <CheckBox Grid.Column="1" Content="Show parameters that not every selected device has" IsChecked="{Binding ShowAll}" IsVisible="{Binding HasPartial}" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+          <ui:ToolbarButton IconKey="chevronDown" Text="Expand all" Command="{Binding ExpandAllCommand}" />
+          <ui:ToolbarButton IconKey="chevronRight" Text="Collapse all" Command="{Binding CollapseAllCommand}" />
+        </StackPanel>
+      </Grid>
+      <StackPanel Grid.Row="1" Spacing="2">
+        <TextBlock Classes="secondary small" TextWrapping="Wrap" IsVisible="{Binding HasHiddenDangerous}"
+                   Text="Your role does not allow addresses, host names, HTTPS, the login method and IEEE 802.1X; they are not offered." />
+      </StackPanel>
+      <Panel Grid.Row="2">
+        <!-- About 1,000 parameters: only the visible rows exist. -->
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+          <ItemsControl x:Name="ParameterList" ItemsSource="{Binding Items}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.DataTemplates>
+              <DataTemplate DataType="vm:ParamGroupRow">
+                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,8,0,6">
+                  <ToggleButton Classes="groupExpander" IsChecked="{Binding IsExpanded}" Focusable="False" />
+                  <TextBlock Classes="treeGroup" Text="{Binding Name}" VerticalAlignment="Center" />
+                </StackPanel>
+              </DataTemplate>
+              <DataTemplate DataType="vm:ParamRowViewModel">
+                <Grid ColumnDefinitions="32,300,*" Margin="0,0,0,8">
+                  <CheckBox Classes="inputHeight" IsChecked="{Binding IsChecked}" VerticalAlignment="Top" />
+                  <StackPanel Grid.Column="1" Classes="inputHeight" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
+                    <TextBlock Text="{Binding DisplayName}" ToolTip.Tip="{Binding ToolTipText}" TextTrimming="CharacterEllipsis" MaxWidth="250" VerticalAlignment="Center" />
+                    <ui:OadmIcon Classes="warn" Data="{DynamicResource Icon.status.warning}" IsVisible="{Binding IsDangerous}" ToolTip.Tip="{Binding DangerReason}" VerticalAlignment="Center" />
+                    <ui:OadmIcon Classes="warn" Data="{DynamicResource Icon.status.warning}" IsVisible="{Binding HasNote}" ToolTip.Tip="{Binding Note}" VerticalAlignment="Center" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Top">
+                    <Panel Width="340">
+                      <TextBox Text="{Binding Value}" IsVisible="{Binding IsText}" />
+                      <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}" IsVisible="{Binding IsChoice}" HorizontalAlignment="Stretch">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate x:DataType="dc:ParamChoice">
+                            <TextBlock Text="{Binding Display}" />
+                          </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                      <ui:PasswordBox Text="{Binding Value}" IsVisible="{Binding IsPassword}" />
+                    </Panel>
+                    <StackPanel Classes="inputHeight" IsVisible="{Binding HasHint}">
+                      <TextBlock Classes="secondary small" Text="{Binding Hint}" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </StackPanel>
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.DataTemplates>
+          </ItemsControl>
+        </ScrollViewer>
+        <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+      </Panel>
+    </Grid>
+
+    <!-- Action rules -->
+    <Grid Grid.Row="1" RowDefinitions="Auto,*" RowSpacing="10" IsVisible="{Binding IsRulesTab}">
+      <Button Classes="secondary" Content="Select / Deselect all" Command="{Binding SelectAllRulesCommand}" HorizontalAlignment="Left" IsVisible="{Binding HasRules}" />
+      <DataGrid Grid.Row="1" ItemsSource="{Binding Rules}" IsReadOnly="True" SelectionMode="Single" HeadersVisibility="Column" IsVisible="{Binding HasRules}">
+        <DataGrid.Columns>
+          <DataGridTemplateColumn Width="48">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="vm:RuleRow">
+                <CheckBox IsChecked="{Binding IsChecked}" HorizontalAlignment="Center" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" x:DataType="vm:RuleRow" />
+          <DataGridTextColumn Header="When" Binding="{Binding When}" Width="2*" x:DataType="vm:RuleRow" />
+          <DataGridTextColumn Header="Then" Binding="{Binding Then}" Width="2*" x:DataType="vm:RuleRow" />
+          <DataGridTextColumn Header="State" Binding="{Binding State}" Width="80" x:DataType="vm:RuleRow" />
+        </DataGrid.Columns>
+      </DataGrid>
+      <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding RulesEmptyText}" IsVisible="{Binding !HasRules}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+    </Grid>
+
+    <!-- Stream profiles (ADM: Additional Settings) -->
+    <Grid Grid.Row="1" RowDefinitions="Auto,*" RowSpacing="10" IsVisible="{Binding IsProfilesTab}">
+      <Button Classes="secondary" Content="Select / Deselect all" Command="{Binding SelectAllProfilesCommand}" HorizontalAlignment="Left" IsVisible="{Binding HasProfiles}" />
+      <DataGrid Grid.Row="1" ItemsSource="{Binding Profiles}" IsReadOnly="True" SelectionMode="Single" HeadersVisibility="Column" IsVisible="{Binding HasProfiles}">
+        <DataGrid.Columns>
+          <DataGridTemplateColumn Width="48">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate x:DataType="vm:ProfileRow">
+                <CheckBox IsChecked="{Binding IsChecked}" HorizontalAlignment="Center" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" x:DataType="vm:ProfileRow" />
+          <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="2*" x:DataType="vm:ProfileRow" />
+          <DataGridTextColumn Header="Stream" Binding="{Binding Parameters}" Width="3*" x:DataType="vm:ProfileRow" />
+        </DataGrid.Columns>
+      </DataGrid>
+      <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding ProfilesEmptyText}" IsVisible="{Binding !HasProfiles}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+    </Grid>
+  </Grid>
+</UserControl>

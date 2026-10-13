@@ -1,0 +1,93 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.DeviceConfig.Client.Configure"
+        x:Class="Oadm.Plugins.DeviceConfig.Client.Configure.ConfigureDevicesWindow"
+        x:DataType="vm:ConfigureDevicesViewModel"
+        Title="{x:Static vm:ConfigureDevicesViewModel.Title}"
+        Width="1240" Height="840"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Title bar, wizard steps (Settings, Overview), the settings card with the source card right of it, footer. Shared controls
+       and theme classes only. -->
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:ConfigureDevicesViewModel.Title}" />
+    <ui:WizardSteps Grid.Row="1" ItemsSource="{Binding Steps}" Margin="12,0,16,12" />
+
+    <!-- 1 Settings -->
+    <Grid Grid.Row="2" ColumnDefinitions="*,300" ColumnSpacing="16" Margin="16,0" IsVisible="{Binding IsSettingsStep}">
+      <Border Classes="card">
+        <Panel>
+          <vm:SettingsEditorView DataContext="{Binding Editor}" IsVisible="{Binding $parent[Window].((vm:ConfigureDevicesViewModel)DataContext).HasEditor}" />
+        </Panel>
+      </Border>
+
+      <Border Grid.Column="1" Classes="card">
+        <StackPanel Spacing="10">
+          <ui:CardHeader Title="Use configuration from" Description="{Binding DevicesText}" />
+          <Button Classes="secondary" HorizontalAlignment="Stretch" Command="{Binding UseDeviceCommand}" IsEnabled="{Binding IsIdle}">
+            <ui:IconLabel Icon="{DynamicResource Icon.devices}" Text="Device" />
+          </Button>
+          <Button Classes="secondary" HorizontalAlignment="Stretch" Command="{Binding UseFileCommand}" IsEnabled="{Binding IsIdle}">
+            <ui:IconLabel Icon="{DynamicResource Icon.file}" Text="Configuration file" />
+          </Button>
+          <Border Classes="infoBlock" IsVisible="{Binding IsFileSource}">
+            <ItemsControl ItemsSource="{Binding FileLines}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+          <ItemsControl ItemsSource="{Binding Notes}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <ui:StatusChip IsInfo="True" Text="{Binding}" MaxLines="6" Margin="0,0,0,6" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <ui:StatusChip IsError="True" Text="{Binding Error}" MaxLines="4" IsVisible="{Binding HasError}" />
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- 2 Overview -->
+    <Border Grid.Row="2" Classes="card" Margin="16,0" IsVisible="{Binding IsOverviewStep}">
+      <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10">
+        <ui:CardHeader Title="Overview" Description="{Binding DevicesText}" />
+        <ui:StatusChip Grid.Row="1" IsWarning="True" MaxLines="2" IsVisible="{Binding HasDangerousChosen}"
+                       Text="Some settings can make the devices unreachable. They are set last." />
+        <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
+          <ItemsControl ItemsSource="{Binding Overview}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:OverviewItem">
+                <Panel>
+                  <TextBlock Classes="treeGroup" Text="{Binding Text}" IsVisible="{Binding IsHeader}" Margin="0,10,0,4" />
+                  <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsItem}" Margin="16,2,0,2">
+                    <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis" />
+                    <ui:OadmIcon Classes="warn" Data="{DynamicResource Icon.status.warning}" IsVisible="{Binding HasWarning}" ToolTip.Tip="{Binding Warning}" />
+                  </StackPanel>
+                </Panel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Grid>
+    </Border>
+
+    <!-- Reading a device or a file: the steps and cards are hidden, Cancel stays usable -->
+    <ui:LoadingOverlay Grid.Row="1" Grid.RowSpan="2" Text="{Binding LoadingText}" IsVisible="{Binding IsLoading}" />
+
+    <ui:DialogFooter Grid.Row="3" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="secondary" Content="Back" Command="{Binding BackCommand}" IsVisible="{Binding IsOverviewStep}" />
+      <Button Classes="primary" Content="{Binding NextText}" Command="{Binding NextCommand}" IsEnabled="{Binding CanNext}"
+              ToolTip.Tip="{Binding NextBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

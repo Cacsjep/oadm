@@ -6,6 +6,16 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+### Added
+
+- **Configure devices** (context menu, Maintenance), like ADM: set chosen parameters, action rules and stream profiles on
+  many devices at once. The settings come from a device or an AXIS Device Manager configuration file; each device skips
+  what it does not have. Dangerous settings (addresses, HTTPS, ports, login method, IEEE 802.1X) are marked, confirmed and
+  need their own permission.
+- **Create configuration file** (context menu, Maintenance): save chosen settings of one device as an AXIS Device Manager
+  configuration file.
+- The device picker can choose exactly one device.
+
 ## [2.6.0] - 2026-10-13
 
 ### Added

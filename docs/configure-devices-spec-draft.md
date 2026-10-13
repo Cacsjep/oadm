@@ -1,7 +1,7 @@
 # Configure devices (ADM-compatible): spec draft
 
-Status: **draft, all questions decided (2026-10-13)**. Decisions are recorded in "Decisions" as they are made. They move to CLAUDE.md and
-the plugin README once the feature is built.
+Status: **built (2026-10-13)**. The decisions below are in CLAUDE.md and the plugin README
+(`plugins/Oadm.Plugins.DeviceConfig/README.md`), which hold the details as built.
 
 ## Goal
 
@@ -171,9 +171,13 @@ characters, shortened per CLAUDE.md "Tasks").
   the plugin. Checking any of them shows one confirmation before Finish in the message window ("These settings can make
   the devices unreachable: ..." with the parameters, confirm "Apply anyway"). They are written last, in their own step
   "Set connection parameters".
-- **Q4 (2026-10-13): same name = replace.** An action rule with the same name is removed and created again (its action
-  configuration too, when no other rule uses it; its own schedules are created anew); a stream profile with the same name
-  is updated. Applying the same configuration twice gives the same result, never duplicates. The step detail says
+  Amended 2026-10-13 (review): values that must differ per device (IPv4 and IPv6 address, host name, the Bonjour, UPnP and DNS
+  update names) are not offered when several devices are selected ("Addresses and names differ per device: use Network
+  settings or Assign IP address."); for one device they stay, with the warning. The source device, when selected, keeps its
+  own action rules, schedules and stream profiles (they are not written back to it).
+- **Q4 (2026-10-13): same name = replace.** A new action rule is created first and then the old one of the same name is
+  removed (its action configuration too, when no other rule uses it); a schedule with the same name and recurrence is used
+  again; a stream profile with the same name is updated. Applying the same configuration twice gives the same result, never duplicates. The step detail says
   "Replaced action rule Record on motion".
 - **Q5 (2026-10-13): passwords in plain text like ADM.** Password parameters and action configuration logins are written
   into created files as ADM does; full ADM compatibility. Passwords are never logged and never shown in the dialog

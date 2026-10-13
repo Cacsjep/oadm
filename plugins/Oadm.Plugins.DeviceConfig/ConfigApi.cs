@@ -9,7 +9,7 @@ using Oadm.Sdk.Vapix;
 namespace Oadm.Plugins.DeviceConfig;
 
 /// <summary>The device answered with an error; the message is the user text.</summary>
-public sealed class ConfigDeviceException : Exception
+public class ConfigDeviceException : Exception
 {
     public ConfigDeviceException()
     {

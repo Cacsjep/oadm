@@ -43,5 +43,7 @@
   <ItemGroup>
     <!-- Recorded read-only from 10.0.0.48 (AXIS P3265-V, AXIS OS 12.11.77). -->
     <None Include="Fixtures\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Configure devices: param.cgi, action and event service, stream profiles (10.0.0.48, read-only) and two ADM files. -->
+    <None Include="Fixtures\configure\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

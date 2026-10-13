@@ -1292,6 +1292,15 @@
     </Style.Animations>
   </Style>
 
+  <!-- Loading cover of a dialog (ui:LoadingOverlay): hides the content completely (window background), ring and text in
+       the middle -->
+  <Style Selector="ui|LoadingOverlay">
+    <Setter Property="Background" Value="{StaticResource Oadm.WindowBackgroundBrush}" />
+  </Style>
+  <Style Selector="ui|LoadingOverlay TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+
   <!-- Zoom and focus bar over the bottom of the live picture (LiveView/OpticsBar): the dark overlay, small labels and
        values, sliders that take the rest of the row. -->
   <Style Selector="Border.opticsBar">
@@ -1774,6 +1783,17 @@
     <Setter Property="Background" Value="{StaticResource Oadm.AccentBrush}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
   </Style>
+  <!-- Read-only details inside a card (e.g. the configuration file of Configure devices): darker than the card, so it never
+       looks like a button -->
+  <Style Selector="Border.infoBlock">
+    <Setter Property="Background" Value="{StaticResource Oadm.WindowBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="12,10" />
+    <Setter Property="Margin" Value="{StaticResource Oadm.GapTop}" />
+  </Style>
+
   <Style Selector="Border.inlineEditor">
     <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
@@ -1953,5 +1973,15 @@
   </Style>
   <Style Selector="TextBlock.groupHeader">
     <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <!-- Parts of a list row that line up with the row's input (check box, name, hint): the height of an input, centered -->
+  <Style Selector=":is(Control).inputHeight">
+    <Setter Property="Height" Value="{StaticResource Oadm.ControlHeight}" />
+  </Style>
+  <Style Selector="CheckBox.inputHeight">
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="StackPanel.inputHeight > :is(Control)">
+    <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
 </Styles>

@@ -28,6 +28,12 @@ public interface ITaskDialogContext
     /// disables the choices the role lacks (the server refuses the run anyway). Default (older hosts): true.
     /// </summary>
     bool Has(string permission) => true;
+
+    /// <summary>
+    /// Every device of the system, e.g. to take settings from a device that is not selected ("Use configuration from:
+    /// Device"). Default (older hosts): empty, the dialog then offers its selected devices only.
+    /// </summary>
+    IReadOnlyList<IDeviceInfo> AllDevices => [];
 }
 
 /// <summary>UI page of a core plugin, shown in the navigation rail.</summary>

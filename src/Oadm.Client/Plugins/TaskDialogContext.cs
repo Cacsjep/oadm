@@ -2,6 +2,7 @@ using System.Globalization;
 
 using Oadm.Client.Api;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Client.Plugins;
@@ -15,18 +16,23 @@ public sealed class TaskDialogContext : ITaskDialogContext
 {
     private readonly IOadmApi _api;
     private readonly Func<string, bool>? _has;
+    private readonly Func<IReadOnlyList<IDeviceInfo>>? _allDevices;
 
     /// <param name="has">The user's permissions (<see cref="Shell.UserSession.Has"/>); null: everything.</param>
-    public TaskDialogContext(IOadmApi api, string pluginId, Func<string, bool>? has = null)
+    /// <param name="allDevices">Every device of the client's device list; null: none.</param>
+    public TaskDialogContext(IOadmApi api, string pluginId, Func<string, bool>? has = null, Func<IReadOnlyList<IDeviceInfo>>? allDevices = null)
     {
         ArgumentNullException.ThrowIfNull(api);
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
         _api = api;
         _has = has;
+        _allDevices = allDevices;
         PluginId = pluginId;
     }
 
     public bool Has(string permission) => _has?.Invoke(permission) ?? true;
+
+    public IReadOnlyList<IDeviceInfo> AllDevices => _allDevices?.Invoke() ?? [];
 
     public string PluginId { get; }
 

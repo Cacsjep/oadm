@@ -1,12 +1,16 @@
 # Device configuration (`oadm.device-config`)
 
-Always on. Two context menu entries under **Maintenance** (AXIS OS 12.5 or later), like ADM's configuration handling:
+Always on. Four context menu entries under **Maintenance**, like ADM's configuration handling:
 
-- **Export configuration**: save the configuration of the selected devices to files.
-- **Import configuration**: apply one configuration file to the selected devices.
+- **Export configuration**: save the configuration of the selected devices to files (AXIS OS 12.5 or later).
+- **Import configuration**: apply one configuration file to the selected devices (AXIS OS 12.5 or later).
+- **Configure devices**: ADM's Configure Devices > Configure: set chosen parameters, action rules and stream profiles on
+  many devices, taken from a device or an ADM configuration file (any AXIS OS with `param.cgi`). See "Configure devices".
+- **Create configuration file**: ADM's Create configuration file: save chosen settings of one device as an ADM file.
 
-Users expect "the same as the camera's web interface" (Maintenance > Export / Import), so OADM uses the same device API and
-the same file format. Like the web interface, it does not cover every setting (see what an export contains, below).
+Export and Import: users expect "the same as the camera's web interface" (Maintenance > Export / Import), so OADM uses the
+same device API and the same file format. Like the web interface, it does not cover every setting (see what an export
+contains, below).
 
 ## Device API (AXIS OS 12.5+)
 
@@ -153,6 +157,54 @@ the same IP address.
 
 Task name: "Import configuration <file name>" (the engine shortens to 48 characters).
 
+## Configure devices
+
+Spec and decisions Q1-Q9: `docs/configure-devices-spec-draft.md`.
+
+### Decisions
+
+| Topic | Decision |
+|---|---|
+| Workflow | ADM's: wizard Settings (tabs Parameters, Action rules, Stream profiles; "Use configuration from: Device / Configuration file" on the right) and Overview, then Apply: one task per selected device. |
+| Values | From the source only (a device, default the first selected one, or a file), like ADM. A checked parameter writes that value to every device. Typing a value checks the parameter. |
+| Several models | Definitions are read once per model and AXIS OS of the selection (the source's group from its read): shown are the parameters every group has (check box "Show parameters that not every selected device has"), choices every group shares (info icon "Only the choices every selected device has."), ranges narrowed to the overlap. A group that cannot be read is a note; its devices check the settings when they run. |
+| Not configurable | Type flags `internal`, `hidden`, `readonly`, `const`, `writeonly`, and write level 7 (the last digit of `securityLevel`: Brand, firmware version, serial number "7707"). AXIS P3265-V 12.11.77: 879 of 1,518 parameters; M3215-LVE 12.11.77: 874. |
+| Dangerous parameters | Every writable parameter is offered (Q3). `DangerousParameters` names the network identity (addresses, subnet, router, IPv6, host name, DNS, DHCP, device names) and the connection (HTTPS, `Network.HTTP.*`, 802.1X, RTSP port, the IP address filter `Network.Filter.*`): amber icon with the reason, the overview warns, Apply asks ("Apply anyway"), written last in their own step, permission `dangerous` (Operator no). |
+| The source device | When the source is one of the selected devices it keeps its own action rules, schedules and stream profiles (the task skips those steps there: "This is the source device", payload `SourceDeviceId`); writing them back would only remove and recreate them. Its parameters are set like on every device. With only the source selected, the two tabs offer nothing ("These are the own settings of 10.0.0.48; they are already on it."). |
+| Addresses and names | Values that must differ per device (`Network.IPAddress`, `Network.IPv6.IPAddress`, `Network.HostName`, the Bonjour, UPnP and DNS update names; `DangerousParameters.IsPerDevice`) are not offered when several devices are selected (no note, like ADM), and left out of a file with the note "Addresses and names differ per device: use Network settings or Assign IP address."; for one device they stay, with the warning. |
+| Passwords | The device never sends a password back: a checked password parameter needs a value ("Enter the password."), in the dialog and again on the device side, so an empty one never clears it on every device. |
+| Dialog safety | The overview is built whenever it opens (Next or its step dot), so Apply sends what was reviewed; Next follows every value change; Enter does not apply; a server error (gRPC status, timeout) shows in the dialog; a model whose read failed is read again with the next source; closing the dialog cancels its reads. |
+| Same name on the device | Replace (Q4): the new rule is created first (its action, then the rule) and only then the old rules of that name and their actions (when no other rule uses them) are removed, so a rule the device refuses never leaves it without the old one; a refused rule's new action is removed again. A stream profile is updated. A schedule with the same name and recurrence is used again. Applying twice gives the same result. Two checked rules or profiles with one name are refused in the dialog and by the payload check. |
+| Files | ADM `.cfg` format 3 (`AdmConfigFile`): read from Axis' hardening template (Generic) and ADM files, written byte for byte like ADM (UTF-8 BOM, CRLF, `<ActivationTimeout />`). The format is known from files only, ADM itself is never decompiled. Passwords are written like ADM (Q5). No files ship with OADM (Q6). |
+| Create configuration file | Its own entry (Q7) for one device: the same tabs, overview, Save. With an action rule every schedule of the device goes into the file, like ADM. Never a task. |
+| Storage | Files only (Q8). |
+
+### Device API (reads verified on AXIS P3265-V and M3215-LVE, AXIS OS 12.11.77)
+
+| Need | Request |
+|---|---|
+| Definitions and values | `param.cgi?action=listdefinitions&listformat=xmlschema`: one request (395 KB, 2.4 s) while the answer is below the 1 MB XML limit, else per top-level group (`param.cgi?action=list&group=root` for the names), a too large group by its subgroups. 29 group requests took about 10 s (each pays the login again). |
+| Write parameters | `param.cgi` POST `action=update&<name>=<value>...` in one request (encoded with `%20` like the other param.cgi writers, 2 minutes timeout); `OK` or `# Error: Error setting 'root.X' to 'y'!`: the named parameter is skipped and the rest sent again (at most 20 times). Password values are masked in every text. |
+| Action rules, configurations | `/vapix/services` action1 `GetActionRules`, `GetActionConfigurations`, `AddActionConfiguration` (attribute values with line breaks and tabs as character references), `AddActionRule` (filters as `wsnt:TopicExpression` / `MessageContent`, `tns1` / `tnsaxis` declared; topics with other prefixes are not supported), `RemoveActionRule`, `RemoveActionConfiguration`. |
+| Schedules | event1 `GetScheduledEvents`, `AddScheduledEvent` (the device gives the next `genid` number, which can equal another id of the source: the rule's filter is rewritten in one pass, `ScheduleRefs.Rewrite`). Built-in `com.axis.schedules.*` (not `genid`) are never created. A rule whose own schedule could not be created is not written; the payload must carry every own schedule its rules use. |
+| Stream profiles | `streamprofile.cgi` `list` (`maxProfiles` 26 checked first), `create`, `update`. |
+
+### Steps (one task per device, `oadm.device-config.configure`)
+
+Check compatibility (fresh API list: `param-cgi`; definitions of the groups written) - Set parameters (each checked against
+this device's definition; missing, invalid or refused ones skipped by name, Done with warnings) - Create schedules - Create
+action rules (each rule on its own: a refused rule fails the step at the end, the others are written) - Set stream profiles
+- Set connection parameters (the dangerous ones, last) - Verify parameters (read back in requests of at most 2,000
+characters of names, passwords not). A failing step fails only itself; the task fails at the end with the first failure
+(+N more); error texts of every step have password values masked. Task names
+"Configure 12 parameters", "Configure 1 action rule", "Configure 12 parameters, 1 rule, 3 profiles" (at most 48 characters).
+
+### Queries
+
+`read` (definitions with values, rules with their actions, schedules, stream profiles; problems per part) and
+`definitions` (definitions only, cached on the server 10 minutes per model and AXIS OS). Create configuration file has
+`read`.
+
 ## Server and client parts
 
 - `plugins/Oadm.Plugins.DeviceConfig` (two task plugins, no core plugin, `alwaysOn`): `ExportConfigTask` (dialog only,
@@ -161,6 +213,13 @@ Task name: "Import configuration <file name>" (the engine shortens to 48 charact
   `ImportPayload`, `DeviceConfigIds` (ids, texts, limits, `ModelNames`, `FirmwareVersions`).
 - `plugins/Oadm.Plugins.DeviceConfig.Client`: `ExportConfigDialog` + `ExportConfigViewModel` / `ExportConfigWindow`,
   `ImportConfigDialog` + `ImportConfigViewModel` (+ `ZipPlan`) / `ImportConfigWindow`.
+- Configure devices, server: `Configure/` `ConfigureDevicesTask` + `CreateConfigFileTask` (dialog only), `ParamDefinitionsReader`,
+  `ActionEngineApi`, `StreamProfileApi` + `ParamWriter`, `DeviceSettingsReader`; `Shared/` `ConfigureModels` (ids, payload,
+  query answer, rules, schedules, profiles), `ParamRules` (checks, hints, `DangerousParameters`), `AdmConfigFile`.
+- Configure devices, client: `Configure/` `ConfigureDevicesDialog` / `CreateConfigFileDialog` (+ `WindowConfigureUi`: the
+  single-device picker `DevicePickerWindow.ShowOneAsync` over `ITaskDialogContext.AllDevices`, file and save pickers),
+  `ConfigureDevicesViewModel`, `CreateConfigFileViewModel`, `SettingsEditorViewModel` (+ `DefinitionMerge`, row view models)
+  with `SettingsEditorView`, the two windows.
 - Not in fake mode.
 
 ## Tests (`tests/Oadm.Plugins.DeviceConfig.Tests`)
@@ -178,6 +237,18 @@ Task name: "Import configuration <file name>" (the engine shortens to 48 charact
   files, ZIP matching (every status), Perf 5,000 files.
 - Headless screenshots `device-config-export.png`, `device-config-import-other-model.png`, `device-config-import-zip.png`.
 - Opt-in `ImportHardwareWriteTests` (`Category=HardwareWrite`): a camera's own export imported back, no change expected.
+- Configure devices (fixtures in `Fixtures/configure/`, read-only from 10.0.0.48, plus two ADM files): definitions (types,
+  ranges, choices, write level), value checks and dangerous parameters, an ADM file read and written back byte for byte,
+  a Generic template, rules / configurations / schedules from the device answers, the read query (one request; per group
+  when larger than the limit), the task against `ConfigureCamera` (parameters set and skipped, the schedule used again, the
+  rule replaced, profiles created and updated, running twice changes nothing, a new schedule's id in the rule, dangerous
+  parameters last and their right, a refused part failing only its step, the profile limit), the payload; the dialogs
+  against the real queries (merge of models, one read per model, checks below the input, overview and payload, dangerous
+  confirmation and the hidden ones without the right, an ADM file with unknown parameters, a non-ADM file, Create
+  configuration file); Perf 5,000 devices of 20 AXIS OS versions (20 reads); headless screenshots
+  `device-config-configure.png`, `-configure-rules.png`, `-configure-overview.png`, `device-config-create-file.png`;
+  read-only `ConfigureHardwareTests` (every dev camera answers the read query); opt-in `ConfigureHardwareWriteTests`
+  (below).
 
 ## Write tests on hardware
 
@@ -200,7 +271,25 @@ imports a camera's own export with the real task and VAPIX client and passes on 
 | `Rotation` (also the same value, also with `AutoRotationEnabled=yes` in the request) | turns auto rotation off on the image source and every view area | left out where the file has auto rotation on |
 | `power-settings.v2` without `poeAllocationRequest` | Q3546-LVE: "No 'poeAllocationRequest' object provided in import data", area not imported | imported (only `powerStatus` is left out) |
 
+## Configure devices on hardware
+
+`ConfigureHardwareWriteTests` (`Category=HardwareWrite`, only with `OADM_CONFIGURE_WRITE=1` and `OADM_DEV_CAMERAS`; the first
+dev camera) passed on AXIS P3265-V, AXIS OS 12.11.77 (2026-10-13): the real task set `Image.I0.Appearance.Compression`
+30 -> 31, created an own schedule (the device gave it `com.axis.schedules.genid.id-1` and the rule's filter points to it),
+a turned-off action rule with a recording action, and a stream profile; every step Done, Verify matched. A second run
+reported "1 already there" (schedule), "1 replaced" (rule, its old action removed with it) and "1 replaced" (profile), and
+added nothing. The cleanup removed rule, action, schedule and profile and set the parameter back; rules, schedules,
+profiles, action configurations and the value were exactly as before. 15 s for both runs and the cleanup.
+
 ## Open points
+
+- For one device, an address parameter is not probed before writing like Network settings does, and OADM does not follow
+  the device to the new address (the periodic re-find does, by serial).
+- The definitions cache of the dialog is per model and AXIS OS; dynamic groups (view areas, apps) can differ between devices
+  of one model. The task reads each device's own definitions, so only the dialog can show a parameter a device lacks.
+
+- The element name of an ADM rule condition (`ConditionList` children): only files with an empty list were seen; OADM reads
+  any child with a `TopicFilter` and writes `Condition`.
 
 - 12.5-12.9 with the feature flag off: which status `$export` answers (404 assumed).
 - Importing into another camera of the same model (the two test cameras are different models).
@@ -210,3 +299,7 @@ imports a camera's own export with the real task and VAPIX client and passes on 
 Import keys `task:oadm.device-config.import:import` (every import) and `:connection` (the "Connection settings" area);
 without the second the area is not offered. Export has the one key `task:oadm.device-config.export`. Operator default:
 import and export, not connection settings.
+
+Configure devices: `task:oadm.device-config.configure:configure` (Operator yes) and `:dangerous` (the warned parameters;
+Operator no, full device control; without it they are not offered). Create configuration file: `task:oadm.device-config.create`
+(the file can hold passwords; Operator yes, Viewer no).

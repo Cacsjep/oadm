@@ -152,7 +152,7 @@ src/
   Oadm.Sdk/            plugin SDK: interfaces, attributes, context objects. No Avalonia, no EF
   Oadm.Sdk.Client/     client-side plugin SDK: dialog/page/toolbar interfaces, ITaskDialogContext,
                        IToolbarContext, shared controls (Controls/: IconLabel, SearchBox, OadmIcon,
-                       DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow,
+                       DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow, LoadingOverlay,
                        ToolbarButton, ToolbarSeparator, PasswordBox, MessageWindow, FormField, DevicePickerWindow, DeviceIcon,
                        GroupedChoice, DeviceTree, PageTab), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors,
                        form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection,
@@ -1237,7 +1237,7 @@ returns null or throws `NotSupportedException`.
   `RequiredPermissions(payload)` (the keys one run needs; no answer = all declared), `ExecuteAsync`. Optional
   `ITaskPluginQuery.QueryAsync`: read-only reads for the dialog (`ITaskQueryContext.Devices`: every managed device).
   Declared today: Upgrade firmware (upgrade, factoryDefault, downgrade), Users (add, update, remove), Applications (install,
-  downgrade, startStop, remove), Import configuration (import, connection).
+  downgrade, startStop, remove), Import configuration (import, connection), Configure devices (configure, dangerous).
 - `ICorePlugin`: `TaskPlugins` (contributed tasks), `StartAsync` / `StopAsync`, `InvokeAsync` (the page backend),
   `HasPage` (false: no rail entry), `Group` (`CorePluginGroup`: the rail group), `RequiredRole` / `IsAudited` per method,
   `Permissions` (named rights "<id>:<key>"; "show" is automatic for a page, declared only to change its defaults; empty
@@ -1273,9 +1273,10 @@ The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`; usage in 
 the UI thread.
 
 - `ITaskPluginDialog.ShowAsync(ctx, devices, owner)` returns the payload JSON (null = cancel); `ITaskDialogContext` gives
-  `QueryAsync` (TaskService.Query), `UploadAsync` (FileService.Upload with progress) and `Has(permission)` (the dialog
+  `QueryAsync` (TaskService.Query), `UploadAsync` (FileService.Upload with progress), `Has(permission)` (the dialog
   hides the choices the role lacks: Users modes, firmware factory default and downgrade, application actions, the
-  connection settings area).
+  connection settings area, dangerous parameters) and `AllDevices` (every device of the client, e.g. a source device that is
+  not selected; DIM empty).
 - `ICorePluginPage.CreateView(ctx)`: the rail page; `HasOwnCards` (the view lays out its own cards), `ShowTasksPane` (the
   shared tasks pane below the page). `ICorePluginClientContext`: `InvokeAsync`, `WatchEventsAsync` (PluginService.Watch),
   `Devices` + `DevicesChanged`, `SelectedDevices`, `OwnerName`, `ShowMessageAsync`, `ConfirmAsync`, `OpenAsync`, `Owner`,
@@ -1700,9 +1701,10 @@ zone from the 313 IANA zones of AXIS OS, daylight saving, time mode: server time
 ## Device configuration
 
 `plugins/Oadm.Plugins.DeviceConfig` (+ `.Client`), id `oadm.device-config`, always on, context menu (Maintenance)
-**Export configuration** and **Import configuration**, AXIS OS 12.5 or later. Uses only the device's own configuration
-export and import (`/config/rest/$export`, `$import`), like its web interface. Decisions, device research, steps and the
-write tests on hardware: plugin `README.md`.
+**Export configuration** and **Import configuration** (AXIS OS 12.5 or later: the device's own configuration export and
+import, `/config/rest/$export`, `$import`, like its web interface), **Configure devices** and **Create configuration file**
+(ADM's Configure Devices: any AXIS OS with `param.cgi`). Decisions, device research, steps and the write tests on hardware:
+plugin `README.md`; Configure devices spec: `docs/configure-devices-spec-draft.md`.
 
 - Rules that must hold: merge only; the network identity (host name, addresses, router, DHCP, device names, the multicast
   addresses) and read-only values are never imported; "Connection settings" (HTTPS, ports, login method, 802.1X, IPv6,
@@ -1710,8 +1712,19 @@ write tests on hardware: plugin `README.md`.
   ("Nothing was changed" otherwise); no backup by OADM (export first); the device validates and OADM shows its answer per
   area, one failed area does not stop the others; a ZIP entry must carry the device's MAC address; Export is a dialog,
   never a task.
-- Tests: `tests/Oadm.Plugins.DeviceConfig.Tests`; opt-in `ImportHardwareWriteTests` (`OADM_CONFIG_WRITE_URL` / `_USER` /
-  `_PASSWORD`).
+- **Configure devices** rules that must hold: values come from the source (a device or an ADM `.cfg` file), definitions
+  are read once per model and AXIS OS (one `listdefinitions` request while it stays below the 1 MB XML limit, else per
+  group); internal, hidden, read-only, constant, write-only and write-level-7 parameters are never offered; each device
+  checks every value against its own definition before writing and skips what it does not have (Done with warnings); the
+  dangerous parameters (`DangerousParameters`: network identity and connection) carry a warning, are confirmed, need their
+  own right (Operator no) and are written last; addresses and names that must differ per device are not offered when several
+  devices are selected; the source device keeps its own rules, schedules and stream profiles (skipped there); a rule or stream profile with the same name is replaced, a schedule with the
+  same name and recurrence used again (applying twice changes nothing more); ADM files are read and written byte for byte
+  (format 3, known from files only, ADM is never decompiled), passwords in them like ADM; password values never reach a log
+  or an error text. **Create configuration file** is a dialog for one device, never a task.
+- Tests: `tests/Oadm.Plugins.DeviceConfig.Tests` (+ Perf 5,000 devices, read-only `ConfigureHardwareTests`); opt-in
+  `ImportHardwareWriteTests` (`OADM_CONFIG_WRITE_URL` / `_USER` / `_PASSWORD`) and `ConfigureHardwareWriteTests`
+  (`OADM_CONFIGURE_WRITE=1`, the first dev camera: writes, writes again, removes everything; passed on the P3265-V).
 
 ## Applications (ACAP)
 
@@ -2027,7 +2040,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   rail, dialogs), `ToolbarButton` (every toolbar button) and `ToolbarSeparator`, `SearchBox`
   (every search field), `OadmIcon`, and for
   dialogs `DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip` (status chip),
-  `FileRow` (chosen file + "Choose file"), `ProgressRow` (progress bar + status text),
+  `FileRow` (chosen file + "Choose file"), `ProgressRow` (progress bar + status text), `LoadingOverlay` (a dialog that waits for a read: steps and cards hidden, ring and text in the middle, Cancel stays usable),
   `MessageWindow` (every message box and confirmation popup, host and plugins; dialogs never show
   inline "I understand" risk sections), `PasswordBox` (every password field: TextBox with bullet mask and eye button "Show password" /
   "Hide password", icons `Icon.eye` / `Icon.eyeOff`; never a `TextBox` with `PasswordChar`), `CodeView`
@@ -2043,7 +2056,8 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   title, large count, small detail line; `IsOk` / `IsWarning` / `IsError` color icon and count, set only while the count
   needs attention), `DevicePickerWindow` + `DevicePickerViewModel` (every "choose devices" dialog, every managed device in address order, search over address, model, MAC and host name, Select all / Select none for what the
   search shows, the count "12 of 4,812 devices chosen", chosen devices can be unchosen, devices that cannot be used greyed
-  with the reason; virtualized, 5,000 devices tested; `DevicePickerWindow.ShowAsync` returns the ids or null; with
+  with the reason; virtualized, 5,000 devices tested; `DevicePickerWindow.ShowAsync` returns the ids or null; `ShowOneAsync` (`DevicePickerOptions.SingleDevice`: checking a device
+  unchecks the one before, no Select all / none) returns one id; with
   `DevicePickerOptions` a left column offers the device of the event, All devices, or Chosen devices and tags with the tag
   list (the devices of a chosen tag show checked with "Tag <name>"), `ShowChoiceAsync` / `DevicePickerViewModel.Choice`
   return a `DeviceChoice` {Kind All / EventDevice / Chosen, DeviceIds, Tags}; with tags it lists the devices' tags, every

@@ -52,6 +52,12 @@ public sealed record DevicePickerOptions
     /// </summary>
     public IReadOnlyList<string> TagNames { get; init; } = [];
 
+    /// <summary>
+    /// Exactly one device ("Use configuration from: Device"): checking a device unchecks the one before; Select all and
+    /// Select none are not offered. Not combined with all devices, tags or the device of the event.
+    /// </summary>
+    public bool SingleDevice { get; init; }
+
     /// <summary>Every option: all devices, tags (plus <paramref name="tagNames"/>) and, with <paramref name="eventDeviceText"/>, the device of the event.</summary>
     public static DevicePickerOptions Full(string? eventDeviceText = null, IEnumerable<string>? tagNames = null) =>
         new() { AllowAll = true, AllowTags = true, EventDeviceText = eventDeviceText, TagNames = [.. tagNames ?? []] };
@@ -322,6 +328,11 @@ public sealed partial class DevicePickerViewModel : ObservableObject
 
     private void SetVisible(bool value)
     {
+        if (value && Options.SingleDevice)
+        {
+            return;
+        }
+
         foreach (var item in Visible)
         {
             if (item.IsChecked != value && (item.IsAvailable || !value))
@@ -340,6 +351,15 @@ public sealed partial class DevicePickerViewModel : ObservableObject
         {
             item.Set(false);
             return;
+        }
+
+        if (value && Options.SingleDevice)
+        {
+            foreach (var other in _all.Where(i => i.IsChecked && !ReferenceEquals(i, item)))
+            {
+                other.Set(false);
+                _chosen--;
+            }
         }
 
         _chosen += value ? 1 : -1;

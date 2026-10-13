@@ -35,6 +35,20 @@ public sealed class DevicePickerTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void In_single_mode_choosing_a_device_unchooses_the_one_before()
+    {
+        var a = new PickDevice("10.0.0.48", "AXIS P3265-V");
+        var b = new PickDevice("10.0.0.9", "AXIS M3106-L");
+        var vm = new DevicePickerViewModel([a, b], DeviceChoice.Devices([a.Id]), new DevicePickerOptions { SingleDevice = true });
+
+        vm.Visible.Single(i => i.Id == b.Id).IsChecked = true;
+        Assert.Equal([b.Id], vm.SelectedIds);
+        Assert.Equal("1 of 2 devices chosen", vm.Summary);
+        vm.SelectAllCommand.Execute(null); // not offered in single mode; does nothing
+        Assert.Equal([b.Id], vm.SelectedIds);
+    }
+
+    [Fact]
     public void Search_limits_select_all_and_none_to_what_it_shows()
     {
         var devices = new[] { new PickDevice("10.0.0.1", "AXIS P3265-V"), new PickDevice("10.0.0.2", "AXIS A9210"), new PickDevice("10.0.0.3", "AXIS P3265-V") };

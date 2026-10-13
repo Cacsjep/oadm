@@ -30,7 +30,15 @@ public static class HeadlessEntry
         .WithInterFont();
 }
 
+/// <summary>Test classes that start an Avalonia headless session run one after the other (two sessions at once hang).</summary>
+[CollectionDefinition(Name)]
+public sealed class HeadlessSessions
+{
+    public const string Name = "Headless";
+}
+
 /// <summary>The export and import windows, rendered offscreen. Set OADM_SCREENSHOT_DIR to write PNGs.</summary>
+[Collection(HeadlessSessions.Name)]
 public sealed class HeadlessTests : IDisposable
 {
     private readonly string _folder = Directory.CreateTempSubdirectory("oadm-config-ui-").FullName;

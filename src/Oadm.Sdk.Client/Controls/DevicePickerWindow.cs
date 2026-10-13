@@ -39,6 +39,7 @@ public sealed class DevicePickerWindow : Window
         summary.Bind(TextBlock.TextProperty, new Binding(nameof(DevicePickerViewModel.Summary)));
         var all = Action("Select all", "check", nameof(DevicePickerViewModel.SelectAllCommand), "Choose every device the search shows");
         var none = Action("Select none", "close", nameof(DevicePickerViewModel.SelectNoneCommand), "Unchoose every device the search shows");
+        all.IsVisible = none.IsVisible = !viewModel.Options.SingleDevice;
         var search = new SearchBox { Placeholder = "Search devices", VerticalAlignment = VerticalAlignment.Center };
         search.Bind(SearchBox.TextProperty, new Binding(nameof(DevicePickerViewModel.SearchText)) { Mode = BindingMode.TwoWay });
         var bar = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto"), ColumnSpacing = 8 };
@@ -125,6 +126,23 @@ public sealed class DevicePickerWindow : Window
         ArgumentNullException.ThrowIfNull(owner);
         var window = new DevicePickerWindow(new DevicePickerViewModel(devices, initial, options)) { Heading = heading };
         return await window.ShowDialog<bool>(owner).ConfigureAwait(true) ? window.ViewModel.Choice : null;
+    }
+
+    /// <summary>
+    /// Shows the picker for exactly one device (<see cref="DevicePickerOptions.SingleDevice"/>) over <paramref name="owner"/>;
+    /// returns its id, or null when cancelled or none was chosen.
+    /// </summary>
+    public static async Task<Guid?> ShowOneAsync(
+        Window owner,
+        IEnumerable<IDeviceInfo> devices,
+        Guid? selected = null,
+        Func<IDeviceInfo, string?>? unavailableReason = null,
+        string heading = "Choose a device")
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        var model = new DevicePickerViewModel(devices, DeviceChoice.Devices(selected is { } id ? [id] : []), new DevicePickerOptions { SingleDevice = true }, unavailableReason);
+        var window = new DevicePickerWindow(model) { Heading = heading };
+        return await window.ShowDialog<bool>(owner).ConfigureAwait(true) && model.SelectedIds.Count == 1 ? model.SelectedIds[0] : null;
     }
 
     /// <summary>
