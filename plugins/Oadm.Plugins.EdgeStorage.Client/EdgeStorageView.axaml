@@ -66,7 +66,7 @@
             <DataGridTemplateColumn Header="Used" Width="260" CanUserSort="True" SortMemberPath="UsedPercent">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:StorageRowViewModel">
-                  <ui:ProgressRow Value="{Binding UsedPercent}" Text="{Binding UsedText}" IsVisible="{Binding ShowUsed}" />
+                  <ui:ProgressRow Value="{Binding UsedPercent}" Text="{Binding UsedText}" IsVisible="{Binding ShowUsed}" IsActive="False" />
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
