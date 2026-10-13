@@ -169,7 +169,7 @@ public sealed class SplashLogo : Panel
     private void AddHex(Canvas canvas, double cx, double cy, double delay)
     {
         var geometry = StreamGeometry.Parse(HexPathData(Radius));
-        var fill = new Path { Data = geometry, Fill = Brush("Oadm.TextPrimaryBrush"), Opacity = 0 };
+        var fill = new Path { Data = geometry, Fill = Brush("Oadm.LogoBrush"), Opacity = 0 };
         var outline = new Path
         {
             Data = geometry,
@@ -235,7 +235,7 @@ public sealed class SplashLogo : Panel
     }
 
     private static IBrush? Brush(string key) =>
-        Application.Current?.TryGetResource(key, ThemeVariant.Dark, out var value) == true ? value as IBrush : null;
+        Application.Current is { } app && app.TryGetResource(key, app.ActualThemeVariant, out var value) ? value as IBrush : null;
 
     private static string F(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 }

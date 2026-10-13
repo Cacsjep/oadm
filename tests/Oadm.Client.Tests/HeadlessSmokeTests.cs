@@ -39,7 +39,11 @@ public static class HeadlessSession
 
     private static readonly Lazy<HeadlessUnitTestSession> Session = new(() =>
     {
-        App.Options = new AppOptions { UseFake = true, DataFolder = Folder };
+        // OADM_TEST_APPEARANCE=Light renders every headless test (and its screenshots) in the light appearance.
+        Oadm.Client.Themes.Appearance? appearance =
+            string.Equals(Environment.GetEnvironmentVariable("OADM_TEST_APPEARANCE"), "Light", StringComparison.OrdinalIgnoreCase)
+                ? Oadm.Client.Themes.Appearance.Light : null;
+        App.Options = new AppOptions { UseFake = true, DataFolder = Folder, Appearance = appearance };
         return HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
     });
 

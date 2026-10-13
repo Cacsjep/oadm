@@ -16,7 +16,7 @@ Every rule here is agreed with the maintainer; change one only after asking.
 |---|---|
 | Runtime | .NET 10 LTS, C# 14 |
 | Server | Generic Host worker service + Kestrel, gRPC (Grpc.AspNetCore), EF Core + SQLite |
-| Client | Avalonia 12, Fluent theme, dark only, CommunityToolkit.Mvvm |
+| Client | Avalonia 12, Fluent theme, dark (default) or light, CommunityToolkit.Mvvm |
 | Client <-> Server | gRPC with protobuf contracts. Server-streaming for live device and task updates |
 | Logging | Serilog (console + rolling file) behind Microsoft.Extensions.Logging; log files roll daily or at 20 MB (server) / 10 MB (client), only the last 14 days and at most 30 files are kept |
 | Tests | xUnit, NSubstitute for mocks |
@@ -660,7 +660,15 @@ tried in the same run. Unreachable attempts count neither as attempt nor as reje
 # Visual Style
 
 Reference: MultiDrive (Avalonia showcase), `docs/style-reference-multidrive.png`, https://multidrive.io/.
-Dark only, calm and spacious, no gradients inside the app (one exception: the soft glow of the start splash).
+Dark by default, calm and spacious, no gradients inside the app (one exception: the soft glow of the start splash).
+**Appearance** Dark or Light per computer (Settings > This computer, `ClientSettings.Appearance`, takes effect after the
+client restarts: "Takes effect after the client restarts" below the select while it differs from the running one). The
+colors live in `Themes/Colors.Dark.axaml` and `Themes/Colors.Light.axaml` (same keys, `ThemeColorsTests`);
+`Themes/OadmColors` merges the chosen one into `OadmTheme.axaml` (brushes and styles, shared), read in `App.Initialize`
+before the styles load (`JsonClientSettingsStore.ReadAppearance`, `AppOptions.Appearance` overrides it), and the Fluent
+theme variant follows. The color values below are the dark ones. Video stays dark in both: plates over the picture use
+`Oadm.OverlayBrush` (dark or white translucent with the normal text), the autofocus dimming `Oadm.VideoDimBrush`. Headless
+tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
 
 - Start splash (approved mockup `mockups/loading/index.html`): `Shell/SplashWindow` (borderless,
   520x560, centered) with `Controls/SplashLogo` (the app icon built from seven hexagons: the outer six fly in one after another,
@@ -728,7 +736,9 @@ Dark only, calm and spacious, no gradients inside the app (one exception: the so
   fields need the Inter correction, text boxes do not).
 - Icons: one outline icon set (Fluent System Icons / Lucide geometry), monochrome
   `#CFCFCF`, 16 px. Toolbar uses icon + text buttons, not ADM's icon-only bar.
-- All colors and sizes as resources in `Themes/OadmTheme.axaml`; no hard-coded colors in views.
+- All colors in `Themes/Colors.Dark.axaml` / `Colors.Light.axaml`, brushes and sizes in `Themes/OadmTheme.axaml`; no
+  hard-coded colors in views or code (a new color gets a key in both files). Exceptions: the splash glow gradient and the
+  Fluent palettes in `OadmTheme.axaml` (accent based, the same in both), fallbacks in code when a key cannot be found.
 
 # Main Window: Manage Devices
 
@@ -1775,11 +1785,11 @@ sentence on the Apache-2.0 license, "Show licenses" shows `THIRD-PARTY-NOTICES.t
 `Contents/Resources`, or `THIRD-PARTY-NOTICES.md` in a checkout) in a read-only `ui:CodeView` (Plain). The Settings page
 starts with the card **This computer** (every user, saved at once in the client settings file): "Decode video on the
 graphics card" with the test's result as hint, "Show video details over the picture" and "Frame rate (adaptive quality)"
-(see "Live view"). The page has two columns (each up to 760 px, left-aligned): This computer and the server settings left,
+(see "Live view"), "Appearance" (Dark, Light; see "Visual Style"). The page has two columns (each up to 760 px, left-aligned): This computer and the server settings left,
 the card **Backup and restore** right (administrators, see "Backup and restore"). The server
 address is set with `--server` or in the
 client settings file. Client-side (local JSON in LocalApplicationData): server address, device grid column layout and group
-mode (`GroupDevicesByTag`), bottom pane state, `GpuDecoding`, `ShowVideoDetails`, `AdaptiveFps`.
+mode (`GroupDevicesByTag`), bottom pane state, `GpuDecoding`, `ShowVideoDetails`, `AdaptiveFps`, `Appearance`.
 
 # Backup and restore
 

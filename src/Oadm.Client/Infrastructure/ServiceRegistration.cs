@@ -31,7 +31,12 @@ public static class ServiceRegistration
 
         if (options.UseFake)
         {
-            services.AddSingleton<IClientSettingsStore, InMemoryClientSettingsStore>();
+            services.AddSingleton<IClientSettingsStore>(_ =>
+            {
+                var store = new InMemoryClientSettingsStore();
+                store.Current.Appearance = Themes.OadmColors.Current; // the appearance the client started with
+                return store;
+            });
             services.AddSingleton<IOadmApi>(_ => new FakeOadmApi());
             services.AddSingleton<IServerTrust, NoServerTrust>();
         }

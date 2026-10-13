@@ -62,6 +62,36 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             _ => status.Problem ?? LiveView.GpuDecodingTexts.Generic,
         };
 
+    private Themes.Appearance _appearance;
+
+    public IReadOnlyList<Themes.Appearance> Appearances { get; } = [Themes.Appearance.Dark, Themes.Appearance.Light];
+
+    /// <summary>"Appearance" (this computer, saved at once); the theme loads its colors at the start, so it applies after a restart.</summary>
+    public Themes.Appearance Appearance
+    {
+        get => _appearance;
+        set
+        {
+            if (!SetProperty(ref _appearance, value))
+            {
+                return;
+            }
+
+            if (_clientSettings is not null)
+            {
+                _clientSettings.Current.Appearance = value;
+                _clientSettings.Save();
+            }
+
+            OnPropertyChanged(nameof(AppearanceHint));
+        }
+    }
+
+    /// <summary>Below the select while the chosen appearance is not the running one.</summary>
+    public string? AppearanceHint => _appearance == Themes.OadmColors.Current ? null : AppearanceRestartHint;
+
+    public const string AppearanceRestartHint = "Takes effect after the client restarts";
+
     /// <summary>Live video on this computer: details over the picture, the adaptive frame rate.</summary>
     public LiveView.LiveVideoSettings Video { get; }
 
@@ -93,6 +123,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         _gpu = gpu;
         _ui = ui;
         _gpuDecoding = clientSettings?.Current.GpuDecoding ?? true;
+        _appearance = clientSettings?.Current.Appearance ?? Themes.OadmColors.Current;
         if (gpu is not null)
         {
             gpu.Changed += (_, _) =>

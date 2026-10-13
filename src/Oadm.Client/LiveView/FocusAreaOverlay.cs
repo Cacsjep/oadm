@@ -67,7 +67,7 @@ public sealed class FocusAreaOverlay : Control
         base.Render(context);
         var picture = PictureRect(Bounds.Size, PictureSize);
         var area = new Rect(picture.X + Area.X * picture.Width, picture.Y + Area.Y * picture.Height, Area.Width * picture.Width, Area.Height * picture.Height);
-        var dim = Brush("Oadm.OverlayBrush", Color.FromArgb(0x99, 0, 0, 0));
+        var dim = Brush("Oadm.VideoDimBrush", Color.FromArgb(0x99, 0, 0, 0));
         context.FillRectangle(Brushes.Transparent, new Rect(Bounds.Size)); // the whole control takes the drag
         // Dim the picture around the area (four bands), then the frame.
         context.FillRectangle(dim, new Rect(picture.X, picture.Y, picture.Width, Math.Max(0, area.Y - picture.Y)));

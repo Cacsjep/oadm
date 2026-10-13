@@ -12,6 +12,9 @@ public sealed record AppOptions
     /// <summary>Folder for client settings, logs and client plugins. Defaults to LocalApplicationData/Oadm.</summary>
     public string DataFolder { get; init; } = DefaultDataFolder;
 
+    /// <summary>The appearance for this run instead of the one in the client settings (headless tests).</summary>
+    public Oadm.Client.Themes.Appearance? Appearance { get; init; }
+
     public static string DefaultDataFolder =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Oadm");
 

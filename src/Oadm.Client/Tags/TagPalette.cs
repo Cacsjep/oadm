@@ -39,7 +39,7 @@ public static class TagPalette
 
     /// <summary>The theme brush of a color (null without an application, e.g. view model tests).</summary>
     public static IBrush? Brush(TagColor color) =>
-        Application.Current is { } app && app.TryGetResource(ResourceKey(color), ThemeVariant.Dark, out object? value) && value is IBrush brush
+        Application.Current is { } app && app.TryGetResource(ResourceKey(color), app.ActualThemeVariant, out object? value) && value is IBrush brush
             ? brush
             : null;
 }

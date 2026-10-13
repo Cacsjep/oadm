@@ -46,6 +46,10 @@ public sealed class ClientSettings
     /// <summary>Settings "Frame rate (adaptive quality)", 1..30.</summary>
     public int AdaptiveFps { get; set; } = 20;
 
+    /// <summary>Settings "Appearance": dark (default) or light; read once at the start (<see cref="JsonClientSettingsStore.ReadAppearance"/>).</summary>
+    [JsonConverter(typeof(AppearanceJsonConverter))]
+    public Oadm.Client.Themes.Appearance Appearance { get; set; }
+
     /// <summary>Height of the tasks pane set with the splitter, in pixels. 0 = default.</summary>
     public double TasksPaneHeight { get; set; }
 
@@ -57,6 +61,33 @@ public sealed class ClientSettings
 
     /// <summary>The version of the terms of use accepted on this computer (<c>TermsViewModel.CurrentVersion</c>); empty = not yet.</summary>
     public string AcceptedTerms { get; set; } = "";
+}
+
+/// <summary>
+/// "Dark" / "Light" in the settings file; anything else (a number, a name of a later version) reads as Dark, so a hand-edited
+/// or newer file never stops the client or resets the other settings.
+/// </summary>
+public sealed class AppearanceJsonConverter : JsonConverter<Oadm.Client.Themes.Appearance>
+{
+    public override Oadm.Client.Themes.Appearance Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String)
+        {
+            reader.Skip();
+            return default;
+        }
+
+        return Enum.TryParse<Oadm.Client.Themes.Appearance>(reader.GetString(), ignoreCase: true, out var value) && Enum.IsDefined(value)
+            && !int.TryParse(reader.GetString(), out _)
+            ? value
+            : default;
+    }
+
+    public override void Write(Utf8JsonWriter writer, Oadm.Client.Themes.Appearance value, JsonSerializerOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        writer.WriteStringValue(value.ToString());
+    }
 }
 
 /// <summary>A remembered session of one server.</summary>
@@ -136,6 +167,25 @@ public sealed partial class JsonClientSettingsStore : IClientSettingsStore
     }
 
     public ClientSettings Current { get; }
+
+    /// <summary>
+    /// The appearance saved in the settings file of a data folder, read before the app loads its theme (the store itself
+    /// is created later, with the services); dark when the file is missing or unreadable.
+    /// </summary>
+    public static Oadm.Client.Themes.Appearance ReadAppearance(string dataFolder)
+    {
+        try
+        {
+            string path = Path.Combine(dataFolder, "client-settings.json");
+            return File.Exists(path)
+                ? JsonSerializer.Deserialize(File.ReadAllText(path), ClientSettingsJsonContext.Default.ClientSettings)?.Appearance ?? default
+                : default;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return default;
+        }
+    }
 
     public void Save()
     {

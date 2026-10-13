@@ -181,6 +181,8 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
   `Button.picture` (a clickable picture without button chrome). Stack `ui:FormField`s in `StackPanel Classes="form"`
   (row spacing); several inputs in one line go in `StackPanel Classes="inputRow"` (top-aligned, so an error below one
   input moves nothing else). Tables are `DataGrid`s. No local colors, font sizes, font weights or paddings.
+- The client runs dark or light (Settings > This computer). Use only the theme's `Oadm.*Brush` keys (`StaticResource`,
+  or `TryFindResource` in code), never a color value: both appearances define every key.
 - Button and menu labels never end with "...", also when they open a dialog or a file picker. All texts follow the
   "Wording" rule in `CLAUDE.md`.
 

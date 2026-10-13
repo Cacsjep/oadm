@@ -2,7 +2,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Oadm.Client.App"
              RequestedThemeVariant="Dark">
-  <!-- OADM is dark only. All colors and sizes come from Themes/OadmTheme.axaml. -->
+  <!-- Dark by default; App.Initialize applies the appearance of Settings > This computer. Colors and sizes come from
+       Themes/OadmTheme.axaml and Themes/Colors.<appearance>.axaml. -->
   <Application.Styles>
     <StyleInclude Source="avares://Oadm.Client/Themes/OadmTheme.axaml" />
   </Application.Styles>

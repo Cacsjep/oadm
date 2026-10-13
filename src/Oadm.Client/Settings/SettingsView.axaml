@@ -9,7 +9,7 @@
   <!-- Every labeled input is a ui:FormField: its error appears directly below the input. Fields are grouped under
        small headings; Save sits in the input column. Operators see the values as plain text, without Save. -->
   <Grid RowDefinitions="Auto,*" RowSpacing="16">
-    <c:PageTitleBar Title="Settings" Subtitle="How the server polls, scans and runs tasks, and how this computer shows video." />
+    <c:PageTitleBar Title="Settings" Subtitle="How the server polls, scans and runs tasks, and how OADM looks and shows video on this computer." />
     <ScrollViewer Grid.Row="1">
       <!-- Two columns: this computer and the server settings left, backup and restore right (administrators). -->
       <!-- Each column grows to 760 px; on a wider window the space stays on the right (the page starts at the left). -->
@@ -34,6 +34,9 @@
             <ui:FormField Label="Frame rate (adaptive quality)" Hint="Frames per second when the resolution follows the size">
               <NumericUpDown Minimum="1" Maximum="30" Increment="1" FormatString="0" Value="{Binding Video.AdaptiveFps}" />
             </ui:FormField>
+            <ui:FormField Label="Appearance" Hint="{Binding AppearanceHint}">
+              <ComboBox ItemsSource="{Binding Appearances}" SelectedItem="{Binding Appearance}" />
+            </ui:FormField>
           </StackPanel>
         </Border>
         <!-- Server settings in four cards; administrators edit them (saved together, Save in the last card), operators read
@@ -44,7 +47,7 @@
             <TextBlock Classes="sectionTitle" Text="Polling" />
             <StackPanel Classes="form" IsVisible="{Binding IsAdmin}">
               <ui:FormField Label="Status polling interval (s)">
-                <NumericUpDown Minimum="5" Maximum="3600" Increment="5" FormatString="0" Value="{Binding PollingIntervalSeconds}" />
+                <NumericUpDown Minimum="5" Maximum="86400" Increment="5" FormatString="0" Value="{Binding PollingIntervalSeconds}" />
               </ui:FormField>
               <ui:FormField Label="Full refresh interval (min)"
                             Hint="How often network settings and certificates are read">

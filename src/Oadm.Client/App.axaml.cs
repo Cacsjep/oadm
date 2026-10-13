@@ -22,7 +22,10 @@ public partial class App : Application
 
     public override void Initialize()
     {
+        // The appearance decides which colors the theme loads (Themes/OadmColors), so it is read before the styles.
+        Themes.OadmColors.Current = Options.Appearance ?? JsonClientSettingsStore.ReadAppearance(Options.DataFolder);
         AvaloniaXamlLoader.Load(this);
+        RequestedThemeVariant = Themes.OadmColors.VariantOf(Themes.OadmColors.Current);
     }
 
     public override void OnFrameworkInitializationCompleted()

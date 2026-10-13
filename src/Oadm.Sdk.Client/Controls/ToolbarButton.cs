@@ -87,12 +87,12 @@ public class ToolbarButton : Button
             return null;
         }
 
-        if (!string.IsNullOrEmpty(key) && app.TryGetResource("Icon." + key, ThemeVariant.Dark, out var value) && value is Geometry geometry)
+        if (!string.IsNullOrEmpty(key) && app.TryGetResource("Icon." + key, app.ActualThemeVariant, out var value) && value is Geometry geometry)
         {
             return geometry;
         }
 
-        return app.TryGetResource("Icon.plugin", ThemeVariant.Dark, out var fallback) ? fallback as Geometry : null;
+        return app.TryGetResource("Icon.plugin", app.ActualThemeVariant, out var fallback) ? fallback as Geometry : null;
     }
 
     protected override void OnAttachedToLogicalTree(Avalonia.LogicalTree.LogicalTreeAttachmentEventArgs e)
