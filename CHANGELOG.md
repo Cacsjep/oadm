@@ -6,8 +6,17 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+## [3.0.0] - 2026-10-13
+
 ### Added
 
+- **Edge storage** page: the SD card of every camera in one table (state, size, used, wear, encryption, retention) and
+  the camera's tools for the selected cameras: Check, Set retention, Repair, Format, Encrypt and Turn off encryption. Every
+  tool asks first and says which recordings are lost; the card is always mounted again afterwards. Off by default
+  (Plugins page); "Format and encrypt storage" in the roles decides who may format (Operator does not have it).
+- **Light appearance**: Settings > This computer > Appearance, Dark or Light. Takes effect after the client restarts.
+- Add devices: **Use DNS names instead of IP addresses** (Discovery and Network range) lists the devices by their DNS
+  name and adds them by it. Devices without a DNS name are added by IP address. Remembered on each computer.
 - **Configure devices** (context menu, Maintenance), like ADM: set chosen parameters, action rules and stream profiles on
   many devices at once. The settings come from a device or an AXIS Device Manager configuration file; each device skips
   what it does not have. Dangerous settings (addresses, HTTPS, ports, login method, IEEE 802.1X) are marked, confirmed and
@@ -17,7 +26,6 @@ version and date, and the release workflow copies it into the GitHub release.
 - The device picker can choose exactly one device.
 - **Applications (ACAP)** installs license key files: with the package or on their own (**Install license**). Choose many
   key files or a ZIP; each device gets the key with its MAC address.
-
 - **Backup and restore** (Settings, administrators): back up the whole server into one password-protected file, now or
   every day automatically, and restore it, also on another computer. A restore saves the current state first; a backup of
   an older OADM is upgraded.
@@ -25,6 +33,11 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Fixed
 
+- **Configure devices**: the web server ports, HTTP and HTTPS policy, HTTP/2 and the web interface switch count as
+  dangerous settings; IP addresses are never offered or written there (use Network settings or Assign IP address).
+- **Applications (ACAP)**: a device with license keys for several versions of an application gets the one that fits
+  the installed version.
+- Backup and restore: a restore cut off by a crash is put back at the next start.
 - **Applications (ACAP)** is offered on cameras that run applications but do not name them in their API list (seen on AXIS
   OS 11.9). OADM now reads the camera's parameters, as Axis documents it.
 - Applications: removing an application waits up to 2 minutes (it can take about a minute); every error the camera
@@ -35,6 +48,10 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Changed
 
+- The server setting "Use host name when available, otherwise IP address" is removed: the add page decides per add (see
+  above). Devices keep the address they were added with.
+- Settings: the server settings are in four cards (Polling, Discovery, Tasks, Server), saved together with Save below
+  them.
 - The client asks for the terms of use on its first start on each computer (and again when they change). The Windows
   and macOS installers no longer show a license page, so every install method and platform is the same.
 
