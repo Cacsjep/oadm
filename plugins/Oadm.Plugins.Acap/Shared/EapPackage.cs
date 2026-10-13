@@ -30,6 +30,9 @@ public sealed record EapManifest
 
     public string? Vendor { get; init; }
 
+    /// <summary>The application id of the Axis license system (<c>appId</c> / <c>APPID</c>); null or "0" when the package has none.</summary>
+    public string? AppId { get; init; }
+
     public required string Version { get; init; }
 
     /// <summary><c>aarch64</c>, <c>armv7hf</c>, <c>mips</c>, ... or null / <c>all</c> for architecture independent packages.</summary>
@@ -257,6 +260,7 @@ public static class EapReader
                 AppName = GetString(setup, "appName") ?? conf.GetValueOrDefault("APPNAME") ?? string.Empty,
                 FriendlyName = GetString(setup, "friendlyName") ?? conf.GetValueOrDefault("APPNICENAME"),
                 Vendor = GetString(setup, "vendor") ?? conf.GetValueOrDefault("VENDOR"),
+                AppId = GetString(setup, "appId") ?? conf.GetValueOrDefault("APPID"),
                 Version = GetString(setup, "version") ?? ConfVersion(conf) ?? string.Empty,
                 Architecture = GetString(setup, "architecture") ?? conf.GetValueOrDefault("APPTYPE"),
                 SchemaVersion = schema,
@@ -275,6 +279,7 @@ public static class EapReader
         AppName = conf.GetValueOrDefault("APPNAME") ?? string.Empty,
         FriendlyName = conf.GetValueOrDefault("APPNICENAME"),
         Vendor = conf.GetValueOrDefault("VENDOR"),
+        AppId = conf.GetValueOrDefault("APPID"),
         Version = ConfVersion(conf) ?? string.Empty,
         Architecture = conf.GetValueOrDefault("APPTYPE"),
         RequiredEmbeddedDevelopmentVersion = conf.GetValueOrDefault("REQEMBDEVVERSION"),

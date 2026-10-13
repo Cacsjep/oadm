@@ -247,7 +247,7 @@ public sealed class AcapDialogViewModelTests : IDisposable
         Assert.True(vm.Compatibility[2].IsError);
         Assert.Contains("needs AXIS OS 12.0", vm.Compatibility[2].Result, StringComparison.Ordinal);
         Assert.Equal(1, vm.CompatibleCount);
-        Assert.Equal("1 of 3 device(s) can install this package.", vm.CompatibilitySummary);
+        Assert.Equal("1 of 3 devices can install this package.", vm.CompatibilitySummary);
         Assert.True(vm.InstallCommand.CanExecute(null));
 
         await vm.InstallCommand.ExecuteAsync(null);

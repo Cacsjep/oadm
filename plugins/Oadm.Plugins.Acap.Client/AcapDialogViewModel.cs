@@ -35,12 +35,8 @@ public sealed record ApplicationRow(InstalledApplication App)
 
     public bool IsRunning => App.IsRunning;
 
-    public string License => App.License switch
-    {
-        null or "" => string.Empty,
-        "Valid" when App.LicenseExpirationDate is { Length: > 0 } d && d != "0" => $"Valid until {d}",
-        var l => l,
-    };
+    /// <summary>"Valid until 2027-09-18", "Not required" (the device says None), "Missing", ...</summary>
+    public string License => App.LicenseText;
 
     public string Signature => App.SignatureStatus ?? string.Empty;
 }
@@ -168,8 +164,8 @@ public sealed partial class AcapDialogViewModel : ObservableObject
     public partial DeviceChoice SelectedDevice { get; set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(StopCommand), nameof(RemoveCommand))]
-    [NotifyPropertyChangedFor(nameof(HasSelection))]
+    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(StopCommand), nameof(RemoveCommand), nameof(LicenseSelectionCommand))]
+    [NotifyPropertyChangedFor(nameof(HasSelection), nameof(LicenseSelectionBlockedReason))]
     public partial ApplicationRow? SelectedApplication { get; set; }
 
     [ObservableProperty]
@@ -187,12 +183,12 @@ public sealed partial class AcapDialogViewModel : ObservableObject
     public partial string? ConfirmRemoveText { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasPackage), nameof(InstallBlockedReason))]
+    [NotifyPropertyChangedFor(nameof(HasPackage), nameof(InstallBlockedReason), nameof(ShowInstallButton))]
     [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
     public partial EapManifest? Package { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasPackageFile), nameof(PackageFileName))]
+    [NotifyPropertyChangedFor(nameof(HasPackageFile), nameof(PackageFileName), nameof(ShowPackageCard))]
     public partial string? PackagePath { get; set; }
 
     /// <summary>Size of the picked file ("1.2 MB"), shown in the file row.</summary>
@@ -210,7 +206,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject
     public partial bool StartAfterInstall { get; set; } = true;
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(InstallCommand), nameof(PickPackageCommand), nameof(StartCommand), nameof(StopCommand), nameof(RemoveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InstallCommand), nameof(PickPackageCommand), nameof(StartCommand), nameof(StopCommand), nameof(RemoveCommand), nameof(LicenseSelectionCommand), nameof(InstallLicenseCommand))]
     [NotifyPropertyChangedFor(nameof(ShowUploadStatus), nameof(InstallBlockedReason))]
     public partial bool IsBusy { get; set; }
 
@@ -237,6 +233,9 @@ public sealed partial class AcapDialogViewModel : ObservableObject
 
     public bool HasPackage => Package is not null;
 
+    /// <summary>The footer's Install: a package was read and no license is being installed on its own.</summary>
+    public bool ShowInstallButton => HasPackage && !IsLicenseMode;
+
     public bool HasPackageError => !string.IsNullOrEmpty(PackageError);
 
     /// <summary>A package file was picked (valid or not): the install card is shown.</summary>
@@ -261,7 +260,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject
     public string CompatibilitySummary => Package is null
         ? string.Empty
         : CheckedCount >= Devices.Count
-            ? string.Create(CultureInfo.InvariantCulture, $"{CompatibleCount:N0} of {Devices.Count:N0} device(s) can install this package.")
+            ? string.Create(CultureInfo.InvariantCulture, $"{CompatibleCount:N0} of {Devices.Count:N0} {(Devices.Count == 1 ? "device" : "devices")} can install this package.")
             : string.Create(CultureInfo.InvariantCulture, $"{CompatibleCount:N0} of {CheckedCount:N0} checked devices can install this package; the other {Devices.Count - CheckedCount:N0} are checked by the task before installing.");
 
     /// <summary>Loads the application list of the selected device. Called when the dialog opens.</summary>
@@ -408,6 +407,11 @@ public sealed partial class AcapDialogViewModel : ObservableObject
     /// <summary>Reads the manifest of a local .eap and checks it against every selected device.</summary>
     public async Task LoadPackageAsync(string path)
     {
+        if (IsLicenseMode)
+        {
+            CloseLicense();
+        }
+
         PackagePath = path;
         PackageError = null;
         PackageFileDetails = null;
@@ -590,6 +594,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject
                 StartAfterInstall = StartAfterInstall,
                 AppDisplayName = package.DisplayName,
                 Kind = InstallKindOfAll(),
+                LicenseKeys = PayloadKeys(),
             });
         }
         catch (OperationCanceledException)

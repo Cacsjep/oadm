@@ -41,7 +41,18 @@ Application API (developer.axis.com/vapix/applications/application-api):
 - `config.cgi?action=get|set&name=AllowUnsigned|AllowRoot` (AXIS OS 11.2+). `AllowUnsigned`
   default true up to 11.11, false from 12.0; AXIS OS 13 removes it (signed only). `AllowRoot`
   default false from 11.8, not supported from 12.0.
-- `license.cgi` (upload/remove license key) - not used yet.
+- `license.cgi?action=uploadlicensekey&package=<name>` POST multipart, field `fileData` (the key file), and
+  `action=removelicensekey`. Not in the public docs we used; seen in the device's own web page script (AXIS OS 12.11,
+  read-only research). The page treats every answer without "Error" as accepted; OADM does the same.
+- Automatic activation with a license code is not a device API: the device's web page loads
+  `https://www.axis.com/app/acap/sdk.js` in the browser, which asks an Axis gateway for the key (with a token of its own)
+  and then uploads it with `uploadlicensekey`. OADM does not call Axis' service (decision 2026-10-13); users activate codes
+  on the device's Apps page.
+
+License key file (seen in a real key of AXIS Missing Features): XML `<LicenseKey>` with `FormatVersion` 1, `ApplicationID`
+(= `list.cgi` `ApplicationID`, = manifest `appId` / package.conf `APPID`), `Minimum/MaximumMajor/MinorVersion` (-1),
+`ExpirationDate` (`yyyy-MM-dd`), `DeviceID` (the MAC address), `SignatureKeyID`, `Signature`. The device checks the
+signature.
 
 `.eap` package: gzip-compressed tar. `manifest.json` (ACAP 3/4; `schemaVersion`,
 `acapPackageConf.setup.{appName, friendlyName, vendor, version, architecture, embeddedSdkVersion,
@@ -73,17 +84,21 @@ Manifest schema -> minimum AXIS OS: 1.0-1.2 10.7, 1.3 10.9, 1.3.1 11.0, 1.4.0 11
 | Start / Stop | Already in the requested state -> Done, no write. Errors 6/7 treated as success. Not installed -> Done with warning (multi-device selections). Status verified afterwards. |
 | Query | `listApplications` (read-only): API check, basicdeviceinfo, `EmbeddedDevelopment.Version`, `config.cgi get AllowUnsigned`, `list.cgi`. Returns `{device: facts, applications: [...]}`. |
 | Payload | `{action: install|remove|start|stop, application, fileId, sha256, version, allowDowngrade, startAfterInstall}`; no secrets. |
+| License keys | Key files only (`.key`, `.xml`, or a ZIP of them; `LicenseKeySet`): several at once, at most 10,000 keys, 8 KB each, a ZIP at most 64 MB unpacked (entries read with a bound, never by their declared size); the same device and application twice keeps the latest end date. Matched by `DeviceID` = the device's MAC address; the dialog shows per device Key found, No key, Key expired, Other application. Optional with an install (installed right after Verify installation, before the start) and on its own (toolbar **Install license** for the selected application). The payload carries one key per selected device (memory only, like every payload). |
+| License column | `list.cgi` `License`: "Valid until <date>" / "Valid", "Not required" (`None`: the application needs no license, e.g. AXIS Object Analytics; **Install license** is disabled for it), "Missing", "Invalid", other values as sent (`InstalledApplication.LicenseText`). |
+| License checks | Before anything is sent: the key parses, names this device's MAC address, the installed application's `ApplicationID` (when the device lists one) and has not expired; a device without a key is Done with warnings, nothing sent. Install license on its own: any other problem fails "Nothing was changed". With an install: a key problem or a refused key is a warning (the application is installed). Verify license: `list.cgi` License = Valid, else a warning with the device's value. |
 | Hardware tests | None for writes. Only read-only calls were made against the development camera. |
 
 ## Task steps
 
 Every device request and every wait is a named step (`AcapTaskPlugin.Steps`, planned up front); task progress comes
 from the steps. Steps that do not apply end Skipped with the reason. Task names: "Install <app> <version>", "Upgrade
-<app> to <version>", "Remove <app>", "Start <app>", "Stop <app>".
+<app> to <version>" (+ " with license"), "Install license of <app>", "Remove <app>", "Start <app>", "Stop <app>".
 
 | Action | Steps |
 |---|---|
 | Install / upgrade | Check compatibility, Read package, Read device info (basicdeviceinfo), Read SDK version (param.cgi, "Not reported" when absent), Read unsigned application setting (config.cgi `AllowUnsigned`), Read installed applications, Check package, Upload package (byte progress, then "The device installs the package"), Verify installation (Warning when the upload answer was lost but the version is listed); with "Start after install": Start application, Verify application state (Warning if not running; both Skipped when already running) |
+| Install license | Check compatibility, Read installed applications (Failed when not installed), Check license key (Warning without a key: the other two Skipped), Install license key, Verify license (Warning when the device does not show Valid). With an install the last three follow Verify installation. |
 | Remove | Check compatibility, Read installed applications (Warning when not installed, Failed for bundled apps), Remove application, Verify removal |
 | Start / Stop | Check compatibility, Read installed applications (Warning when not installed), Start application / Stop application, Verify application state (both Skipped when already in the requested state) |
 
@@ -99,5 +114,6 @@ from the steps. Steps that do not apply end Skipped with the reason. Task names:
 
 ## Permissions
 
-Keys `task:oadm.acap:install`, `:downgrade` (install with "Allow downgrade"), `:startStop` and `:remove`. The dialog
-hides the buttons and the option the role lacks. Operator default: install and start / stop.
+Keys `task:oadm.acap:install`, `:downgrade` (install with "Allow downgrade"), `:startStop`, `:remove` and `:license`
+(install license keys, also with an install). The dialog hides the buttons and the option the role lacks. Operator default:
+install, start / stop and license keys.

@@ -54,6 +54,7 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
     public static readonly TimeSpan UploadTimeout = TimeSpan.FromMinutes(10);
     public const string ControlPath = "/axis-cgi/applications/control.cgi";
     public const string ConfigPath = "/axis-cgi/applications/config.cgi";
+    public const string LicensePath = "/axis-cgi/applications/license.cgi";
     public const string EmbeddedDevelopmentVersionParameter = "Properties.EmbeddedDevelopment.Version";
 
     private readonly IVapixClient _vapix = vapix ?? throw new ArgumentNullException(nameof(vapix));
@@ -140,6 +141,48 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
         var text = await SendForTextAsync(request, ct).ConfigureAwait(false);
         EnsureOk(text, ControlErrors);
     }
+
+    /// <summary>
+    /// Installs a license key file: <c>license.cgi?action=uploadlicensekey&amp;package=name</c>, multipart field "fileData"
+    /// (as the device's own web page sends it, seen in its script on AXIS OS 12.11). The device checks the key and answers
+    /// "OK" or "Error: ...".
+    /// </summary>
+    public async Task UploadLicenseKeyAsync(string package, string keyXml, CancellationToken ct)
+    {
+        if (!EapReader.IsValidAppName(package))
+        {
+            throw new ArgumentException("Invalid application name.", nameof(package));
+        }
+
+        ArgumentException.ThrowIfNullOrEmpty(keyXml);
+        using var content = new MultipartFormDataContent();
+        var file = new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes(keyXml));
+        file.Headers.ContentType = new MediaTypeHeaderValue("text/xml");
+        content.Add(file, "fileData", "license.xml");
+        using var request = new HttpRequestMessage(HttpMethod.Post, BuildLicenseUri(package)) { Content = content };
+        var text = await SendForTextAsync(request, ct).ConfigureAwait(false);
+        EnsureLicenseAccepted(text);
+    }
+
+    /// <summary>
+    /// The device's page treats every answer without "Error" as accepted (the success text is not documented); the same
+    /// here. A refusal names the device's text.
+    /// </summary>
+    public static void EnsureLicenseAccepted(string reply)
+    {
+        ArgumentNullException.ThrowIfNull(reply);
+        var text = reply.Trim();
+        if (text.Contains("Error", StringComparison.OrdinalIgnoreCase))
+        {
+            var code = text.StartsWith("Error:", StringComparison.OrdinalIgnoreCase)
+                ? ParseInt(text["Error:".Length..].Trim().Split([' ', '\n', '\r'], 2)[0])
+                : null;
+            throw new AcapDeviceException(code, "The device refused the license key: " + FirstLine(text));
+        }
+    }
+
+    public static string BuildLicenseUri(string package) =>
+        $"{LicensePath}?action=uploadlicensekey&package={Uri.EscapeDataString(package)}";
 
     public static string BuildControlUri(AcapControlAction action, string package) =>
         $"{ControlPath}?action={action.ToString().ToLowerInvariant()}&package={Uri.EscapeDataString(package)}";

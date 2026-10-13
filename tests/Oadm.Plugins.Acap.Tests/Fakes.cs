@@ -56,8 +56,17 @@ internal sealed class FakeAcapDevice : IVapixClient
 
     public Uri BaseAddress { get; } = new("https://10.0.0.48/");
 
-    public void Add(string name, string version, string status = "Stopped", bool bundled = false, string vendor = "Acme") =>
-        Apps[name] = new InstalledApplication { Name = name, NiceName = name + " nice", Vendor = vendor, Version = version, Status = status, Bundled = bundled, License = "None", SignatureStatus = "Unknown" };
+    public void Add(string name, string version, string status = "Stopped", bool bundled = false, string vendor = "Acme", string? applicationId = null) =>
+        Apps[name] = new InstalledApplication { Name = name, NiceName = name + " nice", Vendor = vendor, Version = version, Status = status, Bundled = bundled, License = "None", SignatureStatus = "Unknown", ApplicationId = applicationId };
+
+    /// <summary>The key files license.cgi received, by package.</summary>
+    public Dictionary<string, string> LicenseKeys { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>The answer of license.cgi instead of accepting the key (e.g. "Error: 1").</summary>
+    public string? LicenseReply { get; set; }
+
+    /// <summary>The application id a package installed by upload.cgi gets.</summary>
+    public string? UploadedApplicationId { get; set; }
 
     public Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct) =>
         Task.FromResult(new BasicDeviceInfo("B8A44F631339", "P3265-V", "AXIS P3265-V", "AXIS P3265-V Dome Camera", Firmware, "931.11", Architecture, "Dome Camera"));
@@ -89,6 +98,9 @@ internal sealed class FakeAcapDevice : IVapixClient
             case ApplicationApiClient.UploadPath:
                 Writes.Add("upload");
                 return await UploadAsync(request, ct);
+            case ApplicationApiClient.LicensePath:
+                Writes.Add($"license {query["package"]}");
+                return Text(await LicenseAsync(request, query["action"]!, query["package"]!, ct));
             case ApplicationApiClient.ControlPath:
                 Writes.Add($"{query["action"]} {query["package"]}");
                 return Text(Control(query["action"]!, query["package"]!));
@@ -121,6 +133,7 @@ internal sealed class FakeAcapDevice : IVapixClient
             Version = manifest.Version,
             Status = wasRunning ? "Running" : "Stopped",
             License = "None",
+            ApplicationId = UploadedApplicationId,
         };
         if (UploadTimesOut)
         {
@@ -128,6 +141,39 @@ internal sealed class FakeAcapDevice : IVapixClient
         }
 
         return Text("OK");
+    }
+
+    /// <summary>Like AXIS OS: the key must be multipart "fileData"; the device checks it (here: its MAC and application id).</summary>
+    private async Task<string> LicenseAsync(HttpRequestMessage request, string action, string package, CancellationToken ct)
+    {
+        Assert.Equal("uploadlicensekey", action);
+        var multipart = Assert.IsType<MultipartFormDataContent>(request.Content);
+        var part = Assert.Single(multipart);
+        Assert.Equal("fileData", part.Headers.ContentDisposition!.Name!.Trim('"'));
+        var xml = await part.ReadAsStringAsync(ct);
+        if (LicenseReply is not null)
+        {
+            return LicenseReply;
+        }
+
+        if (!Apps.TryGetValue(package, out var app))
+        {
+            return "Error: 4";
+        }
+
+        var key = LicenseKey.Parse(xml);
+        if (key.DeviceId != "B8A44F631339" || (app.ApplicationId is { } id && id != key.ApplicationId))
+        {
+            return "Error: 2";
+        }
+
+        LicenseKeys[package] = xml;
+        Apps[package] = app with
+        {
+            License = "Valid",
+            LicenseExpirationDate = key.ExpirationDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+        };
+        return "OK";
     }
 
     private string Control(string action, string package)
@@ -172,7 +218,7 @@ internal sealed class FakeAcapDevice : IVapixClient
         var sb = new StringBuilder("<reply result=\"ok\">\n");
         foreach (var a in Apps.Values)
         {
-            sb.Append(CultureInfoInvariant($" <application Name=\"{E(a.Name)}\" NiceName=\"{E(a.NiceName)}\" Vendor=\"{E(a.Vendor)}\" Version=\"{E(a.Version)}\" Bundled=\"{(a.Bundled ? "Yes" : "No")}\" Status=\"{E(a.Status)}\" License=\"{E(a.License)}\" SignatureStatus=\"{E(a.SignatureStatus)}\" />\n"));
+            sb.Append(CultureInfoInvariant($" <application Name=\"{E(a.Name)}\" NiceName=\"{E(a.NiceName)}\" Vendor=\"{E(a.Vendor)}\" Version=\"{E(a.Version)}\" Bundled=\"{(a.Bundled ? "Yes" : "No")}\" Status=\"{E(a.Status)}\" License=\"{E(a.License)}\" LicenseExpirationDate=\"{E(a.LicenseExpirationDate)}\" ApplicationID=\"{E(a.ApplicationId)}\" SignatureStatus=\"{E(a.SignatureStatus)}\" />\n"));
         }
 
         return sb.Append("</reply>").ToString();

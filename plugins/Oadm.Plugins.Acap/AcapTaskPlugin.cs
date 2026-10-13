@@ -57,16 +57,19 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
         new(AcapPermissions.Downgrade, "Downgrade applications", "Install an older version of an application.") { OperatorDefault = false },
         new(AcapPermissions.StartStop, "Start and stop applications", "Start and stop applications that are installed."),
         new(AcapPermissions.Remove, "Remove applications", "Delete applications from devices; their settings are lost.") { OperatorDefault = false },
+        new(AcapPermissions.License, "Install license keys", "Install license key files for applications."),
     ];
 
     /// <summary>The permission of the run's action; an install with "Allow downgrade" also needs "downgrade".</summary>
     public IReadOnlyList<string>? RequiredPermissions(string? payloadJson)
     {
         var payload = AcapPayload.Parse(payloadJson);
+        var license = payload.LicenseKeys.Count > 0 ? new[] { AcapPermissions.License } : [];
         return payload.Action switch
         {
-            AcapAction.Install when payload.AllowDowngrade => [AcapPermissions.Install, AcapPermissions.Downgrade],
-            AcapAction.Install => [AcapPermissions.Install],
+            AcapAction.Install when payload.AllowDowngrade => [AcapPermissions.Install, AcapPermissions.Downgrade, .. license],
+            AcapAction.Install => [AcapPermissions.Install, .. license],
+            AcapAction.InstallLicense => [AcapPermissions.License],
             AcapAction.Start or AcapAction.Stop => [AcapPermissions.StartStop],
             AcapAction.Remove => [AcapPermissions.Remove],
             _ => null,
@@ -137,19 +140,26 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
         public const string Remove = "Remove application";
         public const string VerifyState = "Verify application state";
         public const string VerifyRemoval = "Verify removal";
+        public const string CheckLicense = "Check license key";
+        public const string InstallLicense = "Install license key";
+        public const string VerifyLicense = "Verify license";
+
+        /// <summary>A device of the selection without a key in the chosen files.</summary>
+        public const string NoKey = "No license key for this device.";
     }
 
     public async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
-        var payload = AcapPayload.Parse(payloadJson);
+        var payload = AcapPayload.ParseShared(payloadJson);
+        string[] license = payload.LicenseKeys.Count > 0 ? [Steps.CheckLicense, Steps.InstallLicense, Steps.VerifyLicense] : [];
+        string[] install = [Steps.CheckCompatibility, Steps.ReadPackage, Steps.ReadDeviceInfo, Steps.ReadDevelopmentVersion, Steps.ReadUnsignedSetting, Steps.ReadApplications, Steps.CheckPackage, Steps.Upload, Steps.VerifyInstallation, .. license];
         ctx.PlanSteps(payload.Action switch
         {
-            AcapAction.Install when payload.StartAfterInstall =>
-                [Steps.CheckCompatibility, Steps.ReadPackage, Steps.ReadDeviceInfo, Steps.ReadDevelopmentVersion, Steps.ReadUnsignedSetting, Steps.ReadApplications, Steps.CheckPackage, Steps.Upload, Steps.VerifyInstallation, Steps.Start, Steps.VerifyState],
-            AcapAction.Install =>
-                [Steps.CheckCompatibility, Steps.ReadPackage, Steps.ReadDeviceInfo, Steps.ReadDevelopmentVersion, Steps.ReadUnsignedSetting, Steps.ReadApplications, Steps.CheckPackage, Steps.Upload, Steps.VerifyInstallation],
+            AcapAction.Install when payload.StartAfterInstall => [.. install, Steps.Start, Steps.VerifyState],
+            AcapAction.Install => install,
+            AcapAction.InstallLicense => [Steps.CheckCompatibility, Steps.ReadApplications, .. license],
             AcapAction.Remove => [Steps.CheckCompatibility, Steps.ReadApplications, Steps.Remove, Steps.VerifyRemoval],
             AcapAction.Start => [Steps.CheckCompatibility, Steps.ReadApplications, Steps.Start, Steps.VerifyState],
             AcapAction.Stop => [Steps.CheckCompatibility, Steps.ReadApplications, Steps.Stop, Steps.VerifyState],
@@ -168,7 +178,10 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
         switch (payload.Action)
         {
             case AcapAction.Install:
-                await InstallAsync(ctx, client, payload, ct).ConfigureAwait(false);
+                await InstallAsync(ctx, device, client, payload, ct).ConfigureAwait(false);
+                break;
+            case AcapAction.InstallLicense:
+                await InstallLicenseOnlyAsync(ctx, device, client, payload, ct).ConfigureAwait(false);
                 break;
             case AcapAction.Remove:
                 await RemoveAsync(ctx, client, payload.Application!, ct).ConfigureAwait(false);
@@ -182,7 +195,7 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
         }
     }
 
-    private async Task InstallAsync(ITaskExecutionContext ctx, ApplicationApiClient client, AcapPayload payload, CancellationToken ct)
+    private async Task InstallAsync(ITaskExecutionContext ctx, IDeviceInfo device, ApplicationApiClient client, AcapPayload payload, CancellationToken ct)
     {
         UploadedFile file;
         EapManifest package;
@@ -345,6 +358,15 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
             }
         }
 
+        if (payload.LicenseKeys.Count > 0)
+        {
+            // The application is installed: a key problem of this device is a warning, never a failure.
+            if (await InstallLicenseAsync(ctx, device, client, app, payload, failOnProblem: false, ct).ConfigureAwait(false) is { } licensed)
+            {
+                app = licensed;
+            }
+        }
+
         if (!payload.StartAfterInstall)
         {
             return;
@@ -376,6 +398,135 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 step.Warn($"{app.DisplayName} was installed but is {after?.Status ?? "not listed"} after the start command. Check its license and settings.");
             }
         }
+    }
+
+    private async Task InstallLicenseOnlyAsync(ITaskExecutionContext ctx, IDeviceInfo device, ApplicationApiClient client, AcapPayload payload, CancellationToken ct)
+    {
+        var name = payload.Application!;
+        InstalledApplication? app;
+        using (var step = ctx.BeginStep(Steps.ReadApplications))
+        {
+            app = await FindAsync(client, name, ct).ConfigureAwait(false)
+                ?? throw new InvalidOperationException($"{payload.AppDisplayName ?? name} is not installed on this device. Nothing was changed.");
+            step.Complete($"{app.DisplayName} {app.Version}, license {LicenseText(app)}");
+        }
+
+        await InstallLicenseAsync(ctx, device, client, app, payload, failOnProblem: true, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Check license key, Install license key, Verify license. The key must name this device's MAC address and the installed
+    /// application and must not be expired; it is checked before anything is sent. Without a key for this device: a warning,
+    /// nothing sent. Another problem fails the task (license only) or is a warning (after an install). Returns the
+    /// application as listed after the key, null when no key was installed.
+    /// </summary>
+    private async Task<InstalledApplication?> InstallLicenseAsync(
+        ITaskExecutionContext ctx, IDeviceInfo device, ApplicationApiClient client, InstalledApplication app, AcapPayload payload, bool failOnProblem, CancellationToken ct)
+    {
+        LicenseKey? key = null;
+        using (var step = ctx.BeginStep(Steps.CheckLicense))
+        {
+            var mac = LicenseKey.NormalizeMac(device.Serial);
+            var entry = mac is null ? null : payload.KeyFor(mac);
+            string? problem = null;
+            if (entry is null)
+            {
+                step.Warn(Steps.NoKey + " Nothing was sent.");
+            }
+            else
+            {
+                try
+                {
+                    key = LicenseKey.Parse(entry.Xml);
+                    problem = KeyProblem(key, mac!, app, DateOnly.FromDateTime(_time.GetUtcNow().UtcDateTime));
+                }
+                catch (FormatException ex)
+                {
+                    problem = ex.Message;
+                }
+
+                if (problem is not null)
+                {
+                    key = null;
+                    if (failOnProblem)
+                    {
+                        throw new InvalidOperationException(problem + " Nothing was changed.");
+                    }
+
+                    step.Warn(problem + " The key was not installed.");
+                }
+                else
+                {
+                    step.Complete($"Key for {app.DisplayName}, {key!.ValidityText}");
+                }
+            }
+        }
+
+        if (key is null)
+        {
+            ctx.SkipStep(Steps.InstallLicense, "No usable key.");
+            ctx.SkipStep(Steps.VerifyLicense, "No usable key.");
+            return null;
+        }
+
+        using (var step = ctx.BeginStep(Steps.InstallLicense))
+        {
+            try
+            {
+                await client.UploadLicenseKeyAsync(app.Name, key.Xml, ct).ConfigureAwait(false);
+            }
+            catch (AcapDeviceException ex) when (!failOnProblem)
+            {
+                step.Warn(ex.Message);
+                ctx.SkipStep(Steps.VerifyLicense, "The key was not installed.");
+                return null;
+            }
+
+            ctx.Log(TaskLogLevel.Info, $"License key for {app.DisplayName} installed ({key.ValidityText}).");
+            step.Complete(app.DisplayName);
+        }
+
+        using (var step = ctx.BeginStep(Steps.VerifyLicense))
+        {
+            var after = await FindAsync(client, app.Name, ct).ConfigureAwait(false);
+            if (after is not null && string.Equals(after.License, "Valid", StringComparison.OrdinalIgnoreCase))
+            {
+                step.Complete($"{after.DisplayName}: license {LicenseText(after)}");
+            }
+            else
+            {
+                step.Warn($"The device took the key, but shows the license of {app.DisplayName} as {after?.License ?? "unknown"}.");
+            }
+
+            return after;
+        }
+    }
+
+    /// <summary>Why <paramref name="key"/> cannot be installed for <paramref name="app"/> on the device <paramref name="mac"/>; null when it can.</summary>
+    public static string? KeyProblem(LicenseKey key, string mac, InstalledApplication app, DateOnly today)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(app);
+        if (key.DeviceId != mac)
+        {
+            return $"The key is for the device {key.DeviceId}, not {mac}.";
+        }
+
+        if (app.ApplicationId is { Length: > 0 } id && id != "0" && key.ApplicationId != id)
+        {
+            return $"The key is for another application (ID {key.ApplicationId}; {app.DisplayName} has ID {id}).";
+        }
+
+        return key.IsExpired(today)
+            ? $"The key expired on {key.ExpirationDate!.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}."
+            : null;
+    }
+
+    /// <summary>"Valid until 2027-09-18", "Not required", ... (<see cref="InstalledApplication.LicenseText"/>).</summary>
+    public static string LicenseText(InstalledApplication app)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+        return app.LicenseText;
     }
 
     private static async Task RemoveAsync(ITaskExecutionContext ctx, ApplicationApiClient client, string name, CancellationToken ct)

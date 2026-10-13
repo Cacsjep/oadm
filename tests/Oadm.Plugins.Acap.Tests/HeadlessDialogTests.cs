@@ -41,18 +41,21 @@ public sealed class HeadlessDialogTests
         File.WriteAllBytes(eapPath,EapBuilder.FromManifest(EapBuilder.Manifest(appName: "ax_msf", friendlyName: "Missing Features", vendor: "Commend Österreich GmbH", version: "3.9.0", schema: "1.8.0", osMin: "11.11", osMax: "99")));
 
         var d1 = new FakeDevice { Model = "P3265-V", Address = "10.0.0.48" };
-        var d2 = new FakeDevice { Model = "M3086-V", Address = "10.0.0.52" };
+        var d2 = new FakeDevice { Model = "M3086-V", Address = "10.0.0.52", Serial = "B8A44F000052" };
         var ctx = new FakeDialogContext();
         var recorded = ApplicationApiClient.ParseList(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "list-p3265v-12.11.xml")));
         ctx.Devices[d1.Id] = new ListApplicationsResult { Device = new AcapDeviceFacts { Architecture = "aarch64", FirmwareVersion = "12.11.77", AllowUnsigned = true }, Applications = recorded };
         ctx.Devices[d2.Id] = FakeDialogContext.State(arch: "armv7hf", fw: "11.11.124");
+        var keyPath = Path.Combine(Path.GetTempPath(), "oadm-acap-headless-" + Guid.NewGuid().ToString("N") + ".key");
+        File.WriteAllText(keyPath, LicenseKeyTests.Key());
 
         var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
         var (rows, compat) = await session.Dispatch(async () =>
         {
             var window = new AcapWindow();
-            var vm = new AcapDialogViewModel(ctx, [d1, d2], new FakePicker(eapPath));
+            var vm = new AcapDialogViewModel(ctx, [d1, d2], new FakePicker(eapPath)) { Today = () => new DateOnly(2026, 10, 13) };
             window.Attach(vm);
+            vm.UseKeyPicker(new KeyPicker([keyPath]));
             window.Show();
             await vm.InitializeAsync();
             vm.SelectedApplication = vm.Applications.First(a => a.PackageName == "ax_msf");
@@ -62,6 +65,15 @@ public sealed class HeadlessDialogTests
             await vm.PickPackageCommand.ExecuteAsync(null);
             Pump();
             Capture(window, outDir, "acap-dialog-install.png");
+
+            await vm.PickLicenseKeysCommand.ExecuteAsync(null);
+            Pump();
+            Capture(window, outDir, "acap-dialog-install-keys.png");
+
+            await vm.LicenseSelectionCommand.ExecuteAsync(null);
+            Pump();
+            Capture(window, outDir, "acap-dialog-license.png");
+            Assert.Equal(["Key found", "No key"], vm.LicenseRows.Select(r => r.Verdict));
 
             vm.RemoveCommand.Execute(null);
             Pump();
@@ -74,6 +86,12 @@ public sealed class HeadlessDialogTests
         Assert.Equal(8, rows);
         Assert.Equal(2, compat);
         File.Delete(eapPath);
+        File.Delete(keyPath);
+    }
+
+    private sealed class KeyPicker(IReadOnlyList<string> paths) : ILicenseKeyPicker
+    {
+        public Task<IReadOnlyList<string>> PickLicenseKeysAsync() => Task.FromResult(paths);
     }
 
     private static void Pump()

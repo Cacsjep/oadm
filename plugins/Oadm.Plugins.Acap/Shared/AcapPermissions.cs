@@ -7,4 +7,5 @@ public static class AcapPermissions
     public const string Downgrade = "downgrade";
     public const string StartStop = "startStop";
     public const string Remove = "remove";
+    public const string License = "license";
 }

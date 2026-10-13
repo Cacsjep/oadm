@@ -45,6 +45,9 @@
           <Button Classes="toolbar" Command="{Binding PickPackageCommand}" ToolTip.Tip="Choose an ACAP package (.eap) to install on the selected devices" IsVisible="{Binding MayInstall}">
             <ui:IconLabel Icon="{DynamicResource Icon.upload}" Text="Install or upgrade" />
           </Button>
+          <Button Classes="toolbar" Command="{Binding LicenseSelectionCommand}" ToolTip.Tip="{Binding LicenseSelectionBlockedReason}" ToolTip.ShowOnDisabled="True" IsVisible="{Binding MayLicense}">
+            <ui:IconLabel Icon="{DynamicResource Icon.key}" Text="Install license" />
+          </Button>
         </StackPanel>
 
         <Panel Grid.Row="2">
@@ -82,7 +85,7 @@
     </Border>
 
     <!-- Install or upgrade -->
-    <Border Grid.Row="2" Classes="card" Margin="16,16,16,0" IsVisible="{Binding HasPackageFile}">
+    <Border Grid.Row="2" Classes="card" Margin="16,16,16,0" IsVisible="{Binding ShowPackageCard}">
       <StackPanel>
         <ui:CardHeader Title="{Binding PackageTitle}" Description="{Binding PackageDetails}" />
         <StackPanel Classes="form">
@@ -100,6 +103,16 @@
               <DataGridTextColumn Header="Details" Binding="{Binding Details}" Width="*" x:DataType="vm:DeviceCompatibilityRow" />
             </DataGrid.Columns>
           </DataGrid>
+          <!-- Optional license keys, installed right after the application -->
+          <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding HasPackage}">
+            <Button Classes="secondary" Command="{Binding PickLicenseKeysCommand}" IsVisible="{Binding MayLicense}">
+              <ui:IconLabel Icon="{DynamicResource Icon.key}" Text="Add license keys" />
+            </Button>
+            <TextBlock Classes="secondary" VerticalAlignment="Center" Text="{Binding LicenseFilesText}" IsVisible="{Binding HasLicenseFiles}" />
+            <TextBlock VerticalAlignment="Center" Text="{Binding LicenseSummary}" IsVisible="{Binding HasLicenseFiles}" />
+            <Button Classes="link" Content="Remove keys" Command="{Binding ClearLicenseKeysCommand}" VerticalAlignment="Center" IsVisible="{Binding HasLicenseFiles}" />
+          </StackPanel>
+          <ui:StatusChip IsWarning="True" Text="{Binding LicenseProblemText}" MaxLines="3" IsVisible="{Binding HasLicenseProblems}" />
           <StackPanel Orientation="Horizontal" Spacing="24" IsVisible="{Binding HasPackage}">
             <CheckBox Content="Start after install" IsChecked="{Binding StartAfterInstall}" />
             <CheckBox Content="Allow downgrade" IsChecked="{Binding AllowDowngrade}" IsVisible="{Binding MayDowngrade}" />
@@ -111,9 +124,39 @@
       </StackPanel>
     </Border>
 
+    <!-- Install license: the keys of the chosen files per selected device -->
+    <Border Grid.Row="2" Classes="card" Margin="16,16,16,0" IsVisible="{Binding IsLicenseMode}">
+      <StackPanel>
+        <ui:CardHeader Title="{Binding LicenseTitle}" Description="{Binding LicenseFilesText}">
+          <Button Classes="secondary" Command="{Binding PickLicenseKeysCommand}">
+            <ui:IconLabel Icon="{DynamicResource Icon.key}" Text="Choose other keys" />
+          </Button>
+        </ui:CardHeader>
+        <StackPanel Classes="form">
+          <DataGrid ItemsSource="{Binding LicenseRows}" MaxHeight="240" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Device" Binding="{Binding DeviceLabel}" Width="240" x:DataType="vm:LicenseKeyRow" />
+              <DataGridTemplateColumn Header="Key" Width="200" SortMemberPath="Verdict">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:LicenseKeyRow">
+                    <ui:StatusChip Margin="10,0" Text="{Binding Verdict}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Details" Binding="{Binding Details}" Width="*" x:DataType="vm:LicenseKeyRow" />
+            </DataGrid.Columns>
+          </DataGrid>
+          <ui:StatusChip IsWarning="True" Text="{Binding LicenseProblemText}" MaxLines="3" IsVisible="{Binding HasLicenseProblems}" />
+          <TextBlock Classes="secondary" Text="{Binding LicenseSummary}" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
     <ui:DialogFooter Grid.Row="3" CancelCommand="{Binding CancelCommand}">
-      <Button Classes="primary" Content="Install" Command="{Binding InstallCommand}" IsVisible="{Binding HasPackage}" IsDefault="True"
+      <Button Classes="primary" Content="Install" Command="{Binding InstallCommand}" IsVisible="{Binding ShowInstallButton}" IsDefault="True"
               ToolTip.Tip="{Binding InstallBlockedReason}" ToolTip.ShowOnDisabled="True" />
+      <Button Classes="primary" Content="Install license" Command="{Binding InstallLicenseCommand}" IsVisible="{Binding IsLicenseMode}"
+              ToolTip.Tip="{Binding InstallLicenseBlockedReason}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>
   </Grid>
 </Window>

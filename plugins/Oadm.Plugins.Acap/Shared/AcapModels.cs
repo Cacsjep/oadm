@@ -29,9 +29,12 @@ public enum AcapAction
     Remove = 1,
     Start = 2,
     Stop = 3,
+
+    /// <summary>Install license keys for an installed application (key files only, matched by MAC address).</summary>
+    InstallLicense = 4,
 }
 
-/// <summary>Task payload produced by the dialog. Contains no secrets.</summary>
+/// <summary>Task payload produced by the dialog. Contains no passwords; license keys are kept in memory like every payload.</summary>
 public sealed record AcapPayload
 {
     public AcapAction Action { get; init; }
@@ -54,6 +57,12 @@ public sealed record AcapPayload
     /// <summary>Install: start the application after a successful install.</summary>
     public bool StartAfterInstall { get; init; }
 
+    /// <summary>
+    /// Install (optional) and InstallLicense: the license keys of the selected devices, one per device. Each task takes the key
+    /// with its device's MAC address and parses it again; a device without one is Done with warnings.
+    /// </summary>
+    public IReadOnlyList<LicenseKeyEntry> LicenseKeys { get; init; } = [];
+
     /// <summary>Friendly name of the application ("AXIS Video Motion Detection"); only names the task.</summary>
     public string? AppDisplayName { get; init; }
 
@@ -72,15 +81,64 @@ public sealed record AcapPayload
         var version = string.IsNullOrWhiteSpace(Version) ? null : Version.Trim();
         return Action switch
         {
-            AcapAction.Install when Kind == InstallKind.Upgrade && version is not null => $"Upgrade {app} to {version}",
-            AcapAction.Install => version is null ? $"Install {app}" : $"Install {app} {version}",
+            AcapAction.Install when Kind == InstallKind.Upgrade && version is not null => $"Upgrade {app} to {version}{WithLicense}",
+            AcapAction.Install => (version is null ? $"Install {app}" : $"Install {app} {version}") + WithLicense,
+            AcapAction.InstallLicense => $"Install license of {app}",
             AcapAction.Remove => $"Remove {app}",
             AcapAction.Start => $"Start {app}",
             _ => $"Stop {app}",
         };
     }
 
+    private string WithLicense => LicenseKeys.Count > 0 ? " with license" : string.Empty;
+
     public string ToJson() => JsonSerializer.Serialize(this, AcapPlugin.Json);
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<string, AcapPayload> Parsed = new();
+
+    /// <summary>
+    /// <see cref="Parse"/> once per payload string: the engine hands the same string to every task of a run, so 5,000 tasks
+    /// with 5,000 license keys parse it once, not 5,000 times.
+    /// </summary>
+    public static AcapPayload ParseShared(string? json)
+    {
+        if (json is null)
+        {
+            return Parse(json);
+        }
+
+        if (Parsed.TryGetValue(json, out var cached))
+        {
+            return cached;
+        }
+
+        var payload = Parse(json);
+        Parsed.AddOrUpdate(json, payload);
+        return payload;
+    }
+
+    private Dictionary<string, LicenseKeyEntry>? _keysByMac;
+
+    /// <summary>The key of the device with this MAC address (normalized), null without one. Indexed once per payload.</summary>
+    public LicenseKeyEntry? KeyFor(string mac)
+    {
+        var index = _keysByMac;
+        if (index is null)
+        {
+            index = new Dictionary<string, LicenseKeyEntry>(StringComparer.Ordinal);
+            foreach (var key in LicenseKeys)
+            {
+                if (LicenseKey.NormalizeMac(key.DeviceId) is { } normalized)
+                {
+                    index.TryAdd(normalized, key);
+                }
+            }
+
+            _keysByMac = index;
+        }
+
+        return index.GetValueOrDefault(mac);
+    }
 
     /// <summary>Parses and validates a payload. Throws <see cref="ArgumentException"/> for invalid input; nothing has been changed then.</summary>
     public static AcapPayload Parse(string? json)
@@ -105,6 +163,8 @@ public sealed record AcapPayload
             throw new ArgumentException("The task payload has no valid action. Nothing was changed.", nameof(json));
         }
 
+        payload = payload with { LicenseKeys = payload.LicenseKeys ?? [] };
+
         if (payload.Action == AcapAction.Install)
         {
             if (string.IsNullOrWhiteSpace(payload.FileId))
@@ -115,6 +175,17 @@ public sealed record AcapPayload
         else if (!EapReader.IsValidAppName(payload.Application))
         {
             throw new ArgumentException("The application name is not valid. Nothing was changed.", nameof(json));
+        }
+
+        if (payload.Action == AcapAction.InstallLicense && payload.LicenseKeys.Count == 0)
+        {
+            throw new ArgumentException("Choose the license key files. Nothing was changed.", nameof(json));
+        }
+
+        if (payload.LicenseKeys.Count > LicenseKeySet.MaxKeys
+            || payload.LicenseKeys.Any(k => k is null || LicenseKey.NormalizeMac(k.DeviceId) is null || string.IsNullOrEmpty(k.Xml) || k.Xml.Length > LicenseKey.MaxBytes))
+        {
+            throw new ArgumentException("The license keys of the task are not valid. Nothing was changed.", nameof(json));
         }
 
         return payload;
@@ -166,6 +237,20 @@ public sealed record InstalledApplication
 
     [JsonIgnore]
     public bool IsRunning => string.Equals(Status, "Running", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The device says the application needs no license (<c>License="None"</c>, e.g. AXIS Object Analytics).</summary>
+    [JsonIgnore]
+    public bool NeedsNoLicense => string.Equals(License, "None", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>"Valid until 2027-09-18", "Valid", "Not required" (None), "Missing", "Invalid", "Unknown".</summary>
+    [JsonIgnore]
+    public string LicenseText => License switch
+    {
+        null or "" => "Unknown",
+        "Valid" when LicenseExpirationDate is { Length: > 0 } d && d != "0" => $"Valid until {d}",
+        _ when NeedsNoLicense => "Not required",
+        var l => l,
+    };
 
     [JsonIgnore]
     public string DisplayName => string.IsNullOrWhiteSpace(NiceName) ? Name : NiceName;
