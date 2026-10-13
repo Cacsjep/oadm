@@ -122,7 +122,7 @@ public sealed record CompatibilityChip(string Command, CompatibilityState State,
     public string Line => Command + ": " + Text;
 }
 
-/// <summary>A managed device in the target list (checkbox) with the compatibility of every rollout command.</summary>
+/// <summary>A managed device (Send list, rollout targets) with the compatibility of every rollout command.</summary>
 public sealed partial class TargetDeviceViewModel : ObservableObject
 {
     public TargetDeviceViewModel(IDeviceInfo device)
@@ -151,9 +151,6 @@ public sealed partial class TargetDeviceViewModel : ObservableObject
         DeviceStatus.CertificateChanged => "Certificate changed",
         _ => Device.Status.ToString(),
     };
-
-    [ObservableProperty]
-    public partial bool IsSelected { get; set; }
 
     /// <summary>Compatibility of every rollout command, in rollout order (empty without commands).</summary>
     public IReadOnlyList<CompatibilityChip> Compatibility { get; private set; } = [];
@@ -215,14 +212,6 @@ public sealed partial class TargetDeviceViewModel : ObservableObject
             : string.Create(CultureInfo.InvariantCulture, $"{firstProblem.Line} (+{problems - 1} more)");
         OnPropertyChanged(string.Empty);
     }
-
-    /// <summary>Address, model, serial or host name contains <paramref name="search"/> (trimmed by the caller; empty matches all).</summary>
-    public bool Matches(string search) =>
-        search.Length == 0
-        || Device.Address.Contains(search, StringComparison.OrdinalIgnoreCase)
-        || (Device.Model?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)
-        || Device.Serial.Contains(search, StringComparison.OrdinalIgnoreCase)
-        || (Device.HostName?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false);
 }
 
 /// <summary>The Postman-like result of "Try on one device": status, duration, interpreted result, headers and body.</summary>

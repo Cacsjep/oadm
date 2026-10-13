@@ -5,6 +5,8 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 
+using Oadm.Sdk.Client.Controls;
+
 namespace Oadm.Plugins.VapixCommander.Client;
 
 /// <summary>The Commander page view. Code-behind only wires the file pickers, library clicks and keyboard shortcuts to view model commands.</summary>
@@ -25,6 +27,9 @@ public partial class CommanderView : UserControl, ICommanderFiles, ICommanderDia
         {
             vm.Files = this;
             vm.Dialogs = this;
+            vm.PickDevices = async (devices, initial) => TopLevel.GetTopLevel(this) is Window owner
+                ? await DevicePickerWindow.ShowChoiceAsync(owner, devices, initial, new DevicePickerOptions { AllowAll = true, AllowTags = true }, "Choose target devices").ConfigureAwait(true)
+                : null;
         }
 
         base.OnDataContextChanged(e);

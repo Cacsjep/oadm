@@ -95,10 +95,11 @@ tooltip); the shared tasks pane sits below the page (`ShowTasksPane`), so a star
   type (else from the text: param.cgi key=value); JSON and XML are shown pretty-printed (2 spaces, also when the device
   sends them minified) with a **Pretty / Raw** switch (Raw = the exact device text, `TryOutcome.RawBody`, sent only when
   it differs), the content type and "Cut at 256 KB." next to it.
-- **Target devices**: the Devices page selection preselected; buttons Devices page selection, All (matching the search),
-  Compatible, None; search; summary "4,812 compatible · 188 not compatible · 12 not checked"; per device a check box and
-  one status chip (up to two lines): "Compatible" or the first problem "<command>: Missing API x (+N more)", tooltip every
-  command. The run controls are docked at the bottom: a status chip only for errors, the summary "3 commands × 2 devices ·
+- **Target devices**: the Devices page selection preselected; the purple device button of the event rules ("Choose
+  devices", "Selected devices: Tag Building A and 3 devices") opens the shared device picker (All devices, chosen devices
+  and tags; a tag means the devices that have it when the rollout starts); summary
+  "1,500 devices · 1,169 compatible · 214 not compatible · 117 not checked"; below it only the chosen devices with a problem
+  (not reachable, or the first command problem "<command>: Missing API x (+N more)", tooltip every command). The run controls are docked at the bottom: a status chip only for errors, the summary "3 commands × 2 devices ·
   1 write", **Stop on first error** (default on), **Run on N devices**: the confirmation lists every command with its
   kind, the incompatible devices and the stop mode when a command writes; dangerous commands need a second confirmation.
 
@@ -124,11 +125,11 @@ Its own dialog (`RequestBuilderWindow` / `RequestBuilderViewModel`, 1360x760).
 
 ## Scale
 
-The target list is virtualized; `Targets` / `VisibleTargets` are replaced as whole lists (one reset), sorted by IPv4
-address numerically; the selection is counted incrementally and All / None / Devices page selection / Compatible set the
-flags in one O(n) pass with one notification; compatibility is computed on the client from each device's cached API list
+The problem list is virtualized; `Targets`, `SelectedTargets` and `ProblemTargets` are replaced as whole lists (one
+reset), sorted by IPv4 address numerically; the choice is resolved in one O(n) pass (ids and tags in hash sets) after
+every choice and device change; compatibility is computed on the client from each device's cached API list
 (`Compatibility.Check`; the server checks a fresh list again before writes), no request per device. With 5,000 devices
-filter, select all, devices page selection, compatibility and select compatible each stay under 200 ms (test).
+All devices, the devices page selection, a tag choice and the compatibility each stay under 200 ms (test).
 
 ## Tests
 

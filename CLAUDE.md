@@ -1482,7 +1482,8 @@ or saved ones, fill their fields and roll them out to many devices, or send one 
   success, errors and values are read (Axis devices answer errors with HTTP 200).
 - Page: Library (search, tree Built-in / Saved; a click adds a command to the rollout set; **+** opens the request
   builder, the pen edits a saved command), Rollout set (grid with per-row icons, field form, Send with the result card)
-  and Target devices (compatibility from the cached API lists, Stop on first error, Run on N devices); the tasks pane
+  and Target devices (the shared device picker with All devices and tags, the Devices page selection to start with, compatibility from the
+  cached API lists with only the problem devices listed, Stop on first error, Run on N devices); the tasks pane
   below the page. The request builder is its own dialog: start from scratch or from an existing command, send it to
   try, save (a saved command is replaced in place).
 - Saved commands: plugin setting `savedCommands`, at most 500, shared by all clients, export / import as library files.
@@ -2120,7 +2121,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   "Choose file"). Actions inside a card are filled buttons (`Button.secondary` with `ui:IconLabel`, primary for the main
   one); the flat `ui:ToolbarButton` is only for toolbars.
 - One accent button per view (exception, the purple device choice button: "Selected devices" of the event rule and
-  trigger dialogs, "Selected cameras" of Edge Recording Export): while an inline editor is open, its button (Retry, Create tag) is the primary one and the
+  trigger dialogs and of VAPIX Commander's target devices, "Selected cameras" of Edge Recording Export): while an inline editor is open, its button (Retry, Create tag) is the primary one and the
   footer's main button turns secondary. A disabled primary keeps its role: the accent at about 35 % with dimmed text.
 - **Destructive actions are red**: `Button.danger` (red fill, white text) instead of primary for
   buttons that delete or remove (Remove users, Delete certificates), `Button.toolbar.danger` for flat toolbar and icon

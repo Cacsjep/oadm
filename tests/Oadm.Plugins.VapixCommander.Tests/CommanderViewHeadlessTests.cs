@@ -48,8 +48,7 @@ public sealed class CommanderViewHeadlessTests
                 page.Server.DeviceList.All.AddRange(more);
                 page.Client.DeviceList.AddRange(more);
                 page.Client.RaiseDevicesChanged();
-                vm.Targets.Single(t => t.Address == "10.0.0.49").IsSelected = true;
-                vm.Targets.Single(t => t.Address == "10.0.0.61").IsSelected = true;
+                vm.SetChoice(DeviceChoice.Devices([page.Camera.Id, .. vm.Targets.Where(t => t.Address is "10.0.0.49" or "10.0.0.61").Select(t => t.Id)]));
                 vm.Add(page.Item("common.brand.read"));
                 vm.Add(page.Item("common.basicdeviceinfo.read"));
                 var shift = vm.Add(page.Item("common.daynight.shiftlevel"));
@@ -247,7 +246,7 @@ public sealed class CommanderViewHeadlessTests
     }
 
     [Fact]
-    public async Task Target_list_with_thousands_of_devices_is_virtualized()
+    public async Task The_problem_list_of_thousands_of_target_devices_is_virtualized()
     {
         var dataFolder = Path.Combine(Path.GetTempPath(), "oadm-commander-headless-" + Guid.NewGuid().ToString("N"));
         App.Options = new AppOptions { UseFake = true, DataFolder = dataFolder };
@@ -272,7 +271,7 @@ public sealed class CommanderViewHeadlessTests
                 page.Client.Selection.Clear();
                 page.Client.Selection.AddRange(devices.Take(1500));
                 page.Client.RaiseDevicesChanged();
-                vm.UseDevicesSelectionCommand.Execute(null);
+                vm.SetChoice(DeviceChoice.Devices(page.Client.Selection.Select(d => d.Id)));
                 vm.Add(page.Item("common.brand.read"));
                 vm.Add(page.Item("common.basicdeviceinfo.read"));
 
@@ -282,17 +281,12 @@ public sealed class CommanderViewHeadlessTests
                 window.Show();
                 Dispatcher.UIThread.RunJobs();
 
-                var list = view.FindControl<ItemsControl>("TargetList")!;
-                var rows = list.GetVisualDescendants().OfType<CheckBox>().Count();
-                Assert.InRange(rows, 1, 60);
-                Assert.Equal("1,500 of 5,000 selected", vm.TargetSummary);
-                Assert.NotNull(vm.CompatibilitySummary);
+                var list = view.FindControl<ItemsControl>("ProblemList")!;
+                Assert.StartsWith("1,500 devices · 1,169 compatible · ", vm.TargetSummary, StringComparison.Ordinal);
+                Assert.Equal(1500 - 1169, vm.ProblemTargets.Count); // only the devices with a problem are listed
+                Assert.InRange(list.GetVisualDescendants().OfType<TextBlock>().Count(t => t.Text?.StartsWith("10.1.", StringComparison.Ordinal) == true), 1, 60);
                 Capture(window, outDir, "plugin-vapix-commander-many-devices.png");
 
-                vm.TargetSearch = "10.1.19.";
-                Dispatcher.UIThread.RunJobs();
-                Assert.Equal(136, vm.VisibleTargets.Count);
-                Assert.InRange(list.GetVisualDescendants().OfType<CheckBox>().Count(), 1, 60);
                 window.Close();
             }, CancellationToken.None);
         }

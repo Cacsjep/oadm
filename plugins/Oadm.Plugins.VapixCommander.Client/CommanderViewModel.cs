@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Client.Validation;
 using Oadm.Sdk.Devices;
 
@@ -25,8 +26,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
     private List<CommandListItem> _library = [];
     private List<CommandListItem> _saved = [];
     private Dictionary<Guid, TargetDeviceViewModel> _targetsById = [];
-    private int _selectedCount;
-    private bool _bulkSelection;
+    private DeviceChoice _choice = DeviceChoice.Devices([]);
 
     /// <summary>The role may send to one device ("oadm.vapix-commander:send"): Send and the request builder's Send.</summary>
     public bool MaySend => _host.Has(Permission("send"));
@@ -59,7 +59,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
             OnPropertyChanged(nameof(MayBuild));
         };
         SyncDevices();
-        UseDevicesSelection();
+        SetChoice(DeviceChoice.Devices(_host.SelectedDevices.Select(d => d.Id))); // the Devices page selection to start with
     }
 
     /// <summary>Set by the view: export/import file pickers.</summary>
@@ -126,38 +126,41 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
 
     // ---------------------------------------------------------------- targets
 
-    // A site can have thousands of devices: the lists are replaced as a whole (one reset, no per-item events), the
-    // selection is counted incrementally and bulk changes notify once; the view virtualizes the rows.
+    // A site can have thousands of devices: the chosen devices are resolved once per change (O(n)), the lists are
+    // replaced as a whole (no per-item events) and the view virtualizes the problem rows.
 
-    /// <summary>Every managed device, sorted by address.</summary>
+    /// <summary>Every managed device, sorted by address (the Send list and the request builder).</summary>
     [ObservableProperty]
     public partial IReadOnlyList<TargetDeviceViewModel> Targets { get; private set; } = [];
 
-    /// <summary>The devices matching <see cref="TargetSearch"/>, in address order.</summary>
+    /// <summary>The devices the rollout runs on, in address order: the chosen devices and those with a chosen tag (every device for All).</summary>
     [ObservableProperty]
-    public partial IReadOnlyList<TargetDeviceViewModel> VisibleTargets { get; private set; } = [];
+    public partial IReadOnlyList<TargetDeviceViewModel> SelectedTargets { get; private set; } = [];
 
+    /// <summary>The chosen devices OADM cannot reach or that do not support every command, in address order.</summary>
     [ObservableProperty]
-    public partial string? TargetSearch { get; set; }
+    public partial IReadOnlyList<TargetDeviceViewModel> ProblemTargets { get; private set; } = [];
 
-    public string TargetSummary => string.Create(CultureInfo.InvariantCulture, $"{_selectedCount:N0} of {Targets.Count:N0} selected");
+    public int SelectedTargetCount => SelectedTargets.Count;
 
-    public IReadOnlyList<TargetDeviceViewModel> SelectedTargets => [.. Targets.Where(t => t.IsSelected)];
+    /// <summary>Opens the shared device picker; set by the view (the window owner), tests replace it.</summary>
+    public Func<IReadOnlyList<IDeviceInfo>, DeviceChoice, Task<DeviceChoice?>>? PickDevices { get; set; }
 
-    public int SelectedTargetCount => _selectedCount;
+    /// <summary>The device button like the event rules: "Choose devices", "Selected devices: Tag Building A and 3 devices".</summary>
+    public string DevicesText => _choice.Kind == DeviceChoiceKind.All
+        ? "Selected devices: All"
+        : _choice.IsEmpty ? "Choose devices" : "Selected devices: " + DeviceSelectorTexts.Brief(_choice.DeviceIds.Count, _choice.Tags, SingleAddress());
 
-    /// <summary>"4,812 compatible · 188 not compatible · 0 API list not read" over all devices; null without commands.</summary>
+    /// <summary>"12 devices · 10 compatible · 2 not compatible" for the chosen devices; null while none is chosen.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasCompatibilitySummary))]
-    public partial string? CompatibilitySummary { get; private set; }
+    [NotifyPropertyChangedFor(nameof(HasTargetSummary))]
+    public partial string? TargetSummary { get; private set; }
 
-    public bool HasCompatibilitySummary => CompatibilitySummary is not null;
+    public bool HasTargetSummary => TargetSummary is not null;
 
-    /// <summary>Device for "Send" (Try); defaults to the first selected target.</summary>
+    /// <summary>Device for "Send" (Try); defaults to the first chosen device.</summary>
     [ObservableProperty]
     public partial TargetDeviceViewModel? TryDevice { get; set; }
-
-    partial void OnTargetSearchChanged(string? value) => RefreshVisibleTargets();
 
     // ---------------------------------------------------------------- try and run
 
@@ -180,7 +183,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         get
         {
             var commands = RolloutItems.Count;
-            var devices = _selectedCount;
+            var devices = SelectedTargets.Count;
             var text = string.Create(CultureInfo.InvariantCulture, $"{commands} {(commands == 1 ? "command" : "commands")} × {devices:N0} {(devices == 1 ? "device" : "devices")}");
             var writes = RolloutItems.Count(i => i.Writes);
             var dangerous = RolloutItems.Count(i => i.Dangerous);
@@ -198,7 +201,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         }
     }
 
-    public string RunText => string.Create(CultureInfo.InvariantCulture, $"Run on {_selectedCount:N0} {(_selectedCount == 1 ? "device" : "devices")}");
+    public string RunText => string.Create(CultureInfo.InvariantCulture, $"Run on {SelectedTargets.Count:N0} {(SelectedTargets.Count == 1 ? "device" : "devices")}");
 
     /// <summary>Result of the last action (run started, saved, error); <see cref="IsStatusError"/> colors the chip.</summary>
     [ObservableProperty]
@@ -572,7 +575,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
 
     // ================================================================ targets
 
-    /// <summary>Mirrors the host's device list: existing rows are kept (selection, compatibility), one list reset.</summary>
+    /// <summary>Mirrors the host's device list: existing rows are kept (compatibility), one list reset; the choice is resolved again.</summary>
     private void SyncDevices()
     {
         var devices = _host.Devices;
@@ -591,21 +594,13 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
             }
             else
             {
-                var target = new TargetDeviceViewModel(device);
-                target.PropertyChanged += (_, e) =>
-                {
-                    if (e.PropertyName == nameof(TargetDeviceViewModel.IsSelected))
-                    {
-                        OnTargetSelected(target);
-                    }
-                };
-                byId[device.Id] = target;
+                byId[device.Id] = new TargetDeviceViewModel(device);
             }
         }
 
         _targetsById = byId;
         // IPv4 addresses in numeric order (10.0.0.9 before 10.0.0.10), host names after them.
-        List<TargetDeviceViewModel> targets =
+        Targets =
         [
             .. byId.Values
                 .Select(t => (Target: t, Ip: IPAddress.TryParse(t.Address, out var ip) && ip.AddressFamily == AddressFamily.InterNetwork
@@ -616,101 +611,69 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
                 .ThenBy(x => x.Target.Address, StringComparer.OrdinalIgnoreCase)
                 .Select(x => x.Target),
         ];
-        Targets = targets;
-        _selectedCount = targets.Count(t => t.IsSelected);
-        RefreshVisibleTargets();
-        OnTargetSelectionChanged();
         RefreshCompatibility();
+        ResolveTargets();
     }
 
-    private void RefreshVisibleTargets()
+    /// <summary>Sets the devices of the rollout (the picker's result, the Devices page selection at start; tests).</summary>
+    public void SetChoice(DeviceChoice choice)
     {
-        var search = TargetSearch?.Trim() ?? string.Empty;
-        VisibleTargets = search.Length == 0 ? Targets : [.. Targets.Where(t => t.Matches(search))];
+        _choice = choice ?? throw new ArgumentNullException(nameof(choice));
+        OnPropertyChanged(nameof(DevicesText));
+        ResolveTargets();
     }
 
-    private void OnTargetSelected(TargetDeviceViewModel target)
+    [RelayCommand]
+    private async Task ChooseDevicesAsync()
     {
-        if (_bulkSelection)
+        if (PickDevices is not null && await PickDevices(_host.Devices, _choice).ConfigureAwait(true) is { } choice)
         {
-            return;
+            SetChoice(choice);
+        }
+    }
+
+    private string? SingleAddress() =>
+        _choice.DeviceIds.Count == 1 && _targetsById.TryGetValue(_choice.DeviceIds[0], out var target) ? target.Address : null;
+
+    /// <summary>The chosen devices now (O(n)): a tag means the devices that have it at this moment.</summary>
+    private void ResolveTargets()
+    {
+        if (_choice.Kind == DeviceChoiceKind.All)
+        {
+            SelectedTargets = Targets;
+        }
+        else
+        {
+            var ids = _choice.DeviceIds.ToHashSet();
+            var tags = new HashSet<string>(_choice.Tags, StringComparer.OrdinalIgnoreCase);
+            SelectedTargets = [.. Targets.Where(t => ids.Contains(t.Id) || (tags.Count > 0 && t.Device.Tags.Any(tags.Contains)))];
         }
 
-        _selectedCount += target.IsSelected ? 1 : -1;
-        OnTargetSelectionChanged();
-    }
-
-    /// <summary>Sets the selection of many devices with one notification at the end (O(n), no per-device page work).</summary>
-    private void SelectTargets(IEnumerable<TargetDeviceViewModel> targets, Func<TargetDeviceViewModel, bool> selected)
-    {
-        _bulkSelection = true;
-        try
-        {
-            foreach (var target in targets)
-            {
-                target.IsSelected = selected(target);
-            }
-        }
-        finally
-        {
-            _bulkSelection = false;
-        }
-
-        _selectedCount = Targets.Count(t => t.IsSelected);
-        OnTargetSelectionChanged();
-    }
-
-    private void OnTargetSelectionChanged()
-    {
         if (TryDevice is null || !_targetsById.ContainsKey(TryDevice.Id))
         {
-            TryDevice = Targets.FirstOrDefault(t => t.IsSelected) ?? (Targets.Count > 0 ? Targets[0] : null);
+            TryDevice = SelectedTargets.Count > 0 ? SelectedTargets[0] : Targets.Count > 0 ? Targets[0] : null;
         }
 
-        OnPropertyChanged(nameof(TargetSummary));
         OnPropertyChanged(nameof(SelectedTargetCount));
         RunSummaryChanged();
+        SummarizeTargets();
     }
-
-    /// <summary>Selects every device matching the search.</summary>
-    [RelayCommand]
-    private void SelectAllTargets() => SelectTargets(VisibleTargets, _ => true);
-
-    [RelayCommand]
-    private void ClearTargets() => SelectTargets(Targets, _ => false);
-
-    /// <summary>Selects exactly the devices selected on the Devices page.</summary>
-    [RelayCommand]
-    private void UseDevicesSelection()
-    {
-        var selected = _host.SelectedDevices.Select(d => d.Id).ToHashSet();
-        SelectTargets(Targets, t => selected.Contains(t.Id));
-    }
-
-    [RelayCommand]
-    private void SelectCompatibleTargets() => SelectTargets(Targets, t => t.AllCompatible);
 
     /// <summary>
     /// Compatibility of every rollout command on every device, computed here from the cached API list of each device
-    /// (no request per device; the server checks a fresh list again before a write). Also builds the summary.
+    /// (no request per device; the server checks a fresh list again before a write).
     /// </summary>
     public void RefreshCompatibility()
     {
         var commands = RolloutItems.Select(i => (i.Name, i.Command)).ToList();
-        if (commands.Count == 0)
-        {
-            foreach (var target in Targets)
-            {
-                target.SetCompatibility([]);
-            }
-
-            CompatibilitySummary = null;
-            return;
-        }
-
-        int compatible = 0, notCompatible = 0, unknown = 0;
         foreach (var target in Targets)
         {
+            if (commands.Count == 0)
+            {
+                target.SetCompatibility([]);
+                continue;
+            }
+
             var chips = new CompatibilityChip[commands.Count];
             for (var i = 0; i < commands.Count; i++)
             {
@@ -719,6 +682,26 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
             }
 
             target.SetCompatibility(chips);
+        }
+
+        SummarizeTargets();
+    }
+
+    /// <summary>The summary line and the problem rows of the chosen devices (O(n)).</summary>
+    private void SummarizeTargets()
+    {
+        var targets = SelectedTargets;
+        if (targets.Count == 0)
+        {
+            TargetSummary = _choice.IsEmpty ? null : "No device has the chosen tags.";
+            ProblemTargets = [];
+            return;
+        }
+
+        int compatible = 0, notCompatible = 0, unknown = 0;
+        var problems = new List<TargetDeviceViewModel>();
+        foreach (var target in targets)
+        {
             if (target.AllCompatible)
             {
                 compatible++;
@@ -727,24 +710,34 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
             {
                 notCompatible++;
             }
-            else
+            else if (target.HasCompatibility)
             {
                 unknown++;
             }
+
+            if (!target.IsReachable || target.ShowCompatibility)
+            {
+                problems.Add(target);
+            }
         }
 
-        var parts = new List<string> { string.Create(CultureInfo.InvariantCulture, $"{compatible:N0} compatible") };
-        if (notCompatible > 0)
+        var parts = new List<string> { string.Create(CultureInfo.InvariantCulture, $"{targets.Count:N0} {(targets.Count == 1 ? "device" : "devices")}") };
+        if (RolloutItems.Count > 0)
         {
-            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{notCompatible:N0} not compatible"));
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{compatible:N0} compatible"));
+            if (notCompatible > 0)
+            {
+                parts.Add(string.Create(CultureInfo.InvariantCulture, $"{notCompatible:N0} not compatible"));
+            }
+
+            if (unknown > 0)
+            {
+                parts.Add(string.Create(CultureInfo.InvariantCulture, $"{unknown:N0} not checked"));
+            }
         }
 
-        if (unknown > 0)
-        {
-            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{unknown:N0} not checked"));
-        }
-
-        CompatibilitySummary = string.Join(" · ", parts);
+        TargetSummary = string.Join(" · ", parts);
+        ProblemTargets = problems;
     }
 
     // ================================================================ try
@@ -816,7 +809,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         var targets = SelectedTargets;
         if (RolloutItems.Count == 0 || targets.Count == 0)
         {
-            SetStatus(RolloutItems.Count == 0 ? "Add at least one command." : "Select at least one device.", error: true);
+            SetStatus(RolloutItems.Count == 0 ? "Add at least one command." : "Choose at least one device.", error: true);
             return;
         }
 

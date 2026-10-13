@@ -135,7 +135,8 @@ public sealed class PageViewModelTests
         Assert.Equal("Read brand parameters", vm.LibraryTree.SelectMany(PageFixture.Flatten).Single(n => n.IsCommand).Title);
 
         Assert.Equal(["10.0.0.48"], vm.SelectedTargets.Select(t => t.Address));
-        Assert.Equal("1 of 2 selected", vm.TargetSummary);
+        Assert.Equal("1 device", vm.TargetSummary);
+        Assert.Equal("Selected devices: 10.0.0.48", vm.DevicesText);
         Assert.Equal("10.0.0.48", vm.TryDevice!.Address);
     }
 
@@ -164,10 +165,14 @@ public sealed class PageViewModelTests
         // Only incompatible devices show a line; compatible ones stay quiet (thousands of green lines are noise).
         Assert.False(vm.Targets.Single(t => t.Address == "10.0.0.48").ShowCompatibility);
         Assert.True(speaker.ShowCompatibility);
-        Assert.Equal("1 compatible · 1 not compatible", vm.CompatibilitySummary);
+        Assert.Equal("1 device · 1 compatible", vm.TargetSummary);
+        Assert.Empty(vm.ProblemTargets);
 
-        vm.SelectCompatibleTargetsCommand.Execute(null);
-        Assert.Equal(["10.0.0.48"], vm.SelectedTargets.Select(t => t.Address));
+        vm.SetChoice(DeviceChoice.AllDevices);
+        Assert.Equal("Selected devices: All", vm.DevicesText);
+        Assert.Equal("2 devices · 1 compatible · 1 not compatible", vm.TargetSummary);
+        Assert.Same(speaker, Assert.Single(vm.ProblemTargets)); // only the problems are listed
+        vm.SetChoice(DeviceChoice.Devices([page.Camera.Id]));
 
         // Per-row icon buttons act on their row; first row cannot move up, last cannot move down.
         var first = vm.RolloutItems[0];
@@ -184,7 +189,9 @@ public sealed class PageViewModelTests
         Assert.Equal(2, vm.RolloutItems.Count);
         Assert.Same(shift, vm.SelectedRolloutItem);
         Assert.Equal("2 commands × 1 device · 1 write", vm.RunSummary);
-        Assert.Equal("2 compatible", vm.CompatibilitySummary); // the speaker lacked only basic-device-info
+        vm.SetChoice(DeviceChoice.AllDevices);
+        Assert.Equal("2 devices · 2 compatible", vm.TargetSummary); // the speaker lacked only basic-device-info
+        vm.SetChoice(DeviceChoice.Devices([page.Camera.Id]));
 
         vm.RemoveCommand.Execute(null); // keyboard (Delete): the selected row, the next one is selected
         Assert.Equal(["Read brand parameters"], vm.RolloutItems.Select(i => i.Name));
@@ -195,7 +202,7 @@ public sealed class PageViewModelTests
         Assert.Empty(vm.RolloutItems);
         Assert.Null(vm.SelectedRolloutItem);
         Assert.False(vm.ClearCommand.CanExecute(null));
-        Assert.Null(vm.CompatibilitySummary);
+        Assert.Equal("1 device", vm.TargetSummary);
         Assert.False(speaker.HasCompatibility);
     }
 
@@ -225,7 +232,7 @@ public sealed class PageViewModelTests
 
     [Fact]
     [Trait("Category", "Timing")]
-    public async Task Thousands_of_devices_filter_select_and_check_compatibility_fast()
+    public async Task Thousands_of_devices_are_chosen_and_checked_for_compatibility_fast()
     {
         var page = await PageFixture.CreateAsync();
         var devices = Enumerable.Range(0, 5000).Select(i => new FakeDevice
@@ -235,6 +242,7 @@ public sealed class PageViewModelTests
             Model = i % 25 == 0 ? "AXIS C1310-E" : "AXIS P3265-V",
             Category = i % 25 == 0 ? DeviceCategory.Speaker : DeviceCategory.Camera,
             Apis = i % 25 == 0 ? [new DeviceApi("param-cgi", "1.0")] : PageFixture.NewCamera().Apis,
+            Tags = i % 2 == 0 ? ["Even"] : [],
         }).ToList();
         page.Client.DeviceList.Clear();
         page.Client.DeviceList.AddRange(devices);
@@ -249,41 +257,38 @@ public sealed class PageViewModelTests
         Assert.Equal("10.0.19.135", vm.Targets[^1].Address);
 
         watch.Restart();
-        vm.TargetSearch = "P3265";
-        var filter = watch.Elapsed;
-        Assert.Equal(4800, vm.VisibleTargets.Count);
+        vm.SetChoice(DeviceChoice.AllDevices);
+        var all = watch.Elapsed;
+        Assert.Equal("5,000 devices", vm.TargetSummary);
+        Assert.Equal(5000, vm.SelectedTargetCount);
 
         watch.Restart();
-        vm.SelectAllTargetsCommand.Execute(null);
-        var selectAll = watch.Elapsed;
-        Assert.Equal("4,800 of 5,000 selected", vm.TargetSummary);
-        Assert.Equal(4800, vm.SelectedTargetCount);
-
-        watch.Restart();
-        vm.UseDevicesSelectionCommand.Execute(null);
+        vm.SetChoice(DeviceChoice.Devices(page.Client.Selection.Select(d => d.Id)));
         var devicesSelection = watch.Elapsed;
-        Assert.Equal("1,200 of 5,000 selected", vm.TargetSummary);
+        Assert.Equal("1,200 devices", vm.TargetSummary);
+        Assert.Equal("Selected devices: 1,200 devices", vm.DevicesText);
+
+        watch.Restart();
+        vm.SetChoice(DeviceChoice.Devices([devices[0].Id], ["Even"]));
+        var byTag = watch.Elapsed;
+        Assert.Equal(2500, vm.SelectedTargetCount); // device 0 has the tag too
+        Assert.Equal("Selected devices: Tag Even and 10.0.0.0", vm.DevicesText);
 
         watch.Restart();
         vm.Add(page.Item("common.brand.read"));
         vm.Add(page.Item("common.basicdeviceinfo.read"));
         vm.Add(page.Item("common.daynight.shiftlevel"));
         var compatibility = watch.Elapsed / 3;
-        Assert.Equal("4,800 compatible · 200 not compatible", vm.CompatibilitySummary);
-
-        watch.Restart();
-        vm.SelectCompatibleTargetsCommand.Execute(null);
-        var selectCompatible = watch.Elapsed;
-        Assert.Equal("4,800 of 5,000 selected", vm.TargetSummary);
-        Assert.StartsWith("3 commands × 4,800 devices", vm.RunSummary, StringComparison.Ordinal);
+        Assert.Equal("2,500 devices · 2,400 compatible · 100 not compatible", vm.TargetSummary);
+        Assert.Equal(100, vm.ProblemTargets.Count);
+        Assert.StartsWith("3 commands × 2,500 devices", vm.RunSummary, StringComparison.Ordinal);
 
         var limit = TimeSpan.FromMilliseconds(200);
         Assert.True(sync < limit * 2, $"device sync {sync.TotalMilliseconds} ms");
-        Assert.True(filter < limit, $"filter {filter.TotalMilliseconds} ms");
-        Assert.True(selectAll < limit, $"select all {selectAll.TotalMilliseconds} ms");
+        Assert.True(all < limit, $"all devices {all.TotalMilliseconds} ms");
+        Assert.True(byTag < limit, $"by tag {byTag.TotalMilliseconds} ms");
         Assert.True(devicesSelection < limit, $"devices page selection {devicesSelection.TotalMilliseconds} ms");
         Assert.True(compatibility < limit, $"compatibility {compatibility.TotalMilliseconds} ms");
-        Assert.True(selectCompatible < limit, $"select compatible {selectCompatible.TotalMilliseconds} ms");
     }
 
     [Fact]
@@ -339,13 +344,14 @@ public sealed class PageViewModelTests
     {
         var page = await PageFixture.CreateAsync();
         var vm = page.Vm;
-        vm.ClearTargetsCommand.Execute(null);
+        vm.SetChoice(DeviceChoice.Devices([]));
+        Assert.Equal(("Choose devices", null), (vm.DevicesText, vm.TargetSummary));
         vm.Add(page.Item("common.brand.read"));
 
         await vm.RunCommand.ExecuteAsync(null);
-        Assert.Equal("Select at least one device.", vm.Status);
+        Assert.Equal("Choose at least one device.", vm.Status);
 
-        vm.UseDevicesSelectionCommand.Execute(null);
+        vm.SetChoice(DeviceChoice.Devices(page.Client.Selection.Select(d => d.Id)));
         vm.Add(page.Item("common.daynight.shiftlevel")).Fields.Single(f => f.Name == "level").Text = "x";
         vm.SelectedRolloutItem = vm.RolloutItems[0];
         await vm.RunCommand.ExecuteAsync(null);

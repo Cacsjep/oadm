@@ -192,44 +192,34 @@
 
     <!-- ============================== Target devices (+ run, docked at the bottom) ============================== -->
     <Border Grid.Column="2" Classes="card">
-      <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto" RowSpacing="10">
-        <ui:CardHeader Title="Target devices" Description="{Binding TargetSummary}" />
-        <WrapPanel Grid.Row="1" ItemSpacing="8" LineSpacing="8">
-          <Button Classes="secondary" Content="Devices page selection" Command="{Binding UseDevicesSelectionCommand}" />
-          <Button Classes="secondary" Content="All" Command="{Binding SelectAllTargetsCommand}" ToolTip.Tip="Select every device matching the search" />
-          <Button Classes="secondary" Content="Compatible" Command="{Binding SelectCompatibleTargetsCommand}" />
-          <Button Classes="secondary" Content="None" Command="{Binding ClearTargetsCommand}" />
-        </WrapPanel>
-        <ui:SearchBox Grid.Row="2" Classes="stretch" Text="{Binding TargetSearch}" Placeholder="Search devices" />
-        <TextBlock Grid.Row="3" Classes="secondary small" Text="{Binding CompatibilitySummary}" TextWrapping="Wrap" IsVisible="{Binding HasCompatibilitySummary}" />
-        <!-- Thousands of devices: virtualized, only the visible rows exist. -->
-        <ScrollViewer Grid.Row="4" HorizontalScrollBarVisibility="Disabled">
-          <ItemsControl x:Name="TargetList" ItemsSource="{Binding VisibleTargets}">
+      <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto" RowSpacing="10">
+        <ui:CardHeader Title="Target devices" />
+        <!-- Which devices: the shared device picker (All devices, chosen devices and tags), like the event rules. -->
+        <Button Grid.Row="1" Classes="primary" HorizontalAlignment="Left" Command="{Binding ChooseDevicesCommand}">
+          <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding DevicesText}" />
+        </Button>
+        <TextBlock Grid.Row="2" Classes="secondary small" Text="{Binding TargetSummary}" TextWrapping="Wrap" IsVisible="{Binding HasTargetSummary}" />
+        <!-- Only the chosen devices with a problem; thousands possible: virtualized, only the visible rows exist. -->
+        <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Disabled">
+          <ItemsControl x:Name="ProblemList" ItemsSource="{Binding ProblemTargets}">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="c:TargetDeviceViewModel">
-                <StackPanel Spacing="4" Margin="0,0,0,10">
-                  <CheckBox IsChecked="{Binding IsSelected}">
-                    <StackPanel>
-                      <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                      <TextBlock Classes="secondary small" Text="{Binding Subtitle}" />
-                    </StackPanel>
-                  </CheckBox>
-                  <StackPanel Margin="28,0,0,0" Spacing="2">
-                    <ui:StatusChip IsWarning="True" Text="{Binding StatusText}" IsVisible="{Binding !IsReachable}" />
-                    <ui:StatusChip Text="{Binding CompatibilityText}" MaxLines="2" IsOk="{Binding AllCompatible}" IsWarning="{Binding IsCompatibilityWarning}" IsError="{Binding IsCompatibilityError}"
-                                   ToolTip.Tip="{Binding CompatibilityTooltip}" IsVisible="{Binding ShowCompatibility}" />
-                  </StackPanel>
+                <StackPanel Spacing="2" Margin="0,0,0,10">
+                  <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Subtitle}" />
+                  <ui:StatusChip IsWarning="True" Text="{Binding StatusText}" IsVisible="{Binding !IsReachable}" />
+                  <ui:StatusChip Text="{Binding CompatibilityText}" MaxLines="2" IsWarning="{Binding IsCompatibilityWarning}" IsError="{Binding IsCompatibilityError}"
+                                 ToolTip.Tip="{Binding CompatibilityTooltip}" IsVisible="{Binding ShowCompatibility}" />
                 </StackPanel>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
         </ScrollViewer>
 
-        <Border Grid.Row="5" Classes="separator" />
-        <StackPanel Grid.Row="6" Spacing="10">
+        <Border Grid.Row="4" Classes="separator" />
+        <StackPanel Grid.Row="5" Spacing="10">
           <ui:StatusChip Text="{Binding Status}" IsOk="{Binding IsStatusOk}" IsError="{Binding IsStatusError}" ToolTip.Tip="{Binding Status}" MaxWidth="300"
                          HorizontalAlignment="Left" IsVisible="{Binding HasStatus}" />
           <TextBlock Classes="secondary" Text="{Binding RunSummary}" TextWrapping="Wrap" />

@@ -52,6 +52,7 @@ internal sealed class FakeDevice : IDeviceInfo
     public DeviceCategory Category { get; init; } = DeviceCategory.Camera;
     public bool HasVideo => DeviceCategories.HasVideo(Category);
     public IReadOnlyList<DeviceApi> Apis { get; init; } = Samples.P3265Apis;
+    public IReadOnlyList<string> Tags { get; init; } = [];
 }
 
 /// <summary>A request as the device saw it (the body is read at send time).</summary>
