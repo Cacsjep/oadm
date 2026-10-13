@@ -15,6 +15,11 @@ version and date, and the release workflow copies it into the GitHub release.
   "Export recordings" in the roles decides who may download (Operator has it).
 - Plugins can send files to their page through the server (`ICorePluginDownloads`, gRPC `PluginService.Download`).
 
+### Changed
+
+- VAPIX Commander: **Choose devices** picks the target devices in the same window as the event rules: all devices, tags
+  or single devices. Below it, only the devices that cannot be reached or do not support every command are listed.
+
 ## [2.5.0] - 2026-10-12
 
 ### Added
