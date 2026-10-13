@@ -55,6 +55,10 @@ one task per device, owner = the client user; task name: the command name, or "<
 - Steps: **Check compatibility** (a fresh `GetApiListAsync` when a command writes or nothing is cached, else the cached
   API list; detail "All 3 commands supported (fresh API list)"), then one step per command named like the command ("(2)"
   for repeats) with the extracted result ("Product: P3265-V") or the error as detail.
+- A requirement means the same major version and at least the minor one; `"minVersion": "any"` accepts the API in any
+  version (CGIs whose interface does not follow the listed major: PTZ `ptz-control` 1.x / 2.x, `privacy-mask` 2.x / 3.x).
+  The Applications commands require `application` (identified by a parameter, added to the API list when the device does
+  not name it). `LibraryTests` checks every requirement against the API list of a real AXIS OS 12.11 camera.
 - An incompatible command fails its step "Missing API x. Nothing was sent."; a failed command does not stop the others on
   that device; the task ends Failed with "<command>: <error>" (+N more failed) as the device message; every request is
   logged (masked).

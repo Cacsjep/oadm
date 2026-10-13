@@ -12,7 +12,7 @@
       "requires": [
         {
           "api": "ptz-control",
-          "minVersion": "1.0"
+          "minVersion": "any"
         }
       ],
       "writes": false,
@@ -54,7 +54,7 @@
       "requires": [
         {
           "api": "ptz-control",
-          "minVersion": "1.0"
+          "minVersion": "any"
         }
       ],
       "writes": false,
@@ -118,7 +118,7 @@
       "requires": [
         {
           "api": "ptz-control",
-          "minVersion": "1.0"
+          "minVersion": "any"
         }
       ],
       "writes": false,
@@ -160,7 +160,7 @@
       "requires": [
         {
           "api": "ptz-control",
-          "minVersion": "1.0"
+          "minVersion": "any"
         }
       ],
       "writes": true,
@@ -209,7 +209,7 @@
       "requires": [
         {
           "api": "ptz-control",
-          "minVersion": "1.0"
+          "minVersion": "any"
         }
       ],
       "writes": true,
@@ -251,7 +251,7 @@
       "requires": [
         {
           "api": "ptz-control",
-          "minVersion": "1.0"
+          "minVersion": "any"
         }
       ],
       "writes": true,
@@ -321,7 +321,7 @@
       "requires": [
         {
           "api": "ptz-control",
-          "minVersion": "1.0"
+          "minVersion": "any"
         }
       ],
       "writes": true,
@@ -370,7 +370,7 @@
       "requires": [
         {
           "api": "ptz-control",
-          "minVersion": "1.0"
+          "minVersion": "any"
         }
       ],
       "writes": true,
@@ -419,7 +419,7 @@
       "requires": [
         {
           "api": "ptz-control",
-          "minVersion": "1.0"
+          "minVersion": "any"
         }
       ],
       "writes": true,

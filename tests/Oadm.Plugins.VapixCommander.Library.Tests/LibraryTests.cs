@@ -85,6 +85,35 @@ public sealed partial class LibraryTests
         Assert.NotEmpty(file.Commands);
     }
 
+    /// <summary>
+    /// Every requirement against the API list of a real device (AXIS P3265-V, AXIS OS 12.11): an API the device lists must be
+    /// listed in the required major version (or the command says "any"). A command that requires another major than the
+    /// device has is refused there ("Has ptz-control 2.1, needs 1.0").
+    /// </summary>
+    [Fact]
+    public void Requirements_match_the_major_versions_a_real_device_lists()
+    {
+        var list = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "apilist-p3265v-12.11.json")))!["data"]!["apiList"]!.AsArray()
+            .Select(a => (Id: a!["id"]!.GetValue<string>(), Major: a["version"]!.GetValue<string>().Split('.')[0]))
+            .ToList();
+        var problems = new List<string>();
+        foreach (var command in CommandLibrary.AllCommands)
+        {
+            foreach (var requirement in command["requires"]!.AsArray())
+            {
+                var api = requirement!["api"]!.GetValue<string>();
+                var version = requirement["minVersion"]!.GetValue<string>();
+                var majors = list.Where(a => a.Id == api).Select(a => a.Major).ToList();
+                if (majors.Count > 0 && version != "any" && !majors.Contains(version.Split('.')[0]))
+                {
+                    problems.Add($"{CommandLibrary.Id(command)}: needs {api} {version}, the device lists {string.Join(", ", majors)}");
+                }
+            }
+        }
+
+        Assert.Empty(problems);
+    }
+
     [Fact]
     public void Ids_are_unique_across_all_files()
     {

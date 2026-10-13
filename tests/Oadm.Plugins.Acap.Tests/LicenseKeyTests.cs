@@ -142,6 +142,18 @@ public sealed class LicenseKeyTests : IDisposable
         Assert.Empty(device.Writes);
     }
 
+    [Fact]
+    public void A_key_for_other_versions_of_the_application_is_named_before_sending()
+    {
+        var xml = Key().Replace("<MinimumMajorVersion>-1</MinimumMajorVersion>", "<MinimumMajorVersion>2</MinimumMajorVersion>", StringComparison.Ordinal)
+            .Replace("<MaximumMajorVersion>-1</MaximumMajorVersion>", "<MaximumMajorVersion>2</MaximumMajorVersion>", StringComparison.Ordinal);
+        var key = LicenseKey.Parse(xml);
+        Assert.True(key.Fits("2.9.1"));
+        Assert.False(key.Fits("3.0.0"));
+        Assert.Equal("The key is for versions 2.0 to 2.x of Missing Features; 3.0.0 is installed.",
+            AcapTaskPlugin.KeyProblem(key, "B8A44F631339", new InstalledApplication { Name = "ax_msf", NiceName = "Missing Features", Version = "3.0.0", ApplicationId = "415090" }, Today));
+    }
+
     [Theory]
     [InlineData("415090", "2026-09-18", "The key expired on 2026-09-18. Nothing was changed.")]
     [InlineData("333330", "2027-09-18", "The key is for another application (ID 333330; ax_msf nice has ID 415090). Nothing was changed.")]
@@ -167,9 +179,9 @@ public sealed class LicenseKeyTests : IDisposable
         Assert.Equal("Missing Features is not installed on this device. Nothing was changed.", missing.Message);
 
         device.Add("ax_msf", "1.0", applicationId: "415090");
-        device.LicenseReply = "Error: 1";
+        device.LicenseReply = "Error: 21";
         var refused = await Assert.ThrowsAsync<AcapDeviceException>(() => Run(ctx, LicensePayload(new LicenseKeyEntry("B8A44F631339", Key()))));
-        Assert.Equal("The device refused the license key: Error: 1", refused.Message);
+        Assert.Equal("The license key file is not valid. (error 21)", refused.Message);
         Assert.Equal("Install license key: Failed", StepRun.Lines(ctx.Steps)[3]);
     }
 
@@ -197,7 +209,7 @@ public sealed class LicenseKeyTests : IDisposable
     [Fact]
     public async Task After_an_install_a_refused_key_is_a_warning_and_the_application_still_starts()
     {
-        var device = new FakeAcapDevice { UploadedApplicationId = "415090", LicenseReply = "Error: 2" };
+        var device = new FakeAcapDevice { UploadedApplicationId = "415090", LicenseReply = "Error: 30" };
         var files = new InMemoryUploadedFiles();
         var ctx = new RecordingContext(device, files);
         var file = files.Add("msf.eap", EapBuilder.FromManifest(EapBuilder.Manifest(appName: "ax_msf", version: "1.0.0")));
@@ -213,6 +225,21 @@ public sealed class LicenseKeyTests : IDisposable
         Assert.Contains("Verify license: Skipped", StepRun.Lines(ctx.Steps));
         Assert.Contains("start ax_msf", device.Writes);
         Assert.NotEmpty(ctx.Warnings);
+    }
+
+    [Fact]
+    public async Task A_remove_whose_answer_is_lost_is_verified_by_the_list_and_ends_with_a_warning()
+    {
+        var device = new FakeAcapDevice { RemoveTimesOut = true };
+        device.Add("ax_msf", "1.0");
+        var ctx = new RecordingContext(device);
+
+        await Run(ctx, new AcapPayload { Action = AcapAction.Remove, Application = "ax_msf" }.ToJson());
+
+        Assert.Equal(["Check compatibility: Done", "Read installed applications: Done", "Remove application: Done", "Verify removal: Warning", "Completed: Done"], StepRun.Lines(ctx.Steps));
+        var control = device.Requests.Single(r => r.RequestUri!.OriginalString.Contains("control.cgi", StringComparison.Ordinal));
+        Assert.True(control.Options.TryGetValue(Oadm.Sdk.Vapix.VapixRequestOptions.Timeout, out var timeout));
+        Assert.Equal(TimeSpan.FromMinutes(2), timeout);
     }
 
     [Fact]

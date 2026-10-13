@@ -69,6 +69,25 @@ public class VapixClientTests
         Assert.Equal("https://10.0.0.48/axis-cgi/param.cgi?action=list&group=Properties", handler.Requests[1].Uri.ToString());
     }
 
+    [Theory]
+    [InlineData("root.Properties.EmbeddedDevelopment.Version=2.16\nroot.Properties.EmbeddedDevelopment.EmbeddedDevelopment=yes\n", true)]
+    [InlineData("# Error: Error -1 getting param in group 'Properties.EmbeddedDevelopment'\n", false)]
+    public async Task AnApiListWithoutTheApplicationApiIsCompletedFromTheParameter(string parameters, bool hasApplications)
+    {
+        // AXIS OS 11.9 (an AXIS P12 Mk III): apidiscovery lists no "application", but the device runs applications.
+        const string list = """{"apiVersion":"1.0","method":"getApiList","data":{"apiList":[{"id":"param-cgi","version":"1.0","name":"Legacy Parameter Handling","docLink":""}]}}""";
+        var handler = new FakeHttpMessageHandler((request, _) => request.RequestUri!.AbsolutePath.EndsWith("apidiscovery.cgi", StringComparison.Ordinal)
+            ? Fixtures.Json(list)
+            : Fixtures.Text(parameters));
+        using var client = Client(handler);
+
+        var apis = await client.GetApiListAsync(CancellationToken.None);
+
+        Assert.Equal(hasApplications, apis.Any(a => a.Id == "application" && a.Version == "1.0" && a.Status == LegacyApiList.Source));
+        Assert.Equal("https://10.0.0.48/axis-cgi/param.cgi?action=list&group=Properties", handler.Requests[1].Uri.ToString());
+        Assert.Single(apis, a => a.Id == "param-cgi"); // listed by the device: not added twice
+    }
+
     [Fact]
     public async Task OtherApiDiscoveryErrorsAreNotReplaced()
     {

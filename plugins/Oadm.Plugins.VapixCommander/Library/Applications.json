@@ -11,7 +11,7 @@
       "docs": "https://developer.axis.com/vapix/applications/application-api/",
       "requires": [
         {
-          "api": "packagemanager",
+          "api": "application",
           "minVersion": "1.0"
         }
       ],
@@ -39,7 +39,7 @@
       "docs": "https://developer.axis.com/vapix/applications/application-api/",
       "requires": [
         {
-          "api": "packagemanager",
+          "api": "application",
           "minVersion": "1.0"
         }
       ],
@@ -79,7 +79,7 @@
       "docs": "https://developer.axis.com/vapix/applications/application-api/",
       "requires": [
         {
-          "api": "packagemanager",
+          "api": "application",
           "minVersion": "1.0"
         }
       ],
@@ -119,7 +119,7 @@
       "docs": "https://developer.axis.com/vapix/applications/application-api/",
       "requires": [
         {
-          "api": "packagemanager",
+          "api": "application",
           "minVersion": "1.0"
         }
       ],

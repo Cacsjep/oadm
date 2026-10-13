@@ -90,7 +90,7 @@
         <ui:CardHeader Title="{Binding PackageTitle}" Description="{Binding PackageDetails}" />
         <StackPanel Classes="form">
           <ui:FileRow FileName="{Binding PackageFileName}" Details="{Binding PackageFileDetails}" Error="{Binding PackageError}" Command="{Binding PickPackageCommand}" />
-          <DataGrid ItemsSource="{Binding Compatibility}" MaxHeight="240" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False" IsVisible="{Binding HasPackage}">
+          <DataGrid Classes="wrapRows" ItemsSource="{Binding Compatibility}" MaxHeight="240" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False" IsVisible="{Binding HasPackage}">
             <DataGrid.Columns>
               <DataGridTextColumn Header="Device" Binding="{Binding DeviceLabel}" Width="240" x:DataType="vm:DeviceCompatibilityRow" />
               <DataGridTemplateColumn Header="Result" Width="200" SortMemberPath="Verdict">
@@ -100,7 +100,13 @@
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Header="Details" Binding="{Binding Details}" Width="*" x:DataType="vm:DeviceCompatibilityRow" />
+              <DataGridTemplateColumn Header="Details" Width="*" SortMemberPath="Details">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:DeviceCompatibilityRow">
+                    <TextBlock Classes="cellText" Text="{Binding Details}" ToolTip.Tip="{Binding Details}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
             </DataGrid.Columns>
           </DataGrid>
           <!-- Optional license keys, installed right after the application -->
@@ -133,7 +139,7 @@
           </Button>
         </ui:CardHeader>
         <StackPanel Classes="form">
-          <DataGrid ItemsSource="{Binding LicenseRows}" MaxHeight="240" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
+          <DataGrid Classes="wrapRows" ItemsSource="{Binding LicenseRows}" MaxHeight="240" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
             <DataGrid.Columns>
               <DataGridTextColumn Header="Device" Binding="{Binding DeviceLabel}" Width="240" x:DataType="vm:LicenseKeyRow" />
               <DataGridTemplateColumn Header="Key" Width="200" SortMemberPath="Verdict">
@@ -143,7 +149,13 @@
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Header="Details" Binding="{Binding Details}" Width="*" x:DataType="vm:LicenseKeyRow" />
+              <DataGridTemplateColumn Header="Details" Width="*" SortMemberPath="Details">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:LicenseKeyRow">
+                    <TextBlock Classes="cellText" Text="{Binding Details}" ToolTip.Tip="{Binding Details}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
             </DataGrid.Columns>
           </DataGrid>
           <ui:StatusChip IsWarning="True" Text="{Binding LicenseProblemText}" MaxLines="3" IsVisible="{Binding HasLicenseProblems}" />

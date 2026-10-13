@@ -49,6 +49,9 @@ internal sealed class FakeAcapDevice : IVapixClient
     /// <summary>Install the package but throw a timeout instead of answering (slow device).</summary>
     public bool UploadTimesOut { get; set; }
 
+    /// <summary>The device removes the application but the answer is lost (removing can take about a minute).</summary>
+    public bool RemoveTimesOut { get; set; }
+
     /// <summary>The start command succeeds but the application stays stopped (e.g. missing license).</summary>
     public bool StartHasNoEffect { get; set; }
 
@@ -158,13 +161,13 @@ internal sealed class FakeAcapDevice : IVapixClient
 
         if (!Apps.TryGetValue(package, out var app))
         {
-            return "Error: 4";
+            return "Error: 24";
         }
 
         var key = LicenseKey.Parse(xml);
         if (key.DeviceId != "B8A44F631339" || (app.ApplicationId is { } id && id != key.ApplicationId))
         {
-            return "Error: 2";
+            return key.DeviceId != "B8A44F631339" ? "Error: 30" : "Error: 25";
         }
 
         LicenseKeys[package] = xml;
@@ -207,6 +210,11 @@ internal sealed class FakeAcapDevice : IVapixClient
                 return "OK";
             case "remove":
                 Apps.Remove(package);
+                if (RemoveTimesOut)
+                {
+                    throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 120 seconds elapsing.", new TimeoutException());
+                }
+
                 return "OK";
             default:
                 return "Error: 10";

@@ -25,6 +25,51 @@ public sealed record LicenseKey
     /// <summary>Last day the key is valid; null when the key does not expire.</summary>
     public DateOnly? ExpirationDate { get; init; }
 
+    /// <summary>The application versions the key is for (major.minor), null = any (-1 in the file).</summary>
+    public Version? MinimumVersion { get; init; }
+
+    public Version? MaximumVersion { get; init; }
+
+    /// <summary>Whether the key fits this application version ("3.8.0"); an unreadable version counts as fitting (the device decides).</summary>
+    public bool Fits(string? applicationVersion)
+    {
+        var parts = (applicationVersion ?? "").Split('.', '-');
+        if (parts.Length < 2 || !int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var major)
+            || !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var minor))
+        {
+            return true;
+        }
+
+        var version = new Version(major, minor);
+        return (MinimumVersion is null || version >= MinimumVersion) && (MaximumVersion is null || version <= MaximumVersion);
+    }
+
+    /// <summary>"versions 3.0 to 3.9", "version 3.0 and later", "versions up to 3.9".</summary>
+    public string VersionRangeText => (MinimumVersion, MaximumVersion) switch
+    {
+        ({ } min, { } max) => $"versions {Text(min)} to {Text(max)}",
+        ({ } min, null) => $"version {Text(min)} and later",
+        (null, { } max) => $"versions up to {Text(max)}",
+        _ => "every version",
+    };
+
+    /// <summary>"2.3", or "2.x" for every minor version of 2.</summary>
+    private static string Text(Version version) =>
+        version.Minor == int.MaxValue ? $"{version.Major}.x" : $"{version.Major}.{version.Minor}";
+
+    private static Version? VersionOf(System.Xml.Linq.XElement root, string major, string minor)
+    {
+        int Read(string name) => int.TryParse(root.Element(name)?.Value.Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var n) ? n : -1;
+        var ma = Read(major);
+        if (ma < 0)
+        {
+            return null;
+        }
+
+        var mi = Read(minor);
+        return new Version(ma, mi < 0 ? 0 : mi);
+    }
+
     /// <summary>The key file exactly as read; uploaded unchanged.</summary>
     public required string Xml { get; init; }
 
@@ -75,7 +120,29 @@ public sealed record LicenseKey
                 : throw new FormatException("The license key file has an unreadable end date.");
         }
 
-        return new LicenseKey { ApplicationId = appId, DeviceId = deviceId, ExpirationDate = end, Xml = xml };
+        return new LicenseKey
+        {
+            ApplicationId = appId,
+            DeviceId = deviceId,
+            ExpirationDate = end,
+            MinimumVersion = VersionOf(root, "MinimumMajorVersion", "MinimumMinorVersion"),
+            MaximumVersion = MaxVersionOf(root),
+            Xml = xml,
+        };
+    }
+
+    /// <summary>The upper bound: a maximum minor of -1 means every minor of that major.</summary>
+    private static Version? MaxVersionOf(System.Xml.Linq.XElement root)
+    {
+        int Read(string name) => int.TryParse(root.Element(name)?.Value.Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var n) ? n : -1;
+        var major = Read("MaximumMajorVersion");
+        if (major < 0)
+        {
+            return null;
+        }
+
+        var minor = Read("MaximumMinorVersion");
+        return new Version(major, minor < 0 ? int.MaxValue : minor);
     }
 
     /// <summary>"B8:A4:4F:63:13:39", "b8a44f631339" -> "B8A44F631339"; null when it is not a MAC address.</summary>

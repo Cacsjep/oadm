@@ -48,6 +48,11 @@ public sealed class ApiRequirement
     public string Api { get; set; } = string.Empty;
 
     public string MinVersion { get; set; } = string.Empty;
+
+    /// <summary>"any": the device must list the API, in any version (a CGI whose interface does not change with the listed major version).</summary>
+    public const string AnyVersion = "any";
+
+    public bool IsAnyVersion => string.Equals(MinVersion, AnyVersion, StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed class CommandField

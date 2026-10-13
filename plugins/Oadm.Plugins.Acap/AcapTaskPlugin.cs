@@ -184,7 +184,7 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 await InstallLicenseOnlyAsync(ctx, device, client, payload, ct).ConfigureAwait(false);
                 break;
             case AcapAction.Remove:
-                await RemoveAsync(ctx, client, payload.Application!, ct).ConfigureAwait(false);
+                await RemoveAsync(ctx, client, payload.Application!, _verifyInterval, _verifyTimeout, _time, ct).ConfigureAwait(false);
                 break;
             case AcapAction.Start:
             case AcapAction.Stop:
@@ -266,9 +266,11 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
         };
 
         InstalledApplication? installed;
+        IReadOnlyList<InstalledApplication> installedApps;
         using (var step = ctx.BeginStep(Steps.ReadApplications))
         {
             var before = await client.ListAsync(ct).ConfigureAwait(false);
+            installedApps = before;
             installed = before.FirstOrDefault(a => string.Equals(a.Name, package.AppName, StringComparison.Ordinal));
             step.Complete(installed is null
                 ? $"{before.Count} installed, {package.AppName} not installed"
@@ -278,7 +280,7 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
         AcapCompatibilityReport report;
         using (var step = ctx.BeginStep(Steps.CheckPackage))
         {
-            report = AcapCompatibility.Check(package, facts, installed, payload.AllowDowngrade);
+            report = AcapCompatibility.Check(package, facts, installed, payload.AllowDowngrade, installedApps);
             if (!report.IsCompatible)
             {
                 foreach (var problem in report.Problems)
@@ -322,12 +324,28 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
                     await client.UploadAsync(upload, file.Name, progress, ct).ConfigureAwait(false);
                     step.Complete(string.Create(CultureInfo.InvariantCulture, $"{totalMb:0.0} MB, installed by the device"));
                 }
-                catch (Exception ex) when (!ct.IsCancellationRequested && ex is TaskCanceledException or TimeoutException or HttpRequestException)
+                catch (Exception ex) when (!ct.IsCancellationRequested && (ex is TaskCanceledException or TimeoutException or HttpRequestException || ex is AcapDeviceException { OutcomeUnknown: true }))
                 {
-                    // The device answers upload.cgi only after installing; slow installs can outlive the HTTP timeout.
+                    // The device answers upload.cgi only after installing; slow installs can outlive the HTTP timeout, and
+                    // error 15 says the device itself does not know the outcome.
                     answerLost = true;
                     ctx.Log(TaskLogLevel.Warning, "No answer to the upload in time (" + ex.Message + "); checking whether the installation completed.");
                     step.Complete("No answer in time; the installation is verified next");
+                }
+                catch (AcapDeviceException ex) when (ex.Code == 2 && allowUnsigned != false)
+                {
+                    throw new AcapDeviceException(2, "The package signature is not valid. Download the package again. (error 2)");
+                }
+                catch (AcapDeviceException ex) when (installed is not null)
+                {
+                    // VAPIX: a failed or interrupted upgrade removes both versions. Say so when it happened.
+                    if (await TryFindAsync(client, package.AppName, ct).ConfigureAwait(false) is false)
+                    {
+                        ctx.Log(TaskLogLevel.Warning, $"{installed.DisplayName} is no longer installed after the failed upgrade.");
+                        throw new AcapDeviceException(ex.Code, $"{ex.Message} The device removed {installed.DisplayName} too: install it again; its settings come back.");
+                    }
+
+                    throw;
                 }
             }
         }
@@ -387,7 +405,7 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
         using (var step = ctx.BeginStep(Steps.VerifyState))
         {
-            var after = await FindAsync(client, package.AppName, ct).ConfigureAwait(false);
+            var after = await WaitForStateAsync(client, package.AppName, running: true, ct).ConfigureAwait(false);
             if (after?.IsRunning == true)
             {
                 ctx.Log(TaskLogLevel.Info, $"{app.DisplayName} is running.");
@@ -395,7 +413,7 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
             }
             else
             {
-                step.Warn($"{app.DisplayName} was installed but is {after?.Status ?? "not listed"} after the start command. Check its license and settings.");
+                step.Warn($"{app.DisplayName} was installed but did not start: {NotStartedReason(after)}");
             }
         }
     }
@@ -475,7 +493,7 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
             {
                 await client.UploadLicenseKeyAsync(app.Name, key.Xml, ct).ConfigureAwait(false);
             }
-            catch (AcapDeviceException ex) when (!failOnProblem)
+            catch (Exception ex) when (!failOnProblem && !ct.IsCancellationRequested && ex is AcapDeviceException or UnauthorizedAccessException or TaskCanceledException or TimeoutException or HttpRequestException)
             {
                 step.Warn(ex.Message);
                 ctx.SkipStep(Steps.VerifyLicense, "The key was not installed.");
@@ -517,9 +535,12 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
             return $"The key is for another application (ID {key.ApplicationId}; {app.DisplayName} has ID {id}).";
         }
 
-        return key.IsExpired(today)
-            ? $"The key expired on {key.ExpirationDate!.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}."
-            : null;
+        if (key.IsExpired(today))
+        {
+            return $"The key expired on {key.ExpirationDate!.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}.";
+        }
+
+        return key.Fits(app.Version) ? null : $"The key is for {key.VersionRangeText} of {app.DisplayName}; {app.Version} is installed.";
     }
 
     /// <summary>"Valid until 2027-09-18", "Not required", ... (<see cref="InstalledApplication.LicenseText"/>).</summary>
@@ -529,7 +550,7 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
         return app.LicenseText;
     }
 
-    private static async Task RemoveAsync(ITaskExecutionContext ctx, ApplicationApiClient client, string name, CancellationToken ct)
+    private static async Task RemoveAsync(ITaskExecutionContext ctx, ApplicationApiClient client, string name, TimeSpan interval, TimeSpan timeout, TimeProvider time, CancellationToken ct)
     {
         InstalledApplication? app;
         using (var step = ctx.BeginStep(Steps.ReadApplications))
@@ -551,26 +572,52 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
             step.Complete($"{app.DisplayName} {app.Version} ({app.Status})");
         }
 
+        var answerLost = false;
         using (var step = ctx.BeginStep(Steps.Remove))
         {
             ctx.Log(TaskLogLevel.Info, $"Removing {app.DisplayName} {app.Version} ({app.Status}).");
-            await client.ControlAsync(AcapControlAction.Remove, name, ct).ConfigureAwait(false);
-            step.Complete(app.DisplayName);
+            try
+            {
+                await client.ControlAsync(AcapControlAction.Remove, name, ct).ConfigureAwait(false);
+                step.Complete(app.DisplayName);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested && (ex is TaskCanceledException or TimeoutException or HttpRequestException || ex is AcapDeviceException { OutcomeUnknown: true }))
+            {
+                // The device may still be removing it (or says the outcome is unknown): the next step looks for it until it is gone.
+                answerLost = true;
+                ctx.Log(TaskLogLevel.Warning, "No answer to the remove command in time (" + ex.Message + "); checking whether the application is gone.");
+                step.Complete("No answer in time; the removal is verified next");
+            }
         }
 
         using (var step = ctx.BeginStep(Steps.VerifyRemoval))
         {
-            if (await FindAsync(client, name, ct).ConfigureAwait(false) is not null)
+            var start = time.GetTimestamp();
+            while (await IsInstalledAsync(client, name, answerLost, ct).ConfigureAwait(false) != false)
             {
-                throw new InvalidOperationException($"The device accepted the remove command but {app.DisplayName} is still installed.");
+                if (!answerLost || time.GetElapsedTime(start) >= timeout)
+                {
+                    throw new InvalidOperationException(answerLost
+                        ? $"The device did not confirm the removal and {app.DisplayName} is still installed."
+                        : $"The device accepted the remove command but {app.DisplayName} is still installed.");
+                }
+
+                await Task.Delay(interval, time, ct).ConfigureAwait(false);
             }
 
             ctx.Log(TaskLogLevel.Info, $"{app.DisplayName} removed.");
-            step.Complete($"{app.DisplayName} is no longer installed");
+            if (answerLost)
+            {
+                step.Warn($"The remove command was not confirmed in time, but {app.DisplayName} is no longer installed.");
+            }
+            else
+            {
+                step.Complete($"{app.DisplayName} is no longer installed");
+            }
         }
     }
 
-    private static async Task StartStopAsync(ITaskExecutionContext ctx, ApplicationApiClient client, string name, bool start, CancellationToken ct)
+    private async Task StartStopAsync(ITaskExecutionContext ctx, ApplicationApiClient client, string name, bool start, CancellationToken ct)
     {
         var verb = start ? "Start" : "Stop";
         var control = start ? Steps.Start : Steps.Stop;
@@ -607,12 +654,12 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
         using (var step = ctx.BeginStep(Steps.VerifyState))
         {
-            var after = await FindAsync(client, name, ct).ConfigureAwait(false);
+            var after = await WaitForStateAsync(client, name, start, ct).ConfigureAwait(false);
             if (after is null || after.IsRunning != start)
             {
                 if (start)
                 {
-                    throw new InvalidOperationException($"{app.DisplayName} did not start (status {after?.Status ?? "unknown"}). Check its license and settings.");
+                    throw new InvalidOperationException($"{app.DisplayName} did not start: {NotStartedReason(after)}");
                 }
 
                 throw new InvalidOperationException($"{app.DisplayName} did not stop (status {after?.Status ?? "unknown"}).");
@@ -623,7 +670,25 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
         }
     }
 
-    /// <summary>Start/stop treating "already running" (6) and "not running" (7) as success.</summary>
+    /// <summary>
+    /// Whether the application is listed; null while polling and the device does not answer (it may still be busy removing).
+    /// </summary>
+    private static async Task<bool?> IsInstalledAsync(ApplicationApiClient client, string name, bool polling, CancellationToken ct)
+    {
+        try
+        {
+            return await FindAsync(client, name, ct).ConfigureAwait(false) is not null;
+        }
+        catch (Exception ex) when (polling && !ct.IsCancellationRequested && ex is TaskCanceledException or TimeoutException or HttpRequestException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Start/stop treating "already running" (6) and "not running" (7) as success, and an unknown outcome (15, no answer) as
+    /// something the next step verifies.
+    /// </summary>
     private static async Task ControlTolerantAsync(ApplicationApiClient client, AcapControlAction action, string name, CancellationToken ct)
     {
         try
@@ -633,6 +698,49 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
         catch (AcapDeviceException ex) when ((action == AcapControlAction.Start && ex.Code == 6) || (action == AcapControlAction.Stop && ex.Code == 7))
         {
             // Already in the requested state.
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested && (ex is AcapDeviceException { OutcomeUnknown: true } or TaskCanceledException or TimeoutException or HttpRequestException))
+        {
+            // The device may still be starting or stopping it: the state is verified next.
+        }
+    }
+
+    /// <summary>Polls until the application is (not) running, at most 15 s (an application needs a moment to start).</summary>
+    private async Task<InstalledApplication?> WaitForStateAsync(ApplicationApiClient client, string name, bool running, CancellationToken ct)
+    {
+        var start = _time.GetTimestamp();
+        var limit = _verifyTimeout < TimeSpan.FromSeconds(15) ? _verifyTimeout : TimeSpan.FromSeconds(15);
+        while (true)
+        {
+            var app = await FindAsync(client, name, ct).ConfigureAwait(false);
+            if (app is null || app.IsRunning == running || _time.GetElapsedTime(start) >= limit)
+            {
+                return app;
+            }
+
+            await Task.Delay(_verifyInterval, _time, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Why an application is not running: its license when that is the reason, else its status.</summary>
+    public static string NotStartedReason(InstalledApplication? app) => app switch
+    {
+        null => "it is no longer installed.",
+        { License: "Missing" } => "its license is missing. Install a license key.",
+        { License: "Invalid" } => "its license is not valid. Install a new license key.",
+        _ => $"its status is {app.Status ?? "unknown"}. Check its settings.",
+    };
+
+    /// <summary>Whether the application is listed; null when the list cannot be read.</summary>
+    private static async Task<bool?> TryFindAsync(ApplicationApiClient client, string name, CancellationToken ct)
+    {
+        try
+        {
+            return await FindAsync(client, name, ct).ConfigureAwait(false) is not null;
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested && ex is AcapDeviceException or TaskCanceledException or TimeoutException or HttpRequestException)
+        {
+            return null;
         }
     }
 

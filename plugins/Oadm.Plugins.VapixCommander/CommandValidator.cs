@@ -41,7 +41,7 @@ public static partial class CommandValidator
     [GeneratedRegex("^[a-zA-Z][a-zA-Z0-9_]*$", RegexOptions.CultureInvariant)]
     private static partial Regex FieldNameRegex();
 
-    [GeneratedRegex("^[0-9]+\\.[0-9]+$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^([0-9]+\\.[0-9]+|any)$", RegexOptions.CultureInvariant)]
     private static partial Regex MinVersionRegex();
 
     /// <summary>All problems of <paramref name="command"/>; empty when it is valid.</summary>
@@ -113,7 +113,7 @@ public static partial class CommandValidator
 
             if (!MinVersionRegex().IsMatch(requirement.MinVersion ?? string.Empty))
             {
-                problems.Add($"Minimum version \"{requirement.MinVersion}\" of {requirement.Api} must look like 1.0.");
+                problems.Add($"Minimum version \"{requirement.MinVersion}\" of {requirement.Api} must look like 1.0 (or any).");
             }
         }
     }

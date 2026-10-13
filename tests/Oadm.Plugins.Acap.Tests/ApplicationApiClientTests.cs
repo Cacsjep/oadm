@@ -61,7 +61,10 @@ public sealed class ApplicationApiClientTests
     [InlineData("Error: 2", 2, "signature")]
     [InlineData("Error: 5\n", 5, "not compatible")]
     [InlineData("Error: 27", 27, "vendor")]
-    [InlineData("Error: 99", 99, "Error: 99")]
+    [InlineData("Error: 14", 14, "other upper and lower case letters")]
+    [InlineData("Error: 12", 12, "Try again when it is done")]
+    [InlineData("Error: 51", 51, "Developer mode: the serial number")]
+    [InlineData("Error: 99", 99, "The device refused it. (error 99)")]
     public void Upload_errors_map_to_clear_messages(string reply, int code, string text)
     {
         var ex = Assert.Throws<AcapDeviceException>(() => ApplicationApiClient.EnsureOk(reply, ApplicationApiClient.UploadErrors));

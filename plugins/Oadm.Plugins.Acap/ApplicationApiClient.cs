@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Xml;
 using System.Xml.Linq;
 
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.Acap;
@@ -31,7 +32,14 @@ public sealed class AcapDeviceException : Exception
         Code = code;
     }
 
+    /// <summary>The VAPIX error code ("Error: 5"), null for an answer without one.</summary>
     public int? Code { get; }
+
+    /// <summary>The HTTP status when the request itself failed (500, 404, ...); null for a VAPIX error.</summary>
+    public int? HttpStatus { get; init; }
+
+    /// <summary>Code 15: the device timed out and does not know the outcome (the caller verifies it).</summary>
+    public bool OutcomeUnknown => Code == 15;
 }
 
 public enum AcapControlAction
@@ -52,6 +60,9 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
 
     /// <summary>Per-request timeout of the upload (sending the package and the installation).</summary>
     public static readonly TimeSpan UploadTimeout = TimeSpan.FromMinutes(10);
+
+    /// <summary>Per-request timeout of control.cgi (start, stop, remove): seen at about 60 s for a remove.</summary>
+    public static readonly TimeSpan ControlTimeout = TimeSpan.FromMinutes(2);
     public const string ControlPath = "/axis-cgi/applications/control.cgi";
     public const string ConfigPath = "/axis-cgi/applications/config.cgi";
     public const string LicensePath = "/axis-cgi/applications/license.cgi";
@@ -138,6 +149,8 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
         }
 
         using var request = new HttpRequestMessage(HttpMethod.Post, BuildControlUri(action, package));
+        // Removing (and stopping) a large application can take about a minute before the device answers.
+        request.Options.Set(VapixRequestOptions.Timeout, ControlTimeout);
         var text = await SendForTextAsync(request, ct).ConfigureAwait(false);
         EnsureOk(text, ControlErrors);
     }
@@ -165,21 +178,36 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
     }
 
     /// <summary>
-    /// The device's page treats every answer without "Error" as accepted (the success text is not documented); the same
-    /// here. A refusal names the device's text.
+    /// license.cgi answers "OK" or "Error: &lt;code&gt;" (VAPIX "Manage license keys"); the device's own page treats every answer
+    /// without "Error" as accepted, the same here. A refusal is translated with <see cref="LicenseErrors"/>.
     /// </summary>
     public static void EnsureLicenseAccepted(string reply)
     {
         ArgumentNullException.ThrowIfNull(reply);
         var text = reply.Trim();
+        if (text.StartsWith("Error:", StringComparison.OrdinalIgnoreCase))
+        {
+            EnsureOk(text, LicenseErrors);
+        }
+
         if (text.Contains("Error", StringComparison.OrdinalIgnoreCase))
         {
-            var code = text.StartsWith("Error:", StringComparison.OrdinalIgnoreCase)
-                ? ParseInt(text["Error:".Length..].Trim().Split([' ', '\n', '\r'], 2)[0])
-                : null;
-            throw new AcapDeviceException(code, "The device refused the license key: " + FirstLine(text));
+            throw new AcapDeviceException(null, "The device refused the license key: " + FirstLine(text));
         }
     }
+
+    /// <summary>License.cgi error codes (VAPIX Application API, "Manage license keys").</summary>
+    public static readonly IReadOnlyDictionary<int, string> LicenseErrors = new Dictionary<int, string>
+    {
+        [21] = "The license key file is not valid.",
+        [22] = "The device could not save the license key. The device's system log says why.",
+        [23] = "The device could not remove the license key.",
+        [24] = "The application is not installed.",
+        [25] = "The license key is for another application.",
+        [26] = "The license key does not fit this version of the application.",
+        [30] = "The license key is for another device.",
+        [31] = "The license key has expired.",
+    };
 
     public static string BuildLicenseUri(string package) =>
         $"{LicensePath}?action=uploadlicensekey&package={Uri.EscapeDataString(package)}";
@@ -250,33 +278,40 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
         }
     }
 
-    /// <summary>Upload.cgi error codes (VAPIX Application API).</summary>
+    /// <summary>
+    /// Upload.cgi error codes, every one the VAPIX Application API lists ("Upload application"), in plain words with what to
+    /// do. The device's system log has the details where the device itself points there (5, 10, 15).
+    /// </summary>
     public static readonly IReadOnlyDictionary<int, string> UploadErrors = new Dictionary<int, string>
     {
-        [1] = "The file is not a valid application package.",
+        [1] = "The file is not an application package (.eap).",
         [2] = "The package signature is missing or invalid; the device accepts only signed applications.",
-        [3] = "The package is too large or the device has not enough free space.",
-        [5] = "The package is not compatible with this device.",
-        [10] = "Unspecified error on the device.",
-        [12] = "Uploading applications is currently not possible on the device.",
-        [13] = "Installation failed (invalid user or group in the package).",
-        [14] = "The application already exists on the device.",
-        [15] = "The operation timed out on the device.",
-        [27] = "Upgrade not allowed: the vendor of the installed application differs.",
-        [29] = "The package has an invalid manifest.json or package.conf.",
+        [3] = "The package is too large or the device's storage is full.",
+        [5] = "The package is not compatible with this device. The device's system log says why.",
+        [10] = "The device could not install the package. The device's system log says why.",
+        [12] = "Another application is being uploaded to the device. Try again when it is done.",
+        [13] = "The package needs a user or group that the device does not allow.",
+        [14] = "The application is already installed with other upper and lower case letters in its name. Remove it first.",
+        [15] = "The device timed out and the result is unknown. Check the installed applications and the device's system log.",
+        [27] = "Upgrade not allowed: the vendor of the package differs from the installed application.",
+        [29] = "The package's manifest.json or package.conf is not valid.",
+        [51] = "Developer mode: the serial number in the package is not this device's.",
+        [52] = "Developer mode: the vendor changed, so the upgrade is not allowed.",
+        [53] = "Developer mode: the vendor of the package is not the developer mode vendor.",
+        [54] = "Developer mode does not allow the contents of this package's manifest.",
     };
 
-    /// <summary>Control.cgi error codes (VAPIX Application API).</summary>
+    /// <summary>Control.cgi error codes (VAPIX Application API, "Control application").</summary>
     public static readonly IReadOnlyDictionary<int, string> ControlErrors = new Dictionary<int, string>
     {
-        [1] = "Invalid application package.",
+        [1] = "The installed application package is not valid. Install it again.",
         [4] = "The application is not installed.",
         [6] = "The application is already running.",
         [7] = "The application is not running.",
-        [8] = "The application is in a failure state.",
-        [9] = "Too many applications are running.",
-        [10] = "Unspecified error on the device.",
-        [15] = "The operation timed out on the device.",
+        [8] = "The application stopped after an error. Stop it, then start it again.",
+        [9] = "Too many applications are running. Stop one first.",
+        [10] = "The device could not do this. The device's system log says why.",
+        [15] = "The device timed out and the result is unknown.",
     };
 
     /// <summary>Throws <see cref="AcapDeviceException"/> unless the reply is "OK".</summary>
@@ -293,7 +328,9 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
         if (text.StartsWith("Error:", StringComparison.OrdinalIgnoreCase))
         {
             var code = ParseInt(text["Error:".Length..].Trim().Split([' ', '\n', '\r'], 2)[0]);
-            var message = code is { } c && errors.TryGetValue(c, out var m) ? m : "The device reported " + FirstLine(text);
+            var message = code is { } c && errors.TryGetValue(c, out var m) ? m
+                : code is null ? "The device refused it: " + FirstLine(text)
+                : "The device refused it.";
             throw new AcapDeviceException(code, code is null ? message : $"{message} (error {code})");
         }
 
@@ -304,18 +341,30 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
     {
         using var response = await _vapix.SendAsync(request, ct).ConfigureAwait(false);
         var path = request.RequestUri?.OriginalString.Split('?')[0] ?? string.Empty;
-        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
-            throw new UnauthorizedAccessException($"{path}: HTTP {(int)response.StatusCode}. The stored account needs administrator rights.");
+            throw new UnauthorizedAccessException(DeviceMessages.CredentialsRequired);
+        }
+
+        if (response.StatusCode == HttpStatusCode.Forbidden)
+        {
+            throw new UnauthorizedAccessException(AdministratorRequired);
         }
 
         if (!response.IsSuccessStatusCode)
         {
-            throw new AcapDeviceException((int)response.StatusCode, $"{path}: HTTP {(int)response.StatusCode}");
+            var status = (int)response.StatusCode;
+            throw new AcapDeviceException(null, DeviceMessages.ForHttpStatus(status) ?? string.Create(CultureInfo.InvariantCulture, $"HTTP {status}"))
+            {
+                HttpStatus = status,
+            };
         }
 
         return await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
     }
+
+    /// <summary>HTTP 403 on an application request: the stored account is not an administrator.</summary>
+    public const string AdministratorRequired = "The stored account is not an administrator on the device. Log in with an administrator account.";
 
     private static int? ParseInt(string? s) => int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : null;
 

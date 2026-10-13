@@ -1164,6 +1164,14 @@
   <Style Selector="DataGrid.wrapRows DataGridCell ui|StatusChip">
     <Setter Property="Margin" Value="10,6" />
   </Style>
+  <!-- Long text of a grid cell (details, reasons): wraps to at most three lines in a wrapRows grid -->
+  <Style Selector="DataGrid.wrapRows DataGridCell TextBlock.cellText">
+    <Setter Property="Margin" Value="10,6" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="MaxLines" Value="3" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
   <Style Selector="DataGridRow.muted">
     <Setter Property="Opacity" Value="0.45" />
   </Style>

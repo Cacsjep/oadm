@@ -17,6 +17,23 @@ public static class LegacyApiList
 
     public static readonly string[] Groups = ["Properties"];
 
+    public const string ApplicationId = "application";
+
+    /// <summary>APIs VAPIX identifies by a parameter: added from <see cref="Groups"/> when the API list leaves them out.</summary>
+    public static readonly string[] PropertyIds = ["param-cgi", ApplicationId, "user-management"];
+
+    /// <summary>
+    /// The Application API 1.0 when <c>Properties.EmbeddedDevelopment.Version</c> exists (how VAPIX identifies it), else null.
+    /// </summary>
+    public static DeviceApi? ApplicationFrom(IReadOnlyDictionary<string, string> parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        return (parameters.TryGetValue("Properties.EmbeddedDevelopment.Version", out var value) || parameters.TryGetValue("root.Properties.EmbeddedDevelopment.Version", out value))
+            && !string.IsNullOrWhiteSpace(value)
+            ? new DeviceApi(ApplicationId, "1.0", "Application", Source)
+            : null;
+    }
+
     public static IReadOnlyList<DeviceApi> FromProperties(IReadOnlyDictionary<string, string> parameters)
     {
         ArgumentNullException.ThrowIfNull(parameters);
@@ -30,9 +47,9 @@ public static class LegacyApiList
             list.Add(new DeviceApi("fwmgr", fwmgr, "Firmware Management", Source));
         }
 
-        if (!string.IsNullOrEmpty(Get("Properties.EmbeddedDevelopment.Version")))
+        if (ApplicationFrom(parameters) is { } application)
         {
-            list.Add(new DeviceApi("application", "1.0", "Application", Source));
+            list.Add(application);
         }
 
         if (string.Equals(Get("Properties.API.Browser.UserGroup"), "yes", StringComparison.OrdinalIgnoreCase))

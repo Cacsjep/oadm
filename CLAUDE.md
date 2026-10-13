@@ -507,7 +507,9 @@ No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated
   `pwdgrp.cgi`, `applications/list.cgi` work. `VapixClient.GetApiListAsync` answers a 404 with `LegacyApiList` from the
   `param.cgi` group `Properties` (param-cgi 1.0 always, fwmgr from `Properties.FirmwareManagement.Version`, application
   when `Properties.EmbeddedDevelopment.Version`, user-management when `Properties.API.Browser.UserGroup=yes`; status "from
-  parameters"), so Upgrade firmware, Users, Applications and (through their param.cgi fallbacks) Network settings and Date
+  parameters"); an API list without "param-cgi", "application" or "user-management" gets them the same way from one read
+  of `Properties` (VAPIX identifies these by parameters, not by the API list; an AXIS OS 11.9 camera did not list
+  "application"), so Upgrade firmware, Users, Applications and (through their param.cgi fallbacks) Network settings and Date
   and time run; PKI (11.11) and Device configuration (12.5) stay greyed with their reason. Writes on such firmware are not
   tested yet; the discovered row has no model (no anonymous properties); a factory-default 8.x device is not recognized
   (no systemready).

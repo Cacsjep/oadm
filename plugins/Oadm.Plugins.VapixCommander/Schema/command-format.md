@@ -25,7 +25,7 @@ JSON Schema: `command.schema.json` next to this file. Decisions by the user (202
   "category": "Video",
   "description": "Light level at which the camera switches between day and night mode.",
   "docs": "https://developer.axis.com/vapix/...",
-  "requires": [ { "api": "param-cgi", "minVersion": "1.0" } ],
+  "requires": [ { "api": "param-cgi", "minVersion": "1.0" } ],   // or "minVersion": "any" for a CGI listed under changing majors
   "writes": true,
   "fields": [
     { "name": "channel", "label": "Image channel", "type": "integer", "default": 0, "min": 0, "max": 7 },

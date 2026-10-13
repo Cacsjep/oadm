@@ -312,7 +312,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject
         {
             if (ReferenceEquals(device, SelectedDevice))
             {
-                ErrorMessage = "Could not read the applications: " + ex.Message;
+                ErrorMessage = "Could not read the applications: " + ServerErrors.Message(ex);
             }
         }
         finally
@@ -502,7 +502,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject
         {
             var state = await QueryAsync(row.Device.Device).ConfigureAwait(true);
             var installed = state.Applications.FirstOrDefault(a => string.Equals(a.Name, package.AppName, StringComparison.Ordinal));
-            var report = AcapCompatibility.Check(package, state.Device, installed, allowDowngrade);
+            var report = AcapCompatibility.Check(package, state.Device, installed, allowDowngrade, state.Applications);
             row.IsOk = report.IsCompatible;
             row.Kind = report.IsCompatible ? report.Kind : null;
             row.IsWarning = report.IsCompatible && (report.Warnings.Count > 0 || report.Kind == InstallKind.Downgrade);
@@ -516,7 +516,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject
 #pragma warning restore CA1031
         {
             row.IsError = true;
-            row.Result = "Could not read the device: " + ex.Message;
+            row.Result = "Could not read the device: " + ServerErrors.Message(ex);
             row.Verdict = "Not readable";
             row.Details = row.Result;
         }
@@ -606,7 +606,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject
 #pragma warning restore CA1031
         {
             UploadStatus = null;
-            PackageError = "Upload failed: " + ex.Message; // at the file row, like a rejected package
+            PackageError = "Upload failed: " + ServerErrors.Message(ex); // at the file row, like a rejected package
         }
         finally
         {

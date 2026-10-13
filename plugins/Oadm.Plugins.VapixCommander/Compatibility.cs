@@ -46,6 +46,16 @@ public static class Compatibility
 
         foreach (var requirement in command.Requires)
         {
+            if (requirement.IsAnyVersion)
+            {
+                if (apis.FindApi(requirement.Api) is null)
+                {
+                    return new(CompatibilityState.MissingApi, $"Missing API {requirement.Api}");
+                }
+
+                continue;
+            }
+
             if (!Version.TryParse(requirement.MinVersion, out var required))
             {
                 return new(CompatibilityState.Unknown, $"Invalid minimum version {requirement.MinVersion} of {requirement.Api}");
@@ -75,7 +85,13 @@ public static class Compatibility
         ArgumentNullException.ThrowIfNull(command);
         foreach (var requirement in command.Requires)
         {
-            apis.Require(requirement.Api, requirement.MinVersion);
+            if (requirement.IsAnyVersion && apis.FindApi(requirement.Api) is not null)
+            {
+                continue;
+            }
+
+            // Missing (or, with a version, too old): the SDK's refusal ("Nothing was changed").
+            apis.Require(requirement.Api, requirement.IsAnyVersion ? "1.0" : requirement.MinVersion);
         }
     }
 }

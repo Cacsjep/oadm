@@ -1477,7 +1477,7 @@
       "requires": [
         {
           "api": "privacy-mask",
-          "minVersion": "1.0"
+          "minVersion": "any"
         }
       ],
       "writes": false,

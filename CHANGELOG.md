@@ -23,6 +23,16 @@ version and date, and the release workflow copies it into the GitHub release.
   an older OADM is upgraded.
 - Before every database upgrade the server copies its database to `backups/before-upgrade`.
 
+### Fixed
+
+- **Applications (ACAP)** is offered on cameras that run applications but do not name them in their API list (seen on AXIS
+  OS 11.9). OADM now reads the camera's parameters, as Axis documents it.
+- Applications: removing an application waits up to 2 minutes (it can take about a minute); every error the camera
+  reports for installing, starting, stopping, removing and license keys is shown in plain words with what to do; a failed
+  upgrade that removed the application says so; long details in the device table wrap.
+- **VAPIX Commander**: the PTZ, privacy mask and application commands were refused on current cameras (they asked for an
+  API version or name the cameras do not list).
+
 ### Changed
 
 - The client asks for the terms of use on its first start on each computer (and again when they change). The Windows

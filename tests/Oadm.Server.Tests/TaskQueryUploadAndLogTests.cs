@@ -36,7 +36,8 @@ public sealed class TaskQueryUploadAndLogTests
             PayloadJson = "{}",
         });
 
-        Assert.Equal("""["user-management 1.2","network-settings 1.37"]""", reply.PayloadJson);
+        // param-cgi: not in the fake list, added because param.cgi answers (VAPIX identifies it by a parameter).
+        Assert.Equal("""["user-management 1.2","network-settings 1.37","param-cgi 1.0"]""", reply.PayloadJson);
     }
 
     [Fact]

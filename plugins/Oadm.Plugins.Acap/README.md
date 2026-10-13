@@ -68,7 +68,7 @@ Manifest schema -> minimum AXIS OS: 1.0-1.2 10.7, 1.3 10.9, 1.3.1 11.0, 1.4.0 11
 | Topic | Decision |
 |---|---|
 | API used | Classic Application API (`application 1.x`). `packagemanager` is undocumented and is not used. |
-| `CanRun` | Status Ok/Unknown **and** cached `device.Apis.Supports("application", "1.0")`. Empty API list = not offered. |
+| `CanRun` | Status Ok/Unknown **and** cached `device.Apis.Supports("application", "1.0")`. Empty API list = not offered. VAPIX identifies the Application API by `Properties.EmbeddedDevelopment.Version`, not by the API list: AXIS OS 11.x devices with applications may not list it, so `VapixClient.GetApiListAsync` adds "application" 1.0 (status "from parameters") when that property exists (seen on an AXIS OS 11.9 camera, fixed 2026-10-13). |
 | Before any write | Fresh `GetApiListAsync().Require("application", "1.0")`; payload validated first (no device access on bad payload). |
 | Package source | Uploaded by the dialog (`ITaskDialogContext.UploadAsync`), read in the task from `ctx.Files`; SHA-256 and app name must match what the dialog checked. |
 | Package parsing | `manifest.json` wins, `package.conf` fills gaps; top-level entries only; metadata max 1 MB; app name `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$`; version required. Not an `.eap` -> Failed, nothing changed. |
@@ -80,6 +80,8 @@ Manifest schema -> minimum AXIS OS: 1.0-1.2 10.7, 1.3 10.9, 1.3.1 11.0, 1.4.0 11
 | Upload | Streams the file from `ctx.Files` as multipart `file`; step progress in bytes. |
 | Lost upload answer | Timeout / connection error while waiting for `upload.cgi` -> poll `list.cgi` up to 5 min for the expected version; found -> Done with warning, else Failed. |
 | Verify | After install: listed with the expected version, else Failed. Optional start: control start, then status must be Running, else Done with warning. |
+| Device errors | Every code VAPIX lists is translated with what to do (`UploadErrors` incl. developer mode 51-54, `ControlErrors`, `LicenseErrors` 21-31); unknown codes "The device refused it. (error N)". Code 15 (outcome unknown) is handled like a lost answer: the result is read from `list.cgi`. Code 2 says "use a signed package" only when the device accepts only signed ones. A failed upgrade that removed the application (VAPIX: both versions are removed) says so. HTTP 401 / 403 / other statuses use the shared `DeviceMessages` texts. A name that differs only in upper and lower case from an installed application is refused before the upload (code 14). A license key for other application versions (code 26) is refused before sending. A start that does not reach Running within 15 s names a missing or invalid license. |
+| Control timeout | `control.cgi` (start, stop, remove) waits up to 2 minutes (`ApplicationApiClient.ControlTimeout`): a remove was seen to take about 60 s. A remove whose answer is lost is verified by polling `list.cgi` for up to 5 minutes (Done with warnings when the application is gone). |
 | Remove | Confirmation in the dialog. Bundled (`Bundled=Yes`) apps are refused. Not installed -> Done with warning. Verified gone afterwards. |
 | Start / Stop | Already in the requested state -> Done, no write. Errors 6/7 treated as success. Not installed -> Done with warning (multi-device selections). Status verified afterwards. |
 | Query | `listApplications` (read-only): API check, basicdeviceinfo, `EmbeddedDevelopment.Version`, `config.cgi get AllowUnsigned`, `list.cgi`. Returns `{device: facts, applications: [...]}`. |

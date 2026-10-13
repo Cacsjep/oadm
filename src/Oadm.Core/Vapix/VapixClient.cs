@@ -191,7 +191,25 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
             return LegacyApiList.FromProperties(await ListParametersAsync(LegacyApiList.Groups, ct).ConfigureAwait(false));
         }
 
-        return VapixParsers.ParseApiList(json);
+        var apis = VapixParsers.ParseApiList(json);
+        if (LegacyApiList.PropertyIds.All(id => apis.Any(a => a.Id == id)))
+        {
+            return apis;
+        }
+
+        // Some APIs are identified by a parameter (VAPIX "Identification"), not by the API list: the Application API by
+        // Properties.EmbeddedDevelopment.Version (AXIS OS 11.x may not list it), parameter management and user management
+        // by Properties.API. One read of the group Properties adds those the list left out.
+        try
+        {
+            var properties = await ListParametersAsync(LegacyApiList.Groups, ct).ConfigureAwait(false);
+            var missing = LegacyApiList.FromProperties(properties).Where(d => LegacyApiList.PropertyIds.Contains(d.Id) && !apis.Any(a => a.Id == d.Id));
+            return [.. apis, .. missing];
+        }
+        catch (VapixException ex) when (ex is not VapixAuthenticationException)
+        {
+            return apis;
+        }
     }
 
     public async Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct)

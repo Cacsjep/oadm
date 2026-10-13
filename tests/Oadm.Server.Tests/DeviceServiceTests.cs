@@ -184,10 +184,10 @@ public sealed class DeviceServiceTests
         var refreshed = await TestHelpers.GetDeviceAsync(host, device.Id.ToString());
         Assert.Equal((await host.Settings.GetAsync(new Proto.Empty())).ServerName, refreshed.ServerName);
 
-        // The API list from apidiscovery is stored and sent to the client.
-        Assert.Equal(["user-management 1.2", "network-settings 1.37"], refreshed.Apis.Select(a => $"{a.Id} {a.Version}"));
+        // The API list from apidiscovery is stored and sent to the client (param-cgi, not listed, added from the parameters).
+        Assert.Equal(["user-management 1.2", "network-settings 1.37", "param-cgi 1.0"], refreshed.Apis.Select(a => $"{a.Id} {a.Version}"));
         Assert.Equal("official", refreshed.Apis[0].Status);
-        Assert.Equal(2, (await host.Get<DeviceRepository>().GetAsync(device.Id, CancellationToken.None))!.Apis.Count);
+        Assert.Equal(3, (await host.Get<DeviceRepository>().GetAsync(device.Id, CancellationToken.None))!.Apis.Count);
     }
 
     [Fact]

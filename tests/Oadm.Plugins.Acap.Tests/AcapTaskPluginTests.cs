@@ -257,8 +257,26 @@ public sealed class AcapTaskPluginTests
 
         await Run(ctx, InstallPayload(file, start: true));
 
-        Assert.Contains(ctx.Warnings, w => w.Contains("after the start command", StringComparison.Ordinal));
+        Assert.Contains(ctx.Warnings, w => w.Contains("did not start: its status is Stopped. Check its settings.", StringComparison.Ordinal));
         Assert.Equal([.. Prepared, "Upload package: Done", "Verify installation: Done", "Start application: Done", "Verify application state: Warning", "Completed: Done"], StepRun.Lines(ctx.Steps));
+    }
+
+    [Fact]
+    public void A_start_that_fails_names_a_missing_license()
+    {
+        Assert.Equal("its license is missing. Install a license key.", AcapTaskPlugin.NotStartedReason(new InstalledApplication { Name = "x", License = "Missing", Status = "Stopped" }));
+        Assert.Equal("its license is not valid. Install a new license key.", AcapTaskPlugin.NotStartedReason(new InstalledApplication { Name = "x", License = "Invalid", Status = "Stopped" }));
+        Assert.Equal("it is no longer installed.", AcapTaskPlugin.NotStartedReason(null));
+    }
+
+    [Fact]
+    public async Task An_application_whose_name_differs_only_in_case_blocks_the_install()
+    {
+        var package = await EapReader.ReadAsync(new MemoryStream(EapBuilder.FromManifest(EapBuilder.Manifest(appName: "myapp"))), CancellationToken.None);
+        var report = AcapCompatibility.Check(package, new AcapDeviceFacts { Architecture = "aarch64", FirmwareVersion = "12.11.77" }, null, false,
+            [new InstalledApplication { Name = "MyApp", NiceName = "My App" }]);
+        Assert.False(report.IsCompatible);
+        Assert.Contains("Another application named MyApp (My App) is installed. Remove it first.", report.Problems);
     }
 
     [Fact]

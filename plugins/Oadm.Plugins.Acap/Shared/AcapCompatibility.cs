@@ -52,12 +52,18 @@ public static class AcapCompatibility
     ];
 
     /// <summary>Checks a package against a device. <paramref name="installed"/> is the same-named application on the device, if any.</summary>
-    public static AcapCompatibilityReport Check(EapManifest package, AcapDeviceFacts device, InstalledApplication? installed, bool allowDowngrade)
+    /// <param name="all">Every installed application: one whose name differs only in upper and lower case blocks the install
+    /// (the device refuses it with error 14).</param>
+    public static AcapCompatibilityReport Check(EapManifest package, AcapDeviceFacts device, InstalledApplication? installed, bool allowDowngrade, IReadOnlyList<InstalledApplication>? all = null)
     {
         ArgumentNullException.ThrowIfNull(package);
         ArgumentNullException.ThrowIfNull(device);
         var problems = new List<string>();
         var warnings = new List<string>();
+        if (installed is null && all?.FirstOrDefault(a => string.Equals(a.Name, package.AppName, StringComparison.OrdinalIgnoreCase)) is { } clash)
+        {
+            problems.Add($"Another application named {clash.Name} ({clash.DisplayName}) is installed. Remove it first.");
+        }
 
         CheckArchitecture(package, device, problems);
         CheckFirmware(package, device, problems, warnings);
