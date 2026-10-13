@@ -357,8 +357,12 @@ public sealed class PageTests
         vm.SelectedDevice = vm.Devices[0];
         await Wait.UntilAsync(() => vm.IsLive);
 
-        await rig.Plugin.StopAsync(CancellationToken.None); // the server restarted
+        // The server restarts: while it is gone the page's calls fail (connection lost), as they do for a real client.
+        // Without that a keep-alive between the stop and the start would restart the stream on the stopped plugin.
+        ctx.FailMethod = IoMonitorMethods.KeepAlive;
+        await rig.Plugin.StopAsync(CancellationToken.None);
         await rig.StartAsync();
+        ctx.FailMethod = null;
 
         await Wait.UntilAsync(() => ctx.Calls.Count(c => c == IoMonitorMethods.Start) == 2);
         await Wait.UntilAsync(() => vm.IsLive && rig.Plugin.StreamCount == 1);
