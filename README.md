@@ -170,6 +170,7 @@ Both scripts read their help from [`scripts/manage-help.txt`](scripts/manage-hel
 | `manage test [unit\|perf\|hardware\|all] [--filter EXPR] [--release]` | Unit tests (default, what CI runs), scale tests with 5,000 devices and 50,000 tasks (`Category=Perf`, a few minutes, see [`docs/scale-audit.md`](docs/scale-audit.md)), read-only hardware tests against `dev-cameras.yaml`, or all |
 | `manage publish [all\|server\|client] [--rid RID] [--version V]` | Self-contained single-file apps in `artifacts/publish/<app>/<rid>`, plugins next to each exe |
 | `manage package <windows\|linux\|macos> [--rid RID] [--version V]` | Installer (MSI, .deb, .pkg) in `artifacts/packages/`, see [`packaging/README.md`](packaging/README.md) |
+| `manage new <task\|page\|action> --name NAME [--id ID]` | A new plugin from the matching developer tutorial (`samples/`), renamed, in `plugins/` and `tests/` and added to `Oadm.sln`: it builds, its tests pass and it runs |
 | `manage clean` | Remove `bin`, `obj` and `artifacts` (data folders stay) |
 | `manage info` | Show the .NET SDK, `DOTNET_ROOT`, configuration and RID in use |
 

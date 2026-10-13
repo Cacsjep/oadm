@@ -118,6 +118,7 @@ public sealed class FormField : Grid
         }
     }
 
+    /// <summary>The label left of the input; empty keeps the column so the row lines up.</summary>
     public string? Label
     {
         get => GetValue(LabelProperty);

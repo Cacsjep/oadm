@@ -39,6 +39,10 @@ You need the [.NET 10 SDK](https://dotnet.microsoft.com/download). Everything el
   - device safety for task plugins (check compatibility first, validate before writing, never lock OADM out).
 - **Real devices:** hardware tests are read-only (`Category=Hardware`, against your own `dev-cameras.yaml`). Tests that
   change a device (`Category=HardwareWrite`) run only on purpose, against a test device.
+- **New plugins:** start with `./manage.sh new task|page|action --name "My plugin"` (a working copy of the tutorial
+  plugin under your name, see the developer tutorials on the website).
+- **SDK comments:** every public type and member of `Oadm.Sdk` and `Oadm.Sdk.Client` has a doc comment for plugin
+  authors; the website's SDK reference is generated from them (`manage build docs`) and a test fails without one.
 - **Cross-platform:** the code builds and runs on Windows, Linux and macOS (no Windows-only APIs).
 - **Secrets:** never log passwords, tokens or digest headers; never commit `dev-cameras.yaml`.
 

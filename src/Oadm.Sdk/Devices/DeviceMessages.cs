@@ -29,13 +29,13 @@ public static class DeviceMessages
     /// </summary>
     public const string CertificateChanged = "Certificate changed. Remove the device and add it again to trust the new certificate.";
 
-    /// <summary>HTTP 401.</summary>
     /// <summary>The device rejects the stored login (status Credentials required).</summary>
     public const string CredentialsRequired = "Credentials required - the device rejects the stored credentials";
 
     /// <summary>The device has no password yet (status Password not set).</summary>
     public const string PasswordNotSet = "Password not set - the device is in factory default";
 
+    /// <summary>The device refused the login of a request (HTTP 401).</summary>
     public const string Unauthorized = "Unauthorized - HTTP 401 (check the credentials)";
 
     /// <summary>HTTP 403.</summary>

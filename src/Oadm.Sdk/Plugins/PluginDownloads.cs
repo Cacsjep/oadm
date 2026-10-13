@@ -24,10 +24,13 @@ public sealed class PluginDownload : IAsyncDisposable
         _owner = owner;
     }
 
+    /// <summary>The bytes; read with your own token.</summary>
     public Stream Content { get; }
 
+    /// <summary>The suggested file name.</summary>
     public string FileName { get; }
 
+    /// <summary>The size in bytes when known.</summary>
     public long? Length { get; }
 
     /// <summary>
@@ -36,6 +39,7 @@ public sealed class PluginDownload : IAsyncDisposable
     /// </summary>
     public string? AuditDetail { get; init; }
 
+    /// <summary>Disposes the stream and its owner (e.g. the device response it reads from).</summary>
     public async ValueTask DisposeAsync()
     {
         await Content.DisposeAsync().ConfigureAwait(false);

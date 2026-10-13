@@ -6,26 +6,37 @@ namespace Oadm.Sdk.Events;
 /// </summary>
 public enum EventKind
 {
+    /// <summary>Happens once ("Rollout failed").</summary>
     Stateless = 0,
+    /// <summary>Is on or off ("Blur detected").</summary>
     Stateful = 1,
 }
 
 /// <summary>Device: one state (or pulse) per managed device. Server: one for the whole server.</summary>
 public enum EventScope
 {
+    /// <summary>One state per device.</summary>
     Device = 0,
+    /// <summary>One state for the server.</summary>
     Server = 1,
 }
 
 /// <summary>Type of an event data field, for the condition filter of a rule.</summary>
 public enum EventFieldType
 {
+    /// <summary>Any text.</summary>
     Text = 0,
+    /// <summary>A number.</summary>
     Number = 1,
+    /// <summary>One of <see cref="EventField.Values"/>.</summary>
     Choice = 2,
 }
 
 /// <summary>A data field an event carries ("detection" = "blur"); a rule can filter on it (equals).</summary>
+/// <param name="Name">The key in the event's data, also its placeholder ({port}).</param>
+/// <param name="DisplayName">What the rule dialog shows.</param>
+/// <param name="Type">How a condition compares it.</param>
+/// <param name="Values">The choices of a <see cref="EventFieldType.Choice"/> field.</param>
 public sealed record EventField(string Name, string DisplayName, EventFieldType Type = EventFieldType.Text, IReadOnlyList<string>? Values = null);
 
 /// <summary>
@@ -33,6 +44,12 @@ public sealed record EventField(string Name, string DisplayName, EventFieldType 
 /// <paramref name="DisplayName"/> names the event in plain language ("Blur detected"), for a stateful event its "on"
 /// state; <paramref name="Group"/> groups the picker of the rule dialog ("Image Health").
 /// </summary>
+/// <param name="Id">Stable, unique id.</param>
+/// <param name="DisplayName">The event in plain words; for an on and off event its on state.</param>
+/// <param name="Group">The group in the event list of the rule dialog.</param>
+/// <param name="Kind">One-shot or on and off.</param>
+/// <param name="Scope">Per device or for the server.</param>
+/// <param name="Fields">The data fields a condition can filter on.</param>
 public sealed record EventTypeInfo(
     string Id,
     string DisplayName,
@@ -44,6 +61,7 @@ public sealed record EventTypeInfo(
     /// <summary>One short sentence for the rule dialog (optional).</summary>
     public string? Description { get; init; }
 
+    /// <summary><see cref="Fields"/>, never null.</summary>
     public IReadOnlyList<EventField> DataFields => Fields ?? [];
 }
 
@@ -54,6 +72,7 @@ public sealed record EventTypeInfo(
 /// </summary>
 public interface IEventSource
 {
+    /// <summary>The event types the plugin publishes.</summary>
     IReadOnlyList<EventTypeInfo> EventTypes { get; }
 }
 
@@ -65,6 +84,7 @@ public interface IEventSource
 /// </summary>
 public interface IDynamicEventSource : IEventSource
 {
+    /// <summary>Raise after <see cref="IEventSource.EventTypes"/> changed.</summary>
     event EventHandler? EventTypesChanged;
 }
 

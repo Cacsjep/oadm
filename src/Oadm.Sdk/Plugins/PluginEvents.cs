@@ -4,6 +4,8 @@ namespace Oadm.Sdk.Plugins;
 /// One live event of a core plugin for its client page (e.g. a new request log line, a status change).
 /// <paramref name="Topic"/> is chosen by the plugin ("status", "requests"); the payload is plugin-defined JSON.
 /// </summary>
+/// <param name="Topic">What kind of event, chosen by the plugin.</param>
+/// <param name="PayloadJson">The event's JSON.</param>
 public sealed record PluginEvent(string Topic, string? PayloadJson);
 
 /// <summary>
@@ -17,5 +19,6 @@ public interface IPluginEvents
     /// <summary>Largest payload a single event may carry (UTF-16 characters); larger events are dropped and logged.</summary>
     const int MaxPayloadLength = 1024 * 1024;
 
+    /// <summary>Sends an event to every page that watches; never blocks. <paramref name="topic"/> is yours ("status", "rows").</summary>
     void Publish(string topic, string? payloadJson);
 }

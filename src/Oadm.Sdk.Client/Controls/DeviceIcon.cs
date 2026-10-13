@@ -31,12 +31,14 @@ public sealed class DeviceIcon : Decorator
         Height = 18;
     }
 
+    /// <summary>Which device icon to draw.</summary>
     public DeviceCategory Category
     {
         get => GetValue(CategoryProperty);
         set => SetValue(CategoryProperty, value);
     }
 
+    /// <summary>Colors the icon: neutral when OK, amber or red for a problem.</summary>
     public DeviceStatus Status
     {
         get => GetValue(StatusProperty);

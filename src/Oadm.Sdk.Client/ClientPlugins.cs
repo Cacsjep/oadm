@@ -6,6 +6,7 @@ namespace Oadm.Sdk.Client;
 /// <summary>Client part of a task plugin that needs user input before running.</summary>
 public interface ITaskPluginDialog
 {
+    /// <summary>The id of the task plugin on the server that this dialog belongs to.</summary>
     string PluginId { get; }
     /// <summary>Returns the payload JSON sent to the server, or null when the user cancelled.</summary>
     Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner);
@@ -39,7 +40,9 @@ public interface ITaskDialogContext
 /// <summary>UI page of a core plugin, shown in the navigation rail.</summary>
 public interface ICorePluginPage
 {
+    /// <summary>The id of the core plugin on the server that this page belongs to.</summary>
     string PluginId { get; }
+    /// <summary>The page title and the name of its rail entry.</summary>
     string Title { get; }
 
     /// <summary>Creates the page content once per connection, on the UI thread; the host shows it in a card below the title.</summary>

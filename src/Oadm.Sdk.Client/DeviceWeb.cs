@@ -15,6 +15,7 @@ public interface IDeviceWebAccess
 /// <summary>One relay for one device; dispose it when its browser tab closes or shows another device.</summary>
 public interface IDeviceWebSession : IDisposable
 {
+    /// <summary>The device this session shows.</summary>
     Guid DeviceId { get; }
 
     /// <summary>The relay's origin, "http://127.0.0.1:51234/". Requests without the session cookie are refused.</summary>
@@ -41,15 +42,18 @@ public static class DeviceWebPages
 /// <summary>The device cannot be opened now; the message is the shared device status text.</summary>
 public sealed class DeviceWebRefusedException : Exception
 {
+    /// <summary>OADM does not open this device.</summary>
     public DeviceWebRefusedException()
     {
     }
 
+    /// <summary>OADM does not open this device; the message says why.</summary>
     public DeviceWebRefusedException(string message)
         : base(message)
     {
     }
 
+    /// <summary>OADM does not open this device; the message says why.</summary>
     public DeviceWebRefusedException(string message, Exception inner)
         : base(message, inner)
     {

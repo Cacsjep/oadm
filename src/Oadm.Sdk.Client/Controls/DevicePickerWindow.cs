@@ -21,6 +21,7 @@ public sealed class DevicePickerWindow : Window
 {
     private readonly DialogTitleBar _title = new();
 
+    /// <summary>The window for <paramref name="viewModel"/>; usually opened through the static ShowAsync methods.</summary>
     public DevicePickerWindow(DevicePickerViewModel viewModel)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
@@ -99,6 +100,7 @@ public sealed class DevicePickerWindow : Window
         Content = root;
     }
 
+    /// <summary>Its view model.</summary>
     public DevicePickerViewModel ViewModel { get; }
 
     /// <summary>The window title (title bar and task switcher).</summary>

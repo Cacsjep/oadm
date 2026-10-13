@@ -139,3 +139,7 @@ Texts are for installers who know Axis devices. Short and plain:
 - Step names are imperatives with the article: "Wait for the device to come back".
 - Errors say what happened and, when nothing was changed, "Nothing was changed".
 - No filler: no "simply", "easily", "please note".
+
+## Reference
+
+Every member with its signature in the [SDK reference](../../api/): [`Oadm.Sdk.Client.Controls`](../../api/sdk/client/controls/), [`ValidatingViewModel`](../../api/sdk/client/validation/validatingviewmodel/), [`FormValidator`](../../api/sdk/client/validation/formvalidator/), [`RangeObservableCollection<T>`](../../api/sdk/client/collections/rangeobservablecollection-1/), [`MessageWindow`](../../api/sdk/client/controls/messagewindow/), [`DevicePickerWindow`](../../api/sdk/client/controls/devicepickerwindow/).

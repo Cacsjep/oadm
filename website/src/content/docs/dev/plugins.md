@@ -20,6 +20,16 @@ loads the first, the client the second. Both come from the same folder.
 One folder can hold several of them. The PKI plugin, for example, is one core plugin with a page that also contributes
 eight task plugins to the context menu.
 
+## Start from a working plugin
+
+```sh
+./manage.sh new task --name "My plugin"      # or page, or action; PowerShell: .\manage.ps1 new ...
+```
+
+This creates the plugin of the matching tutorial under your name in `plugins/` and `tests/` and adds it to the
+solution: it builds, its tests pass, and it runs. The tutorials explain every file:
+[task plugin](../tutorial-task/), [plugin page](../tutorial-page/), [event rule action](../tutorial-action/).
+
 ## Project layout
 
 Plugins are built inside a checkout of the repository: they reference the SDK projects, which the host ships. There is

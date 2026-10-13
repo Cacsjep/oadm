@@ -28,6 +28,7 @@ public abstract class ValidatingViewModel : ObservableObject, INotifyDataErrorIn
     private bool _isFormValid = true;
     private string? _formError;
 
+    /// <summary>Creates <see cref="Validation"/>; register the rules in the constructor of the derived class.</summary>
     protected ValidatingViewModel()
     {
         Validation = new FormValidator(
@@ -35,6 +36,7 @@ public abstract class ValidatingViewModel : ObservableObject, INotifyDataErrorIn
             RaiseValidationChanged);
     }
 
+    /// <summary>The shown errors of a property changed (<c>INotifyDataErrorInfo</c>).</summary>
     public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged;
 
     /// <summary>The rules and the edited / submitted state of this form.</summary>
@@ -49,6 +51,7 @@ public abstract class ValidatingViewModel : ObservableObject, INotifyDataErrorIn
     /// <summary>Why the form cannot be submitted (the first field error), for the submit button's tooltip.</summary>
     public string? FormError => _formError;
 
+    /// <summary>The shown errors of a property (<c>INotifyDataErrorInfo</c>).</summary>
     public IEnumerable GetErrors(string? propertyName) => Validation.GetErrors(propertyName);
 
     /// <summary>

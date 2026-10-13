@@ -1,0 +1,36 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Samples.FirmwareOverview.Client"
+             xmlns:m="using:Oadm.Samples.FirmwareOverview"
+             x:Class="Oadm.Samples.FirmwareOverview.Client.FirmwareOverviewView"
+             x:DataType="vm:FirmwareOverviewViewModel"
+             ui:PageHeader.Subtitle="The AXIS OS of every device.">
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12">
+      <ui:ToolbarButton IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}" />
+      <TextBlock Classes="secondary" VerticalAlignment="Center" Text="{Binding Summary}" />
+    </StackPanel>
+
+    <ui:ProgressRow Grid.Row="1" Margin="0,8,0,0" Text="Reading devices" IsActive="{Binding IsReading}" IsVisible="{Binding IsReading}" />
+
+    <DataGrid Grid.Row="2" Margin="0,8,0,0" ItemsSource="{Binding Rows}" IsReadOnly="True" CanUserSortColumns="True">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Address" Width="180" Binding="{Binding Address}" x:DataType="m:FirmwareRow" />
+        <DataGridTextColumn Header="Model" Width="160" Binding="{Binding Model}" x:DataType="m:FirmwareRow" />
+        <DataGridTextColumn Header="AXIS OS" Width="140" Binding="{Binding Version}" x:DataType="m:FirmwareRow" />
+        <DataGridTemplateColumn Header="Problem" Width="*">
+          <DataGridTemplateColumn.CellTemplate>
+            <DataTemplate x:DataType="m:FirmwareRow">
+              <ui:StatusChip Margin="10,0" Text="{Binding Error}" IsError="True"
+                             IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" />
+            </DataTemplate>
+          </DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+      </DataGrid.Columns>
+    </DataGrid>
+
+    <TextBlock Grid.Row="3" Margin="0,8,0,0" Classes="error" TextWrapping="Wrap" Text="{Binding ErrorText}"
+               IsVisible="{Binding ErrorText, Converter={x:Static ObjectConverters.IsNotNull}}" />
+  </Grid>
+</UserControl>

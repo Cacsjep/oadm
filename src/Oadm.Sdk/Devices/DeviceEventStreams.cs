@@ -70,6 +70,8 @@ public interface IDeviceEventSource : IAsyncDisposable
 }
 
 /// <summary>A complete metadata document as the device sent it, with the server's receive time.</summary>
+/// <param name="Xml">One <c>tt:MetadataStream</c> XML document; parse it with <see cref="Vapix.DeviceXml.Parse(string, System.Xml.Linq.LoadOptions)"/>.</param>
+/// <param name="ReceivedUtc">When the server received it.</param>
 public sealed record DeviceMetadataDocument(string Xml, DateTimeOffset ReceivedUtc);
 
 /// <summary>Why a device stream could not be opened or broke.</summary>
@@ -91,25 +93,30 @@ public enum DeviceStreamError
 /// <summary>A device stream failure with a message the UI can show.</summary>
 public sealed class DeviceStreamException : Exception
 {
+    /// <summary>An error of a device stream (<see cref="DeviceStreamError.Protocol"/>).</summary>
     public DeviceStreamException()
     {
     }
 
+    /// <summary>An error of a device stream with its message (<see cref="DeviceStreamError.Protocol"/>).</summary>
     public DeviceStreamException(string message)
         : base(message)
     {
     }
 
+    /// <summary>An error of a device stream with its message and cause (<see cref="DeviceStreamError.Protocol"/>).</summary>
     public DeviceStreamException(string message, Exception inner)
         : base(message, inner)
     {
     }
 
+    /// <summary>An error of a device stream of the given kind; the message is the text for the user.</summary>
     public DeviceStreamException(DeviceStreamError error, string message, Exception? inner = null)
         : base(message, inner)
     {
         Error = error;
     }
 
+    /// <summary>What went wrong: whether a retry can help (Unreachable) or not (Unauthorized, NotSupported).</summary>
     public DeviceStreamError Error { get; } = DeviceStreamError.Protocol;
 }

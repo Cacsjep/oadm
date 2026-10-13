@@ -39,6 +39,7 @@ public sealed class DeviceTree : UserControl
         Content = _list;
     }
 
+    /// <summary>The rows to show.</summary>
     public DeviceTreeModel? Model
     {
         get => GetValue(ModelProperty);

@@ -122,10 +122,28 @@ Website: landing page and user docs in `website/` with Astro Starlight (MkDocs M
 maintenance mode), base `/oadm`, published to https://cacsjep.github.io/oadm/ by `pages.yml` on pushes to main that change
 `website/` and after every successful `release` run (`workflow_run`, so the static download links and "What's new in
 vX" match the new release; the browser also re-reads the latest release with `cache: 'no-store'`) (deploy job `pages: write`, `id-token: write`); npm versions pinned exactly, Dependabot npm group `website`;
-screenshots in `website/src/assets/screens/` come from the headless tests (`OADM_SCREENSHOT_DIR`), click to enlarge; dark only (no theme switch); the landing page has its own slim top bar instead of the docs header (`TopBar.astro`: GitHub and LinkedIn left, Documentation and Bug report right, fixed, no border), its download buttons link the latest release files (Linux = both .deb); texts follow "Wording".
+screenshots in `website/src/assets/screens/` come from the headless tests (`OADM_SCREENSHOT_DIR`), click to enlarge; dark only (no theme switch); the landing page has its own slim top bar instead of the docs header (`TopBar.astro`: GitHub and LinkedIn left, Documentation and Bug report right, fixed, no border), its download buttons link the latest release files (Linux = both .deb); texts follow "Wording". **SDK reference**
+(Developers > SDK reference, `/oadm/api/`): `tools/Oadm.ApiDocs` reads the built `Oadm.Sdk` and `Oadm.Sdk.Client` with Roslyn
+(their doc comment files: `GenerateDocumentationFile` in both projects, CS1591 off, never published:
+`PublishReferencesDocumentationFiles` false) and writes one page per public type (signature with nullability, members,
+XAML properties of controls, enum values, links between types and to the .NET docs, "Used by", the guide page) into
+`website/src/content/docs/api/` and the sidebar into `website/src/generated/api-sidebar.json` (both git-ignored; the site
+builds without them). `manage build docs` locally, `pages.yml` before every deploy (also on changes of the SDK or the
+generator). Overrides, record and record struct plumbing are left out; a partial property of a source generator gets its
+written comment from the source. Tests `tests/Oadm.ApiDocs.Tests`: every public type has a page, **every type, member and
+XAML property has a description** (a new SDK member without a comment fails), every link and anchor resolves.
+**Tutorials** (Developers: "Tutorial: Task plugin", "Plugin page", "Event rule action", `dev/tutorial-*.mdx`): one page
+each with every file, self-contained (no jumping to other pages); the code is imported raw from `samples/` (`?raw` +
+Starlight `Code`; `vite.server.fs.allow` includes the repository), so the pages always show code that builds and passes
+its tests. **`manage new task|page|action --name "<name>" [--id <id>]`** (`tools/Oadm.NewPlugin`): copies that sample into
+`plugins/Oadm.Plugins.<Name>(.Client)` and `tests/Oadm.Plugins.<Name>.Tests` with the sample's name, namespaces, id
+(default `community.<kebab>`) and display name replaced, test references pointed at `plugins/` and `tests/Shared`, and adds
+the projects to Oadm.sln (with the dotnet the script found); existing folders are never overwritten; names that would
+clash in code (Task, Plugin, ...) are refused. Tests `tests/Oadm.NewPlugin.Tests`. A change of a sample changes its
+tutorial and what `manage new` creates: keep the tutorial text in line.
 
 Developer commands: one entry point per shell at the repo root, `./manage.sh` (bash) and
-`.\manage.ps1` (PowerShell 5.1/7), verb + target (`build`, `run`, `test`, `publish`, `package`, `clean`,
+`.\manage.ps1` (PowerShell 5.1/7), verb + target (`build`, `run`, `test`, `publish`, `package`, `new`, `clean`,
 `info`), `manage <verb> help` at every level. Both read their help texts from
 `scripts/manage-help.txt`; any new verb, target or option goes into both scripts and that file.
 The plugins (`build`, `run` server / client) are built in one MSBuild run in parallel through a generated solution filter
@@ -194,7 +212,12 @@ tests/
   Oadm.Core.Tests/
   Oadm.Server.Tests/
   Oadm.Client.Tests/
-tools/                 Oadm.DiscoveryProbe (manual discovery tests), Oadm.Notices (THIRD-PARTY-NOTICES.txt generator)
+tools/                 Oadm.DiscoveryProbe (manual discovery tests), Oadm.Notices (THIRD-PARTY-NOTICES.txt generator),
+                       Oadm.ApiDocs (SDK reference of the website), Oadm.NewPlugin ("manage new")
+samples/               the plugins of the developer tutorials: Oadm.Samples.UpnpName (task with a dialog),
+                       Oadm.Samples.FirmwareOverview (core plugin with a page), Oadm.Samples.VirtualInput (event rule
+                       action), each with its tests; in Oadm.sln, built and tested by CI, never deployed
+                       (samples/Directory.Build.props sets OadmSkipPluginDeploy)
 packaging/             installers (windows/, linux/, macos/), icons/, notices/licenses/ (license text templates)
 docs/                  ADM reference screenshots, protocol notes
 ```

@@ -85,6 +85,7 @@ public sealed class CodeEditor : Panel
         set => SetValue(LanguageProperty, value);
     }
 
+    /// <summary>Grey text while the field is empty.</summary>
     public string? PlaceholderText
     {
         get => GetValue(PlaceholderTextProperty);

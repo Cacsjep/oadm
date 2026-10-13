@@ -44,24 +44,28 @@ public sealed class PageTab : Border
 
     protected override Type StyleKeyOverride => typeof(Border);
 
+    /// <summary>The tab title.</summary>
     public string? Title
     {
         get => GetValue(TitleProperty);
         set => SetValue(TitleProperty, value);
     }
 
+    /// <summary>The shown tab: underlined.</summary>
     public bool IsActive
     {
         get => GetValue(IsActiveProperty);
         set => SetValue(IsActiveProperty, value);
     }
 
+    /// <summary>Runs when the user clicks the tab.</summary>
     public ICommand? ActivateCommand
     {
         get => GetValue(ActivateCommandProperty);
         set => SetValue(ActivateCommandProperty, value);
     }
 
+    /// <summary>Runs when the user clicks the X (or the middle button on the tab).</summary>
     public ICommand? CloseCommand
     {
         get => GetValue(CloseCommandProperty);

@@ -43,6 +43,7 @@ public sealed class ProgressRow : Grid
         set => SetValue(ValueProperty, value);
     }
 
+    /// <summary>The status text next to the bar ("Checking addresses: 120 of 5,000").</summary>
     public string? Text
     {
         get => GetValue(TextProperty);
@@ -56,6 +57,7 @@ public sealed class ProgressRow : Grid
         set => SetValue(IsActiveProperty, value);
     }
 
+    /// <summary>False shows only the text.</summary>
     public bool ShowBar
     {
         get => GetValue(ShowBarProperty);

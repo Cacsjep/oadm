@@ -43,12 +43,14 @@ public sealed class MessageWindow : Window
         }
     }
 
+    /// <summary>The message.</summary>
     public string? Message
     {
         get => _message.Text;
         set => _message.Text = value;
     }
 
+    /// <summary>The text of the confirm button; red when it starts with Delete, Remove or Release.</summary>
     public string? ConfirmText
     {
         get => _confirm.Content as string;

@@ -7,7 +7,7 @@ A task plugin is an entry in the device context menu. The user selects devices, 
 dialog, and OADM runs **one task per device** on the server. Each task has its own state, steps and log in the tasks
 pane, so one failing device never marks the others as failed.
 
-[Your first plugin](../first-plugin/) builds a complete one. This page explains each part.
+The [task plugin tutorial](../tutorial-task/) builds a complete one; this page explains each part.
 
 ## How a run works
 
@@ -196,3 +196,7 @@ These rules hold for every plugin that changes a device:
    See [Testing](../testing/).
 
 Say "Nothing was changed" in an error when nothing was. The user then knows the device is as it was.
+
+## Reference
+
+Every member with its signature in the [SDK reference](../../api/): [`ITaskPlugin`](../../api/sdk/plugins/itaskplugin/), [`ITaskExecutionContext`](../../api/sdk/plugins/itaskexecutioncontext/), [`ITaskStep`](../../api/sdk/plugins/itaskstep/), [`TaskStepExtensions`](../../api/sdk/plugins/taskstepextensions/), [`TaskSupportReasons`](../../api/sdk/plugins/tasksupportreasons/), [`ITaskPluginQuery`](../../api/sdk/plugins/itaskpluginquery/), [`IUploadedFiles`](../../api/sdk/plugins/iuploadedfiles/), [`ITaskPluginDialog`](../../api/sdk/client/itaskplugindialog/), [`ITaskDialogContext`](../../api/sdk/client/itaskdialogcontext/), [`PermissionDefinition`](../../api/sdk/plugins/permissiondefinition/).

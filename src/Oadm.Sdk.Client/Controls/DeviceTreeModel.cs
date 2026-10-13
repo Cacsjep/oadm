@@ -8,6 +8,7 @@ namespace Oadm.Sdk.Client.Controls;
 /// <summary>A row of the device tree (<see cref="DeviceTree"/>): a tag group header or a device under it.</summary>
 public abstract class DeviceTreeRow : ObservableObject
 {
+    /// <summary>A tag header (true) or a device (false).</summary>
     public abstract bool IsGroup { get; }
 }
 
@@ -19,8 +20,10 @@ public sealed partial class DeviceTreeGroup(string key, string name) : DeviceTre
     /// <summary>The tag name, empty for "No tag".</summary>
     public string Key { get; } = key;
 
+    /// <summary>What the header shows.</summary>
     public string Name { get; } = name;
 
+    /// <summary>The group shows its devices.</summary>
     [ObservableProperty]
     public partial bool IsExpanded { get; set; } = true;
 }
@@ -30,15 +33,19 @@ public sealed partial class DeviceTreeDevice(IDeviceInfo device, string groupKey
 {
     public override bool IsGroup => false;
 
+    /// <summary>The device.</summary>
     public IDeviceInfo Device { get; } = device;
 
+    /// <summary>The tag of the group this row is under.</summary>
     public string GroupKey { get; } = groupKey;
 
+    /// <summary>Its address.</summary>
     public string Address => Device.Address;
 
     /// <summary>For the shared device icon: the category icon, colored and explained by the status.</summary>
     public DeviceCategory Category => Device.Category;
 
+    /// <summary>Its status, for the device icon.</summary>
     public DeviceStatus Status => Device.Status;
 
     /// <summary>The page shows this row as the current one (its tab is active).</summary>
@@ -57,6 +64,7 @@ public sealed partial class DeviceTreeDevice(IDeviceInfo device, string groupKey
 /// </summary>
 public sealed class DeviceTreeModel
 {
+    /// <summary>The group of devices without a tag, always last.</summary>
     public const string NoTag = "No tag";
 
     private readonly Dictionary<string, bool> _collapsed = new(StringComparer.Ordinal);

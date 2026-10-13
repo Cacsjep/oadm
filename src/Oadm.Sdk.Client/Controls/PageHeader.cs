@@ -23,36 +23,42 @@ public static class PageHeader
     public static readonly AttachedProperty<bool> IsHiddenProperty =
         AvaloniaProperty.RegisterAttached<Control, bool>("IsHidden", typeof(PageHeader));
 
+    /// <summary>Whether the page leaves out the header row.</summary>
     public static bool GetIsHidden(Control element)
     {
         ArgumentNullException.ThrowIfNull(element);
         return element.GetValue(IsHiddenProperty);
     }
 
+    /// <summary>True leaves out the header row (pages that need every pixel).</summary>
     public static void SetIsHidden(Control element, bool value)
     {
         ArgumentNullException.ThrowIfNull(element);
         element.SetValue(IsHiddenProperty, value);
     }
 
+    /// <summary>The short line right of the page title.</summary>
     public static string? GetSubtitle(Control element)
     {
         ArgumentNullException.ThrowIfNull(element);
         return element.GetValue(SubtitleProperty);
     }
 
+    /// <summary>Sets the short line right of the page title: one sentence that says what the page is for.</summary>
     public static void SetSubtitle(Control element, string? value)
     {
         ArgumentNullException.ThrowIfNull(element);
         element.SetValue(SubtitleProperty, value);
     }
 
+    /// <summary>The control right of the page title.</summary>
     public static Control? GetTrailing(Control element)
     {
         ArgumentNullException.ThrowIfNull(element);
         return element.GetValue(TrailingProperty);
     }
 
+    /// <summary>Puts a control right of the page title; it keeps the page's data context.</summary>
     public static void SetTrailing(Control element, Control? value)
     {
         ArgumentNullException.ThrowIfNull(element);

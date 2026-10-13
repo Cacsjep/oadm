@@ -36,6 +36,7 @@ public class ToolbarButton : Button
         Classes.Add("toolbar");
     }
 
+    /// <summary>The icon; or set <c>IconKey</c>.</summary>
     public Geometry? Icon
     {
         get => GetValue(IconProperty);
@@ -49,6 +50,7 @@ public class ToolbarButton : Button
         set => SetValue(IconKeyProperty, value);
     }
 
+    /// <summary>The button text; the tooltip when the button shows only its icon.</summary>
     public string? Text
     {
         get => GetValue(TextProperty);

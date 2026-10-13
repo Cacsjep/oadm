@@ -68,10 +68,13 @@ Start with `src/Oadm.Sdk/Plugins/Plugins.cs` and `src/Oadm.Sdk.Client/ClientPlug
 
 1. [Build from source](../build/): get OADM running from a checkout.
 2. [Plugin basics](../plugins/): project layout, `plugin.json`, how plugins load.
-3. [Your first plugin](../first-plugin/): a task plugin with a dialog and tests, step by step.
+3. A tutorial, each on one page with every file: [task plugin](../tutorial-task/), [plugin page](../tutorial-page/),
+   [event rule action](../tutorial-action/). `./manage.sh new task|page|action --name "My plugin"` creates the
+   tutorial's plugin under your name, ready to build and run.
 4. The topic pages: [Devices and VAPIX](../devices/), [Task plugins](../tasks/), [Core plugins and pages](../core-plugins/),
    [Event rules](../event-rules/), [UI kit](../ui/), [Testing](../testing/).
 
-The full details, with every rule and edge case, are in
+Every public type and member, with its signature and comment, is in the [SDK reference](../../api/). The
+rules and edge cases are in
 [plugins/README.md](https://github.com/Cacsjep/oadm/blob/main/plugins/README.md) and the spec,
 [CLAUDE.md](https://github.com/Cacsjep/oadm/blob/main/CLAUDE.md).

@@ -25,18 +25,21 @@ public sealed class OadmIcon : Control
         AffectsRender<OadmIcon>(DataProperty, ForegroundProperty, StrokeThicknessProperty);
     }
 
+    /// <summary>The icon (<c>{DynamicResource Icon.refresh}</c>).</summary>
     public Geometry? Data
     {
         get => GetValue(DataProperty);
         set => SetValue(DataProperty, value);
     }
 
+    /// <summary>The stroke color; the theme sets it.</summary>
     public IBrush? Foreground
     {
         get => GetValue(ForegroundProperty);
         set => SetValue(ForegroundProperty, value);
     }
 
+    /// <summary>The line width.</summary>
     public double StrokeThickness
     {
         get => GetValue(StrokeThicknessProperty);

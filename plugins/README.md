@@ -1,8 +1,15 @@
 # OADM plugins
 
 How to build a task plugin (server part, optional client dialog), a toolbar plugin and a core plugin with its own
-rail page. Contracts: `src/Oadm.Sdk` (server) and `src/Oadm.Sdk.Client` (client). The spec and the device safety HARD
+rail page. Contracts: `src/Oadm.Sdk` (server) and `src/Oadm.Sdk.Client` (client); every type and member is in the SDK
+reference of the website (https://cacsjep.github.io/oadm/api/, `manage build docs` locally). The spec and the device safety HARD
 RULE are in `CLAUDE.md` ("Plugin System").
+
+## Start a plugin
+
+`./manage.sh new task|page|action --name "My plugin"` (PowerShell `.\manage.ps1 new ...`) copies the plugin of the matching
+developer tutorial (`samples/`) under your name into `plugins/` and `tests/` and adds it to `Oadm.sln`. It builds, its
+tests pass and it runs; then change it. The tutorials on the website explain every file.
 
 ## Project layout
 

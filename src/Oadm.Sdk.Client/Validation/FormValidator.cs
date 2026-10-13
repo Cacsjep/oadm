@@ -183,6 +183,7 @@ public sealed class FormValidator
     /// <summary>The current error of a property, shown or not.</summary>
     public string? ErrorOf(string property) => _errors.GetValueOrDefault(property);
 
+    /// <summary>The shown errors of <paramref name="property"/> (for <c>INotifyDataErrorInfo</c>).</summary>
     public IEnumerable GetErrors(string? property) =>
         property is not null && _visible.TryGetValue(property, out string? error) ? new[] { error } : Array.Empty<string>();
 

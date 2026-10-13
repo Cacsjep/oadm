@@ -20,10 +20,12 @@ public interface IResettableList
 /// </summary>
 public class RangeObservableCollection<T> : ObservableCollection<T>, IResettableList
 {
+    /// <summary>An empty collection.</summary>
     public RangeObservableCollection()
     {
     }
 
+    /// <summary>A collection with <paramref name="items"/>.</summary>
     public RangeObservableCollection(IEnumerable<T> items)
         : base(items)
     {

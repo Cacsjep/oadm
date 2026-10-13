@@ -63,12 +63,14 @@ public sealed class SearchBox : UserControl
         _box.PlaceholderText = Placeholder;
     }
 
+    /// <summary>The search text; bind it and filter in the view model.</summary>
     public string? Text
     {
         get => GetValue(TextProperty);
         set => SetValue(TextProperty, value);
     }
 
+    /// <summary>Grey text while the box is empty ("Search devices").</summary>
     public string? Placeholder
     {
         get => GetValue(PlaceholderProperty);

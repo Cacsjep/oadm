@@ -2,10 +2,12 @@ name: pages
 
 # Builds the website (website/, Astro Starlight) and publishes it to GitHub Pages: https://cacsjep.github.io/oadm/
 # Also after every successful release: the download links and "What's new" are read from the latest release at build time.
+# The SDK reference (website/src/content/docs/api/) is generated from the SDK doc comments by tools/Oadm.ApiDocs first, and
+# the tutorials show the code of samples/, so changes of the SDK, the samples or the generator publish too.
 on:
   push:
     branches: [main]
-    paths: ['website/**', '.github/workflows/pages.yml']
+    paths: ['website/**', 'samples/**', 'src/Oadm.Sdk/**', 'src/Oadm.Sdk.Client/**', 'tools/Oadm.ApiDocs/**', '.github/workflows/pages.yml']
   workflow_run:
     workflows: [release]
     types: [completed]
@@ -23,7 +25,7 @@ jobs:
     name: build website
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -33,6 +35,11 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: website/package-lock.json
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: generate the SDK reference
+        run: dotnet run --project tools/Oadm.ApiDocs/Oadm.ApiDocs.csproj -c Release -- --repo .
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - run: npm ci
         working-directory: website

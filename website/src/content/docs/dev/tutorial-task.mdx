@@ -1,0 +1,184 @@
+---
+title: "Tutorial: Task plugin"
+description: Build an entry of the device context menu with a dialog, step by step, from one command to a tested plugin.
+---
+
+import { Code, FileTree, Aside } from '@astrojs/starlight/components';
+import pluginJson from '../../../../../samples/Oadm.Samples.UpnpName/plugin.json?raw';
+import serverProject from '../../../../../samples/Oadm.Samples.UpnpName/Oadm.Samples.UpnpName.csproj?raw';
+import shared from '../../../../../samples/Oadm.Samples.UpnpName/UpnpName.cs?raw';
+import task from '../../../../../samples/Oadm.Samples.UpnpName/UpnpNameTaskPlugin.cs?raw';
+import clientProject from '../../../../../samples/Oadm.Samples.UpnpName.Client/Oadm.Samples.UpnpName.Client.csproj?raw';
+import dialog from '../../../../../samples/Oadm.Samples.UpnpName.Client/UpnpNameDialog.cs?raw';
+import viewModel from '../../../../../samples/Oadm.Samples.UpnpName.Client/UpnpNameViewModel.cs?raw';
+import windowXaml from '../../../../../samples/Oadm.Samples.UpnpName.Client/UpnpNameWindow.axaml?raw';
+import windowCode from '../../../../../samples/Oadm.Samples.UpnpName.Client/UpnpNameWindow.axaml.cs?raw';
+import fakes from '../../../../../samples/Oadm.Samples.UpnpName.Tests/Fakes.cs?raw';
+import tests from '../../../../../samples/Oadm.Samples.UpnpName.Tests/UpnpNameTaskPluginTests.cs?raw';
+
+A task plugin is an entry in the device context menu. The user selects devices, picks the entry, fills a dialog, and
+OADM runs the work on the server, **one task per device**. Each task shows in the tasks pane with its steps and log,
+so one device that fails never marks the others as failed.
+
+In this tutorial you create **Set UPnP name**: it gives devices a new UPnP name (the name Windows shows in its network
+list). It has everything a real task needs: a dialog with validation, a read of the current value, a check of the
+device's API, named steps, a check after the write, and tests that run without a camera.
+
+## 1. Create it
+
+You need a checkout of OADM that builds (`./manage.sh build` works) and the .NET 10 SDK. In the repository root, run:
+
+```sh
+./manage.sh new task --name "My cool plugin"      # PowerShell: .\manage.ps1 new task --name "My cool plugin"
+```
+
+This copies the tutorial's plugin under your name and adds it to the solution. It builds, its tests pass, and it runs.
+The code below is the original; in your copy every `UpnpName` reads `MyCoolPlugin` and the id is
+`community.my-cool-plugin` (choose your own with `--id acme.my-cool-plugin`).
+
+<FileTree>
+- plugins/
+  - Oadm.Plugins.MyCoolPlugin/ the server part: does the work on the devices
+    - plugin.json
+    - Oadm.Plugins.MyCoolPlugin.csproj
+    - MyCoolPlugin.cs the payload and the rules both parts share
+    - MyCoolPluginTaskPlugin.cs the task
+  - Oadm.Plugins.MyCoolPlugin.Client/ the client part: the dialog
+    - Oadm.Plugins.MyCoolPlugin.Client.csproj
+    - MyCoolPluginDialog.cs
+    - MyCoolPluginViewModel.cs
+    - MyCoolPluginWindow.axaml
+    - MyCoolPluginWindow.axaml.cs
+- tests/
+  - Oadm.Plugins.MyCoolPlugin.Tests/
+    - Fakes.cs a camera and a task context without hardware
+    - MyCoolPluginTaskPluginTests.cs
+</FileTree>
+
+## 2. How a task runs
+
+1. The user selects devices and picks your entry. The entry is greyed out with a reason for devices it cannot run on.
+2. Your **dialog** opens on the user's computer. It may read the current state from a device, then returns a
+   **payload**: a small JSON text with what the user chose.
+3. The **server** creates one task per device and runs your `ExecuteAsync` for each, up to 16 at a time. It hands you
+   a VAPIX client that is already logged in to the device; the password never reaches your code.
+4. Every request and every wait is a **step** with a name. The user sees the steps live, and which one failed.
+5. Returning means **Done**, an exception means **Failed** with its message, a warning means **Done with warnings**.
+
+The server part never shows UI, the client part never talks to a device.
+
+## 3. The plugin description
+
+`plugin.json` tells OADM what the folder holds. The `id` is the plugin's key everywhere (folder, settings,
+permissions) and never changes. `displayName` and `description` are its row on the **Plugins** page.
+
+<Code code={pluginJson} lang="json" title="plugin.json" />
+
+Optional fields: `"enabledByDefault": false` keeps the plugin off until an administrator turns it on.
+
+## 4. The project files
+
+The server project compiles against the SDK but never copies it: OADM itself provides it at runtime. After each build
+the output is copied to `artifacts/plugins/<id>/`, where OADM loads plugins from when it runs from your checkout.
+
+<Code code={serverProject} lang="xml" title="Oadm.Plugins.MyCoolPlugin.csproj" />
+
+The client project does the same with the client SDK and Avalonia (the UI framework), and references the server project
+to share its payload record.
+
+<Code code={clientProject} lang="xml" title="Oadm.Plugins.MyCoolPlugin.Client.csproj" />
+
+## 5. What both parts share
+
+The dialog and the task must agree on the payload and on what a valid name is. Writing that once, in the server
+project, keeps them from drifting apart.
+
+<Code code={shared} lang="csharp" title="MyCoolPlugin.cs" />
+
+## 6. The task
+
+This is the heart of the plugin. Read it from top to bottom:
+
+- **`DisplayName`, `Group`, `IconKey`**: the entry in the context menu, here **Network > Set UPnP name**.
+- **`CanRun`** decides from what OADM already knows (status, the device's API list) whether the entry is enabled. It
+  must be fast: it runs for every selected device while the menu opens. **`NotSupportedReason`** is the tooltip of a
+  greyed entry.
+- **`GetTaskName`** is the name in the tasks pane: what this task does ("Set UPnP name Entrance"), never a password.
+- **`ExecuteAsync`** runs once per device:
+  1. it checks the input before anything is sent;
+  2. `PlanSteps` shows all steps as pending;
+  3. each `StepAsync` / `BeginStep` is one named step; a step that does not apply is skipped with a reason;
+  4. before the first write it asks the device for its API list again and stops with "Nothing was changed" when the
+     API is missing;
+  5. it reads the value back after writing and warns when the device did not take it.
+- **`QueryAsync`** answers the dialog. It only reads; changing a device here is not allowed.
+
+<Code code={task} lang="csharp" title="MyCoolPluginTaskPlugin.cs" />
+
+<Aside type="caution" title="Rules for every plugin that changes devices">
+Check the API before the first write. Validate every input before you touch the device. Never remove or demote the
+account OADM logs in with (`device.CredentialUserName`). Write a setting that could cut the connection last. Never log
+or store a password: the payload stays in memory.
+</Aside>
+
+## 7. The dialog
+
+The client loader finds the class that implements `ITaskPluginDialog` with your plugin id. `ShowAsync` opens the
+window, prefills it through your query (the dialog works without it too) and returns the payload, or null when the user
+cancels.
+
+<Code code={dialog} lang="csharp" title="MyCoolPluginDialog.cs" />
+
+The view model holds the form. It derives from `ValidatingViewModel`: each rule returns an error text or null, the
+error shows directly below the field once the user typed or left it, and OK stays disabled while there is one.
+
+<Code code={viewModel} lang="csharp" title="MyCoolPluginViewModel.cs" />
+
+The window uses the shared parts of every OADM dialog: the title bar with its X, a form field with the label left and
+the error below the input, and the footer with Cancel and one accent button. Use them and your dialog looks like the
+rest of the app in dark and light, without any colors or sizes of its own.
+
+<Code code={windowXaml} lang="xml" title="MyCoolPluginWindow.axaml" />
+
+<Code code={windowCode} lang="csharp" title="MyCoolPluginWindow.axaml.cs" />
+
+## 8. The tests
+
+The tests need no camera. `FakeCamera` answers the two requests the task sends, `FakeTaskContext` records the steps,
+and `StepRun` ends the task the way the server does (it adds the final step **Completed** on success).
+
+<Code code={fakes} lang="csharp" title="Fakes.cs" />
+
+Test the normal run step by step, a value that is already set, a device without the API, invalid input, and what the
+menu shows:
+
+<Code code={tests} lang="csharp" title="MyCoolPluginTaskPluginTests.cs" />
+
+## 9. Run it
+
+```sh
+dotnet test tests/Oadm.Plugins.MyCoolPlugin.Tests
+./manage.sh run dev
+```
+
+`run dev` builds everything, starts the server and opens the client. Select a device, right-click, and open
+**Network > My cool plugin**. The tasks pane shows one task per device; **Details** shows its steps and log.
+
+## 10. Make it yours
+
+Change one thing at a time and keep the tests green:
+
+1. **Name and place**: `DisplayName` (at most 32 characters, no "..."), `Group`, `IconKey`.
+2. **Which devices**: `CanRun` and `NotSupportedReason`. Check the API your task uses with
+   `device.Apis.Supports("api-id", "1.0")`.
+3. **What the user chooses**: the payload record, the dialog's fields and their rules.
+4. **What happens on the device**: the steps in `ExecuteAsync`, one named step per request. Name steps as short
+   commands with the article: "Read the users", "Wait for the device to come back".
+5. **The task name**: `GetTaskName` says exactly what one task does.
+6. **The tests**: one per path through `ExecuteAsync`.
+
+## 11. Share it
+
+To use it on an installed OADM, copy the folder `artifacts/plugins/<your id>/` into the `plugins` folder next to the
+OADM server and next to the client, then restart both. To share it with everyone, open a pull request on GitHub with the
+plugin, its tests and a `README.md` in its folder that says what it does and on which device and AXIS OS you tried it.

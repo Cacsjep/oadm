@@ -1,0 +1,28 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Samples.UpnpName.Client"
+        x:Class="Oadm.Samples.UpnpName.Client.UpnpNameWindow"
+        x:DataType="vm:UpnpNameViewModel"
+        Title="Set UPnP name"
+        Width="500" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="Set UPnP name" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <TextBlock Classes="secondary" Text="{Binding Intro}" TextWrapping="Wrap" />
+        <ui:FormField Label="Name">
+          <TextBox Text="{Binding Name}" />
+        </ui:FormField>
+      </StackPanel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="OK" Command="{Binding ApplyCommand}" IsDefault="True"
+              ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

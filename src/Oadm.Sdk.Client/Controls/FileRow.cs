@@ -60,6 +60,7 @@ public sealed class FileRow : Grid
         Update();
     }
 
+    /// <summary>The chosen file; empty shows that none is chosen.</summary>
     public string? FileName
     {
         get => GetValue(FileNameProperty);
@@ -80,6 +81,7 @@ public sealed class FileRow : Grid
         set => SetValue(ErrorProperty, value);
     }
 
+    /// <summary>The text of the button ("Choose file").</summary>
     public string? ButtonText
     {
         get => GetValue(ButtonTextProperty);

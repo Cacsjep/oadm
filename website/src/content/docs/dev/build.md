@@ -19,13 +19,15 @@ On the first `run dev`, confirm the fingerprint, then create the first administr
 
 | Command | What it does |
 |---|---|
-| `manage build [all\|server\|client\|plugins]` | Build the solution or a part of it |
+| `manage build [all\|server\|client\|plugins\|docs]` | Build the solution or a part of it |
 | `manage run server` | Run the server in the foreground on `https://0.0.0.0:5080` |
 | `manage run client [--fake] [--server URL]` | Run the client |
 | `manage run dev` | Server in the background, then the client; closing the client stops the server |
 | `manage test [unit\|timing\|perf\|hardware\|all]` | Run tests |
 | `manage publish [all\|server\|client] [--rid RID]` | Self-contained apps in `artifacts/publish/` |
 | `manage package <windows\|linux\|macos>` | Installer in `artifacts/packages/` |
+| `manage new <task\|page\|action> --name NAME` | A new plugin from a tutorial, under your name, ready to build and run |
+| `manage build docs` | The SDK reference of this website, for the local docs server |
 | `manage clean` | Remove `bin`, `obj` and `artifacts` |
 
 `manage help` lists everything; `manage <verb> help` shows the options of a verb.

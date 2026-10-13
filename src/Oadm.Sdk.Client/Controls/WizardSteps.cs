@@ -16,25 +16,34 @@ namespace Oadm.Sdk.Client.Controls;
 /// </summary>
 public sealed partial class WizardStepItem(int index, string name, Func<int> current, Func<int, bool> canOpen, Action<int> open) : ObservableObject
 {
+    /// <summary>Position, 0-based.</summary>
     public int Index { get; } = index;
 
+    /// <summary>The step name ("When").</summary>
     public string Name { get; } = name;
 
+    /// <summary>The number in the dot ("2").</summary>
     public string Number { get; } = (index + 1).ToString(CultureInfo.InvariantCulture);
 
+    /// <summary>The step shown now.</summary>
     public bool IsCurrent => current() == Index;
 
+    /// <summary>A step before the current one.</summary>
     public bool IsDone => current() > Index;
 
+    /// <summary>A step after the current one.</summary>
     public bool IsLater => current() < Index;
 
+    /// <summary>The first step (no line before it).</summary>
     public bool IsFirst => Index == 0;
 
+    /// <summary>A click opens it: every step before it is complete.</summary>
     public bool CanOpen => !IsCurrent && canOpen(Index);
 
     [RelayCommand]
     private void Open() => open(Index);
 
+    /// <summary>Updates the state after the current step or a problem changed.</summary>
     public void Refresh()
     {
         OnPropertyChanged(nameof(IsCurrent));

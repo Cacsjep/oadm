@@ -1,4 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- The doc comments feed the SDK reference of the website (tools/Oadm.ApiDocs). Missing comments are allowed for now. -->
+  <PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.4" />
     <!-- Shared from the host like Avalonia: ValidatingViewModel is an ObservableObject -->

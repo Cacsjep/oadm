@@ -1,5 +1,6 @@
 namespace Oadm.Sdk.Tasks;
 
+/// <summary>Starts and cancels tasks from a core plugin (<see cref="Plugins.ICorePluginContext.Tasks"/>).</summary>
 public interface ITaskRunner
 {
     /// <summary>

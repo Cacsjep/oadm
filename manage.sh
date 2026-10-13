@@ -79,7 +79,7 @@ usage_error() {
 }
 
 is_verb() {
-  case "$1" in build|run|test|publish|package|clean|info|help) return 0 ;; *) return 1 ;; esac
+  case "$1" in build|run|test|publish|package|new|clean|info|help) return 0 ;; *) return 1 ;; esac
 }
 
 # ---------------------------------------------------------------- argument parsing
@@ -94,11 +94,13 @@ OPT_SERVER=""
 OPT_FILTER=""
 OPT_RID=""
 OPT_VERSION=""
+OPT_NAME=""
+OPT_ID=""
 EXTRA=()
 
 # Options that take a value.
 option_has_value() {
-  case "$1" in --port|--data|--server|--filter|--rid|--version) return 0 ;; *) return 1 ;; esac
+  case "$1" in --port|--data|--server|--filter|--rid|--version|--name|--id) return 0 ;; *) return 1 ;; esac
 }
 
 # Whether option $3 is valid for verb $1 and target $2.
@@ -112,6 +114,7 @@ option_allowed() {
     test:*:--filter|test:*:--release) return 0 ;;
     publish:*:--rid|publish:*:--version) return 0 ;;
     package:*:--rid|package:*:--version) return 0 ;;
+    new:*:--name|new:*:--id) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -142,13 +145,15 @@ parse_args() {
   done
 
   case "$verb" in
-    build)   TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client|plugins) ;; *) usage_error build "unknown target '$TARGET' for build" ;; esac ;;
+    build)   TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client|plugins|docs) ;; *) usage_error build "unknown target '$TARGET' for build" ;; esac ;;
     run)     [ -n "$TARGET" ] || usage_error run "missing target for run (server, client or dev)"
              case "$TARGET" in server|client|dev) ;; *) usage_error run "unknown target '$TARGET' for run" ;; esac ;;
     test)    TARGET="${TARGET:-unit}"; case "$TARGET" in unit|perf|timing|hardware|all) ;; *) usage_error test "unknown target '$TARGET' for test" ;; esac ;;
     publish) TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client) ;; *) usage_error publish "unknown target '$TARGET' for publish" ;; esac ;;
     package) [ -n "$TARGET" ] || usage_error package "missing target for package (windows, linux or macos)"
              case "$TARGET" in windows|linux|macos) ;; *) usage_error package "unknown target '$TARGET' for package" ;; esac ;;
+    new)     [ -n "$TARGET" ] || usage_error new "missing target for new (task, page or action)"
+             case "$TARGET" in task|page|action) ;; *) usage_error new "unknown target '$TARGET' for new" ;; esac ;;
     clean|info)
              [ -z "$TARGET" ] || usage_error "$verb" "$verb takes no target"
              [ ${#EXTRA[@]} -eq 0 ] || usage_error "$verb" "$verb takes no extra arguments" ;;
@@ -177,12 +182,15 @@ parse_args() {
       --server) OPT_SERVER="$value" ;;
       --filter) OPT_FILTER="$value" ;;
       --rid) OPT_RID="$value" ;;
+      --name) OPT_NAME="$value" ;;
+      --id) OPT_ID="$value" ;;
       --version)
         printf '%s\n' "$value" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$' \
           || usage_error "$verb" "--version needs a version like 1.2.3 or 1.2.3-rc.1 (a leading v is removed)"
         OPT_VERSION="${value#v}" ;;
     esac
   done
+  if [ "$verb" = new ] && [ -z "$OPT_NAME" ]; then usage_error new "--name is missing, e.g. --name \"My cool plugin\""; fi
   if [ $OPT_RELEASE -eq 1 ]; then CONFIGURATION=Release; fi
   return 0
 }
@@ -304,7 +312,13 @@ cmd_build() {
     server) build_project "$SERVER_PROJECT"; build_plugins ;;
     client) build_project "$CLIENT_PROJECT"; build_plugins ;;
     plugins) build_plugins ;;
+    docs) build_docs ;;
   esac
+}
+
+# The SDK reference of the website (tools/Oadm.ApiDocs): website/src/content/docs/api/ and website/src/generated/.
+build_docs() {
+  "$DOTNET" run --project "$REPO_ROOT/tools/Oadm.ApiDocs/Oadm.ApiDocs.csproj" -c "$CONFIGURATION" ${EXTRA[@]+"${EXTRA[@]}"} -- --repo "$REPO_ROOT"
 }
 
 # Builds the plugins, or with --no-plugin-build uses those already deployed in artifacts/plugins (warns when none are).
@@ -461,6 +475,14 @@ cmd_clean() {
   done
   rm -rf "$REPO_ROOT/artifacts"
   echo "clean"
+}
+
+# A new plugin from the tutorial sample of the kind (tools/Oadm.NewPlugin): plugins/, tests/ and Oadm.sln.
+cmd_new() {
+  require_dotnet
+  local args=(--repo "$REPO_ROOT" --dotnet "$DOTNET" --kind "$TARGET" --name "$OPT_NAME")
+  if [ -n "$OPT_ID" ]; then args+=(--id "$OPT_ID"); fi
+  "$DOTNET" run --project "$REPO_ROOT/tools/Oadm.NewPlugin/Oadm.NewPlugin.csproj" -c "$CONFIGURATION" -- "${args[@]}"
 }
 
 cmd_info() {

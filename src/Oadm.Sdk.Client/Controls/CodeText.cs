@@ -8,38 +8,61 @@ namespace Oadm.Sdk.Client.Controls;
 /// <summary>Language of a <see cref="CodeView"/>; <see cref="Auto"/> detects it from the content type and the text.</summary>
 public enum CodeLanguage
 {
+    /// <summary>From the content type, then from the text.</summary>
     Auto,
+    /// <summary>JSON, pretty-printed.</summary>
     Json,
+    /// <summary>XML (also SOAP), pretty-printed.</summary>
     Xml,
+    /// <summary>param.cgi answers: key=value lines, "# Error" lines red.</summary>
     KeyValue,
+    /// <summary>Plain text without colors.</summary>
     Plain,
 }
 
 /// <summary>Kind of a highlighted piece of code; each kind has a theme brush <c>Oadm.Code.&lt;Kind&gt;Brush</c>.</summary>
 public enum CodeTokenKind
 {
+    /// <summary>Text without a color.</summary>
     Text,
+    /// <summary>A JSON key or a parameter name.</summary>
     Key,
 #pragma warning disable CA1720 // The kind names the theme brush (Oadm.Code.StringBrush).
+    /// <summary>A string value.</summary>
     String,
 #pragma warning restore CA1720
+    /// <summary>A number.</summary>
     Number,
+    /// <summary>true, false, null.</summary>
     Literal,
+    /// <summary>Braces, brackets, commas.</summary>
     Punctuation,
+    /// <summary>An XML tag name.</summary>
     Tag,
+    /// <summary>An XML attribute name.</summary>
     Attribute,
+    /// <summary>A comment.</summary>
     Comment,
+    /// <summary>An error line.</summary>
     Error,
 }
 
 /// <summary>A highlighted range of <see cref="CodeDocument.Text"/>.</summary>
+/// <param name="Start">First character in the text.</param>
+/// <param name="Length">Number of characters.</param>
+/// <param name="Kind">How it is colored.</param>
 public readonly record struct CodeToken(int Start, int Length, CodeTokenKind Kind);
 
 /// <summary>What a <see cref="CodeView"/> shows: the (pretty-printed) text, the language used and its tokens (empty = plain text).</summary>
+/// <param name="Text">The text to show.</param>
+/// <param name="Language">The language it was read as.</param>
+/// <param name="Tokens">The colored ranges; empty for plain text.</param>
 public sealed record CodeDocument(string Text, CodeLanguage Language, IReadOnlyList<CodeToken> Tokens)
 {
+    /// <summary>No text.</summary>
     public static readonly CodeDocument Empty = new(string.Empty, CodeLanguage.Plain, []);
 
+    /// <summary>Whether any range is colored.</summary>
     public bool IsHighlighted => Tokens.Count > 0;
 }
 

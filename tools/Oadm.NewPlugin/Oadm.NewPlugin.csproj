@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    "manage new task|page|action - -name <name>": copies the tutorial sample of that kind from samples/ into plugins/ and
+    tests/ under the new name and adds the projects to Oadm.sln. Developer helper, never shipped.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Oadm.NewPlugin.Tests" />
+  </ItemGroup>
+</Project>

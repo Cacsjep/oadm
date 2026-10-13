@@ -69,6 +69,7 @@ public sealed class StatusChip : Grid
         UpdateText();
     }
 
+    /// <summary>The status in plain words ("Done", "Unreachable").</summary>
     public string? Text
     {
         get => GetValue(TextProperty);
@@ -89,36 +90,42 @@ public sealed class StatusChip : Grid
         set => SetValue(IconProperty, value);
     }
 
+    /// <summary>Green check icon.</summary>
     public bool IsOk
     {
         get => GetValue(IsOkProperty);
         set => SetValue(IsOkProperty, value);
     }
 
+    /// <summary>Amber warning icon.</summary>
     public bool IsWarning
     {
         get => GetValue(IsWarningProperty);
         set => SetValue(IsWarningProperty, value);
     }
 
+    /// <summary>Red error icon.</summary>
     public bool IsError
     {
         get => GetValue(IsErrorProperty);
         set => SetValue(IsErrorProperty, value);
     }
 
+    /// <summary>Blue information icon: something happened, nothing to check.</summary>
     public bool IsInfo
     {
         get => GetValue(IsInfoProperty);
         set => SetValue(IsInfoProperty, value);
     }
 
+    /// <summary>Violet spinning icon: running.</summary>
     public bool IsAccent
     {
         get => GetValue(IsAccentProperty);
         set => SetValue(IsAccentProperty, value);
     }
 
+    /// <summary>Lines of text before it is cut; 2 in grids with the class <c>wrapRows</c>.</summary>
     public int MaxLines
     {
         get => GetValue(MaxLinesProperty);

@@ -55,6 +55,7 @@ public sealed class CodeView : Border
         set => SetValue(TextProperty, value);
     }
 
+    /// <summary>How to read the text; <c>Auto</c> decides from the content type, then from the text.</summary>
     public CodeLanguage Language
     {
         get => GetValue(LanguageProperty);

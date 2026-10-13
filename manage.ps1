@@ -81,7 +81,7 @@ function Exit-Usage([string]$Section, [string]$Message) {
     exit 2
 }
 
-$Verbs = @('build', 'run', 'test', 'publish', 'package', 'clean', 'info', 'help')
+$Verbs = @('build', 'run', 'test', 'publish', 'package', 'new', 'clean', 'info', 'help')
 
 # ---------------------------------------------------------------- argument parsing
 
@@ -95,9 +95,11 @@ $script:OptServer = ''
 $script:OptFilter = ''
 $script:OptRid = ''
 $script:OptVersion = ''
+$script:OptName = ''
+$script:OptId = ''
 $script:Extra = @()
 
-$ValueOptions = @('--port', '--data', '--server', '--filter', '--rid', '--version')
+$ValueOptions = @('--port', '--data', '--server', '--filter', '--rid', '--version', '--name', '--id')
 
 # Whether option $Name is valid for verb $Verb and target $Tgt.
 function Test-OptionAllowed([string]$Verb, [string]$Tgt, [string]$Name) {
@@ -110,6 +112,7 @@ function Test-OptionAllowed([string]$Verb, [string]$Tgt, [string]$Name) {
         { $_ -like 'test:*:--filter' -or $_ -like 'test:*:--release' } { return $true }
         { $_ -like 'publish:*:--rid' -or $_ -like 'publish:*:--version' } { return $true }
         { $_ -like 'package:*:--rid' -or $_ -like 'package:*:--version' } { return $true }
+        { $_ -like 'new:*:--name' -or $_ -like 'new:*:--id' } { return $true }
     }
     return $false
 }
@@ -144,7 +147,7 @@ function Read-Arguments([string]$Verb, [string[]]$Arguments) {
     switch ($Verb) {
         'build' {
             if (-not $script:Target) { $script:Target = 'all' }
-            if ($script:Target -cnotin 'all', 'server', 'client', 'plugins') { Exit-Usage build "unknown target '$($script:Target)' for build" }
+            if ($script:Target -cnotin 'all', 'server', 'client', 'plugins', 'docs') { Exit-Usage build "unknown target '$($script:Target)' for build" }
         }
         'run' {
             if (-not $script:Target) { Exit-Usage run 'missing target for run (server, client or dev)' }
@@ -161,6 +164,10 @@ function Read-Arguments([string]$Verb, [string[]]$Arguments) {
         'package' {
             if (-not $script:Target) { Exit-Usage package 'missing target for package (windows, linux or macos)' }
             if ($script:Target -cnotin 'windows', 'linux', 'macos') { Exit-Usage package "unknown target '$($script:Target)' for package" }
+        }
+        'new' {
+            if (-not $script:Target) { Exit-Usage new 'missing target for new (task, page or action)' }
+            if ($script:Target -cnotin 'task', 'page', 'action') { Exit-Usage new "unknown target '$($script:Target)' for new" }
         }
         { $_ -in 'clean', 'info' } {
             if ($script:Target) { Exit-Usage $Verb "$Verb takes no target" }
@@ -189,6 +196,8 @@ function Read-Arguments([string]$Verb, [string[]]$Arguments) {
             '--server' { $script:OptServer = $value }
             '--filter' { $script:OptFilter = $value }
             '--rid' { $script:OptRid = $value }
+            '--name' { $script:OptName = $value }
+            '--id' { $script:OptId = $value }
             '--version' {
                 if ($value -notmatch '^v?[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$') {
                     Exit-Usage $Verb '--version needs a version like 1.2.3 or 1.2.3-rc.1 (a leading v is removed)'
@@ -197,6 +206,7 @@ function Read-Arguments([string]$Verb, [string[]]$Arguments) {
             }
         }
     }
+    if ($Verb -eq 'new' -and -not $script:OptName) { Exit-Usage new '--name is missing, e.g. --name "My cool plugin"' }
     if ($script:OptRelease) { $script:Configuration = 'Release' }
 }
 
@@ -316,7 +326,14 @@ function Invoke-Build {
         'server' { Build-Project $ServerProject; Build-Plugins }
         'client' { Build-Project $ClientProject; Build-Plugins }
         'plugins' { Build-Plugins }
+        'docs' { Build-Docs }
     }
+}
+
+# The SDK reference of the website (tools/Oadm.ApiDocs): website/src/content/docs/api/ and website/src/generated/.
+function Build-Docs {
+    Invoke-Dotnet (@('run', '--project', (Join-Path $RepoRoot 'tools/Oadm.ApiDocs/Oadm.ApiDocs.csproj'), '-c', $script:Configuration) +
+        $script:Extra + @('--', '--repo', $RepoRoot))
 }
 
 # Builds the plugins, or with --no-plugin-build uses those already deployed in artifacts/plugins (warns when none are).
@@ -492,6 +509,15 @@ function Invoke-Clean {
     Write-Host 'clean'
 }
 
+# A new plugin from the tutorial sample of the kind (tools/Oadm.NewPlugin): plugins/, tests/ and Oadm.sln.
+function Invoke-New {
+    Initialize-Dotnet
+    $a = @('run', '--project', (Join-Path $RepoRoot 'tools/Oadm.NewPlugin/Oadm.NewPlugin.csproj'), '-c', $script:Configuration, '--',
+        '--repo', $RepoRoot, '--dotnet', $script:Dotnet, '--kind', $script:Target, '--name', $script:OptName)
+    if ($script:OptId) { $a += '--id', $script:OptId }
+    Invoke-Dotnet $a
+}
+
 function Invoke-Info {
     Initialize-Dotnet
     Write-Host "repository     $RepoRoot"
@@ -527,6 +553,7 @@ switch ($verb) {
     'test' { Invoke-Test }
     'publish' { Invoke-Publish }
     'package' { Invoke-Package }
+    'new' { Invoke-New }
     'clean' { Invoke-Clean }
     'info' { Invoke-Info }
 }

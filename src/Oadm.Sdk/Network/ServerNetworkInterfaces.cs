@@ -52,6 +52,7 @@ public sealed record ServerNetworkInterface(
 /// <summary>Lists the server's network interfaces. Injectable so plugins can be tested without real adapters.</summary>
 public interface IServerNetworkInterfaces
 {
+    /// <summary>The server's network interfaces now.</summary>
     IReadOnlyList<ServerNetworkInterface> List();
 }
 
@@ -60,8 +61,10 @@ public interface IServerNetworkInterfaces
 /// </summary>
 public sealed class SystemNetworkInterfaces : IServerNetworkInterfaces
 {
+    /// <summary>The shared instance.</summary>
     public static SystemNetworkInterfaces Instance { get; } = new();
 
+    /// <summary>The server's network interfaces now.</summary>
     public IReadOnlyList<ServerNetworkInterface> List()
     {
         NetworkInterface[] all;

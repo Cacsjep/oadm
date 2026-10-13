@@ -11,15 +11,18 @@ namespace Oadm.Sdk.Actions;
 /// <summary>Why an action runs: a stateless rule fired, or a stateful rule turned on or off.</summary>
 public enum ActionEdge
 {
+    /// <summary>A one-shot rule fired.</summary>
     Fired = 0,
+    /// <summary>A rule that turns on and off turned on.</summary>
     TurnedOn = 1,
+    /// <summary>A rule that turns on and off turned off.</summary>
     TurnedOff = 2,
 }
 
 /// <summary>Input kinds of a declarative action setting; the client draws the form from them.</summary>
 public enum ActionFieldType
 {
-    /// <summary>One line of text. Placeholders such as {device} are filled by <see cref="IActionContext.Text"/>.</summary>
+    /// <summary>One line of text. Placeholders such as {device} are filled by <see cref="IActionContext.Text(string?)"/>.</summary>
     Text = 0,
 
     /// <summary>Several lines of text (an email body).</summary>
@@ -54,25 +57,35 @@ public enum ActionFieldType
 }
 
 /// <summary>A choice of a <see cref="ActionFieldType.Choice"/> or <see cref="ActionFieldType.DynamicChoice"/> field.</summary>
+/// <param name="Value">The value stored in the settings.</param>
+/// <param name="Label">What the select shows.</param>
 public sealed record ActionChoice(string Value, string Label);
 
 /// <summary>
 /// One setting of an action. <see cref="Key"/> is the JSON property in the settings; <see cref="Label"/> the form label.
 /// <see cref="OffEdge"/> marks a setting that belongs to "When the rule turns off" (shown only for stateful rules).
 /// </summary>
+/// <param name="Key">The JSON property of the setting.</param>
+/// <param name="Label">The form label.</param>
+/// <param name="Type">The kind of input.</param>
 public sealed record ActionField(string Key, string Label, ActionFieldType Type)
 {
+    /// <summary>The rule cannot be saved without a value.</summary>
     public bool Required { get; init; }
 
     /// <summary>Value of a new action (string, number or bool as JSON text, e.g. "5" or "true"); null = empty.</summary>
     public string? Default { get; init; }
 
+    /// <summary>Help text below the input.</summary>
     public string? Hint { get; init; }
 
+    /// <summary>The choices of a <see cref="ActionFieldType.Choice"/> field.</summary>
     public IReadOnlyList<ActionChoice> Choices { get; init; } = [];
 
+    /// <summary>The smallest value of a <see cref="ActionFieldType.Number"/> field.</summary>
     public int Min { get; init; }
 
+    /// <summary>The largest value of a <see cref="ActionFieldType.Number"/> field.</summary>
     public int Max { get; init; } = int.MaxValue;
 
     /// <summary>Longest text (Text, Multiline, Password).</summary>
@@ -93,35 +106,52 @@ public sealed record ActionField(string Key, string Label, ActionFieldType Type)
     /// <summary>The field whose value is the language of this <see cref="ActionFieldType.Code"/> field.</summary>
     public string? LanguageKey { get; init; }
 
+    /// <summary>One line of text.</summary>
     public static ActionField Text(string key, string label, bool required = false, string? defaultValue = null) =>
         new(key, label, ActionFieldType.Text) { Required = required, Default = defaultValue };
 
+    /// <summary>Several lines of text.</summary>
     public static ActionField Multiline(string key, string label, bool required = false) =>
         new(key, label, ActionFieldType.Multiline) { Required = required, MaxLength = 10_000 };
 
+    /// <summary>A whole number from <paramref name="min"/> to <paramref name="max"/>.</summary>
     public static ActionField Number(string key, string label, int min, int max, int defaultValue) =>
         new(key, label, ActionFieldType.Number) { Required = true, Min = min, Max = max, Default = defaultValue.ToString(System.Globalization.CultureInfo.InvariantCulture) };
 
+    /// <summary>A check box.</summary>
     public static ActionField Bool(string key, string label, bool defaultValue = false) =>
         new(key, label, ActionFieldType.Bool) { Default = defaultValue ? "true" : "false" };
 
+    /// <summary>A select with fixed choices.</summary>
     public static ActionField Choice(string key, string label, IReadOnlyList<ActionChoice> choices, string? defaultValue = null) =>
         new(key, label, ActionFieldType.Choice) { Required = true, Choices = choices, Default = defaultValue ?? (choices.Count > 0 ? choices[0].Value : null) };
 
+    /// <summary>A select whose choices come from <see cref="IActionPlugin.ListChoicesAsync"/> while the rule is edited.</summary>
     public static ActionField DynamicChoice(string key, string label, bool required = true) =>
         new(key, label, ActionFieldType.DynamicChoice) { Required = required };
 
+    /// <summary>A password: stored encrypted and never sent back to a client.</summary>
     public static ActionField Password(string key, string label, bool required = false) =>
         new(key, label, ActionFieldType.Password) { Required = required, MaxLength = 256 };
 
+    /// <summary>A body in the code editor; <paramref name="languageKey"/> names the field whose value is its language.</summary>
     public static ActionField Code(string key, string label, string? languageKey = null, bool required = false) =>
         new(key, label, ActionFieldType.Code) { Required = required, MaxLength = 50_000, LanguageKey = languageKey };
 
+    /// <summary>Name and value rows (headers, query parameters); read them with <see cref="ActionInvocation.GetPairs"/>.</summary>
     public static ActionField KeyValues(string key, string label) =>
         new(key, label, ActionFieldType.KeyValues) { MaxLength = 20_000 };
 }
 
 /// <summary>What happened, handed to an action run.</summary>
+/// <param name="EventTypeId">The event type.</param>
+/// <param name="EventName">Its name ("Input 1 active").</param>
+/// <param name="DeviceId">The device of the event; null for server events.</param>
+/// <param name="DeviceAddress">Its address.</param>
+/// <param name="DeviceModel">Its model.</param>
+/// <param name="State">On or off for events that turn on and off; null for one-shot events.</param>
+/// <param name="TimeUtc">When it happened.</param>
+/// <param name="Data">The event's values by name; also placeholders ({port}).</param>
 public sealed record ActionTrigger(
     string EventTypeId,
     string EventName,
@@ -136,6 +166,12 @@ public sealed record ActionTrigger(
 /// One run of an action on one target (a device, or none for actions without <see cref="IActionPlugin.NeedsDevice"/>).
 /// <paramref name="Settings"/> are the action's settings with password fields decrypted.
 /// </summary>
+/// <param name="RuleId">The rule.</param>
+/// <param name="RuleName">Its name.</param>
+/// <param name="Edge">Why the action runs.</param>
+/// <param name="Settings">The settings of the action, passwords decrypted.</param>
+/// <param name="Device">The target device; null for actions without devices.</param>
+/// <param name="Trigger">What happened.</param>
 public sealed record ActionInvocation(
     Guid RuleId,
     string RuleName,
@@ -155,8 +191,10 @@ public sealed record ActionInvocation(
             }
             : null;
 
+    /// <summary>A check box setting.</summary>
     public bool GetBool(string key) => string.Equals(Get(key), "true", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>A number setting; <paramref name="fallback"/> when missing or not a number.</summary>
     public int GetInt(string key, int fallback) =>
         int.TryParse(Get(key), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : fallback;
 
@@ -171,6 +209,7 @@ public interface IActionContext
     /// <summary>Pre-authenticated for <see cref="ActionInvocation.Device"/> with the stored credentials; null without a device.</summary>
     IVapixClient? Vapix { get; }
 
+    /// <summary>The server log. For the event log, use <see cref="Log"/>.</summary>
     ILogger Logger { get; }
 
     /// <summary>The core plugin that contributed the action (VAPIX Commander for "Run VAPIX command"), else null.</summary>
@@ -200,12 +239,16 @@ public interface IActionContext
 /// <summary>Services for <see cref="IActionPlugin.ListChoicesAsync"/> (read-only, while a rule is edited).</summary>
 public interface IActionQueryContext
 {
+    /// <summary>The server log.</summary>
     ILogger Logger { get; }
 
+    /// <summary>The core plugin that contributed the action; null for a standalone action.</summary>
     ICorePlugin? Owner { get; }
 
+    /// <summary>The settings of the plugin package (or of the owning core plugin).</summary>
     IPluginSettings Settings { get; }
 
+    /// <summary>Every managed device.</summary>
     IDeviceRepository Devices { get; }
 }
 
@@ -242,6 +285,7 @@ public interface IActionPlugin : IPlugin
     /// </summary>
     bool UsesPlaceholders => false;
 
+    /// <summary>The settings form, drawn by the rule dialog and checked on the server.</summary>
     IReadOnlyList<ActionField> Fields { get; }
 
     /// <summary>
@@ -276,5 +320,6 @@ public interface IActionPlugin : IPlugin
 /// <summary>A core plugin that contributes actions implements this next to <c>ICorePlugin</c>.</summary>
 public interface IActionSource
 {
+    /// <summary>The actions this core plugin contributes; available while it is on.</summary>
     IReadOnlyList<IActionPlugin> ActionPlugins { get; }
 }

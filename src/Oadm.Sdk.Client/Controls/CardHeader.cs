@@ -38,12 +38,14 @@ public sealed class CardHeader : Grid
         Update();
     }
 
+    /// <summary>The card title.</summary>
     public string? Title
     {
         get => GetValue(TitleProperty);
         set => SetValue(TitleProperty, value);
     }
 
+    /// <summary>One short line below the title; optional.</summary>
     public string? Description
     {
         get => GetValue(DescriptionProperty);

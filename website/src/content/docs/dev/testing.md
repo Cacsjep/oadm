@@ -35,7 +35,7 @@ Assert.Equal(
     StepRun.Lines(ctx.Steps));
 ```
 
-[Your first plugin](../first-plugin/) has the complete fakes. Test at least:
+The [task plugin tutorial](../tutorial-task/#8-the-tests) has the complete fakes. Test at least:
 
 - the happy path, step by step;
 - a device without the API: nothing is written, the error says "Nothing was changed";

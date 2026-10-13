@@ -26,14 +26,19 @@ public enum DeviceSelectorMode
     EventDevice = 3,
 }
 
+/// <summary>Which devices a condition or an action applies to.</summary>
 public sealed class DeviceSelector
 {
+    /// <summary>How the devices are chosen.</summary>
     public DeviceSelectorMode Mode { get; set; }
 
+    /// <summary>Chosen devices.</summary>
     public List<Guid> DeviceIds { get; set; } = [];
 
+    /// <summary>Chosen tags: every device with one of them.</summary>
     public List<string> Tags { get; set; } = [];
 
+    /// <summary>A copy.</summary>
     public DeviceSelector Clone() => new() { Mode = Mode, DeviceIds = [.. DeviceIds], Tags = [.. Tags] };
 
     /// <summary>A choice of devices and tags (<see cref="DeviceSelectorMode.Devices"/> or the older Tags).</summary>
@@ -52,6 +57,7 @@ public sealed class DeviceSelector
     }
 }
 
+/// <summary>What a condition checks.</summary>
 public enum RuleConditionKind
 {
     /// <summary>An event (the first condition is the rule's trigger).</summary>
@@ -64,12 +70,16 @@ public enum RuleConditionKind
 /// <summary>Weekdays plus from / to ("08:00", "18:00"); a "to" at or before "from" runs over midnight.</summary>
 public sealed class RuleSchedule
 {
+    /// <summary>The weekdays.</summary>
     public List<DayOfWeek> Days { get; set; } = [];
 
+    /// <summary>Start, "HH:mm" server time.</summary>
     public string From { get; set; } = "00:00";
 
+    /// <summary>End, "HH:mm" server time; earlier than From spans midnight.</summary>
     public string To { get; set; } = "00:00";
 
+    /// <summary>A copy.</summary>
     public RuleSchedule Clone() => new() { Days = [.. Days], From = From, To = To };
 }
 
@@ -79,17 +89,22 @@ public sealed class RuleSchedule
 /// </summary>
 public sealed class RuleCondition
 {
+    /// <summary>An event or a schedule.</summary>
     public RuleConditionKind Kind { get; set; }
 
+    /// <summary>The event type of an event condition.</summary>
     public string? EventTypeId { get; set; }
 
+    /// <summary>The devices whose event counts.</summary>
     public DeviceSelector Devices { get; set; } = new();
 
     /// <summary>Optional filter: every listed event data field must equal its value.</summary>
     public Dictionary<string, string> Data { get; set; } = [];
 
+    /// <summary>The time window of a schedule condition.</summary>
     public RuleSchedule? Schedule { get; set; }
 
+    /// <summary>A copy.</summary>
     public RuleCondition Clone() => new()
     {
         Kind = Kind,
@@ -109,10 +124,13 @@ public sealed class RuleAction
     /// <summary>Stable id of the action within its rule (new actions: a new Guid): stored password values follow it.</summary>
     public Guid Key { get; set; } = Guid.NewGuid();
 
+    /// <summary>The id of the action.</summary>
     public string ActionId { get; set; } = string.Empty;
 
+    /// <summary>The devices it runs on.</summary>
     public DeviceSelector Targets { get; set; } = new() { Mode = DeviceSelectorMode.EventDevice };
 
+    /// <summary>The action's settings by field key.</summary>
     public JsonObject Settings { get; set; } = [];
 
     /// <summary>
@@ -121,6 +139,7 @@ public sealed class RuleAction
     /// </summary>
     public List<string> StoredSecretFields { get; set; } = [];
 
+    /// <summary>A copy.</summary>
     public RuleAction Clone() => new()
     {
         Key = Key,
@@ -134,20 +153,30 @@ public sealed class RuleAction
 /// <summary>An event rule as clients edit it (definition JSON of gRPC EventService).</summary>
 public sealed class RuleDefinition
 {
+    /// <summary>Longest rule name.</summary>
     public const int MaxNameLength = 64;
+    /// <summary>Most conditions per rule.</summary>
     public const int MaxConditions = 10;
+    /// <summary>Most actions per rule.</summary>
     public const int MaxActions = 5;
+    /// <summary>Default dead time per device.</summary>
     public const int DefaultCooldownSeconds = 10;
+    /// <summary>Default limit of action runs per minute.</summary>
     public const int DefaultMaxRunsPerMinute = 60;
 
+    /// <summary>The rule id; empty for a new rule.</summary>
     public Guid Id { get; set; }
 
+    /// <summary>The rule name.</summary>
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>Turned on.</summary>
     public bool Enabled { get; set; }
 
+    /// <summary>The conditions; the first is the trigger.</summary>
     public List<RuleCondition> Conditions { get; set; } = [];
 
+    /// <summary>The actions, run in order.</summary>
     public List<RuleAction> Actions { get; set; } = [];
 
     /// <summary>Per device: at least this long between two "turns on" (0..3600).</summary>
@@ -156,6 +185,7 @@ public sealed class RuleDefinition
     /// <summary>For the whole rule: at most this many action runs per minute (1..1000).</summary>
     public int MaxRunsPerMinute { get; set; } = DefaultMaxRunsPerMinute;
 
+    /// <summary>A copy.</summary>
     public RuleDefinition Clone() => new()
     {
         Id = Id,
@@ -167,12 +197,14 @@ public sealed class RuleDefinition
         MaxRunsPerMinute = MaxRunsPerMinute,
     };
 
+    /// <summary>The JSON format of rules (camelCase).</summary>
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
+    /// <summary>The rule as JSON.</summary>
     public string ToJson() => JsonSerializer.Serialize(this, Json);
 
     /// <summary>Throws <see cref="JsonException"/> for text that is not a rule.</summary>

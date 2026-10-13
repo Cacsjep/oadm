@@ -6,5 +6,6 @@ namespace Oadm.Sdk.Client.Validation;
 /// </summary>
 public interface IFormFieldVisits
 {
+    /// <summary>The user left the input bound to <paramref name="propertyName"/>: its error may show now.</summary>
     void FieldLeft(string propertyName);
 }

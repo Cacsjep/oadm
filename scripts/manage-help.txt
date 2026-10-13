@@ -10,11 +10,12 @@ OADM developer commands. One entry point per shell, same verbs and options:
 The help below writes "manage" for either one.
 
 Verbs:
-  build     Build all, server, client or plugins              (default target: all)
+  build     Build all, server, client, plugins or docs        (default target: all)
   run       Run server, client, or dev (server + client)
   test      Run unit, perf, timing, hardware or all tests      (default target: unit)
   publish   Self-contained single-file apps in artifacts/publish (default target: all)
   package   Installer for windows (MSI), linux (.deb) or macos (.pkg) in artifacts/packages
+  new       A new plugin from a tutorial sample: task, page or action
   clean    Remove bin, obj and artifacts
   info      Show the .NET SDK, configuration and RID in use
   help      Show this overview, or "manage help <verb>"
@@ -41,13 +42,15 @@ Examples:
   manage package windows --version 1.2.0
 
 ## build
-Usage: manage build [all|server|client|plugins] [--release] [-- dotnet build args]
+Usage: manage build [all|server|client|plugins|docs] [--release] [-- dotnet build args]
 
 Targets:
   all       Whole solution: server, client, plugins, tests, tools (default)
   server    Server and the bundled plugins
   client    Avalonia client plus all plugins (their dialogs and pages run in the client)
   plugins   Bundled plugins only (plugins/*/*.csproj, built in parallel, deployed to artifacts/plugins/<id>)
+  docs      SDK reference of the website from the SDK doc comments (tools/Oadm.ApiDocs) into
+            website/src/content/docs/api (git-ignored); "npm run dev" in website/ then shows it
 
 Options:
   --release   Build Release instead of {CONFIGURATION}
@@ -56,6 +59,7 @@ Examples:
   manage build
   manage build server --release
   manage build client -- -v detailed
+  manage build docs
 
 ## run
 Usage: manage run <server|client|dev> [options] [-- app args]
@@ -173,6 +177,27 @@ Examples:
   manage package windows --rid win-arm64 --version 1.2.0
   manage package linux --rid linux-arm64 --version v1.2.0
   manage package macos --rid osx-arm64
+
+## new
+Usage: manage new <task|page|action> --name <name> [--id <plugin id>]
+
+Creates a plugin from the sample of a developer tutorial, renamed: plugins/Oadm.Plugins.<Name>
+(server part), plugins/Oadm.Plugins.<Name>.Client (dialog or page) and tests/Oadm.Plugins.<Name>.Tests,
+all added to Oadm.sln. It builds, its tests pass and it runs like the sample (tools/Oadm.NewPlugin;
+the samples are in samples/). Existing folders are never overwritten.
+
+Targets:
+  task      A task in the device context menu with a dialog (sample "Set UPnP name")
+  page      A core plugin with its own page in the navigation rail (sample "Firmware overview")
+  action    An event rule action (sample "Set virtual input")
+
+Options:
+  --name    The plugin name in words, e.g. "My cool plugin" (letters, digits, spaces)
+  --id      The plugin id (default community.<name-in-kebab-case>), e.g. acme.my-cool-plugin
+
+Examples:
+  manage new task --name "Set host name"
+  manage new page --name "Door overview" --id acme.door-overview
 
 ## clean
 Usage: manage clean

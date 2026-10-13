@@ -25,6 +25,7 @@ public sealed record KeyedRateLimitOptions
     public IReadOnlyList<TimeSpan> NoticeIntervals { get; init; } = [];
 }
 
+/// <summary>What to do with a request (<see cref="KeyedRateLimiter{TKey}.Check"/>).</summary>
 public enum RateLimitDecision
 {
     /// <summary>Handle the request.</summary>
@@ -37,10 +38,12 @@ public enum RateLimitDecision
     GlobalDrop = 2,
 }
 
+/// <summary>The answer of <see cref="KeyedRateLimiter{TKey}.Check"/> for one request.</summary>
 /// <param name="Decision">What to do with the request.</param>
 /// <param name="DueNotices">Bit i set: notice i (<see cref="KeyedRateLimitOptions.NoticeIntervals"/>) is due now.</param>
 public readonly record struct RateLimitResult(RateLimitDecision Decision, int DueNotices)
 {
+    /// <summary>Whether notice <paramref name="notice"/> is due now.</summary>
     public bool IsDue(int notice) => (DueNotices & (1 << notice)) != 0;
 }
 
@@ -63,6 +66,7 @@ public sealed class KeyedRateLimiter<TKey>
     private long _globalRefill;
     private long _lastGlobalDrop;
 
+    /// <summary>A limiter with <paramref name="options"/> (defaults when null).</summary>
     public KeyedRateLimiter(KeyedRateLimitOptions? options = null, TimeProvider? time = null)
     {
         _options = options ?? new KeyedRateLimitOptions();
@@ -76,6 +80,7 @@ public sealed class KeyedRateLimiter<TKey>
         _globalRefill = _time.GetTimestamp();
     }
 
+    /// <summary>The limits.</summary>
     public KeyedRateLimitOptions Options => _options;
 
     /// <summary>Clients currently tracked (bounded by <see cref="KeyedRateLimitOptions.MaxClients"/>).</summary>
@@ -97,6 +102,7 @@ public sealed class KeyedRateLimiter<TKey>
         return last != 0 && _time.GetElapsedTime(last) <= window;
     }
 
+    /// <summary>Counts one request of <paramref name="client"/> and says whether to handle it.</summary>
     public RateLimitResult Check(TKey client)
     {
         var now = _time.GetTimestamp();

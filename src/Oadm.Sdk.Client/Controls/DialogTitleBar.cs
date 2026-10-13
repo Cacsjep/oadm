@@ -29,6 +29,7 @@ public sealed class DialogTitleBar : Border
         Child = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { _text, close } };
     }
 
+    /// <summary>The dialog title.</summary>
     public string? Text
     {
         get => GetValue(TextProperty);

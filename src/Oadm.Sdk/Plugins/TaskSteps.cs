@@ -5,7 +5,9 @@ public enum TaskStepState
 {
     /// <summary>Planned with <see cref="ITaskExecutionContext.PlanSteps"/>, not started yet.</summary>
     Pending = 0,
+    /// <summary>Running now.</summary>
     Running = 1,
+    /// <summary>Finished successfully.</summary>
     Done = 2,
 
     /// <summary>Finished with a warning (<see cref="ITaskStep.Warn"/>); the task ends "Done with warnings".</summary>
@@ -13,10 +15,18 @@ public enum TaskStepState
 
     /// <summary>Did not apply (<see cref="ITaskStep.Skip"/>) or never ran because the task ended before it.</summary>
     Skipped = 4,
+    /// <summary>Failed; the task fails with it.</summary>
     Failed = 5,
 }
 
 /// <summary>Immutable view of one step. <see cref="Index"/> is the position in the task's step list (0-based).</summary>
+/// <param name="Index">Position in the task's step list, 0-based.</param>
+/// <param name="Name">The step name ("Upload firmware").</param>
+/// <param name="State">Its state.</param>
+/// <param name="Detail">The result, progress detail, skip reason or error.</param>
+/// <param name="Progress">0 to 100 while it runs.</param>
+/// <param name="StartedUtc">When it started.</param>
+/// <param name="FinishedUtc">When it ended.</param>
 public sealed record TaskStepInfo(
     int Index,
     string Name,
@@ -26,6 +36,7 @@ public sealed record TaskStepInfo(
     DateTimeOffset? StartedUtc,
     DateTimeOffset? FinishedUtc)
 {
+    /// <summary>Ended: Done, Warning, Skipped or Failed.</summary>
     public bool IsFinished => State is TaskStepState.Done or TaskStepState.Warning or TaskStepState.Skipped or TaskStepState.Failed;
 }
 
@@ -51,8 +62,10 @@ public sealed record TaskStepInfo(
 /// </summary>
 public interface ITaskStep : IDisposable
 {
+    /// <summary>The step name.</summary>
     string Name { get; }
 
+    /// <summary>The current state.</summary>
     TaskStepState State { get; }
 
     /// <summary>Progress of this step (0-100) and an optional detail shown next to it, e.g. "12 of 80 MB".</summary>
@@ -138,8 +151,10 @@ public sealed class TaskStepList
     /// <summary>Steps beyond this count are not recorded (their handles still work but change nothing).</summary>
     public const int MaxSteps = 200;
 
+    /// <summary>Longer step names are shortened.</summary>
     public const int MaxNameLength = 200;
 
+    /// <summary>Longer details are shortened.</summary>
     public const int MaxDetailLength = 1000;
 
     /// <summary>
@@ -297,6 +312,7 @@ public sealed class TaskStepList
         return new Handle(this, slot, clean);
     }
 
+    /// <summary>Every step as it is now, in order.</summary>
     public IReadOnlyList<TaskStepInfo> Snapshot()
     {
         lock (_sync)

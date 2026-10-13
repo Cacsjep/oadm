@@ -35,6 +35,7 @@ public sealed class ProgressRing : Control
     /// <summary>The faint full circle behind the arc.</summary>
     public IBrush? Track { get => GetValue(TrackProperty); set => SetValue(TrackProperty, value); }
 
+    /// <summary>The line width of the ring.</summary>
     public double Thickness { get => GetValue(ThicknessProperty); set => SetValue(ThicknessProperty, value); }
 
     public override void Render(DrawingContext context)

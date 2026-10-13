@@ -12,14 +12,20 @@ namespace Oadm.Sdk.Plugins;
 /// </summary>
 public interface ITaskPluginQuery
 {
+    /// <summary>
+    /// Answers <paramref name="method"/> for the dialog with JSON. Read only: never change the device. Throw
+    /// <see cref="ArgumentException"/> for an unknown method or bad input; the message reaches the dialog.
+    /// </summary>
     Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct);
 }
 
+/// <summary>What the server gives a query (<see cref="ITaskPluginQuery.QueryAsync"/>).</summary>
 public interface ITaskQueryContext
 {
     /// <summary>Pre-authenticated for the queried device.</summary>
     IVapixClient Vapix { get; }
 
+    /// <summary>The server log.</summary>
     ILogger Logger { get; }
 
     /// <summary>
@@ -37,10 +43,16 @@ public interface ITaskQueryContext
 /// </summary>
 public interface IUploadedFiles
 {
+    /// <summary>The uploaded file with this id; null when it is gone (uploads are deleted after a day).</summary>
     Task<UploadedFile?> FindAsync(string fileId, CancellationToken ct);
 
+    /// <summary>Opens the file for reading; the caller disposes the stream.</summary>
     Task<Stream> OpenReadAsync(string fileId, CancellationToken ct);
 }
 
 /// <summary>An uploaded file. <see cref="Sha256"/> is upper-case hex.</summary>
+/// <param name="Id">The id to put into the payload.</param>
+/// <param name="Name">The file name as the user chose it.</param>
+/// <param name="Size">Size in bytes.</param>
+/// <param name="Sha256">SHA-256 of the content, upper case hex.</param>
 public sealed record UploadedFile(string Id, string Name, long Size, string Sha256);

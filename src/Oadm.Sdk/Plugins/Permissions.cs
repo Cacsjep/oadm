@@ -30,20 +30,35 @@ public sealed record PermissionDefinition(string Key, string Name, string Descri
 /// </summary>
 public static class HostPermissionKeys
 {
+    /// <summary>Add and remove devices.</summary>
     public const string DevicesAddRemove = "devices.addRemove";
+    /// <summary>Refresh devices.</summary>
     public const string DevicesRefresh = "devices.refresh";
+    /// <summary>Log in to devices and set their first password.</summary>
     public const string DevicesLogin = "devices.login";
+    /// <summary>Open a device's web interface.</summary>
     public const string DevicesWebInterface = "devices.webInterface";
+    /// <summary>See live video.</summary>
     public const string DevicesLiveView = "devices.liveView";
+    /// <summary>Zoom, focus and PTZ, and the RTSP port OADM uses.</summary>
     public const string DevicesOpticsControl = "devices.opticsControl";
+    /// <summary>Export the device list.</summary>
     public const string DevicesExport = "devices.export";
+    /// <summary>Tag devices and create tags.</summary>
     public const string TagsAssign = "tags.assign";
+    /// <summary>Rename, recolor and delete tags.</summary>
     public const string TagsManage = "tags.manage";
+    /// <summary>Cancel tasks.</summary>
     public const string TasksCancel = "tasks.cancel";
+    /// <summary>Delete tasks from the history.</summary>
     public const string TasksDelete = "tasks.delete";
+    /// <summary>Delete the whole task history.</summary>
     public const string TasksDeleteAll = "tasks.deleteAll";
+    /// <summary>See the event rules and their log.</summary>
     public const string EventsView = "events.view";
+    /// <summary>Create, change and delete event rules.</summary>
     public const string EventsManage = "events.manage";
+    /// <summary>Clear the event log.</summary>
     public const string EventsClearLog = "events.clearLog";
 }
 

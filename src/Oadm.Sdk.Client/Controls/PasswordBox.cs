@@ -17,7 +17,9 @@ public class PasswordBox : TextBox
     /// <summary>The mask character (bullet).</summary>
     public const char Mask = '•';
 
+    /// <summary>The tooltip of the eye button while the password is hidden.</summary>
     public const string ShowTip = "Show password";
+    /// <summary>The tooltip of the eye button while the password shows.</summary>
     public const string HideTip = "Hide password";
 
     private readonly OadmIcon _icon = new() { Width = 16, Height = 16 };

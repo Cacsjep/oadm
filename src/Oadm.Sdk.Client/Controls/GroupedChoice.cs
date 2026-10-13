@@ -10,8 +10,12 @@ namespace Oadm.Sdk.Client.Controls;
 /// Choices = GroupedChoice.Build(events, e =&gt; e.Group, e =&gt; e.Title);
 /// </code>
 /// </example>
+/// <param name="Text">What the select shows.</param>
+/// <param name="Value">The item behind a choice; null for a header.</param>
+/// <param name="IsHeader">A group header that cannot be chosen.</param>
 public sealed record GroupedChoice(string Text, object? Value, bool IsHeader)
 {
+    /// <summary>A choice, not a header.</summary>
     public bool IsSelectable => !IsHeader;
 
     public override string ToString() => Text;

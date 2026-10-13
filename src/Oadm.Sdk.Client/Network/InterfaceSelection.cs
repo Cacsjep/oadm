@@ -14,8 +14,10 @@ namespace Oadm.Sdk.Client.Network;
 /// </summary>
 public sealed partial class InterfaceSelection : ObservableObject
 {
+    /// <summary>The choices of the select (bind <c>ItemsSource</c>).</summary>
     public ObservableCollection<InterfaceOption> Items { get; } = [];
 
+    /// <summary>The chosen interface (bind <c>SelectedItem</c>).</summary>
     [ObservableProperty]
     public partial InterfaceOption? Selected { get; set; }
 
@@ -54,6 +56,7 @@ public sealed partial class InterfaceSelection : ObservableObject
     /// <summary>Selects the interface with this id (the form was loaded or saved); the first one when it is not listed.</summary>
     public void Select(string? id) => Selected = Find(id) ?? Items.FirstOrDefault();
 
+    /// <summary>The choice with this interface id, or null.</summary>
     public InterfaceOption? Find(string? id) => id is null ? null : Items.FirstOrDefault(i => string.Equals(i.Id, id, StringComparison.Ordinal));
 
     partial void OnSelectedChanged(InterfaceOption? value) => OnPropertyChanged(nameof(SelectedId));

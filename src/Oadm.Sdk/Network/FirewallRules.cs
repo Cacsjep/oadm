@@ -5,9 +5,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Oadm.Sdk.Network;
 
+/// <summary>The protocol of a firewall rule.</summary>
 public enum FirewallProtocol
 {
+    /// <summary>TCP.</summary>
     Tcp = 0,
+    /// <summary>UDP.</summary>
     Udp = 1,
 }
 
@@ -16,6 +19,9 @@ public enum FirewallProtocol
 /// <paramref name="Name"/> identifies the rule ("OADM Server (NTP, UDP 123)"): opening replaces a rule of that name,
 /// closing removes it.
 /// </summary>
+/// <param name="Name">The rule name, which identifies it.</param>
+/// <param name="Protocol">TCP or UDP.</param>
+/// <param name="Port">The local port.</param>
 public sealed record FirewallRule(string Name, FirewallProtocol Protocol, int Port)
 {
     /// <summary>"OADM Server (NTP, UDP 123)".</summary>
@@ -50,6 +56,7 @@ public sealed partial class FirewallRuleKeeper
     private readonly ILogger _logger;
     private bool? _open;
 
+    /// <summary>Keeps <paramref name="rule"/>; without <paramref name="firewall"/> it does nothing.</summary>
     public FirewallRuleKeeper(FirewallRule rule, IFirewallRules? firewall, ILogger? logger = null)
     {
         Rule = rule ?? throw new ArgumentNullException(nameof(rule));
@@ -57,11 +64,13 @@ public sealed partial class FirewallRuleKeeper
         _logger = logger ?? NullLogger.Instance;
     }
 
+    /// <summary>The rule it keeps.</summary>
     public FirewallRule Rule { get; }
 
     /// <summary>True once the rule was opened (and not closed since).</summary>
     public bool IsOpen => _open == true;
 
+    /// <summary>Opens the rule when <paramref name="enabled"/>, closes it otherwise.</summary>
     public async Task SyncAsync(bool enabled, CancellationToken ct)
     {
         if (_firewall is null)

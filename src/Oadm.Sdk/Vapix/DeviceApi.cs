@@ -5,6 +5,10 @@ namespace Oadm.Sdk.Vapix;
 /// e.g. <c>user-management 1.2</c>, <c>network-settings 1.37</c>, <c>fwmgr 1.10</c>.
 /// A device can list the same API id with several major versions.
 /// </summary>
+/// <param name="Id">The API id ("network-settings").</param>
+/// <param name="Version">The version as the device lists it ("1.37").</param>
+/// <param name="Name">The API's name, when the device gives one.</param>
+/// <param name="Status">The API's status ("released", "beta"), when the device gives one.</param>
 public sealed record DeviceApi(string Id, string Version, string? Name = null, string? Status = null)
 {
     /// <summary>Parsed <see cref="Version"/>; 0.0 when the device reports something unparsable.</summary>
@@ -56,6 +60,7 @@ public static class DeviceApiExtensions
 /// <summary>The device does not offer a required VAPIX API version. Nothing was changed on the device.</summary>
 public sealed class DeviceNotCompatibleException : Exception
 {
+    /// <summary>The device lacks <paramref name="apiId"/> in <paramref name="requiredVersion"/> or later (<paramref name="foundVersion"/>: what it has, null for nothing).</summary>
     public DeviceNotCompatibleException(string apiId, string requiredVersion, string? foundVersion)
         : base(foundVersion is null
             ? $"Device does not support {apiId} (needs {requiredVersion} or later). Nothing was changed."
@@ -66,26 +71,32 @@ public sealed class DeviceNotCompatibleException : Exception
         FoundVersion = foundVersion;
     }
 
+    /// <summary>The device is not compatible.</summary>
     public DeviceNotCompatibleException()
     {
         ApiId = RequiredVersion = string.Empty;
     }
 
+    /// <summary>The device is not compatible, with the message for the user.</summary>
     public DeviceNotCompatibleException(string message)
         : base(message)
     {
         ApiId = RequiredVersion = string.Empty;
     }
 
+    /// <summary>The device is not compatible, with the message for the user and the cause.</summary>
     public DeviceNotCompatibleException(string message, Exception innerException)
         : base(message, innerException)
     {
         ApiId = RequiredVersion = string.Empty;
     }
 
+    /// <summary>The API that is missing.</summary>
     public string ApiId { get; }
 
+    /// <summary>The version the plugin needs.</summary>
     public string RequiredVersion { get; }
 
+    /// <summary>The highest version the device has; null when it has none.</summary>
     public string? FoundVersion { get; }
 }

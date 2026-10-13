@@ -22,12 +22,18 @@ public enum DeviceChoiceKind
 }
 
 /// <summary>The result of the <see cref="DevicePickerWindow"/>: all devices, the device of the event, or chosen devices and tags.</summary>
+/// <param name="Kind">All devices, the device of the event, or chosen devices and tags.</param>
+/// <param name="DeviceIds">The chosen devices.</param>
+/// <param name="Tags">The chosen tags: every device with one of them.</param>
 public sealed record DeviceChoice(DeviceChoiceKind Kind, IReadOnlyList<Guid> DeviceIds, IReadOnlyList<string> Tags)
 {
+    /// <summary>Every managed device, also devices added later.</summary>
     public static DeviceChoice AllDevices { get; } = new(DeviceChoiceKind.All, [], []);
 
+    /// <summary>The device of the event.</summary>
     public static DeviceChoice EventDevice { get; } = new(DeviceChoiceKind.EventDevice, [], []);
 
+    /// <summary>These devices and the devices with these tags.</summary>
     public static DeviceChoice Devices(IEnumerable<Guid> ids, IEnumerable<string>? tags = null) => new(DeviceChoiceKind.Chosen, [.. ids], [.. tags ?? []]);
 
     /// <summary>A chosen set without devices and tags.</summary>
@@ -78,21 +84,27 @@ public sealed partial class DevicePickItem : ObservableObject
         SearchText = device.Address + " " + Model + " " + device.Serial + " " + device.HostName + " " + string.Join(' ', device.Tags);
     }
 
+    /// <summary>The device.</summary>
     public IDeviceInfo Device { get; }
 
+    /// <summary>Its id.</summary>
     public Guid Id => Device.Id;
 
+    /// <summary>Its address.</summary>
     public string Address => Device.Address;
 
+    /// <summary>Its model without "AXIS ".</summary>
     public string Model { get; }
 
     /// <summary>Why the device cannot be chosen (shown greyed with this text), or null.</summary>
     public string? UnavailableReason { get; }
 
+    /// <summary>It can be chosen.</summary>
     public bool IsAvailable => UnavailableReason is null;
 
     internal string SearchText { get; }
 
+    /// <summary>Chosen by itself (not through a tag).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Chosen))]
     public partial bool IsChecked { get; set; }
@@ -115,6 +127,7 @@ public sealed partial class DevicePickItem : ObservableObject
         }
     }
 
+    /// <summary>The check box can be clicked.</summary>
     public bool CanToggle => IsAvailable && CoveredBy is null;
 
     /// <summary>The text right of the model: why it cannot be chosen, or the tag that includes it.</summary>
@@ -139,10 +152,13 @@ public sealed partial class DevicePickItem : ObservableObject
 /// <summary>One tag in the picker: check box, name, how many devices carry it.</summary>
 public sealed partial class TagPickItem(string name, int deviceCount, Action changed) : ObservableObject
 {
+    /// <summary>The tag name.</summary>
     public string Name { get; } = name;
 
+    /// <summary>How many devices carry the tag ("1,204").</summary>
     public string CountText { get; } = string.Create(CultureInfo.CurrentCulture, $"{deviceCount:N0}");
 
+    /// <summary>The tag is chosen.</summary>
     [ObservableProperty] public partial bool IsChecked { get; set; }
 
     partial void OnIsCheckedChanged(bool value) => changed();
@@ -226,17 +242,22 @@ public sealed partial class DevicePickerViewModel : ObservableObject
         ApplyTags();
     }
 
+    /// <summary>What the picker offers.</summary>
     public DevicePickerOptions Options { get; }
 
     /// <summary>Whether the left column (event device, all devices, tags) is shown.</summary>
     public bool HasChoices => Options.AllowAll || Options.AllowTags || Options.EventDeviceText is not null;
 
+    /// <summary>There are tags to choose.</summary>
     public bool HasTags => Tags.Count > 0;
 
+    /// <summary>Tags are allowed but no device has one.</summary>
     public bool ShowNoTags => Options.AllowTags && Tags.Count == 0;
 
+    /// <summary>The tags to choose.</summary>
     public IReadOnlyList<TagPickItem> Tags { get; }
 
+    /// <summary>The radio choice of the left column.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsChosen), nameof(IsAll), nameof(IsEventDevice))]
     public partial DeviceChoiceKind Kind { get; set; }
@@ -280,19 +301,25 @@ public sealed partial class DevicePickerViewModel : ObservableObject
         }
     }
 
+    /// <summary>The devices the search shows.</summary>
     public RangeObservableCollection<DevicePickItem> Visible { get; } = [];
 
+    /// <summary>The search over address, model, MAC address, host name and tags.</summary>
     [ObservableProperty] public partial string SearchText { get; set; } = string.Empty;
 
+    /// <summary>"12 of 4,812 devices chosen".</summary>
     [ObservableProperty] public partial string Summary { get; private set; } = string.Empty;
 
+    /// <summary>The list shows nothing.</summary>
     public bool IsEmpty => Visible.Count == 0;
 
+    /// <summary>What the empty list says.</summary>
     public string EmptyText => _all.Count == 0 ? "No devices yet. Add devices on the Devices page." : "No device matches the search.";
 
     /// <summary>The devices chosen one by one, in list order (not those of a chosen tag).</summary>
     public IReadOnlyList<Guid> SelectedIds => [.. _all.Where(i => i.IsChecked).Select(i => i.Id)];
 
+    /// <summary>How many devices are chosen.</summary>
     public int ChosenCount => _chosen;
 
     /// <summary>The result: all devices, the device of the event, or the devices and tags chosen.</summary>

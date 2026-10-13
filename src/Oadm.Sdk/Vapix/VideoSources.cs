@@ -3,10 +3,14 @@ using System.Globalization;
 namespace Oadm.Sdk.Vapix;
 
 /// <summary>A video resolution in pixels.</summary>
+/// <param name="Width">Width in pixels.</param>
+/// <param name="Height">Height in pixels.</param>
 public readonly record struct VideoResolution(int Width, int Height)
 {
+    /// <summary>Width divided by height (1.777 for 16:9); 0 for a height of 0.</summary>
     public double Aspect => Height == 0 ? 0 : (double)Width / Height;
 
+    /// <summary>"1920x1080".</summary>
     public override string ToString() => string.Create(CultureInfo.InvariantCulture, $"{Width}x{Height}");
 }
 

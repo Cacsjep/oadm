@@ -25,6 +25,7 @@ public enum DeviceAutoAddResult
     Unreachable = 6,
 }
 
+/// <summary>What <see cref="IDeviceAutoAdd.AddAsync"/> did with a device.</summary>
 /// <param name="Result">The outcome.</param>
 /// <param name="DeviceId">The new device record when one was added.</param>
 /// <param name="Message">Plain-language text for logs and pages, never a password.</param>
@@ -65,7 +66,10 @@ public interface IDeviceAutoAdd
     /// Adds the device at <paramref name="address"/> (an IP address) when it is an Axis device with serial number
     /// <paramref name="expectedSerial"/> (= MAC address) that OADM does not manage yet. Never throws for device errors.
     /// </summary>
+    /// <param name="address">The IP address the device was seen at.</param>
+    /// <param name="expectedSerial">The serial number (MAC address) the device must report.</param>
     /// <param name="source">Who found it, for the log and the audit entry ("DHCP server").</param>
+    /// <param name="ct">Cancels the checks and the login.</param>
     Task<DeviceAutoAddOutcome> AddAsync(string address, string expectedSerial, string source, CancellationToken ct);
 
     /// <summary>

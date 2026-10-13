@@ -7,14 +7,20 @@ namespace Oadm.Sdk.Network;
 /// <summary>The server's operating system, for OS-specific status texts (bind errors, setup hints).</summary>
 public enum HostOs
 {
+    /// <summary>Windows.</summary>
     Windows = 0,
+    /// <summary>Linux.</summary>
     Linux = 1,
+    /// <summary>macOS.</summary>
     MacOs = 2,
+    /// <summary>Any other system.</summary>
     Other = 3,
 }
 
+/// <summary>The operating system the server runs on.</summary>
 public static class HostOsInfo
 {
+    /// <summary>The operating system of this process.</summary>
     public static HostOs Current =>
         OperatingSystem.IsWindows() ? HostOs.Windows
         : OperatingSystem.IsLinux() ? HostOs.Linux
@@ -29,11 +35,18 @@ public static class HostOsInfo
 /// The status line of a network service plugin (NTP server, DHCP server): kind ok / neutral / warning / error, a plain
 /// text for technicians and an optional detail (tooltip) with the fix.
 /// </summary>
+/// <param name="Kind">One of the constants: ok, neutral, warning, error.</param>
+/// <param name="Text">The status for the user.</param>
+/// <param name="Detail">The fix, shown as tooltip.</param>
 public sealed record ServiceStatus(string Kind, string Text, string? Detail = null)
 {
+    /// <summary>Running as it should.</summary>
     public const string Ok = "ok";
+    /// <summary>Off or idle.</summary>
     public const string Neutral = "neutral";
+    /// <summary>Running with a problem.</summary>
     public const string Warning = "warning";
+    /// <summary>Not running because of a problem.</summary>
     public const string Error = "error";
 }
 
@@ -49,6 +62,7 @@ public enum BindErrorKind
     /// <summary>The address is not on this machine (any more): the interface is down or gone.</summary>
     AddressNotAvailable = 2,
 
+    /// <summary>Any other error.</summary>
     Other = 3,
 }
 
@@ -59,6 +73,7 @@ public enum BindErrorKind
 /// </summary>
 public static class PortBindErrors
 {
+    /// <summary>What a failed bind with <paramref name="error"/> means on <paramref name="os"/>.</summary>
     public static BindErrorKind Classify(SocketError error, HostOs os) => error switch
     {
         SocketError.AddressAlreadyInUse => BindErrorKind.InUse,
@@ -110,14 +125,17 @@ public static class PortBindErrors
 /// <summary>Windows: whether a Windows service runs (it may hold a port). Best effort, never throws.</summary>
 public interface IWindowsServiceProbe
 {
+    /// <summary>Whether the Windows service <paramref name="serviceName"/> runs.</summary>
     Task<bool> IsRunningAsync(string serviceName, CancellationToken ct);
 }
 
 /// <summary>Runs <c>sc.exe query &lt;service&gt;</c> (state names are not localized) with a 3 s timeout; false elsewhere.</summary>
 public sealed class ScQueryServiceProbe : IWindowsServiceProbe
 {
+    /// <summary>The shared instance.</summary>
     public static ScQueryServiceProbe Instance { get; } = new();
 
+    /// <summary>Whether the Windows service <paramref name="serviceName"/> runs (<c>sc query</c>); false elsewhere.</summary>
     public async Task<bool> IsRunningAsync(string serviceName, CancellationToken ct)
     {
         if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(serviceName) || serviceName.Any(c => !char.IsAsciiLetterOrDigit(c)))
@@ -160,6 +178,7 @@ public sealed class ScQueryServiceProbe : IWindowsServiceProbe
 /// <param name="Addresses">Its addresses as text.</param>
 public sealed record InterfaceOption(string Id, string Label, string Name, IReadOnlyList<string> Addresses);
 
+/// <summary>Builds the entries of an interface select.</summary>
 public static class InterfaceOptions
 {
     /// <summary>"Ethernet - 10.0.0.17 (Intel I219)"; the description is left out when it equals the name.</summary>

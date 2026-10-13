@@ -56,6 +56,7 @@ public sealed class StatCard : Border
         Update();
     }
 
+    /// <summary>What is counted ("Worn").</summary>
     public string? Title
     {
         get => GetValue(TitleProperty);
@@ -76,18 +77,21 @@ public sealed class StatCard : Border
         set => SetValue(DetailProperty, value);
     }
 
+    /// <summary>Green icon and count. Set it only while the count matters.</summary>
     public bool IsOk
     {
         get => GetValue(IsOkProperty);
         set => SetValue(IsOkProperty, value);
     }
 
+    /// <summary>Amber icon and count, while the count needs attention.</summary>
     public bool IsWarning
     {
         get => GetValue(IsWarningProperty);
         set => SetValue(IsWarningProperty, value);
     }
 
+    /// <summary>Red icon and count, while the count needs attention.</summary>
     public bool IsError
     {
         get => GetValue(IsErrorProperty);

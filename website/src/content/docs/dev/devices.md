@@ -218,3 +218,7 @@ The server checks the serial number at the new address or with the new certifica
 
 A plugin must never break a device or lock OADM out of it. Before you write to devices, read
 [Task plugins: device safety](../tasks/#device-safety).
+
+## Reference
+
+Every member with its signature in the [SDK reference](../../api/): [`IDeviceInfo`](../../api/sdk/devices/ideviceinfo/), [`DeviceStatus`](../../api/sdk/devices/devicestatus/), [`DeviceMessages`](../../api/sdk/devices/devicemessages/), [`IDeviceRepository`](../../api/sdk/devices/idevicerepository/), [`IVapixClient`](../../api/sdk/vapix/ivapixclient/), [`IVapixClientFactory`](../../api/sdk/vapix/ivapixclientfactory/), [`DeviceApiExtensions`](../../api/sdk/vapix/deviceapiextensions/), [`VapixRequestOptions`](../../api/sdk/vapix/vapixrequestoptions/), [`DeviceXml`](../../api/sdk/vapix/devicexml/), [`IDeviceEventStreams`](../../api/sdk/devices/ideviceeventstreams/).

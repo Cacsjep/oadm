@@ -21,6 +21,9 @@ public enum PlaceholderEscape
 }
 
 /// <summary>A placeholder of the event rule actions: "{serial}" and what it stands for.</summary>
+/// <param name="Name">The name without braces ("serial").</param>
+/// <param name="Group">"Rule" or "Device".</param>
+/// <param name="Description">What it stands for.</param>
 public sealed record ActionPlaceholder(string Name, string Group, string Description)
 {
     /// <summary>"{serial}".</summary>
@@ -34,9 +37,12 @@ public sealed record ActionPlaceholder(string Name, string Group, string Descrip
 /// </summary>
 public static partial class ActionPlaceholders
 {
+    /// <summary>Placeholders of the rule and the event.</summary>
     public const string RuleGroup = "Rule";
+    /// <summary>Placeholders of the device.</summary>
     public const string DeviceGroup = "Device";
 
+    /// <summary>Every placeholder OADM fills, in the order the rule dialog lists them.</summary>
     public static IReadOnlyList<ActionPlaceholder> Fixed { get; } =
     [
         new("rule", RuleGroup, "Name of the rule"),

@@ -1,0 +1,187 @@
+---
+title: "Tutorial: Plugin page"
+description: Build a service on the server with its own page in the navigation rail, step by step.
+---
+
+import { Code, FileTree, Aside } from '@astrojs/starlight/components';
+import pluginJson from '../../../../../samples/Oadm.Samples.FirmwareOverview/plugin.json?raw';
+import serverProject from '../../../../../samples/Oadm.Samples.FirmwareOverview/Oadm.Samples.FirmwareOverview.csproj?raw';
+import models from '../../../../../samples/Oadm.Samples.FirmwareOverview/FirmwareModels.cs?raw';
+import plugin from '../../../../../samples/Oadm.Samples.FirmwareOverview/FirmwareOverviewPlugin.cs?raw';
+import clientProject from '../../../../../samples/Oadm.Samples.FirmwareOverview.Client/Oadm.Samples.FirmwareOverview.Client.csproj?raw';
+import page from '../../../../../samples/Oadm.Samples.FirmwareOverview.Client/FirmwareOverviewPage.cs?raw';
+import viewModel from '../../../../../samples/Oadm.Samples.FirmwareOverview.Client/FirmwareOverviewViewModel.cs?raw';
+import viewXaml from '../../../../../samples/Oadm.Samples.FirmwareOverview.Client/FirmwareOverviewView.axaml?raw';
+import viewCode from '../../../../../samples/Oadm.Samples.FirmwareOverview.Client/FirmwareOverviewView.axaml.cs?raw';
+import fakes from '../../../../../samples/Oadm.Samples.FirmwareOverview.Tests/Fakes.cs?raw';
+import tests from '../../../../../samples/Oadm.Samples.FirmwareOverview.Tests/FirmwareOverviewTests.cs?raw';
+
+A plugin page is an entry in the navigation rail with a page of its own, like the NTP server or Edge storage. Behind it
+runs a **core plugin**: a service inside the OADM server that keeps state, talks to the devices and answers the page.
+
+In this tutorial you create **Firmware overview**: a page with the AXIS OS version of every device. **Refresh** reads
+all devices on the server, 16 at a time; the table fills in as soon as the read is done, on every client that shows
+the page.
+
+## 1. Create it
+
+You need a checkout of OADM that builds (`./manage.sh build` works) and the .NET 10 SDK. In the repository root, run:
+
+```sh
+./manage.sh new page --name "My cool page"      # PowerShell: .\manage.ps1 new page --name "My cool page"
+```
+
+This copies the tutorial's plugin under your name and adds it to the solution. It builds, its tests pass, and it runs.
+The code below is the original; in your copy every `FirmwareOverview` reads `MyCoolPage`.
+
+<FileTree>
+- plugins/
+  - Oadm.Plugins.MyCoolPage/ the server part: the service
+    - plugin.json
+    - Oadm.Plugins.MyCoolPage.csproj
+    - FirmwareModels.cs the rows, the state and the method names both parts share
+    - MyCoolPagePlugin.cs the service
+  - Oadm.Plugins.MyCoolPage.Client/ the client part: the page
+    - Oadm.Plugins.MyCoolPage.Client.csproj
+    - MyCoolPagePage.cs the rail entry
+    - MyCoolPageViewModel.cs
+    - MyCoolPageView.axaml
+    - MyCoolPageView.axaml.cs
+- tests/
+  - Oadm.Plugins.MyCoolPage.Tests/
+    - Fakes.cs devices, cameras and both contexts without hardware
+    - MyCoolPageTests.cs
+</FileTree>
+
+## 2. How a page talks to its service
+
+```text
+ Page (client)                     Core plugin (server)
+ ─────────────                     ────────────────────
+ InvokeAsync("getState")  ───────► the whole state as JSON
+ InvokeAsync("refresh")   ───────► starts the read, returns at once
+ WatchEventsAsync()       ◄─────── Events.Publish("state", json)
+```
+
+- The page calls **methods** of the server part by name, with JSON in and out (`InvokeAsync`).
+- The server part pushes **events** to every page that shows it (`Events.Publish`). Several users, or several windows
+  of one user, all see the same table.
+- Events can be lost when the connection drops. So the page always **subscribes, reads the whole state, then applies
+  events**, and starts over after a drop. A version number in the state lets the page ignore anything older than what
+  it shows.
+- Long work never blocks a method: the method starts it and returns; the result arrives as an event.
+
+## 3. The plugin description
+
+The `id` is the plugin's key everywhere and never changes. `displayName` and `description` are its row on the
+**Plugins** page, where administrators turn it on and off.
+
+<Code code={pluginJson} lang="json" title="plugin.json" />
+
+Add `"enabledByDefault": false` when the plugin works in the background or is not for everyone: it then stays off until
+an administrator turns it on.
+
+## 4. The project files
+
+The server project compiles against the SDK but never copies it: OADM provides it at runtime. After each build the
+output is copied to `artifacts/plugins/<id>/`, where OADM loads plugins from when it runs from your checkout.
+
+<Code code={serverProject} lang="xml" title="Oadm.Plugins.MyCoolPage.csproj" />
+
+The client project adds Avalonia and its data grid, again without copying them, and references the server project to
+share the models.
+
+<Code code={clientProject} lang="xml" title="Oadm.Plugins.MyCoolPage.Client.csproj" />
+
+## 5. The contract
+
+The page and the service agree on three things: the method names, the event topic and the JSON of the state. Keeping
+them in one file of the server project means a typo cannot break the page.
+
+<Code code={models} lang="csharp" title="FirmwareModels.cs" />
+
+## 6. The service
+
+- **`Id`, `DisplayName`, `IconKey`, `Group`**: the rail entry. `Group` places it under a heading of the rail (here
+  Maintenance).
+- **`StartAsync`** runs when the server starts and when an administrator turns the plugin on. Keep the context and
+  return at once; never wait for devices here.
+- **`InvokeAsync`** is the page's backend. Throw `ArgumentException` for bad input and `InvalidOperationException` for
+  a wrong state: the page gets the message.
+- **`ReadAllAsync`** reads every device with at most 16 at a time and 5 seconds each. A site can have thousands of
+  devices; never read them one by one, and never all at once.
+- **`DeviceMessages.Refusal`** skips devices OADM must not contact: a changed certificate, a rejected password, no
+  password yet, or not answering. The row says why, in the same words as the rest of OADM.
+- **`ctx.Vapix.CreateAsync`** gives a client that is already logged in to the device. The server keeps it; never
+  dispose it.
+- **`Publish`** stores the new state with the next version and sends it to every page.
+
+<Code code={plugin} lang="csharp" title="MyCoolPagePlugin.cs" />
+
+The context offers more: `Settings` (stored JSON of the plugin, e.g. its configuration), `Secrets` (encrypt passwords you
+store), `DataDirectory` (a private folder for files), `Tasks` (start tasks on devices, which show in the tasks pane) and
+`Logger` (the server log).
+
+## 7. The page
+
+The client loader finds the class that implements `ICorePluginPage` with your plugin id and adds the rail entry.
+`CreateView` runs for every view of the page: the rail and each **Open in new window** get their own context and view
+model, so keep all state in the view model.
+
+<Code code={page} lang="csharp" title="MyCoolPagePage.cs" />
+
+The view model holds the page's state. `RunAsync` is the subscribe, read, apply loop described above. The rows go into a
+`RangeObservableCollection` and are replaced in one step, which keeps the grid fast with thousands of rows.
+
+<Code code={viewModel} lang="csharp" title="MyCoolPageViewModel.cs" />
+
+The view uses the shared controls: a toolbar button, the progress row, a status chip for problems, the error text below
+the table. `ui:PageHeader.Subtitle` puts one short sentence next to the page title; the page itself starts with its
+content. No colors or sizes of its own, so the page looks right in dark and light.
+
+<Code code={viewXaml} lang="xml" title="MyCoolPageView.axaml" />
+
+<Code code={viewCode} lang="csharp" title="MyCoolPageView.axaml.cs" />
+
+<Aside title="Who may do what">
+Every page gets the permission "show" by itself. When a method changes something, declare a permission for it
+(`Permissions` and `RequiredPermission(method)` in the core plugin) so administrators can give or withhold it per role on
+the **Users** page. The server checks every call; the page asks `ctx.Has(...)` to hide what the role lacks.
+</Aside>
+
+## 8. The tests
+
+`FakeCoreContext` stands in for the server: a device list, a camera per device, and a channel that collects the
+published events. `FakePageContext` connects the page straight to the service, so the page test runs the whole round
+trip without a network.
+
+<Code code={fakes} lang="csharp" title="Fakes.cs" />
+
+Test the read, the devices that must not be contacted, a bad method, and that the page ignores older states:
+
+<Code code={tests} lang="csharp" title="MyCoolPageTests.cs" />
+
+## 9. Run it
+
+```sh
+dotnet test tests/Oadm.Plugins.MyCoolPage.Tests
+./manage.sh run dev
+```
+
+The rail shows **My cool page** under Maintenance. Click **Refresh**: the progress row shows while the server reads, then
+the table fills in. Open the page in a second window from the rail entry's context menu and refresh again: both update.
+
+## 10. Make it yours
+
+1. **The rail entry**: `DisplayName`, `IconKey`, `Group`.
+2. **The state**: the row and state records, and what `ReadAsync` reads per device.
+3. **The methods**: one constant per method, one case in `InvokeAsync`, one command in the view model.
+4. **The view**: columns, buttons, a card layout of your own (set `HasOwnCards` in the page class).
+5. **Settings that stay**: store them with `ctx.Settings.SetAsync("config", json)` and read them in `StartAsync`.
+6. **The tests**: one per method and per kind of device answer.
+
+## 11. Share it
+
+To use it on an installed OADM, copy the folder `artifacts/plugins/<your id>/` into the `plugins` folder next to the
+OADM server and next to the client, then restart both. To share it with everyone, open a pull request on GitHub with the
+plugin, its tests and a `README.md` in its folder that says what it does and on which devices you tried it.

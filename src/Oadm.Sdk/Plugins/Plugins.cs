@@ -6,6 +6,7 @@ using Oadm.Sdk.Vapix;
 
 namespace Oadm.Sdk.Plugins;
 
+/// <summary>What every plugin has: an id, a name and an icon.</summary>
 public interface IPlugin
 {
     /// <summary>Stable id, e.g. "oadm.restart".</summary>
@@ -19,9 +20,14 @@ public interface IPlugin
     /// warning and shortens longer names with an ellipsis.
     /// </summary>
     string DisplayName { get; }
+    /// <summary>An icon of the client by key without "Icon." ("restart", "network"); null for none. See the UI kit.</summary>
     string? IconKey { get; }
 }
 
+/// <summary>
+/// An entry of the device context menu that runs on the server, one task per selected device. Implement it in a
+/// <c>*.Server.dll</c> with a public parameterless constructor, or contribute it through <see cref="ICorePlugin.TaskPlugins"/>.
+/// </summary>
 public interface ITaskPlugin : IPlugin
 {
     /// <summary>
@@ -30,6 +36,7 @@ public interface ITaskPlugin : IPlugin
     /// </summary>
     string Group => TaskGroups.General;
 
+    /// <summary>Also a button in the Devices toolbar, enabled when the task can run on the whole selection.</summary>
     bool ShowInToolbar { get; }
     /// <summary>When true the client opens the matching ITaskPluginDialog before running.</summary>
     bool RequiresDialog { get; }
@@ -99,11 +106,20 @@ public interface ITaskPlugin : IPlugin
     Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct);
 }
 
+/// <summary>
+/// A service that runs inside the server while it is turned on, usually with a page in the navigation rail
+/// (<c>ICorePluginPage</c> in the client part). It can contribute task plugins, actions and events.
+/// </summary>
 public interface ICorePlugin : IPlugin
 {
     /// <summary>Task plugins contributed by this core plugin, e.g. PKI contributes "Deploy certificate".</summary>
     IReadOnlyList<ITaskPlugin> TaskPlugins { get; }
+    /// <summary>
+    /// Called when the server starts and when an administrator turns the plugin on. Keep <paramref name="ctx"/> for later.
+    /// Return fast: never wait for a device or the network here, start background work instead.
+    /// </summary>
     Task StartAsync(ICorePluginContext ctx, CancellationToken ct);
+    /// <summary>Called when the server stops and when the plugin is turned off: stop background work and release ports.</summary>
     Task StopAsync(CancellationToken ct);
     /// <summary>Backend for the plugin's UI page (or, without a page, for its client parts such as a toolbar button).</summary>
     Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct);
@@ -154,15 +170,20 @@ public interface ICorePlugin : IPlugin
 /// <summary>Role of an OADM user. Admin may do everything; Operator works with devices and tasks.</summary>
 public enum UserRole
 {
+    /// <summary>Works with devices and tasks.</summary>
     Operator = 0,
+    /// <summary>May also change the server: settings, users, plugins.</summary>
     Admin = 1,
 }
 
+/// <summary>What the server gives one task while it runs on one device.</summary>
 public interface ITaskExecutionContext
 {
+    /// <summary>The id of this task (one device).</summary>
     Guid TaskId { get; }
     /// <summary>Pre-authenticated for the current device.</summary>
     IVapixClient Vapix { get; }
+    /// <summary>The server log. For what the user should read, use <see cref="Log"/>.</summary>
     ILogger Logger { get; }
     /// <summary>Set when the task was contributed by a core plugin.</summary>
     ICorePlugin? Owner { get; }
@@ -252,34 +273,47 @@ public interface ITaskExecutionContext
 /// <summary>The device answering at an address is not the expected one (different or missing serial number).</summary>
 public sealed class DeviceIdentityException : Exception
 {
+    /// <summary>The device at the address is not the expected one.</summary>
     public DeviceIdentityException()
     {
     }
 
+    /// <summary>The device at the address is not the expected one, with the message for the user.</summary>
     public DeviceIdentityException(string message)
         : base(message)
     {
     }
 
+    /// <summary>The device at the address is not the expected one, with the message and the cause.</summary>
     public DeviceIdentityException(string message, Exception innerException)
         : base(message, innerException)
     {
     }
 }
 
+/// <summary>The level of a task log entry (<see cref="ITaskExecutionContext.Log"/>).</summary>
 public enum TaskLogLevel
 {
+    /// <summary>What the task did.</summary>
     Info = 0,
+    /// <summary>Something the user should check; the task still succeeds.</summary>
     Warning = 1,
+    /// <summary>What failed.</summary>
     Error = 2,
 }
 
+/// <summary>What the server gives a core plugin in <see cref="ICorePlugin.StartAsync"/>.</summary>
 public interface ICorePluginContext
 {
+    /// <summary>Every managed device.</summary>
     IDeviceRepository Devices { get; }
+    /// <summary>Logged-in VAPIX clients for the managed devices.</summary>
     IVapixClientFactory Vapix { get; }
+    /// <summary>Starts and cancels tasks, e.g. of a task plugin the core plugin contributes.</summary>
     ITaskRunner Tasks { get; }
+    /// <summary>The plugin's own settings in the server database.</summary>
     IPluginSettings Settings { get; }
+    /// <summary>The server log.</summary>
     ILogger Logger { get; }
 
     /// <summary>
@@ -353,7 +387,9 @@ public interface ISecretProtector
 /// <summary>Settings store namespaced per plugin.</summary>
 public interface IPluginSettings
 {
+    /// <summary>The JSON stored under <paramref name="key"/>; null when nothing is stored.</summary>
     Task<string?> GetAsync(string key, CancellationToken ct);
+    /// <summary>Stores <paramref name="valueJson"/> under <paramref name="key"/>; null removes it.</summary>
     Task SetAsync(string key, string? valueJson, CancellationToken ct);
 }
 
@@ -362,6 +398,13 @@ public interface IPluginSettings
 /// until an administrator turns it on (Plugins page). <paramref name="AlwaysOn"/> true: core functionality that cannot be
 /// turned off (the stored choice is ignored). <paramref name="Description"/>: one short sentence for the Plugins page.
 /// </summary>
+/// <param name="Id">The plugin id ("acme.hello"); also the folder name.</param>
+/// <param name="Version">The plugin's version.</param>
+/// <param name="MinSdkVersion">The oldest SDK the plugin works with (<see cref="SdkInfo.Version"/>).</param>
+/// <param name="DisplayName">The name on the Plugins page.</param>
+/// <param name="EnabledByDefault">False: off until an administrator turns it on.</param>
+/// <param name="AlwaysOn">True: core functionality that cannot be turned off.</param>
+/// <param name="Description">One short sentence for the Plugins page.</param>
 public sealed record PluginManifest(
     string Id,
     string Version,
@@ -406,14 +449,22 @@ public enum CorePluginGroup
     Extensions = 8,
 }
 
+/// <summary>Well-known context menu groups (<see cref="ITaskPlugin.Group"/>). Related tasks of different plugins share one submenu.</summary>
 public static class TaskGroups
 {
+    /// <summary>Applications (ACAP) and their licenses.</summary>
     public const string Applications = "Applications";
+    /// <summary>The default for tasks without a group.</summary>
     public const string General = "General";
+    /// <summary>Restart, firmware, date and time, configuration.</summary>
     public const string Maintenance = "Maintenance";
+    /// <summary>Network settings and addresses.</summary>
     public const string Network = "Network";
+    /// <summary>Certificates, HTTPS, IEEE 802.1X.</summary>
     public const string Security = "Security";
+    /// <summary>User accounts on the devices.</summary>
     public const string Users = "Users";
+    /// <summary>Video and image settings.</summary>
     public const string Video = "Video";
 
     /// <summary>Longest group name; longer ones are shortened like display names.</summary>
@@ -472,7 +523,9 @@ public static class TaskPluginNames
     }
 }
 
+/// <summary>The version of this SDK.</summary>
 public static class SdkInfo
 {
+    /// <summary>The SDK version; a plugin whose <c>minSdkVersion</c> is newer is not loaded.</summary>
     public const string Version = "0.1.0";
 }

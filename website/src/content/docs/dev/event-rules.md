@@ -11,80 +11,8 @@ the actions and writes the event log.
 ## Write an action
 
 An action is one class that implements `IActionPlugin` in a `*.Server.dll`. It needs no client part: the rule dialog
-draws its settings form from `Fields`. This one turns a virtual input of the target devices on while the rule is on,
-so the devices' own rules can react to OADM's rules:
-
-```csharp
-using System.Text.Json;
-
-using Oadm.Sdk.Actions;
-using Oadm.Sdk.Events;
-using Oadm.Sdk.Plugins;
-
-namespace Oadm.Plugins.UpnpName;
-
-/// <summary>Turns a virtual input of the device on while the rule is on (the device's own rules can react to it).</summary>
-public sealed class VirtualInputAction : IActionPlugin
-{
-    public string Id => "acme.virtual-input";
-    public string DisplayName => "Set virtual input";
-    public string? IconKey => "toggle";
-    public string Group => "Devices";
-    public bool NeedsDevice => true;          // runs once per target device, with ctx.Vapix
-    public bool SupportsTurnOff => true;      // when the rule turns off, the input goes off again
-    public bool UsesPlaceholders => true;     // the rule dialog lists the placeholders
-
-    public IReadOnlyList<ActionField> Fields { get; } =
-    [
-        ActionField.Number("port", "Virtual input", min: 1, max: 64, defaultValue: 64),
-        ActionField.Text("note", "Log text", defaultValue: "{rule} on {device}") with { Hint = "Placeholders are filled in" },
-    ];
-
-    public string Describe(JsonElement settings) =>
-        "Virtual input " + (settings.TryGetProperty("port", out var port) ? port.ToString() : "64");
-
-    public async Task ExecuteAsync(IActionContext ctx, ActionInvocation invocation, CancellationToken ct)
-    {
-        var port = invocation.GetInt("port", 64);
-        var action = invocation.Edge == ActionEdge.TurnedOff ? "deactivate" : "activate";
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"/axis-cgi/virtualinput/{action}.cgi?schemaversion=1&port={port}");
-        using var response = await ctx.Vapix!.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();                // a throw is a failed run in the event log
-        ctx.Log(ctx.Text(invocation.Get("note")));                // one line in the event log; never a secret
-    }
-}
-
-/// <summary>Declares an event and publishes it from a core plugin.</summary>
-public sealed class OldFirmwareEvents : IEventSource
-{
-    public const string OldFirmware = "acme.firmware-overview.old";
-
-    public IReadOnlyList<EventTypeInfo> EventTypes { get; } =
-    [
-        new(OldFirmware, "Old AXIS OS", "Firmware overview", EventKind.Stateful, EventScope.Device,
-            [new EventField("version", "AXIS OS")])
-        {
-            Description = "The device runs an AXIS OS older than 12.0.",
-        },
-    ];
-
-    /// <summary>After every check round: the full picture. The server works out what turned on and off.</summary>
-    public static void Report(ICorePluginContext ctx, IEnumerable<FirmwareRow> rows)
-    {
-        if (ctx.EventPublisher is not { } events || !events.IsWatched(OldFirmware))
-        {
-            return; // no rule uses it
-        }
-
-        events.ReplaceStates(OldFirmware, [.. rows.Where(IsOld).Select(r => r.DeviceId)]);
-    }
-
-    private static bool IsOld(FirmwareRow row) =>
-        Version.TryParse(row.Version, out var version) && version.Major < 12;
-}
-```
-
-The second class is the event source, explained [below](#publish-events).
+draws its settings form from `Fields`. The [event rule action tutorial](../tutorial-action/) builds one with every file
+and its tests; `./manage.sh new action --name "My action"` creates a working copy.
 
 ### The parts
 
@@ -121,8 +49,42 @@ available while the plugin is on. VAPIX Commander's "Run VAPIX command" works th
 ## Publish events
 
 A core plugin declares its event types by implementing `IEventSource` and publishes through `ctx.EventPublisher`.
-The example above declares "Old AXIS OS" and reports it after every check round of the
-[firmware overview](../core-plugins/#example-a-firmware-overview).
+This one declares "Old AXIS OS" and reports it after every check round of the firmware overview of the
+[plugin page tutorial](../tutorial-page/):
+
+```csharp
+using Oadm.Sdk.Events;
+using Oadm.Sdk.Plugins;
+
+/// <summary>Declares an event and publishes it from a core plugin.</summary>
+public sealed class OldFirmwareEvents : IEventSource
+{
+    public const string OldFirmware = "acme.firmware-overview.old";
+
+    public IReadOnlyList<EventTypeInfo> EventTypes { get; } =
+    [
+        new(OldFirmware, "Old AXIS OS", "Firmware overview", EventKind.Stateful, EventScope.Device,
+            [new EventField("version", "AXIS OS")])
+        {
+            Description = "The device runs an AXIS OS older than 12.0.",
+        },
+    ];
+
+    /// <summary>After every check round: the full picture. The server works out what turned on and off.</summary>
+    public static void Report(ICorePluginContext ctx, IEnumerable<FirmwareRow> rows)
+    {
+        if (ctx.EventPublisher is not { } events || !events.IsWatched(OldFirmware))
+        {
+            return; // no rule uses it
+        }
+
+        events.ReplaceStates(OldFirmware, [.. rows.Where(IsOld).Select(r => r.DeviceId)]);
+    }
+
+    private static bool IsOld(FirmwareRow row) =>
+        Version.TryParse(row.Version, out var version) && version.Major < 12;
+}
+```
 
 | Kind | Meaning | Publish with |
 |---|---|---|
@@ -147,3 +109,7 @@ The example above declares "Old AXIS OS" and reports it after every check round 
 | `plugins/Oadm.Plugins.Notifications` | Actions without devices, code bodies, name and value rows, escaping |
 | `plugins/Oadm.Plugins.VapixCommander` (`RunCommandAction`) | An action contributed by a core plugin, dynamic choices |
 | `plugins/Oadm.Plugins.DeviceTriggers` | Dynamic event types, a WebSocket per device, "connection lost" |
+
+## Reference
+
+Every member with its signature in the [SDK reference](../../api/): [`IActionPlugin`](../../api/sdk/actions/iactionplugin/), [`IActionContext`](../../api/sdk/actions/iactioncontext/), [`ActionField`](../../api/sdk/actions/actionfield/), [`ActionInvocation`](../../api/sdk/actions/actioninvocation/), [`ActionPlaceholders`](../../api/sdk/actions/actionplaceholders/), [`IEventSource`](../../api/sdk/events/ieventsource/), [`IEventPublisher`](../../api/sdk/events/ieventpublisher/), [`EventTypeInfo`](../../api/sdk/events/eventtypeinfo/).

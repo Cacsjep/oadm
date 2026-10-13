@@ -48,24 +48,28 @@ public sealed class IconLabel : Grid
         UpdateTextMargin();
     }
 
+    /// <summary>The icon (<c>{DynamicResource Icon.refresh}</c>).</summary>
     public Geometry? Icon
     {
         get => GetValue(IconProperty);
         set => SetValue(IconProperty, value);
     }
 
+    /// <summary>The text right of the icon.</summary>
     public string? Text
     {
         get => GetValue(TextProperty);
         set => SetValue(TextProperty, value);
     }
 
+    /// <summary>False shows only the icon (the collapsed navigation rail).</summary>
     public bool IsTextVisible
     {
         get => GetValue(IsTextVisibleProperty);
         set => SetValue(IsTextVisibleProperty, value);
     }
 
+    /// <summary>Space between icon and text.</summary>
     public double Spacing
     {
         get => GetValue(SpacingProperty);

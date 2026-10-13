@@ -40,6 +40,7 @@ public interface IToolbarPlugin
     /// <summary>Position within the group, ascending.</summary>
     int Order { get; }
 
+    /// <summary>The toolbar group: Add, Manage, Tasks or Plugins, from left to right.</summary>
     ToolbarGroup Group { get; }
 
     /// <summary>Creates the control on the UI thread. Keep the context to react to selection changes.</summary>
@@ -75,7 +76,9 @@ public static class HostPages
 
     /// <summary>Navigation pages.</summary>
     public const string Devices = "devices";
+    /// <summary>The Logs page.</summary>
     public const string Logs = "logs";
+    /// <summary>The Settings page.</summary>
     public const string Settings = "settings";
 
     /// <summary>Users page (administrators only; for an operator opening it does nothing).</summary>

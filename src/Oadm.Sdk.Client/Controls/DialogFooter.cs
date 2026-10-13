@@ -60,12 +60,14 @@ public sealed class DialogFooter : Grid
         _actions.IsVisible = !alone;
     }
 
+    /// <summary>The text of the Cancel button ("Cancel"; "Close" for a dialog without other actions).</summary>
     public string? CancelText
     {
         get => GetValue(CancelTextProperty);
         set => SetValue(CancelTextProperty, value);
     }
 
+    /// <summary>Runs when the user clicks Cancel.</summary>
     public ICommand? CancelCommand
     {
         get => GetValue(CancelCommandProperty);
