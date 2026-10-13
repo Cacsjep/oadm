@@ -8,6 +8,22 @@ is something a rule does (send an email, set an output). An **event source** tel
 (an input changed, a detection turned on). The server keeps the rules, works out when a rule turns on and off, runs
 the actions and writes the event log.
 
+```mermaid
+flowchart TB
+    S["Plugin A: event source<br/>IEventSource, SetState / Fire / ReplaceStates"]
+    subgraph R["Event rules (server)"]
+        direction LR
+        W["When: the event<br/>And: other events, schedules"] --> T["Then: up to five actions<br/>limits, event log"]
+    end
+    X["Plugin B: action<br/>IActionPlugin.ExecuteAsync"]
+    D[("Devices")]
+    S -->|"events with values"| R
+    R -->|"settings, placeholders, target devices"| X
+    X -->|"VAPIX"| D
+```
+
+Plugin A and plugin B never know about each other: an administrator connects them with a rule.
+
 ## Write an action
 
 An action is one class that implements `IActionPlugin` in a `*.Server.dll`. It needs no client part: the rule dialog

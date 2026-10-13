@@ -57,6 +57,14 @@ The code below is the original; in your copy every `UpnpName` reads `MyCoolPlugi
 
 ## 2. How a task runs
 
+```mermaid
+flowchart LR
+    M["Context menu<br/>CanRun per device"] --> D["Dialog<br/>QueryAsync reads,<br/>returns the payload"]
+    D --> S["Server<br/>one task per device"]
+    S --> E["ExecuteAsync<br/>named steps"]
+    E --> R(["Done, Done with warnings<br/>or Failed"])
+```
+
 1. The user selects devices and picks your entry. The entry is greyed out with a reason for devices it cannot run on.
 2. Your **dialog** opens on the user's computer. It may read the current state from a device, then returns a
    **payload**: a small JSON text with what the user chose.

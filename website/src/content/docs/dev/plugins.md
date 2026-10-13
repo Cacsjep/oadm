@@ -20,6 +20,29 @@ loads the first, the client the second. Both come from the same folder.
 One folder can hold several of them. The PKI plugin, for example, is one core plugin with a page that also contributes
 nine task plugins to the context menu.
 
+```mermaid
+flowchart TB
+    subgraph C["Client part: *.Client.dll"]
+        direction LR
+        DLG["ITaskPluginDialog<br/>the dialog of a task"]
+        PG["ICorePluginPage<br/>a page in the rail"]
+        TB["IToolbarPlugin<br/>a Devices toolbar entry"]
+    end
+    subgraph S["Server part: *.Server.dll"]
+        direction LR
+        TP["ITaskPlugin<br/>a context menu task"]
+        CPl["ICorePlugin<br/>a service, the page's backend"]
+        AP["IActionPlugin<br/>an event rule action"]
+        EV["IEventSource<br/>events for the rules"]
+    end
+    DLG -->|"payload"| TP
+    PG -->|"InvokeAsync, events"| CPl
+    TB -->|"InvokePluginAsync"| CPl
+    CPl -.->|"contributes"| TP
+    CPl -.->|"contributes, declares"| AP
+    CPl -.-> EV
+```
+
 ## Start from a working plugin
 
 ```sh
@@ -159,6 +182,8 @@ These rules hold for the built-in plugins too. Pull requests that break them are
 - **Device safety.** Check the device's API versions before the first write, validate every input before you touch the
   device, never lock OADM out (never remove or demote the account OADM uses), and write the setting that could cut the
   connection last. Details in [Task plugins](../tasks/#device-safety).
+- **Trust.** Your plugin runs with the server's rights (Local System or root as a service) and reaches every managed
+  device. Administrators are told to install only plugins they trust: keep yours small, open and free of surprises.
 - **Secrets.** Payloads live in memory only. Never log or store a password; store secrets only encrypted
   (`ctx.Secrets`).
 - **Steps and names.** Every device request and every wait is a named step. The task name says what the task does.

@@ -41,6 +41,13 @@ The code below is the original; in your copy every `VirtualInput` reads `MyCoolA
 
 ## 2. How an action runs
 
+```mermaid
+flowchart LR
+    F["A one-shot event fires"] --> A1["ExecuteAsync<br/>Edge = Fired"]
+    N["The rule turns on"] --> A2["ExecuteAsync<br/>Edge = TurnedOn"]
+    O["The rule turns off"] --> A3["ExecuteAsync<br/>Edge = TurnedOff<br/>(only with SupportsTurnOff)"]
+```
+
 1. An administrator creates a rule: **When** an event (an input turns on, a device stops answering, a schedule), **Then**
    your action with its settings and its target devices.
 2. The rule dialog shows your fields. OADM checks the values (required, ranges, lengths) in the dialog and again on the

@@ -109,8 +109,8 @@ release of the tag with the installers and `SHA256SUMS.txt`):
 Supply chain and security: every GitHub Action is pinned by its full commit hash (the version as
 a comment); `.github/dependabot.yml` opens weekly pull requests for the Actions (new hashes) and the NuGet packages
 (grouped: Avalonia, gRPC, Microsoft, Serilog, test packages; ignored: JsonSchema.Net 9+ and WixToolset 7+, whose license
-moved to the OSMF EULA); a vulnerable transitive npm package of the website is pinned with an `overrides` entry in
-`website/package.json` (postcss-selector-parser 7.1.6) until its parent updates; Dependabot alerts and security updates, private
+moved to the OSMF EULA); vulnerable transitive npm packages of the website are pinned with `overrides` entries in
+`website/package.json` (postcss-selector-parser 7.1.6; katex 0.18.9 under mermaid 11) until their parents update; Dependabot alerts and security updates, private
 vulnerability reporting and secret scanning with push protection are on; `SECURITY.md` says how to report; `codeql.yml`
 runs CodeQL (C#) on pushes to main, pull requests and weekly; `pr.yml` builds and unit-tests every pull request on Linux
 (Timing tests excluded); changes only in `website/` skip CodeQL and the .NET build and tests
@@ -132,7 +132,10 @@ builds without them). `manage build docs` locally, `pages.yml` before every depl
 generator). Overrides, record and record struct plumbing are left out; a partial property of a source generator gets its
 written comment from the source. Tests `tests/Oadm.ApiDocs.Tests`: every public type has a page, **every type, member and
 XAML property has a description** (a new SDK member without a comment fails), every link and anchor resolves.
-**Tutorials** (Developers: "Tutorial: Task plugin", "Plugin page", "Event rule action", `dev/tutorial-*.mdx`): one page
+**Diagrams**: ```mermaid blocks render in the browser (`astro-mermaid` 2.1.0 + mermaid 11, before Starlight in the
+integrations, theme `base` dark with the site colors); used for the architecture, plugin kinds, task runs, event rules
+and the tutorials. Developer pages also cover debugging (`dev/debugging.md`) and SDK versions (`dev/compatibility.md`);
+the admin page Plugins has "Plugins from others" (plugins run with the server's rights). **Tutorials** (Developers: "Tutorial: Task plugin", "Plugin page", "Event rule action", `dev/tutorial-*.mdx`): one page
 each with every file, self-contained (no jumping to other pages); the code is imported raw from `samples/` (`?raw` +
 Starlight `Code`; `vite.server.fs.allow` includes the repository), so the pages always show code that builds and passes
 its tests. **`manage new task|page|action --name "<name>" [--id <id>]`** (`tools/Oadm.NewPlugin`): copies that sample into

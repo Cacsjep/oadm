@@ -11,17 +11,21 @@ The [task plugin tutorial](../tutorial-task/) builds a complete one; this page e
 
 ## How a run works
 
-```text
-Client                                         Server
-──────                                         ──────
-user picks devices + entry
-  └─ dialog (optional) ─► payload JSON ──────► TaskService.Run(plugin, devices, payload)
-                                                 ├─ RequiredPermissions(payload) checked
-                                                 ├─ GetTaskName(payload) once
-                                                 ├─ N tasks written, state Queued
-                                                 └─ per device, at most 16 at once per plugin:
-                                                      ExecuteAsync(ctx, device, payload, ct)
-tasks pane ◄──────────── live state, steps ────── Done / Done with warnings / Failed / Cancelled
+```mermaid
+sequenceDiagram
+    actor User
+    participant Dialog as Dialog (client)
+    participant Server
+    participant Task as ExecuteAsync (one per device)
+    User->>Dialog: picks devices and the menu entry
+    Dialog->>Server: Run(plugin, devices, payload JSON)
+    Note over Server: checks RequiredPermissions,<br/>names the run with GetTaskName,<br/>writes one queued task per device
+    loop every device, at most 16 at once per plugin
+        Server->>Task: ExecuteAsync(ctx, device, payload, ct)
+        Task-->>Server: steps, progress, log
+        Server-->>User: tasks pane, live
+    end
+    Note over Server: Done, Done with warnings,<br/>Failed or Cancelled per device
 ```
 
 - The payload is the dialog's JSON (or null without a dialog). It lives in memory only, so it may carry a password.

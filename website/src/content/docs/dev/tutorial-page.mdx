@@ -55,12 +55,21 @@ The code below is the original; in your copy every `FirmwareOverview` reads `MyC
 
 ## 2. How a page talks to its service
 
-```text
- Page (client)                     Core plugin (server)
- ─────────────                     ────────────────────
- InvokeAsync("getState")  ───────► the whole state as JSON
- InvokeAsync("refresh")   ───────► starts the read, returns at once
- WatchEventsAsync()       ◄─────── Events.Publish("state", json)
+```mermaid
+sequenceDiagram
+    participant Page as Page (client)
+    participant Plugin as Core plugin (server)
+    participant Devices
+    Page->>Plugin: WatchEventsAsync() (subscribe first)
+    Page->>Plugin: InvokeAsync("getState")
+    Plugin-->>Page: the whole state as JSON
+    Page->>Plugin: InvokeAsync("refresh")
+    Plugin-->>Page: returns at once
+    par in the background, 16 devices at a time
+        Plugin->>Devices: basicdeviceinfo
+        Devices-->>Plugin: AXIS OS version
+    end
+    Plugin-->>Page: Events.Publish("state", json), to every page that watches
 ```
 
 - The page calls **methods** of the server part by name, with JSON in and out (`InvokeAsync`).

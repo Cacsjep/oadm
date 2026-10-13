@@ -8,14 +8,19 @@ you. This section explains how OADM is put together, what a plugin can do and ho
 
 ## Two processes
 
-```text
- Client (Avalonia)                 Server (.NET service)                 Axis devices
- ┌────────────────────┐   gRPC    ┌───────────────────────────┐  VAPIX  ┌──────────┐
- │ Devices page       │◄────────► │ Device table, polling     │◄──────► │ cameras  │
- │ Plugin pages       │   TLS     │ Task engine               │  HTTP(S)│ speakers │
- │ Task dialogs       │           │ Event rules               │  RTSP   │ I/O, ... │
- │ Toolbar entries    │           │ Plugins (server parts)    │  WS     │          │
- └────────────────────┘           └───────────────────────────┘         └──────────┘
+```mermaid
+flowchart TB
+    subgraph Client["Client: the Avalonia app on each computer"]
+        direction LR
+        UI["Devices page, plugin pages,<br/>task dialogs, toolbar"] --- CP["Plugin client parts<br/>*.Client.dll"]
+    end
+    subgraph Server["Server: one service for the site"]
+        direction LR
+        Core["Device table, polling, task engine,<br/>event rules, stored passwords"] --- SP["Plugin server parts<br/>*.Server.dll"]
+    end
+    Devices[("Axis devices: cameras, speakers, I/O, intercoms")]
+    Client <-->|"gRPC over TLS"| Server
+    Server <-->|"VAPIX over HTTP(S), RTSP, WebSocket"| Devices
 ```
 
 - **The server owns everything**: the device table, the stored passwords, the tasks, discovery, polling and every
@@ -72,7 +77,8 @@ Start with `src/Oadm.Sdk/Plugins/Plugins.cs` and `src/Oadm.Sdk.Client/ClientPlug
    [event rule action](../tutorial-action/). `./manage.sh new task|page|action --name "My plugin"` creates the
    tutorial's plugin under your name, ready to build and run.
 4. The topic pages: [Devices and VAPIX](../devices/), [Task plugins](../tasks/), [Core plugins and pages](../core-plugins/),
-   [Event rules](../event-rules/), [UI kit](../ui/), [Testing](../testing/).
+   [Event rules](../event-rules/), [UI kit](../ui/), [Testing](../testing/), [Debug a plugin](../debugging/),
+   [SDK versions](../compatibility/).
 
 Every public type and member, with its signature and comment, is in the [SDK reference](../../api/). The
 rules and edge cases are in
