@@ -159,9 +159,8 @@ jobs:
           test -f expanded/oadm-server.pkg/Payload/THIRD-PARTY-NOTICES.txt
           test -x expanded/oadm-client.pkg/Payload/OADM.app/Contents/Resources/uninstall-oadm.sh
           test -f expanded/oadm-client.pkg/Payload/OADM.app/Contents/Resources/TERMS.md
-          # License page: the terms of use first, then the Apache-2.0 text.
-          grep -q '<license file="license.txt"' expanded/Distribution
-          head -1 expanded/Resources/license.txt | grep -q '^Terms of use'
+          # No license page: the client asks for the terms of use on its first start.
+          ! grep -q '<license' expanded/Distribution
 
       - name: Smoke test (Windows MSI, server and client)
         if: matrix.target == 'windows' && matrix.smoke

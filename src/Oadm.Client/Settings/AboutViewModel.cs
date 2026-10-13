@@ -87,7 +87,7 @@ public sealed partial class AboutViewModel : ObservableObject
     /// <summary>Title of the terms of use (first line of TERMS.md).</summary>
     public string TermsTitle { get; } = Terms.Title;
 
-    /// <summary>The terms of use without the title: shown before the license, like on the installers' license page.</summary>
+    /// <summary>The terms of use without the title: shown before the license (and on the first start, `TermsWindow`).</summary>
     public string TermsText { get; } = Terms.Body;
 
     /// <summary>TERMS.md of the repository, embedded in the client.</summary>

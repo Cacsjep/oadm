@@ -10,7 +10,7 @@ using Oadm.Contracts.V1;
 namespace Oadm.Client.Shell;
 
 /// <summary>
-/// Which window the app shows: the start splash while the client loads (server connection, a remembered login, the first
+/// Which window the app shows: the terms of use on the first start of this computer (Accept or Quit), the start splash while the client loads (server connection, a remembered login, the first
 /// device list), then the login window (real server, nobody remembered) or the main window; the login window again after
 /// Log out or when the server ends the session. Fake mode has no login (user "admin", Administrator).
 /// </summary>
@@ -35,6 +35,33 @@ public sealed partial class AppShell(
         gpu?.SetEnabled(settings.Current.GpuDecoding); // the GPU decoding test runs in the background, in its own process
         session.LogoutRequested += (_, e) => _ = LogoutAsync(e.Message);
         api.SessionEnded += (_, _) => Dispatcher.UIThread.Post(() => session.RequestLogout(SessionEndedMessage));
+        if (TermsViewModel.IsAccepted(settings.Current))
+        {
+            ShowSplash(desktop);
+            return;
+        }
+
+        // The terms first: nothing connects before they are accepted; Quit (or the X) ends the client.
+        var terms = new TermsWindow();
+        terms.Attach(new TermsViewModel(settings));
+        terms.Completed += (_, accepted) =>
+        {
+            if (accepted)
+            {
+                ShowSplash(desktop); // the new main window first, so closing the terms window does not end the app
+                terms.Close();
+            }
+            else
+            {
+                desktop.Shutdown();
+            }
+        };
+        desktop.MainWindow = terms;
+        terms.Show();
+    }
+
+    private void ShowSplash(IClassicDesktopStyleApplicationLifetime desktop)
+    {
         var splash = new SplashViewModel();
         var window = new SplashWindow { DataContext = splash };
         desktop.MainWindow = window;

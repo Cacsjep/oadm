@@ -39,7 +39,7 @@ to the installers: MSI ProductVersion and the .pkg use the numeric part (`1.2.0`
 | Data folder | `%ProgramData%\OADM` (`--Oadm:DataDir`), SYSTEM + Administrators only | `/var/lib/oadm` (`OADM_DATA_DIR`, StateDirectory 0700) | `/Library/Application Support/OADM` (`OADM_DATA_DIR`, 0700) |
 | Native lib extraction | `%ProgramData%\OADM\runtime` | `/var/cache/oadm` | `/Library/Application Support/OADM/runtime` |
 | Firewall | TCP 5080 for `Oadm.Server.exe`, profiles Domain and Private (MSI); the NTP / DHCP plugins add UDP 123 / 67 (Domain, Private) while enabled and remove it when disabled or stopped | not touched | not touched (the application firewall asks) |
-| License texts | `TERMS.md`, `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt`, `LGPL-2.1.txt` in `Server` and `Client`; the wizard's license page = terms of use + Apache-2.0 (`License.rtf`, must be accepted) | same in `/opt/oadm/server`, `/opt/oadm/client` and `/usr/share/doc/<package>/` (no interactive acceptance on Debian) | same in the server folder and `OADM.app/Contents/Resources`; the installer's license page (`<license>`) = terms of use + Apache-2.0 |
+| License texts | `TERMS.md`, `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt`, `LGPL-2.1.txt` in `Server` and `Client`; no license page | same in `/opt/oadm/server`, `/opt/oadm/client` and `/usr/share/doc/<package>/` (no acceptance in the package) | same in the server folder and `OADM.app/Contents/Resources`; no license page |
 | Uninstall | Apps and Features / `msiexec /x`; data kept | `apt remove oadm-server oadm-client` (data kept, also on purge) | `sudo "/Library/Application Support/OADM/server/uninstall-oadm.sh"` (client only: `OADM.app/Contents/Resources/uninstall-oadm.sh`); data kept |
 
 Notes:
@@ -58,10 +58,11 @@ Notes:
   `notices/licenses/` (MIT, Apache-2.0, BSD-2/3-Clause, OFL-1.1, LGPL-2.1) and the license and notice files the
   packages ship (FFmpeg `legal/`, runtime packs), deduplicated. A license without a text is a warning: add it as
   `notices/licenses/<SPDX id>.txt`. The client shows the file on the About page.
-- Terms of use (`/TERMS.md`) come before the license wherever the license is shown: MSI license page
-  (`windows/License.rtf`; run `windows/make-ui-assets.py` after changing `TERMS.md` or `LICENSE`), .pkg license page,
-  `/usr/share/doc/<package>/TERMS.md`, the top of the client's About page (embedded in the client), and next to every
-  published exe.
+- Terms of use (`/TERMS.md`): accepted on the first start of the client on each computer (`Shell/TermsWindow`, stored
+  with the version of the text in the client settings; changed terms ask again). The installers show no license page:
+  silent and command-line installs skipped it and Debian packages never ask, so the client is the one place every user
+  passes. `TERMS.md` also lies next to every published exe, in `/usr/share/doc/<package>/` and at the top of the About
+  page.
 - Service definitions always pass the data folder. Without it the server would use the service account's
   LocalApplicationData (`C:\Windows\System32\config\systemprofile\AppData\Local\Oadm`, `/root/.local/share/Oadm`).
 - The single-file server extracts its native libraries (SQLite) at start. Services set `DOTNET_BUNDLE_EXTRACT_BASE_DIR`

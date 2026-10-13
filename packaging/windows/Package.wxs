@@ -112,12 +112,13 @@
       <ComponentRef Id="DataFolder" />
     </Feature>
 
-    <!-- Setup wizard (WixUI_Oadm below): welcome, license (Apache-2.0), "Choose what to install", ready, progress, finish
+    <!-- Setup wizard (WixUI_Oadm below): welcome, "Choose what to install", ready, progress, finish (no license page: the
+         client asks for the terms of use on its first start, every install method and platform alike; the license texts lie
+         next to the apps)
          with "Launch OADM". No install folder choice on purpose: a custom folder (e.g. C:OADM) inherits user write
          access, and the service runs the exe as SYSTEM (security audit H4); Program Files is admin-only.
          Assets from make-ui-assets.py. A silent install (msiexec /qn, CI) skips all dialogs. -->
     <UIRef Id="WixUI_Oadm" />
-    <WixVariable Id="WixUILicenseRtf" Value="$(sys.SOURCEFILEDIR)License.rtf" />
     <WixVariable Id="WixUIBannerBmp" Value="$(sys.SOURCEFILEDIR)Banner.bmp" />
     <WixVariable Id="WixUIDialogBmp" Value="$(sys.SOURCEFILEDIR)Dialog.bmp" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch OADM" />
@@ -160,7 +161,7 @@
         </Control>
         <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
           <Publish Event="NewDialog" Value="MaintenanceTypeDlg" Condition="Installed" Order="1" />
-          <Publish Event="NewDialog" Value="LicenseAgreementDlg" Condition="NOT Installed" Order="2" />
+          <Publish Event="NewDialog" Value="WelcomeDlg" Condition="NOT Installed" Order="2" />
         </Control>
         <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
           <Publish Event="SpawnDialog" Value="CancelDlg" />
@@ -183,11 +184,8 @@
 
       <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" />
 
-      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseAgreementDlg" Condition="NOT Installed" />
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="OadmSetupTypeDlg" Condition="NOT Installed" />
       <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Condition="Installed AND PATCH" />
-
-      <Publish Dialog="LicenseAgreementDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" />
-      <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="OadmSetupTypeDlg" Condition="LicenseAccepted = &quot;1&quot;" />
 
       <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="OadmSetupTypeDlg" Order="1" Condition="NOT Installed OR WixUI_InstallMode = &quot;Change&quot;" />
       <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2" Condition="Installed AND NOT PATCH" />

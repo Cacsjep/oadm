@@ -9,7 +9,7 @@
 #   choice com.oadm.choice.client (always)
 #     com.oadm.pkg.client   /Applications/OADM.app (Contents/MacOS/Oadm.Client, Resources/plugins/, OADM.icns,
 #                           TERMS.md, LICENSE.txt, NOTICE.txt, THIRD-PARTY-NOTICES.txt, LGPL-2.1.txt, uninstall-oadm.sh)
-# The installer's license page shows TERMS.md followed by LICENSE (productbuild --resources, <license>).
+# No license page: the client asks for the terms of use on its first start (also after a command-line install).
 #   choice com.oadm.choice.server
 #     com.oadm.pkg.launchd  /Library/LaunchDaemons/com.oadm.server.plist
 #     com.oadm.pkg.server   /Library/Application Support/OADM/server (Oadm.Server + plugins/, license texts,
@@ -110,16 +110,10 @@ pkgbuild --root "$SERVER" --scripts "$SCRIPTS" --identifier com.oadm.pkg.server 
   --install-location "/Library/Application Support/OADM/server" "$PKGS/oadm-server.pkg"
 
 # --- product archive
-# License page of the installer (must be accepted): the terms of use first, then the Apache-2.0 text.
-RESOURCES="$WORK/resources"
-mkdir -p "$RESOURCES"
-{ tr -d '\r' < "$REPO_ROOT/TERMS.md"; echo; tr -d '\r' < "$REPO_ROOT/LICENSE"; } > "$RESOURCES/license.txt"
-
 cat > "$WORK/distribution.xml" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
     <title>OADM $VERSION</title>
-    <license file="license.txt" mime-type="text/plain"/>
     <options customize="allow" require-scripts="true" rootVolumeOnly="true" hostArchitectures="$HOST_ARCHS"/>
     <domains enable_localSystem="true" enable_anywhere="false" enable_currentUserHome="false"/>
     <volume-check>
@@ -148,5 +142,5 @@ EOF
 
 mkdir -p "$OUT_DIR"
 PKG="$OUT_DIR/OADM-$VERSION-$RID.pkg"
-productbuild --distribution "$WORK/distribution.xml" --package-path "$PKGS" --resources "$RESOURCES" "$PKG"
+productbuild --distribution "$WORK/distribution.xml" --package-path "$PKGS" "$PKG"
 echo "built $PKG"

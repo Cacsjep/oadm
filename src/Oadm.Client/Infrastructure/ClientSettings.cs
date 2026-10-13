@@ -54,6 +54,9 @@ public sealed class ClientSettings
 
     /// <summary>Ids of "server key replaced" notices the user dismissed on this client.</summary>
     public List<string> DismissedKeyNotices { get; set; } = [];
+
+    /// <summary>The version of the terms of use accepted on this computer (<c>TermsViewModel.CurrentVersion</c>); empty = not yet.</summary>
+    public string AcceptedTerms { get; set; } = "";
 }
 
 /// <summary>A remembered session of one server.</summary>

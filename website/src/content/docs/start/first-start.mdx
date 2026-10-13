@@ -5,6 +5,7 @@ description: Connect the client, create the first administrator and add your fir
 
 import { Steps, Aside } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
+import terms from '../../../assets/screens/client-terms.png';
 import login from '../../../assets/screens/login-window.png';
 import firstAdmin from '../../../assets/screens/login-first-admin.png';
 
@@ -12,7 +13,10 @@ import firstAdmin from '../../../assets/screens/login-first-admin.png';
 
 1. Install OADM on the computer that runs the server. The service starts on its own.
 
-2. Start the client. It connects to `localhost:5080`. For a server on another computer enter `<server>:5080`.
+2. Start the client. On its first start on this computer it shows the terms of use: **Accept** to continue, **Quit**
+   to close it. Then it connects to `localhost:5080`. For a server on another computer enter `<server>:5080`.
+
+   <Image src={terms} alt="The terms of use on the first start" class="screen" />
 
    <Image src={login} alt="Login window" class="screen" />
 
