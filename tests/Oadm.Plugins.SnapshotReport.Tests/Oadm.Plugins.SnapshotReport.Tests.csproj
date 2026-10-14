@@ -18,6 +18,8 @@
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
     <!-- Reads the produced PDFs (page count, text, images). -->
     <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
+    <!-- Transitive System.Security.Cryptography.Pkcs pinned to the patched version (CVE-2026-84008, CVE-2026-70162). -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
   </ItemGroup>
 
   <ItemGroup>

@@ -6,6 +6,18 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+## [3.0.7] - 2026-10-14
+
+### Added
+
+- **Linux ARM64**: `oadm-server` and `oadm-client` packages for ARM64 (Raspberry Pi 4 and 5, ARM servers), with their own
+  download button on the website.
+
+### Fixed
+
+- The release build stopped on a security advisory of a .NET library used for email and PDF reports; OADM now uses the
+  fixed version.
+
 ## [3.0.6] - 2026-10-14
 
 ### Added
@@ -447,6 +459,7 @@ version and date, and the release workflow copies it into the GitHub release.
 - The splash logo's lens is centered in its ring.
 - The server publish no longer contains an IIS `web.config` and other unused web files.
 
+[3.0.7]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.7
 [3.0.6]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.6
 [3.0.5]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.5
 [3.0.4]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.4

@@ -42,7 +42,8 @@ keeps the data folder (devices, credentials, settings, PKI).
 
 ### Linux (Debian, Ubuntu)
 
-Download the `.deb` files you need and install them:
+x64 (`amd64`) or ARM64 (`arm64`, e.g. Raspberry Pi 4 and 5). Download the `.deb` files of your computer's type and
+install them:
 
 ```sh
 sudo apt install ./oadm-server_*.deb ./oadm-client_*.deb   # server and client

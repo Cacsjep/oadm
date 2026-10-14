@@ -35,7 +35,8 @@ Yes, any combination.
 No. Only the AXIS OS release notes link opens a web page.
 
 **ARM computers or Apple silicon?**
-The installers are for x64 only (Intel on macOS). [Build from source](../../dev/build/) for other systems.
+Linux has packages for ARM64 too (Raspberry Pi 4 and 5, ARM servers). Windows and macOS installers are for x64 only
+(Intel on macOS). [Build from source](../../dev/build/) for other systems.
 
 **Something is missing.**
 [Open a feature request](https://github.com/Cacsjep/oadm/issues/new/choose).

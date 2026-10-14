@@ -3,7 +3,7 @@ name: release
 # The one CI workflow (replaces ci.yml and package.yml). Runs only for release tags (v0.0.1, v1.2.0, ...):
 #   1. tests      build and unit tests on Windows, Linux and macOS (like "manage test unit" without Timing tests; hang
 #                 detection 5 min)
-#   2. installers MSI (Windows), .deb packages (Linux amd64), .pkg (macOS Intel), built with "manage package"; the MSI
+#   2. installers MSI (Windows), .deb packages (Linux amd64 and arm64), .pkg (macOS Intel), built with "manage package"; the MSI
 #                 and the .deb packages are installed, checked and removed again, both as "Server and client" and as
 #                 "Client only" (the MSI in the job smoke-windows); the .pkg is checked without installing it
 #   3. release    the GitHub release of the tag with the installers and SHA256SUMS.txt (installers are not signed;
@@ -56,10 +56,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # x64 only (no ARM installers). macOS: the .pkg is checked without installing it.
+        # x64, plus Linux arm64 (Raspberry Pi, ARM servers) built and installed on a native ARM runner. macOS: the .pkg
+        # is checked without installing it.
         include:
           - { os: windows-latest, target: windows, rid: win-x64, smoke: false } # installed by the job smoke-windows
-          - { os: ubuntu-latest, target: linux, rid: linux-x64, smoke: true }
+          - { os: ubuntu-latest, target: linux, rid: linux-x64, deb: amd64, smoke: true }
+          - { os: ubuntu-24.04-arm, target: linux, rid: linux-arm64, deb: arm64, smoke: true }
           - { os: macos-latest, target: macos, rid: osx-x64, smoke: false }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -134,15 +136,15 @@ jobs:
           ls -l artifacts/packages
           test -z "$(ls artifacts/packages/oadm_*.deb 2>/dev/null)" # no metapackage any more
           for p in oadm-server oadm-client; do
-            deb=$(ls artifacts/packages/${p}_*_amd64.deb)
+            deb=$(ls artifacts/packages/${p}_*_${{ matrix.deb }}.deb)
             dpkg-deb --info "$deb"
             dpkg-deb --contents "$deb" | grep -E 'Oadm.Server$|Oadm.Client$|oadm-server.service|plugins/[^/]+/$|/doc/' || true
           done
-          dpkg-deb --field artifacts/packages/oadm-server_*_amd64.deb Breaks | grep -qx 'oadm'
-          dpkg-deb --contents artifacts/packages/oadm-server_*_amd64.deb | grep -q 'usr/share/doc/oadm-server/THIRD-PARTY-NOTICES.txt'
-          dpkg-deb --contents artifacts/packages/oadm-client_*_amd64.deb | grep -q 'usr/share/doc/oadm-client/LGPL-2.1.txt'
-          for p in oadm-server oadm-client; do dpkg-deb --contents artifacts/packages/${p}_*_amd64.deb | grep -q "usr/share/doc/$p/TERMS.md"; done
-          ! dpkg-deb --contents artifacts/packages/oadm-client_*_amd64.deb | grep -q 'oadm-server.service'
+          dpkg-deb --field artifacts/packages/oadm-server_*_${{ matrix.deb }}.deb Breaks | grep -qx 'oadm'
+          dpkg-deb --contents artifacts/packages/oadm-server_*_${{ matrix.deb }}.deb | grep -q 'usr/share/doc/oadm-server/THIRD-PARTY-NOTICES.txt'
+          dpkg-deb --contents artifacts/packages/oadm-client_*_${{ matrix.deb }}.deb | grep -q 'usr/share/doc/oadm-client/LGPL-2.1.txt'
+          for p in oadm-server oadm-client; do dpkg-deb --contents artifacts/packages/${p}_*_${{ matrix.deb }}.deb | grep -q "usr/share/doc/$p/TERMS.md"; done
+          ! dpkg-deb --contents artifacts/packages/oadm-client_*_${{ matrix.deb }}.deb | grep -q 'oadm-server.service'
 
       - name: Check .pkg choices (macOS, not installed)
         if: matrix.target == 'macos'
@@ -166,7 +168,7 @@ jobs:
         if: matrix.target == 'linux' && matrix.smoke
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ./artifacts/packages/oadm-server_*_amd64.deb ./artifacts/packages/oadm-client_*_amd64.deb
+          sudo apt-get install -y ./artifacts/packages/oadm-server_*_${{ matrix.deb }}.deb ./artifacts/packages/oadm-client_*_${{ matrix.deb }}.deb
           systemctl status oadm-server --no-pager || true
           for i in $(seq 60); do (exec 3<>/dev/tcp/127.0.0.1/5080) 2>/dev/null && break; sleep 1; done
           # gRPC over HTTP/2 with TLS (self-signed server certificate, pinned by clients; the check accepts it).
@@ -190,7 +192,7 @@ jobs:
       - name: Smoke test (Linux .deb, client only)
         if: matrix.target == 'linux' && matrix.smoke
         run: |
-          sudo apt-get install -y ./artifacts/packages/oadm-client_*_amd64.deb
+          sudo apt-get install -y ./artifacts/packages/oadm-client_*_${{ matrix.deb }}.deb
           ! systemctl cat oadm-server >/dev/null 2>&1
           test ! -e /opt/oadm/server/Oadm.Server
           oadm-client --check-decoder

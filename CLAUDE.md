@@ -63,7 +63,7 @@ only"** and ships `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt` and `LGPL-2.1.txt` wi
 `dotnet test` with the unit filter minus the Timing tests,
 `Category!=Hardware&Category!=Perf&Category!=HardwareWrite&Category!=Timing`, and `--blame-hang-timeout 5m`, 30 min
 timeout) -> job `installers` (needs tests;
-builds the three installers; installs, checks and removes the .deb packages as "Server and client" and as "Client
+builds the installers (the .deb packages for amd64 and arm64); installs, checks and removes the .deb packages as "Server and client" and as "Client
 only"; checks the .pkg's choices and payload without installing) -> job `smoke-windows` (needs installers, 25 min: the MSI
 installed, checked and removed both ways by `packaging/windows/smoke.ps1`, which prints the time on every line and a
 heartbeat with free memory and the busiest processes while a program runs; its own job because the Windows runner
@@ -79,7 +79,8 @@ release of the tag with the installers and `SHA256SUMS.txt`):
   AddLocal / Remove of `Server`, ready, progress, finish; Change in Apps and Features opens the same page, upgrades keep
   the choice through MigrateFeatureStates); silent `ADDLOCAL=Client` = client only. `%ProgramData%\OADM` is
   created for SYSTEM and Administrators only and never removed. Files are harvested from the publish folders.
-- **Linux .deb** (`dpkg-deb`, `packaging/linux/build-deb.sh`, amd64 only, built on Linux or in a container), three
+- **Linux .deb** (`dpkg-deb`, `packaging/linux/build-deb.sh`, amd64 and arm64 (job `installers` on `ubuntu-24.04-arm`,
+  installed and checked there like amd64), built on Linux or in a container), two
   packages: `oadm-server` (`/opt/oadm/server`, systemd unit `oadm-server.service` (root, `Type=notify`,
   `Restart=on-failure`, `OADM_DATA_DIR=/var/lib/oadm`, StateDirectory 0700, optional `/etc/default/oadm-server`),
   maintainer scripts: postinst enables and starts it like dh_installsystemd and works without systemd; prerm stops it;
@@ -125,7 +126,7 @@ Website: landing page and user docs in `website/` with Astro Starlight (MkDocs M
 maintenance mode), own domain https://oadm.app/ (DNS at world4you: four A records to GitHub Pages, `www` CNAME `cacsjep.github.io`; custom domain and Enforce HTTPS in the Pages settings; the old cacsjep.github.io/oadm addresses redirect), published by `pages.yml` on pushes to main that change
 `website/` and after every successful `release` run (`workflow_run`, so the static download links and "What's new in
 vX" match the new release; the browser also re-reads the latest release with `cache: 'no-store'`) (deploy job `pages: write`, `id-token: write`); npm versions pinned exactly, Dependabot npm group `website`;
-screenshots in `website/src/assets/screens/` come from the headless tests (`OADM_SCREENSHOT_DIR`), click to enlarge; dark only (no theme switch); the landing page has its own slim top bar instead of the docs header (`TopBar.astro`: GitHub, LinkedIn and Discord left, Documentation and Bug report right, fixed, no border), its download buttons link the latest release files (Linux = both .deb) and "What's new in vX" the changelog page; texts follow "Wording"; search: the landing title names "AXIS Device Manager alternative", the page `start/axis-device-manager-alternative` compares with ADM (the same work, more in OADM, "Not in OADM yet": several servers in one client, firmware lookup, warranty data; no claims about ADM), `StructuredData.astro` (SoftwareApplication JSON-LD); **Changelog** (Project > Changelog, `project/changelog`) is written from
+screenshots in `website/src/assets/screens/` come from the headless tests (`OADM_SCREENSHOT_DIR`), click to enlarge; dark only (no theme switch); the landing page has its own slim top bar instead of the docs header (`TopBar.astro`: GitHub, LinkedIn and Discord left, Documentation and Bug report right, fixed, no border), its download buttons link the latest release files (Linux x64 and Linux ARM64, each = both .deb of its architecture) and "What's new in vX" the changelog page; texts follow "Wording"; search: the landing title names "AXIS Device Manager alternative", the page `start/axis-device-manager-alternative` compares with ADM (the same work, more in OADM, "Not in OADM yet": several servers in one client, firmware lookup, warranty data; no claims about ADM), `StructuredData.astro` (SoftwareApplication JSON-LD); **Changelog** (Project > Changelog, `project/changelog`) is written from
 `CHANGELOG.md` by `website/scripts/changelog.mjs` before every build and dev start (npm `prebuild` / `predev`, git-ignored;
 `pages.yml` also runs on changes of `CHANGELOG.md`). **SDK reference**
 (Developers > SDK reference, `/api/`): `tools/Oadm.ApiDocs` reads the built `Oadm.Sdk` and `Oadm.Sdk.Client` with Roslyn

@@ -8,8 +8,8 @@ next to each exe.
 CI: one workflow, `.github/workflows/release.yml`, only on release tags `v*.*.*` (e.g. `v0.0.1`). Each job runs only
 when the jobs before it passed:
 1. `tests`: build and unit tests on Windows, Linux and macOS (30 min timeout, hang detection after 5 min).
-2. `installers`: the three x64 installers. The MSI and the .deb packages are installed, checked and removed on the
-   runner, as "Server and client" and as "Client only"; the .pkg is checked without installing it.
+2. `installers`: the x64 installers, plus the .deb packages for arm64 (built on a native ARM runner). The MSI and the
+   .deb packages are installed, checked and removed on the runner, as "Server and client" and as "Client only"; the .pkg is checked without installing it.
 3. `release`: the GitHub release of the tag with the installers and `SHA256SUMS.txt`.
 
 Installers are not signed; check downloads against `SHA256SUMS.txt`.
@@ -31,7 +31,7 @@ to the installers: MSI ProductVersion and the .pkg use the numeric part (`1.2.0`
 
 | | Windows (MSI) | Linux (.deb) | macOS (.pkg) |
 |---|---|---|---|
-| File | `OADM-<version>-win-x64.msi` | `oadm-server_<version>_amd64.deb`, `oadm-client_<version>_amd64.deb` | `OADM-<version>-osx-x64.pkg` |
+| File | `OADM-<version>-win-x64.msi` | `oadm-server_<version>_<amd64\|arm64>.deb`, `oadm-client_<version>_<amd64\|arm64>.deb` | `OADM-<version>-osx-x64.pkg` |
 | Built with | WiX Toolset 6 (`WixToolset.Sdk` from NuGet, `windows/Oadm.Installer.wixproj`), on Windows | `dpkg-deb` (`linux/build-deb.sh`), on Linux or in a container | `pkgbuild` + `productbuild` (`macos/build-pkg.sh`), on macOS |
 | Server | `C:\Program Files\OADM\Server` | `/opt/oadm/server` | `/Library/Application Support/OADM/server` |
 | Client | `C:\Program Files\OADM\Client`, Start menu "OADM" | `/opt/oadm/client`, `/usr/bin/oadm-client`, `oadm.desktop` + icon | `/Applications/OADM.app` |

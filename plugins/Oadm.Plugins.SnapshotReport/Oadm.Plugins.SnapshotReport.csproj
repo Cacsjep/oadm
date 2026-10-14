@@ -18,6 +18,8 @@
     </ProjectReference>
     <!-- PDF report: PDFsharp + MigraDoc 6 (MIT, cross-platform Core build). Not flowed to the client part. -->
     <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" PrivateAssets="all" />
+    <!-- Transitive System.Security.Cryptography.Pkcs pinned to the patched version (CVE-2026-84008, CVE-2026-70162). -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
