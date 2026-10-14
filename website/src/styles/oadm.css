@@ -420,3 +420,73 @@ header .social-icons::after {
 .sl-markdown-content .changelog.changelog li + li {
 	margin-top: 0.2rem;
 }
+
+/* Intro video on the landing page, between the downloads and "Explore the tools". */
+.intro-video {
+	position: relative;
+	max-width: 1080px;
+	margin: 3rem auto 0;
+	padding: 0 16px;
+}
+
+.intro-video video {
+	display: block;
+	width: 100%;
+	height: auto;
+	aspect-ratio: 16 / 9;
+	border-radius: 12px;
+	background: #000;
+	box-shadow: 0 12px 48px rgb(0 0 0 / 0.45);
+}
+
+/* The play button over the preview image; gone once the video plays (its own controls take over). */
+.intro-play {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 60px;
+	height: 60px;
+	display: grid;
+	place-items: center;
+	border: 0;
+	border-radius: 50%;
+	background: var(--sl-color-accent);
+	color: #fff;
+	cursor: pointer;
+	transform: translate(-50%, -50%);
+	box-shadow: 0 4px 16px rgb(0 0 0 / 0.4);
+	transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.intro-play:hover {
+	background: #7d6ef0;
+	transform: translate(-50%, -50%) scale(1.06);
+}
+
+.intro-play:focus-visible {
+	outline: 3px solid var(--sl-color-accent-high);
+	outline-offset: 4px;
+}
+
+.intro-play svg {
+	width: 26px;
+	height: 26px;
+	margin-left: 3px; /* the triangle looks centered */
+	fill: currentColor;
+}
+
+.intro-video.playing .intro-play {
+	display: none;
+}
+
+@media (max-width: 640px) {
+	.intro-play {
+		width: 48px;
+		height: 48px;
+	}
+
+	.intro-play svg {
+		width: 20px;
+		height: 20px;
+	}
+}

@@ -1,0 +1,24 @@
+---
+// The intro video of the landing page: a preview image with a play button in the middle; a click plays it with sound
+// and shows the controls.
+---
+
+<div class="intro-video not-content">
+	<video src="/intro.mp4" poster="/intro-poster.jpg" playsinline preload="none"></video>
+	<button class="intro-play" type="button" aria-label="Play video">
+		<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" /></svg>
+	</button>
+</div>
+
+<script>
+	const root = document.querySelector<HTMLElement>('.intro-video');
+	const video = root?.querySelector('video');
+	const play = root?.querySelector<HTMLButtonElement>('.intro-play');
+	if (root && video && play) {
+		play.addEventListener('click', () => {
+			root.classList.add('playing');
+			video.controls = true;
+			video.play().catch(() => {});
+		});
+	}
+</script>
