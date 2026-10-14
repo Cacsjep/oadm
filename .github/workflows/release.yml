@@ -5,7 +5,7 @@ name: release
 #                 detection 5 min)
 #   2. installers MSI (Windows), .deb packages (Linux amd64), .pkg (macOS Intel), built with "manage package"; the MSI
 #                 and the .deb packages are installed, checked and removed again, both as "Server and client" and as
-#                 "Client only"; the .pkg is checked without installing it
+#                 "Client only" (the MSI in the job smoke-windows); the .pkg is checked without installing it
 #   3. release    the GitHub release of the tag with the installers and SHA256SUMS.txt (installers are not signed;
 #                 the checksums are published instead)
 # A job starts only when the jobs before it passed, so a release exists only when everything passed.
@@ -58,7 +58,7 @@ jobs:
       matrix:
         # x64 only (no ARM installers). macOS: the .pkg is checked without installing it.
         include:
-          - { os: windows-latest, target: windows, rid: win-x64, smoke: true }
+          - { os: windows-latest, target: windows, rid: win-x64, smoke: false } # installed by the job smoke-windows
           - { os: ubuntu-latest, target: linux, rid: linux-x64, smoke: true }
           - { os: macos-latest, target: macos, rid: osx-x64, smoke: false }
     runs-on: ${{ matrix.os }}
@@ -162,110 +162,6 @@ jobs:
           # No license page: the client asks for the terms of use on its first start.
           ! grep -q '<license' expanded/Distribution
 
-      - name: Smoke test (Windows MSI, server and client)
-        if: matrix.target == 'windows' && matrix.smoke
-        shell: pwsh
-        timeout-minutes: 15
-        run: |
-          # Every process gets a time limit; a hang prints the logs and the busiest processes instead of a silent stuck job.
-          function Invoke-Limited([string] $file, [string] $arguments, [string] $log, [int] $seconds = 300) {
-            $p = Start-Process $file -ArgumentList $arguments -PassThru
-            if (-not $p.WaitForExit($seconds * 1000)) {
-              "TIMEOUT after $seconds s: $file $arguments"
-              if ($log -and (Test-Path $log)) { Get-Content $log -Tail 80 }
-              Get-ChildItem C:\ProgramData\OADM\logs -ErrorAction SilentlyContinue | Get-Content -Tail 80
-              Get-Process | Sort-Object CPU -Descending | Select-Object -First 15 Name, Id, CPU, StartTime | Format-Table -AutoSize
-              $p.Kill($true)
-              throw "timeout: $file $arguments"
-            }
-            $p.WaitForExit()
-            $p
-          }
-          $msi = (Get-ChildItem artifacts/packages/*.msi | Select-Object -First 1).FullName
-          $p = Invoke-Limited msiexec.exe "/i `"$msi`" /qn /norestart /l*v install.log" install.log
-          if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 80; throw "install failed: $($p.ExitCode) (3010 = restart required)" }
-          $svc = Get-Service OadmServer
-          "service: $($svc.Status) $($svc.StartType)"
-          $ok = $false
-          for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
-            try { $c = New-Object Net.Sockets.TcpClient('127.0.0.1', 5080); $c.Close(); $ok = $true } catch { Start-Sleep 1 }
-          }
-          if (-not $ok) { Get-ChildItem C:\ProgramData\OADM\logs -ErrorAction SilentlyContinue | Get-Content -Tail 50; throw 'port 5080 not open' }
-          # gRPC over HTTP/2 with TLS; the server's certificate is self-signed (clients pin it), so the check accepts it.
-          $handler = [System.Net.Http.HttpClientHandler]::new()
-          $handler.ServerCertificateCustomValidationCallback = [System.Net.Http.HttpClientHandler]::DangerousAcceptAnyServerCertificateValidator
-          $client = [System.Net.Http.HttpClient]::new($handler)
-          $client.Timeout = [TimeSpan]::FromSeconds(60)
-          $req = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post, 'https://127.0.0.1:5080/oadm.Smoke/Test')
-          $req.Version = [Version]'2.0'
-          $req.VersionPolicy = [System.Net.Http.HttpVersionPolicy]::RequestVersionExact
-          $req.Content = [System.Net.Http.ByteArrayContent]::new([byte[]]@())
-          $req.Content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::new('application/grpc')
-          $resp = $client.SendAsync($req).GetAwaiter().GetResult()
-          $null = $resp.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
-          $status = @(@($resp.Headers) + @($resp.TrailingHeaders) | Where-Object { $_.Key -eq 'grpc-status' })
-          "HTTP/$($resp.Version) $([int]$resp.StatusCode), grpc-status: $($status.Value)"
-          if ($status.Count -eq 0) { throw 'no gRPC answer' }
-          foreach ($f in 'oadm.db', 'master.key') { if (-not (Test-Path "C:\ProgramData\OADM\$f")) { throw "$f missing" } }
-          foreach ($app in 'Server', 'Client') {
-            if (-not (Test-Path "C:\Program Files\OADM\$app\plugins\oadm.restart")) { throw "$app plugins missing" }
-            foreach ($f in 'TERMS.md', 'LICENSE.txt', 'NOTICE.txt', 'THIRD-PARTY-NOTICES.txt', 'LGPL-2.1.txt') { if (-not (Test-Path "C:\Program Files\OADM\$app\$f")) { throw "$app $f missing" } }
-          }
-          (Get-Acl C:\ProgramData\OADM).Access | Format-Table IdentityReference, FileSystemRights -AutoSize
-          # Only TCP 5080 for Domain and Private; the NTP and DHCP plugins add their UDP rules only while enabled.
-          $rules = @(Get-NetFirewallRule -DisplayName 'OADM Server*')
-          $rules | Format-Table DisplayName, Enabled, Direction, Profile -AutoSize
-          if ($rules.Count -ne 1 -or $rules[0].DisplayName -ne 'OADM Server (gRPC, TCP 5080)') { throw 'only the gRPC firewall rule expected' }
-          if (($rules[0].Profile.ToString() -replace ' ', '') -ne 'Domain,Private') { throw "profile Domain, Private expected, not $($rules[0].Profile)" }
-          # The server checked its folders at start (service mode) and did not refuse them.
-          if (Select-String -Path C:\ProgramData\OADM\logs\*.log -Pattern 'could not be fixed' -Quiet) { throw 'folder check failed' }
-          # WinExe: Start-Process returns at once; Invoke-Limited waits for the exit code.
-          $d = Invoke-Limited 'C:\Program Files\OADM\Client\Oadm.Client.exe' '--check-decoder' '' 120
-          if ($d.ExitCode -ne 0) { throw "decoder check failed: $($d.ExitCode)" }
-          # Stop the service first, so its exe is not in use while the files are removed (a file in use asks for a
-          # restart; /norestart turns that into exit code 3010 instead of a restart of the runner).
-          Stop-Service OadmServer -ErrorAction SilentlyContinue
-          (Get-Service OadmServer).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(60))
-          $p = Invoke-Limited msiexec.exe "/x `"$msi`" /qn /norestart /l*v uninstall.log" uninstall.log
-          if ($p.ExitCode -ne 0) { Get-Content uninstall.log -Tail 80; throw "uninstall failed: $($p.ExitCode) (3010 = restart required)" }
-          if (Get-Service OadmServer -ErrorAction SilentlyContinue) { throw 'service still installed' }
-          if (Get-NetFirewallRule -DisplayName 'OADM Server*' -ErrorAction SilentlyContinue) { throw 'firewall rule left behind' }
-          if (-not (Test-Path C:\ProgramData\OADM\master.key)) { throw 'data folder was removed' }
-          'server and client: install, service, gRPC, firewall, uninstall ok'
-
-      - name: Smoke test (Windows MSI, client only)
-        if: matrix.target == 'windows' && matrix.smoke
-        shell: pwsh
-        timeout-minutes: 15
-        run: |
-          # Every process gets a time limit; a hang prints the logs and the busiest processes instead of a silent stuck job.
-          function Invoke-Limited([string] $file, [string] $arguments, [string] $log, [int] $seconds = 300) {
-            $p = Start-Process $file -ArgumentList $arguments -PassThru
-            if (-not $p.WaitForExit($seconds * 1000)) {
-              "TIMEOUT after $seconds s: $file $arguments"
-              if ($log -and (Test-Path $log)) { Get-Content $log -Tail 80 }
-              Get-ChildItem C:\ProgramData\OADM\logs -ErrorAction SilentlyContinue | Get-Content -Tail 80
-              Get-Process | Sort-Object CPU -Descending | Select-Object -First 15 Name, Id, CPU, StartTime | Format-Table -AutoSize
-              $p.Kill($true)
-              throw "timeout: $file $arguments"
-            }
-            $p.WaitForExit()
-            $p
-          }
-          $msi = (Get-ChildItem artifacts/packages/*.msi | Select-Object -First 1).FullName
-          $p = Invoke-Limited msiexec.exe "/i `"$msi`" ADDLOCAL=Client /qn /norestart /l*v install-client.log" install-client.log
-          if ($p.ExitCode -ne 0) { Get-Content install-client.log -Tail 80; throw "install failed: $($p.ExitCode) (3010 = restart required)" }
-          if (Get-Service OadmServer -ErrorAction SilentlyContinue) { throw 'client only must not install the service' }
-          if (Test-Path 'C:\Program Files\OADM\Server') { throw 'client only must not install the server' }
-          if (Get-NetFirewallRule -DisplayName 'OADM Server*' -ErrorAction SilentlyContinue) { throw 'client only must not add a firewall rule' }
-          if (-not (Test-Path 'C:\Program Files\OADM\Client\THIRD-PARTY-NOTICES.txt')) { throw 'client license texts missing' }
-          $d = Invoke-Limited 'C:\Program Files\OADM\Client\Oadm.Client.exe' '--check-decoder' '' 120
-          if ($d.ExitCode -ne 0) { throw "decoder check failed: $($d.ExitCode)" }
-          $p = Invoke-Limited msiexec.exe "/x `"$msi`" /qn /norestart /l*v uninstall-client.log" uninstall-client.log
-          if ($p.ExitCode -ne 0) { Get-Content uninstall-client.log -Tail 80; throw "uninstall failed: $($p.ExitCode) (3010 = restart required)" }
-          if (Test-Path 'C:\Program Files\OADM\Client\Oadm.Client.exe') { throw 'client still installed' }
-          'client only: install, decoder, uninstall ok'
-
       - name: Smoke test (Linux .deb, server and client)
         if: matrix.target == 'linux' && matrix.smoke
         run: |
@@ -309,10 +205,42 @@ jobs:
           path: artifacts/packages/*
           if-no-files-found: error
 
+  # The MSI installed, checked and removed on a fresh runner: a job of its own, so a runner that stops answering fails
+  # after 25 minutes instead of the installer job's 60, and "Re-run failed jobs" repeats only this job and the release.
+  # packaging/windows/smoke.ps1 prints the time on every line and a heartbeat while a program runs.
+  smoke-windows:
+    name: smoke windows win-x64
+    needs: installers
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: packaging/windows/smoke.ps1
+          sparse-checkout-cone-mode: false
+
+      - name: Download the MSI
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: oadm-*-win-x64
+          path: installers
+          merge-multiple: true
+
+      - name: Smoke test (Windows MSI, server and client)
+        shell: pwsh
+        timeout-minutes: 12
+        run: ./packaging/windows/smoke.ps1 -Msi (Get-ChildItem installers/*.msi | Select-Object -First 1).FullName -Mode ServerAndClient
+
+      - name: Smoke test (Windows MSI, client only)
+        shell: pwsh
+        timeout-minutes: 8
+        run: ./packaging/windows/smoke.ps1 -Msi (Get-ChildItem installers/*.msi | Select-Object -First 1).FullName -Mode ClientOnly
+
   # Classic GitHub release for the tag with the installers and their SHA-256 checksums, only when the tests and every
   # installer job succeeded. A moved tag (re-run of the same version) replaces the files of the existing release.
   release:
-    needs: [tests, installers]
+    needs: [tests, installers, smoke-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

@@ -63,8 +63,11 @@ only"** and ships `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt` and `LGPL-2.1.txt` wi
 `dotnet test` with the unit filter minus the Timing tests,
 `Category!=Hardware&Category!=Perf&Category!=HardwareWrite&Category!=Timing`, and `--blame-hang-timeout 5m`, 30 min
 timeout) -> job `installers` (needs tests;
-builds the three installers; installs, checks and removes the MSI and the .deb packages as "Server and client" and as
-"Client only"; checks the .pkg's choices and payload without installing) -> job `release` (needs both; the GitHub
+builds the three installers; installs, checks and removes the .deb packages as "Server and client" and as "Client
+only"; checks the .pkg's choices and payload without installing) -> job `smoke-windows` (needs installers, 25 min: the MSI
+installed, checked and removed both ways by `packaging/windows/smoke.ps1`, which prints the time on every line and a
+heartbeat with free memory and the busiest processes while a program runs; its own job because the Windows runner
+sometimes stops answering there, so a re-run repeats only this job) -> job `release` (needs all; the GitHub
 release of the tag with the installers and `SHA256SUMS.txt`):
 - **Windows MSI** (WiX Toolset 6 via the `WixToolset.Sdk` MSBuild SDK, `packaging/windows/`, not in
   Oadm.sln; WiX 7 not used, it requires the OSMF EULA), x64 only (no ARM), per machine: `Program Files\OADM\Server`
