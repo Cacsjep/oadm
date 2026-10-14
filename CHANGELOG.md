@@ -6,6 +6,13 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+## [3.0.3] - 2026-10-14
+
+### Changed
+
+- Your user name and **Log out** moved from the bottom of the navigation rail to the top right of the window, next to the
+  window buttons. A click on your name still shows what your role allows.
+
 ## [3.0.2] - 2026-10-14
 
 ### Added
@@ -407,6 +414,7 @@ version and date, and the release workflow copies it into the GitHub release.
 - The splash logo's lens is centered in its ring.
 - The server publish no longer contains an IIS `web.config` and other unused web files.
 
+[3.0.3]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.3
 [3.0.2]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.2
 [2.3.0]: https://github.com/Cacsjep/oadm/releases/tag/v2.3.0
 [2.1.1]: https://github.com/Cacsjep/oadm/releases/tag/v2.1.1

@@ -73,6 +73,11 @@ public sealed class HeadlessSmokeTests
             await PumpUntilAsync(() => vm.Devices.FilteredDevices.Count == 12 && vm.Devices.Tasks.Tasks.Count > 0);
             Capture(window, outDir, "client-fake-headless.png");
 
+            // The logged-in user and Log out sit in the title bar, not in the rail.
+            Button titleUser = window.FindControl<Button>("TitleUser")!;
+            Assert.Contains(titleUser.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "admin");
+            Assert.Single(window.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.ToolbarButton>(), b => b.Text == "Log out");
+
             // Tasks pane with the Devices column (after Name)
             vm.Devices.Tasks.IsExpanded = true;
             await PumpUntilAsync(() => vm.Devices.Tasks.Tasks.Any(t => t.DeviceText.Length > 0));

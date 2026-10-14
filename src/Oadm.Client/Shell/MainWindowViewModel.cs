@@ -136,7 +136,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public ServerConnection Connection { get; }
     public DevicesViewModel Devices { get; }
 
-    /// <summary>The logged-in user (bottom of the rail, with Log out).</summary>
+    /// <summary>The logged-in user (title bar, with Log out).</summary>
     public UserSession Session { get; }
 
     /// <summary>First letter of the user name, upper case: the avatar at the bottom of the rail.</summary>

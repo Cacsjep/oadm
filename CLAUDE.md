@@ -729,7 +729,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   initialized) or the main window. Log out shows the login window directly, without the splash. Tests: `SplashTests`.
 
 - Window: starts maximized. Custom title bar (ExtendClientAreaToDecorationsHint), app name
-  top-left, window buttons top-right, background near-black `#141414`. Caption button hover
+  top-left, the user and Log out top-right before the window buttons, background near-black `#141414`. Caption button hover
   is a neutral grey slightly lighter than the title bar (never the system blue/accent); the
   close button hovers red like Windows. No connection indicator in the title bar; a banner
   appears only while the server is unreachable.
@@ -750,8 +750,10 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
   each group (in the lighter accent color), collapsed = a separator at each group start; the pages scroll when they do not fit. Pinned bottom, top to bottom: Plugins with a divider below it (it changes what the whole client offers), Users,
   Credentials (these three Admin only: hidden for operators, follow the session role live), Logs, Settings, About (icons
-  `plugin`, `users`, `key`, `logs`, `settings`, `info`), then the logged-in user (an initial
-  avatar and the name in primary text, not a navigation entry) with Log out and the expand toggle. Keys = `HostPages` (`users`, `credentials`, `plugins`, `logs`, `settings`, `about`); opening an
+  `plugin`, `users`, `key`, `logs`, `settings`, `info`), then the expand toggle. The logged-in user (an initial avatar and
+  the name, `Button.titleUser`, opens "Your role") and Log out (icon-only `ui:ToolbarButton`) sit at the right of the title
+  bar, next to the system window buttons (`Shell/TitleBarLayout` keeps clear of them: right on Windows and Linux, left on
+  macOS, where the app name moves past them; Avalonia reports only the title bar height, not where the buttons are). Keys = `HostPages` (`users`, `credentials`, `plugins`, `logs`, `settings`, `about`); opening an
   admin page as operator does nothing, a hidden page that was open falls back to Devices. No Tasks page. Every page
   header (core plugin pages, Users, Credentials, About, Settings) is the shared `Controls/PageTitleBar` (title, grey
   side subtitle, trailing content); host pages never repeat the page title in a card heading. A plugin page may leave the header row out
@@ -2017,7 +2019,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   connection problems below the server field; a narrow label column (`StackPanel.compactForm`), no product mark, **Quit**
   on the left; a refresh icon right of the server field ("Connect again") repeats the start without restarting the client.
   Fake mode signs in as "admin" without the window.
-- The rail shows the logged-in user (initial avatar + name, tooltip "Logged in as ... (role) on ...") with Log out; a
+- The title bar shows the logged-in user (initial avatar + name, tooltip "Logged in as ... (role) on ...") with Log out; a
   click on the user opens **Your role** (`Shell/MyRoleWindow`, `MyRoleViewModel`, `RoleService.Mine`): the role's name
   and what it allows, grouped like the matrix, read-only. `UserSession` keeps role name and permission keys
   (`Has(key)`, `PermissionsChanged`), fed by Login / Me and the session stream (`ServerConnection`); a server without
