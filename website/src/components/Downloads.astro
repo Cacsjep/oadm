@@ -5,7 +5,12 @@ import { Icon } from '@astrojs/starlight/components';
 
 import { latestRelease, releasePage, repo } from '../lib/release';
 
-const { version, url: releaseUrl, assets } = await latestRelease();
+const { version, assets } = await latestRelease();
+
+// "What's new" opens the version on the changelog page; its heading anchor is the version without "v" and dots (#303).
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const changelog = `${base}project/changelog/`;
+const anchor = (tag: string) => `${changelog}#${tag.replace(/^v/, '').replaceAll('.', '')}`;
 
 const find = (pattern: RegExp) => assets.find((a) => pattern.test(a.name))?.browser_download_url ?? releasePage;
 const links = {
@@ -24,7 +29,7 @@ const links = {
 		<a class="dl" data-asset="osx-x64\.pkg$" href={links.macos}><Icon name="apple" />macOS</a>
 	</div>
 	<p class="dl-meta">
-		<a class="dl-version" href={releaseUrl}>{version ? `What's new in ${version}` : 'Release notes'}</a>
+		<a class="dl-version" data-changelog={changelog} href={version ? anchor(version) : changelog}>{version ? `What's new in ${version}` : 'Changelog'}</a>
 	</p>
 </div>
 
@@ -63,8 +68,10 @@ const links = {
 				const linux = root.querySelector<HTMLAnchorElement>('a[data-linux]');
 				if (client && linux) linux.dataset.client = client.browser_download_url;
 				const label = root.querySelector<HTMLAnchorElement>('.dl-version');
-				if (label && release.tag_name) label.textContent = `What's new in ${release.tag_name}`;
-				if (label && release.html_url) label.href = release.html_url;
+				if (label && release.tag_name) {
+					label.textContent = `What's new in ${release.tag_name}`;
+					label.href = `${label.dataset.changelog}#${release.tag_name.replace(/^v/, '').replaceAll('.', '')}`;
+				}
 			})
 			.catch(() => {});
 	}

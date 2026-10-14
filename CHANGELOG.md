@@ -6,6 +6,13 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+## [3.0.4] - 2026-10-14
+
+### Added
+
+- **Live View**: a click on a camera under **Cameras** (outside editing) opens it alone in its own tab.
+- **Live View**: the camera under the mouse gets a thin purple frame.
+
 ### Fixed
 
 - **Live video**: the client could crash while showing live video. Converting a picture wrote past its memory for widths
@@ -419,6 +426,7 @@ version and date, and the release workflow copies it into the GitHub release.
 - The splash logo's lens is centered in its ring.
 - The server publish no longer contains an IIS `web.config` and other unused web files.
 
+[3.0.4]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.4
 [3.0.3]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.3
 [3.0.2]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.2
 [2.3.0]: https://github.com/Cacsjep/oadm/releases/tag/v2.3.0
