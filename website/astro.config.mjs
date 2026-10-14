@@ -92,6 +92,7 @@ export default defineConfig({
 					label: 'Get started',
 					collapsed: true,
 					items: [
+						{ label: 'OADM and AXIS Device Manager', slug: 'start/axis-device-manager-alternative' },
 						{ label: 'Install', slug: 'start/install' },
 						{ label: 'First start', slug: 'start/first-start' },
 					],

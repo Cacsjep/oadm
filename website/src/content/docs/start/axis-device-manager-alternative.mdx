@@ -1,0 +1,68 @@
+---
+title: OADM and AXIS Device Manager
+description: OADM is a free, open source alternative to AXIS Device Manager for Windows, Linux and macOS. The same workflows, plus live video, event rules, NTP and DHCP servers and plugins.
+---
+
+import { Image } from 'astro:assets';
+import devices from '../../../assets/screens/client-page-devices.png';
+
+OADM is for installers who know AXIS Device Manager (ADM). The daily work is the same: find devices, log in, then
+change many devices at once. OADM runs on Windows, Linux and macOS, is open source and adds more tools.
+
+OADM is an independent project. It is not made, sponsored or endorsed by Axis Communications.
+
+<Image src={devices} alt="The OADM device list" class="screen" />
+
+## The same work as in ADM
+
+| What you do | In OADM |
+|---|---|
+| Find devices on the network, in an IP range, by address or from a file | [Add devices](../../devices/add/) |
+| Log in with the passwords you already have, set the first password | [Add devices](../../devices/add/) |
+| Device list with model, firmware, status, certificate and network columns | [Devices page](../../devices/devices-page/) |
+| Upgrade firmware | [Upgrade firmware](../../tasks/firmware/) |
+| Users on the devices | [Users](../../tasks/users/) |
+| Date and time | [Date and time](../../tasks/date-and-time/) |
+| Network settings, assign IP addresses | [Network settings](../../tasks/network/) |
+| Install and license applications (ACAP) | [Applications](../../tasks/applications/) |
+| HTTPS, certificates, IEEE 802.1X | [Certificates](../../tasks/certificates/) |
+| Configure devices from another device or an ADM `.cfg` file | [Device configuration](../../tasks/device-configuration/) |
+| System report for Axis support | [System report](../../tools/system-report/) |
+
+## More in OADM
+
+- **Windows, Linux and macOS**: server and client on any of them, in any mix.
+- **Free and open source**: Apache-2.0, also for commercial use.
+- **Live video** in the device list, with PTZ, zoom and focus: [Live preview](../../devices/live-view/). Saved views of
+  several cameras: [Live View](../../tools/live-view/).
+- **Event rules**: when a device event happens, set an output, send an email or an HTTP request:
+  [Event rules](../../tools/event-rules/).
+- **NTP server** and **DHCP server** built in: [NTP server](../../tools/ntp-server/),
+  [DHCP server](../../tools/dhcp-server/).
+- **Own certificate authority** for device certificates: [PKI](../../tools/pki/).
+- **VAPIX Commander**: send VAPIX commands to many devices: [VAPIX Commander](../../tools/vapix-commander/).
+- **Hardening scan** against the AXIS OS hardening guide: [Hardening scan](../../tools/hardening-scan/).
+- **Snapshot report** as a PDF for the yearly maintenance: [Snapshot report](../../tools/snapshot-report/).
+- **SD cards and recordings**: [Edge storage](../../tools/edge-storage/),
+  [Edge Recording Export](../../tools/edge-recording-export/).
+- **Monitoring**: [Metadata Monitor](../../tools/metadata-monitor/), [I/O Monitor](../../tools/io-monitor/),
+  [Image Health Dashboard](../../tools/image-health-dashboard/).
+- **Web View**: the web interface of the devices in tabs, logged in: [Web View](../../tools/web-view/).
+- **Tags** to group devices: [Tags](../../devices/tags/).
+- **Users and roles** with an audit log: [Users and roles](../../admin/users/).
+- **Plugins**: add your own tools: [Plugin guide](../../dev/overview/).
+
+## Not in OADM yet
+
+- **Several servers in one client**: a client works with one server at a time.
+- **New firmware from Axis**: OADM does not look up new AXIS OS versions online. Download the firmware file and choose it
+  in [Upgrade firmware](../../tasks/firmware/).
+- **Warranty information**: OADM does not read warranty dates from Axis.
+
+## Moving from ADM
+
+- Install OADM next to ADM; both can manage the same devices.
+- Add the devices again with **Discovery**, a network range or **Import from file** (a list of addresses).
+- Keep your ADM configuration files: **Configure devices** reads `.cfg` files.
+
+[Install OADM](../install/)

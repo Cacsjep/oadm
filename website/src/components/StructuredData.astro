@@ -1,10 +1,14 @@
 ---
 // Tells search engines that OADM is a free software application (name, systems, version, download, license), so a result
 // can show it as such. Read from the latest release when the site is built.
+import { getImage } from 'astro:assets';
+
 import { latestRelease, repo } from '../lib/release';
+import devicesPage from '../assets/screens/client-page-devices.png';
 
 const { version, url } = await latestRelease();
 const site = new URL(import.meta.env.BASE_URL, Astro.site).href;
+const screenshot = await getImage({ src: devicesPage, format: 'png' });
 
 const data = {
 	'@context': 'https://schema.org',
@@ -21,6 +25,18 @@ const data = {
 	isAccessibleForFree: true,
 	offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
 	image: `${site}og-image.png`,
+	screenshot: screenshot.src.startsWith('http') ? screenshot.src : new URL(screenshot.src, Astro.site).href,
+	featureList: [
+		'Find Axis devices on the network and add them with the logins you already have',
+		'Upgrade firmware, set users, date and time, network settings and certificates on many devices at once',
+		'Install and license applications (ACAP)',
+		'Live video, PTZ and zoom and focus',
+		'Event rules, NTP server, DHCP server, hardening scan, snapshot report and recording export',
+		'Users and roles, audit log, backup and restore',
+		'Plugins',
+	],
+	author: { '@type': 'Organization', name: 'The OADM contributors', url: `https://github.com/${repo}` },
+	sameAs: [`https://github.com/${repo}`, 'https://discord.gg/j4FNjg5VvK'],
 	codeRepository: `https://github.com/${repo}`,
 };
 ---

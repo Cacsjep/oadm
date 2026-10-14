@@ -9,7 +9,8 @@ description: How OADM protects devices and their passwords, and how to report a 
   changed certificate.
 - Every user logs in and has a role (Administrator, Operator, Viewer or your own) that sets what they may do;
   changes are in the audit log.
-- Device passwords are stored encrypted on the server and never reach the client.
+- Passwords are stored encrypted on the server. The password OADM uses for a device never reaches a client.
+  Administrators can show a password of the credential list; every time is written to the audit log.
 - When adding devices, OADM only sends a password after the device answered like an Axis device, and tries HTTPS
   first.
 - OADM remembers each device's HTTPS certificate and stops talking to a device whose certificate changed.

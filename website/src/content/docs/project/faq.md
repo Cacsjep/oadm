@@ -7,6 +7,10 @@ description: Short answers to common questions.
 No. OADM is an independent open source project. It is not affiliated with, sponsored by or endorsed by Axis
 Communications.
 
+**How is OADM different from AXIS Device Manager?**
+The daily work is the same, but OADM runs on Windows, Linux and macOS, is open source and adds tools such as live video,
+event rules and NTP and DHCP servers. See [OADM and AXIS Device Manager](../../start/axis-device-manager-alternative/).
+
 **What does it cost?**
 Nothing. OADM is free under the Apache-2.0 license, also for commercial use.
 
@@ -21,7 +25,8 @@ No, only VAPIX over HTTPS or HTTP.
 Yes. Install the server once and the client on every computer. Each person logs in with their own user.
 
 **Where are the device passwords stored?**
-On the server, encrypted. They never reach the client. See [Ports, data and backup](../../admin/ports-and-data/).
+On the server, encrypted. The password OADM uses for a device never reaches a client. Administrators can show the
+passwords of the credential list on the Credentials page; each time is written to the audit log. See [Ports, data and backup](../../admin/ports-and-data/).
 
 **Can I run the server on Linux and the client on Windows?**
 Yes, any combination.
