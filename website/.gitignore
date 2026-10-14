@@ -7,6 +7,9 @@ dist/
 src/content/docs/api/
 src/generated/
 
+# Changelog page, generated from CHANGELOG.md by scripts/changelog.mjs (npm prebuild / predev)
+src/content/docs/project/changelog.md
+
 # dependencies
 node_modules/
 

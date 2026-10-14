@@ -7,7 +7,7 @@ name: pages
 on:
   push:
     branches: [main]
-    paths: ['website/**', 'samples/**', 'src/Oadm.Sdk/**', 'src/Oadm.Sdk.Client/**', 'tools/Oadm.ApiDocs/**', '.github/workflows/pages.yml']
+    paths: ['website/**', 'CHANGELOG.md', 'samples/**', 'src/Oadm.Sdk/**', 'src/Oadm.Sdk.Client/**', 'tools/Oadm.ApiDocs/**', '.github/workflows/pages.yml']
   workflow_run:
     workflows: [release]
     types: [completed]

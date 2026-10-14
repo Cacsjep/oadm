@@ -182,6 +182,7 @@ export default defineConfig({
 					label: 'Project',
 					collapsed: true,
 					items: [
+						{ label: 'Changelog', slug: 'project/changelog' },
 						{ label: 'FAQ', slug: 'project/faq' },
 						{ label: 'Security', slug: 'project/security' },
 						{ label: 'License', slug: 'project/license' },
