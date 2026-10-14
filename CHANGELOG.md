@@ -6,6 +6,12 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+## [3.0.8] - 2026-10-14
+
+### Added
+
+- **Import from ADM** also reads the newer export format of AXIS Device Manager (format version 2).
+
 ## [3.0.7] - 2026-10-14
 
 ### Added
@@ -459,6 +465,7 @@ version and date, and the release workflow copies it into the GitHub release.
 - The splash logo's lens is centered in its ring.
 - The server publish no longer contains an IIS `web.config` and other unused web files.
 
+[3.0.8]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.8
 [3.0.7]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.7
 [3.0.6]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.6
 [3.0.5]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.5

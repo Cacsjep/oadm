@@ -5,13 +5,18 @@ using System.Text.Json;
 namespace Oadm.Client.Discovery;
 
 /// <summary>
-/// Reads a device export of AXIS Device Manager (the .json of its device export, format 1.x:
-/// <c>{"encrypted", "fileFormatVersionMayor", "data": {"deviceData": {"devices", "deviceTag", "deviceTagRelation"}}}</c>)
-/// into the same lines as a CSV import (<see cref="DeviceImportFile"/>): per device the address (with its ports when
-/// they are not 80 / 443), the login, the MAC address (the device that must answer, see
-/// <see cref="ImportLine.ExpectedSerial"/>) and its tags. Everything else (model, firmware, host name, product type) OADM
-/// reads from the device. Known from exports of ADM 5 (format 1.1); property names are matched case-insensitively and
-/// unknown properties are ignored, so small format changes still read.
+/// Reads a device export of AXIS Device Manager (the .json of its device export) into the same lines as a CSV import
+/// (<see cref="DeviceImportFile"/>): per device the address (with its ports when they are not 80 / 443), the login, the
+/// MAC address (the device that must answer, see <see cref="ImportLine.ExpectedSerial"/>) and its tags. Everything else
+/// (model, firmware, host name, product type) OADM reads from the device. Two formats are known from exports:
+/// <list type="bullet">
+/// <item>1.x (ADM 5, 1.1): <c>{"encrypted", "fileFormatVersionMayor": 1, "data": {"deviceData": {"devices",
+/// "deviceTag", "deviceTagRelation"}}}</c>, passwords as they are;</item>
+/// <item>2.x (2.0): <c>"fileFormatVersionMayor": 2</c>, passwords base64 (UTF-8), tags as <c>"deviceTags": [{"name",
+/// "devices": [device ids]}]</c>.</item>
+/// </list>
+/// Both tag layouts are read in both versions. Property names are matched case-insensitively and unknown properties are
+/// ignored, so small format changes still read.
 /// </summary>
 public static class AdmDeviceExport
 {
@@ -20,6 +25,9 @@ public static class AdmDeviceExport
 
     public const string Encrypted =
         "The export is encrypted. Export the devices again in AXIS Device Manager without encryption.";
+
+    /// <summary>A password of a 2.x export that is not base64 of UTF-8 text.</summary>
+    public const string UnreadablePassword = "The password in the export cannot be read.";
 
     /// <summary>Reads a picked file.</summary>
     /// <exception cref="DeviceImportException">The file cannot be used at all.</exception>
@@ -73,10 +81,12 @@ public static class AdmDeviceExport
                 throw new DeviceImportException(Encrypted);
             }
 
-            if (Property(root, "fileFormatVersionMayor") is { ValueKind: JsonValueKind.Number } major && major.TryGetInt32(out var version) && version != 1)
+            // Without a version: read as 1.x (passwords as they are).
+            var version = Property(root, "fileFormatVersionMayor") is { ValueKind: JsonValueKind.Number } major && major.TryGetInt32(out var number) ? number : 1;
+            if (version is not (1 or 2))
             {
                 throw new DeviceImportException(string.Create(CultureInfo.InvariantCulture,
-                    $"The export has the format version {version}, OADM reads version 1. Tell us on GitHub, and import the addresses with Import from file meanwhile."));
+                    $"The export has the format version {version}, OADM reads versions 1 and 2. Tell us on GitHub, and import the addresses with Import from file meanwhile."));
             }
 
             var deviceData = Property(Property(root, "data"), "deviceData");
@@ -101,17 +111,19 @@ public static class AdmDeviceExport
                         $"The export has more than {DeviceImportFile.MaxLines:N0} devices. Export fewer devices at once."));
                 }
 
-                var number = lines.Count + 1;
+                var lineNumber = lines.Count + 1;
                 var id = Property(device, "id") is { ValueKind: JsonValueKind.Number } idValue && idValue.TryGetInt64(out var idNumber) ? idNumber : (long?)null;
                 var tags = id is { } deviceId && tagsOf.TryGetValue(deviceId, out var list) ? list : [];
-                lines.Add(DeviceImportFile.CheckLine(
-                    number,
+                var password = Password(Text(device, "devicePassword"), version);
+                var line = DeviceImportFile.CheckLine(
+                    lineNumber,
                     Address(device),
                     Text(device, "deviceUserName").Trim(),
-                    Text(device, "devicePassword"),
+                    password ?? "",
                     tags,
                     Serial(Text(device, "macAddress")),
-                    seen));
+                    seen);
+                lines.Add(password is null && line.Problem is null ? line with { Problem = UnreadablePassword } : line);
             }
 
             if (lines.Count == 0)
@@ -140,6 +152,27 @@ public static class AdmDeviceExport
             : address;
     }
 
+    /// <summary>
+    /// The password as typed: 1.x as it is, 2.x decoded from base64 (UTF-8); null when a 2.x value is not base64 of UTF-8
+    /// text (the line then shows <see cref="UnreadablePassword"/> and gets no login).
+    /// </summary>
+    internal static string? Password(string value, int version)
+    {
+        if (version < 2 || value.Length == 0)
+        {
+            return value;
+        }
+
+        try
+        {
+            return new UTF8Encoding(false, true).GetString(Convert.FromBase64String(value.Trim()));
+        }
+        catch (Exception ex) when (ex is FormatException or DecoderFallbackException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>The MAC address as OADM writes serials (upper hex, no separators); null when it is not one.</summary>
     internal static string? Serial(string mac)
     {
@@ -165,9 +198,26 @@ public static class AdmDeviceExport
             .Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
-    /// <summary>Device id -> tag names, from deviceTag (id, name) and deviceTagRelation (deviceTag, device).</summary>
+    /// <summary>
+    /// Device id -> tag names, from deviceTag (id, name) + deviceTagRelation (deviceTag, device) of 1.x and from
+    /// deviceTags (name, devices) of 2.x.
+    /// </summary>
     private static Dictionary<long, List<string>> TagsByDevice(JsonElement? deviceData)
     {
+        var result = new Dictionary<long, List<string>>();
+        void Add(long device, string name)
+        {
+            if (!result.TryGetValue(device, out var list))
+            {
+                result[device] = list = [];
+            }
+
+            if (!list.Contains(name, StringComparer.OrdinalIgnoreCase))
+            {
+                list.Add(name);
+            }
+        }
+
         var names = new Dictionary<long, string>();
         if (Property(deviceData, "deviceTag") is { ValueKind: JsonValueKind.Array } tags)
         {
@@ -180,21 +230,29 @@ public static class AdmDeviceExport
             }
         }
 
-        var result = new Dictionary<long, List<string>>();
         if (Property(deviceData, "deviceTagRelation") is { ValueKind: JsonValueKind.Array } relations)
         {
             foreach (var relation in relations.EnumerateArray())
             {
                 if (Number(relation, "device") is { } device && Number(relation, "deviceTag") is { } tag && names.TryGetValue(tag, out var name))
                 {
-                    if (!result.TryGetValue(device, out var list))
-                    {
-                        result[device] = list = [];
-                    }
+                    Add(device, name);
+                }
+            }
+        }
 
-                    if (!list.Contains(name, StringComparer.OrdinalIgnoreCase))
+        if (Property(deviceData, "deviceTags") is { ValueKind: JsonValueKind.Array } groups)
+        {
+            foreach (var group in groups.EnumerateArray())
+            {
+                if (Text(group, "name").Trim() is { Length: > 0 } name && Property(group, "devices") is { ValueKind: JsonValueKind.Array } members)
+                {
+                    foreach (var member in members.EnumerateArray())
                     {
-                        list.Add(name);
+                        if (member.ValueKind == JsonValueKind.Number && member.TryGetInt64(out var device))
+                        {
+                            Add(device, name);
+                        }
                     }
                 }
             }

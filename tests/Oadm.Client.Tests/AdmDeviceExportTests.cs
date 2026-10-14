@@ -9,7 +9,7 @@ using Oadm.Sdk.Client;
 
 namespace Oadm.Client.Tests;
 
-/// <summary>Import from ADM: the device export of AXIS Device Manager (format 1.1, as ADM 5 writes it).</summary>
+/// <summary>Import from ADM: the device export of AXIS Device Manager (format 1.1 of ADM 5 and format 2.0).</summary>
 public sealed class AdmDeviceExportTests
 {
     // The structure of a real export; the passwords are made up.
@@ -116,9 +116,72 @@ public sealed class AdmDeviceExportTests
     [Fact]
     public void Another_format_version_says_so()
     {
-        var ex = Assert.Throws<DeviceImportException>(() => AdmDeviceExport.Parse("x.json", """{ "fileFormatVersionMayor" : 2, "data" : { "deviceData" : { "devices" : [] } } }"""));
-        Assert.StartsWith("The export has the format version 2", ex.Message, StringComparison.Ordinal);
+        var ex = Assert.Throws<DeviceImportException>(() => AdmDeviceExport.Parse("x.json", """{ "fileFormatVersionMayor" : 3, "data" : { "deviceData" : { "devices" : [] } } }"""));
+        Assert.StartsWith("The export has the format version 3, OADM reads versions 1 and 2.", ex.Message, StringComparison.Ordinal);
     }
+
+    // The structure of a real 2.0 export: passwords base64 (made up here: "pass-one", "Säcret!1"), tags per name with their devices.
+    private const string SampleV2 = """
+        {
+        	"encrypted" : false,
+        	"fileFormatVersionMayor" : 2,
+        	"fileFormatVersionMinor" : 0,
+        	"data" :
+        	{
+        		"serverInformation" : { "name" : "acs", "address" : "localhost", "ipAddress" : "127.0.0.1" },
+        		"deviceData" :
+        		{
+        			"devices" :
+        			[
+        				{ "id" : 1, "macAddress" : "B8A44FCC135D", "model" : "AXIS P12 Mk III", "manufacturer" : "Axis", "firmwareVersion" : "11.9.65",
+        				  "address" : "10.0.0.12", "apiMode" : 0, "httpPort" : 80, "httpsPort" : 443, "securityMode" : 3,
+        				  "deviceUserName" : "root", "devicePassword" : "cGFzcy1vbmU=", "productType" : "Modular Camera" },
+        				{ "id" : 2, "macAddress" : "B8A44F631339", "model" : "AXIS P3265-V", "manufacturer" : "Axis", "firmwareVersion" : "12.11.77",
+        				  "address" : "10.0.0.48", "apiMode" : 0, "httpPort" : 80, "httpsPort" : 443, "securityMode" : 2,
+        				  "deviceUserName" : "root", "devicePassword" : "U8OkY3JldCEx", "productType" : "Dome Camera" },
+        				{ "id" : 3, "macAddress" : "ACCC8E0A1B2C", "address" : "10.0.0.70", "deviceUserName" : "", "devicePassword" : "" },
+        				{ "id" : 4, "macAddress" : "ACCC8E0A1B2D", "address" : "10.0.0.71", "deviceUserName" : "root", "devicePassword" : "not base64!" },
+        				{ "id" : 5, "macAddress" : "ACCC8E0A1B2E", "address" : "10.0.0.72", "deviceUserName" : "root", "devicePassword" : "/w==" }
+        			],
+        			"deviceTags" :
+        			[
+        				{ "name" : "New tag", "devices" : [ 2 ] },
+        				{ "name" : "Building A", "devices" : [ 1, 2, 99 ] },
+        				{ "name" : "", "devices" : [ 3 ] }
+        			]
+        		}
+        	}
+        }
+        """;
+
+    [Fact]
+    public void A_format_2_export_decodes_the_base64_passwords_and_reads_the_tags_per_name()
+    {
+        var file = AdmDeviceExport.Parse("DEVICES_AT_acs_v2.json", Encoding.UTF8.GetBytes(SampleV2), false);
+
+        Assert.Equal(["10.0.0.12", "10.0.0.48", "10.0.0.70", "10.0.0.71", "10.0.0.72"], file.Lines.Select(l => l.Address));
+        Assert.Equal(("root", "pass-one"), (file.Lines[0].UserName, file.Lines[0].Password));
+        Assert.Equal(("root", "Säcret!1"), (file.Lines[1].UserName, file.Lines[1].Password)); // UTF-8
+        Assert.False(file.Lines[2].HasCredentials); // empty: the credential list
+        Assert.Equal(["B8A44FCC135D", "B8A44F631339", "ACCC8E0A1B2C", "ACCC8E0A1B2D", "ACCC8E0A1B2E"], file.Lines.Select(l => l.ExpectedSerial));
+        Assert.Equal(["Building A"], file.Lines[0].Tags);
+        Assert.Equal(["New tag", "Building A"], file.Lines[1].Tags);
+        Assert.Empty(file.Lines[2].Tags); // a tag without a name is left out
+
+        // Not base64, or not UTF-8 text: the row says so and the device gets no login.
+        Assert.Equal([null, null, null, AdmDeviceExport.UnreadablePassword, AdmDeviceExport.UnreadablePassword], file.Lines.Select(l => l.Problem));
+        Assert.False(file.Lines[3].HasCredentials);
+        Assert.False(file.Lines[4].HasCredentials);
+        Assert.Equal(["acs"], file.AdmServers);
+    }
+
+    [Theory]
+    [InlineData(1, "cGFzcy1vbmU=", "cGFzcy1vbmU=")] // 1.x: as it is
+    [InlineData(2, "cGFzcy1vbmU=", "pass-one")]
+    [InlineData(2, "", "")]
+    [InlineData(2, "%%%", null)]
+    public void Passwords_are_read_by_the_format_version(int version, string value, string? password) =>
+        Assert.Equal(password, AdmDeviceExport.Password(value, version));
 
     [Fact]
     public void A_device_without_an_address_or_with_a_bad_tag_shows_the_problem_in_its_row()

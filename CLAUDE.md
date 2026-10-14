@@ -625,13 +625,15 @@ controls: title bar, one card, footer) in four modes:
 **Import from ADM** (Add menu, `HostPages.AddImportAdm`): the same help dialog in its ADM mode (`ImportHelpViewModel.ForAdm`:
 addresses, logins, tags, everything else read from the devices, OADM is one server, an amber warning that the export holds
 the passwords in plain text), a `.json` picker, then `Discovery/AdmDeviceExport` reads the device export of AXIS Device
-Manager (format 1.x: `encrypted`, `fileFormatVersionMayor`, `data.serverInformation` (object, or a list for several
-servers), `data.deviceData.devices` {id, macAddress, address, httpPort, httpsPort, deviceUserName, devicePassword, ...},
-`deviceTag` + `deviceTagRelation`; property names case-insensitive, unknown ones ignored) into the import lines of
+Manager (format 1.x and 2.x: `encrypted`, `fileFormatVersionMayor` (missing = 1), `data.serverInformation` (object, or a
+list for several servers), `data.deviceData.devices` {id, macAddress, address, httpPort, httpsPort, deviceUserName,
+devicePassword, ...}; 1.x: the password as it is, tags `deviceTag` + `deviceTagRelation`; 2.x: the password base64 of UTF-8
+(not decodable: the row's problem "The password in the export cannot be read.", no login), tags `deviceTags` [{name,
+devices: [ids]}]; both tag layouts read in both versions; property names case-insensitive, unknown ones ignored) into the import lines of
 `DeviceImportFile` (`CheckLine`: the same checks as a CSV): the address with its port when not 443 / 80 (`https://a:8443`,
 else `http://a:8080`), the login, the tags, and the MAC address as `ImportLine.ExpectedSerial`. Refused whole: not JSON or
 no device list ("not a device export of AXIS Device Manager"), `encrypted: true` ("Export the devices again ... without
-encryption"), another major format version, no devices. An export
+encryption"), a major format version other than 1 or 2, no devices. An export
 naming several ADM servers asks first (`DevicesViewModel.MultiServerText`: devices only the other servers reach show Not
 found). The add page says "Import from ADM" and "Devices from <file> (ADM server <name>)"; a row whose device answers with
 another MAC address is "Not added: Another device answers at this address (X). The file lists Y." and the server sent that
