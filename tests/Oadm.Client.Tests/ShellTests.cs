@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 
+using NSubstitute;
+
 using Oadm.Client.Infrastructure;
 using Oadm.Client.Logging;
 using Oadm.Client.Settings;
@@ -82,6 +84,26 @@ public sealed class ShellNavigationTests
         Assert.Equal(["plugins", "users", "credentials", "logs", "settings", "about"], vm.BottomNavItems.Select(n => n.Key).ToArray());
         Assert.IsType<AboutViewModel>(vm.CurrentPage);
         Assert.True(vm.BottomNavItems[5].IsSelected);
+    }
+
+    [Fact]
+    public async Task Credentials_page_reads_the_list_again_when_it_opens()
+    {
+        using var f = new DevicesFixture();
+        using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
+        MainWindowViewModel vm = CreateShell(f, connection, SignedIn(UserRole.Admin));
+        NavItemViewModel item = vm.BottomNavItems.Single(n => n.Key == "credentials");
+        var page = (CredentialsViewModel)item.Page;
+        f.Api.ListCredentialsAsync(Arg.Any<CancellationToken>()).Returns(
+            Task.FromResult<IReadOnlyList<CredentialEntry>>([]),
+            Task.FromResult<IReadOnlyList<CredentialEntry>>([new CredentialEntry { Id = "1", UserName = "service" }]));
+        await page.LoadAsync();
+        Assert.Empty(page.Credentials);
+
+        // The add page saved a login to the list meanwhile: opening the page shows it.
+        vm.NavigateCommand.Execute(item);
+        await TestSupport.WaitUntilAsync(() => page.Credentials.Count == 1);
+        Assert.Equal("service", page.Credentials[0].UserName);
     }
 
     [Theory]

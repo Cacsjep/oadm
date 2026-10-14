@@ -189,7 +189,17 @@ internal sealed class WebTabBrowser : Panel, IDisposable
         _tab = tab;
         DataContext = tab;
         // Developer tools (F12, right click > Inspect): technicians and app developers see what a page does.
-        _browser.EnvironmentRequested += (_, e) => e.EnableDevTools = true;
+        _browser.EnvironmentRequested += (_, e) =>
+        {
+            e.EnableDevTools = true;
+            // WebView2 keeps its data next to the exe by default, which users cannot write in Program Files (access
+            // denied). Keep it in the user's own OADM folder instead.
+            if (e is Avalonia.Platform.WindowsWebView2EnvironmentRequestedEventArgs windows)
+            {
+                windows.UserDataFolder = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Oadm", "WebView2");
+            }
+        };
         _browser.NewWindowRequested += OnNewWindowRequested;
         _browser.NavigationCompleted += OnNavigationCompleted;
         Children.Add(_browser);

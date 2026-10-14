@@ -346,6 +346,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         CurrentItem = item;
         CurrentPage = item.Page;
+
+        // The add page and other clients change the credential list: read it again whenever the page opens.
+        if (item.Page is CredentialsViewModel credentials)
+        {
+            _ = credentials.LoadAsync();
+        }
     }
 
     /// <summary>
