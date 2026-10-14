@@ -6,6 +6,11 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+### Fixed
+
+- **Live video**: the client could crash while showing live video. Converting a picture wrote past its memory for widths
+  that are not a multiple of 16 pixels.
+
 ## [3.0.3] - 2026-10-14
 
 ### Changed

@@ -66,6 +66,7 @@ public sealed unsafe class FfmpegVideoDecoder : IVideoDecoder
     private AVFrame* _frame;
     private AVFrame* _swFrame;
     private SwsContext* _sws;
+    private AVFrame* _bgra;
     private AVPixelFormat _hwFormat = AVPixelFormat.AV_PIX_FMT_NONE;
     private string? _hwDevice;
     private bool _hwRefused;
@@ -228,6 +229,9 @@ public sealed unsafe class FfmpegVideoDecoder : IVideoDecoder
         var packet = _packet;
         ffmpeg.av_packet_free(&packet);
         _packet = null;
+        var bgra = _bgra;
+        ffmpeg.av_frame_free(&bgra);
+        _bgra = null;
     }
 
     /// <summary>Opens the codec, on <paramref name="hwDevice"/> or on the processor (null); false when it cannot.</summary>
@@ -381,14 +385,60 @@ public sealed unsafe class FfmpegVideoDecoder : IVideoDecoder
             return null;
         }
 
+        if (_bgra == null)
+        {
+            _bgra = ffmpeg.av_frame_alloc();
+        }
+
         var bitmap = new WriteableBitmap(new PixelSize(width, height), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Opaque);
         using (var buffer = bitmap.Lock())
         {
-            var dst = new byte*[4] { (byte*)buffer.Address, null, null, null };
-            var dstStride = new int[4] { buffer.RowBytes, 0, 0, 0 };
-            ffmpeg.sws_scale(_sws, frame->data.ToArray(), frame->linesize.ToArray(), 0, height, dst, dstStride);
+            if (!BgraConversion.Convert(_sws, frame, _bgra, (byte*)buffer.Address, buffer.RowBytes))
+            {
+                Errors++;
+            }
         }
 
         return new LiveImage(bitmap, width, height);
+    }
+}
+
+/// <summary>
+/// Converts a decoded picture to BGRA for a bitmap. swscale's fast routines write whole blocks of pixels: for a width that
+/// is not a multiple of 16 they wrote 8 to 32 bytes past the end of a buffer of exactly width x height x 4 bytes (a heap
+/// overflow). So swscale writes into FFmpeg's own picture (rows padded to 64 bytes), and only width x 4 bytes of each row
+/// are copied into the bitmap.
+/// </summary>
+internal static unsafe class BgraConversion
+{
+    /// <param name="scratch">A frame of the caller, reused while the size stays (freed by the caller).</param>
+    /// <returns>False when the scratch picture could not be allocated (nothing written).</returns>
+    public static bool Convert(SwsContext* sws, AVFrame* source, AVFrame* scratch, byte* destination, int destinationStride)
+    {
+        var width = source->width;
+        var height = source->height;
+        if (scratch->width != width || scratch->height != height || scratch->format != (int)AVPixelFormat.AV_PIX_FMT_BGRA || scratch->data[0] == null)
+        {
+            ffmpeg.av_frame_unref(scratch);
+            scratch->width = width;
+            scratch->height = height;
+            scratch->format = (int)AVPixelFormat.AV_PIX_FMT_BGRA;
+            if (ffmpeg.av_frame_get_buffer(scratch, 64) < 0)
+            {
+                ffmpeg.av_frame_unref(scratch);
+                return false;
+            }
+        }
+
+        var dst = new byte*[4] { scratch->data[0], null, null, null };
+        var dstStride = new int[4] { scratch->linesize[0], 0, 0, 0 };
+        ffmpeg.sws_scale(sws, source->data.ToArray(), source->linesize.ToArray(), 0, height, dst, dstStride);
+        var rowBytes = width * 4;
+        for (var y = 0; y < height; y++)
+        {
+            Buffer.MemoryCopy(scratch->data[0] + ((long)y * scratch->linesize[0]), destination + ((long)y * destinationStride), rowBytes, rowBytes);
+        }
+
+        return true;
     }
 }
