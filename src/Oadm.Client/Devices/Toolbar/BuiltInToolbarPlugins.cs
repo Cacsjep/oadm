@@ -22,6 +22,7 @@ public sealed class AddToolbarPlugin : IToolbarPlugin
         ("Network range", "range", HostPages.AddIpRange, "Scan an IPv4 address range"),
         ("Add manually", "add", HostPages.AddManually, "Add a device by IP address or host name"),
         ("Import from file", "download", HostPages.AddImport, "Add devices from a CSV or address list"),
+        ("Import from ADM", "download", HostPages.AddImportAdm, "Add the devices of an AXIS Device Manager export"),
     ];
 
     /// <summary>The Add menu (toolbar button and the empty Devices page).</summary>

@@ -108,6 +108,12 @@ public interface IOadmApi
     /// server tries them first, then the credential list; they stay in server memory. Null = none.
     /// </summary>
     Task<string> ProbeAddressAsync(string address, string? userName, string? password, CancellationToken ct);
+
+    /// <summary>
+    /// Like the overload above for a line that names its device (an AXIS Device Manager export): a device with another MAC
+    /// address than <paramref name="expectedSerial"/> gets no password at all, not even from the credential list.
+    /// </summary>
+    Task<string> ProbeAddressAsync(string address, string? userName, string? password, string expectedSerial, CancellationToken ct);
     IAsyncEnumerable<DiscoveredDevice> WatchDiscoveredAsync(string sessionId, CancellationToken ct);
     Task StopDiscoveryAsync(string sessionId, CancellationToken ct);
 

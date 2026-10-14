@@ -6,6 +6,17 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+## [3.0.6] - 2026-10-14
+
+### Added
+
+- **Upgrade firmware** tells you when an upgrade is not on the upgrade path Axis recommends ("Recommended path: the
+  latest AXIS OS 11.11, then 12.6.85."). The upgrade still starts; when the device refuses it, the task says what to
+  install first.
+- **Import from ADM** (Add menu): the device export of AXIS Device Manager adds its devices with their logins and tags. A
+  device is only added when it answers with the MAC address of the export; another device at that address gets no
+  password. An export of several ADM servers asks first.
+
 ## [3.0.5] - 2026-10-14
 
 ### Added
@@ -436,6 +447,7 @@ version and date, and the release workflow copies it into the GitHub release.
 - The splash logo's lens is centered in its ring.
 - The server publish no longer contains an IIS `web.config` and other unused web files.
 
+[3.0.6]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.6
 [3.0.5]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.5
 [3.0.4]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.4
 [3.0.3]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.3

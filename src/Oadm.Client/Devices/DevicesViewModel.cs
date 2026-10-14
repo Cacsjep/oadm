@@ -322,6 +322,8 @@ public sealed partial class DevicesViewModel : ObservableObject
                 return ExportDevicesAsync();
             case HostPages.AddImport:
                 return ImportDevicesAsync();
+            case HostPages.AddImportAdm:
+                return ImportDevicesAsync(fromAdm: true);
             default:
                 NavigateRequested?.Invoke(this, hostPage);
                 return Task.CompletedTask;
@@ -386,6 +388,14 @@ public sealed partial class DevicesViewModel : ObservableObject
     /// <summary>CSV files of the export and the import.</summary>
     internal static readonly FileType CsvFile = new("CSV file", "csv", "text/csv");
 
+    /// <summary>The question before importing an ADM export of several servers.</summary>
+    internal static string MultiServerText(IReadOnlyList<string> servers) =>
+        $"The export comes from {servers.Count} AXIS Device Manager servers ({string.Join(", ", servers)}). OADM manages its "
+        + "devices from one server: devices only the other servers reach show Not found.";
+
+    /// <summary>The device export of AXIS Device Manager.</summary>
+    internal static readonly FileType AdmFile = new("AXIS Device Manager export", "json", "application/json");
+
     /// <summary>
     /// Export devices: the selected devices, or every device the search shows when none is selected, as
     /// CSV (<see cref="DeviceListCsv"/>), in the grid's unsorted order. O(n).
@@ -420,9 +430,10 @@ public sealed partial class DevicesViewModel : ObservableObject
     /// every address of it. A file that cannot be used at all is explained in the message window; problems
     /// of single lines show in their rows.
     /// </summary>
-    internal async Task ImportDevicesAsync()
+    internal async Task ImportDevicesAsync(bool fromAdm = false)
     {
-        if (!await _dialogs.ShowImportHelpAsync(new ImportHelpViewModel()).ConfigureAwait(true))
+        var help = fromAdm ? ImportHelpViewModel.ForAdm() : ImportHelpViewModel.ForFile();
+        if (!await _dialogs.ShowImportHelpAsync(help).ConfigureAwait(true))
         {
             return;
         }
@@ -430,22 +441,30 @@ public sealed partial class DevicesViewModel : ObservableObject
         DeviceImportFile file;
         try
         {
-            PickedFile? picked = await _dialogs.OpenFileAsync("Import from file", CsvFile, DeviceImportFile.MaxBytes).ConfigureAwait(true);
+            PickedFile? picked = await _dialogs.OpenFileAsync(help.Title, fromAdm ? AdmFile : CsvFile, DeviceImportFile.MaxBytes).ConfigureAwait(true);
             if (picked is null)
             {
                 return;
             }
 
-            file = DeviceImportFile.Parse(picked.Name, picked.Content, picked.IsTooLarge);
+            file = fromAdm
+                ? AdmDeviceExport.Parse(picked.Name, picked.Content, picked.IsTooLarge)
+                : DeviceImportFile.Parse(picked.Name, picked.Content, picked.IsTooLarge);
         }
         catch (DeviceImportException ex)
         {
-            await _dialogs.ShowMessageAsync("Import from file", ex.Message).ConfigureAwait(true);
+            await _dialogs.ShowMessageAsync(help.Title, ex.Message).ConfigureAwait(true);
             return;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            await _dialogs.ShowMessageAsync("Import from file", "The file could not be read: " + ex.Message).ConfigureAwait(true);
+            await _dialogs.ShowMessageAsync(help.Title, "The file could not be read: " + ex.Message).ConfigureAwait(true);
+            return;
+        }
+
+        if (file.AdmServers.Count > 1
+            && !await _dialogs.ConfirmAsync(help.Title, MultiServerText(file.AdmServers), "Import").ConfigureAwait(true))
+        {
             return;
         }
 

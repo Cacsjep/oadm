@@ -60,9 +60,21 @@ public sealed class DiscoveryGrpcService(
                 $"Enter both a user name (1-{MaxUserNameLength} characters) and a password (1-{MaxPasswordLength} characters)."));
         }
 
+        var expectedSerial = request.ExpectedSerial.Replace(":", "", StringComparison.Ordinal).Replace("-", "", StringComparison.Ordinal).Trim().ToUpperInvariant();
+        if (expectedSerial.Length > 0 && (expectedSerial.Length != 12 || !expectedSerial.All(Uri.IsHexDigit)))
+        {
+            throw GrpcGuard.InvalidArgument("The MAC address must be 12 hexadecimal digits.");
+        }
+
         try
         {
             var session = await discovery.StartAddressProbeAsync(request.Address, context.CancellationToken).ConfigureAwait(false);
+            if (expectedSerial.Length > 0)
+            {
+                // Before the watch starts the automatic login: another device at this address gets no password.
+                authenticator.SetExpectedSerial(session.Id, expectedSerial);
+            }
+
             if (hasCredentials)
             {
                 // Before the watch starts the automatic login, so the credential is the first one tried.

@@ -22,7 +22,7 @@ public sealed class ImportHelpTests
     [Fact]
     public void Choose_file_and_Cancel_close_with_their_answer()
     {
-        var help = new ImportHelpViewModel();
+        var help = ImportHelpViewModel.ForFile();
         var answers = new List<bool>();
         help.CloseRequested += (_, choose) => answers.Add(choose);
         help.ChooseCommand.Execute(null);
@@ -37,7 +37,7 @@ public sealed class ImportHelpTests
         bool done = await HeadlessSession.Shared.Dispatch(() =>
         {
             var window = new ImportHelpWindow();
-            window.Attach(new ImportHelpViewModel());
+            window.Attach(ImportHelpViewModel.ForFile());
             window.Show();
             Dispatcher.UIThread.RunJobs();
             var texts = window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text ?? "").ToList();
@@ -54,6 +54,23 @@ public sealed class ImportHelpTests
             }
 
             window.Close();
+
+            // Import from ADM: no example, the warning about the passwords in the export.
+            var adm = new ImportHelpWindow();
+            adm.Attach(ImportHelpViewModel.ForAdm());
+            adm.Show();
+            Dispatcher.UIThread.RunJobs();
+            var admTexts = adm.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text ?? "").ToList();
+            Assert.Contains("Addresses", admTexts);
+            Assert.DoesNotContain("Example", admTexts);
+            Assert.Contains(adm.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.StatusChip>(), c => c.IsEffectivelyVisible && c.IsWarning);
+            WriteableBitmap? admFrame = adm.CaptureRenderedFrame();
+            if (!string.IsNullOrEmpty(outDir) && admFrame is not null)
+            {
+                admFrame.Save(Path.Combine(outDir, "client-import-adm-help.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+            }
+
+            adm.Close();
             return Task.FromResult(true);
         }, CancellationToken.None);
         Assert.True(done);

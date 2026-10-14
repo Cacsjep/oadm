@@ -332,6 +332,10 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
 
     public Task<string> ProbeAddressAsync(string address, CancellationToken ct) => ProbeAddressAsync(address, null, null, ct);
 
+    /// <summary>The expected MAC address only matters to the server (no password for another device); the fake probes as usual.</summary>
+    public Task<string> ProbeAddressAsync(string address, string? userName, string? password, string expectedSerial, CancellationToken ct) =>
+        ProbeAddressAsync(address, userName, password, ct);
+
     /// <summary>Like the server: credentials of the line are tried first; an accepted password logs in as that user ("entered").</summary>
     public Task<string> ProbeAddressAsync(string address, string? userName, string? password, CancellationToken ct)
     {

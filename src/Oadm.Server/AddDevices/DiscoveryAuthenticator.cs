@@ -125,6 +125,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         var session = Session(sessionId);
         var key = string.Join('|', device.ConnectAddress, device.Scheme, device.Status, alreadyManaged);
         int version;
+        bool otherDevice;
         lock (session.Gate)
         {
             var entry = session.Get(device.Serial);
@@ -134,8 +135,12 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
             }
 
             version = session.NextVersion();
+            otherDevice = !alreadyManaged && session.ExpectedSerial is { } expected
+                && !string.Equals(device.Serial, expected, StringComparison.OrdinalIgnoreCase);
             var initial = alreadyManaged
                 ? new DeviceAuthResult(DeviceAuthState.AlreadyAdded)
+                : otherDevice
+                ? new DeviceAuthResult(DeviceAuthState.Unreachable, Detail: OtherDeviceText(device.Serial, session.ExpectedSerial!))
                 : device.Status switch
                 {
                     DiscoveredDeviceStatus.PasswordNotSet => new DeviceAuthResult(DeviceAuthState.PasswordNotSet),
@@ -147,7 +152,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         }
 
         session.Notify(device.Serial);
-        if (alreadyManaged)
+        if (alreadyManaged || otherDevice)
         {
             return;
         }
@@ -199,6 +204,11 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         }
 
         var session = Session(sessionId);
+        if (session.ExpectedSerial is { } expected && !string.Equals(device.Serial, expected, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(OtherDeviceText(device.Serial, expected));
+        }
+
         int version;
         var key = string.Join('|', device.ConnectAddress, device.Scheme, device.Status, false);
         AuthEntry? before;
@@ -287,6 +297,20 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         ArgumentException.ThrowIfNullOrEmpty(password);
         Session(sessionId).AddEntered(new Candidate(EnteredCredentialId, new DeviceCredentials(userName.Trim(), password)));
     }
+
+    /// <summary>
+    /// The device a probe session expects (the MAC address of an AXIS Device Manager export line): a device with another
+    /// serial is not logged in to at all, so neither the line's password nor the credential list reaches it.
+    /// </summary>
+    public void SetExpectedSerial(string sessionId, string serial)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serial);
+        Session(sessionId).ExpectedSerial = serial.Trim().ToUpperInvariant();
+    }
+
+    /// <summary>Text of a device that is not the one the session expects (no password was sent).</summary>
+    public static string OtherDeviceText(string found, string expected) =>
+        $"Another device answers at this address ({found}, expected {expected}). No password was sent.";
 
     /// <summary>
     /// Starts a login with the credentials not tried yet (credential list, entered ones) on every device
@@ -841,6 +865,9 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         public Lock Gate { get; } = new();
 
         public DateTimeOffset LastUsed { get; set; }
+
+        /// <summary>The only device that may get a password in this session (an export line's MAC address); null = any.</summary>
+        public string? ExpectedSerial { get; set; }
 
         public event Action<string>? Changed;
 

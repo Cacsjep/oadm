@@ -354,6 +354,38 @@ public sealed class FastAddTests
     }
 
     [Fact]
+    public async Task ProbeAddressWithAnExpectedMacAddressSendsAnotherDeviceNoPasswordAtAll()
+    {
+        var network = Network();
+        await using var host = await TestServerHost.StartAsync(network);
+        await host.Settings.AddCredentialAsync(new Proto.AddCredentialRequest { UserName = "root", Password = Password });
+
+        // A line of an AXIS Device Manager export: the address now has another device. Neither the line's login nor the
+        // credential list reaches it.
+        var session = await host.Discovery.ProbeAddressAsync(new Proto.ProbeAddressRequest
+        {
+            Address = "10.9.0.1", UserName = "root", Password = "old-pass", ExpectedSerial = "b8:a4:4f:00:00:00",
+        });
+        var found = Assert.Single((await TestHelpers.WatchToEndAsync(host, session.SessionId)).Values);
+        Assert.Equal(Proto.AuthState.Unreachable, found.AuthState);
+        Assert.Equal($"Another device answers at this address ({FakeSerials.Make(1)}, expected B8A44F000000). No password was sent.", found.AuthDetail);
+        Assert.Empty(network["10.9.0.1"].CredentialRequests);
+        var retry = await Assert.ThrowsAsync<RpcException>(() => host.AddDevices.RetryAuthAsync(new Proto.RetryAuthRequest
+        {
+            SessionId = session.SessionId, DiscoveredId = found.DiscoveredId, UserName = "root", Password = Password,
+        }).ResponseAsync);
+        Assert.Equal(StatusCode.FailedPrecondition, retry.StatusCode);
+        Assert.Empty(network["10.9.0.1"].CredentialRequests);
+
+        // The right device: logs in as usual.
+        var right = await host.Discovery.ProbeAddressAsync(new Proto.ProbeAddressRequest { Address = "10.9.0.1", ExpectedSerial = FakeSerials.Make(1) });
+        Assert.Equal(Proto.AuthState.Authenticated, Assert.Single((await TestHelpers.WatchToEndAsync(host, right.SessionId)).Values).AuthState);
+
+        var bad = await Assert.ThrowsAsync<RpcException>(() => host.Discovery.ProbeAddressAsync(new Proto.ProbeAddressRequest { Address = "10.9.0.1", ExpectedSerial = "nope" }).ResponseAsync);
+        Assert.Equal(StatusCode.InvalidArgument, bad.StatusCode);
+    }
+
+    [Fact]
     public async Task ProbeAddressWithCredentialsTriesThemFirstForThatDeviceOnly()
     {
         var network = Network();

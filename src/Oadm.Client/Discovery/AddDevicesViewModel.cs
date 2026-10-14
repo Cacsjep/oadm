@@ -182,7 +182,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     {
         AddDevicesMode.IpRange => "Network range",
         AddDevicesMode.Manual => "Add manually",
-        AddDevicesMode.Import => "Import from file",
+        AddDevicesMode.Import => ImportFromAdm ? "Import from ADM" : "Import from file",
         _ => "Discovery",
     };
 
@@ -190,7 +190,9 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     {
         AddDevicesMode.IpRange => "Enter the first and last address, then press Enter.",
         AddDevicesMode.Manual => string.Empty,
-        AddDevicesMode.Import => $"Addresses from {ImportFileName}. Logins in the file are tried first.",
+        AddDevicesMode.Import => ImportFromAdm
+            ? $"Devices from {ImportFileName}{(ImportAdmServers.Count == 1 ? $" (ADM server {ImportAdmServers[0]})" : "")}. Logins in the export are tried first."
+            : $"Addresses from {ImportFileName}. Logins in the file are tried first.",
         _ => "Axis devices found on the local network.",
     };
 
@@ -309,6 +311,12 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     /// <summary>The imported file's name (header text).</summary>
     public string ImportFileName { get; private set; } = "";
 
+    /// <summary>The import is a device export of AXIS Device Manager (header texts).</summary>
+    public bool ImportFromAdm { get; private set; }
+
+    /// <summary>The ADM servers the export names.</summary>
+    public IReadOnlyList<string> ImportAdmServers { get; private set; } = [];
+
     /// <summary>Completes when every address of the import was probed (or the import was stopped). Tests await it.</summary>
     public Task? ImportCompletion { get; private set; }
 
@@ -337,6 +345,8 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         }
 
         ImportFileName = file.FileName;
+        ImportFromAdm = file.FromAdm;
+        ImportAdmServers = file.AdmServers;
         OnPropertyChanged(nameof(HeaderDescription));
         Rows.CollectionChanged -= OnRowsChanged;
         foreach (ImportLine line in file.Lines)
@@ -394,7 +404,9 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                 string sessionId;
                 try
                 {
-                    sessionId = await _api.ProbeAddressAsync(line.Address, line.UserName, line.Password, stop).ConfigureAwait(true);
+                    sessionId = line.ExpectedSerial is { } serial
+                        ? await _api.ProbeAddressAsync(line.Address, line.UserName, line.Password, serial, stop).ConfigureAwait(true)
+                        : await _api.ProbeAddressAsync(line.Address, line.UserName, line.Password, stop).ConfigureAwait(true);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -917,6 +929,10 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         }
     }
 
+    /// <summary>The row of an export line whose address now belongs to another device.</summary>
+    internal static string OtherDeviceText(string found, string expected) =>
+        $"Another device answers at this address ({found}). The file lists {expected}.";
+
     private void UpdateScanning() => IsScanning = _starting > 0 || _scanning.Count > 0 || _importRunning;
 
     internal void OnDiscovered(string sessionId, DiscoveredDevice found)
@@ -933,7 +949,14 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             DiscoveredRowViewModel? row = _rowsById.GetValueOrDefault(found.DiscoveredId)
                 ?? (found.Serial.Length > 0 ? FindBySerial(found.Serial) : null);
             _importRows.Remove(sessionId, out DiscoveredRowViewModel? line);
-            if (line is not null && row is not null && row != line)
+            if (line?.ImportLine?.ExpectedSerial is { } expected && found.Serial.Length > 0
+                && !string.Equals(found.Serial, expected, StringComparison.OrdinalIgnoreCase))
+            {
+                // An AXIS Device Manager line: another device answers at its address now (the server sent it no password).
+                line.SetImportProblem("Not added", OtherDeviceText(found.Serial, expected), PillKind.Warning);
+                _duplicateSessions.Add(sessionId);
+            }
+            else if (line is not null && row is not null && row != line)
             {
                 // Import: another line (another address) already found this device.
                 line.SetImportProblem("Not added", $"Same device as {row.Address} ({row.Serial}).", PillKind.Warning);

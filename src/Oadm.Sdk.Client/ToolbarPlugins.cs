@@ -71,6 +71,12 @@ public static class HostPages
     /// </summary>
     public const string AddImport = "add.import";
 
+    /// <summary>
+    /// Import devices from AXIS Device Manager: the host asks for its device export (.json) and opens the add page with
+    /// every device of it (address, login, tags; only the device with the export's MAC address is added).
+    /// </summary>
+    public const string AddImportAdm = "add.import-adm";
+
     /// <summary>Export devices: the host saves the selected devices (or every device the search shows) as a CSV file.</summary>
     public const string ExportDevices = "devices.export";
 

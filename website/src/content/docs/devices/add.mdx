@@ -21,6 +21,7 @@ Click **Add** on the Devices page and choose:
 - **Network range**: enter From and To, press **Scan**. Several ranges add to the same list.
 - **Add manually**: an IP address or host name, optionally with port and `https://`. Press **Find**.
 - **Import from file**: a CSV file (for example an export from OADM) or a text file with one address per line.
+- **Import from ADM**: the device export of AXIS Device Manager.
 
 **Stop** ends a running search; the devices found stay in the list. **Scan again** searches once more.
 Devices OADM already manages are not listed.
@@ -77,4 +78,23 @@ camera-lobby.example.com
 <Aside type="tip">
 OADM only sends a password after the device answered like an Axis device, and tries HTTPS first. Passwords of
 devices you already manage are never tried on new devices.
+</Aside>
+
+## Import from AXIS Device Manager
+
+In AXIS Device Manager, export the devices to a file (a `.json` file). In OADM, choose **Add** > **Import from ADM** and
+that file. The devices appear on the add page like an import from a file.
+
+- **Addresses**: with their ports. A device is only added when it answers with the MAC address of the export; another
+  device at that address shows **Not added** and gets no password.
+- **Logins**: tried first and never saved. Devices without a login use the credential list.
+- **Tags**: given to the devices you add. Tags OADM does not have yet are created.
+- Model, firmware and everything else OADM reads from the devices.
+
+OADM is one server. Devices it cannot reach show **Not found**, for example cameras another ADM server manages. When the
+export comes from several ADM servers, OADM asks before the import.
+
+<Aside type="caution">
+The export of AXIS Device Manager holds the device passwords in plain text, also when it is exported encrypted. Delete it
+after the import.
 </Aside>

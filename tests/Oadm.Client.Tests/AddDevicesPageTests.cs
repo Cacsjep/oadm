@@ -370,6 +370,34 @@ public sealed class AddDevicesPageTests : IDisposable
     }
 
     [Fact]
+    public async Task An_ADM_export_line_whose_address_now_has_another_device_is_not_added()
+    {
+        // 10.0.0.97 answers, but the export names another MAC address: not added (the server sends that device no password).
+        string json = """
+            { "encrypted" : false, "fileFormatVersionMayor" : 1, "data" : { "deviceData" : { "devices" : [
+              { "id" : 1, "address" : "10.0.0.97", "macAddress" : "B8A44F000000", "deviceUserName" : "root", "devicePassword" : "old-pass1" },
+              { "id" : 2, "address" : "camera7.example.com:8443", "macAddress" : "" } ] } } }
+            """;
+        AddDevicesViewModel page = Create(AddDevicesMode.Import);
+        page.SetImport(AdmDeviceExport.Parse("DEVICES_AT_acs.json", json));
+        await page.OpenAsync();
+        await using (page)
+        {
+            Assert.Equal("Import from ADM", page.HeaderTitle);
+            Assert.Equal("Devices from DEVICES_AT_acs.json. Logins in the export are tried first.", page.HeaderDescription);
+            await page.ImportCompletion!;
+            await TestSupport.WaitUntilAsync(() => !page.IsScanning && page.Rows.All(r => r.IsImportPlaceholder || r.AuthState != AuthState.Pending));
+
+            DiscoveredRowViewModel other = page.Rows[0];
+            Assert.Equal("Not added", other.ChipText);
+            Assert.StartsWith("Another device answers at this address (", other.StatusDetail, StringComparison.Ordinal);
+            Assert.EndsWith("The file lists B8A44F000000.", other.StatusDetail, StringComparison.Ordinal);
+            Assert.False(other.CanAdd);
+            Assert.Equal("Authenticated (root)", Row(page, "camera7.example.com:8443").ChipText); // no MAC address in the line: any device
+        }
+    }
+
+    [Fact]
     public async Task Import_lists_every_line_and_probes_the_addresses_with_their_credentials()
     {
         string managed = (await _api.ListDevicesAsync(CancellationToken.None))[0].Address;

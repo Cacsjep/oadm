@@ -299,10 +299,12 @@ Two processes, like ADM:
   `GetPassphrasePolicies(DeviceIds)` (anonymous systemready per device: `policies` {device_id, policy none / length /
   complex, empty when unreadable}; the dialog's hint).
 - `DiscoveryService`: `StartZeroConf`, `StartRangeScan(from, to)`, `ProbeAddress(address, user_name = 2,
-  password = 3)` (one entered IP or host name, optional port/scheme; INVALID_ARGUMENT for an unusable or
-  unresolvable address, or only one of user name (1..64) and password (1..256); the optional credentials of an
-  imported line belong to that session only: tried first, then the credential list, server memory only, never
-  saved to the list, never logged; `DiscoveryAuthenticator.AddSessionCredential`), `WatchDiscovered` (stream; every device with its automatic login result
+  password = 3, expected_serial = 4)` (one entered IP or host name, optional port/scheme; INVALID_ARGUMENT for an unusable or
+  unresolvable address, only one of user name (1..64) and password (1..256), or an expected serial that is not 12 hex;
+  the optional credentials of an imported line belong to that session only: tried first, then the credential list,
+  server memory only, never saved to the list, never logged; `DiscoveryAuthenticator.AddSessionCredential`; with
+  `expected_serial` (a line of an ADM export, `SetExpectedSerial`) a device with another serial gets no password at all:
+  UNREACHABLE "Another device answers at this address (X, expected Y). No password was sent.", RetryAuth refused), `WatchDiscovered` (stream; every device with its automatic login result
   `auth_state = 14` (PENDING, AUTHENTICATED, PASSWORD_NOT_SET, LOGIN_FAILED, UNREACHABLE,
   ALREADY_ADDED), `auth_user_name = 15`, `credential_id = 16` ("list:<id>",
   "entered"), `auth_detail = 17`, `passphrase_policy = 18`, `entered_address = 19`, `dns_name = 20` (the verified DNS name of the
@@ -619,6 +621,22 @@ controls: title bar, one card, footer) in four modes:
   credential list"). Then the technician reviews and clicks Add as usual. Scale: 10,000 lines are listed,
   filtered and selected in one reset each (test).
 
+**Import from ADM** (Add menu, `HostPages.AddImportAdm`): the same help dialog in its ADM mode (`ImportHelpViewModel.ForAdm`:
+addresses, logins, tags, everything else read from the devices, OADM is one server, an amber warning that the export holds
+the passwords in plain text), a `.json` picker, then `Discovery/AdmDeviceExport` reads the device export of AXIS Device
+Manager (format 1.x: `encrypted`, `fileFormatVersionMayor`, `data.serverInformation` (object, or a list for several
+servers), `data.deviceData.devices` {id, macAddress, address, httpPort, httpsPort, deviceUserName, devicePassword, ...},
+`deviceTag` + `deviceTagRelation`; property names case-insensitive, unknown ones ignored) into the import lines of
+`DeviceImportFile` (`CheckLine`: the same checks as a CSV): the address with its port when not 443 / 80 (`https://a:8443`,
+else `http://a:8080`), the login, the tags, and the MAC address as `ImportLine.ExpectedSerial`. Refused whole: not JSON or
+no device list ("not a device export of AXIS Device Manager"), `encrypted: true` ("Export the devices again ... without
+encryption"; ADM 5 wrote `false` even with its encryption option), another major format version, no devices. An export
+naming several ADM servers asks first (`DevicesViewModel.MultiServerText`: devices only the other servers reach show Not
+found). The add page says "Import from ADM" and "Devices from <file> (ADM server <name>)"; a row whose device answers with
+another MAC address is "Not added: Another device answers at this address (X). The file lists Y." and the server sent that
+device no password. Model, firmware, host name, product type, apiMode and securityMode of the export are not used (read
+from the device). Tests `AdmDeviceExportTests`, `AddDevicesPageTests`, `FastAddTests`.
+
 **DNS names**: Discovery and Network range have the check box **Use DNS names instead of IP addresses** (in the scan
 progress row, left of Stop / Scan again; remembered per client, `ClientSettings.AddByDnsName`). The server looks up the DNS name of every found IP
 (`Oadm.Core.Discovery.IDnsNameLookup`, `SystemDnsNameLookup`: reverse lookup, a full name with a domain, not ".local" or
@@ -807,7 +825,7 @@ Layout, top to bottom:
    release notes link (icon only, toolbar controls with the class `trailing` go here), **Group by tag** icon button (icon
    `groupBy`, class `active` while on), Columns icon button (tooltip "Choose columns") and search box (host parts);
    everything fits on one line at the 1800 px minimum window width with the rail expanded and the live view closed. One primary **Add** button with a menu Discovery (zero-conf scan), Network range,
-   Manual, Import from file instead of four buttons; every toolbar entry is a button with text (only Columns, Group by tag
+   Manual, Import from file, Import from ADM instead of five buttons; every toolbar entry is a button with text (only Columns, Group by tag
    and the release notes link are icons). The empty Devices page shows a primary **Add devices** button with the same
    menu.
 3. Status line: "N devices, M selected".
@@ -1365,8 +1383,8 @@ the UI thread.
 The Devices page toolbar is made of toolbar plugins. Built in (compiled into the client,
 `Devices/Toolbar/BuiltInToolbarPlugins.cs`, registered in the container like plugin parts): **Add** (`oadm.toolbar.add`,
 group Add, primary, icon `add`, a `MenuFlyout` with Discovery (`HostPages.AddScan`, icon `search`), Network range
-(`AddIpRange`, `range`), Add manually (`AddManually`, `add`) and Import from file (`AddImport`, `download`: see "Add Devices
-Page")), Remove (Manage; confirmation, the context menu
+(`AddIpRange`, `range`), Add manually (`AddManually`, `add`), Import from file (`AddImport`, `download`) and Import from ADM
+(`AddImportAdm`, `download`): see "Add Devices Page"), Remove (Manage; confirmation, the context menu
 uses the same flow), **Refresh** (Manage, order 5, icon `refresh`, enabled with a selection; `IToolbarContext.RefreshDevicesAsync`
 = one `DeviceService.Refresh` for the whole selection: the server queues a full refresh per device; the context menu entry
 "Refresh" uses the same flow), **Export** (Manage, order 10, icon `export`, `HostPages.ExportDevices`, the selected devices, or every device the search shows when none is selected, the

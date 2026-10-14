@@ -27,7 +27,9 @@ service DiscoveryService {
 
 message DiscoverySession { string session_id = 1; }
 message RangeScanRequest { string from = 1; string to = 2; }
-message ProbeAddressRequest { string address = 1; string user_name = 2; string password = 3; }
+// expected_serial: the MAC address the line names (an AXIS Device Manager export); a device with another one gets no
+// password at all, not even from the credential list. Empty = any device.
+message ProbeAddressRequest { string address = 1; string user_name = 2; string password = 3; string expected_serial = 4; }
 
 enum DiscoverySource { DISCOVERY_SOURCE_UNSPECIFIED = 0; MDNS = 1; RANGE_SCAN = 2; MANUAL = 3; }
 

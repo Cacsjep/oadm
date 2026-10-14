@@ -4,29 +4,38 @@
         xmlns:vm="using:Oadm.Client.Discovery"
         x:Class="Oadm.Client.Discovery.ImportHelpWindow"
         x:DataType="vm:ImportHelpViewModel"
-        Title="Import from file"
+        Title="{Binding Title}"
         Width="600" SizeToContent="Height" CanResize="False"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         WindowDecorations="BorderOnly">
-  <!-- Before the file picker of "Import from file": the columns and an example. Single operation. -->
+  <!-- Before the file picker of "Import from file" and "Import from ADM": what the file holds, an example. Single operation. -->
   <Grid RowDefinitions="Auto,Auto,Auto">
-    <ui:DialogTitleBar Grid.Row="0" Text="Import from file" />
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
 
     <Border Grid.Row="1" Classes="dialogBody">
       <StackPanel Classes="form">
-        <TextBlock TextWrapping="Wrap" Text="{x:Static vm:ImportHelpViewModel.Intro}" />
-        <Grid Classes="form" ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto">
-          <TextBlock Grid.Row="0" Classes="secondary" Text="Address" />
-          <TextBlock Grid.Row="0" Grid.Column="1" TextWrapping="Wrap" Text="{x:Static vm:ImportHelpViewModel.AddressText}" />
-          <TextBlock Grid.Row="1" Classes="secondary" Text="User name, Password" />
-          <TextBlock Grid.Row="1" Grid.Column="1" TextWrapping="Wrap" Text="{x:Static vm:ImportHelpViewModel.LoginText}" />
-          <TextBlock Grid.Row="2" Classes="secondary" Text="Tags" />
-          <TextBlock Grid.Row="2" Grid.Column="1" TextWrapping="Wrap" Text="{x:Static vm:ImportHelpViewModel.TagsText}" />
-        </Grid>
-        <TextBlock Classes="secondary" Text="Example" />
-        <ui:CodeView Language="Plain" Text="{x:Static vm:ImportHelpViewModel.Example}" />
-        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{x:Static vm:ImportHelpViewModel.LimitsText}" />
+        <TextBlock TextWrapping="Wrap" Text="{Binding Intro}" />
+        <!-- A handful of fixed rows (not a device list) -->
+        <ItemsControl ItemsSource="{Binding Rows}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Classes="form" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ImportHelpRow">
+              <Grid ColumnDefinitions="140,*">
+                <TextBlock Classes="secondary" Text="{Binding Label}" />
+                <TextBlock Grid.Column="1" TextWrapping="Wrap" Text="{Binding Text}" />
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock Classes="secondary" Text="Example" IsVisible="{Binding HasExample}" />
+        <ui:CodeView Language="Plain" Text="{Binding Example}" IsVisible="{Binding HasExample}" />
+        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Limits}" />
+        <ui:StatusChip IsWarning="True" Text="{Binding Warning}" IsVisible="{Binding HasWarning}" />
       </StackPanel>
     </Border>
 

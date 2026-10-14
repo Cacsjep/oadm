@@ -19,6 +19,12 @@ public sealed record ImportLine(int Line, string Address, string? UserName, stri
     /// <summary>From the optional "Tags" column ("Building A; PTZ"): assigned to the device when it is added.</summary>
     public IReadOnlyList<string> Tags { get; init; } = [];
 
+    /// <summary>
+    /// The MAC address the line names (an AXIS Device Manager export), upper hex without separators; null = any device. Another
+    /// device at the address is not added and gets no password.
+    /// </summary>
+    public string? ExpectedSerial { get; init; }
+
     /// <summary>Never prints the password.</summary>
     public override string ToString() => $"Line {Line}: {Address}";
 }
@@ -87,13 +93,24 @@ public sealed class DeviceImportFile
     private static readonly string[] KnownHeaders =
         [.. AddressHeaders, .. UserHeaders, .. PasswordHeaders, .. TagHeaders, .. DeviceListCsv.Columns.Select(c => c.ToLowerInvariant())];
 
-    private DeviceImportFile(string fileName, IReadOnlyList<ImportLine> lines)
+    private DeviceImportFile(string fileName, IReadOnlyList<ImportLine> lines, bool fromAdm = false, IReadOnlyList<string>? admServers = null)
     {
         FileName = fileName;
         Lines = lines;
+        FromAdm = fromAdm;
+        AdmServers = admServers ?? [];
     }
 
     public string FileName { get; }
+
+    /// <summary>A device export of AXIS Device Manager (<see cref="AdmDeviceExport"/>), not a CSV or address list.</summary>
+    public bool FromAdm { get; }
+
+    /// <summary>
+    /// The AXIS Device Manager servers the export names (their names, else addresses); more than one means the devices
+    /// came from several servers, and one OADM server may not reach all of them.
+    /// </summary>
+    public IReadOnlyList<string> AdmServers { get; }
 
     /// <summary>Every address line in file order, including the ones with a problem.</summary>
     public IReadOnlyList<ImportLine> Lines { get; }
@@ -218,6 +235,17 @@ public sealed class DeviceImportFile
 
         string user = Cell(userColumn);
         string password = passwordColumn >= 0 && passwordColumn < record.Cells.Count ? record.Cells[passwordColumn] : ""; // passwords keep their spaces
+        return CheckLine(record.Line, address, user, password, ReadTags(Cell(tagsColumn)), null, seen);
+    }
+
+    /// <summary>
+    /// The checks every imported line gets, whatever file it came from (CSV, text, AXIS Device Manager export): the
+    /// address, the login lengths, the tags and the same address listed twice. A password alone is for root; a user name
+    /// alone is no login.
+    /// </summary>
+    internal static ImportLine CheckLine(int line, string address, string user, string password, List<string> tags, string? expectedSerial,
+        Dictionary<string, int> seen)
+    {
         string? problem = AddressProblem(address);
         if (problem is null && user.Length > MaxUserNameLength)
         {
@@ -229,11 +257,12 @@ public sealed class DeviceImportFile
             problem = string.Create(CultureInfo.InvariantCulture, $"The password is longer than {MaxPasswordLength} characters.");
         }
 
-        List<string> tags = ReadTags(Cell(tagsColumn));
-        if (problem is null && tags.Find(t => t.Length > MaxTagLength || t.Any(char.IsControl)) is { } badTag)
+        if (problem is null && tags.Find(t => t.Length > MaxTagLength || t.Any(char.IsControl) || t.Contains(';', StringComparison.Ordinal)) is { } badTag)
         {
             problem = badTag.Length > MaxTagLength
                 ? string.Create(CultureInfo.InvariantCulture, $"The tag \"{Shorten(badTag)}\" is longer than {MaxTagLength} characters.")
+                : badTag.Contains(';', StringComparison.Ordinal)
+                ? $"The tag \"{Shorten(badTag)}\" contains ;."
                 : $"The tag \"{Shorten(badTag)}\" contains control characters.";
         }
 
@@ -246,17 +275,21 @@ public sealed class DeviceImportFile
             }
             else
             {
-                seen[key] = record.Line;
+                seen[key] = line;
             }
         }
 
-        // A password alone is for the default administrator; a user name alone is no credential.
         bool credentials = password.Length > 0;
-        return new ImportLine(record.Line, address, credentials ? (user.Length > 0 ? user : DefaultUserName) : null, credentials ? password : null, problem)
+        return new ImportLine(line, address, credentials ? (user.Length > 0 ? user : DefaultUserName) : null, credentials ? password : null, problem)
         {
             Tags = tags,
+            ExpectedSerial = expectedSerial,
         };
     }
+
+    /// <summary>A list of lines read by another reader (<see cref="AdmDeviceExport"/>).</summary>
+    internal static DeviceImportFile FromAdmExport(string fileName, IReadOnlyList<ImportLine> lines, IReadOnlyList<string> servers) =>
+        new(fileName, lines, fromAdm: true, servers);
 
     /// <summary>"Building A; PTZ" (the export's format): trimmed, distinct (case-insensitive), empty ones dropped.</summary>
     public static List<string> ReadTags(string cell)
