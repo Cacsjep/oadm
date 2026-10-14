@@ -380,3 +380,43 @@ header .social-icons::after {
 	color: var(--sl-color-gray-3);
 	font-size: var(--sl-text-sm);
 }
+
+/* Project > Changelog: smaller text and tighter spacing, so more releases fit on the screen. The doubled class outranks
+   Starlight's spacing between markdown blocks. */
+.sl-markdown-content .changelog.changelog {
+	font-size: var(--sl-text-sm);
+	line-height: 1.6;
+}
+
+.sl-markdown-content .changelog.changelog > * {
+	margin-top: 0.5rem;
+}
+
+.sl-markdown-content .changelog.changelog > .level-h2 {
+	margin-top: 2.25rem;
+}
+
+.sl-markdown-content .changelog.changelog h2 {
+	font-size: var(--sl-text-2xl);
+}
+
+.sl-markdown-content .changelog.changelog > :first-child {
+	margin-top: 0;
+}
+
+.sl-markdown-content .changelog.changelog > .changelog-date {
+	margin-top: 0;
+	color: var(--sl-color-gray-3);
+}
+
+.sl-markdown-content .changelog.changelog > .level-h4 {
+	margin-top: 1rem;
+}
+
+.sl-markdown-content .changelog.changelog h4 {
+	font-size: var(--sl-text-base);
+}
+
+.sl-markdown-content .changelog.changelog li + li {
+	margin-top: 0.2rem;
+}

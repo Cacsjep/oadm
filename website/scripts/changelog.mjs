@@ -7,18 +7,17 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const source = join(here, '..', '..', 'CHANGELOG.md');
 const target = join(here, '..', 'src', 'content', 'docs', 'project', 'changelog.md');
-const releases = 'https://github.com/Cacsjep/oadm/releases/tag/v';
 
 const lines = readFileSync(source, 'utf-8').split(/\r?\n/);
 const out = [];
 let started = false;
 for (const line of lines) {
-	// "## [3.0.3] - 2026-10-14": the version as heading (short anchor #303), the date and the release below it.
+	// "## [3.0.3] - 2026-10-14": the version as heading (short anchor #303), the date below it.
 	const release = /^## \[(?<version>[^\]]+)\](?:\s*-\s*(?<date>\S+))?/.exec(line);
 	if (release) {
 		started = true;
 		const { version, date } = release.groups;
-		out.push(`## ${version}`, '', `${date ? `${date} · ` : ''}[Download](${releases}${version})`);
+		out.push(`## ${version}`, '', ...(date ? [`<p class="changelog-date">${date}</p>`] : []));
 		continue;
 	}
 
@@ -40,9 +39,14 @@ const page = [
 	'editUrl: https://github.com/Cacsjep/oadm/edit/main/CHANGELOG.md',
 	'---',
 	'',
-	'What changed in every release, newest first. The downloads are on each release page.',
+	'What changed in every release, newest first.',
+	'',
+	// Smaller text than the other pages, so more releases fit on the screen (oadm.css .changelog).
+	'<div class="changelog">',
 	'',
 	...out,
+	'',
+	'</div>',
 ].join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
 
 mkdirSync(dirname(target), { recursive: true });

@@ -6,6 +6,16 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+## [3.0.5] - 2026-10-14
+
+### Added
+
+- **Import from file** first shows the columns and an example file; **Choose file** opens the file dialog.
+
+### Changed
+
+- The changelog page on the website has smaller text, so more releases fit on the screen.
+
 ## [3.0.4] - 2026-10-14
 
 ### Added
@@ -426,6 +436,7 @@ version and date, and the release workflow copies it into the GitHub release.
 - The splash logo's lens is centered in its ring.
 - The server publish no longer contains an IIS `web.config` and other unused web files.
 
+[3.0.5]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.5
 [3.0.4]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.4
 [3.0.3]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.3
 [3.0.2]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.2
