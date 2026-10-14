@@ -416,12 +416,17 @@ public sealed partial class DevicesViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Import devices: asks for a CSV file (<see cref="DeviceImportFile"/>) and opens the add page with
+    /// Import devices: shows the columns and an example first (<see cref="ImportHelpViewModel"/>), then asks for a CSV file (<see cref="DeviceImportFile"/>) and opens the add page with
     /// every address of it. A file that cannot be used at all is explained in the message window; problems
     /// of single lines show in their rows.
     /// </summary>
     internal async Task ImportDevicesAsync()
     {
+        if (!await _dialogs.ShowImportHelpAsync(new ImportHelpViewModel()).ConfigureAwait(true))
+        {
+            return;
+        }
+
         DeviceImportFile file;
         try
         {

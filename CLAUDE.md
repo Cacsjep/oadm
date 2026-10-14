@@ -593,8 +593,10 @@ controls: title bar, one card, footer) in four modes:
   `https://camera.example.com:8443`); Enter or Find probes that address (`ProbeAddress`); every
   address adds a row; "No Axis device answered at X." when nothing answers. The entered address
   (host[:port]) becomes the device address on add, as typed.
-- **Import devices** (built-in icon button after Add manually, icon download): the
-  client asks for a CSV file (open picker through `IDialogService.OpenFileAsync`) and reads it with
+- **Import devices** (built-in icon button after Add manually, icon download): first the dialog "Import from file"
+  (`Discovery/ImportHelpWindow` + `ImportHelpViewModel`, single operation: the columns, the example
+  `DeviceImportFile.Example` in a `ui:CodeView` (the user docs show the same, test `DeviceImportFileTests`), the limits;
+  Cancel / **Choose file**), then the client asks for a CSV file (open picker through `IDialogService.OpenFileAsync`) and reads it with
   `Discovery/DeviceImportFile` (O(n)): the Export devices CSV or any CSV with an address column (header names
   case-insensitive: Address, IP address, IP, Host name; optional **User name** and **Password**; other columns
   ignored), or a plain file with one address per line; comma or semicolon, UTF-8 (BOM optional), UTF-16 with BOM,

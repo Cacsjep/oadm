@@ -1,0 +1,39 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Client.Discovery"
+        x:Class="Oadm.Client.Discovery.ImportHelpWindow"
+        x:DataType="vm:ImportHelpViewModel"
+        Title="Import from file"
+        Width="600" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <!-- Before the file picker of "Import from file": the columns and an example. Single operation. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="Import from file" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <TextBlock TextWrapping="Wrap" Text="{x:Static vm:ImportHelpViewModel.Intro}" />
+        <Grid Classes="form" ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto">
+          <TextBlock Grid.Row="0" Classes="secondary" Text="Address" />
+          <TextBlock Grid.Row="0" Grid.Column="1" TextWrapping="Wrap" Text="{x:Static vm:ImportHelpViewModel.AddressText}" />
+          <TextBlock Grid.Row="1" Classes="secondary" Text="User name, Password" />
+          <TextBlock Grid.Row="1" Grid.Column="1" TextWrapping="Wrap" Text="{x:Static vm:ImportHelpViewModel.LoginText}" />
+          <TextBlock Grid.Row="2" Classes="secondary" Text="Tags" />
+          <TextBlock Grid.Row="2" Grid.Column="1" TextWrapping="Wrap" Text="{x:Static vm:ImportHelpViewModel.TagsText}" />
+        </Grid>
+        <TextBlock Classes="secondary" Text="Example" />
+        <ui:CodeView Language="Plain" Text="{x:Static vm:ImportHelpViewModel.Example}" />
+        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{x:Static vm:ImportHelpViewModel.LimitsText}" />
+      </StackPanel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" IsDefault="True" Command="{Binding ChooseCommand}">
+        <ui:IconLabel Icon="{StaticResource Icon.download}" Text="Choose file" />
+      </Button>
+    </ui:DialogFooter>
+  </Grid>
+</Window>

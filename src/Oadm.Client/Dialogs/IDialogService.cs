@@ -46,6 +46,9 @@ public interface IDialogService
     /// <summary>Save file picker (overwrite asked); writes <paramref name="content"/>. Returns the file name, null when cancelled.</summary>
     Task<string?> SaveFileAsync(string title, string suggestedFileName, FileType type, byte[] content);
 
+    /// <summary>"Import from file" before its file picker: the columns and an example; true when the user chose to pick a file.</summary>
+    Task<bool> ShowImportHelpAsync(Oadm.Client.Discovery.ImportHelpViewModel help);
+
     /// <summary>Open file picker; reads at most <paramref name="maxBytes"/> + 1 bytes (more = <see cref="PickedFile.IsTooLarge"/>). Null when cancelled.</summary>
     Task<PickedFile?> OpenFileAsync(string title, FileType type, int maxBytes);
 

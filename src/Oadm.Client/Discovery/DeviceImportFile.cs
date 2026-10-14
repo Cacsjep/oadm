@@ -52,7 +52,16 @@ public sealed class DeviceImportException : Exception
 /// </summary>
 public sealed class DeviceImportFile
 {
+    /// <summary>The example of the "Import from file" dialog (and the user docs): every column once.</summary>
+    public const string Example =
+        "Address,User name,Password,Tags\n" +
+        "10.0.0.48,root,MyPassword1,Building A\n" +
+        "10.0.0.49,,,Building A; PTZ\n" +
+        "camera-lobby.example.com,operator,Secret-2026,Lobby\n" +
+        "https://10.0.0.60:8443,,,";
+
     /// <summary>Largest file read (2 MB: 10,000 lines of an export are about 1.3 MB).</summary>
+
     public const int MaxBytes = 2 * 1024 * 1024;
 
     /// <summary>Most address lines of one file.</summary>

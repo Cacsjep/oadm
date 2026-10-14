@@ -16,6 +16,42 @@ public sealed class DeviceImportFileTests
 {
     private static DeviceImportFile Parse(string text) => DeviceImportFile.Parse("devices.csv", text);
 
+    private static string SourceFolder([System.Runtime.CompilerServices.CallerFilePath] string file = "") => Path.GetDirectoryName(file)!;
+
+    [Fact]
+    public void The_examples_of_the_user_docs_import_as_described()
+    {
+        // website/src/content/docs/devices/add.mdx, "Import from a file": both examples, read from the page itself.
+        var root = SourceFolder();
+        while (!File.Exists(Path.Combine(root, "Oadm.sln")))
+        {
+            root = Path.GetDirectoryName(root) ?? throw new InvalidOperationException("Repository not found");
+        }
+
+        var page = File.ReadAllText(Path.Combine(root, "website", "src", "content", "docs", "devices", "add.mdx"));
+        string Block(string title)
+        {
+            var start = page.IndexOf($"title=\"{title}\"", StringComparison.Ordinal);
+            Assert.True(start >= 0, $"{title} is missing on the page");
+            start = page.IndexOf('\n', start) + 1;
+            return page[start..page.IndexOf("```", start, StringComparison.Ordinal)];
+        }
+
+        Assert.Equal(DeviceImportFile.Example, Block("devices.csv").Trim().ReplaceLineEndings("\n")); // the dialog shows the same example
+        DeviceImportFile csv = Parse(Block("devices.csv"));
+        Assert.All(csv.Lines, l => Assert.Null(l.Problem));
+        Assert.Equal(["10.0.0.48", "10.0.0.49", "camera-lobby.example.com", "https://10.0.0.60:8443"], csv.Lines.Select(l => l.Address));
+        Assert.Equal(("root", "MyPassword1"), (csv.Lines[0].UserName, csv.Lines[0].Password));
+        Assert.False(csv.Lines[1].HasCredentials);
+        Assert.Equal(["Building A", "PTZ"], csv.Lines[1].Tags);
+        Assert.Equal(["Lobby"], csv.Lines[2].Tags);
+        Assert.Empty(csv.Lines[3].Tags);
+
+        DeviceImportFile plain = DeviceImportFile.Parse("devices.txt", Block("devices.txt"));
+        Assert.Equal(["10.0.0.48", "10.0.0.49", "camera-lobby.example.com"], plain.Lines.Select(l => l.Address));
+        Assert.All(plain.Lines, l => Assert.Null(l.Problem));
+    }
+
     [Fact]
     public void A_plain_file_has_one_address_per_line()
     {
@@ -138,6 +174,7 @@ public sealed class DeviceImportFileTests
         using var fx = new DevicesFixture();
         AddDevicesViewModel? shown = null;
         fx.Dialogs.ShowAddDevicesAsync(Arg.Do<AddDevicesViewModel>(p => shown = p)).Returns(false);
+        fx.Dialogs.ShowImportHelpAsync(Arg.Any<ImportHelpViewModel>()).Returns(true); // "Choose file" in the dialog before the picker
         fx.Dialogs.OpenFileAsync(Arg.Any<string>(), Arg.Any<FileType>(), Arg.Any<int>())
             .Returns(new PickedFile("site.csv", Encoding.UTF8.GetBytes("Address\n10.0.0.48\n10.0.0.49\nbad address\n"), false));
 
@@ -161,6 +198,13 @@ public sealed class DeviceImportFileTests
         fx.Dialogs.OpenFileAsync(Arg.Any<string>(), Arg.Any<FileType>(), Arg.Any<int>()).Returns((PickedFile?)null);
         await fx.Devices.OpenHostPageAsync(HostPages.AddImport);
         Assert.Null(shown);
+
+        // Cancel in the dialog before the picker: no picker at all.
+        fx.Dialogs.ClearReceivedCalls();
+        fx.Dialogs.ShowImportHelpAsync(Arg.Any<ImportHelpViewModel>()).Returns(false);
+        await fx.Devices.OpenHostPageAsync(HostPages.AddImport);
+        await fx.Dialogs.Received(1).ShowImportHelpAsync(Arg.Any<ImportHelpViewModel>());
+        await fx.Dialogs.DidNotReceive().OpenFileAsync(Arg.Any<string>(), Arg.Any<FileType>(), Arg.Any<int>());
     }
 
     [Fact]
