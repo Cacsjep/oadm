@@ -6,6 +6,19 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+## [3.0.2] - 2026-10-14
+
+### Added
+
+- **Web View**: the page select also opens the camera's **Overlays** and **Privacy masks** pages.
+
+### Fixed
+
+- **Credentials**: logins saved with "Save to credential list" while adding devices show up when the page opens; before,
+  they showed only after the client restarted.
+- **Web View** on Windows: the page failed with "Access is denied" in the installed client. The browser data is now kept
+  in the user's own folder instead of next to the program.
+
 ## [3.0.0] - 2026-10-13
 
 ### Added
@@ -394,6 +407,7 @@ version and date, and the release workflow copies it into the GitHub release.
 - The splash logo's lens is centered in its ring.
 - The server publish no longer contains an IIS `web.config` and other unused web files.
 
+[3.0.2]: https://github.com/Cacsjep/oadm/releases/tag/v3.0.2
 [2.3.0]: https://github.com/Cacsjep/oadm/releases/tag/v2.3.0
 [2.1.1]: https://github.com/Cacsjep/oadm/releases/tag/v2.1.1
 [2.1.0]: https://github.com/Cacsjep/oadm/releases/tag/v2.1.0
