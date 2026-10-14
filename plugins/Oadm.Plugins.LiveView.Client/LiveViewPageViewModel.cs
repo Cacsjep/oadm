@@ -104,7 +104,7 @@ public sealed partial class LiveViewPageViewModel : ObservableObject, IDisposabl
 
     public bool IsEditing => ActiveTab?.IsEditing == true;
 
-    public bool CanEdit => MayManage && ActiveTab is { IsEditing: false };
+    public bool CanEdit => MayManage && ActiveTab is { IsEditing: false, IsSingleCamera: false };
 
     partial void OnSearchTextChanged(string value) => Tree.Rebuild(_ctx.Devices, value);
 
@@ -172,13 +172,33 @@ public sealed partial class LiveViewPageViewModel : ObservableObject, IDisposabl
         ActiveTab = tab;
     }
 
-    /// <summary>A click on a camera while editing adds it to the first free place.</summary>
-    public void AddCamera(IDeviceInfo device)
+    /// <summary>
+    /// A click on a camera in the tree: while editing it goes to the first free place of the view, otherwise it opens
+    /// alone in its own tab (or that tab comes to the front).
+    /// </summary>
+    public void ClickCamera(IDeviceInfo device)
     {
-        if (ActiveTab is { IsEditing: true } tab)
+        ArgumentNullException.ThrowIfNull(device);
+        if (ActiveTab is { IsEditing: true } editing)
         {
-            tab.AddToFirstFree(device);
+            editing.AddToFirstFree(device);
+            return;
         }
+
+        if (_life.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (Tabs.FirstOrDefault(t => t.SingleCamera == device.Id) is { } open)
+        {
+            ActiveTab = open;
+            return;
+        }
+
+        var tab = new ViewTab(this, device);
+        Tabs.Add(tab);
+        ActiveTab = tab;
     }
 
     /// <summary>The pen of a view's row: its tab to the front in edit mode.</summary>
@@ -349,7 +369,7 @@ public sealed partial class LiveViewPageViewModel : ObservableObject, IDisposabl
     {
         var trimmed = name.Trim();
         var taken = Views.Any(v => v.Id != tab.Id && string.Equals(v.Name, trimmed, StringComparison.OrdinalIgnoreCase))
-            || Tabs.Any(t => t != tab && t.Saved is null && string.Equals(t.Name.Trim(), trimmed, StringComparison.OrdinalIgnoreCase));
+            || Tabs.Any(t => t != tab && t.Saved is null && !t.IsSingleCamera && string.Equals(t.Name.Trim(), trimmed, StringComparison.OrdinalIgnoreCase));
         return taken ? ViewRules.NameTaken(trimmed) : null;
     }
 

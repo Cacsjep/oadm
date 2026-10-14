@@ -2,7 +2,9 @@ using System.Diagnostics;
 using System.Text.Json;
 
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.VisualTree;
 
 using Oadm.Plugins.LiveView.Client;
 using Oadm.Sdk.Client;
@@ -184,7 +186,7 @@ public sealed class LiveViewTests(ITestOutputHelper output)
             Assert.True(tab.ShowEmptyHint);
 
             Assert.True(tab.Drop(cam1, 2, 2));
-            vm.AddCamera(cam2); // a click on a camera: the first free place
+            vm.ClickCamera(cam2); // a click on a camera while editing: the first free place
             Assert.Equal(2, tab.Tiles.Count);
             var video = (FakeVideo)tab.Tiles[0].Video!;
             Assert.Equal(cam1.Id, video.Shown);
@@ -207,6 +209,35 @@ public sealed class LiveViewTests(ITestOutputHelper output)
             Assert.Equal(2, other.ActiveTab!.Tiles.Count);
             Assert.False(other.ActiveTab.IsEditing);
             Assert.True(other.Views[0].IsActive);
+        }
+    });
+
+    [Fact]
+    public Task A_click_on_a_camera_outside_editing_opens_it_alone_in_its_own_tab() => OnUi(async () =>
+    {
+        var (host, _, vm, cam1, cam2) = Page();
+        using (host)
+        using (vm)
+        {
+            Assert.True(await Headless.UntilAsync(() => vm.IsLoaded));
+            vm.ClickCamera(cam1);
+            var single = vm.ActiveTab!;
+            Assert.True(single.IsSingleCamera);
+            Assert.False(single.IsEditing);
+            Assert.False(vm.CanEdit);
+            Assert.Equal("10.0.0.48", single.Title);
+            var tile = Assert.Single(single.Tiles);
+            Assert.Equal(new ViewTile(cam1.Id, 0, 0, 0, LiveViewPluginInfo.GridSize, LiveViewPluginInfo.GridSize), tile.ToTile());
+            Assert.Equal(cam1.Id, ((FakeVideo)tile.Video!).Shown);
+
+            vm.ClickCamera(cam2);
+            Assert.Equal(2, vm.Tabs.Count);
+            vm.ClickCamera(cam1); // the same camera again: its tab to the front, no second tab
+            Assert.Same(single, vm.ActiveTab);
+            Assert.Equal(2, vm.Tabs.Count);
+
+            await single.CloseCommand.ExecuteAsync(null); // nothing to save: closes without asking
+            Assert.Single(vm.Tabs);
         }
     });
 
@@ -418,6 +449,15 @@ public sealed class LiveViewTests(ITestOutputHelper output)
             Assert.True(await Headless.UntilAsync(() => tiles.All(t => ((Oadm.Client.LiveView.LiveVideoViewModel)t.Video!.View.DataContext!).Image is not null), 30));
             Headless.Capture(window, "plugin-live-view.png");
 
+            // The camera under the pointer gets a thin purple frame (not while editing: the edit frame has its own).
+            var frame = view.GetVisualDescendants().OfType<TileFrame>().First(f => f.Tile == tiles[0]);
+            var hover = frame.GetVisualChildren().OfType<Border>().Single(b => b.Classes.Contains("viewTileHover"));
+            Assert.False(hover.IsVisible);
+            window.MouseMove(frame.TranslatePoint(new Point(frame.Bounds.Width / 2, frame.Bounds.Height / 2), window)!.Value);
+            Headless.Pump();
+            Assert.True(hover.IsVisible);
+            Headless.Capture(window, "plugin-live-view-hover.png");
+
             // Edit: the cell lines and a frame per camera; a camera dragged in lands on the free cells.
             vm.EditViewCommand.Execute(vm.Views[0]);
             Headless.Pump();
@@ -436,6 +476,7 @@ public sealed class LiveViewTests(ITestOutputHelper output)
             Assert.Equal(preview, tiles[3].ToTile()); // it landed where the preview showed
             Assert.False(LiveViewPageView.DropOn(grid, vm.ActiveTab, vm.Tree.DeviceRows[0], new Point(-5, 10))); // outside the grid
             Headless.Pump();
+            Assert.False(view.GetVisualDescendants().OfType<TileFrame>().First().GetVisualChildren().OfType<Border>().Single(b => b.Classes.Contains("viewTileHover")).IsVisible);
             Headless.Capture(window, "plugin-live-view-edit.png");
 
             // The left card collapses like the navigation rail: the views stay as icons, the grid gets the room.
@@ -445,6 +486,15 @@ public sealed class LiveViewTests(ITestOutputHelper output)
             Headless.Pump();
             Assert.True(view.ActiveGrid!.Bounds.Width > before + 200);
             Headless.Capture(window, "plugin-live-view-collapsed.png");
+
+            // A click on a camera outside editing: the camera alone in its own tab.
+            vm.TogglePanelCommand.Execute(null);
+            vm.ClickCamera(cameras[1]);
+            Headless.Pump();
+            Assert.True(vm.ActiveTab!.IsSingleCamera);
+            var single = vm.ActiveTab.Tiles.Single();
+            Assert.True(await Headless.UntilAsync(() => ((Oadm.Client.LiveView.LiveVideoViewModel)single.Video!.View.DataContext!).Image is not null, 30));
+            Headless.Capture(window, "plugin-live-view-single.png");
             window.Close();
             vm.Dispose();
             return true;

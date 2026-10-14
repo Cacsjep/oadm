@@ -1389,6 +1389,15 @@
     <Setter Property="BorderThickness" Value="2" />
     <Setter Property="Padding" Value="8,4,4,4" />
   </Style>
+  <!-- The camera under the pointer (outside editing): a thin accent frame over the picture -->
+  <Style Selector="Border.viewTileHover">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector=":is(Panel).viewTile:not(.editing):pointerover > Border.viewTileHover">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
   <Style Selector="TextBlock.viewTileTitle">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
     <Setter Property="VerticalAlignment" Value="Center" />

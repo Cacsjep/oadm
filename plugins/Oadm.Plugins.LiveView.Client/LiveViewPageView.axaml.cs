@@ -33,7 +33,7 @@ public sealed partial class LiveViewPageView : UserControl
         {
             if (!_dragEnded)
             {
-                _vm?.AddCamera(row.Device);
+                _vm?.ClickCamera(row.Device);
             }
 
             _dragEnded = false;

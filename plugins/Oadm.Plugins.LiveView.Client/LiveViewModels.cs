@@ -134,6 +134,19 @@ public sealed partial class ViewTab : ValidatingViewModel, IDisposable
         Load(saved?.Tiles ?? []);
     }
 
+    /// <summary>One camera alone in its tab, filling it: a click on a camera outside editing. Never edited or saved.</summary>
+    internal ViewTab(LiveViewPageViewModel owner, IDeviceInfo device)
+        : this(owner, null, device.Address)
+    {
+        SingleCamera = device.Id;
+        Load([new ViewTile(device.Id, 0, 0, 0, LiveViewPluginInfo.GridSize, LiveViewPluginInfo.GridSize)]);
+    }
+
+    /// <summary>The camera of a single-camera tab; null for a view.</summary>
+    public Guid? SingleCamera { get; }
+
+    public bool IsSingleCamera => SingleCamera is not null;
+
     /// <summary>The stored view; null until a new view is saved.</summary>
     public SavedView? Saved { get; private set; }
 

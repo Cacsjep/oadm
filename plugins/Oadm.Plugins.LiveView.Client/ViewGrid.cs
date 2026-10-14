@@ -177,6 +177,7 @@ public sealed class TileFrame : Panel
     private readonly ContentControl _video = new();
     private readonly TextBlock _missing = new() { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
     private readonly Border _edit = new();
+    private readonly Border _hover = new() { IsHitTestVisible = false };
     private readonly TextBlock _title = new();
     private readonly Button _remove = new();
     private TileViewModel? _tile;
@@ -209,7 +210,8 @@ public sealed class TileFrame : Panel
         _edit.Child = header;
         _edit.IsVisible = false;
 
-        Children.AddRange([_video, _missing, _edit]);
+        _hover.Classes.Add("viewTileHover"); // the purple frame while the pointer is over the camera (theme)
+        Children.AddRange([_video, _missing, _hover, _edit]);
         _edit.PointerPressed += OnEditPressed;
         _edit.PointerMoved += OnEditMoved;
         _edit.PointerReleased += OnEditReleased;
@@ -280,6 +282,7 @@ public sealed class TileFrame : Panel
         _missing.IsVisible = _missing.Text is not null;
         _title.Text = tile?.Title;
         _edit.IsVisible = tile?.Owner.IsEditing == true;
+        Classes.Set("editing", _edit.IsVisible); // the edit frame has its own border: no hover frame
     }
 
     private void OnEditPressed(object? sender, PointerPressedEventArgs e)
