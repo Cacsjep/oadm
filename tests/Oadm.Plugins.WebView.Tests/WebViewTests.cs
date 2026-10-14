@@ -74,6 +74,10 @@ public sealed class WebViewTests(ITestOutputHelper output)
         Assert.Equal(2, opened.Count);
         Assert.Equal(2, ctx.Web.Sessions.Count);
 
+        // The camera's own pages keep their route after the "#".
+        vm.SelectedPreset = WebPagePreset.All.Single(p => p.Name == "Privacy masks");
+        Assert.Equal(new Uri(ctx.Web.Sessions[0].Origin, "/camera/index.html#/video/privacymasks"), opened[^1]);
+
         // Switching tabs shows that tab's page in the select without opening anything.
         vm.ActiveTab = vm.Tabs[1];
         Assert.Equal("Web interface", vm.SelectedPreset.Name);

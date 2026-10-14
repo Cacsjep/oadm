@@ -11,7 +11,7 @@ interface of the managed devices in browser tabs inside OADM, logged in with the
 | Certificates | No "allow untrusted" switch: the server connects with the device's stored scheme and pinned certificate like every other request. A device with Certificate changed shows that text. |
 | Tree | Left card, below the page select and the search: devices grouped by tag like the grid's Group by tag ("No tag" last; a device with several tags under each; no counts), devices by IPv4 address with the shared `ui:DeviceIcon` (category icon, amber or red by status, the status message on hover) and the address only (no model). Search over address, model, MAC, host name and tags. |
 | Tabs | One tab per device: a click on an open device brings its tab to the front. One row above the page: Close all tabs, Reload, Back (the browser's own history), then the tabs (the height of a select field), scrolling sideways when they do not fit. The page fills the card from edge to edge. |
-| Page select | Above the search: Web interface (`/`), Image Health Analytics (`/local/AXISImageHealthAnalytics/index.html`), Object Analytics (`/local/objectanalytics/index.html#/`), License Plate Verifier (`/local/fflprapp/setup.html#/home`), Custom (a path field below the select, opened with Enter or when the field is left; error below the field when it does not start with "/" or leaves the device). The select shows the active tab's page; changing it opens the page in the active tab; new tabs use the page chosen last. |
+| Page select | Above the search: Web interface (`/`), Overlays (`/camera/index.html#/video/overlays`), Privacy masks (`/camera/index.html#/video/privacymasks`), Image Health Analytics (`/local/AXISImageHealthAnalytics/index.html`), Object Analytics (`/local/objectanalytics/index.html#/`), License Plate Verifier (`/local/fflprapp/setup.html#/home`), Custom (a path field below the select, opened with Enter or when the field is left; error below the field when it does not start with "/" or leaves the device). The select shows the active tab's page; changing it opens the page in the active tab; new tabs use the page chosen last. |
 | Roles | Operators and administrators (operators may already open a device's web interface from the grid). Every open is in the audit log ("Opened web interface", the device). |
 | Refused | Certificate changed, Credentials required and Password not set are refused with the shared status text (the tab shows it); the device's own login prompt never appears. |
 
@@ -49,7 +49,9 @@ interface of the managed devices in browser tabs inside OADM, logged in with the
   (`invokeCSharpAction`), and Back is checked then. No limit of our own: the browser keeps about 50 entries per tab.
 - **Browser runtime** (`WebRuntime.Check`, `WebViewAdapterInfo`): WebView2 on Windows, WKWebView on macOS, WPE WebKit or
   WebKitGTK on Linux. Missing: the page says what to install ("The Microsoft Edge WebView2 Runtime is not installed ...",
-  the apt / dnf / pacman package of WebKitGTK 4.1). The `oadm-client` .deb recommends `libwebkit2gtk-4.1-0`.
+  the apt / dnf / pacman package of WebKitGTK 4.1). The `oadm-client` .deb recommends `libwebkit2gtk-4.1-0`. WebView2
+  keeps its data in `%LOCALAPPDATA%\Oadm\WebView2`: its default, a folder next to the exe, is not writable in Program
+  Files (access denied in the installed client).
 - **Fake mode** (`FakeOadmApi.DeviceWeb.cs`): every device answers with a small page naming it and the path; WebSockets
   echo.
 

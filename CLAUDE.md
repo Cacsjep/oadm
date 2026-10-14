@@ -1700,7 +1700,7 @@ login. Decisions, the relay and tests: plugin `README.md`.
   address gets its session cookie (others 403, another Host 400); requests stay on the device; refused statuses are not
   contacted; every open is audited. Permissions "oadm.web-view:show" and "oadm.web-view:open" (full device control), both
   off for the built-in Operator by default; without "open" the page says "Your role does not allow opening devices."
-- Page: left card: the page select (Web interface, Image Health Analytics, Object Analytics, License Plate Verifier,
+- Page: left card: the page select (Web interface, Overlays, Privacy masks, Image Health Analytics, Object Analytics, License Plate Verifier,
   Custom with a path field, error below it; it shows the active tab's page, changing it opens the page in the active tab,
   new tabs use the page chosen last), the search, the devices grouped by tag (like Group by tag, "No tag" last, no
   counts; `ui:DeviceIcon` + address). Right card: one row Close all tabs, Reload, Back (browser history), the tabs (one per
