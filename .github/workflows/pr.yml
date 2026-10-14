@@ -2,8 +2,8 @@ name: pr
 
 # Builds and unit-tests every pull request (Dependabot updates included) on Linux before it is merged. The full matrix
 # with the installers runs only for release tags (release.yml). Tests that depend on real elapsed time stay local.
-# A pull request that changes only the website (website/) skips build and tests; the job still reports, because it is
-# the required check on main.
+# A pull request that changes only the website, docs/, Markdown files or the release and Pages workflows skips build
+# and tests; the job still reports, because it is the required check on main.
 on:
   pull_request:
     branches: [main]
@@ -30,7 +30,7 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          if git diff --name-only "$BASE"...HEAD | grep -qvE '^(website/|\.github/workflows/pages\.yml$)'; then
+          if git diff --name-only "$BASE"...HEAD | grep -qvE '^(website/|docs/|\.github/workflows/(pages|release)\.yml$)|\.md$'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "Only the website changed: no build and tests."

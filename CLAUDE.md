@@ -116,7 +116,7 @@ moved to the OSMF EULA); vulnerable transitive npm packages of the website are p
 `website/package.json` (postcss-selector-parser 7.1.6; katex 0.18.9 under mermaid 11) until their parents update; Dependabot alerts and security updates, private
 vulnerability reporting and secret scanning with push protection are on; `SECURITY.md` says how to report; `codeql.yml`
 runs CodeQL (C#) on pushes to main, pull requests and weekly; `pr.yml` builds and unit-tests every pull request on Linux
-(Timing tests excluded); changes only in `website/` skip CodeQL and the .NET build and tests
+(Timing tests excluded); changes only in `website/`, `docs/`, Markdown files (`*.md`) or the release and Pages workflows skip CodeQL and the .NET build and tests
 (`pr.yml` still reports its required check, with the steps skipped); rulesets on `main`: no force push or deletion (everyone), changes through a pull request with
 the passing check "tests ubuntu-latest" (administrators bypass); minimal issue templates (bug, feature) and pull request
 template (one line); checkout runs with `persist-credentials: false`, workflow permissions
