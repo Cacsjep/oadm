@@ -1,6 +1,6 @@
 name: pages
 
-# Builds the website (website/, Astro Starlight) and publishes it to GitHub Pages: https://cacsjep.github.io/oadm/
+# Builds the website (website/, Astro Starlight) and publishes it to GitHub Pages: https://oadm.app/ (custom domain)
 # Also after every successful release: the download links and "What's new" are read from the latest release at build time.
 # The SDK reference (website/src/content/docs/api/) is generated from the SDK doc comments by tools/Oadm.ApiDocs first, and
 # the tutorials show the code of samples/, so changes of the SDK, the samples or the generator publish too.

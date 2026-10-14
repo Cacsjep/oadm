@@ -9,10 +9,10 @@ import { existsSync, readFileSync } from 'node:fs';
 const apiSidebarFile = new URL('./src/generated/api-sidebar.json', import.meta.url);
 const apiSidebar = existsSync(apiSidebarFile) ? JSON.parse(readFileSync(apiSidebarFile, 'utf-8')) : null;
 
-// GitHub Pages project site: https://cacsjep.github.io/oadm/
+// GitHub Pages with the custom domain https://oadm.app/ (DNS at world4you; the old https://cacsjep.github.io/oadm/
+// addresses redirect here).
 export default defineConfig({
-	site: 'https://cacsjep.github.io',
-	base: '/oadm',
+	site: 'https://oadm.app',
 	// The developer tutorials show the sample plugins of samples/ (outside website/) as they are: allow reading them.
 	vite: { server: { fs: { allow: ['..'] } } },
 	integrations: [
@@ -66,13 +66,13 @@ export default defineConfig({
 			favicon: '/favicon.png',
 			customCss: ['./src/styles/oadm.css'],
 			head: [
-				{ tag: 'script', attrs: { src: '/oadm/lightbox.js', defer: true } },
+				{ tag: 'script', attrs: { src: '/lightbox.js', defer: true } },
 				// The picture a shared link shows (LinkedIn, Teams, X, Slack): 1200 x 630, absolute URL.
-				{ tag: 'meta', attrs: { property: 'og:image', content: 'https://cacsjep.github.io/oadm/og-image.png' } },
+				{ tag: 'meta', attrs: { property: 'og:image', content: 'https://oadm.app/og-image.png' } },
 				{ tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
 				{ tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
 				{ tag: 'meta', attrs: { property: 'og:image:alt', content: 'OADM: open source AXIS device management for Windows, Linux and macOS' } },
-				{ tag: 'meta', attrs: { name: 'twitter:image', content: 'https://cacsjep.github.io/oadm/og-image.png' } },
+				{ tag: 'meta', attrs: { name: 'twitter:image', content: 'https://oadm.app/og-image.png' } },
 			],
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/Cacsjep/oadm' },

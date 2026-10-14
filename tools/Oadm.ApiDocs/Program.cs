@@ -1,10 +1,10 @@
 using Oadm.ApiDocs;
 
 // Generates the SDK reference of the website from Oadm.Sdk and Oadm.Sdk.Client (next to this tool, with their doc
-// comment files). Usage: Oadm.ApiDocs [--repo <repository root>] [--base /oadm/]
+// comment files). Usage: Oadm.ApiDocs [--repo <repository root>] [--base /]
 // Writes website/src/content/docs/api/ (replaced as a whole) and website/src/generated/api-sidebar.json.
 string? repo = null;
-var basePath = "/oadm/";
+var basePath = "/";
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i])
@@ -16,7 +16,7 @@ for (var i = 0; i < args.Length; i++)
             basePath = args[++i];
             break;
         default:
-            await Console.Error.WriteLineAsync($"Unknown argument {args[i]}. Usage: Oadm.ApiDocs [--repo <folder>] [--base /oadm/]");
+            await Console.Error.WriteLineAsync($"Unknown argument {args[i]}. Usage: Oadm.ApiDocs [--repo <folder>] [--base /]");
             return 2;
     }
 }

@@ -122,11 +122,11 @@ the passing check "tests ubuntu-latest" (administrators bypass); minimal issue t
 template (one line); checkout runs with `persist-credentials: false`, workflow permissions
 are `contents: read` except the release job (`contents: write`).
 Website: landing page and user docs in `website/` with Astro Starlight (MkDocs Material is in
-maintenance mode), base `/oadm`, published to https://cacsjep.github.io/oadm/ by `pages.yml` on pushes to main that change
+maintenance mode), own domain https://oadm.app/ (DNS at world4you: four A records to GitHub Pages, `www` CNAME `cacsjep.github.io`; custom domain and Enforce HTTPS in the Pages settings; the old cacsjep.github.io/oadm addresses redirect), published by `pages.yml` on pushes to main that change
 `website/` and after every successful `release` run (`workflow_run`, so the static download links and "What's new in
 vX" match the new release; the browser also re-reads the latest release with `cache: 'no-store'`) (deploy job `pages: write`, `id-token: write`); npm versions pinned exactly, Dependabot npm group `website`;
 screenshots in `website/src/assets/screens/` come from the headless tests (`OADM_SCREENSHOT_DIR`), click to enlarge; dark only (no theme switch); the landing page has its own slim top bar instead of the docs header (`TopBar.astro`: GitHub, LinkedIn and Discord left, Documentation and Bug report right, fixed, no border), its download buttons link the latest release files (Linux = both .deb); texts follow "Wording"; search: the landing title names "AXIS Device Manager alternative", the page `start/axis-device-manager-alternative` compares with ADM (the same work, more in OADM, "Not in OADM yet": several servers in one client, firmware lookup, warranty data; no claims about ADM), `StructuredData.astro` (SoftwareApplication JSON-LD). **SDK reference**
-(Developers > SDK reference, `/oadm/api/`): `tools/Oadm.ApiDocs` reads the built `Oadm.Sdk` and `Oadm.Sdk.Client` with Roslyn
+(Developers > SDK reference, `/api/`): `tools/Oadm.ApiDocs` reads the built `Oadm.Sdk` and `Oadm.Sdk.Client` with Roslyn
 (their doc comment files: `GenerateDocumentationFile` in both projects, CS1591 off, never published:
 `PublishReferencesDocumentationFiles` false) and writes one page per public type (signature with nullability, members,
 XAML properties of controls, enum values, links between types and to the .NET docs, "Used by", the guide page) into

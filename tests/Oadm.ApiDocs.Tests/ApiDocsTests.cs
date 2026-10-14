@@ -10,7 +10,7 @@ namespace Oadm.ApiDocs.Tests;
 /// <summary>The SDK reference generated from the real SDK assemblies next to the tests.</summary>
 public sealed partial class ApiDocsTests
 {
-    private static readonly Lazy<ApiDocs> Docs = new(() => Pages.Generate(ApiModel.Load(AppContext.BaseDirectory, Repository()), "/oadm/"));
+    private static readonly Lazy<ApiDocs> Docs = new(() => Pages.Generate(ApiModel.Load(AppContext.BaseDirectory, Repository()), "/"));
 
     private static string Page(string path) => Docs.Value.Pages["api/" + path + ".md"];
 
@@ -40,9 +40,18 @@ public sealed partial class ApiDocsTests
     public void Types_link_to_their_pages_and_to_the_dotnet_docs()
     {
         var page = Page("sdk/vapix/ivapixclient");
-        Assert.Contains("[`ITaskExecutionContext.Vapix`](/oadm/api/sdk/plugins/itaskexecutioncontext/#vapix)", page, StringComparison.Ordinal);
+        Assert.Contains("[`ITaskExecutionContext.Vapix`](/api/sdk/plugins/itaskexecutioncontext/#vapix)", page, StringComparison.Ordinal);
         Assert.Contains("(https://learn.microsoft.com/dotnet/api/system.notsupportedexception)", page, StringComparison.Ordinal);
-        Assert.Contains("Guide: [Devices and VAPIX](/oadm/dev/devices/)", page, StringComparison.Ordinal);
+        Assert.Contains("Guide: [Devices and VAPIX](/dev/devices/)", page, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Links_at_the_domain_root_stay_on_the_site()
+    {
+        // The site lives at the root of its domain: "//api/..." would point to another host.
+        Assert.DoesNotContain(Docs.Value.Pages, p => p.Value.Contains("](//", StringComparison.Ordinal));
+        string page = Pages.Generate(ApiModel.Load(AppContext.BaseDirectory, Repository()), "/oadm/").Pages["api/sdk/vapix/ivapixclient.md"];
+        Assert.Contains("](/oadm/api/sdk/plugins/itaskexecutioncontext/#vapix)", page, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -193,12 +202,12 @@ public sealed partial class ApiDocsTests
     private static string Repository() =>
         typeof(ApiDocsTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().Single(a => a.Key == "RepositoryRoot").Value!;
 
-    /// <summary>"api/sdk/vapix/ivapixclient.md" -> "/oadm/api/sdk/vapix/ivapixclient/".</summary>
+    /// <summary>"api/sdk/vapix/ivapixclient.md" -> "/api/sdk/vapix/ivapixclient/".</summary>
     private static string Url(string path)
     {
         var page = path[..^".md".Length];
         page = page.EndsWith("/index", StringComparison.Ordinal) ? page[..^"/index".Length] : page;
-        return "/oadm/" + page + "/";
+        return "/" + page + "/";
     }
 
     /// <summary>The ids the site gives the page's headings (same rules as the generator) and the spans it writes.</summary>
@@ -238,7 +247,7 @@ public sealed partial class ApiDocsTests
     [GeneratedRegex(@"\.dll[^\n]*\n\n(?!```)\S")]
     private static partial Regex TypeSummaryRegex();
 
-    [GeneratedRegex(@"\]\((?<page>/oadm/api/[^)#]*)(?:#(?<anchor>[^)]*))?\)")]
+    [GeneratedRegex(@"\]\((?<page>/api/[^)#]*)(?:#(?<anchor>[^)]*))?\)")]
     private static partial Regex LinkRegex();
 
     [GeneratedRegex(@"^#{2,4} (.+)$")]

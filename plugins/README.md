@@ -2,7 +2,7 @@
 
 How to build a task plugin (server part, optional client dialog), a toolbar plugin and a core plugin with its own
 rail page. Contracts: `src/Oadm.Sdk` (server) and `src/Oadm.Sdk.Client` (client); every type and member is in the SDK
-reference of the website (https://cacsjep.github.io/oadm/api/, `manage build docs` locally). The spec and the device safety HARD
+reference of the website (https://oadm.app/api/, `manage build docs` locally). The spec and the device safety HARD
 RULE are in `CLAUDE.md` ("Plugin System").
 
 ## Start a plugin

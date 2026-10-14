@@ -20,7 +20,9 @@ internal sealed class Layout
     public Layout(ApiModel model, string basePath)
     {
         Model = model;
-        _base = "/" + basePath.Trim('/') + "/";
+        // "/" (the site at the domain root) stays "/", never "//" (a link to another host).
+        string trimmed = basePath.Trim('/');
+        _base = trimmed.Length == 0 ? "/" : "/" + trimmed + "/";
         foreach (var type in model.Types)
         {
             // The same headings in the same order as the page (Pages.TypePage), so repeated names get the site's ids.
