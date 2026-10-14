@@ -631,7 +631,7 @@ servers), `data.deviceData.devices` {id, macAddress, address, httpPort, httpsPor
 `DeviceImportFile` (`CheckLine`: the same checks as a CSV): the address with its port when not 443 / 80 (`https://a:8443`,
 else `http://a:8080`), the login, the tags, and the MAC address as `ImportLine.ExpectedSerial`. Refused whole: not JSON or
 no device list ("not a device export of AXIS Device Manager"), `encrypted: true` ("Export the devices again ... without
-encryption"; ADM 5 wrote `false` even with its encryption option), another major format version, no devices. An export
+encryption"), another major format version, no devices. An export
 naming several ADM servers asks first (`DevicesViewModel.MultiServerText`: devices only the other servers reach show Not
 found). The add page says "Import from ADM" and "Devices from <file> (ADM server <name>)"; a row whose device answers with
 another MAC address is "Not added: Another device answers at this address (X). The file lists Y." and the server sent that
