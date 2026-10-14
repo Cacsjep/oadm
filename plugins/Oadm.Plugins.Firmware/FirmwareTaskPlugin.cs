@@ -193,6 +193,7 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
         UploadedFile file;
         FirmwareImageInfo image;
+        string? pathAdvice = null;
         using (var step = ctx.BeginStep(Steps.ValidateFile))
         {
             file = await ctx.Files.FindAsync(payload.FileId, ct).ConfigureAwait(false)
@@ -212,6 +213,13 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 throw new InvalidOperationException(check.Message + " Nothing was changed.");
             }
 
+            if (check.PathAdvice is { } advice)
+            {
+                // Advice only: the upgrade runs; AXIS OS 12.6.85 / 11.11.169 and later refuse it, then the error repeats it.
+                ctx.Log(TaskLogLevel.Warning, "Not the recommended upgrade path. " + advice);
+                pathAdvice = advice;
+            }
+
             step.Complete(Invariant($"{image.FileName}, {file.Size / (1024 * 1024)} MB: {check.Message}"));
         }
 
@@ -229,7 +237,7 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         }
 
         // 2. Upload. From here on the device may change.
-        var newVersionText = await UploadAsync(ctx, fwmgr, file, image, payload.FactoryDefaultMode, info.Version, ct).ConfigureAwait(false);
+        var newVersionText = await UploadAsync(ctx, fwmgr, file, image, payload.FactoryDefaultMode, info.Version, pathAdvice, ct).ConfigureAwait(false);
         var expected = AxisOsVersion.TryParse(newVersionText) ?? image.Version;
         var old = AxisOsVersion.TryParse(info.Version);
 
@@ -324,7 +332,8 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         };
     }
 
-    private async Task<string?> UploadAsync(ITaskExecutionContext ctx, FwmgrClient fwmgr, UploadedFile file, FirmwareImageInfo image, FactoryDefaultMode mode, string oldVersion, CancellationToken ct)
+    private async Task<string?> UploadAsync(ITaskExecutionContext ctx, FwmgrClient fwmgr, UploadedFile file, FirmwareImageInfo image, FactoryDefaultMode mode, string oldVersion,
+        string? pathAdvice, CancellationToken ct)
     {
         // Settings kept: OADM commits after verifying; if OADM never does, the device rolls back by itself.
         // Factory default: the device commits when it has started, because OADM's credentials are gone.
@@ -358,7 +367,9 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         }
         catch (FwmgrException ex) when (ex.NothingInstalled)
         {
-            throw new InvalidOperationException($"{ex.Message} The device still runs {oldVersion}.", ex);
+            // A refused upgrade off the recommended path: the advice says what to install first.
+            var path = pathAdvice is null ? string.Empty : " " + pathAdvice;
+            throw new InvalidOperationException($"{ex.Message} The device still runs {oldVersion}.{path}", ex);
         }
         catch (Exception ex) when (!ct.IsCancellationRequested && content.BytesSent == file.Size
             && ex is HttpRequestException or IOException or TaskCanceledException)

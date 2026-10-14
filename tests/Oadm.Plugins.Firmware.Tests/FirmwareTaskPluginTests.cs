@@ -318,6 +318,9 @@ public sealed class FirmwareTaskPluginTests
 
         Assert.Contains("does not match this device", ex.Message, StringComparison.Ordinal);
         Assert.Contains("still runs 11.11.160", ex.Message, StringComparison.Ordinal);
+        // 11.11.160 -> 12.11.77 is off the path Axis recommends: the error says what to install first.
+        Assert.EndsWith("Recommended path: the latest AXIS OS 11.11, then 12.11.77.", ex.Message, StringComparison.Ordinal);
+        Assert.Contains((TaskLogLevel.Warning, "Not the recommended upgrade path. Recommended path: the latest AXIS OS 11.11, then 12.11.77."), ctx.Logs);
         Assert.Equal(0, device.Probes);
         Assert.Equal(
             Then("Upload firmware: Failed", "Install firmware: Skipped", "Wait for the device to come back: Skipped", "Verify version: Skipped", "Read commit state: Skipped", "Commit firmware: Skipped"),

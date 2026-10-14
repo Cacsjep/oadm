@@ -51,7 +51,7 @@ public sealed partial class FirmwareDeviceRow(IDeviceInfo device) : ObservableOb
     public string VerdictText => Check?.Verdict switch
     {
         null => "Choose a file",
-        FirmwareVerdict.Upgrade => "Upgrade",
+        FirmwareVerdict.Upgrade => Check.PathAdvice is null ? "Upgrade" : "Not recommended",
         FirmwareVerdict.DeviceValidates => "Device checks",
         FirmwareVerdict.AlreadyUpToDate => "Up to date",
         FirmwareVerdict.Downgrade => "Downgrade",
@@ -64,9 +64,10 @@ public sealed partial class FirmwareDeviceRow(IDeviceInfo device) : ObservableOb
 
     public string Message => Check?.Message ?? string.Empty;
 
-    public bool IsOk => Check?.Verdict is FirmwareVerdict.Upgrade;
+    public bool IsOk => Check is { Verdict: FirmwareVerdict.Upgrade, PathAdvice: null };
 
-    public bool IsWarn => Check?.Verdict is FirmwareVerdict.Downgrade or FirmwareVerdict.DeviceValidates;
+    /// <summary>A downgrade, a file the device checks, or an upgrade off the recommended path (it still runs).</summary>
+    public bool IsWarn => Check?.Verdict is FirmwareVerdict.Downgrade or FirmwareVerdict.DeviceValidates || Check?.PathAdvice is not null;
 
     public bool IsError => Check is { WillInstall: false, IsNoOp: false };
 
@@ -188,6 +189,20 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     };
 
     public bool HasModeWarning => ModeWarning is not null;
+
+    /// <summary>Devices whose upgrade is off the recommended path (advice only; the Details column says what first).</summary>
+    public string? PathWarning
+    {
+        get
+        {
+            var count = Devices.Count(d => d.Check?.PathAdvice is not null);
+            return count == 0 ? null
+                : (count == 1 ? "1 device is" : string.Create(CultureInfo.InvariantCulture, $"{count:N0} devices are"))
+                  + " not on the upgrade path Axis recommends (Details). AXIS OS 12.6.85, 11.11.169 and later refuse such an upgrade; the upgrade still starts.";
+        }
+    }
+
+    public bool HasPathWarning => PathWarning is not null;
 
     /// <summary>Set after a successful start.</summary>
     public string? Result { get; private set; }
@@ -479,6 +494,8 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
 
     private void UpdateSummary()
     {
+        OnPropertyChanged(nameof(PathWarning));
+        OnPropertyChanged(nameof(HasPathWarning));
         if (_image is null)
         {
             Summary = "Choose an AXIS OS .bin file.";

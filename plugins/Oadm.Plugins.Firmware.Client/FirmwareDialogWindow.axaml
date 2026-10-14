@@ -24,7 +24,7 @@
 
     <!-- Devices -->
     <Border Grid.Row="2" Classes="card" Margin="16,16,16,0">
-      <Grid RowDefinitions="Auto,*">
+      <Grid RowDefinitions="Auto,*,Auto">
         <ui:CardHeader Title="Devices" Description="{Binding Summary}" />
         <DataGrid x:Name="DevicesGrid" Grid.Row="1" Classes="wrapRows" ItemsSource="{Binding Devices}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
           <DataGrid.Columns>
@@ -55,6 +55,7 @@
             </DataGridTemplateColumn>
           </DataGrid.Columns>
         </DataGrid>
+        <TextBlock Grid.Row="2" Classes="warning" Margin="0,8,0,0" TextWrapping="Wrap" Text="{Binding PathWarning}" IsVisible="{Binding HasPathWarning}" />
       </Grid>
     </Border>
 

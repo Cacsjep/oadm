@@ -83,6 +83,22 @@ Evaluated per device in the dialog (preview) and again on the server right befor
 
 Refused devices fail with a message ending in "Nothing was changed."; the other selected devices are not affected.
 
+### Upgrade path (advice, never refused)
+
+Axis recommends an upgrade path (AXIS OS knowledge base "Upgrade path"), and since AXIS OS 12.6.85 and 11.11.169 the
+device refuses upgrades off it; a factory default lifts it. `Shared/AxisOsUpgradePath` knows the LTS tracks (6.50, 8.40,
+9.80, 10.12, 11.11, 12.11), not their latest versions (no online lookup), and names what to install first:
+
+- the device runs an LTS track and the target leaves it: the latest version of that track;
+- every LTS track between the device's version and the target: its latest version.
+
+Examples (tests `UpgradePathTests`): 11.8.61 -> 12.6.85 "the latest AXIS OS 11.11, then 12.6.85"; 9.80.49 -> 11.11.169
+"the latest AXIS OS 9.80, then the latest 10.12, then 11.11.169"; 11.11.109 -> 12.6.85 "the latest AXIS OS 11.11, then
+12.6.85"; no advice within a track, from an active version to the LTS of its major line, with a factory default or for
+downgrades. `FirmwareCheck.PathAdvice` carries it: the dialog shows the row as "Not recommended" (warning, still
+installed) with the path in Details and one line below the list; the task logs it as a warning and, when the device
+refuses the upload (nothing installed), ends the error with it. Nothing is ever refused for the path.
+
 Additional gates, all before the first write:
 
 1. Payload valid (file id, known mode); never logged or persisted by the host.

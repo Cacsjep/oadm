@@ -22,6 +22,9 @@ public sealed class AxisOsVersion : IComparable<AxisOsVersion>, IEquatable<AxisO
 
     public int Major => _parts[0];
 
+    /// <summary>The second segment: with <see cref="Major"/> the track (11.11 LTS, 12.6 active).</summary>
+    public int Minor => _parts[1];
+
     /// <summary>Parses "12.11.77", "12_11_77" or "12.11.77_beta" (non-numeric suffixes are ignored). Null when unparsable.</summary>
     public static AxisOsVersion? TryParse(string? text)
     {

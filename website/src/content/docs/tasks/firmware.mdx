@@ -49,6 +49,14 @@ A downgrade always needs a factory default. The device decides itself if it acce
 
 A refused device fails with "Nothing was changed". The other devices continue.
 
+## Upgrade path
+
+Axis recommends not to jump over an LTS version (for example 11.11 or 10.12), and to leave an LTS version from its latest
+release. AXIS OS 12.6.85, 11.11.169 and later refuse other upgrades. When a device is not on that path, its row says
+**Not recommended** and **Details** names what to install first, for example "Recommended path: the latest AXIS OS 11.11,
+then 12.6.85." The upgrade still starts; if the device refuses it, the task ends with the same advice. A factory default
+does not need the path.
+
 ## Steps
 
 Check compatibility, Read device info, Validate file, Read firmware status, Upload firmware, Install firmware, Wait for

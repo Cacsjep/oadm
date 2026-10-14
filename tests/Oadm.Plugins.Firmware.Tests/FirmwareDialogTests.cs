@@ -125,8 +125,14 @@ public sealed class FirmwareDialogViewModelTests
         Assert.Contains("87.0 MB", vm.FileDetails, StringComparison.Ordinal);
         Assert.Contains("for P3265-V, AXIS OS 12.11.77", vm.FileDetails, StringComparison.Ordinal);
         Assert.Null(vm.FileError);
+        // 11.11.160 -> 12.11.77 still installs, with the path Axis recommends (the latest 11.11 first) as a warning.
         Assert.Equal(ClientVerdict.Upgrade, vm.Devices[0].Check!.Verdict);
-        Assert.True(vm.Devices[0].IsOk);
+        Assert.True(vm.Devices[0].WillInstall);
+        Assert.False(vm.Devices[0].IsOk);
+        Assert.True(vm.Devices[0].IsWarn);
+        Assert.Equal("Not recommended", vm.Devices[0].VerdictText);
+        Assert.Equal("11.11.160 → 12.11.77. Recommended path: the latest AXIS OS 11.11, then 12.11.77.", vm.Devices[0].Message);
+        Assert.Equal("1 device is not on the upgrade path Axis recommends (Details). AXIS OS 12.6.85, 11.11.169 and later refuse such an upgrade; the upgrade still starts.", vm.PathWarning);
         Assert.Equal(ClientVerdict.AlreadyUpToDate, vm.Devices[1].Check!.Verdict);
         Assert.Equal(ClientVerdict.WrongProduct, vm.Devices[2].Check!.Verdict);
         Assert.True(vm.Devices[2].IsError);
@@ -341,7 +347,12 @@ public sealed class FirmwareDialogHeadlessTests
             await PumpAsync();
             Capture(window, outDir, "firmware-dialog.png");
 
+            // Keep the settings: 11.11.160 -> 12.11.77 is off the recommended path, the dialog says so and still upgrades.
             vm.SelectedMode = vm.Modes[0];
+            await PumpAsync();
+            Assert.True(vm.HasPathWarning);
+            Capture(window, outDir, "firmware-dialog-path.png");
+
             vm.IsUploading = true;
             vm.UploadProgress = 42;
             vm.UploadText = "Uploading firmware to the server (42 %)";

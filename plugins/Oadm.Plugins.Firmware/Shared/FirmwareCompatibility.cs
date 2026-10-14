@@ -30,6 +30,12 @@ public enum FirmwareVerdict
 
 public sealed record FirmwareCheck(FirmwareVerdict Verdict, string Message)
 {
+    /// <summary>
+    /// An upgrade off the recommended path (<see cref="AxisOsUpgradePath"/>): the versions to install first. Advice only,
+    /// the upgrade still runs; newer AXIS OS refuses it. Null when on the path.
+    /// </summary>
+    public string? PathAdvice { get; init; }
+
     /// <summary>The upgrade request is sent to the device.</summary>
     public bool WillInstall => Verdict is FirmwareVerdict.Upgrade or FirmwareVerdict.DeviceValidates or FirmwareVerdict.Downgrade;
 
@@ -76,7 +82,9 @@ public static class FirmwareCompatibility
 
         if (cmp > 0)
         {
-            return new(FirmwareVerdict.Upgrade, $"{current} → {target}");
+            // Off the recommended path: advice only (a factory default lifts the path).
+            var advice = mode == FactoryDefaultMode.None ? AxisOsUpgradePath.Advice(current, target) : null;
+            return new(FirmwareVerdict.Upgrade, advice is null ? $"{current} → {target}" : $"{current} → {target}. {advice}") { PathAdvice = advice };
         }
 
         var across = target.Major != current.Major ? " (older major version)" : string.Empty;
