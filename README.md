@@ -12,6 +12,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0"></a>
   <a href="https://acs-dev.org/"><img src="https://img.shields.io/badge/web-acs--dev.org-6C5CE7" alt="Website: acs-dev.org"></a>
   <a href="https://www.linkedin.com/in/christoph-acs-70150795/"><img src="https://img.shields.io/badge/LinkedIn-Christoph-0A66C2?logo=linkedin&amp;logoColor=white" alt="LinkedIn"></a>
+  <a href="https://discord.gg/j4FNjg5VvK"><img src="https://img.shields.io/badge/Discord-join-5865F2?logo=discord&amp;logoColor=white" alt="Discord"></a>
 </p>
 
 **OADM is an independent open source project. Not affiliated with or endorsed by Axis Communications AB. AXIS is a trademark of Axis AB.**

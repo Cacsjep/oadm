@@ -77,6 +77,7 @@ export default defineConfig({
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/Cacsjep/oadm' },
 				{ icon: 'linkedin', label: 'LinkedIn', href: 'https://www.linkedin.com/in/christoph-acs-70150795/' },
+				{ icon: 'discord', label: 'Discord', href: 'https://discord.gg/j4FNjg5VvK' },
 			],
 			editLink: { baseUrl: 'https://github.com/Cacsjep/oadm/edit/main/website/' },
 			lastUpdated: false,
