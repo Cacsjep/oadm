@@ -536,7 +536,6 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         }
     }
 
-    /// <summary>A device of a tag or of all devices: the stream API listed, or its API list not read yet.</summary>
     /// <summary>Devices the turned-on <paramref name="triggers"/> watch together: chosen, tagged and all devices.</summary>
     internal static int WatchedCount(IReadOnlyCollection<TriggerDefinition> triggers, IReadOnlyList<IDeviceInfo> devices)
     {
@@ -549,6 +548,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         return watched.Count;
     }
 
+    /// <summary>A device of a tag or of all devices: the stream API listed, or its API list not read yet.</summary>
     private static bool CanSendEvents(IDeviceInfo device) =>
         device.Apis.Count == 0 || device.Apis.Supports(DeviceTriggersPluginInfo.ApiId, DeviceTriggersPluginInfo.ApiVersion);
 

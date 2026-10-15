@@ -38,6 +38,7 @@ public sealed partial class ImageHealthMonitor : IAsyncDisposable
     private readonly DeviceSweep<ImageHealthRow> _sweep;
     private int _withoutApp;
     private IReadOnlySet<Guid>? _scope;
+    private readonly Lock _scopeSync = new();
 
     public ImageHealthMonitor(ICorePluginContext ctx, ImageHealthOptions options)
     {
@@ -68,12 +69,17 @@ public sealed partial class ImageHealthMonitor : IAsyncDisposable
     /// </summary>
     public ImageHealthState StartCheck(IReadOnlySet<Guid>? only = null)
     {
-        if (!_sweep.IsRunning)
+        lock (_scopeSync)
         {
-            Volatile.Write(ref _scope, only);
+            // A check while another runs is read right after it (DeviceSweep.Start): the counts cover both choices.
+            var running = _sweep.IsRunning;
+            var scope = Volatile.Read(ref _scope);
+            Volatile.Write(ref _scope, !running ? only
+                : scope is null || only is null ? null
+                : scope.Union(only).ToHashSet());
+            _sweep.Start(only);
         }
 
-        _sweep.Start(only);
         return Snapshot(withRows: true);
     }
 

@@ -153,6 +153,26 @@ public sealed class PageTests(ITestOutputHelper output)
     }
 
     [Fact]
+    [Trait("Category", "Timing")] // the sweep runs on the thread pool, waited for in real time
+    public async Task A_read_of_other_cameras_while_one_runs_follows_it()
+    {
+        await using var rig = new PageRig();
+        var slow = new FakeDevice { Address = "10.0.0.48" };
+        var other = new FakeDevice { Address = "10.0.0.49" };
+        rig.Devices.Items.AddRange([slow, other]);
+        var hold = new TaskCompletionSource();
+        rig.Cameras.Cameras[slow.Id] = new SdCamera { Hold = hold };
+
+        // One page reads the slow camera, another page chooses the other one while that read runs.
+        await rig.Plugin.InvokeAsync(EdgeStorageMethods.Read, EdgeStorageJson.Serialize(new ReadRequest([slow.Id])), CancellationToken.None);
+        await rig.Plugin.InvokeAsync(EdgeStorageMethods.Read, EdgeStorageJson.Serialize(new ReadRequest([other.Id])), CancellationToken.None);
+        hold.SetResult();
+
+        await UntilAsync(() => rig.Plugin.Sweep!.Rows.Count == 2 && !rig.Plugin.Sweep.IsRunning);
+        Assert.Contains(rig.Plugin.Sweep!.Rows, r => r.DeviceId == other.Id);
+    }
+
+    [Fact]
     [Trait("Category", "Timing")] // the plugin's events arrive on the thread pool, waited for in real time
     public async Task The_page_reads_only_the_chosen_cameras_and_nothing_before_a_choice()
     {

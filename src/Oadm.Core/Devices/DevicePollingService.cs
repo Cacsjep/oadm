@@ -88,6 +88,9 @@ public sealed partial class DevicePollingService : IDisposable
     /// </summary>
     public double OutageShare { get; init; } = 0.10;
 
+    /// <summary>An outage also needs at least this many failed devices (default 10): a small site always gets the second try.</summary>
+    public int OutageMinimum { get; init; } = 10;
+
     /// <summary>Current poll interval in seconds.</summary>
     public int IntervalSeconds => Volatile.Read(ref _intervalSeconds);
 
@@ -194,7 +197,7 @@ public sealed partial class DevicePollingService : IDisposable
 
         if (!missed.IsEmpty)
         {
-            if (missed.Count > polled * OutageShare)
+            if (missed.Count >= OutageMinimum && missed.Count > polled * OutageShare)
             {
                 // An outage: no second try, the devices turn Unreachable now.
                 await Parallel.ForEachAsync(missed, options, async (miss, token) =>

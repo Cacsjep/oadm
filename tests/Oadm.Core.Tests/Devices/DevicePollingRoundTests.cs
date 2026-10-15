@@ -101,23 +101,35 @@ public sealed class DevicePollingRoundTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
+    public async Task ASmallSiteAlwaysGetsTheSecondTry()
+    {
+        var devices = await AddManyAsync(3);
+        _cameras.FailOnce(devices[0].Address); // one of three: a third failed, but not an outage
+
+        await _polling.PollAllAsync(CancellationToken.None);
+
+        Assert.Equal(DeviceStatus.Ok, (await Devices.GetAsync(devices[0].Id, CancellationToken.None))!.Status);
+        Assert.Equal(2, _cameras.Requests(devices[0].Address));
+    }
+
+    [Fact]
     public async Task InAnOutageEveryDeviceTurnsUnreachableWithoutASecondTry()
     {
-        var devices = await AddManyAsync(20);
-        foreach (var device in devices.Take(3)) // 15 % > 10 %
+        var devices = await AddManyAsync(100);
+        foreach (var device in devices.Take(12)) // 12 % > 10 % and at least 10 devices
         {
             _cameras.Fail(device.Address);
         }
 
         await _polling.PollAllAsync(CancellationToken.None);
 
-        foreach (var device in devices.Take(3))
+        foreach (var device in devices.Take(12))
         {
             Assert.Equal(DeviceStatus.Unreachable, (await Devices.GetAsync(device.Id, CancellationToken.None))!.Status);
             Assert.Equal(1, _cameras.Requests(device.Address));
         }
 
-        Assert.Equal(DeviceStatus.Ok, (await Devices.GetAsync(devices[3].Id, CancellationToken.None))!.Status);
+        Assert.Equal(DeviceStatus.Ok, (await Devices.GetAsync(devices[12].Id, CancellationToken.None))!.Status);
     }
 
     [Fact]

@@ -49,9 +49,14 @@ one WebSocket event stream per device and publishes every trigger as two event t
   the last state; after 30 s "connection lost" turns on with `{reason}`; the next report turns it off.
 - **Methods** (`DeviceTriggersMethods`): `list`, `get`, `startRead`, `readStatus` (Operator); `save`, `delete`,
   `setEnabled`, `duplicate` (Admin, audited). Event `changed` (page reload, at most every 300 ms on the page). Triggers are
-  stored in the plugin setting `triggers`; at most 200 triggers. Devices the status poll found not answering (Unreachable) are not contacted, like the refused
-statuses: no connection attempts during an outage; a device connects again once a poll sees it Ok. All turned-on triggers together watch at most 10,000 devices (`MaxWatchedDevices`, one permanent connection per device: Windows has 16,384 outgoing ports by default). A save or turn-on over it is refused below the device choice; a tag or All devices that grows past it keeps the watched devices (the chosen ones first, then those watched already) and the row says "More than 10,000 devices: the newest are not watched". Devices removed from OADM leave their
-  triggers (checked every 30 s).
+  stored in the plugin setting `triggers`; at most 200 triggers. Devices removed from OADM leave their triggers (checked
+  every 30 s).
+- **Not answering**: devices the status poll found not answering (Unreachable) are not contacted, like the refused
+  statuses. No connection is tried during an outage; a device connects again once a poll sees it Ok.
+- **10,000 devices**: all turned-on triggers together watch at most 10,000 devices (`MaxWatchedDevices`), one permanent
+  connection each; Windows has 16,384 outgoing ports by default. A save or turn-on over it is refused below the device
+  choice. A tag or All devices that grows past it keeps the watched devices (the chosen ones first, then those watched
+  already), and the row says "More than 10,000 devices: some are not watched".
 - **Page**: triggers (On, Name, Event, Devices, State, Last event; New trigger, Edit, Duplicate, Delete) and the devices of
   the selected one (Connection, State, Last event). Dialog: name and turned on in one row, Choose devices (the shared device
   picker with All devices, tags and single devices; OK reads the event lists of the devices that joined at once, the

@@ -33,7 +33,7 @@ public sealed partial class DeviceAutoAddService(
     TimeProvider time,
     ILogger<DeviceAutoAddService> logger) : IDeviceAutoAdd
 {
-    private DateTimeOffset _lastLimitWarning = DateTimeOffset.MinValue;
+    private long _lastLimitWarningTicks = DateTimeOffset.MinValue.UtcTicks;
 
     public async Task<DeviceAutoAddOutcome> AddAsync(string address, string expectedSerial, string source, CancellationToken ct)
     {
@@ -121,10 +121,10 @@ public sealed partial class DeviceAutoAddService(
         }
         catch (DeviceLimitException)
         {
-            var now = time.GetUtcNow();
-            if (now - _lastLimitWarning >= TimeSpan.FromHours(1))
+            var now = time.GetUtcNow().UtcTicks;
+            var last = Interlocked.Read(ref _lastLimitWarningTicks);
+            if (now - last >= TimeSpan.TicksPerHour && Interlocked.CompareExchange(ref _lastLimitWarningTicks, now, last) == last)
             {
-                _lastLimitWarning = now;
                 LogLimitReached(DeviceLimits.MaxDevices);
             }
 

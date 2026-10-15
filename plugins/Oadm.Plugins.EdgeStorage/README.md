@@ -1,7 +1,7 @@
 # Edge storage (core plugin)
 
 Id `oadm.edge-storage`, rail page **Edge storage** (group Maintenance, icon `hardDrive`), **off by default**, switchable.
-The SD card of every camera in one table, and the tools of the camera's web interface for many cameras at once: check,
+The SD card of the chosen cameras in one table, and the tools of the camera's web interface for many cameras at once: check,
 repair, format, encryption on or off, retention. SD cards only (network shares are not listed or changed).
 
 ## Decisions
@@ -9,7 +9,7 @@ repair, format, encryption on or off, retention. SD cards only (network shares a
 | Topic | Decision |
 |---|---|
 | Scope | SD cards (`SD_DISK`). Network shares, the storage limit and the wear / temperature alert levels are not changed. The internal `EMMC` disk of newer cameras is ignored. |
-| Table | Read only on request: when the page opens and on Refresh (no background polling). One row per device that lists the API `disk-management` (an SD card slot), read with the shared `DeviceSweep` (24 at a time, 6 s per device). |
+| Table | Read only on request and only for the cameras of the page's device choice (`PageDeviceChoice`: the Devices page selection, else the last choice on this computer; nothing before a choice): when the page opens, after a new choice and on Refresh (no background polling). One row per device that lists the API `disk-management` (an SD card slot), read with the shared `DeviceSweep` (24 at a time, 6 s per device). |
 | Reads per camera | `disks/list.cgi?diskid=all`, `disks/gethealth.cgi`, `disks/properties/getdiskalertlevels.cgi` (the last two optional: a failure leaves the wear empty). Certificate changed, Credentials required, Password not set and Unreachable devices are not contacted. |
 | Row states (the page's count cards) | OK; Worn (wear at or past the camera's wear alert level, default 90 %); Problems (failed, not in use, read-only, locked, encrypted and cannot be opened, the shared `EdgeDisk.ProblemText`); No SD card; Not read (with the reason). In the code: `CardStates.Ok`, `Warning`, `Problem`, `NoCard`, `Error`. |
 | Tools | Started only from the page, on the selected rows that have a card; one task per camera (`oadm.edge-storage.task`, `ShowInMenus` false), progress in the tasks pane below the page. The table reads the camera again when its task ends. |

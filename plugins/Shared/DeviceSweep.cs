@@ -56,6 +56,9 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
     private Task _sweep = Task.CompletedTask;
     private long _reads;
     private bool _running;
+    private HashSet<Guid>? _current;
+    private readonly HashSet<Guid> _pending = [];
+    private bool _pendingAll;
     private int _done;
     private int _total;
     private DateTimeOffset? _finishedUtc;
@@ -126,22 +129,50 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
     /// <summary>The rows matching a condition (tests).</summary>
     public int Count(Func<TRow, bool> predicate) => Snapshot().Rows.Count(predicate);
 
-    /// <summary>Starts a sweep unless one runs; <paramref name="only"/> limits it to these devices (null = all).</summary>
+    /// <summary>
+    /// Starts a sweep; <paramref name="only"/> limits it to these devices (null = all). While one runs, the devices it does
+    /// not cover are read right after it (pages share the sweep and may choose other devices), never dropped.
+    /// </summary>
     public void Start(IReadOnlyCollection<Guid>? only = null)
     {
         lock (_sync)
         {
-            if (_running || _stopping.IsCancellationRequested)
+            if (_stopping.IsCancellationRequested)
             {
                 return;
             }
 
-            _running = true;
-            _done = 0;
-            _stateDirty = true;
-            var token = _stopping.Token;
-            _sweep = Task.Run(() => SweepAsync(only, token), CancellationToken.None);
+            if (_running)
+            {
+                if (_current is null)
+                {
+                    return; // the running sweep reads every device
+                }
+
+                if (only is null)
+                {
+                    _pendingAll = true;
+                }
+                else
+                {
+                    _pending.UnionWith(only.Where(id => !_current.Contains(id)));
+                }
+
+                return;
+            }
+
+            StartLocked(only);
         }
+    }
+
+    private void StartLocked(IReadOnlyCollection<Guid>? only)
+    {
+        _running = true;
+        _current = only is null ? null : [.. only];
+        _done = 0;
+        _stateDirty = true;
+        var token = _stopping.Token;
+        _sweep = Task.Run(() => SweepAsync(only, token), CancellationToken.None);
     }
 
     /// <summary>Reads one device now, outside a sweep (e.g. after a task changed it).</summary>
@@ -267,6 +298,14 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
             {
                 _running = false;
                 _stateDirty = true;
+                if (!_stopping.IsCancellationRequested && (_pendingAll || _pending.Count > 0))
+                {
+                    // Devices other pages asked for while this sweep ran: read them now (still "reading" for the pages).
+                    IReadOnlyCollection<Guid>? next = _pendingAll ? null : [.. _pending];
+                    _pendingAll = false;
+                    _pending.Clear();
+                    StartLocked(next);
+                }
             }
 
             Publish();

@@ -144,7 +144,7 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
 
         if (request.DeviceIds is not { Count: > 0 and <= MaxDevicesPerRun })
         {
-            throw new ArgumentException("Choose 1 to 30,000 cameras.", nameof(request));
+            throw new ArgumentException(Oadm.Sdk.Devices.DeviceLimits.ChooseRangeText("cameras"), nameof(request));
         }
 
         var owner = string.IsNullOrWhiteSpace(request.Owner) ? EdgeStorageInfo.DisplayName : request.Owner;
@@ -152,7 +152,6 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
         return await ctx.Tasks.RunAsync(EdgeStorageInfo.TaskPluginId, [.. request.DeviceIds.Distinct()], EdgeStorageJson.Serialize(payload), owner, ct).ConfigureAwait(false);
     }
 
-    /// <summary>Devices that list the disk management API (an SD card slot); others are not in the table.</summary>
     /// <summary>The cameras a read covers: the page's choice (1 to 30,000), or every camera for an older page without one.</summary>
     private static HashSet<Guid>? ReadIds(string? payloadJson)
     {
@@ -162,9 +161,10 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
             return null;
         }
 
-        return ids.Count is 0 or > MaxDevicesPerRun ? throw new ArgumentException("Choose 1 to 30,000 cameras.", nameof(payloadJson)) : ids.ToHashSet();
+        return ids.Count is 0 or > MaxDevicesPerRun ? throw new ArgumentException(Oadm.Sdk.Devices.DeviceLimits.ChooseRangeText("cameras"), nameof(payloadJson)) : ids.ToHashSet();
     }
 
+    /// <summary>Devices that list the disk management API (an SD card slot); others are not in the table.</summary>
     private static bool HasSlot(IDeviceInfo device) => device.Apis.Supports(StorageRequests.DiskManagementApi, "1.0");
 
     /// <summary>One camera: its SD card with health and wear alert level, or why it could not be read.</summary>
