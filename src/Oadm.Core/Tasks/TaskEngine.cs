@@ -325,6 +325,9 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         return _active.TryGetValue(taskId, out var task) && task.Cancel();
     }
 
+    /// <summary>Whether the task is queued or running.</summary>
+    public bool? IsActive(Guid taskId) => _active.ContainsKey(taskId);
+
     /// <summary>Completes when the task has finished (immediately if it is not active).</summary>
     public Task WaitForCompletionAsync(Guid taskId, CancellationToken ct)
     {

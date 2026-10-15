@@ -14,4 +14,10 @@ public interface ITaskRunner
     /// Returns false when the task is not active or the host cannot cancel.
     /// </summary>
     bool Cancel(Guid taskId) => false;
+
+    /// <summary>
+    /// Whether the task is still queued or running; null when the host cannot tell. A task cancelled while queued never
+    /// starts, so a plugin waiting for its tasks asks here instead of waiting for them to report.
+    /// </summary>
+    bool? IsActive(Guid taskId) => null;
 }

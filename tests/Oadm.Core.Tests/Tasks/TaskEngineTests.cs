@@ -259,6 +259,7 @@ public sealed class TaskEngineTests : IAsyncLifetime
 
         var taskIds = await Engine.RunAsync("t.forever", _devices.AddMany(10), null, "o", CancellationToken.None);
         await twoStarted.Task.WaitAsync(Timeout);
+        Assert.All(taskIds, id => Assert.True(Engine.IsActive(id))); // queued and running
 
         // Queued ones first: cancelling a running one first frees its slot, and a queued task not cancelled
         // yet could start in between (a race of the test, not of the engine).
@@ -272,6 +273,7 @@ public sealed class TaskEngineTests : IAsyncLifetime
         Assert.Equal(8, records.Count(r => r.Devices[0].Message == "Cancelled before start."));
         Assert.Equal(2, started);
         Assert.False(Engine.Cancel(taskIds[0]));
+        Assert.All(taskIds, id => Assert.False(Engine.IsActive(id)));
     }
 
     [Fact]
