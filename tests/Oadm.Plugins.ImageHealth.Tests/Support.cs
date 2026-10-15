@@ -89,6 +89,8 @@ internal sealed record TestDevice(string Address, string? Model, DeviceStatus St
     public bool HasVideo => Category is DeviceCategory.Camera or DeviceCategory.Encoder or DeviceCategory.Intercom;
 
     public IReadOnlyList<DeviceApi> Apis => [];
+
+    public IReadOnlyList<string> Tags { get; init; } = [];
 }
 
 internal sealed class FakeDevices : IDeviceRepository
@@ -156,12 +158,30 @@ internal sealed class FakeContext(IDeviceRepository devices, IVapixClientFactory
     public IFirewallRules? Firewall => null;
 }
 
-/// <summary>The page context against the plugin in process (invoke + the event hub).</summary>
-internal sealed class PluginPageContext(ImageHealthPlugin plugin, PluginEventHub hub) : ICorePluginClientContext
+/// <summary>The page context against the plugin in process (invoke + the event hub), the devices of the client and the settings on this computer.</summary>
+internal sealed class PluginPageContext(ImageHealthPlugin plugin, PluginEventHub hub, FakeDevices? devices = null) : ICorePluginClientContext
 {
     public List<string> Calls { get; } = [];
 
-    public IReadOnlyList<IDeviceInfo> Devices => [];
+    public List<string?> Payloads { get; } = [];
+
+    public IReadOnlyList<IDeviceInfo> Devices => devices is null ? [] : [.. devices.Items];
+
+    public Dictionary<string, string> LocalSettings { get; } = [];
+
+    public string? GetLocalSetting(string key) => LocalSettings.GetValueOrDefault(key);
+
+    public void SetLocalSetting(string key, string? value)
+    {
+        if (value is null)
+        {
+            LocalSettings.Remove(key);
+        }
+        else
+        {
+            LocalSettings[key] = value;
+        }
+    }
 
     public event EventHandler? DevicesChanged
     {
@@ -174,6 +194,7 @@ internal sealed class PluginPageContext(ImageHealthPlugin plugin, PluginEventHub
         lock (Calls)
         {
             Calls.Add(method);
+            Payloads.Add(payloadJson);
         }
 
         return await plugin.InvokeAsync(method, payloadJson, ct);

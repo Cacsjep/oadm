@@ -4,8 +4,8 @@
              xmlns:vm="using:Oadm.Plugins.ImageHealth.Client"
              x:Class="Oadm.Plugins.ImageHealth.Client.ImageHealthView"
              x:DataType="vm:ImageHealthViewModel"
-             ui:PageHeader.Subtitle="AXIS Image Health Analytics on every camera.">
-  <!-- Own cards (ICorePluginPage.HasOwnCards): the count cards, then one card with Refresh and search, progress and
+             ui:PageHeader.Subtitle="AXIS Image Health Analytics on the chosen cameras.">
+  <!-- Own cards (ICorePluginPage.HasOwnCards): the count cards, then one card with the device choice, Refresh and search, progress and
        summary, one row per camera with the app. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,*" RowSpacing="{DynamicResource Oadm.Gap}">
     <!-- Every camera with the app counts in one card, the worst state wins (ImageHealthCounts). -->
@@ -23,8 +23,14 @@
     <Border Grid.Row="1" Classes="card">
       <Grid RowDefinitions="Auto,Auto,Auto,*">
         <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="10">
-          <ui:ToolbarButton Grid.Column="0" IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}"
-                            ToolTip.Tip="Check every camera again" />
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+            <Button Classes="primary" Command="{Binding ChooseDevicesCommand}" IsEnabled="{Binding !IsChecking}" Margin="0,0,6,0"
+                    ToolTip.Tip="Cameras by address or tag">
+              <ui:IconLabel Icon="{StaticResource Icon.eye}" Text="{Binding DeviceChoice.ButtonText}" />
+            </Button>
+            <ui:ToolbarButton IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}"
+                              ToolTip.Tip="Check the cameras again" />
+          </StackPanel>
           <CheckBox Grid.Column="1" VerticalAlignment="Center" Content="Auto refresh" IsChecked="{Binding AutoRefresh}"
                     ToolTip.Tip="Check every 10 s while this page is open" />
           <ui:SearchBox Grid.Column="4" Width="220" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="Search cameras" />

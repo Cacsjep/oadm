@@ -28,9 +28,9 @@ public static class ImageHealthPluginInfo
 public static class ImageHealthMethods
 {
     /// <summary>
-    /// {} -> <see cref="ImageHealthState"/>: asks every video device for the app status once (the page calls it when it
-    /// opens, on Refresh and every 10 s with Auto refresh). While a check runs, it returns the current state without a
-    /// second check. Rows and progress follow as events.
+    /// <see cref="CheckRequest"/> -> <see cref="ImageHealthState"/>: asks the chosen video devices for the app status once
+    /// (the page calls it when it opens, on Refresh and every 10 s with Auto refresh). While a check runs, it returns the
+    /// current state without a second check. Rows and progress follow as events.
     /// </summary>
     public const string Check = "check";
 
@@ -142,7 +142,7 @@ public sealed record ImageHealthRow(
 /// <param name="Total">Video devices to check.</param>
 /// <param name="Running">Cameras where the app runs.</param>
 /// <param name="NotRunning">Cameras where the app is installed but stopped.</param>
-/// <param name="WithoutApp">Cameras without the app.</param>
+/// <param name="WithoutApp">Cameras of the last check without the app.</param>
 /// <param name="Failed">Cameras that could not be read.</param>
 /// <param name="CheckedUtc">When the last check finished; null before the first.</param>
 /// <param name="Rows">Every row.</param>
@@ -156,6 +156,9 @@ public sealed record ImageHealthState(
     int Failed,
     DateTimeOffset? CheckedUtc,
     IReadOnlyList<ImageHealthRow> Rows);
+
+/// <summary>Request of <see cref="ImageHealthMethods.Check"/>: the cameras of the page's choice (null: every video device, older pages).</summary>
+public sealed record CheckRequest(IReadOnlyList<Guid>? DeviceIds);
 
 /// <summary>Changed rows, and the devices that left the table (app removed, device removed from OADM).</summary>
 public sealed record RowsEvent(IReadOnlyList<ImageHealthRow> Rows, IReadOnlyList<Guid> Removed);

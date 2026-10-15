@@ -11,6 +11,16 @@ public partial class ImageHealthView : UserControl
         InitializeComponent();
     }
 
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+        if (DataContext is ImageHealthViewModel vm)
+        {
+            vm.PickDevices = async () => TopLevel.GetTopLevel(this) is Window owner
+                && await vm.DeviceChoice.PickAsync(owner, "Choose cameras").ConfigureAwait(true);
+        }
+    }
+
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
