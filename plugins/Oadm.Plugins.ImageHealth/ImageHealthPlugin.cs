@@ -75,7 +75,7 @@ public sealed class ImageHealthPlugin : ICorePlugin, IAsyncDisposable
             return null;
         }
 
-        return ids.Count is 0 or > DeviceLimits.MaxDevices ? throw new ArgumentException("Choose 1 to 30,000 cameras.", nameof(payloadJson)) : ids.ToHashSet();
+        return ids.Count is 0 or > DeviceLimits.MaxDevices ? throw new ArgumentException(DeviceLimits.ChooseRangeText("cameras"), nameof(payloadJson)) : ids.ToHashSet();
     }
 
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);

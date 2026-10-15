@@ -44,6 +44,28 @@ public static class GridSelection
         return new Resume(grid);
     }
 
+    /// <summary>Hands the grid's selection to the view model in one step (after the view changed it without mirroring).</summary>
+    public static void Sync(DataGrid grid)
+    {
+        ArgumentNullException.ThrowIfNull(grid);
+        if (GetSelectedItems(grid) is not { } target)
+        {
+            return;
+        }
+
+        if (target is IResettableList resettable)
+        {
+            resettable.ResetTo(grid.SelectedItems);
+            return;
+        }
+
+        target.Clear();
+        foreach (object? item in grid.SelectedItems)
+        {
+            target.Add(item);
+        }
+    }
+
     private sealed class Resume(DataGrid grid) : IDisposable
     {
         private bool _done;

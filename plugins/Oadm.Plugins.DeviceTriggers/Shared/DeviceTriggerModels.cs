@@ -37,7 +37,7 @@ public static class DeviceTriggersPluginInfo
     public const string TooManyDevicesText = "Device triggers watch at most 10,000 devices. Choose tags or fewer devices.";
 
     /// <summary>A trigger whose tags or All devices grew past <see cref="MaxWatchedDevices"/>.</summary>
-    public const string NotWatchedText = "More than 10,000 devices: the newest are not watched";
+    public const string NotWatchedText = "More than 10,000 devices: some are not watched";
 
     /// <summary>Second event of every trigger: "&lt;Trigger&gt;: connection lost".</summary>
     public const string LostSuffix = ": connection lost";

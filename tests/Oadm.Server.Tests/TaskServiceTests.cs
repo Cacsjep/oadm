@@ -102,9 +102,10 @@ public sealed class TaskServiceTests
             async () => (await TestHelpers.GetDeviceAsync(host, device.Id.ToString())).HasDhcpEnabled,
             "refresh after task");
 
-        // Persisted, and deletable.
-        var listed = Assert.Single((await host.Tasks.ListAsync(new Proto.ListTasksRequest())).Tasks, t => t.Id == run.TaskIds[0]);
-        Assert.Equal(Proto.TaskState.Done, listed.State);
+        // Persisted (the stream can be ahead of the write under load), and deletable.
+        await TestHelpers.WaitUntilAsync(
+            async () => (await host.Tasks.ListAsync(new Proto.ListTasksRequest())).Tasks.Any(t => t.Id == run.TaskIds[0] && t.State == Proto.TaskState.Done),
+            "final state stored");
         await host.Tasks.DeleteAsync(new Proto.TaskIdRequest { TaskId = run.TaskIds[0] });
         var remaining = (await host.Tasks.ListAsync(new Proto.ListTasksRequest())).Tasks;
         Assert.DoesNotContain(remaining, t => t.Id == run.TaskIds[0]);

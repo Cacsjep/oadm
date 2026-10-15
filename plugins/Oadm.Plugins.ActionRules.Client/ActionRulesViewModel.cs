@@ -115,7 +115,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
     public const string NotReadText = "Its rules were not read. Refresh first.";
 
     /// <summary>A device outside the page's device choice.</summary>
-    public const string NotChosenText = "Its rules were not read. Add it to the selected devices first.";
+    public const string NotChosenText = "Its rules were not read. Choose it with Choose devices first.";
 
     /// <summary>Why a device cannot get a copy: its rules were not read.</summary>
     public string? CopyUnavailable(Guid deviceId, Guid source) =>

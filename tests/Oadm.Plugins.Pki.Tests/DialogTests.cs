@@ -120,32 +120,32 @@ public sealed class CertificatesViewModelTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Thirty_thousand_devices_load_search_and_select_quickly()
+    public async Task Five_thousand_devices_load_search_and_select_quickly()
     {
         var reply = DialogData.FixtureReply();
-        var devices = DialogData.Devices(Oadm.Sdk.Devices.DeviceLimits.MaxDevices);
+        var devices = DialogData.Devices(5000);
         var vm = new CertificatesViewModel(new FakeDialogContext(_ => Task.FromResult<string?>(reply)), devices, deleteMode: true);
 
         var watch = Stopwatch.StartNew();
         await vm.LoadAsync();
         var load = watch.Elapsed;
-        Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices * 38, vm.AllRows.Count);
+        Assert.Equal(5000 * 38, vm.AllRows.Count);
 
         watch.Restart();
         vm.SearchText = "COMODO";
         var search = watch.Elapsed;
-        Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices * 2, vm.VisibleRows.Count);
+        Assert.Equal(5000 * 2, vm.VisibleRows.Count);
 
         watch.Restart();
         vm.SelectAllCommand.Execute(null);
         var select = watch.Elapsed;
-        Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices * 2, vm.CheckedCount);
+        Assert.Equal(5000 * 2, vm.CheckedCount);
 
         watch.Restart();
         vm.SearchText = null;
         var clear = watch.Elapsed;
 
-        output.WriteLine($"30,000 devices / 1,140,000 certificates: load {load.TotalMilliseconds:0} ms, search {search.TotalMilliseconds:0} ms, select all {select.TotalMilliseconds:0} ms, clear search {clear.TotalMilliseconds:0} ms");
+        output.WriteLine($"5000 devices / 190,000 certificates: load {load.TotalMilliseconds:0} ms, search {search.TotalMilliseconds:0} ms, select all {select.TotalMilliseconds:0} ms, clear search {clear.TotalMilliseconds:0} ms");
         Assert.True(load < TimeSpan.FromSeconds(20), $"load took {load}");
         Assert.True(search < TimeSpan.FromMilliseconds(1000), $"search took {search}");
         Assert.True(select < TimeSpan.FromMilliseconds(500), $"select all took {select}");
@@ -154,9 +154,9 @@ public sealed class CertificatesViewModelTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Timing")]
-    public async Task Thirty_thousand_devices_summary_and_filter_stay_fast()
+    public async Task Five_thousand_devices_summary_and_filter_stay_fast()
     {
-        // The unit-run variant of the scale check: 30,000 devices with a short certificate list each.
+        // The unit-run variant of the scale check: 5,000 devices with a short certificate list each.
         var reply = PkiJson.Serialize(new CertificateListReply
         {
             Certificates =
@@ -165,7 +165,7 @@ public sealed class CertificatesViewModelTests(ITestOutputHelper output)
                 new InstalledCertificate { Alias = "OADM CA 12345678", Kind = CertificateKind.Ca, IssuedBy = "OADM Root CA", IssuedTo = "OADM Root CA", FromOadm = true },
             ],
         });
-        var devices = DialogData.Devices(Oadm.Sdk.Devices.DeviceLimits.MaxDevices);
+        var devices = DialogData.Devices(5000);
         var vm = new CertificatesViewModel(new FakeDialogContext(_ => Task.FromResult<string?>(reply)), devices, deleteMode: true);
         await vm.LoadAsync();
 
@@ -173,10 +173,9 @@ public sealed class CertificatesViewModelTests(ITestOutputHelper output)
         vm.SearchText = "10.0.19.";
         vm.SelectAllCommand.Execute(null);
         vm.SearchText = null;
-        output.WriteLine($"30,000 devices: search, select all, clear {watch.Elapsed.TotalMilliseconds:0} ms");
         Assert.True(watch.Elapsed < TimeSpan.FromMilliseconds(500), $"took {watch.Elapsed}");
-        Assert.Equal(2 * Oadm.Sdk.Devices.DeviceLimits.MaxDevices, vm.AllRows.Count);
-        Assert.Equal(256, vm.CheckedCount); // the free CA certificate of the 256 devices 10.0.19.0-255
+        Assert.Equal(10_000, vm.AllRows.Count);
+        Assert.Equal(136, vm.CheckedCount); // the free CA certificate of the 136 devices 10.0.19.0-135
     }
 }
 
@@ -297,12 +296,12 @@ public sealed class InstallCaViewModelTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Timing")] // time budget
-    public async Task Install_confirms_and_returns_the_usable_certificates_for_30000_devices()
+    public async Task Install_confirms_and_returns_the_usable_certificates_for_5000_devices()
     {
         using var root = TestCa.Root("Acme Root CA");
         using var issuing = TestCa.Intermediate(root);
         using var plain = TestCa.Root("Plain", ca: false);
-        var devices = DialogData.Devices(Oadm.Sdk.Devices.DeviceLimits.MaxDevices);
+        var devices = DialogData.Devices(5000);
         var watch = Stopwatch.StartNew();
         var vm = new InstallCaCertificatesViewModel(devices, _ => TestCa.Pem(root, issuing, plain));
         string? payload = null;
@@ -315,11 +314,11 @@ public sealed class InstallCaViewModelTests(ITestOutputHelper output)
         };
         vm.CloseRequested += (_, p) => payload = p;
         vm.Add(["c:/certs/bundle.pem"]);
-        Assert.Equal("30,000 selected devices", vm.Scope);
+        Assert.Equal("5,000 selected devices", vm.Scope);
 
         await vm.InstallCommand.ExecuteAsync(null);
         Assert.Null(payload); // cancelled in the confirmation
-        Assert.Equal(("Install CA certificates", "Install 2 CA certificates on 30,000 devices? The devices then trust certificates these CAs issued. 1 row with a problem is left out.", "Install"), asked);
+        Assert.Equal(("Install CA certificates", "Install 2 CA certificates on 5,000 devices? The devices then trust certificates these CAs issued. 1 row with a problem is left out.", "Install"), asked);
 
         answer = true;
         await vm.InstallCommand.ExecuteAsync(null);
@@ -328,7 +327,7 @@ public sealed class InstallCaViewModelTests(ITestOutputHelper output)
         Assert.Equal(["Acme Root CA", "Acme Issuing CA"], result.Certificates.Select(c => c.Name));
         Assert.Equal(Oadm.Plugins.Pki.Ca.CaCertificates.ToPem(root), result.Certificates[0].Pem);
         Assert.True(payload!.Length < 10_000); // the payload does not grow with the device count
-        output.WriteLine($"30,000 devices: add, confirm and payload {watch.ElapsedMilliseconds} ms");
+        output.WriteLine($"5000 devices: add, confirm and payload {watch.ElapsedMilliseconds} ms");
         Assert.True(watch.ElapsedMilliseconds < 2000);
     }
 

@@ -70,9 +70,17 @@ public partial class DevicesView : UserControl
         var column = e.Column;
         Avalonia.Threading.Dispatcher.UIThread.Post(() => _ = RunBusyAsync("Sorting", () =>
         {
-            // The grid raises the sort event again for this sort (also after it returned): that one is let through.
+            // The grid raises the sort event again for this sort (also after it returned): that one is let through. Cleared
+            // after the sort in any case, so a sort that raised nothing never makes the next one skip the ring.
             _ownSort = true;
-            column.Sort();
+            try
+            {
+                column.Sort();
+            }
+            finally
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => _ownSort = false, Avalonia.Threading.DispatcherPriority.Background);
+            }
         }));
     }
 
@@ -141,6 +149,7 @@ public partial class DevicesView : UserControl
             finally
             {
                 paused.Dispose();
+                GridSelection.Sync(DeviceGrid); // the view model gets the selection of the new rows
             }
         });
     }

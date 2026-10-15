@@ -49,8 +49,16 @@ internal sealed class SdCamera : IVapixClient
 
     public Task<IReadOnlyList<DeviceApi>> GetApiListAsync(CancellationToken ct) => Task.FromResult(Apis);
 
+    /// <summary>Holds every request until it completes (a slow camera; null = answer at once).</summary>
+    public TaskCompletionSource? Hold { get; set; }
+
     public async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
+        if (Hold is { } hold)
+        {
+            await hold.Task.WaitAsync(ct);
+        }
+
         var path = request.RequestUri!.OriginalString;
         var query = path.Contains('?', StringComparison.Ordinal) ? path[(path.IndexOf('?', StringComparison.Ordinal) + 1)..] : string.Empty;
         path = path.Split('?')[0];

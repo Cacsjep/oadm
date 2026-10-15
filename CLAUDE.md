@@ -203,7 +203,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.Pki(.Client)/              core plugin: PKI (one CA for device certificates, trusted root store)
   Oadm.Plugins.SystemReport(.Client)/     core plugin without a page: toolbar "System report" (server reports in one ZIP)
   Oadm.Plugins.HardeningScan(.Client)/    core plugin: read-only scan against the AXIS OS hardening guide (off by default)
-  Oadm.Plugins.ImageHealth(.Client)/      core plugin: Image Health Dashboard, AXIS Image Health Analytics status of every camera (off by default)
+  Oadm.Plugins.ImageHealth(.Client)/      core plugin: Image Health Dashboard, AXIS Image Health Analytics status of the chosen cameras (off by default)
   Oadm.Plugins.DeviceConfig(.Client)/     Maintenance: Export / Import configuration, Configure devices, Create configuration file
   Oadm.Plugins.Outputs/                   event rule action "Set output" (relays, outputs)
   Oadm.Plugins.Notifications/             event rule actions "Send email" and "Send HTTP request"
@@ -212,7 +212,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.WebView(.Client)/          core plugin: the web interface of the devices in tabs, logged in through the server
   Oadm.Plugins.LiveView(.Client)/         core plugin: saved views of several cameras (a grid of live videos), opened in tabs (off by default)
   Oadm.Plugins.EdgeRecordingExport(.Client)/ core plugin: downloads the recordings on the cameras' SD cards to the client (off by default)
-  Oadm.Plugins.EdgeStorage(.Client)/      core plugin: the SD cards of every camera and their tools (format, check, encryption; off by default)
+  Oadm.Plugins.EdgeStorage(.Client)/      core plugin: the SD cards of the chosen cameras and their tools (format, check, encryption; off by default)
   Oadm.Plugins.ActionRules(.Client)/      core plugin: Action Rule Editor, the devices' own action rules changed for many at once (off by default)
   Shared/                                 source linked into several plugins (CachedApiCheck, DeviceSweep, SweepRows,
                                           ActionEngine: the devices' action rules over SOAP, DeviceEvents: a device's event list)
@@ -1671,12 +1671,12 @@ watch its event stream live (I/O ports, virtual inputs, storage, temperature, ta
 ## Image Health Dashboard (core plugin)
 
 `plugins/Oadm.Plugins.ImageHealth` (+ `.Client`), id `oadm.image-health`, rail page **Image Health Dashboard** (group
-Monitoring, icon `eye`), **off by default**. One table with the AXIS Image Health Analytics status of every camera that
+Monitoring, icon `eye`), **off by default**. One table with the AXIS Image Health Analytics status of every chosen camera that
 has the app, with five count cards (Good, Detected, Pending, Detection off, Errors). Details: plugin `README.md`.
 
 - Devices: the purple "Selected cameras" button (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one (docs/30kspec.md, section 5).
 - Rules that must hold: read-only for devices (`GET /local/AXISImageHealthAnalytics/v1/status` with the stored
-  credentials); only on request (the page opens, Refresh, Auto refresh every 10 s while the page is shown, off by
+  credentials); only on request and for the chosen cameras (the page opens, Refresh, Auto refresh every 10 s while the page is shown, off by
   default), nothing in the background and no events (event rules use the app's own events through Device triggers); 24
   cameras at a time, 3 s each; a stopped app stays as **Not running**; a detection turned off is no problem (the camera
   counts as Good); refused statuses without a request. Methods `check` and `getState` are Operator.
@@ -1707,7 +1707,7 @@ event of the event rules, plus "<Trigger>: connection lost". Decisions, device r
   turned-on triggers together watch at most 10,000 devices (`MaxWatchedDevices`; one permanent connection each, Windows
   has 16,384 outgoing ports by default): a save or turn-on over it is refused ("Device triggers watch at most 10,000
   devices. Choose tags or fewer devices."), a tag or All devices that grows past it keeps the devices it watches and the
-  row says "More than 10,000 devices: the newest are not watched"; devices the status poll found not answering are not
+  row says "More than 10,000 devices: some are not watched"; devices the status poll found not answering are not
   contacted (no connection attempts in an outage; the device connects again once a poll sees it Ok); one
   permanent WebSocket per device (session token from `wssession.cgi`, the pinned certificate), at most 16 connecting at
   once, a new filter only where triggers changed; a refused filter is a problem of its own triggers only; turned-off and
@@ -1768,7 +1768,7 @@ one ZIP for Axis support. Details: plugin `README.md`.
 ## Hardening scan (core plugin)
 
 `plugins/Oadm.Plugins.HardeningScan` (+ `.Client`), id `oadm.hardening-scan`, rail page **Hardening scan** (group
-Security, icon `clipboardCheck`), **off by default**. One read-only scan of every managed device against the AXIS OS
+Security, icon `clipboardCheck`), **off by default**. One read-only scan of the chosen devices against the AXIS OS
 Hardening Guide in its two levels (Basic, Extended), one icon column per check, CSV export. Check table, evidence and
 decisions: plugin `README.md`.
 
@@ -1840,13 +1840,13 @@ and tests: plugin `README.md`.
 ## Edge storage (core plugin)
 
 `plugins/Oadm.Plugins.EdgeStorage` (+ `.Client`), id `oadm.edge-storage`, rail page **Edge storage** (group Maintenance,
-icon `hardDrive`), **off by default**, switchable. The SD card of every camera in one table (state, size, used, wear,
+icon `hardDrive`), **off by default**, switchable. The SD card of every chosen camera in one table (state, size, used, wear,
 encryption, retention, five count cards) and the tools of the camera's web interface for the selected cameras: Check, Set
 retention, Repair, Format, Encrypt, Turn off encryption, each a task per camera in the tasks pane below the page. SD
 cards only. Decisions, device API (verified on an AXIS Q1615 Mk III) and tests: plugin `README.md`.
 
 - Devices: the purple "Selected cameras" button (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one (docs/30kspec.md, section 5).
-- Rules that must hold: the table is read only on request (page opens, Refresh), read-only, refused statuses not
+- Rules that must hold: the table is read only on request and for the chosen cameras (page opens, Refresh), read-only, refused statuses not
   contacted; the tools are hidden tasks (`ShowInMenus` false) started by the page methods `change` (check, retention) and
   `format` (format, repair, encryption), whose rights decide (an action through the other method is refused); every run
   asks first and says which recordings are lost; a fresh API list before the first write ("Nothing was changed"); format,

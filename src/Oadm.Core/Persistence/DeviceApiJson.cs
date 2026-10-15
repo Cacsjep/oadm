@@ -25,8 +25,10 @@ public static class DeviceApiJson
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, IReadOnlyList<DeviceApi>> Shared = new(StringComparer.Ordinal);
 
+    private static int _sharedCount;
+
     /// <summary>Number of different API lists kept for sharing (diagnostics and tests).</summary>
-    public static int SharedCount => Shared.Count;
+    public static int SharedCount => Volatile.Read(ref _sharedCount);
 
     /// <summary>
     /// <see cref="Deserialize"/>, but devices with the same list (same model and firmware) get the same read-only list
@@ -46,7 +48,18 @@ public static class DeviceApiJson
         }
 
         var list = Deserialize(json);
-        return Shared.Count < MaxSharedLists ? Shared.GetOrAdd(json, list) : list;
+        if (Volatile.Read(ref _sharedCount) >= MaxSharedLists)
+        {
+            return list; // full: read unshared (a server start empties the cache)
+        }
+
+        if (Shared.TryAdd(json, list))
+        {
+            Interlocked.Increment(ref _sharedCount);
+            return list;
+        }
+
+        return Shared[json];
     }
 
     public static IReadOnlyList<DeviceApi> Deserialize(string? json)

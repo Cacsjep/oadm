@@ -495,7 +495,7 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
     {
         var devices = (ids ?? []).Distinct().ToList();
         return devices.Count is 0 or > ActionRulesInfo.MaxDevicesPerRun
-            ? throw new ArgumentException("Choose 1 to 30,000 devices.", nameof(ids))
+            ? throw new ArgumentException(Oadm.Sdk.Devices.DeviceLimits.ChooseRangeText("devices"), nameof(ids))
             : devices;
     }
 

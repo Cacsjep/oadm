@@ -12,12 +12,12 @@ the end.
 | Topic | Decision |
 |---|---|
 | Device limit | 30,000 devices per server, a hard limit, in the docs and as a popup when an add goes over it |
-| Status poll timeout | 3 s (today 15 s), status poll only |
-| Status polls at once | a fixed cap of 200 (today 16), no ladder, no setting |
+| Status poll timeout | 3 s (before: 15 s), status poll only |
+| Status polls at once | a fixed cap of 200 (before: 16), no ladder, no setting |
 | Unreachable | a poll that times out is asked once more in the same round, except in an outage (more than 10 % fail) |
 | Certificate | unchanged: a changed certificate shows on the status poll; expiry and trust come from the full refresh |
 | Full refresh interval | stays the setting `Polling.FullRefreshMinutes` (default 10; 10 or 30 minutes both fit 30,000) |
-| Full refresh at once | spread over the interval like the polls, cap 64 (today 8) |
+| Full refresh at once | spread over the interval like the polls, cap 64 (before: 8) |
 | Full refresh skips | devices that are not OK |
 | Full refresh extra | at once when the status poll sees a new firmware version or model |
 | Server memory | the device list is read in pages; identical API lists are one object in memory |
@@ -57,7 +57,7 @@ the end.
 
 - Interval: the setting stays (default 10 minutes, 1..1440).
 - Spread over the interval like the status poll (each device's start fixed by its place in the list, as the first
-  refresh after a server start already is), at most 64 at once (today `MaxParallelism / 2` = 8).
+  refresh after a server start already is), at most 64 at once (before: `MaxParallelism / 2` = 8).
 - Devices that are not OK are skipped by the schedule; the status poll queues a refresh when a device is Ok again.
 - The status poll queues a refresh at once when it sees a firmware version or model different from the stored one.
 - The refresh after a finished task stays, through the same queue (deduplicated, capped).
@@ -79,9 +79,9 @@ device carries its own copy of its API list (about 100 entries): 3 million small
 
 ## 5. Pages that read every camera: a device selection
 
-Today these pages read every managed camera when they open or on Refresh:
+Before, these pages read every managed camera when they open or on Refresh:
 
-| Page | Today |
+| Page | Before |
 |---|---|
 | Action Rule Editor | rules of every device, on open and Refresh |
 | Edge storage | the SD card of every device with a card slot, on open and Refresh |
@@ -117,11 +117,11 @@ search; 30,000 entries cannot be scrolled). Both get the shared picker in single
 | Configure devices (source device) | shared device picker |
 | Web View, Live View (camera list) | shared device tree |
 | Metadata Monitor, I/O Monitor | drop-down, becomes the picker (above) |
-| Task dialogs with a row per selected device (Assign IP address, Network settings, Upgrade firmware, Users, Date and time, Applications) | their grids, today tested at 5,000 |
+| Task dialogs with a row per selected device (Assign IP address, Network settings, Upgrade firmware, Users, Date and time, Applications) | their grids, tested at 5,000 before |
 
 ## 6. Per-run limits
 
-| Where | Today | New |
+| Where | Before | New |
 |---|---|---|
 | Action Rule Editor (`MaxDevicesPerRun`) | 5,000 | 30,000 |
 | Device triggers (`MaxDevicesPerTrigger`) | 5,000 per trigger | 10,000 devices for all triggers together (below) |
@@ -169,7 +169,7 @@ used by several triggers counts once, it has one connection):
 The server's network, a VPN or a site link is down and none of the 30,000 devices answers.
 
 - **Status poll**: every poll ends after 3 s, 200 at once, no second tries (section 2): one round marks all 30,000
-  Unreachable in 7.6 minutes (measured: 454 s, 0.06 cores, 4 MB). Today (15 s, 16 at once) the same takes about 7.8 hours.
+  Unreachable in 7.6 minutes (measured: 454 s, 0.06 cores, 4 MB). Before this change (15 s, 16 at once) the same took about 7.8 hours.
 - **Logs**: a failed poll stays at Debug, so the log files do not fill. New: one warning when more than half of a round
   failed ("Most devices do not answer. Check the server's network.") and one when they answer again.
 - **Full refresh**: skips devices that are not OK, so it costs nothing during the outage.
@@ -179,7 +179,7 @@ The server's network, a VPN or a site link is down and none of the 30,000 device
 - **Client**: the 30,000 status changes arrive in batches (every device changing at once: 0.4 s at 30,000, measured).
 - **Re-find**: one 15 s zero-conf session every 5 minutes for all unreachable devices, no per-device work.
 - **Device triggers**: every WebSocket drops and reconnects with 1, 2, 4, 8, then 10 s between tries, 16 connecting at
-  once. New: the connect uses the 3 s timeout; "connection lost" turns on per trigger after 30 s as today.
+  once. Built differently: devices the status poll found not answering are not contacted at all (see Results); "connection lost" turns on per trigger after 30 s as before.
 - **Back online**: one poll round sets all 30,000 Ok (measured: 23 s) and each queues a full refresh: about 3 minutes
   through the cap of 64 (measured: 169 refreshes per second).
 - **Tasks**: tasks on unreachable devices fail after the timeouts of their own steps, as today.
@@ -288,14 +288,14 @@ One round of 25,000 simulated devices answering in 70 ms, 1 % never answering, t
 
 | Polls at once | Round (3 s timeout) | Polls per second |
 |---|---|---|
-| 16 (today) | 169 s | 148 |
+| 16 (before) | 169 s | 148 |
 | 32 | 96 s | 261 |
 | 64 | 59 s | 424 |
 | 128 | 28 s | 884 |
 | 200 | 25 s | 1,009 |
 | 256 | 25 s | 989 |
 
-With today's 15 s timeout: 105 s at 64, 43 s at 200, about 6 minutes at 16 (calculated). Above about 128 the database is
+With the former 15 s timeout: 105 s at 64, 43 s at 200, about 6 minutes at 16 (calculated). Above about 128 the database is
 the limit (every poll writes LastSeen in its own transaction): 1,100-1,470 polls per second with devices that answer at
 once.
 
