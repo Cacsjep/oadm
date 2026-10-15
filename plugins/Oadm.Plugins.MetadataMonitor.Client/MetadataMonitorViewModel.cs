@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Collections;
 using Oadm.Sdk.Client.Controls;
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.MetadataMonitor.Client;
@@ -27,7 +28,6 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
     private readonly MetadataClientSettings _settings;
     private readonly List<MessageRow> _all = [];
     private readonly List<PluginEvent> _early = [];
-    private List<CameraOption> _allCameras = [];
     private CancellationTokenSource? _active;
     private CancellationTokenSource? _keepAlive;
     private string? _streamId;
@@ -55,21 +55,26 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
     /// <summary>Raised after a batch was added (the view keeps the newest row visible while <see cref="Autoscroll"/> is on).</summary>
     public event EventHandler? MessagesAppended;
 
-    /// <summary>Cameras matching <see cref="CameraSearch"/> (the selected one always stays).</summary>
-    public RangeObservableCollection<CameraOption> Cameras { get; } = [];
-
     /// <summary>The visible (filtered) messages, oldest first.</summary>
     public RangeObservableCollection<MessageRow> Messages { get; } = [];
 
     /// <summary>Copies text to the clipboard (set by the view: the TopLevel clipboard).</summary>
     public Func<string, Task>? CopyText { get; set; }
 
-    [ObservableProperty]
-    public partial string CameraSearch { get; set; } = string.Empty;
+    /// <summary>
+    /// Opens the shared picker for one device (set by the view): the devices the page offers and the chosen one; returns the
+    /// chosen id, or null when cancelled.
+    /// </summary>
+    public Func<IReadOnlyList<IDeviceInfo>, Guid?, Task<Guid?>>? PickCamera { get; set; }
 
+    /// <summary>The chosen camera; Start opens its event stream.</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartStopCommand))]
+    [NotifyPropertyChangedFor(nameof(CameraButtonText))]
     public partial CameraOption? SelectedCamera { get; set; }
+
+    /// <summary>The camera button: "10.0.0.48 · P3265-V", or "Choose a camera".</summary>
+    public string CameraButtonText => SelectedCamera?.Label ?? "Choose a camera";
 
     [ObservableProperty]
     public partial string FilterText { get; set; } = string.Empty;
@@ -349,7 +354,22 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
         }
     }
 
-    partial void OnCameraSearchChanged(string value) => ApplyCameraFilter();
+    /// <summary>The camera button: the shared picker; another camera stops the running stream.</summary>
+    [RelayCommand]
+    private async Task ChooseCameraAsync()
+    {
+        if (PickCamera is not { } pick)
+        {
+            return;
+        }
+
+        var cameras = _ctx.Devices.Where(CameraOption.Fits).ToList();
+        if (await pick(cameras, SelectedCamera?.Id).ConfigureAwait(true) is { } id
+            && cameras.Find(d => d.Id == id) is { } chosen)
+        {
+            SelectedCamera = CameraOption.Of(chosen);
+        }
+    }
 
     partial void OnFilterTextChanged(string value)
     {
@@ -515,36 +535,22 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
         OnPropertyChanged(nameof(TotalCount));
     }
 
+    /// <summary>The device list changed: the chosen camera keeps its stream; removed from OADM, the stream stops.</summary>
     private void RefreshCameras()
     {
-        _allCameras = CameraOption.From(_ctx.Devices);
-        var selected = SelectedCamera is { } current ? _allCameras.FirstOrDefault(c => c.Id == current.Id) : null;
-        if (SelectedCamera is not null && selected is null && (IsRunning || _starting))
+        if (SelectedCamera is not { } current)
         {
-            _ = StopStreamAsync(); // the camera was removed
+            return;
         }
 
-        ApplyCameraFilter(selected, keepSelection: true);
-    }
-
-    private void ApplyCameraFilter() => ApplyCameraFilter(SelectedCamera, keepSelection: true);
-
-    private void ApplyCameraFilter(CameraOption? selected, bool keepSelection)
-    {
-        var search = CameraSearch.Trim();
-        var visible = search.Length == 0
-            ? _allCameras
-            : _allCameras.Where(c => c.Label.Contains(search, StringComparison.OrdinalIgnoreCase) || (selected is not null && c.Id == selected.Id)).ToList();
-        Cameras.ReplaceAll(visible);
-        if (keepSelection)
+        var device = _ctx.Devices.FirstOrDefault(d => d.Id == current.Id);
+        if (device is null || !CameraOption.Fits(device))
         {
-            SelectedCamera = selected;
+            SelectedCamera = null; // removed from OADM: the stream stops (OnSelectedCameraChanged)
+            return;
         }
 
-        if (SelectedCamera is null && search.Length > 0 && visible.Count > 0)
-        {
-            SelectedCamera = visible[0];
-        }
+        SelectedCamera = CameraOption.Of(device); // the same camera: a new address or model only renames the button
     }
 
     private void StartKeepAlive(string streamId)

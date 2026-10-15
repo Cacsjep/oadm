@@ -280,10 +280,18 @@ public sealed class PageTests
         IoMonitorViewModel.KeepAliveInterval = TimeSpan.FromMilliseconds(50);
         using var vm = new IoMonitorViewModel(ctx);
 
-        Assert.Equal("10.0.0.70 · A9210", Assert.Single(vm.Devices).Text);
         Assert.Equal("Choose a device.", vm.EmptyText);
+        Assert.Equal("Choose a device", vm.DeviceButtonText);
+        IReadOnlyList<IDeviceInfo>? offered = null;
+        vm.PickDevice = (devices, _) =>
+        {
+            offered = devices;
+            return Task.FromResult<Guid?>(devices[0].Id);
+        };
         vm.Activate();
-        vm.SelectedDevice = vm.Devices[0];
+        await vm.ChooseDeviceCommand.ExecuteAsync(null);
+        Assert.Equal(io.Id, Assert.Single(offered!).Id); // the camera without ports is not offered
+        Assert.Equal("10.0.0.70 · A9210", vm.DeviceButtonText);
         await Wait.UntilAsync(() => vm.IsLive);
 
         Assert.Equal(["RELAY", "O1", "O2", "O3"], vm.Outputs.Select(t => t.Name));
@@ -303,6 +311,34 @@ public sealed class PageTests
     }
 
     [Fact]
+    [Trait("Category", "Perf")]
+    public async Task The_picker_list_of_30000_devices_is_built_fast()
+    {
+        await using var rig = await new Rig().StartAsync();
+        for (var i = 0; i < 30_000; i++)
+        {
+            rig.Devices.Items.Add(new TestDevice($"10.{i / 65536}.{i / 256 % 256}.{i % 256}", "P3265-V", HasIo: i % 3 != 0));
+        }
+
+        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items);
+        using var vm = new IoMonitorViewModel(ctx);
+        var count = 0;
+        vm.PickDevice = (devices, _) =>
+        {
+            count = devices.Count;
+            return Task.FromResult<Guid?>(devices[^1].Id);
+        };
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        await vm.ChooseDeviceCommand.ExecuteAsync(null);
+        ctx.RaiseDevicesChanged();
+        watch.Stop();
+
+        Assert.Equal(20_000, count);
+        Assert.Equal(rig.Devices.Items[^1].Id, vm.SelectedDevice?.Id);
+        Assert.True(watch.ElapsedMilliseconds < 500, $"{watch.ElapsedMilliseconds} ms");
+    }
+
+    [Fact]
     [Trait("Category", "Timing")]
     public async Task Failed_keep_alives_are_retried()
     {
@@ -313,7 +349,7 @@ public sealed class PageTests
         IoMonitorViewModel.KeepAliveInterval = TimeSpan.FromMilliseconds(50);
         using var vm = new IoMonitorViewModel(ctx);
         vm.Activate();
-        vm.SelectedDevice = vm.Devices[0];
+        vm.SelectedDevice = IoDeviceOption.Of(rig.Devices.Items[0]);
         await Wait.UntilAsync(() => vm.IsLive);
 
         ctx.FailMethod = IoMonitorMethods.KeepAlive; // the connection drops for a moment
@@ -338,7 +374,7 @@ public sealed class PageTests
             IoMonitorMethods.PortsTopic,
             IoMonitorJson.Serialize(new PortsEvent(id, [relay], null, DateTimeOffset.UtcNow))));
         vm.Activate();
-        vm.SelectedDevice = vm.Devices[0];
+        vm.SelectedDevice = IoDeviceOption.Of(rig.Devices.Items[0]);
 
         await Wait.UntilAsync(() => vm.IsLive);
         Assert.True(Assert.Single(vm.Outputs).Active);
@@ -354,7 +390,7 @@ public sealed class PageTests
         IoMonitorViewModel.KeepAliveInterval = TimeSpan.FromMilliseconds(50);
         using var vm = new IoMonitorViewModel(ctx);
         vm.Activate();
-        vm.SelectedDevice = vm.Devices[0];
+        vm.SelectedDevice = IoDeviceOption.Of(rig.Devices.Items[0]);
         await Wait.UntilAsync(() => vm.IsLive);
 
         // The server restarts: while it is gone the page's calls fail (connection lost), as they do for a real client.
@@ -379,18 +415,16 @@ public sealed class PageTests
         var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items);
         using var vm = new IoMonitorViewModel(ctx);
         vm.Activate();
-        vm.SelectedDevice = vm.Devices[0];
+        vm.SelectedDevice = IoDeviceOption.Of(rig.Devices.Items[0]);
         await Wait.UntilAsync(() => vm.IsLive);
         var changed = 0;
-        vm.Devices.CollectionChanged += (_, _) => changed++;
+        vm.PropertyChanged += (_, e) => changed += e.PropertyName == nameof(IoMonitorViewModel.SelectedDevice) ? 1 : 0;
 
         rig.Devices.Items.Add(new TestDevice("10.0.0.71", "A9188"));
         ctx.RaiseDevicesChanged();
 
-        Assert.Equal(1, changed); // one reset
-        Assert.Equal(2, vm.Devices.Count);
+        Assert.Equal(0, changed);
         Assert.Equal(io.Id, vm.SelectedDevice?.Id);
-        Assert.Contains(vm.SelectedDevice!, vm.Devices);
         await Task.Delay(200);
         Assert.True(vm.IsLive);
         Assert.Single(ctx.Calls, IoMonitorMethods.Start);
@@ -400,6 +434,7 @@ public sealed class PageTests
         rig.Devices.Items.Remove(io); // removed from OADM: the reading stops
         ctx.RaiseDevicesChanged();
         Assert.Null(vm.SelectedDevice);
+        Assert.Equal("Choose a device", vm.DeviceButtonText);
         await Wait.UntilAsync(() => rig.Plugin.StreamCount == 0);
     }
 
@@ -411,7 +446,7 @@ public sealed class PageTests
         rig.Devices.Items.Add(io);
         using var vm = new IoMonitorViewModel(new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items));
         vm.Activate();
-        vm.SelectedDevice = vm.Devices[0];
+        vm.SelectedDevice = IoDeviceOption.Of(rig.Devices.Items[0]);
 
         await Wait.UntilAsync(() => vm.HasError);
         Assert.Equal(DeviceMessages.CredentialsRequired, vm.ErrorText);
@@ -431,7 +466,7 @@ public sealed class PageTests
             var vm = new IoMonitorViewModel(new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items));
             var window = Headless.Host(new IoMonitorView { DataContext = vm });
             window.Show();
-            vm.SelectedDevice = vm.Devices[0];
+            vm.SelectedDevice = IoDeviceOption.Of(rig.Devices.Items[0]);
             var until = DateTime.UtcNow.AddSeconds(10);
             while (!vm.IsLive && DateTime.UtcNow < until)
             {

@@ -36,22 +36,80 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
-    public void Cameras_are_video_and_io_devices_sorted_by_ip_and_filtered_by_the_search()
+    public async Task The_camera_button_offers_video_and_io_devices_and_the_chosen_one_starts()
     {
-        _ctx.DeviceList.Add(new TestDevice("10.0.0.100", "P1465-LE"));
         _ctx.DeviceList.Add(new TestDevice("10.0.0.9", "A9188", Category: DeviceCategory.IoModule));
         _ctx.DeviceList.Add(new TestDevice("10.0.0.20", "C1310-E", Category: DeviceCategory.Speaker));
-        _ctx.DeviceList.Add(new TestDevice("cam.example.com", "Q1656"));
+        _ctx.DeviceList.Add(new TestDevice("cam.example.com", null));
         using var vm = NewViewModel();
+        Assert.Equal("Choose a camera", vm.CameraButtonText);
 
-        Assert.Equal(["A9188 (10.0.0.9)", "P3265-V (10.0.0.48)", "P1465-LE (10.0.0.100)", "Q1656 (cam.example.com)"], vm.Cameras.Select(c => c.Label));
+        IReadOnlyList<IDeviceInfo>? offered = null;
+        Guid? shownSelected = Guid.Empty;
+        vm.PickCamera = (devices, selected) =>
+        {
+            offered = devices;
+            shownSelected = selected;
+            return Task.FromResult<Guid?>(null); // cancelled
+        };
+        await vm.ChooseCameraCommand.ExecuteAsync(null);
+        Assert.Equal(["10.0.0.48", "10.0.0.9", "cam.example.com"], offered!.Select(d => d.Address)); // no speaker
+        Assert.Null(shownSelected);
+        Assert.Null(vm.SelectedCamera);
 
-        vm.SelectedCamera = vm.Cameras[1];
-        vm.CameraSearch = "q16";
-        Assert.Equal(["P3265-V (10.0.0.48)", "Q1656 (cam.example.com)"], vm.Cameras.Select(c => c.Label)); // the selected one stays
-        Assert.Equal("P3265-V (10.0.0.48)", vm.SelectedCamera!.Label);
-        vm.CameraSearch = string.Empty;
-        Assert.Equal(4, vm.Cameras.Count);
+        await Choose(vm, _rig.Camera.Id);
+        Assert.Equal("10.0.0.48 · P3265-V", vm.CameraButtonText);
+        await Choose(vm, _ctx.DeviceList[^1].Id);
+        Assert.Equal("cam.example.com", vm.CameraButtonText); // no model: the address alone
+
+        await Choose(vm, _rig.Camera.Id);
+        await vm.StartStopCommand.ExecuteAsync(null);
+        Assert.True(vm.IsRunning);
+        Assert.Contains(MetadataMethods.Start, _ctx.Calls);
+        Assert.Equal(1, _rig.Plugin.StreamCount);
+        await vm.StartStopCommand.ExecuteAsync(null);
+    }
+
+    [Fact]
+    public async Task Removing_the_chosen_camera_stops_the_stream()
+    {
+        using var vm = NewViewModel();
+        await Choose(vm, _rig.Camera.Id);
+        await vm.StartStopCommand.ExecuteAsync(null);
+        Assert.Equal(1, _rig.Plugin.StreamCount);
+
+        _ctx.DeviceList.Remove(_rig.Camera);
+        _ctx.RaiseDevicesChanged();
+
+        Assert.Null(vm.SelectedCamera);
+        Assert.Equal("Choose a camera", vm.CameraButtonText);
+        await Wait.UntilAsync(() => _rig.Plugin.StreamCount == 0);
+    }
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public async Task The_picker_list_of_30000_devices_is_built_fast()
+    {
+        for (var i = 0; i < 30_000; i++)
+        {
+            _ctx.DeviceList.Add(new TestDevice($"10.{i / 65536}.{i / 256 % 256}.{i % 256}", "P3265-V", Category: i % 3 == 0 ? DeviceCategory.Speaker : DeviceCategory.Camera));
+        }
+
+        using var vm = NewViewModel();
+        var count = 0;
+        vm.PickCamera = (devices, _) =>
+        {
+            count = devices.Count;
+            return Task.FromResult<Guid?>(devices[^1].Id);
+        };
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        await vm.ChooseCameraCommand.ExecuteAsync(null);
+        _ctx.RaiseDevicesChanged();
+        watch.Stop();
+
+        Assert.Equal(20_001, count);
+        Assert.NotNull(vm.SelectedCamera);
+        Assert.True(watch.ElapsedMilliseconds < 500, $"{watch.ElapsedMilliseconds} ms");
     }
 
     [Fact]
@@ -63,7 +121,7 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         Assert.False(vm.StartStopCommand.CanExecute(null)); // no camera yet
         Assert.Equal("Choose a camera first", vm.StartStopTip);
 
-        vm.SelectedCamera = vm.Cameras[0];
+        await Choose(vm, _rig.Camera.Id);
         await vm.StartStopCommand.ExecuteAsync(null);
         Assert.True(vm.IsRunning);
         Assert.Equal("Stop", vm.StartStopText);
@@ -96,7 +154,7 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
     {
         _rig.Streams.Refuse(DeviceStreamError.Unauthorized, "Unauthorized - HTTP 401");
         using var vm = NewViewModel();
-        vm.SelectedCamera = vm.Cameras[0];
+        await Choose(vm, _rig.Camera.Id);
 
         await vm.StartStopCommand.ExecuteAsync(null);
 
@@ -113,11 +171,11 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         _rig.Devices.Items.Add(_ctx.DeviceList[^1]);
         using var vm = NewViewModel();
         vm.Activate();
-        vm.SelectedCamera = vm.Cameras[0];
+        await Choose(vm, _rig.Camera.Id);
         await vm.StartStopCommand.ExecuteAsync(null);
         Assert.Equal(1, _rig.Plugin.StreamCount);
 
-        vm.SelectedCamera = vm.Cameras[1];
+        await Choose(vm, _ctx.DeviceList[^1].Id);
         await Wait.UntilAsync(() => _rig.Plugin.StreamCount == 0);
         Assert.False(vm.IsRunning);
 
@@ -135,7 +193,7 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         try
         {
             using var vm = NewViewModel();
-            vm.SelectedCamera = vm.Cameras[0];
+            await Choose(vm, _rig.Camera.Id);
             await vm.StartStopCommand.ExecuteAsync(null);
             await Wait.UntilAsync(() => _ctx.Calls.Count(c => c == MetadataMethods.KeepAlive) >= 3);
             await vm.StartStopCommand.ExecuteAsync(null);
@@ -288,6 +346,14 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         }
 
         return list;
+    }
+
+    /// <summary>The camera button as the view wires it: the picker answers <paramref name="id"/>.</summary>
+    private static async Task Choose(MetadataMonitorViewModel vm, Guid id)
+    {
+        vm.PickCamera = (_, _) => Task.FromResult<Guid?>(id);
+        await vm.ChooseCameraCommand.ExecuteAsync(null);
+        Assert.Equal(id, vm.SelectedCamera?.Id);
     }
 
     private MetadataMonitorViewModel NewViewModel() => new(_ctx, new MetadataClientSettingsStore(_settingsPath));

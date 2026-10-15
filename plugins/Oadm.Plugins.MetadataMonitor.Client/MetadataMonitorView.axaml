@@ -9,18 +9,13 @@
        The description lives in the host page header; the status chip sits left of the Start / Stop button.
        Shared controls and theme classes only. -->
   <Grid x:Name="Root" RowDefinitions="Auto,*,Auto,260">
-    <!-- One row: camera (type to jump) with Start / Stop right of it, filter, Clear, Autoscroll and the message count;
+    <!-- One row: the camera button (the shared picker) with Start / Stop right of it, filter, Clear, Autoscroll and the message count;
          the status on the right. -->
     <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="12">
-      <ComboBox Grid.Column="0" Width="260" VerticalAlignment="Center" ItemsSource="{Binding Cameras}" SelectedItem="{Binding SelectedCamera}"
-                PlaceholderText="Choose a camera" IsTextSearchEnabled="True"
-                ToolTip.Tip="Type to jump to a camera">
-        <ComboBox.ItemTemplate>
-          <DataTemplate x:DataType="vm:CameraOption">
-            <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
-          </DataTemplate>
-        </ComboBox.ItemTemplate>
-      </ComboBox>
+      <Button Grid.Column="0" Classes="secondary" VerticalAlignment="Center" MinWidth="220" MaxWidth="320"
+              Command="{Binding ChooseCameraCommand}" ToolTip.Tip="Find a camera by address or model">
+        <ui:IconLabel Icon="{DynamicResource Icon.video}" Text="{Binding CameraButtonText}" />
+      </Button>
       <ui:SearchBox Grid.Column="3" Width="220" VerticalAlignment="Center" Text="{Binding FilterText}" Placeholder="Filter events" />
       <Button Grid.Column="4" Classes="secondary" VerticalAlignment="Center" Content="Clear" Command="{Binding ClearCommand}"
               ToolTip.Tip="Empty the list; the stream keeps running" />

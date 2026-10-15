@@ -27,7 +27,7 @@ public sealed class FakeModeTests : IDisposable
         using var vm = new MetadataMonitorViewModel(ctx, new MetadataClientSettingsStore(Path.Combine(Path.GetTempPath(), "oadm-mm-tests", Guid.NewGuid().ToString("N"), "client.json")));
         vm.Activate();
         await Task.Delay(50); // the watch subscribes
-        vm.SelectedCamera = vm.Cameras.Single();
+        vm.SelectedCamera = CameraOption.Of(ctx.Devices.Single());
 
         await vm.StartStopCommand.ExecuteAsync(null);
         await Wait.UntilAsync(() => vm.Messages.Count > 80);

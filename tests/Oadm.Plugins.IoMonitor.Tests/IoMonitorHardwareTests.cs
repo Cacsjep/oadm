@@ -53,7 +53,7 @@ public sealed class IoMonitorHardwareTests
             var vm = new IoMonitorViewModel(new PluginPageContext(plugin, hub, devices.Items));
             var window = Headless.Host(new IoMonitorView { DataContext = vm });
             window.Show();
-            vm.SelectedDevice = vm.Devices[0];
+            vm.SelectedDevice = IoDeviceOption.Of(device);
             var until = DateTime.UtcNow.AddSeconds(20);
             while (!vm.IsLive && !vm.HasError && DateTime.UtcNow < until)
             {

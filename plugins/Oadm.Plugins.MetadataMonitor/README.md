@@ -32,9 +32,11 @@ Read-only for devices.
   (topic `messages`, batched every 250 ms, at most 500 per batch; above that the oldest of the batch are dropped and counted)
   and a `state` event (Connecting, Live, Reconnecting, Stopped, Error + text, message count, lost count).
 - **Page (client, `HasOwnCards` false: one card):** `ui:PageHeader.Subtitle` "Shows the events a camera sends, live.".
-  One toolbar row (fits the 1280 px minimum window with the rail expanded): camera select (managed video
-  and I/O devices, sorted by IPv4, type to jump, "P3265-V (10.0.0.48)") with the primary **Start** / **Stop** directly
-  right of it, `ui:SearchBox` filter (live, case-insensitive
+  One toolbar row (fits the 1280 px minimum window with the rail expanded): the camera button (secondary, it names
+  the chosen camera "10.0.0.48 · P3265-V", else "Choose a camera") opens the shared `DevicePickerWindow.ShowOneAsync`
+  (search, virtualized, 30,000 devices) with the managed video and I/O devices (others are not offered); the view hands the
+  picker to the view model as `PickCamera`; another camera stops the running stream, a removed one clears the choice. The
+  primary **Start** / **Stop** sits directly right of it, `ui:SearchBox` filter (live, case-insensitive
   over topic, info and raw XML; "Filter events"), **Clear** (empties the list, the stream keeps running), **Autoscroll**
   toggle (on: the newest row stays visible; scrolling up turns it off, scrolling to the end turns it on again) and the
   count ("134 messages", "5 of 15 messages"); on the right the status chip (Connecting accent, Live ok "Live", plus
@@ -51,8 +53,9 @@ Read-only for devices.
   10,000 messages and a burst of 2,000 in one batch.
 - **Tests:** RTP metadata depacketizer from recorded packets of the development camera (`OADM_RECORD_RTP_DIR`, read-only stream), XML
   parsing incl. namespaces, multiple notifications per document, malformed XML, Info text; server stream lifecycle with a
-  fake RTSP source (start, stop, reconnect, refused statuses, watch ended); page view model (filter, clear, autoscroll,
-  10,000 cap, selection survives batches); headless screenshots `metadata-monitor-page.png` (live list + detail),
+  fake RTSP source (start, stop, reconnect, refused statuses, watch ended); page view model (camera button: offered devices, the
+  chosen camera into Start, a removed camera stops the stream, Perf 30,000 devices; filter, clear, autoscroll, 10,000 cap,
+  selection survives batches); headless screenshots `metadata-monitor-page.png` (live list + detail),
   `-error.png`; read-only hardware test against the development camera (Start, at least one Initialized message, Stop).
 - **Implementation:** SDK `IDeviceEventStreams` on `ICorePluginContext.EventStreams` (DIM null; `IDeviceEventSource`,
   `DeviceMetadataDocument`, `DeviceStreamException` with Unreachable / Unauthorized / NotSupported / Protocol), implemented
@@ -69,9 +72,8 @@ Read-only for devices.
   by namespace: `tns1:` / `tnsaxis:` dropped, other prefixes kept). Device refusals use the snapshot report's status
   texts ("Credentials required - the device rejects the stored credentials", ...). A page's stream also ends without its
   keep-alive: the page calls `keepAlive` ({streamId}) every 5 s while a stream runs, the server stops streams without one
-  for 20 s (client closed or gone; switching pages stops the stream at once). Page layout: two rows (camera search,
-  camera select with the primary **Start** / **Stop** right of it, the status chip on the right; below: filter, Clear,
-  Autoscroll, message count on the right) because one row does not fit the 1280 px minimum window. Autoscroll follows the
+  for 20 s (client closed or gone; switching pages stops the stream at once). The camera is chosen in the shared device
+  picker, not a drop-down: a drop-down of every camera cannot be used with tens of thousands of devices. Autoscroll follows the
   grid's vertical scroll bar (wheel and bar: at the end on, above off); the selection is kept through the grid's Reset of
   each batch. Detail height in `LocalApplicationData/Oadm/plugins/oadm.metadata-monitor/client.json`; copy = the shown
   text (pretty or raw) through the TopLevel clipboard. Fake mode (`FakeOadmApi.MetadataMonitor.cs`): generated burst

@@ -7,12 +7,15 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 
+using Oadm.Sdk.Client.Controls;
+using Oadm.Sdk.Devices;
+
 namespace Oadm.Plugins.MetadataMonitor.Client;
 
 /// <summary>
 /// Page view. View glue only: activates the view model while shown, keeps the newest row visible while Autoscroll is
-/// on (and turns Autoscroll off / on when the user scrolls up / to the end), remembers the detail height and hands the
-/// clipboard to the copy command.
+/// on (and turns Autoscroll off / on when the user scrolls up / to the end), remembers the detail height, hands the
+/// clipboard to the copy command and opens the shared device picker for the camera button.
 /// </summary>
 public partial class MetadataMonitorView : UserControl
 {
@@ -40,6 +43,7 @@ public partial class MetadataMonitorView : UserControl
             _vm.MessagesAppended -= OnMessagesAppended;
             _vm.PropertyChanged -= OnViewModelChanged;
             _vm.CopyText = null;
+            _vm.PickCamera = null;
         }
 
         _vm = DataContext as MetadataMonitorViewModel;
@@ -47,6 +51,7 @@ public partial class MetadataMonitorView : UserControl
         {
             _vm.MessagesAppended += OnMessagesAppended;
             _vm.CopyText = CopyAsync;
+            _vm.PickCamera = PickCameraAsync;
             _vm.PropertyChanged += OnViewModelChanged;
             ApplyDetailHeight();
         }
@@ -122,6 +127,11 @@ public partial class MetadataMonitorView : UserControl
 
         _vm.Autoscroll = !_verticalBar.IsVisible || _verticalBar.Value >= _verticalBar.Maximum - 2;
     }
+
+    private async Task<Guid?> PickCameraAsync(IReadOnlyList<IDeviceInfo> cameras, Guid? selected) =>
+        TopLevel.GetTopLevel(this) is Window owner
+            ? await DevicePickerWindow.ShowOneAsync(owner, cameras, selected, heading: "Choose a camera").ConfigureAwait(true)
+            : null;
 
     private async Task CopyAsync(string text)
     {

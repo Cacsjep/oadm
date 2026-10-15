@@ -53,7 +53,7 @@ public sealed class HeadlessPageTests
             view.DataContext = vm; // after attaching: no live watch, deterministic content
             Pump();
 
-            vm.SelectedCamera = vm.Cameras.First(c => c.Id == rig.Camera.Id);
+            vm.SelectedCamera = CameraOption.Of(rig.Camera);
             vm.UseStreamForTests("s1"); // no RTSP: the recorded messages arrive as from a live stream
             var seq = 0L;
             var capture = new DateTimeOffset(2026, 10, 8, 9, 30, 1, TimeSpan.FromHours(0));

@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Net;
 using System.Text.Json;
 
 using Oadm.Sdk.Devices;
@@ -39,47 +38,22 @@ public sealed class MessageRow(MetadataMessage message)
         time?.UtcDateTime.ToString(MetadataMonitorPluginInfo.TimeFormat, CultureInfo.InvariantCulture) ?? string.Empty;
 }
 
-/// <summary>A camera of the select: "P3265-V (10.0.0.48)".</summary>
-public sealed class CameraOption(Guid id, string label, string address)
+/// <summary>The chosen camera: "10.0.0.48 · P3265-V" (the address alone without a model).</summary>
+public sealed record CameraOption(Guid Id, string Address, string Label)
 {
-    public Guid Id { get; } = id;
-
-    public string Label { get; } = label;
-
-    public string Address { get; } = address;
-
     public override string ToString() => Label;
 
-    /// <summary>Managed video and I/O devices, sorted by IPv4 address (numerically; host names and IPv6 after them).</summary>
-    public static List<CameraOption> From(IEnumerable<IDeviceInfo> devices)
+    /// <summary>Devices the page offers: video devices and I/O modules.</summary>
+    public static bool Fits(IDeviceInfo device)
     {
-        ArgumentNullException.ThrowIfNull(devices);
-        return devices
-            .Where(d => d.HasVideo || d.Category == DeviceCategory.IoModule)
-            .Select(d => (Key: SortKey(d.Address), Option: new CameraOption(d.Id, string.IsNullOrEmpty(d.Model) ? d.Address : $"{d.Model} ({d.Address})", d.Address)))
-            .OrderBy(x => x.Key.Group)
-            .ThenBy(x => x.Key.Number)
-            .ThenBy(x => x.Option.Address, StringComparer.OrdinalIgnoreCase)
-            .Select(x => x.Option)
-            .ToList();
+        ArgumentNullException.ThrowIfNull(device);
+        return device.HasVideo || device.Category == DeviceCategory.IoModule;
     }
 
-    private static (int Group, uint Number) SortKey(string address)
+    public static CameraOption Of(IDeviceInfo device)
     {
-        var host = address;
-        var colon = host.IndexOf(':', StringComparison.Ordinal);
-        if (colon > 0 && host.IndexOf(':', colon + 1) < 0)
-        {
-            host = host[..colon]; // IPv4 with a port
-        }
-
-        if (IPAddress.TryParse(host, out var ip) && ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
-        {
-            var b = ip.GetAddressBytes();
-            return (0, ((uint)b[0] << 24) | ((uint)b[1] << 16) | ((uint)b[2] << 8) | b[3]);
-        }
-
-        return (1, 0);
+        ArgumentNullException.ThrowIfNull(device);
+        return new CameraOption(device.Id, device.Address, string.IsNullOrEmpty(device.Model) ? device.Address : $"{device.Address} · {device.Model}");
     }
 }
 
