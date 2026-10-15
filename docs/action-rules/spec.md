@@ -19,7 +19,7 @@ Not the OADM event rules (those run on the server); this edits the rules that ru
 | Topic | Decision |
 |---|---|
 | Plugin | Core plugin `oadm.action-rules`, "Action Rule Editor", rail page group Automation, **off by default**, switchable. |
-| Page | Choose cameras (shared device picker with All devices and tags), **Read rules**. Tabs Rules / Recipients / Schedules. Every change is one task per camera in the tasks pane below the page. |
+| Page | The purple **Selected devices** button (shared device picker with All devices and tags; starts with the Devices page selection, else the last choice on this computer, else nothing and the page reads nothing) chooses the devices; the page reads and shows only those, Refresh reads them again. New rule and Copy to devices list every device, those whose rules were not read greyed. Tabs Rules / Recipients / Schedules. Every change is one task per camera in the tasks pane below the page. |
 | Same rule on many cameras | Matched by what the rule does, not by name. Default group = same trigger (event with its filter, conditions, schedule) + same action type. Names and values may differ; the group shows them per column ("Host: 192.168.1.5 (480), 10.1.1.9 (7)"). |
 | Group by | Selector: What it does (default), Name, Action, Trigger. The edit form offers only the parts that are equal in the group; the action type can always be changed. |
 | Edit | A form where every field has a **Change** check box. Unchecked = each camera keeps its own value (e.g. a message with a unique number per camera). Checked = the same value on every camera of the group. |

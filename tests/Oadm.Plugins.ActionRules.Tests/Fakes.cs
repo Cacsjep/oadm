@@ -21,6 +21,7 @@ internal sealed class FakeDevice : IDeviceInfo
     public DeviceStatus Status { get; init; } = DeviceStatus.Ok;
     public DeviceCategory Category { get; init; } = DeviceCategory.Camera;
     public bool HasVideo => DeviceCategories.HasVideo(Category);
+    public IReadOnlyList<string> Tags { get; init; } = [];
     public IReadOnlyList<DeviceApi> Apis { get; init; } = [];
 }
 

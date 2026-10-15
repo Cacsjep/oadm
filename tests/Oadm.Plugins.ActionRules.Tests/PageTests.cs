@@ -44,7 +44,7 @@ public static class HeadlessEntry
 }
 
 /// <summary>The page context against the plugin in process (invoke + the event hub), with the role's rights.</summary>
-internal sealed class PageContext(ActionRulesPlugin plugin, PluginEventHub hub) : ICorePluginClientContext
+internal sealed class PageContext(ActionRulesPlugin plugin, PluginEventHub hub, FakeDevices devices) : ICorePluginClientContext
 {
     public HashSet<string> Rights { get; } = ["oadm.action-rules:show", "oadm.action-rules:manage", "oadm.action-rules:delete"];
 
@@ -52,7 +52,29 @@ internal sealed class PageContext(ActionRulesPlugin plugin, PluginEventHub hub) 
 
     public bool Confirm { get; set; } = true;
 
-    public IReadOnlyList<IDeviceInfo> Devices => [];
+    public IReadOnlyList<IDeviceInfo> Devices => [.. devices.Items];
+
+    public Dictionary<string, string> LocalSettings { get; } = [];
+
+    /// <summary>The page methods called, with their payload.</summary>
+    public List<(string Method, string? Payload)> Calls { get; } = [];
+
+    /// <summary>Holds a method's call until the test lets it go (the page's indicators while it waits).</summary>
+    public Dictionary<string, TaskCompletionSource> Gates { get; } = [];
+
+    public string? GetLocalSetting(string key) => LocalSettings.GetValueOrDefault(key);
+
+    public void SetLocalSetting(string key, string? value)
+    {
+        if (value is null)
+        {
+            LocalSettings.Remove(key);
+        }
+        else
+        {
+            LocalSettings[key] = value;
+        }
+    }
 
     public string OwnerName => "joe@pc";
 
@@ -74,7 +96,20 @@ internal sealed class PageContext(ActionRulesPlugin plugin, PluginEventHub hub) 
         return Task.FromResult(Confirm);
     }
 
-    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => plugin.InvokeAsync(method, payloadJson, ct);
+    public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
+    {
+        lock (Calls)
+        {
+            Calls.Add((method, payloadJson));
+        }
+
+        if (Gates.TryGetValue(method, out var gate))
+        {
+            await gate.Task.WaitAsync(ct);
+        }
+
+        return await plugin.InvokeAsync(method, payloadJson, ct);
+    }
 
     public async IAsyncEnumerable<PluginEvent> WatchEventsAsync([EnumeratorCancellation] CancellationToken ct)
     {
@@ -138,8 +173,9 @@ internal sealed class PageRig : IAsyncDisposable
     {
         Plugin = new ActionRulesPlugin(new DeviceSweepOptions { PublishInterval = TimeSpan.FromMilliseconds(20) });
         Plugin.StartAsync(new FakeContext(Devices, Cameras, Runner, new RecordingEvents(), Data) { Hub = Hub.For(ActionRulesInfo.PluginId) }, CancellationToken.None).GetAwaiter().GetResult();
-        Context = new PageContext(Plugin, Hub);
+        Context = new PageContext(Plugin, Hub, Devices);
         ViewModel = new ActionRulesViewModel(Context) { Dialogs = Dialogs };
+        ViewModel.DeviceChoice.Set(Oadm.Sdk.Client.Controls.DeviceChoice.AllDevices); // the pages tested here read every device
     }
 
     public string Data { get; } = Path.Combine(Path.GetTempPath(), "oadm-action-rules-page-" + Guid.NewGuid().ToString("N"));
@@ -161,9 +197,9 @@ internal sealed class PageRig : IAsyncDisposable
     public ActionRulesViewModel ViewModel { get; }
 
     /// <summary>A device with its camera; <paramref name="setup"/> adds rules.</summary>
-    public FakeDevice Add(string address, Action<RuleCamera>? setup = null, string os = "os12", DeviceStatus status = DeviceStatus.Ok)
+    public FakeDevice Add(string address, Action<RuleCamera>? setup = null, string os = "os12", DeviceStatus status = DeviceStatus.Ok, IReadOnlyList<string>? tags = null)
     {
-        var device = new FakeDevice { Address = address, Status = status, FirmwareVersion = os == "os12" ? "12.11.77" : "10.12.338" };
+        var device = new FakeDevice { Address = address, Status = status, FirmwareVersion = os == "os12" ? "12.11.77" : "10.12.338", Tags = tags ?? [] };
         var camera = new RuleCamera(os);
         setup?.Invoke(camera);
         Cameras.Cameras[device.Id] = camera;
@@ -235,6 +271,103 @@ public sealed class PageTests(ITestOutputHelper output)
         Assert.Equal(4, vm.Groups.Count);
         vm.SearchText = "notify";
         Assert.Equal("Notify VMS", Assert.Single(vm.Groups).NamesText);
+    }
+
+    [Fact]
+    [Trait("Category", "Timing")] // the plugin's events arrive on the thread pool, waited for in real time
+    public async Task The_page_reads_only_the_chosen_devices_and_nothing_before_a_choice()
+    {
+        await using var rig = new PageRig();
+        var a = rig.Add("10.0.0.1", c => AddTcp(c, "test", "camera 1"), tags: ["Building A"]);
+        var b = rig.Add("10.0.0.2", c => AddTcp(c, "test", "camera 2"), tags: ["Building A"]);
+        var c = rig.Add("10.0.0.3", c => AddTcp(c, "other", "camera 3"));
+        rig.Context.LocalSettings.Clear(); // a new computer: no choice yet
+        var vm = new ActionRulesViewModel(rig.Context) { Dialogs = rig.Dialogs };
+        try
+        {
+            Assert.Equal("Choose devices", vm.DeviceChoice.ButtonText);
+            vm.Activate();
+            await Task.Delay(100);
+            Assert.Empty(vm.Groups);
+            Assert.DoesNotContain(rig.Context.Calls, call => call.Method == ActionRulesMethods.Read);
+            Assert.All(rig.Cameras.Cameras.Values, camera => Assert.Empty(camera.Requests));
+            Assert.Equal("Choose devices to read their action rules.", vm.EmptyText);
+            Assert.False(vm.RefreshCommand.CanExecute(null));
+
+            vm.PickDevices = () =>
+            {
+                vm.DeviceChoice.Set(Oadm.Sdk.Client.Controls.DeviceChoice.Devices([], ["Building A"]));
+                return Task.FromResult(true);
+            };
+            await vm.ChooseDevicesCommand.ExecuteAsync(null);
+            await UntilAsync(() => !vm.IsReading && vm.Groups.Count == 1);
+            Assert.Equal("Selected devices: Tag Building A", vm.DeviceChoice.ButtonText);
+            Assert.Equal(2, vm.Groups[0].DeviceCount);
+            Assert.Empty(rig.Cameras.Cameras[c.Id].Requests); // the other device was not asked
+            Assert.Equal("2 devices · 2 rules", vm.SummaryText);
+            Assert.True(vm.RefreshCommand.CanExecute(null));
+
+            // The pickers still list every device; the one outside the choice is greyed.
+            Assert.Null(vm.NewRuleUnavailable(a.Id));
+            Assert.Equal(ActionRulesViewModel.NotChosenText, vm.NewRuleUnavailable(c.Id));
+            Assert.Equal(ActionRulesViewModel.NotChosenText, vm.CopyUnavailable(c.Id, a.Id));
+
+            // Rows of other devices (another page's read) stay off this page.
+            await rig.Plugin.InvokeAsync(ActionRulesMethods.Read, null, CancellationToken.None);
+            await UntilAsync(() => rig.Cameras.Cameras[c.Id].Requests.Count > 0);
+            await vm.RefreshCommand.ExecuteAsync(null);
+            await UntilAsync(() => !vm.IsReading);
+            Assert.Equal(2, vm.Groups.Sum(g => g.DeviceCount));
+            vm.SetGroupSelection(vm.Groups);
+            Assert.Equal(new[] { a.Id, b.Id }.Order(), vm.Targets.Select(t => t.Device.DeviceId).Order());
+        }
+        finally
+        {
+            vm.Dispose();
+        }
+
+        // The next page on this computer starts with the last choice.
+        var again = new ActionRulesViewModel(rig.Context);
+        Assert.Equal("Selected devices: Tag Building A", again.DeviceChoice.ButtonText);
+        again.Dispose();
+    }
+
+    [Fact]
+    [Trait("Category", "Timing")]
+    public async Task The_progress_shows_from_the_click_on_and_while_a_form_is_prepared()
+    {
+        await using var rig = new PageRig();
+        var a = rig.Add("10.0.0.1", c => AddTcp(c, "test", "camera 1"));
+        rig.Add("10.0.0.2", c => AddTcp(c, "test", "camera 2"));
+        var vm = rig.ViewModel;
+        var read = new TaskCompletionSource();
+        rig.Context.Gates[ActionRulesMethods.Read] = read;
+        vm.Activate();
+        Assert.True(vm.IsReading); // before the server answered
+        Assert.True(vm.ShowProgress);
+        Assert.Equal("Reading action rules 0 of 2", vm.ProgressRowText);
+        Assert.Equal("Reading the action rules.", vm.EmptyText);
+        Assert.False(vm.RefreshCommand.CanExecute(null));
+        Assert.False(vm.ChooseDevicesCommand.CanExecute(null));
+        read.SetResult();
+        await UntilAsync(() => !vm.IsReading && vm.Groups.Count == 1);
+        Assert.False(vm.ShowProgress);
+
+        var events = new TaskCompletionSource();
+        rig.Context.Gates[ActionRulesMethods.Events] = events;
+        rig.Dialogs.Devices.Add(a.Id);
+        var newRule = vm.NewRuleCommand.ExecuteAsync(null);
+        Assert.True(vm.IsPreparing); // the form waits for the devices' events
+        Assert.True(vm.ShowProgress);
+        Assert.Equal(ActionRulesViewModel.PreparingText, vm.ProgressRowText);
+        vm.SetGroupSelection(vm.Groups);
+        Assert.False(vm.EditCommand.CanExecute(null));
+        Assert.False(vm.Recipients.NewCommand.CanExecute(null));
+        events.SetResult();
+        await newRule;
+        Assert.False(vm.IsPreparing);
+        Assert.NotNull(rig.Dialogs.LastNewRule);
+        Assert.True(vm.EditCommand.CanExecute(null));
     }
 
     [Fact]

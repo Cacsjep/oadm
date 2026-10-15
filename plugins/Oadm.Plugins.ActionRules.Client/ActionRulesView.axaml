@@ -21,7 +21,10 @@
           </Border>
 
           <StackPanel Orientation="Horizontal" Spacing="4">
-            <ui:ToolbarButton IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}" ToolTip.Tip="Read every device again" />
+            <Button Classes="primary" Command="{Binding ChooseDevicesCommand}" Margin="0,0,6,0" ToolTip.Tip="Devices by address or tag">
+              <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding DeviceChoice.ButtonText}" />
+            </Button>
+            <ui:ToolbarButton IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}" ToolTip.Tip="Read the selected devices again" />
             <ui:ToolbarButton IconKey="undo" Text="Undo" Command="{Binding UndoCommand}" IsVisible="{Binding MayManage}" />
           </StackPanel>
 
@@ -81,8 +84,8 @@
                     SelectedIndex="{Binding GroupByIndex}" ToolTip.Tip="Group by" IsVisible="{Binding IsRulesTab}" />
           <ui:SearchBox Grid.Column="2" Width="220" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="{Binding SearchPlaceholder}" />
         </Grid>
-        <ui:ProgressRow Grid.Row="2" Margin="0,0,0,8" Value="{Binding ProgressValue}" Text="{Binding ProgressText}" IsActive="{Binding IsReading}"
-                        IsVisible="{Binding IsReading}" />
+        <ui:ProgressRow Grid.Row="2" Margin="0,0,0,8" Value="{Binding ProgressValue}" Text="{Binding ProgressRowText}" IsActive="{Binding ShowProgress}"
+                        IsVisible="{Binding ShowProgress}" />
 
         <!-- Rules: the groups in a virtualized grid like every list of the app. -->
         <Panel Grid.Row="3" IsVisible="{Binding IsRulesTab}">

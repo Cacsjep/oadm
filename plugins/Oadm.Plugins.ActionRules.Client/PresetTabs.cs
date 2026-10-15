@@ -216,7 +216,7 @@ public sealed partial class PresetTabViewModel(ActionRulesViewModel page, bool s
     [RelayCommand(CanExecute = nameof(CanNew))]
     private Task NewAsync() => schedules ? page.NewScheduleAsync() : page.NewRecipientAsync();
 
-    private bool CanNew => page.MayManage;
+    private bool CanNew => page.MayManage && !page.IsPreparing;
 
     public void NotifyTargets()
     {
