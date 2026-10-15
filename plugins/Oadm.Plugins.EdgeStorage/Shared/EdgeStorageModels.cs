@@ -25,7 +25,7 @@ public static class EdgeStorageInfo
 /// <summary>Page backend methods (<c>InvokeAsync</c>), the rights they need and the live event topics.</summary>
 public static class EdgeStorageMethods
 {
-    /// <summary>{} -> <see cref="StorageState"/>: reads the SD card of every camera once; rows and progress follow as events.</summary>
+    /// <summary><see cref="ReadRequest"/> -> <see cref="StorageState"/>: reads the SD cards of the chosen cameras once; rows and progress follow as events.</summary>
     public const string Read = "read";
 
     /// <summary>{} -> <see cref="StorageState"/>: the current rows and counts, without asking any device.</summary>
@@ -157,6 +157,9 @@ public sealed record RowsEvent(IReadOnlyList<StorageRow> Rows, IReadOnlyList<Gui
 /// (0..7000, 0 = no age limit); <see cref="Passphrase"/> for <see cref="StorageActions.EncryptionOn"/> (kept in memory
 /// only, never stored or logged). <see cref="Owner"/>: the client's user and computer, the tasks' owner.
 /// </summary>
+/// <summary>Request of <see cref="EdgeStorageMethods.Read"/>: the cameras of the page's choice (null: every camera, older pages).</summary>
+public sealed record ReadRequest(IReadOnlyList<Guid>? DeviceIds);
+
 public sealed record RunRequest(string Action, IReadOnlyList<Guid> DeviceIds, int? RetentionDays = null, string? Passphrase = null, string? Owner = null)
 {
     /// <summary>Never print the passphrase (records print every property).</summary>

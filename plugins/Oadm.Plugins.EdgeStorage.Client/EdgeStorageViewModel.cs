@@ -6,7 +6,10 @@ using CommunityToolkit.Mvvm.Input;
 using Oadm.Plugins.Shared;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Collections;
+using Oadm.Sdk.Client.Controls;
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
+using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.EdgeStorage.Client;
 
@@ -21,8 +24,9 @@ public interface IStorageDialogs
 }
 
 /// <summary>
-/// Page "Edge storage". <see cref="Activate"/> when the page is shown watches the pushed rows and reads every SD card once;
-/// Refresh reads again. The tools work on the selected rows that have a card, one task per camera (tasks pane below); each
+/// Page "Edge storage". The cameras come from the page's device choice (<see cref="DeviceChoice"/>: the Devices page selection,
+/// else the last choice on this computer). <see cref="Activate"/> when the page is shown watches the pushed rows and reads the
+/// SD cards of the chosen cameras once; Refresh reads again. The tools work on the selected rows that have a card, one task per camera (tasks pane below); each
 /// asks first (format, repair and encryption delete the recordings). The tools follow the role live: "manage" (check,
 /// retention) and "format" (format, repair, encryption); the server checks again.
 /// </summary>
@@ -40,7 +44,18 @@ public sealed partial class EdgeStorageViewModel : ObservableObject, IDisposable
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         _ctx.PermissionsChanged += OnPermissionsChanged;
+        DeviceChoice = new PageDeviceChoice(ctx, "cameras", HasSlot);
+        DeviceChoice.PropertyChanged += (_, _) => RefreshCommand.NotifyCanExecuteChanged();
     }
+
+    /// <summary>The cameras the page reads: "Selected cameras: Tag Building A" (the purple button).</summary>
+    public PageDeviceChoice DeviceChoice { get; }
+
+    /// <summary>Opens the device picker (set by the view); true when a choice was made.</summary>
+    public Func<Task<bool>>? PickDevices { get; set; }
+
+    /// <summary>Cameras with an SD card slot (the server's check, from the cached API list).</summary>
+    internal static bool HasSlot(IDeviceInfo device) => device.Apis.Supports("disk-management", "1.0");
 
     /// <summary>How often the page asks for the state while a read runs (its progress events may be missed).</summary>
     public static TimeSpan StatePollInterval { get; set; } = TimeSpan.FromSeconds(1);
@@ -132,6 +147,16 @@ public sealed partial class EdgeStorageViewModel : ObservableObject, IDisposable
         _ = ReadAsync(token);
     }
 
+    /// <summary>The purple button: choose the cameras, then read their SD cards.</summary>
+    [RelayCommand]
+    private async Task ChooseDevicesAsync()
+    {
+        if (PickDevices is { } pick && await pick().ConfigureAwait(true))
+        {
+            await ReadAsync(_active?.Token ?? CancellationToken.None).ConfigureAwait(true);
+        }
+    }
+
     /// <summary>The page is hidden: no watch.</summary>
     public void Deactivate()
     {
@@ -160,9 +185,9 @@ public sealed partial class EdgeStorageViewModel : ObservableObject, IDisposable
         NotifyTools();
     }
 
-    private bool CanRefresh => !IsReading;
+    private bool CanRefresh => !IsReading && !DeviceChoice.IsEmpty;
 
-    /// <summary>Reads every SD card again.</summary>
+    /// <summary>Reads the SD cards of the chosen cameras again.</summary>
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     private Task RefreshAsync() => ReadAsync(_active?.Token ?? CancellationToken.None);
 
@@ -275,9 +300,20 @@ public sealed partial class EdgeStorageViewModel : ObservableObject, IDisposable
 
     private async Task ReadAsync(CancellationToken ct)
     {
+        var cameras = DeviceChoice.Resolve();
+        _rows.Scope = cameras.Select(d => d.Id).ToHashSet();
+        OnPropertyChanged(nameof(ShowEmpty));
+        if (cameras.Count == 0)
+        {
+            _state = null;
+            IsReading = false;
+            UpdateSummary();
+            return;
+        }
+
         try
         {
-            var json = await _ctx.InvokeAsync(EdgeStorageMethods.Read, null, ct).ConfigureAwait(true);
+            var json = await _ctx.InvokeAsync(EdgeStorageMethods.Read, EdgeStorageJson.Serialize(new ReadRequest([.. cameras.Select(d => d.Id)])), ct).ConfigureAwait(true);
             ApplyState(EdgeStorageJson.Deserialize<StorageState>(json), replaceRows: true);
             ErrorText = null;
 
@@ -360,6 +396,8 @@ public sealed partial class EdgeStorageViewModel : ObservableObject, IDisposable
         HasFailed = failed > 0;
 
         EmptyText = HasError && _rows.Count == 0 ? string.Empty
+            : DeviceChoice.IsEmpty ? "Choose cameras to read their SD cards."
+            : DeviceChoice.Resolve().Count == 0 ? "None of the chosen cameras has an SD card slot."
             : _state is null || _state.Reading
             ? "Reading the SD cards."
             : _rows.Count == 0 ? "No camera with an SD card slot yet." : "No camera matches the search.";

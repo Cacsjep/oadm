@@ -143,4 +143,15 @@ public interface ICorePluginClientContext
         add { }
         remove { }
     }
+
+    /// <summary>
+    /// A short text this plugin keeps on this computer (the client settings file), e.g. a page's last device choice; null
+    /// when none. Not shared with other computers or users of them. Default (older hosts): nothing is kept.
+    /// </summary>
+    string? GetLocalSetting(string key) => null;
+
+    /// <summary>Keeps <paramref name="value"/> (at most 64 KB) under <paramref name="key"/> on this computer; null removes it.</summary>
+    void SetLocalSetting(string key, string? value)
+    {
+    }
 }

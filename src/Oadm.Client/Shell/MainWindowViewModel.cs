@@ -304,7 +304,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return null;
         }
 
-        var context = new CorePluginClientContext(_api, rail.PluginId, Devices.ToolbarContext, _liveVideo);
+        var context = new CorePluginClientContext(_api, rail.PluginId, Devices.ToolbarContext, _liveVideo, _settings);
         try
         {
             var view = page.CreateView(context);
@@ -488,7 +488,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             ICorePluginPage? page = _plugins.FindPage(plugin.Id);
             if (page is not null)
             {
-                context = new CorePluginClientContext(_api, plugin.Id, Devices.ToolbarContext, _liveVideo);
+                context = new CorePluginClientContext(_api, plugin.Id, Devices.ToolbarContext, _liveVideo, _settings);
                 try
                 {
                     view = page.CreateView(context);
@@ -604,12 +604,41 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
     private bool _hostSubscribed;
     private bool _disposed;
 
-    public CorePluginClientContext(IOadmApi api, string pluginId, IToolbarContext host, ILiveVideoAccess? liveVideo = null)
+    public CorePluginClientContext(IOadmApi api, string pluginId, IToolbarContext host, ILiveVideoAccess? liveVideo = null, IClientSettingsStore? settings = null)
     {
         _api = api;
         _pluginId = pluginId;
         _host = host;
         _liveVideoHost = liveVideo;
+        _settings = settings;
+    }
+
+    /// <summary>Most bytes of one value a plugin keeps on this computer.</summary>
+    public const int MaxLocalSettingLength = 64 * 1024;
+
+    private readonly IClientSettingsStore? _settings;
+
+    public string? GetLocalSetting(string key) =>
+        _settings?.Current.PluginSettings.GetValueOrDefault(_pluginId + "/" + key);
+
+    public void SetLocalSetting(string key, string? value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        if (_settings is null || (value?.Length ?? 0) > MaxLocalSettingLength)
+        {
+            return;
+        }
+
+        var name = _pluginId + "/" + key;
+        if (value is null ? _settings.Current.PluginSettings.Remove(name) : _settings.Current.PluginSettings.GetValueOrDefault(name) != value)
+        {
+            if (value is not null)
+            {
+                _settings.Current.PluginSettings[name] = value;
+            }
+
+            _settings.Save();
+        }
     }
 
     public IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo> Devices => _host.Devices;

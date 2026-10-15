@@ -2307,6 +2307,12 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   `IFormFieldVisits.FieldLeft` the bound property, an empty required field says so) or a submit was
   tried, never on an untouched form; submit buttons stay disabled while any error exists and their tooltip says why. Usage:
   `plugins/README.md` "Validation".
+- **HARD RULE, loading feedback.** Everything that can take longer than 1 s at 30,000 devices shows that it is working
+  from the first moment: a page or dialog that waits for a read `ui:LoadingOverlay` (ring and text, Cancel stays usable),
+  a list or card that reloads `ui:ProgressRow` or a `ui:ProgressRing` in place, a button that started the work disabled
+  while its row shows progress. The window never freezes without one: work that would block the UI thread for longer
+  runs elsewhere or shows the ring first (the device grid: `DevicesView.RunBusyAsync`, a ring over the grid before a
+  sort or regroup of a large selection). A new feature checks its waits at 30,000 devices (docs/30kspec.md, section 11).
 - **HARD RULE, scale to thousands of devices.** A site can have 1000+ cameras. Every list of
   devices, discovered devices, tasks, sources or tiles is virtualized (DataGrid, virtualizing
   ListBox/ItemsRepeater; never an ItemsControl/StackPanel creating one control per item), search,
