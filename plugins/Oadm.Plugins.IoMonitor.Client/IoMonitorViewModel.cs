@@ -2,33 +2,33 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Sdk.Client;
-using Oadm.Sdk.Client.Collections;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.IoMonitor.Client;
 
-/// <summary>A device in the picker: "10.0.0.70 · A9210".</summary>
+/// <summary>The chosen device: "10.0.0.70 · A9210".</summary>
 public sealed record IoDeviceOption(Guid Id, string Address, string Text)
 {
     public override string ToString() => Text;
 
-    public static IReadOnlyList<IoDeviceOption> From(IEnumerable<IDeviceInfo> devices) =>
-    [
-        .. devices.Where(d => d.Apis.Supports(IoMonitorPluginInfo.ApiId, "1.0"))
-            .OrderBy(d => AddressKey(d.Address), StringComparer.Ordinal)
-            .Select(d => new IoDeviceOption(d.Id, d.Address, string.IsNullOrEmpty(d.Model) ? d.Address : $"{d.Address} · {d.Model.Replace("AXIS ", string.Empty, StringComparison.Ordinal)}")),
-    ];
-
-    private static string AddressKey(string address)
+    /// <summary>Devices the page offers: those with the I/O port management API.</summary>
+    public static bool Fits(IDeviceInfo device)
     {
-        var parts = address.Split(':')[0].Split('.');
-        return parts.Length == 4 && parts.All(p => byte.TryParse(p, NumberStyles.None, CultureInfo.InvariantCulture, out _))
-            ? string.Join('.', parts.Select(p => p.PadLeft(3, '0')))
-            : "~" + address;
+        ArgumentNullException.ThrowIfNull(device);
+        return device.Apis.Supports(IoMonitorPluginInfo.ApiId, "1.0");
+    }
+
+    public static IoDeviceOption Of(IDeviceInfo device)
+    {
+        ArgumentNullException.ThrowIfNull(device);
+        return new IoDeviceOption(device.Id, device.Address, string.IsNullOrEmpty(device.Model)
+            ? device.Address
+            : $"{device.Address} · {device.Model.Replace("AXIS ", string.Empty, StringComparison.Ordinal)}");
     }
 }
 
@@ -96,18 +96,30 @@ public sealed partial class IoMonitorViewModel : ObservableObject, IDisposable
 
     public static TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
 
-    public RangeObservableCollection<IoDeviceOption> Devices { get; } = [];
+    /// <summary>
+    /// Opens the shared picker for one device (set by the view): the devices the page offers and the chosen one; returns the
+    /// chosen id, or null when cancelled.
+    /// </summary>
+    public Func<IReadOnlyList<IDeviceInfo>, Guid?, Task<Guid?>>? PickDevice { get; set; }
+
+    /// <summary>OADM manages a device with inputs or outputs.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EmptyText))]
+    public partial bool HasDevices { get; private set; }
 
     public ObservableCollection<PortTileViewModel> Inputs { get; } = [];
 
     public ObservableCollection<PortTileViewModel> Outputs { get; } = [];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(PanelTitle))]
+    [NotifyPropertyChangedFor(nameof(PanelTitle), nameof(DeviceButtonText))]
     public partial IoDeviceOption? SelectedDevice { get; set; }
 
     /// <summary>The faceplate's label: the model, else the address.</summary>
     public string PanelTitle => SelectedDevice?.Text.Split(" · ", 2)[^1] ?? string.Empty;
+
+    /// <summary>The device button: "10.0.0.70 · A9210", or "Choose a device".</summary>
+    public string DeviceButtonText => SelectedDevice?.Text ?? "Choose a device";
 
     public bool ShowPanel => Inputs.Count > 0 || Outputs.Count > 0;
 
@@ -131,7 +143,7 @@ public sealed partial class IoMonitorViewModel : ObservableObject, IDisposable
 
     public bool ShowEmpty => Inputs.Count == 0 && Outputs.Count == 0 && !IsConnecting;
 
-    public string EmptyText => Devices.Count == 0
+    public string EmptyText => !HasDevices
         ? "No device with inputs or outputs."
         : SelectedDevice is null ? "Choose a device." : HasError ? string.Empty : "The device reports no ports.";
 
@@ -140,6 +152,23 @@ public sealed partial class IoMonitorViewModel : ObservableObject, IDisposable
         if (!_silent)
         {
             _ = SwitchAsync(value);
+        }
+    }
+
+    /// <summary>The device button: the shared picker; another device stops the reading of the one before.</summary>
+    [RelayCommand]
+    private async Task ChooseDeviceAsync()
+    {
+        if (PickDevice is not { } pick)
+        {
+            return;
+        }
+
+        var devices = _ctx.Devices.Where(IoDeviceOption.Fits).ToList();
+        if (await pick(devices, SelectedDevice?.Id).ConfigureAwait(true) is { } id
+            && devices.Find(d => d.Id == id) is { } chosen)
+        {
+            SelectedDevice = IoDeviceOption.Of(chosen);
         }
     }
 
@@ -398,43 +427,47 @@ public sealed partial class IoMonitorViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>The device list changed (one pass): the chosen device keeps its reading unless it was removed.</summary>
     private void RefreshDevices()
     {
-        var options = IoDeviceOption.From(_ctx.Devices);
         var selected = SelectedDevice;
-
-        // one reset; the picker may clear its selection on it, which must not stop the stream
-        _silent = true;
-        try
+        var any = false;
+        IDeviceInfo? again = null;
+        foreach (var device in _ctx.Devices)
         {
-            Devices.ReplaceAll(options);
-        }
-        finally
-        {
-            _silent = false;
+            if (!IoDeviceOption.Fits(device))
+            {
+                continue;
+            }
+
+            any = true;
+            if (selected is not null && device.Id == selected.Id)
+            {
+                again = device;
+                break;
+            }
+
+            if (selected is null)
+            {
+                break;
+            }
         }
 
+        HasDevices = any;
         if (selected is null)
         {
-            if (SelectedDevice is not null)
-            {
-                SetSelectedSilently(null);
-            }
+            return;
         }
-        else if (options.FirstOrDefault(d => d.Id == selected.Id) is { } again)
-        {
-            if (!ReferenceEquals(again, SelectedDevice))
-            {
-                SetSelectedSilently(again); // the same device: keep the stream, only swap the list entry
-            }
-        }
-        else
+
+        if (again is null)
         {
             SetSelectedSilently(null); // removed from OADM: stop reading it
             _ = SwitchAsync(null);
         }
-
-        OnPropertyChanged(nameof(EmptyText));
+        else
+        {
+            SetSelectedSilently(IoDeviceOption.Of(again)); // the same device: keep the reading, a new address or model renames
+        }
     }
 
     private bool _silent;

@@ -22,10 +22,13 @@
     </DataTemplate>
   </UserControl.Resources>
 
-  <!-- One card (the host's page card): device picker and state, then the device's faceplate with its terminals. -->
+  <!-- One card (the host's page card): the device button (the shared picker) and state, then the device's faceplate with its terminals. -->
   <Grid RowDefinitions="Auto,*">
     <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
-      <ComboBox Grid.Column="0" ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}" PlaceholderText="Choose a device" MinWidth="320" />
+      <Button Grid.Column="0" Classes="primary" VerticalAlignment="Center" MinWidth="220" MaxWidth="360"
+              Command="{Binding ChooseDeviceCommand}" ToolTip.Tip="Find a device by address or model">
+        <ui:IconLabel Icon="{DynamicResource Icon.device.io}" Text="{Binding DeviceButtonText}" />
+      </Button>
       <ui:StatusChip Grid.Column="2" VerticalAlignment="Center" Text="{Binding State}" Detail="{Binding ErrorText}"
                      IsOk="{Binding IsLive}" IsAccent="{Binding IsConnecting}" IsError="{Binding HasError}" MaxLines="2" />
     </Grid>
