@@ -1,0 +1,34 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.ActionRules.Client"
+        x:Class="Oadm.Plugins.ActionRules.Client.UndoWindow"
+        x:DataType="vm:UndoViewModel"
+        Title="{x:Static vm:UndoViewModel.Title}"
+        Width="720" Height="480"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- A list in a card: the changes of the last 30 days, newest first. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:UndoViewModel.Title}" />
+    <Border Grid.Row="1" Classes="card" Margin="20,0,20,0">
+      <Panel>
+        <DataGrid ItemsSource="{Binding Runs}" SelectedItem="{Binding Selected}" IsReadOnly="True" SelectionMode="Single" CanUserSortColumns="False">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Time" Width="150" Binding="{Binding TimeText}" x:DataType="vm:UndoRunRow" />
+            <DataGridTextColumn Header="Change" Width="*" Binding="{Binding Description}" x:DataType="vm:UndoRunRow" />
+            <DataGridTextColumn Header="State" Width="100" Binding="{Binding StateText}" x:DataType="vm:UndoRunRow" />
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:UndoViewModel.EmptyText}"
+                   IsVisible="{Binding ShowEmpty}" />
+      </Panel>
+    </Border>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Undo" Command="{Binding UndoCommand}"
+              ToolTip.Tip="{Binding UndoBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

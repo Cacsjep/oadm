@@ -164,7 +164,7 @@ public sealed class PluginPackageTests
             .Select(PluginLoader.ReadManifest)
             .ToList();
         Assert.NotEmpty(manifests);
-        Assert.Equal(["oadm.device-triggers", "oadm.edge-recording-export", "oadm.edge-storage", "oadm.hardening-scan", "oadm.image-health", "oadm.io-monitor", "oadm.live-view", "oadm.metadata-monitor"], manifests.Where(m => !m.EnabledByDefault).Select(m => m.Id).Order());
+        Assert.Equal(["oadm.action-rules", "oadm.device-triggers", "oadm.edge-recording-export", "oadm.edge-storage", "oadm.hardening-scan", "oadm.image-health", "oadm.io-monitor", "oadm.live-view", "oadm.metadata-monitor"], manifests.Where(m => !m.EnabledByDefault).Select(m => m.Id).Order());
 
         // Core functionality is always on; every bundled plugin has a description.
         Assert.Equal(

@@ -1,0 +1,65 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.ActionRules.Client"
+        x:Class="Oadm.Plugins.ActionRules.Client.ScheduleFormWindow"
+        x:DataType="vm:ScheduleFormViewModel"
+        Title="{Binding Title}"
+        Width="640" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Single operation: a name and when the schedule is active. Editing several: only the checked parts change. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Intro}" />
+        <vm:ChangeRow IsChecked="{Binding ChangeName}" ShowCheck="{Binding IsEdit}" Label="Name">
+          <TextBox Text="{Binding Name}" IsEnabled="{Binding ChangeName}" />
+        </vm:ChangeRow>
+        <Grid ColumnDefinitions="Auto,*">
+          <!-- One check box for when the schedule is active: the several inputs below belong together. -->
+          <CheckBox Grid.Column="0" Width="32" IsChecked="{Binding ChangeWhen}" ToolTip.Tip="Change" Classes="inputHeight" VerticalAlignment="Top" IsVisible="{Binding IsEdit}" />
+          <StackPanel Grid.Column="1" Classes="form" IsEnabled="{Binding ChangeWhen}">
+            <ui:FormField Classes="wide" Label="Active">
+              <ComboBox ItemsSource="{x:Static vm:ScheduleFormViewModel.KindNames}" SelectedIndex="{Binding KindIndex}" HorizontalAlignment="Stretch" />
+            </ui:FormField>
+            <ui:FormField Classes="wide" Label="Days" IsVisible="{Binding IsWeekly}" Error="{Binding WhenError}">
+              <ItemsControl ItemsSource="{Binding Days}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="12" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:DayToggle">
+                    <CheckBox IsChecked="{Binding IsOn}" Content="{Binding Text}" Classes="inputHeight" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ui:FormField>
+            <ui:FormField Label="From (hh:mm)" IsVisible="{Binding IsWeekly}">
+              <TextBox Text="{Binding From}" />
+            </ui:FormField>
+            <ui:FormField Label="To (hh:mm)" IsVisible="{Binding IsWeekly}" Info="A time before the start ends the next day.">
+              <TextBox Text="{Binding To}" />
+            </ui:FormField>
+            <ui:FormField Label="Every (minutes)" IsVisible="{Binding IsEvery}" Error="{Binding WhenError}">
+              <NumericUpDown Minimum="1" Maximum="10080" Increment="1" FormatString="0" ParsingNumberStyle="Integer" Value="{Binding EveryMinutes}" />
+            </ui:FormField>
+            <ui:FormField Classes="wide" Label="Schedule" IsVisible="{Binding IsText}" Error="{Binding WhenError}" Info="The device's schedule text, as its web interface stores it.">
+              <ui:CodeEditor Text="{Binding Text}" Language="Plain" MinHeight="96" />
+            </ui:FormField>
+            <TextBlock Classes="secondary" Text="{Binding Summary}" TextWrapping="Wrap" />
+          </StackPanel>
+        </Grid>
+      </StackPanel>
+    </Border>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="{Binding ApplyText}" Command="{Binding ApplyCommand}"
+              ToolTip.Tip="{Binding ApplyBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

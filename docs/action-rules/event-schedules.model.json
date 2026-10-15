@@ -1,0 +1,180 @@
+{
+  "id": "event-schedules",
+  "name": "Event Schedules",
+  "version": "2.0.1",
+  "state": "released",
+  "short_description": "Manage scheduled events",
+  "dependencies": [],
+  "export_import": true,
+  "root_entity": {
+    "short_description": "Manage scheduled events",
+    "collection": "singleton",
+    "collection_notification": false,
+    "dynamic_support": false,
+    "global": true,
+    "deprecated": false,
+    "properties": {},
+    "actions": {},
+    "entities": {
+      "schedules": {
+        "short_description": "Schedules",
+        "collection": "map",
+        "key_property": "id",
+        "collection_notification": false,
+        "dynamic_support": false,
+        "global": true,
+        "deprecated": false,
+        "properties": {
+          "id": {
+            "short_description": "Unique identifier for a schedule. Automatically generated if not provided during add.",
+            "collection": "singleton",
+            "data_type": "string",
+            "nullable": false,
+            "dynamic_support": false,
+            "dynamic_range_constraints": false,
+            "dynamic_value_constraints": false,
+            "export_import": true,
+            "notification": false,
+            "deprecated": false,
+            "operations": {
+              "get": {
+                "access_rights": [
+                  "admin",
+                  "operator",
+                  "viewer"
+                ]
+              }
+            },
+            "is_meta_property": false
+          },
+          "name": {
+            "short_description": "Well-known name of the schedule.",
+            "collection": "singleton",
+            "data_type": "string",
+            "nullable": false,
+            "dynamic_support": false,
+            "dynamic_range_constraints": false,
+            "dynamic_value_constraints": false,
+            "export_import": true,
+            "notification": false,
+            "deprecated": false,
+            "operations": {
+              "get": {
+                "access_rights": [
+                  "admin",
+                  "operator",
+                  "viewer"
+                ]
+              },
+              "set": {
+                "access_rights": [
+                  "admin"
+                ]
+              }
+            },
+            "is_meta_property": false
+          },
+          "schedule": {
+            "short_description": "Schedule definition, based on the iCalendar format.",
+            "collection": "singleton",
+            "data_type": "string",
+            "nullable": false,
+            "dynamic_support": false,
+            "dynamic_range_constraints": false,
+            "dynamic_value_constraints": false,
+            "export_import": true,
+            "notification": false,
+            "deprecated": false,
+            "operations": {
+              "get": {
+                "access_rights": [
+                  "admin",
+                  "operator",
+                  "viewer"
+                ]
+              },
+              "set": {
+                "access_rights": [
+                  "admin"
+                ]
+              }
+            },
+            "is_meta_property": false
+          },
+          "scheduleType": {
+            "short_description": "Type of schedule, either 'Pulse' or 'Interval'.",
+            "collection": "singleton",
+            "data_type": "ScheduleVariant",
+            "nullable": false,
+            "dynamic_support": false,
+            "dynamic_range_constraints": false,
+            "dynamic_value_constraints": false,
+            "export_import": false,
+            "notification": false,
+            "deprecated": false,
+            "operations": {
+              "get": {
+                "access_rights": [
+                  "admin",
+                  "operator",
+                  "viewer"
+                ]
+              }
+            },
+            "is_meta_property": false
+          }
+        },
+        "actions": {},
+        "entities": {},
+        "operations": {
+          "get": {
+            "access_rights": []
+          },
+          "set": {
+            "access_rights": [],
+            "fields": {
+              "optional": [
+                "name",
+                "schedule"
+              ]
+            }
+          },
+          "add": {
+            "access_rights": [
+              "admin"
+            ],
+            "fields": {
+              "required": [
+                "name",
+                "schedule"
+              ],
+              "optional": [
+                "id"
+              ]
+            }
+          },
+          "remove": {
+            "access_rights": [
+              "admin"
+            ]
+          }
+        }
+      }
+    },
+    "operations": {
+      "get": {
+        "access_rights": []
+      }
+    }
+  },
+  "data_types": {
+    "ScheduleVariant": {
+      "description": "Type of schedule",
+      "enum": [
+        "PULSE",
+        "INTERVAL"
+      ],
+      "type": "string"
+    }
+  }
+}

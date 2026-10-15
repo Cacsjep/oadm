@@ -1,0 +1,645 @@
+{
+  "id": "action-rules",
+  "name": "Action Rules API",
+  "version": "2.0.1",
+  "state": "released",
+  "short_description": "API for configuring action rules",
+  "dependencies": [
+    "event-schedules"
+  ],
+  "export_import": true,
+  "root_entity": {
+    "short_description": "Action Rules API (root object).",
+    "collection": "singleton",
+    "collection_notification": false,
+    "dynamic_support": false,
+    "global": true,
+    "deprecated": false,
+    "properties": {},
+    "actions": {},
+    "entities": {
+      "recipients": {
+        "short_description": "The recipient catalog configurations.",
+        "collection": "map",
+        "key_property": "id",
+        "collection_notification": false,
+        "dynamic_support": false,
+        "global": true,
+        "deprecated": false,
+        "properties": {
+          "id": {
+            "short_description": "The recipient entry generated id.",
+            "collection": "singleton",
+            "data_type": "Id",
+            "nullable": false,
+            "dynamic_support": false,
+            "dynamic_range_constraints": false,
+            "dynamic_value_constraints": false,
+            "export_import": true,
+            "notification": false,
+            "deprecated": false,
+            "operations": {
+              "get": {
+                "access_rights": [
+                  "admin"
+                ]
+              }
+            },
+            "is_meta_property": false
+          },
+          "name": {
+            "short_description": "The recipient entry name.",
+            "collection": "singleton",
+            "data_type": "string",
+            "nullable": false,
+            "dynamic_support": false,
+            "dynamic_range_constraints": false,
+            "dynamic_value_constraints": false,
+            "export_import": true,
+            "notification": false,
+            "deprecated": false,
+            "operations": {
+              "get": {
+                "access_rights": [
+                  "admin"
+                ]
+              },
+              "set": {
+                "access_rights": [
+                  "admin"
+                ]
+              }
+            },
+            "is_meta_property": false
+          },
+          "parameters": {
+            "short_description": "The recipient entry parameters.",
+            "collection": "singleton",
+            "data_type": "ParameterKeyValueArray",
+            "nullable": false,
+            "dynamic_support": false,
+            "dynamic_range_constraints": false,
+            "dynamic_value_constraints": false,
+            "export_import": true,
+            "notification": false,
+            "deprecated": false,
+            "operations": {
+              "get": {
+                "access_rights": [
+                  "admin"
+                ]
+              },
+              "set": {
+                "access_rights": [
+                  "admin"
+                ]
+              }
+            },
+            "secret": true,
+            "is_meta_property": false
+          },
+          "template": {
+            "short_description": "The recipient template token.",
+            "collection": "singleton",
+            "data_type": "TemplateId",
+            "nullable": false,
+            "dynamic_support": false,
+            "dynamic_range_constraints": false,
+            "dynamic_value_constraints": false,
+            "export_import": true,
+            "notification": false,
+            "deprecated": false,
+            "operations": {
+              "get": {
+                "access_rights": [
+                  "admin"
+                ]
+              },
+              "set": {
+                "access_rights": [
+                  "admin"
+                ]
+              }
+            },
+            "is_meta_property": false
+          }
+        },
+        "actions": {},
+        "entities": {},
+        "operations": {
+          "get": {
+            "access_rights": []
+          },
+          "set": {
+            "access_rights": [],
+            "fields": {
+              "optional": [
+                "name",
+                "parameters",
+                "template"
+              ]
+            }
+          },
+          "add": {
+            "access_rights": [
+              "admin"
+            ],
+            "fields": {
+              "required": [
+                "name",
+                "template",
+                "parameters"
+              ],
+              "optional": []
+            }
+          },
+          "remove": {
+            "access_rights": [
+              "admin"
+            ]
+          }
+        }
+      },
+      "rules": {
+        "short_description": "The rule configurations",
+        "collection": "map",
+        "key_property": "id",
+        "collection_notification": false,
+        "dynamic_support": false,
+        "global": true,
+        "deprecated": false,
+        "properties": {
+          "actionConfig": {
+            "short_description": "The configuration for the action",
+            "collection": "singleton",
+            "data_type": "ActionConfig",
+            "nullable": false,
+            "dynamic_support": false,
+            "dynamic_range_constraints": false,
+            "dynamic_value_constraints": false,
+            "export_import": true,
+            "notification": false,
+            "deprecated": false,
+            "operations": {
+              "get": {
+                "access_rights": [
+                  "admin"
+                ]
+              },
+              "set": {
+                "access_rights": [
+                  "admin"
+                ]
+              }
+            },
+            "is_meta_property": false
+          },
+          "activationConfig": {
+            "short_description": "Configuration that determines when the action will be triggered.",
+            "collection": "singleton",
+            "data_type": "ActivationConfig",
+            "nullable": false,
+            "dynamic_support": false,
+            "dynamic_range_constraints": false,
+            "dynamic_value_constraints": false,
+            "export_import": true,
+            "notification": false,
+            "deprecated": false,
+            "operations": {
+              "get": {
+                "access_rights": [
+                  "admin"
+                ]
+              },
+              "set": {
+                "access_rights": [
+                  "admin"
+                ]
+              }
+            },
+            "is_meta_property": false
+          },
+          "enabled": {
+            "short_description": "The rule run status (aa:Enabled).",
+            "collection": "singleton",
+            "data_type": "boolean",
+            "nullable": false,
+            "dynamic_support": false,
+            "dynamic_range_constraints": false,
+            "dynamic_value_constraints": false,
+            "export_import": true,
+            "notification": false,
+            "deprecated": false,
+            "operations": {
+              "get": {
+                "access_rights": [
+                  "admin"
+                ]
+              },
+              "set": {
+                "access_rights": [
+                  "admin"
+                ]
+              }
+            },
+            "is_meta_property": false
+          },
+          "id": {
+            "short_description": "The rule generated id (aa:RuleID).",
+            "collection": "singleton",
+            "data_type": "Id",
+            "nullable": false,
+            "dynamic_support": false,
+            "dynamic_range_constraints": false,
+            "dynamic_value_constraints": false,
+            "export_import": true,
+            "notification": false,
+            "deprecated": false,
+            "operations": {
+              "get": {
+                "access_rights": [
+                  "admin"
+                ]
+              }
+            },
+            "is_meta_property": false
+          },
+          "name": {
+            "short_description": "The rule configuration name.",
+            "collection": "singleton",
+            "data_type": "string",
+            "nullable": false,
+            "dynamic_support": false,
+            "dynamic_range_constraints": false,
+            "dynamic_value_constraints": false,
+            "export_import": true,
+            "notification": false,
+            "deprecated": false,
+            "operations": {
+              "get": {
+                "access_rights": [
+                  "admin"
+                ]
+              },
+              "set": {
+                "access_rights": [
+                  "admin"
+                ]
+              }
+            },
+            "is_meta_property": false
+          }
+        },
+        "actions": {},
+        "entities": {},
+        "operations": {
+          "get": {
+            "access_rights": []
+          },
+          "set": {
+            "access_rights": [],
+            "fields": {
+              "optional": [
+                "actionConfig",
+                "activationConfig",
+                "enabled",
+                "name"
+              ]
+            }
+          },
+          "add": {
+            "access_rights": [
+              "admin"
+            ],
+            "fields": {
+              "required": [
+                "name",
+                "enabled",
+                "activationConfig",
+                "actionConfig"
+              ],
+              "optional": []
+            }
+          },
+          "remove": {
+            "access_rights": [
+              "admin"
+            ]
+          }
+        }
+      },
+      "templates": {
+        "short_description": "Templates that are available to be used in actions.",
+        "collection": "singleton",
+        "collection_notification": false,
+        "dynamic_support": false,
+        "global": true,
+        "deprecated": false,
+        "properties": {},
+        "actions": {},
+        "entities": {
+          "actions": {
+            "short_description": "Available action to be used in rules.",
+            "collection": "map",
+            "key_property": "id",
+            "collection_notification": false,
+            "dynamic_support": false,
+            "global": true,
+            "deprecated": false,
+            "properties": {
+              "actionType": {
+                "short_description": "The type of the action (fixed or unlimited).",
+                "collection": "singleton",
+                "data_type": "ActionType",
+                "nullable": false,
+                "dynamic_support": false,
+                "dynamic_range_constraints": false,
+                "dynamic_value_constraints": false,
+                "export_import": false,
+                "notification": false,
+                "deprecated": false,
+                "operations": {
+                  "get": {
+                    "access_rights": [
+                      "admin"
+                    ]
+                  }
+                },
+                "is_meta_property": false
+              },
+              "id": {
+                "short_description": "The ID of the action template.",
+                "collection": "singleton",
+                "data_type": "TemplateId",
+                "nullable": false,
+                "dynamic_support": false,
+                "dynamic_range_constraints": false,
+                "dynamic_value_constraints": false,
+                "export_import": false,
+                "notification": false,
+                "deprecated": false,
+                "operations": {
+                  "get": {
+                    "access_rights": [
+                      "admin"
+                    ]
+                  }
+                },
+                "is_meta_property": false
+              },
+              "parameters": {
+                "short_description": "The parameter array associated with the action.",
+                "collection": "singleton",
+                "data_type": "ParameterArray",
+                "nullable": false,
+                "dynamic_support": false,
+                "dynamic_range_constraints": false,
+                "dynamic_value_constraints": false,
+                "export_import": false,
+                "notification": false,
+                "deprecated": false,
+                "operations": {
+                  "get": {
+                    "access_rights": [
+                      "admin"
+                    ]
+                  }
+                },
+                "is_meta_property": false
+              },
+              "recipientTemplate": {
+                "short_description": "The ID of the recipient template associated with this action (in case one exists).",
+                "collection": "singleton",
+                "data_type": "TemplateId",
+                "nullable": true,
+                "dynamic_support": false,
+                "dynamic_range_constraints": false,
+                "dynamic_value_constraints": false,
+                "export_import": false,
+                "notification": false,
+                "deprecated": false,
+                "operations": {
+                  "get": {
+                    "access_rights": [
+                      "admin"
+                    ]
+                  }
+                },
+                "is_meta_property": false
+              }
+            },
+            "actions": {},
+            "entities": {},
+            "operations": {
+              "get": {
+                "access_rights": []
+              }
+            }
+          },
+          "recipients": {
+            "short_description": "Available recipient templates that can be used in the Axis product.",
+            "collection": "map",
+            "key_property": "id",
+            "collection_notification": false,
+            "dynamic_support": false,
+            "global": true,
+            "deprecated": false,
+            "properties": {
+              "id": {
+                "short_description": "The ID of the recipient template.",
+                "collection": "singleton",
+                "data_type": "TemplateId",
+                "nullable": false,
+                "dynamic_support": false,
+                "dynamic_range_constraints": false,
+                "dynamic_value_constraints": false,
+                "export_import": false,
+                "notification": false,
+                "deprecated": false,
+                "operations": {
+                  "get": {
+                    "access_rights": [
+                      "admin"
+                    ]
+                  }
+                },
+                "is_meta_property": false
+              },
+              "parameters": {
+                "short_description": "The parameter array associated with the recipient.",
+                "collection": "singleton",
+                "data_type": "ParameterArray",
+                "nullable": false,
+                "dynamic_support": false,
+                "dynamic_range_constraints": false,
+                "dynamic_value_constraints": false,
+                "export_import": false,
+                "notification": false,
+                "deprecated": false,
+                "operations": {
+                  "get": {
+                    "access_rights": [
+                      "admin"
+                    ]
+                  }
+                },
+                "is_meta_property": false
+              }
+            },
+            "actions": {},
+            "entities": {},
+            "operations": {
+              "get": {
+                "access_rights": []
+              }
+            }
+          }
+        },
+        "operations": {
+          "get": {
+            "access_rights": []
+          }
+        }
+      }
+    },
+    "operations": {
+      "get": {
+        "access_rights": []
+      }
+    }
+  },
+  "data_types": {
+    "ActionConfig": {
+      "description": "The configuration data for the action.",
+      "fields": {
+        "actionParameters": {
+          "description": "The action parameters",
+          "type": "ParameterKeyValueArray"
+        },
+        "recipientId": {
+          "description": "Copy the parameters from a recipient with the provided id.",
+          "nullable": true,
+          "type": "Id"
+        },
+        "recipientParameters": {
+          "description": "The recipient parameters",
+          "nullable": true,
+          "secret": true,
+          "type": "ParameterKeyValueArray"
+        },
+        "template": {
+          "description": "The id of the action template.",
+          "type": "TemplateId"
+        }
+      },
+      "type": "object"
+    },
+    "ActionType": {
+      "description": "The action type",
+      "enum": [
+        "UNLIMITED",
+        "FIXED"
+      ],
+      "type": "string"
+    },
+    "ActivationConfig": {
+      "description": "Configuration for triggering action.",
+      "fields": {
+        "condition": {
+          "description": "Additional conditions that must be fulfilled to trigger the action rule.",
+          "nullable": true,
+          "type": "EventFilterArray"
+        },
+        "startEvent": {
+          "description": "A condition that must be fulfilled to trigger the action rule.",
+          "nullable": true,
+          "type": "EventFilter"
+        },
+        "timeout": {
+          "description": "The activation timeout for the action.",
+          "nullable": true,
+          "type": "Timeout"
+        }
+      },
+      "type": "object"
+    },
+    "EventFilter": {
+      "description": "The data type of the Web services response array.",
+      "fields": {
+        "messageContent": {
+          "description": "Message content filter using the ONVIF Message Content Filter dialect. i.e. 'boolean(//SimpleItem[@Name=\\\"active\\\" and @Value=\\\"0\\\"])'.",
+          "nullable": true,
+          "type": "string"
+        },
+        "topicExpression": {
+          "description": "Topic expression using the ONVIF Concrete Set dialect. i.e. 'tns1:VideoSource/MotionAlarm'.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "EventFilterArray": {
+      "description": "Web Services compatible response array.",
+      "items": {
+        "type": "EventFilter"
+      },
+      "type": "array"
+    },
+    "Id": {
+      "description": "A Unique numeric ID.",
+      "minLength": 1,
+      "pattern": "^[0-9]+$",
+      "type": "string"
+    },
+    "Parameter": {
+      "description": "Parameter information.",
+      "fields": {
+        "name": {
+          "description": "The name of the parameter.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ParameterArray": {
+      "description": "Array of the parameter names.",
+      "items": {
+        "type": "Parameter"
+      },
+      "type": "array"
+    },
+    "ParameterKeyValue": {
+      "description": "The data type of the key value array.",
+      "fields": {
+        "name": {
+          "description": "The name of the parameter.",
+          "type": "string"
+        },
+        "value": {
+          "description": "The value of the parameter.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ParameterKeyValueArray": {
+      "description": "A list of parameter names and their corresponding value.",
+      "items": {
+        "type": "ParameterKeyValue"
+      },
+      "type": "array"
+    },
+    "TemplateId": {
+      "description": "An id for the object in words separated by dots. I.e in reverse internet domain name format like: 'com.axis.action.fixed.light' or 'com.axis.recipient.http'",
+      "maxLength": 255,
+      "minLength": 10,
+      "pattern": "^com\\.axis\\.[A-Za-z0-9\\._-]*\\.[A-Za-z0-9_-]*[^\\.]$",
+      "type": "string"
+    },
+    "Timeout": {
+      "description": "Activation timeout setting, the minimum time that must pass between two consecutive executions of an action.",
+      "pattern": "^P(0Y)?(0M)?(\\d+D)?T(\\d+H)?(\\d+M)?(\\d+(\\.\\d+)?S)?$",
+      "type": "string"
+    }
+  }
+}

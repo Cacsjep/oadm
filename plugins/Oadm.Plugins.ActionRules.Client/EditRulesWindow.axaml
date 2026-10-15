@@ -1,0 +1,80 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.ActionRules.Client"
+        x:Class="Oadm.Plugins.ActionRules.Client.EditRulesWindow"
+        x:DataType="vm:EditRulesViewModel"
+        Title="{Binding Title}"
+        Width="760" SizeToContent="Height" MaxHeight="860"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Single operation: title bar, the form in Border.dialogBody (scrolls when the action has many settings), footer.
+       Every part is a vm:ChangeRow: unchecked parts stay as each device has them. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+      <Border Classes="dialogBody">
+        <StackPanel Classes="form">
+          <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Intro}" />
+
+          <vm:ChangeRow IsChecked="{Binding ChangeName}" Label="Name">
+            <TextBox Text="{Binding Name}" IsEnabled="{Binding ChangeName}" />
+          </vm:ChangeRow>
+          <vm:ChangeRow IsChecked="{Binding ChangeEnabled}" Label="Rule">
+            <CheckBox IsChecked="{Binding Enabled}" IsEnabled="{Binding ChangeEnabled}" Content="Turned on" />
+          </vm:ChangeRow>
+          <vm:ChangeRow IsChecked="{Binding ChangeEvent}" Label="Event" Error="{Binding EventError}" IsVisible="{Binding HasEvents}"
+                        Info="Replaces the event that starts the rule. Events from the last read of the devices.">
+            <vm:EventChoiceView DataContext="{Binding Event}" IsEnabled="{Binding $parent[vm:ChangeRow].IsChecked}" />
+          </vm:ChangeRow>
+          <vm:ChangeRow IsChecked="{Binding ChangeSchedule}" Label="Schedule" Info="The rule is active only while the schedule is. A new schedule is added to the devices that lack it.">
+            <vm:SchedulePickerView DataContext="{Binding Schedule}" IsEnabled="{Binding $parent[vm:ChangeRow].IsChecked}" />
+          </vm:ChangeRow>
+          <vm:ChangeRow IsChecked="{Binding ChangeTrigger}" Label="Run"
+                        Info="Actions that run while the rule is active need &quot;While the event is active&quot;.">
+            <ComboBox ItemsSource="{x:Static vm:EditRulesViewModel.TriggerKindNames}" SelectedIndex="{Binding TriggerKindIndex}"
+                      IsEnabled="{Binding ChangeTrigger}" HorizontalAlignment="Stretch" />
+          </vm:ChangeRow>
+          <vm:ChangeRow IsChecked="{Binding ChangeTimeout}" Label="Wait between actions (s)" Info="0 = run every time the event happens.">
+            <NumericUpDown Minimum="0" Maximum="86400" Increment="1" FormatString="0" ParsingNumberStyle="Integer"
+                           Value="{Binding TimeoutSeconds}" IsEnabled="{Binding ChangeTimeout}" />
+          </vm:ChangeRow>
+          <vm:ChangeRow IsChecked="{Binding ChangeAction}" Label="Action" Hint="{Binding CurrentActionText, StringFormat='Now: {0}'}">
+            <ComboBox ItemsSource="{Binding Actions}" SelectedItem="{Binding SelectedAction}" IsEnabled="{Binding ChangeAction}" HorizontalAlignment="Stretch" />
+          </vm:ChangeRow>
+
+          <vm:ChangeRow IsChecked="{Binding ChangeRecipient}" Label="Recipient" Hint="{Binding Recipient.Hint}" Error="{Binding RecipientError}"
+                        IsVisible="{Binding HasRecipient}" Info="The action takes the settings of each device's own recipient of this name. Checked settings below still win.">
+            <ComboBox ItemsSource="{Binding Recipient.Choices}" SelectedItem="{Binding Recipient.Selected}" IsEnabled="{Binding ChangeRecipient}"
+                      HorizontalAlignment="Stretch" />
+          </vm:ChangeRow>
+
+          <TextBlock Classes="cardTitle" Text="Settings of the action" Margin="0,8,0,0" />
+          <TextBlock Classes="secondary" Text="{Binding ParametersNote}" IsVisible="{Binding !HasParameters}" TextWrapping="Wrap" />
+          <!-- A dozen settings at most per action: no virtualization needed. -->
+          <ItemsControl ItemsSource="{Binding Parameters}" IsVisible="{Binding HasParameters}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Spacing="12" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ParameterField">
+                <vm:ChangeRow IsChecked="{Binding Change}" CanToggle="{Binding CanToggle}" Label="{Binding Label}" Hint="{Binding Hint}" Error="{Binding Error}"
+                              IsVisible="{Binding IsShown}">
+                  <vm:ParameterInput />
+                </vm:ChangeRow>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+    </ScrollViewer>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="{Binding ApplyText}" Command="{Binding ApplyCommand}"
+              ToolTip.Tip="{Binding ApplyBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

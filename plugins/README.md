@@ -249,7 +249,7 @@ resolve them at compile time, so use `DynamicResource` (`Icon="{DynamicResource 
 `Icon.server`, `Icon.externalLink`, `Icon.more`, `Icon.key`, `Icon.lock`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
 `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.grid`, `Icon.gridAdd`, `Icon.hardDriveDownload`, `Icon.hardDrive`, `Icon.wrench`, `Icon.eraser`, `Icon.lockOpen`, `Icon.focus`, `Icon.focusArea`, `Icon.home`, `Icon.network`, `Icon.metronome`, `Icon.firmware`, `Icon.users`,
 `Icon.user`, `Icon.logout`, `Icon.audit`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
-`Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.toggle`, `Icon.zap`, `Icon.bell`, `Icon.flame`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`,
+`Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.toggle`, `Icon.zap`, `Icon.workflow`, `Icon.undo`, `Icon.bell`, `Icon.flame`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`,
 `Icon.device.camera`, `Icon.device.encoder`,
 `Icon.device.speaker`, `Icon.device.audio`, `Icon.device.intercom`, `Icon.device.radar`,
 `Icon.device.io`, `Icon.device.door`, `Icon.device.generic`.
@@ -352,7 +352,8 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
     device data.
   - `ctx.PluginDirectory`: the plugin folder, for data files such as the VAPIX Commander `Library/*.json`.
   - `ctx.Secrets` (`ISecretProtector`): encrypt secrets you store in `Settings`; null = do not store them.
-  - `ctx.EventStreams`: device event streams, see below. `ctx.Tasks.Cancel(taskId)`.
+  - `ctx.EventStreams`: device event streams, see below. `ctx.Tasks.Cancel(taskId)`; `ctx.Tasks.IsActive(taskId)` (queued
+    or running; null when the host cannot tell): a task cancelled while queued never runs, so ask instead of waiting for it.
   - `ctx.AutoAdd` (`IDeviceAutoAdd`, null when the host has none). `AddAsync(ipAddress, expectedSerial, source, ct)`
     adds an Axis device the plugin saw on the network, through the add page's pipeline (anonymous Axis check, factory
     default check, login with the credential list; passwords never reach the plugin). It returns a
@@ -571,7 +572,10 @@ place, search and new rows with one reset; `AddressSortKeys.Of`). Link them with
 `DeviceMessages.Refusal(status, refuseUnreachable: true)` before any request, and watch the page events with
 `ctx.RunAsync(HandleEvent, retryDelay, ct)` (`PluginEventWatch`, reconnects after a drop). The disk list of the Edge storage
 API is `Oadm.Plugins.EdgeStorage.Disks` (`EdgeDisk`, `EdgeDisks.Parse`, `FirstProblem`); link
-`..\Oadm.Plugins.EdgeStorage\Disks\*.cs` instead of parsing `disks/list.cgi` again.
+`..\Oadm.Plugins.EdgeStorage\Disks\*.cs` instead of parsing `disks/list.cgi` again. The devices' own action rules,
+recipients and schedules over SOAP are `plugins/Shared/ActionEngine/*.cs` (`SoapActionEngine`, namespace
+`Oadm.Plugins.ActionEngine`); a device's event list is `plugins/Shared/DeviceEvents/*.cs` (`EventDeclarations`,
+`DeviceEvent`; the client part's filter rows in `DeviceEvents/Client`).
 
 ### Host support for service plugins (NTP, DHCP, ...)
 

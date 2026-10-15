@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.ActionRules.Client"
+        x:Class="Oadm.Plugins.ActionRules.Client.RecipientFormWindow"
+        x:DataType="vm:RecipientFormViewModel"
+        Title="{Binding Title}"
+        Width="760" SizeToContent="Height" MaxHeight="860"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Single operation: every part is a vm:ChangeRow; unchecked parts stay as each device has them. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+      <Border Classes="dialogBody">
+        <StackPanel Classes="form">
+          <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Intro}" />
+          <ui:FormField Classes="wide" Label="Kind" IsVisible="{Binding IsNew}">
+            <ComboBox ItemsSource="{Binding Kinds}" SelectedItem="{Binding SelectedKind}" HorizontalAlignment="Stretch" />
+          </ui:FormField>
+          <vm:ChangeRow IsChecked="{Binding ChangeName}" ShowCheck="{Binding IsEdit}" Label="Name">
+            <TextBox Text="{Binding Name}" IsEnabled="{Binding ChangeName}" />
+          </vm:ChangeRow>
+          <ItemsControl ItemsSource="{Binding Parameters}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Spacing="12" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ParameterField">
+                <vm:ChangeRow IsChecked="{Binding Change}" ShowCheck="{Binding !$parent[Window].((vm:RecipientFormViewModel)DataContext).IsNew}" Label="{Binding Label}" Hint="{Binding Hint}" Error="{Binding Error}" IsVisible="{Binding IsShown}">
+                  <vm:ParameterInput />
+                </vm:ChangeRow>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <ui:FormField Classes="wide" IsVisible="{Binding IsEdit}">
+            <CheckBox IsChecked="{Binding UpdateRules}" Content="Also change the rules that send to these recipients" />
+          </ui:FormField>
+        </StackPanel>
+      </Border>
+    </ScrollViewer>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="{Binding ApplyText}" Command="{Binding ApplyCommand}"
+              ToolTip.Tip="{Binding ApplyBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

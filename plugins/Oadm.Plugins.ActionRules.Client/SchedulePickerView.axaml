@@ -1,0 +1,14 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.ActionRules.Client"
+             x:Class="Oadm.Plugins.ActionRules.Client.SchedulePickerView"
+             x:DataType="vm:SchedulePickerViewModel">
+  <!-- The schedule of a rule (New rule, Edit, Copy): the select and New schedule. -->
+  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+    <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding Selected}" HorizontalAlignment="Stretch" />
+    <Button Grid.Column="1" Classes="secondary" Command="{Binding NewScheduleCommand}">
+      <ui:IconLabel Icon="{StaticResource Icon.add}" Text="New schedule" />
+    </Button>
+  </Grid>
+</UserControl>

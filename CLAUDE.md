@@ -213,7 +213,9 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.LiveView(.Client)/         core plugin: saved views of several cameras (a grid of live videos), opened in tabs (off by default)
   Oadm.Plugins.EdgeRecordingExport(.Client)/ core plugin: downloads the recordings on the cameras' SD cards to the client (off by default)
   Oadm.Plugins.EdgeStorage(.Client)/      core plugin: the SD cards of every camera and their tools (format, check, encryption; off by default)
-  Shared/                                 source linked into several plugins (CachedApiCheck, DeviceSweep, SweepRows)
+  Oadm.Plugins.ActionRules(.Client)/      core plugin: Action Rule Editor, the devices' own action rules changed for many at once (off by default)
+  Shared/                                 source linked into several plugins (CachedApiCheck, DeviceSweep, SweepRows,
+                                          ActionEngine: the devices' action rules over SOAP, DeviceEvents: a device's event list)
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
                                 (both copy their output to artifacts/plugins/<plugin id>/)
@@ -770,7 +772,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   `IDisposable`; the main window unsubscribes from the shell view model when it closes (a new main window per login) (`MainWindowViewModel.PluginWindowRequested` /
   `ClosePluginWindowsRequested`; tests `PluginWindowTests`). Entries top: Devices, then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (VAPIX
-  Commander, Device triggers), Security (PKI, Hardening scan), Monitoring (Live View, Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
+  Commander, Device triggers, Action Rule Editor), Security (PKI, Hardening scan), Monitoring (Live View, Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
   no page), Maintenance (Edge Recording Export, Edge storage), Integrations, Utilities (Web View), Extensions (default, third-party)): only groups
   with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
   each group (in the lighter accent color), collapsed = a separator at each group start; the pages scroll when they do not fit. Pinned bottom, top to bottom: Plugins with a divider below it (it changes what the whole client offers), Users,
@@ -1340,7 +1342,7 @@ returns null or throws `NotSupportedException`.
   `UpdateCredentialsAsync`, `CreateClientForAsync` (the device at another address, caller disposes),
   `UpdateDeviceAddressAsync` and `UpdateDeviceTlsAsync` (the server verifies serial and certificate first, else
   `DeviceIdentityException` and the record stays; see "Following moved devices" and the PKI tasks).
-- `ICorePluginContext`: `Devices`, `Vapix` (client factory), `Tasks` (start and cancel tasks), `Settings` (namespaced per
+- `ICorePluginContext`: `Devices`, `Vapix` (client factory), `Tasks` (start and cancel tasks, `IsActive`: queued or running), `Settings` (namespaced per
   plugin), `Logger`, `PluginDirectory` (never `Assembly.Location`), `Secrets` (AES-256-GCM with the master key),
   `Events` (live events to the plugin's page), `TrustAnchors` (CAs the server trusts when rating device certificates),
   `EventStreams` (a device's RTSP event stream with the stored credentials; the RTSP port per device), `Firewall` (UDP
@@ -1448,14 +1450,14 @@ plugins, contributed and standalone tasks and client parts together) and adminis
 applies at once without a restart. Own rail page (not a Settings card); core functionality
 is always on.
 - Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
-  **Off by default: Device triggers, Edge Recording Export, Edge storage, Hardening scan, Image Health Dashboard, I/O Monitor, Live View and Metadata Monitor**. The administrator's choices are the
+  **Off by default: Action Rule Editor, Device triggers, Edge Recording Export, Edge storage, Hardening scan, Image Health Dashboard, I/O Monitor, Live View and Metadata Monitor**. The administrator's choices are the
   server setting `Plugins.Enabled` (JSON object package id -> on; packages without a choice use their default),
   applied before the core plugins start (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
 - **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade firmware, Date and time, Applications
   (ACAP), Users, Network settings, PKI, System report, Device configuration, Outputs and Notifications (core functionality). Enabled whatever
   the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers FAILED_PRECONDITION "<name> is always on.".
   Switchable: Snapshot report, VAPIX Commander, Metadata Monitor, NTP server, DHCP server, Hardening scan, Image Health
-  Dashboard, I/O Monitor, Device triggers, Web View, Live View, Edge Recording Export, Edge storage. Third-party plugins are switchable unless their manifest says otherwise.
+  Dashboard, I/O Monitor, Device triggers, Web View, Live View, Edge Recording Export, Edge storage, Action Rule Editor. Third-party plugins are switchable unless their manifest says otherwise.
 - Manifest `description` (`PluginOrigin.Description`): one short sentence shown on the Plugins page; every bundled
   plugin has one.
 - `PluginRegistry`: `TaskPlugins`, `CorePlugins`, `TryGetTaskPlugin`, `TryGetCorePlugin` see only enabled packages
@@ -1692,6 +1694,39 @@ event of the event rules, plus "<Trigger>: connection lost". Decisions, device r
   operators see them.
 - Tests: `tests/Oadm.Plugins.DeviceTriggers.Tests` (fake camera speaking the WebSocket protocol); opt-in write test
   (virtual input 64, Object Analytics test alarm; `OADM_TRIGGER_URL` / `_USER` / `_PASSWORD`, `OADM_TRIGGER_OA_SCENARIO`).
+
+## Action Rule Editor (core plugin)
+
+`plugins/Oadm.Plugins.ActionRules` (+ `.Client`), id `oadm.action-rules`, rail page **Action Rule Editor** (group
+Automation, icon `workflow`), **off by default**, switchable. The devices' own action rules (their web interface: Events >
+Rules, Recipients, Schedules) of every device in one page, grouped by what they do (same trigger and action; or by name,
+action, trigger), and changed, turned on or off, copied to other devices, deleted and undone for many at once, e.g. "Send
+notification through TCP" to "... while the rule is active" on 500 cameras; recipients (a change can take the rules that
+send to them along; new) and schedules (new, edit, copy, delete) the same way; an edit can also change the event, the
+schedule and the recipient (each device's own one of a name); **New rule** builds one rule for many devices
+(an event they offered, conditions, a schedule, an action with its settings). Every settings form uses the bundled action
+catalog (`Catalog/action-catalog.json`: labels, kinds, defaults from the camera's web interface). Spec and research:
+`docs/action-rules/spec.md`; decisions and device API: plugin `README.md`.
+
+- Rules that must hold: read only on request, over SOAP (passwords in plain text stay on the server, never reach the
+  client or a log, a login inside an address shows as `user:********@` and keeps each device's own password); an edit
+  changes only the checked parts, everything else stays as each device has it; a rule is written
+  only while it is exactly as the page read it (a version keyed with a server-only secret, so no password can be guessed
+  against it), one task per device at a time; in place over REST `action-rules` v2 where the device lists
+  it (AXIS OS 12; the action only when it changes, never a `**Redacted**` password), else recreated over SOAP (new rule
+  first, then the old one); every write is saved for undo (before and after, 30 days, passwords encrypted with the
+  master key, also values with a password inside an address) and undo puts back only what is still as the run left it,
+  once no task of the run is queued or running; a hidden password inside an address is kept only for the same user and
+  server; OADM never creates, changes a rule to or copies "Erase configuration";
+  a new rule is checked whole on the server before any task starts and created by the same task as a copy; refused
+  statuses are not contacted; a copied rule brings the schedules it uses first (OADM's own id
+  `com.axis.schedules.oadm.<name>`, the same on every device); topics are written without the `//.` AXIS OS 10 appends;
+  built-in schedules are never changed or deleted, a used schedule is deleted only together with its rules.
+- Roles: "show" (Operator, Viewer), "Change action rules" (`manage`, Operator yes), "Delete action rules" (`delete`,
+  Operator yes); every change, copy, delete and undo is audited.
+- Tests: `tests/Oadm.Plugins.ActionRules.Tests` (+ Perf 5,000 devices); opt-in `RulesHardwareWriteTests` and
+  `ServerHardwareWriteTests` (`OADM_ACTION_RULES_WRITE=1`, every dev camera, own rules only, also a built rule and every
+  action with the catalog's defaults; passed on AXIS OS 10.12, 11.9 and 12.11).
 
 ## System report (core plugin without a page)
 

@@ -1,0 +1,19 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Oadm.Plugins.ActionRules.Client"
+             x:Class="Oadm.Plugins.ActionRules.Client.EventChoiceView"
+             x:DataType="vm:EventChoiceViewModel">
+  <!-- An event of a new rule: the grouped event select, how many devices offer it, and its filters. -->
+  <StackPanel Spacing="8">
+    <StackPanel Spacing="4">
+      <ComboBox Classes="grouped" ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}" PlaceholderText="Choose an event"
+                MaxDropDownHeight="420" HorizontalAlignment="Stretch" />
+      <!-- A condition's error directly below its select, like the event rule editor's condition rows. -->
+      <TextBlock Classes="error small" Text="{Binding Error}" TextWrapping="Wrap"
+                 IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" />
+    </StackPanel>
+    <TextBlock Classes="secondary small" Text="{Binding Hint}" TextWrapping="Wrap"
+               IsVisible="{Binding Hint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+    <vm:EventFiltersView IsVisible="{Binding ShowFilters, RelativeSource={RelativeSource AncestorType=vm:EventChoiceView}}" />
+  </StackPanel>
+</UserControl>

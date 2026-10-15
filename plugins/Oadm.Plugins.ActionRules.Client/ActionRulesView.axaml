@@ -1,0 +1,225 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.ActionRules.Client"
+             x:Class="Oadm.Plugins.ActionRules.Client.ActionRulesView"
+             x:DataType="vm:ActionRulesViewModel"
+             ui:PageHeader.Subtitle="The action rules of the devices, changed for many at once.">
+  <!-- Own cards (ICorePluginPage.HasOwnCards): the groups left (tabs Rules, Recipients, Schedules), the items of the
+       selected groups on each device right, a splitter between; the shared tasks pane below the page shows the runs. Shared
+       controls and theme classes only. -->
+  <Grid ColumnDefinitions="3*,Auto,2*">
+    <Border Grid.Column="0" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" MinWidth="620">
+      <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12">
+          <Border Classes="segmented" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="2">
+              <Button Classes="segment" Classes.selected="{Binding IsRulesTab}" Content="Rules" Command="{Binding ShowTabCommand}" CommandParameter="0" />
+              <Button Classes="segment" Classes.selected="{Binding IsRecipientsTab}" Content="Recipients" Command="{Binding ShowTabCommand}" CommandParameter="1" />
+              <Button Classes="segment" Classes.selected="{Binding IsSchedulesTab}" Content="Schedules" Command="{Binding ShowTabCommand}" CommandParameter="2" />
+            </StackPanel>
+          </Border>
+
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <ui:ToolbarButton IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}" ToolTip.Tip="Read every device again" />
+            <ui:ToolbarButton IconKey="undo" Text="Undo" Command="{Binding UndoCommand}" IsVisible="{Binding MayManage}" />
+          </StackPanel>
+
+          <!-- Rules -->
+          <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsRulesTab}">
+            <ui:ToolbarSeparator IsVisible="{Binding MayManage}" />
+            <ui:ToolbarButton IconKey="add" Text="New rule" Command="{Binding NewRuleCommand}" IsVisible="{Binding MayManage}" />
+            <ui:ToolbarButton IconKey="edit" Text="Edit" Command="{Binding EditCommand}" IsVisible="{Binding MayManage}"
+                              ToolTip.Tip="{Binding ToolsBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            <ui:ToolbarButton IconKey="copy" Text="Copy to devices" Command="{Binding CopyCommand}" IsVisible="{Binding MayManage}"
+                              ToolTip.Tip="{Binding CopyBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            <ui:ToolbarButton IconKey="check" Text="Turn on" Command="{Binding TurnOnCommand}" IsVisible="{Binding MayManage}"
+                              ToolTip.Tip="{Binding ToolsBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            <ui:ToolbarButton IconKey="cancel" Text="Turn off" Command="{Binding TurnOffCommand}" IsVisible="{Binding MayManage}"
+                              ToolTip.Tip="{Binding ToolsBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            <ui:ToolbarSeparator IsVisible="{Binding MayDelete}" />
+            <Button Classes="toolbar danger" Command="{Binding DeleteCommand}" IsVisible="{Binding MayDelete}"
+                    ToolTip.Tip="{Binding ToolsBlockedReason}" ToolTip.ShowOnDisabled="True">
+              <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete" Spacing="8" />
+            </Button>
+          </StackPanel>
+
+          <!-- Recipients -->
+          <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsRecipientsTab}">
+            <ui:ToolbarSeparator IsVisible="{Binding MayManage}" />
+            <ui:ToolbarButton IconKey="add" Text="New recipient" Command="{Binding Recipients.NewCommand}" IsVisible="{Binding MayManage}" />
+            <ui:ToolbarButton IconKey="edit" Text="Edit" Command="{Binding Recipients.EditCommand}" IsVisible="{Binding MayManage}"
+                              ToolTip.Tip="{Binding Recipients.ChangeBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            <ui:ToolbarButton IconKey="copy" Text="Copy to devices" Command="{Binding Recipients.CopyCommand}" IsVisible="{Binding MayManage}"
+                              ToolTip.Tip="{Binding Recipients.CopyBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            <ui:ToolbarSeparator IsVisible="{Binding MayDelete}" />
+            <Button Classes="toolbar danger" Command="{Binding Recipients.DeleteCommand}" IsVisible="{Binding MayDelete}"
+                    ToolTip.Tip="{Binding Recipients.ChangeBlockedReason}" ToolTip.ShowOnDisabled="True">
+              <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete" Spacing="8" />
+            </Button>
+          </StackPanel>
+
+          <!-- Schedules -->
+          <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsSchedulesTab}">
+            <ui:ToolbarSeparator IsVisible="{Binding MayManage}" />
+            <ui:ToolbarButton IconKey="add" Text="New schedule" Command="{Binding Schedules.NewCommand}" IsVisible="{Binding MayManage}" />
+            <ui:ToolbarButton IconKey="edit" Text="Edit" Command="{Binding Schedules.EditCommand}" IsVisible="{Binding MayManage}"
+                              ToolTip.Tip="{Binding Schedules.ChangeBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            <ui:ToolbarButton IconKey="copy" Text="Copy to devices" Command="{Binding Schedules.CopyCommand}" IsVisible="{Binding MayManage}"
+                              ToolTip.Tip="{Binding Schedules.CopyBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            <ui:ToolbarSeparator IsVisible="{Binding MayDelete}" />
+            <Button Classes="toolbar danger" Command="{Binding Schedules.DeleteCommand}" IsVisible="{Binding MayDelete}"
+                    ToolTip.Tip="{Binding Schedules.ChangeBlockedReason}" ToolTip.ShowOnDisabled="True">
+              <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete" Spacing="8" />
+            </Button>
+          </StackPanel>
+        </StackPanel>
+
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10" Margin="0,10,0,8">
+          <TextBlock Grid.Column="0" Classes="secondary" Text="{Binding SummaryText}" VerticalAlignment="Center" Margin="2,0,0,0" />
+          <ComboBox Grid.Column="1" Width="160" VerticalAlignment="Center" ItemsSource="{x:Static vm:ActionRulesViewModel.GroupByNames}"
+                    SelectedIndex="{Binding GroupByIndex}" ToolTip.Tip="Group by" IsVisible="{Binding IsRulesTab}" />
+          <ui:SearchBox Grid.Column="2" Width="220" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="{Binding SearchPlaceholder}" />
+        </Grid>
+        <ui:ProgressRow Grid.Row="2" Margin="0,0,0,8" Value="{Binding ProgressValue}" Text="{Binding ProgressText}" IsActive="{Binding IsReading}"
+                        IsVisible="{Binding IsReading}" />
+
+        <!-- Rules: the groups in a virtualized grid like every list of the app. -->
+        <Panel Grid.Row="3" IsVisible="{Binding IsRulesTab}">
+          <DataGrid x:Name="GroupGrid" Classes="wrapRows" ItemsSource="{Binding Groups}"
+                    IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="True" CanUserResizeColumns="True" SelectionMode="Extended">
+            <DataGrid.Columns>
+              <DataGridTemplateColumn Header="Rule" Width="200" CanUserSort="True" SortMemberPath="NamesText">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:RuleGroupRow">
+                    <Panel>
+                      <TextBlock Text="{Binding NamesText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" IsVisible="{Binding !IsProblem}" />
+                      <ui:StatusChip Text="{Binding NamesText}" IsError="True" IsVisible="{Binding IsProblem}" />
+                    </Panel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Event" Width="2*" MinWidth="220" Binding="{Binding TriggerText}" x:DataType="vm:RuleGroupRow" />
+              <DataGridTextColumn Header="Action" Width="2*" MinWidth="200" Binding="{Binding ActionText}" x:DataType="vm:RuleGroupRow" />
+              <DataGridTextColumn Header="On" Width="110" Binding="{Binding OnText}" x:DataType="vm:RuleGroupRow" />
+              <DataGridTextColumn Width="100" Binding="{Binding DevicesText}" SortMemberPath="DeviceCount" CellStyleClasses="number" x:DataType="vm:RuleGroupRow">
+                <DataGridTextColumn.Header>
+                  <TextBlock Classes="numberHeader" Text="Devices" />
+                </DataGridTextColumn.Header>
+              </DataGridTextColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding EmptyText}" IsVisible="{Binding ShowEmpty}" />
+        </Panel>
+
+        <!-- Recipients -->
+        <Panel Grid.Row="3" IsVisible="{Binding IsRecipientsTab}">
+          <DataGrid x:Name="RecipientGroupGrid" Classes="wrapRows" ItemsSource="{Binding Recipients.Groups}"
+                    IsReadOnly="True" CanUserSortColumns="True" CanUserResizeColumns="True" SelectionMode="Extended">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Recipient" Width="200" Binding="{Binding Name}" x:DataType="vm:PresetGroupRow" />
+              <DataGridTextColumn Header="Type" Width="120" Binding="{Binding Kind}" x:DataType="vm:PresetGroupRow" />
+              <DataGridTextColumn Header="Settings" Width="*" MinWidth="240" Binding="{Binding Detail}" x:DataType="vm:PresetGroupRow" />
+              <DataGridTextColumn Width="100" Binding="{Binding DevicesText}" SortMemberPath="DeviceCount" CellStyleClasses="number" x:DataType="vm:PresetGroupRow">
+                <DataGridTextColumn.Header>
+                  <TextBlock Classes="numberHeader" Text="Devices" />
+                </DataGridTextColumn.Header>
+              </DataGridTextColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding Recipients.EmptyText}"
+                     IsVisible="{Binding Recipients.ShowEmpty}" />
+        </Panel>
+
+        <!-- Schedules -->
+        <Panel Grid.Row="3" IsVisible="{Binding IsSchedulesTab}">
+          <DataGrid x:Name="ScheduleGroupGrid" Classes="wrapRows" ItemsSource="{Binding Schedules.Groups}"
+                    IsReadOnly="True" CanUserSortColumns="True" CanUserResizeColumns="True" SelectionMode="Extended">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Schedule" Width="200" Binding="{Binding Name}" x:DataType="vm:PresetGroupRow" />
+              <DataGridTextColumn Header="When" Width="*" MinWidth="240" Binding="{Binding Detail}" x:DataType="vm:PresetGroupRow" />
+              <DataGridTextColumn Header="Rules" Width="160" Binding="{Binding Kind}" x:DataType="vm:PresetGroupRow" />
+              <DataGridTextColumn Width="100" Binding="{Binding DevicesText}" SortMemberPath="DeviceCount" CellStyleClasses="number" x:DataType="vm:PresetGroupRow">
+                <DataGridTextColumn.Header>
+                  <TextBlock Classes="numberHeader" Text="Devices" />
+                </DataGridTextColumn.Header>
+              </DataGridTextColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding Schedules.EmptyText}"
+                     IsVisible="{Binding Schedules.ShowEmpty}" />
+        </Panel>
+
+        <TextBlock Grid.Row="4" Margin="0,8,0,0" Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+      </Grid>
+    </Border>
+
+    <GridSplitter Grid.Column="1" Classes="paneSplitter vertical" />
+
+    <Border Grid.Column="2" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" MinWidth="360">
+      <Panel>
+        <!-- Rules on each device -->
+        <Grid RowDefinitions="Auto,Auto,*" IsVisible="{Binding IsRulesTab}">
+          <TextBlock Grid.Row="0" Classes="cardTitle" Text="{Binding MembersTitle}" />
+          <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding TargetText}" Margin="2,14,0,8" TextWrapping="Wrap" />
+          <DataGrid x:Name="MemberGrid" Grid.Row="2" Classes="wrapRows" ItemsSource="{Binding Members}"
+                    IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="True" CanUserResizeColumns="True" SelectionMode="Extended">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Address" Width="130" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:RuleMemberRow" />
+              <DataGridTextColumn Header="Model" Width="120" Binding="{Binding Model}" x:DataType="vm:RuleMemberRow" />
+              <DataGridTemplateColumn Header="Rule" Width="170" CanUserSort="True" SortMemberPath="RuleName">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:RuleMemberRow">
+                    <Panel>
+                      <TextBlock Text="{Binding RuleName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" IsVisible="{Binding !IsProblem}" />
+                      <ui:StatusChip Text="{Binding ProblemText}" IsError="True" MaxLines="2" IsVisible="{Binding IsProblem}" />
+                    </Panel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="On" Width="60" Binding="{Binding OnText}" x:DataType="vm:RuleMemberRow" />
+              <DataGridTextColumn Header="Settings" Width="*" MinWidth="220" Binding="{Binding ValuesText}" x:DataType="vm:RuleMemberRow" />
+              <DataGridTextColumn Header="Firmware" Width="100" Binding="{Binding Firmware}" x:DataType="vm:RuleMemberRow" />
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock Grid.Row="2" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
+                     Text="{Binding MembersEmptyText}" IsVisible="{Binding ShowMembersEmpty}" />
+        </Grid>
+
+        <!-- Recipients on each device -->
+        <Grid RowDefinitions="Auto,Auto,*" IsVisible="{Binding IsRecipientsTab}">
+          <TextBlock Grid.Row="0" Classes="cardTitle" Text="{Binding Recipients.MembersTitle}" />
+          <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding Recipients.TargetText}" Margin="2,14,0,8" TextWrapping="Wrap" />
+          <DataGrid x:Name="RecipientMemberGrid" Grid.Row="2" Classes="wrapRows" ItemsSource="{Binding Recipients.Members}"
+                    IsReadOnly="True" CanUserSortColumns="True" CanUserResizeColumns="True" SelectionMode="Extended">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Address" Width="130" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:PresetMemberRow" />
+              <DataGridTextColumn Header="Model" Width="120" Binding="{Binding Model}" x:DataType="vm:PresetMemberRow" />
+              <DataGridTextColumn Header="Settings" Width="*" MinWidth="220" Binding="{Binding Detail}" x:DataType="vm:PresetMemberRow" />
+              <DataGridTextColumn Header="Firmware" Width="100" Binding="{Binding Firmware}" x:DataType="vm:PresetMemberRow" />
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock Grid.Row="2" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
+                     Text="{Binding Recipients.MembersEmptyText}" IsVisible="{Binding Recipients.ShowMembersEmpty}" />
+        </Grid>
+
+        <!-- Schedules on each device -->
+        <Grid RowDefinitions="Auto,Auto,*" IsVisible="{Binding IsSchedulesTab}">
+          <TextBlock Grid.Row="0" Classes="cardTitle" Text="{Binding Schedules.MembersTitle}" />
+          <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding Schedules.TargetText}" Margin="2,14,0,8" TextWrapping="Wrap" />
+          <DataGrid x:Name="ScheduleMemberGrid" Grid.Row="2" Classes="wrapRows" ItemsSource="{Binding Schedules.Members}"
+                    IsReadOnly="True" CanUserSortColumns="True" CanUserResizeColumns="True" SelectionMode="Extended">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Address" Width="130" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:PresetMemberRow" />
+              <DataGridTextColumn Header="Model" Width="120" Binding="{Binding Model}" x:DataType="vm:PresetMemberRow" />
+              <DataGridTextColumn Header="When" Width="*" MinWidth="220" Binding="{Binding Detail}" x:DataType="vm:PresetMemberRow" />
+              <DataGridTextColumn Header="Firmware" Width="100" Binding="{Binding Firmware}" x:DataType="vm:PresetMemberRow" />
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock Grid.Row="2" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
+                     Text="{Binding Schedules.MembersEmptyText}" IsVisible="{Binding Schedules.ShowMembersEmpty}" />
+        </Grid>
+      </Panel>
+    </Border>
+  </Grid>
+</UserControl>

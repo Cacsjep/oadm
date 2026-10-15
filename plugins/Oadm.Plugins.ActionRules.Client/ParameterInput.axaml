@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.ActionRules.Client"
+             x:Class="Oadm.Plugins.ActionRules.Client.ParameterInput"
+             x:DataType="vm:ParameterField">
+  <!-- The input of one setting, as the action catalog says: every form of the plugin shows settings with this control. -->
+  <Panel IsEnabled="{Binding Change}">
+    <TextBox Text="{Binding Value}" IsVisible="{Binding IsText}" />
+    <TextBox Text="{Binding Value}" IsVisible="{Binding IsMultiline}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" />
+    <CheckBox IsChecked="{Binding BoolValue}" IsVisible="{Binding IsBool}" Classes="inputHeight" />
+    <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}" IsVisible="{Binding IsChoice}" HorizontalAlignment="Stretch" />
+    <ui:PasswordBox Text="{Binding Value}" IsVisible="{Binding IsSecret}" />
+  </Panel>
+</UserControl>

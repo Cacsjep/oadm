@@ -1,0 +1,107 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.ActionRules.Client"
+        x:Class="Oadm.Plugins.ActionRules.Client.NewRuleWindow"
+        x:DataType="vm:NewRuleViewModel"
+        Title="{x:Static vm:NewRuleViewModel.Title}"
+        Width="820" Height="860"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Title bar, three cards (Rule, When, Then) that scroll together, footer. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:NewRuleViewModel.Title}" />
+    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="16" Margin="16,0,16,16">
+
+        <Border Classes="card">
+          <StackPanel Classes="form">
+            <ui:CardHeader Title="Rule" Description="{Binding Intro}" />
+            <ui:FormField Classes="wide" Label="Name">
+              <TextBox Text="{Binding Name}" />
+            </ui:FormField>
+            <ui:FormField Classes="wide">
+              <CheckBox IsChecked="{Binding Enabled}" Content="Turned on" />
+            </ui:FormField>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+          <StackPanel Classes="form">
+            <ui:CardHeader Title="When" />
+            <ui:FormField Classes="wide" Label="Event" Error="{Binding EventError}">
+              <vm:EventChoiceView DataContext="{Binding Event}" ShowFilters="False" />
+            </ui:FormField>
+            <vm:EventFiltersView DataContext="{Binding Event}" />
+            <ui:FormField Classes="wide" Label="Run" Info="Actions that run while the rule is active need &quot;While the event is active&quot;.">
+              <ComboBox ItemsSource="{x:Static vm:NewRuleViewModel.ModeNames}" SelectedIndex="{Binding ModeIndex}" IsEnabled="{Binding CanChooseMode}"
+                        HorizontalAlignment="Stretch" />
+            </ui:FormField>
+            <ui:FormField Label="Wait between actions (s)" Info="0 = run every time the event happens." IsVisible="{Binding IsOnce}">
+              <NumericUpDown Minimum="0" Maximum="86400" Increment="1" FormatString="0" ParsingNumberStyle="Integer" Value="{Binding TimeoutSeconds}" />
+            </ui:FormField>
+            <!-- Five conditions at most: no virtualization needed. -->
+            <ItemsControl ItemsSource="{Binding Conditions}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel Spacing="12" /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:EventChoiceViewModel">
+                  <Border Classes="ruleItem">
+                    <Grid ColumnDefinitions="64,*,Auto" ColumnSpacing="12">
+                      <TextBlock Grid.Column="0" Classes="sectionTitle" Text="And" VerticalAlignment="Top" Margin="0,6,0,0" />
+                      <vm:EventChoiceView Grid.Column="1" />
+                      <Button Grid.Column="2" Classes="toolbar iconOnly danger" VerticalAlignment="Top" ToolTip.Tip="Remove condition"
+                              Command="{Binding RemoveCommand}">
+                        <ui:OadmIcon Data="{StaticResource Icon.remove}" />
+                      </Button>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Classes="secondary" Command="{Binding AddConditionCommand}" IsEnabled="{Binding CanAddCondition}" HorizontalAlignment="Left">
+              <ui:IconLabel Icon="{StaticResource Icon.add}" Text="Add condition" />
+            </Button>
+            <ui:FormField Classes="wide" Label="Schedule" Info="The rule is active only while the schedule is. A new schedule is added to the devices that lack it.">
+              <vm:SchedulePickerView DataContext="{Binding Schedule}" />
+            </ui:FormField>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+          <StackPanel Classes="form">
+            <ui:CardHeader Title="Then" />
+            <ui:FormField Classes="wide" Label="Action" Error="{Binding ActionError}">
+              <ComboBox Classes="grouped" ItemsSource="{Binding Actions}" SelectedItem="{Binding SelectedAction}" PlaceholderText="Choose an action"
+                        MaxDropDownHeight="420" HorizontalAlignment="Stretch" />
+            </ui:FormField>
+            <ui:FormField Classes="wide" Label="Recipient" Hint="{Binding Recipient.Hint}" IsVisible="{Binding Recipient.HasChoices}">
+              <ComboBox ItemsSource="{Binding Recipient.Choices}" SelectedItem="{Binding Recipient.Selected}" HorizontalAlignment="Stretch" />
+            </ui:FormField>
+            <!-- A dozen settings at most per action: no virtualization needed. -->
+            <ItemsControl ItemsSource="{Binding Parameters}" IsVisible="{Binding HasParameters}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel Spacing="12" /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ParameterField">
+                  <vm:ChangeRow IsChecked="{Binding Change}" ShowCheck="False" Label="{Binding Label}" Hint="{Binding Hint}" Error="{Binding Error}"
+                                IsVisible="{Binding IsShown}">
+                    <vm:ParameterInput />
+                  </vm:ChangeRow>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Create" Command="{Binding ApplyCommand}"
+              ToolTip.Tip="{Binding ApplyBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

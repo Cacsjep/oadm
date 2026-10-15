@@ -1,0 +1,2470 @@
+{
+  "actions": {
+    "com.axis.action.fixed.defog": {
+      "label": "Set Defog mode",
+      "fields": {
+        "active_state": {
+          "label": "Defog mode",
+          "kind": "choice",
+          "default": "on",
+          "required": true,
+          "choices": [
+            {
+              "value": "on",
+              "label": "Defog on"
+            },
+            {
+              "value": "off",
+              "label": "Defog off"
+            }
+          ]
+        },
+        "inactive_state": {
+          "kind": "hidden",
+          "default": "off"
+        }
+      }
+    },
+    "com.axis.action.fixed.erase.configuration": {
+      "label": "Erase configuration",
+      "fields": {}
+    },
+    "com.axis.action.fixed.io.toggle": {
+      "label": "Toggle I/O once",
+      "fields": {
+        "port": {
+          "label": "Port",
+          "kind": "text",
+          "default": "",
+          "required": true,
+          "hint": "Number of the I/O port"
+        },
+        "state": {
+          "label": "State",
+          "kind": "choice",
+          "default": "high",
+          "choices": [
+            {
+              "value": "high",
+              "label": "Active"
+            },
+            {
+              "value": "low",
+              "label": "Inactive"
+            }
+          ]
+        },
+        "duration": {
+          "label": "Duration (ms)",
+          "kind": "number",
+          "default": "1000",
+          "min": 0,
+          "hint": "0 keeps the state until changed"
+        }
+      }
+    },
+    "com.axis.action.fixed.irlight": {
+      "label": "Use lights",
+      "fields": {
+        "lightid": {
+          "label": "Light",
+          "kind": "text",
+          "default": "led0"
+        },
+        "activate": {
+          "kind": "hidden",
+          "default": "yes"
+        },
+        "duration": {
+          "label": "Duration (ms)",
+          "kind": "number",
+          "default": "1000",
+          "required": true,
+          "min": 0
+        }
+      }
+    },
+    "com.axis.action.fixed.ledcontrol": {
+      "label": "Flash status LED",
+      "fields": {
+        "color": {
+          "label": "Color",
+          "kind": "choice",
+          "default": "green,none",
+          "choices": [
+            {
+              "value": "green,none",
+              "label": "Green"
+            },
+            {
+              "value": "amber,none",
+              "label": "Amber"
+            },
+            {
+              "value": "red,none",
+              "label": "Red"
+            }
+          ]
+        },
+        "duration": {
+          "label": "Duration (s)",
+          "kind": "number",
+          "default": "1",
+          "min": 1
+        },
+        "led": {
+          "kind": "hidden",
+          "default": "statusled"
+        },
+        "interval": {
+          "kind": "hidden",
+          "default": "250"
+        }
+      }
+    },
+    "com.axis.action.fixed.mqttpublish": {
+      "label": "Send MQTT publish message",
+      "fields": {
+        "topic": {
+          "label": "Topic",
+          "kind": "text",
+          "default": "",
+          "required": true
+        },
+        "use_device_prefix": {
+          "label": "Use device topic prefix",
+          "kind": "bool",
+          "default": "false",
+          "true": "true",
+          "false": "false"
+        },
+        "payload": {
+          "label": "Payload",
+          "kind": "multiline",
+          "default": ""
+        },
+        "retained": {
+          "label": "Retain",
+          "kind": "bool",
+          "default": "false",
+          "true": "true",
+          "false": "false"
+        },
+        "qos": {
+          "label": "QoS",
+          "kind": "choice",
+          "default": "0",
+          "choices": [
+            {
+              "value": "0",
+              "label": "0 (at most once)"
+            },
+            {
+              "value": "1",
+              "label": "1 (at least once)"
+            },
+            {
+              "value": "2",
+              "label": "2 (exactly once)"
+            }
+          ]
+        }
+      }
+    },
+    "com.axis.action.fixed.notification.http": {
+      "label": "Send notification through HTTP",
+      "fields": {
+        "message": {
+          "label": "Message",
+          "kind": "text",
+          "default": "",
+          "hint": "Sent URL-encoded"
+        },
+        "parameters": {
+          "label": "Query string suffix",
+          "kind": "text",
+          "default": "",
+          "hint": "Added to the URL after the message"
+        },
+        "method": {
+          "label": "Method",
+          "kind": "choice",
+          "default": "GET",
+          "choices": [
+            {
+              "value": "GET",
+              "label": "GET"
+            },
+            {
+              "value": "POST",
+              "label": "POST"
+            },
+            {
+              "value": "PATCH",
+              "label": "PATCH"
+            },
+            {
+              "value": "PUT",
+              "label": "PUT"
+            },
+            {
+              "value": "DELETE",
+              "label": "DELETE"
+            }
+          ]
+        },
+        "http_headers": {
+          "label": "HTTP headers",
+          "kind": "multiline",
+          "default": "",
+          "hint": "One header per line"
+        },
+        "body": {
+          "label": "Body",
+          "kind": "multiline",
+          "default": "",
+          "hint": "Not sent with GET or DELETE"
+        }
+      }
+    },
+    "com.axis.action.fixed.notification.https": {
+      "label": "Send notification through HTTPS",
+      "fields": {
+        "message": {
+          "label": "Message",
+          "kind": "text",
+          "default": "",
+          "hint": "Sent URL-encoded"
+        },
+        "parameters": {
+          "label": "Query string suffix",
+          "kind": "text",
+          "default": "",
+          "hint": "Added to the URL after the message"
+        },
+        "method": {
+          "label": "Method",
+          "kind": "choice",
+          "default": "GET",
+          "choices": [
+            {
+              "value": "GET",
+              "label": "GET"
+            },
+            {
+              "value": "POST",
+              "label": "POST"
+            },
+            {
+              "value": "PATCH",
+              "label": "PATCH"
+            },
+            {
+              "value": "PUT",
+              "label": "PUT"
+            },
+            {
+              "value": "DELETE",
+              "label": "DELETE"
+            }
+          ]
+        },
+        "http_headers": {
+          "label": "HTTP headers",
+          "kind": "multiline",
+          "default": "",
+          "hint": "One header per line"
+        },
+        "body": {
+          "label": "Body",
+          "kind": "multiline",
+          "default": "",
+          "hint": "Not sent with GET or DELETE"
+        }
+      }
+    },
+    "com.axis.action.fixed.notification.smtp": {
+      "label": "Send notification to email",
+      "fields": {
+        "subject": {
+          "label": "Subject",
+          "kind": "text",
+          "default": ""
+        },
+        "message": {
+          "label": "Message",
+          "kind": "text",
+          "default": ""
+        }
+      }
+    },
+    "com.axis.action.fixed.notification.tcp": {
+      "label": "Send notification through TCP",
+      "fields": {
+        "message": {
+          "label": "Message",
+          "kind": "text",
+          "default": ""
+        }
+      }
+    },
+    "com.axis.action.fixed.play.audioclip": {
+      "label": "Play audio clip",
+      "fields": {
+        "location": {
+          "label": "Clip",
+          "kind": "text",
+          "default": "",
+          "required": true,
+          "hint": "File name of the clip on the device"
+        },
+        "audiodeviceid": {
+          "label": "Audio device",
+          "kind": "text",
+          "default": "",
+          "required": true
+        },
+        "audiooutputid": {
+          "label": "Audio output",
+          "kind": "text",
+          "default": "",
+          "required": true
+        },
+        "volume": {
+          "label": "Volume",
+          "kind": "number",
+          "default": "100",
+          "required": true,
+          "min": 0,
+          "max": 1000,
+          "hint": "100 = unchanged, 1000 = ten times"
+        },
+        "repeat": {
+          "label": "Repeat",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = play once"
+        },
+        "audiooutput": {
+          "kind": "hidden"
+        }
+      }
+    },
+    "com.axis.action.fixed.recording.storage": {
+      "label": "Record video",
+      "fields": {
+        "storage_id": {
+          "label": "Storage",
+          "kind": "text",
+          "default": "",
+          "hint": "For example SD_DISK or NetworkShare"
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        }
+      }
+    },
+    "com.axis.action.fixed.send_images.ftp": {
+      "label": "Send images through FTP",
+      "fields": {
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "image%y-%m-%d_%H-%M-%S-%f_#s.jpg",
+          "required": true
+        },
+        "max_sequence_number": {
+          "label": "Maximum sequence number",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&videocodec=jpeg&audio=0&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_images": {
+          "label": "Maximum images",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        }
+      }
+    },
+    "com.axis.action.fixed.send_images.http": {
+      "label": "Send images through HTTP",
+      "fields": {
+        "custom_params": {
+          "label": "Custom parameters",
+          "kind": "text",
+          "default": "",
+          "hint": "Added to the URL"
+        },
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "image%y-%m-%d_%H-%M-%S-%f_#s.jpg",
+          "required": true
+        },
+        "max_sequence_number": {
+          "label": "Maximum sequence number",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&videocodec=jpeg&audio=0&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_images": {
+          "label": "Maximum images",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        }
+      }
+    },
+    "com.axis.action.fixed.send_images.https": {
+      "label": "Send images through HTTPS",
+      "fields": {
+        "custom_params": {
+          "label": "Custom parameters",
+          "kind": "text",
+          "default": "",
+          "hint": "Added to the URL"
+        },
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "image%y-%m-%d_%H-%M-%S-%f_#s.jpg",
+          "required": true
+        },
+        "max_sequence_number": {
+          "label": "Maximum sequence number",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&videocodec=jpeg&audio=0&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_images": {
+          "label": "Maximum images",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        }
+      }
+    },
+    "com.axis.action.fixed.send_images.networkshare": {
+      "label": "Send images to network share",
+      "fields": {
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "image%y-%m-%d_%H-%M-%S-%f_#s.jpg",
+          "required": true
+        },
+        "max_sequence_number": {
+          "label": "Maximum sequence number",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&videocodec=jpeg&audio=0&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_images": {
+          "label": "Maximum images",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        }
+      }
+    },
+    "com.axis.action.fixed.send_images.sftp": {
+      "label": "Send images through SFTP",
+      "fields": {
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "image%y-%m-%d_%H-%M-%S-%f_#s.jpg",
+          "required": true
+        },
+        "max_sequence_number": {
+          "label": "Maximum sequence number",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&videocodec=jpeg&audio=0&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_images": {
+          "label": "Maximum images",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        }
+      }
+    },
+    "com.axis.action.fixed.send_images.smtp": {
+      "label": "Send images to email",
+      "fields": {
+        "subject": {
+          "label": "Subject",
+          "kind": "text",
+          "default": ""
+        },
+        "message": {
+          "label": "Message",
+          "kind": "text",
+          "default": ""
+        },
+        "images_per_mail": {
+          "label": "Images per email",
+          "kind": "number",
+          "default": "10",
+          "min": 1
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "image%y-%m-%d_%H-%M-%S-%f_#s.jpg",
+          "required": true
+        },
+        "max_sequence_number": {
+          "label": "Maximum sequence number",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&videocodec=jpeg&audio=0&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_images": {
+          "label": "Maximum images",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        }
+      }
+    },
+    "com.axis.action.fixed.send_videoclip.ftp": {
+      "label": "Send video clip through FTP",
+      "fields": {
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "video%y-%m-%d_%H-%M-%S-%f_#s.mkv",
+          "required": true
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_file_size": {
+          "kind": "hidden",
+          "default": "0"
+        },
+        "max_duration": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.action.fixed.send_videoclip.http": {
+      "label": "Send video clip through HTTP",
+      "fields": {
+        "custom_params": {
+          "label": "Custom parameters",
+          "kind": "text",
+          "default": "",
+          "hint": "Added to the URL"
+        },
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "video%y-%m-%d_%H-%M-%S-%f_#s.mkv",
+          "required": true
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_file_size": {
+          "kind": "hidden",
+          "default": "0"
+        },
+        "max_duration": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.action.fixed.send_videoclip.https": {
+      "label": "Send video clip through HTTPS",
+      "fields": {
+        "custom_params": {
+          "label": "Custom parameters",
+          "kind": "text",
+          "default": "",
+          "hint": "Added to the URL"
+        },
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "video%y-%m-%d_%H-%M-%S-%f_#s.mkv",
+          "required": true
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_file_size": {
+          "kind": "hidden",
+          "default": "0"
+        },
+        "max_duration": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.action.fixed.send_videoclip.networkshare": {
+      "label": "Send video clip to network share",
+      "fields": {
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "video%y-%m-%d_%H-%M-%S-%f_#s.mkv",
+          "required": true
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_file_size": {
+          "kind": "hidden",
+          "default": "0"
+        },
+        "max_duration": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.action.fixed.send_videoclip.sftp": {
+      "label": "Send video clip through SFTP",
+      "fields": {
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "video%y-%m-%d_%H-%M-%S-%f_#s.mkv",
+          "required": true
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_file_size": {
+          "kind": "hidden",
+          "default": "0"
+        },
+        "max_duration": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.action.fixed.send_videoclip.smtp": {
+      "label": "Send video clip to email",
+      "fields": {
+        "subject": {
+          "label": "Subject",
+          "kind": "text",
+          "default": ""
+        },
+        "message": {
+          "label": "Message",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "video%y-%m-%d_%H-%M-%S-%f_#s.mkv",
+          "required": true
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_file_size": {
+          "kind": "hidden",
+          "default": "0"
+        },
+        "max_duration": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.action.fixed.set_overlay": {
+      "label": "Use overlay text",
+      "fields": {
+        "index": {
+          "label": "Index",
+          "kind": "choice",
+          "default": "",
+          "choices": [
+            {
+              "value": "",
+              "label": "Default"
+            },
+            {
+              "value": "1",
+              "label": "#D1"
+            },
+            {
+              "value": "2",
+              "label": "#D2"
+            },
+            {
+              "value": "3",
+              "label": "#D3"
+            },
+            {
+              "value": "4",
+              "label": "#D4"
+            },
+            {
+              "value": "5",
+              "label": "#D5"
+            },
+            {
+              "value": "6",
+              "label": "#D6"
+            },
+            {
+              "value": "7",
+              "label": "#D7"
+            },
+            {
+              "value": "8",
+              "label": "#D8"
+            },
+            {
+              "value": "9",
+              "label": "#D9"
+            },
+            {
+              "value": "10",
+              "label": "#D10"
+            },
+            {
+              "value": "11",
+              "label": "#D11"
+            },
+            {
+              "value": "12",
+              "label": "#D12"
+            },
+            {
+              "value": "13",
+              "label": "#D13"
+            },
+            {
+              "value": "14",
+              "label": "#D14"
+            },
+            {
+              "value": "15",
+              "label": "#D15"
+            },
+            {
+              "value": "16",
+              "label": "#D16"
+            }
+          ],
+          "hint": "Overrides the video channels"
+        },
+        "channels": {
+          "label": "Video channels",
+          "kind": "text",
+          "default": "",
+          "required": true,
+          "hint": "Camera numbers, for example 1,2"
+        },
+        "text": {
+          "label": "Text",
+          "kind": "text",
+          "default": "",
+          "required": true,
+          "hint": "Needs an overlay with the #D modifier"
+        },
+        "duration": {
+          "label": "Duration (s)",
+          "kind": "number",
+          "default": "1",
+          "required": true,
+          "min": 0
+        }
+      }
+    },
+    "com.axis.action.fixed.snmp.trap": {
+      "label": "Send SNMP trap message",
+      "fields": {
+        "alarm_name": {
+          "label": "Alarm name",
+          "kind": "text",
+          "default": "General Trap"
+        },
+        "alarm_text": {
+          "label": "Message",
+          "kind": "text",
+          "default": ""
+        }
+      }
+    },
+    "com.axis.action.fixed.stop.audioclip": {
+      "label": "Stop playing audio clip",
+      "fields": {}
+    },
+    "com.axis.action.fixed.wdr": {
+      "label": "Set WDR mode",
+      "fields": {
+        "active_state": {
+          "label": "WDR mode",
+          "kind": "choice",
+          "default": "on",
+          "required": true,
+          "choices": [
+            {
+              "value": "on",
+              "label": "WDR on"
+            },
+            {
+              "value": "off",
+              "label": "WDR off"
+            }
+          ]
+        },
+        "inactive_state": {
+          "kind": "hidden",
+          "default": "off"
+        }
+      }
+    },
+    "com.axis.action.unlimited.defog": {
+      "label": "Set Defog mode while the rule is active",
+      "fields": {
+        "active_state": {
+          "label": "Defog mode",
+          "kind": "choice",
+          "default": "on",
+          "required": true,
+          "choices": [
+            {
+              "value": "on",
+              "label": "Defog on"
+            },
+            {
+              "value": "off",
+              "label": "Defog off"
+            }
+          ]
+        },
+        "inactive_state": {
+          "kind": "hidden",
+          "default": "off"
+        }
+      }
+    },
+    "com.axis.action.unlimited.io.toggle": {
+      "label": "Toggle I/O while the rule is active",
+      "fields": {
+        "port": {
+          "label": "Port",
+          "kind": "text",
+          "default": "",
+          "required": true,
+          "hint": "Number of the I/O port"
+        },
+        "state": {
+          "label": "State",
+          "kind": "choice",
+          "default": "high",
+          "choices": [
+            {
+              "value": "high",
+              "label": "Active"
+            },
+            {
+              "value": "low",
+              "label": "Inactive"
+            }
+          ]
+        }
+      }
+    },
+    "com.axis.action.unlimited.ircutfilter": {
+      "label": "Use day-night mode while the rule is active",
+      "fields": {
+        "channel": {
+          "label": "Video source",
+          "kind": "text",
+          "default": "",
+          "required": true,
+          "hint": "Camera number, for example 1"
+        },
+        "active_state": {
+          "label": "Mode when active",
+          "kind": "choice",
+          "default": "yes",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Day"
+            },
+            {
+              "value": "no",
+              "label": "Night"
+            },
+            {
+              "value": "auto",
+              "label": "Auto"
+            }
+          ]
+        },
+        "inactive_state": {
+          "label": "Mode when inactive",
+          "kind": "choice",
+          "default": "no",
+          "choices": [
+            {
+              "value": "yes",
+              "label": "Day"
+            },
+            {
+              "value": "no",
+              "label": "Night"
+            },
+            {
+              "value": "auto",
+              "label": "Auto"
+            }
+          ]
+        }
+      }
+    },
+    "com.axis.action.unlimited.irlight": {
+      "label": "Use lights while the rule is active",
+      "fields": {
+        "lightid": {
+          "label": "Light",
+          "kind": "text",
+          "default": "led0"
+        },
+        "activate": {
+          "kind": "hidden",
+          "default": "yes"
+        }
+      }
+    },
+    "com.axis.action.unlimited.ledcontrol": {
+      "label": "Flash status LED while the rule is active",
+      "fields": {
+        "color": {
+          "label": "Color",
+          "kind": "choice",
+          "default": "green,none",
+          "choices": [
+            {
+              "value": "green,none",
+              "label": "Green"
+            },
+            {
+              "value": "amber,none",
+              "label": "Amber"
+            },
+            {
+              "value": "red,none",
+              "label": "Red"
+            }
+          ]
+        },
+        "led": {
+          "kind": "hidden",
+          "default": "statusled"
+        },
+        "interval": {
+          "kind": "hidden",
+          "default": "250"
+        }
+      }
+    },
+    "com.axis.action.unlimited.notification.tcp": {
+      "label": "Send notification through TCP while the rule is active",
+      "fields": {
+        "message": {
+          "label": "Message",
+          "kind": "text",
+          "default": ""
+        },
+        "period": {
+          "label": "Repeat every (s)",
+          "kind": "number",
+          "default": "1",
+          "min": 1
+        }
+      }
+    },
+    "com.axis.action.unlimited.play.audioclip": {
+      "label": "Play audio clip while the rule is active",
+      "fields": {
+        "location": {
+          "label": "Clip",
+          "kind": "text",
+          "default": "",
+          "required": true,
+          "hint": "File name of the clip on the device"
+        },
+        "audiodeviceid": {
+          "label": "Audio device",
+          "kind": "text",
+          "default": "",
+          "required": true
+        },
+        "audiooutputid": {
+          "label": "Audio output",
+          "kind": "text",
+          "default": "",
+          "required": true
+        },
+        "volume": {
+          "label": "Volume",
+          "kind": "number",
+          "default": "100",
+          "required": true,
+          "min": 0,
+          "max": 1000,
+          "hint": "100 = unchanged, 1000 = ten times"
+        },
+        "audiooutput": {
+          "kind": "hidden"
+        }
+      }
+    },
+    "com.axis.action.unlimited.recording.storage": {
+      "label": "Record video while the rule is active",
+      "fields": {
+        "storage_id": {
+          "label": "Storage",
+          "kind": "text",
+          "default": "",
+          "hint": "For example SD_DISK or NetworkShare"
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        }
+      }
+    },
+    "com.axis.action.unlimited.recording_group.storage": {
+      "label": "Record with recording group",
+      "fields": {
+        "recording_group_id": {
+          "label": "Recording group",
+          "kind": "text",
+          "default": "",
+          "required": true
+        }
+      }
+    },
+    "com.axis.action.unlimited.send_images.ftp": {
+      "label": "Send images through FTP while the rule is active",
+      "fields": {
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "image%y-%m-%d_%H-%M-%S-%f_#s.jpg",
+          "required": true
+        },
+        "max_sequence_number": {
+          "label": "Maximum sequence number",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&videocodec=jpeg&audio=0&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_images": {
+          "label": "Maximum images",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        }
+      }
+    },
+    "com.axis.action.unlimited.send_images.http": {
+      "label": "Send images through HTTP while the rule is active",
+      "fields": {
+        "custom_params": {
+          "label": "Custom parameters",
+          "kind": "text",
+          "default": "",
+          "hint": "Added to the URL"
+        },
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "image%y-%m-%d_%H-%M-%S-%f_#s.jpg",
+          "required": true
+        },
+        "max_sequence_number": {
+          "label": "Maximum sequence number",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&videocodec=jpeg&audio=0&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_images": {
+          "label": "Maximum images",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        }
+      }
+    },
+    "com.axis.action.unlimited.send_images.https": {
+      "label": "Send images through HTTPS while the rule is active",
+      "fields": {
+        "custom_params": {
+          "label": "Custom parameters",
+          "kind": "text",
+          "default": "",
+          "hint": "Added to the URL"
+        },
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "image%y-%m-%d_%H-%M-%S-%f_#s.jpg",
+          "required": true
+        },
+        "max_sequence_number": {
+          "label": "Maximum sequence number",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&videocodec=jpeg&audio=0&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_images": {
+          "label": "Maximum images",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        }
+      }
+    },
+    "com.axis.action.unlimited.send_images.networkshare": {
+      "label": "Send images to network share while the rule is active",
+      "fields": {
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "image%y-%m-%d_%H-%M-%S-%f_#s.jpg",
+          "required": true
+        },
+        "max_sequence_number": {
+          "label": "Maximum sequence number",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&videocodec=jpeg&audio=0&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_images": {
+          "label": "Maximum images",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        }
+      }
+    },
+    "com.axis.action.unlimited.send_images.sftp": {
+      "label": "Send images through SFTP while the rule is active",
+      "fields": {
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "image%y-%m-%d_%H-%M-%S-%f_#s.jpg",
+          "required": true
+        },
+        "max_sequence_number": {
+          "label": "Maximum sequence number",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&videocodec=jpeg&audio=0&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_images": {
+          "label": "Maximum images",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        }
+      }
+    },
+    "com.axis.action.unlimited.send_images.smtp": {
+      "label": "Send images to email while the rule is active",
+      "fields": {
+        "subject": {
+          "label": "Subject",
+          "kind": "text",
+          "default": ""
+        },
+        "message": {
+          "label": "Message",
+          "kind": "text",
+          "default": ""
+        },
+        "images_per_mail": {
+          "label": "Images per email",
+          "kind": "number",
+          "default": "10",
+          "min": 1
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "image%y-%m-%d_%H-%M-%S-%f_#s.jpg",
+          "required": true
+        },
+        "max_sequence_number": {
+          "label": "Maximum sequence number",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&videocodec=jpeg&audio=0&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_images": {
+          "label": "Maximum images",
+          "kind": "number",
+          "default": "0",
+          "required": true,
+          "min": 0,
+          "hint": "0 = no limit"
+        }
+      }
+    },
+    "com.axis.action.unlimited.send_videoclip.ftp": {
+      "label": "Send video clip through FTP while the rule is active",
+      "fields": {
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "video%y-%m-%d_%H-%M-%S-%f_#s.mkv",
+          "required": true
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_file_size": {
+          "kind": "hidden",
+          "default": "0"
+        },
+        "max_duration": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.action.unlimited.send_videoclip.http": {
+      "label": "Send video clip through HTTP while the rule is active",
+      "fields": {
+        "custom_params": {
+          "label": "Custom parameters",
+          "kind": "text",
+          "default": "",
+          "hint": "Added to the URL"
+        },
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "video%y-%m-%d_%H-%M-%S-%f_#s.mkv",
+          "required": true
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_file_size": {
+          "kind": "hidden",
+          "default": "0"
+        },
+        "max_duration": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.action.unlimited.send_videoclip.https": {
+      "label": "Send video clip through HTTPS while the rule is active",
+      "fields": {
+        "custom_params": {
+          "label": "Custom parameters",
+          "kind": "text",
+          "default": "",
+          "hint": "Added to the URL"
+        },
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "video%y-%m-%d_%H-%M-%S-%f_#s.mkv",
+          "required": true
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_file_size": {
+          "kind": "hidden",
+          "default": "0"
+        },
+        "max_duration": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.action.unlimited.send_videoclip.networkshare": {
+      "label": "Send video clip to network share while the rule is active",
+      "fields": {
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "video%y-%m-%d_%H-%M-%S-%f_#s.mkv",
+          "required": true
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_file_size": {
+          "kind": "hidden",
+          "default": "0"
+        },
+        "max_duration": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.action.unlimited.send_videoclip.sftp": {
+      "label": "Send video clip through SFTP while the rule is active",
+      "fields": {
+        "create_folder": {
+          "label": "Create folder",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "video%y-%m-%d_%H-%M-%S-%f_#s.mkv",
+          "required": true
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_file_size": {
+          "kind": "hidden",
+          "default": "0"
+        },
+        "max_duration": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.action.unlimited.send_videoclip.smtp": {
+      "label": "Send video clip to email while the rule is active",
+      "fields": {
+        "subject": {
+          "label": "Subject",
+          "kind": "text",
+          "default": ""
+        },
+        "message": {
+          "label": "Message",
+          "kind": "text",
+          "default": ""
+        },
+        "filename": {
+          "label": "File name",
+          "kind": "text",
+          "default": "video%y-%m-%d_%H-%M-%S-%f_#s.mkv",
+          "required": true
+        },
+        "stream_options": {
+          "label": "Camera and stream profile",
+          "kind": "text",
+          "default": "&streamprofile=&camera=1",
+          "hint": "For example &camera=1&streamprofile=Quality"
+        },
+        "pre_duration": {
+          "label": "Prebuffer (ms)",
+          "kind": "number",
+          "default": "3000",
+          "min": 0
+        },
+        "post_duration": {
+          "label": "Postbuffer (ms)",
+          "kind": "number",
+          "default": "5000",
+          "min": 0
+        },
+        "max_file_size": {
+          "kind": "hidden",
+          "default": "0"
+        },
+        "max_duration": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.action.unlimited.set_overlay": {
+      "label": "Use overlay text while the rule is active",
+      "fields": {
+        "index": {
+          "label": "Index",
+          "kind": "choice",
+          "default": "",
+          "choices": [
+            {
+              "value": "",
+              "label": "Default"
+            },
+            {
+              "value": "1",
+              "label": "#D1"
+            },
+            {
+              "value": "2",
+              "label": "#D2"
+            },
+            {
+              "value": "3",
+              "label": "#D3"
+            },
+            {
+              "value": "4",
+              "label": "#D4"
+            },
+            {
+              "value": "5",
+              "label": "#D5"
+            },
+            {
+              "value": "6",
+              "label": "#D6"
+            },
+            {
+              "value": "7",
+              "label": "#D7"
+            },
+            {
+              "value": "8",
+              "label": "#D8"
+            },
+            {
+              "value": "9",
+              "label": "#D9"
+            },
+            {
+              "value": "10",
+              "label": "#D10"
+            },
+            {
+              "value": "11",
+              "label": "#D11"
+            },
+            {
+              "value": "12",
+              "label": "#D12"
+            },
+            {
+              "value": "13",
+              "label": "#D13"
+            },
+            {
+              "value": "14",
+              "label": "#D14"
+            },
+            {
+              "value": "15",
+              "label": "#D15"
+            },
+            {
+              "value": "16",
+              "label": "#D16"
+            }
+          ],
+          "hint": "Overrides the video channels"
+        },
+        "channels": {
+          "label": "Video channels",
+          "kind": "text",
+          "default": "",
+          "required": true,
+          "hint": "Camera numbers, for example 1,2"
+        },
+        "text": {
+          "label": "Text",
+          "kind": "text",
+          "default": "",
+          "required": true,
+          "hint": "Needs an overlay with the #D modifier"
+        }
+      }
+    },
+    "com.axis.action.unlimited.snmp.trap": {
+      "label": "Send SNMP trap message while the rule is active",
+      "fields": {
+        "alarm_name": {
+          "label": "Alarm name",
+          "kind": "text",
+          "default": "General Trap"
+        },
+        "alarm_text": {
+          "label": "Message",
+          "kind": "text",
+          "default": ""
+        }
+      }
+    },
+    "com.axis.action.unlimited.wdr": {
+      "label": "Set WDR mode while the rule is active",
+      "fields": {
+        "active_state": {
+          "label": "WDR mode",
+          "kind": "choice",
+          "default": "on",
+          "required": true,
+          "choices": [
+            {
+              "value": "on",
+              "label": "WDR on"
+            },
+            {
+              "value": "off",
+              "label": "WDR off"
+            }
+          ]
+        },
+        "inactive_state": {
+          "kind": "hidden",
+          "default": "off"
+        }
+      }
+    }
+  },
+  "recipients": {
+    "com.axis.recipient.ftp": {
+      "label": "FTP",
+      "fields": {
+        "host": {
+          "label": "Host",
+          "kind": "text",
+          "default": "",
+          "required": true
+        },
+        "port": {
+          "label": "Port",
+          "kind": "number",
+          "default": "21",
+          "required": true,
+          "min": 1,
+          "max": 65535
+        },
+        "upload_path": {
+          "label": "Folder",
+          "kind": "text",
+          "default": ""
+        },
+        "login": {
+          "label": "User name",
+          "kind": "text",
+          "default": ""
+        },
+        "password": {
+          "label": "Password",
+          "kind": "password",
+          "default": ""
+        },
+        "temporary": {
+          "label": "Use temporary file name",
+          "kind": "bool",
+          "default": "0",
+          "true": "1",
+          "false": "0"
+        },
+        "passive": {
+          "label": "Use passive FTP",
+          "kind": "bool",
+          "default": "0",
+          "true": "1",
+          "false": "0"
+        },
+        "qos": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.recipient.http": {
+      "label": "HTTP",
+      "fields": {
+        "upload_url": {
+          "label": "URL",
+          "kind": "text",
+          "default": "http://",
+          "required": true
+        },
+        "login": {
+          "label": "User name",
+          "kind": "text",
+          "default": ""
+        },
+        "password": {
+          "label": "Password",
+          "kind": "password",
+          "default": ""
+        },
+        "proxy_host": {
+          "label": "Proxy host",
+          "kind": "text",
+          "default": ""
+        },
+        "proxy_port": {
+          "label": "Proxy port",
+          "kind": "number",
+          "default": "",
+          "min": 1,
+          "max": 65535
+        },
+        "proxy_login": {
+          "label": "Proxy user name",
+          "kind": "text",
+          "default": ""
+        },
+        "proxy_password": {
+          "label": "Proxy password",
+          "kind": "password",
+          "default": ""
+        },
+        "qos": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.recipient.https": {
+      "label": "HTTPS",
+      "fields": {
+        "upload_url": {
+          "label": "URL",
+          "kind": "text",
+          "default": "https://",
+          "required": true
+        },
+        "validate_server_cert": {
+          "label": "Validate server certificate",
+          "kind": "bool",
+          "default": "1",
+          "true": "1",
+          "false": "0"
+        },
+        "login": {
+          "label": "User name",
+          "kind": "text",
+          "default": ""
+        },
+        "password": {
+          "label": "Password",
+          "kind": "password",
+          "default": ""
+        },
+        "proxy_host": {
+          "label": "Proxy host",
+          "kind": "text",
+          "default": ""
+        },
+        "proxy_port": {
+          "label": "Proxy port",
+          "kind": "number",
+          "default": "",
+          "min": 1,
+          "max": 65535
+        },
+        "proxy_login": {
+          "label": "Proxy user name",
+          "kind": "text",
+          "default": ""
+        },
+        "proxy_password": {
+          "label": "Proxy password",
+          "kind": "password",
+          "default": ""
+        },
+        "qos": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.recipient.networkshare": {
+      "label": "Network storage",
+      "fields": {
+        "share_id": {
+          "label": "Network share",
+          "kind": "text",
+          "default": "",
+          "required": true,
+          "hint": "ID of the network share on the device"
+        },
+        "upload_path": {
+          "label": "Folder",
+          "kind": "text",
+          "default": ""
+        },
+        "qos": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.recipient.sftp": {
+      "label": "SFTP",
+      "fields": {
+        "host": {
+          "label": "Host",
+          "kind": "text",
+          "default": ""
+        },
+        "port": {
+          "label": "Port",
+          "kind": "number",
+          "default": "22",
+          "required": true,
+          "min": 1,
+          "max": 65535
+        },
+        "upload_path": {
+          "label": "Folder",
+          "kind": "text",
+          "default": ""
+        },
+        "login": {
+          "label": "User name",
+          "kind": "text",
+          "default": ""
+        },
+        "password": {
+          "label": "Password",
+          "kind": "password",
+          "default": ""
+        },
+        "ssh_host_pub_key_md5": {
+          "label": "Server key fingerprint (MD5)",
+          "kind": "text",
+          "default": "",
+          "hint": "32 hex characters; this or SHA-256"
+        },
+        "ssh_host_pub_key_sha256": {
+          "label": "Server key fingerprint (SHA-256)",
+          "kind": "text",
+          "default": "",
+          "hint": "Base64; this or MD5"
+        },
+        "temporary": {
+          "label": "Use temporary file name",
+          "kind": "bool",
+          "default": "0",
+          "true": "1",
+          "false": "0"
+        },
+        "ssh_auth_type": {
+          "kind": "hidden",
+          "default": "2"
+        },
+        "ssh_public_key": {
+          "kind": "hidden",
+          "default": ""
+        },
+        "ssh_private_key": {
+          "label": "Private key",
+          "kind": "password",
+          "default": ""
+        },
+        "ssh_private_key_passphrase": {
+          "label": "Private key passphrase",
+          "kind": "password",
+          "default": ""
+        },
+        "qos": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.recipient.sip": {
+      "label": "SIP or VMS",
+      "fields": {
+        "sip_account_id": {
+          "label": "From SIP account",
+          "kind": "text",
+          "default": ""
+        },
+        "sip_uri": {
+          "label": "To SIP address",
+          "kind": "text",
+          "default": "",
+          "required": true
+        }
+      }
+    },
+    "com.axis.recipient.smtp": {
+      "label": "Email",
+      "fields": {
+        "email_to": {
+          "label": "Send email to",
+          "kind": "text",
+          "default": "",
+          "required": true,
+          "hint": "Separate several addresses with commas"
+        },
+        "email_from": {
+          "label": "Send email from",
+          "kind": "text",
+          "default": "",
+          "required": true
+        },
+        "login": {
+          "label": "User name",
+          "kind": "text",
+          "default": ""
+        },
+        "password": {
+          "label": "Password",
+          "kind": "password",
+          "default": ""
+        },
+        "host": {
+          "label": "Email server",
+          "kind": "text",
+          "default": "",
+          "required": true
+        },
+        "port": {
+          "label": "Port",
+          "kind": "number",
+          "default": "",
+          "required": true,
+          "min": 1,
+          "max": 65535
+        },
+        "encryption": {
+          "label": "Encryption",
+          "kind": "choice",
+          "default": "none",
+          "choices": [
+            {
+              "value": "none",
+              "label": "None"
+            },
+            {
+              "value": "ssl",
+              "label": "SSL"
+            },
+            {
+              "value": "tls",
+              "label": "TLS"
+            }
+          ]
+        },
+        "validate_server_cert": {
+          "label": "Validate server certificate",
+          "kind": "bool",
+          "default": "0",
+          "true": "1",
+          "false": "0"
+        },
+        "pop_host": {
+          "label": "POP server",
+          "kind": "text",
+          "default": "",
+          "hint": "Log in to POP before sending"
+        },
+        "pop_port": {
+          "kind": "hidden",
+          "default": "110"
+        },
+        "pop_login": {
+          "kind": "hidden",
+          "default": ""
+        },
+        "pop_password": {
+          "label": "POP password",
+          "kind": "password",
+          "default": ""
+        },
+        "qos": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    },
+    "com.axis.recipient.tcp": {
+      "label": "TCP",
+      "fields": {
+        "host": {
+          "label": "Host",
+          "kind": "text",
+          "default": "",
+          "required": true
+        },
+        "port": {
+          "label": "Port",
+          "kind": "number",
+          "default": "",
+          "required": true,
+          "min": 1,
+          "max": 65535
+        },
+        "qos": {
+          "kind": "hidden",
+          "default": "0"
+        }
+      }
+    }
+  }
+}

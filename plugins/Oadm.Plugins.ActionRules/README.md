@@ -1,0 +1,88 @@
+# Action Rule Editor (core plugin)
+
+Id `oadm.action-rules`, rail page **Action Rule Editor** (group Automation, icon `workflow`), **off by default**,
+switchable. The action rules of the devices (their web interface: Events > Rules) in one page, grouped by what they do,
+and changed, turned on or off, deleted and undone on many devices at once. Example: 500 cameras whose rule sends "Send
+notification through TCP" but should send "... while the rule is active".
+
+Spec and research: `docs/action-rules/spec.md` (recorded device answers next to it). Built: stage 1 (read, group, edit,
+on / off, delete, undo), stage 2 (copy rules to other devices, the Recipients and Schedules tabs) and stage 3 (the rule
+builder **New rule** and the action catalog `Catalog/action-catalog.json`, see its README).
+
+## Decisions
+
+| Topic | Decision |
+|---|---|
+| Read | Only on request (page opens, Refresh), with the shared `DeviceSweep` (16 devices at a time, 20 s per device), read-only, over SOAP (`SoapActionEngine.ReadAsync`: rules, actions, templates, recipients, schedules, the event list). The device
+access is shared source (`plugins/Shared/ActionEngine`: `SoapActionEngine` and its models), also used by Configure devices
+(`ActionEngineApi` maps it to the ADM file models). The event list (`plugins/Shared/DeviceEvents`, shared with Device
+triggers) is kept per device in server memory for the rule builder, one copy per distinct list. Certificate changed, Credentials required, Password not set and Unreachable devices are not contacted. |
+| Groups | Default "What it does": the same trigger (start event, conditions in any order, schedule, wait) and the same action template; names and values may differ. Also by Name, Action or Trigger. Filters are compared in their canonical form (`RuleText.Key`): AXIS OS 10 appends `//.` to condition topics, AXIS OS 12 reorders the `and` terms. Devices that could not be read are the first row "Not read". |
+| Targets | The rules selected in the right grid, else every rule of the selected groups. |
+| Edit | A form where every part has a Change check box (name, on / off, the event with Any or one value per source item, the schedule (Always, a built-in or OADM schedule, or New schedule), run once or while the event is active, wait between actions, action, the recipient by name, every setting of the action). The event replaces the start event, else the first condition that is not a schedule; the server builds its filter (state "active" added) and never takes one from the page. A new schedule is created first on the devices that lack it (OADM's own id, matched by id or name and times). The recipient: each device's own recipient of that name and the action's kind (with its password), checked settings still win; a device without it fails "Nothing was changed". Copy to devices uses the same form. Unchecked parts stay as each device has them. The action select offers the actions every target device has; settings the new action has and a rule lacks must be set. Once / while active is manual: the installer changes the action and the trigger kind; a combination the device refuses fails that device's task with its text. |
+| Writes | Where the device lists `action-rules` v2 in `/config/discover` (AXIS OS 12): `PATCH rules/<id>` in place, only the parts that change; the rule id stays. Else (AXIS OS 10, 11): the new action and rule over SOAP first, then the old rule and its action (only when no other rule uses it); the rule gets a new id. |
+| Passwords | Read over SOAP (plain text, server only), never sent to the client (the page sees which ones are set) and never logged. A login inside an address (`ftp://user:pass@host/`) reaches the page as `user:********@`; a value written back with `********` there gets each device's own password again, only for the same scheme, user and server (a hidden password never goes to another server; `RuleText.HideLogin` / `KeepLogin`; otherwise "Enter the password in the address again"). The password runs to the last "@" of the address part, like URL parsers read it; every address in a value is covered. Secrets are the parameters named like password, passphrase, private key or secret, and `http_headers` (may carry an Authorization header). REST shows `**Redacted**` and would store that text when sent back: the action is only sent when it changes, then with the real passwords; a `**Redacted**` value is refused before sending. |
+| Safety | A task writes a rule only while it is exactly as the page read it (`RuleView.Version`, an HMAC of the whole rule with a key only the server process has, so a client cannot test guessed passwords against it; server-side comparisons use `RuleContent`); else Skipped with a warning "The rule changed since it was read. Read the rules again.". One task per device at a time (`ActionRulesPlugin.DeviceGate`). The patch is checked before any task starts (`RulePatch.Problem`, setting names no read device knows) and against each device's templates (`RulePatchApply`: a setting the device's action lacks is left out, a missing value = "Nothing was changed"). A device timeout fails only its step. Over SOAP a recreate whose removal is refused takes the new rule or recipient out again (the device never runs both); a removal without an answer reads the device again: the old one still there = the new one is taken out ("Nothing was changed"), gone = done, unreadable = both stay, reported, and the new one is saved for undo; the only remaining copy is never removed. A schedule is removed and added again the same careful way. A checked setting a device's action lacks is left out with a warning. A configuration shared by rules is removed with the last one. |
+| Undo | Before its first write each task saves what it touches in the plugin data folder (`undo/<run>/`, passwords and values with a password inside an address encrypted with the master key, purpose `oadm:action-rules:undo:<run>:<device>`) and after every write the state it left (`UndoRule` / `UndoRecipient` / `UndoSchedule`: before and after; none before = created, none after = deleted); a task whose run is unknown to the store fails before writing. Undo (page, 30 days) puts an item back only while it is still as the run left it (found by id and content, else by content when exactly one item matches; a twin with the same content never counts; a later change stays: "Changed after this change. Left as it is."; never a duplicate), deletes what the run created, creates again what it deleted or lost (unchanged by the run and gone from the device). Refused while a task of the run is still queued or running (asked from the task engine, `ITaskRunner.IsActive`; tasks cancelled while queued free it at once; a host that cannot tell: at most 6 hours), and only once (checked and marked in one step). |
+| Rights | "show" (Operator, Viewer: read, the event list), "Change action rules" (`manage`: edit, on / off, copy, new rules, undo; Operator yes), "Delete action rules" (`delete`: Operator yes). Every run is audited. |
+| Names | Action templates by the names of the device's web interface (`ActionNames`, 103 templates of AXIS OS 12.11); unknown ones from the token. |
+| Action catalog | `Catalog/action-catalog.json` (embedded, `ActionCatalog`): per action and recipient template the label, kind (text, multiline, number, check box, select, password, hidden), default, range and choices of every setting, from the AXIS OS 12.11 web interface; values exactly as the device stores them. Every form of the page draws settings with it (`ParameterField` + `ParameterInput`): edit, copy, recipients, new rule. Hidden settings (e.g. `qos`) keep each device's value; a new rule gets the default. Unknown templates and settings are text fields named after the parameter. |
+| Rule builder | Rules tab, **New rule**: the device picker (devices whose rules were not read are greyed), then one dialog (cards Rule, When, Then): name, turned on; the event from the events the chosen devices offered when they were read (grouped like the device's event list, Any or one value per source item, "Offered by 480 of 500 devices; the others fail."), run once when it starts (with "Wait between actions") or while it is active (only events that are on or off), up to five further conditions (events that are on or off), a schedule (Always, the built-in ones, OADM's own ones by their id, also renamed ones, or **New schedule**); the action from those every chosen device has (once: only actions that run once; never "Erase configuration", which OADM also refuses as a change or copy), grouped by what it does, the recipient (enter the settings, or a recipient name: each device uses its own recipient of that name, with its password) and the settings from the catalog with their defaults (numbers checked against the range, required ones must be set; a hidden setting without a default is shown). A condition without an event says so below its select. The server checks it all again (`BuildProblem`), adds the state "active" to events that are on or off (the device refuses the filter without it: "property state key's value not specified") and refuses such conditions for one-shot events; each device then runs the copy task (schedules first, the action fitted, an identical rule left as it is). |
+| Copy a rule | Rules tab, **Copy to devices**: one rule (selected on the right), the shared device picker (devices whose rules were not read and the source are greyed), then the edit form in copy mode (checked parts are set on the copies). The server reads the source rule with its passwords and hands it to the tasks in memory. Per device: the schedules the rule names come first (a rule naming a missing schedule is refused: "could not match any property events"): same id and times = used, else same name and times = used with that id, built-in ones must exist, others are created with OADM's own id `com.axis.schedules.oadm.<name>` (the same on every device; `-2` ... when taken). The action is fitted to the device's template: settings the device lacks are dropped (`set_overlay` `index` on AXIS OS 10), settings it needs and the rule lacks come from the form or fail "Nothing was changed". An identical rule on the device is left as it is ("Already on the device."). |
+| Recipients tab | Grouped by name and kind (FTP, SFTP, HTTP, HTTPS, Email, TCP, Network share, SIP). **Edit** (Change check boxes like rules) with "Also change the rules that send to these recipients" (checked): the rules of the recipient's kind whose server settings (all but passwords) are the recipient's old ones get the changed settings, their own passwords stay. **New recipient** (devices, then the kind every chosen device offers, name and every setting from the catalog; method `recipientNew`, the same task as a copy), **Copy to devices** (one recipient, with its password), **Delete** (rules keep their copied settings). REST in place on AXIS OS 12 (`recipients/<id>`), else recreated (new id). |
+| Reading | The page asks only for the progress while a read runs (`getProgress`); rows come as events, all rows once at the end (`getState`): no message that grows with the device count every second. |
+| Schedules tab | Grouped by name and times; "Mon to Fri 08:00 to 18:00", "Every 5 minutes", "Mon 00:00 to Sat 00:00" (`ScheduleText`), else the device's text. **New schedule** (devices, then name and days with from / to (a time before the start ends the next day), every N minutes, or the text), **Edit** (the id stays: REST `event-schedules` v2 in place, else removed and added again with the same id, the old one put back when the add fails), **Copy to devices**, **Delete**: a schedule rules use is deleted only together with the rules the page showed (the confirmation names them, the request carries each at the version read); a schedule that other rules use, or whose rule changed since it was read, is skipped with a warning. Built-in schedules are never changed or deleted. A second schedule with the same id is refused by the device ("already exists"). |
+| Undo of stage 2 | Created rules, recipients and schedules are deleted again (found by content when a later run recreated them with another id), deleted ones created again, changed ones put back. Order: deleted and changed schedules first (rules need them), recipients, rules, then created schedules (only when no rule uses them). |
+
+## Task
+
+`oadm.action-rules.task` (`ShowInMenus` false), one per device. Steps: Read the action rules ("3 rules, changed in place"),
+Save for undo, then one per item: "Change rule Door alarm", "Delete rule ...", "Create rule ...", "Create schedule ...",
+"Change recipient ...", "Put back rule ...". Task names: "Change action rules", "Turn on action rules", "Turn off action
+rules", "Delete action rules", "Copy action rule Door alarm", "Change recipients", "Delete recipients", "Copy recipient ...",
+"Change schedules", "Delete schedules", "Add schedule ...", "Add recipient ...", "Create action rule ...", "Undo action rule change" (at most 48
+characters). One refused
+item fails its step; the others are written ("1 of 3 rules failed; the others were changed."); with one item the task
+says the device's reason.
+
+## Device API
+
+Verified on 10.0.0.48 (AXIS P3265-V, AXIS OS 12.11.77), 10.0.0.202 (AXIS M3215-LVE, 12.11.77) and 10.0.0.200 (AXIS
+M3206-LVE, 10.12.338), see `docs/action-rules/spec.md`:
+
+- SOAP `/vapix/services` action1 / event1 on every version; no change method ("Optional action not implemented").
+- REST `action-rules` v2 and `event-schedules` v2 on AXIS OS 12.11 (not on 10.12: `/config/discover` 404).
+- An unlimited (while active) action needs a condition; `unlimited.notification.tcp` needs `period` ("Repeat every").
+- Template parameters differ by version (`set_overlay` has `index` only on 12, audio clips gained device ids).
+- AXIS OS 10 appends `//.` to condition topics on read and refuses it written back on a leaf topic ("failed to parse topic
+  expression ...Recurring/Interval//."): OADM always writes topics without it.
+- A one-shot send images action needs durations: "Duration values must be present for one-shot actions" (0 refused).
+- Recipient passwords come in plain text over SOAP, like action passwords; schedules accept an own id on AXIS OS 10 to 12.
+- AXIS OS 11.9.65 (10.0.0.12, AXIS P12 Mk III): `/config/discover` without `action-rules`: SOAP only.
+- A while-active action without a condition is refused over SOAP too (AXIS OS 10.12, 12.11): "Primary action with id '73' and
+  of type 'continuous' requires at least one condition".
+- REST `PATCH recipients/<id>` and `PATCH schedules/<id>` with the whole object change them in place (verified by the
+  stage 2 write test on AXIS OS 12.11).
+- Values are stored exactly as written (names with spaces, `PT60S`, `09`, trailing blanks) and invalid ones are refused
+  ("Parameter "host" contains invalid value" for a host with blanks), so undo can compare exactly.
+- A filter on an event that is on or off needs its state value ("Validation error: Failed to get property state: property
+  state key's value not specified", AXIS OS 12.11): the rule builder adds `active=1`.
+- SFTP: the server key fingerprint is MD5 or SHA-256; the other one is left out (empty is refused: "Parameter
+  "ssh_host_pub_key_md5" contains invalid value"; leaving it out works over SOAP and REST, AXIS OS 10.12 to 12.11).
+- The catalog's defaults are taken for every action of the four dev cameras except those that need something of the
+  camera itself: a storage (`storage_id`), a network share (`share_id`), a recording group, an audio clip.
+
+## Tests
+
+`tests/Oadm.Plugins.ActionRules.Tests`: parsing of the recorded answers (AXIS OS 10 and 12), filters, the task against a
+stateful fake camera (`RuleCamera`: REST in place, SOAP recreate, refusals, passwords, undo), the page (groups, targets,
+runs, rights, the edit form), Perf 5,000 devices x 2 rules, headless screenshots. Opt-in `RulesHardwareWriteTests` (the
+task on every dev camera) and `ServerHardwareWriteTests` (end to end through the server in-process), only with
+`OADM_ACTION_RULES_WRITE=1`; both create own rules ("OADM test", "OADM e2e") and remove them, other rules are never
+touched. The stage 2 write test copies a rule with its schedule, changes the schedule, copies a recipient, changes it
+with the rule that sends to it, deletes the used schedule with its rule, and undoes each step, on all four dev cameras
+(AXIS OS 10.12, 11.9, 12.11). Stage 3: `BuildTests` (event list merge, new rules through the task, refusals),
+`BuilderPageTests` (the form, what it sends, screenshot), `CatalogTests` (every fixture template and setting described,
+defaults fit their kind); the write tests build a rule from each camera's event list with a new schedule and undo it, and
+create (turned off) and delete every action each camera offers with the catalog's defaults, and add a recipient, then
+change a rule's event, schedule (new) and recipient (by name) in one edit and undo both.

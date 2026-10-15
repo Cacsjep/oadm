@@ -1,0 +1,21 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:ev="using:Oadm.Plugins.DeviceEvents"
+             xmlns:vm="using:Oadm.Plugins.ActionRules.Client"
+             x:Class="Oadm.Plugins.ActionRules.Client.EventFiltersView"
+             x:DataType="vm:EventChoiceViewModel">
+  <!-- Any or one value per source item of the chosen event (like Device triggers). -->
+  <ItemsControl ItemsSource="{Binding Filters}" IsVisible="{Binding HasFilters}">
+    <ItemsControl.ItemsPanel>
+      <ItemsPanelTemplate><StackPanel Classes="form" /></ItemsPanelTemplate>
+    </ItemsControl.ItemsPanel>
+    <ItemsControl.ItemTemplate>
+      <DataTemplate x:DataType="ev:FilterRowViewModel">
+        <ui:FormField Label="{Binding Label}">
+          <ComboBox ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}" MinWidth="240" HorizontalAlignment="Left" />
+        </ui:FormField>
+      </DataTemplate>
+    </ItemsControl.ItemTemplate>
+  </ItemsControl>
+</UserControl>

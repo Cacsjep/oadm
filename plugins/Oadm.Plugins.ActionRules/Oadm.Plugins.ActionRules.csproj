@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>Oadm.Plugins.ActionRules.Server</AssemblyName>
+    <RootNamespace>Oadm.Plugins.ActionRules</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <!-- Folder name under artifacts/plugins/, must equal the id in plugin.json. -->
+    <OadmPluginId>oadm.action-rules</OadmPluginId>
+    <OadmPluginOutputDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'artifacts', 'plugins', '$(OadmPluginId)'))</OadmPluginOutputDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The SDK is shared from the host: never copy it (or its dependencies) into the plugin folder. -->
+    <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The action catalog: labels, kinds and defaults of the action and recipient settings. -->
+    <EmbeddedResource Include="Catalog\*.json" LogicalName="Oadm.Plugins.ActionRules.Catalog.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The on-request table of the page, shared with Image Health Dashboard and Edge storage. -->
+    <Compile Include="..\Shared\DeviceSweep.cs" Link="Common\DeviceSweep.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The device's action rule engine over SOAP, shared by the Action Rule Editor and Device configuration. -->
+    <Compile Include="..\Shared\ActionEngine\*.cs" LinkBase="Common\ActionEngine" />
+    <Using Include="Oadm.Plugins.ActionEngine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Oadm.Plugins.ActionRules.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The device's event list, shared by Device triggers and the Action Rule Editor. -->
+    <Compile Include="..\Shared\DeviceEvents\*.cs" LinkBase="Common\DeviceEvents" />
+    <Using Include="Oadm.Plugins.DeviceEvents" />
+  </ItemGroup>
+
+  <!-- Development deployment: copy the output to artifacts/plugins/oadm.action-rules/.
+       The client part (Oadm.Plugins.ActionRules.Client) deploys into the same folder. -->
+  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
+    <ItemGroup>
+      <_OadmPluginFiles Include="$(OutDir)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_OadmPluginFiles)" DestinationFiles="@(_OadmPluginFiles->'$(OadmPluginOutputDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Message Importance="normal" Text="OADM plugin $(OadmPluginId) deployed to $(OadmPluginOutputDir)" />
+  </Target>
+
+</Project>
