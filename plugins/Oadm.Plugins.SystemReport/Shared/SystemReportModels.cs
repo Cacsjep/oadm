@@ -14,7 +14,7 @@ public static class SystemReportPluginInfo
     public const int Parallelism = 4;
 
     /// <summary>Devices per job: the selection of a large site.</summary>
-    public const int MaxDevices = 5000;
+    public const int MaxDevices = 50;
 
     /// <summary>Largest report of one device that is kept; larger answers are dropped (AXIS P3265-V: about 0.3 MB).</summary>
     public const long MaxReportBytes = 256L * 1024 * 1024;

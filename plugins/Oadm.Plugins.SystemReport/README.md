@@ -16,7 +16,7 @@ client saves one ZIP for Axis support. Read-only for devices.
   `<address>_<MAC>_<model without "AXIS ">_<yyyyMMdd-HHmmss UTC>.zip` (other characters than letters, digits, '.', '-' become
   '-', a name used twice gets "-2") plus `summary.txt` (created time, OADM version, counts, one line per report with
   address, MAC, model, size and mode, then the failures with their reason). Dropped 30 minutes after the last use (checked
-  every minute and on each call), on `delete` and when the plugin stops. 1..5,000 devices per job.
+  every minute and on each call), on `delete` and when the plugin stops. 1..50 devices per job (`MaxDevices`; the toolbar button is disabled above 50 with "Choose at most 50 devices.": each report is up to 256 MB on the server disk).
 - Methods (`SystemReportMethods`, camelCase, models in `Shared/`): `start` ({deviceIds}) -> status with every device;
   `status` ({jobId, sinceVersion}) -> state running/packing/done/failed, total, finished, failed, size, version and only the
   devices changed after `sinceVersion` (5,000 devices: no full list per poll); `read` ({jobId, offset}) -> 2 MB base64

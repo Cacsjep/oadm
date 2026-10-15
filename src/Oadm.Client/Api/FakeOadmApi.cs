@@ -605,6 +605,21 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         }
     }
 
+    /// <summary>The server's device limit (<see cref="Oadm.Sdk.Devices.DeviceLimits.MaxDevices"/>; tests lower it).</summary>
+    public int DeviceLimit { get; set; } = Oadm.Sdk.Devices.DeviceLimits.MaxDevices;
+
+    /// <summary>Number of managed devices (tests).</summary>
+    public int DeviceCount
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _devices.Count;
+            }
+        }
+    }
+
     public Task<CommitReply> CommitAddAsync(CommitRequest request, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -619,6 +634,14 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 {
                     throw new RpcException(new Status(StatusCode.InvalidArgument, "Password must be 1-64 printable ASCII characters."));
                 }
+            }
+
+            // The server's device limit: an add that would go over it is refused whole.
+            int newOnes = request.DiscoveredIds.Count(id => session.Found.TryGetValue(id, out DiscoveredDevice? one)
+                && !one.AlreadyManaged && !_devices.Exists(d => d.Serial == one.Serial));
+            if (_devices.Count + newOnes > DeviceLimit)
+            {
+                throw new RpcException(new Status(StatusCode.ResourceExhausted, Oadm.Sdk.Devices.DeviceLimits.TooManyDevicesText));
             }
 
             var reply = new CommitReply();

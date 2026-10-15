@@ -118,6 +118,7 @@ public static class ServiceRegistration
         {
             // The credential list is Administrator only (the server checks it too).
             CanSaveToCredentialList = sp.GetService<UserSession>()?.IsAdmin ?? true,
+            Dialogs = sp.GetService<Oadm.Client.Dialogs.IDialogService>(),
         });
 
         // Toolbar plugins: the built-in ones are registered like plugin parts; DeviceToolbar adds those of client plugins.

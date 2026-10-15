@@ -33,6 +33,8 @@ public sealed partial class DeviceAutoAddService(
     TimeProvider time,
     ILogger<DeviceAutoAddService> logger) : IDeviceAutoAdd
 {
+    private DateTimeOffset _lastLimitWarning = DateTimeOffset.MinValue;
+
     public async Task<DeviceAutoAddOutcome> AddAsync(string address, string expectedSerial, string source, CancellationToken ct)
     {
         var ip = ParseAddress(address);
@@ -112,7 +114,23 @@ public sealed partial class DeviceAutoAddService(
         }
 
         var server = await settings.GetServerSettingsAsync(ct).ConfigureAwait(false);
-        var added = await adder.AddAsync(found, useHostName: false, initialPassword: null, credentials, server.ServerName, ct, probed).ConfigureAwait(false);
+        (Guid Id, SdkDeviceStatus Status)? added;
+        try
+        {
+            added = await adder.AddAsync(found, useHostName: false, initialPassword: null, credentials, server.ServerName, ct, probed).ConfigureAwait(false);
+        }
+        catch (DeviceLimitException)
+        {
+            var now = time.GetUtcNow();
+            if (now - _lastLimitWarning >= TimeSpan.FromHours(1))
+            {
+                _lastLimitWarning = now;
+                LogLimitReached(DeviceLimits.MaxDevices);
+            }
+
+            return NotAdded(DeviceAutoAddResult.LimitReached, serial, text, source, DeviceLimits.TooManyDevicesText);
+        }
+
         if (added is not { } device)
         {
             return new DeviceAutoAddOutcome(DeviceAutoAddResult.AlreadyManaged, null, $"{serial} is managed already.");
@@ -175,6 +193,9 @@ public sealed partial class DeviceAutoAddService(
 
         return ip;
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Devices are not added automatically: OADM manages {Max} devices already")]
+    private partial void LogLimitReached(int max);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Device {Serial} at {Address} added automatically ({Source}): {Result}")]
     private partial void LogAdded(string serial, string address, string source, DeviceAutoAddResult result);

@@ -488,7 +488,7 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
     {
         var devices = (ids ?? []).Distinct().ToList();
         return devices.Count is 0 or > ActionRulesInfo.MaxDevicesPerRun
-            ? throw new ArgumentException("Choose 1 to 5,000 devices.", nameof(ids))
+            ? throw new ArgumentException("Choose 1 to 30,000 devices.", nameof(ids))
             : devices;
     }
 
@@ -498,7 +498,7 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
             .Select(g => new DeviceTargets(g.Key, [.. g.SelectMany(t => t.Rules).DistinctBy(r => r.Id)])).ToList();
         if (list.Count is 0 or > ActionRulesInfo.MaxDevicesPerRun)
         {
-            throw new ArgumentException("Choose items on 1 to 5,000 devices.", nameof(targets));
+            throw new ArgumentException("Choose items on 1 to 30,000 devices.", nameof(targets));
         }
 
         return list.Any(t => t.Rules.Count > ActionRulesInfo.MaxRulesPerDevice)

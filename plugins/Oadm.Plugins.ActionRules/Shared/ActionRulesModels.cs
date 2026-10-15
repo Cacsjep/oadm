@@ -24,7 +24,7 @@ public static class ActionRulesInfo
     public const int MaxRowsPerEvent = 200;
 
     /// <summary>Devices per run.</summary>
-    public const int MaxDevicesPerRun = 5_000;
+    public const int MaxDevicesPerRun = Oadm.Sdk.Devices.DeviceLimits.MaxDevices;
 
     /// <summary>Rules per device and run.</summary>
     public const int MaxRulesPerDevice = 256;

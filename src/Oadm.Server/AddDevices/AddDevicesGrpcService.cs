@@ -10,6 +10,7 @@ using Oadm.Core.Security;
 using Oadm.Core.Settings;
 using Oadm.Core.Tasks;
 using Oadm.Core.Vapix;
+using Oadm.Sdk.Devices;
 using Oadm.Server.Common;
 using Oadm.Server.Discovery;
 using Oadm.Server.Mapping;
@@ -118,20 +119,38 @@ public sealed partial class AddDevicesGrpcService(
         }
 
         var selected = await ResolveAsync(request.SessionId, request.DiscoveredIds, ct).ConfigureAwait(false);
+
+        // The device limit for the whole add up front: nothing of an add that would go over it is stored.
+        var managed = await devices.ListSerialsAsync(ct).ConfigureAwait(false);
+        var newOnes = selected.Select(f => DeviceSerial.Normalize(f.Serial)).Distinct(StringComparer.Ordinal).Count(serial => !managed.Contains(serial));
+        if (managed.Count + newOnes > devices.MaxDevices)
+        {
+            throw new RpcException(new Status(StatusCode.ResourceExhausted, DeviceLimits.TooManyDevicesText));
+        }
+
         var serverSettings = await settings.GetServerSettingsAsync(ct).ConfigureAwait(false);
         var serverName = serverSettings.ServerName;
         var useHostName = request.UseHostName; // the add page's "Use DNS names instead of IP addresses"
         var added = new ConcurrentDictionary<string, (Guid Id, SdkDeviceStatus Status)>();
+        var limitHit = false;
 
         await Parallel.ForEachAsync(selected, new ParallelOptions { MaxDegreeOfParallelism = Parallelism, CancellationToken = ct }, async (found, token) =>
         {
             var deviceCredentials = PickCredentials(request.Credentials, found.DiscoveredId) ?? MatchedCredentials(request.SessionId, found);
             var devicePassword = request.InitialPasswords.TryGetValue(found.DiscoveredId, out var own) && own.Length > 0 ? own : initialPassword;
             var credentialsToStore = deviceCredentials is null ? null : new DeviceCredentials(deviceCredentials.UserName, deviceCredentials.Password);
-            var result = await adder.AddAsync(found, useHostName, devicePassword, credentialsToStore, serverName, token).ConfigureAwait(false);
-            if (result is { } one)
+            try
             {
-                added[found.DiscoveredId] = one;
+                var result = await adder.AddAsync(found, useHostName, devicePassword, credentialsToStore, serverName, token).ConfigureAwait(false);
+                if (result is { } one)
+                {
+                    added[found.DiscoveredId] = one;
+                }
+            }
+            catch (DeviceLimitException)
+            {
+                // Another add filled the server in the meantime: this device stays out, its result says Unknown.
+                limitHit = true;
             }
         }).ConfigureAwait(false);
 
@@ -160,6 +179,11 @@ public sealed partial class AddDevicesGrpcService(
         }
 
         LogCommitted(ids.Length, selected.Count);
+        if (limitHit && ids.Length == 0)
+        {
+            throw new RpcException(new Status(StatusCode.ResourceExhausted, DeviceLimits.TooManyDevicesText));
+        }
+
         return reply;
     }
 

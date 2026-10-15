@@ -585,7 +585,7 @@ internal sealed class FakeContext(FakeDevices devices, FakeCameras cameras, IPlu
 internal sealed class Rig : IAsyncDisposable
 {
     /// <param name="lostDelay">"Connection lost" after this (default 400 ms; tests that look at the state before it use more).</param>
-    public Rig(DeviceTriggersOptions? options = null, TimeSpan? lostDelay = null)
+    public Rig(DeviceTriggersOptions? options = null, TimeSpan? lostDelay = null, int? maxWatched = null)
     {
         var fast = FastOptions();
         Plugin = new DeviceTriggersPlugin(options ?? new DeviceTriggersOptions
@@ -600,6 +600,7 @@ internal sealed class Rig : IAsyncDisposable
             DeviceSweepInterval = fast.DeviceSweepInterval,
             RecheckInterval = fast.RecheckInterval,
             ResolveInterval = fast.ResolveInterval,
+            MaxWatchedDevices = maxWatched ?? DeviceTriggersPluginInfo.MaxWatchedDevices,
         });
     }
 

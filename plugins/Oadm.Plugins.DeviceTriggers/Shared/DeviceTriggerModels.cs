@@ -24,7 +24,20 @@ public static class DeviceTriggersPluginInfo
 
     public const int MaxTriggers = 200;
     public const int MaxNameLength = 64;
-    public const int MaxDevicesPerTrigger = 5_000;
+    /// <summary>
+    /// Devices all triggers together watch (one permanent connection each): Windows has 16,384 local ports for outgoing
+    /// connections by default, and polls, tasks and live views need some too.
+    /// </summary>
+    public const int MaxWatchedDevices = 10_000;
+
+    /// <summary>A trigger alone never watches more than all triggers together.</summary>
+    public const int MaxDevicesPerTrigger = MaxWatchedDevices;
+
+    /// <summary>Refusal when a trigger would take the watched devices over <see cref="MaxWatchedDevices"/>.</summary>
+    public const string TooManyDevicesText = "Device triggers watch at most 10,000 devices. Choose tags or fewer devices.";
+
+    /// <summary>A trigger whose tags or All devices grew past <see cref="MaxWatchedDevices"/>.</summary>
+    public const string NotWatchedText = "More than 10,000 devices: the newest are not watched";
 
     /// <summary>Second event of every trigger: "&lt;Trigger&gt;: connection lost".</summary>
     public const string LostSuffix = ": connection lost";
@@ -140,7 +153,8 @@ public sealed record TriggerSummary(
     int On,
     int Lost,
     int Waiting,
-    DateTimeOffset? LastEventUtc);
+    DateTimeOffset? LastEventUtc,
+    int NotWatched = 0);
 
 /// <summary>How OADM receives a trigger's events from one device.</summary>
 public enum TriggerConnection
@@ -229,7 +243,7 @@ public static class TriggerValidation
     public static string? DevicesProblem(int count, int tags = 0, bool allDevices = false) => count switch
     {
         0 when tags == 0 && !allDevices => "Choose at least one device or tag.",
-        > DeviceTriggersPluginInfo.MaxDevicesPerTrigger => $"At most {DeviceTriggersPluginInfo.MaxDevicesPerTrigger:N0} devices.",
+        > DeviceTriggersPluginInfo.MaxDevicesPerTrigger => DeviceTriggersPluginInfo.TooManyDevicesText,
         _ => null,
     };
 

@@ -33,7 +33,7 @@ public sealed class LiveViewGrpcService(
     AuditLog audit) : Proto.LiveViewService.LiveViewServiceBase
 {
     /// <summary>Most RTSP port requests name one device; a selection is capped like other device lists.</summary>
-    private const int MaxPortDevices = 5000;
+    private const int MaxPortDevices = Sdk.Devices.DeviceLimits.MaxDevices;
 
     /// <summary>Zoom and focus of a device. Read-only; a device without them, or one OADM cannot log in to, is "not supported".</summary>
     public override async Task<Proto.OpticsState> GetOptics(Proto.OpticsRequest request, ServerCallContext context)
@@ -237,7 +237,7 @@ public sealed class LiveViewGrpcService(
         var ids = GrpcGuard.ParseIds(raw, "device id").Distinct().ToList();
         if (ids.Count == 0 || ids.Count > MaxPortDevices)
         {
-            throw GrpcGuard.InvalidArgument($"Name 1 to {MaxPortDevices} devices.");
+            throw GrpcGuard.InvalidArgument($"Name 1 to {MaxPortDevices:N0} devices.");
         }
 
         return ids;

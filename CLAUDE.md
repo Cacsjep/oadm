@@ -707,6 +707,13 @@ stored; RetryAuth credentials travel only client -> server and are kept in serve
 credential list when asked). Adding devices is not a task; the first full refresh is queued in the
 background as before.
 
+**Device limit**: one server manages at most 30,000 devices (`Oadm.Sdk.Devices.DeviceLimits.MaxDevices`, text
+`TooManyDevicesText`). `DeviceRepository.AddAsync` refuses an add over it (`DeviceLimitException`; adds are serialized), so
+every way in is covered; `Commit` checks the whole add first and answers RESOURCE_EXHAUSTED, nothing is stored; the add page
+shows it in `ui:MessageWindow` and stays open; the automatic add returns `DeviceAutoAddResult.LimitReached` and logs a
+warning at most once an hour. Plugin runs are sized by the same limit (System report 50, Device triggers 10,000 watched
+devices). Spec and measurements: `docs/30kspec.md`. Tests `DeviceLimitTests`.
+
 Automatic add by core plugins (the DHCP server's "Automatically add Axis devices that get an
 address"): the SDK service `IDeviceAutoAdd` (`ICorePluginContext.AutoAdd`, DIM null) is implemented by
 `Oadm.Server.AddDevices.DeviceAutoAddService` on the same code as this page, no second pipeline: `AddAsync(address,
@@ -1686,7 +1693,11 @@ temperature, storage, Object Analytics scenarios, other apps), optionally narrow
 event of the event rules, plus "<Trigger>: connection lost". Decisions, device research and details: plugin `README.md`.
 
 - Rules that must hold: the event list is read live from the devices for every create and edit, never cached; devices
-  come from the shared device picker (All devices, tags, single devices), resolved after every change and every 30 s; one
+  come from the shared device picker (All devices, tags, single devices), resolved after every change and every 30 s; all
+  turned-on triggers together watch at most 10,000 devices (`MaxWatchedDevices`; one permanent connection each, Windows
+  has 16,384 outgoing ports by default): a save or turn-on over it is refused ("Device triggers watch at most 10,000
+  devices. Choose tags or fewer devices."), a tag or All devices that grows past it keeps the devices it watches and the
+  row says "More than 10,000 devices: the newest are not watched"; one
   permanent WebSocket per device (session token from `wssession.cgi`, the pinned certificate), at most 16 connecting at
   once, a new filter only where triggers changed; a refused filter is a problem of its own triggers only; turned-off and
   empty triggers report off at once (rules never wait for a report that cannot come); a problem keeps the last state and
@@ -1738,7 +1749,7 @@ one ZIP for Axis support. Details: plugin `README.md`.
   answer is streamed to disk in the plugin's data folder (`VapixRequestOptions.StreamResponse`), must start with a ZIP
   signature, at most 256 MB and 5 minutes per device, at most 4 devices at a time for all jobs; refused statuses without
   a request; jobs live 30 minutes after their last use, their files are deleted then, on `delete` and when the plugin
-  stops; 1..5,000 devices per job, status polls carry only the changed devices; methods are Operator, `start` is audited.
+  stops; 1..50 devices per job (the toolbar button is disabled above 50: "Choose at most 50 devices."), status polls carry only the changed devices; methods are Operator, `start` is audited.
 - Tests: `tests/Oadm.Plugins.SystemReport.Tests` (+ read-only hardware test `SystemReportHardwareTests`),
   `tests/Oadm.Server.Tests/SystemReportServerTests`.
 

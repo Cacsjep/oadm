@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 
+using NSubstitute;
+
 using Oadm.Client.Api;
 using Oadm.Client.Discovery;
 using Oadm.Client.Infrastructure;
@@ -528,4 +530,28 @@ public sealed class AddDevicesPageTests : IDisposable
     [InlineData("café", "café", null, "Use only letters, digits, spaces and standard symbols.")]
     public void Password_rules_follow_the_device_policy(string password, string confirm, string? policy, string? expected) =>
         Assert.Equal(expected, PasswordRules.Validate(password, confirm, policy));
+
+    [Fact]
+    public async Task An_add_over_the_device_limit_shows_a_popup_and_the_page_stays_open()
+    {
+        var dialogs = NSubstitute.Substitute.For<Oadm.Client.Dialogs.IDialogService>();
+        await using var page = new AddDevicesViewModel(_api, new ImmediateUiDispatcher(), NullLogger<AddDevicesViewModel>.Instance, AddDevicesMode.Scan)
+        {
+            Dialogs = dialogs,
+        };
+        await page.OpenAsync();
+        await TestSupport.WaitUntilAsync(() => page.Rows.Count == 11 && page.Rows.All(r => r.AuthState != AuthState.Pending));
+        _api.DeviceLimit = _api.DeviceCount + 1;
+        page.SelectAllAuthenticatedCommand.Execute(null);
+        bool closed = false;
+        page.CloseRequested += (_, _) => closed = true;
+
+        await page.AddCommand.ExecuteAsync(null);
+
+        await dialogs.Received(1).ShowMessageAsync("Add devices", Oadm.Sdk.Devices.DeviceLimits.TooManyDevicesText);
+        Assert.False(closed);
+        Assert.Null(page.ErrorText);
+        Assert.False(page.IsBusy);
+        Assert.DoesNotContain(page.Rows, r => r.ChipText == "Added");
+    }
 }

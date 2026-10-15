@@ -25,7 +25,7 @@ public static class HardeningScanPluginInfo
     public static readonly TimeSpan DeviceTimeout = TimeSpan.FromMinutes(2);
 
     /// <summary>Devices kept per level in the stored results (plugin setting <c>results</c>).</summary>
-    public const int MaxStoredDevices = 10_000;
+    public const int MaxStoredDevices = Oadm.Sdk.Devices.DeviceLimits.MaxDevices;
 
     /// <summary>Characters of a value (grid tooltip) and of a detail (detail pane) kept per check.</summary>
     public const int MaxValueLength = 160;

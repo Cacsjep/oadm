@@ -36,6 +36,9 @@ public sealed class SystemReportToolbarPlugin : IToolbarPlugin
 
     public ToolbarGroup Group => ToolbarGroup.Tasks;
 
+    /// <summary>Tooltip and message when more devices are selected than one report holds.</summary>
+    public static readonly string TooManyText = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"Choose at most {SystemReportPluginInfo.MaxDevices} devices.");
+
     /// <summary>Replaces the save dialog and the window (tests).</summary>
     public ISystemReportUi? Ui { get; init; }
 
@@ -43,10 +46,17 @@ public sealed class SystemReportToolbarPlugin : IToolbarPlugin
     {
         ArgumentNullException.ThrowIfNull(ctx);
         // Icon only (tooltip = name and purpose): the toolbar must fit the 1280 px minimum window with the rail expanded.
-        var button = new ToolbarButton { Text = Text, IconKey = SystemReportPluginInfo.IconKey, Name = "SystemReportButton", IsEnabled = ctx.SelectedDevices.Count > 0 };
-        ToolTip.SetTip(button, Tooltip);
+        var button = new ToolbarButton { Text = Text, IconKey = SystemReportPluginInfo.IconKey, Name = "SystemReportButton" };
         ToolTip.SetShowOnDisabled(button, true);
-        ctx.SelectionChanged += (_, _) => button.IsEnabled = ctx.SelectedDevices.Count > 0;
+        void Update()
+        {
+            var count = ctx.SelectedDevices.Count;
+            button.IsEnabled = count is > 0 and <= SystemReportPluginInfo.MaxDevices;
+            ToolTip.SetTip(button, count > SystemReportPluginInfo.MaxDevices ? TooManyText : Tooltip);
+        }
+
+        Update();
+        ctx.SelectionChanged += (_, _) => Update();
         button.Click += async (_, _) => await RunAsync(ctx, Ui ?? new AvaloniaUi(ctx, button)).ConfigureAwait(true);
         return button;
     }
@@ -59,6 +69,12 @@ public sealed class SystemReportToolbarPlugin : IToolbarPlugin
         var devices = ctx.SelectedDevices;
         if (devices.Count == 0)
         {
+            return;
+        }
+
+        if (devices.Count > SystemReportPluginInfo.MaxDevices)
+        {
+            await ctx.ShowMessageAsync(Text, TooManyText).ConfigureAwait(true);
             return;
         }
 
