@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="using:Oadm.Sdk.Client.Controls"
         xmlns:vm="using:Oadm.Plugins.DeviceTriggers.Client"
+        xmlns:ev="using:Oadm.Plugins.DeviceEvents"
         x:Class="Oadm.Plugins.DeviceTriggers.Client.TriggerEditorWindow"
         x:DataType="vm:TriggerEditorViewModel"
         Title="{Binding Title}"
@@ -70,7 +71,7 @@
                 <ItemsPanelTemplate><StackPanel Classes="form" /></ItemsPanelTemplate>
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:FilterRowViewModel">
+                <DataTemplate x:DataType="ev:FilterRowViewModel">
                   <ui:FormField Label="{Binding Label}">
                     <ComboBox ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}" MinWidth="240" HorizontalAlignment="Left" />
                   </ui:FormField>

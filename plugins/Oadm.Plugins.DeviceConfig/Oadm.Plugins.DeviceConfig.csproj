@@ -23,6 +23,11 @@
     <InternalsVisibleTo Include="Oadm.Plugins.DeviceConfig.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The device's action rule engine over SOAP, shared with the Action Rule Editor. -->
+    <Compile Include="..\Shared\ActionEngine\*.cs" LinkBase="Common\ActionEngine" />
+  </ItemGroup>
+
   <!-- Development deployment: copy the output to artifacts/plugins/oadm.device-config/.
        The client part (Oadm.Plugins.DeviceConfig.Client) deploys into the same folder. -->
   <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">

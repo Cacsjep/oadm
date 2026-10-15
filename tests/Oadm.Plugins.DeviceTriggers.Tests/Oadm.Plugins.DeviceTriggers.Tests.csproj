@@ -31,6 +31,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Using Include="Oadm.Plugins.DeviceEvents" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

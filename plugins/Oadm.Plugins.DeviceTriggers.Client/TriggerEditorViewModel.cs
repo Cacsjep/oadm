@@ -85,31 +85,6 @@ public sealed record TriggerEventOption(DeviceEvent Event)
     public override string ToString() => Text;
 }
 
-/// <summary>A value of a source item, or "Any".</summary>
-public sealed record FilterOption(string? Value, string Text)
-{
-    public override string ToString() => Text;
-}
-
-/// <summary>One source item of the chosen event: Any or one of the values the devices list.</summary>
-public sealed partial class FilterRowViewModel : ObservableObject
-{
-    internal FilterRowViewModel(EventItem item, string? selected)
-    {
-        Item = item;
-        Options = [new FilterOption(null, "Any"), .. item.Values.Select(v => new FilterOption(v.Value, string.IsNullOrWhiteSpace(v.DisplayName) ? v.Value : $"{v.DisplayName} ({v.Value})"))];
-        Selected = Options.FirstOrDefault(o => o.Value == selected) ?? Options[0];
-    }
-
-    internal EventItem Item { get; }
-
-    public string Label => Item.Label;
-
-    public IReadOnlyList<FilterOption> Options { get; }
-
-    [ObservableProperty] public partial FilterOption Selected { get; set; }
-}
-
 /// <summary>
 /// The trigger dialog: name, turned on, the devices (only those that can send events this
 /// way), **Read events** (live from the chosen devices, every time; a device whose list cannot be read stays with the

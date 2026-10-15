@@ -219,7 +219,8 @@ characters of names, passwords not). A failing step fails only itself; the task 
 - `plugins/Oadm.Plugins.DeviceConfig.Client`: `ExportConfigDialog` + `ExportConfigViewModel` / `ExportConfigWindow`,
   `ImportConfigDialog` + `ImportConfigViewModel` (+ `ZipPlan`) / `ImportConfigWindow`.
 - Configure devices, server: `Configure/` `ConfigureDevicesTask` + `CreateConfigFileTask` (dialog only), `ParamDefinitionsReader`,
-  `ActionEngineApi`, `StreamProfileApi` + `ParamWriter`, `DeviceSettingsReader`; `Shared/` `ConfigureModels` (ids, payload,
+  `ActionEngineApi` (the shared `plugins/Shared/ActionEngine` SOAP engine of the Action Rule Editor, mapped to the ADM file
+  models), `StreamProfileApi` + `ParamWriter`, `DeviceSettingsReader`; `Shared/` `ConfigureModels` (ids, payload,
   query answer, rules, schedules, profiles), `ParamRules` (checks, hints, `DangerousParameters`), `AdmConfigFile`.
 - Configure devices, client: `Configure/` `ConfigureDevicesDialog` / `CreateConfigFileDialog` (+ `WindowConfigureUi`: the
   single-device picker `DevicePickerWindow.ShowOneAsync` over `ITaskDialogContext.AllDevices`, file and save pickers),

@@ -29,7 +29,7 @@ one WebSocket event stream per device and publishes every trigger as two event t
   lost" (on/off). Group "Device triggers". Disabled triggers keep their types (their rules stay valid) and report them
   as off at once (`ReplaceStates` with nobody on); a turned-on trigger without devices right now reports the same; a
   deleted trigger's types disappear (its rules show "Not available: an event of this rule no longer exists").
-- **Event list** (`Device/EventDeclarations`): SOAP `aev:GetEventInstances` at `/vapix/services`, read-only. Topics marked
+- **Event list** (`EventDeclarations`, shared source `plugins/Shared/DeviceEvents`, also read by the Action Rule Editor): SOAP `aev:GetEventInstances` at `/vapix/services`, read-only. Topics marked
   `isApplicationData` (on the topic or a parent) are left out. The editor reads it live for every create and edit
   (`startRead` / `readStatus`, 16 devices at a time; a device whose API list was not read yet is read too); a connection
   reads it on every connect and every 5 minutes, and on a trigger change only when a chosen device lacks a topic not

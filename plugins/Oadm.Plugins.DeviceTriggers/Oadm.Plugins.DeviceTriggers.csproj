@@ -26,6 +26,12 @@
     <InternalsVisibleTo Include="Oadm.Plugins.DeviceTriggers.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The device's event list, shared by Device triggers and the Action Rule Editor. -->
+    <Compile Include="..\Shared\DeviceEvents\*.cs" LinkBase="Common\DeviceEvents" />
+    <Using Include="Oadm.Plugins.DeviceEvents" />
+  </ItemGroup>
+
   <!-- Development deployment: copy the output to artifacts/plugins/oadm.device-triggers/.
        The client part (Oadm.Plugins.DeviceTriggers.Client) deploys into the same folder. -->
   <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">

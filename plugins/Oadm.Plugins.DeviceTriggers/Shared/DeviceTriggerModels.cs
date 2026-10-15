@@ -78,66 +78,6 @@ public static class DeviceTriggersMethods
     public static bool IsAdminMethod(string method) => method is Save or Delete or SetEnabled or Duplicate;
 }
 
-/// <summary>A value an event item can have, with the device's display name for it.</summary>
-public sealed record EventValue(string Value, string? DisplayName);
-
-/// <summary>A source or data item of an event ("port", "Port number", values 0..63).</summary>
-public sealed record EventItem(string Name, string? DisplayName, IReadOnlyList<EventValue> Values)
-{
-    public string Label => string.IsNullOrWhiteSpace(DisplayName) ? Name : DisplayName;
-}
-
-/// <summary>
-/// An event a device offers (from its event list). <see cref="Topic"/> as the stream names it
-/// ("tns1:Device/tnsaxis:IO/VirtualInput"), <see cref="Name"/> the device's display path ("Device › Input ports ›
-/// Virtual input"). Stateful events are on or off: <see cref="StateItem"/> is the data item holding the state.
-/// </summary>
-public sealed record DeviceEvent(string Topic, string Name, bool Stateful, string? StateItem, IReadOnlyList<EventItem> Sources, IReadOnlyList<EventItem> Data)
-{
-    /// <summary>The group of the event picker ("Input ports", "Device status"); every app event (Object Analytics, Video
-    /// Motion Detection, Image Health Analytics, ...) is in "Applications".</summary>
-    [JsonIgnore]
-    public string Group => GroupAndTitle(Topic, Name).Group;
-
-    /// <summary>The event's own name in the picker ("Virtual input", "Image Health Analytics - Blur").</summary>
-    [JsonIgnore]
-    public string Title => GroupAndTitle(Topic, Name).Title;
-
-    /// <summary>
-    /// Apps publish their events below these topics: ACAP events (<c>tnsaxis:CameraApplicationPlatform</c>), their ONVIF
-    /// copies (<c>tns1:AcapOnvifEvent</c>) and the analytics rules (<c>tns1:RuleEngine</c>, e.g. VMD 3).
-    /// </summary>
-    public static bool IsAppTopic(string topic) =>
-        topic.Contains("CameraApplicationPlatform", StringComparison.Ordinal)
-        || topic.Contains("AcapOnvifEvent", StringComparison.Ordinal)
-        || topic.StartsWith("tns1:RuleEngine/", StringComparison.Ordinal);
-
-    internal static (string Group, string Title) GroupAndTitle(string topic, string name)
-    {
-        // Like the device's own event page: all apps in one group, the event with its own name; otherwise the section
-        // below the top level ("Device status", "Input ports"), or the top level for two levels ("Video source").
-        var parts = name.Split(" › ");
-        if (IsAppTopic(topic))
-        {
-            return (AppsGroup, parts[^1]);
-        }
-
-        if (parts.Length > 2)
-        {
-            return (parts[1], parts[^1]);
-        }
-
-        if (parts.Length == 2)
-        {
-            return (parts[0], parts[1]);
-        }
-
-        return ("Other", name);
-    }
-
-    public const string AppsGroup = "Applications";
-}
-
 /// <summary>One source item narrowed to one value (missing items mean "Any").</summary>
 public sealed record TriggerFilter(string Name, string Value);
 
