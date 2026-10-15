@@ -19,6 +19,7 @@ const scenes: Line[] = [
 	feature('VAPIX Commander', 'Any VAPIX command, rolled out to hundreds of devices.'),
 	feature('Event rules', 'Switch a relay, send an email or a command when something happens.'),
 	feature('Device triggers', 'Any event of your devices in event rules.'),
+	feature('Action Rule Editor', 'The action rules of hundreds of cameras changed in one step, with undo.'),
 	feature('Snapshot report', 'Every camera at a glance, a PDF for the customer.'),
 	feature('Hardening scan', 'Every device against the AXIS OS Hardening Guide.'),
 	feature('DHCP server', 'Addresses for sites without infrastructure. New Axis devices add themselves.'),
@@ -47,7 +48,7 @@ const config = JSON.stringify({ loop, scenes: timed.map(({ at, until }) => ({ at
 ---
 
 <div class="motion not-content" data-motion={config} role="img"
-	aria-label="Open source AXIS device management. Built by Professionals. For Professionals. VAPIX Commander, event rules, device triggers, snapshot report, hardening scan, DHCP and NTP server, Metadata Monitor, Image Health Dashboard, I/O Monitor, Web View, live preview, Live View, Edge Recording Export and tags.">
+	aria-label="Open source AXIS device management. Built by Professionals. For Professionals. VAPIX Commander, event rules, device triggers, Action Rule Editor, snapshot report, hardening scan, DHCP and NTP server, Metadata Monitor, Image Health Dashboard, I/O Monitor, Web View, live preview, Live View, Edge Recording Export and tags.">
 	{timed.map((scene) => (
 		<div class="m-line" data-scene>
 			<span class="m-measure" set:html={scene.html} />

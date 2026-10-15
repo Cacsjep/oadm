@@ -132,6 +132,7 @@ export default defineConfig({
 						{ label: 'DHCP server', slug: 'tools/dhcp-server' },
 						{ label: 'VAPIX Commander', slug: 'tools/vapix-commander' },
 						{ label: 'Device triggers', slug: 'tools/device-triggers' },
+						{ label: 'Action Rule Editor', slug: 'tools/action-rule-editor' },
 						{ label: 'PKI', slug: 'tools/pki' },
 						{ label: 'Hardening scan', slug: 'tools/hardening-scan' },
 						{ label: 'Live View', slug: 'tools/live-view' },

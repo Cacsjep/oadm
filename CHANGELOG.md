@@ -6,6 +6,30 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+## [3.1.0] - 2026-10-15
+
+### Added
+
+- **Action Rule Editor** (rail page, Automation; off by default, turn it on under Plugins): the cameras' own action rules,
+  recipients and schedules of every device in one page, grouped by what they do, and changed for many at once. Example:
+  500 cameras that "Send notification through TCP" changed to "... while the rule is active" in one step, each camera
+  keeping its own message.
+  - **Edit**: only the checked parts change (name, on or off, event, schedule, once or while active, action, recipient,
+    each setting); everything else stays as each camera has it.
+  - **New rule**: one rule for many cameras, from the events they offer, with conditions, a schedule and the action's
+    settings with their defaults.
+  - **Copy to devices**, **Turn on**, **Turn off**, **Delete**, and **Undo** of every change for 30 days.
+  - **Recipients** and **Schedules** tabs: new, edit, copy and delete; changing a recipient can take the rules that send
+    to it along.
+  - Works on AXIS OS 10, 11 and 12; passwords stay on the server.
+  - Try a change on two or three cameras first, check it there, then apply it to the rest. See the
+    [Action Rule Editor](https://oadm.app/tools/action-rule-editor/) page.
+
+### Changed
+
+- **VAPIX Commander**: read commands show only the values a camera has (no "(not found)" for WDR, audio output, zoom or
+  the secure RTSP settings of cameras without them), and the RTSP settings read also works on AXIS OS 11.9.
+
 ## [3.0.8] - 2026-10-14
 
 ### Added
