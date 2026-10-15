@@ -20,7 +20,7 @@ namespace Oadm.Plugins.EdgeStorage;
 public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
 {
     /// <summary>Devices per run (the page's whole table at most).</summary>
-    public const int MaxDevicesPerRun = 5_000;
+    public const int MaxDevicesPerRun = Oadm.Sdk.Devices.DeviceLimits.MaxDevices;
 
     private readonly DeviceSweepOptions _options;
     private readonly StorageTaskPlugin _task;
@@ -144,7 +144,7 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
 
         if (request.DeviceIds is not { Count: > 0 and <= MaxDevicesPerRun })
         {
-            throw new ArgumentException("Choose 1 to 5,000 cameras.", nameof(request));
+            throw new ArgumentException("Choose 1 to 30,000 cameras.", nameof(request));
         }
 
         var owner = string.IsNullOrWhiteSpace(request.Owner) ? EdgeStorageInfo.DisplayName : request.Owner;

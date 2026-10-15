@@ -195,6 +195,24 @@ public sealed class ClientTests : IDisposable
         Assert.Equal("The system reports could not be downloaded: disk full", old.Messages.Single());
     }
 
+    [Fact]
+    public async Task More_than_fifty_devices_are_refused_before_the_save_dialog()
+    {
+        var ctx = new FakeToolbarContext();
+        for (var i = 0; i <= SystemReportPluginInfo.MaxDevices; i++)
+        {
+            ctx.Selected.Add(new FakeDevice { Address = $"10.0.0.{i + 1}", Serial = $"ACCC8E{i:X6}" });
+        }
+
+        var ui = new FakeUi();
+        await SystemReportToolbarPlugin.RunAsync(ctx, ui);
+
+        Assert.Equal(50, SystemReportPluginInfo.MaxDevices);
+        Assert.Null(ui.Suggested);
+        Assert.Equal("Choose at most 50 devices.", ctx.Messages.Single());
+        Assert.Equal("Choose at most 50 devices.", SystemReportToolbarPlugin.TooManyText);
+    }
+
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);

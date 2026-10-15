@@ -23,6 +23,9 @@ public enum DeviceAutoAddResult
 
     /// <summary>Nothing answered at the address (the device may still be starting).</summary>
     Unreachable = 6,
+
+    /// <summary>The server manages <see cref="DeviceLimits.MaxDevices"/> devices already; nothing was added.</summary>
+    LimitReached = 7,
 }
 
 /// <summary>What <see cref="IDeviceAutoAdd.AddAsync"/> did with a device.</summary>

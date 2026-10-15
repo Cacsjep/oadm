@@ -72,7 +72,7 @@ public sealed partial class SystemReportJobs : IDisposable
 
         if (ids.Count > SystemReportPluginInfo.MaxDevices)
         {
-            throw new ArgumentException(string.Create(CultureInfo.InvariantCulture, $"A system report job holds at most {SystemReportPluginInfo.MaxDevices} devices."), nameof(request));
+            throw new ArgumentException(string.Create(CultureInfo.InvariantCulture, $"Choose at most {SystemReportPluginInfo.MaxDevices} devices."), nameof(request));
         }
 
         DropExpired();

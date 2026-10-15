@@ -27,6 +27,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
     private readonly Lock _sync = new();
     private List<TriggerDefinition> _triggers = [];
     private Dictionary<Guid, Resolution> _resolved = [];
+    private Dictionary<Guid, int> _notWatched = [];
     private ITimer? _resolveTimer;
     private ICorePluginContext? _ctx;
     private TriggerRuntime? _runtime;
@@ -193,6 +194,12 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             case DeviceTriggersMethods.SetEnabled:
             {
                 var request = TriggerJson.Deserialize<SetEnabledRequest>(payloadJson);
+                if (request.Enabled && Triggers.FirstOrDefault(t => t.Id == request.Id) is { Enabled: false } turningOn
+                    && WatchedCount([.. Triggers.Where(t => t.Enabled), turningOn], await ctx.Devices.ListAsync(ct).ConfigureAwait(false)) > _options.MaxWatchedDevices)
+                {
+                    throw new ArgumentException(DeviceTriggersPluginInfo.TooManyDevicesText);
+                }
+
                 await ChangeAsync(ctx, list =>
                 {
                     var i = list.FindIndex(t => t.Id == request.Id);
@@ -249,7 +256,13 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
     {
         var resolved = Resolved(trigger);
         var (on, lost, waiting, last) = _runtime?.CountsOf(resolved) ?? (0, 0, 0, null);
-        return new TriggerSummary(trigger.Id, trigger.Name, trigger.Enabled, trigger.EventName, trigger.FilterText, trigger.Stateful, resolved.DeviceIds.Count, on, lost, waiting, last);
+        int notWatched;
+        lock (_sync)
+        {
+            notWatched = _notWatched.GetValueOrDefault(trigger.Id);
+        }
+
+        return new TriggerSummary(trigger.Id, trigger.Name, trigger.Enabled, trigger.EventName, trigger.FilterText, trigger.Stateful, resolved.DeviceIds.Count, on, lost, waiting, last, notWatched);
     }
 
     /// <summary>The trigger with every device it covers now (chosen, tagged, all); the stored one until resolved.</summary>
@@ -294,6 +307,12 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             {
                 errors[TriggerValidation.DevicesField] = $"{string.Join(", ", unsupported.Take(3))}{(unsupported.Count > 3 ? $" and {unsupported.Count - 3} more" : string.Empty)}: {DeviceTriggersPluginInfo.NotSupportedReason}.";
             }
+        }
+
+        if (!errors.ContainsKey(TriggerValidation.DevicesField) && trigger.Enabled
+            && WatchedCount([.. others.Where(o => o.Enabled), trigger], await ctx.Devices.ListAsync(ct).ConfigureAwait(false)) > _options.MaxWatchedDevices)
+        {
+            errors[TriggerValidation.DevicesField] = DeviceTriggersPluginInfo.TooManyDevicesText;
         }
 
         if (errors.Count > 0)
@@ -432,19 +451,47 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         var stored = Triggers;
         var devices = stored.Any(t => t.AllDevices || t.Tags.Count > 0) ? await ctx.Devices.ListAsync(ct).ConfigureAwait(false) : [];
         var next = new Dictionary<Guid, Resolution>();
+        var notWatched = new Dictionary<Guid, int>();
         var changed = false;
         lock (_sync)
         {
+            // All turned-on triggers together watch at most MaxWatchedDevices devices: the chosen devices always (saving
+            // checks they fit), then the devices of tags and All devices that are watched already, then new ones while
+            // room is left. A trigger that misses devices that way says so on its row.
+            var watched = stored.Where(t => t.Enabled).SelectMany(t => t.DeviceIds).ToHashSet();
+            var before = _resolved.Values.Where(r => r.Value.Enabled).SelectMany(r => r.Value.Implicit).ToHashSet();
+            var wanted = stored.Where(t => t.Enabled && (t.AllDevices || t.Tags.Count > 0))
+                .SelectMany(t => devices.Where(d => t.CoversImplicitly(d.Tags) && CanSendEvents(d)).Select(d => d.Id))
+                .Where(id => !watched.Contains(id))
+                .Distinct()
+                .OrderBy(id => before.Contains(id) ? 0 : 1)
+                .ToList();
+            foreach (var id in wanted)
+            {
+                if (watched.Count >= _options.MaxWatchedDevices)
+                {
+                    break;
+                }
+
+                watched.Add(id);
+            }
+
             foreach (var trigger in stored)
             {
                 var resolved = trigger;
                 if (trigger.AllDevices || trigger.Tags.Count > 0)
                 {
                     var chosen = trigger.DeviceIds.ToHashSet();
-                    var implicitIds = devices
+                    var covered = devices
                         .Where(d => !chosen.Contains(d.Id) && trigger.CoversImplicitly(d.Tags) && CanSendEvents(d))
                         .Select(d => d.Id)
-                        .ToHashSet();
+                        .ToList();
+                    var implicitIds = (trigger.Enabled ? covered.Where(watched.Contains) : covered).ToHashSet();
+                    if (implicitIds.Count < covered.Count)
+                    {
+                        notWatched[trigger.Id] = covered.Count - implicitIds.Count;
+                    }
+
                     resolved = trigger with { DeviceIds = [.. trigger.DeviceIds, .. implicitIds], Implicit = implicitIds };
                 }
 
@@ -457,6 +504,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
 
             changed |= next.Count != _resolved.Count;
             _resolved = next;
+            _notWatched = notWatched;
         }
 
         if (changed)
@@ -489,6 +537,18 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
     }
 
     /// <summary>A device of a tag or of all devices: the stream API listed, or its API list not read yet.</summary>
+    /// <summary>Devices the turned-on <paramref name="triggers"/> watch together: chosen, tagged and all devices.</summary>
+    internal static int WatchedCount(IReadOnlyCollection<TriggerDefinition> triggers, IReadOnlyList<IDeviceInfo> devices)
+    {
+        var watched = triggers.SelectMany(t => t.DeviceIds).ToHashSet();
+        foreach (var trigger in triggers.Where(t => t.AllDevices || t.Tags.Count > 0))
+        {
+            watched.UnionWith(devices.Where(d => trigger.CoversImplicitly(d.Tags) && CanSendEvents(d)).Select(d => d.Id));
+        }
+
+        return watched.Count;
+    }
+
     private static bool CanSendEvents(IDeviceInfo device) =>
         device.Apis.Count == 0 || device.Apis.Supports(DeviceTriggersPluginInfo.ApiId, DeviceTriggersPluginInfo.ApiVersion);
 

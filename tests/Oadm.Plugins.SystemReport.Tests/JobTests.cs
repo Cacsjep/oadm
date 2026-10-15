@@ -232,20 +232,20 @@ public sealed class JobTests : IDisposable
     }
 
     [Fact]
-    public async Task A_job_needs_one_to_5000_devices()
+    public async Task A_job_needs_one_to_50_devices()
     {
         using var jobs = Create();
         await Assert.ThrowsAsync<ArgumentException>(() => jobs.StartAsync(new StartRequest(), CancellationToken.None));
-        await Assert.ThrowsAsync<ArgumentException>(() => jobs.StartAsync(new StartRequest { DeviceIds = [.. Enumerable.Range(0, 5001).Select(_ => Guid.NewGuid())] }, CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(() => jobs.StartAsync(new StartRequest { DeviceIds = [.. Enumerable.Range(0, SystemReportPluginInfo.MaxDevices + 1).Select(_ => Guid.NewGuid())] }, CancellationToken.None));
         Assert.Throws<KeyNotFoundException>(() => jobs.Status("missing", 0));
     }
 
     [Fact]
     [Trait("Category", "Timing")] // time budget
-    public async Task Five_thousand_devices_start_at_once_and_report_their_changes_compactly()
+    public async Task The_most_devices_start_at_once_and_report_their_changes_compactly()
     {
         var ids = new List<Guid>();
-        for (var i = 0; i < 5000; i++)
+        for (var i = 0; i < SystemReportPluginInfo.MaxDevices; i++)
         {
             var device = new FakeDevice { Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}", Serial = $"ACCC8E{i:X6}", Status = DeviceStatus.CredentialsRequired };
             _devices.Devices.Add(device);
@@ -258,9 +258,9 @@ public sealed class JobTests : IDisposable
         var status = await RunToEndAsync(jobs, started);
         watch.Stop();
 
-        Assert.Equal((JobStates.Done, 5000, 5000), (status.State, status.Finished, status.Failed));
+        Assert.Equal((JobStates.Done, SystemReportPluginInfo.MaxDevices, SystemReportPluginInfo.MaxDevices), (status.State, status.Finished, status.Failed));
         Assert.Empty(jobs.Status(started.JobId, status.Version).Devices);
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"5,000 refused devices took {watch.Elapsed}");
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"{SystemReportPluginInfo.MaxDevices} refused devices took {watch.Elapsed}");
     }
 
     [Fact]

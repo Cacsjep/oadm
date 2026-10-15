@@ -12,15 +12,39 @@ public sealed class DuplicateDeviceException(string serial)
     public string Serial { get; } = serial;
 }
 
+/// <summary>Thrown when an add would take the server over <see cref="DeviceLimits.MaxDevices"/>.</summary>
+public sealed class DeviceLimitException() : InvalidOperationException(DeviceLimits.TooManyDevicesText);
+
 /// <summary>
 /// Device table access. Every returned <see cref="Device"/> is a detached copy; mutate it and call
 /// <see cref="UpdateAsync(Device, CancellationToken)"/>, or use <see cref="UpdateAsync(Guid, Action{Device}, CancellationToken)"/>.
 /// All writes publish to <see cref="IDeviceChangeFeed"/>, except a write that only moves LastSeenUtc.
 /// </summary>
 public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory, IDeviceChangeFeed changeFeed)
-    : IDeviceRepository
+    : IDeviceRepository, IDisposable
 {
+    private readonly SemaphoreSlim _addLock = new(1, 1);
+
+    public void Dispose() => _addLock.Dispose();
+
     public IDeviceChangeFeed Changes => changeFeed;
+
+    /// <summary>The most devices <see cref="AddAsync"/> stores (<see cref="DeviceLimits.MaxDevices"/>; tests lower it).</summary>
+    public int MaxDevices { get; set; } = DeviceLimits.MaxDevices;
+
+    /// <summary>Serial numbers of all managed devices (normalized), without loading the rows.</summary>
+    public async Task<IReadOnlySet<string>> ListSerialsAsync(CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        return (await db.Devices.AsNoTracking().Select(d => d.Serial).ToListAsync(ct).ConfigureAwait(false)).ToHashSet(StringComparer.Ordinal);
+    }
+
+    /// <summary>Number of managed devices.</summary>
+    public async Task<int> CountAsync(CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        return await db.Devices.CountAsync(ct).ConfigureAwait(false);
+    }
 
     /// <summary>All devices with <see cref="Device.CredentialUserName"/> filled.</summary>
     public async Task<IReadOnlyList<Device>> ListDevicesAsync(CancellationToken ct)
@@ -66,6 +90,7 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
 
     /// <summary>Adds a device. The serial is normalized in place.</summary>
     /// <exception cref="DuplicateDeviceException">Serial already exists.</exception>
+    /// <exception cref="DeviceLimitException">The server manages <see cref="MaxDevices"/> devices already.</exception>
     public async Task<Device> AddAsync(Device device, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(device);
@@ -75,22 +100,37 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
             device.Id = Guid.NewGuid();
         }
 
-        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-        if (await db.Devices.AnyAsync(d => d.Serial == device.Serial, ct).ConfigureAwait(false))
-        {
-            throw new DuplicateDeviceException(device.Serial);
-        }
-
         var entity = device.Clone();
-        db.Devices.Add(entity);
+
+        // Adds are serialized, so concurrent adds cannot pass the limit together.
+        await _addLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+            if (await db.Devices.AnyAsync(d => d.Serial == device.Serial, ct).ConfigureAwait(false))
+            {
+                throw new DuplicateDeviceException(device.Serial);
+            }
+
+            if (await db.Devices.CountAsync(ct).ConfigureAwait(false) >= MaxDevices)
+            {
+                throw new DeviceLimitException();
+            }
+
+            db.Devices.Add(entity);
+            try
+            {
+                await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            }
+            catch (DbUpdateException ex) when (ex.InnerException is SqliteException { SqliteErrorCode: 19 })
+            {
+                // Lost a race against a concurrent add of the same serial (SQLITE_CONSTRAINT).
+                throw new DuplicateDeviceException(device.Serial);
+            }
         }
-        catch (DbUpdateException ex) when (ex.InnerException is SqliteException { SqliteErrorCode: 19 })
+        finally
         {
-            // Lost a race against a concurrent add of the same serial (SQLITE_CONSTRAINT).
-            throw new DuplicateDeviceException(device.Serial);
+            _addLock.Release();
         }
 
         changeFeed.Publish(new DeviceChange(DeviceChangeKind.Added, entity.Id, entity.Clone()));

@@ -77,6 +77,9 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     private readonly IClientSettingsStore? _clientSettings;
 
+    /// <summary>Popups of the page (the device limit); null in tests that do not need them.</summary>
+    public Oadm.Client.Dialogs.IDialogService? Dialogs { get; init; }
+
     public AddDevicesViewModel(IOadmApi api, IUiDispatcher ui, ILogger<AddDevicesViewModel> logger, AddDevicesMode mode, IClientSettingsStore? clientSettings = null)
     {
         _api = api;
@@ -660,6 +663,13 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
             LogAdded(_logger, added);
             await ApplyImportedTagsAsync(importedTags).ConfigureAwait(true);
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.ResourceExhausted && Dialogs is not null)
+        {
+            // Over the device limit: a popup, the page stays open so the user can uncheck devices.
+            IsBusy = false;
+            await Dialogs.ShowMessageAsync("Add devices", ex.Status.Detail).ConfigureAwait(true);
+            return;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

@@ -46,6 +46,9 @@ public sealed class DeviceTriggersOptions
     /// </summary>
     public int ConnectParallelism { get; init; } = 16;
 
+    /// <summary>Devices all triggers together watch (<see cref="DeviceTriggersPluginInfo.MaxWatchedDevices"/>; tests lower it).</summary>
+    public int MaxWatchedDevices { get; init; } = DeviceTriggersPluginInfo.MaxWatchedDevices;
+
     /// <summary>A finished read of the editor is kept this long.</summary>
     public TimeSpan ReadJobLifetime { get; init; } = TimeSpan.FromMinutes(10);
 }

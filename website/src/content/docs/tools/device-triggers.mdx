@@ -77,3 +77,5 @@ into actions, for example `{port}` in a VAPIX command. The rule dialog lists the
 - The devices table below the triggers shows the connection, the state and the last event of each device.
 - A trigger that is turned off closes its connections. Its rules stay but do not run.
 - A device removed from OADM leaves its triggers.
+- All triggers together watch at most 10,000 devices; a device several triggers use counts once. When a tag or All
+  devices grows past that, the trigger keeps the devices it watches and says so in its state.

@@ -83,10 +83,15 @@ public sealed partial class TriggerRowViewModel : ObservableObject
             {
                 parts.Add("Ready");
             }
+
+            if (s.NotWatched > 0)
+            {
+                parts.Add(DeviceTriggersPluginInfo.NotWatchedText);
+            }
         }
 
         StateText = string.Join(" · ", parts);
-        IsError = s.Enabled && s.Lost > 0;
+        IsError = s.Enabled && (s.Lost > 0 || s.NotWatched > 0);
         IsAccent = s.Enabled && !IsError && s.Waiting > 0;
         IsOk = s.Enabled && !IsError && !IsAccent && (s.On > 0 || !s.Stateful);
         LastEventSortKey = s.LastEventUtc ?? DateTimeOffset.MinValue;

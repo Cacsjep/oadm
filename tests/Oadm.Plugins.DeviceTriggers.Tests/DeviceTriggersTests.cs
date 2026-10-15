@@ -354,4 +354,54 @@ public sealed class DeviceTriggersTests
         Assert.Equal("Gate (copy 2)", DeviceTriggersPlugin.CopyName("Gate", new HashSet<string>(["Gate (copy)"], StringComparer.OrdinalIgnoreCase)));
         Assert.Equal(DeviceTriggersPluginInfo.MaxNameLength, DeviceTriggersPlugin.CopyName(new string('x', 64), new HashSet<string>()).Length);
     }
+
+    [Fact]
+    public async Task AllTriggersTogetherWatchAtMostTheLimitAndASaveOverItIsRefused()
+    {
+        await using var rig = new Rig(maxWatched: 3);
+        var a = rig.AddDevice("10.0.0.48");
+        var b = rig.AddDevice("10.0.0.49");
+        var c = rig.AddDevice("10.0.0.50");
+        var d = rig.AddDevice("10.0.0.51");
+        await rig.StartAsync();
+
+        await rig.SaveAsync(Fixture.VirtualInputTrigger("Gate open", [a.Id, b.Id]));
+
+        // A device both triggers use counts once: a, b, c are three.
+        var second = await rig.SaveAsync(Fixture.VirtualInputTrigger("Door open", [b.Id, c.Id]));
+        Assert.NotEqual(Guid.Empty, second.Id);
+
+        var reply = TriggerJson.Deserialize<SaveReply>(await rig.Plugin.InvokeAsync(DeviceTriggersMethods.Save,
+            TriggerJson.Serialize(new SaveRequest(Fixture.VirtualInputTrigger("Hall open", [d.Id]))), CancellationToken.None));
+        Assert.Null(reply.Trigger);
+        Assert.Equal(DeviceTriggersPluginInfo.TooManyDevicesText, reply.Errors![TriggerValidation.DevicesField]);
+        Assert.Equal(2, rig.Plugin.Triggers.Count);
+
+        // A turned-off trigger does not count, and turning it on is refused while there is no room.
+        var off = await rig.SaveAsync(Fixture.VirtualInputTrigger("Hall open", [d.Id]) with { Enabled = false });
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => rig.Plugin.InvokeAsync(DeviceTriggersMethods.SetEnabled,
+            TriggerJson.Serialize(new SetEnabledRequest(off.Id, true)), CancellationToken.None));
+        Assert.Equal(DeviceTriggersPluginInfo.TooManyDevicesText, ex.Message);
+    }
+
+    [Fact]
+    public async Task ATagThatGrowsPastTheLimitKeepsItsDevicesAndSaysSo()
+    {
+        await using var rig = new Rig(maxWatched: 2);
+        var first = rig.AddDevice("10.0.0.48", tags: ["Gate"]);
+        var second = rig.AddDevice("10.0.0.49", tags: ["Gate"]);
+        await rig.StartAsync();
+        var trigger = await rig.SaveAsync(Fixture.VirtualInputTrigger("Gate open", []) with { Tags = ["Gate"] });
+        await Wait.UntilAsync(() => rig.Plugin.Resolved(trigger).DeviceIds.Count == 2, "both tagged devices watched");
+
+        var third = rig.AddDevice("10.0.0.50", tags: ["Gate"]);
+        await Wait.UntilAsync(() => Summary(rig).NotWatched == 1, "the trigger says a device is not watched");
+
+        Assert.Equal(new[] { first.Id, second.Id }.Order(), rig.Plugin.Resolved(rig.Plugin.Triggers.Single()).DeviceIds.Order());
+        Assert.DoesNotContain(third.Id, rig.Plugin.Resolved(rig.Plugin.Triggers.Single()).DeviceIds);
+        Assert.Equal(2, Summary(rig).Devices);
+    }
+
+    private static TriggerSummary Summary(Rig rig) =>
+        TriggerJson.Deserialize<ListReply>(rig.Plugin.InvokeAsync(DeviceTriggersMethods.List, null, CancellationToken.None).GetAwaiter().GetResult()).Triggers.Single();
 }
