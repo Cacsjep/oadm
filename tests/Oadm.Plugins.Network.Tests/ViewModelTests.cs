@@ -405,6 +405,24 @@ public sealed class ViewModelTests
     }
 
     [Fact]
+    public async Task Loading_overlay_shows_while_the_current_settings_are_read()
+    {
+        var reply = new TaskCompletionSource<string?>();
+        var ctx = new FakeDialogContext((_, _) => reply.Task);
+        var vm = new NetworkSettingsViewModel(Devices(1));
+        Assert.False(vm.IsLoading);
+
+        var load = vm.LoadCurrentAsync(ctx, CancellationToken.None);
+        Assert.True(vm.IsLoading);
+        Assert.Equal("Reading 10.0.0.48", vm.LoadingText);
+        reply.SetResult(Current.ToJson());
+        await load;
+
+        Assert.False(vm.IsLoading);
+        Assert.Equal("10.0.0.138", vm.Ipv4Gateway);
+    }
+
+    [Fact]
     public async Task Failed_prefill_keeps_the_dialog_usable()
     {
         var ctx = new FakeDialogContext((_, _) => throw new NotSupportedException("Plugin queries are not available yet."));

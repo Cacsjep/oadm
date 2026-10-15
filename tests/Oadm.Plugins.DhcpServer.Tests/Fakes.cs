@@ -427,7 +427,18 @@ internal sealed class PluginPageContext(DhcpServerPlugin plugin, PluginEventHub 
 
     public List<string> Messages { get; } = [];
 
-    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => plugin.InvokeAsync(method, payloadJson, ct);
+    /// <summary>When set, every call waits for it first (tests that look at the page while a call runs).</summary>
+    public Task? Gate { get; set; }
+
+    public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
+    {
+        if (Gate is { } gate)
+        {
+            await gate.WaitAsync(ct);
+        }
+
+        return await plugin.InvokeAsync(method, payloadJson, ct);
+    }
 
     public async IAsyncEnumerable<PluginEvent> WatchEventsAsync([EnumeratorCancellation] CancellationToken ct)
     {

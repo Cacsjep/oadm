@@ -96,7 +96,8 @@ administrator) are greyed and cannot be selected; their tooltip says why.
 
 Mode (Add / Change / Remove), user name (Add and Change only), password + confirm with the policy hint,
 role (Administrator, Operator, Viewer) and PTZ, the existing users of the first selected device (read-only
-query `listUsers`, with a note when several devices are selected), and a summary for N devices. Clicking a
+query `listUsers`, with a note when several devices are selected; a `ui:LoadingOverlay` "Reading the users" over the
+list until it answers, the left card stays usable), and a summary for N devices. Clicking a
 user in Add or Change fills the user name (still editable) and switches Add to Change. In Remove mode the
 users are picked in the Existing users list (click, Ctrl/Shift for several; the window forwards the grid
 selection to `SetSelectedUsers`); there is no user name field, the left card lists the chosen users ("Users to remove")

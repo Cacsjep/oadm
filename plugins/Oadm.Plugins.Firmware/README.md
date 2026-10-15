@@ -148,7 +148,8 @@ Unsupported devices return `{"supported":false,...}` without calling fwmgr.
 
 Choose a local `.bin`; the dialog shows name, size and, when recognized, product and AXIS OS version. Table of the
 selected devices: address, model, firmware, result with tooltip, details, rollback state from the status query (read
-for the first 50 devices when the dialog opens, for other rows when the grid shows them, at most 4 queries at a time).
+for the first 50 devices when the dialog opens, for other rows when the grid shows them, at most 4 queries at a time;
+a row shows the running chip "Reading" in that column until its query answered).
 Options: factory default none (default) / soft / hard with warnings, "Allow downgrade". **Upgrade** is enabled when at
 least one device would be upgraded; it uploads the file with `ITaskDialogContext.UploadAsync` (progress bar,
 cancellable) and returns `{"fileId","fileName","factoryDefaultMode","allowDowngrade"}`.

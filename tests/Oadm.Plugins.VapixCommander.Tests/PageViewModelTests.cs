@@ -35,7 +35,18 @@ internal sealed class FakeClientContext(VapixCommanderPlugin plugin) : ICorePlug
 
     public Window? Owner => null;
 
-    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => plugin.InvokeAsync(method, payloadJson, ct);
+    /// <summary>When set, every call waits for it first (tests that look at the page while a call runs).</summary>
+    public Task? Gate { get; set; }
+
+    public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
+    {
+        if (Gate is { } gate)
+        {
+            await gate.WaitAsync(ct);
+        }
+
+        return await plugin.InvokeAsync(method, payloadJson, ct);
+    }
 
     public Task ShowMessageAsync(string title, string message) => Task.CompletedTask;
 
@@ -623,6 +634,56 @@ public sealed class PageViewModelTests
 
         builder.Raw.RequiresApi = "param-cgi";
         await builder.SendCommand.ExecuteAsync(null);
+        Assert.True(builder.TryResult!.Success);
+    }
+
+    [Fact]
+    public async Task Send_and_run_show_progress_until_the_server_answers()
+    {
+        var page = await PageFixture.CreateAsync();
+        var vm = page.Vm;
+        page.Server.VapixFactory.For(page.Camera.Id).Handler = _ => FakeVapix.Text("root.Brand.Brand=AXIS\nroot.Brand.ProdNbr=P3265-V\n");
+        vm.Add(page.Item("common.brand.read"));
+
+        var gate = new TaskCompletionSource();
+        page.Client.Gate = gate.Task;
+        var send = vm.TryCommand.ExecuteAsync(null);
+        Assert.True(vm.IsSending);
+        Assert.Equal("Sending the request to 10.0.0.48", vm.SendingText);
+        gate.SetResult();
+        await send;
+        Assert.False(vm.IsSending);
+        Assert.True(vm.TryResult!.Success);
+
+        gate = new TaskCompletionSource();
+        page.Client.Gate = gate.Task;
+        var run = vm.RunCommand.ExecuteAsync(null);
+        Assert.True(vm.IsStartingRollout);
+        Assert.Equal("Starting the rollout on 1 device", vm.StartingRolloutText);
+        Assert.False(vm.RunCommand.CanExecute(null));
+        gate.SetResult();
+        await run;
+        Assert.False(vm.IsStartingRollout);
+        Assert.Single(page.Runner.Runs);
+    }
+
+    [Fact]
+    public async Task Builder_send_shows_progress_until_the_device_answers()
+    {
+        var page = await PageFixture.CreateAsync();
+        var builder = page.NewBuilder();
+        builder.NextCommand.Execute(null);
+        builder.Raw.FillBrandList();
+        Assert.True(builder.ShowAnswerHint);
+
+        var gate = new TaskCompletionSource();
+        page.Client.Gate = gate.Task;
+        var send = builder.SendCommand.ExecuteAsync(null);
+        Assert.True(builder.IsSending);
+        Assert.False(builder.ShowAnswerHint);
+        gate.SetResult();
+        await send;
+        Assert.False(builder.IsSending);
         Assert.True(builder.TryResult!.Success);
     }
 }

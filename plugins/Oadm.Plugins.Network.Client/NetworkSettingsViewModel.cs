@@ -192,6 +192,13 @@ public sealed partial class NetworkSettingsViewModel : ValidatingViewModel
     [NotifyPropertyChangedFor(nameof(DevicesDescription))]
     public partial string PrefillStatus { get; set; } = string.Empty;
 
+    /// <summary>True while the current settings of the first device are read.</summary>
+    [ObservableProperty]
+    public partial bool IsLoading { get; set; }
+
+    /// <summary>"Reading 10.0.0.48" while <see cref="IsLoading"/>.</summary>
+    public string LoadingText => "Reading " + _devices[0].Address;
+
     /// <summary>What the change can do to OADM's connection; shown in the confirmation on Apply. Null: nothing risky.</summary>
     [ObservableProperty]
     public partial string? ReachabilityWarning { get; set; }
@@ -232,6 +239,7 @@ public sealed partial class NetworkSettingsViewModel : ValidatingViewModel
     {
         ArgumentNullException.ThrowIfNull(ctx);
         Assignment.Attach(ctx, _devices[0].Id);
+        IsLoading = true;
         try
         {
             var json = await ctx.QueryAsync(_devices[0].Id, NetworkSettingsTaskPlugin.QueryGetNetworkInfo, null, ct).ConfigureAwait(true);
@@ -252,6 +260,10 @@ public sealed partial class NetworkSettingsViewModel : ValidatingViewModel
 #pragma warning restore CA1031
         {
             PrefillStatus = "The current settings could not be read: " + ex.Message;
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 

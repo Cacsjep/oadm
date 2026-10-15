@@ -46,6 +46,7 @@ How OADM clones it:
 | Assign the following IP address range: IP range, subnet mask, default router | Same wording and fields, plus optional DNS servers (domain name and search domains of each device are kept: `DnsChange.KeepDomains`). One device: "Assign the following IP address", field "IP address" |
 | Range syntax: wildcards, first-last (also shortened), range in any octet, commas | All of them (`IpRangeExpression`). A single address alone is the start address (consecutive addresses up to the end of its subnet). At most 1,048,576 addresses per expression |
 | Next: current and new IP addresses, Edit IP per device, Finish | Page 2 "New IP addresses": MAC address, Model, Current IP address, New IP address (edited in the cell, no Edit IP dialog), Status chip; Back, Finish |
+| (prefill) | Subnet mask and default router from the first device when empty; a `ui:ProgressRow` "Reading 10.0.0.48" below the options while it is read (the fields stay usable) |
 | Suggests addresses from the range | The first free addresses of the range, in grid order (the order the host passes the selection). Skipped: network and broadcast address, loopback/multicast/link-local, the default router, addresses of other managed devices, addresses in use, duplicates. A device keeps its own address when the range reaches it |
 | (undocumented) too few addresses | "Not enough addresses: the IP range has N free addresses for M devices. Extend the range." Rows without an address; Finish stays disabled until every row has a valid address |
 | (undocumented) addresses in use | Page 2 runs the read-only query `checkAddresses` (also the **Check addresses** button): all managed device addresses, plus from the server an ICMP echo (`System.Net.NetworkInformation.Ping`, 2 tries x 1 s; on Linux .NET falls back to the `ping` utility without root) and a TCP connect to 80 and 443 of each candidate (no own ARP, no HTTP; a refused connection also counts as in use). Anything that answers and is not the device's own current address is in use. Taken addresses are skipped and new ones suggested around them (3 rounds); the rest are flagged "In use (answers ping)" / "In use (answers on port 80/443)". The task checks again before writing (step **Check address is free**) |
@@ -65,8 +66,9 @@ Finish).
 
 - Sections **IPv4**, **IPv6**, **DNS**, **Host name**, each starting at **Keep unchanged**. Only changed sections go into
   the payload and are written.
-- Prefill: the read-only query `getNetworkInfo` reads the first selected device. A failed query never blocks the dialog
-  (one line in the Devices card).
+- Prefill: the read-only query `getNetworkInfo` reads the first selected device, with `ui:LoadingOverlay` "Reading
+  10.0.0.48" over the cards meanwhile (Cancel stays usable). A failed query never blocks the dialog (one line in the
+  Devices card).
 - IPv4 static: subnet mask as `255.255.255.0`, `24` or `/24`; Default router required (shared fields). One device: field
   **IP address**. Several devices: no IP range field; addresses are set only in the column **New IP address** of the
   Devices table (`AddressAssignmentGrid`). The column is suggested from the first device's current address and subnet,

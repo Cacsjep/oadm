@@ -174,6 +174,20 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
     [NotifyCanExecuteChangedFor(nameof(TryCommand), nameof(RunCommand))]
     public partial bool IsBusy { get; private set; }
 
+    /// <summary>"Sending the request to 10.0.0.48" while Send waits for the device (progress row below the rollout set).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSending))]
+    public partial string? SendingText { get; private set; }
+
+    public bool IsSending => SendingText is not null;
+
+    /// <summary>"Starting the rollout on 3,000 devices" while the rollout is created (progress row above the Run button).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsStartingRollout))]
+    public partial string? StartingRolloutText { get; private set; }
+
+    public bool IsStartingRollout => StartingRolloutText is not null;
+
     [ObservableProperty]
     public partial bool StopOnFirstError { get; set; } = true;
 
@@ -778,6 +792,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         }
 
         IsBusy = true;
+        SendingText = "Sending the request to " + device.Address;
         try
         {
             var reply = await _backend.TryAsync(
@@ -791,6 +806,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         }
         finally
         {
+            SendingText = null;
             IsBusy = false;
         }
     }
@@ -843,6 +859,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         }
 
         IsBusy = true;
+        StartingRolloutText = string.Create(CultureInfo.InvariantCulture, $"Starting the rollout on {targets.Count:N0} {(targets.Count == 1 ? "device" : "devices")}");
         try
         {
             var reply = await _backend.RolloutAsync(
@@ -870,6 +887,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         }
         finally
         {
+            StartingRolloutText = null;
             IsBusy = false;
         }
     }

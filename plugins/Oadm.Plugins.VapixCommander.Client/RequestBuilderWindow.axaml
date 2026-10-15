@@ -54,7 +54,8 @@
                 <ui:IconLabel Icon="{DynamicResource Icon.send}" Text="Send" />
               </Button>
             </Grid>
-            <TextBlock Grid.Row="1" Classes="secondary" Text="Send the request to see the answer." IsVisible="{Binding !HasTryResult}" />
+            <TextBlock Grid.Row="1" Classes="secondary" Text="Send the request to see the answer." IsVisible="{Binding ShowAnswerHint}" />
+            <ui:ProgressRow Grid.Row="1" VerticalAlignment="Top" Text="{Binding SendingText}" IsVisible="{Binding IsSending}" />
             <Border Grid.Row="1" Classes="inlineEditor" IsVisible="{Binding HasTryResult}">
               <c:TryResultView DataContext="{Binding TryResult}" CloseCommand="{Binding $parent[Window].((c:RequestBuilderViewModel)DataContext).CloseTryResultCommand}" />
             </Border>

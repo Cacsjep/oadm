@@ -52,7 +52,8 @@ Summary in `CLAUDE.md` "DHCP server". Own RFC 2131 / RFC 2132 implementation
   needed), `saveStatic` (add/edit, field errors "Mac", "Address", "Name"), `makeStatic`, `deleteStatic`, `release`
   (forgets a dynamic lease). Events: `state` (status changed), `leases` (changed + removed leases with the lease version,
   batched every 500 ms, split above 2,000 entries; the page ignores versions it already has).
-- Page (`DhcpServerView`, subtitle in the host page header via `ui:PageHeader`, status chip left of Save, no card title): Enable
+- Page (`DhcpServerView`, subtitle in the host page header via `ui:PageHeader`, status chip left of Save, no card title;
+  `ui:LoadingOverlay` "Reading the DHCP server" until the first `getState` answered, later reads update in place): Enable
   DHCP server; Listen on (`InterfaceSelection`, IPv4 interfaces only, "Ethernet - 10.0.0.17/24 (Intel I219)"); Start
   address / End address (`ui:FormField`, errors under the fields while typing: "Must be inside the subnet 10.0.0.0/24.",
   "Must be after the start address.", network/broadcast/server address, at most 65,536 addresses); the derived

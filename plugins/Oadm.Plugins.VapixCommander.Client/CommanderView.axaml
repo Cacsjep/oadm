@@ -183,10 +183,13 @@
           </ScrollViewer>
         </Grid>
 
-        <!-- Result of Send (Try) -->
-        <Border Grid.Row="2" Classes="inlineEditor" IsVisible="{Binding HasTryResult}" MaxHeight="420">
-          <c:TryResultView DataContext="{Binding TryResult}" CloseCommand="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).CloseTryResultCommand}" />
-        </Border>
+        <!-- Send (Try): progress while the device answers, then its result -->
+        <StackPanel Grid.Row="2" Spacing="10">
+          <ui:ProgressRow Text="{Binding SendingText}" IsVisible="{Binding IsSending}" />
+          <Border Classes="inlineEditor" IsVisible="{Binding HasTryResult}" MaxHeight="420">
+            <c:TryResultView DataContext="{Binding TryResult}" CloseCommand="{Binding $parent[UserControl].((c:CommanderViewModel)DataContext).CloseTryResultCommand}" />
+          </Border>
+        </StackPanel>
       </Grid>
     </Border>
 
@@ -223,6 +226,7 @@
           <ui:StatusChip Text="{Binding Status}" IsOk="{Binding IsStatusOk}" IsError="{Binding IsStatusError}" ToolTip.Tip="{Binding Status}" MaxWidth="300"
                          HorizontalAlignment="Left" IsVisible="{Binding HasStatus}" />
           <TextBlock Classes="secondary" Text="{Binding RunSummary}" TextWrapping="Wrap" />
+          <ui:ProgressRow Text="{Binding StartingRolloutText}" IsVisible="{Binding IsStartingRollout}" />
           <CheckBox Content="Stop on first error" IsChecked="{Binding StopOnFirstError}"
                     ToolTip.Tip="Stop all devices after the first failure" />
           <Button Classes="primary" HorizontalAlignment="Right" Command="{Binding RunCommand}" IsVisible="{Binding MayRollout}">

@@ -135,6 +135,13 @@ public sealed partial class AssignIpViewModel : ValidatingViewModel, IDisposable
     [ObservableProperty]
     public partial string PrefillStatus { get; set; } = string.Empty;
 
+    /// <summary>True while the current settings of the first device are read.</summary>
+    [ObservableProperty]
+    public partial bool IsLoading { get; set; }
+
+    /// <summary>"Reading 10.0.0.48" while <see cref="IsLoading"/>.</summary>
+    public string LoadingText => "Reading " + _devices[0].Address;
+
     /// <summary>The reachability warning, shown in the confirmation on Finish.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasWarning))]
@@ -174,6 +181,7 @@ public sealed partial class AssignIpViewModel : ValidatingViewModel, IDisposable
         ArgumentNullException.ThrowIfNull(ctx);
         _context = ctx;
         Assignment.Attach(ctx, _devices[0].Id);
+        IsLoading = true;
         try
         {
             var json = await ctx.QueryAsync(_devices[0].Id, NetworkSettingsTaskPlugin.QueryGetNetworkInfo, null, ct).ConfigureAwait(true);
@@ -191,6 +199,10 @@ public sealed partial class AssignIpViewModel : ValidatingViewModel, IDisposable
 #pragma warning restore CA1031
         {
             PrefillStatus = "The current settings could not be read: " + ex.Message;
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 
