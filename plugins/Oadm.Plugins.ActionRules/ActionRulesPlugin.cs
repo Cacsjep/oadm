@@ -102,7 +102,7 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         switch (method)
         {
             case ActionRulesMethods.Read:
-                sweep.Start();
+                sweep.Start(ReadIds(payloadJson));
                 return ActionRulesJson.Serialize(State());
             case ActionRulesMethods.GetState:
                 return ActionRulesJson.Serialize(State());
@@ -482,6 +482,13 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         }
 
         return (await ctx.Vapix.CreateAsync(source, ct).ConfigureAwait(false), devices);
+    }
+
+    /// <summary>The devices a read covers: the page's choice (1 to 30,000), or every device for an older page without one.</summary>
+    private static HashSet<Guid>? ReadIds(string? payloadJson)
+    {
+        var ids = string.IsNullOrWhiteSpace(payloadJson) ? null : ActionRulesJson.Deserialize<ReadRequest>(payloadJson).DeviceIds;
+        return ids is null ? null : DeviceIds(ids).ToHashSet();
     }
 
     private static List<Guid> DeviceIds(IReadOnlyList<Guid>? ids)

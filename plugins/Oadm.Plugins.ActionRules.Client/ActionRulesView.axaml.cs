@@ -41,6 +41,8 @@ public partial class ActionRulesView : UserControl, IRuleDialogs
         if (_model is { } vm)
         {
             vm.Dialogs = this;
+            vm.PickDevices = async () => TopLevel.GetTopLevel(this) is Window owner
+                && await vm.DeviceChoice.PickAsync(owner, "Choose devices").ConfigureAwait(true);
             vm.SelectionRestored += OnRulesRestored;
             vm.Recipients.SelectionRestored += OnRecipientsRestored;
             vm.Schedules.SelectionRestored += OnSchedulesRestored;

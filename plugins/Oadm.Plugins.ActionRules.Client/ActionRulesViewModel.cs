@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 using Oadm.Plugins.ActionRules.Rules;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Collections;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.ActionRules.Client;
@@ -33,8 +34,10 @@ public interface IRuleDialogs
 }
 
 /// <summary>
-/// Page "Action Rule Editor". <see cref="Activate"/> reads the action rules of every device once (over the server) and
-/// watches the pushed rows; Refresh reads again. The upper grid groups the rules (what they do, name, action, trigger);
+/// Page "Action Rule Editor". The devices come from the page's device choice (<see cref="DeviceChoice"/>: the Devices page
+/// selection, else the last choice on this computer; nothing is read before a choice). <see cref="Activate"/> reads the
+/// action rules of the chosen devices once (over the server) and watches the pushed rows of those devices; Refresh reads
+/// again. The upper grid groups the rules (what they do, name, action, trigger);
 /// selecting groups lists their rules per device below, where a selection narrows the target further. Edit, Turn on,
 /// Turn off and Delete start one task per device for the target rules (tasks pane below); Undo puts a run back. The tools
 /// follow the role live ("manage", "delete"); the server checks again.
@@ -51,6 +54,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
     private IReadOnlyList<RuleMemberRow> _selectedMembers = [];
     private CancellationTokenSource? _active;
     private RulesState? _state;
+    private HashSet<Guid>? _scope;
 
     public ActionRulesViewModel(ICorePluginClientContext ctx)
     {
@@ -58,7 +62,27 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
         _ctx.PermissionsChanged += OnPermissionsChanged;
         Recipients = new PresetTabViewModel(this, schedules: false);
         Schedules = new PresetTabViewModel(this, schedules: true);
+        DeviceChoice = new PageDeviceChoice(ctx);
+        DeviceChoice.PropertyChanged += (_, _) => RefreshCommand.NotifyCanExecuteChanged();
     }
+
+    /// <summary>The devices the page reads: "Selected devices: Tag Building A" (the purple button).</summary>
+    public PageDeviceChoice DeviceChoice { get; }
+
+    /// <summary>Opens the device picker (set by the view); true when a choice was made.</summary>
+    public Func<Task<bool>>? PickDevices { get; set; }
+
+    /// <summary>The purple button: choose the devices, then read their action rules.</summary>
+    [RelayCommand(CanExecute = nameof(CanChooseDevices))]
+    private async Task ChooseDevicesAsync()
+    {
+        if (PickDevices is { } pick && await pick().ConfigureAwait(true))
+        {
+            await ReadAsync(_active?.Token ?? CancellationToken.None).ConfigureAwait(true);
+        }
+    }
+
+    private bool CanChooseDevices => !IsReading;
 
     /// <summary>The Recipients tab.</summary>
     public PresetTabViewModel Recipients { get; }
@@ -87,11 +111,19 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
     /// <summary>The devices of the client (the device picker lists them).</summary>
     public IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo> AllDevices => _ctx.Devices;
 
+    /// <summary>A device of the choice whose rules could not be read.</summary>
+    public const string NotReadText = "Its rules were not read. Refresh first.";
+
+    /// <summary>A device outside the page's device choice.</summary>
+    public const string NotChosenText = "Its rules were not read. Add it to the selected devices first.";
+
     /// <summary>Why a device cannot get a copy: its rules were not read.</summary>
     public string? CopyUnavailable(Guid deviceId, Guid source) =>
-        deviceId == source ? "This is the device the copy comes from."
-        : _rows.TryGetValue(deviceId, out var row) && row.State == RowStates.Ok ? null
-        : "Its rules were not read. Refresh first.";
+        deviceId == source ? "This is the device the copy comes from." : NotRead(deviceId);
+
+    /// <summary>Null when the device's rules were read; else why not and what to do.</summary>
+    private string? NotRead(Guid deviceId) =>
+        _rows.TryGetValue(deviceId, out var row) ? row.State == RowStates.Ok ? null : NotReadText : NotChosenText;
 
     /// <summary>How often the page asks for the state while a read runs (its progress events may be missed).</summary>
     public static TimeSpan StatePollInterval { get; set; } = TimeSpan.FromSeconds(1);
@@ -119,7 +151,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
     /// <summary>The rules tab's Copy: exactly one rule.</summary>
     public string? CopyBlockedReason => Targets.Count == 1 ? null : "Select one rule on the right to copy.";
 
-    private bool CanCopy => MayManage && CopyBlockedReason is null;
+    private bool CanCopy => MayManage && !IsPreparing && CopyBlockedReason is null;
 
     /// <summary>Copies the target rule to chosen devices, with the edit form for what the copies get.</summary>
     [RelayCommand(CanExecute = nameof(CanCopy))]
@@ -135,8 +167,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
         {
             var ct = _active?.Token ?? CancellationToken.None;
             var rows = devices.Select(d => _rows.GetValueOrDefault(d)).OfType<DeviceRulesRow>().Append(source.Device).ToList();
-            var sets = await TemplatesAsync(rows, ct).ConfigureAwait(true);
-            var events = await EventsAsync(devices, ct).ConfigureAwait(true);
+            var (sets, events) = await PrepareAsync(rows, devices, ct).ConfigureAwait(true);
             var form = new EditRulesViewModel([source], sets, devices, events, rows.DistinctBy(r => r.DeviceId).ToDictionary(r => r.DeviceId), () => NewScheduleFormAsync(devices.Count));
             if (await Dialogs.EditAsync(form).ConfigureAwait(true) is { } patch)
             {
@@ -152,11 +183,12 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Why a device cannot get a new rule: its rules were not read.</summary>
-    public string? NewRuleUnavailable(Guid deviceId) =>
-        _rows.TryGetValue(deviceId, out var row) && row.State == RowStates.Ok ? null : "Its rules were not read. Refresh first.";
+    public string? NewRuleUnavailable(Guid deviceId) => NotRead(deviceId);
+
+    private bool CanNewRule => MayManage && !IsPreparing;
 
     /// <summary>The rule builder: choose the devices, then the rule; one task per device creates it.</summary>
-    [RelayCommand(CanExecute = nameof(MayManage))]
+    [RelayCommand(CanExecute = nameof(CanNewRule))]
     private async Task NewRuleAsync()
     {
         if (Dialogs is null || await Dialogs.ChooseDevicesAsync("Create the rule on", NewRuleUnavailable).ConfigureAwait(true) is not { Count: > 0 } devices)
@@ -168,8 +200,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
         {
             var ct = _active?.Token ?? CancellationToken.None;
             var rows = devices.Select(d => _rows.GetValueOrDefault(d)).OfType<DeviceRulesRow>().ToList();
-            var sets = await TemplatesAsync(rows, ct).ConfigureAwait(true);
-            var events = await EventsAsync(devices, ct).ConfigureAwait(true);
+            var (sets, events) = await PrepareAsync(rows, devices, ct).ConfigureAwait(true);
             var form = new NewRuleViewModel(devices, sets, events, rows.ToDictionary(r => r.DeviceId), () => NewScheduleFormAsync(devices.Count));
             if (await Dialogs.NewRuleAsync(form).ConfigureAwait(true) is { } rule)
             {
@@ -182,6 +213,49 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
         {
             ErrorText = ServerErrors.Message(ex);
         }
+    }
+
+    /// <summary>The progress text while a form is prepared.</summary>
+    public const string PreparingText = "Reading the settings of the devices";
+
+    /// <summary>True while a form's data is read (New rule, Edit, Copy to devices, New recipient).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowProgress), nameof(ProgressRowText))]
+    public partial bool IsPreparing { get; private set; }
+
+    /// <summary>The progress row shows: a read of the rules runs or a form is prepared.</summary>
+    public bool ShowProgress => IsReading || IsPreparing;
+
+    /// <summary>The text of the progress row.</summary>
+    public string ProgressRowText => IsReading ? ProgressText : PreparingText;
+
+    /// <summary>
+    /// What a form needs before it opens: the template sets and the events the devices offered, merged by the server (can
+    /// take a while for many devices: the page shows the progress row and the buttons that open forms wait).
+    /// </summary>
+    private async Task<(IReadOnlyDictionary<Guid, TemplateSet> Sets, IReadOnlyList<OfferedEvent> Events)> PrepareAsync(
+        IReadOnlyList<DeviceRulesRow> rows, IReadOnlyList<Guid>? devices, CancellationToken ct)
+    {
+        SetPreparing(true);
+        try
+        {
+            var sets = await TemplatesAsync(rows, ct).ConfigureAwait(true);
+            var events = devices is null ? [] : await EventsAsync(devices, ct).ConfigureAwait(true);
+            return (sets, events);
+        }
+        finally
+        {
+            SetPreparing(false);
+        }
+    }
+
+    private void SetPreparing(bool value)
+    {
+        IsPreparing = value;
+        NewRuleCommand.NotifyCanExecuteChanged();
+        NotifyTargets();
+        Recipients.NotifyTargets();
+        Schedules.NotifyTargets();
     }
 
     /// <summary>The events the devices offered when they were read, merged by the server.</summary>
@@ -273,7 +347,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
         try
         {
             var rows = devices.Select(d => _rows.GetValueOrDefault(d)).OfType<DeviceRulesRow>().ToList();
-            var sets = await TemplatesAsync(rows, _active?.Token ?? CancellationToken.None).ConfigureAwait(true);
+            var (sets, _) = await PrepareAsync(rows, null, _active?.Token ?? CancellationToken.None).ConfigureAwait(true);
             var form = RecipientFormViewModel.ForNew(devices, sets);
             if (await Dialogs.EditRecipientsAsync(form).ConfigureAwait(true) is { } patch && form.SelectedKind is { } kind)
             {
@@ -334,18 +408,21 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
     public bool HasError => !string.IsNullOrEmpty(ErrorText);
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(ChooseDevicesCommand))]
+    [NotifyPropertyChangedFor(nameof(ShowProgress), nameof(ProgressRowText))]
     public partial bool IsReading { get; private set; }
 
     [ObservableProperty] public partial double ProgressValue { get; private set; }
 
-    [ObservableProperty] public partial string ProgressText { get; private set; } = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ProgressRowText))]
+    public partial string ProgressText { get; private set; } = string.Empty;
 
     [ObservableProperty] public partial string SummaryText { get; private set; } = string.Empty;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmpty))]
-    public partial string EmptyText { get; private set; } = "Reading the action rules.";
+    public partial string EmptyText { get; private set; } = string.Empty;
 
     public bool ShowEmpty => Groups.Count == 0;
 
@@ -435,12 +512,13 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
         NotifyTargets();
     }
 
-    private bool CanRefresh => !IsReading;
+    private bool CanRefresh => !IsReading && !DeviceChoice.IsEmpty;
 
+    /// <summary>Reads the action rules of the chosen devices again.</summary>
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     private Task RefreshAsync() => ReadAsync(_active?.Token ?? CancellationToken.None);
 
-    private bool CanManage => MayManage && Targets.Count > 0;
+    private bool CanManage => MayManage && !IsPreparing && Targets.Count > 0;
 
     private bool CanDelete => MayDelete && Targets.Count > 0;
 
@@ -456,9 +534,8 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
         try
         {
             var ct = _active?.Token ?? CancellationToken.None;
-            var sets = await TemplatesAsync(targets, ct).ConfigureAwait(true);
             var devices = targets.Select(t => t.Device).DistinctBy(d => d.DeviceId).ToList();
-            var events = await EventsAsync([.. devices.Select(d => d.DeviceId)], ct).ConfigureAwait(true);
+            var (sets, events) = await PrepareAsync(devices, [.. devices.Select(d => d.DeviceId)], ct).ConfigureAwait(true);
             var form = new EditRulesViewModel(targets, sets, null, events, devices.ToDictionary(d => d.DeviceId), () => NewScheduleFormAsync(devices.Count));
             if (await Dialogs.EditAsync(form).ConfigureAwait(true) is { } patch)
             {
@@ -541,7 +618,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
         {
             case ActionRulesMethods.RowsTopic:
                 var rows = ActionRulesJson.Deserialize<RowsEvent>(item.PayloadJson);
-                foreach (var row in rows.Rows ?? [])
+                foreach (var row in (rows.Rows ?? []).Where(InScope))
                 {
                     _rows[row.DeviceId] = row;
                 }
@@ -567,7 +644,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
         if (replaceRows)
         {
             _rows.Clear();
-            foreach (var row in state.Rows ?? [])
+            foreach (var row in (state.Rows ?? []).Where(InScope))
             {
                 _rows[row.DeviceId] = row;
             }
@@ -618,11 +695,39 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
     /// <summary>The groups that stay selected after a rebuild (the view selects them again).</summary>
     public event EventHandler<IReadOnlyList<RuleGroupRow>>? SelectionRestored;
 
+    /// <summary>
+    /// The page shows the devices of its choice only: the server's read is shared by every page, so rows of other devices
+    /// are left out (null = no choice applied yet: every row; tests that apply a state directly).
+    /// </summary>
+    private bool InScope(DeviceRulesRow row) => _scope is null || _scope.Contains(row.DeviceId);
+
+    /// <summary>Reads the action rules of the chosen devices (nothing without a choice).</summary>
     private async Task ReadAsync(CancellationToken ct)
     {
+        var devices = DeviceChoice.Resolve();
+        var scope = devices.Select(d => d.Id).ToHashSet();
+        _scope = scope;
+        foreach (var gone in _rows.Keys.Where(id => !scope.Contains(id)).ToList())
+        {
+            _rows.Remove(gone);
+        }
+
+        if (devices.Count == 0)
+        {
+            _state = null;
+            IsReading = false;
+            Rebuild();
+            return;
+        }
+
+        // The progress shows from the click on, before the server answers.
+        ProgressValue = 0;
+        ProgressText = string.Create(CultureInfo.CurrentCulture, $"Reading action rules 0 of {devices.Count:N0}");
+        IsReading = true;
+        Rebuild();
         try
         {
-            var json = await _ctx.InvokeAsync(ActionRulesMethods.Read, null, ct).ConfigureAwait(true);
+            var json = await _ctx.InvokeAsync(ActionRulesMethods.Read, ActionRulesJson.Serialize(new ReadRequest([.. scope])), ct).ConfigureAwait(true);
             ApplyState(ActionRulesJson.Deserialize<RulesState>(json), replaceRows: true);
             ErrorText = null;
             // The rows come as events; the page asks only for the progress while the read runs (an event sent before the
@@ -639,6 +744,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            IsReading = false;
         }
 #pragma warning disable CA1031 // Shown on the page.
         catch (Exception ex)
@@ -732,7 +838,10 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
         SummaryText = string.Create(CultureInfo.CurrentCulture, $"{ok:N0} devices · {rules:N0} rules")
             + (notRead > 0 ? string.Create(CultureInfo.CurrentCulture, $" · {notRead:N0} not read") : string.Empty);
         EmptyText = HasError && _rows.Count == 0 ? string.Empty
-            : _state is null || _state.Reading ? "Reading the action rules."
+            : DeviceChoice.IsEmpty ? "Choose devices to read their action rules."
+            : IsReading || _state?.Reading == true ? "Reading the action rules."
+            : _scope is { Count: 0 } ? "None of the chosen devices is in OADM."
+            : _state is null ? string.Empty
             : _rows.Count == 0 ? "No devices yet."
             : _allGroups.Count == 0 ? "The devices have no action rules."
             : "No rule matches the search.";

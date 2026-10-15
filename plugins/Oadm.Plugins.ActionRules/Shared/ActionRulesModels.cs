@@ -36,7 +36,7 @@ public static class ActionRulesInfo
 /// <summary>Page backend methods (<c>InvokeAsync</c>), the rights they need and the live event topics.</summary>
 public static class ActionRulesMethods
 {
-    /// <summary>{} -> <see cref="RulesState"/>: reads the rules of every device once; rows and progress follow as events.</summary>
+    /// <summary><see cref="ReadRequest"/> -> <see cref="RulesState"/>: reads the rules of the chosen devices once; rows and progress follow as events.</summary>
     public const string Read = "read";
 
     /// <summary>{} -> <see cref="RulesState"/>: the current rows, without asking any device.</summary>
@@ -263,6 +263,9 @@ public sealed record DeviceRulesRow(
 public sealed record RulesState(bool Reading, int Done, int Total, DateTimeOffset? FinishedUtc, IReadOnlyList<DeviceRulesRow> Rows);
 
 public sealed record RowsEvent(IReadOnlyList<DeviceRulesRow> Rows, IReadOnlyList<Guid> Removed);
+
+/// <summary>Request of <see cref="ActionRulesMethods.Read"/>: the devices of the page's choice (null: every device, older pages).</summary>
+public sealed record ReadRequest(IReadOnlyList<Guid>? DeviceIds);
 
 public sealed record TemplatesRequest(IReadOnlyList<string> Ids);
 
