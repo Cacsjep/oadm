@@ -220,6 +220,17 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         return VapixParsers.ParseBasicDeviceInfo(json);
     }
 
+    /// <summary>basicdeviceinfo getAllProperties with its own timeout (the status poll: a device that needs longer counts as not answering).</summary>
+    public async Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(TimeSpan timeout, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, BasicDeviceInfoPath)
+        {
+            Content = new StringContent("""{"apiVersion":"1.0","method":"getAllProperties"}""", Encoding.UTF8, JsonMediaType),
+        };
+        request.Options.Set(VapixRequestOptions.Timeout, timeout);
+        return VapixParsers.ParseBasicDeviceInfo(await SendForStringAsync(request, ct).ConfigureAwait(false));
+    }
+
     /// <summary>basicdeviceinfo getAllUnrestrictedProperties: works anonymously, no SocSerialNumber/Architecture.</summary>
     public async Task<IReadOnlyDictionary<string, string>> GetUnrestrictedPropertiesAsync(CancellationToken ct)
     {

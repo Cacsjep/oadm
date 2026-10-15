@@ -23,17 +23,26 @@ public sealed class DeviceGrpcService(
     AuditLog audit,
     IHostApplicationLifetime lifetime) : Proto.DeviceService.DeviceServiceBase
 {
+    /// <summary>Devices read from the database at a time for a device list.</summary>
+    public const int SnapshotPageSize = 1_000;
+
     public override async Task<Proto.DeviceList> List(Proto.Empty request, ServerCallContext context)
     {
         var ct = context.CancellationToken;
         var withCredentials = await credentials.ListDeviceIdsWithCredentialsAsync(ct).ConfigureAwait(false);
         var reply = new Proto.DeviceList();
-        foreach (var device in await devices.ListDevicesAsync(ct).ConfigureAwait(false))
+        string? after = null;
+        while (true)
         {
-            reply.Devices.Add(Mappers.ToProto(device, withCredentials.Contains(device.Id)));
-        }
+            var page = await devices.ListDevicesPageAsync(after, SnapshotPageSize, ct).ConfigureAwait(false);
+            reply.Devices.AddRange(page.Select(device => Mappers.ToProto(device, withCredentials.Contains(device.Id))));
+            if (page.Count < SnapshotPageSize)
+            {
+                return reply;
+            }
 
-        return reply;
+            after = page[^1].Serial;
+        }
     }
 
     /// <summary>
@@ -49,11 +58,24 @@ public sealed class DeviceGrpcService(
         using var subscription = devices.Changes.Subscribe();
         try
         {
+            // In pages: one client's snapshot holds at most SnapshotPageSize devices in memory (docs/30kspec.md).
             var withCredentials = await credentials.ListDeviceIdsWithCredentialsAsync(ct).ConfigureAwait(false);
-            foreach (var device in await devices.ListDevicesAsync(ct).ConfigureAwait(false))
+            string? after = null;
+            while (true)
             {
-                var change = new DeviceChange(DeviceChangeKind.Added, device.Id, device);
-                await responseStream.WriteAsync(Mappers.ToProto(change, withCredentials.Contains(device.Id)), ct).ConfigureAwait(false);
+                var page = await devices.ListDevicesPageAsync(after, SnapshotPageSize, ct).ConfigureAwait(false);
+                foreach (var device in page)
+                {
+                    var change = new DeviceChange(DeviceChangeKind.Added, device.Id, device);
+                    await responseStream.WriteAsync(Mappers.ToProto(change, withCredentials.Contains(device.Id)), ct).ConfigureAwait(false);
+                }
+
+                if (page.Count < SnapshotPageSize)
+                {
+                    break;
+                }
+
+                after = page[^1].Serial;
             }
 
             if (request.SnapshotEndMarker)

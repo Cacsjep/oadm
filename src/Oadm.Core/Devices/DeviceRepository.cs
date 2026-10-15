@@ -61,6 +61,35 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
         return devices;
     }
 
+    /// <summary>
+    /// Up to <paramref name="take"/> devices after <paramref name="afterSerial"/> (null: from the start) in serial order, with
+    /// <see cref="Device.CredentialUserName"/> filled: the device list in pages, so 30,000 devices are never all in memory
+    /// at once for one reader.
+    /// </summary>
+    public async Task<IReadOnlyList<Device>> ListDevicesPageAsync(string? afterSerial, int take, CancellationToken ct)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(take, 1);
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var query = db.Devices.AsNoTracking();
+        if (afterSerial is not null)
+        {
+#pragma warning disable CA1309 // Translated to SQL, where SQLite compares the serials byte by byte (ordinal).
+            query = query.Where(d => string.Compare(d.Serial, afterSerial) > 0);
+#pragma warning restore CA1309
+        }
+
+        var devices = await query.OrderBy(d => d.Serial).Take(take).ToListAsync(ct).ConfigureAwait(false);
+        var ids = devices.Select(d => d.Id).ToList();
+        var users = await db.DeviceCredentials.AsNoTracking().Where(c => ids.Contains(c.DeviceId))
+            .ToDictionaryAsync(c => c.DeviceId, c => c.UserName, ct).ConfigureAwait(false);
+        foreach (var device in devices)
+        {
+            device.CredentialUserName = users.GetValueOrDefault(device.Id);
+        }
+
+        return devices;
+    }
+
     /// <summary>One device with <see cref="Device.CredentialUserName"/> filled, or null.</summary>
     public async Task<Device?> GetAsync(Guid id, CancellationToken ct)
     {
@@ -196,6 +225,14 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
         return await db.Devices.AsNoTracking().OrderBy(d => d.Serial).Select(d => d.Id).ToListAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Ids and statuses of all devices in serial order, without loading the rows.</summary>
+    public async Task<IReadOnlyList<(Guid Id, DeviceStatus Status)>> ListIdsWithStatusAsync(CancellationToken ct)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var rows = await db.Devices.AsNoTracking().OrderBy(d => d.Serial).Select(d => new { d.Id, d.Status }).ToListAsync(ct).ConfigureAwait(false);
+        return [.. rows.Select(r => (r.Id, r.Status))];
     }
 
     /// <summary>

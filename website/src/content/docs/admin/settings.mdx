@@ -29,8 +29,8 @@ reads them again.
 
 | Setting | Default | What it does |
 |---|---|---|
-| Status polling interval (s) | 60 | How often OADM checks that every device answers. |
-| Full refresh interval (min) | 10 | How often OADM reads network settings and certificates of every device. |
+| Status polling interval (s) | 60 | How often OADM checks that every device answers. A device that does not answer within 3 s is asked once more before it shows Unreachable. |
+| Full refresh interval (min) | 10 | How often OADM reads network settings and certificates of every device that answers. A new firmware is read at once. |
 | Addresses scanned at once | 32 | Speed of **Network range**. |
 | IP range scan timeout (ms) | 1500 | How long **Network range** waits for each address. |
 | Discovery duration (s) | 30 | How long **Discovery** on the add page searches (5 to 300). |

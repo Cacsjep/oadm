@@ -52,7 +52,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             v => v.ToList());
 
     private static readonly ValueConverter<IReadOnlyList<DeviceApi>, string> ApisConverter =
-        new(v => DeviceApiJson.Serialize(v), v => DeviceApiJson.Deserialize(v));
+        new(v => DeviceApiJson.Serialize(v), v => DeviceApiJson.DeserializeShared(v));
 
     private static readonly ValueComparer<IReadOnlyList<DeviceApi>> ApisComparer =
         new(
