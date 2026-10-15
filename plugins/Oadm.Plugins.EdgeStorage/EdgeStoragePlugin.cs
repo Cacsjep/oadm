@@ -98,7 +98,7 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
         switch (method)
         {
             case EdgeStorageMethods.Read:
-                sweep.Start();
+                sweep.Start(ReadIds(payloadJson));
                 return EdgeStorageJson.Serialize(State(withRows: true));
             case EdgeStorageMethods.GetState:
                 return EdgeStorageJson.Serialize(State(withRows: true));
@@ -153,6 +153,18 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
     }
 
     /// <summary>Devices that list the disk management API (an SD card slot); others are not in the table.</summary>
+    /// <summary>The cameras a read covers: the page's choice (1 to 30,000), or every camera for an older page without one.</summary>
+    private static HashSet<Guid>? ReadIds(string? payloadJson)
+    {
+        var ids = string.IsNullOrWhiteSpace(payloadJson) ? null : EdgeStorageJson.Deserialize<ReadRequest>(payloadJson).DeviceIds;
+        if (ids is null)
+        {
+            return null;
+        }
+
+        return ids.Count is 0 or > MaxDevicesPerRun ? throw new ArgumentException("Choose 1 to 30,000 cameras.", nameof(payloadJson)) : ids.ToHashSet();
+    }
+
     private static bool HasSlot(IDeviceInfo device) => device.Apis.Supports(StorageRequests.DiskManagementApi, "1.0");
 
     /// <summary>One camera: its SD card with health and wear alert level, or why it could not be read.</summary>

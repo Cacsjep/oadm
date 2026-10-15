@@ -37,6 +37,9 @@ public sealed class ClientSettings
     /// <summary>Add page "Use DNS names instead of IP addresses" (Discovery and Network range).</summary>
     public bool AddByDnsName { get; set; }
 
+    /// <summary>Texts plugins keep on this computer ("plugin id/key" -> value), e.g. a page's last device choice.</summary>
+    public Dictionary<string, string> PluginSettings { get; set; } = [];
+
     /// <summary>Device grid group mode: a group per tag.</summary>
     public bool GroupDevicesByTag { get; set; }
 

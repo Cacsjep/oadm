@@ -37,7 +37,7 @@ public static class HeadlessEntry
 }
 
 /// <summary>The page context against the plugin in process (invoke + the event hub), with the role's rights.</summary>
-internal sealed class PageContext(EdgeStoragePlugin plugin, PluginEventHub hub) : ICorePluginClientContext
+internal sealed class PageContext(EdgeStoragePlugin plugin, PluginEventHub hub, FakeDevices devices) : ICorePluginClientContext
 {
     public HashSet<string> Rights { get; } = ["oadm.edge-storage:show", "oadm.edge-storage:manage", "oadm.edge-storage:format"];
 
@@ -45,7 +45,23 @@ internal sealed class PageContext(EdgeStoragePlugin plugin, PluginEventHub hub) 
 
     public bool Confirm { get; set; } = true;
 
-    public IReadOnlyList<IDeviceInfo> Devices => [];
+    public IReadOnlyList<IDeviceInfo> Devices => [.. devices.Items];
+
+    public Dictionary<string, string> LocalSettings { get; } = [];
+
+    public string? GetLocalSetting(string key) => LocalSettings.GetValueOrDefault(key);
+
+    public void SetLocalSetting(string key, string? value)
+    {
+        if (value is null)
+        {
+            LocalSettings.Remove(key);
+        }
+        else
+        {
+            LocalSettings[key] = value;
+        }
+    }
 
     public string OwnerName => "joe@pc";
 
@@ -96,8 +112,9 @@ internal sealed class PageRig : IAsyncDisposable
     {
         Plugin = new EdgeStoragePlugin(new DeviceSweepOptions { PublishInterval = TimeSpan.FromMilliseconds(20) });
         Plugin.StartAsync(new FakeContext(Devices, Cameras, Runner, new RecordingEvents()) { Hub = Hub.For(EdgeStorageInfo.PluginId) }, CancellationToken.None).GetAwaiter().GetResult();
-        Context = new PageContext(Plugin, Hub);
+        Context = new PageContext(Plugin, Hub, Devices);
         ViewModel = new EdgeStorageViewModel(Context) { Dialogs = Dialogs };
+        ViewModel.DeviceChoice.Set(Oadm.Sdk.Client.Controls.DeviceChoice.AllDevices); // the pages tested here read every camera
     }
 
     public PluginEventHub Hub { get; } = new();
@@ -133,6 +150,49 @@ public sealed class PageTests(ITestOutputHelper output)
             Assert.True(DateTime.UtcNow < until, "Timed out waiting for the condition.");
             await Task.Delay(10);
         }
+    }
+
+    [Fact]
+    [Trait("Category", "Timing")] // the plugin's events arrive on the thread pool, waited for in real time
+    public async Task The_page_reads_only_the_chosen_cameras_and_nothing_before_a_choice()
+    {
+        await using var rig = new PageRig();
+        var a = new FakeDevice { Address = "10.0.0.48", Tags = ["Building A"] };
+        var b = new FakeDevice { Address = "10.0.0.49", Tags = ["Building A"] };
+        var c = new FakeDevice { Address = "10.0.0.50" };
+        rig.Devices.Items.AddRange([a, b, c]);
+        rig.Context.LocalSettings.Clear(); // a new computer: no choice yet
+        var vm = new EdgeStorageViewModel(rig.Context);
+        try
+        {
+            Assert.Equal("Choose cameras", vm.DeviceChoice.ButtonText);
+            vm.Activate();
+            await Task.Delay(100);
+            Assert.Empty(vm.Rows);
+            Assert.Equal(0, rig.Cameras.Created);
+            Assert.Equal("Choose cameras to read their SD cards.", vm.EmptyText);
+            Assert.False(vm.RefreshCommand.CanExecute(null));
+
+            vm.PickDevices = () =>
+            {
+                vm.DeviceChoice.Set(Oadm.Sdk.Client.Controls.DeviceChoice.Devices([], ["Building A"]));
+                return Task.FromResult(true);
+            };
+            await vm.ChooseDevicesCommand.ExecuteAsync(null);
+            await UntilAsync(() => vm.Rows.Count == 2 && !vm.IsReading);
+            Assert.Equal("Selected cameras: Tag Building A", vm.DeviceChoice.ButtonText);
+            Assert.DoesNotContain(vm.Rows, r => r.DeviceId == c.Id);
+            Assert.False(rig.Cameras.Cameras.ContainsKey(c.Id)); // the other camera was not asked
+        }
+        finally
+        {
+            vm.Dispose();
+        }
+
+        // The next page on this computer starts with the last choice.
+        var again = new EdgeStorageViewModel(rig.Context);
+        Assert.Equal("Selected cameras: Tag Building A", again.DeviceChoice.ButtonText);
+        again.Dispose();
     }
 
     [Fact]

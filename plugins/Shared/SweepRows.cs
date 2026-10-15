@@ -17,6 +17,29 @@ internal sealed class SweepRows<TRow, TVm>(
 {
     private readonly Dictionary<Guid, TVm> _byId = [];
     private string _search = string.Empty;
+    private IReadOnlySet<Guid>? _scope;
+
+    /// <summary>
+    /// The devices of the page's choice (null = every row the server sends): the sweep is shared by every page, so a page
+    /// keeps only the rows of its own devices. Setting it drops the other rows and rebuilds once.
+    /// </summary>
+    public IReadOnlySet<Guid>? Scope
+    {
+        get => _scope;
+        set
+        {
+            _scope = value;
+            if (value is not null)
+            {
+                foreach (var key in _byId.Keys.Where(k => !value.Contains(k)).ToList())
+                {
+                    _byId.Remove(key);
+                }
+            }
+
+            Rebuild();
+        }
+    }
 
     /// <summary>The rows the search shows, sorted; bound to the grid.</summary>
     public RangeObservableCollection<TVm> Shown { get; } = [];
@@ -36,6 +59,11 @@ internal sealed class SweepRows<TRow, TVm>(
         foreach (var row in rows)
         {
             var key = id(row);
+            if (_scope is not null && !_scope.Contains(key))
+            {
+                continue;
+            }
+
             if (keep.TryGetValue(key, out var existing))
             {
                 apply(existing, row);
@@ -62,6 +90,11 @@ internal sealed class SweepRows<TRow, TVm>(
         foreach (var row in rows)
         {
             var key = id(row);
+            if (_scope is not null && !_scope.Contains(key))
+            {
+                continue;
+            }
+
             if (_byId.TryGetValue(key, out var existing))
             {
                 apply(existing, row);

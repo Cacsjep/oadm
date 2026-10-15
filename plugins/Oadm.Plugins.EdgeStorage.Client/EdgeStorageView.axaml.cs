@@ -18,6 +18,8 @@ public partial class EdgeStorageView : UserControl, IStorageDialogs
         if (DataContext is EdgeStorageViewModel vm)
         {
             vm.Dialogs = this;
+            vm.PickDevices = async () => TopLevel.GetTopLevel(this) is Window owner
+                && await vm.DeviceChoice.PickAsync(owner, "Choose cameras").ConfigureAwait(true);
         }
     }
 
