@@ -4,6 +4,7 @@ using Oadm.Client.Api;
 using Oadm.Client.Devices;
 using Oadm.Plugins.HardeningScan.Client;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 
@@ -42,13 +43,14 @@ public sealed class FakeModeTests : IDisposable
         var devices = (await _api.ListDevicesAsync(CancellationToken.None)).Select(d => (IDeviceInfo)new DeviceRowViewModel(d)).ToList();
         var ctx = new FakeContext(_api, devices);
         using var vm = new HardeningScanViewModel(ctx, new HardeningClientSettingsStore(Path.Combine(Path.GetTempPath(), "oadm-hardening-tests", Guid.NewGuid().ToString("N"), "client.json")));
+        vm.DeviceChoice.Set(DeviceChoice.AllDevices);
         vm.Activate();
         await Wait.UntilAsync(() => vm.CountOf(RowKind.NotScanned) == 0);
         Assert.True(vm.CountOf(RowKind.NotReachable) > 0);
         Assert.True(vm.CountOf(RowKind.Pass) + vm.CountOf(RowKind.Warn) + vm.CountOf(RowKind.Fail) > 0);
 
         vm.Level = ScanLevel.Extended;
-        await vm.ScanAllCommand.ExecuteAsync(null);
+        await vm.ScanCommand.ExecuteAsync(null);
         await Wait.UntilAsync(() => vm.ProgressText.StartsWith("Scan finished", StringComparison.Ordinal));
         await Task.Delay(50);
         var snmp = vm.Columns.ToList().FindIndex(c => c.Check.Id == HardeningCatalog.Snmp);

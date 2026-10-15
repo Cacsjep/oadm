@@ -3,7 +3,7 @@
 Plugin id `oadm.hardening-scan`, rail page **Hardening scan** (icon `clipboardCheck`; `shield` already draws Lucide
 shield-check for the PKI). Server part `Oadm.Plugins.HardeningScan.Server.dll`, page `Oadm.Plugins.HardeningScan.Client.dll`.
 
-Scans every managed device against the **AXIS OS Hardening Guide**
+Scans the chosen devices against the **AXIS OS Hardening Guide**
 (https://help.axis.com/en-us/axis-os-hardening-guide) in its two levels, **Basic hardening** and **Extended hardening**.
 The grid has one column per check and a pass / warn / fail icon per device. Read-only: `param.cgi action=list`, VAPIX
 `get*` / `list` methods, `config/rest` GETs and the SOAP `Get*` read. Never a write.
@@ -22,6 +22,10 @@ The grid has one column per check and a pass / warn / fail icon per device. Read
 7. **The last results are kept** per device and level on the server (plugin setting `results`) and shown with their scan
    time after a restart.
 8. **Scheduled scans later** (with the general scheduling goal); v1 scans on demand.
+9. **Device choice** (docs/30kspec.md, section 5): the page shows and scans only the devices of its choice (the shared
+   `PageDeviceChoice`: All devices, tags, chosen devices; every managed device fits). It starts with the Devices page
+   selection, else the last choice on this computer (`GetLocalSetting` / `SetLocalSetting`), else nothing. Choosing does
+   not start a scan. The server keeps the results of every scanned device; the page filters them to its choice.
 
 ## Evidence (AXIS P3265-V, AXIS OS 12.11.77, read-only)
 
@@ -132,9 +136,15 @@ of the level is Warn or Fail.
 
 - `ui:PageHeader.Subtitle` "Checks every device against the AXIS OS hardening guide. Read-only." One card.
 - Toolbar: segmented **Basic** / **Extended** (changes only the columns and the summary; each column shows its newest result,
-  so an Extended scan covers Basic), **Scan all** (primary), **Scan selected (N)** (the Devices page
-  selection), **Stop**, **Export CSV**, status filter (All devices, Failed, Warnings, Not scanned) and `ui:SearchBox`.
-  `ui:ProgressRow` while scanning ("Scanning 812 of 5,000 devices (Basic)").
+  so an Extended scan covers Basic), the purple device choice button ("Choose devices", "Selected devices: Tag Building A",
+  opens the shared device picker), **Scan** (the devices of the choice: `startScan` with their ids, or no ids for All
+  devices), **Stop**, **Export CSV**, status filter (All devices, Failed, Warnings, Not scanned) and `ui:SearchBox`.
+- Rows: one per device of the choice; a tag means its devices now (the rows follow device and tag changes). Results of
+  devices outside the choice wait in the page (the newest per level) and show as soon as the device is chosen.
+- Before a choice the table is empty with "Choose devices to scan." and Scan is disabled ("Choose devices first").
+- Loading feedback: `ui:LoadingOverlay` "Reading the scan results" over the table until the first `getState` answered;
+  `ui:ProgressRow` from the click on Scan ("Starting the scan", Scan disabled) and while scanning ("Scanning 812 of 5,000
+  devices (Basic)").
 - Summary: "5,000 devices · 4,812 scanned · 1,120 pass · 3,104 with warnings · 588 failed · 188 not reachable". Column header
   tooltip: title, section and "Pass 4,000 · Warn 700 · Fail 112".
 - Grid: virtualized DataGrid on `RangeObservableCollection`; frozen device icon (colored by the row result, tooltip = why it
@@ -167,7 +177,8 @@ with `# Error` lines and unprefixed parameters, hardened and weak variants, fail
 devices, catalog), `ParserTests`, `ScanServiceTests` (bounded parallelism, device timeout, refused statuses, stop, persistence
 across a restart, removed devices, event batches, parallelism setting, store bound; the fake camera records a violation for
 any request that is not a read), `PageViewModelTests` (5,000 devices: state, filter, search, level switch, a 1,000-row batch;
-levels merged by scan time; CSV; tooltips), `MethodRoleTests`, `FakeModeTests`, `HeadlessPageTests` (`hardening-scan-basic.png`,
+levels merged by scan time; CSV; tooltips; the device choice: nothing before a choice, a tag, the scan request, the
+remembered choice, the loading ring and the progress row from the click on), `MethodRoleTests`, `FakeModeTests`, `HeadlessPageTests` (`hardening-scan-basic.png`,
 `hardening-scan-extended.png`), and `HardeningHardwareTests` (`Category=Hardware`, one Extended scan of the development camera through the
 in-process server, read-only).
 

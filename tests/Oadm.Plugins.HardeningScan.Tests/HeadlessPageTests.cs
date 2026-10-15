@@ -40,7 +40,6 @@ public sealed class HeadlessPageTests
         await using var _ = plugin;
         var ctx = new PageContext(plugin);
         ctx.DeviceList.AddRange(devices);
-        ctx.Selection.AddRange(devices.Take(3));
         var settings = new HardeningClientSettingsStore(Path.Combine(Path.GetTempPath(), "oadm-hardening-tests", Guid.NewGuid().ToString("N"), "client.json"));
         // A detail height dragged on a tall screen must not push the result grid over the toolbar on a smaller window.
         settings.Save(new HardeningClientSettings { DetailHeight = 778 });
@@ -55,7 +54,6 @@ public sealed class HeadlessPageTests
             window.Show();
             view.DataContext = vm; // after attaching: no live watch, deterministic content
             vm.ApplyState(HardeningJson.Deserialize<HardeningState>(state));
-            vm.SelectionChanged();
             Pump();
             vm.SelectedRow = vm.Rows[1];
             Pump();
