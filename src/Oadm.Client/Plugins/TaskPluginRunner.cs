@@ -58,7 +58,10 @@ public sealed partial class TaskPluginRunner(
 
         try
         {
-            IReadOnlyList<string> taskIds = await api.RunTaskAsync(plugin.Id, devices.Select(d => d.Id).ToList(), payload, OwnerName, ct).ConfigureAwait(true);
+            var ids = devices.Select(d => d.Id).ToList();
+            IReadOnlyList<string> taskIds = Work is { } work
+                ? await work.RunAsync(StartingText(ids.Count), () => api.RunTaskAsync(plugin.Id, ids, payload, OwnerName, ct)).ConfigureAwait(true)
+                : await api.RunTaskAsync(plugin.Id, ids, payload, OwnerName, ct).ConfigureAwait(true);
             LogStarted(logger, plugin.DisplayName, devices.Count);
             return taskIds;
         }
@@ -69,6 +72,13 @@ public sealed partial class TaskPluginRunner(
             return null;
         }
     }
+
+    /// <summary>The progress row of the page that starts the tasks (the Devices page); null: none.</summary>
+    public Oadm.Client.Infrastructure.WorkIndicator? Work { get; set; }
+
+    /// <summary>"Starting tasks on 30,000 devices".</summary>
+    public static string StartingText(int devices) =>
+        devices == 1 ? "Starting the task" : string.Create(System.Globalization.CultureInfo.CurrentCulture, $"Starting tasks on {devices:N0} devices");
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Task {Name} started for {Count} device(s)")]
     private static partial void LogStarted(ILogger logger, string name, int count);

@@ -138,8 +138,18 @@ public sealed class ToolbarContext : IToolbarContext
     public Task RemoveDevicesAsync(IReadOnlyCollection<Guid> deviceIds, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(deviceIds);
-        return _api.RemoveDevicesAsync(deviceIds.Select(id => id.ToString()).ToList(), ct);
+        var ids = deviceIds.Select(id => id.ToString()).ToList();
+        return Work is { } work
+            ? work.RunAsync(RemovingText(ids.Count), () => _api.RemoveDevicesAsync(ids, ct))
+            : _api.RemoveDevicesAsync(ids, ct);
     }
+
+    /// <summary>The progress row of the Devices page; null: none.</summary>
+    public Oadm.Client.Infrastructure.WorkIndicator? Work { get; set; }
+
+    /// <summary>"Removing 30,000 devices".</summary>
+    public static string RemovingText(int devices) =>
+        devices == 1 ? "Removing the device" : string.Create(System.Globalization.CultureInfo.CurrentCulture, $"Removing {devices:N0} devices");
 
     public Task RefreshDevicesAsync(IReadOnlyCollection<Guid> deviceIds, CancellationToken ct)
     {

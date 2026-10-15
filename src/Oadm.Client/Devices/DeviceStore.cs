@@ -49,6 +49,12 @@ public sealed class DeviceStore
 
     public DeviceRowViewModel? Find(string id) => _byId.GetValueOrDefault(id);
 
+    /// <summary>True once the first device list arrived; until then the Devices page says it is loading (30,000 devices: seconds).</summary>
+    public bool IsLoaded { get; private set; }
+
+    /// <summary>Raised once when the first device list arrived.</summary>
+    public event EventHandler? Loaded;
+
     /// <summary>
     /// Reconciles with a full snapshot: updates rows in place, appends new ones, removes missing ones; one
     /// collection notification at most.
@@ -56,6 +62,22 @@ public sealed class DeviceStore
     public void Reset(IEnumerable<Device> snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        try
+        {
+            ResetCore(snapshot);
+        }
+        finally
+        {
+            if (!IsLoaded)
+            {
+                IsLoaded = true;
+                Loaded?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    private void ResetCore(IEnumerable<Device> snapshot)
+    {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var added = new List<DeviceRowViewModel>();
         foreach (Device device in snapshot)

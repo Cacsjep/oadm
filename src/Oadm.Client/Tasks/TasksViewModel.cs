@@ -198,7 +198,7 @@ public sealed partial class TasksViewModel : ObservableObject
 
         try
         {
-            await _api.DeleteAllTasksAsync(CancellationToken.None).ConfigureAwait(true);
+            await Work.RunAsync("Deleting the tasks", () => _api.DeleteAllTasksAsync(CancellationToken.None)).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -206,6 +206,9 @@ public sealed partial class TasksViewModel : ObservableObject
             await _dialogs.ShowMessageAsync("Delete all tasks", "The tasks could not be deleted: " + ex.Message).ConfigureAwait(true);
         }
     }
+
+    /// <summary>The progress row of the tasks pane (Delete all on a long history).</summary>
+    public Oadm.Client.Infrastructure.WorkIndicator Work { get; } = new();
 
     private void NotifySelectionCommands()
     {

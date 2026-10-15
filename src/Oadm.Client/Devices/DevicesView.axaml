@@ -57,7 +57,8 @@
           </StackPanel>
         </Grid>
 
-        <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding StatusLine}" Margin="2,14,0,8" />
+        <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding StatusLine}" Margin="2,14,0,8" IsVisible="{Binding !Work.IsActive}" />
+        <ui:ProgressRow Grid.Row="1" Margin="2,10,0,4" Text="{Binding Work.Text}" IsActive="{Binding Work.IsActive}" IsVisible="{Binding Work.IsActive}" />
 
         <Panel Grid.Row="2">
           <!-- ItemsSource: the device rows, or in group mode the (device x tag) rows grouped by tag (DevicesView.axaml.cs) -->
@@ -161,6 +162,7 @@
           </DataGrid>
           <!-- A grid action on many rows that takes longer than a second (select all while grouped): ring over the grid. -->
           <ui:LoadingOverlay x:Name="GridBusy" IsVisible="False" />
+          <ui:LoadingOverlay IsVisible="{Binding IsLoading}" Text="Loading devices" />
 
           <StackPanel IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
             <ui:OadmIcon Data="{StaticResource Icon.devices}" Width="32" Height="32" HorizontalAlignment="Center" />

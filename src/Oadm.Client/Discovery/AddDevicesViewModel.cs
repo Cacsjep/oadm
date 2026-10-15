@@ -258,6 +258,9 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     [NotifyCanExecuteChangedFor(nameof(AddCommand))]
     public partial bool IsBusy { get; private set; }
 
+    /// <summary>The progress row while the checked devices are added: "Adding 3,000 devices".</summary>
+    [ObservableProperty] public partial string AddingText { get; private set; } = string.Empty;
+
     [ObservableProperty] public partial string AddButtonText { get; private set; } = "Add";
 
     /// <summary>The row the user clicked; opens the matching inline editor.</summary>
@@ -621,6 +624,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         var importedTags = new List<(string DeviceId, IReadOnlyList<string> Tags)>();
         try
         {
+            AddingText = selected.Count == 1 ? "Adding the device" : string.Create(CultureInfo.CurrentCulture, $"Adding {selected.Count:N0} devices");
             IsBusy = true;
             foreach (IGrouping<string, DiscoveredRowViewModel> session in selected.GroupBy(r => r.SessionId))
             {

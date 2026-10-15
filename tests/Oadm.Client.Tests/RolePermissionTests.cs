@@ -23,11 +23,12 @@ public sealed class RolePermissionTests
     }
 
     [Fact]
-    public void A_viewer_gets_no_device_actions_and_the_menu_follows_role_changes()
+    public async Task A_viewer_gets_no_device_actions_and_the_menu_follows_role_changes()
     {
         var session = Session("devices.liveView");
         using var f = new DevicesFixture(session: session);
         f.SeedDevices(TestSupport.Device("d1", "ACCC8E000001", "10.0.0.1", "P3265-V", DeviceStatus.CredentialsRequired));
+        await f.SetPluginsAsync([]); // the role has no tasks: the list arrives empty
         f.Select("d1");
         f.Devices.RebuildContextMenu();
         Assert.Empty(f.Devices.ContextMenuEntries); // no web interface, refresh, log in, tags or remove

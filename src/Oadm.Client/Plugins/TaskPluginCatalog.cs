@@ -26,6 +26,9 @@ public sealed partial class TaskPluginCatalog(IOadmApi api, IUiDispatcher ui, IL
 
     public IReadOnlyList<TaskPluginInfo> Plugins { get; private set; } = [];
 
+    /// <summary>The first list arrived (until then the context menu says the tasks are loading: about 2 s at 30,000 devices).</summary>
+    public bool IsLoaded { get; private set; }
+
     /// <summary>Raised on the UI thread after <see cref="Plugins"/> changed.</summary>
     public event EventHandler? Changed;
 
@@ -52,6 +55,7 @@ public sealed partial class TaskPluginCatalog(IOadmApi api, IUiDispatcher ui, IL
             ui.Post(() =>
             {
                 Plugins = plugins;
+                IsLoaded = true;
                 Changed?.Invoke(this, EventArgs.Empty);
             });
         }
