@@ -35,7 +35,7 @@ public sealed class ScaleTests
     {
         var ctx = new ManyTilesContext(Count);
         var ui = new TrackingUi();
-        using var vm = new SnapshotReportViewModel(ctx, ui, new ExportSettingsStore(TempFiles.NewSettingsPath()));
+        using var vm = new SnapshotReportViewModel(ctx, ui, new ExportSettingsStore(TempFiles.NewSettingsPath())).AllCameras();
 
         var watch = Stopwatch.StartNew();
         await vm.RefreshAllAsync().WaitAsync(TimeSpan.FromSeconds(30));
@@ -113,7 +113,7 @@ public sealed class ScaleTests
     public async Task Page_with_5000_tiles_selects_and_filters_in_one_pass()
     {
         var ctx = new ManyTilesContext(Count);
-        using var vm = new SnapshotReportViewModel(ctx, new TrackingUi(), new ExportSettingsStore(TempFiles.NewSettingsPath()));
+        using var vm = new SnapshotReportViewModel(ctx, new TrackingUi(), new ExportSettingsStore(TempFiles.NewSettingsPath())).AllCameras();
         await vm.RefreshAllAsync().WaitAsync(TimeSpan.FromSeconds(30));
         var notifications = 0;
         vm.PropertyChanged += (_, e) => notifications += e.PropertyName == nameof(vm.StatusLine) ? 1 : 0;
@@ -406,7 +406,7 @@ public sealed class HeadlessScaleTests
         var (tileControls, requests, rows, columns) = await session.Dispatch(async () =>
         {
             var view = new SnapshotReportView();
-            var vm = new SnapshotReportViewModel(ctx, view, new ExportSettingsStore(TempFiles.NewSettingsPath()));
+            var vm = new SnapshotReportViewModel(ctx, view, new ExportSettingsStore(TempFiles.NewSettingsPath())).AllCameras();
             view.DataContext = vm;
             var window = new Window { Width = 1500, Height = 980, Content = new Border { Padding = new Thickness(16), Child = view } };
             window.Show();

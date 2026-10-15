@@ -39,6 +39,16 @@ public partial class SnapshotReportView : UserControl, ISnapshotReportUi
         };
     }
 
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+        if (DataContext is SnapshotReportViewModel vm)
+        {
+            vm.PickDevices = async () => TopLevel.GetTopLevel(this) is Window owner
+                && await vm.DeviceChoice.PickAsync(owner, "Choose cameras").ConfigureAwait(true);
+        }
+    }
+
     public IImage? Decode(byte[] jpeg, int decodeWidth)
     {
         ArgumentNullException.ThrowIfNull(jpeg);

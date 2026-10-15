@@ -54,7 +54,7 @@ public sealed class HeadlessPageTests
         var (tiles, errors) = await session.Dispatch(async () =>
         {
             var view = new SnapshotReportView();
-            var vm = new SnapshotReportViewModel(new FakeApiContext(api), view, settings);
+            var vm = new SnapshotReportViewModel(new FakeApiContext(api), view, settings).AllCameras();
             view.DataContext = vm;
             // Like the client shell: page title above one card that hosts the plugin view.
             var title = new TextBlock { Text = "Snapshot report", Margin = new Thickness(4, 0, 0, 16) };
