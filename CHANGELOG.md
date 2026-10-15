@@ -6,6 +6,35 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## Unreleased
 
+### Added
+
+- **Up to 30,000 devices per server.** One OADM server now manages up to 30,000 devices. An add that would go over the
+  limit is refused whole with a message, and the add page stays open.
+- **Choose the devices** on the pages that read many cameras: Action Rule Editor, Edge storage, Image Health Dashboard,
+  Hardening scan and Snapshot report. Choose all devices, tags or single devices; the page starts with the devices
+  selected on the Devices page, else with your last choice, and reads only those.
+- Metadata Monitor and I/O Monitor choose their device in the device picker with search.
+- The Devices page says **Loading devices** until the device list arrived, and the context menu says **Loading tasks**
+  until the tasks arrived. Remove, starting tasks, export, Delete all and adding many devices show a progress row.
+
+### Changed
+
+- **Device status**: a device that does not answer within 3 s is asked once more before it shows Unreachable. 200 devices
+  are checked at once, so 30,000 devices are checked every minute. If most devices stop answering (for example the
+  network of the server is down), they show Unreachable after one round, about 8 minutes for 30,000.
+- **Full refresh**: devices that do not answer are left out, a new firmware is read at once, and 64 devices are read at
+  once.
+- **Server memory**: 30,000 devices need about 300 MB instead of several GB while clients load the device list.
+- **System report**: at most 50 devices at once.
+- **Device triggers**: all triggers together watch at most 10,000 devices; devices that do not answer are not contacted
+  until they answer again.
+- **Hardening scan**: one **Scan** button scans the chosen devices (instead of Scan all and Scan selected).
+
+### Fixed
+
+- Tagging thousands of devices, sorting the device list and changing tags while it is grouped by tag no longer freeze
+  the window when many rows are selected.
+
 ## [3.1.0] - 2026-10-15
 
 ### Added

@@ -1,6 +1,6 @@
 ---
 title: Image Health Dashboard
-description: The status of AXIS Image Health Analytics on every camera, in one table.
+description: The status of AXIS Image Health Analytics on your cameras, in one table.
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components';
@@ -20,9 +20,10 @@ The dashboard is off by default. An administrator turns it on on the **Plugins**
 
 <Steps>
 
-1. Open **Image Health Dashboard** in the navigation rail.
+1. Open **Image Health Dashboard** in the navigation rail and choose the cameras with **Choose cameras**: all devices,
+   tags, or single cameras. The page starts with the devices selected on the Devices page, else with your last choice.
 
-   OADM asks every camera once. The progress row counts the cameras.
+   OADM asks the chosen cameras once. The progress row counts the cameras.
 
 2. Read the cards above the table. Each camera with the app counts in one of Good, Detected, Pending and Errors, the
    worst state wins:
@@ -35,7 +36,7 @@ The dashboard is off by default. An administrator turns it on on the **Plugins**
    - **Pending**: the app saw something and waits to confirm it.
    - **Detected**: the app confirmed it.
    - **Off**: the detection is turned off in the app.
-4. Click **Refresh** to ask every camera again, or turn on **Auto refresh** to ask every 10 seconds while the page is
+4. Click **Refresh** to ask the cameras again, or turn on **Auto refresh** to ask every 10 seconds while the page is
    open.
 
 </Steps>

@@ -1,6 +1,6 @@
 # 30,000 devices
 
-Status: draft for approval. Nothing below is implemented yet.
+Status: approved 2026-10-15 and implemented (branch `feature/30k-devices`); the results are under "Results" below.
 
 OADM supports at most **30,000 devices** per server. This spec lists what changes so that 30,000 devices work without
 lag, freezes, refused runs or running out of memory, also when none of them answers, and the numbers it is based on.
@@ -234,6 +234,46 @@ Each phase ends with the limits tests at 30,000 and its numbers in this file.
 7. **Wrap-up**: the CLAUDE.md scale rule from 5,000 to 30,000 with the existing scale tests raised, the plugin READMEs and
    user docs, the changelog, the limits tests committed.
 
+## Results
+
+What was built, and where it differs from the plan above. Measured like the numbers below (same machine).
+
+| Area | Before | After |
+|---|---|---|
+| Status poll round, 30,000 devices answering in 70 ms, 1 % dead | about 6 minutes (16 at once, 15 s) | 37 s (805 polls per second; needed 556) |
+| Every device dead (outage) | about 7.8 hours | 7.8 minutes, no second tries; back to Ok in 26 s |
+| Full refresh of 29,700 OK devices | 8 at once | 64 at once: 176 s (168 per second; needed 50 at 10 minutes) |
+| Server process, 30,000 devices, idle | 1,229 MB | 204 MB |
+| Server process after five device lists at once | 5,028 MB, out of memory with a 1 GB heap | 316 MB, five lists with a 1 GB heap |
+| Five clients load 30,000 devices | 8.1 s | 3.7 s |
+| Task menu, first call at 30,000 | 4.5 s | 1.7 s |
+| Tag every device (3 tags) | 10.8 s at 25,000 | 6.5 s at 30,000 |
+| Sort the device grid, 30,000 rows | 2.9 s frozen | 0.1 s; 3.5 s with the ring when 1,000 or more rows are selected |
+| 1,000 tag changes while grouped, every row selected | 13.9 s frozen | 1.1 s with the ring |
+
+Differences from the plan:
+
+- **Device triggers** (section 9): instead of a 3 s connect timeout, devices the status poll found not answering are not
+  contacted at all (like the refused statuses); a device connects again once a poll sees it Ok. In an outage no
+  connection is tried.
+- **Task runs** (section 7): the task engine alone stays flat per task (2.7 ms at 5,000, 2.4 ms at 30,000). On the full
+  server the full refresh queued after each finished task adds about 2 ms per task at 30,000 (4.0 ms at 5,000, 5.1 ms at
+  30,000 with it; 3.2 and 2.9 ms without). Real tasks take seconds per device, so this stays as it is. Every device
+  changing its status costs the same at 5,000 and 30,000 (about 0.5 ms each).
+- **Device grid** (section 8): sorting and regrouping are fast; only a large selection made them slow (the grid keeps its
+  selection row by row). A sort with 1,000 or more selected rows shows the ring first; rebuilt tag groups with such a
+  selection get a new view at once and the selection back with the ring; Ctrl+A while grouped shows the ring (2.1 s for
+  52,500 rows). The sort event the grid raises again for its own sort is let through (it looped before the fix).
+- **Hardening scan**: choosing devices does not start a scan by itself (a scan takes up to 2 minutes per device); one
+  **Scan** button scans the choice.
+- **Snapshot report**: with All devices the page asks the server for every camera without sending the ids.
+- **Loading feedback** (section 11): the Devices page says "Loading devices" until the first device list arrived, the
+  context menu "Loading tasks" until the task list arrived; Remove, starting tasks, Export (prepared off the UI thread)
+  and Delete all show a progress row (`WorkIndicator`) when they take longer than a quarter second; Add devices shows
+  "Adding 3,000 devices"; Set password shows a row while it reads the password rules; the plugin pages and dialogs from
+  the audit got theirs (Action Rule Editor, Hardening scan, DHCP server, VAPIX Commander, Network settings, Assign IP
+  address, Users, Upgrade firmware).
+
 ## Numbers
 
 ### Cameras
@@ -323,3 +363,7 @@ Opt-in: they run only with `OADM_LIMITS_DEVICES` set (e.g. `5000,30000`) and wri
   (`OADM_LIMITS_SERVER_HEAP` limits its heap).
 - `tests/Oadm.Client.Tests/Perf/ClientLimitsTests.cs`: the Devices page, the device selector, the device tree, the add
   page, the tasks pane.
+- `tests/Oadm.Client.Tests/Perf/GridSelectionLimitsTests.cs`: the device grid with large selections (sort, group by tag).
+- `tests/Oadm.Server.Tests/Perf/TaskRunLimitsTests.cs`: a run on every device with and without the refresh after a task
+  (`OADM_LIMITS_REFRESH=on` runs only with it).
+- `tests/Oadm.Server.Tests/Perf/StatusChangeLimitsTests.cs`: every device changing its status on the full server.
