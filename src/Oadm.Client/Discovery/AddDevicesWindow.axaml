@@ -152,6 +152,7 @@
         <TextBlock Grid.Row="4" Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding ShowEmptyText}"
                    HorizontalAlignment="Center" VerticalAlignment="Center" />
 
+        <ui:ProgressRow Grid.Row="5" Margin="0,8,0,0" Text="{Binding AddingText}" IsActive="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
         <TextBlock Grid.Row="5" Classes="error" Text="{Binding ErrorText}" TextWrapping="Wrap" Margin="0,8,0,0"
                    IsVisible="{Binding ErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 

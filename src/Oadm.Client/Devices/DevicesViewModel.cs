@@ -80,6 +80,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         _store = store;
         _catalog = catalog;
         _runner = runner;
+        _runner.Work = Work;
         _api = api;
         _dialogs = dialogs;
         _launcher = launcher;
@@ -91,6 +92,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         {
             Session = session,
         };
+        ToolbarContext.Work = Work;
         Columns = columns;
         Tasks = tasks;
         LiveView = liveView;
@@ -102,6 +104,11 @@ public sealed partial class DevicesViewModel : ObservableObject
         }
 
         store.Devices.CollectionChanged += OnDevicesChanged;
+        store.Loaded += (_, _) =>
+        {
+            OnPropertyChanged(nameof(IsLoading));
+            OnPropertyChanged(nameof(IsEmpty));
+        };
         store.Changed += (_, e) =>
         {
             catalog.RequestRefresh();
@@ -192,7 +199,17 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     public bool HasSearch => SearchText.Length > 0;
 
-    public bool IsEmpty => _store.Devices.Count == 0;
+    /// <summary>The progress row below the toolbar for actions on many devices (remove, start tasks, export).</summary>
+    public Oadm.Client.Infrastructure.WorkIndicator Work { get; } = new();
+
+    /// <summary>The context menu's entry while the task list is still on its way.</summary>
+    public const string LoadingTasksText = "Loading tasks";
+
+    /// <summary>No device yet: the empty page with Add devices (only once the first device list arrived).</summary>
+    public bool IsEmpty => _store.IsLoaded && _store.Devices.Count == 0;
+
+    /// <summary>The first device list is still on its way: the page shows the ring.</summary>
+    public bool IsLoading => !_store.IsLoaded;
 
     partial void OnSearchTextChanged(string value)
     {
@@ -411,7 +428,8 @@ public sealed partial class DevicesViewModel : ObservableObject
 
         try
         {
-            byte[] content = DeviceListCsv.ToBytes(rows);
+            // Off the UI thread with the progress row: 30,000 rows are written in a fraction of a second, but never freeze.
+            byte[] content = await Work.RunAsync("Preparing the export", () => Task.Run(() => DeviceListCsv.ToBytes(rows))).ConfigureAwait(true);
             string? saved = await _dialogs.SaveFileAsync("Export devices", DeviceListCsv.DefaultFileName(DateTime.Now), CsvFile, content).ConfigureAwait(true);
             if (saved is not null)
             {
@@ -615,7 +633,13 @@ public sealed partial class DevicesViewModel : ObservableObject
         }
 
         IReadOnlyList<TaskPluginInfo> plugins = _catalog.Plugins;
-        if (plugins.Count > 0)
+        if (!_catalog.IsLoaded)
+        {
+            // The task list follows the device list (about 2 s at 30,000 devices): say so instead of a menu without tasks.
+            ContextMenuEntries.Add(MenuEntryViewModel.Separator());
+            ContextMenuEntries.Add(new MenuEntryViewModel { Header = LoadingTasksText, IconKey = "refresh", IsEnabled = false });
+        }
+        else if (plugins.Count > 0)
         {
             List<string> ids = SelectedIds();
             ContextMenuEntries.Add(MenuEntryViewModel.Separator());

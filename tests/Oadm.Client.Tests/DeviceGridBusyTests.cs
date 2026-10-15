@@ -45,7 +45,8 @@ public sealed class DeviceGridBusyTests : IDisposable
 
             Assert.Equal(1, view.BusyRuns);
             Assert.False(view.IsGridBusy);
-            Assert.False(window.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.LoadingOverlay>().Single().IsVisible);
+            Assert.False(f.Devices.IsLoading); // the first device list arrived: no "Loading devices"
+            Assert.False(window.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.LoadingOverlay>().Single(o => o.Name == "GridBusy").IsVisible);
             Assert.Equal(f.Devices.FilteredDevices.Count, f.Devices.SelectedDevices.Count);
             Assert.Equal("Row.Model", Assert.Single(grid.CollectionView!.SortDescriptions).PropertyPath);
             window.Close();

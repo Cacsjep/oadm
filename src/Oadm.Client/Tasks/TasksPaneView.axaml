@@ -14,6 +14,7 @@
             <TextBlock Text="{Binding ActiveCountText}" />
           </Border>
         </StackPanel>
+        <ui:ProgressRow Grid.Column="1" Margin="16,0" Text="{Binding Work.Text}" IsActive="{Binding Work.IsActive}" IsVisible="{Binding Work.IsActive}" />
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2">
           <StackPanel Orientation="Horizontal" Spacing="2" IsVisible="{Binding IsExpanded}">
             <Button Classes="toolbar" Command="{Binding DetailsCommand}" ToolTip.Tip="Show the result per device">

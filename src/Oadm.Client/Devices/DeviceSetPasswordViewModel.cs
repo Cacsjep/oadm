@@ -76,6 +76,7 @@ public sealed partial class DeviceSetPasswordViewModel : ValidatingViewModel
     /// <summary>Reads the devices' passphrase policies for the hint and the checks. Never fails (the device checks anyway).</summary>
     public async Task LoadAsync(CancellationToken ct)
     {
+        IsReadingRules = true;
         try
         {
             IReadOnlyDictionary<string, string> policies = await _api.GetPassphrasePoliciesAsync(_devices.Select(d => d.Id).ToList(), ct).ConfigureAwait(true);
@@ -86,7 +87,14 @@ public sealed partial class DeviceSetPasswordViewModel : ValidatingViewModel
 #pragma warning restore CA1031
         {
         }
+        finally
+        {
+            IsReadingRules = false;
+        }
     }
+
+    /// <summary>The password rules of the devices are being read (each device is asked): a progress row below the fields.</summary>
+    [ObservableProperty] public partial bool IsReadingRules { get; private set; }
 
     /// <summary>Uses these policies for the hint and the checks (also tests).</summary>
     public void ApplyPolicies(IReadOnlyList<string?> policies)
