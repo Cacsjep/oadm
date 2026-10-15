@@ -75,9 +75,15 @@ public static class Mappers
         }
 
         proto.Tags.AddRange(device.Tags);
-        proto.Apis.AddRange(device.Apis.Select(ToProto));
+        proto.Apis.AddRange(ProtoApis.GetValue(device.Apis, apis => [.. apis.Select(ToProto)]));
         return proto;
     }
+
+    /// <summary>
+    /// The proto messages of an API list, made once per list object: devices share their lists (DeviceApiJson.DeserializeShared),
+    /// so a device list for 30,000 devices does not build 3 million messages. The messages are never changed after this.
+    /// </summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IReadOnlyList<Sdk.Vapix.DeviceApi>, Proto.DeviceApi[]> ProtoApis = new();
 
     public static Proto.DeviceApi ToProto(Sdk.Vapix.DeviceApi api)
     {

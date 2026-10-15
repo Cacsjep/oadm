@@ -206,6 +206,58 @@ public sealed class DeviceRepositoryTests : IAsyncLifetime
         Assert.Null(((IDeviceInfo)new DeviceRowStub()).CredentialUserName); // default for other implementations
     }
 
+    [Fact]
+    public async Task DevicesWithTheSameApiListShareOneReadOnlyList()
+    {
+        List<Oadm.Sdk.Vapix.DeviceApi> apis = [new("user-management", "1.2", "User Management", "official"), new("fwmgr", "1.10")];
+        var a = await _repo.AddAsync(NewDevice("ACCC8E000001", "10.0.0.1"), CancellationToken.None);
+        var b = await _repo.AddAsync(NewDevice("ACCC8E000002", "10.0.0.2"), CancellationToken.None);
+        await _repo.UpdateAsync(a.Id, d => d.Apis = apis, CancellationToken.None);
+        await _repo.UpdateAsync(b.Id, d => d.Apis = [.. apis], CancellationToken.None);
+
+        var all = await _repo.ListDevicesAsync(CancellationToken.None);
+        Assert.Same(all[0].Apis, all[1].Apis);
+        Assert.Same(all[0].Apis, all[0].Clone().Apis); // a copy shares it too: nobody changes a list in place
+        Assert.False(all[0].Apis is List<Oadm.Sdk.Vapix.DeviceApi>);
+
+        var json = Oadm.Core.Persistence.DeviceApiJson.Serialize(apis);
+        Assert.Same(Oadm.Core.Persistence.DeviceApiJson.DeserializeShared(json), Oadm.Core.Persistence.DeviceApiJson.DeserializeShared(json));
+        Assert.Equal(apis, Oadm.Core.Persistence.DeviceApiJson.DeserializeShared(json));
+        Assert.Empty(Oadm.Core.Persistence.DeviceApiJson.DeserializeShared(null));
+    }
+
+    [Fact]
+    public async Task ThePagedListReturnsEveryDeviceOnceInSerialOrderWithItsUserName()
+    {
+        for (var i = 0; i < 25; i++)
+        {
+            var device = await _repo.AddAsync(NewDevice($"ACCC8E{24 - i:X6}", $"10.0.1.{i}"), CancellationToken.None);
+            if (i % 2 == 0)
+            {
+                await _db.Get<CredentialStore>().SetAsync(device.Id, "root", "pass", CancellationToken.None);
+            }
+        }
+
+        var seen = new List<Device>();
+        string? after = null;
+        while (true)
+        {
+            var page = await _repo.ListDevicesPageAsync(after, 10, CancellationToken.None);
+            seen.AddRange(page);
+            if (page.Count < 10)
+            {
+                break;
+            }
+
+            after = page[^1].Serial;
+        }
+
+        Assert.Equal(25, seen.Count);
+        Assert.Equal(seen.Select(d => d.Serial).Order(StringComparer.Ordinal), seen.Select(d => d.Serial));
+        Assert.Equal(13, seen.Count(d => d.CredentialUserName == "root"));
+        Assert.Equal((await _repo.ListDevicesAsync(CancellationToken.None)).Select(d => d.Id), seen.Select(d => d.Id));
+    }
+
     private sealed class DeviceRowStub : IDeviceInfo
     {
         public Guid Id => Guid.Empty;

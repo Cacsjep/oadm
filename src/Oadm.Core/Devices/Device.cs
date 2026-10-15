@@ -103,7 +103,7 @@ public sealed class Device : IDeviceInfo
     {
         var copy = (Device)MemberwiseClone();
         copy.Tags = [.. Tags];
-        copy.Apis = [.. Apis];
+        copy.Apis = Apis; // read-only and shared between devices with the same list
         return copy;
     }
 

@@ -73,13 +73,11 @@ internal sealed partial class DeviceConnection : IAsyncDisposable
     }
 
     /// <summary>The refusal text for a device status, or null when OADM may connect.</summary>
-    internal static string? RefusalFor(DeviceStatus status) => status switch
-    {
-        DeviceStatus.CertificateChanged => DeviceMessages.CertificateChanged,
-        DeviceStatus.CredentialsRequired => DeviceMessages.CredentialsRequired,
-        DeviceStatus.PasswordNotSet => DeviceMessages.PasswordNotSet,
-        _ => null,
-    };
+    /// <summary>
+    /// Devices not contacted: the refused statuses, and devices the status poll found not answering (in an outage no
+    /// connection attempts; the device connects again once a poll sees it Ok).
+    /// </summary>
+    internal static string? RefusalFor(DeviceStatus status) => DeviceMessages.Refusal(status, refuseUnreachable: true);
 
     /// <summary>A short user text for a failed session.</summary>
     internal static string Describe(Exception ex, TimeSpan timeout) => ex switch

@@ -1074,18 +1074,22 @@ and the saved per-client order cover other preferences):
 | Certificate | CertTrust: Trusted (plain text), Self-signed (warn chip), Untrusted / Expired (error chip). Empty when HTTPS is off or unreadable. Both certificate cells have a tooltip with subject, issuer and valid-until date |
 | IEEE 802.1X | dot1x.Enabled -> Enabled/Disabled |
 
-Polling: server refreshes status (basicdeviceinfo) for every device every **60 s** by
+Polling: server refreshes status (basicdeviceinfo, **3 s** timeout: `StatusPollTimeout`) for every device every **60 s** by
 default (`Polling.IntervalSeconds`). Full refresh (basicdeviceinfo + network parameters +
 certificate info + server name) on add, after a task finishes on that device,
-every **10 minutes** per device (`Polling.FullRefreshMinutes`, checked every 30 s),
-and immediately when a status poll sees a device go from any non-Ok status back to Ok. All
-full refreshes go through one deduplicating queue with bounded parallelism. Scale: a poll round starts
-every interval and spreads its device starts evenly over 90 % of it (`PollRoundAsync`, at most
-`MaxParallelism` = 16 at once; 5,000 devices at 60 s = about 90 polls per second, not a burst); each
-device row is read right before its poll. After a server start the first scheduled full refresh is
-staggered: the n-th of N devices is due n/N of an interval later. A poll that changes nothing but
-LastSeenUtc is written but not published to watchers (no 5,000 identical updates per minute to every
-client).
+every **10 minutes** per device that is Ok (`Polling.FullRefreshMinutes`, checked every 30 s; devices that are not Ok
+are left to the status poll), immediately when a status poll sees a device go from any non-Ok status back to Ok, and
+immediately when it sees a new firmware version or model (a new API list). All full refreshes go through one deduplicating
+queue, at most `RefreshParallelism` = 64 at once. Scale (docs/30kspec.md): a poll round starts every interval and spreads
+its device starts evenly over 90 % of it (`PollRoundAsync`, at most `MaxParallelism` = 200 at once, no setting: the
+spread keeps about 40 busy for 30,000 devices answering in 70 ms, the cap only matters while devices are slow or dead);
+each device row is read right before its poll. A device that stops answering (timeout, refused connection) is asked once
+more at the end of the round before it turns Unreachable; in an outage (more than `OutageShare` = 10 % of the round
+failed) there is no second try (30,000 dead devices: one round of 7.6 minutes). More than half of a round failing logs one
+warning "Most devices do not answer. Check the server's network.", and one information when they answer again; single
+failed polls are Debug only. After a server start the first scheduled full refresh is staggered: the n-th of N devices
+is due n/N of an interval later. A poll that changes nothing but LastSeenUtc is written but not published to watchers (no
+30,000 identical updates per minute to every client). Tests `DevicePollingRoundTests`, `DevicePollingScheduleTests`.
 
 # Device tags
 
@@ -1697,7 +1701,8 @@ event of the event rules, plus "<Trigger>: connection lost". Decisions, device r
   turned-on triggers together watch at most 10,000 devices (`MaxWatchedDevices`; one permanent connection each, Windows
   has 16,384 outgoing ports by default): a save or turn-on over it is refused ("Device triggers watch at most 10,000
   devices. Choose tags or fewer devices."), a tag or All devices that grows past it keeps the devices it watches and the
-  row says "More than 10,000 devices: the newest are not watched"; one
+  row says "More than 10,000 devices: the newest are not watched"; devices the status poll found not answering are not
+  contacted (no connection attempts in an outage; the device connects again once a poll sees it Ok); one
   permanent WebSocket per device (session token from `wssession.cgi`, the pinned certificate), at most 16 connecting at
   once, a new filter only where triggers changed; a refused filter is a problem of its own triggers only; turned-off and
   empty triggers report off at once (rules never wait for a report that cannot come); a problem keeps the last state and

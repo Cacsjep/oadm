@@ -237,6 +237,21 @@ public sealed class DeviceTriggersTests
     }
 
     [Fact]
+    public async Task DevicesThePollFoundNotAnsweringAreNotContactedUntilTheyAreOkAgain()
+    {
+        await using var rig = new Rig();
+        var a = rig.AddDevice("10.0.0.48", status: DeviceStatus.Unreachable);
+        await rig.StartAsync();
+        var trigger = await rig.SaveAsync(Fixture.VirtualInputTrigger("Gate open", [a.Id]));
+
+        await Wait.UntilAsync(() => rig.Plugin.Runtime!.StatesOf(trigger).Single().Problem == DeviceMessages.NotAnswering, "the status text");
+        Assert.Equal(0, rig.Cameras[a.Id].Connections);
+
+        rig.Devices.Replace(a with { Status = DeviceStatus.Ok });
+        await Wait.UntilAsync(() => rig.Cameras[a.Id].Connections > 0, "connected once the device is Ok");
+    }
+
+    [Fact]
     public async Task TurningATriggerOffTurnsEverythingOffAndCloses()
     {
         await using var rig = new Rig();
