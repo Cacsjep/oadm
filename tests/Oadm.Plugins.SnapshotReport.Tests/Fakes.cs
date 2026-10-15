@@ -23,6 +23,7 @@ internal sealed class FakeDevice : IDeviceInfo
     public DeviceCategory Category { get; init; } = DeviceCategory.Camera;
     public bool HasVideo => DeviceCategories.HasVideo(Category);
     public IReadOnlyList<DeviceApi> Apis { get; init; } = [];
+    public IReadOnlyList<string> Tags { get; init; } = [];
     public DateTime? CertNotAfterUtc { get; init; }
     public string? CertTrustName { get; init; }
 }
@@ -137,10 +138,48 @@ internal sealed class FakeApiContext(FakeOadmApi api) : ICorePluginClientContext
     }
 }
 
-/// <summary>Page backend calling the real plugin in-process.</summary>
-internal sealed class PluginContext(SnapshotReportPlugin plugin) : ICorePluginClientContext
+/// <summary>Page backend calling the real plugin in-process, with the client's devices and the settings on this computer.</summary>
+internal sealed class PluginContext(SnapshotReportPlugin plugin, params IDeviceInfo[] devices) : ICorePluginClientContext
 {
-    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => plugin.InvokeAsync(method, payloadJson, ct);
+    public List<string> Payloads { get; } = [];
+
+    public IReadOnlyList<IDeviceInfo> Devices => devices;
+
+    public Dictionary<string, string> LocalSettings { get; } = [];
+
+    public string? GetLocalSetting(string key) => LocalSettings.GetValueOrDefault(key);
+
+    public void SetLocalSetting(string key, string? value)
+    {
+        if (value is null)
+        {
+            LocalSettings.Remove(key);
+        }
+        else
+        {
+            LocalSettings[key] = value;
+        }
+    }
+
+    public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
+    {
+        lock (Payloads)
+        {
+            Payloads.Add(method + " " + payloadJson);
+        }
+
+        return plugin.InvokeAsync(method, payloadJson, ct);
+    }
+}
+
+internal static class PageChoice
+{
+    /// <summary>The page reads every camera (the pages tested here; the device choice has its own test).</summary>
+    public static SnapshotReportViewModel AllCameras(this SnapshotReportViewModel vm)
+    {
+        vm.DeviceChoice.Set(Oadm.Sdk.Client.Controls.DeviceChoice.AllDevices);
+        return vm;
+    }
 }
 
 /// <summary>UI fake: decodes nothing, records previews and exports.</summary>

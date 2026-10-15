@@ -2,7 +2,7 @@
 
 `plugins/Oadm.Plugins.SnapshotReport` (+ `.Client`), id `oadm.snapshot-report`, rail page **Snapshot
 report** (icon `snapshot`). Purpose: the yearly maintenance check. The technician sees current
-snapshots of every video source of the managed video devices, checks them fast and exports a PDF report.
+snapshots of every video source of the chosen cameras, checks them fast and exports a PDF report.
 Read-only for devices (param.cgi reads and image.cgi snapshots).
 
 - Sources: the live view discovery, exposed to plugins as `IVapixClient.GetVideoSourcesAsync()` (SDK
@@ -28,6 +28,14 @@ Read-only for devices (param.cgi reads and image.cgi snapshots).
   PDF) and returns its status; `reportStatus` ({jobId}) -> state running/done/failed, done/total,
   message, size, pages, failed; `readReport` ({jobId, offset}) -> 2 MB base64 chunks (a report is larger
   than one gRPC message); `deleteReport`. Jobs live in server memory, 30 minutes after last use.
+- Device choice (`PageDeviceChoice` of the client SDK, noun "cameras", only devices with video): the purple button
+  first in the toolbar ("Choose cameras", "Selected cameras: Tag Building A") opens the shared device picker with All
+  devices, tags and chosen cameras. The page starts with the Devices page selection, else the last choice on this
+  computer (`GetLocalSetting`), else nothing: then Create snapshots is disabled and the page says "Choose cameras, then
+  press Create snapshots.". Create snapshots, Refresh all, a device error tile's refresh and so the tiles and the PDF
+  report cover the cameras of the choice only; a tag means its cameras at the moment of the load. All devices sends
+  `listSources` with no ids (every managed video device), otherwise the ids of the chosen cameras. A new choice after the
+  first load reads at once; before it, choosing reads nothing.
 - Page: toolbar **Create snapshots** (opening the page contacts no device; the first load starts only
   with this button, the page shows "No snapshots yet" until then; disabled afterwards), Refresh all (enabled after the first load), "Select all" check box, **Export PDF** (primary); picture size slider labeled "Size"
   with its px value (200-720 px) and `ui:SearchBox` on the right; status line "14 pictures from 9 cameras · 13 selected

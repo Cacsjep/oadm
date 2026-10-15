@@ -4,13 +4,16 @@
              xmlns:vm="using:Oadm.Plugins.SnapshotReport.Client"
              x:Class="Oadm.Plugins.SnapshotReport.Client.SnapshotReportView"
              x:DataType="vm:SnapshotReportViewModel"
-             ui:PageHeader.Subtitle="Current pictures of every camera for the maintenance report.">
+             ui:PageHeader.Subtitle="Current pictures of the chosen cameras for the maintenance report.">
   <!-- Inside the host's page card: toolbar, status line, progress, tile grid. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,Auto,*">
     <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
       <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" IsVisible="{Binding MayReport}">
+        <Button Classes="primary" Command="{Binding ChooseDevicesCommand}" Margin="0,0,6,0" ToolTip.Tip="Cameras by address or tag">
+          <ui:IconLabel Icon="{StaticResource Icon.snapshot}" Text="{Binding DeviceChoice.ButtonText}" />
+        </Button>
         <ui:ToolbarButton IconKey="snapshot" Text="Create snapshots" Command="{Binding CreateSnapshotsCommand}"
-                          ToolTip.Tip="Take a picture of every camera" />
+                          ToolTip.Tip="Take a picture of the chosen cameras" />
         <ui:ToolbarButton IconKey="refresh" Text="Refresh all" Command="{Binding RefreshAllCommand}"
                           ToolTip.Tip="Read the video sources again and take new snapshots" />
         <ui:ToolbarSeparator />
@@ -104,12 +107,12 @@
       <StackPanel IsVisible="{Binding IsWaitingForCreate}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
         <ui:OadmIcon Data="{DynamicResource Icon.snapshot}" Width="32" Height="32" HorizontalAlignment="Center" />
         <TextBlock Classes="sectionTitle" Text="No snapshots yet" HorizontalAlignment="Center" />
-        <TextBlock Classes="secondary" Text="Press Create snapshots to take a picture of every camera." HorizontalAlignment="Center" />
+        <TextBlock Classes="secondary" Text="{Binding WaitingText}" HorizontalAlignment="Center" />
       </StackPanel>
       <StackPanel IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
         <ui:OadmIcon Data="{DynamicResource Icon.snapshot}" Width="32" Height="32" HorizontalAlignment="Center" />
         <TextBlock Classes="sectionTitle" Text="No video devices" HorizontalAlignment="Center" />
-        <TextBlock Classes="secondary" Text="Add cameras on the Devices page; their snapshots appear here." HorizontalAlignment="Center" />
+        <TextBlock Classes="secondary" Text="{Binding EmptyText}" HorizontalAlignment="Center" />
       </StackPanel>
     </Panel>
   </Grid>

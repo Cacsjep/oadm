@@ -7,6 +7,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Controls;
+using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.SnapshotReport.Client;
 
@@ -33,8 +35,9 @@ public sealed class SnapshotTileRow(int index, IReadOnlyList<SnapshotTileViewMod
 }
 
 /// <summary>
-/// Page "Snapshot report": a grid of current snapshots of every video source of the managed video devices,
-/// for the yearly maintenance check, and the PDF export of the selected tiles.
+/// Page "Snapshot report": a grid of current snapshots of every video source of the chosen cameras
+/// (<see cref="DeviceChoice"/>: the Devices page selection, else the last choice on this computer), for the yearly
+/// maintenance check, and the PDF export of the selected tiles. Without a choice nothing is read.
 /// Scales to thousands of tiles: the grid is virtualized by rows (<see cref="Rows"/>), snapshots load only for the
 /// rows the view shows (<see cref="SetRowRealized"/>) with at most <see cref="LoadParallelism"/> requests in flight,
 /// loads of rows scrolled away are cancelled, and at most <see cref="MaxCachedImages"/> decoded pictures of hidden
@@ -82,7 +85,25 @@ public sealed partial class SnapshotReportViewModel : ObservableObject, IDisposa
         _ui = ui;
         _settings = settings ?? new ExportSettingsStore();
         _time = time ?? TimeProvider.System;
+        DeviceChoice = new PageDeviceChoice(ctx, "cameras", d => d.HasVideo);
+        DeviceChoice.PropertyChanged += (_, _) => OnChoiceChanged();
     }
+
+    /// <summary>The cameras the page reads: "Selected cameras: Tag Building A" (the purple button).</summary>
+    public PageDeviceChoice DeviceChoice { get; }
+
+    /// <summary>Opens the device picker (set by the view); true when a choice was made.</summary>
+    public Func<Task<bool>>? PickDevices { get; set; }
+
+    /// <summary>The line of the page before Create snapshots: what to do first.</summary>
+    public string WaitingText => DeviceChoice.IsEmpty
+        ? "Choose cameras, then press Create snapshots."
+        : "Press Create snapshots to take a picture of the chosen cameras.";
+
+    /// <summary>The line of the page when the choice has no camera with video.</summary>
+    public string EmptyText => DeviceChoice.Choice.Kind == DeviceChoiceKind.All
+        ? "Add cameras on the Devices page; their snapshots appear here."
+        : "None of the chosen devices has video. Choose other cameras.";
 
     /// <summary>The role may take snapshots and create the PDF ("oadm.snapshot-report:report").</summary>
     public bool MayReport => _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(SnapshotReportPluginInfo.PluginId, "report"));
@@ -211,17 +232,48 @@ public sealed partial class SnapshotReportViewModel : ObservableObject, IDisposa
         }
     }
 
+    private bool CanCreate => !HasCreated && !DeviceChoice.IsEmpty;
+
+    private bool CanRefreshAll => HasCreated && !DeviceChoice.IsEmpty;
+
     /// <summary>The first load, started only by the user (the page itself never contacts devices).</summary>
-    [RelayCommand(CanExecute = nameof(IsWaitingForCreate))]
+    [RelayCommand(CanExecute = nameof(CanCreate))]
     private Task CreateSnapshotsAsync() => RefreshAllAsync();
 
+    /// <summary>The purple button: choose the cameras; after the first load their snapshots are read at once.</summary>
+    [RelayCommand]
+    private async Task ChooseDevicesAsync()
+    {
+        if (PickDevices is { } pick && await pick().ConfigureAwait(true) && HasCreated)
+        {
+            await RefreshAllAsync().ConfigureAwait(true);
+        }
+    }
+
+    private void OnChoiceChanged()
+    {
+        OnPropertyChanged(nameof(WaitingText));
+        OnPropertyChanged(nameof(EmptyText));
+        CreateSnapshotsCommand.NotifyCanExecuteChanged();
+        RefreshAllCommand.NotifyCanExecuteChanged();
+    }
+
     /// <summary>
-    /// Lists the sources and loads the snapshots of the shown tiles (also "Refresh all"). Completes when every shown
-    /// tile has its snapshot; the others load when they are scrolled into view.
+    /// Lists the sources of the chosen cameras and loads the snapshots of the shown tiles (also "Refresh all").
+    /// Completes when every shown tile has its snapshot; the others load when they are scrolled into view. Without a
+    /// choice nothing is read.
     /// </summary>
-    [RelayCommand(CanExecute = nameof(HasCreated))]
+    [RelayCommand(CanExecute = nameof(CanRefreshAll))]
     public async Task RefreshAllAsync()
     {
+        if (DeviceChoice.IsEmpty)
+        {
+            return;
+        }
+
+        // All devices: the server lists every managed video device; otherwise the cameras of the choice now.
+        var all = DeviceChoice.Choice.Kind == DeviceChoiceKind.All;
+        IReadOnlyList<IDeviceInfo> cameras = all ? [] : DeviceChoice.Resolve();
         HasCreated = true;
         _loadCts?.Cancel();
         _loadCts?.Dispose();
@@ -235,8 +287,10 @@ public sealed partial class SnapshotReportViewModel : ObservableObject, IDisposa
         ProgressText = "Reading video sources...";
         try
         {
-            var json = await _ctx.InvokeAsync(SnapshotReportMethods.ListSources, SnapshotReportJson.Serialize(new ListSourcesRequest()), cts.Token).ConfigureAwait(true);
-            var result = SnapshotReportJson.Deserialize<ListSourcesResult>(json);
+            var result = !all && cameras.Count == 0
+                ? new ListSourcesResult()
+                : SnapshotReportJson.Deserialize<ListSourcesResult>(await _ctx.InvokeAsync(SnapshotReportMethods.ListSources,
+                    SnapshotReportJson.Serialize(new ListSourcesRequest { DeviceIds = [.. cameras.Select(d => d.Id)] }), cts.Token).ConfigureAwait(true));
             var selection = new Dictionary<(Guid, int), bool>(Tiles.Count);
             foreach (var old in Tiles)
             {

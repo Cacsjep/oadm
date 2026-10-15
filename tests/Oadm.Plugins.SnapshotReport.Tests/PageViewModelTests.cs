@@ -32,7 +32,7 @@ public sealed class PageViewModelTests
     public async Task Nothing_is_read_until_Create_snapshots_is_pressed()
     {
         using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5)) { SnapshotDelay = TimeSpan.Zero };
-        using var vm = new SnapshotReportViewModel(new FakeApiContext(api), new FakeUi(), new ExportSettingsStore(TempFiles.NewSettingsPath()));
+        using var vm = new SnapshotReportViewModel(new FakeApiContext(api), new FakeUi(), new ExportSettingsStore(TempFiles.NewSettingsPath())).AllCameras();
 
         Assert.True(vm.IsWaitingForCreate);
         Assert.Empty(vm.Tiles);
@@ -54,7 +54,7 @@ public sealed class PageViewModelTests
     {
         using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5)) { SnapshotDelay = TimeSpan.Zero };
         var ui = new FakeUi();
-        using var vm = new SnapshotReportViewModel(new FakeApiContext(api), ui, new ExportSettingsStore(TempFiles.NewSettingsPath()));
+        using var vm = new SnapshotReportViewModel(new FakeApiContext(api), ui, new ExportSettingsStore(TempFiles.NewSettingsPath())).AllCameras();
 
         await vm.RefreshAllAsync();
 
@@ -76,7 +76,7 @@ public sealed class PageViewModelTests
     public async Task Search_select_all_and_tile_selection_drive_the_export_command()
     {
         using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5)) { SnapshotDelay = TimeSpan.Zero };
-        using var vm = new SnapshotReportViewModel(new FakeApiContext(api), new FakeUi(), new ExportSettingsStore(TempFiles.NewSettingsPath()));
+        using var vm = new SnapshotReportViewModel(new FakeApiContext(api), new FakeUi(), new ExportSettingsStore(TempFiles.NewSettingsPath())).AllCameras();
         await vm.RefreshAllAsync();
 
         vm.SearchText = "P3727";
@@ -105,6 +105,63 @@ public sealed class PageViewModelTests
     }
 
     [Fact]
+    public async Task The_page_reads_only_the_chosen_cameras_and_nothing_before_a_choice()
+    {
+        var a = new FakeDevice { Address = "10.0.0.48", Serial = "B8A44F000001", Tags = ["Building A"] };
+        var b = new FakeDevice { Address = "10.0.0.49", Serial = "B8A44F000002", Tags = ["Building A"] };
+        var c = new FakeDevice { Address = "10.0.0.50", Serial = "B8A44F000003" };
+        var factory = new FakeVapixFactory();
+        factory.Add(a.Id);
+        factory.Add(b.Id);
+        var other = factory.Add(c.Id);
+        using var plugin = await StartPluginAsync(new FakeRepository(a, b, c), factory);
+        var ctx = new PluginContext(plugin, a, b, c); // a new computer: no choice yet, nothing selected on the Devices page
+        var vm = new SnapshotReportViewModel(ctx, new FakeUi(), new ExportSettingsStore(TempFiles.NewSettingsPath()));
+        try
+        {
+            Assert.Equal("Choose cameras", vm.DeviceChoice.ButtonText);
+            Assert.Equal("Choose cameras, then press Create snapshots.", vm.WaitingText);
+            Assert.False(vm.CreateSnapshotsCommand.CanExecute(null));
+            await vm.RefreshAllAsync();
+            Assert.Empty(vm.Tiles);
+            Assert.Empty(ctx.Payloads);
+
+            vm.PickDevices = () =>
+            {
+                vm.DeviceChoice.Set(Oadm.Sdk.Client.Controls.DeviceChoice.Devices([], ["Building A"]));
+                return Task.FromResult(true);
+            };
+            await vm.ChooseDevicesCommand.ExecuteAsync(null);
+            Assert.Empty(ctx.Payloads); // choosing reads nothing before Create snapshots
+            Assert.Equal("Selected cameras: Tag Building A", vm.DeviceChoice.ButtonText);
+            Assert.True(vm.CreateSnapshotsCommand.CanExecute(null));
+
+            await vm.CreateSnapshotsCommand.ExecuteAsync(null);
+            Assert.Equal([a.Id, b.Id], vm.Tiles.Select(t => t.DeviceId).ToArray());
+            Assert.Empty(other.Requests); // the other camera was not asked
+            Assert.Contains("2 pictures from 2 cameras", vm.StatusLine, StringComparison.Ordinal);
+
+            // A new choice after the first load reads at once.
+            vm.PickDevices = () =>
+            {
+                vm.DeviceChoice.Set(Oadm.Sdk.Client.Controls.DeviceChoice.Devices([c.Id]));
+                return Task.FromResult(true);
+            };
+            await vm.ChooseDevicesCommand.ExecuteAsync(null);
+            Assert.Equal(c.Id, Assert.Single(vm.Tiles).DeviceId);
+            Assert.Equal("Selected cameras: 10.0.0.50", vm.DeviceChoice.ButtonText);
+        }
+        finally
+        {
+            vm.Dispose();
+        }
+
+        // The next page on this computer starts with the last choice.
+        using var again = new SnapshotReportViewModel(ctx, new FakeUi(), new ExportSettingsStore(TempFiles.NewSettingsPath()));
+        Assert.Equal("Selected cameras: 10.0.0.50", again.DeviceChoice.ButtonText);
+    }
+
+    [Fact]
     public async Task Tile_refresh_and_preview()
     {
         var device = new FakeDevice();
@@ -112,7 +169,7 @@ public sealed class PageViewModelTests
         var camera = factory.Add(device.Id);
         using var plugin = await StartPluginAsync(new FakeRepository(device), factory);
         var ui = new FakeUi();
-        using var vm = new SnapshotReportViewModel(new PluginContext(plugin), ui, new ExportSettingsStore(TempFiles.NewSettingsPath()));
+        using var vm = new SnapshotReportViewModel(new PluginContext(plugin), ui, new ExportSettingsStore(TempFiles.NewSettingsPath())).AllCameras();
         await vm.RefreshAllAsync();
         var tile = Assert.Single(vm.Tiles);
         Assert.Equal(TileState.Ok, tile.State);
@@ -159,7 +216,7 @@ public sealed class PageViewModelTests
                 Assert.Equal("C:/reports/" + picker.Suggested, closed);
             },
         };
-        using var vm = new SnapshotReportViewModel(new PluginContext(plugin), ui, new ExportSettingsStore(settingsPath));
+        using var vm = new SnapshotReportViewModel(new PluginContext(plugin), ui, new ExportSettingsStore(settingsPath)).AllCameras();
         await vm.RefreshAllAsync();
         vm.Tiles[^1].IsSelected = false; // 2 of 3 tiles
 
@@ -189,7 +246,7 @@ public sealed class PageViewModelTests
     {
         using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5)) { SnapshotDelay = TimeSpan.Zero };
         var ctx = new FakeApiContext(api);
-        using var vm = new SnapshotReportViewModel(ctx, new FakeUi(), new ExportSettingsStore(TempFiles.NewSettingsPath()));
+        using var vm = new SnapshotReportViewModel(ctx, new FakeUi(), new ExportSettingsStore(TempFiles.NewSettingsPath())).AllCameras();
         await vm.RefreshAllAsync();
         var export = new ExportReportViewModel(ctx, [.. vm.Tiles.Take(3)], new ExportSettingsStore(TempFiles.NewSettingsPath())) { SavePicker = new MemorySavePicker { Cancel = true } };
         export.Site = "x";
@@ -205,7 +262,7 @@ public sealed class PageViewModelTests
     {
         using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5)) { SnapshotDelay = TimeSpan.Zero };
         var ctx = new FakeApiContext(api);
-        using var vm = new SnapshotReportViewModel(ctx, new FakeUi(), new ExportSettingsStore(TempFiles.NewSettingsPath()));
+        using var vm = new SnapshotReportViewModel(ctx, new FakeUi(), new ExportSettingsStore(TempFiles.NewSettingsPath())).AllCameras();
         await vm.RefreshAllAsync();
         var picker = new MemorySavePicker();
         var export = new ExportReportViewModel(ctx, [.. vm.Tiles.Take(2)], new ExportSettingsStore(TempFiles.NewSettingsPath())) { SavePicker = picker, Site = "Fake" };
