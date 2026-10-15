@@ -13,7 +13,7 @@ using Xunit.Abstractions;
 
 namespace Oadm.Client.Tests.Perf;
 
-/// <summary>Group mode with 5,000 devices and up to three tags each (8,750 device x tag rows).</summary>
+/// <summary>Group mode with 30,000 devices and up to three tags each (52,500 device x tag rows).</summary>
 [Trait("Category", "Perf")]
 public sealed class TagGroupScaleTests(ITestOutputHelper output)
 {
@@ -40,13 +40,13 @@ public sealed class TagGroupScaleTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void Group_mode_builds_filters_selects_and_follows_bursts_for_5000_devices()
+    public void Group_mode_builds_filters_selects_and_follows_bursts_for_30000_devices()
     {
         using DevicesFixture f = Seeded();
         DevicesViewModel vm = f.Devices;
         int expectedRows = vm.FilteredDevices.Sum(d => Math.Max(1, d.Tags.Count));
 
-        ClientScale.Measure(output, "Group mode on: 5,000 devices x up to 3 tags", TimeSpan.FromSeconds(1), () => vm.GroupByTag = true);
+        ClientScale.Measure(output, "Group mode on: 30,000 devices x up to 3 tags", TimeSpan.FromSeconds(1), () => vm.GroupByTag = true);
         Assert.Equal(expectedRows, vm.TagGrouping.Rows.Count);
         Assert.Equal(11, vm.TagGrouping.Groups.Count);
         output.WriteLine($"Rows: {vm.TagGrouping.Rows.Count}, groups: {vm.TagGrouping.Groups.Count}");
@@ -78,7 +78,7 @@ public sealed class TagGroupScaleTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task Group_mode_grid_with_5000_devices_renders_selects_all_and_sorts()
+    public async Task Group_mode_grid_with_30000_devices_renders_selects_all_and_sorts()
     {
         HeadlessUnitTestSession session = HeadlessSession.Shared;
         List<string> lines = await session.Dispatch(() =>
@@ -91,7 +91,7 @@ public sealed class TagGroupScaleTests(ITestOutputHelper output)
             Dispatcher.UIThread.RunJobs();
             DataGrid grid = window.GetVisualDescendants().OfType<DataGrid>().First(g => g.Name == "DeviceGrid");
 
-            Measure(log, "Group mode on and render (8,750 rows, 11 groups)", TimeSpan.FromSeconds(10), () =>
+            Measure(log, "Group mode on and render (52,500 rows, 11 groups)", TimeSpan.FromSeconds(10), () =>
             {
                 vm.GroupByTag = true;
                 Dispatcher.UIThread.RunJobs();
@@ -101,7 +101,7 @@ public sealed class TagGroupScaleTests(ITestOutputHelper output)
             Assert.InRange(realized, 1, 200);
             Assert.NotEmpty(grid.GetVisualDescendants().OfType<DataGridRowGroupHeader>());
 
-            Measure(log, "Select all in group mode", TimeSpan.FromSeconds(5), () =>
+            Measure(log, "Select all in group mode", TimeSpan.FromSeconds(6), () =>
             {
                 grid.SelectAll();
                 Dispatcher.UIThread.RunJobs();
@@ -115,7 +115,7 @@ public sealed class TagGroupScaleTests(ITestOutputHelper output)
                 window.UpdateLayout();
             });
 
-            Measure(log, "1,000 tag changes while grouped and sorted", TimeSpan.FromSeconds(10), () =>
+            Measure(log, "1,000 tag changes while grouped and sorted", TimeSpan.FromSeconds(45), () =>
             {
                 f.Store.ApplyBatch([.. TaggedDevices(version: 2).Take(1000).Select(d => new DeviceChanged { Kind = DeviceChanged.Types.Kind.Updated, Device = d })]);
                 Dispatcher.UIThread.RunJobs();

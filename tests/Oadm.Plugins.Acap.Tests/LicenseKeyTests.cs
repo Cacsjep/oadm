@@ -4,8 +4,11 @@ using System.Text;
 using System.Text.Json;
 
 using Oadm.Plugins.Acap.Client;
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Tests.Shared;
+
+using Xunit.Abstractions;
 
 namespace Oadm.Plugins.Acap.Tests;
 
@@ -14,7 +17,13 @@ public sealed class LicenseKeyTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "oadm-acap-keys-" + Guid.NewGuid().ToString("N"));
 
-    public LicenseKeyTests() => Directory.CreateDirectory(_dir);
+    private readonly ITestOutputHelper _output;
+
+    public LicenseKeyTests(ITestOutputHelper output)
+    {
+        _output = output;
+        Directory.CreateDirectory(_dir);
+    }
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 
@@ -409,14 +418,15 @@ public sealed class LicenseKeyTests : IDisposable
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Keys_for_5000_devices_are_read_and_matched_fast()
+    public async Task Keys_for_30000_devices_are_read_and_matched_fast()
     {
-        var devices = Enumerable.Range(0, 5000).Select(i => new FakeDevice { Address = $"10.1.{i / 250}.{i % 250}", Serial = $"B8A44F{i:X6}" }).ToList();
+        var devices = Enumerable.Range(0, DeviceLimits.MaxDevices).Select(i => new FakeDevice { Address = $"10.1.{i / 250}.{i % 250}", Serial = $"B8A44F{i:X6}" }).ToList();
         var zip = Path.Combine(_dir, "keys.zip");
         using (var file = File.Create(zip))
         using (var archive = new ZipArchive(file, ZipArchiveMode.Create))
         {
-            foreach (var d in devices)
+            // One run reads at most LicenseKeySet.MaxKeys (10,000) keys: keys for the first 10,000 of 30,000 selected devices.
+            foreach (var d in devices.Take(LicenseKeySet.MaxKeys))
             {
                 Write(archive, d.Serial + ".key", Key(mac: d.Serial));
             }
@@ -433,7 +443,8 @@ public sealed class LicenseKeyTests : IDisposable
         await vm.LicenseSelectionCommand.ExecuteAsync(null);
         var elapsed = watch.Elapsed;
 
-        Assert.Equal(5000, vm.LicensedCount);
+        _output.WriteLine($"10,000 keys read and matched to 30,000 devices: {elapsed.TotalMilliseconds:F0} ms");
+        Assert.Equal(LicenseKeySet.MaxKeys, vm.LicensedCount);
         Assert.True(elapsed < TimeSpan.FromSeconds(5), $"{elapsed.TotalMilliseconds} ms");
     }
 }

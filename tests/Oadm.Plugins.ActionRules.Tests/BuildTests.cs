@@ -177,7 +177,7 @@ public sealed class BuildTests : IAsyncLifetime
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task The_events_of_5000_devices_merge_fast()
+    public async Task The_events_of_30000_devices_merge_fast()
     {
         var devices = new FakeDevices();
         var cameras = new FakeCameras();
@@ -186,7 +186,7 @@ public sealed class BuildTests : IAsyncLifetime
         try
         {
             var os = new[] { "os10", "os11", "os12" };
-            for (var i = 0; i < 5_000; i++)
+            for (var i = 0; i < Oadm.Sdk.Devices.DeviceLimits.MaxDevices; i++)
             {
                 var device = new FakeDevice { Address = $"10.1.{i / 250}.{i % 250}" };
                 devices.Items.Add(device);
@@ -200,9 +200,9 @@ public sealed class BuildTests : IAsyncLifetime
             var reply = plugin.Events(new EventsRequest([.. devices.Items.Select(d => d.Id)]));
             watch.Stop();
 
-            Assert.Equal(5_000, reply.Events.Single(e => e.Event.Topic == VirtualInputTopic).Devices);
+            Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, reply.Events.Single(e => e.Event.Topic == VirtualInputTopic).Devices);
             Assert.True(watch.ElapsedMilliseconds < 1_000, $"merge took {watch.ElapsedMilliseconds} ms");
-            Console.WriteLine($"read 5,000 devices {read.ElapsedMilliseconds} ms, merge {watch.ElapsedMilliseconds} ms, {reply.Events.Count} events");
+            Console.WriteLine($"read 30,000 devices {read.ElapsedMilliseconds} ms, merge {watch.ElapsedMilliseconds} ms, {reply.Events.Count} events");
         }
         finally
         {

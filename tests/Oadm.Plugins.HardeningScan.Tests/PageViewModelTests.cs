@@ -45,9 +45,9 @@ public sealed class PageViewModelTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Timing")]
-    public void Five_thousand_devices_filter_search_and_summarize_fast()
+    public void Thirty_thousand_devices_filter_search_and_summarize_fast()
     {
-        var devices = Devices(5_000);
+        var devices = Devices(Oadm.Sdk.Devices.DeviceLimits.MaxDevices);
         var ctx = new PageContext((_, _) => Task.FromResult<string?>(null));
         ctx.DeviceList.AddRange(devices);
         var watch = Stopwatch.StartNew();
@@ -60,22 +60,22 @@ public sealed class PageViewModelTests(ITestOutputHelper output)
         vm.ApplyState(new HardeningState { Results = results });
         var apply = watch.Elapsed;
 
-        Assert.Equal(5_000, vm.Rows.Count);
-        Assert.Equal(100, vm.CountOf(RowKind.NotReachable));
-        Assert.Equal(500, vm.CountOf(RowKind.Fail)); // every 10th (SSH on)
-        Assert.Contains("5,000 devices · 5,000 scanned", vm.SummaryText, StringComparison.Ordinal);
+        Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, vm.Rows.Count);
+        Assert.Equal(600, vm.CountOf(RowKind.NotReachable));
+        Assert.Equal(3_000, vm.CountOf(RowKind.Fail)); // every 10th (SSH on)
+        Assert.Contains("30,000 devices · 30,000 scanned", vm.SummaryText, StringComparison.Ordinal);
 
         watch.Restart();
         vm.SelectedFilter = HardeningScanViewModel.FilterFailed;
         var filter = watch.Elapsed;
-        Assert.Equal(500, vm.Rows.Count);
+        Assert.Equal(3_000, vm.Rows.Count);
         Assert.All(vm.Rows, r => Assert.Equal(RowKind.Fail, r.Kind));
 
         watch.Restart();
         vm.SelectedFilter = HardeningScanViewModel.FilterAll;
         vm.SearchText = "m3106";
         var search = watch.Elapsed;
-        Assert.Equal(2_500, vm.Rows.Count);
+        Assert.Equal(15_000, vm.Rows.Count);
 
         watch.Restart();
         vm.Level = ScanLevel.Extended;

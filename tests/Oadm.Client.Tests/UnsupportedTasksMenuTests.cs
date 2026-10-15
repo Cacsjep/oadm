@@ -174,9 +174,9 @@ public sealed class UnsupportedTasksMenuTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void Reasons_for_5000_selected_devices_and_15_plugins_stay_fast()
+    public void Reasons_for_30000_selected_devices_and_15_plugins_stay_fast()
     {
-        const int devices = 5000;
+        const int devices = Oadm.Sdk.Devices.DeviceLimits.MaxDevices;
         List<string> ids = [.. Enumerable.Range(0, devices).Select(i => $"device-{i:D5}")];
         List<TaskPluginInfo> plugins = [];
         for (int p = 0; p < 15; p++)
@@ -197,8 +197,8 @@ public sealed class UnsupportedTasksMenuTests(ITestOutputHelper output)
         var watch = Stopwatch.StartNew();
         string?[] reasons = [.. plugins.Select(p => TaskPluginCatalog.NotRunnableReason(p, ids))];
         watch.Stop();
-        output.WriteLine($"Reasons of 15 plugins for 5,000 selected devices (incl. building the sets): {watch.Elapsed.TotalMilliseconds:F1} ms");
-        Assert.All(reasons, r => Assert.Equal("Needs AXIS OS 11.11 or later: 400 of 5000 selected devices (+1 other reason)", r));
+        output.WriteLine($"Reasons of 15 plugins for 30,000 selected devices (incl. building the sets): {watch.Elapsed.TotalMilliseconds:F1} ms");
+        Assert.All(reasons, r => Assert.Equal("Needs AXIS OS 11.11 or later: 400 of 30000 selected devices (+1 other reason)", r));
 
         watch.Restart();
         reasons = [.. plugins.Select(p => TaskPluginCatalog.NotRunnableReason(p, ids))];

@@ -462,10 +462,10 @@ public sealed class PageTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void Five_thousand_devices_group_search_and_select_fast()
+    public void Thirty_thousand_devices_group_search_and_select_fast()
     {
         var rows = new List<DeviceRulesRow>();
-        for (var i = 0; i < 5_000; i++)
+        for (var i = 0; i < DeviceLimits.MaxDevices; i++)
         {
             var views = new[]
             {
@@ -480,7 +480,7 @@ public sealed class PageTests(ITestOutputHelper output)
 
         var vm = new ActionRulesViewModel(new NullContext());
         var watch = Stopwatch.StartNew();
-        vm.ApplyState(new RulesState(false, 5_000, 5_000, DateTimeOffset.UtcNow, rows), replaceRows: true);
+        vm.ApplyState(new RulesState(false, DeviceLimits.MaxDevices, DeviceLimits.MaxDevices, DateTimeOffset.UtcNow, rows), replaceRows: true);
         var build = watch.ElapsedMilliseconds;
         vm.SearchText = "night";
         vm.SearchText = string.Empty;
@@ -488,12 +488,12 @@ public sealed class PageTests(ITestOutputHelper output)
         vm.SetGroupSelection(vm.Groups);
         _ = vm.EditCommand.CanExecute(null);
         var select = watch.ElapsedMilliseconds - build - search;
-        Assert.Equal(10_000, vm.Members.Count);
-        Assert.Equal(10_000, vm.Targets.Count);
+        Assert.Equal(2 * DeviceLimits.MaxDevices, vm.Members.Count);
+        Assert.Equal(2 * DeviceLimits.MaxDevices, vm.Targets.Count);
         vm.GroupByIndex = 1;
         output.WriteLine($"build {build} ms, search {search} ms, select all {select} ms, regroup {watch.ElapsedMilliseconds - build - search - select} ms");
         Assert.Equal(2, vm.Groups.Count);
-        Assert.True(watch.ElapsedMilliseconds < 3_000);
+        Assert.True(watch.ElapsedMilliseconds < 6_000);
     }
 
     [Fact]

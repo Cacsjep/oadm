@@ -343,11 +343,11 @@ public sealed class PluginTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Five_thousand_cameras_are_read_in_one_sweep()
+    public async Task Thirty_thousand_cameras_are_read_in_one_sweep()
     {
         var (plugin, devices, cameras, _, events) = Create();
         await using var _ = plugin;
-        for (var i = 0; i < 5_000; i++)
+        for (var i = 0; i < Oadm.Sdk.Devices.DeviceLimits.MaxDevices; i++)
         {
             devices.Items.Add(new FakeDevice { Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}" });
         }
@@ -356,9 +356,9 @@ public sealed class PluginTests(ITestOutputHelper output)
         await plugin.InvokeAsync(EdgeStorageMethods.Read, null, CancellationToken.None);
         await plugin.Sweep!.Current;
         plugin.Sweep.Publish();
-        output.WriteLine($"5,000 cameras read in {watch.ElapsedMilliseconds} ms");
-        Assert.Equal(5_000, plugin.Sweep.Count(r => r.State == CardStates.Ok));
+        output.WriteLine($"30,000 cameras read in {watch.ElapsedMilliseconds} ms");
+        Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, plugin.Sweep.Count(r => r.State == CardStates.Ok));
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(30));
-        Assert.Equal(5, events.Published.Count(e => e.Topic == EdgeStorageMethods.RowsTopic)); // 1,000 rows per event
+        Assert.Equal(30, events.Published.Count(e => e.Topic == EdgeStorageMethods.RowsTopic)); // 1,000 rows per event
     }
 }

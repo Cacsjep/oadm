@@ -217,10 +217,11 @@ public sealed class RobustnessTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task ATriggerOn5000DevicesReportsOnceEveryDeviceSettled()
+    public async Task ATriggerOn10000DevicesReportsOnceEveryDeviceSettled()
     {
         await using var rig = new Rig();
-        var ids = Enumerable.Range(0, 5000).Select(_ => Guid.NewGuid()).ToList(); // not managed: each one is a problem at once
+        // All triggers together watch at most DeviceTriggersPluginInfo.MaxWatchedDevices (10,000) devices.
+        var ids = Enumerable.Range(0, DeviceTriggersPluginInfo.MaxWatchedDevices).Select(_ => Guid.NewGuid()).ToList(); // not managed: each one is a problem at once
         var runtime = new TriggerRuntime(rig.Context, Rig.FastOptions());
         var trigger = Fixture.VirtualInputTrigger("Gate open", ids);
         var watch = Stopwatch.StartNew();
@@ -228,7 +229,7 @@ public sealed class RobustnessTests(ITestOutputHelper output)
         {
             runtime.Apply([trigger]);
             await Wait.UntilAsync(() => rig.Publisher.Full.Contains($"replace {DeviceTriggersPluginInfo.TypeId(trigger.Id)} []"), "the full report", 30_000);
-            output.WriteLine($"5,000 devices settled and reported in {watch.ElapsedMilliseconds} ms");
+            output.WriteLine($"10,000 devices settled and reported in {watch.ElapsedMilliseconds} ms");
             Assert.Single(rig.Publisher.Full, l => l.StartsWith($"replace {DeviceTriggersPluginInfo.TypeId(trigger.Id)} ", StringComparison.Ordinal));
         }
         finally

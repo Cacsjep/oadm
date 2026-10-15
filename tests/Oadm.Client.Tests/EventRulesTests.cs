@@ -263,11 +263,11 @@ public sealed class EventRulesTests
     }
 
     [Fact]
-    public async Task Five_thousand_devices_are_chosen_in_the_shared_picker_fast()
+    public async Task Thirty_thousand_devices_are_chosen_in_the_shared_picker_fast()
     {
         var (api, _, _, _) = await CreateAsync();
         var store = new DeviceStore();
-        store.Reset(Enumerable.Range(0, 5_000).Select(i => new Device { Id = Guid.NewGuid().ToString(), Address = $"10.1.{i / 256}.{i % 256}", Model = "P3265-V", Serial = i.ToString("X12", System.Globalization.CultureInfo.InvariantCulture) }));
+        store.Reset(Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Select(i => new Device { Id = Guid.NewGuid().ToString(), Address = $"10.1.{i / 256}.{i % 256}", Model = "P3265-V", Serial = i.ToString("X12", System.Globalization.CultureInfo.InvariantCulture) }));
         var watch = System.Diagnostics.Stopwatch.StartNew();
         var editor = new RuleEditorViewModel(api, await api.GetEventCatalogAsync(CancellationToken.None), null, store);
         var targets = editor.RuleActions[0].Targets;

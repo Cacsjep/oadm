@@ -244,7 +244,8 @@ public sealed class ImportDialogTests(ITestOutputHelper output) : IDisposable
     [Trait("Category", "Perf")]
     public async Task Five_thousand_devices_are_matched_in_one_pass()
     {
-        var devices = Enumerable.Range(0, 5000).Select(i => (IDeviceInfo)new FakeDevice
+        // A ZIP holds at most DeviceConfigIds.MaxZipEntries (5,000) configuration files, so this stays at 5,000 devices.
+        var devices = Enumerable.Range(0, DeviceConfigIds.MaxZipEntries).Select(i => (IDeviceInfo)new FakeDevice
         {
             Address = $"10.0.{i / 256}.{i % 256}",
             Serial = $"B8A44F{i:X6}",
@@ -256,7 +257,7 @@ public sealed class ImportDialogTests(ITestOutputHelper output) : IDisposable
         await vm.LoadAsync(path);
         output.WriteLine($"5,000 files read and matched: {watch.ElapsedMilliseconds} ms");
 
-        Assert.Equal(5000, vm.TargetCount);
+        Assert.Equal(DeviceConfigIds.MaxZipEntries, vm.TargetCount);
         Assert.Equal("5,000 ready", vm.DevicesSummary);
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(60));
     }

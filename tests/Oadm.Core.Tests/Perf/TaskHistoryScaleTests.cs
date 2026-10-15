@@ -32,6 +32,7 @@ public sealed class TaskHistoryFixture : IAsyncLifetime
 
 /// <summary>Task history with 50,000 tasks: paging, active tasks, Watch snapshot, retention (EF Core over SQLite).</summary>
 [Trait(PerfScale.Category, PerfScale.Perf)]
+[Collection(PerfScale.OneAtATime)]
 public sealed class TaskHistoryScaleTests(TaskHistoryFixture fixture, ITestOutputHelper output) : IClassFixture<TaskHistoryFixture>
 {
     [Fact]
@@ -82,6 +83,7 @@ public sealed class TaskHistoryScaleTests(TaskHistoryFixture fixture, ITestOutpu
 
 /// <summary>Retention and Delete all on 50,000 tasks (own database each, they delete).</summary>
 [Trait(PerfScale.Category, PerfScale.Perf)]
+[Collection(PerfScale.OneAtATime)]
 public sealed class TaskRetentionScaleTests(ITestOutputHelper output) : IAsyncLifetime
 {
     private TestDatabase _db = null!;

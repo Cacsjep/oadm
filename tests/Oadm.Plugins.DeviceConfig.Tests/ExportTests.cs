@@ -128,9 +128,9 @@ public sealed class ExportTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Five_thousand_devices_export_into_one_zip()
+    public async Task Thirty_thousand_devices_export_into_one_zip()
     {
-        var devices = Enumerable.Range(0, 5000).Select(i => (IDeviceInfo)new FakeDevice
+        var devices = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Select(i => (IDeviceInfo)new FakeDevice
         {
             Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}",
             Serial = $"B8A44F{i:X6}",
@@ -151,13 +151,13 @@ public sealed class ExportTests(ITestOutputHelper output)
         using var file = new MemoryStream();
         var watch = Stopwatch.StartNew();
         await vm.RunAsync(new ExportTarget(() => Task.FromResult<Stream>(new KeepOpenStream(file)), "site.zip"));
-        output.WriteLine($"5,000 devices: {watch.ElapsedMilliseconds} ms, {file.Length / 1024} KB");
+        output.WriteLine($"30,000 devices: {watch.ElapsedMilliseconds} ms, {file.Length / 1024} KB");
 
-        Assert.Equal("5,000 configurations saved.", vm.ResultText);
+        Assert.Equal("30,000 configurations saved.", vm.ResultText);
         Assert.True(max <= DeviceConfigIds.ExportParallelism, $"max {max}");
         file.Position = 0;
         using var zip = new ZipArchive(file, ZipArchiveMode.Read);
-        Assert.Equal(5000, zip.Entries.Count);
+        Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, zip.Entries.Count);
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(60));
     }
 

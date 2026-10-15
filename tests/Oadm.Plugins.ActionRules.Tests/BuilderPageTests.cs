@@ -7,7 +7,7 @@ using Oadm.Plugins.ActionRules.Rules;
 namespace Oadm.Plugins.ActionRules.Tests;
 
 /// <summary>The page's New rule: the rule builder's form and what it sends.</summary>
-public sealed class BuilderPageTests
+public sealed class BuilderPageTests(Xunit.Abstractions.ITestOutputHelper output)
 {
     private const string VirtualInputTopic = "tns1:Device/tnsaxis:IO/VirtualInput";
     private const string TcpWhileActive = "com.axis.action.unlimited.notification.tcp";
@@ -154,12 +154,12 @@ public sealed class BuilderPageTests
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void The_form_for_5000_devices_opens_and_changes_fast()
+    public void The_form_for_30000_devices_opens_and_changes_fast()
     {
         var set = TemplateSet.From(
             [new ActionTemplate(TcpWhileActive, "com.axis.recipient.tcp", ["message", "period"]), new ActionTemplate("com.axis.action.fixed.erase.configuration", null, [])],
             [new RecipientTemplate("com.axis.recipient.tcp", ["host", "port", "qos"])]);
-        var devices = Enumerable.Range(0, 5_000).Select(_ => Guid.NewGuid()).ToList();
+        var devices = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Select(_ => Guid.NewGuid()).ToList();
         var sets = devices.ToDictionary(d => d, _ => set);
         var rows = devices.ToDictionary(d => d, d => new DeviceRulesRow(d, "10.0.0.1", null, null, RowStates.Ok, null, true, [], set.Id,
             new Dictionary<string, string>(), new Dictionary<string, string>(), DateTimeOffset.UtcNow)
@@ -168,7 +168,7 @@ public sealed class BuilderPageTests
             Schedules = [new ScheduleView("com.axis.schedules.office_hours", "Office Hours", "x", true, 0, "v")],
         });
         var input = new OfferedEvent(new DeviceEvent(VirtualInputTopic, "Device › Input ports › Virtual input", true, "active",
-            [new EventItem("port", "Port", [new EventValue("20", null)])], [new EventItem("active", null, [])]), 5_000);
+            [new EventItem("port", "Port", [new EventValue("20", null)])], [new EventItem("active", null, [])]), Oadm.Sdk.Devices.DeviceLimits.MaxDevices);
 
         var watch = System.Diagnostics.Stopwatch.StartNew();
         var form = new NewRuleViewModel(devices, sets, [input], rows);
@@ -178,6 +178,7 @@ public sealed class BuilderPageTests
 
         Assert.DoesNotContain(form.Actions, a => (a.Value as ActionOption)?.Token.Contains("erase", StringComparison.Ordinal) == true);
         Assert.Equal("Each device uses its own recipient of this name.", form.Recipient.Hint);
+        output.WriteLine($"New rule form for 30,000 devices: {watch.ElapsedMilliseconds} ms");
         Assert.True(watch.ElapsedMilliseconds < 2_000, $"took {watch.ElapsedMilliseconds} ms");
     }
 

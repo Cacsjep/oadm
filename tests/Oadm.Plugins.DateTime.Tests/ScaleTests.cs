@@ -6,16 +6,18 @@ using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
 
+using Xunit.Abstractions;
+
 namespace Oadm.Plugins.DateAndTime.Tests;
 
-/// <summary>HARD RULE "scale to thousands of devices": opening the dialog and CanRun with 5,000 devices.</summary>
-public sealed class ScaleTests
+/// <summary>HARD RULE "scale to thousands of devices": opening the dialog and CanRun with 30,000 devices.</summary>
+public sealed class ScaleTests(ITestOutputHelper output)
 {
-    private const int Count = 5000;
+    private const int Count = DeviceLimits.MaxDevices;
 
     [Fact]
     [Trait("Category", "Timing")] // time budget
-    public async Task Dialog_with_5000_devices_reads_only_the_first_device()
+    public async Task Dialog_with_30000_devices_reads_only_the_first_device()
     {
         var devices = Enumerable.Range(0, Count).Select(i => (IDeviceInfo)new FakeDevice(Guid.NewGuid(), $"10.0.{i / 256}.{i % 256}")).ToList();
         var ctx = new CountingContext();
@@ -27,12 +29,13 @@ public sealed class ScaleTests
 
         Assert.Equal(1, ctx.Queries);
         Assert.Equal(Count, vm.NtsDeviceCount);
+        output.WriteLine($"Open the dialog with 30,000 devices: {watch.ElapsedMilliseconds} ms");
         Assert.True(watch.ElapsedMilliseconds < 1000, $"Opening took {watch.ElapsedMilliseconds} ms");
     }
 
     [Fact]
     [Trait("Category", "Perf")] // time budget; a CI runner can take over a second
-    public void CanRun_over_5000_devices_is_cheap()
+    public void CanRun_over_30000_devices_is_cheap()
     {
         IReadOnlyList<DeviceApi> apis = [.. Enumerable.Range(0, 120).Select(i => new DeviceApi("api-" + i, "1." + i)), .. Fixture.Modern];
         var devices = Enumerable.Range(0, Count).Select(_ => new FakeDevice(Guid.NewGuid()) { Apis = apis }).ToList();
@@ -47,7 +50,8 @@ public sealed class ScaleTests
 
         watch.Stop();
         Assert.Equal(10 * Count, runnable);
-        Assert.True(watch.ElapsedMilliseconds < 1000, $"50,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
+        output.WriteLine($"300,000 CanRun calls: {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 2000, $"300,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
     }
 
     private sealed class CountingContext : ITaskDialogContext

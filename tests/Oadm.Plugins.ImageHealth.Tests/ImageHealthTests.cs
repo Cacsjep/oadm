@@ -309,12 +309,12 @@ public sealed class ViewModelTests
     }
 
     [Fact]
-    public void Five_thousand_cameras_update_search_and_summarize_fast()
+    public void Thirty_thousand_cameras_update_search_and_summarize_fast()
     {
         var vm = new ImageHealthViewModel(new PluginPageContext(new ImageHealthPlugin(), new Oadm.Core.Plugins.PluginEventHub()));
-        var rows = Enumerable.Range(0, 5_000).Select(i => Row(i, DetectionStates.Ok)).ToList();
+        var rows = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Select(i => Row(i, DetectionStates.Ok)).ToList();
         var watch = Stopwatch.StartNew();
-        vm.ApplyState(new ImageHealthState(false, 5_000, 5_000, 5_000, 0, 0, 0, null, rows), replaceRows: true);
+        vm.ApplyState(new ImageHealthState(false, 30_000, 30_000, 30_000, 0, 0, 0, null, rows), replaceRows: true);
         var load = watch.ElapsedMilliseconds;
 
         watch.Restart();
@@ -322,12 +322,12 @@ public sealed class ViewModelTests
         var update = watch.ElapsedMilliseconds;
 
         watch.Restart();
-        vm.ApplyState(new ImageHealthState(false, 5_000, 5_000, 4_999, 0, 0, 0, null, rows.Take(4_999).ToList()), replaceRows: true);
+        vm.ApplyState(new ImageHealthState(false, 30_000, 30_000, 29_999, 0, 0, 0, null, rows.Take(29_999).ToList()), replaceRows: true);
         vm.SearchText = "10.0.1.";
         var search = watch.ElapsedMilliseconds;
 
-        Assert.Equal(4_999, vm.Counts.Good); // all cameras, not the search
-        Console.WriteLine($"5,000 rows: load {load} ms, 1,000 changes + 1 removed {update} ms, check reply + search {search} ms");
+        Assert.Equal(29_999, vm.Counts.Good); // all cameras, not the search
+        Console.WriteLine($"30,000 rows: load {load} ms, 1,000 changes + 1 removed {update} ms, check reply + search {search} ms");
         Assert.Equal(256, vm.Rows.Count); // 10.0.1.0 .. 10.0.1.255
         Assert.True(load + update + search < 2_000);
     }

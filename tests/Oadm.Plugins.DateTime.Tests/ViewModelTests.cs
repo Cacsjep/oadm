@@ -278,9 +278,9 @@ public sealed class ViewModelTests
 
     [Fact]
     [Trait("Category", "Timing")] // time budget
-    public void Five_thousand_devices_are_summarized_in_one_pass()
+    public void Thirty_thousand_devices_are_summarized_in_one_pass()
     {
-        var devices = Enumerable.Range(0, 5000)
+        var devices = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices)
             .Select(i => (IDeviceInfo)new FakeDevice(Guid.NewGuid(), $"10.{i / 62500}.{i / 250 % 250}.{i % 250 + 1}")
             {
                 Apis = (i % 10) switch { 0 => Fixture.LegacyOnly, 1 => Fixture.NoNts, _ => Fixture.Modern },
@@ -296,16 +296,16 @@ public sealed class ViewModelTests
 
         watch.Stop();
         Assert.True(watch.ElapsedMilliseconds < 1000, $"took {watch.ElapsedMilliseconds} ms");
-        Assert.Equal(4000, vm.NtsDeviceCount);
-        Assert.Equal(500, vm.NoTimeApiCount);
-        Assert.Equal(500, vm.SingleNtpServerCount);
-        Assert.Equal("Set date and time for 5,000 devices", vm.Title);
-        Assert.Contains("500 of the selected devices have no Time API", vm.ModeNote, StringComparison.Ordinal);
+        Assert.Equal(24_000, vm.NtsDeviceCount);
+        Assert.Equal(3_000, vm.NoTimeApiCount);
+        Assert.Equal(3_000, vm.SingleNtpServerCount);
+        Assert.Equal("Set date and time for 30,000 devices", vm.Title);
+        Assert.Contains("3,000 of the selected devices have no Time API", vm.ModeNote, StringComparison.Ordinal);
         vm.IsNtp = true;
-        Assert.StartsWith("500 of the selected devices take only one NTP server", vm.NtpNote, StringComparison.Ordinal);
+        Assert.StartsWith("3,000 of the selected devices take only one NTP server", vm.NtpNote, StringComparison.Ordinal);
         Assert.False(vm.HasNtsHint);
         vm.UseNts = true;
         Assert.True(vm.HasNtsHint);
-        Assert.Equal("NTS works on 4,000 of 5,000 devices; the others are not changed.", vm.NtsHint);
+        Assert.Equal("NTS works on 24,000 of 30,000 devices; the others are not changed.", vm.NtsHint);
     }
 }

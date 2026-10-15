@@ -15,7 +15,7 @@ using Xunit.Abstractions;
 namespace Oadm.Client.Tests.Perf;
 
 /// <summary>
-/// The real Devices page (DataGrid, GridSelection, context menu, toolbar) rendered headless with 5,000
+/// The real Devices page (DataGrid, GridSelection, context menu, toolbar) rendered headless with 30,000
 /// devices: first render, select all, sort, search and a burst of updates while sorted. Set
 /// OADM_SCREENSHOT_DIR for a PNG.
 /// </summary>
@@ -23,7 +23,7 @@ namespace Oadm.Client.Tests.Perf;
 public sealed class DeviceGridScaleTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task Devices_grid_with_5000_devices_renders_selects_all_sorts_and_filters()
+    public async Task Devices_grid_with_30000_devices_renders_selects_all_sorts_and_filters()
     {
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         HeadlessUnitTestSession session = HeadlessSession.Shared;
@@ -37,7 +37,7 @@ public sealed class DeviceGridScaleTests(ITestOutputHelper output)
             DevicesViewModel vm = fixture.Devices;
 
             var window = new Window { Width = 1440, Height = 900, Content = new DevicesView { DataContext = vm } };
-            Measure(log, "First render of the grid with 5,000 rows", TimeSpan.FromSeconds(10), () =>
+            Measure(log, "First render of the grid with 30,000 rows", TimeSpan.FromSeconds(10), () =>
             {
                 window.Show();
                 Dispatcher.UIThread.RunJobs();
@@ -55,13 +55,13 @@ public sealed class DeviceGridScaleTests(ITestOutputHelper output)
             Assert.Equal(ClientScale.Devices, vm.SelectedDevices.Count);
 
             DataGridColumn modelColumn = grid.Columns.First(c => c.Header as string == "Model");
-            Measure(log, "Sort 5,000 rows by Model", TimeSpan.FromSeconds(5), () =>
+            Measure(log, "Sort 30,000 rows by Model", TimeSpan.FromSeconds(5), () =>
             {
                 modelColumn.Sort(ListSortDirection.Descending);
                 Dispatcher.UIThread.RunJobs();
             });
 
-            Measure(log, "1,000 device updates while sorted", TimeSpan.FromSeconds(5), () =>
+            Measure(log, "1,000 device updates while sorted", TimeSpan.FromSeconds(12), () =>
             {
                 List<Device> newer = ClientScale.MakeDevices(version: 2);
                 fixture.Store.ApplyBatch([.. newer.Take(1000).Select(d => new DeviceChanged { Kind = DeviceChanged.Types.Kind.Updated, Device = d })]);
@@ -81,7 +81,7 @@ public sealed class DeviceGridScaleTests(ITestOutputHelper output)
             {
                 WriteableBitmap? frame = window.CaptureRenderedFrame();
                 Directory.CreateDirectory(outDir);
-                frame?.Save(Path.Combine(outDir, "devices-5000-headless.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+                frame?.Save(Path.Combine(outDir, "devices-30000-headless.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
             }
 
             window.Close();
