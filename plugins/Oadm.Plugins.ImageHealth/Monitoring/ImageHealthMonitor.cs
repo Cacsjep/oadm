@@ -25,7 +25,7 @@ public sealed class ImageHealthOptions
 
 /// <summary>
 /// The status of AXIS Image Health Analytics on every camera, read only on request (no
-/// background polling, no open connection). <see cref="StartCheck"/> asks every video device once for the app status
+/// background polling, no open connection). <see cref="StartCheck"/> asks the page's video devices once for the app status
 /// (<see cref="ImageHealthPluginInfo.StatusPath"/>, <see cref="ImageHealthOptions.CheckParallelism"/> at a time, stored
 /// credentials): the page calls it when it opens, on Refresh and, with Auto refresh on, every 10 s. Rows are updated in
 /// place between checks, so a detection change is seen and timed. Read-only for devices: one GET per camera and check.
@@ -37,6 +37,7 @@ public sealed partial class ImageHealthMonitor : IAsyncDisposable
     private readonly ImageHealthOptions _options;
     private readonly DeviceSweep<ImageHealthRow> _sweep;
     private int _withoutApp;
+    private IReadOnlySet<Guid>? _scope;
 
     public ImageHealthMonitor(ICorePluginContext ctx, ImageHealthOptions options)
     {
@@ -61,10 +62,18 @@ public sealed partial class ImageHealthMonitor : IAsyncDisposable
     /// <summary>The running check (tests wait for it).</summary>
     public Task CurrentCheck => _sweep.Current;
 
-    /// <summary>Starts a check unless one runs; returns the state at once (rows and progress follow as events).</summary>
-    public ImageHealthState StartCheck()
+    /// <summary>
+    /// Starts a check of <paramref name="only"/> (null = every video device) unless one runs; returns the state at once
+    /// (rows and progress follow as events).
+    /// </summary>
+    public ImageHealthState StartCheck(IReadOnlySet<Guid>? only = null)
     {
-        _sweep.Start();
+        if (!_sweep.IsRunning)
+        {
+            Volatile.Write(ref _scope, only);
+        }
+
+        _sweep.Start(only);
         return Snapshot(withRows: true);
     }
 
@@ -76,8 +85,11 @@ public sealed partial class ImageHealthMonitor : IAsyncDisposable
         var now = _sweep.Snapshot();
         if (!now.Running)
         {
-            // The video devices of the last check that are not in the table answered "not installed".
-            Volatile.Write(ref _withoutApp, Math.Max(0, now.Total - now.Rows.Count));
+            // The video devices of the last check that are not in the table answered "not installed"; rows of cameras
+            // another page checked do not count.
+            var scope = Volatile.Read(ref _scope);
+            var rows = scope is null ? now.Rows.Count : now.Rows.Count(r => scope.Contains(r.DeviceId));
+            Volatile.Write(ref _withoutApp, Math.Max(0, now.Total - rows));
         }
 
         int Count(string app) => now.Rows.Count(r => r.App == app);

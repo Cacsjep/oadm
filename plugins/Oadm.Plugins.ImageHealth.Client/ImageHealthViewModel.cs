@@ -6,13 +6,16 @@ using CommunityToolkit.Mvvm.Input;
 using Oadm.Plugins.Shared;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Collections;
+using Oadm.Sdk.Client.Controls;
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.ImageHealth.Client;
 
 /// <summary>
-/// Page "Image Health Dashboard". <see cref="Activate"/> when the page is shown watches the pushed rows and starts one
-/// check (the server asks every video device once); Refresh checks again; <see cref="AutoRefresh"/> (off by default)
+/// Page "Image Health Dashboard". The cameras come from the page's device choice (<see cref="DeviceChoice"/>: the Devices
+/// page selection, else the last choice on this computer). <see cref="Activate"/> when the page is shown watches the pushed
+/// rows and starts one check (the server asks the chosen cameras once); Refresh checks again; <see cref="AutoRefresh"/> (off by default)
 /// checks every 10 s while the page is shown. <see cref="Deactivate"/> stops watching and the auto refresh: nothing is
 /// asked while the page is hidden. Rows are updated in place by device id; search, new and removed rows rebuild the
 /// shown list with one reset (O(n)).
@@ -29,7 +32,18 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
     public ImageHealthViewModel(ICorePluginClientContext ctx)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
+        DeviceChoice = new PageDeviceChoice(ctx, "cameras", HasVideo);
+        DeviceChoice.PropertyChanged += (_, _) => RefreshCommand.NotifyCanExecuteChanged();
     }
+
+    /// <summary>The cameras the page checks: "Selected cameras: Tag Building A" (the purple button).</summary>
+    public PageDeviceChoice DeviceChoice { get; }
+
+    /// <summary>Opens the device picker (set by the view); true when a choice was made.</summary>
+    public Func<Task<bool>>? PickDevices { get; set; }
+
+    /// <summary>The devices the page checks: video devices, like the server.</summary>
+    internal static bool HasVideo(IDeviceInfo device) => device.HasVideo;
 
     /// <summary>Wait before watching the events again after the stream broke.</summary>
     public static TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
@@ -113,9 +127,19 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
         _autoRefresh?.Dispose();
     }
 
-    private bool CanRefresh => !IsChecking;
+    /// <summary>The purple button: choose the cameras, then check them.</summary>
+    [RelayCommand]
+    private async Task ChooseDevicesAsync()
+    {
+        if (PickDevices is { } pick && await pick().ConfigureAwait(true))
+        {
+            await CheckAsync(_active?.Token ?? CancellationToken.None).ConfigureAwait(true);
+        }
+    }
 
-    /// <summary>Checks every camera again (new cameras, apps started or stopped, detections).</summary>
+    private bool CanRefresh => !IsChecking && !DeviceChoice.IsEmpty;
+
+    /// <summary>Checks the chosen cameras again (new cameras, apps started or stopped, detections).</summary>
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     private Task RefreshAsync() => CheckAsync(_active?.Token ?? CancellationToken.None);
 
@@ -201,9 +225,21 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
 
     private async Task CheckAsync(CancellationToken ct)
     {
+        var cameras = DeviceChoice.Resolve();
+        _rows.Scope = cameras.Select(d => d.Id).ToHashSet();
+        OnPropertyChanged(nameof(ShowEmpty));
+        if (cameras.Count == 0)
+        {
+            _state = null;
+            IsChecking = false;
+            UpdateSummary();
+            return;
+        }
+
         try
         {
-            var json = await _ctx.InvokeAsync(ImageHealthMethods.Check, null, ct).ConfigureAwait(true);
+            var request = ImageHealthJson.Serialize(new CheckRequest([.. cameras.Select(d => d.Id)]));
+            var json = await _ctx.InvokeAsync(ImageHealthMethods.Check, request, ct).ConfigureAwait(true);
             ApplyState(ImageHealthJson.Deserialize<ImageHealthState>(json), replaceRows: true);
             ErrorText = null;
 
@@ -242,6 +278,9 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
         if (state is null)
         {
             SummaryText = string.Empty;
+            EmptyText = DeviceChoice.IsEmpty ? "Choose cameras to check their image health."
+                : DeviceChoice.Resolve().Count == 0 ? "None of the chosen devices is a camera."
+                : "Checking the cameras.";
             return;
         }
 

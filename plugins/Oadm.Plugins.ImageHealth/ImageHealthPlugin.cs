@@ -1,12 +1,13 @@
 using Oadm.Plugins.ImageHealth.Monitoring;
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.ImageHealth;
 
 /// <summary>
 /// Core plugin "Image Health Dashboard": the status of AXIS Image Health Analytics (blur, block, redirect,
-/// under-exposure, unsuitability) on every camera that has the app, in one table. Off by default (plugin.json). A live
-/// display only: the server asks the cameras when the page asks (<see cref="ImageHealthMonitor"/>): when it opens, on
+/// under-exposure, unsuitability) on the chosen cameras that have the app, in one table. Off by default (plugin.json). A
+/// live display only: the server asks the page's cameras when the page asks (<see cref="ImageHealthMonitor"/>): when it opens, on
 /// Refresh and with Auto refresh every 10 s. Event rules use the app's own events through Device triggers.
 /// Read-only for devices.
 /// </summary>
@@ -59,10 +60,22 @@ public sealed class ImageHealthPlugin : ICorePlugin, IAsyncDisposable
         var monitor = _monitor ?? throw new InvalidOperationException("The Image Health Dashboard plugin is not running.");
         return method switch
         {
-            ImageHealthMethods.Check => Task.FromResult<string?>(ImageHealthJson.Serialize(monitor.StartCheck())),
+            ImageHealthMethods.Check => Task.FromResult<string?>(ImageHealthJson.Serialize(monitor.StartCheck(CheckIds(payloadJson)))),
             ImageHealthMethods.GetState => Task.FromResult<string?>(ImageHealthJson.Serialize(monitor.Snapshot(withRows: true))),
             _ => throw new ArgumentException($"Unknown method '{method}'.", nameof(method)),
         };
+    }
+
+    /// <summary>The cameras a check covers: the page's choice (1 to 30,000), or every video device for an older page without one.</summary>
+    private static HashSet<Guid>? CheckIds(string? payloadJson)
+    {
+        var ids = string.IsNullOrWhiteSpace(payloadJson) ? null : ImageHealthJson.Deserialize<CheckRequest>(payloadJson).DeviceIds;
+        if (ids is null)
+        {
+            return null;
+        }
+
+        return ids.Count is 0 or > DeviceLimits.MaxDevices ? throw new ArgumentException("Choose 1 to 30,000 cameras.", nameof(payloadJson)) : ids.ToHashSet();
     }
 
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);

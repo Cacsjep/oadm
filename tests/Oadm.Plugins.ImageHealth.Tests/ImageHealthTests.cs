@@ -224,9 +224,10 @@ public sealed class ViewModelTests
         var camera = new TestDevice("10.0.0.48", "P3265-V");
         rig.Devices.Items.Add(camera);
         rig.Vapix.Answers[camera.Id] = () => FakeVapix.Json(Recorded.Pending);
-        var ctx = new PluginPageContext(rig.Plugin, rig.Hub);
+        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices);
         ImageHealthViewModel.AutoRefreshInterval = TimeSpan.FromMilliseconds(50);
         using var vm = new ImageHealthViewModel(ctx);
+        vm.DeviceChoice.Set(Oadm.Sdk.Client.Controls.DeviceChoice.AllDevices);
         Assert.False(vm.AutoRefresh); // off by default
 
         vm.Activate();
@@ -246,6 +247,65 @@ public sealed class ViewModelTests
         var requests = rig.Vapix.Requests;
         await Task.Delay(200);
         Assert.Equal(requests, rig.Vapix.Requests);
+    }
+
+    [Fact]
+    [Trait("Category", "Timing")] // the plugin's events arrive on the thread pool, waited for in real time
+    public async Task The_page_checks_only_the_chosen_cameras_and_nothing_before_a_choice()
+    {
+        await using var rig = await new Rig().StartAsync();
+        var a = new TestDevice("10.0.0.48", "P3265-V") { Tags = ["Building A"] };
+        var b = new TestDevice("10.0.0.49", "P3265-V") { Tags = ["Building A"] };
+        var c = new TestDevice("10.0.0.50", "Q3548-LVE");
+        var speaker = new TestDevice("10.0.0.51", "C1410", Category: DeviceCategory.Speaker) { Tags = ["Building A"] };
+        rig.Devices.Items.AddRange([a, b, c, speaker]);
+        foreach (var camera in new[] { a, b, c })
+        {
+            rig.Vapix.Answers[camera.Id] = () => FakeVapix.Json(Recorded.Normal);
+        }
+
+        var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices); // a new computer: no choice yet
+        ImageHealthViewModel.AutoRefreshInterval = TimeSpan.FromMilliseconds(50);
+        var vm = new ImageHealthViewModel(ctx);
+        try
+        {
+            Assert.Equal("Choose cameras", vm.DeviceChoice.ButtonText);
+            vm.AutoRefresh = true;
+            vm.Activate();
+            await Task.Delay(200);
+            Assert.Empty(vm.Rows);
+            Assert.Equal(0, rig.Vapix.Requests); // neither the first check nor auto refresh asks a camera
+            Assert.Equal("Choose cameras to check their image health.", vm.EmptyText);
+            Assert.False(vm.RefreshCommand.CanExecute(null));
+
+            vm.PickDevices = () =>
+            {
+                vm.DeviceChoice.Set(Oadm.Sdk.Client.Controls.DeviceChoice.Devices([], ["Building A"]));
+                return Task.FromResult(true);
+            };
+            await vm.ChooseDevicesCommand.ExecuteAsync(null);
+            await Wait.UntilAsync(() => vm.Rows.Count == 2 && vm.Rows.All(r => r.IsRunning) && !vm.IsChecking);
+            Assert.Equal("Selected cameras: Tag Building A", vm.DeviceChoice.ButtonText);
+            Assert.DoesNotContain(vm.Rows, r => r.DeviceId == c.Id);
+            Assert.True(vm.RefreshCommand.CanExecute(null));
+
+            // Auto refresh and Refresh keep to the choice: the other camera is never asked.
+            await Wait.UntilAsync(() => rig.Vapix.Requests >= 6);
+            await vm.RefreshCommand.ExecuteAsync(null);
+            vm.Deactivate();
+            await rig.Plugin.Monitor!.CurrentCheck;
+            Assert.Equal(0, rig.Vapix.Requests % 2); // two cameras per check
+            Assert.DoesNotContain(rig.Plugin.Monitor.Snapshot(withRows: true).Rows, r => r.DeviceId == c.Id);
+            Assert.All(ctx.Payloads.Where((_, i) => ctx.Calls[i] == ImageHealthMethods.Check), p => Assert.DoesNotContain(c.Id.ToString(), p!, StringComparison.Ordinal));
+        }
+        finally
+        {
+            vm.Dispose();
+        }
+
+        // The next page on this computer starts with the last choice.
+        using var again = new ImageHealthViewModel(ctx);
+        Assert.Equal("Selected cameras: Tag Building A", again.DeviceChoice.ButtonText);
     }
 
     [Fact]

@@ -84,11 +84,12 @@ public sealed class ImageHealthHardwareTests
                 Scheme = camera.EffectiveScheme == "http" ? DeviceScheme.Http : DeviceScheme.Https,
             }, CancellationToken.None);
             await app.Services.GetRequiredService<CredentialStore>().SetAsync(device.Id, camera.User, camera.Password, CancellationToken.None);
-            var ctx = new GrpcPageContext(plugins);
+            var ctx = new GrpcPageContext(plugins, [new TestDevice(camera.Address, "Q3548-LVE") { Id = device.Id }]);
             var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
             var (rows, _) = await session.Dispatch(async () =>
             {
                 var vm = new ImageHealthViewModel(ctx);
+                vm.DeviceChoice.Set(Oadm.Sdk.Client.Controls.DeviceChoice.AllDevices);
                 var view = new ImageHealthView { DataContext = vm };
                 var window = Headless.Host(view);
                 window.Show(); // attached: the page opens its session
@@ -144,9 +145,9 @@ public sealed class ImageHealthHardwareTests
     }
 
     /// <summary>The page context of the client over gRPC PluginService (like the client's CorePluginClientContext).</summary>
-    private sealed class GrpcPageContext(Proto.PluginService.PluginServiceClient plugins) : ICorePluginClientContext
+    private sealed class GrpcPageContext(Proto.PluginService.PluginServiceClient plugins, IReadOnlyList<IDeviceInfo> devices) : ICorePluginClientContext
     {
-        public IReadOnlyList<IDeviceInfo> Devices => [];
+        public IReadOnlyList<IDeviceInfo> Devices => devices;
 
         public event EventHandler? DevicesChanged
         {
