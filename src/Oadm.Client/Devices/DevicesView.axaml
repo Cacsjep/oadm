@@ -159,6 +159,8 @@
               <DataGridTextColumn Tag="dot1x" Header="IEEE 802.1X" Width="124*" MinWidth="70" Binding="{Binding Row.Dot1xText}" x:DataType="dev:IDeviceGridItem" />
             </DataGrid.Columns>
           </DataGrid>
+          <!-- A grid action on many rows that takes longer than a second (select all while grouped): ring over the grid. -->
+          <ui:LoadingOverlay x:Name="GridBusy" IsVisible="False" />
 
           <StackPanel IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
             <ui:OadmIcon Data="{StaticResource Icon.devices}" Width="32" Height="32" HorizontalAlignment="Center" />

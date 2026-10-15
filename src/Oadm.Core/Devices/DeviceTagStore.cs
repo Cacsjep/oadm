@@ -350,6 +350,10 @@ public sealed class DeviceTagStore(IDbContextFactory<OadmDbContext> dbFactory, I
             }
 
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+            // The saved rows leave the tracker: otherwise every later SaveChanges checks all earlier chunks again
+            // (30,000 devices: 60 chunks over a growing set, the time grew with the square of the count).
+            db.ChangeTracker.Clear();
         }
 
         return changed.Select(d => d.Clone()).ToList();

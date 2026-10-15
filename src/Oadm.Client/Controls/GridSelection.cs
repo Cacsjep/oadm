@@ -33,6 +33,37 @@ public static class GridSelection
         grid.SetValue(SelectedItemsProperty, value);
     }
 
+    /// <summary>
+    /// Stops mirroring until the result is disposed: the view takes a large selection off the grid while it sorts or
+    /// regroups and puts it back, and the view model's selection stays as it was meanwhile.
+    /// </summary>
+    public static IDisposable Pause(DataGrid grid)
+    {
+        ArgumentNullException.ThrowIfNull(grid);
+        grid.SelectionChanged -= OnGridSelectionChanged;
+        return new Resume(grid);
+    }
+
+    private sealed class Resume(DataGrid grid) : IDisposable
+    {
+        private bool _done;
+
+        public void Dispose()
+        {
+            if (_done)
+            {
+                return;
+            }
+
+            _done = true;
+            if (GetSelectedItems(grid) is not null)
+            {
+                grid.SelectionChanged -= OnGridSelectionChanged;
+                grid.SelectionChanged += OnGridSelectionChanged;
+            }
+        }
+    }
+
     private static void OnSelectedItemsChanged(DataGrid grid, AvaloniaPropertyChangedEventArgs e)
     {
         grid.SelectionChanged -= OnGridSelectionChanged;
