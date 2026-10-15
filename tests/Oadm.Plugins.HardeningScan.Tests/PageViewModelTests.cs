@@ -1,6 +1,7 @@
 using System.Diagnostics;
 
 using Oadm.Plugins.HardeningScan.Client;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 
@@ -164,10 +165,10 @@ public sealed class PageViewModelTests(ITestOutputHelper output)
         ctx.Selection.Add(devices[1]);
         using var vm = new HardeningScanViewModel(ctx, TempSettings());
         await vm.LoadAsync();
-        Assert.Equal(5, vm.CountOf(RowKind.NotScanned));
-        Assert.Equal("Scan selected (1)", vm.ScanSelectedText);
+        Assert.Equal(1, vm.CountOf(RowKind.NotScanned)); // the page starts with the Devices page selection
+        Assert.Equal("Selected devices: " + devices[1].Address, vm.DeviceChoice.ButtonText);
 
-        await vm.ScanSelectedCommand.ExecuteAsync(null);
+        await vm.ScanCommand.ExecuteAsync(null);
         await plugin.Service!.WaitAsync();
         foreach (var item in events.Events.ToList())
         {
@@ -177,13 +178,95 @@ public sealed class PageViewModelTests(ITestOutputHelper output)
         Assert.False(vm.IsScanning);
         Assert.Equal("Scan finished: 1 of 1 devices", vm.ProgressText);
         Assert.Equal(RowKind.Fail, vm.AllRows.Single(r => r.DeviceId == devices[1].Id).Kind);
-        Assert.Equal(4, vm.CountOf(RowKind.NotScanned));
+        Assert.Equal(0, vm.CountOf(RowKind.NotScanned));
 
         // The detail pane shows every check of the level with the longer texts of getDetail.
         vm.SelectedRow = vm.AllRows.Single(r => r.DeviceId == devices[1].Id);
         await Wait.UntilAsync(() => vm.DetailItems.Any(d => d.Found.Contains("Object Analytics", StringComparison.Ordinal)));
         Assert.Equal(15, vm.DetailItems.Count);
         Assert.Contains(vm.DetailItems, d => d.Title == "SSH access" && d.IsError && d.Found == "SSH on");
+    }
+
+    [Fact]
+    public async Task The_page_shows_and_scans_only_the_chosen_devices_and_shows_that_it_is_working()
+    {
+        var a = new TestDevice { Address = "10.0.0.48", Tags = ["Building A"] };
+        var b = new TestDevice { Address = "10.0.0.49", Tags = ["Building A"] };
+        var c = new TestDevice { Address = "10.0.0.50" };
+        var now = DateTimeOffset.UtcNow;
+        var state = new TaskCompletionSource<string?>();
+        var start = new TaskCompletionSource<string?>();
+        StartScanRequest? started = null;
+        var ctx = new PageContext((method, payload) =>
+        {
+            if (method == HardeningMethods.StartScan)
+            {
+                started = HardeningJson.Deserialize<StartScanRequest>(payload);
+                return start.Task;
+            }
+
+            return method == HardeningMethods.GetState ? state.Task : Task.FromResult<string?>(null);
+        });
+        ctx.DeviceList.AddRange([a, b, c]);
+        ctx.LocalSettings.Clear(); // a new computer: no choice yet
+        var settings = TempSettings();
+        using var vm = new HardeningScanViewModel(ctx, settings);
+
+        // Before a choice: nothing shown, nothing to scan, one line says what to do.
+        Assert.Equal("Choose devices", vm.DeviceChoice.ButtonText);
+        Assert.Empty(vm.Rows);
+        Assert.Equal("Choose devices to scan.", vm.EmptyText);
+        Assert.False(vm.ScanCommand.CanExecute(null));
+        Assert.Equal("Choose devices first", vm.ScanTip);
+
+        // Opening the page: the ring shows over the table until the last results arrive.
+        vm.Activate();
+        Assert.True(vm.IsLoading);
+        Assert.False(vm.ShowEmpty);
+        state.SetResult(HardeningJson.Serialize(new HardeningState
+        {
+            Results = [Result(a.Id, 0, ScanLevel.Basic, now), Result(b.Id, 1, ScanLevel.Basic, now), Result(c.Id, 2, ScanLevel.Basic, now)],
+        }));
+        await Wait.UntilAsync(() => !vm.IsLoading);
+        Assert.Empty(vm.Rows); // the results of every device are kept, but none is chosen
+        Assert.True(vm.ShowEmpty);
+
+        // Choosing a tag: its devices with their kept results; the other device is not shown.
+        vm.PickDevices = () =>
+        {
+            vm.DeviceChoice.Set(DeviceChoice.Devices([], ["Building A"]));
+            return Task.FromResult(true);
+        };
+        await vm.ChooseDevicesCommand.ExecuteAsync(null);
+        Assert.Equal("Selected devices: Tag Building A", vm.DeviceChoice.ButtonText);
+        Assert.Equal([a.Id, b.Id], vm.Rows.Select(r => r.DeviceId));
+        Assert.Equal(0, vm.CountOf(RowKind.NotScanned));
+        Assert.Contains("2 devices · 2 scanned", vm.SummaryText, StringComparison.Ordinal);
+
+        // Scan: the progress row shows from the click on, the scan covers the chosen devices only.
+        var scan = vm.ScanCommand.ExecuteAsync(null);
+        Assert.True(vm.ShowProgress);
+        Assert.Equal("Starting the scan", vm.ProgressText);
+        Assert.False(vm.ScanCommand.CanExecute(null));
+        Assert.Equal([a.Id, b.Id], started!.DeviceIds.Order());
+        start.SetResult(HardeningJson.Serialize(new ScanJobStatus { JobId = "1", Total = 2 }));
+        await scan;
+        Assert.False(vm.IsStarting);
+        Assert.True(vm.IsScanning);
+        Assert.True(vm.ShowProgress);
+        Assert.Equal("Scanning 0 of 2 devices (Basic)", vm.ProgressText);
+
+        // Back to a single device: the tag's other device leaves, and comes back with its result when chosen again.
+        vm.DeviceChoice.Set(DeviceChoice.Devices([c.Id]));
+        Assert.Equal(c.Id, vm.Rows.Single().DeviceId);
+        vm.DeviceChoice.Set(DeviceChoice.AllDevices);
+        Assert.Equal(3, vm.Rows.Count);
+        Assert.Equal(0, vm.CountOf(RowKind.NotScanned));
+        vm.Deactivate();
+
+        // The next page on this computer starts with the last choice.
+        using var again = new HardeningScanViewModel(ctx, settings);
+        Assert.Equal("Selected devices: All", again.DeviceChoice.ButtonText);
     }
 
     [Fact]

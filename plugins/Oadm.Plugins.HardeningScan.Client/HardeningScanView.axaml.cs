@@ -78,6 +78,7 @@ public partial class HardeningScanView : UserControl
         {
             _vm.ColumnsChanged -= OnColumnsChanged;
             _vm.SaveCsv = null;
+            _vm.PickDevices = null;
         }
 
         _vm = DataContext as HardeningScanViewModel;
@@ -85,6 +86,7 @@ public partial class HardeningScanView : UserControl
         {
             _vm.ColumnsChanged += OnColumnsChanged;
             _vm.SaveCsv = SaveCsvAsync;
+            _vm.PickDevices = PickDevicesAsync;
             Root.RowDefinitions[5].Height = new GridLength(_vm.Settings.DetailHeight);
             FitDetailHeight();
             BuildCheckColumns();
@@ -224,6 +226,10 @@ public partial class HardeningScanView : UserControl
         settings.ColumnOrder = [.. shown.Concat(settings.ColumnOrder.Where(k => !shown.Contains(k, StringComparer.Ordinal)))];
         _vm.SettingsStore.Save(settings);
     }
+
+    private async Task<bool> PickDevicesAsync() =>
+        _vm is { } vm && TopLevel.GetTopLevel(this) is Window owner
+        && await vm.DeviceChoice.PickAsync(owner, "Choose devices").ConfigureAwait(true);
 
     private async Task<bool> SaveCsvAsync(string fileName, string content)
     {

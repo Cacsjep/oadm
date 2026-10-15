@@ -28,10 +28,12 @@
                   ToolTip.Tip="Basic plus the Extended hardening checks" />
         </StackPanel>
       </Border>
-      <ui:ToolbarButton Grid.Column="1" IsPrimary="True" IconKey="start" Text="Scan all" Command="{Binding ScanAllCommand}" IsVisible="{Binding MayScan}"
+      <Button Grid.Column="1" Classes="primary" Command="{Binding ChooseDevicesCommand}" VerticalAlignment="Center"
+              ToolTip.Tip="Devices by address or tag">
+        <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding DeviceChoice.ButtonText}" />
+      </Button>
+      <ui:ToolbarButton Grid.Column="2" IconKey="start" Text="Scan" Command="{Binding ScanCommand}" IsVisible="{Binding MayScan}"
                         ToolTip.Tip="{Binding ScanTip}" ToolTip.ShowOnDisabled="True" />
-      <ui:ToolbarButton Grid.Column="2" IconKey="devices" Text="{Binding ScanSelectedText}" Command="{Binding ScanSelectedCommand}" IsVisible="{Binding MayScan}"
-                        ToolTip.Tip="{Binding ScanSelectedTip}" ToolTip.ShowOnDisabled="True" />
       <ui:ToolbarButton Grid.Column="3" IconKey="stop" Text="Stop" Command="{Binding StopCommand}" IsVisible="{Binding MayScan}"
                         ToolTip.Tip="Stop the scan; the devices scanned so far keep their results" ToolTip.ShowOnDisabled="True" />
       <ui:ToolbarButton Grid.Column="4" IconKey="export" Text="Export CSV" Command="{Binding ExportCommand}"
@@ -41,8 +43,8 @@
       <ui:SearchBox Grid.Column="7" Width="220" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="Search devices" />
     </Grid>
 
-    <ui:ProgressRow Grid.Row="1" Margin="0,10,0,0" Value="{Binding ProgressValue}" Text="{Binding ProgressText}" IsActive="{Binding IsScanning}"
-                    IsVisible="{Binding IsScanning}" />
+    <ui:ProgressRow Grid.Row="1" Margin="0,10,0,0" Value="{Binding ProgressValue}" Text="{Binding ProgressText}" IsActive="{Binding ShowProgress}"
+                    IsVisible="{Binding ShowProgress}" />
 
     <StackPanel Grid.Row="2" Margin="0,10,0,0" Spacing="4">
       <TextBlock Classes="secondary" Text="{Binding SummaryText}" />
@@ -76,6 +78,9 @@
         <DataGridTextColumn Tag="lastScan" Header="Last scan" Width="104" Binding="{Binding LastScanText}" SortMemberPath="ScannedUtc" x:DataType="vm:HardeningRow" />
       </DataGrid.Columns>
     </DataGrid>
+    <TextBlock Grid.Row="3" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding EmptyText}"
+               IsVisible="{Binding ShowEmpty}" />
+    <ui:LoadingOverlay Grid.Row="3" Margin="0,8,0,0" Text="Reading the scan results" IsVisible="{Binding IsLoading}" />
 
     <GridSplitter x:Name="DetailSplitter" Grid.Row="4" Classes="paneSplitter" />
 

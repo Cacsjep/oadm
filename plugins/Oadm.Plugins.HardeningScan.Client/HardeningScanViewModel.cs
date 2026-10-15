@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Collections;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 
@@ -43,8 +44,9 @@ public sealed class DetailItem(LevelColumn column, CheckState state, string? val
 }
 
 /// <summary>
-/// The Hardening scan page: one row per managed device, one icon column per check of the shown level (Basic / Extended),
-/// Scan / Stop, the progress and summary lines, a status filter and search, CSV export, and the selected device's checks.
+/// The Hardening scan page: one row per device of the page's device choice (<see cref="DeviceChoice"/>: the Devices page
+/// selection, else the last choice on this computer, else nothing), one icon column per check of the shown level (Basic /
+/// Extended), Scan (the chosen devices) / Stop, the progress and summary lines, a status filter and search, CSV export, and the selected device's checks.
 /// Results arrive as plugin events (<see cref="HardeningMethods.ResultsTopic"/>) and are applied per changed row: the
 /// summary and the per-column counters follow only the changed rows (5,000 devices).
 /// </summary>
@@ -67,20 +69,35 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
     private bool _applying;
     private HardeningRow? _selectedRow;
     private string? _jobId;
+    private bool _loaded;
 
     public HardeningScanViewModel(ICorePluginClientContext ctx, HardeningClientSettingsStore? settingsStore = null, TimeProvider? time = null)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         _ctx.PermissionsChanged += (_, _) => OnPropertyChanged(nameof(MayScan));
         _time = time ?? TimeProvider.System;
+        DeviceChoice = new PageDeviceChoice(ctx, "devices");
         SettingsStore = settingsStore ?? new HardeningClientSettingsStore();
         Settings = SettingsStore.Load();
         Level = Settings.Level == ScanLevel.Extended ? ScanLevel.Extended : ScanLevel.Basic;
         Columns = BuildColumns(Level);
         _columnCounts = new int[Columns.Count, 8];
+        DeviceChoice.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(PageDeviceChoice.Choice))
+            {
+                SyncDevices();
+            }
+        };
         _ctx.DevicesChanged += OnDevicesChanged;
         SyncDevices();
     }
+
+    /// <summary>The devices the page shows and scans: "Selected devices: Tag Building A" (the purple button).</summary>
+    public PageDeviceChoice DeviceChoice { get; }
+
+    /// <summary>Opens the device picker (set by the view); true when a choice was made.</summary>
+    public Func<Task<bool>>? PickDevices { get; set; }
 
     /// <summary>Wait before watching again after the event stream ended or failed (also the polling interval).</summary>
     public static TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
@@ -129,11 +146,33 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
     public partial string SummaryText { get; set; } = string.Empty;
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ScanAllCommand))]
-    [NotifyCanExecuteChangedFor(nameof(ScanSelectedCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ScanCommand))]
     [NotifyCanExecuteChangedFor(nameof(StopCommand))]
     [NotifyPropertyChangedFor(nameof(ScanTip))]
+    [NotifyPropertyChangedFor(nameof(ShowProgress))]
     public partial bool IsScanning { get; set; }
+
+    /// <summary>From the click on Scan until the server answered: the progress row shows at once.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ScanCommand))]
+    [NotifyPropertyChangedFor(nameof(ScanTip))]
+    [NotifyPropertyChangedFor(nameof(ShowProgress))]
+    public partial bool IsStarting { get; private set; }
+
+    /// <summary>The progress row shows while a scan starts or runs.</summary>
+    public bool ShowProgress => IsScanning || IsStarting;
+
+    /// <summary>The first results are being read (the page shows a ring over the table).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowEmpty))]
+    public partial bool IsLoading { get; private set; }
+
+    /// <summary>What to do while the table is empty ("Choose devices to scan.").</summary>
+    [ObservableProperty]
+    public partial string EmptyText { get; private set; } = string.Empty;
+
+    /// <summary>The empty line shows while nothing is loading and no row is shown.</summary>
+    public bool ShowEmpty => !IsLoading && Rows.Count == 0;
 
     [ObservableProperty]
     public partial double ProgressValue { get; set; }
@@ -148,13 +187,10 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
 
     public bool HasError => ErrorText.Length > 0;
 
-    public string ScanTip => IsScanning ? "A scan is running" : "Read the settings of every managed device and check them (read-only)";
-
-    public string ScanSelectedText => string.Create(CultureInfo.InvariantCulture, $"Scan selected ({_ctx.SelectedDevices.Count:N0})");
-
-    public string ScanSelectedTip => IsScanning ? "A scan is running"
-        : _ctx.SelectedDevices.Count == 0 ? "Select devices on the Devices page first"
-        : "Scan the devices selected on the Devices page";
+    public string ScanTip => IsScanning || IsStarting ? "A scan is running"
+        : DeviceChoice.IsEmpty ? "Choose devices first"
+        : _all.Count == 0 ? "No device matches the choice"
+        : "Check the chosen devices (read-only)";
 
     public HardeningRow? SelectedRow
     {
@@ -206,7 +242,7 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
         }
 
         _active = new CancellationTokenSource();
-        SelectionChanged(); // the Devices page selection may have changed while the page was hidden
+        IsLoading = !_loaded;
         _ = RunAsync(_active.Token);
     }
 
@@ -238,6 +274,7 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
             }
 
             ErrorText = string.Empty;
+            _loaded = true;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -249,6 +286,8 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
         {
             ErrorText = "Cannot read the scan results: " + Message(ex);
         }
+
+        IsLoading = false;
     }
 
     public void ApplyState(HardeningState state)
@@ -301,13 +340,8 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
             }
             else
             {
-                // Not in the client's device list (yet): kept until the device appears.
-                if (!_orphans.TryGetValue(result.DeviceId, out var list))
-                {
-                    _orphans[result.DeviceId] = list = [];
-                }
-
-                list.Add(result);
+                // Not in the client's device list (yet) or not chosen: kept until the device appears or is chosen.
+                KeepWaiting(result);
             }
         }
 
@@ -352,18 +386,24 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
     [RelayCommand]
     private void ShowExtended() => Level = ScanLevel.Extended;
 
+    /// <summary>Scans the devices of the choice (All devices: every managed device, also ones added since).</summary>
     [RelayCommand(CanExecute = nameof(CanScan))]
-    private Task ScanAllAsync() => StartScanAsync([]);
+    private Task ScanAsync() => StartScanAsync(DeviceChoice.Choice.Kind == DeviceChoiceKind.All ? [] : [.. _all.Select(r => r.DeviceId)]);
 
     /// <summary>The role may start and stop scans ("oadm.hardening-scan:scan"); the results show either way.</summary>
     public bool MayScan => _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(HardeningScanPluginInfo.PluginId, "scan"));
 
-    [RelayCommand(CanExecute = nameof(CanScanSelected))]
-    private Task ScanSelectedAsync() => StartScanAsync([.. _ctx.SelectedDevices.Select(d => d.Id)]);
+    private bool CanScan() => !IsScanning && !IsStarting && _all.Count > 0;
 
-    private bool CanScan() => !IsScanning && _all.Count > 0;
-
-    private bool CanScanSelected() => !IsScanning && _ctx.SelectedDevices.Count > 0;
+    /// <summary>The purple button: choose the devices; the table follows the choice (no scan starts by itself).</summary>
+    [RelayCommand]
+    private async Task ChooseDevicesAsync()
+    {
+        if (PickDevices is { } pick)
+        {
+            await pick().ConfigureAwait(true);
+        }
+    }
 
     [RelayCommand(CanExecute = nameof(IsScanning))]
     private async Task StopAsync()
@@ -431,6 +471,9 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
 
     private async Task StartScanAsync(IReadOnlyList<Guid> deviceIds)
     {
+        IsStarting = true;
+        ProgressValue = 0;
+        ProgressText = "Starting the scan";
         try
         {
             ErrorText = string.Empty;
@@ -446,15 +489,22 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
         {
             ErrorText = "The scan could not be started: " + Message(ex);
         }
+        finally
+        {
+            IsStarting = false;
+        }
     }
 
     private void OnDevicesChanged(object? sender, EventArgs e) => SyncDevices();
 
-    /// <summary>One row per managed device (O(n) per device change), results of new devices taken from the waiting ones.</summary>
+    /// <summary>
+    /// One row per device of the choice (O(n) per device or choice change; a tag means its devices now), results of new rows
+    /// taken from the waiting ones; rows that leave the choice give their results back to the waiting ones.
+    /// </summary>
     private void SyncDevices()
     {
         var now = _time.GetUtcNow();
-        var devices = _ctx.Devices;
+        var devices = DeviceChoice.Resolve();
         var seen = new HashSet<Guid>();
         var structural = false;
         foreach (var device in devices)
@@ -491,8 +541,17 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
 
         foreach (var gone in _byId.Keys.Where(id => !seen.Contains(id)).ToList())
         {
-            Count(_byId[gone], -1);
+            var row = _byId[gone];
+            Count(row, -1);
             _byId.Remove(gone);
+            foreach (var result in new[] { row.Basic, row.Extended })
+            {
+                if (result is not null)
+                {
+                    KeepWaiting(result);
+                }
+            }
+
             structural = true;
         }
 
@@ -508,18 +567,30 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
         }
 
         UpdateSummary();
-        OnPropertyChanged(nameof(ScanSelectedText));
-        OnPropertyChanged(nameof(ScanSelectedTip));
-        ScanAllCommand.NotifyCanExecuteChanged();
-        ScanSelectedCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(ScanTip));
+        ScanCommand.NotifyCanExecuteChanged();
     }
 
-    /// <summary>The Devices page selection changed (the host raises DevicesChanged for it too, or the view calls this).</summary>
-    public void SelectionChanged()
+    /// <summary>
+    /// Keeps a result of a device without a row (not known to the client yet, or not chosen), the newest per level, so the
+    /// row shows it as soon as the device appears or is chosen.
+    /// </summary>
+    private void KeepWaiting(DeviceResult result)
     {
-        OnPropertyChanged(nameof(ScanSelectedText));
-        OnPropertyChanged(nameof(ScanSelectedTip));
-        ScanSelectedCommand.NotifyCanExecuteChanged();
+        if (!_orphans.TryGetValue(result.DeviceId, out var list))
+        {
+            _orphans[result.DeviceId] = list = [];
+        }
+
+        var index = list.FindIndex(r => r.Level == result.Level);
+        if (index < 0)
+        {
+            list.Add(result);
+        }
+        else if (list[index].ScannedUtc <= result.ScannedUtc)
+        {
+            list[index] = result;
+        }
     }
 
     private void RecomputeAll()
@@ -599,6 +670,10 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
         }
 
         SummaryText = text;
+        EmptyText = DeviceChoice.IsEmpty ? "Choose devices to scan."
+            : _all.Count == 0 ? "No device matches the choice."
+            : "No device matches the filter or search.";
+        OnPropertyChanged(nameof(ShowEmpty));
     }
 
     private void RefreshDetail()

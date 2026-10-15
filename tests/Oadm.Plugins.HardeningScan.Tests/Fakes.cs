@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Tasks;
@@ -39,6 +40,7 @@ internal sealed record TestDevice : IDeviceInfo
     public bool? DhcpEnabled { get; init; } = true;
     public bool? HttpsEnabled { get; init; } = true;
     public bool? Dot1xEnabled { get; init; } = false;
+    public IReadOnlyList<string> Tags { get; init; } = [];
 }
 
 /// <summary>
@@ -305,6 +307,24 @@ internal sealed class PageContext : ICorePluginClientContext
     public PageContext(Func<string, string?, Task<string?>> invoke)
     {
         _invoke = invoke;
+        // The pages tested here show every device unless a test chooses otherwise (the last choice on "this computer").
+        LocalSettings[PageDeviceChoice.SettingKey] = """{"All":true,"Devices":[],"Tags":[]}""";
+    }
+
+    public Dictionary<string, string> LocalSettings { get; } = [];
+
+    public string? GetLocalSetting(string key) => LocalSettings.GetValueOrDefault(key);
+
+    public void SetLocalSetting(string key, string? value)
+    {
+        if (value is null)
+        {
+            LocalSettings.Remove(key);
+        }
+        else
+        {
+            LocalSettings[key] = value;
+        }
     }
 
     public List<IDeviceInfo> DeviceList { get; } = [];
