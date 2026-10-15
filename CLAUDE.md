@@ -1388,7 +1388,9 @@ the UI thread.
   CameraChosen}: the host's live video component, `Oadm.Client/LiveView/LiveVideoAccess`; the page's videos are disposed
   with the page; see "Live View"), `OpenDownloadAsync(method, payload, ct)` (a file of the server part through
   `PluginService.Download`: `PluginDownload` {Content, FileName, Length}; the page reads the stream and disposes it),
-  `Has(permission)` + `PermissionsChanged` (pages hide or lock what the role lacks, e.g. Save of the NTP / DHCP server).
+  `Has(permission)` + `PermissionsChanged` (pages hide or lock what the role lacks, e.g. Save of the NTP / DHCP server),
+  `GetLocalSetting` / `SetLocalSetting` (short texts a plugin keeps on this computer, `ClientSettings.PluginSettings`,
+  at most 64 KB each; e.g. a page's last device choice).
 - `IToolbarPlugin` (`Id`, `Order`, `Group`: Add, Manage, Tasks, Plugins; `CreateControl` once; `RequiredPermission`:
   the entry hides while the role lacks it) with `IToolbarContext` (selection, devices, task plugins, `CanRunTask` /
   `CannotRunTaskReason`, `RunTaskAsync`, `OpenAsync`, `RemoveDevicesAsync`, `RefreshDevicesAsync`, `QueryAsync`,
@@ -1563,6 +1565,7 @@ Reporting, icon `snapshot`), on by default, switchable. The yearly maintenance c
 source of the managed video devices, checked fast and exported as a PDF report (PDFsharp + MigraDoc, MIT). Details:
 plugin `README.md`.
 
+- Devices: the purple "Selected cameras" button (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one (docs/30kspec.md, section 5).
 - Rules that must hold: read-only for devices (param.cgi reads and image.cgi snapshots with the stored credentials,
   server side); opening the page contacts no device (**Create snapshots** starts the first load); at most 4 device
   requests at a time, 3 s each; devices with Credentials required, Password not set or Certificate changed are one error
@@ -1655,6 +1658,7 @@ Monitoring, icon `activity`), **off by default**. A port of the AXIS Metadata Mo
 watch its event stream live (I/O ports, virtual inputs, storage, temperature, tampering, ACAP events). Details: plugin
 `README.md`.
 
+- Camera: a button that names the chosen camera and opens the shared device picker for one device (search; the former drop-down could not hold 30,000 devices).
 - Rules that must hold: read-only for devices; the server opens the RTSP event stream with the stored credentials
   (Digest, never Basic on plain RTSP; SDK `ICorePluginContext.EventStreams`), passwords never reach the client; events
   only (`media.amp?video=0&audio=0&event=on`), one camera at a time, nothing saved; refused statuses without a request;
@@ -1670,6 +1674,7 @@ watch its event stream live (I/O ports, virtual inputs, storage, temperature, ta
 Monitoring, icon `eye`), **off by default**. One table with the AXIS Image Health Analytics status of every camera that
 has the app, with five count cards (Good, Detected, Pending, Detection off, Errors). Details: plugin `README.md`.
 
+- Devices: the purple "Selected cameras" button (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one (docs/30kspec.md, section 5).
 - Rules that must hold: read-only for devices (`GET /local/AXISImageHealthAnalytics/v1/status` with the stored
   credentials); only on request (the page opens, Refresh, Auto refresh every 10 s while the page is shown, off by
   default), nothing in the background and no events (event rules use the app's own events through Device triggers); 24
@@ -1683,6 +1688,7 @@ has the app, with five count cards (Good, Detected, Pending, Detection off, Erro
 `toggle`), **off by default**. A simple, fast live display of the inputs and outputs of one device, drawn as a faceplate;
 no events, no actions, no switching. Details: plugin `README.md`.
 
+- Device: a button that names the chosen device and opens the shared device picker for one device (search; the former drop-down could not hold 30,000 devices).
 - Rules that must hold: read-only (`getPorts` of `io-port-management` 1.x every 200 ms while a page shows the device, 3 s
   per request, 1 s pause after a failure); one reading per device shared by every page; stopped after 20 s without the
   page's keep-alive; at most 20 devices at once; refused statuses without a request; the VAPIX client always from the
@@ -1724,6 +1730,7 @@ schedule and the recipient (each device's own one of a name); **New rule** build
 catalog (`Catalog/action-catalog.json`: labels, kinds, defaults from the camera's web interface). Spec and research:
 `docs/action-rules/spec.md`; decisions and device API: plugin `README.md`.
 
+- Devices: the purple "Selected devices" button (`PageDeviceChoice`: All devices, tags, chosen devices; the Devices page selection to start with, else the last choice on this computer); the page reads only the devices of the choice and nothing before one (docs/30kspec.md, section 5).
 - Rules that must hold: read only on request, over SOAP (passwords in plain text stay on the server, never reach the
   client or a log, a login inside an address shows as `user:********@` and keeps each device's own password); an edit
   changes only the checked parts, everything else stays as each device has it; a rule is written
@@ -1765,6 +1772,7 @@ Security, icon `clipboardCheck`), **off by default**. One read-only scan of ever
 Hardening Guide in its two levels (Basic, Extended), one icon column per check, CSV export. Check table, evidence and
 decisions: plugin `README.md`.
 
+- Devices: the purple "Selected devices" button (`PageDeviceChoice`: All devices, tags, chosen devices; the Devices page selection to start with, else the last choice on this computer); the page scans the devices of the choice (one **Scan** button) and shows only their results; nothing before a choice (docs/30kspec.md, section 5).
 - Rules that must hold: strictly read-only (GETs and list calls only); 15 s per request, 2 min per device, 16 devices at
   once; one failed read marks only its checks; Certificate changed, Credentials required, Password not set and
   Unreachable devices are not contacted; items that cannot be checked remotely are not shown; the latest AXIS OS is
@@ -1837,6 +1845,7 @@ encryption, retention, five count cards) and the tools of the camera's web inter
 retention, Repair, Format, Encrypt, Turn off encryption, each a task per camera in the tasks pane below the page. SD
 cards only. Decisions, device API (verified on an AXIS Q1615 Mk III) and tests: plugin `README.md`.
 
+- Devices: the purple "Selected cameras" button (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one (docs/30kspec.md, section 5).
 - Rules that must hold: the table is read only on request (page opens, Refresh), read-only, refused statuses not
   contacted; the tools are hidden tasks (`ShowInMenus` false) started by the page methods `change` (check, retention) and
   `format` (format, repair, encryption), whose rights decide (an action through the other method is refused); every run
@@ -2279,6 +2288,9 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   return a `DeviceChoice` {Kind All / EventDevice / Chosen, DeviceIds, Tags}; with tags it lists the devices' tags, every
   tag of the initial choice and `DevicePickerOptions.TagNames` (the rule editor passes the defined tags), count 0 when no
   device has it; summary "1 tag: 42 of 5,000 devices" / "2 tags and 3 devices: ...") and
+  `PageDeviceChoice` (the device choice of every page that reads many devices: the purple "Selected devices" button text,
+  All devices / tags / chosen devices resolved now, the Devices page selection to start with, the last choice kept on this
+  computer; Action Rule Editor, Edge storage, Image Health Dashboard, Hardening scan, Snapshot report) and
   `DeviceIcon` (every device icon in a list: the category icon `Icon.device.*`, neutral when OK, amber for Credentials
   required / Password not set / Certificate changed, red for Unreachable, `ShowStatusToolTip` = the status message on
   hover; device grid, Web View, Live View), `DeviceTree` + `DeviceTreeModel` (every devices-by-tag tree: tag groups in
@@ -2313,14 +2325,14 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   while its row shows progress. The window never freezes without one: work that would block the UI thread for longer
   runs elsewhere or shows the ring first (the device grid: `DevicesView.RunBusyAsync`, a ring over the grid before a
   sort or regroup of a large selection). A new feature checks its waits at 30,000 devices (docs/30kspec.md, section 11).
-- **HARD RULE, scale to thousands of devices.** A site can have 1000+ cameras. Every list of
+- **HARD RULE, scale to thousands of devices.** A server manages up to 30,000 devices. Every list of
   devices, discovered devices, tasks, sources or tiles is virtualized (DataGrid, virtualizing
   ListBox/ItemsRepeater; never an ItemsControl/StackPanel creating one control per item), search,
   filter, sort and select-all are O(n) without per-item UI work, server calls are batched (one call
   for many devices, bounded parallelism on the server), per-device work is lazy for visible rows
   or summarized ("4,812 compatible, 188 missing API"), and images/snapshots load only for visible
-  tiles. Every feature with a device list has a test with at least 5000 fake devices that keeps
-  filtering/selection/summary fast. Target size: **5,000 devices and 50,000 tasks in the history**
+  tiles. Every feature with a device list has a test with at least 30,000 fake devices (the device limit) that keeps
+  filtering/selection/summary fast. Target size: **30,000 devices and 50,000 tasks in the history** (docs/30kspec.md)
   (audit, numbers and fixes: `docs/scale-audit.md`). Concretely:
   - Collections bound to a grid are `RangeObservableCollection` (`Oadm.Sdk.Client.Collections`, plugin pages too): a
     filter, select-all, snapshot or batch is one `ReplaceAll`/`AddRange`/`InsertRange`/`RemoveAll`
