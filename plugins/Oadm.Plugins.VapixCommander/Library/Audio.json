@@ -55,15 +55,18 @@
           },
           {
             "label": "Input type",
-            "param": "AudioSource.A{{input}}.InputType"
+            "param": "AudioSource.A{{input}}.InputType",
+            "optional": true
           },
           {
             "label": "Input gain",
-            "param": "AudioSource.A{{input}}.InputGain"
+            "param": "AudioSource.A{{input}}.InputGain",
+            "optional": true
           },
           {
             "label": "Output gain",
-            "param": "AudioSource.A{{input}}.OutputGain"
+            "param": "AudioSource.A{{input}}.OutputGain",
+            "optional": true
           }
         ]
       }
@@ -351,15 +354,18 @@
         "extract": [
           {
             "label": "Device",
-            "path": "data.devices.0.name"
+            "path": "data.devices.0.name",
+            "optional": true
           },
           {
             "label": "Inputs",
-            "path": "data.devices.0.inputs"
+            "path": "data.devices.0.inputs",
+            "optional": true
           },
           {
             "label": "Outputs",
-            "path": "data.devices.0.outputs"
+            "path": "data.devices.0.outputs",
+            "optional": true
           }
         ]
       }

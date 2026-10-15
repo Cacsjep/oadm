@@ -161,12 +161,23 @@ public static class CommandRendering
         switch (CommandLibrary.Kind(command))
         {
             case "param-cgi":
-                if (body.TrimStart().StartsWith("# Error", StringComparison.Ordinal) || body.Contains("Error:", StringComparison.Ordinal))
+            {
+                // Like the plugin: groups the device lacks are fine when every value read from them is optional.
+                var optionalGroups = CommandLibrary.Extracts(command)
+                    .Where(e => e["param"] is not null)
+                    .GroupBy(e => GroupOf(e["param"]!.GetValue<string>()), StringComparer.OrdinalIgnoreCase)
+                    .Where(g => g.All(e => e["optional"]?.GetValue<bool>() == true))
+                    .Select(g => g.Key)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var lines = body.Split('\n').Where(l => !optionalGroups.Any(g => l.Contains($"getting param in group '{g}'", StringComparison.OrdinalIgnoreCase))).ToList();
+                var rest = string.Join('\n', lines);
+                if (rest.TrimStart().StartsWith("# Error", StringComparison.Ordinal) || rest.Contains("Error:", StringComparison.Ordinal))
                 {
                     return Excerpt(body);
                 }
 
                 break;
+            }
             case "json-rpc":
             {
                 JsonNode? json;
@@ -209,6 +220,15 @@ public static class CommandRendering
         }
 
         return null;
+    }
+
+    /// <summary>The param.cgi group of a parameter: "Network.RTSPS.Port" -> "Network.RTSPS".</summary>
+    private static string GroupOf(string param)
+    {
+        var p = param.Trim().Trim('"');
+        p = p.StartsWith("root.", StringComparison.OrdinalIgnoreCase) ? p[5..] : p;
+        var dot = p.LastIndexOf('.');
+        return dot > 0 ? p[..dot] : p;
     }
 
     /// <summary>Resolves one response.extract entry; null when the value is missing.</summary>

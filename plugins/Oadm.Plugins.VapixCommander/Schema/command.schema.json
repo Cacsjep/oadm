@@ -106,7 +106,8 @@
             "properties": {
               "label": { "type": "string" },
               "path": { "type": "string" },
-              "param": { "type": "string" }
+              "param": { "type": "string" },
+              "optional": { "type": "boolean", "description": "A value only some devices have: left out when missing" }
             }
           }
         }

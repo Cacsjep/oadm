@@ -39,15 +39,18 @@
           },
           {
             "label": "Port 0 name",
-            "path": "data.items.0.name"
+            "path": "data.items.0.name",
+            "optional": true
           },
           {
             "label": "Port 0 state",
-            "path": "data.items.0.state"
+            "path": "data.items.0.state",
+            "optional": true
           },
           {
             "label": "Items",
-            "path": "data.items"
+            "path": "data.items",
+            "optional": true
           }
         ]
       }

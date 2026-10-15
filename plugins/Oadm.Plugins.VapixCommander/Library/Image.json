@@ -61,7 +61,8 @@
           },
           {
             "label": "WDR",
-            "param": "ImageSource.I{{source}}.Sensor.WDR"
+            "param": "ImageSource.I{{source}}.Sensor.WDR",
+            "optional": true
           },
           {
             "label": "White balance",
@@ -77,11 +78,13 @@
           },
           {
             "label": "IR cut filter",
-            "param": "ImageSource.I{{source}}.DayNight.IrCutFilter"
+            "param": "ImageSource.I{{source}}.DayNight.IrCutFilter",
+            "optional": true
           },
           {
             "label": "Day/night shift level",
-            "param": "ImageSource.I{{source}}.DayNight.ShiftLevel"
+            "param": "ImageSource.I{{source}}.DayNight.ShiftLevel",
+            "optional": true
           }
         ]
       }
@@ -1023,11 +1026,13 @@
         "extract": [
           {
             "label": "Focus position",
-            "path": "data.optics.0.focusPosition"
+            "path": "data.optics.0.focusPosition",
+            "optional": true
           },
           {
             "label": "Magnification",
-            "path": "data.optics.0.magnification"
+            "path": "data.optics.0.magnification",
+            "optional": true
           },
           {
             "label": "IR cut filter",

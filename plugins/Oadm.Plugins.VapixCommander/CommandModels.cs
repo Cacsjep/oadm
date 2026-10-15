@@ -165,6 +165,13 @@ public sealed class ResponseExtract
     /// <summary>param.cgi parameter name, e.g. "Brand.ProdNbr" (the "root." prefix and surrounding quotes are optional); placeholders allowed.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Param { get; set; }
+
+    /// <summary>
+    /// A value only some devices have (WDR, an audio output, a zoom lens): left out when the answer lacks it instead of
+    /// "(not found)"; a param.cgi group whose values are all optional may be missing.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Optional { get; set; }
 }
 
 /// <summary>A library file: <c>{ "formatVersion": 1, "category": "...", "commands": [ ... ] }</c>. Also the export format.</summary>

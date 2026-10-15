@@ -101,7 +101,10 @@ firmware)`, `Bad Request - HTTP 400`, `Server error - HTTP 5xx`, plus the device
 it has one.
 
 Optional `response.extract`: list of `{ "label": "...", "path": "data.x.y" | "param": "Key.Name" }`
-values shown in the step detail after success (e.g. the current shift level for read commands).
+values shown in the step detail after success (e.g. the current shift level for read commands). `"optional": true` marks a
+value only some devices have (WDR, an audio output, a zoom lens, a value of a newer AXIS OS): it is left out when the
+answer lacks it instead of showing "(not found)", and a param.cgi `action=list` answer that has values plus
+`# Error: ... getting param in group 'X'` lines only for groups whose extracted values are all optional is a success.
 Paths support array indices (`data.devices.0.name` or `data.devices[0].name`) and `{{placeholders}}`;
 `param` keys may carry a leading `root.` and surrounding quotes (both ignored).
 

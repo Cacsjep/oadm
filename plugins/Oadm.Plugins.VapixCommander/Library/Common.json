@@ -104,11 +104,13 @@
           },
           {
             "label": "Uptime",
-            "path": "data.uptime"
+            "path": "data.uptime",
+            "optional": true
           },
           {
             "label": "Passphrase policy",
-            "path": "data.passphrasepolicy"
+            "path": "data.passphrasepolicy",
+            "optional": true
           }
         ]
       }

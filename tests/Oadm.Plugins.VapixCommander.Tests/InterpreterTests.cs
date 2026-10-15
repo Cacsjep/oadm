@@ -27,6 +27,44 @@ public sealed class InterpreterTests
     }
 
     [Fact]
+    public void Optional_values_are_left_out_when_the_device_lacks_them()
+    {
+        var spec = Spec(ResponseKinds.ParamCgi, extract:
+        [
+            new ResponseExtract { Label = "Brightness", Param = "ImageSource.I0.Sensor.Brightness" },
+            new ResponseExtract { Label = "WDR", Param = "ImageSource.I0.Sensor.WDR", Optional = true },
+            new ResponseExtract { Label = "Sharpness", Param = "ImageSource.I0.Sensor.Sharpness" },
+        ]);
+
+        var result = Run(spec, "root.ImageSource.I0.Sensor.Brightness=48\n");
+
+        Assert.True(result.Success);
+        Assert.Equal("Brightness: 48 · Sharpness: (not found)", result.Summary); // only optional values are left out
+        var json = Run(Spec(ResponseKinds.JsonRpc, extract: [new ResponseExtract { Label = "Uptime", Path = "data.uptime", Optional = true }]), """{"data":{"systemready":"yes"}}""");
+        Assert.Empty(json.Values);
+    }
+
+    [Fact]
+    public void A_group_the_device_lacks_is_fine_only_when_its_values_are_optional()
+    {
+        // AXIS OS 11.9 has no Network.RTSPS.
+        const string body = "root.Network.RTSP.Enabled=yes\nroot.Network.RTSP.Port=554\n# Error: Error -1 getting param in group 'Network.RTSPS'\n";
+        ResponseExtract[] Extracts(bool optional) =>
+        [
+            new() { Label = "RTSP port", Param = "Network.RTSP.Port" },
+            new() { Label = "RTSPS port", Param = "Network.RTSPS.Port", Optional = optional },
+        ];
+
+        var ok = Run(Spec(ResponseKinds.ParamCgi, extract: Extracts(optional: true)), body);
+        var failed = Run(Spec(ResponseKinds.ParamCgi, extract: Extracts(optional: false)), body);
+
+        Assert.True(ok.Success);
+        Assert.Equal("554", Assert.Single(ok.Values).Value);
+        Assert.False(failed.Success);
+        Assert.Equal("Error: Error -1 getting param in group 'Network.RTSPS'", failed.Summary);
+    }
+
+    [Fact]
     public void Param_cgi_errors_show_the_device_text()
     {
         var result = Run(Spec(ResponseKinds.ParamCgi, "OK"), "# Error: Error setting 'root.ImageSource.I9.DayNight.ShiftLevel' to '50'!\n");

@@ -144,7 +144,7 @@ public static partial class ResponseInterpreter
 
     private static Interpretation ParamCgi(CommandResponse spec, string body)
     {
-        var trimmed = body.Trim();
+        var trimmed = OptionalGroupsLeftOut(spec, body.Trim());
         if (ParamError(trimmed) is { } error)
         {
             return Interpretation.Fail(error);
@@ -162,7 +162,10 @@ public static partial class ResponseInterpreter
             if (extract.Param is { Length: > 0 } name)
             {
                 var found = parameters.FirstOrDefault(p => ParamMatches(p.Name, name));
-                values.Add(new NamedValue(extract.Label, found?.Value ?? "(not found)"));
+                if (found is not null || !extract.Optional)
+                {
+                    values.Add(new NamedValue(extract.Label, found?.Value ?? "(not found)"));
+                }
             }
         }
 
@@ -219,7 +222,10 @@ public static partial class ResponseInterpreter
         {
             if (extract.Path is { Length: > 0 } path)
             {
-                values.Add(new NamedValue(extract.Label, JsonPath(root, path) ?? "(not found)"));
+                if (JsonPath(root, path) is not null || !extract.Optional)
+                {
+                    values.Add(new NamedValue(extract.Label, JsonPath(root, path) ?? "(not found)"));
+                }
             }
         }
 
@@ -266,7 +272,10 @@ public static partial class ResponseInterpreter
         {
             if (extract.Path is { Length: > 0 } path)
             {
-                values.Add(new NamedValue(extract.Label, XmlPath(doc, path) ?? "(not found)"));
+                if (XmlPath(doc, path) is not null || !extract.Optional)
+                {
+                    values.Add(new NamedValue(extract.Label, XmlPath(doc, path) ?? "(not found)"));
+                }
             }
         }
 
@@ -311,6 +320,53 @@ public static partial class ResponseInterpreter
     }
 
     /// <summary>"Error: ..." of a param.cgi answer ("# Error: ..." or a line containing "Error:"), else null.</summary>
+    /// <summary>
+    /// The answer without the error lines of groups the device does not have, when values came back and every extracted value
+    /// of such a group is optional (AXIS OS 11.9 has no Network.RTSPS: "# Error: Error -1 getting param in group
+    /// 'Network.RTSPS'").
+    /// </summary>
+    private static string OptionalGroupsLeftOut(CommandResponse spec, string body)
+    {
+        if (body.Length == 0 || body[0] is '{' or '<' || !body.Contains("getting param in group", StringComparison.Ordinal))
+        {
+            return body;
+        }
+
+        var lines = body.Split('\n').Select(l => l.TrimEnd('\r')).ToList();
+        if (!lines.Any(l => l.Contains('=', StringComparison.Ordinal) && !l.StartsWith('#')))
+        {
+            return body;
+        }
+
+        var kept = new List<string>();
+        foreach (var line in lines)
+        {
+            var group = MissingGroup().Match(line);
+            if (group.Success)
+            {
+                var name = group.Groups[1].Value + ".";
+                var inGroup = (spec.Extract ?? []).Where(e => e.Param is { } p && Unrooted(p).StartsWith(name, StringComparison.OrdinalIgnoreCase)).ToList();
+                if (inGroup.Count > 0 && inGroup.All(e => e.Optional))
+                {
+                    continue;
+                }
+            }
+
+            kept.Add(line);
+        }
+
+        return string.Join('\n', kept).Trim();
+    }
+
+    private static string Unrooted(string param)
+    {
+        var p = param.Trim().Trim('"');
+        return p.StartsWith("root.", StringComparison.OrdinalIgnoreCase) ? p[5..] : p;
+    }
+
+    [GeneratedRegex(@"^#?\s*Error:.*getting param in group '([^']+)'", RegexOptions.IgnoreCase)]
+    private static partial Regex MissingGroup();
+
     private static string? ParamError(string body)
     {
         if (body.StartsWith("# Error", StringComparison.OrdinalIgnoreCase))

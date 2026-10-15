@@ -19,11 +19,15 @@ public sealed partial class ReaderHardwareTests(ITestOutputHelper output)
     /// Readers whose API is listed by the device but that legitimately answer with a VAPIX error on that model.
     /// They are still sent; the test asserts that the device answers with the documented error.
     /// </summary>
-    private static readonly Dictionary<string, string> ExpectedDeviceErrors = new(StringComparer.Ordinal)
+    /// <summary>Device errors that are a correct answer for some models (the reader succeeds on the others).</summary>
+    private static readonly Dictionary<string, string> AcceptedDeviceErrors = new(StringComparer.Ordinal)
     {
         // AXIS P3265-V lists light-control but has no IR/white light: error 1005 "No light hardware found".
         ["image.light.info"] = "code 1005",
     };
+
+    /// <summary>Readers of I/O ports: skipped on a camera without any (AXIS P12 Mk III: port.cgi HTTP 400, "No such port").</summary>
+    private static readonly HashSet<string> NeedIoPorts = new(StringComparer.Ordinal) { "io.ports.active", "io.supervised.get" };
 
     [GeneratedRegex("camera|encoder|video|intercom|door station", RegexOptions.IgnoreCase)]
     private static partial Regex VideoProductRegex();
@@ -40,7 +44,8 @@ public sealed partial class ReaderHardwareTests(ITestOutputHelper output)
             var apis = await GetApiListAsync(http);
             var productType = await GetProductTypeAsync(http);
             var hasVideo = VideoProductRegex().IsMatch(productType);
-            output.WriteLine($"{camera}: {apis.Count} APIs, ProdType '{productType}'");
+            var hasIoPorts = await HasIoPortsAsync(http);
+            output.WriteLine($"{camera}: {apis.Count} APIs, ProdType '{productType}'{(hasIoPorts ? string.Empty : ", no I/O ports")}");
 
             var passed = 0;
             foreach (var command in CommandLibrary.AllCommands.Where(c => !CommandLibrary.Writes(c)))
@@ -59,22 +64,20 @@ public sealed partial class ReaderHardwareTests(ITestOutputHelper output)
                     continue;
                 }
 
+                if (NeedIoPorts.Contains(id) && !hasIoPorts)
+                {
+                    output.WriteLine($"  SKIP {id}: no I/O ports");
+                    continue;
+                }
+
                 var values = CommandRendering.Defaults(command);
                 var rendered = CommandRendering.Render(command, values);
                 var (status, body) = await SendAsync(http, rendered);
                 var error = CommandRendering.Interpret(command, status, body);
 
-                if (ExpectedDeviceErrors.TryGetValue(id, out var expected))
+                if (error is not null && AcceptedDeviceErrors.TryGetValue(id, out var accepted) && error.Contains(accepted, StringComparison.Ordinal))
                 {
-                    if (error is null || !error.Contains(expected, StringComparison.Ordinal))
-                    {
-                        failures.Add($"{camera} {id}: expected device error '{expected}', got '{error ?? "success"}'");
-                    }
-                    else
-                    {
-                        output.WriteLine($"  OK   {id} (expected device error: {error})");
-                    }
-
+                    output.WriteLine($"  OK   {id} (the model's answer: {error})");
                     continue;
                 }
 
@@ -85,7 +88,7 @@ public sealed partial class ReaderHardwareTests(ITestOutputHelper output)
                 }
 
                 var missing = CommandLibrary.Extracts(command)
-                    .Where(e => CommandRendering.Extract(e, body, command, values) is null)
+                    .Where(e => e["optional"]?.GetValue<bool>() != true && CommandRendering.Extract(e, body, command, values) is null)
                     .Select(e => e["label"]!.GetValue<string>())
                     .ToList();
                 if (missing.Count > 0)
@@ -112,10 +115,23 @@ public sealed partial class ReaderHardwareTests(ITestOutputHelper output)
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
 
+    /// <summary>Whether the camera has any I/O port (param.cgi IOPort group; an AXIS P12 Mk III has none).</summary>
+    private static async Task<bool> HasIoPortsAsync(HttpClient http)
+    {
+        var body = await http.GetStringAsync(new Uri("axis-cgi/param.cgi?action=list&group=IOPort", UriKind.Relative));
+        return body.Contains("root.IOPort.I", StringComparison.Ordinal);
+    }
+
     private static string Short(string? value) => value is null ? "?" : value.Length <= 60 ? value : value[..60] + "...";
 
     private static bool IsMet(Dictionary<string, List<Version>> apis, string api, string minVersion)
     {
+        // "any": the device must list the API, in any version (like the plugin's AnyVersion).
+        if (minVersion == "any")
+        {
+            return apis.ContainsKey(api);
+        }
+
         var min = Version.Parse(minVersion);
         return apis.TryGetValue(api, out var versions) && versions.Any(v => v >= min);
     }

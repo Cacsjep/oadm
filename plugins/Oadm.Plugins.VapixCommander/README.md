@@ -39,7 +39,10 @@ shown to the user.
 - `CommandExecutor` sends with the factory's cached client (never disposed by the plugin), decodes the body as UTF-8
   itself (Axis sends `charset=utf8`), shows binary answers as "image/jpeg, 123.4 KB", pretty-prints JSON / XML (cut at
   256 KB) and interprets per response kind (`ResponseInterpreter`, table in `command-format.md`): the kind decides how
-  success, errors and extracted values are read, because Axis devices often answer an error with HTTP 200.
+  success, errors and extracted values are read, because Axis devices often answer an error with HTTP 200. Values only
+  some models have are `"optional": true` and left out when missing (WDR, an IR cut filter, audio input and output, a zoom
+  lens, values of a newer AXIS OS, I/O port 0); a param.cgi group the device lacks (Network.RTSPS on AXIS OS 11.9) is no
+  error when all its values are optional.
 - Errors: the device text (`# Error: ...` line, JSON `message (code N)`, REST error / problem+json, SOAP fault, Axis
   `GeneralError`, first text line, HTML title) or the transport text ("Timeout after 15 s", "Unreachable - Connection
   refused", "Unreachable - no route to the device", "TLS/certificate error: ...", "Unauthorized - HTTP 401 (check the
@@ -143,7 +146,9 @@ task engine, saved commands (encryption, export, import), compatibility, the pag
 5,000-device timing, the bundled library and headless screenshots. `tests/Oadm.Client.Tests/CodeViewTests`;
 `tests/Oadm.Server.Tests/VapixCommanderServerTests` (routing, hidden task); read-only hardware test
 `VapixCommanderHardwareTests` (param.cgi list Brand and basicdeviceinfo, Send and a rollout on the development camera
-through the in-process server). Not in fake mode.
+through the in-process server); `ReaderHardwareTests` runs every read-only library command on every dev camera (passed on
+AXIS OS 10.12, 11.9 and 12.11: P3265-V, M3215-LVE, M3206-LVE, P12 Mk III; the I/O port readers are skipped on a camera
+without ports, "No light hardware found" is the right answer of a camera without lights). Not in fake mode.
 
 ## Permissions
 

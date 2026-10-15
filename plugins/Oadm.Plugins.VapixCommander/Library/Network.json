@@ -459,11 +459,13 @@
           },
           {
             "label": "RTSPS enabled",
-            "param": "Network.RTSPS.Enabled"
+            "param": "Network.RTSPS.Enabled",
+            "optional": true
           },
           {
             "label": "RTSPS port",
-            "param": "Network.RTSPS.Port"
+            "param": "Network.RTSPS.Port",
+            "optional": true
           }
         ]
       }
