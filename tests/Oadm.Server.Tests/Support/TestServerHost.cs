@@ -147,7 +147,7 @@ internal sealed class TestServerHost : IAsyncDisposable
 
         await OadmServerHost.StartAsync(app);
         var server = app.GetTestServer();
-        var channel = GrpcChannel.ForAddress(server.BaseAddress, new GrpcChannelOptions { HttpHandler = server.CreateHandler() });
+        var channel = GrpcChannel.ForAddress(server.BaseAddress, new GrpcChannelOptions { HttpHandler = server.CreateHandler(), MaxReceiveMessageSize = OadmChannel.MaxReceiveMessageSize });
         var token = createAdmin ? await InProcessAccess.CreateTokenAsync(app.Services, AdminUserName) : "";
         return new TestServerHost(app, channel, token, dataDirectory, network);
     }

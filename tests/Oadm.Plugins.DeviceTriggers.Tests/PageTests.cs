@@ -239,9 +239,9 @@ public sealed class PageTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task The_dialog_takes_5000_devices_from_the_picker_fast()
+    public async Task The_dialog_takes_30000_devices_from_the_picker_fast()
     {
-        var devices = Enumerable.Range(0, 5000).Select(i => (IDeviceInfo)new TestDevice($"10.1.{i / 250}.{i % 250 + 1}")).ToList();
+        var devices = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Select(i => (IDeviceInfo)new TestDevice($"10.1.{i / 250}.{i % 250 + 1}")).ToList();
         var ctx = new PageContext(null, null, devices);
         var watch = Stopwatch.StartNew();
         using var editor = new TriggerEditorViewModel(ctx, null, []);
@@ -255,7 +255,7 @@ public sealed class PageTests(ITestOutputHelper output)
         };
         await editor.ChooseDevicesCommand.ExecuteAsync(null);
         var picked = watch.ElapsedMilliseconds - created;
-        output.WriteLine($"create {created} ms, pick 250 of 5,000 {picked} ms");
+        output.WriteLine($"create {created} ms, pick 250 of 30,000 {picked} ms");
         Assert.Equal(250, editor.VisibleDevices.Count);
         Assert.Equal("250 chosen devices: 250 devices now", editor.DevicesSummary);
         Assert.True(watch.ElapsedMilliseconds < 3000, $"took {watch.ElapsedMilliseconds} ms");

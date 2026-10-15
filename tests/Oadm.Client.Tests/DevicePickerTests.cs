@@ -70,9 +70,9 @@ public sealed class DevicePickerTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void Five_thousand_devices_are_listed_searched_and_chosen_fast()
+    public void Thirty_thousand_devices_are_listed_searched_and_chosen_fast()
     {
-        var devices = Enumerable.Range(0, 5000).Select(i => new PickDevice($"10.1.{i / 250}.{i % 250 + 1}", "AXIS P3265-V")).ToList();
+        var devices = Enumerable.Range(0, DeviceLimits.MaxDevices).Select(i => new PickDevice($"10.1.{i / 250}.{i % 250 + 1}", "AXIS P3265-V")).ToList();
         var watch = Stopwatch.StartNew();
         var vm = new DevicePickerViewModel(devices, devices.Take(100).Select(d => d.Id));
         var created = watch.ElapsedMilliseconds;
@@ -82,7 +82,7 @@ public sealed class DevicePickerTests(ITestOutputHelper output)
         vm.SelectAllCommand.Execute(null);
         vm.SelectNoneCommand.Execute(null);
         output.WriteLine($"create {created} ms, search and select {watch.ElapsedMilliseconds - created} ms");
-        Assert.Equal("0 of 5,000 devices chosen", vm.Summary);
+        Assert.Equal("0 of 30,000 devices chosen", vm.Summary);
         Assert.True(watch.ElapsedMilliseconds < 2000, $"took {watch.ElapsedMilliseconds} ms");
     }
 

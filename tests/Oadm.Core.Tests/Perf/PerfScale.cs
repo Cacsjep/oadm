@@ -1,6 +1,7 @@
 using System.Diagnostics;
 
 using Oadm.Core.Tasks;
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 
 using Xunit.Abstractions;
@@ -17,7 +18,10 @@ internal static class PerfScale
     public const string Category = "Category";
     public const string Perf = "Perf";
 
-    public const int Devices = 5_000;
+    /// <summary>The scale tests run one at a time: at 30,000 devices parallel SQLite runs slow each other down several times.</summary>
+    public const string OneAtATime = "Perf one at a time";
+
+    public const int Devices = DeviceLimits.MaxDevices;
     public const int Tasks = 50_000;
 
     /// <summary>Runs <paramref name="action"/>, writes the time to the test output and asserts the budget.</summary>
@@ -56,7 +60,7 @@ internal static class PerfScale
         };
     }
 
-    /// <summary>50,000 finished tasks over 5,000 devices (10 batches), one second apart, oldest first.</summary>
+    /// <summary>50,000 finished tasks over 30,000 devices (2 batches), one second apart, oldest first.</summary>
     public static List<TaskRecord> History(int count = Tasks, int devices = Devices)
     {
         var deviceIds = Enumerable.Range(0, devices).Select(_ => Guid.NewGuid()).ToArray();
@@ -77,3 +81,7 @@ internal static class PerfScale
         return list;
     }
 }
+
+/// <summary>Runs the scale tests one after another (<see cref="PerfScale.OneAtATime"/>).</summary>
+[CollectionDefinition(PerfScale.OneAtATime, DisableParallelization = true)]
+public sealed class PerfOneAtATime;

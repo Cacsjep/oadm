@@ -16,8 +16,9 @@ using Xunit.Abstractions;
 
 namespace Oadm.Core.Tests.Perf;
 
-/// <summary>Status polling and the full refresh schedule with 5,000 devices.</summary>
+/// <summary>Status polling and the full refresh schedule with 30,000 devices.</summary>
 [Trait(PerfScale.Category, PerfScale.Perf)]
+[Collection(PerfScale.OneAtATime)]
 public sealed class DevicePollingScaleTests(ITestOutputHelper output) : IAsyncLifetime, IDisposable
 {
     private readonly ConcurrentDictionary<string, DateTimeOffset> _firstPoll = new();
@@ -37,7 +38,7 @@ public sealed class DevicePollingScaleTests(ITestOutputHelper output) : IAsyncLi
             return Fixtures.Json(_basicDeviceInfo);
         });
 
-        // Seeded in one transaction (5,000 AddAsync calls would take a while and are not what is measured).
+        // Seeded in one transaction (30,000 AddAsync calls would take a while and are not what is measured).
         await using var db = await _db.Get<IDbContextFactory<OadmDbContext>>().CreateDbContextAsync();
         for (var i = 0; i < PerfScale.Devices; i++)
         {
@@ -61,20 +62,20 @@ public sealed class DevicePollingScaleTests(ITestOutputHelper output) : IAsyncLi
     }
 
     [Fact]
-    public async Task APollRoundSpreads5000DevicesOverTheIntervalWithBoundedParallelism()
+    public async Task APollRoundSpreads30000DevicesOverTheIntervalWithBoundedParallelism()
     {
         using var factory = new VapixClientFactory(Devices, _db.Get<CredentialStore>(), new Connector(_handler));
         using var polling = new DevicePollingService(Devices, factory, _db.Get<ServerSettingsStore>()) { MaxParallelism = 16 };
-        // 500 starts per second: well below what the fake devices and SQLite sustain (about 800/s), so the
+        // 500 starts per second (30,000 over 60 s): well below what the fake devices and SQLite sustain (about 800/s), so the
         // measured distribution shows the pacing, not the throughput limit.
-        var spread = TimeSpan.FromSeconds(10);
+        var spread = TimeSpan.FromSeconds(60);
 
         var start = DateTimeOffset.UtcNow;
-        await PerfScale.MeasureAsync(output, "PollRoundAsync 5,000 devices spread over 10 s", TimeSpan.FromSeconds(40), () =>
+        await PerfScale.MeasureAsync(output, "PollRoundAsync 30,000 devices spread over 60 s", TimeSpan.FromSeconds(120), () =>
             polling.PollRoundAsync(spread, CancellationToken.None));
         Assert.Equal(PerfScale.Devices, _firstPoll.Count);
 
-        // Ideal: 10 % of the devices per tenth of the window. The former burst started all 5,000 at once.
+        // Ideal: 10 % of the devices per tenth of the window. The former burst started all 30,000 at once.
         var bins = new int[10];
         foreach (var time in _firstPoll.Values)
         {
@@ -85,8 +86,8 @@ public sealed class DevicePollingScaleTests(ITestOutputHelper output) : IAsyncLi
         output.WriteLine("Starts per second: " + string.Join(", ", bins));
         // Robust under a loaded CI machine (a busy machine falls behind and catches up later, never earlier):
         // no burst at the start, and a large share of the starts in the second half of the window.
-        Assert.InRange(bins[0], 1, 1000);
-        Assert.InRange(bins.Skip(5).Sum(), 2000, 5000);
+        Assert.InRange(bins[0], 1, 6000);
+        Assert.InRange(bins.Skip(5).Sum(), 12000, 30000);
         Assert.True(DateTimeOffset.UtcNow - start >= spread * 0.85, "the round took the spread time");
     }
 
@@ -97,11 +98,11 @@ public sealed class DevicePollingScaleTests(ITestOutputHelper output) : IAsyncLi
         using var polling = new DevicePollingService(Devices, factory, _db.Get<ServerSettingsStore>()) { MaxParallelism = 32 };
         using var subscription = _db.Get<IDeviceChangeFeed>().Subscribe();
 
-        await PerfScale.MeasureAsync(output, "PollAllAsync 5,000 devices, first round (model and firmware learned)", TimeSpan.FromSeconds(60), () =>
+        await PerfScale.MeasureAsync(output, "PollAllAsync 30,000 devices, first round (model and firmware learned)", TimeSpan.FromSeconds(60), () =>
             polling.PollAllAsync(CancellationToken.None));
         Assert.Equal(PerfScale.Devices, Drain(subscription));
 
-        await PerfScale.MeasureAsync(output, "PollAllAsync 5,000 devices, second round (LastSeen only)", TimeSpan.FromSeconds(60), () =>
+        await PerfScale.MeasureAsync(output, "PollAllAsync 30,000 devices, second round (LastSeen only)", TimeSpan.FromSeconds(60), () =>
             polling.PollAllAsync(CancellationToken.None));
         Assert.Equal(0, Drain(subscription));
         var device = (await Devices.ListDevicesAsync(CancellationToken.None))[0];
@@ -116,24 +117,24 @@ public sealed class DevicePollingScaleTests(ITestOutputHelper output) : IAsyncLi
         using var polling = new DevicePollingService(Devices, factory, _db.Get<ServerSettingsStore>(), time);
 
         IReadOnlyList<Guid> due = [];
-        await PerfScale.MeasureAsync(output, "QueueDueFullRefreshesAsync over 5,000 device ids", TimeSpan.FromSeconds(2), async () =>
+        await PerfScale.MeasureAsync(output, "QueueDueFullRefreshesAsync over 30,000 device ids", TimeSpan.FromSeconds(2), async () =>
             due = await polling.QueueDueFullRefreshesAsync(CancellationToken.None));
         Assert.Empty(due);
 
         time.Advance(TimeSpan.FromMinutes(10));
-        Assert.InRange((await polling.QueueDueFullRefreshesAsync(CancellationToken.None)).Count, 1, 10);
+        Assert.InRange((await polling.QueueDueFullRefreshesAsync(CancellationToken.None)).Count, 1, 60);
         time.Advance(TimeSpan.FromMinutes(5));
-        Assert.InRange((await polling.QueueDueFullRefreshesAsync(CancellationToken.None)).Count, 2000, 3000);
+        Assert.InRange((await polling.QueueDueFullRefreshesAsync(CancellationToken.None)).Count, 12000, 18000);
         time.Advance(TimeSpan.FromMinutes(5));
         Assert.Equal(PerfScale.Devices, (await polling.QueueDueFullRefreshesAsync(CancellationToken.None)).Count);
     }
 
     [Fact]
-    public async Task Removing5000DevicesIsOneTransaction()
+    public async Task Removing30000DevicesIsOneTransaction()
     {
         var ids = await Devices.ListDeviceIdsAsync(CancellationToken.None);
         using var subscription = _db.Get<IDeviceChangeFeed>().Subscribe();
-        await PerfScale.MeasureAsync(output, "RemoveManyAsync 5,000 devices", TimeSpan.FromSeconds(10), () =>
+        await PerfScale.MeasureAsync(output, "RemoveManyAsync 30,000 devices", TimeSpan.FromSeconds(10), () =>
             Devices.RemoveManyAsync(ids, CancellationToken.None));
         Assert.Empty(await Devices.ListDeviceIdsAsync(CancellationToken.None));
         Assert.Equal(PerfScale.Devices, Drain(subscription));

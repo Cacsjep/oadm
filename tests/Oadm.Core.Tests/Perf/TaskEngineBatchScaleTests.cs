@@ -8,8 +8,9 @@ using Xunit.Abstractions;
 
 namespace Oadm.Core.Tests.Perf;
 
-/// <summary>A Run on 5,000 devices: one store transaction for the submission, bounded parallelism, no lost changes.</summary>
+/// <summary>A Run on 30,000 devices: one store transaction for the submission, bounded parallelism, no lost changes.</summary>
 [Trait(PerfScale.Category, PerfScale.Perf)]
+[Collection(PerfScale.OneAtATime)]
 public sealed class TaskEngineBatchScaleTests(ITestOutputHelper output) : IAsyncLifetime
 {
     private readonly FakeDeviceRepository _devices = new();
@@ -21,7 +22,7 @@ public sealed class TaskEngineBatchScaleTests(ITestOutputHelper output) : IAsync
     public async Task DisposeAsync() => await _db.DisposeAsync();
 
     [Fact]
-    public async Task RunOn5000DevicesWithTheDatabaseStore()
+    public async Task RunOn30000DevicesWithTheDatabaseStore()
     {
         var running = 0;
         var maxRunning = 0;
@@ -40,11 +41,11 @@ public sealed class TaskEngineBatchScaleTests(ITestOutputHelper output) : IAsync
         using var slowSubscriber = engine.Changes.Subscribe();
 
         IReadOnlyList<Guid> taskIds = [];
-        await PerfScale.MeasureAsync(output, "RunAsync 5,000 devices (submission, one AddRange)", TimeSpan.FromSeconds(15), async () =>
+        await PerfScale.MeasureAsync(output, "RunAsync 30,000 devices (submission, one AddRange)", TimeSpan.FromSeconds(20), async () =>
             taskIds = await engine.RunAsync("perf.ok", ids, null, "tester", CancellationToken.None));
         Assert.Equal(PerfScale.Devices, taskIds.Count);
 
-        await PerfScale.MeasureAsync(output, "5,000 tasks executed and persisted (8 in parallel)", TimeSpan.FromSeconds(240), async () =>
+        await PerfScale.MeasureAsync(output, "30,000 tasks executed and persisted (8 in parallel)", TimeSpan.FromSeconds(300), async () =>
         {
             foreach (var id in taskIds)
             {
@@ -69,12 +70,12 @@ public sealed class TaskEngineBatchScaleTests(ITestOutputHelper output) : IAsync
     }
 
     [Fact]
-    public async Task RunOn5000DevicesEngineOverheadWithTheMemoryStore()
+    public async Task RunOn30000DevicesEngineOverheadWithTheMemoryStore()
     {
         Assert.True(_registry.RegisterTaskPlugin(new DelegateTaskPlugin("perf.mem", (_, _, _) => Task.CompletedTask), new PluginOrigin("test", "1.0.0", null)));
         var ids = _devices.AddMany(PerfScale.Devices);
         await using var engine = new TaskEngine(new InMemoryTaskStore(), _registry, _devices, new FakeVapixClientFactory());
-        await PerfScale.MeasureAsync(output, "Run + execute 5,000 tasks, memory store", TimeSpan.FromSeconds(30), async () =>
+        await PerfScale.MeasureAsync(output, "Run + execute 30,000 tasks, memory store", TimeSpan.FromSeconds(30), async () =>
         {
             var taskIds = await engine.RunAsync("perf.mem", ids, null, "tester", CancellationToken.None);
             foreach (var id in taskIds)

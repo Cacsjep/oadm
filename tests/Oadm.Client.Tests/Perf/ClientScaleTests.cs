@@ -19,10 +19,10 @@ using Xunit.Abstractions;
 
 namespace Oadm.Client.Tests.Perf;
 
-/// <summary>Scale helpers of the client tests: 5,000 devices, 50,000 tasks (CLAUDE.md "scale to thousands of devices").</summary>
+/// <summary>Scale helpers of the client tests: 30,000 devices, 50,000 tasks (CLAUDE.md "scale to thousands of devices").</summary>
 internal static class ClientScale
 {
-    public const int Devices = 5_000;
+    public const int Devices = Oadm.Sdk.Devices.DeviceLimits.MaxDevices;
     public const int Tasks = 50_000;
 
     public static TimeSpan Measure(ITestOutputHelper output, string what, TimeSpan budget, Action action)
@@ -37,7 +37,7 @@ internal static class ClientScale
 
     public static string DeviceId(int i) => $"00000000-0000-0000-0000-{i:D12}";
 
-    /// <summary>5,000 devices with 100 APIs each, three models, every 50th unreachable.</summary>
+    /// <summary>30,000 devices with 100 APIs each, three models, every 50th unreachable.</summary>
     public static List<Device> MakeDevices(int count = Devices, int version = 0)
     {
         var apis = Enumerable.Range(0, 100).Select(i => new DeviceApi { Id = $"api-{i:D3}", Version = "1.0", Name = $"Some API {i}", Status = "official" }).ToList();
@@ -85,24 +85,24 @@ internal static class ClientScale
     }
 }
 
-/// <summary>Device store, Devices page filter, selection and context menu with 5,000 devices.</summary>
+/// <summary>Device store, Devices page filter, selection and context menu with 30,000 devices.</summary>
 [Trait("Category", "Perf")]
 public sealed class DeviceListScaleTests(ITestOutputHelper output)
 {
     [Fact]
-    public void Store_loads_5000_devices_once_and_an_identical_snapshot_changes_nothing()
+    public void Store_loads_30000_devices_once_and_an_identical_snapshot_changes_nothing()
     {
         var store = new DeviceStore();
         int collectionEvents = 0;
         store.Devices.CollectionChanged += (_, _) => collectionEvents++;
         List<Device> devices = ClientScale.MakeDevices();
 
-        ClientScale.Measure(output, "DeviceStore.Reset 5,000 devices (100 APIs each)", TimeSpan.FromSeconds(3), () => store.Reset(devices));
+        ClientScale.Measure(output, "DeviceStore.Reset 30,000 devices (100 APIs each)", TimeSpan.FromSeconds(3), () => store.Reset(devices));
         Assert.Equal(ClientScale.Devices, store.Devices.Count);
         Assert.Equal(1, collectionEvents);
         Assert.Same(store.Devices[0].Apis, store.Devices[1].Apis);
 
-        ClientScale.Measure(output, "DeviceStore.Reset with the same 5,000 devices (reconnect)", TimeSpan.FromSeconds(2), () => store.Reset(ClientScale.MakeDevices()));
+        ClientScale.Measure(output, "DeviceStore.Reset with the same 30,000 devices (reconnect)", TimeSpan.FromSeconds(3), () => store.Reset(ClientScale.MakeDevices()));
         Assert.Equal(1, collectionEvents);
     }
 
@@ -117,7 +117,7 @@ public sealed class DeviceListScaleTests(ITestOutputHelper output)
         store.Devices.CollectionChanged += (_, _) => collectionEvents++;
         List<Device> newer = ClientScale.MakeDevices(version: 1);
 
-        ClientScale.Measure(output, "1,000 single DeviceChanged updates on a 5,000-device store", TimeSpan.FromMilliseconds(500), () =>
+        ClientScale.Measure(output, "1,000 single DeviceChanged updates on a 30,000-device store", TimeSpan.FromMilliseconds(500), () =>
         {
             for (int i = 0; i < 1000; i++)
             {
@@ -130,22 +130,22 @@ public sealed class DeviceListScaleTests(ITestOutputHelper output)
 
         changedEvents.Clear();
         var batch = newer.Select(d => new DeviceChanged { Kind = DeviceChanged.Types.Kind.Updated, Device = d }).ToList();
-        ClientScale.Measure(output, "ApplyBatch of 5,000 updates", TimeSpan.FromSeconds(1), () => store.ApplyBatch(batch));
+        ClientScale.Measure(output, "ApplyBatch of 30,000 updates", TimeSpan.FromSeconds(2), () => store.ApplyBatch(batch));
         DeviceStoreChangedEventArgs only = Assert.Single(changedEvents);
         Assert.Equal(ClientScale.Devices - 1000, only.DeviceIds.Count); // the first 1,000 did not change again
 
         changedEvents.Clear();
-        ClientScale.Measure(output, "ApplyBatch of 5,000 unchanged devices", TimeSpan.FromSeconds(1), () => store.ApplyBatch(batch));
+        ClientScale.Measure(output, "ApplyBatch of 30,000 unchanged devices", TimeSpan.FromSeconds(2), () => store.ApplyBatch(batch));
         Assert.Empty(changedEvents);
 
-        var removals = Enumerable.Range(0, 2500).Select(i => new DeviceChanged { Kind = DeviceChanged.Types.Kind.Removed, Device = new Device { Id = ClientScale.DeviceId(i * 2) } }).ToList();
-        ClientScale.Measure(output, "ApplyBatch removing 2,500 of 5,000 devices", TimeSpan.FromSeconds(1), () => store.ApplyBatch(removals));
-        Assert.Equal(2500, store.Devices.Count);
+        var removals = Enumerable.Range(0, ClientScale.Devices / 2).Select(i => new DeviceChanged { Kind = DeviceChanged.Types.Kind.Removed, Device = new Device { Id = ClientScale.DeviceId(i * 2) } }).ToList();
+        ClientScale.Measure(output, "ApplyBatch removing 15,000 of 30,000 devices", TimeSpan.FromSeconds(1), () => store.ApplyBatch(removals));
+        Assert.Equal(ClientScale.Devices / 2, store.Devices.Count);
         Assert.Equal(1, collectionEvents);
     }
 
     [Fact]
-    public async Task Devices_page_search_select_all_and_context_menu_with_5000_devices()
+    public async Task Devices_page_search_select_all_and_context_menu_with_30000_devices()
     {
         using var fixture = new DevicesFixture();
         fixture.SeedDevices([.. ClientScale.MakeDevices()]);
@@ -157,7 +157,7 @@ public sealed class DeviceListScaleTests(ITestOutputHelper output)
         int filterEvents = 0;
         vm.FilteredDevices.CollectionChanged += (_, _) => filterEvents++;
         string[] keystrokes = ["1", "10", "10.", "10.0", "10.0.1", "10.0.1.", "10.0.1.2", "P", "P3", "P32", "P326", "", "Q6135", "unreachable", ""];
-        ClientScale.Measure(output, $"Search, {keystrokes.Length} keystrokes over 5,000 devices", TimeSpan.FromSeconds(2), () =>
+        ClientScale.Measure(output, $"Search, {keystrokes.Length} keystrokes over 30,000 devices", TimeSpan.FromSeconds(2), () =>
         {
             foreach (string text in keystrokes)
             {
@@ -170,7 +170,7 @@ public sealed class DeviceListScaleTests(ITestOutputHelper output)
         int selectionEvents = 0;
         vm.SelectedDevices.CollectionChanged += (_, _) => selectionEvents++;
         List<DeviceRowViewModel> healthy = [.. vm.FilteredDevices.Where(d => d.ContractStatus == DeviceStatus.Ok)];
-        ClientScale.Measure(output, "Select all 4,900 runnable devices + context menu with 10 plugins", TimeSpan.FromSeconds(1), () =>
+        ClientScale.Measure(output, "Select all 29,400 runnable devices + context menu with 10 plugins", TimeSpan.FromSeconds(1), () =>
             vm.SelectedDevices.ReplaceAll(healthy));
         Assert.Equal(1, selectionEvents);
         MenuEntryViewModel group = Assert.Single(vm.ContextMenuEntries, e => e.Header == "Maintenance");
@@ -178,12 +178,12 @@ public sealed class DeviceListScaleTests(ITestOutputHelper output)
         Assert.True(vm.RunPluginCommand.CanExecute(fixture.Catalog.Plugins[0]));
         Assert.True(vm.ToolbarContext.CanRunTask("perf.plugin3"));
 
-        ClientScale.Measure(output, "Select all 5,000 incl. unreachable (no plugin runnable)", TimeSpan.FromSeconds(1), () =>
+        ClientScale.Measure(output, "Select all 30,000 incl. unreachable (no plugin runnable)", TimeSpan.FromSeconds(1), () =>
             vm.SelectedDevices.ReplaceAll(vm.FilteredDevices));
         MenuEntryViewModel greyed = Assert.Single(vm.ContextMenuEntries, e => e.Header == "Maintenance");
         Assert.All(greyed.Items!, e => Assert.False(e.IsEnabled));
-        Assert.Equal("Not supported on this device: 100 of 5000 selected devices", greyed.Items![0].ToolTip);
-        Assert.Contains("5000 selected", vm.StatusLine.Replace(",", "", StringComparison.Ordinal), StringComparison.Ordinal);
+        Assert.Equal("Not supported on this device: 600 of 30000 selected devices", greyed.Items![0].ToolTip);
+        Assert.Contains("30000 selected", vm.StatusLine.Replace(",", "", StringComparison.Ordinal), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -193,7 +193,7 @@ public sealed class DeviceListScaleTests(ITestOutputHelper output)
         TaskPluginInfo full = ClientScale.RunnableOnAll("full", ids.Skip(1));
         var compact = new TaskPluginInfo { Id = "compact", RunnableOnAllExcept = true, NotRunnableDeviceIds = { ids[0] } };
         bool all = false;
-        ClientScale.Measure(output, "RunnableFor 2 plugins x 4,999 selected devices, 100 times", TimeSpan.FromSeconds(1), () =>
+        ClientScale.Measure(output, "RunnableFor 2 plugins x 29,999 selected devices, 100 times", TimeSpan.FromSeconds(1), () =>
         {
             for (int i = 0; i < 100; i++)
             {
@@ -202,7 +202,7 @@ public sealed class DeviceListScaleTests(ITestOutputHelper output)
         });
         Assert.True(all);
         Assert.Empty(TaskPluginCatalog.RunnableFor([full, compact], [ids[0]]));
-        Assert.True(TaskPluginCatalog.CanRun(compact, ids[4999]));
+        Assert.True(TaskPluginCatalog.CanRun(compact, ids[ClientScale.Devices - 1]));
         Assert.False(TaskPluginCatalog.CanRun(compact, ids[0]));
     }
 
@@ -217,7 +217,7 @@ public sealed class DeviceListScaleTests(ITestOutputHelper output)
             MinRefreshInterval = TimeSpan.FromMilliseconds(500),
         };
 
-        // A device change every 10 ms for 1.5 s (a 5,000-device site with polling and tasks running).
+        // A device change every 10 ms for 1.5 s (a 30,000-device site with polling and tasks running).
         var watch = Stopwatch.StartNew();
         while (watch.Elapsed < TimeSpan.FromSeconds(1.5))
         {
@@ -232,7 +232,7 @@ public sealed class DeviceListScaleTests(ITestOutputHelper output)
     }
 }
 
-/// <summary>Task store and Tasks pane with 50,000 tasks on the server and 5,000-task runs.</summary>
+/// <summary>Task store and Tasks pane with 50,000 tasks on the server and 30,000-task runs.</summary>
 [Trait("Category", "Perf")]
 public sealed class TaskListScaleTests(ITestOutputHelper output)
 {
@@ -283,7 +283,7 @@ public sealed class TaskListScaleTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void A_run_on_5000_devices_arrives_as_batches_with_one_notification_each()
+    public void A_run_on_30000_devices_arrives_as_batches_with_one_notification_each()
     {
         var devices = new DeviceStore();
         devices.Reset(ClientScale.MakeDevices());
@@ -299,20 +299,24 @@ public sealed class TaskListScaleTests(ITestOutputHelper output)
             Task = ClientScale.Task(i, ClientScale.DeviceId(i), TaskState.Queued, now),
         })];
 
-        ClientScale.Measure(output, "ApplyBatch of 5,000 Added tasks", TimeSpan.FromSeconds(2), () => store.ApplyBatch(added));
+        ClientScale.Measure(output, "ApplyBatch of 30,000 Added tasks", TimeSpan.FromSeconds(2), () => store.ApplyBatch(added));
         Assert.Equal(ClientScale.Devices, store.ActiveCount);
         Assert.Equal(1, collectionEvents);
         Assert.Equal(1, changedEvents);
 
         List<TaskChanged> done = [.. added.Select(c => new TaskChanged { Kind = TaskChanged.Types.Kind.Updated, Task = ClientScale.Task(int.Parse(c.Task.Id[5..], System.Globalization.CultureInfo.InvariantCulture), c.Task.DeviceId, TaskState.Done, now) })];
-        ClientScale.Measure(output, "ApplyBatch of 5,000 Updated (Done) tasks", TimeSpan.FromSeconds(2), () => store.ApplyBatch(done));
+        ClientScale.Measure(output, "ApplyBatch of 30,000 Updated (Done) tasks", TimeSpan.FromSeconds(2), () => store.ApplyBatch(done));
         Assert.Equal(0, store.ActiveCount);
-        Assert.Equal(1, collectionEvents);
+        // A run larger than the store keeps: once finished, the oldest beyond MaxTasks leave in one more notification.
+        Assert.Equal(TaskStore.MaxTasks, store.Tasks.Count);
+        Assert.Equal(2, collectionEvents);
+        Assert.Equal(2, changedEvents);
 
         List<TaskChanged> removed = [.. added.Select(c => new TaskChanged { Kind = TaskChanged.Types.Kind.Removed, Task = new TaskInfo { Id = c.Task.Id } })];
-        ClientScale.Measure(output, "ApplyBatch of 5,000 Removed (Delete all)", TimeSpan.FromSeconds(1), () => store.ApplyBatch(removed));
+        ClientScale.Measure(output, "ApplyBatch of 30,000 Removed (Delete all)", TimeSpan.FromSeconds(1), () => store.ApplyBatch(removed));
         Assert.Empty(store.Tasks);
-        Assert.Equal(2, collectionEvents);
+        Assert.Equal(3, collectionEvents);
+        Assert.Equal(3, changedEvents);
     }
 
     [Fact]
@@ -337,12 +341,12 @@ public sealed class TaskListScaleTests(ITestOutputHelper output)
         ui.RunAll();
 
         Assert.Equal(Enumerable.Range(0, ClientScale.Devices), applied);
-        output.WriteLine($"5,000 changes from a stream: {ui.Posts} dispatcher posts, {batches} UI batches");
-        Assert.Equal(1, ui.Posts); // the former code posted 5,000 times
+        output.WriteLine($"30,000 changes from a stream: {ui.Posts} dispatcher posts, {batches} UI batches");
+        Assert.Equal(1, ui.Posts); // the former code posted 30,000 times
     }
 
     [Fact]
-    public void Add_page_handles_5000_discovered_devices_and_select_all()
+    public void Add_page_handles_30000_discovered_devices_and_select_all()
     {
         IOadmApi api = Substitute.For<IOadmApi>();
         var page = new AddDevicesViewModel(api, new ImmediateUiDispatcher(), NullLogger<AddDevicesViewModel>.Instance, AddDevicesMode.IpRange);
@@ -357,7 +361,7 @@ public sealed class TaskListScaleTests(ITestOutputHelper output)
             AuthState = i % 10 == 0 ? AuthState.LoginFailed : AuthState.Authenticated,
         })];
 
-        ClientScale.Measure(output, "5,000 discovered devices + 5,000 login results (IP range of a /16)", TimeSpan.FromSeconds(3), () =>
+        ClientScale.Measure(output, "30,000 discovered devices + 30,000 login results (IP range of a /16)", TimeSpan.FromSeconds(3), () =>
         {
             foreach (DiscoveredDevice device in found)
             {
@@ -370,11 +374,11 @@ public sealed class TaskListScaleTests(ITestOutputHelper output)
             }
         });
         Assert.Equal(ClientScale.Devices, page.Rows.Count);
-        Assert.Contains("4500 ready to add", page.SummaryText.Replace(",", "", StringComparison.Ordinal), StringComparison.Ordinal);
-        Assert.Contains("500 need a login", page.SummaryText.Replace(",", "", StringComparison.Ordinal), StringComparison.Ordinal);
+        Assert.Contains("27000 ready to add", page.SummaryText.Replace(",", "", StringComparison.Ordinal), StringComparison.Ordinal);
+        Assert.Contains("3000 need a login", page.SummaryText.Replace(",", "", StringComparison.Ordinal), StringComparison.Ordinal);
 
-        ClientScale.Measure(output, "Select all 4,500 authenticated devices", TimeSpan.FromSeconds(2), () => page.SelectAllAuthenticatedCommand.Execute(null));
-        Assert.Equal(4500, page.SelectedCount);
+        ClientScale.Measure(output, "Select all 27,000 authenticated devices", TimeSpan.FromSeconds(2), () => page.SelectAllAuthenticatedCommand.Execute(null));
+        Assert.Equal(ClientScale.Devices * 9 / 10, page.SelectedCount);
 
         ClientScale.Measure(output, "Search the add page list", TimeSpan.FromMilliseconds(500), () =>
         {

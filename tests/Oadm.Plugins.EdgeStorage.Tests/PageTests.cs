@@ -142,9 +142,9 @@ internal sealed class PageRig : IAsyncDisposable
 
 public sealed class PageTests(ITestOutputHelper output)
 {
-    private static async Task UntilAsync(Func<bool> condition)
+    private static async Task UntilAsync(Func<bool> condition, int seconds = 10)
     {
-        var until = DateTime.UtcNow.AddSeconds(10);
+        var until = DateTime.UtcNow.AddSeconds(seconds);
         while (!condition())
         {
             Assert.True(DateTime.UtcNow < until, "Timed out waiting for the condition.");
@@ -279,17 +279,17 @@ public sealed class PageTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Five_thousand_rows_search_and_select_fast()
+    public async Task Thirty_thousand_rows_search_and_select_fast()
     {
         await using var rig = new PageRig();
-        for (var i = 0; i < 5_000; i++)
+        for (var i = 0; i < Oadm.Sdk.Devices.DeviceLimits.MaxDevices; i++)
         {
             rig.Devices.Items.Add(new FakeDevice { Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}" });
         }
 
         var vm = rig.ViewModel;
         vm.Activate();
-        await UntilAsync(() => vm.Rows.Count == 5_000 && !vm.IsReading && vm.OkText == "5,000");
+        await UntilAsync(() => vm.Rows.Count == Oadm.Sdk.Devices.DeviceLimits.MaxDevices && !vm.IsReading && vm.OkText == "30,000", seconds: 30);
         var watch = Stopwatch.StartNew();
         vm.SearchText = "10.0.1.";
         var search = watch.ElapsedMilliseconds;
