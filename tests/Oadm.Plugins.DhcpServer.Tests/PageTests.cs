@@ -53,6 +53,28 @@ public sealed class PageViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Loading_overlay_shows_until_the_first_state_arrived()
+    {
+        var gate = new TaskCompletionSource();
+        _ctx.Gate = gate.Task;
+        using var vm = new DhcpServerViewModel(_ctx);
+        Assert.False(vm.IsLoading);
+
+        var load = vm.LoadAsync();
+        Assert.True(vm.IsLoading);
+        gate.SetResult();
+        await load;
+        Assert.False(vm.IsLoading);
+        Assert.Equal("Stopped", vm.StatusText);
+
+        // Later reads update the page in place.
+        _ctx.Gate = null;
+        var again = vm.LoadAsync();
+        Assert.False(vm.IsLoading);
+        await again;
+    }
+
+    [Fact]
     public async Task Range_errors_show_under_the_fields_and_block_saving()
     {
         using var vm = new DhcpServerViewModel(_ctx);

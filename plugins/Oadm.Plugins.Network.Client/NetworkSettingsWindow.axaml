@@ -112,6 +112,9 @@
       </StackPanel>
     </ScrollViewer>
 
+    <!-- Reading the first device's current settings: the cards are hidden, Cancel stays usable -->
+    <ui:LoadingOverlay Grid.Row="1" Text="{Binding LoadingText}" IsVisible="{Binding IsLoading}" />
+
     <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
       <Button Classes="primary" Content="Apply" Command="{Binding ApplyCommand}" IsEnabled="{Binding CanApply}" IsDefault="True"
               ToolTip.Tip="{Binding ApplyBlockedReason}" ToolTip.ShowOnDisabled="True" />

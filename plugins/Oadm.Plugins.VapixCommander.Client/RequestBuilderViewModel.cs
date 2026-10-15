@@ -183,10 +183,20 @@ public sealed partial class RequestBuilderViewModel : ObservableObject
     public partial TargetDeviceViewModel? TryDevice { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasTryResult))]
+    [NotifyPropertyChangedFor(nameof(HasTryResult), nameof(ShowAnswerHint))]
     public partial TryResultViewModel? TryResult { get; private set; }
 
     public bool HasTryResult => TryResult is not null;
+
+    /// <summary>"Sending the request to 10.0.0.48" while Send waits for the device (progress row where the answer goes).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSending), nameof(ShowAnswerHint))]
+    public partial string? SendingText { get; private set; }
+
+    public bool IsSending => SendingText is not null;
+
+    /// <summary>"Send the request to see the answer." shows while there is neither an answer nor a request on its way.</summary>
+    public bool ShowAnswerHint => !HasTryResult && !IsSending;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SendCommand), nameof(SaveCommand))]
@@ -227,6 +237,7 @@ public sealed partial class RequestBuilderViewModel : ObservableObject
         }
 
         IsBusy = true;
+        SendingText = "Sending the request to " + device.Address;
         try
         {
             var reply = await _backend.TryAsync(
@@ -240,6 +251,7 @@ public sealed partial class RequestBuilderViewModel : ObservableObject
         }
         finally
         {
+            SendingText = null;
             IsBusy = false;
         }
     }

@@ -49,7 +49,10 @@
             <DataGridTemplateColumn Header="Rollback" Width="*" SortMemberPath="FirmwareState">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="fw:FirmwareDeviceRow">
-                  <TextBlock Text="{Binding FirmwareState}" ToolTip.Tip="{Binding FirmwareState}" />
+                  <Panel>
+                    <ui:StatusChip IsAccent="True" Text="Reading" IsVisible="{Binding IsReadingStatus}" />
+                    <TextBlock Text="{Binding FirmwareState}" ToolTip.Tip="{Binding FirmwareState}" IsVisible="{Binding !IsReadingStatus}" />
+                  </Panel>
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>

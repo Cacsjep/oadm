@@ -95,5 +95,8 @@
       <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding !HasRows}"
                  HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
     </Panel>
+
+    <!-- Until the first state (settings and every lease) arrived -->
+    <ui:LoadingOverlay Grid.Row="0" Grid.RowSpan="3" Text="Reading the DHCP server" IsVisible="{Binding IsLoading}" />
   </Grid>
 </UserControl>

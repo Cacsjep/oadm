@@ -85,6 +85,7 @@
               <DataGridTextColumn Header="Role" Width="2*" Binding="{Binding RoleText}" x:DataType="u:ExistingUserRow" />
             </DataGrid.Columns>
           </DataGrid>
+          <ui:LoadingOverlay Grid.Row="1" Text="Reading the users" IsVisible="{Binding IsLoading}" />
         </Grid>
       </Border>
     </Grid>

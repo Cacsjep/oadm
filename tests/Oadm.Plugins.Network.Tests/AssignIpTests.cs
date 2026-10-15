@@ -357,6 +357,24 @@ public sealed class AssignIpTests
     }
 
     [Fact]
+    public async Task Progress_shows_while_the_current_settings_are_read()
+    {
+        var reply = new TaskCompletionSource<string?>();
+        var ctx = new FakeDialogContext((_, method) => method == NetworkSettingsTaskPlugin.QueryGetNetworkInfo ? reply.Task : Task.FromResult<string?>(null));
+        using var vm = new AssignIpViewModel(Devices(1));
+        Assert.False(vm.IsLoading);
+
+        var load = vm.LoadCurrentAsync(ctx, CancellationToken.None);
+        Assert.True(vm.IsLoading);
+        Assert.Equal("Reading 10.0.0.48", vm.LoadingText);
+        reply.SetException(new InvalidOperationException("Unreachable"));
+        await load;
+
+        Assert.False(vm.IsLoading);
+        Assert.Contains("could not be read", vm.PrefillStatus, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Server_check_skips_addresses_in_use_and_of_other_managed_devices()
     {
         var devices = Devices(3);

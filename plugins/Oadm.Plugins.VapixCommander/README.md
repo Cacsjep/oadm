@@ -96,7 +96,8 @@ tooltip); the shared tasks pane sits below the page (`ShowTasksPane`), so a star
   and an icon column with Move up, Move down, Save with values (a saved copy in Custom with the entered values) and
   Remove, disabled when not possible; "Remove all" in that column's header. Keyboard: Delete removes the selected row,
   Ctrl+Up / Ctrl+Down move it. The selected row's field form is below, checked like the server while typing
-  (`ui:PasswordBox` for passwords). **Send** shows the result card below (`TryResultView`).
+  (`ui:PasswordBox` for passwords). **Send** shows a `ui:ProgressRow` "Sending the request to 10.0.0.48" until the device
+  answers, then the result card below (`TryResultView`).
 - **Result card** (`TryResultView`, also in the request builder): status chip, "HTTP 200 OK · 84 ms · address", the
   interpreted result, the request line, body and headers in `ui:CodeView`s. The body language comes from the content
   type (else from the text: param.cgi key=value); JSON and XML are shown pretty-printed (2 spaces, also when the device
@@ -109,6 +110,8 @@ tooltip); the shared tasks pane sits below the page (`ShowTasksPane`), so a star
   (not reachable, or the first command problem "<command>: Missing API x (+N more)", tooltip every command). The run controls are docked at the bottom: a status chip only for errors, the summary "3 commands × 2 devices ·
   1 write", **Stop on first error** (default on), **Run on N devices**: the confirmation lists every command with its
   kind, the incompatible devices and the stop mode when a command writes; dangerous commands need a second confirmation.
+  While the server creates the tasks a `ui:ProgressRow` "Starting the rollout on 3,000 devices" stands above the button
+  (Run and Send disabled).
 
 ## Request builder
 
@@ -126,7 +129,8 @@ Its own dialog (`RequestBuilderWindow` / `RequestBuilderViewModel`, 1360x760).
   "Requires API" prefilled from the path (param.cgi -> param-cgi 1.0, `/config/rest/<api>/v<n>` -> `<api> n.0`, known
   CGIs), "Changes the device" (prefilled from method and action) and "Dangerous". A loaded command keeps what the editor
   does not show (choices, limits, docs, extracts).
-- Right: "Send to <device>" + **Send** (checks everything but name and category) and the result card.
+- Right: "Send to <device>" + **Send** (checks everything but name and category), the `ui:ProgressRow` "Sending the
+  request to 10.0.0.48" while the device answers, then the result card.
 - Footer: Cancel, Back (new command), Next / **Save** (disabled with the first problem as tooltip; a refused save left of
   it). An unsaved request cannot go to the rollout set: save it, then click it in the library.
 

@@ -235,6 +235,22 @@ public sealed class UsersDialogViewModelTests
     }
 
     [Fact]
+    public async Task Load_shows_the_ring_over_the_list_until_the_users_arrive()
+    {
+        var vm = Create();
+        var reply = new TaskCompletionSource<string?>();
+        Assert.False(vm.IsLoading);
+
+        var load = vm.LoadAsync(new FakeDialogContext(null) { Reply = reply.Task }, CancellationToken.None);
+        Assert.True(vm.IsLoading);
+        reply.SetResult(UsersJson.Serialize(RecordedResult()));
+        await load;
+
+        Assert.False(vm.IsLoading);
+        Assert.Equal(4, vm.ExistingUsers.Count);
+    }
+
+    [Fact]
     public async Task Load_failure_keeps_the_dialog_usable()
     {
         var vm = Create();
@@ -264,10 +280,13 @@ public sealed class UsersDialogViewModelTests
     {
         public string? Method { get; private set; }
 
+        /// <summary>When set, the query answers with this task instead (tests that look at the dialog while it reads).</summary>
+        public Task<string?>? Reply { get; init; }
+
         public Task<string?> QueryAsync(Guid deviceId, string method, string? payloadJson, CancellationToken ct)
         {
             Method = method;
-            return error is null ? Task.FromResult(answer) : Task.FromException<string?>(error);
+            return Reply ?? (error is null ? Task.FromResult(answer) : Task.FromException<string?>(error));
         }
 
         public Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct) => throw new NotSupportedException();

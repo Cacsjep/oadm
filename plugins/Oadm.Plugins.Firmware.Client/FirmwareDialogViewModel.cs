@@ -40,6 +40,10 @@ public sealed partial class FirmwareDeviceRow(IDeviceInfo device) : ObservableOb
     [ObservableProperty]
     public partial string? FirmwareState { get; set; }
 
+    /// <summary>True while the status query of this row runs (the Rollback cell shows "Reading").</summary>
+    [ObservableProperty]
+    public partial bool IsReadingStatus { get; set; }
+
     /// <summary>False when the device does not offer fwmgr 1.x (from the status query).</summary>
     [ObservableProperty]
     public partial bool Supported { get; set; } = true;
@@ -259,6 +263,19 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     }
 
     private async Task ReadStatusAsync(FirmwareDeviceRow row, CancellationToken ct)
+    {
+        row.IsReadingStatus = true;
+        try
+        {
+            await ReadStatusInSlotAsync(row, ct).ConfigureAwait(true);
+        }
+        finally
+        {
+            row.IsReadingStatus = false;
+        }
+    }
+
+    private async Task ReadStatusInSlotAsync(FirmwareDeviceRow row, CancellationToken ct)
     {
         await _statusSlots.WaitAsync(ct).ConfigureAwait(true);
         try

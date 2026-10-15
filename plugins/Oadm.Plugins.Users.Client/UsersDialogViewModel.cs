@@ -142,7 +142,11 @@ public sealed partial class UsersDialogViewModel : ValidatingViewModel
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(UsersDescription))]
-    private string _usersStatus = "Loading users...";
+    private string _usersStatus = string.Empty;
+
+    /// <summary>True while the users of the first device are read (a ring over the list).</summary>
+    [ObservableProperty]
+    private bool _isLoading;
 
     [ObservableProperty]
     private string? _lockOutWarning;
@@ -262,6 +266,7 @@ public sealed partial class UsersDialogViewModel : ValidatingViewModel
             return;
         }
 
+        IsLoading = true;
         try
         {
             var json = await ctx.QueryAsync(_devices[0].Id, UsersJson.ListUsersMethod, null, ct).ConfigureAwait(true);
@@ -276,13 +281,17 @@ public sealed partial class UsersDialogViewModel : ValidatingViewModel
         }
         catch (OperationCanceledException)
         {
-            UsersStatus = "Loading users was cancelled.";
+            UsersStatus = "Reading the users was cancelled.";
         }
 #pragma warning disable CA1031 // Any failure (server unreachable, query not available yet) only disables the list.
         catch (Exception ex)
 #pragma warning restore CA1031
         {
             UsersStatus = "Existing users could not be loaded: " + ex.Message;
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 

@@ -36,6 +36,7 @@
                   <TextBox Text="{Binding DefaultRouter}" PlaceholderText="192.168.0.1" />
                 </ui:FormField>
               </StackPanel>
+              <ui:ProgressRow Text="{Binding LoadingText}" IsVisible="{Binding IsLoading}" />
               <TextBlock Classes="error" Text="{Binding PrefillStatus}" TextWrapping="Wrap" IsVisible="{Binding PrefillStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             </StackPanel>
           </StackPanel>

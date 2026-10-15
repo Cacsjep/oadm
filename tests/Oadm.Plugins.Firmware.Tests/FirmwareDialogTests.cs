@@ -46,10 +46,18 @@ internal sealed class FakeDialogContext : ITaskDialogContext
     public Exception? UploadError { get; set; }
     public TaskCompletionSource? UploadGate { get; set; }
 
-    public Task<string?> QueryAsync(Guid deviceId, string method, string? payloadJson, CancellationToken ct)
+    /// <summary>When set, status queries wait for it (tests that look at the rows while they are read).</summary>
+    public TaskCompletionSource? StatusGate { get; set; }
+
+    public async Task<string?> QueryAsync(Guid deviceId, string method, string? payloadJson, CancellationToken ct)
     {
         Queries.Add(method);
-        return Status.TryGetValue(deviceId, out var json) ? Task.FromResult(json) : throw new NotSupportedException("Plugin queries are not available yet.");
+        if (StatusGate is { } gate)
+        {
+            await gate.Task.WaitAsync(ct);
+        }
+
+        return Status.TryGetValue(deviceId, out var json) ? json : throw new NotSupportedException("Plugin queries are not available yet.");
     }
 
     public async Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct)
@@ -293,6 +301,24 @@ public sealed class FirmwareDialogViewModelTests
         Assert.Equal("Not committed, rolls back to 11.11.100 in 120 s", vm.Devices[2].FirmwareState);
         Assert.Equal("-", vm.Devices[3].FirmwareState);
         Assert.Equal("12.20.10", vm.Devices[3].CurrentVersion);
+    }
+
+    [Fact]
+    public async Task Rows_show_reading_while_their_status_is_read()
+    {
+        var ctx = new FakeDialogContext { StatusGate = new TaskCompletionSource() };
+        ctx.Status[Devices[0].Id] = new ClientStatus { Supported = true, ActiveVersion = "12.11.77", InactiveVersion = "11.11.160", IsCommitted = true }.ToJson();
+        using var vm = Create(ctx);
+        Assert.DoesNotContain(vm.Devices, r => r.IsReadingStatus);
+
+        var load = vm.LoadStatusAsync(CancellationToken.None);
+        Assert.All(vm.Devices, r => Assert.True(r.IsReadingStatus));
+        ctx.StatusGate.SetResult();
+        await load;
+
+        Assert.DoesNotContain(vm.Devices, r => r.IsReadingStatus);
+        Assert.Equal("Rollback to 11.11.160 possible", vm.Devices[0].FirmwareState);
+        Assert.Equal("-", vm.Devices[1].FirmwareState);
     }
 
     [Fact]

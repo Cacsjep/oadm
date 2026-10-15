@@ -41,6 +41,7 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
     private CancellationTokenSource? _active;
     private long _leaseVersion = -1;
     private bool _formLoaded;
+    private bool _stateRead;
     private int _staticCount;
 
     public DhcpServerViewModel(ICorePluginClientContext ctx)
@@ -115,6 +116,10 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
     [ObservableProperty]
     public partial string LeaseSummary { get; set; } = "No leases";
 
+    /// <summary>True while the first state is read (the page shows the loading overlay).</summary>
+    [ObservableProperty]
+    public partial bool IsLoading { get; set; }
+
     public bool IsStatusOk => StatusKind == ServiceStatus.Ok;
 
     public bool IsStatusWarning => StatusKind == ServiceStatus.Warning;
@@ -167,6 +172,11 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
     /// <summary>Reads the whole state (interfaces and leases); the form is filled the first time.</summary>
     public async Task LoadAsync(CancellationToken ct = default)
     {
+        if (!_stateRead)
+        {
+            IsLoading = true;
+        }
+
         try
         {
             var json = await _ctx.InvokeAsync(DhcpServerMethods.GetState, null, ct).ConfigureAwait(true);
@@ -200,6 +210,12 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
 #pragma warning restore CA1031
         {
             SetStatus(ServiceStatus.Error, "Cannot read the DHCP server state", Message(ex));
+        }
+        finally
+        {
+            // Once answered (also with an error) later reads update the page in place; a cancelled first read shows it again.
+            _stateRead |= !ct.IsCancellationRequested;
+            IsLoading = false;
         }
     }
 
