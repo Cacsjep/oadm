@@ -4,7 +4,7 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
 version and date, and the release workflow copies it into the GitHub release.
 
-## Unreleased
+## [3.2.0] - 2026-10-16
 
 ### Added
 
@@ -29,6 +29,7 @@ version and date, and the release workflow copies it into the GitHub release.
 - **Device triggers**: all triggers together watch at most 10,000 devices; devices that do not answer are not contacted
   until they answer again.
 - **Hardening scan**: one **Scan** button scans the chosen devices (instead of Scan all and Scan selected).
+- **View certificates** and **Delete certificates**: at most 5,000 devices at once.
 
 ### Fixed
 
