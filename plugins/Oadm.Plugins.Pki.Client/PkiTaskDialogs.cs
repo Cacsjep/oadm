@@ -59,6 +59,12 @@ public sealed class ViewCertificatesDialog : ITaskPluginDialog
     public async Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner)
     {
         ArgumentNullException.ThrowIfNull(devices);
+        if (devices.Count > CertificatesViewModel.MaxDevices)
+        {
+            await MessageWindow.ShowMessageAsync(owner, PkiTaskIds.ViewName, CertificatesViewModel.TooManyText).ConfigureAwait(true);
+            return null;
+        }
+
         var window = new CertificatesWindow();
         var viewModel = new CertificatesViewModel(ctx, devices, deleteMode: false);
         window.Attach(viewModel);
@@ -76,6 +82,12 @@ public sealed class DeleteCertificatesDialog : ITaskPluginDialog
     public async Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner)
     {
         ArgumentNullException.ThrowIfNull(devices);
+        if (devices.Count > CertificatesViewModel.MaxDevices)
+        {
+            await MessageWindow.ShowMessageAsync(owner, PkiTaskIds.DeleteName, CertificatesViewModel.TooManyText).ConfigureAwait(true);
+            return null;
+        }
+
         var window = new CertificatesWindow();
         var viewModel = new CertificatesViewModel(ctx, devices, deleteMode: true);
         window.Attach(viewModel);

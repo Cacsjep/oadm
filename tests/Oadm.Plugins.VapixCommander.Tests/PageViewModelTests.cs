@@ -246,7 +246,7 @@ public sealed class PageViewModelTests
     public async Task Thousands_of_devices_are_chosen_and_checked_for_compatibility_fast()
     {
         var page = await PageFixture.CreateAsync();
-        var devices = Enumerable.Range(0, 5000).Select(i => new FakeDevice
+        var devices = Enumerable.Range(0, DeviceLimits.MaxDevices).Select(i => new FakeDevice
         {
             Address = string.Create(CultureInfo.InvariantCulture, $"10.{i / 65536}.{i / 256 % 256}.{i % 256}"),
             Serial = string.Create(CultureInfo.InvariantCulture, $"B8A44F{i:D6}"),
@@ -263,15 +263,15 @@ public sealed class PageViewModelTests
         var watch = Stopwatch.StartNew();
         page.Client.RaiseDevicesChanged();
         var sync = watch.Elapsed;
-        Assert.Equal(5000, vm.Targets.Count);
+        Assert.Equal(DeviceLimits.MaxDevices, vm.Targets.Count);
         Assert.Equal(["10.0.0.0", "10.0.0.1", "10.0.0.2"], vm.Targets.Take(3).Select(t => t.Address)); // numeric, not 10.0.0.10
-        Assert.Equal("10.0.19.135", vm.Targets[^1].Address);
+        Assert.Equal("10.0.117.47", vm.Targets[^1].Address);
 
         watch.Restart();
         vm.SetChoice(DeviceChoice.AllDevices);
         var all = watch.Elapsed;
-        Assert.Equal("5,000 devices", vm.TargetSummary);
-        Assert.Equal(5000, vm.SelectedTargetCount);
+        Assert.Equal("30,000 devices", vm.TargetSummary);
+        Assert.Equal(DeviceLimits.MaxDevices, vm.SelectedTargetCount);
 
         watch.Restart();
         vm.SetChoice(DeviceChoice.Devices(page.Client.Selection.Select(d => d.Id)));
@@ -282,7 +282,7 @@ public sealed class PageViewModelTests
         watch.Restart();
         vm.SetChoice(DeviceChoice.Devices([devices[0].Id], ["Even"]));
         var byTag = watch.Elapsed;
-        Assert.Equal(2500, vm.SelectedTargetCount); // device 0 has the tag too
+        Assert.Equal(15_000, vm.SelectedTargetCount); // device 0 has the tag too
         Assert.Equal("Selected devices: Tag Even and 10.0.0.0", vm.DevicesText);
 
         watch.Restart();
@@ -290,9 +290,9 @@ public sealed class PageViewModelTests
         vm.Add(page.Item("common.basicdeviceinfo.read"));
         vm.Add(page.Item("common.daynight.shiftlevel"));
         var compatibility = watch.Elapsed / 3;
-        Assert.Equal("2,500 devices · 2,400 compatible · 100 not compatible", vm.TargetSummary);
-        Assert.Equal(100, vm.ProblemTargets.Count);
-        Assert.StartsWith("3 commands × 2,500 devices", vm.RunSummary, StringComparison.Ordinal);
+        Assert.Equal("15,000 devices · 14,400 compatible · 600 not compatible", vm.TargetSummary);
+        Assert.Equal(600, vm.ProblemTargets.Count);
+        Assert.StartsWith("3 commands × 15,000 devices", vm.RunSummary, StringComparison.Ordinal);
 
         var limit = TimeSpan.FromMilliseconds(200);
         Assert.True(sync < limit * 2, $"device sync {sync.TotalMilliseconds} ms");

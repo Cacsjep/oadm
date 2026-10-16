@@ -7,14 +7,14 @@ using Oadm.Sdk.Vapix;
 namespace Oadm.Plugins.VapixCommander.Tests;
 
 /// <summary>
-/// HARD RULE "scale to thousands of devices" on the server side of VAPIX Commander: compatibility of 5,000 devices,
-/// a rollout to 5,000 devices (one batched task start) and the rollout bookkeeping of 5,000 tasks stay linear.
-/// The budgets include the first call (JIT) on a busy CI runner; quadratic work on 5,000 items would still exceed them.
+/// HARD RULE "scale to thousands of devices" on the server side of VAPIX Commander: compatibility of 30,000 devices,
+/// a rollout to 30,000 devices (one batched task start) and the rollout bookkeeping of 30,000 tasks stay linear.
+/// The budgets include the first call (JIT) on a busy CI runner; quadratic work on 30,000 items would still exceed them.
 /// </summary>
 [Trait("Category", "Timing")] // time budgets
 public sealed class ScaleTests
 {
-    private const int Count = 5000;
+    private const int Count = DeviceLimits.MaxDevices;
 
     private static async Task<(VapixCommanderPlugin Plugin, FakeCoreContext Ctx, List<FakeDevice> Devices)> StartAsync()
     {
@@ -32,7 +32,7 @@ public sealed class ScaleTests
     }
 
     [Fact]
-    public async Task Compatibility_of_5000_devices_is_one_pass()
+    public async Task Compatibility_of_30000_devices_is_one_pass()
     {
         var (plugin, _, devices) = await StartAsync();
         var request = CommandJson.Write(new CompatibilityRequest
@@ -56,7 +56,7 @@ public sealed class ScaleTests
     }
 
     [Fact]
-    public async Task Rollout_to_5000_devices_starts_all_tasks_in_one_batch()
+    public async Task Rollout_to_30000_devices_starts_all_tasks_in_one_batch()
     {
         var (plugin, ctx, devices) = await StartAsync();
         var runner = (RecordingRunner)ctx.Tasks;
@@ -80,7 +80,7 @@ public sealed class ScaleTests
     }
 
     [Fact]
-    public void Rollout_bookkeeping_of_5000_tasks_is_linear()
+    public void Rollout_bookkeeping_of_30000_tasks_is_linear()
     {
         var registry = new RolloutRegistry();
         var rollout = registry.Get(Guid.NewGuid(), stopOnFirstError: false);
@@ -100,7 +100,7 @@ public sealed class ScaleTests
     }
 
     [Fact]
-    public void Stopped_rollout_of_5000_tasks_cancels_the_rest_once_and_is_dropped()
+    public void Stopped_rollout_of_30000_tasks_cancels_the_rest_once_and_is_dropped()
     {
         var registry = new RolloutRegistry();
         var rollout = registry.Get(Guid.NewGuid(), stopOnFirstError: true);

@@ -11,12 +11,12 @@ using Oadm.Sdk.Vapix;
 namespace Oadm.Plugins.Network.Tests;
 
 /// <summary>
-/// HARD RULE "scale to thousands of devices": the Network settings and Assign IP dialogs with 5,000 selected devices
-/// (per-device table, conflicts, payload validation) and CanRun over 5,000 devices stay fast.
+/// HARD RULE "scale to thousands of devices": the Network settings and Assign IP dialogs with 30,000 selected devices
+/// (per-device table, conflicts, payload validation) and CanRun over 30,000 devices stay fast.
 /// </summary>
 public sealed class ScaleTests
 {
-    private const int Count = 5000;
+    private const int Count = DeviceLimits.MaxDevices;
 
     private static readonly CurrentNetworkSettings Current =
         NetworkInfoParser.WithIpv6Parameters(
@@ -34,12 +34,12 @@ public sealed class ScaleTests
 
     [Fact]
     [Trait("Category", "Timing")] // time budget
-    public void Ipv6_conflicts_of_5000_rows_against_5000_managed_devices_are_linear()
+    public void Ipv6_conflicts_of_30000_rows_against_30000_managed_devices_are_linear()
     {
         var devices = Devices(Count);
         var rows = devices.Select((d, i) => new AssignmentRow(
             new AssignmentDevice(d.Id, d.Address),
-            string.Create(CultureInfo.InvariantCulture, $"2001:db8::{i % 4000:x}"))).ToList();
+            string.Create(CultureInfo.InvariantCulture, $"2001:db8::{i % 29000:x}"))).ToList();
         var known = Known(devices).ToDictionary(s => s.Address, StringComparer.Ordinal);
 
         var watch = Stopwatch.StartNew();
@@ -47,7 +47,7 @@ public sealed class ScaleTests
         watch.Stop();
 
         Assert.Equal(Count, problems.Count);
-        Assert.Equal("Assigned to more than one device", problems[0]); // 0 and 4000 share 2001:db8::0
+        Assert.Equal("Assigned to more than one device", problems[0]); // 0 and 29000 share 2001:db8::0
         Assert.Null(problems[1500]);
         Assert.True(watch.ElapsedMilliseconds < 1000, $"FindIpv6 took {watch.ElapsedMilliseconds} ms");
     }
@@ -69,7 +69,7 @@ public sealed class ScaleTests
 
     [Fact]
     [Trait("Category", "Timing")] // time budget
-    public void Ipv4_conflicts_of_5000_rows_are_linear()
+    public void Ipv4_conflicts_of_30000_rows_are_linear()
     {
         var devices = Devices(Count);
         var rows = devices.Select(d => new AssignmentRow(new AssignmentDevice(d.Id, d.Address), d.Address)).ToList();
@@ -84,7 +84,7 @@ public sealed class ScaleTests
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void Network_settings_dialog_with_5000_devices_suggests_and_revalidates_fast()
+    public void Network_settings_dialog_with_30000_devices_suggests_and_revalidates_fast()
     {
         var devices = Devices(Count);
         var watch = Stopwatch.StartNew();
@@ -116,7 +116,7 @@ public sealed class ScaleTests
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void Assign_ip_dialog_with_5000_devices_suggests_and_builds_the_payload_fast()
+    public void Assign_ip_dialog_with_30000_devices_suggests_and_builds_the_payload_fast()
     {
         var devices = Devices(Count);
         var watch = Stopwatch.StartNew();
@@ -124,7 +124,7 @@ public sealed class ScaleTests
         vm.ApplyCurrent(Current);
         vm.SubnetMask = "255.255.0.0";
         vm.DefaultRouter = "10.1.0.1";
-        vm.IpRange = "10.1.1.1-10.1.40.254";
+        vm.IpRange = "10.1.1.1-10.1.200.254";
         vm.PrimaryCommand.Execute(null); // Next: page 2 suggests an address per device
         var open = watch.ElapsedMilliseconds;
         Assert.True(vm.IsReviewPage);
@@ -144,7 +144,7 @@ public sealed class ScaleTests
 
     [Fact]
     [Trait("Category", "Perf")] // time budget; a CI runner can take over a second
-    public void CanRun_over_5000_devices_is_cheap()
+    public void CanRun_over_30000_devices_is_cheap()
     {
         IReadOnlyList<DeviceApi> apis = [.. Enumerable.Range(0, 120).Select(i => new DeviceApi("api-" + i, "1." + i)), .. Fixture.Modern];
         var devices = Enumerable.Range(0, Count).Select(_ => new FakeDevice(Guid.NewGuid()) { Apis = apis }).ToList();
@@ -163,6 +163,6 @@ public sealed class ScaleTests
 
         watch.Stop();
         Assert.Equal(5 * 2 * Count, runnable);
-        Assert.True(watch.ElapsedMilliseconds < 1000, $"50,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 1000, $"300,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
     }
 }

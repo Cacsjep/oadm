@@ -119,11 +119,19 @@ public sealed class CertificatesViewModelTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void One_window_reads_at_most_5000_devices()
+    {
+        // View and Delete certificates read every device, 4 at a time: 30,000 devices would take hours and 1.1 million rows.
+        Assert.Equal(5000, CertificatesViewModel.MaxDevices);
+        Assert.Equal("Choose at most 5,000 devices.", CertificatesViewModel.TooManyText);
+    }
+
+    [Fact]
     [Trait("Category", "Perf")]
-    public async Task Five_thousand_devices_load_search_and_select_quickly()
+    public async Task The_most_devices_load_search_and_select_quickly()
     {
         var reply = DialogData.FixtureReply();
-        var devices = DialogData.Devices(5000);
+        var devices = DialogData.Devices(CertificatesViewModel.MaxDevices);
         var vm = new CertificatesViewModel(new FakeDialogContext(_ => Task.FromResult<string?>(reply)), devices, deleteMode: true);
 
         var watch = Stopwatch.StartNew();
@@ -154,9 +162,9 @@ public sealed class CertificatesViewModelTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Timing")]
-    public async Task Five_thousand_devices_summary_and_filter_stay_fast()
+    public async Task The_most_devices_summary_and_filter_stay_fast()
     {
-        // The unit-run variant of the scale check: 5,000 devices with a short certificate list each.
+        // The unit-run variant of the scale check: the most devices one window reads, a short certificate list each.
         var reply = PkiJson.Serialize(new CertificateListReply
         {
             Certificates =
@@ -165,7 +173,7 @@ public sealed class CertificatesViewModelTests(ITestOutputHelper output)
                 new InstalledCertificate { Alias = "OADM CA 12345678", Kind = CertificateKind.Ca, IssuedBy = "OADM Root CA", IssuedTo = "OADM Root CA", FromOadm = true },
             ],
         });
-        var devices = DialogData.Devices(5000);
+        var devices = DialogData.Devices(CertificatesViewModel.MaxDevices);
         var vm = new CertificatesViewModel(new FakeDialogContext(_ => Task.FromResult<string?>(reply)), devices, deleteMode: true);
         await vm.LoadAsync();
 
@@ -296,12 +304,12 @@ public sealed class InstallCaViewModelTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Timing")] // time budget
-    public async Task Install_confirms_and_returns_the_usable_certificates_for_5000_devices()
+    public async Task Install_confirms_and_returns_the_usable_certificates_for_30000_devices()
     {
         using var root = TestCa.Root("Acme Root CA");
         using var issuing = TestCa.Intermediate(root);
         using var plain = TestCa.Root("Plain", ca: false);
-        var devices = DialogData.Devices(5000);
+        var devices = DialogData.Devices(DeviceLimits.MaxDevices);
         var watch = Stopwatch.StartNew();
         var vm = new InstallCaCertificatesViewModel(devices, _ => TestCa.Pem(root, issuing, plain));
         string? payload = null;
@@ -314,11 +322,11 @@ public sealed class InstallCaViewModelTests(ITestOutputHelper output)
         };
         vm.CloseRequested += (_, p) => payload = p;
         vm.Add(["c:/certs/bundle.pem"]);
-        Assert.Equal("5,000 selected devices", vm.Scope);
+        Assert.Equal("30,000 selected devices", vm.Scope);
 
         await vm.InstallCommand.ExecuteAsync(null);
         Assert.Null(payload); // cancelled in the confirmation
-        Assert.Equal(("Install CA certificates", "Install 2 CA certificates on 5,000 devices? The devices then trust certificates these CAs issued. 1 row with a problem is left out.", "Install"), asked);
+        Assert.Equal(("Install CA certificates", "Install 2 CA certificates on 30,000 devices? The devices then trust certificates these CAs issued. 1 row with a problem is left out.", "Install"), asked);
 
         answer = true;
         await vm.InstallCommand.ExecuteAsync(null);
@@ -327,7 +335,7 @@ public sealed class InstallCaViewModelTests(ITestOutputHelper output)
         Assert.Equal(["Acme Root CA", "Acme Issuing CA"], result.Certificates.Select(c => c.Name));
         Assert.Equal(Oadm.Plugins.Pki.Ca.CaCertificates.ToPem(root), result.Certificates[0].Pem);
         Assert.True(payload!.Length < 10_000); // the payload does not grow with the device count
-        output.WriteLine($"5000 devices: add, confirm and payload {watch.ElapsedMilliseconds} ms");
+        output.WriteLine($"30000 devices: add, confirm and payload {watch.ElapsedMilliseconds} ms");
         Assert.True(watch.ElapsedMilliseconds < 2000);
     }
 

@@ -111,7 +111,9 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   (`oadm.pki.delete`): `CertificatesWindow` (virtualized DataGrid grouped Client / Server / CA / devices that could not be
   read; MAC address, Address, Name, Issued by, Issued to, Valid to, In use (HTTPS, 802.1X), Source OADM / Other;
   SearchBox; Refresh), read through the query `listCertificates` (read-only, at most 4 devices at a time, progress row,
-  rows appear progressively, list replaced as a whole at most every 300 ms). Delete mode: check boxes; in use and Axis
+  rows appear progressively, list replaced as a whole at most every 300 ms). At most 5,000 devices per window
+  (`CertificatesViewModel.MaxDevices`: every device is read, 4 at a time, about 190,000 rows at 5,000; 30,000 would take
+  hours): a larger selection gets "Choose at most 5,000 devices." before anything is read. Delete mode: check boxes; in use and Axis
   factory (802.1AR) certificates greyed with a tooltip; Select all / none (O(n)); confirmation popup; payload = aliases per
   device. Task steps: Check compatibility, Read certificates (validates every choice before the first delete: exists, not
   in use, not factory), Delete certificate <alias> (one each), Verify. Names "Delete certificate <alias>" / "Delete N
@@ -151,8 +153,8 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   server, network_settings.cgi, time.cgi) incl. compatibility failures with no writes, clock, chain, cleanup, renew,
   delete refusals, manual install, Install CA certificates (`InstallCaTests`: PEM bundles, DER, non-CA, expired,
   garbage, installs / skips existing / no writes on an old device or an invalid payload); registry batching; dialog view
-  models (5,000 devices: unit check plus a Perf test with 190,000 certificates; Install CA certificates with 5,000
-  devices); headless screenshots `pki-view-certificates.png`, `pki-delete-certificates.png`,
+  models (the certificate window at its 5,000 devices: unit check plus a Perf test with 190,000 certificates; Install CA
+  certificates with 30,000 devices); headless screenshots `pki-view-certificates.png`, `pki-delete-certificates.png`,
   `pki-install-manual.png`, `pki-install-ca.png`, `pki-dot1x-confirm.png`; `tests/Oadm.Client.Tests/SecurityMenuTests` (`pki-security-menu.png`);
   `tests/Oadm.Server.Tests/DeviceTlsTests` (UpdateDeviceTlsAsync with the fake network presenting real certificates).
   `HardwareWriteTests` is an opt-in skeleton (`OADM_PKI_HARDWARE_WRITE=1`, `Category=HardwareWrite`), not written yet.

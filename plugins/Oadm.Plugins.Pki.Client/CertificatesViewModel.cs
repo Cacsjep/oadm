@@ -129,6 +129,15 @@ public sealed partial class CertificatesViewModel : ObservableObject
 {
     public const int MaxParallel = 4;
 
+    /// <summary>
+    /// The most devices one window reads (5,000: about 190,000 rows, minutes of reading at 4 at a time). Larger selections
+    /// are refused before anything is read.
+    /// </summary>
+    public const int MaxDevices = 5000;
+
+    /// <summary>The refusal of a larger selection.</summary>
+    public static readonly string TooManyText = string.Create(CultureInfo.InvariantCulture, $"Choose at most {MaxDevices:N0} devices.");
+
     private readonly ITaskDialogContext _ctx;
     private readonly IReadOnlyList<IDeviceInfo> _devices;
     private readonly List<CertificateRow> _all = [];

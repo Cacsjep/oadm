@@ -267,6 +267,9 @@ Differences from the plan:
 - **Hardening scan**: choosing devices does not start a scan by itself (a scan takes up to 2 minutes per device); one
   **Scan** button scans the choice.
 - **Snapshot report**: with All devices the page asks the server for every camera without sending the ids.
+- **PKI**: View and Delete certificates read every device of the selection (4 at a time) and list each certificate:
+  at most 5,000 devices per window (about 190,000 rows); a larger selection is refused before anything is read. The
+  other Security tasks take any number of devices.
 - **Loading feedback** (section 11): the Devices page says "Loading devices" until the first device list arrived, the
   context menu "Loading tasks" until the task list arrived; Remove, starting tasks, Export (prepared off the UI thread)
   and Delete all show a progress row (`WorkIndicator`) when they take longer than a quarter second; Add devices shows

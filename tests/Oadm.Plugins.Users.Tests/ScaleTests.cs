@@ -8,14 +8,14 @@ using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.Users.Tests;
 
-/// <summary>HARD RULE "scale to thousands of devices": the Users dialog and CanRun with 5,000 devices.</summary>
+/// <summary>HARD RULE "scale to thousands of devices": the Users dialog and CanRun with 30,000 devices.</summary>
 public sealed class ScaleTests
 {
-    private const int Count = 5000;
+    private const int Count = DeviceLimits.MaxDevices;
 
     [Fact]
     [Trait("Category", "Timing")] // time budget
-    public async Task Users_dialog_with_5000_devices_reads_only_the_first_device()
+    public async Task Users_dialog_with_30000_devices_reads_only_the_first_device()
     {
         var apis = Fixtures.P3265ApiList();
         var devices = Enumerable.Range(0, Count).Select(i => (IDeviceInfo)new ScaleDevice($"10.0.{i / 256}.{i % 256}", DeviceStatus.Ok, apis)).ToList();
@@ -30,13 +30,13 @@ public sealed class ScaleTests
         watch.Stop();
 
         Assert.Equal(1, ctx.Queries); // never one query per selected device
-        Assert.Contains("5000 devices", vm.Summary, StringComparison.Ordinal);
+        Assert.Contains(Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + " devices", vm.Summary, StringComparison.Ordinal);
         Assert.True(watch.ElapsedMilliseconds < 1000, $"Opening took {watch.ElapsedMilliseconds} ms");
     }
 
     [Fact]
     [Trait("Category", "Perf")] // time budget; a CI runner can take over a second
-    public void CanRun_over_5000_devices_is_cheap()
+    public void CanRun_over_30000_devices_is_cheap()
     {
         var apis = Fixtures.P3265ApiList();
         var devices = Enumerable.Range(0, Count).Select(i => new ScaleDevice("10.0.0.48", i % 10 == 0 ? DeviceStatus.Unreachable : DeviceStatus.Ok, apis)).ToList();
@@ -51,7 +51,7 @@ public sealed class ScaleTests
 
         watch.Stop();
         Assert.Equal(10 * (Count - (Count / 10)), runnable);
-        Assert.True(watch.ElapsedMilliseconds < 1000, $"50,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 1000, $"300,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
     }
 
     /// <summary>Like <see cref="FakeDevice"/> without parsing the API list fixture per device.</summary>
