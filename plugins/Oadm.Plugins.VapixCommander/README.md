@@ -139,7 +139,7 @@ Its own dialog (`RequestBuilderWindow` / `RequestBuilderViewModel`, 1360x760).
 The problem list is virtualized; `Targets`, `SelectedTargets` and `ProblemTargets` are replaced as whole lists (one
 reset), sorted by IPv4 address numerically; the choice is resolved in one O(n) pass (ids and tags in hash sets) after
 every choice and device change; compatibility is computed on the client from each device's cached API list
-(`Compatibility.Check`; the server checks a fresh list again before writes), no request per device. With 5,000 devices
+(`Compatibility.Check`; the server checks a fresh list again before writes), no request per device. With 30,000 devices
 All devices, the devices page selection, a tag choice and the compatibility each stay under 200 ms (test).
 
 ## Tests
@@ -147,7 +147,7 @@ All devices, the devices page selection, a tag choice and the compatibility each
 `tests/Oadm.Plugins.VapixCommander.Tests`: rendering of every field type, typed JSON, booleans per kind, validation,
 every response kind with error texts and transport mapping against a fake device, stop on first error through the real
 task engine, saved commands (encryption, export, import), compatibility, the page and request builder view models, the
-5,000-device timing, the bundled library and headless screenshots. `tests/Oadm.Client.Tests/CodeViewTests`;
+30,000-device timing, the bundled library and headless screenshots. `tests/Oadm.Client.Tests/CodeViewTests`;
 `tests/Oadm.Server.Tests/VapixCommanderServerTests` (routing, hidden task); read-only hardware test
 `VapixCommanderHardwareTests` (param.cgi list Brand and basicdeviceinfo, Send and a rollout on the development camera
 through the in-process server); `ReaderHardwareTests` runs every read-only library command on every dev camera (passed on

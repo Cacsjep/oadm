@@ -1594,7 +1594,7 @@ or saved ones, fill their fields and roll them out to many devices, or send one 
   below the page. The request builder is its own dialog: start from scratch or from an existing command, send it to
   try, save (a saved command is replaced in place).
 - Saved commands: plugin setting `savedCommands`, at most 500, shared by all clients, export / import as library files.
-- Methods are Operator; `tryRequest` and `rollout` are audited. Scale: 5,000 target devices, every list action under
+- Methods are Operator; `tryRequest` and `rollout` are audited. Scale: 30,000 target devices, every list action under
   200 ms (test).
 - Tests: `tests/Oadm.Plugins.VapixCommander.Tests`, `.Library.Tests`; read-only hardware test `VapixCommanderHardwareTests`.
 
@@ -1645,7 +1645,8 @@ Delete and Install certificates, Install CA certificates. Details: plugin `READM
   `config/discover`) before the first write and fails "Nothing was changed" otherwise; Enable HTTPS pins the new
   certificate through `UpdateDeviceTlsAsync`; 802.1X checks the device clock first; only OADM's own certificates that
   nothing uses are removed; passwords of imports and backups are never stored or logged; nothing in tests touches a real
-  trust store.
+  trust store; View and Delete certificates read at most 5,000 devices per window (each device is read, 4 at a time; a
+  larger selection gets "Choose at most 5,000 devices."), the other tasks take any number.
 - Roles: everything but `getState` is Admin and audited; "Install in trusted root store" on the server asks with the CA's
   SHA-256 fingerprint.
 - Tests: `tests/Oadm.Plugins.Pki.Tests` (every task against a stateful fake camera); opt-in `HardwareWriteTests`

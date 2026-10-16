@@ -258,7 +258,7 @@ public sealed class CommanderViewHeadlessTests
             await session.Dispatch(() =>
             {
                 var vm = page.Vm;
-                var devices = Enumerable.Range(0, 5000).Select(i => new FakeDevice
+                var devices = Enumerable.Range(0, DeviceLimits.MaxDevices).Select(i => new FakeDevice
                 {
                     Address = string.Create(CultureInfo.InvariantCulture, $"10.1.{i / 256}.{i % 256}"),
                     Serial = string.Create(CultureInfo.InvariantCulture, $"B8A44F{i:D6}"),
