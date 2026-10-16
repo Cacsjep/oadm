@@ -187,8 +187,8 @@ These rules hold for the built-in plugins too. Pull requests that break them are
 - **Secrets.** Payloads live in memory only. Never log or store a password; store secrets only encrypted
   (`ctx.Secrets`).
 - **Steps and names.** Every device request and every wait is a named step. The task name says what the task does.
-- **Scale.** A site can have 5,000 devices. Lists are virtualized, searches are one pass, server work for many devices
-  runs with bounded parallelism, and every device list has a test with 5,000 fake devices.
+- **Scale.** A server can manage 30,000 devices. Lists are virtualized, searches are one pass, server work for many devices
+  runs with bounded parallelism, and every device list has a test with 30,000 fake devices.
 - **Look.** Shared controls and theme only, errors directly below the field, one accent button per view, red for
   destructive actions. See [UI kit](../ui/).
 - **Wording.** Short and plain, no protocol names in UI text, button labels without "...".

@@ -8,15 +8,30 @@ namespace Oadm.Samples.FirmwareOverview.Tests;
 public sealed class FirmwareOverviewTests
 {
     [Fact]
-    public async Task Refresh_reads_every_device_and_publishes_the_table()
+    public async Task Refresh_reads_the_chosen_devices_and_publishes_the_table()
     {
-        var (plugin, server) = await StartAsync(("10.0.0.48", DeviceStatus.Ok, "12.11.77"), ("10.0.0.49", DeviceStatus.Ok, "11.11.124"));
+        var (plugin, server) = await StartAsync(("10.0.0.48", DeviceStatus.Ok, "12.11.77"), ("10.0.0.49", DeviceStatus.Ok, "11.11.124"), ("10.0.0.50", DeviceStatus.Ok, "10.12.1"));
+        var chosen = server.DeviceList.Take(2).Select(d => d.Id).ToList();
 
-        await plugin.InvokeAsync(FirmwareOverview.Refresh, null, CancellationToken.None);
+        await plugin.InvokeAsync(FirmwareOverview.Refresh, Request(new RefreshRequest(false, chosen)), CancellationToken.None);
         var state = await NextStateAsync(server, s => !s.Reading);
 
         Assert.Equal(["10.0.0.48 12.11.77", "10.0.0.49 11.11.124"], state.Rows.Select(r => $"{r.Address} {r.Version}"));
         Assert.All(state.Rows, r => Assert.Null(r.Error));
+        Assert.Equal(0, server.Cameras[server.DeviceList[2].Id].Reads); // not chosen: not contacted
+    }
+
+    [Fact]
+    public async Task All_devices_is_one_short_request_and_nothing_chosen_is_refused()
+    {
+        var (plugin, server) = await StartAsync(("10.0.0.48", DeviceStatus.Ok, "12.11.77"), ("10.0.0.49", DeviceStatus.Ok, "11.11.124"));
+
+        await plugin.InvokeAsync(FirmwareOverview.Refresh, Request(new RefreshRequest(true, [])), CancellationToken.None);
+        Assert.Equal(2, (await NextStateAsync(server, s => !s.Reading)).Rows.Count);
+
+        var refused = await Assert.ThrowsAsync<ArgumentException>(() => plugin.InvokeAsync(FirmwareOverview.Refresh, Request(new RefreshRequest(false, [])), CancellationToken.None));
+        Assert.Equal(FirmwareOverview.NothingChosen, refused.Message);
+        await Assert.ThrowsAsync<ArgumentException>(() => plugin.InvokeAsync(FirmwareOverview.Refresh, null, CancellationToken.None));
     }
 
     [Fact]
@@ -24,7 +39,7 @@ public sealed class FirmwareOverviewTests
     {
         var (plugin, server) = await StartAsync(("10.0.0.50", DeviceStatus.CredentialsRequired, "12.11.77"));
 
-        await plugin.InvokeAsync(FirmwareOverview.Refresh, null, CancellationToken.None);
+        await plugin.InvokeAsync(FirmwareOverview.Refresh, Request(new RefreshRequest(true, [])), CancellationToken.None);
         var row = Assert.Single((await NextStateAsync(server, s => !s.Reading)).Rows);
 
         Assert.Equal(DeviceMessages.CredentialsRequired, row.Error);
@@ -39,11 +54,24 @@ public sealed class FirmwareOverviewTests
     }
 
     [Fact]
-    public async Task The_page_shows_the_table_and_ignores_older_states()
+    public async Task The_page_reads_nothing_before_a_choice()
     {
         var (plugin, server) = await StartAsync(("10.0.0.48", DeviceStatus.Ok, "12.11.77"));
         using var page = new FirmwareOverviewViewModel(new FakePageContext(plugin, server));
 
+        Assert.True(page.Devices.IsEmpty);
+        Assert.Equal("Choose devices", page.Devices.ButtonText);
+        Assert.False(page.RefreshCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task The_page_shows_the_table_and_ignores_older_states()
+    {
+        var (plugin, server) = await StartAsync(("10.0.0.48", DeviceStatus.Ok, "12.11.77"));
+        var ctx = new FakePageContext(plugin, server) { SelectedDevices = [server.DeviceList[0]] };
+        using var page = new FirmwareOverviewViewModel(ctx); // starts with the Devices page selection
+
+        Assert.Equal("Selected devices: 10.0.0.48", page.Devices.ButtonText);
         await page.RefreshCommand.ExecuteAsync(null);
         var state = await NextStateAsync(server, s => !s.Reading);
         page.Apply(JsonSerializer.Serialize(state, FirmwareOverview.Json));
@@ -68,6 +96,8 @@ public sealed class FirmwareOverviewTests
         await plugin.StartAsync(server, CancellationToken.None);
         return (plugin, server);
     }
+
+    private static string Request(RefreshRequest request) => JsonSerializer.Serialize(request, FirmwareOverview.Json);
 
     /// <summary>The next published state that matches, within 5 s.</summary>
     private static async Task<FirmwareState> NextStateAsync(FakeCoreContext server, Func<FirmwareState, bool> match)

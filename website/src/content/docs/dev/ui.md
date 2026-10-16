@@ -33,8 +33,12 @@ Add the namespace `xmlns:ui="using:Oadm.Sdk.Client.Controls"` to your XAML.
 | `ui:InfoIcon` | An explanation that shows on hover and click |
 | `ui:WizardSteps` | The step row of a wizard |
 | `ui:DeviceIcon`, `ui:DeviceTree`, `ui:PageTab` | A device's icon by category and status, devices grouped by tag, page tabs |
+| `ui:TileGrid` | A grid of tiles that fills the page (Live View): your tab implements `ITileGridSource`, its tiles `ITileGridItem`; the rules are an `Oadm.Sdk.Layout.TileLayout` (`TileRect`, `Place`, `Fit`, `Drag`) the server checks again |
+| `ui:ProgressRing` | A spinning ring in place while a list or card loads |
+| `ui:PageHeader` | `Subtitle` and `IsHidden` of the host page header, set on your page view |
 | `MessageWindow` | Every message and confirmation: `MessageWindow.ConfirmAsync(owner, title, message, confirmText)` |
-| `DevicePickerWindow` | Every "choose devices" dialog: search, tags, Select all, 5,000 devices |
+| `DevicePickerWindow` | Every "choose devices" dialog: search, tags, Select all, 30,000 devices; `ShowAsync` (ids), `ShowOneAsync` (one device), `ShowChoiceAsync` (All devices, tags, chosen devices) |
+| `PageDeviceChoice` | The device choice of a page that reads many devices: the purple "Selected devices" button, see [Core plugins](../core-plugins/) |
 | `ComboBox Classes="grouped"` + `GroupedChoice` | A select field with group headers |
 
 For lists that a grid shows, use `RangeObservableCollection<T>` (`Oadm.Sdk.Client.Collections`): `ReplaceAll`,

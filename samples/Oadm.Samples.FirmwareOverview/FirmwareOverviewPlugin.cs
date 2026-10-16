@@ -7,7 +7,7 @@ using Oadm.Sdk.Plugins;
 namespace Oadm.Samples.FirmwareOverview;
 
 /// <summary>
-/// The server part: keeps the table, reads the devices when the page asks, and pushes every new state to the pages.
+/// The server part: keeps the table, reads the devices the page chose when it asks, and pushes every new state to the pages.
 /// </summary>
 public sealed class FirmwareOverviewPlugin : ICorePlugin, IDisposable
 {
@@ -39,13 +39,20 @@ public sealed class FirmwareOverviewPlugin : ICorePlugin, IDisposable
                 return Task.FromResult<string?>(Serialize(Current));
 
             case FirmwareOverview.Refresh:
+                // Check the request before anything starts: the page sends "all" or the chosen ids, never nothing.
+                var request = JsonSerializer.Deserialize<RefreshRequest>(payloadJson ?? "null", FirmwareOverview.Json);
+                if (request is null || (!request.All && (request.DeviceIds is null || request.DeviceIds.Count == 0)))
+                {
+                    throw new ArgumentException(FirmwareOverview.NothingChosen);
+                }
+
                 if (!TryBeginRead())
                 {
                     throw new InvalidOperationException("The devices are being read already.");
                 }
 
                 // The read takes a while: it runs in the background and the page follows it through events.
-                _ = Task.Run(() => ReadAllAsync(_stop.Token), CancellationToken.None);
+                _ = Task.Run(() => ReadAsync(request, _stop.Token), CancellationToken.None);
                 return Task.FromResult<string?>(null);
 
             default:
@@ -55,14 +62,16 @@ public sealed class FirmwareOverviewPlugin : ICorePlugin, IDisposable
 
     public void Dispose() => _stop.Dispose();
 
-    /// <summary>Reads every device, 16 at a time, 5 s each; devices OADM cannot log in to are not contacted.</summary>
-    private async Task ReadAllAsync(CancellationToken ct)
+    /// <summary>Reads the chosen devices, 16 at a time, 5 s each; devices OADM cannot log in to are not contacted.</summary>
+    private async Task ReadAsync(RefreshRequest request, CancellationToken ct)
     {
         var ctx = _ctx!;
         var rows = new ConcurrentBag<FirmwareRow>();
         try
         {
-            var devices = await ctx.Devices.ListAsync(ct);
+            // One list of the device table, then only the devices the page chose (ids OADM no longer manages drop out).
+            var chosen = request.All ? null : request.DeviceIds.ToHashSet();
+            var devices = (await ctx.Devices.ListAsync(ct)).Where(d => chosen is null || chosen.Contains(d.Id)).ToList();
             await Parallel.ForEachAsync(devices, new ParallelOptions { MaxDegreeOfParallelism = 16, CancellationToken = ct }, async (device, token) =>
             {
                 rows.Add(await ReadAsync(ctx, device, token));

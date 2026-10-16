@@ -1,6 +1,6 @@
 # Dashboards (planned)
 
-Status: design, agreed with the maintainer on 2026-10-16. Nothing is built yet. Defaults marked **(default)** were not
+Status: design, agreed with the maintainer on 2026-10-16. Built: event subscriptions, `EventField.Kind`, the shared tile grid; the plugin itself not yet. Defaults marked **(default)** were not
 asked and may change.
 
 ## Purpose
@@ -59,8 +59,9 @@ receiver, the event rules engine. Dashboards needs the **subscribe** half; the s
   plugin also keeps, per event type and field, the last 20 values seen **(default)** for the suggestion below. Memory only:
   after a server restart a one-shot event must fire again before a **new** widget can use its fields; existing widgets keep
   their saved type and show "No value yet".
-- `EventField` gets `Kind` (`EventValueKind`: Text, Number, YesNo; DIM default Text). Device triggers fills it from the
-  device's event list: `plugins/Shared/DeviceEvents` reads the `Type` of every `SimpleItemInstance` (today skipped):
+- `EventField.Kind` (`EventValueKind`: Text, Number, YesNo; default Text; built). Device triggers fills it from the
+  device's event list: `plugins/Shared/DeviceEvents` reads the `Type` of every `SimpleItemInstance`; its values are fields
+  with `Filter` false (no filter box in the rule dialog):
   `xsd:boolean` = YesNo; `xsd:int`, `integer`, `long`, `short`, `byte`, unsigned ones, `double`, `float`, `decimal` = Number;
   everything else Text.
 - Suggestion for a Text field: the last 20 values **(default)** the plugin saw are all numbers (invariant culture) =
@@ -89,8 +90,8 @@ Layout like Live View (one left card, one right card):
 ## Editing
 
 - The grid is Live View's: 20 x 20 cells, always filling the tab, a widget at least 2 x 2, never overlapping, drag inside
-  to move, an edge or a corner to resize. **The grid code moves out of the Live View plugin into a shared control** in
-  `Oadm.Sdk.Client` (`TileGrid`, `TileFrame`, the layout rules now in `ViewLayout` / `ViewRules`), used by both plugins.
+  to move, an edge or a corner to resize. The grid is the shared `ui:TileGrid` (`Oadm.Sdk.Client`, built, moved out of
+  Live View) with the rules of `Oadm.Sdk.Layout.TileLayout` (here at most 50 tiles), used by both plugins.
 - Dragging an event onto the grid (or clicking it: first free place) opens the widget panel on the right of the grid:
   - **Device**: a button naming the device, opening the shared device picker for one device
     (`DevicePickerWindow.ShowOneAsync`), offering only the devices the event comes from (for a Device trigger, its

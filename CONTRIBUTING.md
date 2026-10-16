@@ -27,7 +27,7 @@ You need the [.NET 10 SDK](https://dotnet.microsoft.com/download). Everything el
 ## Rules for changes
 
 - **Tests with every change.** Unit tests need no network and no devices. Anything with a device list also gets a
-  scale test (`Category=Perf`, 5,000 devices, 50,000 tasks).
+  scale test (`Category=Perf`, 30,000 devices, 50,000 tasks).
 - **UI is checked only with Avalonia headless tests** (screenshots with `OADM_SCREENSHOT_DIR`), never by automating a
   real desktop.
 - **The HARD RULES in `CLAUDE.md` apply to every change:**

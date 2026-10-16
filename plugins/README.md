@@ -175,6 +175,11 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
   | `ui:ProgressRow Value Text IsActive` | upload or scan progress (0 to 100) with its status text |
   | `ui:LoadingOverlay Text` | hides the dialog content while it reads (ring and text in the middle); bind `IsVisible`, keep the footer free |
   | `ui:OadmIcon Data` | a single icon |
+  | `ui:ProgressRing` | a spinning ring in place while a list or card loads |
+  | `ui:DeviceIcon Category Status ShowStatusToolTip` | every device icon in a list: the category icon, amber or red by status, the status as tooltip |
+  | `DevicePickerWindow.ShowOneAsync(...)` | the picker for one device (checking one unchecks the other); returns its id or null |
+  | `PageDeviceChoice` | the device choice of a page that reads many devices (the purple "Selected devices" button), see "Choose devices first" |
+  | `ui:TileGrid Source` | a grid of tiles that fills the page (Live View), see "Shared lists and tabs" |
   | `ui:CodeView Text Language ContentType IsFormatted` | **every read-only code or response display** (bodies, headers, JSON/XML previews): monospace, selectable (Ctrl+C and context menu copy), no wrapping, horizontal scroll. `Language`: `Auto` (default: from `ContentType`, then from the text), `Json`, `Xml` (also SOAP), `KeyValue` (param.cgi `key=value`, `# Error` lines red) or `Plain`. JSON and XML are pretty-printed with 2 spaces, also when minified; `IsFormatted="False"` shows the exact text, still highlighted (for a Pretty / Raw switch). Text that does not parse, or is longer than `HighlightLimit` (512 K characters), shows without colors. Colors: theme brushes `Oadm.Code.KeyBrush`, `StringBrush`, `NumberBrush`, `LiteralBrush`, `PunctuationBrush`, `TagBrush`, `AttributeBrush`, `CommentBrush`, `ErrorBrush`. `CodeText` (`Detect`, `Prepare`, `FormatJson`, `FormatXml`, `Tokenize`) works without UI. Editable code is `ui:CodeEditor` |
   | `ui:CodeEditor Text Language PlaceholderText` | **every editable code field** (request bodies): a monospace text box (caret, selection, undo) with the text colored like `ui:CodeView` while typing; `Language` `Json`, `Xml`, `KeyValue` or `Plain`; the text stays exactly as typed |
 
@@ -351,6 +356,10 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
     created on first use, for downloads and archives. Clean up what you write; never use a shared temp folder for
     device data.
   - `ctx.PluginDirectory`: the plugin folder, for data files such as the VAPIX Commander `Library/*.json`.
+  - `ctx.EventPublisher` and `ctx.EventSubscriptions`: events for the event rules and every event the server handles,
+    see "Publishing events" and "Subscribing to events". `ctx.TrustAnchors`: CA certificates the server trusts when it
+    rates device certificates (the PKI). `ctx.Firewall` (`IFirewallRules`, null outside the Windows service): open a UDP
+    port in the Windows firewall while the plugin's server is on (NTP, DHCP; keep it in sync with `FirewallRuleKeeper`).
   - `ctx.Secrets` (`ISecretProtector`): encrypt secrets you store in `Settings`; null = do not store them.
   - `ctx.EventStreams`: device event streams, see below. `ctx.Tasks.Cancel(taskId)`; `ctx.Tasks.IsActive(taskId)` (queued
     or running; null when the host cannot tell): a task cancelled while queued never runs, so ask instead of waiting for it.
@@ -506,6 +515,9 @@ filter on.
 - **Stateless**: `Fire(typeId, deviceId, data)`.
 - **Values**: the `data` of `SetState` / `Fire` are the event's values; actions can use each one as a placeholder
   (`{port}`), and a rule condition can filter on declared data fields.
+- **Data fields** (`EventField`): name, label, `Kind` (`EventValueKind` Text, Number, YesNo: what the value holds, so a
+  dashboard picks the right widget; default Text) and `Filter` (default true; false = a value only, listed as a
+  placeholder but without a filter box in the rule dialog).
 - **Types that change** (the user creates them, e.g. device triggers): implement `IDynamicEventSource` and raise
   `EventTypesChanged` after `EventTypes` changed. A new stateful type waits for its first `ReplaceStates`; a removed type
   counts as off. Types are read once at registration before `StartAsync`, so a plugin that loads its types from settings
@@ -574,7 +586,11 @@ request with `VapixRequestOptions.StreamResponse` and pass the response as owner
 
 `ui:DeviceTree` with a `DeviceTreeModel` (devices grouped by tag, search, optional `Filter`, `DeviceInvoked`) and
 `ui:PageTab` (title, close, active) are the device tree and the tabs of Web View and Live View; a page with devices by
-tag or with tabs uses them. `DeviceTexts.Removed(id)` names a device OADM no longer manages, `ServerErrors.Message(ex)`
+tag or with tabs uses them. `ui:TileGrid` is the grid of tiles of Live View: the page's tab implements `ITileGridSource`
+(its tiles as `ITileGridItem`: `Rect` (a `TileRect` of cells), title, content or a message, the remove command;
+`IsEditing`; `TryMove(item, rect)`), the grid draws a `TileFrame` per tile, and the rules are an `Oadm.Sdk.Layout.TileLayout`
+(size, smallest tile, drop size, most tiles: `Place`, `Fit`, `Drag(rect, TileEdges, dx, dy)`, `Fits`, `FirstOverlap`) that
+the server part checks again before it stores. `DeviceTexts.Removed(id)` names a device OADM no longer manages, `ServerErrors.Message(ex)`
 reads the user text of a failed server call without a gRPC reference.
 
 ### Choose devices first

@@ -19,9 +19,9 @@ import tests from '../../../../../samples/Oadm.Samples.FirmwareOverview.Tests/Fi
 A plugin page is an entry in the navigation rail with a page of its own, like the NTP server or Edge storage. Behind it
 runs a **core plugin**: a service inside the OADM server that keeps state, talks to the devices and answers the page.
 
-In this tutorial you create **Firmware overview**: a page with the AXIS OS version of every device. **Refresh** reads
-all devices on the server, 16 at a time; the table fills in as soon as the read is done, on every client that shows
-the page.
+In this tutorial you create **Firmware overview**: a page with the AXIS OS version of the devices the user chooses. The
+purple **Choose devices** button picks them (All devices, tags or single devices); the server then reads them, 16 at a
+time, and the table fills in as soon as the read is done, on every client that shows the page.
 
 ## 1. Create it
 
@@ -63,7 +63,7 @@ sequenceDiagram
     Page->>Plugin: WatchEventsAsync() (subscribe first)
     Page->>Plugin: InvokeAsync("getState")
     Plugin-->>Page: the whole state as JSON
-    Page->>Plugin: InvokeAsync("refresh")
+    Page->>Plugin: InvokeAsync("refresh", the chosen devices or "all")
     Plugin-->>Page: returns at once
     par in the background, 16 devices at a time
         Plugin->>Devices: basicdeviceinfo
@@ -117,8 +117,10 @@ them in one file of the server project means a typo cannot break the page.
   return at once; never wait for devices here.
 - **`InvokeAsync`** is the page's backend. Throw `ArgumentException` for bad input and `InvalidOperationException` for
   a wrong state: the page gets the message.
-- **`ReadAllAsync`** reads every device with at most 16 at a time and 5 seconds each. A site can have thousands of
-  devices; never read them one by one, and never all at once.
+- **`refresh`** checks the request first: the page sends "all" or the chosen ids, never nothing. A server can manage
+  30,000 devices, so a page never reads every device by itself.
+- **`ReadAsync`** reads the chosen devices with at most 16 at a time and 5 seconds each: never one by one, and never
+  all at once.
 - **`DeviceMessages.Refusal`** skips devices OADM must not contact: a changed certificate, a rejected password, no
   password yet, or not answering. The row says why, in the same words as the rest of OADM.
 - **`ctx.Vapix.CreateAsync`** gives a client that is already logged in to the device. The server keeps it; never
@@ -142,13 +144,20 @@ model, so keep all state in the view model.
 The view model holds the page's state. `RunAsync` is the subscribe, read, apply loop described above. The rows go into a
 `RangeObservableCollection` and are replaced in one step, which keeps the grid fast with thousands of rows.
 
+`PageDeviceChoice` is the device choice of the page: it starts with the Devices page selection, else the last choice on
+this computer, else with nothing. While nothing is chosen the page reads nothing and Refresh is off. `ButtonText` is the
+text of the purple button ("Choose devices", "Selected devices: Tag Building A"); `Resolve()` gives the devices of the
+choice now. All devices goes to the server as "all", not as every id.
+
 <Code code={viewModel} lang="csharp" title="MyCoolPageViewModel.cs" />
 
-The view uses the shared controls: a toolbar button, the progress row, a status chip for problems, the error text below
+The view uses the shared controls: the purple choice button first, a toolbar button, the progress row, a status chip for problems, the error text below
 the table. `ui:PageHeader.Subtitle` puts one short sentence next to the page title; the page itself starts with its
 content. No colors or sizes of its own, so the page looks right in dark and light.
 
 <Code code={viewXaml} lang="xml" title="MyCoolPageView.axaml" />
+
+The device picker needs the window, so the view hands the view model a way to open it (`PickDevices`).
 
 <Code code={viewCode} lang="csharp" title="MyCoolPageView.axaml.cs" />
 
@@ -166,7 +175,8 @@ trip without a network.
 
 <Code code={fakes} lang="csharp" title="Fakes.cs" />
 
-Test the read, the devices that must not be contacted, a bad method, and that the page ignores older states:
+Test the read of the chosen devices, "all" and a request without devices, the devices that must not be contacted, a bad
+method, that the page reads nothing before a choice and that it ignores older states:
 
 <Code code={tests} lang="csharp" title="MyCoolPageTests.cs" />
 
@@ -177,8 +187,8 @@ dotnet test tests/Oadm.Plugins.MyCoolPage.Tests
 ./manage.sh run dev
 ```
 
-The rail shows **My cool page** under Maintenance. Click **Refresh**: the progress row shows while the server reads, then
-the table fills in. Open the page in a second window from the rail entry's context menu and refresh again: both update.
+The rail shows **My cool page** under Maintenance. Click **Choose devices** and choose some: the progress row shows while
+the server reads, then the table fills in. Open the page in a second window from the rail entry's context menu and refresh again: both update.
 
 ## 10. Make it yours
 

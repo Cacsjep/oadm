@@ -38,7 +38,7 @@ On the first `run dev`, confirm the fingerprint, then create the first administr
 |---|---|---|
 | Unit | `manage test unit` | Fast, no network, no devices |
 | `Timing` | `manage test timing` | Depend on real time; local only, not in CI |
-| `Perf` | `manage test perf` | 5,000 devices, 50,000 tasks |
+| `Perf` | `manage test perf` | 30,000 devices, 50,000 tasks |
 | `Hardware` | `manage test hardware` | Read-only, against your cameras in `dev-cameras.yaml` |
 | `HardwareWrite` | never from `manage` | Change a device; only on purpose, only on a test device |
 

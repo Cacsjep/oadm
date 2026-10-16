@@ -109,7 +109,7 @@ The client never talks to devices, but it knows them all: it keeps a live copy o
 | Toolbar plugin | `ctx.Devices`, `ctx.SelectedDevices`, events `DevicesChanged` and `SelectionChanged` |
 
 Never cache the selection: read it when you need it. To let the user pick devices, use the shared
-`DevicePickerWindow` (search, tags, Select all, 5,000 devices), see [UI kit](../ui/).
+`DevicePickerWindow` (search, tags, Select all, 30,000 devices), see [UI kit](../ui/).
 
 ## Talking to a device: `IVapixClient`
 

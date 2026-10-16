@@ -112,10 +112,32 @@ public sealed class OldFirmwareEvents : IEventSource
 - **Values.** The `data` of `SetState` and `Fire` are the event's values; `ReplaceStates` carries none, so publish with
   `SetState` when actions need values. Actions use them as placeholders (`{version}`), conditions can
   filter on the declared `EventField`s.
-- **Cheap when unused.** Calls only queue. `IsWatched(type)` says whether an enabled rule uses the type; skip work
-  nobody needs.
+- **Fields.** An `EventField` has a name, a label, `Kind` (`EventValueKind`: `Text`, `Number`, `YesNo`; what the value
+  holds, so a dashboard picks the right widget) and `Filter` (default true; false = a value only: a placeholder, no
+  filter box in the rule dialog).
+- **Cheap when unused.** Calls only queue. `IsWatched(type)` says whether an enabled rule or a subscriber uses the type;
+  skip work nobody needs.
 - **Types that change.** A source whose types the user creates (Device triggers) implements `IDynamicEventSource` and
   raises `EventTypesChanged`.
+
+## Subscribe to events
+
+A core plugin can receive every event the server handles, its own, other plugins' and OADM's (Device unreachable,
+Certificate expires soon): `ctx.EventSubscriptions?.Subscribe(handler)` returns a subscription; dispose it to stop. The
+host also ends a plugin's subscriptions when it stops or is turned off.
+
+```csharp
+_subscription = ctx.EventSubscriptions?.Subscribe(e =>
+{
+    // e.TypeId, e.DeviceId (null for server events), e.Kind (On, Off, Fired), e.Data, e.Time, e.FromSnapshot
+    _latest[(e.TypeId, e.DeviceId)] = e;
+});
+```
+
+- A subscription starts with every stateful event that is on now (`FromSnapshot` true), then the live events in order.
+- The handler runs on the subscription's own loop, one event at a time. Keep it short. The server never waits for it:
+  10,000 events wait at most, then the oldest are dropped (logged).
+- An exception in the handler is logged; the subscription goes on.
 
 ## Built-in examples
 

@@ -177,12 +177,13 @@ window. Licenses and source offer: `THIRD-PARTY-NOTICES.md` (hand-written part o
 Oadm.sln
 src/
   Oadm.Contracts/      protobuf files + generated gRPC stubs, shared enums
-  Oadm.Sdk/            plugin SDK: interfaces, attributes, context objects. No Avalonia, no EF
+  Oadm.Sdk/            plugin SDK: interfaces, attributes, context objects, Layout/TileLayout (tile grid rules). No Avalonia, no EF
   Oadm.Sdk.Client/     client-side plugin SDK: dialog/page/toolbar interfaces, ITaskDialogContext,
                        IToolbarContext, shared controls (Controls/: IconLabel, SearchBox, OadmIcon,
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow, LoadingOverlay,
                        ToolbarButton, ToolbarSeparator, PasswordBox, MessageWindow, FormField, DevicePickerWindow, DeviceIcon,
-                       GroupedChoice, DeviceTree, PageTab), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch,
+                       GroupedChoice, DeviceTree, PageTab, TileGrid, PageDeviceChoice, ProgressRing, InfoIcon,
+                       WizardSteps, CodeView, CodeEditor), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch,
                        form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection,
                        Collections/RangeObservableCollection (bulk list of the host grids and plugin pages)
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)
@@ -1166,6 +1167,9 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   dropped, logged once a minute) and loop, so the engine never waits; a failing handler is logged; `IsWatched` is true
   while any subscription exists; the host ends a plugin's subscriptions when it stops, fails or is turned off
   (`PluginEventSubscriptions`). Tests `EventSubscriptionTests`. First user: the planned Dashboards (`docs/dashboards.md`).
+  `EventField.Kind` (`EventValueKind` Text, Number, YesNo) says what a value holds; `EventField.Filter` false = a value
+  only (placeholder, no filter box in the rule dialog; proto `EventFieldInfo.no_filter = 4`). Device triggers declare every
+  value this way, the kind from the device's declared type.
   `IActionPlugin` (standalone class with a parameterless constructor in a `*.Server.dll`, or contributed through
   `IActionSource.ActionPlugins` of a core plugin): `NeedsDevice`, `SupportsTurnOff`, declarative `Fields` (`ActionField`:
   Text, Multiline, Number, Bool, Choice, DynamicChoice through `ListChoicesAsync`, Password stored encrypted and never sent
@@ -1364,7 +1368,8 @@ returns null or throws `NotSupportedException`.
   `Events` (live events to the plugin's page), `TrustAnchors` (CAs the server trusts when rating device certificates),
   `EventStreams` (a device's RTSP event stream with the stored credentials; the RTSP port per device), `Firewall` (UDP
   rules, Windows service only; `FirewallRuleKeeper`), `DataDirectory` (`<datafolder>/plugin-data/<id>`: working files, never a
-  shared temp folder; the plugin cleans up), `EventPublisher` (event rules), `AutoAdd` (add or follow an Axis device like
+  shared temp folder; the plugin cleans up), `EventPublisher` (event rules), `EventSubscriptions` (every event the server
+  handles, see "Event rules"), `AutoAdd` (add or follow an Axis device like
   the add page).
 - Event rules: `IEventSource`, `IDynamicEventSource`, `IEventPublisher`, `IActionPlugin`, `IActionSource` (see "Event
   rules").
@@ -1814,7 +1819,7 @@ tab. Decisions, methods and tests: plugin `README.md`.
 - Rules that must hold: views live on the server, shared by every user (plugin setting `views`), every change pushed to
   every open page; a save of an older version is refused (two users); the grid is 20 x 20 cells and always fills the tab,
   a camera at least 2 x 2, never overlapping, at most 16 cameras per view and 200 views; the server checks every rule
-  again (`ViewRules`, shared with the page). Roles: "show" (Operator and Viewer), "Change views" (`manage`, Operator yes,
+  again (`ViewRules`, shared with the page; the grid is the shared `ui:TileGrid` with `LiveViewPluginInfo.Layout`). Roles: "show" (Operator and Viewer), "Change views" (`manage`, Operator yes,
   Viewer no; save and delete audited); the pictures need "Live view". Every camera is the host's live video component
   (`ICorePluginClientContext.LiveVideo`, controls closed in the tile, open in fullscreen); only the active tab is visible,
   so other tabs' streams rest. A removed device keeps its place and says "Removed device 1a2b3c4d".
@@ -2303,7 +2308,11 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   hover; device grid, Web View, Live View), `DeviceTree` + `DeviceTreeModel` (every devices-by-tag tree: tag groups in
   name order with a chevron, "No tag" last, a device under each of its tags, sorted by address, search over address,
   model, MAC, host name and tags, optional filter, one reset per rebuild; Web View, Live View), `PageTab` (every tab of a
-  page with tabs: title, close button, the active one underlined; theme `Border.browserTab`), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
+  page with tabs: title, close button, the active one underlined; theme `Border.browserTab`), `TileGrid` + `TileFrame` (every
+  grid of tiles that fills its page: cells of `Oadm.Sdk.Layout.TileLayout` (size, smallest tile, drop size, most tiles;
+  the same rules on the server), a frame per `ITileGridItem` of an `ITileGridSource`, while editing the cell lines and a
+  frame per tile to move, resize and remove it, `ShowPreview` where a dragged item lands; theme `Panel.tile`,
+  `Border.tileEdit`, `Border.tileHover`, `Border.dropPreview`; Live View, later Dashboards), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
   puts one right of the input instead of a long hint), `WizardSteps` + `WizardStepItem` (the step
   row of every wizard: numbered dot and name, thin line between, current accent, done with a check, a step opens when
   every step before it is complete; theme `Button.wizardStep`, `Border.wizardDot`, `TextBlock.wizardLabel`,

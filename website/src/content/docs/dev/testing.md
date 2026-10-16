@@ -12,7 +12,7 @@ purpose. The tests use xUnit.
 |---|---|---|
 | (none) | `manage test unit` | Fast tests with fakes. CI runs them on Windows, Linux and macOS for every release |
 | `Timing` | `manage test timing` | Depend on real elapsed time; local only |
-| `Perf` | `manage test perf` | 5,000 devices, 50,000 tasks, with a time budget |
+| `Perf` | `manage test perf` | 30,000 devices, 50,000 tasks, with a time budget |
 | `Hardware` | `manage test hardware` | Read-only, against your cameras |
 | `HardwareWrite` | never from `manage` | Change a device. Only on purpose, only on a test device |
 
@@ -91,7 +91,7 @@ renders the light appearance. UI is only tested this way: never automate the rea
 
 ## Scale
 
-A site can have 5,000 devices. Every feature with a device list has a `Perf` test with at least 5,000 fake devices that
+A server can manage 30,000 devices. Every feature with a device list has a `Perf` test with at least 30,000 fake devices that
 keeps search, select all, the summary and updates fast, writes its measured times to the test output and has a
 generous but meaningful budget.
 

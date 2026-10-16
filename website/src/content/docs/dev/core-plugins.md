@@ -29,7 +29,7 @@ plugin that throws on start is marked as failed; the others keep running.
 |---|---|
 | `Devices` | Every managed device (`ListAsync`, `FindAsync`), see [Devices and VAPIX](../devices/) |
 | `Vapix` | `CreateAsync(deviceId, ct)`: a logged-in client. The host caches it; never dispose it |
-| `Tasks` | `RunAsync(pluginId, deviceIds, payload, owner, ct)` starts tasks, `Cancel(taskId)` |
+| `Tasks` | `RunAsync(pluginId, deviceIds, payload, owner, ct)` starts tasks, `Cancel(taskId)`, `IsActive(taskId)` (queued or running) |
 | `Settings` | `GetAsync` / `SetAsync(key, json)`: the plugin's own settings in the server database |
 | `Logger` | The server log |
 | `Secrets` | `Protect` / `Unprotect`: encrypt what you store in the settings with the server's key |
@@ -38,6 +38,7 @@ plugin that throws on start is marked as failed; the others keep running.
 | `PluginDirectory` | The plugin's folder, for data files you ship. Never use `Assembly.Location` |
 | `EventStreams` | RTSP event streams of devices |
 | `EventPublisher` | Events for the event rules, see [Event rules](../event-rules/#publish-events) |
+| `EventSubscriptions` | Receive every event the server handles, see [Event rules](../event-rules/#subscribe-to-events) |
 | `TrustAnchors` | CA certificates the server trusts when it rates device certificates (PKI) |
 | `AutoAdd` | Add a device the plugin saw on the network, through the add page's checks (DHCP server) |
 | `Firewall` | Open a UDP port in the Windows firewall while the service is on (NTP, DHCP) |
@@ -86,6 +87,7 @@ The page's context, `ICorePluginClientContext`:
 | `OpenAsync(hostPage)` | Open a host page, e.g. `HostPages.Devices` |
 | `OwnerName` | "user@machine", the owner of tasks the page starts |
 | `LiveVideo`, `DeviceWeb` | The host's live video and the device web interface, see below |
+| `GetLocalSetting(key)`, `SetLocalSetting(key, value)` | Short texts the page keeps on this computer (at most 64 KB each), e.g. the last device choice |
 
 ### Read, then watch
 

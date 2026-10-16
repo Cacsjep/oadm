@@ -97,7 +97,7 @@ Usage: manage test [unit|perf|timing|hardware|all] [--filter EXPR] [--release] [
 Targets:
   unit       Tests that need no camera, Category!=Hardware and Category!=Perf
              (default, fast; CI runs them for every release tag without the Timing tests)
-  perf       Scale tests, Category=Perf: 5,000 devices and 50,000 tasks (client stores,
+  perf       Scale tests, Category=Perf: 30,000 devices and 50,000 tasks (client stores,
              Devices grid, ListTaskPlugins, Watch snapshots, polling spread, task engine
              batches, task history paging and retention). A few minutes; each test has a time
              budget and writes its measured times to the test output
