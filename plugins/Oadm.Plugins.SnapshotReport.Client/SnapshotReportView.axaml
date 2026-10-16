@@ -7,11 +7,13 @@
              ui:PageHeader.Subtitle="Current pictures of the chosen cameras for the maintenance report.">
   <!-- Inside the host's page card: toolbar, status line, progress, tile grid. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,Auto,*">
-    <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-      <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" IsVisible="{Binding MayReport}">
-        <Button Classes="primary" Command="{Binding ChooseDevicesCommand}" Margin="0,0,6,0" ToolTip.Tip="Cameras by address or tag">
-          <ui:IconLabel Icon="{StaticResource Icon.snapshot}" Text="{Binding DeviceChoice.ButtonText}" />
-        </Button>
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+      <Button Grid.Column="0" Classes="primary" Command="{Binding ChooseDevicesCommand}" IsVisible="{Binding MayReport}"
+              ToolTip.Tip="Cameras by address or tag">
+        <ui:IconLabel Icon="{StaticResource Icon.snapshot}" Text="{Binding DeviceChoice.ButtonText}" />
+      </Button>
+      <!-- Entries that do not fit move into the More menu. -->
+      <ui:ToolbarOverflowPanel Grid.Column="1" Spacing="4" IsVisible="{Binding MayReport}">
         <ui:ToolbarButton IconKey="snapshot" Text="Create snapshots" Command="{Binding CreateSnapshotsCommand}"
                           ToolTip.Tip="Take a picture of the chosen cameras" />
         <ui:ToolbarButton IconKey="refresh" Text="Refresh all" Command="{Binding RefreshAllCommand}"
@@ -22,9 +24,9 @@
         <ui:ToolbarSeparator />
         <ui:ToolbarButton IconKey="export" Text="Export PDF" IsPrimary="True" Command="{Binding ExportPdfCommand}"
                           ToolTip.Tip="Create the maintenance report of the selected pictures" />
-      </StackPanel>
+      </ui:ToolbarOverflowPanel>
 
-      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12">
+      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12">
         <TextBlock Classes="secondary" Text="Size" VerticalAlignment="Center" />
         <Slider Width="160" VerticalAlignment="Center"
                 Minimum="{x:Static vm:SnapshotReportViewModel.MinTileWidth}" Maximum="{x:Static vm:SnapshotReportViewModel.MaxTileWidth}"

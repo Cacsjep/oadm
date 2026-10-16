@@ -31,6 +31,7 @@ public partial class App : Application
     public override void OnFrameworkInitializationCompleted()
     {
         ApplyCrispTextToAllWindows();
+        WindowFit.Attach();
         Services = ServiceRegistration.Build(Options, LogStore);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {

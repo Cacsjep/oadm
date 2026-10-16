@@ -9,7 +9,8 @@
        Download. Shared controls and theme classes only. -->
   <Border Classes="card">
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
-      <StackPanel Grid.Row="0" Classes="inputRow">
+      <!-- Wraps on a narrow window: Search moves to a second line instead of out of the card. -->
+      <WrapPanel Grid.Row="0" Classes="inputRow">
         <Button Classes="primary" Command="{Binding ChooseCamerasCommand}" IsEnabled="{Binding IsIdle}"
                 ToolTip.Tip="Video devices, by address or tag">
           <ui:IconLabel Icon="{StaticResource Icon.video}" Text="{Binding CamerasText}" />
@@ -33,7 +34,7 @@
                 ToolTip.Tip="{Binding SearchTip}" ToolTip.ShowOnDisabled="True">
           <ui:IconLabel Icon="{StaticResource Icon.search}" Text="Search" />
         </Button>
-      </StackPanel>
+      </WrapPanel>
 
       <TextBlock Grid.Row="1" Classes="secondary" Margin="0,0,0,10" Text="{Binding SummaryText}"
                  IsVisible="{Binding SummaryText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

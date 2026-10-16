@@ -160,6 +160,7 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
   | `ui:IconLabel Icon Text` | every icon + text row, e.g. button content |
   | `ui:ToolbarButton Text IconKey (or Icon) IsPrimary IsIconOnly` | every toolbar button: `Button.toolbar` (or `Button.primary`) with an `IconLabel`; `IsIconOnly` shows only the icon with `Text` as tooltip |
   | `ui:ToolbarSeparator` | vertical line between toolbar groups |
+  | `ui:ToolbarOverflowPanel Spacing` | every row of toolbar buttons on a page: entries that do not fit (small or scaled screens) go behind its own More button; keep the device choice button and the search box outside it |
   | `ui:SearchBox Text` | every search field |
   | `ui:FormField Label Hint Error` | **every labeled form row**: label left, level with the input; below the input its validation error, else the `Hint` (small, secondary). Widths from the theme (`Oadm.FormLabelWidth` 180, `Oadm.FormInputWidth` 280; a narrower row shrinks the input). Class `wide`: the input fills the row; class `inline`: the label sizes to its text (fields in one line, e.g. From / To). No label: the label column stays empty, so a check box or button row lines up with the inputs. `Error` only for content without data validation (a group of check boxes, a text value) |
   | `ui:PasswordBox Text` | **every password field**: bullet mask and an eye button ("Show password" / "Hide password"); never a `TextBox` with `PasswordChar` |

@@ -14,7 +14,7 @@
         x:Class="Oadm.Client.Shell.MainWindow"
         x:DataType="shell:MainWindowViewModel"
         Title="OADM"
-        Width="1800" Height="900" MinWidth="1800" MinHeight="720"
+        Width="1800" Height="900" MinWidth="1200" MinHeight="640"
         WindowStartupLocation="CenterScreen"
         WindowState="Maximized"
         ExtendClientAreaToDecorationsHint="True"

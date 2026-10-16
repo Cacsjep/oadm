@@ -181,7 +181,7 @@ src/
   Oadm.Sdk.Client/     client-side plugin SDK: dialog/page/toolbar interfaces, ITaskDialogContext,
                        IToolbarContext, shared controls (Controls/: IconLabel, SearchBox, OadmIcon,
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow, LoadingOverlay,
-                       ToolbarButton, ToolbarSeparator, PasswordBox, MessageWindow, FormField, DevicePickerWindow, DeviceIcon,
+                       ToolbarButton, ToolbarSeparator, ToolbarOverflowPanel, PasswordBox, MessageWindow, FormField, DevicePickerWindow, DeviceIcon,
                        GroupedChoice, DeviceTree, PageTab, TileGrid, PageDeviceChoice, ProgressRing, InfoIcon,
                        WizardSteps, CodeView, CodeEditor), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch,
                        form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection,
@@ -812,7 +812,14 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   colored icon, with the error or warning message right of it when there is one; finished tasks
   show no progress bar. Count badges stay a small solid violet pill.
 - Window chrome: title bar and caption buttons are 32 px high (caption buttons 46x32), exactly
-  like the Windows default. Main window minimum size 1800x720.
+  like the Windows default. Main window minimum size 1200x640.
+- **Small and scaled screens** (Full HD at 125 % leaves about 1536 x 816 logical pixels): every window, host and plugin
+  dialogs alike, is fitted to the screen it opens on (`Shell/WindowFit`, attached in `App`: a window larger than the
+  work area less 16 px per side shrinks to it, its minimum and maximum follow, then it is centered or moved back onto the
+  screen; `WindowFitTests`). Toolbars of buttons are `ui:ToolbarOverflowPanel` (entries that do not fit go behind a More
+  button), input rows that must not leave the card wrap (`WrapPanel.inputRow`), grid columns keep readable minimum
+  widths and the grid scrolls sideways. Check a new page with the layout survey (`LayoutSurveyTests`,
+  `OADM_LAYOUT_SURVEY=1`, `OADM_LAYOUT_SURVEY_SIZE=1280x672`, screenshots and a list of controls that leave the window).
 - Dialogs (every dialog window incl. `ui:MessageWindow`, the device picker and the login
   window): no system title bar (`WindowDecorations="BorderOnly"`); the first row is `ui:DialogTitleBar`, the title as a
   heading and an X top right that closes the window, aligned with the content. Modal, not movable and fixed size
@@ -834,11 +841,11 @@ density, styled as described in Visual Style.
 Layout, top to bottom:
 1. Title "Devices". Left navigation rail as described in Visual Style.
 2. Toolbar: toolbar plugins (**Add** menu | Remove, Refresh, Export | task plugin actions that declare `ShowInToolbar`,
-   then System report (plugin) | plugin entries) in `Controls/ToolbarOverflowPanel`: entries that do not fit (narrow
+   then System report (plugin) | plugin entries) in `ui:ToolbarOverflowPanel`: entries that do not fit (narrow
    window, live view open) move into a **More** menu (icon `more`, right of the toolbar). Right-aligned: the AXIS OS
    release notes link (icon only, toolbar controls with the class `trailing` go here), **Group by tag** icon button (icon
    `groupBy`, class `active` while on), Columns icon button (tooltip "Choose columns") and search box (host parts);
-   everything fits on one line at the 1800 px minimum window width with the rail expanded and the live view closed. One primary **Add** button with a menu Discovery (zero-conf scan), Network range,
+   everything fits on one line at a 1800 px window width with the rail expanded and the live view closed. One primary **Add** button with a menu Discovery (zero-conf scan), Network range,
    Manual, Import from file, Import from ADM instead of five buttons; every toolbar entry is a button with text (only Columns, Group by tag
    and the release notes link are icons). The empty Devices page shows a primary **Add devices** button with the same
    menu.
@@ -890,7 +897,7 @@ Layout, top to bottom:
    **OADM** (icon `settings`, after the task groups, before Remove): settings of OADM itself for the selected devices,
    rarely needed; today **RTSP port** (video devices, "Optics Control"), see "Live view".
 5. Resizable, collapsible bottom pane **Tasks** (no tabs), one row per task (= per device).
-   Columns: Name (3*, min 260 px), Device (110 px), Status (3*, min 280 px: icon plus message), Current step, Start time, Owner, Progress (bar).
+   Columns: Name (3*, min 220 px), Device (110 px), Status (3*, min 220 px: icon plus message), Current step, Start time, Owner, Progress (bar).
    An empty history says "No tasks yet. Right-click devices to run one." **Current step** is
    "Step 3/6 · Upload firmware" plus " · 45 %" while the running step reports progress (tooltip: the text
    and the step detail); a failed task shows its failed step, a successful one just "Completed"; empty for plugins without steps. **Device** is the task's
@@ -1441,7 +1448,7 @@ API guide: `plugins/README.md`.
 Dialogs and pages are real Avalonia views with view models, styled by the host theme. They use
 the shared controls from `Oadm.Sdk.Client.Controls` (`IconLabel`, `SearchBox`, `PasswordBox`, `OadmIcon`,
 `DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip`, `FileRow`, `ProgressRow`, `FormField`, `StatCard`,
-`ToolbarButton`, `ToolbarSeparator`, `MessageWindow` (every message and confirmation popup:
+`ToolbarButton`, `ToolbarSeparator`, `ToolbarOverflowPanel`, `MessageWindow` (every message and confirmation popup:
 `MessageWindow.ConfirmAsync` / `ShowMessageAsync`, used by the host dialog service and plugin dialogs);
 usage in `plugins/README.md`) and
 the theme resources (styles, colors, `Icon.*` geometries) of the host application; the icon keys
@@ -1993,7 +2000,8 @@ sentence on the Apache-2.0 license, "Show licenses" shows `THIRD-PARTY-NOTICES.t
 starts with the card **This computer** (every user, saved at once in the client settings file): "Decode video on the
 graphics card" with the test's result as hint, "Show video details over the picture" and "Frame rate (adaptive quality)"
 (see "Live view"), "Appearance" (Dark, Light; see "Visual Style"). The page has two columns (each up to 760 px, left-aligned): This computer and the server settings left,
-the card **Backup and restore** right (administrators, see "Backup and restore"). The server
+the card **Backup and restore** right (administrators, see "Backup and restore"); narrower than 1100 px the backup card
+moves below the server settings. The server
 address is set with `--server` or in the
 client settings file. Client-side (local JSON in LocalApplicationData): server address, device grid column layout and group
 mode (`GroupDevicesByTag`), bottom pane state, `GpuDecoding`, `ShowVideoDetails`, `AdaptiveFps`, `Appearance`.
@@ -2308,7 +2316,8 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   shared control, never a copy: in `src/Oadm.Sdk.Client/Controls` (namespace
   `Oadm.Sdk.Client.Controls`, XAML prefix `ui`) when plugin dialogs need it too, else in
   `src/Oadm.Client/Controls`. Existing shared ones: `IconLabel` (every icon + text row: navigation
-  rail, dialogs), `ToolbarButton` (every toolbar button) and `ToolbarSeparator`, `SearchBox`
+  rail, dialogs), `ToolbarButton` (every toolbar button) and `ToolbarSeparator`, `ToolbarOverflowPanel` (every row of
+  toolbar buttons: what does not fit goes behind its own More button; the search box stays outside it), `SearchBox`
   (every search field), `OadmIcon`, and for
   dialogs `DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip` (status chip),
   `FileRow` (chosen file + "Choose file"), `ProgressRow` (progress bar + status text), `LoadingOverlay` (a dialog that waits for a read: steps and cards hidden, ring and text in the middle, Cancel stays usable),

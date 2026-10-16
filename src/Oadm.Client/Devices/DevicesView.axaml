@@ -22,7 +22,7 @@
           <!-- Toolbar plugins (built-in: Add | Remove, Refresh, Export | task actions | plugin entries), filled by
                DevicesView.axaml.cs. Entries that do not fit (e.g. with the live view open) move into the More menu. -->
           <Grid Grid.Column="0" ColumnDefinitions="*,Auto" Margin="0,0,8,0">
-            <c:ToolbarOverflowPanel x:Name="ToolbarPanel" Spacing="4" OverflowButton="{Binding #MoreButton}" />
+            <ui:ToolbarOverflowPanel x:Name="ToolbarPanel" Spacing="4" OverflowButton="{Binding #MoreButton}" />
             <Button x:Name="MoreButton" Grid.Column="1" Classes="toolbar iconOnly" ToolTip.Tip="More actions"
                     IsVisible="{Binding #ToolbarPanel.HasOverflow}">
               <ui:OadmIcon Data="{StaticResource Icon.more}" />
@@ -113,7 +113,7 @@
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Tag="model" Header="Model" Width="160*" MinWidth="70" Binding="{Binding Row.Model}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTextColumn Tag="model" Header="Model" Width="160*" MinWidth="120" Binding="{Binding Row.Model}" x:DataType="dev:IDeviceGridItem" />
               <DataGridTemplateColumn Tag="status" Header="Status" Width="160*" MinWidth="150" SortMemberPath="Row.StatusText">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:IDeviceGridItem">
@@ -121,19 +121,19 @@
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Tag="mac" Header="MAC address" Width="140*" MinWidth="70" Binding="{Binding Row.Serial}" x:DataType="dev:IDeviceGridItem" />
-              <DataGridTextColumn Tag="firmware" Header="Firmware" Width="100*" MinWidth="70" Binding="{Binding Row.FirmwareVersion}" x:DataType="dev:IDeviceGridItem" />
-              <DataGridTextColumn Tag="soc" Header="SoC" Width="100*" MinWidth="70" Binding="{Binding Row.Soc}" x:DataType="dev:IDeviceGridItem" />
-              <DataGridTemplateColumn Tag="tags" Header="Tags" Width="150*" MinWidth="70" SortMemberPath="Row.TagsText">
+              <DataGridTextColumn Tag="mac" Header="MAC address" Width="140*" MinWidth="130" Binding="{Binding Row.Serial}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTextColumn Tag="firmware" Header="Firmware" Width="100*" MinWidth="96" Binding="{Binding Row.FirmwareVersion}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTextColumn Tag="soc" Header="SoC" Width="100*" MinWidth="100" Binding="{Binding Row.Soc}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTemplateColumn Tag="tags" Header="Tags" Width="150*" MinWidth="90" SortMemberPath="Row.TagsText">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:IDeviceGridItem">
                     <c:TagChipList Tags="{Binding Row.TagChips}" />
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Tag="dhcp" Header="DHCP" Width="86*" MinWidth="70" Binding="{Binding Row.DhcpText}" x:DataType="dev:IDeviceGridItem" />
-              <DataGridTextColumn Tag="https" Header="HTTPS" Width="96*" MinWidth="70" Binding="{Binding Row.HttpsText}" x:DataType="dev:IDeviceGridItem" />
-              <DataGridTemplateColumn Tag="certExpires" Width="156*" MinWidth="70" SortMemberPath="Row.CertExpiresSortKey" CellStyleClasses="number">
+              <DataGridTextColumn Tag="dhcp" Header="DHCP" Width="86*" MinWidth="76" Binding="{Binding Row.DhcpText}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTextColumn Tag="https" Header="HTTPS" Width="96*" MinWidth="86" Binding="{Binding Row.HttpsText}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTemplateColumn Tag="certExpires" Width="156*" MinWidth="140" SortMemberPath="Row.CertExpiresSortKey" CellStyleClasses="number">
                 <DataGridTemplateColumn.Header>
                   <TextBlock Classes="numberHeader" Text="Certificate expires" />
                 </DataGridTemplateColumn.Header>
@@ -147,7 +147,7 @@
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTemplateColumn Tag="certTrust" Header="Certificate" Width="110*" MinWidth="70" SortMemberPath="Row.CertTrust.Text">
+              <DataGridTemplateColumn Tag="certTrust" Header="Certificate" Width="110*" MinWidth="110" SortMemberPath="Row.CertTrust.Text">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:IDeviceGridItem">
                     <Panel>
@@ -157,7 +157,7 @@
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Tag="dot1x" Header="IEEE 802.1X" Width="124*" MinWidth="70" Binding="{Binding Row.Dot1xText}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTextColumn Tag="dot1x" Header="IEEE 802.1X" Width="124*" MinWidth="116" Binding="{Binding Row.Dot1xText}" x:DataType="dev:IDeviceGridItem" />
             </DataGrid.Columns>
           </DataGrid>
           <!-- A grid action on many rows that takes longer than a second (select all while grouped): ring over the grid. -->

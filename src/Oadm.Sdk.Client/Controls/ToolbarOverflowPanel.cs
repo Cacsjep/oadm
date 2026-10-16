@@ -4,24 +4,27 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 
-using Oadm.Sdk.Client.Controls;
-
-namespace Oadm.Client.Controls;
+namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>
-/// The Devices page toolbar row: lays its entries out left to right like a horizontal stack panel. Entries that do not
-/// fit (narrow window, live view open) are hidden and offered by a "More" button (<see cref="OverflowButton"/>, placed
-/// by the view right of the panel): opening it moves those entries into its flyout, closing moves them back.
-/// Separators never go into the flyout, and a separator at the end of the visible part is hidden.
+/// Every toolbar row of buttons (the Devices page, plugin pages): lays its entries out left to right like a horizontal
+/// stack panel. Entries that do not fit (a small or scaled screen, the live view open) are hidden and offered by a
+/// "More" button: opening it moves those entries into its flyout, closing moves them back. Separators never go into the
+/// flyout, and a separator at the end of the visible part is hidden. The panel shows its own More button at its right
+/// end unless the view places one with <see cref="OverflowButton"/>. Put only the buttons in it; a search box stays
+/// outside, right of the panel.
 /// </summary>
 public sealed class ToolbarOverflowPanel : Panel
 {
+    /// <summary>Defines <see cref="Spacing"/>.</summary>
     public static readonly StyledProperty<double> SpacingProperty =
         AvaloniaProperty.Register<ToolbarOverflowPanel, double>(nameof(Spacing), 4);
 
+    /// <summary>Defines <see cref="HasOverflow"/>.</summary>
     public static readonly DirectProperty<ToolbarOverflowPanel, bool> HasOverflowProperty =
         AvaloniaProperty.RegisterDirect<ToolbarOverflowPanel, bool>(nameof(HasOverflow), p => p.HasOverflow);
 
+    /// <summary>Defines <see cref="OverflowButton"/>.</summary>
     public static readonly StyledProperty<Button?> OverflowButtonProperty =
         AvaloniaProperty.Register<ToolbarOverflowPanel, Button?>(nameof(OverflowButton));
 
@@ -29,18 +32,26 @@ public sealed class ToolbarOverflowPanel : Panel
     private readonly List<(Control Control, int Index)> _moved = [];
     private readonly StackPanel _flyoutItems = new() { Spacing = 2, Classes = { "toolbarOverflow" } };
     private bool _hasOverflow;
+    private ToolbarButton? _ownButton;
 
     static ToolbarOverflowPanel()
     {
         AffectsMeasure<ToolbarOverflowPanel>(SpacingProperty);
     }
 
+    /// <summary>Creates the panel with its own More button.</summary>
     public ToolbarOverflowPanel()
     {
         ClipToBounds = true;
         _flyoutItems.AddHandler(Button.ClickEvent, OnFlyoutClick, RoutingStrategies.Bubble);
+        _ownButton = new ToolbarButton { IconKey = "more", IsIconOnly = true };
+        ToolTip.SetTip(_ownButton, "More actions");
+        AttachFlyout(_ownButton);
+        VisualChildren.Add(_ownButton);
+        LogicalChildren.Add(_ownButton);
     }
 
+    /// <summary>The space between two entries.</summary>
     public double Spacing
     {
         get => GetValue(SpacingProperty);
@@ -54,7 +65,10 @@ public sealed class ToolbarOverflowPanel : Panel
         private set => SetAndRaise(HasOverflowProperty, ref _hasOverflow, value);
     }
 
-    /// <summary>The "More" button that shows the entries that do not fit.</summary>
+    /// <summary>
+    /// A "More" button the view places itself (the Devices page: right of the panel, visible with
+    /// <see cref="HasOverflow"/>); null = the panel's own button at its right end.
+    /// </summary>
     public Button? OverflowButton
     {
         get => GetValue(OverflowButtonProperty);
@@ -64,6 +78,7 @@ public sealed class ToolbarOverflowPanel : Panel
     /// <summary>The entries that did not fit at the last layout (tests).</summary>
     public IReadOnlyList<Control> OverflowItems => _overflow;
 
+    /// <inheritdoc />
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -74,16 +89,24 @@ public sealed class ToolbarOverflowPanel : Panel
                 old.Flyout = null;
             }
 
+            if (_ownButton is not null)
+            {
+                _ownButton.Flyout = null;
+                VisualChildren.Remove(_ownButton);
+                LogicalChildren.Remove(_ownButton);
+                _ownButton = null;
+            }
+
             if (change.NewValue is Button button)
             {
-                var flyout = new Flyout { Placement = PlacementMode.BottomEdgeAlignedRight, Content = _flyoutItems };
-                flyout.Opening += (_, _) => MoveOverflowIntoFlyout();
-                flyout.Closed += (_, _) => MoveBack();
-                button.Flyout = flyout;
+                AttachFlyout(button);
             }
+
+            InvalidateMeasure();
         }
     }
 
+    /// <inheritdoc />
     protected override Size MeasureOverride(Size availableSize)
     {
         double width = 0;
@@ -102,10 +125,40 @@ public sealed class ToolbarOverflowPanel : Panel
             visible++;
         }
 
+        if (_ownButton is not null)
+        {
+            _ownButton.Measure(new Size(double.PositiveInfinity, availableSize.Height));
+            height = Math.Max(height, _ownButton.DesiredSize.Height);
+        }
+
         return new Size(Math.Min(width, availableSize.Width), height);
     }
 
+    /// <inheritdoc />
     protected override Size ArrangeOverride(Size finalSize)
+    {
+        bool overflows = Layout(finalSize);
+        if (_ownButton is not null)
+        {
+            double buttonWidth = _ownButton.DesiredSize.Width;
+            if (overflows || _moved.Count > 0)
+            {
+                // Room for the More button at the right end, then the entries again in what is left.
+                Layout(new Size(Math.Max(0, finalSize.Width - buttonWidth - Spacing), finalSize.Height));
+                _ownButton.Arrange(new Rect(Math.Max(0, finalSize.Width - buttonWidth), 0, buttonWidth, finalSize.Height));
+            }
+            else
+            {
+                _ownButton.Arrange(new Rect(-10000, 0, buttonWidth, finalSize.Height)); // clipped away
+            }
+        }
+
+        HasOverflow = _overflow.Count > 0 || _moved.Count > 0;
+        return finalSize;
+    }
+
+    /// <summary>Places the entries in <paramref name="finalSize"/>; returns whether some did not fit.</summary>
+    private bool Layout(Size finalSize)
     {
         _overflow.Clear();
         double x = 0;
@@ -142,8 +195,15 @@ public sealed class ToolbarOverflowPanel : Panel
             separator.Arrange(new Rect(-10000, 0, separator.DesiredSize.Width, finalSize.Height));
         }
 
-        HasOverflow = _overflow.Count > 0 || _moved.Count > 0;
-        return finalSize;
+        return _overflow.Count > 0;
+    }
+
+    private void AttachFlyout(Button button)
+    {
+        var flyout = new Flyout { Placement = PlacementMode.BottomEdgeAlignedRight, Content = _flyoutItems };
+        flyout.Opening += (_, _) => MoveOverflowIntoFlyout();
+        flyout.Closed += (_, _) => MoveBack();
+        button.Flyout = flyout;
     }
 
     private void MoveOverflowIntoFlyout()
@@ -194,7 +254,7 @@ public sealed class ToolbarOverflowPanel : Panel
     /// <summary>A click on a moved entry closes the flyout, unless the entry opens its own menu (Add).</summary>
     private void OnFlyoutClick(object? sender, RoutedEventArgs e)
     {
-        if (e.Source is Button { Flyout: null } && OverflowButton?.Flyout is { } flyout)
+        if (e.Source is Button { Flyout: null } && (OverflowButton ?? _ownButton)?.Flyout is { } flyout)
         {
             flyout.Hide();
         }

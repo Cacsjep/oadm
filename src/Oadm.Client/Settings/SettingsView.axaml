@@ -12,8 +12,9 @@
     <c:PageTitleBar Title="Settings" Subtitle="How the server polls, scans and runs tasks, and how OADM looks and shows video on this computer." />
     <ScrollViewer Grid.Row="1">
       <!-- Two columns: this computer and the server settings left, backup and restore right (administrators). -->
-      <!-- Each column grows to 760 px; on a wider window the space stays on the right (the page starts at the left). -->
-      <Grid>
+      <!-- Each column grows to 760 px; on a wider window the space stays on the right (the page starts at the left).
+           On a narrow window backup and restore moves below the server settings (SettingsView.axaml.cs). -->
+      <Grid x:Name="Columns" RowDefinitions="Auto,Auto">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*" MaxWidth="760" />
           <ColumnDefinition Width="16" />
@@ -142,7 +143,7 @@
         </StackPanel>
       </StackPanel>
 
-      <backup:BackupCardView Grid.Column="2" VerticalAlignment="Top" DataContext="{Binding Backup}"
+      <backup:BackupCardView x:Name="BackupCard" Grid.Column="2" VerticalAlignment="Top" DataContext="{Binding Backup}"
                              IsVisible="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowBackup}" />
       </Grid>
     </ScrollViewer>

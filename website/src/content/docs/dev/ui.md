@@ -23,6 +23,7 @@ Add the namespace `xmlns:ui="using:Oadm.Sdk.Client.Controls"` to your XAML.
 | `ui:PasswordBox` | Every password field, with the eye button |
 | `ui:SearchBox` | Every search field |
 | `ui:ToolbarButton`, `ui:ToolbarSeparator` | Toolbar buttons (icon and text) and the line between groups |
+| `ui:ToolbarOverflowPanel` | A row of toolbar buttons: what does not fit on a small or scaled screen goes behind a More button |
 | `ui:IconLabel`, `ui:OadmIcon` | An icon with text (button content), a single icon |
 | `ui:StatusChip` | Every status: a colored icon (`IsOk`, `IsWarning`, `IsError`, `IsAccent`, `IsInfo`) and plain text |
 | `ui:StatCard` | A count card of a monitoring page |

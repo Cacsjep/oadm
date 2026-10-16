@@ -4,6 +4,15 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
 version and date, and the release workflow copies it into the GitHub release.
 
+## [3.3.1] - 2026-10-16
+
+### Fixed
+
+- **Small and scaled screens** (e.g. Full HD at 125 %): windows and dialogs fit on the screen, toolbar buttons that do
+  not fit go into a More menu (Edge storage, Snapshot report), the Edge Recording Export filters wrap to a second line,
+  device and task columns stay readable and scroll sideways, and Settings shows one column on a narrow window. The main
+  window can now be made as small as 1200 x 640.
+
 ## [3.3.0] - 2026-10-16
 
 ### Added

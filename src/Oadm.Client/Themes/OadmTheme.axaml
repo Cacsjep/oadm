@@ -1803,12 +1803,19 @@
     <Setter Property="Spacing" Value="10" />
     <Setter Property="Margin" Value="0,0,0,12" />
   </Style>
+  <!-- An input row that wraps onto a second line when the window is narrow (small or scaled screens) -->
+  <Style Selector="WrapPanel.inputRow">
+    <Setter Property="Orientation" Value="Horizontal" />
+    <Setter Property="ItemSpacing" Value="10" />
+    <Setter Property="LineSpacing" Value="10" />
+    <Setter Property="Margin" Value="0,0,0,12" />
+  </Style>
   <!-- Top-aligned so an error appearing below one input moves nothing else in the row -->
-  <Style Selector="StackPanel.inputRow > :is(Control), Grid.inputRow > :is(Control)">
+  <Style Selector="StackPanel.inputRow > :is(Control), WrapPanel.inputRow > :is(Control), Grid.inputRow > :is(Control)">
     <Setter Property="VerticalAlignment" Value="Top" />
   </Style>
   <!-- Radio buttons and check boxes in an input row: the height of the inputs, centered on their middle -->
-  <Style Selector="StackPanel.inputRow > RadioButton, StackPanel.inputRow > CheckBox">
+  <Style Selector="StackPanel.inputRow > RadioButton, StackPanel.inputRow > CheckBox, WrapPanel.inputRow > RadioButton, WrapPanel.inputRow > CheckBox">
     <Setter Property="Height" Value="{StaticResource Oadm.ControlHeight}" />
     <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
     <Setter Property="VerticalContentAlignment" Value="Center" />

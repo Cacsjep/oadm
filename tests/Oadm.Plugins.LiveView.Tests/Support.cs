@@ -23,7 +23,10 @@ public sealed class HeadlessTestApp : Application
 {
     public override void Initialize()
     {
-        RequestedThemeVariant = ThemeVariant.Dark;
+        // OADM_TEST_APPEARANCE=Light renders the screenshots in the light appearance (colors and theme variant).
+        var light = Environment.GetEnvironmentVariable("OADM_TEST_APPEARANCE") == "Light";
+        Oadm.Client.Themes.OadmColors.Current = light ? Oadm.Client.Themes.Appearance.Light : Oadm.Client.Themes.Appearance.Dark;
+        RequestedThemeVariant = light ? ThemeVariant.Light : ThemeVariant.Dark;
         Styles.Add(new StyleInclude(new Uri("avares://Oadm.Plugins.LiveView.Tests/")) { Source = new Uri("avares://Oadm.Client/Themes/OadmTheme.axaml") });
     }
 }

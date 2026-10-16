@@ -178,7 +178,7 @@ public sealed class HeadlessSmokeTests
             Capture(window, outDir, "client-rail-collapsed.png");
 
             // The Devices page toolbar: toolbar plugins with a separator between groups.
-            var toolbarPanel = window.GetVisualDescendants().OfType<Oadm.Client.Controls.ToolbarOverflowPanel>().Single(p => p.Name == "ToolbarPanel");
+            var toolbarPanel = window.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.ToolbarOverflowPanel>().Single(p => p.Name == "ToolbarPanel");
             StackPanel trailingPanel = window.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Name == "TrailingToolbarPanel");
             // The System report button comes from its plugin (artifacts/plugins/oadm.system-report after a full build).
             string[] toolbarTexts = toolbarPanel.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.ToolbarButton>().Select(b => b.Text ?? "").ToArray();

@@ -19,11 +19,12 @@
     <Border Grid.Row="1" Classes="card">
       <Grid RowDefinitions="Auto,Auto,*,Auto">
         <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
-          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
-            <Button Classes="primary" Command="{Binding ChooseDevicesCommand}" IsEnabled="{Binding !IsReading}" Margin="0,0,6,0"
-                    ToolTip.Tip="Cameras by address or tag">
-              <ui:IconLabel Icon="{StaticResource Icon.hardDrive}" Text="{Binding DeviceChoice.ButtonText}" />
-            </Button>
+          <Button Grid.Column="0" Classes="primary" Command="{Binding ChooseDevicesCommand}" IsEnabled="{Binding !IsReading}"
+                  ToolTip.Tip="Cameras by address or tag">
+            <ui:IconLabel Icon="{StaticResource Icon.hardDrive}" Text="{Binding DeviceChoice.ButtonText}" />
+          </Button>
+          <!-- Tools that do not fit move into the More menu. -->
+          <ui:ToolbarOverflowPanel Grid.Column="1" Spacing="4">
             <ui:ToolbarButton IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}" ToolTip.Tip="Read the SD cards again" />
             <ui:ToolbarSeparator IsVisible="{Binding MayManage}" />
             <ui:ToolbarButton IconKey="clipboardCheck" Text="Check" Command="{Binding CheckCommand}" IsVisible="{Binding MayManage}"
@@ -40,7 +41,7 @@
             <ui:ToolbarSeparator IsVisible="{Binding MayFormat}" />
             <ui:ToolbarButton Classes="danger" IconKey="eraser" Text="Format" Command="{Binding FormatCommand}" IsVisible="{Binding MayFormat}"
                               ToolTip.Tip="{Binding ToolsBlockedReason}" ToolTip.ShowOnDisabled="True" />
-          </StackPanel>
+          </ui:ToolbarOverflowPanel>
           <ui:SearchBox Grid.Column="2" Width="220" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="Search cameras" />
         </Grid>
 
