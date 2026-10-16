@@ -2397,7 +2397,8 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   Discovery and task engine tested with fakes, no network in unit tests.
 - **EF migrations are never deleted or squashed**: a backup of any older OADM is restored by running them (see "Backup
   and restore"); a schema change is always a new migration.
-- Commits: conventional commits (`feat:`, `fix:`, `chore:`), small and focused.
+- Commits: conventional commits (`feat:`, `fix:`, `chore:`), small and focused. No `Co-Authored-By` or `Claude-Session`
+  lines in commit messages.
 - This file is the single source of truth for the spec. When a decision changes, change it
   here in the same PR.
 
