@@ -21,7 +21,7 @@ widgets, each showing one value of one device.
 | After a restart | **Memory only.** On / off events come back by themselves (Device triggers reports every state after a start); other values show "No value yet" until their next event. |
 | Old values | The widget keeps the last value, **dimmed**, with the reason below it ("Connection lost", "Unreachable"); hover shows when it arrived ("41.5 at 14:02:17"). |
 | Sizes | Every size is **a share of the widget**: a slider 10..100 % (default 60 %); content never overflows, a long text shrinks further to fit. |
-| Widgets v1 | **On / Off** (yes / no), **Text**, **Number**. |
+| Widgets v1 | **On / Off** (yes / no), **Text**, **Number**, and **Live video** (a camera, like a Live View tile; not bound to an event). |
 
 ## Subscribing to events (host)
 
@@ -73,7 +73,8 @@ receiver, the event rules engine. Dashboards needs the **subscribe** half; the s
 Layout like Live View (one left card, one right card):
 
 - **Left card** (Collapse / Expand like Live View): **Dashboards** (New dashboard, the list; Edit and Delete at the right of
-  each row) and **Events**: the events that carry values, grouped like the rule dialog's event list (each Device trigger,
+  each row), **Cameras** (search, devices with video by tag, the shared `ui:DeviceTree` like Live View) and **Events**:
+  the events that carry values, grouped like the rule dialog's event list (each Device trigger,
   then OADM's own events), with a search. Each event lists its fields with their kind icon. No devices here: with 30,000
   devices the device is chosen per widget.
 - **Right card**: one row Close all tabs (editing: Name, Save, Cancel), the tabs (`ui:PageTab`, one per open dashboard),
@@ -100,8 +101,10 @@ Layout like Live View (one left card, one right card):
   - **Widget**: only the widgets that fit the type; the first one chosen.
   - **Name**: shown at the top of the widget; default "<field> · <device address>".
   - Then the widget's own settings (below). Every change shows at once in the grid.
+- Dragging a camera from **Cameras** onto the grid (or clicking it) adds a **Live video** widget for it at once (its
+  panel: Name and channel); the same drop frame as Live View shows where it lands.
 - A click on a widget while editing opens the same panel for it. Outside editing a click does nothing in v1.
-- At most 50 widgets per dashboard and 200 dashboards **(defaults)**; the server checks every rule again on save (shared
+- At most 50 widgets per dashboard, of them at most 16 Live video (Live View's limit), and 200 dashboards **(defaults)**; the server checks every rule again on save (shared
   rules, like `ViewRules`). A save of an older version is refused (two users), like Live View.
 - A removed device keeps its widget and says "Removed device 1a2b3c4d"; a removed trigger says "Event no longer exists".
 
@@ -119,6 +122,12 @@ tooltip with the value's time.
   the value), **Font size** 10..100 %, **Color**, and **Thresholds** (off by default): rows of value and color, sorted by
   value; the value takes the color of the highest threshold it reaches, below the lowest it keeps the normal color
   (example: 20 green, 50 orange, 100 red). Up to 10 rows.
+
+- **Live video**: the host's live video component (`ICorePluginClientContext.LiveVideo`), exactly like a Live View tile:
+  one camera and channel (**Channel**, when the camera has several), controls closed in the widget, double-click for
+  fullscreen. Only the active tab streams; another tab's videos rest. Needs the role's "Live view"; without it the widget
+  says "Your role does not allow live view." Not bound to an event and never dimmed by a stale value (the video shows its
+  own connection state).
 
 Colors are theme keys (palette names), never raw color values, so dark and light both work.
 

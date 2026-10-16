@@ -510,9 +510,25 @@ filter on.
   `EventTypesChanged` after `EventTypes` changed. A new stateful type waits for its first `ReplaceStates`; a removed type
   counts as off. Types are read once at registration before `StartAsync`, so a plugin that loads its types from settings
   raises the event in `StartAsync`; rules that use them wait for them meanwhile.
-- Calls only queue; `IsWatched(typeId)` says whether an enabled rule uses the type (skip expensive work otherwise).
+- Calls only queue; `IsWatched(typeId)` says whether an enabled rule or a subscriber uses the type (skip expensive work
+  otherwise).
 - Sample: Device triggers
   (`plugins/Oadm.Plugins.DeviceTriggers`: dynamic types, a WebSocket per device, "connection lost" per trigger).
+
+### Subscribing to events
+
+`ctx.EventSubscriptions` (null when the host has no event rules) receives every event published to the server, the same
+the event rules see: those of every plugin and OADM's own (Device unreachable, Certificate expires soon).
+`Subscribe(handler)` returns a subscription; dispose it to end it (the host also ends a plugin's subscriptions when it
+stops or is turned off).
+
+- The handler gets `PublishedEvent` {type id, device id or null for server events, kind On / Off / Fired, the values as
+  received, time}. A subscription starts with every stateful event that is on now (`FromSnapshot`), then the live events
+  in the order the server handled them.
+- The handler runs on the subscription's own loop, one event at a time; keep it short (update your own memory, publish to
+  your page). The server never waits for it: 10,000 events wait at most, then the oldest are dropped (logged).
+- An exception in the handler is logged and the subscription goes on.
+- While any plugin subscribes, `IsWatched` is true for every type, so sources never skip events a subscriber needs.
 
 ### Device WebSockets
 

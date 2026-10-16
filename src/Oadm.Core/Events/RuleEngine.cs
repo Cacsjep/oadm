@@ -70,6 +70,8 @@ public sealed partial class RuleEngine : IAsyncDisposable
     private readonly HashSet<string> _ready = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTime> _waitingSince = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _offSources = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<EventSubscription> _subscriptions = [];
+    private int _subscriptionCount;
     private readonly HashSet<string> _knownTypes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<Guid, DeviceRef> _devices = [];
     private readonly Dictionary<Guid, Runtime> _rules = [];
@@ -119,8 +121,15 @@ public sealed partial class RuleEngine : IAsyncDisposable
     /// <summary>Live state per rule (snapshot).</summary>
     public IReadOnlyDictionary<Guid, RuleRuntimeStatus> Status => _status;
 
-    /// <summary>Whether an enabled rule uses the event type.</summary>
-    public bool IsWatched(string typeId) => _watched.Contains(typeId);
+    /// <summary>Whether an enabled rule uses the event type, or a plugin subscribed to the events.</summary>
+    public bool IsWatched(string typeId) => Volatile.Read(ref _subscriptionCount) > 0 || _watched.Contains(typeId);
+
+    /// <summary>The event subscriptions handed to a core plugin (<c>ICorePluginContext.EventSubscriptions</c>).</summary>
+    public IEventSubscriptions SubscriptionsFor(string owner)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(owner);
+        return new Subscriptions(this, owner);
+    }
 
     /// <summary>The publisher handed to a core plugin (<c>ICorePluginContext.EventPublisher</c>).</summary>
     public IEventPublisher PublisherFor(string sourceId)
@@ -284,6 +293,16 @@ public sealed partial class RuleEngine : IAsyncDisposable
 
     private void OnEventTypesChanged(object? sender, EventArgs e) => SourcesChanged();
 
+    /// <summary>Queues a command that must not be dropped (subscribe, unsubscribe): waits for room when the queue is full.</summary>
+    private void EnqueueControl(Command command)
+    {
+        if (!_commands.Writer.TryWrite(command))
+        {
+            _ = _commands.Writer.WriteAsync(command).AsTask().ContinueWith(
+                static t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        }
+    }
+
     private void Enqueue(Command command)
     {
         if (!_commands.Writer.TryWrite(command) && Interlocked.Increment(ref _dropped) % 1000 == 1)
@@ -401,6 +420,46 @@ public sealed partial class RuleEngine : IAsyncDisposable
             case TickCommand:
                 HandleTick();
                 break;
+            case SubscribeCommand subscribe:
+                StartSubscription(subscribe.Subscription);
+                break;
+            case UnsubscribeCommand unsubscribe:
+                _subscriptions.Remove(unsubscribe.Subscription);
+                break;
+        }
+    }
+
+    // ---------- subscriptions ----------
+    private void StartSubscription(EventSubscription subscription)
+    {
+        if (subscription.IsDisposed)
+        {
+            return;
+        }
+
+        _subscriptions.Add(subscription);
+        var now = _time.GetUtcNow();
+        foreach (var (typeId, set) in _on)
+        {
+            foreach (var (device, data) in set)
+            {
+                subscription.Post(new PublishedEvent(typeId, device == Guid.Empty ? null : device, PublishedEventKind.On, data, now, FromSnapshot: true));
+            }
+        }
+    }
+
+    /// <summary>Hands an event to every subscription (never waits: each has its own queue).</summary>
+    private void Publish(string typeId, Guid device, PublishedEventKind kind, IReadOnlyDictionary<string, string>? data)
+    {
+        if (_subscriptions.Count == 0)
+        {
+            return;
+        }
+
+        var published = new PublishedEvent(typeId, device == Guid.Empty ? null : device, kind, data ?? EmptyData, _time.GetUtcNow());
+        foreach (var subscription in _subscriptions)
+        {
+            subscription.Post(published);
         }
     }
 
@@ -428,10 +487,12 @@ public sealed partial class RuleEngine : IAsyncDisposable
         if (was != isOn)
         {
             LogEvent(type, device, isOn);
+            Publish(type.Id, device, isOn ? PublishedEventKind.On : PublishedEventKind.Off, isOn ? set[device] : null);
             OnTypeChanged(type.Id, [device]);
         }
         else if (isOn && data is not null && !SameData(oldData!, data))
         {
+            Publish(type.Id, device, PublishedEventKind.On, data);
             OnTypeChanged(type.Id, [device]); // e.g. another port: filters may match now
         }
     }
@@ -446,6 +507,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
             set.Remove(device);
             changed.Add(device);
             LogEvent(type, device, false);
+            Publish(type.Id, device, PublishedEventKind.Off, null);
         }
 
         foreach (var device in wanted.Where(d => !set.ContainsKey(d)))
@@ -453,6 +515,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
             set[device] = EmptyData;
             changed.Add(device);
             LogEvent(type, device, true);
+            Publish(type.Id, device, PublishedEventKind.On, null);
         }
 
         var becameReady = _ready.Add(type.Id);
@@ -682,6 +745,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
 
     private void FireEvent(CatalogEventType type, Guid device, IReadOnlyDictionary<string, string>? data)
     {
+        Publish(type.Id, device, PublishedEventKind.Fired, data);
         var logged = false;
         foreach (var runtime in _rules.Values)
         {
@@ -826,6 +890,11 @@ public sealed partial class RuleEngine : IAsyncDisposable
                     _waitingSince.Remove(type.Id);
                     var devices = _on.TryGetValue(type.Id, out var current) ? current.Keys.ToList() : [];
                     _on.Remove(type.Id);
+                    foreach (var device in devices)
+                    {
+                        Publish(type.Id, device, PublishedEventKind.Off, null);
+                    }
+
                     if (!initial)
                     {
                         OnTypeChanged(type.Id, devices);
@@ -847,6 +916,11 @@ public sealed partial class RuleEngine : IAsyncDisposable
             _ready.Add(gone);
             if (_on.Remove(gone, out var set) && set.Count > 0 && !initial)
             {
+                foreach (var device in set.Keys)
+                {
+                    Publish(gone, device, PublishedEventKind.Off, null);
+                }
+
                 OnTypeChanged(gone, [.. set.Keys]);
             }
         }
@@ -1080,6 +1154,10 @@ public sealed partial class RuleEngine : IAsyncDisposable
 
     private sealed record TickCommand : Command;
 
+    private sealed record SubscribeCommand(EventSubscription Subscription) : Command;
+
+    private sealed record UnsubscribeCommand(EventSubscription Subscription) : Command;
+
     private sealed record Barrier(TaskCompletionSource Done) : Command;
 
     private sealed class Runtime
@@ -1188,6 +1266,22 @@ public sealed partial class RuleEngine : IAsyncDisposable
             engine.Enqueue(new ReplaceCommand(sourceId, typeId, [.. onDevices ?? []]));
 
         public bool IsWatched(string typeId) => engine.IsWatched(typeId);
+    }
+
+    private sealed class Subscriptions(RuleEngine engine, string owner) : IEventSubscriptions
+    {
+        public IDisposable Subscribe(Action<PublishedEvent> handler)
+        {
+            ArgumentNullException.ThrowIfNull(handler);
+            var subscription = new EventSubscription(owner, handler, s =>
+            {
+                Interlocked.Decrement(ref engine._subscriptionCount);
+                engine.EnqueueControl(new UnsubscribeCommand(s));
+            }, engine._time, engine._logger);
+            Interlocked.Increment(ref engine._subscriptionCount);
+            engine.EnqueueControl(new SubscribeCommand(subscription));
+            return subscription;
+        }
     }
 }
 

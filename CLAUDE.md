@@ -1160,6 +1160,12 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 
 - **SDK**: `IEventSource` (a core plugin declares `EventTypeInfo`: id, name, group, kind, scope, data fields) and
   `ICorePluginContext.EventPublisher` (`IEventPublisher`: `SetState`, `Fire`, `ReplaceStates`, `IsWatched`; only queues).
+  `ICorePluginContext.EventSubscriptions` (`IEventSubscriptions.Subscribe(handler)`, `Core.Events.EventSubscription`):
+  every event the engine handles (plugins' and built-in) reaches each subscription as `PublishedEvent` (On / Off / Fired,
+  values, time), starting with a snapshot of the events that are on; each subscription has its own queue (10,000, oldest
+  dropped, logged once a minute) and loop, so the engine never waits; a failing handler is logged; `IsWatched` is true
+  while any subscription exists; the host ends a plugin's subscriptions when it stops, fails or is turned off
+  (`PluginEventSubscriptions`). Tests `EventSubscriptionTests`. First user: the planned Dashboards (`docs/dashboards.md`).
   `IActionPlugin` (standalone class with a parameterless constructor in a `*.Server.dll`, or contributed through
   `IActionSource.ActionPlugins` of a core plugin): `NeedsDevice`, `SupportsTurnOff`, declarative `Fields` (`ActionField`:
   Text, Multiline, Number, Bool, Choice, DynamicChoice through `ListChoicesAsync`, Password stored encrypted and never sent

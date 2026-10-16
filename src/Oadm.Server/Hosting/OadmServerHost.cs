@@ -288,7 +288,8 @@ public static partial class OadmServerHost
             firewall: sp.GetService<Sdk.Network.IFirewallRules>(),
             pluginDataRoot: sp.GetRequiredService<OadmPaths>().PluginDataDirectory,
             autoAdd: sp.GetRequiredService<Sdk.Devices.IDeviceAutoAdd>(),
-            eventPublishers: id => sp.GetRequiredService<RuleEngine>().PublisherFor(id)));
+            eventPublishers: id => sp.GetRequiredService<RuleEngine>().PublisherFor(id),
+            eventSubscriptions: id => sp.GetRequiredService<RuleEngine>().SubscriptionsFor(id)));
 
         // Event rules: IF events THEN actions (built-in device status events, plugin events and actions).
         services.AddSingleton<EventCatalog>();

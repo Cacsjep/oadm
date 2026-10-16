@@ -372,6 +372,12 @@ public interface ICorePluginContext
     /// events.
     /// </summary>
     Events.IEventPublisher? EventPublisher => null;
+
+    /// <summary>
+    /// Receives every event published to the server, the same the event rules see (<see cref="Events.IEventSubscriptions"/>).
+    /// Null when the host has no event rules.
+    /// </summary>
+    Events.IEventSubscriptions? EventSubscriptions => null;
 }
 
 /// <summary>Server-side encryption for secrets a plugin persists. Values never leave the server.</summary>

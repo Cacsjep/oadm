@@ -52,6 +52,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     private readonly string? _pluginDataRoot;
     private readonly IDeviceAutoAdd? _autoAdd;
     private readonly Func<string, Sdk.Events.IEventPublisher>? _eventPublishers;
+    private readonly Func<string, Sdk.Events.IEventSubscriptions>? _eventSubscriptions;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.OrdinalIgnoreCase);
@@ -72,7 +73,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         IFirewallRules? firewall = null,
         string? pluginDataRoot = null,
         IDeviceAutoAdd? autoAdd = null,
-        Func<string, Sdk.Events.IEventPublisher>? eventPublishers = null)
+        Func<string, Sdk.Events.IEventPublisher>? eventPublishers = null,
+        Func<string, Sdk.Events.IEventSubscriptions>? eventSubscriptions = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(devices);
@@ -91,6 +93,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         _pluginDataRoot = pluginDataRoot;
         _autoAdd = autoAdd;
         _eventPublishers = eventPublishers;
+        _eventSubscriptions = eventSubscriptions;
         Events = events ?? new PluginEventHub();
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _logger = _loggerFactory.CreateLogger<CorePluginHost>();
@@ -126,6 +129,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
 
                 entry.State = CorePluginState.Starting;
                 entry.Error = null;
+                entry.Subscriptions?.Dispose();
+                entry.Subscriptions = _eventSubscriptions is null ? null : new PluginEventSubscriptions(_eventSubscriptions(registered.Id));
                 var context = new CorePluginContext(
                     _devices,
                     _vapix,
@@ -140,7 +145,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     _firewall,
                     _pluginDataRoot is null ? null : Path.Combine(_pluginDataRoot, SafeFolderName(registered.Id)),
                     _autoAdd,
-                    registered.Plugin is Sdk.Events.IEventSource ? _eventPublishers?.Invoke(registered.Id) : null);
+                    registered.Plugin is Sdk.Events.IEventSource ? _eventPublishers?.Invoke(registered.Id) : null,
+                    entry.Subscriptions);
                 try
                 {
                     await registered.Plugin.StartAsync(context, ct).ConfigureAwait(false);
@@ -152,6 +158,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
                     entry.State = CorePluginState.Stopped;
+                    entry.Subscriptions?.Dispose();
                     throw;
                 }
 #pragma warning disable CA1031 // One faulty core plugin must not stop the others or the host.
@@ -160,6 +167,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                 {
                     entry.State = CorePluginState.Faulted;
                     entry.Error = ex.Message;
+                    entry.Subscriptions?.Dispose();
                     LogStartFailed(ex, registered.Id);
                 }
             }
@@ -228,6 +236,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         try
         {
             await entry.Plugin.StopAsync(ct).ConfigureAwait(false);
+            entry.Subscriptions?.Dispose(); // a stopped plugin receives no more events
             entry.State = CorePluginState.Stopped;
             _trustAnchors?.Remove(id); // a stopped plugin's CAs are no longer vouched for
             LogStopped(id);
@@ -238,6 +247,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         {
             entry.State = CorePluginState.Faulted;
             entry.Error = ex.Message;
+            entry.Subscriptions?.Dispose();
             LogStopFailed(ex, id);
         }
     }
@@ -410,6 +420,9 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         public volatile CorePluginState State;
 
         public volatile string? Error;
+
+        /// <summary>The event subscriptions of the current run; ended when the plugin stops or fails.</summary>
+        public PluginEventSubscriptions? Subscriptions;
     }
 }
 
@@ -427,7 +440,8 @@ internal sealed class CorePluginContext(
     IFirewallRules? firewall = null,
     string? dataDirectory = null,
     IDeviceAutoAdd? autoAdd = null,
-    Sdk.Events.IEventPublisher? eventPublisher = null) : ICorePluginContext
+    Sdk.Events.IEventPublisher? eventPublisher = null,
+    Sdk.Events.IEventSubscriptions? eventSubscriptions = null) : ICorePluginContext
 {
     private readonly Lazy<string?> _dataDirectory = new(() =>
     {
@@ -464,6 +478,8 @@ internal sealed class CorePluginContext(
     public IDeviceAutoAdd? AutoAdd { get; } = autoAdd;
 
     public Sdk.Events.IEventPublisher? EventPublisher { get; } = eventPublisher;
+
+    public Sdk.Events.IEventSubscriptions? EventSubscriptions { get; } = eventSubscriptions;
 
     /// <summary>Created on first use, so plugins that never ask leave no empty folder behind.</summary>
     public string? DataDirectory => _dataDirectory.Value;
