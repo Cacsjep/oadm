@@ -93,6 +93,27 @@ Events can be lost when the connection drops, so a page always works like this: 
 events (ignoring older ones by a version number in the state), and when the stream ends, wait about two seconds and do it
 again. The loop also covers a server restart. The [plugin page tutorial](../tutorial-page/#7-the-page) shows it in full.
 
+### Choose devices first
+
+A page that reads devices never contacts every device on its own. A server can manage 30,000 devices, and the user may
+want one building. Put the shared choice button first in the page's toolbar and read only what the user chose:
+
+```csharp
+Devices = new PageDeviceChoice(ctx, noun: "cameras", fits: d => d.HasVideo);
+
+// The button: Devices.ButtonText, and on click
+if (await Devices.PickAsync(owner, "Choose cameras")) await ReadAsync(ct);
+
+// Nothing chosen yet: read nothing.
+if (Devices.IsEmpty) return;
+var ids = Devices.Resolve().Select(d => d.Id).ToList();
+```
+
+`PageDeviceChoice` starts with the Devices page selection, else the last choice on this computer, and offers All devices,
+tags and single devices. For All devices, send "all" to the server instead of every id. A page for one device opens
+`DevicePickerWindow.ShowOneAsync`. Work that takes long per device, such as a scan, gets its own start button. Show a
+ring or a progress row for every wait longer than a second.
+
 ### Several views at once
 
 The rail entry's context menu has **Open in new window**, so `CreateView` can be called several times, each with its own

@@ -2346,6 +2346,9 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
     `Changed` per batch with the affected ids, and an update that changes nothing raises nothing.
     Derived data follows only the affected ids (task device labels by device id).
   - Server-to-UI streams go through `ChangeBatcher` (one dispatcher post per burst).
+  - A plugin page that reads or changes devices starts from the user's choice (`PageDeviceChoice` first in its toolbar,
+    nothing read before a choice; one device: `DevicePickerWindow.ShowOneAsync`), never from every device by itself
+    (`plugins/README.md` "Choose devices first").
   - Server: per-device work has bounded parallelism and is spread over time (polling); writes for many
     devices or tasks are one transaction (`RemoveManyAsync`, `SetManyAsync`, `AddRangeAsync`,
     `DeleteManyAsync`); lists that can grow without bound are paged or limited (task history, Watch

@@ -561,6 +561,18 @@ request with `VapixRequestOptions.StreamResponse` and pass the response as owner
 tag or with tabs uses them. `DeviceTexts.Removed(id)` names a device OADM no longer manages, `ServerErrors.Message(ex)`
 reads the user text of a failed server call without a gRPC reference.
 
+### Choose devices first
+
+A page that reads or changes devices never reaches out to every device by itself: a server can manage 30,000, and the
+user may want one building. The page starts with the purple choice button (`PageDeviceChoice`: All devices, tags, chosen
+devices; the Devices page selection to start with, else the last choice on this computer, kept through
+`GetLocalSetting`) as the first control of its toolbar, reads nothing while `IsEmpty`, and sends only the ids of
+`Resolve()` to the server (or "all" for All devices, so the request does not grow with the device count). A page for
+one device (Metadata Monitor, I/O Monitor) opens `DevicePickerWindow.ShowOneAsync` instead of a drop-down. Work that
+takes long per device (a scan) starts with its own button, not on the choice. Everything that can wait longer than 1 s
+shows a ring or progress row (CLAUDE.md "loading feedback"). Examples: Edge storage, Image Health Dashboard, Hardening
+scan, Snapshot report, Action Rule Editor.
+
 ### Table pages read on request
 
 A page with one row per device that the server reads when the page asks (Image Health Dashboard, Edge storage) uses the
