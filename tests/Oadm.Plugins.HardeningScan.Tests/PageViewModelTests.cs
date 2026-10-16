@@ -248,7 +248,7 @@ public sealed class PageViewModelTests(ITestOutputHelper output)
         Assert.True(vm.ShowProgress);
         Assert.Equal("Starting the scan", vm.ProgressText);
         Assert.False(vm.ScanCommand.CanExecute(null));
-        Assert.Equal([a.Id, b.Id], started!.DeviceIds.Order());
+        Assert.Equal(new[] { a.Id, b.Id }.Order(), started!.DeviceIds.Order());
         start.SetResult(HardeningJson.Serialize(new ScanJobStatus { JobId = "1", Total = 2 }));
         await scan;
         Assert.False(vm.IsStarting);
