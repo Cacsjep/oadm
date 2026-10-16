@@ -26,7 +26,8 @@ public sealed class DeviceTriggersTests
         Assert.True(input.Stateful);
         Assert.Equal("active", input.StateItem);
         var port = Assert.Single(input.Sources);
-        Assert.Equal(("port", "Port number"), (port.Name, port.Label));
+        Assert.Equal(("port", "Port number", EventValueKind.Number), (port.Name, port.Label, port.Kind));
+        Assert.Equal(EventValueKind.YesNo, Assert.Single(input.Data).Kind); // xsd:boolean
         Assert.Equal(Enumerable.Range(1, 64).Select(i => i.ToString(System.Globalization.CultureInfo.InvariantCulture)), port.Values.Select(v => v.Value));
 
         var tampering = Assert.Single(events, e => e.Topic == Fixture.Tampering);
@@ -42,6 +43,19 @@ public sealed class DeviceTriggersTests
         Assert.DoesNotContain(events, e => e.Topic == "tns1:VideoSource/GlobalSceneChange/ImagingService");
         Assert.Equal(42, events.Count);
     }
+
+    [Theory]
+    [InlineData("xsd:boolean", EventValueKind.YesNo)]
+    [InlineData("xsd:int", EventValueKind.Number)]
+    [InlineData("xs:unsignedInt", EventValueKind.Number)]
+    [InlineData("xsd:double", EventValueKind.Number)]
+    [InlineData("decimal", EventValueKind.Number)]
+    [InlineData("xsd:string", EventValueKind.Text)]
+    [InlineData("tt:ReferenceToken", EventValueKind.Text)]
+    [InlineData("tt:RelayLogicalState", EventValueKind.Text)]
+    [InlineData(null, EventValueKind.Text)]
+    public void TheDeclaredTypeOfAValueGivesItsKind(string? type, EventValueKind kind) =>
+        Assert.Equal(kind, EventDeclarations.KindOf(type));
 
     [Fact]
     public void ImageHealthAnalyticsEventsAreOnOffEventsWithTheAppNames()
@@ -285,6 +299,11 @@ public sealed class DeviceTriggersTests
             types.Select(t => (t.DisplayName, t.Kind)));
         Assert.Equal("Device › Input ports › Virtual input · Port number: 3.\n\nValues:\n• {port}\n• {active}", types[0].Description);
         Assert.All(types, t => Assert.Equal("Device triggers", t.Group));
+        Assert.Equal(
+            [("port", "Port number", EventValueKind.Number), ("active", "Active", EventValueKind.YesNo)],
+            types[0].DataFields.Select(f => (f.Name, f.DisplayName, f.Kind)));
+        Assert.Equal(("reason", EventValueKind.Text), (types[1].DataFields.Single().Name, types[1].DataFields.Single().Kind));
+        Assert.All(types.SelectMany(t => t.DataFields), f => Assert.False(f.Filter)); // values only: the trigger narrows itself
 
         var copy = (await rig.CallAsync<SaveReply>(DeviceTriggersMethods.Duplicate, new IdRequest(trigger.Id))).Trigger!;
         Assert.Equal(("Gate open (copy)", false), (copy.Name, copy.Enabled));

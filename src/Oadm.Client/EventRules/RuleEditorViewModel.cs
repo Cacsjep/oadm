@@ -123,7 +123,7 @@ public sealed partial class ConditionViewModel : ObservableObject
     partial void OnSelectedEventTypeChanged(EventTypeOption? value)
     {
         Filters.Clear();
-        foreach (var field in value?.Entry.Fields ?? [])
+        foreach (var field in value?.Entry.Fields.Where(f => !f.NoFilter) ?? [])
         {
             var filter = new FilterFieldViewModel(field);
             filter.PropertyChanged += (_, _) => _owner.Revalidate();

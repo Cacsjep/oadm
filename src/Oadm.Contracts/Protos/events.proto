@@ -61,6 +61,7 @@ message EventFieldInfo {
   string name = 1;
   string display_name = 2;
   repeated string values = 3;
+  bool no_filter = 4;            // a value only: a placeholder, no filter box in the rule dialog
 }
 
 message EventTypeEntry {

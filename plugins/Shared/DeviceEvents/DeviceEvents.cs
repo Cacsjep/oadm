@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using System.Xml.Linq;
 
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Events;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.DeviceEvents;
@@ -165,10 +166,24 @@ public static class EventDeclarations
                 .OrderBy(v => int.TryParse(v.Value, out var n) ? n : int.MaxValue)
                 .ThenBy(v => v.Value, StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            items.Add(new EventItem(name, item.Attribute(Aev + "NiceName")?.Value, values));
+            items.Add(new EventItem(name, item.Attribute(Aev + "NiceName")?.Value, values) { Kind = KindOf(item.Attribute("Type")?.Value) });
         }
 
         return items;
+    }
+
+    /// <summary>The kind of an item from its declared XML schema type ("xsd:int"); anything else is text.</summary>
+    internal static EventValueKind KindOf(string? type)
+    {
+        var name = type is null ? string.Empty : type[(type.IndexOf(':', StringComparison.Ordinal) + 1)..].Trim();
+        return name.ToUpperInvariant() switch
+        {
+            "BOOLEAN" => EventValueKind.YesNo,
+            "INT" or "INTEGER" or "LONG" or "SHORT" or "BYTE" or "UNSIGNEDINT" or "UNSIGNEDLONG" or "UNSIGNEDSHORT" or "UNSIGNEDBYTE"
+                or "NONNEGATIVEINTEGER" or "POSITIVEINTEGER" or "NONPOSITIVEINTEGER" or "NEGATIVEINTEGER"
+                or "DOUBLE" or "FLOAT" or "DECIMAL" => EventValueKind.Number,
+            _ => EventValueKind.Text,
+        };
     }
 }
 
@@ -178,6 +193,9 @@ public sealed record EventValue(string Value, string? DisplayName);
 /// <summary>A source or data item of an event ("port", "Port number", values 0..63).</summary>
 public sealed record EventItem(string Name, string? DisplayName, IReadOnlyList<EventValue> Values)
 {
+    /// <summary>The declared kind of the value (<c>Type</c> of the item: xsd:boolean = yes / no, numbers, else text).</summary>
+    public EventValueKind Kind { get; init; }
+
     public string Label => string.IsNullOrWhiteSpace(DisplayName) ? Name : DisplayName;
 }
 

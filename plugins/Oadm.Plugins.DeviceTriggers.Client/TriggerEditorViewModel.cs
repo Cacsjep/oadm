@@ -360,6 +360,7 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
             Filters = [.. filters.Select(f => new TriggerFilter(f.Item.Name, f.Selected.Value!))],
             FilterText = string.Join(", ", filters.Select(f => $"{f.Label}: {f.Selected.Text}")),
             Values = [.. e.Sources.Concat(e.Data).Select(i => i.Name).Distinct(StringComparer.Ordinal)],
+            ValueFields = [.. e.Sources.Concat(e.Data).DistinctBy(i => i.Name).Select(i => new TriggerValue(i.Name, i.DisplayName, i.Kind))],
             DeviceIds = [.. _explicit],
             Tags = [.. _tags],
             AllDevices = _allDevices,

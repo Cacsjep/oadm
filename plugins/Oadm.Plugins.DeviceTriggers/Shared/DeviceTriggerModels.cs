@@ -91,6 +91,9 @@ public static class DeviceTriggersMethods
     public static bool IsAdminMethod(string method) => method is Save or Delete or SetEnabled or Duplicate;
 }
 
+/// <summary>A value of the trigger's event: its name (the placeholder), the device's label and the declared kind.</summary>
+public sealed record TriggerValue(string Name, string? DisplayName, Oadm.Sdk.Events.EventValueKind Kind);
+
 /// <summary>One source item narrowed to one value (missing items mean "Any").</summary>
 public sealed record TriggerFilter(string Name, string Value);
 
@@ -119,6 +122,9 @@ public sealed record TriggerDefinition
 
     /// <summary>Names of the event's source and data items: the placeholders ({port}) rules can use.</summary>
     public IReadOnlyList<string> Values { get; init; } = [];
+
+    /// <summary>Label and kind of each of <see cref="Values"/> (triggers saved before have none: text).</summary>
+    public IReadOnlyList<TriggerValue> ValueFields { get; init; } = [];
 
     /// <summary>Devices chosen one by one (plus <see cref="Tags"/> or <see cref="AllDevices"/>).</summary>
     public IReadOnlyList<Guid> DeviceIds { get; init; } = [];

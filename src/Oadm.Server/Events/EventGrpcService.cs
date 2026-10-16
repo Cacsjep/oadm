@@ -43,7 +43,7 @@ public sealed class EventGrpcService(
                 Available = type.Available,
                 SourceName = type.SourceName,
             };
-            entry.Fields.AddRange(type.Info.DataFields.Select(f => new Proto.EventFieldInfo { Name = f.Name, DisplayName = f.DisplayName, Values = { f.Values ?? [] } }));
+            entry.Fields.AddRange(type.Info.DataFields.Select(f => new Proto.EventFieldInfo { Name = f.Name, DisplayName = f.DisplayName, Values = { f.Values ?? [] }, NoFilter = !f.Filter }));
             catalog.EventTypes.Add(entry);
         }
 

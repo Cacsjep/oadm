@@ -86,6 +86,7 @@ internal static class Fixture
         Filters = port is null ? [] : [new TriggerFilter("port", port)],
         FilterText = port is null ? string.Empty : "Port number: " + port,
         Values = ["port", "active"],
+        ValueFields = [new TriggerValue("port", "Port number", EventValueKind.Number), new TriggerValue("active", "Active", EventValueKind.YesNo)],
         DeviceIds = [.. devices],
     };
 

@@ -32,12 +32,30 @@ public enum EventFieldType
     Choice = 2,
 }
 
+/// <summary>What kind of value a data field holds, as the device or plugin declares it (a dashboard picks its widget by it).</summary>
+public enum EventValueKind
+{
+    /// <summary>Any text (also when nothing is declared).</summary>
+    Text = 0,
+    /// <summary>A number (invariant culture).</summary>
+    Number = 1,
+    /// <summary>Yes or no ("true", "1").</summary>
+    YesNo = 2,
+}
+
 /// <summary>A data field an event carries ("detection" = "blur"); a rule can filter on it (equals).</summary>
 /// <param name="Name">The key in the event's data, also its placeholder ({port}).</param>
 /// <param name="DisplayName">What the rule dialog shows.</param>
 /// <param name="Type">How a condition compares it.</param>
 /// <param name="Values">The choices of a <see cref="EventFieldType.Choice"/> field.</param>
-public sealed record EventField(string Name, string DisplayName, EventFieldType Type = EventFieldType.Text, IReadOnlyList<string>? Values = null);
+public sealed record EventField(string Name, string DisplayName, EventFieldType Type = EventFieldType.Text, IReadOnlyList<string>? Values = null)
+{
+    /// <summary>The kind of value as declared; <see cref="EventValueKind.Text"/> when not known.</summary>
+    public EventValueKind Kind { get; init; }
+
+    /// <summary>False: a value only (a placeholder, a dashboard value), no filter in the rule dialog. Default true.</summary>
+    public bool Filter { get; init; } = true;
+}
 
 /// <summary>
 /// An event a source can publish. <paramref name="Id"/> is stable and unique ("oadm.device-triggers.&lt;id&gt;");
@@ -111,6 +129,6 @@ public interface IEventPublisher
     /// </summary>
     void ReplaceStates(string typeId, IReadOnlyCollection<Guid> onDevices);
 
-    /// <summary>Whether an enabled rule uses the type: a source may skip work nobody needs.</summary>
+    /// <summary>Whether an enabled rule or an event subscription uses the type: a source may skip work nobody needs.</summary>
     bool IsWatched(string typeId);
 }

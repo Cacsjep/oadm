@@ -234,11 +234,15 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         var what = trigger.FilterText.Length == 0 ? trigger.EventName : $"{trigger.EventName} · {trigger.FilterText}";
         // The values (placeholders for the actions) one per line below the text, as the info icon of the rule dialog shows it.
         var values = trigger.Values.Count == 0 ? string.Empty : "\n\nValues:\n" + string.Join("\n", trigger.Values.Select(v => "• {" + v + "}"));
+        var declared = trigger.ValueFields.ToDictionary(f => f.Name, StringComparer.Ordinal);
         yield return new EventTypeInfo(
             DeviceTriggersPluginInfo.TypeId(trigger.Id),
             trigger.Name,
             DeviceTriggersPluginInfo.EventGroup,
-            trigger.Stateful ? EventKind.Stateful : EventKind.Stateless)
+            trigger.Stateful ? EventKind.Stateful : EventKind.Stateless,
+            Fields: [.. trigger.Values.Select(v => declared.TryGetValue(v, out var f)
+                ? new EventField(v, string.IsNullOrWhiteSpace(f.DisplayName) ? v : f.DisplayName) { Kind = f.Kind, Filter = false }
+                : new EventField(v, v) { Filter = false })])
         {
             Description = what + "." + values,
         };
@@ -246,7 +250,8 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             DeviceTriggersPluginInfo.LostTypeId(trigger.Id),
             trigger.Name + DeviceTriggersPluginInfo.LostSuffix,
             DeviceTriggersPluginInfo.EventGroup,
-            EventKind.Stateful)
+            EventKind.Stateful,
+            Fields: [new EventField("reason", "Reason") { Filter = false }])
         {
             Description = $"No events of this trigger from the device for {DeviceTriggersPluginInfo.LostDelay.TotalSeconds:0} s.\n\nValues:\n• {{reason}}",
         };
@@ -288,6 +293,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             Tags = [.. (incoming.Tags ?? []).Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).Distinct(StringComparer.OrdinalIgnoreCase)],
             Filters = [.. (incoming.Filters ?? []).Where(f => !string.IsNullOrEmpty(f.Name) && !string.IsNullOrEmpty(f.Value)).DistinctBy(f => f.Name)],
             Values = [.. (incoming.Values ?? []).Where(v => !string.IsNullOrWhiteSpace(v)).Distinct(StringComparer.Ordinal)],
+            ValueFields = [.. (incoming.ValueFields ?? []).Where(f => f is not null && !string.IsNullOrWhiteSpace(f.Name) && Enum.IsDefined(f.Kind)).DistinctBy(f => f.Name)],
             FilterText = incoming.FilterText ?? string.Empty,
             EventName = incoming.EventName ?? string.Empty,
         };
