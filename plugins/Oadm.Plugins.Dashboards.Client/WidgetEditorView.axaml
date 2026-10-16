@@ -1,0 +1,136 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.Dashboards.Client"
+             xmlns:m="using:Oadm.Plugins.Dashboards"
+             x:Class="Oadm.Plugins.Dashboards.Client.WidgetEditorView"
+             x:DataType="vm:WidgetEditorViewModel">
+  <!-- The panel of the selected widget: event, device, value, type, widget, name, then the widget's own settings -->
+  <UserControl.Resources>
+    <!-- A color of the color select: a swatch and its name -->
+    <DataTemplate x:Key="DashboardColorTemplate" x:DataType="vm:ColorOption">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Border Classes="colorSwatch" Background="{Binding Brush}" />
+        <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+      </StackPanel>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <StackPanel Classes="compactForm" Spacing="10" Margin="0,0,12,0">
+    <ui:CardHeader Title="Widget" />
+
+    <!-- A value: event, device, value, type, widget -->
+    <StackPanel Spacing="10" IsVisible="{Binding IsValue}">
+      <ui:FormField Classes="wide" Label="Event">
+        <TextBlock Text="{Binding EventName}" TextWrapping="Wrap" />
+      </ui:FormField>
+      <ui:FormField Classes="wide" Label="Device" IsVisible="{Binding ShowDevice}">
+        <Button Classes="secondary" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Command="{Binding ChooseDeviceCommand}">
+          <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding DeviceText}" />
+        </Button>
+      </ui:FormField>
+      <TextBlock Classes="secondary" Text="{x:Static m:DashboardTexts.TriggerOnce}" TextWrapping="Wrap" IsVisible="{Binding ShowTriggerHint}" />
+      <ui:FormField Classes="wide" Label="Value">
+        <ComboBox ItemsSource="{Binding Fields}" SelectedItem="{Binding SelectedField}" />
+      </ui:FormField>
+      <ui:FormField Classes="wide" Label="Type">
+        <ComboBox ItemsSource="{Binding Types}" SelectedItem="{Binding SelectedType}" />
+      </ui:FormField>
+      <ui:FormField Classes="wide" Label="Widget">
+        <ComboBox ItemsSource="{Binding Kinds}" SelectedItem="{Binding SelectedKind}" />
+      </ui:FormField>
+    </StackPanel>
+
+    <ui:FormField Classes="wide" Label="Name" Hint="Optional">
+      <TextBox Text="{Binding Name}" MaxLength="64" />
+    </ui:FormField>
+    <TextBlock Classes="secondary" Text="{x:Static m:DashboardTexts.ChannelHint}" TextWrapping="Wrap" IsVisible="{Binding IsVideo}" />
+
+    <!-- On / Off: per state an icon, a color and an optional text -->
+    <StackPanel Spacing="10" IsVisible="{Binding ShowOnOff}">
+      <ui:FormField Classes="wide" Label="On icon">
+        <ComboBox ItemsSource="{Binding Icons}" SelectedItem="{Binding OnIcon}">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:IconOption">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <ui:OadmIcon Data="{Binding Data}" />
+                <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+              </StackPanel>
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+      </ui:FormField>
+      <ui:FormField Classes="wide" Label="On color">
+        <ComboBox ItemsSource="{Binding Colors}" SelectedItem="{Binding OnColor}" ItemTemplate="{StaticResource DashboardColorTemplate}" />
+      </ui:FormField>
+      <ui:FormField Classes="wide" Label="On text" Hint="Optional">
+        <TextBox Text="{Binding OnText}" MaxLength="64" />
+      </ui:FormField>
+      <ui:FormField Classes="wide" Label="Off icon">
+        <ComboBox ItemsSource="{Binding Icons}" SelectedItem="{Binding OffIcon}">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:IconOption">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <ui:OadmIcon Data="{Binding Data}" />
+                <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+              </StackPanel>
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+      </ui:FormField>
+      <ui:FormField Classes="wide" Label="Off color">
+        <ComboBox ItemsSource="{Binding Colors}" SelectedItem="{Binding OffColor}" ItemTemplate="{StaticResource DashboardColorTemplate}" />
+      </ui:FormField>
+      <ui:FormField Classes="wide" Label="Off text" Hint="Optional">
+        <TextBox Text="{Binding OffText}" MaxLength="64" />
+      </ui:FormField>
+      <ui:FormField Classes="wide" Label="Icon size" Hint="{Binding IconSizeText}">
+        <Slider Minimum="10" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" Value="{Binding IconSizeValue}" />
+      </ui:FormField>
+    </StackPanel>
+
+    <!-- Text and Number: size and color -->
+    <StackPanel Spacing="10" IsVisible="{Binding ShowText}">
+      <ui:FormField Classes="wide" Label="Font size" Hint="{Binding FontSizeText}">
+        <Slider Minimum="10" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" Value="{Binding FontSizeValue}" />
+      </ui:FormField>
+      <ui:FormField Classes="wide" Label="Color">
+        <ComboBox ItemsSource="{Binding Colors}" SelectedItem="{Binding Color}" ItemTemplate="{StaticResource DashboardColorTemplate}" />
+      </ui:FormField>
+    </StackPanel>
+
+    <!-- Number: decimals, unit, thresholds -->
+    <StackPanel Spacing="10" IsVisible="{Binding ShowNumber}">
+      <ui:FormField Classes="wide" Label="Decimal places">
+        <ComboBox ItemsSource="{Binding DecimalChoices}" SelectedItem="{Binding Decimals}" />
+      </ui:FormField>
+      <ui:FormField Classes="wide" Label="Unit" Hint="Optional">
+        <TextBox Text="{Binding Unit}" MaxLength="10" />
+      </ui:FormField>
+      <ui:FormField Classes="wide" Label="Thresholds" Hint="From this value on, the number takes the color.">
+        <StackPanel Spacing="6">
+          <ItemsControl ItemsSource="{Binding Thresholds}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate><StackPanel Spacing="6" /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ThresholdRow">
+                <Grid ColumnDefinitions="80,*,Auto" ColumnSpacing="6">
+                  <TextBox Grid.Column="0" Text="{Binding ValueText}" VerticalAlignment="Top" />
+                  <ComboBox Grid.Column="1" ItemsSource="{Binding Colors}" SelectedItem="{Binding Color}" HorizontalAlignment="Stretch"
+                            ItemTemplate="{StaticResource DashboardColorTemplate}" VerticalAlignment="Top" />
+                  <Button Grid.Column="2" Classes="toolbar iconOnly danger" Command="{Binding RemoveCommand}" ToolTip.Tip="Remove threshold" VerticalAlignment="Top">
+                    <ui:OadmIcon Data="{StaticResource Icon.remove}" />
+                  </Button>
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding AddThresholdCommand}">
+            <ui:IconLabel Icon="{StaticResource Icon.add}" Text="Add threshold" />
+          </Button>
+        </StackPanel>
+      </ui:FormField>
+    </StackPanel>
+  </StackPanel>
+</UserControl>

@@ -32,7 +32,8 @@ public sealed partial class FakeOadmApi
         if (!string.Equals(pluginId, MetadataMonitorPluginId, StringComparison.OrdinalIgnoreCase)
             && !string.Equals(pluginId, HardeningScanPluginId, StringComparison.OrdinalIgnoreCase)
             && !string.Equals(pluginId, IoMonitorPluginId, StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(pluginId, EdgeStoragePluginId, StringComparison.OrdinalIgnoreCase))
+            && !string.Equals(pluginId, EdgeStoragePluginId, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(pluginId, DashboardsPluginId, StringComparison.OrdinalIgnoreCase))
         {
             yield break;
         }

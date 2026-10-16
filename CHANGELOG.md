@@ -4,6 +4,19 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
 version and date, and the release workflow copies it into the GitHub release.
 
+## [Unreleased]
+
+### Added
+
+- **Dashboards** (Monitoring, off by default): live values of your device triggers and live video on saved dashboards.
+  Drag an event onto the grid and choose the device and the value: On / Off widgets with an icon per state, Text, and
+  Number with a unit and thresholds that color it. Values that may be old are dimmed with the reason. Shared by every
+  user, like Live View.
+
+### Changed
+
+- **Event rules**: the values of a device trigger are listed as placeholders of the rule's actions.
+
 ## [3.2.0] - 2026-10-16
 
 ### Added

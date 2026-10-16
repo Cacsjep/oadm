@@ -987,6 +987,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         new CorePluginInfo { Id = DeviceTriggersPluginId, DisplayName = "Device triggers", IconKey = "flame", Group = "Automation" },
         new CorePluginInfo { Id = WebViewPluginId, DisplayName = "Web View", IconKey = "globe", Group = "Utilities" },
         new CorePluginInfo { Id = LiveViewPluginId, DisplayName = "Live View", IconKey = "grid", Group = "Monitoring" },
+        new CorePluginInfo { Id = DashboardsPluginId, DisplayName = "Dashboards", IconKey = "gauge", Group = "Monitoring" },
         new CorePluginInfo { Id = EdgeRecordingPluginId, DisplayName = "Edge Recording Export", IconKey = "hardDriveDownload", Group = "Maintenance" },
         new CorePluginInfo { Id = EdgeStoragePluginId, DisplayName = "Edge storage", IconKey = "hardDrive", Group = "Maintenance" },
     ];
@@ -1001,6 +1002,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         IoMonitorPluginId => InvokeIoMonitorAsync(method, payloadJson),
         DeviceTriggersPluginId => InvokeDeviceTriggersAsync(method, payloadJson),
         LiveViewPluginId => InvokeLiveViewAsync(method, payloadJson),
+        DashboardsPluginId => InvokeDashboardsAsync(method, payloadJson),
         EdgeRecordingPluginId => InvokeEdgeRecordingAsync(method, payloadJson, ct),
         EdgeStoragePluginId => InvokeEdgeStorageAsync(method, payloadJson, ct),
         _ => throw new RpcException(new Status(StatusCode.NotFound, $"Unknown core plugin '{pluginId}'.")),

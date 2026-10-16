@@ -84,9 +84,10 @@ The page's context, `ICorePluginClientContext`:
 | `Devices`, `SelectedDevices`, `DevicesChanged` | The client's copy of the device table and the Devices page selection |
 | `Has(permission)`, `PermissionsChanged` | Hide or lock what the user's role does not allow |
 | `ShowMessageAsync`, `ConfirmAsync`, `Owner` | The host's message window and the owner for your own dialogs |
-| `OpenAsync(hostPage)` | Open a host page, e.g. `HostPages.Devices` |
+| `OpenAsync(hostPage)` | Open a host page, e.g. `HostPages.Devices`, or another plugin's page: `"plugin:" + its id` |
 | `OwnerName` | "user@machine", the owner of tasks the page starts |
 | `LiveVideo`, `DeviceWeb` | The host's live video and the device web interface, see below |
+| `IsPluginOn(packageId)` | Whether another plugin is turned on (null when the host cannot tell), e.g. to say what to turn on first |
 | `GetLocalSetting(key)`, `SetLocalSetting(key, value)` | Short texts the page keeps on this computer (at most 64 KB each), e.g. the last device choice |
 
 ### Read, then watch

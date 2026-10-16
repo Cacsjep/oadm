@@ -29,6 +29,9 @@ public interface ITileGridItem : INotifyPropertyChanged
 
     /// <summary>The X of the edit frame.</summary>
     ICommand? RemoveCommand { get; }
+
+    /// <summary>The tile whose settings the page shows while editing (PropertyChanged <c>IsSelected</c>): its frame is marked.</summary>
+    bool IsSelected => false;
 }
 
 /// <summary>What a <see cref="TileGrid"/> shows: the tiles, the edit mode and the rules; it moves and resizes tiles.</summary>
@@ -248,7 +251,8 @@ public sealed class TileGrid : Panel
 /// <summary>
 /// One tile of a <see cref="TileGrid"/>: its content, or its message when there is none. While editing, a frame over it
 /// moves the tile (drag inside), resizes it (drag an edge or a corner, the cursor shows it) and removes it (the X top
-/// right); everything snaps to the cells. Outside editing the pointer over it shows a thin accent frame.
+/// right); everything snaps to the cells; the selected tile (<see cref="ITileGridItem.IsSelected"/>) has the class
+/// <c>selected</c>. Outside editing the pointer over it shows a thin accent frame.
 /// </summary>
 public sealed class TileFrame : Panel
 {
@@ -359,7 +363,7 @@ public sealed class TileFrame : Panel
 
     private void OnItemChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(ITileGridItem.Content) or nameof(ITileGridItem.Message) or nameof(ITileGridItem.Title) or null or "")
+        if (e.PropertyName is nameof(ITileGridItem.Content) or nameof(ITileGridItem.Message) or nameof(ITileGridItem.Title) or nameof(ITileGridItem.IsSelected) or null or "")
         {
             Update();
         }
@@ -391,6 +395,7 @@ public sealed class TileFrame : Panel
         _title.Text = item?.Title;
         _edit.IsVisible = item is not null && _source?.IsEditing == true;
         Classes.Set("editing", _edit.IsVisible); // the edit frame has its own border: no hover frame
+        Classes.Set("selected", _edit.IsVisible && item?.IsSelected == true);
     }
 
     private void OnEditPressed(object? sender, PointerPressedEventArgs e)

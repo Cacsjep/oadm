@@ -304,7 +304,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return null;
         }
 
-        var context = new CorePluginClientContext(_api, rail.PluginId, Devices.ToolbarContext, _liveVideo, _settings);
+        var context = new CorePluginClientContext(_api, rail.PluginId, Devices.ToolbarContext, _liveVideo, _settings, PluginOn);
         try
         {
             var view = page.CreateView(context);
@@ -488,7 +488,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             ICorePluginPage? page = _plugins.FindPage(plugin.Id);
             if (page is not null)
             {
-                context = new CorePluginClientContext(_api, plugin.Id, Devices.ToolbarContext, _liveVideo, _settings);
+                context = new CorePluginClientContext(_api, plugin.Id, Devices.ToolbarContext, _liveVideo, _settings, PluginOn);
                 try
                 {
                     view = page.CreateView(context);
@@ -580,6 +580,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Core plugin page {PluginId} failed to create its view")]
     private static partial void LogPageFailed(ILogger logger, Exception ex, string pluginId);
+    /// <summary>Whether a plugin package is on, for <see cref="ICorePluginClientContext.IsPluginOn"/>; null when not listed.</summary>
+    private bool? PluginOn(string packageId) =>
+        _packages?.Packages.FirstOrDefault(p => string.Equals(p.Id, packageId, StringComparison.OrdinalIgnoreCase)) is { } package ? package.Enabled : null;
+
 }
 
 /// <summary>
@@ -604,14 +608,20 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
     private bool _hostSubscribed;
     private bool _disposed;
 
-    public CorePluginClientContext(IOadmApi api, string pluginId, IToolbarContext host, ILiveVideoAccess? liveVideo = null, IClientSettingsStore? settings = null)
+    public CorePluginClientContext(IOadmApi api, string pluginId, IToolbarContext host, ILiveVideoAccess? liveVideo = null, IClientSettingsStore? settings = null,
+        Func<string, bool?>? pluginOn = null)
     {
         _api = api;
         _pluginId = pluginId;
         _host = host;
         _liveVideoHost = liveVideo;
         _settings = settings;
+        _pluginOn = pluginOn;
     }
+
+    private readonly Func<string, bool?>? _pluginOn;
+
+    public bool? IsPluginOn(string packageId) => _pluginOn?.Invoke(packageId);
 
     /// <summary>Most bytes of one value a plugin keeps on this computer.</summary>
     public const int MaxLocalSettingLength = 64 * 1024;

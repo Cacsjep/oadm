@@ -1389,6 +1389,11 @@
     <Setter Property="BorderThickness" Value="2" />
     <Setter Property="Padding" Value="8,4,4,4" />
   </Style>
+  <!-- The tile whose settings the page shows: a stronger frame -->
+  <Style Selector=":is(Panel).tile.selected > Border.tileEdit">
+    <Setter Property="BorderThickness" Value="3" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentHoverBrush}" />
+  </Style>
   <!-- The tile under the pointer (outside editing): a thin accent frame over it -->
   <Style Selector="Border.tileHover">
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
@@ -1417,6 +1422,23 @@
   </Style>
   <Style Selector="Border.viewsPanel.collapsed Button.viewsToggle">
     <Setter Property="HorizontalContentAlignment" Value="Center" />
+  </Style>
+  <!-- Dashboards: a value widget (name, value, note), the panel of the selected widget right of the grid, a color swatch -->
+  <Style Selector=":is(Border).dashboardWidget">
+    <Setter Property="Padding" Value="10,6" />
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+  </Style>
+  <Style Selector="Border.dashboardPanel">
+    <Setter Property="Width" Value="380" />
+    <Setter Property="Padding" Value="16,4,4,12" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1,0,0,0" />
+  </Style>
+  <Style Selector="Border.colorSwatch">
+    <Setter Property="Width" Value="12" />
+    <Setter Property="Height" Value="12" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
   <!-- Where an item dragged onto a ui:TileGrid would land -->
   <Style Selector="Border.dropPreview">

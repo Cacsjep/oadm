@@ -212,6 +212,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.DeviceTriggers(.Client)/   core plugin: events of the devices for the event rules (WebSocket, off by default)
   Oadm.Plugins.WebView(.Client)/          core plugin: the web interface of the devices in tabs, logged in through the server
   Oadm.Plugins.LiveView(.Client)/         core plugin: saved views of several cameras (a grid of live videos), opened in tabs (off by default)
+  Oadm.Plugins.Dashboards(.Client)/       core plugin: live values of events (device triggers) and live video on saved dashboards (off by default)
   Oadm.Plugins.EdgeRecordingExport(.Client)/ core plugin: downloads the recordings on the cameras' SD cards to the client (off by default)
   Oadm.Plugins.EdgeStorage(.Client)/      core plugin: the SD cards of the chosen cameras and their tools (format, check, encryption; off by default)
   Oadm.Plugins.ActionRules(.Client)/      core plugin: Action Rule Editor, the devices' own action rules changed for many at once (off by default)
@@ -366,7 +367,7 @@ Two processes, like ADM:
   (detail `PluginDownload.AuditDetail`) and the errors of Invoke; UNIMPLEMENTED for a plugin without downloads; the
   download is disposed at the end or when the client goes away; tests `PluginDownloadTests`).
   Users: "Snapshot report", "VAPIX Commander", "NTP server", "DHCP server", "PKI", "Metadata Monitor", "Hardening scan",
-  "Image Health Dashboard", "I/O Monitor", "Device triggers", "Edge Recording Export" (search; its downloads through
+  "Image Health Dashboard", "I/O Monitor", "Device triggers", "Dashboards", "Edge Recording Export" (search; its downloads through
   `Download`), "System report" (from its toolbar button through `IToolbarContext.InvokePluginAsync`).
   `ListPackages` (every loaded plugin package with id, display name, version, enabled, enabled_by_default, has_page,
   menu_task_count, always_on, description; any user) and `SetPackageEnabled(id, enabled)` (Admin; NOT_FOUND unknown package; reply: the whole
@@ -780,7 +781,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   `IDisposable`; the main window unsubscribes from the shell view model when it closes (a new main window per login) (`MainWindowViewModel.PluginWindowRequested` /
   `ClosePluginWindowsRequested`; tests `PluginWindowTests`). Entries top: Devices, then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (VAPIX
-  Commander, Device triggers, Action Rule Editor), Security (PKI, Hardening scan), Monitoring (Live View, Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
+  Commander, Device triggers, Action Rule Editor), Security (PKI, Hardening scan), Monitoring (Live View, Dashboards, Metadata Monitor, Image Health Dashboard), Reporting (Snapshot report; System report has
   no page), Maintenance (Edge Recording Export, Edge storage), Integrations, Utilities (Web View), Extensions (default, third-party)): only groups
   with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
   each group (in the lighter accent color), collapsed = a separator at each group start; the pages scroll when they do not fit. Pinned bottom, top to bottom: Plugins with a divider below it (it changes what the whole client offers), Users,
@@ -1166,7 +1167,9 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   values, time), starting with a snapshot of the events that are on; each subscription has its own queue (10,000, oldest
   dropped, logged once a minute) and loop, so the engine never waits; a failing handler is logged; `IsWatched` is true
   while any subscription exists; the host ends a plugin's subscriptions when it stops, fails or is turned off
-  (`PluginEventSubscriptions`). Tests `EventSubscriptionTests`. First user: the planned Dashboards (`docs/dashboards.md`).
+  (`PluginEventSubscriptions`). `IEventSubscriptions.Types` (`SubscribedEventType`: the type with its fields, source, available)
+  and `TypesChanged` (a source changed its types, a plugin turned on or off; unhooked when the plugin stops). Tests
+  `EventSubscriptionTests`. First user: Dashboards (see "Dashboards").
   `EventField.Kind` (`EventValueKind` Text, Number, YesNo) says what a value holds; `EventField.Filter` false = a value
   only (placeholder, no filter box in the rule dialog; proto `EventFieldInfo.no_filter = 4`). Device triggers declare every
   value this way, the kind from the device's declared type.
@@ -1401,7 +1404,8 @@ the UI thread.
   `PluginService.Download`: `PluginDownload` {Content, FileName, Length}; the page reads the stream and disposes it),
   `Has(permission)` + `PermissionsChanged` (pages hide or lock what the role lacks, e.g. Save of the NTP / DHCP server),
   `GetLocalSetting` / `SetLocalSetting` (short texts a plugin keeps on this computer, `ClientSettings.PluginSettings`,
-  at most 64 KB each; e.g. a page's last device choice).
+  at most 64 KB each; e.g. a page's last device choice), `IsPluginOn(packageId)` (from the client's package list, null
+  when unknown; Dashboards' empty state), `OpenAsync("plugin:" + id)` opens another plugin's page while it is on.
 - `IToolbarPlugin` (`Id`, `Order`, `Group`: Add, Manage, Tasks, Plugins; `CreateControl` once; `RequiredPermission`:
   the entry hides while the role lacks it) with `IToolbarContext` (selection, devices, task plugins, `CanRunTask` /
   `CannotRunTaskReason`, `RunTaskAsync`, `OpenAsync`, `RemoveDevicesAsync`, `RefreshDevicesAsync`, `QueryAsync`,
@@ -1474,14 +1478,14 @@ plugins, contributed and standalone tasks and client parts together) and adminis
 applies at once without a restart. Own rail page (not a Settings card); core functionality
 is always on.
 - Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
-  **Off by default: Action Rule Editor, Device triggers, Edge Recording Export, Edge storage, Hardening scan, Image Health Dashboard, I/O Monitor, Live View and Metadata Monitor**. The administrator's choices are the
+  **Off by default: Action Rule Editor, Dashboards, Device triggers, Edge Recording Export, Edge storage, Hardening scan, Image Health Dashboard, I/O Monitor, Live View and Metadata Monitor**. The administrator's choices are the
   server setting `Plugins.Enabled` (JSON object package id -> on; packages without a choice use their default),
   applied before the core plugins start (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
 - **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade firmware, Date and time, Applications
   (ACAP), Users, Network settings, PKI, System report, Device configuration, Outputs and Notifications (core functionality). Enabled whatever
   the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers FAILED_PRECONDITION "<name> is always on.".
   Switchable: Snapshot report, VAPIX Commander, Metadata Monitor, NTP server, DHCP server, Hardening scan, Image Health
-  Dashboard, I/O Monitor, Device triggers, Web View, Live View, Edge Recording Export, Edge storage, Action Rule Editor. Third-party plugins are switchable unless their manifest says otherwise.
+  Dashboard, I/O Monitor, Device triggers, Web View, Live View, Dashboards, Edge Recording Export, Edge storage, Action Rule Editor. Third-party plugins are switchable unless their manifest says otherwise.
 - Manifest `description` (`PluginOrigin.Description`): one short sentence shown on the Plugins page; every bundled
   plugin has one.
 - `PluginRegistry`: `TaskPlugins`, `CorePlugins`, `TryGetTaskPlugin`, `TryGetCorePlugin` see only enabled packages
@@ -1829,6 +1833,32 @@ tab. Decisions, methods and tests: plugin `README.md`.
   frame with its address where it will land: the largest free square at the drop point (up to 10 x 10), a click on a camera puts it in the first free place.
   Outside editing a click on a camera opens it alone in its own tab (filling it, never edited or saved); the camera under
   the pointer gets a thin accent frame.
+
+## Dashboards (core plugin)
+
+`plugins/Oadm.Plugins.Dashboards` (+ `.Client`), id `oadm.dashboards`, rail page **Dashboards** (group Monitoring, icon
+`gauge`), **off by default**, switchable. Live values of OADM's events (mostly device triggers: a temperature, a plate, a
+gate open) and live video on saved dashboards: a grid of widgets, each one value of one device (On / Off, Text, Number,
+Live video). Spec: `docs/dashboards.md`; decisions, methods and tests: plugin `README.md`.
+
+- Rules that must hold: the plugin never talks to a device; the values come from `ICorePluginContext.EventSubscriptions`
+  and live in server memory only (latest per event type and device, at most 100,000 keys, least recently updated dropped
+  first, O(1) per event; nothing kept while the plugin is off); a field is offered once an event with it arrived (Active
+  of an on / off event at once); a value that may be old is dimmed with the reason (event gone, its plugin off, the
+  trigger's connection lost, the device Unreachable / Credentials required / Certificate changed); pages watch only the
+  widgets of their open tabs (renewed every 10 s, forgotten after 30 s), changes are pushed at most every 250 ms;
+  dashboards live on the server like Live View's views (plugin setting `dashboards`, every change pushed, an older version
+  refused), the grid is the shared `ui:TileGrid` (20 x 20, at least 2 x 2, never overlapping), at most 50 widgets of them
+  16 live videos and 200 dashboards; colors and icons are theme names; the server checks every rule again
+  (`DashboardRules`).
+- Roles: "show" (Operator and Viewer), **Change dashboards** (`manage`, Operator yes, Viewer no; save and delete audited);
+  video needs "Live view".
+- Page: left card Dashboards, Cameras (`ui:DeviceTree`), Events (the events with values, device triggers first); right card
+  the tabs and the grid, while editing the panel of the selected widget (device through the shared picker for one device,
+  value, type, widget and its settings, every change shown at once). Empty states for Device triggers off
+  (`ICorePluginClientContext.IsPluginOn`), no trigger yet (**Open Device triggers**) and no dashboard.
+- Tests: `tests/Oadm.Plugins.Dashboards.Tests` (+ Perf 50 widgets at 4 updates a second next to 30,000 devices; headless
+  screenshots with fake-mode video). Fake mode: `FakeOadmApi.Dashboards.cs`.
 
 ## Edge Recording Export (core plugin)
 
@@ -2311,8 +2341,9 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   page with tabs: title, close button, the active one underlined; theme `Border.browserTab`), `TileGrid` + `TileFrame` (every
   grid of tiles that fills its page: cells of `Oadm.Sdk.Layout.TileLayout` (size, smallest tile, drop size, most tiles;
   the same rules on the server), a frame per `ITileGridItem` of an `ITileGridSource`, while editing the cell lines and a
-  frame per tile to move, resize and remove it, `ShowPreview` where a dragged item lands; theme `Panel.tile`,
-  `Border.tileEdit`, `Border.tileHover`, `Border.dropPreview`; Live View, later Dashboards), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
+  frame per tile to move, resize and remove it, the selected tile (`ITileGridItem.IsSelected`) marked, `ShowPreview` where a
+  dragged item lands; theme `Panel.tile`, `Border.tileEdit`, `Border.tileHover`, `Panel.tile.selected`, `Border.dropPreview`;
+  Live View, Dashboards), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
   puts one right of the input instead of a long hint), `WizardSteps` + `WizardStepItem` (the step
   row of every wizard: numbered dot and name, thin line between, current accent, done with a check, a step opens when
   every step before it is complete; theme `Button.wizardStep`, `Border.wizardDot`, `TextBlock.wizardLabel`,

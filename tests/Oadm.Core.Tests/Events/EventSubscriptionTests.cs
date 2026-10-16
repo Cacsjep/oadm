@@ -171,6 +171,43 @@ public sealed class EventSubscriptionTests
         Assert.False(rig.Publisher.IsWatched(EventRulesRig.Pulse));
     }
 
+    [Fact]
+    public async Task SubscribersSeeTheEventTypesAndWhenTheyChange()
+    {
+        await using var rig = await EventRulesRig.StartAsync();
+        var subscriptions = rig.Engine.SubscriptionsFor("test.dashboards");
+        var input = Assert.Single(subscriptions.Types, t => t.Info.Id == EventRulesRig.Input);
+        Assert.Equal((EventRulesRig.SourceId, "Test source", true), (input.SourceId, input.SourceName, input.Available));
+        Assert.Equal("port", Assert.Single(input.Info.DataFields).Name);
+        Assert.Contains(subscriptions.Types, t => t.SourceId == "oadm.device"); // OADM's own events too
+
+        var changes = 0;
+        EventHandler counter = (_, _) => changes++;
+        subscriptions.TypesChanged += counter;
+        rig.Registry.SetEnabled("test.source-package", false);
+        Assert.Equal(1, changes);
+        Assert.False(Assert.Single(subscriptions.Types, t => t.Info.Id == EventRulesRig.Input).Available);
+        subscriptions.TypesChanged -= counter;
+        rig.Registry.SetEnabled("test.source-package", true);
+        Assert.Equal(1, changes);
+    }
+
+    [Fact]
+    public async Task AStoppedPluginHearsOfNoMoreTypeChanges()
+    {
+        await using var rig = await EventRulesRig.StartAsync();
+        var pluginSubscriptions = new PluginEventSubscriptions(rig.Engine.SubscriptionsFor("test.dashboards"));
+        var changes = 0;
+        pluginSubscriptions.TypesChanged += (_, _) => changes++;
+        Assert.NotEmpty(pluginSubscriptions.Types);
+        rig.Registry.SetEnabled("test.source-package", false);
+        Assert.Equal(1, changes);
+
+        pluginSubscriptions.Dispose();
+        rig.Registry.SetEnabled("test.source-package", true);
+        Assert.Equal(1, changes);
+    }
+
     private static PublishedEvent Pulse(int n) =>
         new(EventRulesRig.Pulse, Guid.NewGuid(), PublishedEventKind.Fired, new Dictionary<string, string> { ["n"] = n.ToString(System.Globalization.CultureInfo.InvariantCulture) }, DateTimeOffset.UtcNow);
 

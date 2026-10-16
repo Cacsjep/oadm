@@ -136,6 +136,7 @@ export default defineConfig({
 						{ label: 'PKI', slug: 'tools/pki' },
 						{ label: 'Hardening scan', slug: 'tools/hardening-scan' },
 						{ label: 'Live View', slug: 'tools/live-view' },
+						{ label: 'Dashboards', slug: 'tools/dashboards' },
 						{ label: 'Metadata Monitor', slug: 'tools/metadata-monitor' },
 						{ label: 'Image Health Dashboard', slug: 'tools/image-health-dashboard' },
 						{ label: 'I/O Monitor', slug: 'tools/io-monitor' },

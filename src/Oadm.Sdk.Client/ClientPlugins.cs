@@ -113,8 +113,14 @@ public interface ICorePluginClientContext
     /// <summary>The host's confirmation dialog; true when confirmed. Without a host dialog nothing is confirmed.</summary>
     Task<bool> ConfirmAsync(string title, string message, string confirmText) => Task.FromResult(false);
 
-    /// <summary>Opens a host page (<see cref="HostPages"/>), e.g. Devices to watch the tasks pane.</summary>
+    /// <summary>
+    /// Opens a host page (<see cref="HostPages"/>), e.g. Devices to watch the tasks pane, or another plugin's page
+    /// ("plugin:" + its id) while that plugin is on.
+    /// </summary>
     Task OpenAsync(string hostPage) => Task.CompletedTask;
+
+    /// <summary>Whether the plugin package <paramref name="packageId"/> is turned on (Plugins page); null when the host cannot tell.</summary>
+    bool? IsPluginOn(string packageId) => null;
 
     /// <summary>Main window, owner for the plugin's own dialogs and file pickers.</summary>
     Window? Owner => null;

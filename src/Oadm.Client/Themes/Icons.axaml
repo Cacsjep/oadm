@@ -101,6 +101,10 @@
   <StreamGeometry x:Key="Icon.device.door">M18 20V6a2 2 0 0 0 -2 -2H8a2 2 0 0 0 -2 2v14 M2 20h20 M14 12v0.01</StreamGeometry>
   <StreamGeometry x:Key="Icon.device.generic">M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2H6a2 2 0 0 1 -2 -2V6a2 2 0 0 1 2 -2z M10 9h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1z M15 2v2 M15 20v2 M2 15h2 M2 9h2 M20 15h2 M20 9h2 M9 2v2 M9 20v2</StreamGeometry>
   <!-- Status icons (ui:StatusChip) -->
+  <StreamGeometry x:Key="Icon.gauge">M12 14l4 -4 M3.34 19a10 10 0 1 1 17.32 0</StreamGeometry>
+  <StreamGeometry x:Key="Icon.circle">M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0 -20z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.thermometer">M14 4v10.54a4 4 0 1 1 -4 0V4a2 2 0 0 1 4 0z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.lightbulb">M15 14c0.2 -1 0.7 -1.7 1.5 -2.5c1 -0.9 1.5 -2.2 1.5 -3.5A6 6 0 0 0 6 8c0 1 0.2 2.2 1.5 3.5c0.7 0.7 1.3 1.5 1.5 2.5 M9 18h6 M10 22h4</StreamGeometry>
   <StreamGeometry x:Key="Icon.status.ok">M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0 -20z M8 12l3 3l5 -6</StreamGeometry>
   <StreamGeometry x:Key="Icon.status.error">M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0 -20z M15 9l-6 6 M9 9l6 6</StreamGeometry>
   <StreamGeometry x:Key="Icon.status.warning">M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71 -3L13.71 3.86a2 2 0 0 0 -3.42 0z M12 9v4 M12 17h0.01</StreamGeometry>

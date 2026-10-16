@@ -1,7 +1,7 @@
-# Dashboards (planned)
+# Dashboards
 
-Status: design, agreed with the maintainer on 2026-10-16. Built: event subscriptions, `EventField.Kind`, the shared tile grid; the plugin itself not yet. Defaults marked **(default)** were not
-asked and may change.
+Status: agreed with the maintainer on 2026-10-16 and built (`plugins/Oadm.Plugins.Dashboards`, its `README.md` has the
+decisions as built and the three small deviations). Defaults marked **(default)** were not asked and may change.
 
 ## Purpose
 

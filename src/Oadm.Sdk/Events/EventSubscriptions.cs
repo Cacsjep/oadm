@@ -31,6 +31,13 @@ public sealed record PublishedEvent(
     DateTimeOffset Time,
     bool FromSnapshot = false);
 
+/// <summary>An event type the server knows, as a subscriber sees it (the catalog of the rule dialog).</summary>
+/// <param name="Info">The type: id, name, group, kind, scope and its data fields with their kinds.</param>
+/// <param name="SourceId">The plugin that publishes it ("oadm.device-triggers"), or "oadm.device" for OADM's own events.</param>
+/// <param name="SourceName">The source's name ("Device triggers", "Built in").</param>
+/// <param name="Available">False while the source's plugin is turned off.</param>
+public sealed record SubscribedEventType(EventTypeInfo Info, string SourceId, string SourceName, bool Available);
+
 /// <summary>
 /// Lets a core plugin receive every event published to the server, the same ones the event rules see
 /// (<c>ICorePluginContext.EventSubscriptions</c>). A subscription starts with every stateful event that is on now
@@ -43,4 +50,14 @@ public interface IEventSubscriptions
 {
     /// <summary>Starts a subscription; dispose the result to end it.</summary>
     IDisposable Subscribe(Action<PublishedEvent> handler);
+
+    /// <summary>Every event type the server knows now (OADM's own first, then the plugins'); empty on an older host.</summary>
+    IReadOnlyList<SubscribedEventType> Types => [];
+
+    /// <summary>Raised when <see cref="Types"/> changed: a source changed its types, or a plugin was turned on or off.</summary>
+    event EventHandler? TypesChanged
+    {
+        add { }
+        remove { }
+    }
 }

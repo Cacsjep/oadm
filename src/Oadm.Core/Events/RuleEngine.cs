@@ -1270,6 +1270,24 @@ public sealed partial class RuleEngine : IAsyncDisposable
 
     private sealed class Subscriptions(RuleEngine engine, string owner) : IEventSubscriptions
     {
+        public IReadOnlyList<SubscribedEventType> Types =>
+            [.. engine._catalog.EventTypes.Select(t => new SubscribedEventType(t.Info, t.SourceId, t.SourceName, t.Available))];
+
+        public event EventHandler? TypesChanged
+        {
+            add
+            {
+                engine._catalog.Registry.EventTypesChanged += value;
+                engine._catalog.Registry.EnabledChanged += value;
+            }
+
+            remove
+            {
+                engine._catalog.Registry.EventTypesChanged -= value;
+                engine._catalog.Registry.EnabledChanged -= value;
+            }
+        }
+
         public IDisposable Subscribe(Action<PublishedEvent> handler)
         {
             ArgumentNullException.ThrowIfNull(handler);

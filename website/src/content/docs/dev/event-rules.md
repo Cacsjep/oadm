@@ -138,6 +138,8 @@ _subscription = ctx.EventSubscriptions?.Subscribe(e =>
 - The handler runs on the subscription's own loop, one event at a time. Keep it short. The server never waits for it:
   10,000 events wait at most, then the oldest are dropped (logged).
 - An exception in the handler is logged; the subscription goes on.
+- `Types` lists every event type with its fields, its source and whether the source's plugin is on; `TypesChanged` fires
+  when that list changed. The [Dashboards](../../tools/dashboards/) plugin builds its event list from it.
 
 ## Built-in examples
 

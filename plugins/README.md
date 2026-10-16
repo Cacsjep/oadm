@@ -254,7 +254,7 @@ resolve them at compile time, so use `DynamicResource` (`Icon="{DynamicResource 
 `Icon.server`, `Icon.externalLink`, `Icon.more`, `Icon.key`, `Icon.lock`, `Icon.eye`, `Icon.eyeOff`, `Icon.copy`, `Icon.log`, `Icon.logs`, `Icon.panelOpen`,
 `Icon.panelClose`, `Icon.deleteAll`, `Icon.video`, `Icon.grid`, `Icon.gridAdd`, `Icon.hardDriveDownload`, `Icon.hardDrive`, `Icon.wrench`, `Icon.eraser`, `Icon.lockOpen`, `Icon.focus`, `Icon.focusArea`, `Icon.home`, `Icon.network`, `Icon.metronome`, `Icon.firmware`, `Icon.users`,
 `Icon.user`, `Icon.logout`, `Icon.audit`, `Icon.app`, `Icon.upload`, `Icon.file`, `Icon.folder`, `Icon.start`, `Icon.stop`,
-`Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.toggle`, `Icon.zap`, `Icon.workflow`, `Icon.undo`, `Icon.bell`, `Icon.flame`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`,
+`Icon.snapshot`, `Icon.export`, `Icon.clock`, `Icon.activity`, `Icon.toggle`, `Icon.zap`, `Icon.workflow`, `Icon.undo`, `Icon.bell`, `Icon.flame`, `Icon.info`, `Icon.shield`, `Icon.clipboardCheck`, `Icon.gauge`, `Icon.circle`, `Icon.thermometer`, `Icon.lightbulb`,
 `Icon.device.camera`, `Icon.device.encoder`,
 `Icon.device.speaker`, `Icon.device.audio`, `Icon.device.intercom`, `Icon.device.radar`,
 `Icon.device.io`, `Icon.device.door`, `Icon.device.generic`.
@@ -541,6 +541,9 @@ stops or is turned off).
   your page). The server never waits for it: 10,000 events wait at most, then the oldest are dropped (logged).
 - An exception in the handler is logged and the subscription goes on.
 - While any plugin subscribes, `IsWatched` is true for every type, so sources never skip events a subscriber needs.
+- `Types` lists every event type the server knows (`SubscribedEventType`: the type with its fields and their kinds, the
+  source and whether its plugin is on); `TypesChanged` fires when a source changed its types or a plugin was turned on or
+  off. Dashboards uses both for its event list.
 
 ### Device WebSockets
 
@@ -587,7 +590,8 @@ request with `VapixRequestOptions.StreamResponse` and pass the response as owner
 `ui:DeviceTree` with a `DeviceTreeModel` (devices grouped by tag, search, optional `Filter`, `DeviceInvoked`) and
 `ui:PageTab` (title, close, active) are the device tree and the tabs of Web View and Live View; a page with devices by
 tag or with tabs uses them. `ui:TileGrid` is the grid of tiles of Live View: the page's tab implements `ITileGridSource`
-(its tiles as `ITileGridItem`: `Rect` (a `TileRect` of cells), title, content or a message, the remove command;
+(its tiles as `ITileGridItem`: `Rect` (a `TileRect` of cells), title, content or a message, the remove command, `IsSelected`
+(the tile whose settings the page shows, its frame marked);
 `IsEditing`; `TryMove(item, rect)`), the grid draws a `TileFrame` per tile, and the rules are an `Oadm.Sdk.Layout.TileLayout`
 (size, smallest tile, drop size, most tiles: `Place`, `Fit`, `Drag(rect, TileEdges, dx, dy)`, `Fits`, `FirstOverlap`) that
 the server part checks again before it stores. `DeviceTexts.Removed(id)` names a device OADM no longer manages, `ServerErrors.Message(ex)`

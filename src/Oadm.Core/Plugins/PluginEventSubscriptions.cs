@@ -11,7 +11,46 @@ internal sealed class PluginEventSubscriptions(IEventSubscriptions inner) : IEve
 {
     private readonly Lock _gate = new();
     private readonly List<IDisposable> _subscriptions = [];
+    private readonly List<EventHandler> _typeHandlers = [];
     private bool _disposed;
+
+    /// <inheritdoc />
+    public IReadOnlyList<SubscribedEventType> Types => inner.Types;
+
+    /// <inheritdoc />
+    public event EventHandler? TypesChanged
+    {
+        add
+        {
+            if (value is null)
+            {
+                return;
+            }
+
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _typeHandlers.Add(value);
+                inner.TypesChanged += value;
+            }
+        }
+
+        remove
+        {
+            if (value is null)
+            {
+                return;
+            }
+
+            lock (_gate)
+            {
+                if (_typeHandlers.Remove(value))
+                {
+                    inner.TypesChanged -= value;
+                }
+            }
+        }
+    }
 
     /// <inheritdoc />
     public IDisposable Subscribe(Action<PublishedEvent> handler)
@@ -40,6 +79,12 @@ internal sealed class PluginEventSubscriptions(IEventSubscriptions inner) : IEve
             _disposed = true;
             subscriptions = [.. _subscriptions];
             _subscriptions.Clear();
+            foreach (var handler in _typeHandlers)
+            {
+                inner.TypesChanged -= handler; // a stopped plugin hears of no more type changes
+            }
+
+            _typeHandlers.Clear();
         }
 
         foreach (var subscription in subscriptions)
