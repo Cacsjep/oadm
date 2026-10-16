@@ -15,8 +15,9 @@ namespace Oadm.Plugins.Dashboards.Client;
 
 /// <summary>
 /// The Dashboards page view: one <see cref="TileGrid"/> per open dashboard (only the active one shown, so the hidden
-/// tabs' videos rest), the lists on the left, dragging an event or a camera onto the edited dashboard, and a click on a
-/// widget while editing that opens its panel.
+/// tabs' videos rest), the lists on the left, dragging an event onto the edited dashboard, and selecting widgets while
+/// editing: a click selects one (its panel), Ctrl+click adds or removes one, a drag over empty cells selects every widget
+/// it touches, Ctrl+A selects all.
 /// </summary>
 public sealed partial class DashboardsPageView : UserControl
 {
@@ -25,7 +26,12 @@ public sealed partial class DashboardsPageView : UserControl
 
     private readonly Dictionary<DashboardTab, TileGrid> _pages = [];
     private DashboardsPageViewModel? _vm;
-    private object? _pressed; // a DeviceTreeDevice or a CatalogEvent
+    private CatalogEvent? _pressed;
+    private TileGrid? _areaGrid; // a selection rectangle is being drawn on this grid
+    private (int X, int Y) _areaStart;
+    private Point _areaPoint;
+    private TileRect? _area;
+    private bool _areaAdds;
     private Point _pressPoint;
     private bool _dragging;
     private bool _dragEnded;
@@ -35,25 +41,34 @@ public sealed partial class DashboardsPageView : UserControl
         InitializeComponent();
         // A new panel for every widget: a recycled one would push one widget's select values into the next.
         EditorHost.DataTemplates.Add(new Avalonia.Controls.Templates.FuncDataTemplate<WidgetEditorViewModel>((_, _) => new WidgetEditorView(), supportsRecycling: false));
-        Tree.DeviceInvoked += (_, row) =>
-        {
-            if (!_dragEnded)
-            {
-                _vm?.ClickCamera(row.Device);
-            }
-
-            _dragEnded = false;
-        };
+        EditorHost.DataTemplates.Add(new Avalonia.Controls.Templates.FuncDataTemplate<GroupEditorViewModel>((_, _) => new GroupEditorView(), supportsRecycling: false));
         DashboardList.AddHandler(TappedEvent, OnDashboardTapped, RoutingStrategies.Bubble, handledEventsToo: true);
         CollapsedDashboardList.AddHandler(TappedEvent, OnDashboardTapped, RoutingStrategies.Bubble, handledEventsToo: true);
         EventList.AddHandler(TappedEvent, OnEventTapped, RoutingStrategies.Bubble, handledEventsToo: true);
-        Tree.AddHandler(PointerPressedEvent, OnSourcePressed, RoutingStrategies.Tunnel, handledEventsToo: true);
         EventList.AddHandler(PointerPressedEvent, OnSourcePressed, RoutingStrategies.Tunnel, handledEventsToo: true);
         Pages.AddHandler(PointerPressedEvent, OnGridPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
         AddHandler(PointerMovedEvent, OnPointerMoved, RoutingStrategies.Tunnel, handledEventsToo: true);
         AddHandler(PointerReleasedEvent, OnPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
-        AddHandler(PointerCaptureLostEvent, (_, _) => EndDrag(), RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(PointerCaptureLostEvent, (_, _) =>
+        {
+            EndDrag();
+            EndArea();
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
+        KeyDown += OnKeyDown;
     }
+
+    /// <summary>Ctrl+A while editing: every widget.</summary>
+    private void OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.A && (e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta))
+            && _vm?.ActiveTab is { IsEditing: true } tab && e.Source is not TextBox)
+        {
+            tab.SelectAll();
+            e.Handled = true;
+        }
+    }
+
+    private static bool AddsToSelection(KeyModifiers modifiers) => modifiers.HasFlag(KeyModifiers.Control) || modifiers.HasFlag(KeyModifiers.Meta);
 
     protected override void OnDataContextChanged(EventArgs e)
     {
@@ -91,9 +106,9 @@ public sealed partial class DashboardsPageView : UserControl
             ? await DevicePickerWindow.ShowOneAsync(owner, devices, selected, heading: "Choose a device").ConfigureAwait(true)
             : null;
 
-    private async Task<IReadOnlyList<Guid>?> PickDevicesAsync(IReadOnlyList<IDeviceInfo> devices, Func<IDeviceInfo, string?> unavailable) =>
+    private async Task<IReadOnlyList<Guid>?> PickDevicesAsync(string heading, IReadOnlyList<IDeviceInfo> devices, Func<IDeviceInfo, string?> unavailable) =>
         TopLevel.GetTopLevel(this) is Window owner
-            ? await DevicePickerWindow.ShowAsync(owner, devices, null, unavailable, "Copy for other devices").ConfigureAwait(true)
+            ? await DevicePickerWindow.ShowAsync(owner, devices, null, unavailable, heading).ConfigureAwait(true)
             : null;
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
@@ -203,41 +218,114 @@ public sealed partial class DashboardsPageView : UserControl
         return false;
     }
 
-    /// <summary>A press on a widget while editing opens its panel (the frame's own drag moves it).</summary>
+    /// <summary>
+    /// A press while editing: on a widget it selects it (one already selected keeps the selection, so the group can be
+    /// dragged; Ctrl+click adds or removes it); on empty cells it starts a selection rectangle.
+    /// </summary>
     private void OnGridPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (_vm?.ActiveTab is not { IsEditing: true } tab || e.Source is not Visual source)
+        if (_vm?.ActiveTab is not { IsEditing: true } tab || e.Source is not Visual source || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
         {
             return;
         }
 
+        Focus(); // Ctrl+A
         if (source.FindAncestorOfType<Button>(includeSelf: true) is not null)
         {
-            return; // the X removes the widget
+            return; // the copy icon and the X
         }
 
+        var adds = AddsToSelection(e.KeyModifiers);
         if (source.FindAncestorOfType<TileFrame>(includeSelf: true) is { Item: WidgetViewModel widget })
         {
-            tab.Select(widget);
+            if (adds)
+            {
+                tab.Toggle(widget);
+                e.Handled = true; // no move with Ctrl
+            }
+            else if (!tab.Selection.Contains(widget))
+            {
+                tab.Select(widget);
+            }
+
+            return;
+        }
+
+        if (ActiveGrid is { } grid)
+        {
+            _areaGrid = grid;
+            _areaPoint = e.GetPosition(grid);
+            _areaStart = grid.CellAt(_areaPoint);
+            _areaAdds = adds;
+            _area = null;
+            e.Pointer.Capture(grid);
         }
     }
 
-    // Dragging an event or a camera from the left: a press on a row, a move beyond the threshold starts the drag (only
-    // while a dashboard is edited), the release over the grid drops it on that cell.
+    /// <summary>The cells between the press and the pointer, while a selection rectangle is drawn.</summary>
+    private void MoveArea(PointerEventArgs e)
+    {
+        var grid = _areaGrid!;
+        var point = e.GetPosition(grid);
+        if (_area is null && Math.Abs(point.X - _areaPoint.X) < DragThreshold && Math.Abs(point.Y - _areaPoint.Y) < DragThreshold)
+        {
+            return;
+        }
+
+        var (x, y) = grid.CellAt(point);
+        _area = new TileRect(Math.Min(x, _areaStart.X), Math.Min(y, _areaStart.Y), Math.Abs(x - _areaStart.X) + 1, Math.Abs(y - _areaStart.Y) + 1);
+        grid.ShowSelectionArea(_area);
+        e.Handled = true;
+    }
+
+    /// <summary>Released: the widgets the rectangle touches are selected; a click on empty cells clears the selection.</summary>
+    private void ReleaseArea(PointerReleasedEventArgs e)
+    {
+        var area = _area;
+        var adds = _areaAdds;
+        e.Pointer.Capture(null);
+        EndArea();
+        if (_vm?.ActiveTab is not { IsEditing: true } tab)
+        {
+            return;
+        }
+
+        if (area is { } rect)
+        {
+            tab.SelectArea(rect, adds);
+        }
+        else if (!adds)
+        {
+            tab.Select(null);
+        }
+    }
+
+    private void EndArea()
+    {
+        _areaGrid?.ShowSelectionArea(null);
+        _areaGrid = null;
+        _area = null;
+    }
+
+    // Dragging an event from the left: a press on a row, a move beyond the threshold starts the drag (only while a
+    // dashboard is edited), the release over the grid drops it on that cell.
     private void OnSourcePressed(object? sender, PointerPressedEventArgs e)
     {
         _dragEnded = false;
-        _pressed = e.GetCurrentPoint(this).Properties.IsLeftButtonPressed ? (e.Source as Control)?.DataContext switch
-        {
-            DeviceTreeDevice device => device,
-            EventListItem { Event: { } catalogEvent } => catalogEvent,
-            _ => null,
-        } : null;
+        _pressed = e.GetCurrentPoint(this).Properties.IsLeftButtonPressed && (e.Source as Control)?.DataContext is EventListItem { Event: { } catalogEvent }
+            ? catalogEvent
+            : null;
         _pressPoint = e.GetPosition(this);
     }
 
     private void OnPointerMoved(object? sender, PointerEventArgs e)
     {
+        if (_areaGrid is not null)
+        {
+            MoveArea(e);
+            return;
+        }
+
         if (_pressed is null || _vm?.ActiveTab is not { IsEditing: true } tab)
         {
             return;
@@ -252,7 +340,7 @@ public sealed partial class DashboardsPageView : UserControl
             }
 
             _dragging = true;
-            DragGhostText.Text = NameOf(_pressed);
+            DragGhostText.Text = _pressed.Name;
             DragGhost.IsVisible = true;
             e.Pointer.Capture(this);
         }
@@ -261,7 +349,7 @@ public sealed partial class DashboardsPageView : UserControl
         Canvas.SetTop(DragGhost, point.Y + 8);
         if (ActiveGrid is { } grid)
         {
-            grid.ShowPreview(PreviewAt(grid, tab, _pressed is DeviceTreeDevice, e.GetPosition(grid)), NameOf(_pressed));
+            grid.ShowPreview(PreviewAt(grid, tab, e.GetPosition(grid)), _pressed.Name);
         }
 
         e.Handled = true;
@@ -269,6 +357,12 @@ public sealed partial class DashboardsPageView : UserControl
 
     private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
+        if (_areaGrid is not null)
+        {
+            ReleaseArea(e);
+            return;
+        }
+
         var pressed = _pressed;
         var dragging = _dragging;
         _pressed = null;
@@ -287,15 +381,8 @@ public sealed partial class DashboardsPageView : UserControl
         }
     }
 
-    private static string NameOf(object? item) => item switch
-    {
-        DeviceTreeDevice device => device.Address,
-        CatalogEvent catalogEvent => catalogEvent.Name,
-        _ => string.Empty,
-    };
-
-    /// <summary>Where an event or a camera dropped at <paramref name="point"/> would land; null outside the grid or without room.</summary>
-    internal static TileRect? PreviewAt(TileGrid grid, DashboardTab tab, bool camera, Point point)
+    /// <summary>Where an event dropped at <paramref name="point"/> would land; null outside the grid or without room.</summary>
+    internal static TileRect? PreviewAt(TileGrid grid, DashboardTab tab, Point point)
     {
         if (!grid.Contains(point))
         {
@@ -303,11 +390,11 @@ public sealed partial class DashboardsPageView : UserControl
         }
 
         var (x, y) = grid.CellAt(point);
-        return tab.PreviewAt(camera, x, y);
+        return tab.PreviewAt(x, y);
     }
 
-    /// <summary>Drops an event (<see cref="CatalogEvent"/>) or a camera (<see cref="DeviceTreeDevice"/>) at a point of the grid.</summary>
-    internal static bool DropOn(TileGrid grid, DashboardTab tab, object item, Point point)
+    /// <summary>Drops an event at a point of the grid; outside the grid nothing happens.</summary>
+    internal static bool DropOn(TileGrid grid, DashboardTab tab, CatalogEvent catalogEvent, Point point)
     {
         if (!grid.Contains(point))
         {
@@ -315,12 +402,7 @@ public sealed partial class DashboardsPageView : UserControl
         }
 
         var (x, y) = grid.CellAt(point);
-        return item switch
-        {
-            DeviceTreeDevice device => tab.DropCamera(device.Device, x, y),
-            CatalogEvent catalogEvent => tab.DropEvent(catalogEvent, x, y),
-            _ => false,
-        };
+        return tab.DropEvent(catalogEvent, x, y);
     }
 
     private void EndDrag()

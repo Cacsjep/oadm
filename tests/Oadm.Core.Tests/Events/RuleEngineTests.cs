@@ -255,6 +255,60 @@ public sealed class RuleEngineTests
     }
 
     [Fact]
+    public async Task AnyDeviceEventsAreOnWhileAnyDeviceHasTheCondition()
+    {
+        await using var rig = await EventRulesRig.StartAsync();
+        var a = await rig.AddDeviceAsync("10.0.0.1");
+        var b = await rig.AddDeviceAsync("10.0.0.2");
+        var events = new List<PublishedEvent>();
+        using var subscription = rig.Engine.SubscriptionsFor("test").Subscribe(e =>
+        {
+            lock (events)
+            {
+                events.Add(e);
+            }
+        });
+        await rig.Engine.DrainAsync(CancellationToken.None);
+
+        await rig.Devices.UpdateAsync(a.Id, d => d.Status = DeviceStatus.Unreachable, CancellationToken.None);
+        await rig.SettleAsync();
+        await rig.Devices.UpdateAsync(b.Id, d => d.Status = DeviceStatus.Unreachable, CancellationToken.None);
+        await rig.SettleAsync();
+        await rig.Devices.UpdateAsync(a.Id, d => d.Status = DeviceStatus.Ok, CancellationToken.None);
+        await rig.SettleAsync();
+        await rig.Devices.RemoveAsync(b.Id, CancellationToken.None);
+        await rig.SettleAsync();
+
+        List<PublishedEvent> AnyEvents()
+        {
+            lock (events)
+            {
+                return [.. events.Where(e => e.TypeId == BuiltInEvents.AnyUnreachable)];
+            }
+        }
+
+        var deadline = DateTime.UtcNow.AddSeconds(10); // the subscription's own loop hands them over
+        while (AnyEvents().Count < 4 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+        }
+
+        var any = AnyEvents();
+        lock (events)
+        {
+            Assert.Contains(events, e => e.TypeId == BuiltInEvents.Unreachable && e.DeviceId == b.Id && e.Kind == PublishedEventKind.Off); // removed: off
+        }
+
+        Assert.Equal(
+            [(PublishedEventKind.On, "1"), (PublishedEventKind.On, "2"), (PublishedEventKind.On, "1"), (PublishedEventKind.Off, "")],
+            any.Select(e => (e.Kind, e.Data.GetValueOrDefault(BuiltInEvents.CountField) ?? "")));
+        Assert.All(any, e => Assert.Null(e.DeviceId)); // one state for the server
+        var type = rig.Catalog.FindEventType(BuiltInEvents.AnyUnreachable)!;
+        Assert.False(type.DeviceScope);
+        Assert.Equal(EventValueKind.Number, Assert.Single(type.Info.DataFields).Kind);
+    }
+
+    [Fact]
     public async Task CertificateExpiryEventsFollowTheClock()
     {
         await using var rig = await EventRulesRig.StartAsync();

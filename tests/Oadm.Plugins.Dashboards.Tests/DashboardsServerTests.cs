@@ -92,6 +92,18 @@ public sealed class DashboardsServerTests(ITestOutputHelper output)
         Assert.Equal(DashboardRules.TooManyWidgets, await Refused(New("X", many)));
         Assert.NotNull(await host.Plugin.SaveAsync(New("Fifty", many[..50]), CancellationToken.None));
 
+        // Whatever a request sends is checked, also settings the widget's kind does not use.
+        Assert.Equal(DashboardRules.BadSetting, await Refused(New("X", Value("a", 0, 0) with { Unit = null! })));
+        Assert.Equal(DashboardRules.BadSetting, await Refused(New("X", Value("a", 0, 0) with { Thresholds = null! })));
+        Assert.Equal(DashboardRules.BadSetting, await Refused(New("X", Video("v", 0, 0, B) with { OnColor = "#fff" })));
+        Assert.Equal(DashboardRules.UnitTooLong, await Refused(New("X", Video("v", 0, 0, B) with { Unit = "far too long a unit" })));
+        Assert.Equal(DashboardRules.BadSetting, await Refused(New("X", Value("a", 0, 0) with { TypeId = new string('x', 300) })));
+        Assert.Equal(DashboardRules.BadSetting, await Refused(New("X", Value("a", 0, 0) with { OnText = "two" + Environment.NewLine + "lines" })));
+        Assert.Equal(DashboardRules.Outside, await Refused(New("X", Value("a", 19, 0) with { Width = int.MaxValue })));
+        var parsed = await Assert.ThrowsAsync<ArgumentException>(() => host.Plugin.InvokeAsync(DashboardsMethods.Save,
+            """{"name":"X","version":0,"widgets":[{"id":"a","kind":"Text","x":0,"y":0,"width":2,"height":2,"typeId":"t","field":"f","unit":null}]}""", CancellationToken.None));
+        Assert.Equal(DashboardRules.BadSetting, parsed.Message); // a refusal, never an internal error
+
         Assert.Equal(DashboardRules.Gone, await Refused(new SaveDashboardRequest("nope", "X", 1, [])));
         await host.Plugin.DeleteAsync(hall.Id, CancellationToken.None);
         await host.Plugin.DeleteAsync("nope", CancellationToken.None);
@@ -236,24 +248,21 @@ public sealed class DashboardsServerTests(ITestOutputHelper output)
     // ------------------------------------------------------------------ catalog
 
     [Fact]
-    public void The_catalog_offers_fields_once_they_were_seen()
+    public void The_catalog_offers_the_declared_values_at_once()
     {
         using var host = new PluginHost();
         var catalog = host.Plugin.Catalog();
         Assert.Equal(DashboardsPluginInfo.DeviceTriggersId, catalog.Events[0].SourceId); // device triggers first
         var plate = Assert.Single(catalog.Events, e => e.TypeId == Types.Plate);
-        Assert.Empty(plate.Fields);
-        Assert.True(plate.HasUnseenFields);
+        Assert.Equal([("plate", "Plate", EventValueKind.Text), ("speed", "Speed", EventValueKind.Text)], plate.Fields.Select(f => (f.Name, f.Label, f.Kind)));
         var gate = Assert.Single(catalog.Events, e => e.TypeId == Types.Gate);
-        Assert.Equal([DashboardsPluginInfo.ActiveField], gate.Fields.Select(f => f.Name)); // an on / off event: Active at once
+        Assert.Equal([("@active", EventValueKind.YesNo), ("port", EventValueKind.Number)], gate.Fields.Select(f => (f.Name, f.Kind))); // Active first, typed by the declaration
 
-        host.Feed.Publish(Types.Plate, A, PublishedEventKind.Fired, ("plate", "W-123"), ("speed", "48"));
-        host.Feed.Publish(Types.Gate, A, PublishedEventKind.On, ("port", "3"));
+        // Received values refine a text value's type; a value the event does not declare follows once seen.
+        host.Feed.Publish(Types.Plate, A, PublishedEventKind.Fired, ("plate", "W-123"), ("speed", "48"), ("lane", "2"));
         catalog = host.Plugin.Catalog();
         plate = Assert.Single(catalog.Events, e => e.TypeId == Types.Plate);
-        Assert.Equal([("plate", "Plate", EventValueKind.Text), ("speed", "Speed", EventValueKind.Number)], plate.Fields.Select(f => (f.Name, f.Label, f.Kind)));
-        Assert.False(plate.HasUnseenFields);
-        Assert.Equal(["@active", "port"], Assert.Single(catalog.Events, e => e.TypeId == Types.Gate).Fields.Select(f => f.Name));
+        Assert.Equal([("plate", EventValueKind.Text), ("speed", EventValueKind.Number), ("lane", EventValueKind.Number)], plate.Fields.Select(f => (f.Name, f.Kind)));
         Assert.Contains(catalog.Events, e => e.TypeId == Types.ServerFlag && !e.DeviceScope);
 
         // A new field is announced, at most once a second.
@@ -302,6 +311,31 @@ public sealed class DashboardsServerTests(ITestOutputHelper output)
 
         await host.Plugin.InvokeAsync(DashboardsMethods.Unwatch, JsonSerializer.Serialize(new UnwatchRequest("page1"), DashboardsPluginInfo.Json), CancellationToken.None);
         Assert.Equal(0, host.Plugin.WatchedCount);
+    }
+
+    [Fact]
+    public async Task The_devices_of_an_event_come_on_request_and_too_many_watched_values_are_refused()
+    {
+        using var host = new PluginHost();
+        Types.GateDevices.Clear();
+        Types.GateDevices.Add(A);
+        host.Feed.ChangeTypes(types =>
+        {
+            types.Clear();
+            types.AddRange(Types.All());
+        });
+        var gate = Assert.Single(host.Plugin.Catalog().Events, e => e.TypeId == Types.Gate);
+        Assert.True(gate.HasDeviceList);
+        Assert.False(Assert.Single(host.Plugin.Catalog().Events, e => e.TypeId == Types.Plate).HasDeviceList);
+        var reply = Read<DevicesReply>(await host.Plugin.InvokeAsync(DashboardsMethods.Devices,
+            JsonSerializer.Serialize(new DevicesRequest(Types.Gate), DashboardsPluginInfo.Json), CancellationToken.None));
+        Assert.Equal([A], reply.DeviceIds);
+        Assert.Null(Read<DevicesReply>(await host.Plugin.InvokeAsync(DashboardsMethods.Devices,
+            JsonSerializer.Serialize(new DevicesRequest(Types.Plate), DashboardsPluginInfo.Json), CancellationToken.None)).DeviceIds);
+        Types.GateDevices.Clear();
+
+        var many = Enumerable.Range(0, DashboardsPluginInfo.MaxWatchedKeys + 1).Select(_ => new ValueKey(Types.Temperature, Guid.NewGuid())).ToList();
+        Assert.Equal(DashboardTexts.TooManyOpen, Assert.Throws<ArgumentException>(() => host.Plugin.Watch(new WatchRequest("page", many))).Message);
     }
 
     [Fact]

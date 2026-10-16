@@ -91,6 +91,9 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
 
     public static readonly IReadOnlyList<IconOption> IconOptions = [.. WidgetIcons.All.Select(i => new IconOption(i.Key, i.Label))];
 
+    /// <summary>The choices of "Show name".</summary>
+    public static readonly IReadOnlyList<Choice<bool>> YesNoOptions = [new(true, "Yes"), new(false, "No")];
+
     public static readonly IReadOnlyList<Choice<int?>> DecimalOptions =
         [new(null, "As received"), .. Enumerable.Range(0, DashboardsPluginInfo.MaxDecimals + 1).Select(n => new Choice<int?>(n, n.ToString(CultureInfo.CurrentCulture)))];
 
@@ -158,9 +161,6 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial Choice<CatalogField>? SelectedField { get; set; }
 
-    /// <summary>"Trigger the event once on the device." while the event's values were not seen yet.</summary>
-    [ObservableProperty]
-    public partial bool ShowTriggerHint { get; private set; }
 
     public ObservableCollection<Choice<FieldType>> Types { get; } = [];
 
@@ -184,7 +184,21 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
 
     /// <summary>The name at the top of the widget (a value widget; the edit frame names it either way).</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowNameChoice))]
     public partial bool ShowName { get; set; } = true;
+
+    /// <summary>The "Show name" select (Yes, No).</summary>
+    public Choice<bool>? ShowNameChoice
+    {
+        get => YesNoOptions.First(o => o.Value == ShowName);
+        set
+        {
+            if (value is not null)
+            {
+                ShowName = value.Value; // a select that lost its list writes nothing
+            }
+        }
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IconSizeValue), nameof(IconSizeText))]
@@ -252,6 +266,8 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
     public IReadOnlyList<IconOption> Icons => IconOptions;
 
     public IReadOnlyList<Choice<int?>> DecimalChoices => DecimalOptions;
+
+    public IReadOnlyList<Choice<bool>> YesNoChoices => YesNoOptions;
 #pragma warning restore CA1822
 
     /// <summary>Errors of the panel and its threshold rows.</summary>
@@ -310,13 +326,12 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
             Fields.Add(new Choice<CatalogField>(field, field.Label));
         }
 
-        // A saved field that was not seen since the server started stays choosable under its name.
+        // A saved value the event no longer lists stays choosable under its name.
         if (current is not null && fields.All(f => f.Name != current))
         {
             Fields.Add(new Choice<CatalogField>(new CatalogField(current, current == DashboardsPluginInfo.ActiveField ? DashboardsPluginInfo.ActiveLabel : current, EventValueKind.Text), current));
         }
 
-        ShowTriggerHint = IsValue && (catalogEvent is null || catalogEvent.HasUnseenFields || fields.Count == 0);
         SelectedField = Fields.FirstOrDefault(f => f.Value.Name == current) ?? Fields.FirstOrDefault();
         RefreshTypes();
         OnPropertyChanged(nameof(EventName));

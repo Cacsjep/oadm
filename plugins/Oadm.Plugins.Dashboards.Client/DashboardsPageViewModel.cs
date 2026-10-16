@@ -43,7 +43,6 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
         _ctx.PermissionsChanged += OnPermissionsChanged;
         _devices = ctx.Devices.ToDictionary(d => d.Id);
         _mayWatch = MayWatch;
-        Tree.Rebuild(ctx.Devices, CameraSearch);
         _ = LoadAndWatchAsync(_life.Token);
         _ = RenewWatchAsync(_life.Token);
     }
@@ -51,11 +50,8 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
     /// <summary>Opens the device picker for one device (set by the view, which knows the window).</summary>
     public Func<IReadOnlyList<IDeviceInfo>, Guid?, Task<Guid?>>? PickDevice { get; set; }
 
-    /// <summary>Opens the device picker for several devices, with the reason a device cannot be used (set by the view).</summary>
-    public Func<IReadOnlyList<IDeviceInfo>, Func<IDeviceInfo, string?>, Task<IReadOnlyList<Guid>?>>? PickDevices { get; set; }
-
-    /// <summary>Cameras (devices with video) grouped by tag.</summary>
-    public DeviceTreeModel Tree { get; } = new() { Filter = d => d.HasVideo };
+    /// <summary>Opens the device picker for several devices: its heading, the devices, the reason a device cannot be used (set by the view).</summary>
+    public Func<string, IReadOnlyList<IDeviceInfo>, Func<IDeviceInfo, string?>, Task<IReadOnlyList<Guid>?>>? PickDevices { get; set; }
 
     public RangeObservableCollection<DashboardEntry> Dashboards { get; } = [];
 
@@ -63,9 +59,6 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
     public RangeObservableCollection<EventListItem> Events { get; } = [];
 
     public ObservableCollection<DashboardTab> Tabs { get; } = [];
-
-    [ObservableProperty]
-    public partial string CameraSearch { get; set; } = string.Empty;
 
     [ObservableProperty]
     public partial string EventSearch { get; set; } = string.Empty;
@@ -82,7 +75,7 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasTabs), nameof(ShowEmptyState), nameof(IsEditing), nameof(CanEdit))]
-    [NotifyCanExecuteChangedFor(nameof(CloseAllTabsCommand), nameof(SaveDashboardCommand), nameof(CancelEditCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CloseAllTabsCommand), nameof(SaveDashboardCommand), nameof(CancelEditCommand), nameof(AddCamerasCommand))]
     public partial DashboardTab? ActiveTab { get; set; }
 
     [ObservableProperty]
@@ -110,8 +103,6 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
 
     public string NoDashboardsText => MayManage ? DashboardTexts.NoDashboards : DashboardTexts.NoDashboardsReadOnly;
 
-    public bool HasCameras => Tree.UsableCount > 0;
-
     public bool HasEvents => Events.Count > 0;
 
     public bool IsEditing => ActiveTab?.IsEditing == true;
@@ -135,8 +126,6 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
     /// <summary>"Open Device triggers" below the empty state while there is no trigger yet.</summary>
     public bool ShowOpenTriggers => !TriggersOff && NoTriggers;
 
-    partial void OnCameraSearchChanged(string value) => Tree.Rebuild(_ctx.Devices, value);
-
     partial void OnEventSearchChanged(string value) => RebuildEvents();
 
     partial void OnActiveTabChanged(DashboardTab? oldValue, DashboardTab? newValue)
@@ -159,12 +148,13 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
     private void OnActiveTabPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(DashboardTab.IsEditing) or nameof(DashboardTab.IsSaving) or nameof(DashboardTab.Name)
-            or nameof(DashboardTab.HasErrors) or nameof(DashboardTab.Editor))
+            or nameof(DashboardTab.HasErrors) or nameof(DashboardTab.Editor) or nameof(DashboardTab.GroupEditor))
         {
             OnPropertyChanged(nameof(IsEditing));
             OnPropertyChanged(nameof(CanEdit));
             SaveDashboardCommand.NotifyCanExecuteChanged();
             CancelEditCommand.NotifyCanExecuteChanged();
+            AddCamerasCommand.NotifyCanExecuteChanged();
         }
     }
 
@@ -236,13 +226,22 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
         }
     }
 
-    /// <summary>A click on a camera: while editing a live video widget for it in the first free place.</summary>
-    public void ClickCamera(IDeviceInfo device)
+    private bool CanAddCameras() => ActiveTab is { IsEditing: true };
+
+    /// <summary>Add cameras (while editing): the device picker with the cameras, one live video widget per chosen camera.</summary>
+    [RelayCommand(CanExecute = nameof(CanAddCameras))]
+    private async Task AddCamerasAsync()
     {
-        ArgumentNullException.ThrowIfNull(device);
-        if (ActiveTab is { IsEditing: true } tab)
+        if (ActiveTab is not { IsEditing: true } tab || PickDevices is not { } pick)
         {
-            tab.AddCamera(device);
+            return;
+        }
+
+        var shown = tab.Widgets.Where(w => w.Widget.Kind == WidgetKind.Video).Select(w => w.Widget.DeviceId).OfType<Guid>().ToHashSet();
+        var ids = await pick("Add cameras", [.. _ctx.Devices.Where(d => d.HasVideo)], d => shown.Contains(d.Id) ? DashboardTexts.OnDashboard : null).ConfigureAwait(true);
+        if (ids is { Count: > 0 })
+        {
+            tab.AddCameras([.. ids.Select(id => _devices.GetValueOrDefault(id)).OfType<IDeviceInfo>()]);
         }
     }
 
@@ -446,23 +445,76 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
 
     internal IDeviceInfo? DeviceOf(Guid id) => _devices.GetValueOrDefault(id);
 
-    /// <summary>The devices to copy a widget for: cameras only for a video widget, never the widget's own device.</summary>
-    internal async Task<IReadOnlyList<IDeviceInfo>> PickCopyDevicesAsync(WidgetViewModel widget)
+    /// <summary>
+    /// The devices to copy widgets for: those every widget's event offers, cameras only when a video widget is among them;
+    /// a single widget's own device greyed.
+    /// </summary>
+    internal async Task<IReadOnlyList<IDeviceInfo>> PickCopyDevicesAsync(IReadOnlyList<WidgetViewModel> widgets)
     {
-        if (PickDevices is not { } pick)
+        if (PickDevices is not { } pick || widgets.Count == 0)
         {
             return [];
         }
 
-        var own = widget.Widget.DeviceId;
-        var video = widget.Widget.Kind == WidgetKind.Video;
-        var ids = await pick(_ctx.Devices, d => d.Id == own ? DashboardTexts.OwnDevice : video && !d.HasVideo ? DashboardTexts.NoVideo : null).ConfigureAwait(true);
+        HashSet<Guid>? allowed = null;
+        foreach (var widget in widgets)
+        {
+            var offered = (await DevicesOfAsync(widget).ConfigureAwait(true)).Select(d => d.Id);
+            if (allowed is null)
+            {
+                allowed = [.. offered];
+            }
+            else
+            {
+                allowed.IntersectWith(offered);
+            }
+        }
+
+        allowed ??= [];
+        var own = widgets.Count == 1 ? widgets[0].Widget.DeviceId : null;
+        var video = widgets.Any(w => w.Widget.Kind == WidgetKind.Video);
+        var ids = await pick("Copy for other devices", [.. _ctx.Devices.Where(d => allowed.Contains(d.Id))],
+            d => d.Id == own ? DashboardTexts.OwnDevice : video && !d.HasVideo ? DashboardTexts.NoVideo : null).ConfigureAwait(true);
         return ids is null ? [] : [.. ids.Select(id => _devices.GetValueOrDefault(id)).OfType<IDeviceInfo>()];
     }
 
-    /// <summary>The device of a value widget: every managed device; the one chosen now is checked.</summary>
+    /// <summary>The device of a value widget: the devices of its event; the one chosen now is checked.</summary>
     internal async Task<Guid?> PickDeviceAsync(WidgetViewModel widget) =>
-        PickDevice is { } pick ? await pick(_ctx.Devices, widget.Widget.DeviceId).ConfigureAwait(true) : null;
+        PickDevice is { } pick ? await pick(await DevicesOfAsync(widget).ConfigureAwait(true), widget.Widget.DeviceId).ConfigureAwait(true) : null;
+
+    /// <summary>
+    /// The devices a widget can show: those of its event (a device trigger's devices, asked from the server when a picker
+    /// opens), else every managed device; a video widget every device.
+    /// </summary>
+    internal async Task<IReadOnlyList<IDeviceInfo>> DevicesOfAsync(WidgetViewModel widget)
+    {
+        if (widget.Widget.Kind == WidgetKind.Video || FindEvent(widget.Widget.TypeId) is not { HasDeviceList: true } catalogEvent)
+        {
+            return _ctx.Devices;
+        }
+
+        try
+        {
+            var json = await _ctx.InvokeAsync(DashboardsMethods.Devices, JsonSerializer.Serialize(new DevicesRequest(catalogEvent.TypeId), DashboardsPluginInfo.Json), _life.Token).ConfigureAwait(true);
+            if (JsonSerializer.Deserialize<DevicesReply>(json ?? "null", DashboardsPluginInfo.Json)?.DeviceIds is not { } ids)
+            {
+                return _ctx.Devices;
+            }
+
+            var allowed = ids.ToHashSet();
+            return [.. _ctx.Devices.Where(d => allowed.Contains(d.Id))];
+        }
+        catch (OperationCanceledException)
+        {
+            return [];
+        }
+#pragma warning disable CA1031 // An older server part without the method: every device, as before.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return _ctx.Devices;
+        }
+    }
 
     // ------------------------------------------------------------------ server
 
@@ -590,10 +642,14 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
         {
         }
 #pragma warning disable CA1031 // The next renewal tries again; the widgets keep their last values meanwhile.
-        catch (Exception)
+        catch (Exception ex)
 #pragma warning restore CA1031
         {
             _sentKeys = [];
+            if (ActiveTab is { } tab)
+            {
+                tab.Error = ServerErrors.Message(ex); // e.g. too many open tabs
+            }
         }
         finally
         {
@@ -754,8 +810,6 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
     private void OnDevicesChanged(object? sender, EventArgs e)
     {
         _devices = _ctx.Devices.ToDictionary(d => d.Id);
-        Tree.Rebuild(_ctx.Devices, CameraSearch);
-        OnPropertyChanged(nameof(HasCameras));
         foreach (var tab in Tabs)
         {
             tab.RefreshDevices(_devices);

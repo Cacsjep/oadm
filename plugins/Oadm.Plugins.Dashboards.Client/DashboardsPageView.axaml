@@ -5,7 +5,8 @@
              xmlns:m="using:Oadm.Plugins.Dashboards"
              x:Class="Oadm.Plugins.Dashboards.Client.DashboardsPageView"
              x:DataType="vm:DashboardsPageViewModel"
-             ui:PageHeader.IsHidden="True">
+             ui:PageHeader.IsHidden="True"
+             Focusable="True">
   <!-- Like Live View: no page header. Left card: the dashboards, the cameras and the events with values; right card: one row
        (Close all, while editing Name / Save / Cancel, the tabs), then the grid of the active dashboard and, while editing,
        the panel of the selected widget. -->
@@ -33,7 +34,7 @@
                 </ListBox.ItemTemplate>
               </ListBox>
             </StackPanel>
-            <Grid RowDefinitions="Auto,*,Auto,Auto,Auto,2*,Auto,Auto,2*" RowSpacing="8" IsVisible="{Binding !IsPanelCollapsed}">
+            <Grid RowDefinitions="Auto,*,Auto,Auto,Auto,3*" RowSpacing="8" IsVisible="{Binding !IsPanelCollapsed}">
               <ui:CardHeader Grid.Row="0" Title="Dashboards">
                 <Button Classes="toolbar iconOnly" Command="{Binding NewDashboardCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="New dashboard">
                   <ui:OadmIcon Data="{StaticResource Icon.add}" />
@@ -63,15 +64,9 @@
                 </ListBox>
               </Panel>
               <TextBlock Grid.Row="2" Classes="error" Text="{Binding LoadError}" TextWrapping="Wrap" IsVisible="{Binding HasLoadError}" />
-              <ui:CardHeader Grid.Row="3" Title="Cameras" />
-              <ui:SearchBox Grid.Row="4" Classes="stretch" Text="{Binding CameraSearch}" Placeholder="Search cameras" />
+              <ui:CardHeader Grid.Row="3" Title="Events" />
+              <ui:SearchBox Grid.Row="4" Classes="stretch" Text="{Binding EventSearch}" Placeholder="Search events" />
               <Panel Grid.Row="5">
-                <TextBlock Classes="secondary" Text="{x:Static m:DashboardTexts.NoCameras}" TextWrapping="Wrap" IsVisible="{Binding !HasCameras}" />
-                <ui:DeviceTree x:Name="Tree" Model="{Binding Tree}" IsVisible="{Binding HasCameras}" />
-              </Panel>
-              <ui:CardHeader Grid.Row="6" Title="Events" />
-              <ui:SearchBox Grid.Row="7" Classes="stretch" Text="{Binding EventSearch}" Placeholder="Search events" />
-              <Panel Grid.Row="8">
                 <TextBlock Classes="secondary" Text="{x:Static m:DashboardTexts.NoEvents}" TextWrapping="Wrap" IsVisible="{Binding !HasEvents}" />
                 <ListBox x:Name="EventList" Classes="deviceTree" ItemsSource="{Binding Events}" SelectionMode="Single" IsVisible="{Binding HasEvents}">
                   <ListBox.ItemTemplate>
@@ -114,6 +109,10 @@
               </Button>
               <Button Classes="secondary" Content="Cancel" VerticalAlignment="Top"
                       Command="{Binding $parent[UserControl].((vm:DashboardsPageViewModel)DataContext).CancelEditCommand}" />
+              <Button Classes="secondary" VerticalAlignment="Top" ToolTip.Tip="Live video of one or several cameras"
+                      Command="{Binding $parent[UserControl].((vm:DashboardsPageViewModel)DataContext).AddCamerasCommand}">
+                <ui:IconLabel Icon="{StaticResource Icon.video}" Text="Add cameras" />
+              </Button>
             </StackPanel>
 
             <ScrollViewer Grid.Column="2" Margin="8,0,0,0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" VerticalAlignment="Top">
@@ -151,10 +150,10 @@
             <Border Grid.Column="1" Classes="dashboardPanel" IsVisible="{Binding ActiveTab.ShowPanel, FallbackValue=False}">
               <Panel>
                 <TextBlock Classes="secondary" Text="{x:Static m:DashboardTexts.ChooseWidget}" TextWrapping="Wrap"
-                           IsVisible="{Binding !ActiveTab.HasEditor, FallbackValue=False}" />
-                <ScrollViewer IsVisible="{Binding ActiveTab.HasEditor, FallbackValue=False}" HorizontalScrollBarVisibility="Disabled">
-                  <!-- A new panel for every widget (WidgetEditorView): select fields never carry one widget's choice to the next -->
-                  <ContentControl x:Name="EditorHost" Content="{Binding ActiveTab.Editor, FallbackValue={x:Null}}" />
+                           IsVisible="{Binding !ActiveTab.HasPanel, FallbackValue=False}" />
+                <ScrollViewer IsVisible="{Binding ActiveTab.HasPanel, FallbackValue=False}" HorizontalScrollBarVisibility="Disabled">
+                  <!-- A new panel for every selection (WidgetEditorView, GroupEditorView): select fields never carry one widget's choice to the next -->
+                  <ContentControl x:Name="EditorHost" Content="{Binding ActiveTab.Panel, FallbackValue={x:Null}}" />
                 </ScrollViewer>
               </Panel>
             </Border>

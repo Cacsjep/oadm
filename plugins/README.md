@@ -383,7 +383,8 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
   is not installed on this client. A page with several panels sets `HasOwnCards => true` and lays out its own
   `Border.card`s. The context also offers the managed devices and the Devices page selection (`Devices`,
   `SelectedDevices`, `DevicesChanged`), `OwnerName`, `ConfirmAsync`, `ShowMessageAsync`, `OpenAsync(HostPages.Devices)`
-  and `Owner`.
+  (or another plugin's page: `OpenAsync("plugin:" + id)`, while it is on), `IsPluginOn(packageId)` (whether a plugin is
+  turned on; null when the host cannot tell) and `Owner`.
 - **Several views at once**: the rail entry's context menu **Open in new window** shows another copy of the page in a
   window of its own, so `CreateView` can be called several times, each time with its own context. Keep all page state in
   the view model of that view (never in static or shared fields of the page class), start server work when the view is
@@ -515,6 +516,8 @@ filter on.
 - **Stateless**: `Fire(typeId, deviceId, data)`.
 - **Values**: the `data` of `SetState` / `Fire` are the event's values; actions can use each one as a placeholder
   (`{port}`), and a rule condition can filter on declared data fields.
+- **Devices** (`EventTypeInfo.DeviceIds`): the devices that can send the event now (null = any device); raise
+  `EventTypesChanged` when they change. Dashboards offers only these devices for a widget.
 - **Data fields** (`EventField`): name, label, `Kind` (`EventValueKind` Text, Number, YesNo: what the value holds, so a
   dashboard picks the right widget; default Text) and `Filter` (default true; false = a value only, listed as a
   placeholder but without a filter box in the rule dialog).
@@ -593,7 +596,7 @@ tag or with tabs uses them. `ui:TileGrid` is the grid of tiles of Live View: the
 (its tiles as `ITileGridItem`: `Rect` (a `TileRect` of cells), title, content or a message, the remove command, `IsSelected`
 (the tile whose settings the page shows, its frame marked), `FrameClass` (a theme class of its frame, e.g. `valueTile`: no video
 background), `CopyCommand` (a copy icon left of the X, shown while it can run; tooltip `ITileGridSource.CopyText`);
-`IsEditing`; `TryMove(item, rect)`), the grid draws a `TileFrame` per tile, and the rules are an `Oadm.Sdk.Layout.TileLayout`
+`IsEditing`; `TryMove(item, rect)`), the grid draws a `TileFrame` per tile (`ShowPreview` where a dragged item lands, `ShowSelectionArea` a selection rectangle), and the rules are an `Oadm.Sdk.Layout.TileLayout`
 (size, smallest tile, drop size, most tiles: `Place`, `PlaceSized`, `Fit`, `Drag(rect, TileEdges, dx, dy)`, `Fits`, `FirstOverlap`) that
 the server part checks again before it stores. `DeviceTexts.Removed(id)` names a device OADM no longer manages, `ServerErrors.Message(ex)`
 reads the user text of a failed server call without a gRPC reference.

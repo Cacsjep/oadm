@@ -51,9 +51,8 @@ public sealed class EventListItem
 
     public string Name => Event?.Name ?? Header ?? string.Empty;
 
-    /// <summary>"Active · Temperature (number)", or "Trigger the event once on the device." before its values were seen.</summary>
+    /// <summary>"Active (yes / no) · Temperature (number)"; empty for an event without values.</summary>
     public string FieldsText => Event is null ? string.Empty
-        : Event.Fields.Count == 0 ? DashboardTexts.TriggerOnce
         : string.Join(" · ", Event.Fields.Select(f => f.Label + " (" + KindText(f.Kind) + ")"));
 
     public static EventListItem Group(string header) => new(header, null);
@@ -252,9 +251,31 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
 
     string ITileGridSource.CopyText => "Copy for other devices";
 
-    internal Task<IReadOnlyList<IDeviceInfo>> PickCopyDevicesAsync(WidgetViewModel widget) => _owner.PickCopyDevicesAsync(widget);
+    internal Task<IReadOnlyList<IDeviceInfo>> PickCopyDevicesAsync(WidgetViewModel widget) => _owner.PickCopyDevicesAsync([widget]);
 
-    bool ITileGridSource.TryMove(ITileGridItem item, TileRect rect) => item is WidgetViewModel widget && TryFit(widget, rect);
+    internal Task<IReadOnlyList<IDeviceInfo>> PickCopyDevicesAsync(IReadOnlyList<WidgetViewModel> widgets) => _owner.PickCopyDevicesAsync(widgets);
+
+    /// <summary>
+    /// A selected widget dragged with others selected moves them all (inside) or resizes them all (an edge or a corner);
+    /// anything else moves or resizes the one.
+    /// </summary>
+    bool ITileGridSource.TryMove(ITileGridItem item, TileRect rect)
+    {
+        if (item is not WidgetViewModel widget)
+        {
+            return false;
+        }
+
+        if (_selected.Count > 1 && _selected.Contains(widget))
+        {
+            var current = widget.Rect;
+            return rect.Width == current.Width && rect.Height == current.Height
+                ? TryMoveSelection(rect.X - current.X, rect.Y - current.Y)
+                : TryResizeSelection(rect.X - current.X, rect.Width - current.Width, rect.Y - current.Y, rect.Height - current.Height);
+        }
+
+        return TryFit(widget, rect);
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Title))]
@@ -289,12 +310,27 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
     [ObservableProperty]
     public partial bool IsSaving { get; internal set; }
 
-    /// <summary>The widget whose settings the panel shows (editing only).</summary>
+    private List<WidgetViewModel> _selected = [];
+
+    /// <summary>The selected widgets (editing only): one shows its panel, several the group panel.</summary>
+    public IReadOnlyList<WidgetViewModel> Selection => _selected;
+
+    /// <summary>The panel of the one selected widget.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasEditor))]
+    [NotifyPropertyChangedFor(nameof(HasEditor), nameof(Panel), nameof(HasPanel))]
     public partial WidgetEditorViewModel? Editor { get; private set; }
 
+    /// <summary>The panel of several selected widgets: what they share.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Panel), nameof(HasPanel))]
+    public partial GroupEditorViewModel? GroupEditor { get; private set; }
+
     public bool HasEditor => Editor is not null;
+
+    /// <summary>The panel right of the grid: one widget's or the group's.</summary>
+    public object? Panel => (object?)Editor ?? GroupEditor;
+
+    public bool HasPanel => Panel is not null;
 
     /// <summary>The panel right of the grid while editing.</summary>
     public bool ShowPanel => IsEditing;
@@ -319,10 +355,11 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
     {
         Validation.ShowAll();
         Editor?.ShowAllErrors();
+        GroupEditor?.ShowAllErrors();
     }
 
     /// <summary>The panel's errors block Save too.</summary>
-    internal bool HasAnyErrors => HasErrors || (Editor?.HasAnyErrors ?? false);
+    internal bool HasAnyErrors => HasErrors || (Editor?.HasAnyErrors ?? false) || (GroupEditor?.HasErrors ?? false);
 
     /// <summary>An event dropped on cell (x, y): a value widget there, selected for its panel; false and the reason when there is no room.</summary>
     public bool DropEvent(CatalogEvent catalogEvent, int cellX, int cellY) =>
@@ -331,16 +368,81 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
     /// <summary>A click on an event while editing: the first free place.</summary>
     public bool AddEvent(CatalogEvent catalogEvent) => AddValue(catalogEvent, DashboardsPluginInfo.Layout.PlaceFirstFree(Rects()));
 
-    /// <summary>A camera dropped on cell (x, y): a live video widget.</summary>
-    public bool DropCamera(IDeviceInfo device, int cellX, int cellY) =>
-        AddVideo(device, DashboardsPluginInfo.VideoLayout.Place(Rects(), cellX, cellY));
+    /// <summary>
+    /// Add cameras: a live video widget per camera, each in the first free place, at most 16 live videos. Adds as many as
+    /// fit and says why the rest did not; one camera is selected for its panel. Returns how many were added.
+    /// </summary>
+    public int AddCameras(IReadOnlyList<IDeviceInfo> devices)
+    {
+        ArgumentNullException.ThrowIfNull(devices);
+        var added = new List<WidgetViewModel>();
+        string? reason = null;
+        var wanted = devices.DistinctBy(d => d.Id).ToList();
 
-    /// <summary>A click on a camera while editing: the first free place.</summary>
-    public bool AddCamera(IDeviceInfo device) => AddVideo(device, DashboardsPluginInfo.VideoLayout.PlaceFirstFree(Rects()));
+        // Several cameras share the room: 16 take 5 x 5 each, one up to 8 x 8; smaller where the grid is full.
+        var room = Math.Max(1, Math.Min(wanted.Count, DashboardsPluginInfo.MaxVideos - Widgets.Count(w => w.Widget.Kind == WidgetKind.Video)));
+        var size = Math.Clamp(DashboardsPluginInfo.Layout.Size / (int)Math.Ceiling(Math.Sqrt(room)), DashboardsPluginInfo.Layout.MinTileSize, DashboardsPluginInfo.VideoLayout.DropSize);
+        foreach (var device in wanted)
+        {
+            if (Widgets.Count(w => w.Widget.Kind == WidgetKind.Video) >= DashboardsPluginInfo.MaxVideos)
+            {
+                reason = DashboardRules.TooManyVideos;
+                break;
+            }
 
-    /// <summary>Where a dragged item would land (the frame while dragging); null without room.</summary>
-    public TileRect? PreviewAt(bool camera, int cellX, int cellY) =>
-        (camera ? DashboardsPluginInfo.VideoLayout : DashboardsPluginInfo.Layout).Place(Rects(), cellX, cellY);
+            if (Widgets.Count >= DashboardsPluginInfo.MaxWidgets)
+            {
+                reason = DashboardRules.TooManyWidgets;
+                break;
+            }
+
+            if (PlaceCamera(size) is not { } place)
+            {
+                reason = DashboardRules.NoRoom;
+                break;
+            }
+
+            var model = _owner.CreateWidget(this, new Widget
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Kind = WidgetKind.Video,
+                X = place.X,
+                Y = place.Y,
+                Width = place.Width,
+                Height = place.Height,
+                DeviceId = device.Id,
+                Name = device.Address,
+            }, device);
+            Widgets.Add(model);
+            added.Add(model);
+        }
+
+        Error = reason is null ? null : DashboardRules.CamerasAdded(added.Count, wanted.Count, reason);
+        if (added.Count > 0)
+        {
+            Changed();
+            SetSelection(added);
+        }
+
+        return added.Count;
+    }
+
+    /// <summary>The first free square of <paramref name="size"/> cells, else a smaller one; null when nothing is free.</summary>
+    private TileRect? PlaceCamera(int size)
+    {
+        for (var side = size; side >= DashboardsPluginInfo.Layout.MinTileSize; side--)
+        {
+            if (DashboardsPluginInfo.Layout.PlaceSized(Rects(), side, side) is { } place)
+            {
+                return place;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Where a dragged event would land (the frame while dragging); null without room.</summary>
+    public TileRect? PreviewAt(int cellX, int cellY) => DashboardsPluginInfo.Layout.Place(Rects(), cellX, cellY);
 
     /// <summary>Moves or resizes a widget; false (nothing changes) when it would leave the grid's rules.</summary>
     public bool TryFit(WidgetViewModel widget, TileRect rect)
@@ -357,24 +459,164 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
         return true;
     }
 
-    /// <summary>A click on a widget while editing: its panel.</summary>
-    public void Select(WidgetViewModel? widget)
+    /// <summary>A click on a widget while editing: it alone is selected and its panel shows (null: nothing selected).</summary>
+    public void Select(WidgetViewModel? widget) => SetSelection(widget is null ? [] : [widget]);
+
+    /// <summary>Ctrl+click: the widget joins the selection or leaves it.</summary>
+    public void Toggle(WidgetViewModel widget)
     {
-        if (!IsEditing || widget == Editor?.Target)
+        ArgumentNullException.ThrowIfNull(widget);
+        SetSelection(_selected.Contains(widget) ? _selected.Where(w => w != widget) : _selected.Append(widget));
+    }
+
+    /// <summary>The selection rectangle: every widget it touches; with Ctrl they join the selection.</summary>
+    public void SelectArea(TileRect area, bool add)
+    {
+        var inside = Widgets.Where(w => w.Rect.Overlaps(area));
+        SetSelection(add ? _selected.Concat(inside) : inside);
+    }
+
+    /// <summary>Ctrl+A: every widget.</summary>
+    public void SelectAll() => SetSelection(Widgets);
+
+    private void SetSelection(IEnumerable<WidgetViewModel> widgets)
+    {
+        var next = widgets.Where(Widgets.Contains).Distinct().ToList();
+        if (!IsEditing || (next.Count == _selected.Count && next.All(_selected.Contains)))
         {
             return;
         }
 
         Editor?.Detach();
-        if (Editor is { } old)
+        GroupEditor?.Detach();
+        foreach (var widget in _selected)
         {
-            old.Target.IsSelected = false;
+            widget.IsSelected = false;
         }
 
-        Editor = widget is null ? null : _owner.CreateEditor(this, widget);
-        if (widget is not null)
+        _selected = next;
+        foreach (var widget in next)
         {
             widget.IsSelected = true;
+        }
+
+        Editor = next.Count == 1 ? _owner.CreateEditor(this, next[0]) : null;
+        GroupEditor = next.Count > 1 ? new GroupEditorViewModel(this, next) : null;
+        OnPropertyChanged(nameof(Selection));
+    }
+
+    /// <summary>Moves every selected widget by whole cells, stopping at the grid's edge; false when one would hit another widget.</summary>
+    public bool TryMoveSelection(int dx, int dy)
+    {
+        if (_selected.Count == 0)
+        {
+            return false;
+        }
+
+        var size = DashboardsPluginInfo.Layout.Size;
+        dx = Math.Clamp(dx, -_selected.Min(w => w.Rect.X), size - _selected.Max(w => w.Rect.X + w.Rect.Width));
+        dy = Math.Clamp(dy, -_selected.Min(w => w.Rect.Y), size - _selected.Max(w => w.Rect.Y + w.Rect.Height));
+        if (dx == 0 && dy == 0)
+        {
+            return false;
+        }
+
+        var others = Widgets.Except(_selected).Select(w => w.Rect).ToList();
+        var moved = _selected.Select(w => (Widget: w, Rect: w.Rect with { X = w.Rect.X + dx, Y = w.Rect.Y + dy })).ToList();
+        if (moved.Any(m => others.Any(o => o.Overlaps(m.Rect))))
+        {
+            return false;
+        }
+
+        foreach (var (widget, rect) in moved)
+        {
+            widget.Update(widget.Widget with { X = rect.X, Y = rect.Y });
+        }
+
+        LayoutChanged?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>
+    /// An edge or corner of one selected widget dragged: every selected widget grows or shrinks by the same cells
+    /// (<paramref name="dw"/>, <paramref name="dh"/>; <paramref name="dx"/> / <paramref name="dy"/> not zero = the left / top
+    /// edge moved). Selected widgets side by side make room for each other: the right edge pushes the ones to the right
+    /// further, the left edge the ones to the left (the same for rows). All or nothing: false when a widget would leave the
+    /// grid, get smaller than 2 x 2 or hit another widget.
+    /// </summary>
+    public bool TryResizeSelection(int dx, int dw, int dy, int dh)
+    {
+        if (_selected.Count == 0 || (dw == 0 && dh == 0))
+        {
+            return false;
+        }
+
+        static bool RowsOverlap(TileRect a, TileRect b) => a.Y < b.Y + b.Height && b.Y < a.Y + a.Height;
+        static bool ColumnsOverlap(TileRect a, TileRect b) => a.X < b.X + b.Width && b.X < a.X + a.Width;
+        var rects = _selected.Select(w => w.Rect).ToList();
+        var next = new List<TileRect>(rects.Count);
+        foreach (var r in rects)
+        {
+            var left = rects.Count(o => o != r && o.X + o.Width <= r.X && RowsOverlap(o, r));
+            var right = rects.Count(o => o != r && o.X >= r.X + r.Width && RowsOverlap(o, r));
+            var above = rects.Count(o => o != r && o.Y + o.Height <= r.Y && ColumnsOverlap(o, r));
+            var below = rects.Count(o => o != r && o.Y >= r.Y + r.Height && ColumnsOverlap(o, r));
+            var x = dx != 0 ? r.X - (dw * (1 + right)) : r.X + (dw * left);
+            var y = dy != 0 ? r.Y - (dh * (1 + below)) : r.Y + (dh * above);
+            next.Add(new TileRect(x, y, r.Width + dw, r.Height + dh));
+        }
+
+        var others = Widgets.Except(_selected).Select(w => w.Rect).ToList();
+        if (next.Any(r => !DashboardsPluginInfo.Layout.Fits(r) || others.Any(o => o.Overlaps(r))) || TileLayout.FirstOverlap(next) >= 0)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < _selected.Count; i++)
+        {
+            var r = next[i];
+            _selected[i].Update(_selected[i].Widget with { X = r.X, Y = r.Y, Width = r.Width, Height = r.Height });
+        }
+
+        LayoutChanged?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>
+    /// The group panel's Width / Height: every selected widget that has room takes the size (kept where it is, moved left or
+    /// up only at the grid's edge); the others keep theirs and the reason shows below the toolbar.
+    /// </summary>
+    public int ResizeSelection(int? width, int? height)
+    {
+        var changed = 0;
+        var refused = 0;
+        foreach (var widget in _selected)
+        {
+            var others = Widgets.Where(o => o != widget).Select(o => o.Rect).ToList();
+            if (DashboardsPluginInfo.Layout.Fit(others, widget.Rect.X, widget.Rect.Y, width ?? widget.Rect.Width, height ?? widget.Rect.Height) is not { } rect)
+            {
+                refused++;
+                continue;
+            }
+
+            if (rect != widget.Rect)
+            {
+                widget.Update(widget.Widget with { X = rect.X, Y = rect.Y, Width = rect.Width, Height = rect.Height });
+                changed++;
+            }
+        }
+
+        Error = refused > 0 ? DashboardRules.Resized(_selected.Count - refused, _selected.Count) : null;
+        LayoutChanged?.Invoke(this, EventArgs.Empty);
+        return changed;
+    }
+
+    /// <summary>The group panel's remove: every selected widget.</summary>
+    public void RemoveSelection()
+    {
+        foreach (var widget in _selected.ToList())
+        {
+            RemoveWidget(widget);
         }
     }
 
@@ -382,9 +624,9 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
     {
         if (Widgets.Remove(widget))
         {
-            if (Editor?.Target == widget)
+            if (_selected.Contains(widget))
             {
-                Select(null);
+                SetSelection(_selected.Where(w => w != widget));
             }
 
             widget.Dispose();
@@ -413,6 +655,7 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
     {
         Select(null);
         Editor = null;
+        GroupEditor = null;
         IsEditing = false;
     }
 
@@ -490,49 +733,24 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
         return true;
     }
 
-    private bool AddVideo(IDeviceInfo device, TileRect? rect)
-    {
-        ArgumentNullException.ThrowIfNull(device);
-        if (rect is not { } place || Widgets.Count(w => w.Widget.Kind == WidgetKind.Video) >= DashboardsPluginInfo.MaxVideos)
-        {
-            Error = Widgets.Count(w => w.Widget.Kind == WidgetKind.Video) >= DashboardsPluginInfo.MaxVideos ? DashboardRules.TooManyVideos
-                : Widgets.Count >= DashboardsPluginInfo.MaxWidgets ? DashboardRules.TooManyWidgets
-                : DashboardRules.NoRoom;
-            return false;
-        }
-
-        var widget = new Widget
-        {
-            Id = Guid.NewGuid().ToString("N"),
-            Kind = WidgetKind.Video,
-            X = place.X,
-            Y = place.Y,
-            Width = place.Width,
-            Height = place.Height,
-            DeviceId = device.Id,
-            Name = device.Address,
-        };
-        Error = null;
-        var model = _owner.CreateWidget(this, widget, device);
-        Widgets.Add(model);
-        Changed();
-        Select(model);
-        return true;
-    }
+    /// <summary>Copies of one widget for other devices (see the overload for several).</summary>
+    public int CopyFor(WidgetViewModel source, IReadOnlyList<IDeviceInfo> devices) => CopyFor([source], devices);
 
     /// <summary>
-    /// Copies of <paramref name="source"/> for other devices: the same settings and size, each in the first free place, its
-    /// name with the device's address instead of the source's (else " · address" after it). Adds as many as fit and says
-    /// why the rest did not; returns how many were added.
+    /// Copies of <paramref name="sources"/> for other devices: per device a copy of each widget (not for its own device), the
+    /// same settings and size, each in the first free place, its name with the device's address instead of the source's
+    /// (else " · address" after it). Adds as many as fit and says why the rest did not; returns how many were added.
     /// </summary>
-    public int CopyFor(WidgetViewModel source, IReadOnlyList<IDeviceInfo> devices)
+    public int CopyFor(IReadOnlyList<WidgetViewModel> sources, IReadOnlyList<IDeviceInfo> devices)
     {
-        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(sources);
         ArgumentNullException.ThrowIfNull(devices);
-        var targets = devices.Where(d => d.Id != source.Widget.DeviceId).DistinctBy(d => d.Id).ToList();
+        var pairs = devices.DistinctBy(d => d.Id)
+            .SelectMany(d => sources.Where(s => s.CanCopy && s.Widget.DeviceId != d.Id).Select(s => (Device: d, Source: s)))
+            .ToList();
         var added = 0;
         string? reason = null;
-        foreach (var device in targets)
+        foreach (var (device, source) in pairs)
         {
             if (source.Widget.Kind == WidgetKind.Video && Widgets.Count(w => w.Widget.Kind == WidgetKind.Video) >= DashboardsPluginInfo.MaxVideos)
             {
@@ -567,7 +785,7 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
             added++;
         }
 
-        Error = reason is null ? null : DashboardRules.CopiesAdded(added, targets.Count, reason);
+        Error = reason is null ? null : DashboardRules.CopiesAdded(added, pairs.Count, reason);
         if (added > 0)
         {
             Changed();
@@ -630,6 +848,7 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
     public void Dispose()
     {
         Editor?.Detach();
+        GroupEditor?.Detach();
         foreach (var widget in Widgets)
         {
             widget.Dispose();

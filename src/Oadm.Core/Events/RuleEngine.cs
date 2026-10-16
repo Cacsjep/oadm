@@ -969,6 +969,12 @@ public sealed partial class RuleEngine : IAsyncDisposable
             }
 
             var types = _on.Where(t => t.Value.Remove(change.DeviceId)).Select(t => t.Key).ToList();
+            foreach (var typeId in types)
+            {
+                Publish(typeId, change.DeviceId, PublishedEventKind.Off, null); // subscribers learn the device's events are off
+            }
+
+            RecomputeAny(); // a removed device no longer counts
             foreach (var runtime in _rules.Values.Where(r => r.Stateful && IsEvaluable(r)))
             {
                 if (runtime.Active.ContainsKey(change.DeviceId) || runtime.Suppressed.Contains(change.DeviceId) || types.Any(runtime.Types.Contains))
@@ -1010,6 +1016,28 @@ public sealed partial class RuleEngine : IAsyncDisposable
             var notAfter = device.CertNotAfterUtc;
             SetBuiltIn(BuiltInEvents.CertificateExpired, id, notAfter is { } end && end <= now);
             SetBuiltIn(BuiltInEvents.CertificateExpiresSoon, id, notAfter is { } soon && soon > now && soon - now <= TimeSpan.FromDays(BuiltInEvents.ExpiresSoonDays));
+        }
+
+        RecomputeAny();
+    }
+
+    /// <summary>The "Any device" events: on for the server while any device has the condition, with how many.</summary>
+    private void RecomputeAny()
+    {
+        foreach (var (deviceType, anyType) in BuiltInEvents.AnyOf)
+        {
+            var count = _on.TryGetValue(deviceType, out var set) ? set.Count : 0;
+            var type = _catalog.FindEventType(anyType)!;
+            var isOn = OnSet(anyType).TryGetValue(Guid.Empty, out var data);
+            var text = count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (count > 0 && (!isOn || !string.Equals(data!.GetValueOrDefault(BuiltInEvents.CountField), text, StringComparison.Ordinal)))
+            {
+                SetState(type, Guid.Empty, true, new Dictionary<string, string> { [BuiltInEvents.CountField] = text });
+            }
+            else if (count == 0 && isOn)
+            {
+                SetState(type, Guid.Empty, false, null);
+            }
         }
     }
 

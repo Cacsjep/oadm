@@ -23,6 +23,28 @@ public static class BuiltInEvents
     /// <summary>"Certificate expires soon": 30 days or less left (fixed, like the Devices grid).</summary>
     public const int ExpiresSoonDays = 30;
 
+    /// <summary>The group of the "Any device" events: one state for the server, on while any device has the condition.</summary>
+    public const string AnyGroup = "Any device";
+
+    public const string AnyUnreachable = "oadm.device.any-unreachable";
+    public const string AnyCredentialsRequired = "oadm.device.any-credentials-required";
+    public const string AnyCertificateChanged = "oadm.device.any-certificate-changed";
+    public const string AnyCertificateExpiresSoon = "oadm.device.any-certificate-expires-soon";
+    public const string AnyCertificateExpired = "oadm.device.any-certificate-expired";
+
+    /// <summary>The value of an "Any device" event: how many devices have the condition.</summary>
+    public const string CountField = "count";
+
+    /// <summary>Each device event and its "Any device" twin.</summary>
+    public static readonly IReadOnlyList<(string Device, string Any)> AnyOf =
+    [
+        (Unreachable, AnyUnreachable),
+        (CredentialsRequired, AnyCredentialsRequired),
+        (CertificateChanged, AnyCertificateChanged),
+        (CertificateExpiresSoon, AnyCertificateExpiresSoon),
+        (CertificateExpired, AnyCertificateExpired),
+    ];
+
     public static readonly IReadOnlyList<EventTypeInfo> Types =
     [
         new(Unreachable, "Device unreachable", Group, EventKind.Stateful) { Description = "The device does not answer." },
@@ -30,7 +52,18 @@ public static class BuiltInEvents
         new(CertificateChanged, "Certificate changed", Group, EventKind.Stateful) { Description = "The device presents another HTTPS certificate." },
         new(CertificateExpiresSoon, "Certificate expires soon", Group, EventKind.Stateful) { Description = "30 days or less left." },
         new(CertificateExpired, "Certificate expired", Group, EventKind.Stateful),
+        Any(AnyUnreachable, "Any device: unreachable", "At least one device does not answer."),
+        Any(AnyCredentialsRequired, "Any device: credentials required", "At least one device rejects the stored login."),
+        Any(AnyCertificateChanged, "Any device: certificate changed", "At least one device presents another HTTPS certificate."),
+        Any(AnyCertificateExpiresSoon, "Any device: certificate expires soon", "At least one device certificate has 30 days or less left."),
+        Any(AnyCertificateExpired, "Any device: certificate expired", "At least one device certificate expired."),
     ];
+
+    private static EventTypeInfo Any(string id, string name, string description) =>
+        new(id, name, AnyGroup, EventKind.Stateful, EventScope.Server, [new EventField(CountField, "Devices") { Kind = EventValueKind.Number, Filter = false }])
+        {
+            Description = description + "\n\nValues:\n• {" + CountField + "}",
+        };
 }
 
 /// <summary>An event type with where it comes from and whether that source is on.</summary>

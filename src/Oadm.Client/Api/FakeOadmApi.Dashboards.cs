@@ -158,7 +158,6 @@ public sealed partial class FakeOadmApi
             ["deviceScope"] = true,
             ["available"] = true,
             ["fields"] = new JsonArray(fields),
-            ["hasUnseenFields"] = false,
         };
 
         return new JsonObject

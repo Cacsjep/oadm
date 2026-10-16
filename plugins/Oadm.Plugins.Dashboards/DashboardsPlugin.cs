@@ -77,7 +77,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
 
     public string? RequiredPermission(string method) => method switch
     {
-        DashboardsMethods.List or DashboardsMethods.Catalog or DashboardsMethods.Watch or DashboardsMethods.Unwatch => PermissionKeys.Show,
+        DashboardsMethods.List or DashboardsMethods.Catalog or DashboardsMethods.Devices or DashboardsMethods.Watch or DashboardsMethods.Unwatch => PermissionKeys.Show,
         DashboardsMethods.Save or DashboardsMethods.Delete => DashboardsPluginInfo.ManageKey,
         _ => null,
     };
@@ -153,6 +153,8 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
                 return null;
             case DashboardsMethods.Catalog:
                 return Serialize(Catalog());
+            case DashboardsMethods.Devices:
+                return Serialize(new DevicesReply(Types().GetValueOrDefault(Read<DevicesRequest>(payloadJson).TypeId ?? string.Empty)?.Info.DeviceIds));
             case DashboardsMethods.Watch:
                 return Serialize(Watch(Read<WatchRequest>(payloadJson)));
             case DashboardsMethods.Unwatch:
@@ -455,17 +457,22 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
                 fields.Add(new CatalogField(DashboardsPluginInfo.ActiveField, DashboardsPluginInfo.ActiveLabel, EventValueKind.YesNo));
             }
 
-            var seen = _values.FieldsOf(info.Id);
-            foreach (var (name, recent) in seen)
+            // The declared values at once, typed by the declaration; values received refine the type of a text value. Values
+            // an event sends that it does not declare follow once seen.
+            var seen = _values.FieldsOf(info.Id).ToDictionary(f => f.Name, f => f.Recent, StringComparer.Ordinal);
+            foreach (var field in info.DataFields)
             {
-                var field = declared.GetValueOrDefault(name);
-                var label = string.IsNullOrWhiteSpace(field?.DisplayName) ? name : field.DisplayName;
-                fields.Add(new CatalogField(name, label, FieldValues.Suggest(field?.Kind ?? EventValueKind.Text, recent)));
+                var label = string.IsNullOrWhiteSpace(field.DisplayName) ? field.Name : field.DisplayName;
+                fields.Add(new CatalogField(field.Name, label, FieldValues.Suggest(field.Kind, seen.GetValueOrDefault(field.Name) ?? [])));
             }
 
-            var unseen = declared.Keys.Any(name => !seen.Any(s => s.Name == name));
+            foreach (var (name, recent) in seen.Where(f => !declared.ContainsKey(f.Key) && f.Key != DashboardsPluginInfo.ActiveField))
+            {
+                fields.Add(new CatalogField(name, name, FieldValues.Suggest(EventValueKind.Text, recent)));
+            }
+
             events.Add(new CatalogEvent(info.Id, info.DisplayName, info.Group, type.SourceId, type.SourceName, info.Kind == EventKind.Stateful,
-                info.Scope == EventScope.Device, type.Available, fields, unseen));
+                info.Scope == EventScope.Device, type.Available, fields) { HasDeviceList = info.DeviceIds is not null });
         }
 
         return new CatalogReply([.. events
@@ -485,7 +492,11 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
             throw new ArgumentException("The watch has no id.");
         }
 
-        var keys = (request.Keys ?? []).Where(k => k is not null && !string.IsNullOrWhiteSpace(k.TypeId)).Take(DashboardsPluginInfo.MaxWidgets * 20).ToHashSet();
+        var keys = (request.Keys ?? []).Where(k => k is not null && !string.IsNullOrWhiteSpace(k.TypeId)).ToHashSet();
+        if (keys.Count > DashboardsPluginInfo.MaxWatchedKeys)
+        {
+            throw new ArgumentException(DashboardTexts.TooManyOpen);
+        }
         lock (_gate)
         {
             if (!_watchers.ContainsKey(request.WatchId) && _watchers.Count >= 1_000)
@@ -626,9 +637,10 @@ public static class DashboardTexts
 
     public const string NoValue = "No value yet";
 
-    public const string NotANumber = "Not a number";
+    /// <summary>A page with more widgets in its open tabs than the server follows.</summary>
+    public const string TooManyOpen = "Too many dashboards are open. Close some tabs.";
 
-    public const string TriggerOnce = "Trigger the event once on the device.";
+    public const string NotANumber = "Not a number";
 
     public const string TriggersOff = "Dashboards show the values of device triggers. Turn on Device triggers on the Plugins page.";
 
@@ -640,9 +652,7 @@ public static class DashboardTexts
 
     public const string NoTabs = "Click a dashboard on the left to open it.";
 
-    public const string EmptyDashboard = "Drag an event or a camera from the left onto the grid, or click it to add it.";
-
-    public const string NoCameras = "No cameras yet. Add devices on the Devices page.";
+    public const string EmptyDashboard = "Drag an event from the left onto the grid, or click it. Add cameras adds live video.";
 
     public const string NoEvents = "No events with values yet.";
 
@@ -650,7 +660,7 @@ public static class DashboardTexts
 
     public const string NotAvailable = "This OADM client cannot show live video. Update the client.";
 
-    public const string ChooseWidget = "Click a widget to change it.";
+    public const string ChooseWidget = "Click a widget to change it. Drag over empty cells or Ctrl+click to select several.";
 
     public const string ChannelHint = "Choose the channel with the buttons on the picture.";
 
@@ -658,6 +668,9 @@ public static class DashboardTexts
     public const string OwnDevice = "Shown by this widget";
 
     public const string NoVideo = "No video";
+
+    /// <summary>The device picker of Add cameras: a camera the dashboard shows already.</summary>
+    public const string OnDashboard = "On this dashboard";
 
     public static string SourceOff(string source) => source + " is turned off";
 

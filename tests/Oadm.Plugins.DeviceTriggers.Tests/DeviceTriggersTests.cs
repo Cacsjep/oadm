@@ -304,6 +304,7 @@ public sealed class DeviceTriggersTests
             types[0].DataFields.Select(f => (f.Name, f.DisplayName, f.Kind)));
         Assert.Equal(("reason", EventValueKind.Text), (types[1].DataFields.Single().Name, types[1].DataFields.Single().Kind));
         Assert.All(types.SelectMany(t => t.DataFields), f => Assert.False(f.Filter)); // values only: the trigger narrows itself
+        Assert.All(types, t => Assert.Equal([a.Id], t.DeviceIds)); // the devices that can send it (Dashboards offers only these)
 
         var copy = (await rig.CallAsync<SaveReply>(DeviceTriggersMethods.Duplicate, new IdRequest(trigger.Id))).Trigger!;
         Assert.Equal(("Gate open (copy)", false), (copy.Name, copy.Enabled));

@@ -69,7 +69,8 @@ public interface ITileGridSource : INotifyPropertyChanged
 /// A grid of tiles that always fills its space (Live View's views, dashboards): <see cref="TileLayout.Size"/> x
 /// <see cref="TileLayout.Size"/> cells, a <see cref="TileFrame"/> per tile on its cells. While editing it draws the cell
 /// lines, each frame moves (drag inside), resizes (drag an edge or a corner) and removes its tile, and
-/// <see cref="ShowPreview"/> shows where a dragged item would land. Theme classes: <c>Panel.tile</c>, <c>Border.tileEdit</c>,
+/// <see cref="ShowPreview"/> shows where a dragged item would land, <see cref="ShowSelectionArea"/> the cells a selection
+/// rectangle covers. Theme classes: <c>Border.tileSelection</c>, <c>Panel.tile</c>, <c>Border.tileEdit</c>,
 /// <c>Border.tileHover</c>, <c>TextBlock.tileTitle</c>, <c>Border.dropPreview</c>.
 /// </summary>
 public sealed class TileGrid : Panel
@@ -78,6 +79,8 @@ public sealed class TileGrid : Panel
     private readonly Border _preview = new() { IsHitTestVisible = false, IsVisible = false };
     private readonly TextBlock _previewTitle = new() { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     private TileRect? _previewRect;
+    private readonly Border _area = new() { IsHitTestVisible = false, IsVisible = false };
+    private TileRect? _areaRect;
     private ITileGridSource? _source;
 
     /// <summary>An empty grid; set <see cref="Source"/>.</summary>
@@ -88,6 +91,8 @@ public sealed class TileGrid : Panel
         _preview.Child = _previewTitle;
         Children.Add(_lines);
         Children.Add(_preview);
+        _area.Classes.Add("tileSelection");
+        Children.Add(_area);
     }
 
     /// <summary>The tiles and rules shown.</summary>
@@ -141,6 +146,15 @@ public sealed class TileGrid : Panel
         InvalidateArrange();
     }
 
+    /// <summary>The cells a selection rectangle covers while the user drags over the grid (null hides it).</summary>
+    public void ShowSelectionArea(TileRect? rect)
+    {
+        _areaRect = rect;
+        _area.IsVisible = rect is not null;
+        _area.ZIndex = 2;
+        InvalidateArrange();
+    }
+
     /// <summary>The cell under <paramref name="point"/> (relative to the grid).</summary>
     public (int X, int Y) CellAt(Point point) =>
         (Math.Clamp((int)(point.X / CellWidth), 0, N - 1), Math.Clamp((int)(point.Y / CellHeight), 0, N - 1));
@@ -159,6 +173,7 @@ public sealed class TileGrid : Panel
     {
         _lines.Measure(availableSize);
         _preview.Measure(availableSize);
+        _area.Measure(availableSize);
         foreach (var child in Children)
         {
             if (child is TileFrame { Item: { } item })
@@ -179,6 +194,11 @@ public sealed class TileGrid : Panel
         if (_previewRect is { } p)
         {
             _preview.Arrange(Cells(p, w, h));
+        }
+
+        if (_areaRect is { } a)
+        {
+            _area.Arrange(Cells(a, w, h));
         }
 
         foreach (var child in Children)

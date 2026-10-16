@@ -25,26 +25,37 @@ see when it arrived.
 
 ## Create or change a dashboard
 
-<Image src={edit} alt="A dashboard in edit mode: a frame around each widget and the settings of the selected widget on the right" class="screen" />
+<Image src={edit} alt="A dashboard in edit mode: three widgets selected and the settings they share on the right" class="screen" />
 
 1. Click the + next to **Dashboards**, or the pen next to a dashboard. The bin next to it deletes the dashboard.
-2. Drag an event from **Events** onto the grid, or click it. **Events** lists the values OADM has seen; when an event
-   shows "Trigger the event once on the device.", make it happen once on the device and its values appear.
-3. On the right, choose the **Device**, the **Value** and the **Widget**:
+2. Drag an event from **Events** onto the grid, or click it. **Events** lists each event with its values and their type.
+3. On the right, choose the **Device** (only the devices of the trigger are offered), the **Value** and the **Widget**:
    - **On / Off**: an icon, a color and an optional text for each state.
    - **Text**: the value as the device sends it.
    - **Number**: decimal places, a unit, and thresholds that color the number from a value on (for example 25 orange,
      28 red).
-   **Type** reads a value as a number, as yes / no or as text when the automatic choice does not fit. Clear **Show name**
-   to give the value the whole widget.
-   The copy icon next to a widget's X (or **Copy for other devices** in its settings) makes the same widget for each device you choose, for example input 1 on 20 I/O modules:
+   **Type** reads a value as a number, as yes / no or as text when the automatic choice does not fit. Set **Show name** to
+   **No** to give the value the whole widget.
+   The copy icon next to a widget's X makes the same widget for each device you choose, for example input 1 on 20 I/O modules:
    each copy gets its device and its address in the name, in the next free place.
-4. Drag a camera from **Cameras** onto the grid for live video. Choose its channel with the buttons on the picture.
+4. **Add cameras** chooses one or several cameras for live video (up to 16 per dashboard); they share the free space.
+   Choose a camera's channel with the buttons on the picture.
 5. Drag a widget to move it, drag one of its edges or corners to resize it, and click its X to remove it. Click a widget
    to change its settings. Sizes of icons and text are a share of the widget, so they grow with it.
-6. Enter a name and click **Save**. **Cancel** throws your changes away.
+6. To change several widgets at once, drag over empty cells to select every widget the frame touches, Ctrl+click to add
+   or remove one, or press Ctrl+A for all. Drag one of them to move them together, or drag its edge or corner to resize them all; widgets side by side make room for each other. The settings show what they share:
+   change **Width** and **Height**, the icons, colors, texts, sizes or unit for all of them; a setting where they differ
+   shows **Mixed** until you change it. The icons at the top copy or remove them all.
+7. Enter a name and click **Save**. **Cancel** throws your changes away.
 
 A dashboard holds up to 50 widgets, of them up to 16 live videos.
+
+## Any device
+
+The group **Any device** has an event for each device status: **Any device: unreachable**, **credentials required**,
+**certificate changed**, **certificate expires soon** and **certificate expired**. Each is on
+while at least one device has that status and counts how many. They need no device: an On / Off widget shows whether
+anything needs attention, a Number widget how many devices. Event rules can use them too.
 
 ## Good to know
 

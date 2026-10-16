@@ -52,6 +52,7 @@ Administrators create and change rules. Operators see the rules and the event lo
 |---|---|
 | Device unreachable, Credentials required, Certificate changed | The device status OADM sees |
 | Certificate expires soon (30 days or less), Certificate expired | The HTTPS certificate of the device |
+| Any device: unreachable, credentials required, certificate changed, certificate expires soon, certificate expired | On while at least one device has the status; the value `{count}` says how many. No device |
 | Any event a device offers (inputs, virtual inputs, Object Analytics, Image Health Analytics, storage, ...) and its "connection lost" | [Device triggers](../device-triggers/) you create |
 
 Most events are on while something is true and off again when it ends. Then the rule is **on** while all conditions

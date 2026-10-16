@@ -183,8 +183,12 @@ internal static class Types
         new(new EventTypeInfo(ServerFlag, "Flag", "Acme", EventKind.Stateful, EventScope.Server), "acme", "Acme", true),
     ];
 
+    /// <summary>The devices of the trigger "Gate open" (the others take any device).</summary>
+    public static List<Guid> GateDevices { get; } = [];
+
     private static SubscribedEventType Trigger(string id, string name, EventKind kind, params EventField[] fields) =>
-        new(new EventTypeInfo(id, name, "Device triggers", kind, EventScope.Device, fields), DashboardsPluginInfo.DeviceTriggersId, "Device triggers", true);
+        new(new EventTypeInfo(id, name, "Device triggers", kind, EventScope.Device, fields) { DeviceIds = id == Gate ? GateDevices : null },
+            DashboardsPluginInfo.DeviceTriggersId, "Device triggers", true);
 }
 
 /// <summary>The server part with its settings, events, event feed and clock in memory.</summary>

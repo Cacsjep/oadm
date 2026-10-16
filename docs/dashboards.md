@@ -1,7 +1,23 @@
 # Dashboards
 
 Status: agreed with the maintainer on 2026-10-16 and built (`plugins/Oadm.Plugins.Dashboards`, its `README.md` has the
-decisions as built and the three small deviations). Defaults marked **(default)** were not asked and may change.
+decisions as built). Defaults marked **(default)** were not asked and may change.
+
+## Built differently (2026-10-16)
+
+The sections below are the agreed design; these points were changed while building, with the maintainer:
+
+- **Values at once**: an event offers its declared values right away (Device triggers declares every value with the
+  type from the device's event list); no "Trigger the event once on the device.".
+- **Devices of the event**: the device pickers offer only the devices of the event (`EventTypeInfo.DeviceIds`, asked
+  when a picker opens).
+- **Add cameras** instead of the Cameras tree: the device picker, one or several cameras, at most 16 live videos.
+- **Added**: Copy for other devices (the copy icon of a widget's edit frame), several widgets selected (a rectangle over
+  empty cells, Ctrl+click, Ctrl+A) and moved, resized and changed together (the group panel, "Mixed" where they differ),
+  Show name (Yes / No), transparent value widgets, the **Any device** events of OADM (on while any device has the status,
+  with how many).
+- **Not built**: Open Plugins for administrators, the Channel setting in the panel (the picture's channel buttons
+  instead), a searchable icon picker (a select with the icons).
 
 ## Purpose
 
@@ -16,7 +32,7 @@ widgets, each showing one value of one device.
 | Name | Core plugin **Dashboards** (`oadm.dashboards`), rail page **Dashboards**, group Monitoring, **off by default**, switchable. **New dashboard** like New view in Live View. |
 | Data source | **Subscribe** to OADM's events: the missing half of the event messaging (plugins can publish today, only the event rules can listen). The host only passes events on and stores nothing; the Dashboards plugin keeps the latest value per event, device and field itself. Device triggers first, OADM's own events too. The plugin never talks to devices. |
 | One widget | Shows **one field of one event on one device**. A trigger on 40 cameras gives up to 40 widgets if the user wants them all. |
-| Field type | **A received event is required**: the widget panel offers a field only after OADM received at least one event with it (from any device of the event); until then it says "Trigger the event once on the device." and updates live when it arrives. The type comes from the device's declaration (yes / no, number, text) and, for fields declared as text, from the received values (all numbers, or all true / false, suggest the better widget). A **Type** select (Automatic, Yes / no, Number, Text) always lets the user force it. A saved widget keeps its type, also after a restart. |
+| Field type | **Declared values at once** (changed on 2026-10-16, first "a received event is required"): the widget panel offers the event's declared values right away; values an event sends without declaring them appear once received. The type comes from the device's declaration (yes / no, number, text) and, for fields declared as text, from the received values (all numbers, or all true / false, suggest the better widget). A **Type** select (Automatic, Yes / no, Number, Text) always lets the user force it. A saved widget keeps its type, also after a restart. |
 | Sharing | **Like Live View**: dashboards live on the server, every user sees the same ones, every change is pushed to every open page. Rights "show" (Operator and Viewer) and "Change dashboards" (`manage`, Operator yes, Viewer no). |
 | After a restart | **Memory only.** On / off events come back by themselves (Device triggers reports every state after a start); other values show "No value yet" until their next event. |
 | Old values | The widget keeps the last value, **dimmed**, with the reason below it ("Connection lost", "Unreachable"); hover shows when it arrived ("41.5 at 14:02:17"). |
@@ -55,10 +71,8 @@ receiver, the event rules engine. Dashboards needs the **subscribe** half; the s
 
 ## Field types
 
-- A field is offered only after the plugin has seen it in a received event (any device of the event). The
-  plugin also keeps, per event type and field, the last 20 values seen **(default)** for the suggestion below. Memory only:
-  after a server restart a one-shot event must fire again before a **new** widget can use its fields; existing widgets keep
-  their saved type and show "No value yet".
+- The declared values are offered at once; the plugin keeps, per event type and value, the last 20 values received
+  **(default)** for the suggestion below. Values an event sends without declaring them are offered once received.
 - `EventField.Kind` (`EventValueKind`: Text, Number, YesNo; default Text; built). Device triggers fills it from the
   device's event list: `plugins/Shared/DeviceEvents` reads the `Type` of every `SimpleItemInstance`; its values are fields
   with `Filter` false (no filter box in the rule dialog):
@@ -95,9 +109,8 @@ Layout like Live View (one left card, one right card):
 - Dragging an event onto the grid (or clicking it: first free place) opens the widget panel on the right of the grid:
   - **Device**: a button naming the device, opening the shared device picker for one device
     (`DevicePickerWindow.ShowOneAsync`), offering only the devices the event comes from (for a Device trigger, its
-    devices).
-  - **Field**: the event's fields seen in a received event (Active first for on / off events) with their kind. Before
-    the first event: "Trigger the event once on the device." in the panel; the fields appear live when it arrives.
+    devices: `EventTypeInfo.DeviceIds`).
+  - **Field**: the event's values (Active first for on / off events) with their kind, offered at once.
   - **Type**: Automatic (the declared or suggested kind, named: "Automatic (Number)"), Yes / no, Number, Text.
   - **Widget**: only the widgets that fit the type; the first one chosen.
   - **Name**: shown at the top of the widget; default "<field> · <device address>".

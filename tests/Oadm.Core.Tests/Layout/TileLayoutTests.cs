@@ -31,6 +31,8 @@ public sealed class TileLayoutTests
         Assert.True(small.Fits(new TileRect(9, 9, 1, 1)));
         Assert.False(Grid.Fits(new TileRect(19, 19, 1, 1)));
         Assert.False(Grid.Fits(new TileRect(15, 0, 6, 6)));
+        Assert.False(Grid.Fits(new TileRect(19, 0, int.MaxValue, 2))); // a crafted size never wraps around
+        Assert.False(Grid.Fits(new TileRect(int.MaxValue, 0, 2, 2)));
     }
 
     [Fact]

@@ -79,6 +79,12 @@ public sealed record EventTypeInfo(
     /// <summary>One short sentence for the rule dialog (optional).</summary>
     public string? Description { get; init; }
 
+    /// <summary>
+    /// The devices that can send this event now (a device trigger's devices); null = any managed device. A source that sets
+    /// it raises <c>IDynamicEventSource.EventTypesChanged</c> when the devices change. Dashboards offers only these.
+    /// </summary>
+    public IReadOnlyList<Guid>? DeviceIds { get; init; }
+
     /// <summary><see cref="Fields"/>, never null.</summary>
     public IReadOnlyList<EventField> DataFields => Fields ?? [];
 }

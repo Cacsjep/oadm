@@ -57,14 +57,17 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
 
     public IReadOnlyList<ITaskPlugin> TaskPlugins => [];
 
-    /// <summary>Two types per trigger: the event and "&lt;Trigger&gt;: connection lost".</summary>
+    /// <summary>
+    /// Two types per trigger: the event and "&lt;Trigger&gt;: connection lost", each with the devices the trigger covers now
+    /// (chosen, tagged, all; <see cref="EventTypeInfo.DeviceIds"/>).
+    /// </summary>
     public IReadOnlyList<EventTypeInfo> EventTypes
     {
         get
         {
             lock (_sync)
             {
-                return [.. _triggers.SelectMany(TypesOf)];
+                return [.. _triggers.SelectMany(t => TypesOf(t, _resolved.TryGetValue(t.Id, out var resolved) ? resolved.Value.DeviceIds : t.DeviceIds))];
             }
         }
     }
@@ -229,7 +232,9 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
     }
 
     /// <summary>The event types of a trigger. Disabled triggers keep theirs, so their rules stay valid.</summary>
-    internal static IEnumerable<EventTypeInfo> TypesOf(TriggerDefinition trigger)
+    internal static IEnumerable<EventTypeInfo> TypesOf(TriggerDefinition trigger) => TypesOf(trigger, trigger.DeviceIds);
+
+    private static IEnumerable<EventTypeInfo> TypesOf(TriggerDefinition trigger, IReadOnlyList<Guid> devices)
     {
         var what = trigger.FilterText.Length == 0 ? trigger.EventName : $"{trigger.EventName} · {trigger.FilterText}";
         // The values (placeholders for the actions) one per line below the text, as the info icon of the rule dialog shows it.
@@ -245,6 +250,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
                 : new EventField(v, v) { Filter = false })])
         {
             Description = what + "." + values,
+            DeviceIds = devices,
         };
         yield return new EventTypeInfo(
             DeviceTriggersPluginInfo.LostTypeId(trigger.Id),
@@ -254,6 +260,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             Fields: [new EventField("reason", "Reason") { Filter = false }])
         {
             Description = $"No events of this trigger from the device for {DeviceTriggersPluginInfo.LostDelay.TotalSeconds:0} s.\n\nValues:\n• {{reason}}",
+            DeviceIds = devices,
         };
     }
 
@@ -459,6 +466,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         var next = new Dictionary<Guid, Resolution>();
         var notWatched = new Dictionary<Guid, int>();
         var changed = false;
+        var devicesChanged = false; // a trigger's devices (tag or All devices) changed: its types carry them
         lock (_sync)
         {
             // All turned-on triggers together watch at most MaxWatchedDevices devices: the chosen devices always (saving
@@ -502,6 +510,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
                 }
 
                 var previous = _resolved.GetValueOrDefault(trigger.Id);
+                devicesChanged |= previous is not null && !previous.Value.DeviceIds.SequenceEqual(resolved.DeviceIds);
                 changed |= previous is null || !ReferenceEquals(previous.Source, trigger) || !previous.Value.DeviceIds.SequenceEqual(resolved.DeviceIds);
                 next[trigger.Id] = previous is not null && ReferenceEquals(previous.Source, trigger) && previous.Value.DeviceIds.SequenceEqual(resolved.DeviceIds)
                     ? previous
@@ -516,6 +525,11 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         if (changed)
         {
             runtime.Apply([.. next.Values.Select(r => r.Value)]);
+        }
+
+        if (devicesChanged)
+        {
+            EventTypesChanged?.Invoke(this, EventArgs.Empty); // the types carry the devices: subscribers (Dashboards) follow
         }
     }
 

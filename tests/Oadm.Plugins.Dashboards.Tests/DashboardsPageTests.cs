@@ -3,6 +3,8 @@ using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
+using Avalonia.Input.Raw;
 using Avalonia.VisualTree;
 
 using Oadm.Plugins.Dashboards.Client;
@@ -138,9 +140,12 @@ public sealed class DashboardsPageTests
             await editor.ChooseDeviceCommand.ExecuteAsync(null);
             Assert.Equal(io.Id, widget.Widget.DeviceId);
             Assert.Equal("Temperature · 10.0.0.120", widget.Widget.Name); // the default name follows the device
-            editor.ShowName = false;
+            editor.ShowNameChoice = editor.YesNoChoices.Single(c => c.Label == "No"); // the select
+            Assert.False(widget.Widget.ShowName);
+            editor.ShowNameChoice = null; // a select that lost its list changes nothing
             Assert.False(widget.Widget.ShowName);
             editor.ShowName = true;
+            Assert.Equal("Yes", editor.ShowNameChoice!.Label);
             editor.Unit = "°C";
             editor.AddThresholdCommand.Execute(null);
             editor.Thresholds[0].ValueText = "30";
@@ -156,8 +161,9 @@ public sealed class DashboardsPageTests
             host.Tick();
             Assert.True(await Headless.UntilAsync(() => widget.Display.Color == "Amber"));
 
-            // A camera adds a live video.
-            vm.ClickCamera(camera);
+            // Add cameras adds a live video.
+            vm.PickDevices = (_, _, _) => Task.FromResult<IReadOnlyList<Guid>?>([camera.Id]);
+            await vm.AddCamerasCommand.ExecuteAsync(null);
             var video = tab.Widgets[1];
             Assert.Equal((WidgetKind.Video, (Guid?)camera.Id), (video.Widget.Kind, video.Widget.DeviceId));
             Assert.Equal(camera.Id, ((FakeVideo)video.Video!).Shown);
@@ -186,7 +192,7 @@ public sealed class DashboardsPageTests
             Assert.True(await Headless.UntilAsync(() => vm.IsLoaded && vm.HasEvents));
             vm.PickDevice = (_, _) => Task.FromResult<Guid?>(io.Id);
             Func<IDeviceInfo, string?>? reasons = null;
-            vm.PickDevices = (_, unavailable) =>
+            vm.PickDevices = (_, _, unavailable) =>
             {
                 reasons = unavailable;
                 return Task.FromResult<IReadOnlyList<Guid>?>([.. ports.Take(3).Select(d => d.Id), io.Id]);
@@ -213,14 +219,15 @@ public sealed class DashboardsPageTests
             Assert.Null(tab.Error);
 
             // More than fit: as many as fit, and why not the rest (20 x 20 holds 25 widgets of 4 x 4).
-            vm.PickDevices = (_, _) => Task.FromResult<IReadOnlyList<Guid>?>([.. ports.Select(d => d.Id)]);
+            vm.PickDevices = (_, _, _) => Task.FromResult<IReadOnlyList<Guid>?>([.. ports.Select(d => d.Id)]);
             await editor.CopyForDevicesCommand.ExecuteAsync(null);
             Assert.Equal(25, tab.Widgets.Count);
             Assert.Equal(DashboardRules.CopiesAdded(21, 30, DashboardRules.NoRoom), tab.Error);
 
             // A camera's live video goes to cameras only.
             vm.NewDashboardCommand.Execute(null);
-            vm.ClickCamera(camera);
+            vm.PickDevices = (_, _, _) => Task.FromResult<IReadOnlyList<Guid>?>([camera.Id]);
+            await vm.AddCamerasCommand.ExecuteAsync(null);
             Assert.Equal(DashboardTexts.NoVideo, (await CopyReason(vm, vm.ActiveTab!.Widgets[^1]))(io));
         }
     });
@@ -228,14 +235,234 @@ public sealed class DashboardsPageTests
     private static async Task<Func<IDeviceInfo, string?>> CopyReason(DashboardsPageViewModel vm, WidgetViewModel widget)
     {
         Func<IDeviceInfo, string?>? reasons = null;
-        vm.PickDevices = (_, unavailable) =>
+        vm.PickDevices = (_, _, unavailable) =>
         {
             reasons = unavailable;
             return Task.FromResult<IReadOnlyList<Guid>?>(null);
         };
-        await vm.PickCopyDevicesAsync(widget);
+        await vm.PickCopyDevicesAsync([widget]);
         return reasons!;
     }
+
+    [Fact]
+    public Task Several_widgets_are_selected_moved_sized_and_changed_together() => OnUi(async () =>
+    {
+        var (host, ctx, vm, camera, io) = Page();
+        var ports = Enumerable.Range(1, 3).Select(i => (IDeviceInfo)new TestDevice("10.0.1." + i, "A9210") { Category = DeviceCategory.IoModule }).ToList();
+        ctx.Items.AddRange(ports);
+        ctx.RaiseDevicesChanged();
+        using (host)
+        using (vm)
+        {
+            Assert.True(await Headless.UntilAsync(() => vm.IsLoaded && vm.HasEvents));
+            vm.NewDashboardCommand.Execute(null);
+            var tab = vm.ActiveTab!;
+            var gate = vm.Events.First(e => e.Event?.TypeId == Types.Gate).Event!;
+            var temperature = vm.Events.First(e => e.Event?.TypeId == Types.Temperature).Event!;
+            Assert.True(tab.DropEvent(gate, 0, 0));
+            Assert.True(tab.DropEvent(gate, 4, 0));
+            Assert.True(tab.DropEvent(temperature, 12, 0));
+            var (a, b, c) = (tab.Widgets[0], tab.Widgets[1], tab.Widgets[2]);
+            a.Update(a.Widget with { DeviceId = ports[0].Id, OnText = "Open" });
+            b.Update(b.Widget with { DeviceId = ports[1].Id, OnText = "Auf" });
+            c.Update(c.Widget with { DeviceId = io.Id });
+
+            // Ctrl+click: two selected, the group panel shows what they share.
+            tab.Select(a);
+            tab.Toggle(b);
+            Assert.Equal([a, b], tab.Selection);
+            Assert.Null(tab.Editor);
+            var group = tab.GroupEditor!;
+            Assert.Equal("2 widgets selected", group.Title);
+            Assert.True(group.ShowOnOff); // both On / Off
+            Assert.Equal(string.Empty, group.OnText); // they differ: "Mixed"
+            Assert.Equal(GroupEditorViewModel.MixedText, group.OnTextWatermark);
+            Assert.Equal("status.ok", group.OnIcon!.Key); // the same: shown
+            Assert.Equal("Yes", group.ShowNameChoice!.Label);
+            Assert.True(a.IsSelected && b.IsSelected && !c.IsSelected);
+
+            // A change goes to both, nothing else of them changes.
+            group.OnColor = WidgetEditorViewModel.ColorOptions.First(o => o.Name == "Red");
+            group.OnText = "On";
+            Assert.All([a, b], w => Assert.Equal(("Red", "On"), (w.Widget.OnColor, w.Widget.OnText)));
+            Assert.NotEqual(a.Widget.DeviceId, b.Widget.DeviceId);
+
+            // Moving one selected widget moves the group; it stops at the edge and at other widgets.
+            Assert.True(((Oadm.Sdk.Client.Controls.ITileGridSource)tab).TryMove(a, a.Rect with { Y = 6 }));
+            Assert.Equal((6, 6), (a.Rect.Y, b.Rect.Y));
+            Assert.Equal(0, c.Rect.Y); // not selected: stays
+            Assert.False(tab.TryMoveSelection(-5, 0)); // at the left edge already: nothing moves
+            Assert.True(tab.TryMoveSelection(2, 0));
+            Assert.Equal((2, 6), (a.Rect.X, b.Rect.X));
+            Assert.False(tab.TryMoveSelection(12, -6)); // onto the temperature widget
+
+            // Width / Height: every widget that has room.
+            group.WidthText = "3";
+            Assert.All([a, b], w => Assert.Equal(3, w.Rect.Width));
+            group.HeightText = "25";
+            Assert.NotNull(group.GetErrors(nameof(GroupEditorViewModel.HeightText)).Cast<object>().FirstOrDefault()); // 2 to 20
+            Assert.All([a, b], w => Assert.Equal(4, w.Rect.Height));
+
+            // The rectangle selects every widget it touches; Ctrl+A all; a click on empty cells none.
+            tab.SelectArea(new Oadm.Sdk.Layout.TileRect(12, 0, 2, 2), add: false);
+            Assert.Equal([c], tab.Selection);
+            Assert.NotNull(tab.Editor); // one: its own panel
+            tab.SelectArea(new Oadm.Sdk.Layout.TileRect(2, 6, 1, 1), add: true);
+            Assert.Equal(2, tab.Selection.Count);
+            Assert.False(tab.GroupEditor!.ShowOnOff); // On / Off and Number: no On / Off settings
+            Assert.True(tab.GroupEditor.ShowValueSettings);
+            tab.SelectAll();
+            Assert.Equal(3, tab.Selection.Count);
+            tab.Select(null);
+            Assert.Empty(tab.Selection);
+            Assert.Null(tab.Panel);
+
+            // Copy the two gate widgets for one more I/O module: a copy of each.
+            tab.Select(a);
+            tab.Toggle(b);
+            vm.PickDevices = (_, _, _) => Task.FromResult<IReadOnlyList<Guid>?>([ports[2].Id]);
+            await tab.GroupEditor!.CopyForDevicesCommand.ExecuteAsync(null);
+            Assert.Equal(5, tab.Widgets.Count);
+            Assert.All(tab.Widgets.Skip(3), w => Assert.Equal(ports[2].Id, w.Widget.DeviceId));
+
+            // Remove the group.
+            tab.Select(a);
+            tab.Toggle(b);
+            tab.GroupEditor!.RemoveAllCommand.Execute(null);
+            Assert.Equal(3, tab.Widgets.Count);
+            Assert.Empty(tab.Selection);
+
+            // Outside editing nothing is selected.
+            await vm.SaveDashboardCommand.ExecuteAsync(null);
+            tab.Select(tab.Widgets[0]);
+            Assert.Empty(tab.Selection);
+        }
+    });
+
+    [Fact]
+    public Task Dragging_an_edge_resizes_every_selected_widget() => OnUi(async () =>
+    {
+        var (host, _, vm, _, _) = Page();
+        using (host)
+        using (vm)
+        {
+            Assert.True(await Headless.UntilAsync(() => vm.IsLoaded && vm.HasEvents));
+            vm.NewDashboardCommand.Execute(null);
+            var tab = vm.ActiveTab!;
+            var gate = vm.Events.First(e => e.Event?.TypeId == Types.Gate).Event!;
+            Assert.True(tab.DropEvent(gate, 0, 0)); // a row of three 4 x 4: 0, 4, 8
+            Assert.True(tab.DropEvent(gate, 4, 0));
+            Assert.True(tab.DropEvent(gate, 8, 0));
+            Assert.True(tab.DropEvent(gate, 0, 10)); // not selected, below
+            var (a, b, c) = (tab.Widgets[0], tab.Widgets[1], tab.Widgets[2]);
+            tab.Select(a);
+            tab.Toggle(b);
+            tab.Toggle(c);
+            var grid = (Oadm.Sdk.Client.Controls.ITileGridSource)tab;
+            static (int, int, int, int) R(WidgetViewModel w) => (w.Rect.X, w.Rect.Y, w.Rect.Width, w.Rect.Height);
+
+            // The right edge of the middle one, 2 cells: all grow, the ones to the right make room.
+            Assert.True(grid.TryMove(b, b.Rect with { Width = 6 }));
+            Assert.Equal([(0, 0, 6, 4), (6, 0, 6, 4), (12, 0, 6, 4)], new[] { a, b, c }.Select(R));
+
+            // The bottom edge: all get taller (side by side, nothing to push).
+            Assert.True(grid.TryMove(a, a.Rect with { Height = 6 }));
+            Assert.All([a, b, c], w => Assert.Equal(6, w.Rect.Height));
+
+            // Too tall: the unselected widget below is in the way, nothing changes.
+            Assert.False(grid.TryMove(a, a.Rect with { Height = 12 }));
+            Assert.All([a, b, c], w => Assert.Equal(6, w.Rect.Height));
+
+            // Past the grid's right edge: nothing changes.
+            Assert.False(grid.TryMove(c, c.Rect with { Width = 8 }));
+
+            // Smaller again with the left edge of the last one: anchored at the right, all shrink.
+            Assert.True(grid.TryMove(c, c.Rect with { X = c.Rect.X + 2, Width = c.Rect.Width - 2 }));
+            Assert.Equal([(6, 0, 4, 6), (10, 0, 4, 6), (14, 0, 4, 6)], new[] { a, b, c }.Select(R));
+
+            // Not below 2 x 2.
+            Assert.False(tab.TryResizeSelection(0, -3, 0, 0));
+        }
+    });
+
+    [Fact]
+    public Task Add_cameras_adds_live_videos_up_to_16() => OnUi(async () =>
+    {
+        var (host, ctx, vm, camera, io) = Page();
+        var cameras = Enumerable.Range(1, 20).Select(i => (IDeviceInfo)new TestDevice("10.0.2." + i, "P3265-V")).ToList();
+        ctx.Items.AddRange(cameras);
+        ctx.RaiseDevicesChanged();
+        using (host)
+        using (vm)
+        {
+            Assert.True(await Headless.UntilAsync(() => vm.IsLoaded));
+            Assert.False(vm.AddCamerasCommand.CanExecute(null)); // only while editing
+            vm.NewDashboardCommand.Execute(null);
+            Assert.True(vm.AddCamerasCommand.CanExecute(null));
+
+            IReadOnlyList<IDeviceInfo>? offered = null;
+            Func<IDeviceInfo, string?>? reasons = null;
+            string? heading = null;
+            vm.PickDevices = (title, devices, unavailable) =>
+            {
+                (heading, offered, reasons) = (title, devices, unavailable);
+                return Task.FromResult<IReadOnlyList<Guid>?>([camera.Id]);
+            };
+            await vm.AddCamerasCommand.ExecuteAsync(null);
+            Assert.Equal("Add cameras", heading);
+            Assert.DoesNotContain(offered!, d => d.Id == io.Id); // cameras only
+            Assert.Single(vm.ActiveTab!.Widgets);
+
+            vm.PickDevices = (_, _, unavailable) =>
+            {
+                reasons = unavailable;
+                return Task.FromResult<IReadOnlyList<Guid>?>([.. cameras.Select(d => d.Id)]);
+            };
+            await vm.AddCamerasCommand.ExecuteAsync(null);
+            Assert.Equal(DashboardTexts.OnDashboard, reasons!(camera)); // shown already
+            Assert.Equal(16, vm.ActiveTab.Widgets.Count(w => w.Widget.Kind == WidgetKind.Video));
+            Assert.Equal(DashboardRules.CamerasAdded(15, 20, DashboardRules.TooManyVideos), vm.ActiveTab.Error);
+            Assert.Null(DashboardRules.WidgetsProblem(vm.ActiveTab.WidgetList()));
+        }
+    });
+
+    [Fact]
+    public Task The_device_pickers_offer_only_the_devices_of_the_event() => OnUi(async () =>
+    {
+        var (host, ctx, vm, camera, io) = Page();
+        var other = new TestDevice("10.0.0.12", "P12-MkIII");
+        ctx.Items.Add(other);
+        Types.GateDevices.Clear();
+        Types.GateDevices.AddRange([io.Id, camera.Id]);
+        host.Feed.ChangeTypes(types =>
+        {
+            types.Clear();
+            types.AddRange(Types.All());
+        });
+        using (host)
+        using (vm)
+        {
+            Assert.True(await Headless.UntilAsync(() => vm.IsLoaded && vm.HasEvents));
+            vm.ApplyCatalog(host.Plugin.Catalog());
+            IReadOnlyList<IDeviceInfo>? offered = null;
+            vm.PickDevice = (devices, _) =>
+            {
+                offered = devices;
+                return Task.FromResult<Guid?>(io.Id);
+            };
+            vm.NewDashboardCommand.Execute(null);
+            vm.ClickEvent(vm.Events.First(e => e.Event?.TypeId == Types.Gate).Event!);
+            await vm.ActiveTab!.Editor!.ChooseDeviceCommand.ExecuteAsync(null);
+            Assert.Equal(new HashSet<Guid> { io.Id, camera.Id }, offered!.Select(d => d.Id).ToHashSet()); // the trigger's devices only
+
+            // An event of any device (no list) offers every device.
+            vm.ClickEvent(vm.Events.First(e => e.Event?.TypeId == Types.Plate).Event!);
+            await vm.ActiveTab.Editor!.ChooseDeviceCommand.ExecuteAsync(null);
+            Assert.Contains(offered!, d => d.Id == other.Id);
+        }
+
+        Types.GateDevices.Clear();
+    });
 
     [Fact]
     public Task A_widget_of_a_device_event_needs_a_device_and_moves_stay_inside() => OnUi(async () =>
@@ -437,11 +664,51 @@ public sealed class DashboardsPageTests
 
                 // The gate widget copied for three more devices.
                 var others = devices.Where(d => !d.HasVideo && d.Id != gate.Id).Take(3).Select(d => d.Id).ToList();
-                page.PickDevices = (_, _) => Task.FromResult<IReadOnlyList<Guid>?>(others);
+                page.PickDevices = (_, _, _) => Task.FromResult<IReadOnlyList<Guid>?>(others);
                 await page.ActiveTab.Editor!.CopyForDevicesCommand.ExecuteAsync(null);
                 Headless.Pump();
                 Assert.Equal(6 + others.Count, page.ActiveTab.Widgets.Count);
                 Headless.Capture(window, "plugin-dashboards-copies.png");
+
+                // Real clicks: a click selects one widget, Ctrl+click adds another.
+                Point CenterOf(WidgetViewModel w)
+                {
+                    var f = view.GetVisualDescendants().OfType<TileFrame>().First(t => t.Item == w);
+                    return f.TranslatePoint(new Point(f.Bounds.Width / 2, f.Bounds.Height / 2), window)!.Value;
+                }
+
+                page.ActiveTab.Select(null);
+                window.MouseDown(CenterOf(page.ActiveTab.Widgets[0]), MouseButton.Left);
+                window.MouseUp(CenterOf(page.ActiveTab.Widgets[0]), MouseButton.Left);
+                Headless.Pump();
+                Assert.Equal([page.ActiveTab.Widgets[0]], page.ActiveTab.Selection);
+                window.MouseDown(CenterOf(page.ActiveTab.Widgets[3]), MouseButton.Left, RawInputModifiers.Control);
+                window.MouseUp(CenterOf(page.ActiveTab.Widgets[3]), MouseButton.Left, RawInputModifiers.Control);
+                Headless.Pump();
+                Assert.Equal([page.ActiveTab.Widgets[0], page.ActiveTab.Widgets[3]], page.ActiveTab.Selection);
+                window.MouseDown(CenterOf(page.ActiveTab.Widgets[3]), MouseButton.Left, RawInputModifiers.Control);
+                window.MouseUp(CenterOf(page.ActiveTab.Widgets[3]), MouseButton.Left, RawInputModifiers.Control);
+                Headless.Pump();
+                Assert.Equal([page.ActiveTab.Widgets[0]], page.ActiveTab.Selection); // Ctrl+click again: out
+
+                // Several selected: the group panel.
+                page.ActiveTab.Select(page.ActiveTab.Widgets[1]);
+                foreach (var copy in page.ActiveTab.Widgets.Skip(6))
+                {
+                    page.ActiveTab.Toggle(copy);
+                }
+
+                Headless.Pump();
+                Assert.NotNull(page.ActiveTab.GroupEditor);
+                Assert.IsType<GroupEditorView>(view.GetVisualDescendants().OfType<GroupEditorView>().Single());
+                Headless.Capture(window, "plugin-dashboards-group.png");
+
+                // The selection rectangle while dragging over empty cells.
+                view.ActiveGrid!.ShowSelectionArea(new Oadm.Sdk.Layout.TileRect(0, 10, 12, 5));
+                Headless.Pump();
+                Headless.Capture(window, "plugin-dashboards-area.png");
+                view.ActiveGrid.ShowSelectionArea(null);
+                page.ActiveTab.Select(page.ActiveTab.Widgets[1]);
 
                 // Every widget with a device has the copy icon left of its X.
                 var frame = view.GetVisualDescendants().OfType<TileFrame>().First(f => f.Item == page.ActiveTab.Widgets[1]);
@@ -453,7 +720,7 @@ public sealed class DashboardsPageTests
                 var grid = view.ActiveGrid!;
                 var free = new Point(grid.Bounds.Width * 0.3, grid.Bounds.Height * 0.85);
                 var plate = page.Events.First(e => e.Event?.TypeId == Types.Plate).Event!;
-                var preview = DashboardsPageView.PreviewAt(grid, page.ActiveTab, false, free);
+                var preview = DashboardsPageView.PreviewAt(grid, page.ActiveTab, free);
                 Assert.NotNull(preview);
                 grid.ShowPreview(preview, plate.Name);
                 Headless.Pump();

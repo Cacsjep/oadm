@@ -4,18 +4,23 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
 version and date, and the release workflow copies it into the GitHub release.
 
-## [Unreleased]
+## [3.3.0] - 2026-10-16
 
 ### Added
 
 - **Dashboards** (Monitoring, off by default): live values of your device triggers and live video on saved dashboards.
   Drag an event onto the grid and choose the device and the value: On / Off widgets with an icon per state, Text, and
   Number with a unit and thresholds that color it. Values that may be old are dimmed with the reason. Shared by every
-  user, like Live View.
+  user, like Live View. Copy a widget for other devices in one step, select several widgets to move them and change
+  what they share, and add up to 16 cameras for live video.
+- **Any device events**: Any device: unreachable, credentials required, certificate changed, certificate
+  expires soon and certificate expired are on while at least one device has the status, with how many.
+  For event rules and dashboards.
 
 ### Changed
 
 - **Event rules**: the values of a device trigger are listed as placeholders of the rule's actions.
+- **Live View**: in edit mode every camera has a thin grey frame and its remove button is red.
 
 ## [3.2.0] - 2026-10-16
 

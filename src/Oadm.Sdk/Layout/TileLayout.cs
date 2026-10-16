@@ -64,7 +64,7 @@ public sealed class TileLayout
     /// <summary>Inside the grid and at least the smallest size.</summary>
     public bool Fits(TileRect tile) =>
         tile.X >= 0 && tile.Y >= 0 && tile.Width >= MinTileSize && tile.Height >= MinTileSize
-        && tile.X + tile.Width <= Size && tile.Y + tile.Height <= Size;
+        && tile.X <= Size && tile.Y <= Size && tile.Width <= Size - tile.X && tile.Height <= Size - tile.Y; // no overflow for huge values
 
     /// <summary>The index of the first tile that overlaps an earlier one, or -1.</summary>
     public static int FirstOverlap(IReadOnlyList<TileRect> tiles)

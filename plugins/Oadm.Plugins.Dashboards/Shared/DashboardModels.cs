@@ -41,6 +41,9 @@ public static class DashboardsPluginInfo
     /// <summary>Latest values kept in memory (event type and device); the least recently updated go first.</summary>
     public const int MaxKeys = 100_000;
 
+    /// <summary>Values one page may watch: the widgets of 100 open dashboards of 50.</summary>
+    public const int MaxWatchedKeys = 5_000;
+
     /// <summary>Values kept per event field for the type suggestion.</summary>
     public const int RecentValues = 20;
 
@@ -81,6 +84,9 @@ public static class DashboardsMethods
 
     /// <summary>-> <see cref="CatalogReply"/>: the events with their fields seen so far.</summary>
     public const string Catalog = "catalog";
+
+    /// <summary><see cref="DevicesRequest"/> -> <see cref="DevicesReply"/>: the devices of an event (the device pickers).</summary>
+    public const string Devices = "devices";
 
     /// <summary><see cref="WatchRequest"/> -> <see cref="ValuesReply"/>: the values of the open tabs now, then pushed on change.</summary>
     public const string Watch = "watch";
@@ -209,10 +215,10 @@ public sealed record SaveDashboardRequest(string? Id, string Name, long Version,
 
 public sealed record DeleteDashboardRequest(string Id);
 
-/// <summary>A field of an event: its kind is the declared one, or for text the one the received values suggest.</summary>
+/// <summary>A value of an event: its kind is the declared one, or for text the one the received values suggest.</summary>
 public sealed record CatalogField(string Name, string Label, EventValueKind Kind);
 
-/// <summary>An event type with the fields seen in received events (and Active for an on / off event).</summary>
+/// <summary>An event type with its values: Active for an on / off event, the declared ones, then any others received.</summary>
 public sealed record CatalogEvent(
     string TypeId,
     string Name,
@@ -222,8 +228,20 @@ public sealed record CatalogEvent(
     bool Stateful,
     bool DeviceScope,
     bool Available,
-    IReadOnlyList<CatalogField> Fields,
-    bool HasUnseenFields);
+    IReadOnlyList<CatalogField> Fields)
+{
+    /// <summary>
+    /// Only some devices send the event (a device trigger's devices): the picker asks for them (<c>devices</c>) when it opens,
+    /// so the catalog stays small also for a trigger on 10,000 devices. False: any device.
+    /// </summary>
+    public bool HasDeviceList { get; init; }
+}
+
+/// <summary>Method "devices": the devices of an event type.</summary>
+public sealed record DevicesRequest(string TypeId);
+
+/// <summary>The devices that can send the event; null = any device.</summary>
+public sealed record DevicesReply(IReadOnlyList<Guid>? DeviceIds);
 
 public sealed record CatalogReply(IReadOnlyList<CatalogEvent> Events);
 
@@ -418,7 +436,7 @@ public static class DashboardRules
 {
     public const string NameMissing = "Enter a name.";
 
-    public static readonly string NameTooLong = $"Use at most {DashboardsPluginInfo.MaxNameLength} characters.";
+    public static readonly string NameTooLong = $"Use at most {DashboardsPluginInfo.MaxNameLength} characters on one line.";
 
     public static readonly string TooManyWidgets = $"A dashboard holds at most {DashboardsPluginInfo.MaxWidgets} widgets.";
 
@@ -449,6 +467,14 @@ public static class DashboardRules
 
     public static string NameTaken(string name) => $"A dashboard named {name} exists already.";
 
+    /// <summary>Not every camera fitted: "12 of 20 cameras added. A dashboard holds at most 16 live videos."</summary>
+    public static string CamerasAdded(int added, int wanted, string reason) =>
+        string.Create(CultureInfo.CurrentCulture, $"{added:N0} of {wanted:N0} cameras added. {reason}");
+
+    /// <summary>The group's new size did not fit every widget.</summary>
+    public static string Resized(int done, int all) =>
+        string.Create(CultureInfo.CurrentCulture, $"{done:N0} of {all:N0} widgets have the new size. The others have no room for it.");
+
     /// <summary>Not every copy fitted: "12 of 20 copies added: There is no free space ..."</summary>
     public static string CopiesAdded(int added, int wanted, string reason) =>
         string.Create(CultureInfo.CurrentCulture, $"{added:N0} of {wanted:N0} copies added. {reason}");
@@ -467,6 +493,9 @@ public static class DashboardRules
 
         return trimmed.Length > DashboardsPluginInfo.MaxNameLength || trimmed.Any(char.IsControl) ? NameTooLong : null;
     }
+
+    /// <summary>The longest id, event type id or value name a widget may carry.</summary>
+    public const int MaxIdLength = 256;
 
     /// <summary>The problem of a widget's name (empty is allowed: the widget shows no name), or null.</summary>
     public static string? WidgetNameProblem(string? name) =>
@@ -535,14 +564,27 @@ public static class DashboardRules
             return name;
         }
 
-        if (widget.Kind == WidgetKind.Video)
+        // Settings a request leaves out (null) or makes too long are refused for every kind, also those it does not use.
+        if (widget.Unit is null || widget.OnText is null || widget.OffText is null || widget.Thresholds is null
+            || widget.Color is null || widget.OnColor is null || widget.OffColor is null || widget.OnIcon is null || widget.OffIcon is null
+            || Bad(widget.Id) || Bad(widget.TypeId) || Bad(widget.Field) || Bad(widget.OnText) || Bad(widget.OffText))
         {
-            return widget.DeviceId is null || widget.DeviceId == Guid.Empty ? NoCamera
-                : widget.Camera is < 0 or > 64 ? BadSetting
-                : null;
+            return BadSetting;
         }
 
-        if (string.IsNullOrWhiteSpace(widget.TypeId) || string.IsNullOrWhiteSpace(widget.Field))
+        if (widget.Kind == WidgetKind.Video)
+        {
+            if (widget.DeviceId is null || widget.DeviceId == Guid.Empty)
+            {
+                return NoCamera;
+            }
+
+            if (widget.Camera is < 0 or > 64)
+            {
+                return BadSetting;
+            }
+        }
+        else if (string.IsNullOrWhiteSpace(widget.TypeId) || string.IsNullOrWhiteSpace(widget.Field))
         {
             return NoField;
         }
@@ -566,6 +608,9 @@ public static class DashboardRules
             && widget.OnText.Length <= DashboardsPluginInfo.MaxNameLength && widget.OffText.Length <= DashboardsPluginInfo.MaxNameLength;
         return known ? null : BadSetting;
     }
+
+    /// <summary>Too long, or a control character (a line break) inside.</summary>
+    private static bool Bad(string? text) => text is not null && (text.Length > MaxIdLength || text.Any(char.IsControl));
 
     /// <summary>"3 widgets".</summary>
     public static string WidgetCount(int count) =>

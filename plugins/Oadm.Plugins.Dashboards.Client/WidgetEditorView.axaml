@@ -29,7 +29,6 @@
           <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding DeviceText}" />
         </Button>
       </ui:FormField>
-      <TextBlock Classes="secondary" Text="{x:Static m:DashboardTexts.TriggerOnce}" TextWrapping="Wrap" IsVisible="{Binding ShowTriggerHint}" />
       <ui:FormField Classes="wide" Label="Value">
         <ComboBox ItemsSource="{Binding Fields}" SelectedItem="{Binding SelectedField}" />
       </ui:FormField>
@@ -44,15 +43,10 @@
     <ui:FormField Classes="wide" Label="Name" Hint="Optional">
       <TextBox Text="{Binding Name}" MaxLength="64" />
     </ui:FormField>
-    <ui:FormField Classes="wide" IsVisible="{Binding IsValue}">
-      <CheckBox Content="Show name" IsChecked="{Binding ShowName}" />
+    <ui:FormField Classes="wide" Label="Show name" IsVisible="{Binding IsValue}">
+      <ComboBox ItemsSource="{Binding YesNoChoices}" SelectedItem="{Binding ShowNameChoice}" />
     </ui:FormField>
     <TextBlock Classes="secondary" Text="{x:Static m:DashboardTexts.ChannelHint}" TextWrapping="Wrap" IsVisible="{Binding IsVideo}" />
-    <ui:FormField Classes="wide" IsVisible="{Binding CanCopy}" Hint="The same widget for each device you choose.">
-      <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding CopyForDevicesCommand}">
-        <ui:IconLabel Icon="{StaticResource Icon.copy}" Text="Copy for other devices" />
-      </Button>
-    </ui:FormField>
 
     <!-- On / Off: per state an icon, a color and an optional text -->
     <StackPanel Spacing="10" IsVisible="{Binding ShowOnOff}">

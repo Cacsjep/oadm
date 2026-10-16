@@ -1148,7 +1148,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 
 | Topic | Decision |
 |---|---|
-| Built-in events | Only what OADM already knows (`BuiltInEvents`, stateful per device): Device unreachable, Credentials required, Certificate changed (device status from polling), Certificate expires soon (30 days or less, fixed), Certificate expired (rechecked hourly). Every other device event comes from the opt-in plugin **Device triggers** (any event a device offers, see "Device triggers"; also the AXIS Image Health Analytics detections, the Image Health Dashboard is a live display only). |
+| Built-in events | Only what OADM already knows (`BuiltInEvents`, stateful per device): Device unreachable, Credentials required, Certificate changed (device status from polling), Certificate expires soon (30 days or less, fixed), Certificate expired (rechecked hourly). Each has an **Any device** twin for the server (group "Any device", `BuiltInEvents.AnyOf`): on while at least one device has it, value `count` (how many), recomputed by the engine with every device change. Every other device event comes from the opt-in plugin **Device triggers** (any event a device offers, see "Device triggers"; also the AXIS Image Health Analytics detections, the Image Health Dashboard is a live display only). |
 | Kinds | Stateful (on / off per device or for the server) or stateless (one shot). Off is the default; a stateful source sends one full report (`ReplaceStates`) per type after every start ("ready"), then `SetState` per change or `ReplaceStates` again; a source that is turned off counts as everything off. |
 | Simple mode | Conditions must all hold. The first is the trigger ("When": an event, devices All / chosen / tags); further ones ("And") are stateful events (on "the same device", or "any" of All / chosen / tags) or schedules (weekdays + from / to in server time, over midnight allowed). Only the trigger may be one-shot. Advanced AND / OR later on the same model. |
 | Rule state | All events stateful: the rule is on per subject (the trigger's device, or the server) while all conditions hold. One-shot trigger: the rule fires while the others hold. |
@@ -1170,7 +1170,8 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   (`PluginEventSubscriptions`). `IEventSubscriptions.Types` (`SubscribedEventType`: the type with its fields, source, available)
   and `TypesChanged` (a source changed its types, a plugin turned on or off; unhooked when the plugin stops). Tests
   `EventSubscriptionTests`. First user: Dashboards (see "Dashboards").
-  `EventField.Kind` (`EventValueKind` Text, Number, YesNo) says what a value holds; `EventField.Filter` false = a value
+  `EventTypeInfo.DeviceIds`: the devices that can send the event (Device triggers: each trigger's devices now, types changed
+  again when they change), null = any device. `EventField.Kind` (`EventValueKind` Text, Number, YesNo) says what a value holds; `EventField.Filter` false = a value
   only (placeholder, no filter box in the rule dialog; proto `EventFieldInfo.no_filter = 4`). Device triggers declare every
   value this way, the kind from the device's declared type.
   `IActionPlugin` (standalone class with a parameterless constructor in a `*.Server.dll`, or contributed through
@@ -1843,8 +1844,8 @@ Live video). Spec: `docs/dashboards.md`; decisions, methods and tests: plugin `R
 
 - Rules that must hold: the plugin never talks to a device; the values come from `ICorePluginContext.EventSubscriptions`
   and live in server memory only (latest per event type and device, at most 100,000 keys, least recently updated dropped
-  first, O(1) per event; nothing kept while the plugin is off); a field is offered once an event with it arrived (Active
-  of an on / off event at once); a value that may be old is dimmed with the reason (event gone, its plugin off, the
+  first, O(1) per event; nothing kept while the plugin is off); an event offers its declared values at once (Active of an
+  on / off event first; received values refine the type of a text value) and only its own devices (`EventTypeInfo.DeviceIds`); a value that may be old is dimmed with the reason (event gone, its plugin off, the
   trigger's connection lost, the device Unreachable / Credentials required / Certificate changed); pages watch only the
   widgets of their open tabs (renewed every 10 s, forgotten after 30 s), changes are pushed at most every 250 ms;
   dashboards live on the server like Live View's views (plugin setting `dashboards`, every change pushed, an older version
@@ -1853,9 +1854,12 @@ Live video). Spec: `docs/dashboards.md`; decisions, methods and tests: plugin `R
   (`DashboardRules`).
 - Roles: "show" (Operator and Viewer), **Change dashboards** (`manage`, Operator yes, Viewer no; save and delete audited);
   video needs "Live view".
-- Page: left card Dashboards, Cameras (`ui:DeviceTree`), Events (the events with values, device triggers first); right card
-  the tabs and the grid, while editing the panel of the selected widget (device through the shared picker for one device,
-  value, type, widget and its settings, every change shown at once; **Copy for other devices**: one copy per chosen device). Empty states for Device triggers off
+- Page: left card Dashboards and Events (the events with values, device triggers first); right card the tabs, while
+  editing **Add cameras** (the picker, cameras only, at most 16 live videos), and the grid; several widgets are selected with
+  a selection rectangle over empty cells, Ctrl+click or Ctrl+A, moved together and changed in a group panel (what they share,
+  "Mixed" where they differ); while editing the panel of the selected widget (device through the shared picker for one device,
+  value, type, widget and its settings, every change shown at once); **Copy for other devices** (the copy icon of a widget's
+  edit frame or the group panel: one copy per chosen device; the picker asks the server for the event's devices, `devices`). Empty states for Device triggers off
   (`ICorePluginClientContext.IsPluginOn`), no trigger yet (**Open Device triggers**) and no dashboard.
 - Tests: `tests/Oadm.Plugins.Dashboards.Tests` (+ Perf 50 widgets at 4 updates a second next to 30,000 devices; headless
   screenshots with fake-mode video). Fake mode: `FakeOadmApi.Dashboards.cs`.
@@ -2342,7 +2346,8 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   grid of tiles that fills its page: cells of `Oadm.Sdk.Layout.TileLayout` (size, smallest tile, drop size, most tiles;
   the same rules on the server), a frame per `ITileGridItem` of an `ITileGridSource`, while editing the cell lines and a
   frame per tile to move, resize and remove it, the selected tile (`ITileGridItem.IsSelected`) marked, `FrameClass` a theme class of the frame (`valueTile`: no video background), `CopyCommand` a copy icon left of the X (shown while it can run; the X is red, `Button.toolbar.danger`), `ShowPreview` where a
-  dragged item lands; theme `Panel.tile`, `Border.tileEdit`, `Border.tileHover`, `Panel.tile.selected`, `Panel.tile.valueTile`, `Border.dropPreview`;
+  dragged item lands, `ShowSelectionArea` a selection rectangle, `TileLayout.PlaceSized` the first free place of a size,
+  `ITileGridSource.CopyText` the copy icon's tooltip; theme `Panel.tile`, `Border.tileEdit`, `Border.tileHover`, `Panel.tile.selected`, `Panel.tile.valueTile`, `Border.dropPreview`;
   Live View, Dashboards), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
   puts one right of the input instead of a long hint), `WizardSteps` + `WizardStepItem` (the step
   row of every wizard: numbered dot and name, thin line between, current accent, done with a check, a step opens when
