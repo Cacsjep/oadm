@@ -50,6 +50,9 @@ public sealed class DashboardsServerTests(ITestOutputHelper output)
         Assert.Equal(3, host.Events.Of(DashboardsMethods.DashboardsTopic).Count);
         Assert.Contains("\"kind\":\"Number\"", host.Settings.Values["dashboards"], StringComparison.Ordinal); // readable JSON
 
+        // Dashboards saved before "Show name" existed show their names.
+        Assert.True(System.Text.Json.JsonSerializer.Deserialize<Widget>("""{"id":"a","kind":"Text"}""", DashboardsPluginInfo.Json)!.ShowName);
+
         // A restart reads them back.
         using var again = new PluginHost();
         again.Settings.Values["dashboards"] = host.Settings.Values["dashboards"];

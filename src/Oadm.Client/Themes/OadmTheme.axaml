@@ -1426,7 +1426,11 @@
   <!-- Dashboards: a value widget (name, value, note), the panel of the selected widget right of the grid, a color swatch -->
   <Style Selector=":is(Border).dashboardWidget">
     <Setter Property="Padding" Value="10,6" />
-    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <!-- A tile that is no video (a value widget): no video background, it sits on the card -->
+  <Style Selector=":is(Panel).tile.valueTile">
+    <Setter Property="Background" Value="Transparent" />
   </Style>
   <Style Selector="Border.dashboardPanel">
     <Setter Property="Width" Value="380" />

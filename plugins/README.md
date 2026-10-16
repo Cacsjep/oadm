@@ -591,7 +591,8 @@ request with `VapixRequestOptions.StreamResponse` and pass the response as owner
 `ui:PageTab` (title, close, active) are the device tree and the tabs of Web View and Live View; a page with devices by
 tag or with tabs uses them. `ui:TileGrid` is the grid of tiles of Live View: the page's tab implements `ITileGridSource`
 (its tiles as `ITileGridItem`: `Rect` (a `TileRect` of cells), title, content or a message, the remove command, `IsSelected`
-(the tile whose settings the page shows, its frame marked);
+(the tile whose settings the page shows, its frame marked), `FrameClass` (a theme class of its frame, e.g. `valueTile`: no video
+background);
 `IsEditing`; `TryMove(item, rect)`), the grid draws a `TileFrame` per tile, and the rules are an `Oadm.Sdk.Layout.TileLayout`
 (size, smallest tile, drop size, most tiles: `Place`, `Fit`, `Drag(rect, TileEdges, dx, dy)`, `Fits`, `FirstOverlap`) that
 the server part checks again before it stores. `DeviceTexts.Removed(id)` names a device OADM no longer manages, `ServerErrors.Message(ex)`

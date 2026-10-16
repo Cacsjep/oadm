@@ -104,6 +104,7 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
         Target = target;
         var w = target.Widget;
         Name = w.Name;
+        ShowName = w.ShowName;
         IconSize = w.IconSize;
         FontSize = w.FontSize;
         Color = ColorNamed(w.Color);
@@ -180,6 +181,10 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
 
     [ObservableProperty]
     public partial string Name { get; set; } = string.Empty;
+
+    /// <summary>The name at the top of the widget (a value widget; the edit frame names it either way).</summary>
+    [ObservableProperty]
+    public partial bool ShowName { get; set; } = true;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IconSizeValue), nameof(IconSizeText))]
@@ -360,6 +365,8 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
 
     partial void OnNameChanged(string value) => Apply();
 
+    partial void OnShowNameChanged(bool value) => Apply();
+
     partial void OnIconSizeChanged(int value) => Apply();
 
     partial void OnFontSizeChanged(int value) => Apply();
@@ -440,6 +447,7 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
         var widget = Target.Widget with
         {
             Name = Name.Trim(),
+            ShowName = ShowName,
             Field = IsValue ? SelectedField?.Value.Name ?? Target.Widget.Field : null,
             Type = IsValue ? SelectedType?.Value ?? FieldType.Automatic : FieldType.Automatic,
             Kind = IsValue ? SelectedKind?.Value ?? Target.Widget.Kind : WidgetKind.Video,

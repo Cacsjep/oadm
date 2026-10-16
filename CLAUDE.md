@@ -2341,8 +2341,8 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   page with tabs: title, close button, the active one underlined; theme `Border.browserTab`), `TileGrid` + `TileFrame` (every
   grid of tiles that fills its page: cells of `Oadm.Sdk.Layout.TileLayout` (size, smallest tile, drop size, most tiles;
   the same rules on the server), a frame per `ITileGridItem` of an `ITileGridSource`, while editing the cell lines and a
-  frame per tile to move, resize and remove it, the selected tile (`ITileGridItem.IsSelected`) marked, `ShowPreview` where a
-  dragged item lands; theme `Panel.tile`, `Border.tileEdit`, `Border.tileHover`, `Panel.tile.selected`, `Border.dropPreview`;
+  frame per tile to move, resize and remove it, the selected tile (`ITileGridItem.IsSelected`) marked, `FrameClass` a theme class of the frame (`valueTile`: no video background), `ShowPreview` where a
+  dragged item lands; theme `Panel.tile`, `Border.tileEdit`, `Border.tileHover`, `Panel.tile.selected`, `Panel.tile.valueTile`, `Border.dropPreview`;
   Live View, Dashboards), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
   puts one right of the input instead of a long hint), `WizardSteps` + `WizardStepItem` (the step
   row of every wizard: numbered dot and name, thin line between, current accent, done with a check, a step opens when

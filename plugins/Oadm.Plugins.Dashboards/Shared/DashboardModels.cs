@@ -149,6 +149,9 @@ public sealed record Widget
     /// <summary>Shown at the top of the widget.</summary>
     public string Name { get; init; } = string.Empty;
 
+    /// <summary>The name shows at the top of a value widget; off, the value takes the room (the edit frame still names it).</summary>
+    public bool ShowName { get; init; } = true;
+
     public string? TypeId { get; init; }
 
     /// <summary>The device (also of a video widget); null for an event of the server.</summary>

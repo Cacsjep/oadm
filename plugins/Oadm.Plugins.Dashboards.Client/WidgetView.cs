@@ -61,7 +61,7 @@ public sealed class WidgetView : Border
         _display = display;
         _name.Text = widget.Name;
         _showName = showName;
-        _name.IsVisible = !string.IsNullOrEmpty(widget.Name);
+        _name.IsVisible = widget.ShowName && !string.IsNullOrEmpty(widget.Name);
         _name.Opacity = showName ? 1 : 0; // while editing the frame names the widget; the row stays, so nothing moves
         var isOnOff = widget.Kind == WidgetKind.OnOff && display.HasValue && display.Icon is not null;
         _onOff.IsVisible = isOnOff;

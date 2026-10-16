@@ -143,6 +143,9 @@ public sealed partial class WidgetViewModel : ObservableObject, ITileGridItem, I
 
     ICommand? ITileGridItem.RemoveCommand => RemoveCommand;
 
+    /// <summary>Value widgets are transparent on the card; video keeps the dark video background.</summary>
+    string? ITileGridItem.FrameClass => Widget.IsValue ? "valueTile" : null;
+
     /// <summary>New settings (the panel, a move): the grid and the widget redraw.</summary>
     internal void Update(Widget widget)
     {

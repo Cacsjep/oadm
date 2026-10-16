@@ -44,6 +44,9 @@
     <ui:FormField Classes="wide" Label="Name" Hint="Optional">
       <TextBox Text="{Binding Name}" MaxLength="64" />
     </ui:FormField>
+    <ui:FormField Classes="wide" IsVisible="{Binding IsValue}">
+      <CheckBox Content="Show name" IsChecked="{Binding ShowName}" />
+    </ui:FormField>
     <TextBlock Classes="secondary" Text="{x:Static m:DashboardTexts.ChannelHint}" TextWrapping="Wrap" IsVisible="{Binding IsVideo}" />
 
     <!-- On / Off: per state an icon, a color and an optional text -->

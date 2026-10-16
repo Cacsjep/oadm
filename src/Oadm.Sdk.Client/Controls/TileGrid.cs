@@ -32,6 +32,9 @@ public interface ITileGridItem : INotifyPropertyChanged
 
     /// <summary>The tile whose settings the page shows while editing (PropertyChanged <c>IsSelected</c>): its frame is marked.</summary>
     bool IsSelected => false;
+
+    /// <summary>A class the tile's frame gets for the theme (e.g. a tile without the video background); null for none.</summary>
+    string? FrameClass => null;
 }
 
 /// <summary>What a <see cref="TileGrid"/> shows: the tiles, the edit mode and the rules; it moves and resizes tiles.</summary>
@@ -324,6 +327,10 @@ public sealed class TileFrame : Panel
             if (_item is not null)
             {
                 _item.PropertyChanged -= OnItemChanged;
+                if (_item.FrameClass is { Length: > 0 } oldClass)
+                {
+                    Classes.Remove(oldClass);
+                }
             }
 
             if (_source is not null)
@@ -345,6 +352,10 @@ public sealed class TileFrame : Panel
                 }
 
                 _remove.Command = _item.RemoveCommand;
+                if (_item.FrameClass is { Length: > 0 } frameClass)
+                {
+                    Classes.Add(frameClass);
+                }
             }
 
             Update();

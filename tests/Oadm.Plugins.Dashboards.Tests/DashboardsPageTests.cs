@@ -138,6 +138,9 @@ public sealed class DashboardsPageTests
             await editor.ChooseDeviceCommand.ExecuteAsync(null);
             Assert.Equal(io.Id, widget.Widget.DeviceId);
             Assert.Equal("Temperature · 10.0.0.120", widget.Widget.Name); // the default name follows the device
+            editor.ShowName = false;
+            Assert.False(widget.Widget.ShowName);
+            editor.ShowName = true;
             editor.Unit = "°C";
             editor.AddThresholdCommand.Execute(null);
             editor.Thresholds[0].ValueText = "30";
@@ -319,7 +322,7 @@ public sealed class DashboardsPageTests
                 [
                     new Widget { Id = "t", Kind = WidgetKind.Number, TypeId = Types.Temperature, Field = "temperature", DeviceId = io.Id, Name = "Server room", Unit = "°C", X = 0, Y = 0, Width = 6, Height = 6, Thresholds = [new(30, "Orange"), new(40, "Red")] },
                     new Widget { Id = "g", Kind = WidgetKind.OnOff, TypeId = Types.Gate, Field = DashboardsPluginInfo.ActiveField, DeviceId = gate.Id, Name = "Gate", OnText = "Open", OffText = "Closed", OnIcon = "lockOpen", OnColor = "Amber", OffIcon = "lock", X = 6, Y = 0, Width = 4, Height = 6 },
-                    new Widget { Id = "p", Kind = WidgetKind.Text, TypeId = Types.Plate, Field = "plate", DeviceId = io.Id, Name = "Last plate", X = 0, Y = 6, Width = 10, Height = 4, FontSize = 70 },
+                    new Widget { Id = "p", Kind = WidgetKind.Text, TypeId = Types.Plate, Field = "plate", DeviceId = io.Id, Name = "Last plate", ShowName = false, X = 0, Y = 6, Width = 10, Height = 4, FontSize = 70 },
                     new Widget { Id = "s", Kind = WidgetKind.Number, TypeId = Types.Temperature, Field = "temperature", DeviceId = gate.Id, Name = "Gate house", Unit = "°C", Decimals = 1, X = 0, Y = 10, Width = 5, Height = 4 },
                     new Widget { Id = "n", Kind = WidgetKind.Number, TypeId = Types.Plate, Field = "speed", DeviceId = gate.Id, Name = "Speed", Unit = "km/h", X = 5, Y = 10, Width = 5, Height = 4 },
                     new Widget { Id = "v", Kind = WidgetKind.Video, DeviceId = camera.Id, Name = camera.Address, X = 10, Y = 0, Width = 10, Height = 10 },
@@ -341,6 +344,8 @@ public sealed class DashboardsPageTests
                 Assert.Contains(widgets, w => w.Display.Note == DashboardTexts.ConnectionLost && w.Display.Dimmed);
                 Assert.Contains(widgets, w => w.Display.Caption == "Closed" || w.Display.Caption == "Open");
                 Assert.Contains(widgets, w => w.Display.Color == "Red"); // 41.5 reaches the red threshold
+                // "Show name" off: the plate shows without its name.
+                Assert.DoesNotContain(view.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "Last plate" && t.IsEffectivelyVisible);
                 Headless.Capture(window, "plugin-dashboards.png");
 
                 // Edit: the cell lines, a frame per widget, the panel of the clicked widget.
@@ -353,6 +358,10 @@ public sealed class DashboardsPageTests
                 Assert.All(view.GetVisualDescendants().OfType<WidgetView>(), w => Assert.DoesNotContain(
                     w.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Opacity > 0 && t.Classes.Contains("small") && t.Text == "Server room"));
                 Headless.Capture(window, "plugin-dashboards-edit.png");
+                page.ActiveTab.Select(page.ActiveTab.Widgets[2]);
+                Headless.Pump();
+                Assert.False(page.ActiveTab.Editor!.ShowName);
+                Headless.Capture(window, "plugin-dashboards-text.png");
                 page.ActiveTab.Select(page.ActiveTab.Widgets[1]);
                 Headless.Pump();
                 // The next widget's panel never takes the choices of the one before.
