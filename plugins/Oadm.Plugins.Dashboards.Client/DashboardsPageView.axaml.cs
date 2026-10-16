@@ -63,6 +63,7 @@ public sealed partial class DashboardsPageView : UserControl
             _vm.Tabs.CollectionChanged -= OnTabsChanged;
             _vm.PropertyChanged -= OnViewModelChanged;
             _vm.PickDevice = null;
+            _vm.PickDevices = null;
         }
 
         RemoveAllPages();
@@ -72,6 +73,7 @@ public sealed partial class DashboardsPageView : UserControl
             _vm.Tabs.CollectionChanged += OnTabsChanged;
             _vm.PropertyChanged += OnViewModelChanged;
             _vm.PickDevice = PickDeviceAsync;
+            _vm.PickDevices = PickDevicesAsync;
             foreach (var tab in _vm.Tabs)
             {
                 AddPage(tab);
@@ -87,6 +89,11 @@ public sealed partial class DashboardsPageView : UserControl
     private async Task<Guid?> PickDeviceAsync(IReadOnlyList<IDeviceInfo> devices, Guid? selected) =>
         TopLevel.GetTopLevel(this) is Window owner
             ? await DevicePickerWindow.ShowOneAsync(owner, devices, selected, heading: "Choose a device").ConfigureAwait(true)
+            : null;
+
+    private async Task<IReadOnlyList<Guid>?> PickDevicesAsync(IReadOnlyList<IDeviceInfo> devices, Func<IDeviceInfo, string?> unavailable) =>
+        TopLevel.GetTopLevel(this) is Window owner
+            ? await DevicePickerWindow.ShowAsync(owner, devices, null, unavailable, "Copy for other devices").ConfigureAwait(true)
             : null;
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)

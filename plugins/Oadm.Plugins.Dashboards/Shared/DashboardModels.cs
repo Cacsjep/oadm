@@ -449,6 +449,10 @@ public static class DashboardRules
 
     public static string NameTaken(string name) => $"A dashboard named {name} exists already.";
 
+    /// <summary>Not every copy fitted: "12 of 20 copies added: There is no free space ..."</summary>
+    public static string CopiesAdded(int added, int wanted, string reason) =>
+        string.Create(CultureInfo.CurrentCulture, $"{added:N0} of {wanted:N0} copies added. {reason}");
+
     public static string ChangedMeanwhile(string name) =>
         $"Another user changed the dashboard {name} meanwhile. Click Cancel and make your changes again.";
 

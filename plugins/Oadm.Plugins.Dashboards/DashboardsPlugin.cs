@@ -654,6 +654,11 @@ public static class DashboardTexts
 
     public const string ChannelHint = "Choose the channel with the buttons on the picture.";
 
+    /// <summary>The device picker of Copy for other devices: the widget's own device and devices without video.</summary>
+    public const string OwnDevice = "Shown by this widget";
+
+    public const string NoVideo = "No video";
+
     public static string SourceOff(string source) => source + " is turned off";
 
     public static string LoadFailed(string reason) => "The dashboards could not be read: " + reason;

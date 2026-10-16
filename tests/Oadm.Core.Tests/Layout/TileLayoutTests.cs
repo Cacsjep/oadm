@@ -56,6 +56,16 @@ public sealed class TileLayoutTests
     }
 
     [Fact]
+    public void ACopyTakesTheFirstFreePlaceOfItsSize()
+    {
+        TileRect[] tiles = [new(0, 0, 4, 3)];
+        Assert.Equal(new TileRect(4, 0, 4, 3), Grid.PlaceSized(tiles, 4, 3));
+        Assert.Equal(new TileRect(0, 3, 20, 2), Grid.PlaceSized(tiles, 20, 2)); // the first row is taken in part
+        Assert.Null(Grid.PlaceSized([new(0, 0, 20, 19)], 2, 2)); // one row left: no 2 x 2
+        Assert.Null(new TileLayout(maxTiles: 1).PlaceSized(tiles, 2, 2));
+    }
+
+    [Fact]
     public void TheFirstOverlapIsFound()
     {
         Assert.Equal(-1, TileLayout.FirstOverlap([new(0, 0, 2, 2), new(2, 0, 2, 2)]));

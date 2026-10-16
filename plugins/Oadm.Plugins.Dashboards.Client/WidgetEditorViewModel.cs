@@ -268,8 +268,15 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
             FollowDefaultName(before);
             OnPropertyChanged(nameof(DeviceText));
             OnPropertyChanged(nameof(NeedsDevice));
+            OnPropertyChanged(nameof(CanCopy));
         }
     }
+
+    /// <summary>A widget with a device can be copied for other devices.</summary>
+    public bool CanCopy => Target.CanCopy;
+
+    /// <summary>Copies of this widget for the chosen devices (the same as the copy icon of its frame).</summary>
+    public IAsyncRelayCommand CopyForDevicesCommand => Target.CopyForDevicesCommand;
 
     [RelayCommand(CanExecute = nameof(CanAddThreshold))]
     private void AddThreshold()

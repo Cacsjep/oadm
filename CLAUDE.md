@@ -1855,7 +1855,7 @@ Live video). Spec: `docs/dashboards.md`; decisions, methods and tests: plugin `R
   video needs "Live view".
 - Page: left card Dashboards, Cameras (`ui:DeviceTree`), Events (the events with values, device triggers first); right card
   the tabs and the grid, while editing the panel of the selected widget (device through the shared picker for one device,
-  value, type, widget and its settings, every change shown at once). Empty states for Device triggers off
+  value, type, widget and its settings, every change shown at once; **Copy for other devices**: one copy per chosen device). Empty states for Device triggers off
   (`ICorePluginClientContext.IsPluginOn`), no trigger yet (**Open Device triggers**) and no dashboard.
 - Tests: `tests/Oadm.Plugins.Dashboards.Tests` (+ Perf 50 widgets at 4 updates a second next to 30,000 devices; headless
   screenshots with fake-mode video). Fake mode: `FakeOadmApi.Dashboards.cs`.
@@ -2341,7 +2341,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   page with tabs: title, close button, the active one underlined; theme `Border.browserTab`), `TileGrid` + `TileFrame` (every
   grid of tiles that fills its page: cells of `Oadm.Sdk.Layout.TileLayout` (size, smallest tile, drop size, most tiles;
   the same rules on the server), a frame per `ITileGridItem` of an `ITileGridSource`, while editing the cell lines and a
-  frame per tile to move, resize and remove it, the selected tile (`ITileGridItem.IsSelected`) marked, `FrameClass` a theme class of the frame (`valueTile`: no video background), `ShowPreview` where a
+  frame per tile to move, resize and remove it, the selected tile (`ITileGridItem.IsSelected`) marked, `FrameClass` a theme class of the frame (`valueTile`: no video background), `CopyCommand` a copy icon left of the X (shown while it can run; the X is red, `Button.toolbar.danger`), `ShowPreview` where a
   dragged item lands; theme `Panel.tile`, `Border.tileEdit`, `Border.tileHover`, `Panel.tile.selected`, `Panel.tile.valueTile`, `Border.dropPreview`;
   Live View, Dashboards), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
   puts one right of the input instead of a long hint), `WizardSteps` + `WizardStepItem` (the step

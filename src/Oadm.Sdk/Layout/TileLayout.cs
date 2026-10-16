@@ -122,6 +122,35 @@ public sealed class TileLayout
     public TileRect? PlaceFirstFree(IReadOnlyList<TileRect> tiles) => Place(tiles, 0, 0);
 
     /// <summary>
+    /// The first free place for a tile of <paramref name="width"/> x <paramref name="height"/> (row by row, top left first),
+    /// e.g. a copy of a tile; null when the grid is full or no such place is free.
+    /// </summary>
+    public TileRect? PlaceSized(IReadOnlyList<TileRect> tiles, int width, int height)
+    {
+        ArgumentNullException.ThrowIfNull(tiles);
+        if (tiles.Count >= MaxTiles)
+        {
+            return null;
+        }
+
+        width = Math.Clamp(width, MinTileSize, Size);
+        height = Math.Clamp(height, MinTileSize, Size);
+        var occupied = Occupied(tiles);
+        for (var y = 0; y <= Size - height; y++)
+        {
+            for (var x = 0; x <= Size - width; x++)
+            {
+                if (IsFree(occupied, x, y, width, height))
+                {
+                    return new TileRect(x, y, width, height);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// A tile moved to (<paramref name="x"/>, <paramref name="y"/>) and sized to <paramref name="width"/> x
     /// <paramref name="height"/>, kept inside the grid and at least the smallest size; null when it would overlap one of
     /// <paramref name="others"/>.
@@ -213,11 +242,13 @@ public sealed class TileLayout
         return occupied;
     }
 
-    private static bool IsFree(bool[,] occupied, int x0, int y0, int size)
+    private static bool IsFree(bool[,] occupied, int x0, int y0, int size) => IsFree(occupied, x0, y0, size, size);
+
+    private static bool IsFree(bool[,] occupied, int x0, int y0, int width, int height)
     {
-        for (var y = y0; y < y0 + size; y++)
+        for (var y = y0; y < y0 + height; y++)
         {
-            for (var x = x0; x < x0 + size; x++)
+            for (var x = x0; x < x0 + width; x++)
             {
                 if (occupied[x, y])
                 {

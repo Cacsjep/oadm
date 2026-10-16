@@ -51,6 +51,9 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
     /// <summary>Opens the device picker for one device (set by the view, which knows the window).</summary>
     public Func<IReadOnlyList<IDeviceInfo>, Guid?, Task<Guid?>>? PickDevice { get; set; }
 
+    /// <summary>Opens the device picker for several devices, with the reason a device cannot be used (set by the view).</summary>
+    public Func<IReadOnlyList<IDeviceInfo>, Func<IDeviceInfo, string?>, Task<IReadOnlyList<Guid>?>>? PickDevices { get; set; }
+
     /// <summary>Cameras (devices with video) grouped by tag.</summary>
     public DeviceTreeModel Tree { get; } = new() { Filter = d => d.HasVideo };
 
@@ -442,6 +445,20 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
     internal CatalogEvent? FindEvent(string? typeId) => typeId is not null ? _catalog.GetValueOrDefault(typeId) : null;
 
     internal IDeviceInfo? DeviceOf(Guid id) => _devices.GetValueOrDefault(id);
+
+    /// <summary>The devices to copy a widget for: cameras only for a video widget, never the widget's own device.</summary>
+    internal async Task<IReadOnlyList<IDeviceInfo>> PickCopyDevicesAsync(WidgetViewModel widget)
+    {
+        if (PickDevices is not { } pick)
+        {
+            return [];
+        }
+
+        var own = widget.Widget.DeviceId;
+        var video = widget.Widget.Kind == WidgetKind.Video;
+        var ids = await pick(_ctx.Devices, d => d.Id == own ? DashboardTexts.OwnDevice : video && !d.HasVideo ? DashboardTexts.NoVideo : null).ConfigureAwait(true);
+        return ids is null ? [] : [.. ids.Select(id => _devices.GetValueOrDefault(id)).OfType<IDeviceInfo>()];
+    }
 
     /// <summary>The device of a value widget: every managed device; the one chosen now is checked.</summary>
     internal async Task<Guid?> PickDeviceAsync(WidgetViewModel widget) =>

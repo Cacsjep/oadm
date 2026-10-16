@@ -174,6 +174,70 @@ public sealed class DashboardsPageTests
     });
 
     [Fact]
+    public Task A_widget_is_copied_for_other_devices_with_their_names() => OnUi(async () =>
+    {
+        var (host, ctx, vm, camera, io) = Page();
+        using (host)
+        using (vm)
+        {
+            var ports = Enumerable.Range(1, 30).Select(i => (IDeviceInfo)new TestDevice("10.0.1." + i, "A9210") { Category = DeviceCategory.IoModule }).ToList();
+            ctx.Items.AddRange(ports);
+            ctx.RaiseDevicesChanged();
+            Assert.True(await Headless.UntilAsync(() => vm.IsLoaded && vm.HasEvents));
+            vm.PickDevice = (_, _) => Task.FromResult<Guid?>(io.Id);
+            Func<IDeviceInfo, string?>? reasons = null;
+            vm.PickDevices = (_, unavailable) =>
+            {
+                reasons = unavailable;
+                return Task.FromResult<IReadOnlyList<Guid>?>([.. ports.Take(3).Select(d => d.Id), io.Id]);
+            };
+
+            vm.NewDashboardCommand.Execute(null);
+            var tab = vm.ActiveTab!;
+            vm.ClickEvent(vm.Events.First(e => e.Event?.TypeId == Types.Gate).Event!);
+            var editor = tab.Editor!;
+            Assert.False(editor.CanCopy); // no device yet
+            await editor.ChooseDeviceCommand.ExecuteAsync(null);
+            editor.OnText = "Open";
+            Assert.True(editor.CanCopy);
+            await editor.CopyForDevicesCommand.ExecuteAsync(null);
+
+            Assert.Equal(DashboardTexts.OwnDevice, reasons!(io)); // the widget's own device is not offered
+            Assert.Null(reasons(ports[0]));
+            Assert.Equal(4, tab.Widgets.Count); // the own device is left out
+            var copies = tab.Widgets.Skip(1).ToList();
+            Assert.Equal(["Active · 10.0.1.1", "Active · 10.0.1.2", "Active · 10.0.1.3"], copies.Select(w => w.Widget.Name));
+            Assert.All(copies, w => Assert.Equal(("Open", WidgetKind.OnOff, Types.Gate, 4, 4), (w.Widget.OnText, w.Widget.Kind, w.Widget.TypeId, w.Widget.Width, w.Widget.Height)));
+            Assert.Equal(copies.Select(w => (Guid?)w.Device!.Id), ports.Take(3).Select(d => (Guid?)d.Id));
+            Assert.Null(DashboardRules.WidgetsProblem(tab.WidgetList()));
+            Assert.Null(tab.Error);
+
+            // More than fit: as many as fit, and why not the rest (20 x 20 holds 25 widgets of 4 x 4).
+            vm.PickDevices = (_, _) => Task.FromResult<IReadOnlyList<Guid>?>([.. ports.Select(d => d.Id)]);
+            await editor.CopyForDevicesCommand.ExecuteAsync(null);
+            Assert.Equal(25, tab.Widgets.Count);
+            Assert.Equal(DashboardRules.CopiesAdded(21, 30, DashboardRules.NoRoom), tab.Error);
+
+            // A camera's live video goes to cameras only.
+            vm.NewDashboardCommand.Execute(null);
+            vm.ClickCamera(camera);
+            Assert.Equal(DashboardTexts.NoVideo, (await CopyReason(vm, vm.ActiveTab!.Widgets[^1]))(io));
+        }
+    });
+
+    private static async Task<Func<IDeviceInfo, string?>> CopyReason(DashboardsPageViewModel vm, WidgetViewModel widget)
+    {
+        Func<IDeviceInfo, string?>? reasons = null;
+        vm.PickDevices = (_, unavailable) =>
+        {
+            reasons = unavailable;
+            return Task.FromResult<IReadOnlyList<Guid>?>(null);
+        };
+        await vm.PickCopyDevicesAsync(widget);
+        return reasons!;
+    }
+
+    [Fact]
     public Task A_widget_of_a_device_event_needs_a_device_and_moves_stay_inside() => OnUi(async () =>
     {
         var (host, _, vm, _, _) = Page();
@@ -371,6 +435,20 @@ public sealed class DashboardsPageTests
                 Assert.False(page.ActiveTab.Widgets[0].IsSelected);
                 Headless.Capture(window, "plugin-dashboards-onoff.png");
 
+                // The gate widget copied for three more devices.
+                var others = devices.Where(d => !d.HasVideo && d.Id != gate.Id).Take(3).Select(d => d.Id).ToList();
+                page.PickDevices = (_, _) => Task.FromResult<IReadOnlyList<Guid>?>(others);
+                await page.ActiveTab.Editor!.CopyForDevicesCommand.ExecuteAsync(null);
+                Headless.Pump();
+                Assert.Equal(6 + others.Count, page.ActiveTab.Widgets.Count);
+                Headless.Capture(window, "plugin-dashboards-copies.png");
+
+                // Every widget with a device has the copy icon left of its X.
+                var frame = view.GetVisualDescendants().OfType<TileFrame>().First(f => f.Item == page.ActiveTab.Widgets[1]);
+                var buttons = frame.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible).ToList();
+                Assert.Equal(["Copy for other devices", "Remove widget"], buttons.Select(b => ToolTip.GetTip(b) as string));
+                Assert.Contains("danger", buttons[1].Classes); // the X is red
+
                 // Dropping an event shows where it lands.
                 var grid = view.ActiveGrid!;
                 var free = new Point(grid.Bounds.Width * 0.3, grid.Bounds.Height * 0.85);
@@ -382,7 +460,7 @@ public sealed class DashboardsPageTests
                 Headless.Capture(window, "plugin-dashboards-drop.png");
                 grid.ShowPreview(null);
                 Assert.True(DashboardsPageView.DropOn(grid, page.ActiveTab, plate, free));
-                Assert.Equal(7, page.ActiveTab.Widgets.Count);
+                Assert.Equal(7 + others.Count, page.ActiveTab.Widgets.Count);
                 Assert.False(DashboardsPageView.DropOn(grid, page.ActiveTab, plate, new Point(-5, 5)));
                 page.CancelEditCommand.Execute(null);
                 Assert.Equal(6, page.ActiveTab.Widgets.Count);

@@ -143,6 +143,22 @@ public sealed partial class WidgetViewModel : ObservableObject, ITileGridItem, I
 
     ICommand? ITileGridItem.RemoveCommand => RemoveCommand;
 
+    ICommand? ITileGridItem.CopyCommand => CopyForDevicesCommand;
+
+    /// <summary>A widget with a device can be copied for other devices (the copy icon of its frame, and the panel).</summary>
+    public bool CanCopy => Widget.DeviceId is { } id && id != Guid.Empty;
+
+    /// <summary>The copy icon: the device picker, then one copy per chosen device.</summary>
+    [RelayCommand(CanExecute = nameof(CanCopy))]
+    private async Task CopyForDevicesAsync()
+    {
+        var devices = await _owner.PickCopyDevicesAsync(this).ConfigureAwait(true);
+        if (devices.Count > 0)
+        {
+            _owner.CopyFor(this, devices);
+        }
+    }
+
     /// <summary>Value widgets are transparent on the card; video keeps the dark video background.</summary>
     string? ITileGridItem.FrameClass => Widget.IsValue ? "valueTile" : null;
 
@@ -155,6 +171,8 @@ public sealed partial class WidgetViewModel : ObservableObject, ITileGridItem, I
         OnPropertyChanged(nameof(Rect));
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(Key));
+        OnPropertyChanged(nameof(CanCopy));
+        CopyForDevicesCommand.NotifyCanExecuteChanged();
         if (keyChanged)
         {
             Value = null;
@@ -231,6 +249,10 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
     TileLayout ITileGridSource.Layout => DashboardsPluginInfo.Layout;
 
     string ITileGridSource.RemoveText => "Remove widget";
+
+    string ITileGridSource.CopyText => "Copy for other devices";
+
+    internal Task<IReadOnlyList<IDeviceInfo>> PickCopyDevicesAsync(WidgetViewModel widget) => _owner.PickCopyDevicesAsync(widget);
 
     bool ITileGridSource.TryMove(ITileGridItem item, TileRect rect) => item is WidgetViewModel widget && TryFit(widget, rect);
 
@@ -496,6 +518,77 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
         Changed();
         Select(model);
         return true;
+    }
+
+    /// <summary>
+    /// Copies of <paramref name="source"/> for other devices: the same settings and size, each in the first free place, its
+    /// name with the device's address instead of the source's (else " · address" after it). Adds as many as fit and says
+    /// why the rest did not; returns how many were added.
+    /// </summary>
+    public int CopyFor(WidgetViewModel source, IReadOnlyList<IDeviceInfo> devices)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(devices);
+        var targets = devices.Where(d => d.Id != source.Widget.DeviceId).DistinctBy(d => d.Id).ToList();
+        var added = 0;
+        string? reason = null;
+        foreach (var device in targets)
+        {
+            if (source.Widget.Kind == WidgetKind.Video && Widgets.Count(w => w.Widget.Kind == WidgetKind.Video) >= DashboardsPluginInfo.MaxVideos)
+            {
+                reason = DashboardRules.TooManyVideos;
+                break;
+            }
+
+            if (Widgets.Count >= DashboardsPluginInfo.MaxWidgets)
+            {
+                reason = DashboardRules.TooManyWidgets;
+                break;
+            }
+
+            if (DashboardsPluginInfo.Layout.PlaceSized(Rects(), source.Rect.Width, source.Rect.Height) is not { } place)
+            {
+                reason = DashboardRules.NoRoom;
+                break;
+            }
+
+            var copy = source.Widget with
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                X = place.X,
+                Y = place.Y,
+                Width = place.Width,
+                Height = place.Height,
+                DeviceId = device.Id,
+                Camera = source.Widget.Kind == WidgetKind.Video ? 0 : source.Widget.Camera,
+                Name = CopyName(source, device),
+            };
+            Widgets.Add(_owner.CreateWidget(this, copy, device));
+            added++;
+        }
+
+        Error = reason is null ? null : DashboardRules.CopiesAdded(added, targets.Count, reason);
+        if (added > 0)
+        {
+            Changed();
+        }
+
+        return added;
+    }
+
+    private static string CopyName(WidgetViewModel source, IDeviceInfo device)
+    {
+        var name = source.Widget.Name;
+        if (source.Device?.Address is { Length: > 0 } address && name.Contains(address, StringComparison.Ordinal))
+        {
+            name = name.Replace(address, device.Address, StringComparison.Ordinal);
+        }
+        else
+        {
+            name = string.IsNullOrWhiteSpace(name) ? device.Address : name + " · " + device.Address;
+        }
+
+        return name.Length <= DashboardsPluginInfo.MaxNameLength ? name : name[..DashboardsPluginInfo.MaxNameLength];
     }
 
     private List<TileRect> Rects() => [.. Widgets.Select(w => w.Rect)];

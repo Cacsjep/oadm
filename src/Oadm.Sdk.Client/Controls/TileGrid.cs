@@ -35,6 +35,9 @@ public interface ITileGridItem : INotifyPropertyChanged
 
     /// <summary>A class the tile's frame gets for the theme (e.g. a tile without the video background); null for none.</summary>
     string? FrameClass => null;
+
+    /// <summary>The copy icon left of the X while editing; shown while it can run. Null: no copy icon.</summary>
+    ICommand? CopyCommand => null;
 }
 
 /// <summary>What a <see cref="TileGrid"/> shows: the tiles, the edit mode and the rules; it moves and resizes tiles.</summary>
@@ -51,6 +54,9 @@ public interface ITileGridSource : INotifyPropertyChanged
 
     /// <summary>The tooltip of the edit frame's X ("Remove camera").</summary>
     string RemoveText { get; }
+
+    /// <summary>The tooltip of the edit frame's copy icon (<see cref="ITileGridItem.CopyCommand"/>).</summary>
+    string CopyText => "Copy";
 
     /// <summary>Tiles moved or resized: the grid arranges again.</summary>
     event EventHandler? LayoutChanged;
@@ -282,6 +288,7 @@ public sealed class TileFrame : Panel
     private readonly Border _hover = new() { IsHitTestVisible = false };
     private readonly TextBlock _title = new();
     private readonly Button _remove = new();
+    private readonly Button _copy = new() { IsVisible = false };
     private ITileGridItem? _item;
     private ITileGridSource? _source;
     private Point _start;
@@ -300,12 +307,18 @@ public sealed class TileFrame : Panel
         _title.TextTrimming = TextTrimming.CharacterEllipsis;
         _remove.Classes.Add("toolbar");
         _remove.Classes.Add("iconOnly");
+        _remove.Classes.Add("danger"); // removing is destructive: red like every remove icon
         _remove.HorizontalAlignment = HorizontalAlignment.Right;
         _remove.VerticalAlignment = VerticalAlignment.Top;
         _remove.Content = new OadmIcon { Width = 12, Height = 12 };
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), VerticalAlignment = VerticalAlignment.Top };
-        Grid.SetColumn(_remove, 1);
-        header.Children.AddRange([_title, _remove]);
+        _copy.Classes.Add("toolbar");
+        _copy.Classes.Add("iconOnly");
+        _copy.VerticalAlignment = VerticalAlignment.Top;
+        _copy.Content = new OadmIcon { Width = 12, Height = 12 };
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), VerticalAlignment = VerticalAlignment.Top };
+        Grid.SetColumn(_copy, 1);
+        Grid.SetColumn(_remove, 2);
+        header.Children.AddRange([_title, _copy, _remove]);
         _edit.Classes.Add("tileEdit");
         _edit.Cursor = Cursors[TileEdges.None];
         _edit.Child = header;
@@ -324,6 +337,12 @@ public sealed class TileFrame : Panel
         get => _item;
         set
         {
+            if (_copy.Command is { } oldCopy)
+            {
+                oldCopy.CanExecuteChanged -= OnCopyCanExecuteChanged;
+                _copy.Command = null;
+            }
+
             if (_item is not null)
             {
                 _item.PropertyChanged -= OnItemChanged;
@@ -349,9 +368,15 @@ public sealed class TileFrame : Panel
                 {
                     _source.PropertyChanged += OnSourceChanged;
                     ToolTip.SetTip(_remove, _source.RemoveText);
+                    ToolTip.SetTip(_copy, _source.CopyText);
                 }
 
                 _remove.Command = _item.RemoveCommand;
+                if (_item.CopyCommand is { } copy)
+                {
+                    _copy.Command = copy;
+                    copy.CanExecuteChanged += OnCopyCanExecuteChanged;
+                }
                 if (_item.FrameClass is { Length: > 0 } frameClass)
                 {
                     Classes.Add(frameClass);
@@ -370,7 +395,14 @@ public sealed class TileFrame : Panel
         {
             icon.Data = g;
         }
+
+        if (_copy.Content is OadmIcon copyIcon && this.TryFindResource("Icon.copy", ActualThemeVariant, out var c) && c is Geometry copyGeometry)
+        {
+            copyIcon.Data = copyGeometry;
+        }
     }
+
+    private void OnCopyCanExecuteChanged(object? sender, EventArgs e) => Update();
 
     private void OnItemChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -404,6 +436,7 @@ public sealed class TileFrame : Panel
         _message.Text = content is null ? item?.Message : null;
         _message.IsVisible = !string.IsNullOrEmpty(_message.Text);
         _title.Text = item?.Title;
+        _copy.IsVisible = _copy.Command?.CanExecute(null) == true; // only while copying is possible
         _edit.IsVisible = item is not null && _source?.IsEditing == true;
         Classes.Set("editing", _edit.IsVisible); // the edit frame has its own border: no hover frame
         Classes.Set("selected", _edit.IsVisible && item?.IsSelected == true);
