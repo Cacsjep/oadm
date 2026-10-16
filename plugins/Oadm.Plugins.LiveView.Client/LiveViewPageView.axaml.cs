@@ -11,7 +11,7 @@ using Oadm.Sdk.Client.Controls;
 namespace Oadm.Plugins.LiveView.Client;
 
 /// <summary>
-/// The Live View page view: one <see cref="ViewGrid"/> per open view (only the active one shown, so the hidden views'
+/// The Live View page view: one <see cref="TileGrid"/> per open view (only the active one shown, so the hidden views'
 /// videos rest), the list of views, and dragging a camera from the tree into the edited view.
 /// </summary>
 public sealed partial class LiveViewPageView : UserControl
@@ -19,7 +19,7 @@ public sealed partial class LiveViewPageView : UserControl
     /// <summary>A press must move this far before it is a drag (a shorter one is a click).</summary>
     private const double DragThreshold = 6;
 
-    private readonly Dictionary<ViewTab, ViewGrid> _pages = [];
+    private readonly Dictionary<ViewTab, TileGrid> _pages = [];
     private LiveViewPageViewModel? _vm;
     private DeviceTreeDevice? _pressed;
     private Point _pressPoint;
@@ -72,7 +72,7 @@ public sealed partial class LiveViewPageView : UserControl
     }
 
     /// <summary>The grid of the active view (tests).</summary>
-    internal ViewGrid? ActiveGrid => _vm?.ActiveTab is { } tab ? _pages.GetValueOrDefault(tab) : null;
+    internal TileGrid? ActiveGrid => _vm?.ActiveTab is { } tab ? _pages.GetValueOrDefault(tab) : null;
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -110,7 +110,7 @@ public sealed partial class LiveViewPageView : UserControl
             return;
         }
 
-        var grid = new ViewGrid { Tab = tab, IsVisible = false };
+        var grid = new TileGrid { Source = tab, IsVisible = false };
         _pages[tab] = grid;
         Pages.Children.Add(grid);
     }
@@ -120,7 +120,7 @@ public sealed partial class LiveViewPageView : UserControl
         if (_pages.Remove(tab, out var grid))
         {
             Pages.Children.Remove(grid);
-            grid.Tab = null;
+            grid.Source = null;
         }
     }
 
@@ -215,7 +215,7 @@ public sealed partial class LiveViewPageView : UserControl
         Canvas.SetTop(DragGhost, point.Y + 8);
         if (ActiveGrid is { } grid && _vm.ActiveTab is { } tab)
         {
-            grid.ShowPreview(PreviewAt(grid, tab, _pressed, e.GetPosition(grid)), _pressed.Address); // where it would land
+            grid.ShowPreview(PreviewAt(grid, tab, _pressed, e.GetPosition(grid))?.Rect, _pressed.Address); // where it would land
         }
 
         e.Handled = true;
@@ -242,9 +242,9 @@ public sealed partial class LiveViewPageView : UserControl
     }
 
     /// <summary>Where a camera dropped at <paramref name="point"/> would land; null outside the grid or without room.</summary>
-    internal static ViewTile? PreviewAt(ViewGrid grid, ViewTab tab, DeviceTreeDevice camera, Point point)
+    internal static ViewTile? PreviewAt(TileGrid grid, ViewTab tab, DeviceTreeDevice camera, Point point)
     {
-        if (point.X < 0 || point.Y < 0 || point.X > grid.Bounds.Width || point.Y > grid.Bounds.Height)
+        if (!grid.Contains(point))
         {
             return null;
         }
@@ -254,9 +254,9 @@ public sealed partial class LiveViewPageView : UserControl
     }
 
     /// <summary>Drops a camera at a point of the grid; outside the grid nothing happens.</summary>
-    internal static bool DropOn(ViewGrid grid, ViewTab tab, DeviceTreeDevice camera, Point point)
+    internal static bool DropOn(TileGrid grid, ViewTab tab, DeviceTreeDevice camera, Point point)
     {
-        if (point.X < 0 || point.Y < 0 || point.X > grid.Bounds.Width || point.Y > grid.Bounds.Height)
+        if (!grid.Contains(point))
         {
             return false;
         }

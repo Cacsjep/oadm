@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Oadm.Sdk.Layout;
+
 namespace Oadm.Plugins.LiveView;
 
 /// <summary>Ids, limits and texts shared by the server part, the page and the tests.</summary>
@@ -23,6 +25,9 @@ public static class LiveViewPluginInfo
     /// <summary>A dropped camera takes the largest free square up to this size.</summary>
     public const int DropSize = 10;
 
+    /// <summary>The grid's rules, shared with the page (<c>ui:TileGrid</c>).</summary>
+    public static readonly TileLayout Layout = new(GridSize, MinTileSize, DropSize, MaxTiles);
+
     public const int MaxViews = 200;
 
     public const int MaxNameLength = 64;
@@ -43,8 +48,14 @@ public static class LiveViewPluginInfo
 /// <param name="Camera">1-based channel; 0 = the device's first.</param>
 public sealed record ViewTile(Guid DeviceId, int Camera, int X, int Y, int Width, int Height)
 {
-    public bool Overlaps(ViewTile other) =>
-        X < other.X + other.Width && other.X < X + Width && Y < other.Y + other.Height && other.Y < Y + Height;
+    /// <summary>The tile's cells.</summary>
+    [JsonIgnore]
+    public TileRect Rect => new(X, Y, Width, Height);
+
+    public bool Overlaps(ViewTile other) => Rect.Overlaps(other.Rect);
+
+    /// <summary>A camera on <paramref name="rect"/>.</summary>
+    public static ViewTile At(Guid deviceId, int camera, TileRect rect) => new(deviceId, camera, rect.X, rect.Y, rect.Width, rect.Height);
 }
 
 /// <summary>A saved view. <see cref="Version"/> grows with every save; a save of an older version is refused.</summary>
@@ -132,9 +143,7 @@ public static class ViewRules
     public static bool Fits(ViewTile tile)
     {
         ArgumentNullException.ThrowIfNull(tile);
-        const int n = LiveViewPluginInfo.GridSize;
-        return tile.X >= 0 && tile.Y >= 0 && tile.Width >= LiveViewPluginInfo.MinTileSize && tile.Height >= LiveViewPluginInfo.MinTileSize
-            && tile.X + tile.Width <= n && tile.Y + tile.Height <= n;
+        return LiveViewPluginInfo.Layout.Fits(tile.Rect);
     }
 
     /// <summary>"3 cameras".</summary>

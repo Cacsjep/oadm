@@ -132,18 +132,6 @@ public sealed class LiveViewTests(ITestOutputHelper output)
         Assert.Equal((0, 0, 10, 20), Rect(ViewLayout.Fit(others, tile, 0, 0, 10, 40)!));
     }
 
-    [Fact]
-    public void Dragging_an_edge_or_a_corner_resizes_and_the_opposite_edges_stay()
-    {
-        var tile = new ViewTile(A, 0, 4, 4, 6, 6);
-        Assert.Equal((6, 5, 6, 6), ViewLayout.Drag(tile, FrameEdges.None, 2, 1)); // inside: move
-        Assert.Equal((2, 4, 8, 6), ViewLayout.Drag(tile, FrameEdges.Left, -2, 9)); // left edge, the right edge stays
-        Assert.Equal((4, 4, 6, 9), ViewLayout.Drag(tile, FrameEdges.Bottom, 5, 3));
-        Assert.Equal((4, 0, 9, 10), ViewLayout.Drag(tile, FrameEdges.Top | FrameEdges.Right, 3, -7)); // corner, top stops at the grid
-        Assert.Equal((8, 4, 2, 6), ViewLayout.Drag(tile, FrameEdges.Left, 9, 0)); // never below 2 cells
-        Assert.Equal((4, 4, 16, 6), ViewLayout.Drag(tile, FrameEdges.Right, 30, 0)); // stops at the edge of the grid
-    }
-
     private static (int, int, int, int) Rect(ViewTile t) => (t.X, t.Y, t.Width, t.Height);
 
     // ------------------------------------------------------------------ page
@@ -450,8 +438,8 @@ public sealed class LiveViewTests(ITestOutputHelper output)
             Headless.Capture(window, "plugin-live-view.png");
 
             // The camera under the pointer gets a thin purple frame (not while editing: the edit frame has its own).
-            var frame = view.GetVisualDescendants().OfType<TileFrame>().First(f => f.Tile == tiles[0]);
-            var hover = frame.GetVisualChildren().OfType<Border>().Single(b => b.Classes.Contains("viewTileHover"));
+            var frame = view.GetVisualDescendants().OfType<TileFrame>().First(f => f.Item == tiles[0]);
+            var hover = frame.GetVisualChildren().OfType<Border>().Single(b => b.Classes.Contains("tileHover"));
             Assert.False(hover.IsVisible);
             window.MouseMove(frame.TranslatePoint(new Point(frame.Bounds.Width / 2, frame.Bounds.Height / 2), window)!.Value);
             Headless.Pump();
@@ -466,7 +454,7 @@ public sealed class LiveViewTests(ITestOutputHelper output)
             var camera = vm.Tree.DeviceRows.First(r => r.Device.Id == devices.Where(d => d.HasVideo).ElementAt(3).Id);
             var preview = LiveViewPageView.PreviewAt(grid, vm.ActiveTab, camera, free);
             Assert.NotNull(preview);
-            grid.ShowPreview(preview, camera.Address); // the frame where it would land, while dragging
+            grid.ShowPreview(preview!.Rect, camera.Address); // the frame where it would land, while dragging
             Headless.Pump();
             Headless.Capture(window, "plugin-live-view-drop.png");
             grid.ShowPreview(null);
@@ -476,7 +464,7 @@ public sealed class LiveViewTests(ITestOutputHelper output)
             Assert.Equal(preview, tiles[3].ToTile()); // it landed where the preview showed
             Assert.False(LiveViewPageView.DropOn(grid, vm.ActiveTab, vm.Tree.DeviceRows[0], new Point(-5, 10))); // outside the grid
             Headless.Pump();
-            Assert.False(view.GetVisualDescendants().OfType<TileFrame>().First().GetVisualChildren().OfType<Border>().Single(b => b.Classes.Contains("viewTileHover")).IsVisible);
+            Assert.False(view.GetVisualDescendants().OfType<TileFrame>().First().GetVisualChildren().OfType<Border>().Single(b => b.Classes.Contains("tileHover")).IsVisible);
             Headless.Capture(window, "plugin-live-view-edit.png");
 
             // The left card collapses like the navigation rail: the views stay as icons, the grid gets the room.

@@ -1,11 +1,16 @@
 using System.Collections.ObjectModel;
+using System.Windows.Input;
+
+using Avalonia.Controls;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Client.Validation;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Layout;
 
 namespace Oadm.Plugins.LiveView.Client;
 
@@ -29,7 +34,7 @@ public sealed partial class ViewEntry(SavedView view) : ObservableObject
 /// One camera of an open view: its place in the grid and the shared live video (none without the host's live video or
 /// the "Live view" right). A removed device keeps its place and says so.
 /// </summary>
-public sealed partial class TileViewModel : ObservableObject, IDisposable
+public sealed partial class TileViewModel : ObservableObject, ITileGridItem, IDisposable
 {
     private readonly ViewTab _owner;
 
@@ -51,19 +56,26 @@ public sealed partial class TileViewModel : ObservableObject, IDisposable
     public int Camera { get; internal set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Rect))]
     public partial int X { get; private set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Rect))]
     public partial int Y { get; private set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Rect))]
     public partial int Width { get; private set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Rect))]
     public partial int Height { get; private set; }
 
+    /// <summary>The tile's cells in the grid.</summary>
+    public TileRect Rect => new(X, Y, Width, Height);
+
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Title), nameof(IsMissing))]
+    [NotifyPropertyChangedFor(nameof(Title), nameof(IsMissing), nameof(Content), nameof(Message))]
     public partial IDeviceInfo? Device { get; internal set; }
 
     /// <summary>OADM no longer manages the device: the tile stays and says so.</summary>
@@ -74,7 +86,16 @@ public sealed partial class TileViewModel : ObservableObject, IDisposable
 
     /// <summary>The picture; null without live video.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Content), nameof(Message))]
     public partial ILiveVideo? Video { get; internal set; }
+
+    /// <summary>The live video while the device is managed.</summary>
+    public Control? Content => IsMissing ? null : Video?.View;
+
+    /// <summary>The removed device, or the address while there is no video.</summary>
+    public string? Message => Content is null ? Title : null;
+
+    ICommand? ITileGridItem.RemoveCommand => RemoveCommand;
 
     public ViewTab Owner => _owner;
 
@@ -121,7 +142,7 @@ public sealed partial class TileViewModel : ObservableObject, IDisposable
 /// One open view (a tab): its cameras in the grid, and while editing its name, the changes and Save / Cancel. A new view is
 /// a tab in edit mode until it is saved.
 /// </summary>
-public sealed partial class ViewTab : ValidatingViewModel, IDisposable
+public sealed partial class ViewTab : ValidatingViewModel, ITileGridSource, IDisposable
 {
     private readonly LiveViewPageViewModel _owner;
 
@@ -153,6 +174,15 @@ public sealed partial class ViewTab : ValidatingViewModel, IDisposable
     public string? Id => Saved?.Id;
 
     public ObservableCollection<TileViewModel> Tiles { get; } = [];
+
+    IReadOnlyList<ITileGridItem> ITileGridSource.Items => Tiles;
+
+    TileLayout ITileGridSource.Layout => LiveViewPluginInfo.Layout;
+
+    string ITileGridSource.RemoveText => "Remove camera";
+
+    bool ITileGridSource.TryMove(ITileGridItem item, TileRect rect) =>
+        item is TileViewModel tile && TryFit(tile, rect.X, rect.Y, rect.Width, rect.Height);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Title))]

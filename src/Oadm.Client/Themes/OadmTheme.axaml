@@ -1378,27 +1378,27 @@
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
   </Style>
 
-  <!-- Live View: a camera of a view (its picture, the edit frame with the name and X; its edges resize) and the dragged camera -->
-  <Style Selector=":is(Panel).viewTile">
+  <!-- ui:TileGrid (Live View, Dashboards): a tile (its content, the edit frame with the name and X; its edges resize) -->
+  <Style Selector=":is(Panel).tile">
     <Setter Property="Background" Value="{StaticResource Oadm.VideoBackgroundBrush}" />
     <Setter Property="Margin" Value="1" />
   </Style>
-  <Style Selector="Border.viewTileEdit">
+  <Style Selector="Border.tileEdit">
     <Setter Property="Background" Value="{StaticResource Oadm.VideoCoverBrush}" />
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
     <Setter Property="BorderThickness" Value="2" />
     <Setter Property="Padding" Value="8,4,4,4" />
   </Style>
-  <!-- The camera under the pointer (outside editing): a thin accent frame over the picture -->
-  <Style Selector="Border.viewTileHover">
+  <!-- The tile under the pointer (outside editing): a thin accent frame over it -->
+  <Style Selector="Border.tileHover">
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="IsVisible" Value="False" />
   </Style>
-  <Style Selector=":is(Panel).viewTile:not(.editing):pointerover > Border.viewTileHover">
+  <Style Selector=":is(Panel).tile:not(.editing):pointerover > Border.tileHover">
     <Setter Property="IsVisible" Value="True" />
   </Style>
-  <Style Selector="TextBlock.viewTileTitle">
+  <Style Selector="TextBlock.tileTitle">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
@@ -1418,7 +1418,7 @@
   <Style Selector="Border.viewsPanel.collapsed Button.viewsToggle">
     <Setter Property="HorizontalContentAlignment" Value="Center" />
   </Style>
-  <!-- Where a camera dragged from the list would land -->
+  <!-- Where an item dragged onto a ui:TileGrid would land -->
   <Style Selector="Border.dropPreview">
     <Setter Property="Background" Value="{StaticResource Oadm.OverlayBrush}" />
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
