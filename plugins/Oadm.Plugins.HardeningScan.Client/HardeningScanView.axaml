@@ -20,7 +20,11 @@
       <RowDefinition Height="240" MinHeight="120" />
     </Grid.RowDefinitions>
     <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="10">
-      <Border Grid.Column="0" Classes="segmented" VerticalAlignment="Center">
+      <Button Grid.Column="0" Classes="primary" Command="{Binding ChooseDevicesCommand}" VerticalAlignment="Center"
+              ToolTip.Tip="Devices by address or tag">
+        <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding DeviceChoice.ButtonText}" />
+      </Button>
+      <Border Grid.Column="1" Classes="segmented" VerticalAlignment="Center">
         <StackPanel Orientation="Horizontal">
           <Button Classes="segment" Classes.selected="{Binding IsBasic}" Content="Basic" Command="{Binding ShowBasicCommand}"
                   ToolTip.Tip="The guide's Basic hardening checks" />
@@ -28,10 +32,6 @@
                   ToolTip.Tip="Basic plus the Extended hardening checks" />
         </StackPanel>
       </Border>
-      <Button Grid.Column="1" Classes="primary" Command="{Binding ChooseDevicesCommand}" VerticalAlignment="Center"
-              ToolTip.Tip="Devices by address or tag">
-        <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding DeviceChoice.ButtonText}" />
-      </Button>
       <ui:ToolbarButton Grid.Column="2" IconKey="start" Text="Scan" Command="{Binding ScanCommand}" IsVisible="{Binding MayScan}"
                         ToolTip.Tip="{Binding ScanTip}" ToolTip.ShowOnDisabled="True" />
       <ui:ToolbarButton Grid.Column="3" IconKey="stop" Text="Stop" Command="{Binding StopCommand}" IsVisible="{Binding MayScan}"
