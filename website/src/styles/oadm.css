@@ -490,3 +490,8 @@ header .social-icons::after {
 		height: 20px;
 	}
 }
+
+/* The Support Forum icon (top bar and below the downloads) in the accent color. */
+.support-icon {
+	color: var(--sl-color-accent);
+}
