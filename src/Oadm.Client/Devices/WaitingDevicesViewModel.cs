@@ -207,8 +207,9 @@ public sealed partial class WaitingDevicesViewModel : ObservableObject
             _all.AddRange(rows);
             ApplySearch();
         }
-        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        catch (Exception ex) when (cts.IsCancellationRequested && ex is OperationCanceledException or RpcException { StatusCode: StatusCode.Cancelled })
         {
+            // A newer read replaced this one (Try now, a round started or ended): not an error.
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

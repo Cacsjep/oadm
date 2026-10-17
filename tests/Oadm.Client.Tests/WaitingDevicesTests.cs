@@ -96,6 +96,40 @@ public sealed class WaitingDevicesTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task A_read_replaced_by_a_newer_one_is_no_error()
+    {
+        IOadmApi api = Substitute.For<IOadmApi>();
+        int calls = 0;
+        api.ListWaitingAsync(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                // gRPC reports a cancelled call as an RpcException, not as OperationCanceledException.
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+                }
+                catch (OperationCanceledException)
+                {
+                }
+
+                throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Cancelled, "Call canceled by the client."));
+            }
+
+            return new WaitingList { TotalCount = 1, Devices = { new WaitingDevice { Id = "1", Address = "10.99.0.1" } } };
+        });
+        var vm = new WaitingDevicesViewModel(api, Substitute.For<IDialogService>(), new WaitingDevicesState());
+
+        Task first = vm.LoadAsync();
+        await vm.LoadAsync();
+        await first;
+
+        Assert.Null(vm.ErrorText);
+        Assert.Single(vm.Rows);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
     public async Task Try_now_shows_the_rows_as_checking_until_the_round_ends()
     {
         using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5)) { FakeWaitingTryTime = TimeSpan.FromMilliseconds(300) };
