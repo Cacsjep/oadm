@@ -49,6 +49,8 @@ message ServerSettings {
   // Read only, only for the Administrator role: what operators lost with the upgrade to roles (banner until dismissed,
   // remembered per client by id).
   RolesUpgradeNotice roles_notice = 22;
+  // Read only: this server's ID (licenses of commercial plugins name it), in Get and Set replies, ignored in a Set.
+  string server_id = 23;
 }
 
 // The upgrade to roles took rights from the Operator role (CLAUDE.md "Users, roles and sessions").

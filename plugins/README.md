@@ -406,8 +406,8 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
 
 A plugin you sell declares `"license": {"publicKey": "...", "features": [...], "trialDays": 30}` in plugin.json and reads
 `ctx.License` (`IPluginLicense`: `IsValid`, `Has(feature)`, `Limit(name)`, `Current.Reason`, `Changed`) in its core plugin,
-task and action contexts; pages use `ICorePluginClientContext.LicenseOf(packageId)`. OADM checks the signed license file
-offline; the plugin decides what runs. Keys and license files: `manage license keys` / `manage license sign`. Guide:
+task and action contexts; pages use `ICorePluginClientContext.LicenseOf(packageId)`. OADM checks the signed license key
+offline; the plugin decides what runs. Vendor keys and license keys: `manage license keys` / `manage license sign`. Guide:
 website `dev/licenses.md`.
 
 ### Permissions

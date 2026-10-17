@@ -12,7 +12,7 @@
     <c:PageTitleBar Title="Plugins" Subtitle="A plugin that is off shows no page, menu entry or toolbar button." />
     <Border Grid.Row="1" Classes="card" MaxWidth="1000" HorizontalAlignment="Left" VerticalAlignment="Top">
       <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12">
-        <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding HasServerId}">
+        <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowServerId}">
           <TextBlock Classes="secondary" Text="Server ID" VerticalAlignment="Center" />
           <SelectableTextBlock Classes="mono" Text="{Binding ServerId}" VerticalAlignment="Center" />
           <Button Classes="toolbar iconOnly" ToolTip.Tip="Copy server ID" Command="{Binding CopyServerIdCommand}">

@@ -23,9 +23,8 @@
             </Button>
           </StackPanel>
         </ui:FormField>
-        <ui:FormField Classes="wide" Label="License" Hint="Paste the license you got from the plugin's vendor, or choose its file."
-                      Error="{Binding LicenseError}">
-          <ui:CodeEditor x:Name="LicenseBox" Text="{Binding LicenseText}" Language="Json" Height="220" IsEnabled="{Binding IsIdle}" />
+        <ui:FormField Classes="wide" Label="License key" Hint="{Binding LicenseHint}">
+          <TextBox x:Name="LicenseBox" Classes="mono" Text="{Binding LicenseText}" PlaceholderText="OADM1." IsEnabled="{Binding IsIdle}" />
         </ui:FormField>
         <ui:FormField Classes="wide">
           <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding ChooseFileCommand}" IsEnabled="{Binding IsIdle}">

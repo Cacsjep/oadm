@@ -1579,9 +1579,11 @@ Commercial plugins (decision 2026-10-17): OADM checks, the plugin decides. User 
 - **Manifest** `license` (`Oadm.Sdk.Licensing.PluginLicenseManifest`): `publicKey` (base64 SubjectPublicKeyInfo of an ECDSA
   P-256 key), optional `features`, `trialDays` (from the day the server first loaded the package; 0 = none). Without it the
   plugin is free. No buy link.
-- **License file** (`.oadmlicense`, `LicenseFile`): `{"license": {plugin, server, customer, issued, expires|null, features,
-  limits}, "signature"}`; the signature (ECDSA P-256, SHA-256) covers the exact text of the `license` object, line endings
-  normalized to LF; checked offline: signature, plugin id, server ID, last day (server local date). At most 64 KB.
+- **License key** (`LicenseFile`, decision 2026-10-17: one line, no raw content in the UI): `OADM1.<content>.<signature>`,
+  base64url; content = JSON {plugin, server, customer, issued, expires|null, features (optional), limits (optional)}; the
+  signature (ECDSA P-256, SHA-256) covers the content bytes; spaces and line breaks are ignored; a file (`.oadmlicense`)
+  holds the same line; checked offline: signature, plugin id, server ID, last day (server local date). At most 16 KB.
+  `LicenseFile.Peek` reads the content unchecked (the dialog's summary).
 - **Server** (`Oadm.Core.Plugins.PluginLicenses`, initialized at start step 4a before any plugin runs, re-checked hourly by
   `PluginLicenseRefreshHostedService`): one live `IPluginLicense` per package (`PluginRegistry.Licenses`), handed to
   `ICorePluginContext.License`, `ITaskExecutionContext.License`, `IActionContext.License` (DIM null); `Changed` when the
@@ -1593,10 +1595,12 @@ Commercial plugins (decision 2026-10-17): OADM checks, the plugin decides. User 
   reason, customer, issued, expires, features, limits, trial_ends, available_features); `SetPackageLicense(id, license)` and
   `RemovePackageLicense(id)` (Admin, audited "Entered plugin license" / "Removed plugin license"; INVALID_ARGUMENT with the
   reason, NOT_FOUND, FAILED_PRECONDITION for a free plugin).
-- **Client**: Plugins page: "Server ID" + copy at the top, a **License** column (only while a plugin needs one): status chip
+- **Client**: Settings page, card Server: "Server ID" + copy, always (`ServerSettings.server_id = 23`, read only). Plugins
+  page: "Server ID" + copy at the top and a **License** column, both only while a plugin needs a license: status chip
   (Licensed ok, Trial warning, else error; reason as tooltip), Enter / Change license, Remove (red, confirmed); a licensed
   package is listed even when always on. Dialog `Settings/PluginLicenseWindow` (`PluginLicenseViewModel`, single operation):
-  server ID + copy, the license in a `ui:CodeEditor` (JSON), Choose file, the server's refusal below the field.
+  server ID + copy, "License key" (one-line text box, mono), its hint = what the key says ("ACME GmbH, until 2027-12-31,
+  reports") or where it comes from, Choose file, the format error or the server's refusal below the field.
   `ICorePluginClientContext.LicenseOf(packageId)` for pages. Fake mode: the sample package `example.site-reports` (trial,
   `FakeOadmApi.SampleLicenseKeys`, server ID `FakeOadmApi.FakeServerId`).
 - **Vendor tool** `manage license keys [--out]` (never overwrites a key) and `manage license sign --key --plugin --server

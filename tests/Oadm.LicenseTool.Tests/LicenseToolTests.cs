@@ -30,7 +30,7 @@ public sealed class LicenseToolTests : IDisposable
         Assert.Contains($"\"publicKey\": \"{publicKey}\"", keys.Out, StringComparison.Ordinal);
 
         var sign = Run("sign", "--key", "keys/private-key.pem", "--plugin", "acme.site-reports", "--server", Server.ToUpperInvariant(),
-            "--customer", "ACME GmbH", "--expires", "2027-12-31", "--features", "reports, export", "--limit", "devices=500");
+            "--customer", "ACME GmbH", "--expires", "2027-12-31", "--features", "reports, export", "--limit", "sites=3");
         Assert.Equal(0, sign.Code);
         var file = Path.Combine(_folder, "acme-gmbh-acme.site-reports.oadmlicense");
         Assert.Contains(file, sign.Out, StringComparison.Ordinal);
@@ -39,7 +39,7 @@ public sealed class LicenseToolTests : IDisposable
         Assert.Equal(LicenseStatus.Valid, info.Status);
         Assert.Equal("Licensed to ACME GmbH until 2027-12-31.", info.Reason);
         Assert.Equal(["reports", "export"], info.Data!.Features);
-        Assert.Equal(500, info.Limit("devices"));
+        Assert.Equal(3, info.Limit("sites"));
         Assert.True(info.Has("export"));
         Assert.False(info.Has("other"));
     }
@@ -58,7 +58,7 @@ public sealed class LicenseToolTests : IDisposable
     [InlineData("sign", "--key", "k.pem", "--plugin", "a.b", "--server", "not-an-id", "--customer", "X")]
     [InlineData("sign", "--key", "k.pem", "--plugin", "a.b", "--server", Server, "--customer", "X", "--expires", "31.12.2027")]
     [InlineData("sign", "--key", "k.pem", "--plugin", "a.b", "--server", Server, "--customer", "X", "--expires", "2020-01-01")]
-    [InlineData("sign", "--key", "k.pem", "--plugin", "a.b", "--server", Server, "--customer", "X", "--limit", "devices")]
+    [InlineData("sign", "--key", "k.pem", "--plugin", "a.b", "--server", Server, "--customer", "X", "--limit", "sites")]
     [InlineData("sign", "--key", "k.pem", "--plugin", "a.b", "--server", Server, "--customer", "X", "--color", "red")]
     [InlineData("verify")]
     public void Wrong_arguments_are_usage_errors(params string[] args) => Assert.Equal(2, Run(args).Code);

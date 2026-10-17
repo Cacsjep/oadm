@@ -13,8 +13,8 @@ version and date, and the release workflow copies it into the GitHub release.
   and optionally waits for an answer that must contain a given text.
 - **Licenses for commercial plugins**: plugin makers can sell plugins without a license system of their own. The Plugins
   page shows this server's ID, the license state of every plugin that needs one and lets administrators enter or remove
-  a license. `manage license keys` and `manage license sign` make the vendor's keys and the license files; the plugin
-  reads the result (valid, trial, features, limits) and decides what runs.
+  a license key. The Settings page shows the server ID too. `manage license keys` and `manage license sign` make the
+  vendor's keys and the license keys; the plugin reads the result (valid, trial, features) and decides what runs.
 
 ## [3.4.0] - 2026-10-17
 

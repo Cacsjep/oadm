@@ -11,7 +11,7 @@ using Oadm.Sdk.Licensing;
 namespace Oadm.Client.Settings;
 
 /// <summary>
-/// "Enter license" of the Plugins page (administrators): the license text pasted or read from a file, checked and stored
+/// "Enter license" of the Plugins page (administrators): the license key pasted or read from a file, checked and stored
 /// by the server (PluginService.SetPackageLicense); its refusal ("for another server", "expired", "signature does not
 /// match") stands below the field. The server ID is shown with a copy button, so the customer can send it to the vendor.
 /// </summary>
@@ -30,7 +30,8 @@ public sealed partial class PluginLicenseViewModel : ValidatingViewModel
         PluginName = pluginName;
         _dialogs = dialogs;
         _clipboard = clipboard;
-        Validation.Rule(nameof(LicenseText), () => string.IsNullOrWhiteSpace(LicenseText) ? "Paste the license or choose its file." : null);
+        Validation.Rule(nameof(LicenseText), () => string.IsNullOrWhiteSpace(LicenseText) ? "Paste the license key or choose its file."
+            : LicenseFile.Peek(LicenseText) is null ? "This is not an OADM license key." : null);
         Validation.Validate();
     }
 
@@ -42,9 +43,24 @@ public sealed partial class PluginLicenseViewModel : ValidatingViewModel
 
     public string ServerId => _store.ServerId;
 
+    /// <summary>The license key (one line; spaces and line breaks are ignored).</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
+    [NotifyPropertyChangedFor(nameof(LicenseHint))]
     public partial string LicenseText { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Below the field: what a pasted key says ("ACME GmbH, until 2027-12-31, reports"), before the server checks it; else
+    /// where the key comes from.
+    /// </summary>
+    public string LicenseHint => LicenseFile.Peek(LicenseText) is { } data
+        ? string.Join(", ", new[]
+        {
+            data.Customer,
+            data.Expires is { } until ? "until " + LicenseFile.Day(until) : "no end date",
+            data.Features.Count > 0 ? string.Join(", ", data.Features) : "every feature",
+        })
+        : "Paste the license key from the plugin's vendor, or choose its file.";
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
@@ -55,16 +71,12 @@ public sealed partial class PluginLicenseViewModel : ValidatingViewModel
 
     public string? SaveBlockedReason => Validation.FirstErrorOf([nameof(LicenseText)]);
 
-    /// <summary>The error below the license field (the code editor has no validation border of its own).</summary>
-    public string? LicenseError => ErrorOf(nameof(LicenseText));
-
     /// <summary>True: stored (the dialog closes); false: cancelled.</summary>
     public event EventHandler<bool>? CloseRequested;
 
     protected override void OnValidationChanged()
     {
         OnPropertyChanged(nameof(SaveBlockedReason));
-        OnPropertyChanged(nameof(LicenseError));
         SaveCommand.NotifyCanExecuteChanged();
     }
 

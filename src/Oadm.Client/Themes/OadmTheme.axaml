@@ -371,6 +371,10 @@
   <Style Selector="TextBlock.mono, SelectableTextBlock.mono">
     <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamilyMono}" />
   </Style>
+  <!-- A key typed or pasted as it is: the license key of a plugin -->
+  <Style Selector="TextBox.mono">
+    <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamilyMono}" />
+  </Style>
   <Style Selector="TextBlock.small">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
   </Style>

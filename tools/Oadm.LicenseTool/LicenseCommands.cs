@@ -153,12 +153,13 @@ internal static class LicenseCommands
             return 1;
         }
 
-        File.WriteAllText(outPath, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        File.WriteAllText(outPath, text + "\n", new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         output.WriteLine($"License for {customer}: {outPath}");
+        output.WriteLine(text);
         output.WriteLine($"Plugin {data.Plugin}, server {server}, {(expires is { } e ? "until " + LicenseFile.Day(e) : "no expiry")}"
             + (features.Count > 0 ? ", features " + string.Join(", ", features) : ", every feature")
             + (limits.Count > 0 ? ", " + string.Join(", ", limits.Select(l => $"{l.Key} {l.Value}")) : string.Empty) + ".");
-        output.WriteLine("The customer enters it on the Plugins page (License, Enter license).");
+        output.WriteLine("Send the customer the key or the file; they enter it on the Plugins page (Enter license).");
         return 0;
     }
 

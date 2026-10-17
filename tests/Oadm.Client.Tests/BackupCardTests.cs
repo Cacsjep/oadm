@@ -219,6 +219,7 @@ public sealed class BackupCardTests
             await settings.LoadAsync();
             Assert.True(settings.ShowBackup);
             Assert.Equal(2, settings.Backup!.Backups.Count); // loaded with the page
+            Assert.Equal(FakeOadmApi.FakeServerId, settings.ServerId); // the Server card always shows it
             var window = new Window { Width = 1520, Height = 1000, Content = new Oadm.Client.Settings.SettingsView { DataContext = settings, Margin = new Avalonia.Thickness(24) } };
             window.Show();
             Pump();
@@ -228,6 +229,10 @@ public sealed class BackupCardTests
             window.Width = 2200;
             Pump();
             Save(window, outDir, "client-page-settings-wide.png");
+            window.Width = 1520;
+            window.Height = 1350;
+            Pump();
+            Save(window, outDir, "client-page-settings-server.png"); // the Server card with the server ID
             window.Close();
             return true;
         }, CancellationToken.None);

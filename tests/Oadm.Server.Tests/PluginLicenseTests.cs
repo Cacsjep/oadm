@@ -36,7 +36,7 @@ public sealed class PluginLicenseTests
 
     private static string License(string server, DateOnly? expires = null, string plugin = PluginId, params string[] features) =>
         LicenseFile.Sign(new LicenseData(plugin, server, "ACME GmbH", DateOnly.FromDateTime(DateTime.Today), expires, features,
-            new Dictionary<string, long> { ["devices"] = 500 }), Keys.PrivateKeyPem);
+            new Dictionary<string, long> { ["sites"] = 3 }), Keys.PrivateKeyPem);
 
     private static Proto.PluginPackageInfo Package(Proto.PluginPackageList list) => Assert.Single(list.Packages, p => p.Id == PluginId);
 
@@ -61,12 +61,12 @@ public sealed class PluginLicenseTests
         var state = Package(list).License;
         Assert.Equal(Proto.PluginLicenseStatus.PluginLicenseValid, state.Status);
         Assert.Equal(("ACME GmbH", "2099-12-31", "Licensed to ACME GmbH until 2099-12-31."), (state.Customer, state.Expires, state.Reason));
-        Assert.Equal(500, state.Limits["devices"]);
+        Assert.Equal(3, state.Limits["sites"]);
         Assert.Equal(1, changed);
         Assert.True(plugin.Context.License.IsValid);
         Assert.True(plugin.Context.License.Has("reports"));
         Assert.False(plugin.Context.License.Has("export"));
-        Assert.Equal(500, plugin.Context.License.Limit("devices"));
+        Assert.Equal(3, plugin.Context.License.Limit("sites"));
 
         // Stored: a new start of the license service reads it again.
         var again = new PluginLicenses(host.Get<PluginRegistry>(), host.Get<ServerSettingsStore>());
@@ -77,7 +77,7 @@ public sealed class PluginLicenseTests
         list = await host.Plugins.RemovePackageLicenseAsync(new Proto.PackageIdRequest { Id = PluginId });
         Assert.Equal(Proto.PluginLicenseStatus.PluginLicenseMissing, Package(list).License.Status);
         Assert.False(plugin.Context.License.IsValid);
-        Assert.Equal(0, plugin.Context.License.Limit("devices"));
+        Assert.Equal(0, plugin.Context.License.Limit("sites"));
 
         var audit = await host.Audit.ListAsync(new Proto.ListAuditRequest());
         Assert.Contains(audit.Entries, e => e.Action == AuditActions.PluginLicenseEntered && e.Target == "ACME reports");
@@ -98,11 +98,11 @@ public sealed class PluginLicenseTests
         Assert.Equal((StatusCode.InvalidArgument, "The license is for another server (11111111-2222-3333-4444-555555555555)."), (other.StatusCode, other.Status.Detail));
         var expired = await Refused(PluginId, License(server, new DateOnly(2020, 1, 31)));
         Assert.Equal("The license expired on 2020-01-31.", expired.Status.Detail);
-        var changed = await Refused(PluginId, License(server).Replace("ACME GmbH", "Someone else", StringComparison.Ordinal));
+        var changed = await Refused(PluginId, Tamper(License(server)));
         Assert.StartsWith("The license is not valid: its signature does not match.", changed.Status.Detail, StringComparison.Ordinal);
         var otherPlugin = await Refused(PluginId, License(server, null, "acme.other"));
         Assert.Equal("The license is for another plugin (acme.other).", otherPlugin.Status.Detail);
-        Assert.Equal("The license is not valid: it is not an OADM license file.", (await Refused(PluginId, "hello")).Status.Detail);
+        Assert.Equal("The license is not valid: it is not an OADM license key.", (await Refused(PluginId, "hello")).Status.Detail);
 
         Assert.Equal(StatusCode.NotFound, (await Refused("acme.unknown", License(server))).StatusCode);
         var free = (await host.Plugins.ListPackagesAsync(new Proto.Empty())).Packages.First(p => p.License is null).Id;
@@ -133,7 +133,7 @@ public sealed class PluginLicenseTests
         Assert.Equal((LicenseStatus.Trial, "Trial until 2026-10-30."), (live.Current.Status, live.Current.Reason));
         Assert.True(live.IsValid);
         Assert.True(live.Has("export")); // a trial unlocks everything
-        Assert.Null(live.Limit("devices"));
+        Assert.Null(live.Limit("sites"));
 
         var changed = 0;
         live.Changed += (_, _) => changed++;
@@ -157,17 +157,28 @@ public sealed class PluginLicenseTests
     }
 
     [Fact]
-    public void LicenseSurvivesOtherLineEndingsButNoChangeOfItsContent()
+    public void LicenseKeyIsOneLineAndSurvivesBreaksButNoChange()
     {
         const string Server = "7f3c2a1e-5b8d-4c6f-9a2e-1d0b4e8f6c37";
         var text = License(Server);
         var today = DateOnly.FromDateTime(DateTime.Today);
-        Assert.Equal(LicenseStatus.Valid, LicenseFile.Verify(text.ReplaceLineEndings("\r\n"), Keys.PublicKey, PluginId, Server, today).Status);
+        Assert.StartsWith(LicenseFile.Prefix, text, StringComparison.Ordinal);
+        Assert.DoesNotContain("\n", text, StringComparison.Ordinal); // one line
+        Assert.Equal(LicenseStatus.Valid, LicenseFile.Verify(" " + text.Insert(30, "\r\n ") + "\n", Keys.PublicKey, PluginId, Server, today).Status); // pasted with breaks
+        Assert.Equal("ACME GmbH", LicenseFile.Peek(text)!.Customer);
+        Assert.Null(LicenseFile.Peek("hello"));
         Assert.Equal(LicenseStatus.Valid, LicenseFile.Verify(text, Keys.PublicKey, PluginId, Server.ToUpperInvariant(), today).Status);
-        Assert.Equal(LicenseStatus.Invalid, LicenseFile.Verify(text.Replace("500", "5000", StringComparison.Ordinal), Keys.PublicKey, PluginId, Server, today).Status);
+        Assert.Equal(LicenseStatus.Invalid, LicenseFile.Verify(Tamper(text), Keys.PublicKey, PluginId, Server, today).Status);
         var otherVendor = LicenseFile.CreateKeys();
         Assert.Equal(LicenseStatus.Invalid, LicenseFile.Verify(text, otherVendor.PublicKey, PluginId, Server, today).Status);
         Assert.Equal(LicenseStatus.Invalid, LicenseFile.Verify(text, "not a key", PluginId, Server, today).Status);
+    }
+
+    /// <summary>The key with one character of its content changed (still readable, the signature no longer fits).</summary>
+    private static string Tamper(string key)
+    {
+        var at = LicenseFile.Prefix.Length + 10;
+        return key[..at] + (key[at] == 'A' ? 'B' : 'A') + key[(at + 1)..];
     }
 
     /// <summary>A clock that stands on one day (local time = UTC).</summary>

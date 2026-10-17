@@ -20,7 +20,8 @@ public sealed partial class SettingsGrpcService(
     ServerSettingsStore store,
     CredentialListStore credentials,
     AuditLog audit,
-    ILogger<SettingsGrpcService> logger) : Proto.SettingsService.SettingsServiceBase
+    ILogger<SettingsGrpcService> logger,
+    Core.Plugins.PluginLicenses licenses) : Proto.SettingsService.SettingsServiceBase
 {
     public override async Task<Proto.ServerSettings> Get(Proto.Empty request, ServerCallContext context) =>
         await WithNoticeAsync(Mappers.ToProto(await store.GetServerSettingsAsync(context.CancellationToken).ConfigureAwait(false)), context.CancellationToken).ConfigureAwait(false);
@@ -46,6 +47,7 @@ public sealed partial class SettingsGrpcService(
     /// </summary>
     private async Task<Proto.ServerSettings> WithNoticeAsync(Proto.ServerSettings settings, CancellationToken ct)
     {
+        settings.ServerId = licenses.ServerId;
         if (CallerContext.Current is { IsAdmin: true } && await RolesUpgradeNotice.ReadAsync(store, ct).ConfigureAwait(false) is { } roles)
         {
             settings.RolesNotice = new Proto.RolesUpgradeNotice { Id = roles.Id };

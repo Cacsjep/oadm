@@ -46,6 +46,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         ServerName = "acs",
         ListenUrl = "https://0.0.0.0:5080",
         ServerVersion = FakeServerVersion,
+        ServerId = FakeServerId,
     };
     private bool _online = true;
 

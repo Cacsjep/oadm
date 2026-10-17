@@ -4,18 +4,18 @@ description: Licenses for commercial plugins, checked offline by OADM, without a
 ---
 
 OADM has a license check for plugins you sell. You don't need a license server or your own license code: you sign a
-license file for each customer, OADM checks it offline, and your plugin asks OADM whether it may run.
+license key for each customer, OADM checks it offline, and your plugin asks OADM whether it may run.
 
 Plugins under the Apache 2.0 license of OADM may be closed source and sold; nothing has to be published.
 
 ## How it works
 
-1. Every OADM server has a **server ID**, made at its first start. The customer finds it on the **Plugins** page and
-   sends it to you. A restored backup keeps it, so moving a server keeps its licenses.
+1. Every OADM server has a **server ID**, made at its first start. The customer finds it on the **Settings** page (and on
+   the **Plugins** page while a plugin needs a license) and sends it to you. A restored backup keeps it, so moving a server keeps its licenses.
 2. You make a key pair once. The **public key** goes into your plugin's `plugin.json`; the **private key** stays with you.
-3. For each sale you sign a license file for the customer's server ID: who it is for, until when, which features, which
-   limits.
-4. The customer enters the file on the Plugins page. OADM checks the signature with the public key of your
+3. For each sale you sign a license key for the customer's server ID: who it is for, until when and, if you want, which
+   features.
+4. The customer pastes the key on the Plugins page. OADM checks the signature with the public key of your
    `plugin.json`, the plugin id, the server ID and the date.
 5. Your plugin reads the result and decides what runs.
 
@@ -61,7 +61,7 @@ Without a `license` entry the plugin is free and OADM asks for nothing.
 ```
 manage license sign --key ../acme-keys/private-key.pem --plugin acme.site-reports
     --server 7f3c2a1e-5b8d-4c6f-9a2e-1d0b4e8f6c37 --customer "ACME GmbH"
-    --expires 2027-12-31 --features reports --limit devices=500
+    --expires 2027-12-31
 ```
 
 | Option | Meaning |
@@ -70,28 +70,19 @@ manage license sign --key ../acme-keys/private-key.pem --plugin acme.site-report
 | `--customer` | Shown on the Plugins page |
 | `--expires` | The last day it is valid; without it the license never expires |
 | `--features` | The features it unlocks, separated by commas; without it every feature |
-| `--limit` | A number your plugin enforces, for example `devices=500`; repeat for more |
+| `--limit` | Optional: a number your plugin enforces, for example `sites=3`; repeat for more |
 | `--out` | The file name (default `<customer>-<plugin id>.oadmlicense`) |
 
-The license file is readable JSON with a signature, so the customer can see what they bought:
+The result is one line, the license key, printed and written to the file:
 
-```json
-{
-  "license": {
-    "plugin": "acme.site-reports",
-    "server": "7f3c2a1e-5b8d-4c6f-9a2e-1d0b4e8f6c37",
-    "customer": "ACME GmbH",
-    "issued": "2026-10-17",
-    "expires": "2027-12-31",
-    "features": ["reports"],
-    "limits": { "devices": 500 }
-  },
-  "signature": "..."
-}
+```
+OADM1.eyJwbHVnaW4iOiJhY21lLnNpdGUtcmVwb3J0cyIsInNlcnZlciI6IjdmM2MyYTFlLTViOGQtNGM2Zi05YTJlLTFkMGI0ZThmNmMzNyIs....MEUCIQ...
 ```
 
-Any change to the `license` part breaks the signature. Line endings don't matter. To sign from your own shop instead of
-`manage`, call `LicenseFile.Sign` of the SDK (`Oadm.Sdk.Licensing`) with the same data and key.
+Send the customer the key or the file. The key carries the plugin, the server ID, the customer, the dates and, when you
+gave them, the features and limits, signed with your private key; any change breaks the signature. Spaces and line breaks
+a mail program adds are ignored. To sign from your own shop instead of `manage`, call `LicenseFile.Sign` of the SDK
+(`Oadm.Sdk.Licensing`) with the same data and key.
 
 ## 4. Check the license in the plugin
 
@@ -123,7 +114,7 @@ public async Task<string?> InvokeAsync(string method, string? payloadJson, Cance
         throw new InvalidOperationException("Your license does not include the export.");
     }
 
-    var maxDevices = _license?.Limit("devices"); // null = no limit
+    var sites = _license?.Limit("sites"); // only when you sell limits; null = no limit
     ...
 }
 ```
@@ -146,7 +137,8 @@ or to lock buttons. The server part must check again, because a client can be ch
 
 ## On the Plugins page
 
-Administrators see the server ID with a copy button, and a **License** column for every plugin that needs one: the state
+While a plugin needs a license, administrators see the server ID with a copy button and a **License** column: the state
 (Licensed, Trial, Trial ended, No license, Expired, Other server, Not valid) with the reason as tooltip, **Enter license**
-(paste the text or choose the file; a license that does not fit is refused with the reason) and **Remove**. Entering and
+(paste the key or choose its file; below the field OADM shows whom the key is for, and a key that does not fit is refused
+with the reason) and **Remove**. Entering and
 removing a license is written to the audit log.

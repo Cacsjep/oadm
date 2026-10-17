@@ -151,6 +151,7 @@ public sealed class PluginListTests
             await store.LoadAsync(CancellationToken.None);
 
             Assert.Equal(FakeOadmApi.FakeServerId, plugins.ServerId);
+            Assert.True(plugins.ShowServerId); // a plugin needs a license
             Assert.True(plugins.HasLicensedPlugins);
             var row = plugins.Plugins.Single(p => p.Id == FakeOadmApi.SampleLicensedPluginId);
             Assert.True(row.NeedsLicense);
@@ -178,6 +179,10 @@ public sealed class PluginListTests
             Oadm.Client.App.ApplyCrispText(dialog);
             dialog.Show();
             Assert.False(license.SaveCommand.CanExecute(null)); // nothing pasted yet
+            license.LicenseText = "not a key";
+            Assert.Equal("This is not an OADM license key.", license.ErrorOf(nameof(PluginLicenseViewModel.LicenseText)));
+            license.LicenseText = Sign(FakeOadmApi.FakeServerId);
+            Assert.Equal("ACME GmbH, until 2099-12-31, reports", license.LicenseHint); // what the key says, before the check
             license.LicenseText = Sign("11111111-2222-3333-4444-555555555555");
             await license.SaveCommand.ExecuteAsync(null);
             Assert.Equal("The license is for another server (11111111-2222-3333-4444-555555555555).", license.ErrorOf(nameof(PluginLicenseViewModel.LicenseText)));
@@ -223,7 +228,7 @@ public sealed class PluginListTests
 
         static string Sign(string server) => Oadm.Sdk.Licensing.LicenseFile.Sign(
             new Oadm.Sdk.Licensing.LicenseData(FakeOadmApi.SampleLicensedPluginId, server, "ACME GmbH", new DateOnly(2026, 10, 17), new DateOnly(2099, 12, 31),
-                ["reports"], new Dictionary<string, long> { ["devices"] = 500 }),
+                ["reports"], new Dictionary<string, long> { ["sites"] = 3 }),
             FakeOadmApi.SampleLicenseKeys.PrivateKeyPem);
     }
 

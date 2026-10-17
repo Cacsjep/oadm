@@ -133,6 +133,14 @@
                 <TextBlock Text="{Binding ListenUrl}" />
               </ui:FormField>
             </StackPanel>
+            <ui:FormField Label="Server ID" IsVisible="{Binding HasServerId}">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <SelectableTextBlock Classes="mono" Text="{Binding ServerId}" VerticalAlignment="Center" />
+                <Button Classes="toolbar iconOnly" ToolTip.Tip="Copy server ID" Command="{Binding CopyServerIdCommand}">
+                  <ui:OadmIcon Data="{StaticResource Icon.copy}" />
+                </Button>
+              </StackPanel>
+            </ui:FormField>
           </StackPanel>
         </Border>
 

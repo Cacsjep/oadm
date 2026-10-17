@@ -216,6 +216,9 @@ public sealed partial class PluginsViewModel : ObservableObject
 
     public bool HasServerId => ServerId.Length > 0;
 
+    /// <summary>The server ID shows here only while a plugin needs a license (the Settings page always shows it).</summary>
+    public bool ShowServerId => HasServerId && HasLicensedPlugins;
+
     [RelayCommand]
     private async Task CopyServerIdAsync()
     {
@@ -293,6 +296,7 @@ public sealed partial class PluginsViewModel : ObservableObject
         OnPropertyChanged(nameof(ServerId));
         OnPropertyChanged(nameof(HasServerId));
         OnPropertyChanged(nameof(HasLicensedPlugins));
+        OnPropertyChanged(nameof(ShowServerId));
     }
 
     /// <summary>gRPC errors carry the user message in Status.Detail.</summary>
