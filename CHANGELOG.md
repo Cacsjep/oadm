@@ -4,16 +4,18 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
 version and date, and the release workflow copies it into the GitHub release.
 
-## [Unreleased]
+## [3.4.0] - 2026-10-17
 
 ### Added
 
+- **Devices that are off are added later**: an import (from a file or from ADM) keeps the devices that do not answer
+  and OADM adds each one once it comes online, with the login and tags of its line. The Devices page shows how many are
+  waiting; the list shows the last try and its result and lets you try them now (rows say "Checking"), export them or
+  remove them. A device that rejects every password waits for "Try now" instead of getting the same passwords again.
+  Importing again marks lines that are waiting already. Settings: "Try waiting devices every (min)", 15 by default.
 - **Gauge widget on dashboards**: a number on an arc from Min to Max, with the Number widget's decimals, unit, color and
-  thresholds; the thresholds color the arc, the ticks follow Min and Max by themselves.
-
-- **Waiting list for imports**: devices of an import that do not answer are kept and added automatically once they come
-  online, with the login and tags of their line. The Devices page shows how many are waiting; the list lets you try them
-  now, export or remove them. Settings: "Try waiting devices every (min)", 15 by default.
+  thresholds and a line width; the thresholds color the arc, the ticks follow Min and Max by themselves, and the marker
+  glides to each new value.
 
 ### Changed
 
@@ -23,6 +25,8 @@ version and date, and the release workflow copies it into the GitHub release.
   answer is given up after the scan timeout (1.5 s). 30,000 devices with 10 % off take about 12 to 15 minutes on a LAN.
 - **Tags** can have up to 64 characters. Longer tags in an imported file are shortened to 64 instead of stopping the
   device from being added. Long tags in the device list end with "…".
+- **Dashboards**: a new threshold takes a color no other threshold of the widget uses yet.
+- **Settings**: "IP range scan timeout" is now "Scan timeout"; it also applies to the first contact of imported devices.
 
 ## [3.3.1] - 2026-10-16
 

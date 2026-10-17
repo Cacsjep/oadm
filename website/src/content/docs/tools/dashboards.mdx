@@ -6,6 +6,7 @@ description: Live values of your device triggers and live video, in saved dashbo
 import { Image } from 'astro:assets';
 import page from '../../../assets/screens/dashboards-page.png';
 import edit from '../../../assets/screens/dashboards-edit.png';
+import gauge from '../../../assets/screens/dashboards-gauge.png';
 
 Dashboards show live values of your devices: a temperature, a count, the last number plate, a gate that is open or
 closed. A dashboard is a grid of widgets, each showing one value of one device, next to live video if you want it.
@@ -35,9 +36,13 @@ see when it arrived.
    - **Number**: decimal places, a unit, and thresholds that color the number from a value on (for example 25 orange,
      28 red).
    - **Gauge**: the number on an arc from **Min** to **Max**, with the same settings as Number, and a **Line width**
-     for the arc. The thresholds color the
-     arc from their value up to the next one; a marker moves to each new value and stops at the end when the value is outside.
-     The ticks follow Min and Max by themselves. Switching between Number and Gauge keeps the settings.
+     for the arc. The thresholds color the arc from their value up to the next one; a marker moves to each new value and
+     stops at the end when the value is outside. The ticks follow Min and Max by themselves. Switching between Number and
+     Gauge keeps the settings.
+
+     <Image src={gauge} alt="Gauges: a grade from 0 to 100 in four colors, a power reading, a value above Max, a cold room without a value yet" class="screen" />
+
+   A new threshold takes a color no other threshold of the widget uses yet.
    **Type** reads a value as a number, as yes / no or as text when the automatic choice does not fit. Set **Show name** to
    **No** to give the value the whole widget.
    The copy icon next to a widget's X makes the same widget for each device you choose, for example input 1 on 20 I/O modules:

@@ -46,6 +46,12 @@ public sealed class GaugeView : Control
     /// <summary>Where the marker is going (tests).</summary>
     internal double? MarkerTarget => _shown is null ? null : _to;
 
+    /// <summary>Where the marker is now, 0 (Min) to 1 (Max) (tests).</summary>
+    internal double? MarkerShown => _shown;
+
+    /// <summary>One animation frame at <paramref name="time"/> (tests drive the frames with set times).</summary>
+    internal void Step(TimeSpan time) => OnFrame(time);
+
     public void Show(Widget widget, WidgetDisplay display)
     {
         ArgumentNullException.ThrowIfNull(widget);

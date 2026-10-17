@@ -7,6 +7,7 @@ import { Steps, Aside } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
 import scan from '../../../assets/screens/client-add-scan-finished.png';
 import importFile from '../../../assets/screens/client-add-import.png';
+import waiting from '../../../assets/screens/client-waiting-dialog.png';
 
 Adding devices is one page, no wizard. OADM logs in to every device it finds with the passwords on your
 **Credentials** page, so most devices are ready to add right away.
@@ -58,11 +59,7 @@ Devices without a DNS name are added by IP address. OADM keeps the address a dev
   are ignored. Comma or semicolon.
 - A password without a user name is for `root`. Logins in the file are tried first and are never saved.
 - Up to 30,000 addresses per file. A line with a problem shows **Not added** and the reason in its row.
-- **Keep devices that do not answer and add them when they come online** (checked by default): on **Add**, OADM keeps
-  the addresses that did not answer and tries them again every 15 minutes (Settings, "Try waiting devices every"). Each
-  device is added once it answers, with the login and tags of its line. The Devices page shows how many are waiting;
-  click it to see them, try them now, export or remove them. A device that answers but rejects every password waits until
-  you click **Try now**.
+- Devices that do not answer can wait and be added later, see [Devices that are off](#devices-that-are-off).
 - Tags in the file are given to the devices you add. Several tags in one cell are separated with `;`.
 
 Example:
@@ -88,6 +85,31 @@ OADM only sends a password after the device answered like an Axis device, and tr
 devices you already manage are never tried on new devices.
 </Aside>
 
+## Devices that are off
+
+In a large import some devices are always off or not reachable yet. You don't have to note them and import them again:
+OADM keeps them and adds each one once it answers.
+
+1. Leave **Keep devices that do not answer and add them when they come online** checked (above the list of an import,
+   on by default).
+2. Click **Add**. OADM adds the devices that are ready and keeps the ones that showed **Not found**, with the login and
+   the tags of their line. With nothing else to add the button says **Keep 120 waiting**.
+3. The Devices page shows **120 devices waiting to be added** next to the device count. OADM tries them again every
+   15 minutes (Settings > Discovery, **Try waiting devices every (min)**) and adds each device as soon as it answers.
+
+<Image src={waiting} alt="The waiting devices with their last try and its result" class="screen" />
+
+Click the line on the Devices page to see them: address, MAC address, tags, when they were kept, the last try and what it
+found. **Try now** tries the selected devices (or all the search shows) at once; while OADM checks them their rows say
+**Checking**. **Export** saves them as a file you can import again (without passwords). **Remove** stops trying them.
+
+- A device that answers but rejects every password is not tried again by itself, so it never gets the same wrong
+  passwords every 15 minutes. Its row says **Login failed**; add the right password to the **Credentials** page or import
+  the line again with it, then click **Try now**.
+- Importing a file again: lines that still do not answer and are waiting already say **Already waiting**.
+- A device you add another way leaves the list by itself.
+- Passwords from the file are stored encrypted, like the credential list, and are never shown.
+
 ## Import from AXIS Device Manager
 
 In AXIS Device Manager, export the devices to a file (a `.json` file). In OADM, choose **Add** > **Import from ADM** and
@@ -99,5 +121,7 @@ that file. The devices appear on the add page like an import from a file.
 - **Tags**: given to the devices you add. Tags OADM does not have yet are created.
 - Model, firmware and everything else OADM reads from the devices.
 
-OADM is one server. Devices it cannot reach show **Not found**, for example cameras another ADM server manages. When the
+OADM is one server. Devices it cannot reach show **Not found**, for example cameras another ADM server manages; they can
+wait like the lines of a file (see [Devices that are off](#devices-that-are-off)), or uncheck **Keep devices that do not
+answer** to leave them out. When the
 export comes from several ADM servers, OADM asks before the import.

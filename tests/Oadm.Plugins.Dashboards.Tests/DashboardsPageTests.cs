@@ -111,27 +111,36 @@ public sealed class DashboardsPageTests
         Assert.True(tiny.Gauge.LabelsDrawn < 11); // small: labels thin out or go
         Headless.Capture(window, "plugin-dashboards-gauge.png");
 
-        // A new value: the marker glides there (in steps over several frames), never jumps; the number is new at once.
+        // A new value: the marker glides there over 0.4 s (frames driven with set times, so load never changes the
+        // result), never jumps or overshoots; the number is new at once.
         var moving = grade with { LineWidth = 6 };
         big.Show(moving, WidgetDisplay.Of(moving, Snapshot(Types.Temperature, data: ("temperature", "20"))));
         Assert.Equal(0.2, big.Gauge.MarkerTarget!.Value, 9);
         Assert.Equal("20", big.Display.Text);
-        var seen = new List<double>();
-        var end = DateTime.UtcNow.AddSeconds(5);
-        while (DateTime.UtcNow < end && (big.Gauge.MarkerFraction is not { } at || Math.Abs(at - 0.2) > 1e-6))
+        var start = TimeSpan.FromSeconds(100);
+        big.Gauge.Step(start);
+        Assert.Equal(0.7, big.Gauge.MarkerShown!.Value, 9); // the first frame starts the move where the marker was
+        var path = new List<double>();
+        for (var ms = 50; ms <= 400; ms += 50)
         {
-            Headless.Pump();
-            if (big.Gauge.MarkerFraction is { } now && (seen.Count == 0 || seen[^1] != now))
-            {
-                seen.Add(now);
-            }
-
-            Thread.Sleep(16);
+            big.Gauge.Step(start + TimeSpan.FromMilliseconds(ms));
+            path.Add(big.Gauge.MarkerShown!.Value);
         }
 
-        Assert.Equal(0.2, big.Gauge.MarkerFraction!.Value, 6);
-        Assert.Contains(seen, f => f < 0.7 - 1e-6 && f > 0.2 + 1e-6); // somewhere in between on the way
-        Assert.True(seen.Zip(seen.Skip(1)).All(p => p.Second <= p.First + 1e-9)); // straight down, no overshoot
+        Assert.All(path[..^1], f => Assert.InRange(f, 0.2 + 1e-6, 0.7 - 1e-6)); // in between on the way
+        Assert.True(path.Zip(path.Skip(1)).All(p => p.Second <= p.First)); // straight down, no overshoot
+        Assert.Equal(0.2, path[^1], 9); // there after 0.4 s
+        Assert.True(0.7 - path[0] > path[^2] - path[^1]); // ease-out: the first step covers more than the last
+
+        // A value arriving in the middle of a move continues from where the marker is.
+        big.Show(moving, WidgetDisplay.Of(moving, Snapshot(Types.Temperature, data: ("temperature", "90"))));
+        big.Gauge.Step(start + TimeSpan.FromSeconds(1));
+        big.Gauge.Step(start + TimeSpan.FromSeconds(1.1));
+        var midway = big.Gauge.MarkerShown!.Value;
+        Assert.InRange(midway, 0.2 + 1e-6, 0.9 - 1e-6);
+        big.Show(moving, WidgetDisplay.Of(moving, Snapshot(Types.Temperature, data: ("temperature", "50"))));
+        big.Gauge.Step(start + TimeSpan.FromSeconds(2));
+        Assert.Equal(midway, big.Gauge.MarkerShown!.Value, 9); // no jump back to 20 or ahead to 90
         window.Close();
         return Task.CompletedTask;
     });
