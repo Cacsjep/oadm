@@ -5,7 +5,7 @@ using Oadm.Sdk.Events;
 namespace Oadm.Core.Tests.Events;
 
 /// <summary>
-/// Subscribing to published events (docs/dashboards.md): every event the rule engine handles reaches subscribers, a
+/// Subscribing to published events (the Dashboards plugin): every event the rule engine handles reaches subscribers, a
 /// subscription starts with the events that are on, a slow or failing subscriber never holds up the engine, and a
 /// plugin's subscriptions end with the plugin.
 /// </summary>

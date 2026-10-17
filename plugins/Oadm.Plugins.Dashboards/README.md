@@ -2,7 +2,7 @@
 
 Core plugin (+ `.Client`), rail page **Dashboards** (group Monitoring, icon `gauge`), **off by default**, switchable. Live
 values of OADM's events (mostly device triggers) and live video on saved dashboards, like a small Grafana: a dashboard is a
-grid of widgets, each showing one value of one device. Spec and decisions: `docs/dashboards.md`.
+grid of widgets, each showing one value of one device.
 
 ## Decisions
 
