@@ -189,7 +189,7 @@ public sealed partial class LogsViewModel : ObservableObject, ILogPages
     public partial int Page { get; private set; }
 
     public string StatusLine => _matching.Count == _source.Count
-        ? string.Create(CultureInfo.CurrentCulture, $"{_source.Count:N0} entries since the client started")
+        ? string.Create(CultureInfo.CurrentCulture, $"{_source.Count:N0} {(_source.Count == 1 ? "entry" : "entries")} since the client started")
         : string.Create(CultureInfo.CurrentCulture, $"{_matching.Count:N0} of {_source.Count:N0} entries");
 
     public string PageText => _matching.Count == 0
