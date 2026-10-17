@@ -390,7 +390,7 @@ cmd_test() {
   require_dotnet
   local filter
   case "$TARGET" in
-    unit) filter="Category!=Hardware&Category!=Perf" ;;
+    unit) filter="Category!=Hardware&Category!=Perf&Category!=HardwareWrite" ;;
     perf) filter="Category=Perf" ;;
     timing) filter="Category=Timing" ;;
     hardware)

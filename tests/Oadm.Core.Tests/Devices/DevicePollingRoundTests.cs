@@ -15,7 +15,7 @@ using Oadm.Sdk.Vapix;
 namespace Oadm.Core.Tests.Devices;
 
 /// <summary>
-/// The status poll round for many devices (docs/30kspec.md): the 3 s request timeout, a second try before Unreachable, no
+/// The status poll round for many devices: the 3 s request timeout, a second try before Unreachable, no
 /// second try in an outage, a full refresh on new firmware, and the refresh schedule for devices that are Ok only.
 /// </summary>
 public sealed class DevicePollingRoundTests : IAsyncLifetime, IDisposable

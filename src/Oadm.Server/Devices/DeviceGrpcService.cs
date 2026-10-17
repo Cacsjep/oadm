@@ -58,7 +58,7 @@ public sealed class DeviceGrpcService(
         using var subscription = devices.Changes.Subscribe();
         try
         {
-            // In pages: one client's snapshot holds at most SnapshotPageSize devices in memory (docs/30kspec.md).
+            // In pages: one client's snapshot holds at most SnapshotPageSize devices in memory.
             var withCredentials = await credentials.ListDeviceIdsWithCredentialsAsync(ct).ConfigureAwait(false);
             string? after = null;
             while (true)

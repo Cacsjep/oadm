@@ -410,7 +410,7 @@ function Invoke-Run {
 function Invoke-Test {
     Initialize-Dotnet
     switch ($script:Target) {
-        'unit' { $filter = 'Category!=Hardware&Category!=Perf' }
+        'unit' { $filter = 'Category!=Hardware&Category!=Perf&Category!=HardwareWrite' }
         'perf' { $filter = 'Category=Perf' }
         'timing' { $filter = 'Category=Timing' }
         'hardware' {

@@ -29,7 +29,9 @@ On the first `run dev`, confirm the fingerprint, then create the first administr
 | `manage new <task\|page\|action> --name NAME` | A new plugin from a tutorial, under your name, ready to build and run |
 | `manage package nuget [--version V]` | The NuGet packages of the plugin SDK in `artifacts/nuget` (SDK, test helpers, project SDK, templates, the `oadm` command) |
 | `manage build docs` | The SDK reference of this website, for the local docs server |
+| `manage license keys\|sign` | Key pair and license keys for a plugin you sell, see [Plugin licenses](../licenses/) |
 | `manage clean` | Remove `bin`, `obj` and `artifacts` |
+| `manage info` | Show the .NET SDK, configuration and RID in use |
 
 `manage help` lists everything; `manage <verb> help` shows the options of a verb.
 

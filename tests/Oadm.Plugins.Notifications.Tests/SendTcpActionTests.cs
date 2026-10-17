@@ -87,7 +87,17 @@ public sealed class SendTcpActionTests
 
         settings["allowUntrusted"] = true;
         await new SendTcpAction().ExecuteAsync(new TestContext(), Run.Invocation(settings), CancellationToken.None);
-        Assert.Equal("hello", Encoding.UTF8.GetString(await server.ReceivedAsync()));
+
+        // With TLS 1.3 the server may finish its handshake before the client refuses the certificate: the refused
+        // connection then arrives as an empty one first.
+        byte[] received;
+        do
+        {
+            received = await server.ReceivedAsync();
+        }
+        while (received.Length == 0);
+
+        Assert.Equal("hello", Encoding.UTF8.GetString(received));
     }
 
     [Fact]

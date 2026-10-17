@@ -5,9 +5,8 @@ switchable. The action rules of the devices (their web interface: Events > Rules
 and changed, turned on or off, deleted and undone on many devices at once. Example: 500 cameras whose rule sends "Send
 notification through TCP" but should send "... while the rule is active".
 
-Spec and research: `docs/action-rules/spec.md` (recorded device answers next to it). Built: stage 1 (read, group, edit,
-on / off, delete, undo), stage 2 (copy rules to other devices, the Recipients and Schedules tabs) and stage 3 (the rule
-builder **New rule** and the action catalog `Catalog/action-catalog.json`, see its README).
+Built: stage 1 (read, group, edit, on / off, delete, undo), stage 2 (copy rules to other devices, the Recipients and
+Schedules tabs) and stage 3 (the rule builder **New rule** and the action catalog `Catalog/action-catalog.json`, see its README).
 
 ## Decisions
 
@@ -50,7 +49,7 @@ says the device's reason.
 ## Device API
 
 Verified on 10.0.0.48 (AXIS P3265-V, AXIS OS 12.11.77), 10.0.0.202 (AXIS M3215-LVE, 12.11.77) and 10.0.0.200 (AXIS
-M3206-LVE, 10.12.338), see `docs/action-rules/spec.md`:
+M3206-LVE, 10.12.338):
 
 - SOAP `/vapix/services` action1 / event1 on every version; no change method ("Optional action not implemented").
 - REST `action-rules` v2 and `event-schedules` v2 on AXIS OS 12.11 (not on 10.12: `/config/discover` 404).

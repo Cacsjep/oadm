@@ -12,7 +12,7 @@ namespace Oadm.Sdk.Client.Controls;
 /// The device choice of a page that reads many devices (the purple "Selected devices" button): All devices, tags and chosen
 /// devices, the text of the button, the devices it means now, and the last choice kept on this computer. The page starts
 /// with the Devices page selection when there is one, else with its last choice, else with nothing ("Choose devices"),
-/// and reads only the devices of the choice (docs/30kspec.md, section 5).
+/// and reads only the devices of the choice.
 /// </summary>
 public sealed partial class PageDeviceChoice : ObservableObject
 {

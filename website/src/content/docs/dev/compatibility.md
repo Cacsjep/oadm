@@ -27,9 +27,10 @@ The client loads the client part of a plugin without this check, but without its
 nothing to talk to.
 
 The shared assemblies (below) always come from OADM, whatever version your plugin was built against, so the plugin
-folder loads on every OADM whose SDK `minSdkVersion` allows. The `oadm` tool is stricter: `deploy --installed` and
-`debug --installed` work only with an installed OADM of the tool's version or newer. To support older releases, build
-with the packages of the oldest one; use members that are newer only with the check below.
+folder loads on every OADM whose SDK `minSdkVersion` allows. The `oadm` tool is stricter: on Windows,
+`deploy --installed` and `debug --installed` refuse an installed OADM older than the release of the packages you build
+with; on Linux and macOS they only warn. To support older releases, build with the packages of the oldest one; use
+members that are newer only with the check below.
 
 ## How the SDK grows
 
@@ -77,4 +78,5 @@ in a context of its own, so two plugins can use different versions of the same l
 2. Change the version in the `Sdk="Oadm.Plugin.Sdk/..."` of your projects, the `Oadm.Sdk.Testing` reference of your tests
    and `.config/dotnet-tools.json` to the new release, and build: the compiler shows what changed.
 3. Run your tests, then try the plugin with `dotnet oadm dev start`.
-4. Raise `minSdkVersion` only when you use something new.
+4. The project SDK writes `minSdkVersion` into `plugin.json`: the SDK version of the packages you build with. To support
+   older OADM releases, build with their packages.

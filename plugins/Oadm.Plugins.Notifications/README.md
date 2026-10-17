@@ -1,12 +1,13 @@
 # Notifications
 
-Plugin id `oadm.notifications`, server only, always on. Three event rule actions without devices: they run once per rule
-edge (and, when "Also send when the rule turns off" is checked, on the off edge of a stateful rule).
+Plugin id `oadm.notifications`, server only, always on. Three event rule actions without devices: they run once each
+time the rule turns on or fires, and, when "Also send when the rule turns off" is checked, also when a stateful rule
+turns off (`RunsOn`).
 
 | Topic | Decision |
 |---|---|
 | Mail server | Part of every **Send email** action (host, port, encryption, login). No shared setting: an action stands on its own and is copied with its rule. |
-| Escaping | Placeholder values are escaped for where they go: URL-encoded in the URL, the query and form bodies, JSON-escaped in JSON bodies and TCP messages, XML-escaped in XML and HTML bodies and TCP messages. The text around them is never touched. |
+| Escaping | Placeholder values are escaped for where they go: URL-encoded in the URL, the query and form bodies, JSON-escaped in JSON bodies and JSON TCP messages, XML-escaped in XML and HTML bodies and XML TCP messages. Text bodies, text emails and Text TCP messages get the values as they are. The text around them is never touched. |
 | HTTP login | None, Basic, Digest, Bearer token. Passwords and tokens are stored encrypted (password fields). |
 | Certificates | "Allow untrusted certificates" per action, off by default. |
 | Test | "Send test" in the rule dialog sends once with sample values (`EventService.TestAction`, administrators, audited). |

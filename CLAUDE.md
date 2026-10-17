@@ -130,7 +130,8 @@ runs CodeQL (C#) on pushes to main, pull requests and weekly; `pr.yml` builds an
 (`pr.yml` still reports its required check, with the steps skipped); rulesets on `main`: no force push or deletion (everyone), changes through a pull request with
 the passing check "tests ubuntu-latest" (administrators bypass); minimal issue templates (bug, feature) and pull request
 template (one line); checkout runs with `persist-credentials: false`, workflow permissions
-are `contents: read` except the release job (`contents: write`).
+are `contents: read` except the release job (`contents: write`), the nuget job (`id-token: write`) and the Pages deploy
+job (`pages: write`, `id-token: write`).
 Website: landing page and user docs in `website/` with Astro Starlight (MkDocs Material is in
 maintenance mode), own domain https://oadm.app/ (DNS at world4you: four A records to GitHub Pages, `www` CNAME `cacsjep.github.io`; custom domain and Enforce HTTPS in the Pages settings; the old cacsjep.github.io/oadm addresses redirect), published by `pages.yml` on pushes to main that change
 `website/` and after every successful `release` run (`workflow_run`, so the static download links
@@ -231,7 +232,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.ImageHealth(.Client)/      core plugin: Image Health Dashboard, AXIS Image Health Analytics status of the chosen cameras (off by default)
   Oadm.Plugins.DeviceConfig(.Client)/     Maintenance: Export / Import configuration, Configure devices, Create configuration file
   Oadm.Plugins.Outputs/                   event rule action "Set output" (relays, outputs)
-  Oadm.Plugins.Notifications/             event rule actions "Send email" and "Send HTTP request"
+  Oadm.Plugins.Notifications/             event rule actions "Send email", "Send HTTP request" and "Send TCP message"
   Oadm.Plugins.IoMonitor(.Client)/        core plugin: live inputs and outputs of one device (off by default)
   Oadm.Plugins.DeviceTriggers(.Client)/   core plugin: events of the devices for the event rules (WebSocket, off by default)
   Oadm.Plugins.WebView(.Client)/          core plugin: the web interface of the devices in tabs, logged in through the server
@@ -260,7 +261,7 @@ samples/               the plugins of the developer tutorials: Oadm.Samples.Upnp
                        (samples/Directory.Build.props sets OadmSkipPluginDeploy)
 templates/             Oadm.Plugin.Templates.csproj: packs the templates generated from samples/ (not in Oadm.sln)
 packaging/             installers (windows/, linux/, macos/), icons/, notices/licenses/ (license text templates)
-docs/                  ADM reference screenshots, protocol notes
+docs/                  plugin-sdk.md (spec of the plugin SDK: NuGet packages, templates, the `oadm` tool)
 ```
 
 # Architecture
@@ -793,7 +794,7 @@ background as before.
 every way in is covered; `Commit` checks the whole add first and answers RESOURCE_EXHAUSTED, nothing is stored; the add page
 shows it in `ui:MessageWindow` and stays open; the automatic add returns `DeviceAutoAddResult.LimitReached` and logs a
 warning at most once an hour. Plugin runs are sized by the same limit (System report 50, Device triggers 10,000 watched
-devices). Spec and measurements: `docs/30kspec.md`. Tests `DeviceLimitTests`.
+devices). Tests `DeviceLimitTests`.
 
 Automatic add by core plugins (the DHCP server's "Automatically add Axis devices that get an
 address"): the SDK service `IDeviceAutoAdd` (`ICorePluginContext.AutoAdd`, DIM null) is implemented by
@@ -822,7 +823,7 @@ tried in the same run. Unreachable attempts count neither as attempt nor as reje
 
 # Visual Style
 
-Reference: MultiDrive (Avalonia showcase), `docs/style-reference-multidrive.png`, https://multidrive.io/.
+Reference: MultiDrive (Avalonia showcase), https://multidrive.io/.
 Dark by default, calm and spacious, no gradients inside the app (one exception: the soft glow of the start splash).
 **Appearance** Dark or Light per computer (Settings > This computer, `ClientSettings.Appearance`, takes effect after the
 client restarts: "Takes effect after the client restarts" below the select while it differs from the running one). The
@@ -914,8 +915,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
 
 # Main Window: Manage Devices
 
-Reference for content: ADM screenshot `docs/adm-manage-devices.png`. Same information
-density, styled as described in Visual Style.
+Reference for content: the Manage devices page of ADM. Same information density, styled as described in Visual Style.
 
 Layout, top to bottom:
 1. Title "Devices". Left navigation rail as described in Visual Style.
@@ -1181,7 +1181,7 @@ certificate info + server name) on add, after a task finishes on that device,
 every **10 minutes** per device that is Ok (`Polling.FullRefreshMinutes`, checked every 30 s; devices that are not Ok
 are left to the status poll), immediately when a status poll sees a device go from any non-Ok status back to Ok, and
 immediately when it sees a new firmware version or model (a new API list). All full refreshes go through one deduplicating
-queue, at most `RefreshParallelism` = 64 at once. Scale (docs/30kspec.md): a poll round starts every interval and spreads
+queue, at most `RefreshParallelism` = 64 at once. Scale: a poll round starts every interval and spreads
 its device starts evenly over 90 % of it (`PollRoundAsync`, at most `MaxParallelism` = 200 at once, no setting: the
 spread keeps about 40 busy for 30,000 devices answering in 70 ms, the cap only matters while devices are slow or dead);
 each device row is read right before its poll. A device that stops answering (timeout, refused connection) is asked once
@@ -1197,7 +1197,7 @@ is due n/N of an interval later. A poll that changes nothing but LastSeenUtc is 
 Built-in feature (not a plugin). Technicians label devices ("Building A", "PTZ") and work
 with the labels in the grid, the search, the export and the import; plugins read them through `IDeviceInfo.Tags`.
 
-- **Definitions**: a name (1..32 characters, trimmed, unique case-insensitive, no ";" and no control characters) and a
+- **Definitions**: a name (1..64 characters, trimmed, unique case-insensitive, no ";" and no control characters) and a
   color of the fixed palette of eight: Blue, Green, Teal, Amber, Orange, Red, Pink, Violet (theme brushes
   `Oadm.Tag.<Name>Brush`, readable as text on the dark cards; `Oadm.Tag.NeutralBrush` grey for names on devices without
   a definition, e.g. older data). A tag created without a color gets the next palette color (definition count modulo 8).
@@ -1320,8 +1320,8 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   "Allow untrusted certificates", timeout, success = 2xx) and **Send email** (MailKit; mail server, port, STARTTLS / TLS /
   none, optional login, "Allow untrusted certificates", From, To, Subject, Format Text / HTML; the server settings live in
   each action, no shared setting) and **Send TCP message** (host, port, Text / JSON / XML / Hex bytes, line end, optional TLS
-  with "Allow untrusted certificates", "Wait for an answer" + "Answer must contain", timeout). All three run once per rule edge
-  without devices, optionally also when the rule turns off.
+  with "Allow untrusted certificates", "Wait for an answer" + "Answer must contain", timeout). All three run without devices,
+  once each time the rule turns on or fires, optionally also when the rule turns off.
 - **First actions**: **Set output** (bundled always-on package `oadm.outputs`, `plugins/Oadm.Plugins.Outputs`, server only):
   output number 1..64, modes Follow the rule (stateful rules only; inactive on the off edge), Pulse N s (1..3600), Set
   active, Set inactive, Toggle; I/O port management API (`io-port-management`: getPorts, setPorts, setStateSequence; active
@@ -1350,7 +1350,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   "Then" rows: action, On (targets), the settings form (code fields in `ui:CodeEditor`, name / value rows with Add and
   remove icons, every setting `FormField.wide`), move up / down, remove; actions without devices have **Send test** with
   the result chip next to it (`TestAction`); Add action up to five; right of the actions the **Placeholders** card, only while an action of the rule writes texts
-  (`IActionPlugin.UsesPlaceholders`, `ActionEntry.uses_placeholders = 11`: Send email, Send HTTP request; a list with copy buttons): "Event: <trigger>" with the trigger's values, then Rule and Device from
+  (`IActionPlugin.UsesPlaceholders`, `ActionEntry.uses_placeholders = 11`: Send email, Send HTTP request, Send TCP message; a list with copy buttons): "Event: <trigger>" with the trigger's values, then Rule and Device from
   `ActionPlaceholders.Fixed`, each "{name}" + a short description + a copy icon; window 1160 wide), **4 Overview** (one
   short line per part: Name, State, When, And, Then, Limits; Save). Footer Back / Next (disabled with the step's first
   problem as tooltip) and Save on the overview. The devices of a condition or an action have no mode drop-down: one purple
@@ -1741,7 +1741,7 @@ Reporting, icon `snapshot`), on by default, switchable. The yearly maintenance c
 source of the managed video devices, checked fast and exported as a PDF report (PDFsharp + MigraDoc, MIT). Details:
 plugin `README.md`.
 
-- Devices: the purple "Selected cameras" button (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one (docs/30kspec.md, section 5).
+- Devices: the purple "Selected cameras" button (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one.
 - Rules that must hold: read-only for devices (param.cgi reads and image.cgi snapshots with the stored credentials,
   server side); opening the page contacts no device (**Create snapshots** starts the first load); at most 4 device
   requests at a time, 3 s each; devices with Credentials required, Password not set or Certificate changed are one error
@@ -1851,7 +1851,7 @@ watch its event stream live (I/O ports, virtual inputs, storage, temperature, ta
 Monitoring, icon `eye`), **off by default**. One table with the AXIS Image Health Analytics status of every chosen camera that
 has the app, with five count cards (Good, Detected, Pending, Detection off, Errors). Details: plugin `README.md`.
 
-- Devices: the purple "Selected cameras" button (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one (docs/30kspec.md, section 5).
+- Devices: the purple "Selected cameras" button (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one.
 - Rules that must hold: read-only for devices (`GET /local/AXISImageHealthAnalytics/v1/status` with the stored
   credentials); only on request and for the chosen cameras (the page opens, Refresh, Auto refresh every 10 s while the page is shown, off by
   default), nothing in the background and no events (event rules use the app's own events through Device triggers); 24
@@ -1904,10 +1904,10 @@ notification through TCP" to "... while the rule is active" on 500 cameras; reci
 send to them along; new) and schedules (new, edit, copy, delete) the same way; an edit can also change the event, the
 schedule and the recipient (each device's own one of a name); **New rule** builds one rule for many devices
 (an event they offered, conditions, a schedule, an action with its settings). Every settings form uses the bundled action
-catalog (`Catalog/action-catalog.json`: labels, kinds, defaults from the camera's web interface). Spec and research:
-`docs/action-rules/spec.md`; decisions and device API: plugin `README.md`.
+catalog (`Catalog/action-catalog.json`: labels, kinds, defaults from the camera's web interface). Decisions, research
+and device API: plugin `README.md`.
 
-- Devices: the purple "Selected devices" button (`PageDeviceChoice`: All devices, tags, chosen devices; the Devices page selection to start with, else the last choice on this computer); the page reads only the devices of the choice and nothing before one (docs/30kspec.md, section 5).
+- Devices: the purple "Selected devices" button (`PageDeviceChoice`: All devices, tags, chosen devices; the Devices page selection to start with, else the last choice on this computer); the page reads only the devices of the choice and nothing before one.
 - Rules that must hold: read only on request, over SOAP (passwords in plain text stay on the server, never reach the
   client or a log, a login inside an address shows as `user:********@` and keeps each device's own password); an edit
   changes only the checked parts, everything else stays as each device has it; a rule is written
@@ -1949,7 +1949,7 @@ Security, icon `clipboardCheck`), **off by default**. One read-only scan of the 
 Hardening Guide in its two levels (Basic, Extended), one icon column per check, CSV export. Check table, evidence and
 decisions: plugin `README.md`.
 
-- Devices: the purple "Selected devices" button (`PageDeviceChoice`: All devices, tags, chosen devices; the Devices page selection to start with, else the last choice on this computer); the page scans the devices of the choice (one **Scan** button) and shows only their results; nothing before a choice (docs/30kspec.md, section 5).
+- Devices: the purple "Selected devices" button (`PageDeviceChoice`: All devices, tags, chosen devices; the Devices page selection to start with, else the last choice on this computer); the page scans the devices of the choice (one **Scan** button) and shows only their results; nothing before a choice.
 - Rules that must hold: strictly read-only (GETs and list calls only); 15 s per request, 2 min per device, 16 devices at
   once; one failed read marks only its checks; Certificate changed, Credentials required, Password not set and
   Unreachable devices are not contacted; items that cannot be checked remotely are not shown; the latest AXIS OS is
@@ -2051,7 +2051,7 @@ encryption, retention, five count cards) and the tools of the camera's web inter
 retention, Repair, Format, Encrypt, Turn off encryption, each a task per camera in the tasks pane below the page. SD
 cards only. Decisions, device API (verified on an AXIS Q1615 Mk III) and tests: plugin `README.md`.
 
-- Devices: the purple "Selected cameras" button (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one (docs/30kspec.md, section 5).
+- Devices: the purple "Selected cameras" button (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one.
 - Rules that must hold: the table is read only on request and for the chosen cameras (page opens, Refresh), read-only, refused statuses not
   contacted; the tools are hidden tasks (`ShowInMenus` false) started by the page methods `change` (check, retention) and
   `format` (format, repair, encryption), whose rights decide (an action through the other method is refused); every run
@@ -2124,7 +2124,7 @@ or on their own, matched by the MAC address in the key). Decision table and rese
 # Settings
 
 Server-side in `Setting`. Keys: `Polling.IntervalSeconds` (60, 5..86400),
-`Polling.FullRefreshMinutes` (10, 1..1440), `Events.LogRetentionDays` (30, 0..3650) and `Events.LogMaxEntries` (100000, 0 or
+`Polling.FullRefreshMinutes` (10, 1..1440, Settings page "Read device details every (min)"), `Events.LogRetentionDays` (30, 0..3650) and `Events.LogMaxEntries` (100000, 0 or
 100..1000000): event log retention (server-only), `Scan.Parallelism` (32, Settings page "Addresses scanned at once"), `Scan.TimeoutMs` (1500,
 Settings page "Scan timeout (ms)": range scans and the first contact of imported lines), `Devices.WaitingRetryMinutes` (15,
 1..1440, Settings page "Try waiting devices every (min)", proto `optional int32 waiting_retry_minutes = 10`; see "Waiting
@@ -2541,7 +2541,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   a list or card that reloads `ui:ProgressRow` or a `ui:ProgressRing` in place, a button that started the work disabled
   while its row shows progress. The window never freezes without one: work that would block the UI thread for longer
   runs elsewhere or shows the ring first (the device grid: `DevicesView.RunBusyAsync`, a ring over the grid before a
-  sort or regroup of a large selection). A new feature checks its waits at 30,000 devices (docs/30kspec.md, section 11).
+  sort or regroup of a large selection). A new feature checks its waits at 30,000 devices.
 - **HARD RULE, scale to thousands of devices.** A server manages up to 30,000 devices. Every list of
   devices, discovered devices, tasks, sources or tiles is virtualized (DataGrid, virtualizing
   ListBox/ItemsRepeater; never an ItemsControl/StackPanel creating one control per item), search,
@@ -2549,8 +2549,8 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   for many devices, bounded parallelism on the server), per-device work is lazy for visible rows
   or summarized ("4,812 compatible, 188 missing API"), and images/snapshots load only for visible
   tiles. Every feature with a device list has a test with at least 30,000 fake devices (the device limit) that keeps
-  filtering/selection/summary fast. Target size: **30,000 devices and 50,000 tasks in the history** (docs/30kspec.md)
-  (audit, numbers and fixes: `docs/scale-audit.md`). Concretely:
+  filtering/selection/summary fast. Target size: **30,000 devices and 50,000 tasks in the history**.
+  Concretely:
   - Collections bound to a grid are `RangeObservableCollection` (`Oadm.Sdk.Client.Collections`, plugin pages too): a
     filter, select-all, snapshot or batch is one `ReplaceAll`/`AddRange`/`InsertRange`/`RemoveAll`
     (one Reset), never one event per item. `GridSelection` hands a multi-item selection change to the
@@ -2632,4 +2632,3 @@ least-privilege service accounts.
 
 - ADM user manual: https://help.axis.com/en-us/axis-device-manager
 - VAPIX library: https://developer.axis.com/vapix/
-- Reference screenshot: docs/adm-manage-devices.png

@@ -133,7 +133,8 @@ the service again. Close and open the client to load the client part. `--plugin 
 several. `dotnet oadm folders` shows where the installed server and client keep their data and plugins; nothing is
 guessed, the tool reads them from the service.
 
-The installed OADM must be at least the version of the SDK you build with; `deploy` and `debug` refuse an older one.
+The installed OADM must be at least the release of the packages you build with. On Windows `deploy` and `debug` refuse
+an older one; on Linux and macOS they only warn.
 `dotnet oadm doctor` checks that, the .NET SDK and the ports.
 
 ## Ship it
@@ -168,6 +169,7 @@ exactly like the server. See [Testing](../testing/).
 | `oadm pack [--out <folder>]` | The `.oadmplugin` file |
 | `oadm license keys`, `license sign` | Keys and license keys for a plugin you sell |
 | `oadm doctor` | Checks .NET, ports, the installed OADM and this folder |
+| `oadm version` | The version of the `oadm` command |
 
 Install the command for every folder with `dotnet tool install -g Oadm.Tools`; it is then `oadm` instead of
 `dotnet oadm`.

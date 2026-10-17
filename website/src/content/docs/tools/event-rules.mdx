@@ -85,7 +85,8 @@ Every text of an action can hold placeholders that OADM fills in when the rule r
 (address, host name, model, serial number, MAC address, AXIS OS, tags, a link to its web interface) and every value of the
 event, for example `{objectId}`. The **Placeholders** card next to the actions lists them; the icon copies one.
 
-In a JSON, XML or HTML body OADM escapes each value, so `"objectID": "{objectId}"` stays valid whatever the event sends.
+In a JSON, XML or HTML body and in a JSON or XML TCP message OADM escapes each value, so `"objectID": "{objectId}"`
+stays valid whatever the event sends. Text sends the values as they are.
 
 **Send test** sends the email, the request or the message once right away. The event's values are filled in with sample values, the
 device is the first one the trigger uses.

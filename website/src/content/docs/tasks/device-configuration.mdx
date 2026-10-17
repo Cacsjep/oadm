@@ -73,6 +73,9 @@ The settings in the file replace the current ones. Export the devices first if y
 - **Host name, IP address, subnet, router, DHCP on or off and the device names** are never imported, so many devices
   can share one file.
 - **Settings that are not in the file** stay as they are.
+- **Connection settings** (HTTPS, ports, login method, IEEE 802.1X, IPv6, web interface) are their own area, off by
+  default and marked with a warning: they can make the devices unreachable. When you tick it, OADM writes them last. It
+  needs the permission "Import connection settings", off for operators by default.
 - **Passwords** are not in a file. Event recipients that need one, for example an FTP server, must get it again.
 
 ## Steps of an import
@@ -82,6 +85,7 @@ The settings in the file replace the current ones. Export the devices first if y
 | Read configuration file | Reads the file the device gets. |
 | Check compatibility | AXIS OS 12.5 or later, the same model as the file. Otherwise the task fails with "Nothing was changed". |
 | Import network and system settings, Import event rules, ... | One step per settings area. The device checks the values itself; its warnings or errors show in the step. A refused area does not stop the others. |
+| Import connection settings | Only when the area is ticked, always the last import. |
 | Verify configuration | Exports again and compares. Settings that differ make the task end with warnings. |
 
 ## Configure devices

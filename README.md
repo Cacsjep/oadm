@@ -85,7 +85,8 @@ More per system: [`packaging/README.md`](packaging/README.md).
    also need the setup code from `setup-code.txt` in the server's data folder (also in the server log). Add more users
    on the **Users** page.
 4. Add the passwords you use on the **Credentials** page. Then add devices with **Add** on the Devices page
-   (**Discovery**, **Network range**, **Add manually** or **Import from file**). OADM logs in to every device it finds.
+   (**Discovery**, **Network range**, **Add manually**, **Import from file** or **Import from ADM**). OADM logs in to every
+   device it finds.
 
 ## Ports and permissions
 
@@ -165,14 +166,16 @@ Both scripts read their help from [`scripts/manage-help.txt`](scripts/manage-hel
 
 | Command | What it does |
 |---|---|
-| `manage build [all\|server\|client\|plugins] [--release]` | Build the solution (default), the server with the bundled plugins, the client, or only the plugins |
+| `manage build [all\|server\|client\|plugins\|docs] [--release]` | Build the solution (default), the server with the bundled plugins, the client, only the plugins, or with `docs` the SDK reference of the website |
 | `manage run server [--port N] [--data DIR] [--release] [--no-plugin-build]` | Build and run the server in the foreground (default `https://0.0.0.0:5080`) |
 | `manage run client [--fake] [--server URL] [--data DIR] [--release] [--no-plugin-build]` | Build the client and all plugins, then run the client; `--fake` uses sample data without a server |
 | `manage run dev [--port N] [--data DIR] [--release] [--no-plugin-build]` | Server in the background (log in `artifacts/logs/server-dev.log`), then the client; closing the client stops the server. First run: confirm the fingerprint, then create the first administrator (no setup code on the same computer) |
-| `manage test [unit\|perf\|timing\|hardware\|all] [--filter EXPR] [--release]` | Unit tests (default, what CI runs), scale tests with 5,000 devices and 50,000 tasks (`Category=Perf`, a few minutes, see [`docs/scale-audit.md`](docs/scale-audit.md)), read-only hardware tests against `dev-cameras.yaml`, or all |
+| `manage test [unit\|perf\|timing\|hardware\|all] [--filter EXPR] [--release]` | Unit tests (default, what CI runs), scale tests with 30,000 devices and 50,000 tasks (`Category=Perf`, a few minutes), read-only hardware tests against `dev-cameras.yaml`, or all |
 | `manage publish [all\|server\|client] [--rid RID] [--version V]` | Self-contained single-file apps in `artifacts/publish/<app>/<rid>`, plugins next to each exe |
 | `manage package <windows\|linux\|macos> [--rid RID] [--version V]` | Installer (MSI, .deb, .pkg) in `artifacts/packages/`, see [`packaging/README.md`](packaging/README.md) |
+| `manage package nuget [--version V]` | The NuGet packages of the plugin SDK in `artifacts/nuget/`, see [`docs/plugin-sdk.md`](docs/plugin-sdk.md) |
 | `manage new <task\|page\|action> --name NAME [--id ID]` | A new plugin from the matching developer tutorial (`samples/`), renamed, in `plugins/` and `tests/` and added to `Oadm.sln`: it builds, its tests pass and it runs |
+| `manage license keys\|sign` | Key pair and license keys for a commercial plugin |
 | `manage clean` | Remove `bin`, `obj` and `artifacts` (data folders stay) |
 | `manage info` | Show the .NET SDK, `DOTNET_ROOT`, configuration and RID in use |
 
@@ -203,7 +206,7 @@ error, anything else comes from dotnet or the app. If the execution policy block
 |---|---|---|
 | Unit (no category) | `manage test unit` | Fast, no network, no devices; what CI runs |
 | `Timing` | `manage test timing` | Depend on real elapsed time or machine speed; part of `manage test unit`, not run by CI |
-| `Perf` | `manage test perf` | Scale tests (5,000 devices, 50,000 tasks) with time budgets for a developer machine |
+| `Perf` | `manage test perf` | Scale tests (30,000 devices, 50,000 tasks) with time budgets for a developer machine |
 | `Hardware` | `manage test hardware` | Read-only tests against your devices in `dev-cameras.yaml` |
 | `HardwareWrite` | never from `manage` | Tests that change a device; run only on purpose against a test device |
 
@@ -248,15 +251,13 @@ Most features are plugins, and your plugins use the same SDK as the bundled ones
 Without a checkout: `dotnet new install Oadm.Plugin.Templates`, `dotnet new oadm-task -n MyPlugin`, then in its folder
 `dotnet tool restore`, `dotnet build` and `dotnet oadm dev start` (guide: https://oadm.app/dev/plugin-sdk/). In a checkout:
 
-1. Copy the closest bundled plugin: `plugins/Oadm.Plugins.Restart` (task plugin without a dialog),
-   `plugins/Oadm.Plugins.Users(.Client)` (task plugin with a dialog), `plugins/Oadm.Plugins.NtpServer(.Client)` (core
-   plugin with a page), or the sample in `tests/TestPlugins` (toolbar plugin).
-2. Rename the projects (`Oadm.Plugins.<Name>`, assembly `Oadm.Plugins.<Name>.Server` / `.Client`), set the id in
-   `plugin.json` and `<OadmPluginId>` in the project file, and add the projects to `Oadm.sln`.
-3. Build. The output goes to `artifacts/plugins/<plugin id>/`, which server and client load in a repository checkout;
+1. `manage new task|page|action --name "My plugin"`: a working copy of the tutorial plugin (task with a dialog, core
+   plugin with a page, event rule action) under your name in `plugins/` and `tests/`, added to `Oadm.sln`. The id is
+   `community.my-plugin` unless `--id` sets it.
+2. Build. The output goes to `artifacts/plugins/<plugin id>/`, which server and client load in a repository checkout;
    `manage run dev` shows it at once.
-4. Add a test project `tests/Oadm.Plugins.<Name>.Tests` (fake devices, no network) and, for a UI, headless screenshot
-   tests.
+3. Extend the tests in `tests/Oadm.Plugins.<Name>.Tests` (fake devices, no network) and, for a UI, add headless
+   screenshot tests.
 
 An installed OADM loads plugins from `plugins/<id>/` next to the server and client exe and from
 `<data folder>/plugins/<id>/`. A plugin folder holds `plugin.json`, `<Name>.Server.dll`, the optional
@@ -273,7 +274,7 @@ plugin is logged and skipped; server and client still start.
 - **UI:** shared controls from `Oadm.Sdk.Client.Controls` (`ui:FormField`, `ui:StatusChip`, `ui:PasswordBox`, ...),
   validation errors directly below the field, plain language (see "Wording" in `CLAUDE.md`), no own colors or font
   sizes.
-- **Scale:** lists are virtualized and stay fast with 5,000 devices (tested with 5,000 fake devices).
+- **Scale:** lists are virtualized and stay fast with 30,000 devices (tested with 30,000 fake devices).
 
 ### Working with an AI assistant
 
@@ -297,13 +298,19 @@ OADM is developed together with Claude, and the repository is set up for it:
 | `src/Oadm.Contracts` | gRPC protobuf contracts |
 | `src/Oadm.Sdk` | Plugin SDK (server side) |
 | `src/Oadm.Sdk.Client` | Plugin SDK (Avalonia side) and the shared controls |
+| `src/Oadm.Sdk.Testing` | Test helpers for plugin tests (NuGet package) |
+| `src/Oadm.Plugin.Sdk` | MSBuild project SDK of a plugin project (NuGet package) |
 | `src/Oadm.Core` | Domain, VAPIX client, discovery, tasks, persistence |
 | `src/Oadm.Server` | Server host |
 | `src/Oadm.Client` | Avalonia client |
 | `plugins/` | Bundled plugins (task and core plugins), see [`plugins/README.md`](plugins/README.md) |
+| `samples/` | The plugins of the developer tutorials, with their tests |
+| `templates/` | `dotnet new` templates for plugins (NuGet package) |
 | `tests/` | xUnit tests |
+| `tools/` | Developer tools: the `oadm` tool, `manage new`, the SDK reference and notices generators |
+| `website/` | Website and user docs (https://oadm.app/) |
 | `packaging/` | Installers (WiX, .deb, .pkg) |
-| `docs/` | Specs, research and reference screenshots |
+| `docs/` | Spec of the plugin SDK |
 
 # License
 

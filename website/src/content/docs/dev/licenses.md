@@ -68,7 +68,7 @@ dotnet oadm license sign --key ../acme-keys/private-key.pem --plugin acme.site-r
 | `--server` | The customer's server ID |
 | `--customer` | Shown on the Plugins page |
 | `--expires` | The last day it is valid; without it the license never expires |
-| `--features` | The features it unlocks, separated by commas; without it every feature |
+| `--features` | The features it unlocks, separated by commas (the project property `OadmLicenseFeatures` takes `;`); without it every feature |
 | `--limit` | Optional: a number your plugin enforces, for example `sites=3`; repeat for more |
 | `--out` | The file name (default `<customer>-<plugin id>.oadmlicense`) |
 
@@ -80,7 +80,7 @@ OADM1.eyJwbHVnaW4iOiJhY21lLnNpdGUtcmVwb3J0cyIsInNlcnZlciI6IjdmM2MyYTFlLTViOGQtNG
 
 Send the customer the key or the file. The key carries the plugin, the server ID, the customer, the dates and, when you
 gave them, the features and limits, signed with your private key; any change breaks the signature. Spaces and line breaks
-a mail program adds are ignored. To sign from your own shop instead of `manage`, call `LicenseFile.Sign` of the SDK
+a mail program adds are ignored. To sign from your own shop instead of `oadm license sign`, call `LicenseFile.Sign` of the SDK
 (`Oadm.Sdk.Licensing`) with the same data and key.
 
 ## 4. Check the license in the plugin
@@ -139,5 +139,5 @@ or to lock buttons. The server part must check again, because a client can be ch
 While a plugin needs a license, administrators see the server ID with a copy button and a **License** column: the state
 (Licensed, Trial, Trial ended, No license, Expired, Other server, Not valid) with the reason as tooltip, **Enter license**
 (paste the key or choose its file; below the field OADM shows whom the key is for, and a key that does not fit is refused
-with the reason) and **Remove**. Entering and
+with the reason; the button reads **Change license** once a key is stored) and **Remove**. Entering and
 removing a license is written to the audit log.

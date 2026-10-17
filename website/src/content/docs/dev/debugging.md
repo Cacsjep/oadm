@@ -41,7 +41,7 @@ then restart the server (and the client for client parts) to load the new build.
 | What | Where |
 |---|---|
 | Server, started by `manage run dev` | `artifacts/logs/server-dev.log` |
-| Server log file | `logs/oadm-server-<date>.log` in the data folder (from a checkout: `%LOCALAPPDATA%\Oadm`, `~/.local/share/Oadm` or `~/Library/Application Support/Oadm`) |
+| Server log file | `logs/oadm-server-<date>.log` in the data folder (from a checkout: `%LOCALAPPDATA%\Oadm`, `~/.local/share/Oadm` or `~/Library/Application Support/Oadm`), and on the **Logs** page, **Server** (permission "See the server log") |
 | Client log file | `logs/client-<date>.log` in the client's data folder, and live on the **Logs** page |
 | One task | **Details** in the tasks pane: the steps and what `ctx.Log` wrote |
 | Event rules | The **Event log** on the Event rules page: every action run with its result and what `ctx.Log` wrote |

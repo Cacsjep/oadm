@@ -7,7 +7,7 @@ using Proto = Oadm.Contracts.V1;
 namespace Oadm.Server.Tests;
 
 /// <summary>
-/// The device list is read from the database in pages (docs/30kspec.md, server memory): every device once, in serial order,
+/// The device list is read from the database in pages: every device once, in serial order,
 /// over several pages.
 /// </summary>
 public sealed class DeviceListPagingTests

@@ -12,9 +12,10 @@ description: Network ports, the data folder and what to back up.
 | UDP 67 | [DHCP server](../../tools/dhcp-server/), only when enabled |
 
 The Windows installer opens TCP 5080 for Domain and Private networks. The NTP and DHCP servers open their port while
-enabled. The server runs as LocalSystem / root because these two servers need privileged ports.
+enabled. The server runs as Local System / root because these two servers need privileged ports.
 
-The server reaches devices on TCP 443 and 80, and on TCP 554 for the live preview and the Metadata Monitor.
+The server reaches devices on TCP 443 and 80, and on TCP 554 for the live preview, Live View, Dashboards and the
+Metadata Monitor.
 
 ## Data folder
 

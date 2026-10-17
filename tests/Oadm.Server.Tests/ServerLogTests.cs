@@ -66,7 +66,8 @@ public sealed class ServerLogTests
         await using var host = await TestServerHost.StartAsync();
         var logs = host.Get<OadmPaths>().LogsDirectory;
         Directory.CreateDirectory(logs);
-        await File.WriteAllTextAsync(Path.Combine(logs, "oadm-server-20261017.log"), Day2);
+        // A name of its own that sorts first: today's file belongs to the test server's own logger.
+        await File.WriteAllTextAsync(Path.Combine(logs, "oadm-server-29991231.log"), Day2);
 
         var page = await new Proto.ServerLogService.ServerLogServiceClient(host.Invoker).ListAsync(new Proto.ListServerLogRequest { Limit = 2, MinLevel = "Information" });
         Assert.True(page.HasMore);

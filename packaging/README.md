@@ -8,9 +8,15 @@ next to each exe.
 CI: one workflow, `.github/workflows/release.yml`, only on release tags `v*.*.*` (e.g. `v0.0.1`). Each job runs only
 when the jobs before it passed:
 1. `tests`: build and unit tests on Windows, Linux and macOS (30 min timeout, hang detection after 5 min).
-2. `installers`: the x64 installers, plus the .deb packages for arm64 (built on a native ARM runner). The MSI and the
-   .deb packages are installed, checked and removed on the runner, as "Server and client" and as "Client only"; the .pkg is checked without installing it.
-3. `release`: the GitHub release of the tag with the installers and `SHA256SUMS.txt`.
+2. `installers`: the x64 installers, plus the .deb packages for arm64 (built on a native ARM runner), and the portable
+   ZIPs `OADM-Server-<version>-<rid>.zip` and `OADM-Client-<version>-<rid>.zip` (the publish folders). The .deb packages
+   are installed, checked and removed on the runner, as "Server and client" and as "Client only"; the .pkg is checked
+   without installing it.
+3. `smoke-windows`: the MSI installed, checked and removed, as "Server and client" and as "Client only".
+4. `nuget-pack`: the plugin SDK packages; every template is built and tested with them.
+5. `release`: the GitHub release of the tag with the installers, the ZIPs and `SHA256SUMS.txt`. A tag with a
+   pre-release part (`v1.2.0-rc.1`) makes a pre-release, never the latest release.
+6. `nuget`: the plugin SDK packages on nuget.org (Trusted Publishing); needs the repository variable `NUGET_USER`.
 
 Installers are not signed; check downloads against `SHA256SUMS.txt`.
 

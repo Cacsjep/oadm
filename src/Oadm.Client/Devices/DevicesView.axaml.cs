@@ -31,7 +31,7 @@ public partial class DevicesView : UserControl
 
     /// <summary>
     /// Selections from this size on are taken off the grid while it sorts or regroups and put back after: the grid keeps a
-    /// selection row by row, so sorting 30,000 selected rows took 2 s and regrouping them 14 s (docs/30kspec.md).
+    /// selection row by row, so sorting 30,000 selected rows took 2 s and regrouping them 14 s.
     /// </summary>
     public const int LargeSelection = 1_000;
 

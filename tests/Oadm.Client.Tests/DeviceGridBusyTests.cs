@@ -12,7 +12,7 @@ using Oadm.Contracts.V1;
 namespace Oadm.Client.Tests;
 
 /// <summary>
-/// The device grid with a large selection (docs/30kspec.md): a sort shows the ring first, and rebuilt tag groups keep the
+/// The device grid with a large selection: a sort shows the ring first, and rebuilt tag groups keep the
 /// selection without the grid regrouping it row by row. The ring's paint delay is zero here, so the work runs at once and
 /// the tests stay synchronous (after an await a headless test no longer has its application).
 /// </summary>

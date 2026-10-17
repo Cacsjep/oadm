@@ -18,7 +18,7 @@ Verbs:
             or the NuGet packages of the plugin SDK (nuget) in artifacts/nuget
   new       A new plugin from a tutorial sample: task, page or action
   license   Keys and license files for a commercial plugin: keys or sign
-  clean    Remove bin, obj and artifacts
+  clean     Remove bin, obj and artifacts
   info      Show the .NET SDK, configuration and RID in use
   help      Show this overview, or "manage help <verb>"
 
@@ -97,8 +97,9 @@ Examples:
 Usage: manage test [unit|perf|timing|hardware|all] [--filter EXPR] [--release] [-- dotnet test args]
 
 Targets:
-  unit       Tests that need no camera, Category!=Hardware and Category!=Perf
-             (default, fast; CI runs them for every release tag without the Timing tests)
+  unit       Tests that need no camera, Category!=Hardware, Category!=Perf and Category!=HardwareWrite
+             (default, fast; CI runs them without the Timing tests for every release tag and,
+             in pr.yml, for every pull request)
   perf       Scale tests, Category=Perf: 30,000 devices and 50,000 tasks (client stores,
              Devices grid, ListTaskPlugins, Watch snapshots, polling spread, task engine
              batches, task history paging and retention). A few minutes; each test has a time

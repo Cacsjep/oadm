@@ -34,8 +34,8 @@ version and date, and the release workflow copies it into the GitHub release.
 - Plugins load whatever SDK version they were built against as long as their `minSdkVersion` fits: the SDK, Avalonia and
   the other shared assemblies always come from OADM. The client no longer locks a plugin's file, so a plugin can be
   rebuilt while the client runs.
-- `manage license keys|sign` runs the license commands of the `oadm` tool (`tools/Oadm.Tools`, formerly
-  `tools/Oadm.LicenseTool`). The tutorials' plugins write their `plugin.json` from their project file.
+- `manage license keys|sign` runs the license commands of the `oadm` tool (`tools/Oadm.Tools`). The
+  tutorials' plugins write their `plugin.json` from their project file.
 
 ## [3.4.0] - 2026-10-17
 

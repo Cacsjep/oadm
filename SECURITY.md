@@ -2,7 +2,7 @@
 
 ## Report a vulnerability
 
-Please report security problems privately, not in a public issue: on GitHub, open the repository's **Security** tab and
+Report security problems privately, not in a public issue: on GitHub, open the repository's **Security** tab and
 choose **Report a vulnerability**. Include what you found, how to reproduce it and the OADM version.
 
 We answer within a week and tell you when a fix is released.

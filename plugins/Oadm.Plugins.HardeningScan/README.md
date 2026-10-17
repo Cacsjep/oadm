@@ -22,7 +22,7 @@ The grid has one column per check and a pass / warn / fail icon per device. Read
 7. **The last results are kept** per device and level on the server (plugin setting `results`) and shown with their scan
    time after a restart.
 8. **Scheduled scans later** (with the general scheduling goal); v1 scans on demand.
-9. **Device choice** (docs/30kspec.md, section 5): the page shows and scans only the devices of its choice (the shared
+9. **Device choice**: the page shows and scans only the devices of its choice (the shared
    `PageDeviceChoice`: All devices, tags, chosen devices; every managed device fits). It starts with the Devices page
    selection, else the last choice on this computer (`GetLocalSetting` / `SetLocalSetting`), else nothing. Choosing does
    not start a scan. The server keeps the results of every scanned device; the page filters them to its choice.

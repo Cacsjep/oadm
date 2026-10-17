@@ -33,7 +33,7 @@ public static class DeviceApiJson
     /// <summary>
     /// <see cref="Deserialize"/>, but devices with the same list (same model and firmware) get the same read-only list
     /// object: 30,000 devices with about 100 APIs each are a few hundred lists in memory instead of 3 million objects
-    /// (docs/30kspec.md, server memory). The lists are immutable, so sharing is safe.
+    ///. The lists are immutable, so sharing is safe.
     /// </summary>
     public static IReadOnlyList<DeviceApi> DeserializeShared(string? json)
     {
