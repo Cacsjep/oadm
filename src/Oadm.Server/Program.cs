@@ -4,8 +4,15 @@ using Oadm.Server.Hosting;
 // <datafolder>/server-tls.json; an http:// URL serves h2c without TLS, for tests only).
 // Overrides: --Oadm:DataDir=<folder> (or env OADM_DATA_DIR), --Oadm:ListenUrl=<url>,
 // --Oadm:RegenerateTlsCertificate=true (new certificate; clients confirm its fingerprint again).
+// --print-folders prints the data and plugin folders as JSON and exits (FolderReport).
 // A restore stops the host; on a console a new one is built in this process (the installed service is restarted by its
 // service manager instead, see ServerRestart).
+if (args.Contains(FolderReport.Argument, StringComparer.OrdinalIgnoreCase))
+{
+    Console.WriteLine(FolderReport.Build(args));
+    return;
+}
+
 do
 {
     Oadm.Server.Backup.ServerRestart.Clear();

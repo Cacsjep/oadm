@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 using Oadm.Client.Infrastructure;
 using Oadm.Client.Plugins;
 
@@ -37,5 +39,23 @@ public sealed class PluginRootsTests
         Assert.Equal(Path.GetFullPath(build), roots[0]); // a build output wins over installed copies
         Assert.Equal(Path.GetFullPath("other"), roots[1]);
         Assert.Empty(AppOptions.Parse([]).PluginDirs);
+    }
+
+    [Fact]
+    public void Print_folders_names_the_settings_and_plugin_folders()
+    {
+        string data = Path.Combine(Path.GetTempPath(), "oadm-client-folders");
+        string app = Path.Combine(Path.GetTempPath(), "oadm", "client");
+        var options = AppOptions.Parse(["--data", data, "--plugin-dir", "build"]);
+
+        using var report = JsonDocument.Parse(ClientFolderReport.Build(options, app));
+        var root = report.RootElement;
+
+        Assert.Equal("client", root.GetProperty("app").GetString());
+        Assert.Equal(Path.Combine(data, "client-settings.json"), root.GetProperty("settingsFile").GetString());
+        Assert.Equal(Path.Combine(data, "plugins"), root.GetProperty("deployFolder").GetString());
+        Assert.Equal([Path.Combine(app, "plugins"), Path.Combine(data, "plugins")],
+            root.GetProperty("pluginFolders").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal([Path.GetFullPath("build")], root.GetProperty("pluginDirs").EnumerateArray().Select(e => e.GetString()));
     }
 }

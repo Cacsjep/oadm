@@ -68,7 +68,7 @@ only"; checks the .pkg's choices and payload without installing) -> job `smoke-w
 installed, checked and removed both ways by `packaging/windows/smoke.ps1`, which prints the time on every line and a
 heartbeat with free memory and the busiest processes while a program runs; its own job because the Windows runner
 sometimes stops answering there, so a re-run repeats only this job) -> job `release` (needs all; the GitHub
-release of the tag with the installers and `SHA256SUMS.txt`):
+release of the tag with the installers, the portable ZIPs `OADM-Server|Client-<version>-<rid>.zip` and `SHA256SUMS.txt`):
 - **Windows MSI** (WiX Toolset 6 via the `WixToolset.Sdk` MSBuild SDK, `packaging/windows/`, not in
   Oadm.sln; WiX 7 not used, it requires the OSMF EULA), x64 only (no ARM), per machine: `Program Files\OADM\Server`
   and `\Client`, Windows service "OADM Server" (`OadmServer`, automatic, LocalSystem, restart on failure,
@@ -1544,6 +1544,10 @@ answers is unchanged. Used by the System report for server reports.
   (repeatable, `AppOptions.PluginDirs`) load a plugin package straight from a build output, before every other folder, so it
   wins over an installed copy of the same package (the server's later copy is a load error "already loaded from another
   folder", the client skips it); as a service the server ignores the option and logs a warning.
+  `--print-folders` (server `Hosting/FolderReport`, client `Plugins/ClientFolderReport`) prints the data, logs and plugin
+  folders, the deploy folder and (server) the service name as JSON and exits without opening anything. Every release
+  also has the portable `OADM-Server-<version>-<rid>.zip` and `OADM-Client-<version>-<rid>.zip` (the publish folders,
+  job `installers`).
 - Plugin folder: `plugin.json` (id, version, minSdkVersion, displayName, description, optional `enabledByDefault`,
   default true, and `alwaysOn`, default false),
   `<Name>.Server.dll`, optional `<Name>.Client.dll`, private dependencies. SDK assemblies are shared from the

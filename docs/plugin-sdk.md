@@ -63,7 +63,7 @@ Trusted Publishing (no key in GitHub).
 | `oadm license keys / sign` | Vendor keys and license keys (today `manage license`) |
 | `oadm doctor` | .NET SDK, SDK and OADM versions, ports, service state, locked files, rights |
 
-Paths are never guessed: the tool asks the installed server and client where their folders are.
+Paths are never guessed: the tool asks the installed server and client where their folders are (`--print-folders`).
 
 ## Debugging
 
@@ -77,8 +77,13 @@ Paths are never guessed: the tool asks the installed server and client where the
    (repeatable): load a plugin package straight from a build output, before the other folders, so it wins over an
    installed copy of the same package. The server ignores the option as a service (a service loads only admin-only
    folders).
-2. Portable archives in every release: `oadm-server-<rid>.zip`, `oadm-client-<rid>.zip` (the publish folders).
-3. A "where are my folders" answer: server (data folder, plugin folders, service name), installed client (plugin folder).
+2. Done: portable archives in every release, `OADM-Server-<version>-<rid>.zip` and `OADM-Client-<version>-<rid>.zip`
+   (the publish folders with their plugins, one top folder named like the file; job `installers`, in `SHA256SUMS.txt`).
+3. Done: `Oadm.Server --print-folders` and `Oadm.Client --print-folders` print JSON and exit (nothing opened or
+   created): app, version, app folder, data folder, logs, `deployFolder` (server: the data folder's plugins; client: the
+   user's plugins folder, no admin rights), `pluginFolders` in load order, `developmentPluginFolder`, `pluginDirs`, and for
+   the server `service` {name, manager}. The tool reads the service's arguments and environment from the service manager
+   and runs the installed server with them, so the answer is the service's own folders.
 4. `src/Oadm.Sdk.Testing`, `src/Oadm.Plugin.Sdk`, `templates/`, `tools/Oadm.Tools`.
 5. Release workflow job `nuget`: pack and publish the six packages with the tag.
 6. Developer docs: the NuGet way first, the repository checkout second; the tutorials keep their code from `samples/`.

@@ -6,7 +6,8 @@ name: release
 #   2. installers MSI (Windows), .deb packages (Linux amd64 and arm64), .pkg (macOS Intel), built with "manage package"; the MSI
 #                 and the .deb packages are installed, checked and removed again, both as "Server and client" and as
 #                 "Client only" (the MSI in the job smoke-windows); the .pkg is checked without installing it
-#   3. release    the GitHub release of the tag with the installers and SHA256SUMS.txt (installers are not signed;
+#                 plus the portable ZIPs of the server and client publish folders per platform (plugin development)
+#   3. release    the GitHub release of the tag with the installers, the ZIPs and SHA256SUMS.txt (installers are not signed;
 #                 the checksums are published instead)
 # A job starts only when the jobs before it passed, so a release exists only when everything passed.
 on:
@@ -101,6 +102,28 @@ jobs:
           done
           grep -q "GNU LESSER GENERAL PUBLIC LICENSE" "artifacts/publish/client/${{ matrix.rid }}/THIRD-PARTY-NOTICES.txt"
           grep -q "^Avalonia " "artifacts/publish/client/${{ matrix.rid }}/THIRD-PARTY-NOTICES.txt"
+
+      # The publish folders as ZIPs (plugin development: "oadm dev" runs them without installing; docs/plugin-sdk.md).
+      # One top folder named like the file. zip keeps the executable bits on Linux and macOS.
+      - name: Portable archives
+        shell: bash
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          rid="${{ matrix.rid }}"
+          stage="artifacts/portable"
+          rm -rf "$stage" && mkdir -p "$stage"
+          for app in Server Client; do
+            name="OADM-$app-$version-$rid"
+            cp -R "artifacts/publish/$(echo "$app" | tr '[:upper:]' '[:lower:]')/$rid" "$stage/$name"
+            test -d "$stage/$name/plugins" || { echo "$name: plugins missing"; exit 1; }
+            if [ "$RUNNER_OS" = "Windows" ]; then
+              (cd "$stage" && pwsh -NoProfile -Command "Compress-Archive -Path '$name' -DestinationPath '$name.zip'")
+            else
+              (cd "$stage" && zip -qry "$name.zip" "$name")
+            fi
+            mv "$stage/$name.zip" artifacts/packages/
+            ls -l "artifacts/packages/$name.zip"
+          done
 
       - name: Validate MSI
         if: matrix.target == 'windows'
