@@ -45,7 +45,16 @@ jobs:
       # Unit tests only (like manage test unit): Perf tests have time budgets made for a developer machine and run with
       # manage test perf; hardware tests need real devices. One run, no retry: the tests wait for conditions, not for
       # time, so a failure is a real one (CLAUDE.md "Tests that never flake").
-      - run: dotnet test Oadm.sln -c Release --no-build --filter "Category!=Hardware&Category!=Perf&Category!=HardwareWrite" --blame-hang-timeout 5m
+      # A crashed test host leaves a dump and the tests it ran (--blame-crash), uploaded when the step fails.
+      - run: dotnet test Oadm.sln -c Release --no-build --filter "Category!=Hardware&Category!=Perf&Category!=HardwareWrite" --blame-hang-timeout 5m --blame-crash --blame-crash-dump-type mini
+      - name: Upload crash dumps and test sequences
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results-${{ matrix.os }}
+          path: tests/**/TestResults/**
+          if-no-files-found: ignore
+          retention-days: 14
 
   installers:
     name: installer ${{ matrix.target }} ${{ matrix.rid }}

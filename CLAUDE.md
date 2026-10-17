@@ -61,7 +61,8 @@ table and notes in `packaging/README.md`). Every installer offers **"Server and 
 only"** and ships `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt` and `LGPL-2.1.txt` with each app. CI is one workflow,
 `.github/workflows/release.yml`, only on release tags `v*.*.*` (e.g. `v0.0.1`): job `tests` (Windows, Linux, macOS,
 `dotnet test` with the unit filter `Category!=Hardware&Category!=Perf&Category!=HardwareWrite`, one run without a retry,
-`--blame-hang-timeout 5m`, 30 min timeout) -> job `installers` (needs tests;
+`--blame-hang-timeout 5m --blame-crash`: a crashed test host leaves a dump and its test sequence, uploaded as the artifact
+`test-results-<os>` when the step fails (`pr.yml` the same as `test-results`), 30 min timeout) -> job `installers` (needs tests;
 builds the installers (the .deb packages for amd64 and arm64); installs, checks and removes the .deb packages as "Server and client" and as "Client
 only"; checks the .pkg's choices and payload without installing) -> job `smoke-windows` (needs installers, 25 min: the MSI
 installed, checked and removed both ways by `packaging/windows/smoke.ps1`, which prints the time on every line and a
