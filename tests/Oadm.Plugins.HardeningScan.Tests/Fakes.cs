@@ -70,6 +70,9 @@ internal sealed class FakeCamera : IVapixClient
 
     public TimeSpan Delay { get; set; }
 
+    /// <summary>While this answers true, requests wait (until cancelled): holds a scan at a known point.</summary>
+    public Func<bool>? Hold { get; set; }
+
     public List<string> Requests { get; } = [];
 
     public List<string> Violations { get; } = [];
@@ -112,6 +115,11 @@ internal sealed class FakeCamera : IVapixClient
             if (Delay > TimeSpan.Zero)
             {
                 await Task.Delay(Delay, ct);
+            }
+
+            while (Hold?.Invoke() == true)
+            {
+                await Task.Delay(5, ct);
             }
 
             if (Hangs.Contains(path))
@@ -333,6 +341,16 @@ internal sealed class PageContext : ICorePluginClientContext
 
     public List<string> Calls { get; } = [];
 
+    /// <summary>
+    /// A live watch that stays open until the page goes away, like the server's: the SDK default ends at once, and the
+    /// page would read the state again after its reconnect delay while a test checks it.
+    /// </summary>
+    public async IAsyncEnumerable<PluginEvent> WatchEventsAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        await Task.Delay(Timeout.Infinite, ct);
+        yield break;
+    }
+
     public IReadOnlyList<IDeviceInfo> Devices => DeviceList;
 
     public IReadOnlyList<IDeviceInfo> SelectedDevices => Selection;
@@ -354,17 +372,6 @@ internal sealed class PageContext : ICorePluginClientContext
 
 internal static class Wait
 {
-    public static async Task UntilAsync(Func<bool> condition, TimeSpan? timeout = null)
-    {
-        var end = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(15));
-        while (!condition())
-        {
-            if (DateTime.UtcNow > end)
-            {
-                throw new TimeoutException("Condition not met in time.");
-            }
-
-            await Task.Delay(10);
-        }
-    }
+    public static Task UntilAsync(Func<bool> condition, TimeSpan? timeout = null) =>
+        Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the condition", timeout);
 }

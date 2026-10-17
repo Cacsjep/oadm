@@ -194,7 +194,8 @@ internal sealed class TestClient : IAsyncDisposable
 
     public int ServerPort { get; }
 
-    public static TimeSpan Wait { get; set; } = TimeSpan.FromSeconds(2);
+    /// <summary>How long a reply that must come may take: generous, a busy machine may be slow. Expected silence passes its own wait.</summary>
+    public static TimeSpan Wait { get; } = TimeSpan.FromSeconds(30);
 
     /// <summary>After an ACK: listen on the leased address (unicast replies).</summary>
     public async Task UseAddressAsync(uint address)
@@ -218,12 +219,12 @@ internal sealed class TestClient : IAsyncDisposable
         return reply?.Message;
     }
 
-    public Task<DhcpMessage?> DiscoverAsync(uint? requested = null, string? hostName = null)
+    public Task<DhcpMessage?> DiscoverAsync(uint? requested = null, string? hostName = null, TimeSpan? wait = null)
     {
         var m = New(DhcpMessageType.Discover);
         m.RequestedAddress = requested;
         m.HostName = hostName;
-        return SendAsync(m);
+        return SendAsync(m, wait: wait);
     }
 
     /// <summary>DISCOVER, OFFER, REQUEST, ACK: the leased address, or null.</summary>
@@ -321,6 +322,9 @@ internal sealed class FakeProbe : IAddressProbe
 
     public TimeSpan Delay { get; set; }
 
+    /// <summary>While set, every probe waits for this task (probes that overlap, however slow the machine is).</summary>
+    public Task? Hold { get; set; }
+
     public async Task<AddressProbeResult> ProbeAsync(string address, CancellationToken ct)
     {
         lock (Probed)
@@ -331,6 +335,11 @@ internal sealed class FakeProbe : IAddressProbe
         if (Delay > TimeSpan.Zero)
         {
             await Task.Delay(Delay, ct);
+        }
+
+        if (Hold is { } hold)
+        {
+            await hold.WaitAsync(ct);
         }
 
         return InUse.Contains(address) ? new AddressProbeResult(true, false) : AddressProbeResult.Silent;
@@ -482,19 +491,9 @@ internal sealed record TestDevice(string Serial, string Address, string? Model) 
 
 internal static class Wait
 {
-    public static async Task UntilAsync(Func<bool> condition, TimeSpan? timeout = null)
-    {
-        var end = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(5));
-        while (!condition())
-        {
-            if (DateTime.UtcNow > end)
-            {
-                throw new TimeoutException("Condition not met in time.");
-            }
-
-            await Task.Delay(10);
-        }
-    }
+    /// <summary>Waits for the condition, at least 30 s (<see cref="Oadm.Sdk.Testing.Eventually"/>): a busy machine may be slow.</summary>
+    public static Task UntilAsync(Func<bool> condition, TimeSpan? timeout = null) =>
+        Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the condition", timeout is { } t && t > Oadm.Sdk.Testing.Eventually.DefaultTimeout ? t : null);
 }
 
 internal static class Mac

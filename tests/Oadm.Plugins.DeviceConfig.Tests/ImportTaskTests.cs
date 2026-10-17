@@ -234,21 +234,29 @@ public sealed class ImportTaskTests
     [Fact]
     public async Task A_connection_reset_after_the_parameter_import_is_retried()
     {
+        var before = ConfigApi.RetryDelay; // a static: put back for the other tests
         ConfigApi.RetryDelay = TimeSpan.Zero;
-        var s = Setup(sections: ["param.v2", "power-settings.v2"]);
-        s.Camera.ImportAnswer = (key, _) =>
+        try
         {
-            if (key == "param.v2")
+            var s = Setup(sections: ["param.v2", "power-settings.v2"]);
+            s.Camera.ImportAnswer = (key, _) =>
             {
-                s.Camera.ResetNext = 2;
-            }
+                if (key == "param.v2")
+                {
+                    s.Camera.ResetNext = 2;
+                }
 
-            return null;
-        };
-        await RunAsync(s);
+                return null;
+            };
+            await RunAsync(s);
 
-        Assert.Equal("Import power settings: Done", StepRun.Lines(s.Ctx.Steps)[3]);
-        Assert.Equal(4, s.Camera.Requests.Count(r => r.StartsWith("PATCH", StringComparison.Ordinal))); // param, 2 resets, power
+            Assert.Equal("Import power settings: Done", StepRun.Lines(s.Ctx.Steps)[3]);
+            Assert.Equal(4, s.Camera.Requests.Count(r => r.StartsWith("PATCH", StringComparison.Ordinal))); // param, 2 resets, power
+        }
+        finally
+        {
+            ConfigApi.RetryDelay = before;
+        }
     }
 
     [Fact]

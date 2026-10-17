@@ -102,7 +102,7 @@ public sealed class EventSubscriptionTests
         subscription.Dispose();
         rig.Publisher.Fire(EventRulesRig.Pulse, camera.Id);
         await rig.Engine.DrainAsync(CancellationToken.None);
-        await ((EventSubscription)subscription).Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        await ((EventSubscription)subscription).Completion.WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.Single(received.Snapshot());
     }
@@ -114,7 +114,7 @@ public sealed class EventSubscriptionTests
         var handled = new Collector();
         using var subscription = new EventSubscription("test.slow", e =>
         {
-            gate.Wait(TimeSpan.FromSeconds(10));
+            gate.Wait(TimeSpan.FromSeconds(30));
             handled.Add(e);
         }, _ => { }, capacity: 3);
 
@@ -234,7 +234,7 @@ public sealed class EventSubscriptionTests
 
         public async Task<List<PublishedEvent>> WaitForAsync(int count)
         {
-            var deadline = DateTime.UtcNow.AddSeconds(10);
+            var deadline = DateTime.UtcNow.AddSeconds(30);
             while (Snapshot().Count < count && DateTime.UtcNow < deadline)
             {
                 await Task.Delay(10);

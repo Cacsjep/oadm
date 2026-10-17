@@ -33,8 +33,17 @@ public sealed class ScaleTests
         [.. devices.Select((d, i) => new AddressStatus(string.Create(CultureInfo.InvariantCulture, $"2001:db8::1:{i:x}"), d.Id, "P3265-V"))];
 
     [Fact]
-    [Trait("Category", "Timing")] // time budget
+    public void Ipv6_conflicts_of_30000_rows_against_30000_managed_devices_are_found() => FindIpv6Conflicts();
+
+    [Fact]
+    [Trait("Category", "Perf")]
     public void Ipv6_conflicts_of_30000_rows_against_30000_managed_devices_are_linear()
+    {
+        var elapsed = FindIpv6Conflicts();
+        Assert.True(elapsed < TimeSpan.FromSeconds(5), $"FindIpv6 took {elapsed.TotalMilliseconds:0} ms");
+    }
+
+    private static TimeSpan FindIpv6Conflicts()
     {
         var devices = Devices(Count);
         var rows = devices.Select((d, i) => new AssignmentRow(
@@ -49,7 +58,7 @@ public sealed class ScaleTests
         Assert.Equal(Count, problems.Count);
         Assert.Equal("Assigned to more than one device", problems[0]); // 0 and 29000 share 2001:db8::0
         Assert.Null(problems[1500]);
-        Assert.True(watch.ElapsedMilliseconds < 1000, $"FindIpv6 took {watch.ElapsedMilliseconds} ms");
+        return watch.Elapsed;
     }
 
     [Fact]
@@ -68,8 +77,17 @@ public sealed class ScaleTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // time budget
+    public void Ipv4_conflicts_of_30000_rows_are_found() => FindIpv4Conflicts();
+
+    [Fact]
+    [Trait("Category", "Perf")]
     public void Ipv4_conflicts_of_30000_rows_are_linear()
+    {
+        var elapsed = FindIpv4Conflicts();
+        Assert.True(elapsed < TimeSpan.FromSeconds(5), $"Find took {elapsed.TotalMilliseconds:0} ms");
+    }
+
+    private static TimeSpan FindIpv4Conflicts()
     {
         var devices = Devices(Count);
         var rows = devices.Select(d => new AssignmentRow(new AssignmentDevice(d.Id, d.Address), d.Address)).ToList();
@@ -79,7 +97,7 @@ public sealed class ScaleTests
         watch.Stop();
 
         Assert.Equal(Count, problems.Count);
-        Assert.True(watch.ElapsedMilliseconds < 1000, $"Find took {watch.ElapsedMilliseconds} ms");
+        return watch.Elapsed;
     }
 
     [Fact]

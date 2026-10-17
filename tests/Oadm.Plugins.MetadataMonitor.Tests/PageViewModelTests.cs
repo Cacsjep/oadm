@@ -198,8 +198,7 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
             await Wait.UntilAsync(() => _ctx.Calls.Count(c => c == MetadataMethods.KeepAlive) >= 3);
             await vm.StartStopCommand.ExecuteAsync(null);
             var count = _ctx.Calls.Count(c => c == MetadataMethods.KeepAlive);
-            await Task.Delay(100);
-            Assert.Equal(count, _ctx.Calls.Count(c => c == MetadataMethods.KeepAlive));
+            await Oadm.Sdk.Testing.Eventually.StaysTrueAsync(() => _ctx.Calls.Count(c => c == MetadataMethods.KeepAlive) == count, "no keep-alive after Stop", TimeSpan.FromMilliseconds(100));
         }
         finally
         {

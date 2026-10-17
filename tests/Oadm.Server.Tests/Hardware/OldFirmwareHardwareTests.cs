@@ -1,5 +1,5 @@
-using Oadm.Core.Plugins;
 using Oadm.Server.Tests.Support;
+using Oadm.Tests.Shared;
 
 using Xunit.Abstractions;
 
@@ -32,8 +32,7 @@ public sealed class OldFirmwareHardwareTests(ITestOutputHelper output)
     [OldCameraFact]
     public async Task AnOldCameraIsAddedAndGetsItsTasks()
     {
-        var root = PluginPaths.Development(AppContext.BaseDirectory);
-        Assert.NotNull(root);
+        var root = TestRepository.DevelopmentPlugins;
         await using var host = await TestServerHost.StartAsync(useRealNetwork: true, pluginRoots: [root]);
 
         // Add manually with a typed login: the Axis check must pass on the realm (no anonymous basicdeviceinfo).

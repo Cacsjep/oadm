@@ -291,13 +291,17 @@ public sealed class EngineTests : IDisposable
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // the requests must overlap the 300 ms probes
     public async Task Probes_are_bounded_and_busy_requests_get_no_answer()
     {
-        _probe.Delay = TimeSpan.FromMilliseconds(300);
+        // The probes wait until released: all five requests overlap them, however slow the machine is.
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _probe.Hold = release.Task;
         using var engine = new DhcpEngine(_store, _probe, new DhcpEngineOptions { MaxConcurrentProbes = 2 }, _time) { Scope = DhcpScope.Create(Network, Ip.Of("10.0.0.100"), Ip.Of("10.0.0.199")) };
         var tasks = Enumerable.Range(0, 5).Select(i => engine.HandleAsync(Msg(0x0040_8C00_0000UL + (ulong)i, DhcpMessageType.Discover), default).AsTask()).ToList();
-        var replies = await Task.WhenAll(tasks);
+        await Wait.UntilAsync(() => tasks.Count(t => t.IsCompleted) == 3);
+        Assert.Equal(2, _probe.Probed.Count);
+        release.SetResult();
+        var replies = await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(2, replies.Count(r => r is not null));
         Assert.Equal(2, _store.PendingOffers); // the dropped ones hold nothing
     }

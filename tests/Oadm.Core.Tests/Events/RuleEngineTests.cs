@@ -287,7 +287,7 @@ public sealed class RuleEngineTests
             }
         }
 
-        var deadline = DateTime.UtcNow.AddSeconds(10); // the subscription's own loop hands them over
+        var deadline = DateTime.UtcNow.AddSeconds(30); // the subscription's own loop hands them over
         while (AnyEvents().Count < 4 && DateTime.UtcNow < deadline)
         {
             await Task.Delay(10);

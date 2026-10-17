@@ -12,20 +12,11 @@ namespace Oadm.Plugins.ActionRules.Tests;
 /// <summary>The page's Copy to devices, the Recipients and Schedules tabs and their forms.</summary>
 public sealed class PresetPageTests
 {
-    private static async Task UntilAsync(Func<bool> condition)
-    {
-        var until = DateTime.UtcNow.AddSeconds(10);
-        while (!condition())
-        {
-            Assert.True(DateTime.UtcNow < until, "Timed out waiting for the condition.");
-            await Task.Delay(10);
-        }
-    }
+    private static Task UntilAsync(Func<bool> condition) => Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the page state");
 
     private static RuleTaskPayload Payload(PageRig rig, int index) => ActionRulesJson.Deserialize<RuleTaskPayload>(rig.Runner.Runs[index].Payload);
 
     [Fact]
-    [Trait("Category", "Timing")] // the plugin's events arrive on the thread pool, waited for in real time
     public async Task A_rule_is_copied_to_chosen_devices_with_its_changes()
     {
         await using var rig = new PageRig();
@@ -57,7 +48,6 @@ public sealed class PresetPageTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")]
     public async Task Recipients_and_schedules_are_grouped_and_changed()
     {
         await using var rig = new PageRig();
@@ -178,7 +168,7 @@ public sealed class PresetPageTests
             var window = new Window { Width = 1600, Height = 620, Content = new Border { Padding = new Thickness(16), Child = page } };
             Oadm.Client.App.ApplyCrispText(window);
             window.Show();
-            var until = DateTime.UtcNow.AddSeconds(10);
+            var until = DateTime.UtcNow.AddSeconds(30);
             while ((rig.ViewModel.Schedules.Groups.Count == 0 || rig.ViewModel.IsReading) && DateTime.UtcNow < until)
             {
                 Pump();

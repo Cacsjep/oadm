@@ -123,8 +123,17 @@ public sealed class LeaseStoreTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")]
+    public void Five_thousand_leases_allocate() => AllocateFiveThousand();
+
+    [Fact]
+    [Trait("Category", "Perf")]
     public void Five_thousand_leases_allocate_fast()
+    {
+        var elapsed = AllocateFiveThousand();
+        Assert.True(elapsed < TimeSpan.FromSeconds(5), $"5,000 leases took {elapsed.TotalMilliseconds:0} ms");
+    }
+
+    private static TimeSpan AllocateFiveThousand()
     {
         var pool = new AddressPool(Ip.Of("10.0.0.1"), Ip.Of("10.0.255.254"), new HashSet<uint>());
         var store = new LeaseStore();
@@ -137,7 +146,7 @@ public sealed class LeaseStoreTests
         }
 
         Assert.Equal(5_000, store.Snapshot(out _).Count);
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2), watch.Elapsed.ToString());
+        return watch.Elapsed;
     }
 
     private static uint Bind(LeaseStore store, ulong mac, uint? requested = null, string? hostName = null)

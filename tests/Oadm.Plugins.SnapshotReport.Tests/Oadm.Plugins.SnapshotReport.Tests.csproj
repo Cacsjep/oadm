@@ -33,6 +33,7 @@
     <ProjectReference Include="..\..\src\Oadm.Server\Oadm.Server.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.SnapshotReport\Oadm.Plugins.SnapshotReport.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.SnapshotReport.Client\Oadm.Plugins.SnapshotReport.Client.csproj" />
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>

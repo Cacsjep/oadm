@@ -35,6 +35,7 @@ internal sealed class FakeUpstream : IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _loop;
     private int _requests;
+    private int _answers;
 
     public FakeUpstream(UpstreamBehavior behavior = UpstreamBehavior.Answer)
     {
@@ -64,6 +65,12 @@ internal sealed class FakeUpstream : IAsyncDisposable
     public string HostText => $"127.0.0.1:{EndPoint.Port}";
 
     public int Requests => Volatile.Read(ref _requests);
+
+    /// <summary>Answers sent (also late ones and Kiss-o'-Death packets).</summary>
+    public int Answers => Volatile.Read(ref _answers);
+
+    /// <summary>While set, a request is answered only once this task completes (a "late" answer without a timed delay).</summary>
+    public Task? Hold { get; set; }
 
     public async ValueTask DisposeAsync()
     {
@@ -109,6 +116,7 @@ internal sealed class FakeUpstream : IAsyncDisposable
 
             var behavior = Behavior;
             var delay = Delay;
+            var hold = Hold;
             var remote = received.RemoteEndPoint;
             _ = Task.Run(async () =>
             {
@@ -117,6 +125,11 @@ internal sealed class FakeUpstream : IAsyncDisposable
                     if (delay > TimeSpan.Zero)
                     {
                         await Task.Delay(delay, _cts.Token);
+                    }
+
+                    if (hold is not null)
+                    {
+                        await hold.WaitAsync(_cts.Token);
                     }
 
                     switch (behavior)
@@ -183,11 +196,12 @@ internal sealed class FakeUpstream : IAsyncDisposable
         TransmitTimestamp = NtpTimestamp.FromDateTime(DateTime.UtcNow),
     };
 
-    private static async Task SendAsync(Socket socket, EndPoint remote, NtpPacket packet)
+    private async Task SendAsync(Socket socket, EndPoint remote, NtpPacket packet)
     {
         var bytes = new byte[NtpPacket.Length];
         packet.Write(bytes);
         await socket.SendToAsync(bytes, SocketFlags.None, remote);
+        Interlocked.Increment(ref _answers);
     }
 }
 
@@ -360,17 +374,7 @@ internal sealed record TestDevice(string Address, string? Model) : IDeviceInfo
 
 internal static class Wait
 {
-    public static async Task UntilAsync(Func<bool> condition, TimeSpan? timeout = null)
-    {
-        var end = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(5));
-        while (!condition())
-        {
-            if (DateTime.UtcNow > end)
-            {
-                throw new TimeoutException("Condition not met in time.");
-            }
-
-            await Task.Delay(10);
-        }
-    }
+    /// <summary>Waits for the condition, at least 30 s (<see cref="Oadm.Sdk.Testing.Eventually"/>): a busy machine may be slow.</summary>
+    public static Task UntilAsync(Func<bool> condition, TimeSpan? timeout = null) =>
+        Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the condition", timeout is { } t && t > Oadm.Sdk.Testing.Eventually.DefaultTimeout ? t : null);
 }

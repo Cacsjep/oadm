@@ -628,7 +628,9 @@ internal sealed class Rig : IAsyncDisposable
     public static DeviceTriggersOptions FastOptions(int connectParallelism = 16, TimeSpan? sweep = null) => new()
     {
         LostDelay = TimeSpan.FromMilliseconds(400),
-        SettleTime = TimeSpan.FromMilliseconds(150),
+        // The fake camera sends its states right after the filter reply; what arrives within this time is its full report.
+        // Generous, so a stalled thread on a busy machine never splits the report (the exact report lines are tested).
+        SettleTime = TimeSpan.FromSeconds(1),
         RequestTimeout = TimeSpan.FromSeconds(5),
         KeepAlive = TimeSpan.FromSeconds(10),
         Backoff = [TimeSpan.FromMilliseconds(50)],
@@ -669,13 +671,6 @@ internal sealed class Rig : IAsyncDisposable
 
 internal static class Wait
 {
-    public static async Task UntilAsync(Func<bool> condition, string what, int timeoutMs = 10_000)
-    {
-        var until = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition())
-        {
-            Assert.True(DateTime.UtcNow < until, "Timed out waiting: " + what);
-            await Task.Delay(10);
-        }
-    }
+    public static Task UntilAsync(Func<bool> condition, string what, int timeoutMs = 30_000) =>
+        Oadm.Sdk.Testing.Eventually.TrueAsync(condition, what, TimeSpan.FromMilliseconds(timeoutMs));
 }

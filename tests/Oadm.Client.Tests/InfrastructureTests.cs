@@ -287,16 +287,21 @@ public sealed class ColumnLayoutTests
     }
 }
 
-public sealed class ServerConnectionTests
+public sealed class ServerConnectionTests : IDisposable
 {
+    // The connection's posted updates and the checks run on one thread, like on the client's UI thread (see UiThread).
+    private readonly UiThread _ui = new();
+
+    public void Dispose() => _ui.Dispose();
+
     [Fact]
-    public async Task Connects_loads_devices_and_recovers_after_server_outage()
+    public Task Connects_loads_devices_and_recovers_after_server_outage() => _ui.RunAsync(async () =>
     {
         using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
         api.SetOnline(false);
         var devices = new DeviceStore();
         var tasks = new TaskStore(devices);
-        using var connection = new ServerConnection(api, devices, tasks, new ImmediateUiDispatcher(), NullLogger<ServerConnection>.Instance);
+        using var connection = new ServerConnection(api, devices, tasks, _ui, NullLogger<ServerConnection>.Instance);
         int connectedEvents = 0;
         connection.Connected += (_, _) => connectedEvents++;
 
@@ -307,14 +312,14 @@ public sealed class ServerConnectionTests
 
         api.SetOnline(true);
         // Longer than the 15 s maximum reconnect delay, so a retry that just backed off still lands.
-        await TestSupport.WaitUntilAsync(() => connection.IsConnected && devices.Devices.Count == 12 && tasks.Tasks.Count > 0, 20000);
+        await TestSupport.WaitUntilAsync(() => connection.IsConnected && devices.Devices.Count == 12 && tasks.Tasks.Count > 0, 60_000);
         Assert.Equal(1, connectedEvents);
 
         // live update through the watch stream
         string id = devices.Devices[0].Id;
         await api.RemoveDevicesAsync([id], CancellationToken.None);
         await TestSupport.WaitUntilAsync(() => devices.Find(id) is null);
-    }
+    });
 
     [Fact]
     public void Server_address_is_normalized()
@@ -326,17 +331,17 @@ public sealed class ServerConnectionTests
     }
 
     [Fact]
-    public async Task Grpc_api_against_closed_port_fails_without_crashing_the_connection()
+    public Task Grpc_api_against_closed_port_fails_without_crashing_the_connection() => _ui.RunAsync(async () =>
     {
         using var api = new GrpcOadmApi("http://127.0.0.1:1");
         var devices = new DeviceStore();
-        using var connection = new ServerConnection(api, devices, new TaskStore(devices), new ImmediateUiDispatcher(), NullLogger<ServerConnection>.Instance);
+        using var connection = new ServerConnection(api, devices, new TaskStore(devices), _ui, NullLogger<ServerConnection>.Instance);
 
         connection.Start();
 
-        await TestSupport.WaitUntilAsync(() => connection.State == ConnectionState.Disconnected, 10000);
+        await TestSupport.WaitUntilAsync(() => connection.State == ConnectionState.Disconnected);
         Assert.Contains("127.0.0.1:1", connection.StatusText, StringComparison.Ordinal);
-    }
+    });
 }
 
 public sealed class AppOptionsTests

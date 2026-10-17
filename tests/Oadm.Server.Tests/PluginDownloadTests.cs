@@ -87,7 +87,7 @@ public sealed class PluginDownloadTests
             await cts.CancelAsync();
         }
 
-        await plugin.Disposed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await plugin.Disposed.Task.WaitAsync(TimeSpan.FromSeconds(30));
     }
 
     private static async Task<TestServerHost> StartAsync(DownloadPlugin plugin, bool withoutDownloads = false)

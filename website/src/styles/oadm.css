@@ -622,6 +622,18 @@ header .social-icons::after {
 	color: var(--sl-color-white);
 }
 
+/* The version of the latest release, right below the download buttons. */
+.downloads .dl-version {
+	margin-top: calc(5px - 0.75rem);
+	color: var(--sl-color-white);
+	font-size: 0.6875rem;
+	text-decoration: none;
+}
+
+.downloads .dl-version:hover {
+	text-decoration: underline;
+}
+
 .downloads .community-label {
 	margin-top: 0.25rem;
 }

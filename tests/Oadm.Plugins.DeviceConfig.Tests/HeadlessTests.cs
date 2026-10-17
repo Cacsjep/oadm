@@ -24,13 +24,18 @@ public sealed class HeadlessTestApp : Application
 
 public static class HeadlessEntry
 {
+    private static readonly Lazy<HeadlessUnitTestSession> Shared = new(() => HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry)));
+
+    /// <summary>One headless application per test process (Avalonia sets up only once); never disposed.</summary>
+    public static HeadlessUnitTestSession Session => Shared.Value;
+
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<HeadlessTestApp>()
         .UseSkia()
         .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
         .WithInterFont();
 }
 
-/// <summary>Test classes that start an Avalonia headless session run one after the other (two sessions at once hang).</summary>
+/// <summary>Test classes that use the shared Avalonia headless session (<see cref="HeadlessEntry.Session"/>) run one after the other.</summary>
 [CollectionDefinition(Name)]
 public sealed class HeadlessSessions
 {
@@ -71,7 +76,7 @@ public sealed class HeadlessTests : IDisposable
             }
         }
 
-        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessEntry.Session;
         // Func<Task<T>>: Dispatch awaits the async body (a plain Func<Task> would only start it).
         var done = await session.Dispatch(async () =>
         {

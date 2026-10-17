@@ -143,8 +143,8 @@ public sealed class DeviceTriggersTests
         camera.SetState(Fixture.VirtualInput, Port4, On);
         await Wait.UntilAsync(() => rig.Publisher.Lines.Contains($"set trigger {a.Id} on active=1,port=4"), "port 4 on: the values change");
         camera.SetState(Fixture.VirtualInput, Port3, Off);
-        await Task.Delay(200);
-        Assert.DoesNotContain($"set trigger {a.Id} off", rig.Publisher.Lines); // port 4 is still on
+        // Port 4 is still on: nothing to publish, so no sign to wait for; watch a while.
+        await Oadm.Sdk.Testing.Eventually.StaysTrueAsync(() => !rig.Publisher.Lines.Contains($"set trigger {a.Id} off"), "still on", TimeSpan.FromMilliseconds(200));
         camera.SetState(Fixture.VirtualInput, Port4, Off);
         await Wait.UntilAsync(() => rig.Publisher.Lines.Contains($"set trigger {a.Id} off"), "all off");
     }
@@ -179,7 +179,9 @@ public sealed class DeviceTriggersTests
         camera.Refuse = new HttpRequestException("Connection refused");
         camera.Drop();
         await Wait.UntilAsync(() => rig.Publisher.Lines.Any(l => l.StartsWith($"set lost {a.Id} on", StringComparison.Ordinal)), "connection lost");
-        Assert.Contains(rig.Publisher.Lines, l => l.StartsWith($"set lost {a.Id} on reason=Unreachable", StringComparison.Ordinal));
+        // "Connection lost" carries the problem of that moment: the drop itself, or already the refused reconnect,
+        // depending on which comes first on a busy machine. The refused reconnect then names the device unreachable.
+        await Wait.UntilAsync(() => rig.Plugin.Runtime!.StatesOf(trigger).Single().Problem?.StartsWith("Unreachable", StringComparison.Ordinal) == true, "unreachable");
         Assert.DoesNotContain($"set trigger {a.Id} off", rig.Publisher.Lines); // the last state stays
         var state = rig.Plugin.Runtime!.StatesOf(trigger).Single();
         Assert.Equal((TriggerConnection.Lost, true), (state.Connection, state.IsOn));
@@ -225,8 +227,10 @@ public sealed class DeviceTriggersTests
         var states = rig.Plugin.Runtime!.StatesOf(rig.Plugin.Resolved(trigger));
         Assert.Equal(new[] { tagged.Id, withoutEvent.Id }.Order(), states.Select(s => s.DeviceId).Order()); // not untagged, not without the API
         Assert.Equal(Oadm.Plugins.DeviceTriggers.Runtime.TriggerRuntime.NotOfferedText, states.Single(s => s.DeviceId == withoutEvent.Id).Problem);
-        await Task.Delay(600); // longer than the lost delay
-        Assert.DoesNotContain(rig.Publisher.Lines, l => l.Contains($"lost {withoutEvent.Id} on", StringComparison.Ordinal));
+        await Oadm.Sdk.Testing.Eventually.StaysTrueAsync( // longer than the lost delay
+            () => !rig.Publisher.Lines.Any(l => l.Contains($"lost {withoutEvent.Id} on", StringComparison.Ordinal)),
+            "no connection lost for a device without the event",
+            TimeSpan.FromMilliseconds(600));
 
         var later = rig.AddDevice("10.0.0.52", tags: ["Gate"]);
         await Wait.UntilAsync(() => rig.Plugin.Runtime!.StatesOf(rig.Plugin.Resolved(rig.Plugin.Triggers.Single())).Any(s => s.DeviceId == later.Id), "the newly tagged device joined");

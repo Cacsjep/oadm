@@ -50,7 +50,7 @@ public sealed class EventServiceTests
         Assert.Equal(["token"], RuleDefinition.FromJson(saved.DefinitionJson).Actions[0].StoredSecretFields);
 
         await host.Get<DeviceRepository>().UpdateAsync(device.Id, d => d.Status = DeviceStatus.Unreachable, CancellationToken.None);
-        await TestHelpers.WaitUntilAsync(() => Task.FromResult(action.Messages.Count == 1), "the action ran", TimeSpan.FromSeconds(10));
+        await TestHelpers.WaitUntilAsync(() => Task.FromResult(action.Messages.Count == 1), "the action ran", TimeSpan.FromSeconds(30));
         Assert.Equal("10.0.0.48 (P3265-V) is on|t0ken", action.Messages.Single());
 
         await host.Get<EventLog>().FlushAsync(CancellationToken.None);
@@ -59,7 +59,7 @@ public sealed class EventServiceTests
         Assert.Contains(log.Entries, e => e.Kind == Proto.EventLogKind.EventLogRule && e.What == "Rule turned on");
         Assert.Contains(log.Entries, e => e.Kind == Proto.EventLogKind.EventLogAction && e.Result == Proto.EventLogResult.EventLogOk);
         // The rule's state is published right after the engine's batch; the action may have run a moment earlier.
-        await TestHelpers.WaitUntilAsync(async () => (await events.ListRulesAsync(new Proto.Empty())).Rules.Single().StateText == "On", "the rule is on", TimeSpan.FromSeconds(10));
+        await TestHelpers.WaitUntilAsync(async () => (await events.ListRulesAsync(new Proto.Empty())).Rules.Single().StateText == "On", "the rule is on", TimeSpan.FromSeconds(30));
         Assert.Contains((await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries, e => e.Action == AuditActions.RuleCreated && e.Target == "Camera offline");
     }
 

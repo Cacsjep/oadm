@@ -138,7 +138,7 @@ internal sealed class TestServerHost : IAsyncDisposable
                     services.RemoveAll<VapixProbe>();
                     services.AddSingleton(network.CreateProbe());
                     services.RemoveAll<VapixDeviceProbe>();
-                    services.AddSingleton(_ => new VapixDeviceProbe(network.CreateHandler(), TimeSpan.FromSeconds(2)));
+                    services.AddSingleton(_ => new VapixDeviceProbe(network.CreateHandler(), FakeAxisNetwork.AnswerTimeout));
                 }
 
                 configureServices?.Invoke(services);

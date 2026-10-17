@@ -13,7 +13,7 @@ namespace Oadm.Core.Tests.Tasks;
 public sealed class TaskEngineWarningsAndLogTests : IAsyncLifetime
 #pragma warning restore CA1001
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
 
     private readonly FakeDeviceRepository _devices = new();
     private readonly FakeVapixClientFactory _vapix = new();

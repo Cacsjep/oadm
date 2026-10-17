@@ -277,8 +277,17 @@ public sealed class ViewModelTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // time budget
-    public void Thirty_thousand_devices_are_summarized_in_one_pass()
+    public void Thirty_thousand_devices_are_summarized_in_one_pass() => SummarizeTheMostDevices();
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void Thirty_thousand_devices_are_summarized_fast()
+    {
+        var elapsed = SummarizeTheMostDevices();
+        Assert.True(elapsed < TimeSpan.FromSeconds(1), $"took {elapsed.TotalMilliseconds:0} ms");
+    }
+
+    private static TimeSpan SummarizeTheMostDevices()
     {
         var devices = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices)
             .Select(i => (IDeviceInfo)new FakeDevice(Guid.NewGuid(), $"10.{i / 62500}.{i / 250 % 250}.{i % 250 + 1}")
@@ -295,7 +304,6 @@ public sealed class ViewModelTests
         vm.IsManual = true;
 
         watch.Stop();
-        Assert.True(watch.ElapsedMilliseconds < 1000, $"took {watch.ElapsedMilliseconds} ms");
         Assert.Equal(24_000, vm.NtsDeviceCount);
         Assert.Equal(3_000, vm.NoTimeApiCount);
         Assert.Equal(3_000, vm.SingleNtpServerCount);
@@ -307,5 +315,6 @@ public sealed class ViewModelTests
         vm.UseNts = true;
         Assert.True(vm.HasNtsHint);
         Assert.Equal("NTS works on 24,000 of 30,000 devices; the others are not changed.", vm.NtsHint);
+        return watch.Elapsed;
     }
 }

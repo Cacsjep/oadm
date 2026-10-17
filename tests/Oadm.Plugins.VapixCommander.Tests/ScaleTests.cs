@@ -9,10 +9,10 @@ namespace Oadm.Plugins.VapixCommander.Tests;
 /// <summary>
 /// HARD RULE "scale to thousands of devices" on the server side of VAPIX Commander: compatibility of 30,000 devices,
 /// a rollout to 30,000 devices (one batched task start) and the rollout bookkeeping of 30,000 tasks stay linear.
-/// The budgets include the first call (JIT) on a busy CI runner; quadratic work on 30,000 items would still exceed them.
+/// The checks run in every unit run; the time budgets (Perf) include the first call (JIT) on a busy machine, quadratic work
+/// on 30,000 items would still exceed them.
 /// </summary>
-[Trait("Category", "Timing")] // time budgets
-public sealed class ScaleTests
+public sealed class ScaleTests(Xunit.Abstractions.ITestOutputHelper output)
 {
     private const int Count = DeviceLimits.MaxDevices;
 
@@ -32,7 +32,54 @@ public sealed class ScaleTests
     }
 
     [Fact]
-    public async Task Compatibility_of_30000_devices_is_one_pass()
+    public async Task Compatibility_of_30000_devices_is_one_pass() => _ = await CheckCompatibilityAsync();
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public async Task Compatibility_of_30000_devices_is_one_pass_within_budget()
+    {
+        var elapsed = await CheckCompatibilityAsync();
+        output.WriteLine($"Compatibility_of_30000_devices_is_one_pass: {elapsed.TotalMilliseconds:0} ms");
+        Assert.True(elapsed < TimeSpan.FromMilliseconds(5000), $"took {elapsed.TotalMilliseconds:0} ms");
+    }
+
+    [Fact]
+    public async Task Rollout_to_30000_devices_starts_all_tasks_in_one_batch() => _ = await StartRolloutAsync();
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public async Task Rollout_to_30000_devices_starts_all_tasks_in_one_batch_within_budget()
+    {
+        var elapsed = await StartRolloutAsync();
+        output.WriteLine($"Rollout_to_30000_devices_starts_all_tasks_in_one_batch: {elapsed.TotalMilliseconds:0} ms");
+        Assert.True(elapsed < TimeSpan.FromMilliseconds(5000), $"took {elapsed.TotalMilliseconds:0} ms");
+    }
+
+    [Fact]
+    public void Rollout_bookkeeping_of_30000_tasks_is_linear() => _ = KeepRolloutBooks();
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void Rollout_bookkeeping_of_30000_tasks_is_linear_within_budget()
+    {
+        var elapsed = KeepRolloutBooks();
+        output.WriteLine($"Rollout_bookkeeping_of_30000_tasks_is_linear: {elapsed.TotalMilliseconds:0} ms");
+        Assert.True(elapsed < TimeSpan.FromMilliseconds(2500), $"took {elapsed.TotalMilliseconds:0} ms");
+    }
+
+    [Fact]
+    public void Stopped_rollout_of_30000_tasks_cancels_the_rest_once_and_is_dropped() => _ = StopRollout();
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void Stopped_rollout_of_30000_tasks_cancels_the_rest_once_and_is_dropped_within_budget()
+    {
+        var elapsed = StopRollout();
+        output.WriteLine($"Stopped_rollout_of_30000_tasks_cancels_the_rest_once_and_is_dropped: {elapsed.TotalMilliseconds:0} ms");
+        Assert.True(elapsed < TimeSpan.FromMilliseconds(2500), $"took {elapsed.TotalMilliseconds:0} ms");
+    }
+
+    private static async Task<TimeSpan> CheckCompatibilityAsync()
     {
         var (plugin, _, devices) = await StartAsync();
         var request = CommandJson.Write(new CompatibilityRequest
@@ -52,11 +99,10 @@ public sealed class ScaleTests
         Assert.Equal(Count, reply.Devices.Count);
         Assert.Equal(Count / 25, reply.Devices.Count(d => d.Commands[1].State == CompatibilityState.MissingApi));
         Assert.Equal(devices[7].Id, reply.Devices[7].DeviceId);
-        Assert.True(watch.ElapsedMilliseconds < 5000, $"took {watch.ElapsedMilliseconds} ms");
+        return watch.Elapsed;
     }
 
-    [Fact]
-    public async Task Rollout_to_30000_devices_starts_all_tasks_in_one_batch()
+    private static async Task<TimeSpan> StartRolloutAsync()
     {
         var (plugin, ctx, devices) = await StartAsync();
         var runner = (RecordingRunner)ctx.Tasks;
@@ -76,11 +122,10 @@ public sealed class ScaleTests
         Assert.Equal(Count, reply.TaskIds.Count);
         var run = Assert.Single(runner.Runs); // one call for all devices, not one per device
         Assert.Equal(Count, run.Devices.Count);
-        Assert.True(watch.ElapsedMilliseconds < 5000, $"took {watch.ElapsedMilliseconds} ms");
+        return watch.Elapsed;
     }
 
-    [Fact]
-    public void Rollout_bookkeeping_of_30000_tasks_is_linear()
+    private static TimeSpan KeepRolloutBooks()
     {
         var registry = new RolloutRegistry();
         var rollout = registry.Get(Guid.NewGuid(), stopOnFirstError: false);
@@ -96,11 +141,10 @@ public sealed class ScaleTests
 
         watch.Stop();
         Assert.Equal(0, registry.Count); // dropped when the last task finished
-        Assert.True(watch.ElapsedMilliseconds < 2500, $"took {watch.ElapsedMilliseconds} ms");
+        return watch.Elapsed;
     }
 
-    [Fact]
-    public void Stopped_rollout_of_30000_tasks_cancels_the_rest_once_and_is_dropped()
+    private static TimeSpan StopRollout()
     {
         var registry = new RolloutRegistry();
         var rollout = registry.Get(Guid.NewGuid(), stopOnFirstError: true);
@@ -123,6 +167,6 @@ public sealed class ScaleTests
         Assert.Equal(Count - 10, cancel.Count);
         Assert.False(rollout.Join(tasks[^1]));
         Assert.Equal(0, registry.Count);
-        Assert.True(watch.ElapsedMilliseconds < 2500, $"took {watch.ElapsedMilliseconds} ms");
+        return watch.Elapsed;
     }
 }

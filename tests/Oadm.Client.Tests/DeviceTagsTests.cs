@@ -7,7 +7,6 @@ using NSubstitute;
 using Oadm.Client.Api;
 using Oadm.Client.Devices;
 using Oadm.Client.Discovery;
-using Oadm.Client.Infrastructure;
 using Oadm.Client.Tags;
 using Oadm.Contracts.V1;
 
@@ -322,26 +321,31 @@ public sealed class DeviceTagsTests
     [Fact]
     public async Task Imported_devices_get_the_tags_of_their_line_and_missing_tags_are_created()
     {
-        using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
-        string csv = string.Join("\n",
-            "Address,Tags",
-            "camera7.example.com:8443,Lobby; Building A",
-            "camera8.example.com,Lobby; Building A");
-        await using var page = new AddDevicesViewModel(api, new ImmediateUiDispatcher(), NullLogger<AddDevicesViewModel>.Instance, AddDevicesMode.Import);
-        page.SetImport(DeviceImportFile.Parse("site.csv", csv));
-        await page.OpenAsync();
-        await page.ImportCompletion!;
-        await TestSupport.WaitUntilAsync(() => !page.IsScanning && page.Rows.All(r => r.IsImportPlaceholder || r.AuthState != AuthState.Pending));
+        // The page and the checks run on one thread, like on the client's UI thread (see UiThread).
+        await using var ui = new UiThread();
+        await ui.RunAsync(async () =>
+        {
+            using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
+            string csv = string.Join("\n",
+                "Address,Tags",
+                "camera7.example.com:8443,Lobby; Building A",
+                "camera8.example.com,Lobby; Building A");
+            await using var page = new AddDevicesViewModel(api, ui, NullLogger<AddDevicesViewModel>.Instance, AddDevicesMode.Import);
+            page.SetImport(DeviceImportFile.Parse("site.csv", csv));
+            await page.OpenAsync();
+            await page.ImportCompletion!;
+            await TestSupport.WaitUntilAsync(() => !page.IsScanning && page.Rows.All(r => r.IsImportPlaceholder || r.AuthState != AuthState.Pending));
 
-        page.SelectAllAuthenticatedCommand.Execute(null);
-        await page.AddCommand.ExecuteAsync(null);
+            page.SelectAllAuthenticatedCommand.Execute(null);
+            await page.AddCommand.ExecuteAsync(null);
 
-        IReadOnlyList<Device> devices = await api.ListDevicesAsync(CancellationToken.None);
-        Assert.All(page.AddedDeviceIds, id => Assert.Equal(["Building A", "Lobby"], devices.Single(d => d.Id == id).Tags));
-        Assert.NotEmpty(page.AddedDeviceIds);
-        DeviceTag lobby = (await api.ListTagsAsync(CancellationToken.None)).Single(t => t.Name == "Lobby");
-        Assert.True(lobby.Defined);
-        Assert.NotEqual(TagColor.Unspecified, lobby.Color);
+            IReadOnlyList<Device> devices = await api.ListDevicesAsync(CancellationToken.None);
+            Assert.All(page.AddedDeviceIds, id => Assert.Equal(["Building A", "Lobby"], devices.Single(d => d.Id == id).Tags));
+            Assert.NotEmpty(page.AddedDeviceIds);
+            DeviceTag lobby = (await api.ListTagsAsync(CancellationToken.None)).Single(t => t.Name == "Lobby");
+            Assert.True(lobby.Defined);
+            Assert.NotEqual(TagColor.Unspecified, lobby.Color);
+        });
     }
 
     [Fact]

@@ -26,6 +26,7 @@
     <!-- Oadm.Client supplies the host theme (OadmTheme.axaml), the fake API and the shared runtime assemblies
          (Avalonia, CommunityToolkit, SDK) the plugin projects compile against only; Oadm.Server the in-process server
          (core plugin host, event hub, RTSP event streams). -->
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
     <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />
     <ProjectReference Include="..\..\src\Oadm.Server\Oadm.Server.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.ImageHealth\Oadm.Plugins.ImageHealth.csproj" />

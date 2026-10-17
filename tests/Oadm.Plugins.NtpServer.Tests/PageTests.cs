@@ -94,9 +94,13 @@ public sealed class PageViewModelTests : IAsyncLifetime
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // 300 ms query timeout
     public async Task Upstream_field_errors_stay_under_the_field_and_block_saving()
     {
+        // A 5 s query timeout: the good upstream must answer the Save check also on a busy machine.
+        await _plugin.DisposeAsync();
+        _plugin = new NtpServerPlugin(Options.Test() with { Upstream = Options.FastUpstream with { QueryTimeout = TimeSpan.FromSeconds(5) } });
+        await _plugin.StartAsync(new TestCoreContext(new InMemoryPluginSettingsProvider().GetSettings(NtpServerPluginInfo.PluginId), _hub.For(NtpServerPluginInfo.PluginId)), CancellationToken.None);
+        _ctx = new PluginPageContext(_plugin, _hub);
         var calls = 0;
         _ctx.Intercept = (method, payload) =>
         {
@@ -117,7 +121,7 @@ public sealed class PageViewModelTests : IAsyncLifetime
         vm.Upstream = dead.HostText;
         Assert.False(vm.HasErrors);
         await vm.SaveCommand.ExecuteAsync(null);
-        Assert.Equal("127.0.0.1: No answer within 300 ms.", Assert.Single(vm.GetErrors(nameof(vm.Upstream)).Cast<string>()));
+        Assert.Equal("127.0.0.1: No answer within 5 s.", Assert.Single(vm.GetErrors(nameof(vm.Upstream)).Cast<string>()));
 
         await using var good = new FakeUpstream();
         vm.Upstream = good.HostText;
@@ -155,6 +159,7 @@ public sealed class PageViewModelTests : IAsyncLifetime
     {
         var reads = 0;
         var polling = new PollingContext(_plugin, () => reads++);
+        var before = NtpServerViewModel.ReconnectDelay;
         NtpServerViewModel.ReconnectDelay = TimeSpan.FromMilliseconds(50);
         try
         {
@@ -164,7 +169,7 @@ public sealed class PageViewModelTests : IAsyncLifetime
         }
         finally
         {
-            NtpServerViewModel.ReconnectDelay = TimeSpan.FromSeconds(2);
+            NtpServerViewModel.ReconnectDelay = before;
         }
     }
 
@@ -200,18 +205,21 @@ public static class HeadlessEntry
 public sealed class HeadlessPageTests
 {
     [Fact]
-    [Trait("Category", "Timing")] // 200 ms answers, real-time refill
     public async Task Page_renders_running_with_requests_and_with_errors()
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         var hub = new PluginEventHub();
-        await using var plugin = new NtpServerPlugin(Options.Test());
+        // No refill during the test, however long the queries take: 8 answers, then "Rate limited".
+        await using var plugin = new NtpServerPlugin(Options.Test() with { RateLimit = new() { RefillSeconds = 3600 } });
         await plugin.StartAsync(new TestCoreContext(new InMemoryPluginSettingsProvider().GetSettings(NtpServerPluginInfo.PluginId), hub.For(NtpServerPluginInfo.PluginId)), CancellationToken.None);
         await plugin.InvokeAsync(NtpServerMethods.Save, NtpJson.Serialize(new SaveRequest(true, "lo-id", null)), CancellationToken.None);
         for (var i = 0; i < 10; i++)
         {
-            await NtpProbe.QueryAsync(plugin.Service!.Endpoints[0], TimeSpan.FromMilliseconds(200));
+            // The first 9 are answered (8 and the Kiss-o'-Death): wait for them; the dropped ones get a short wait.
+            await NtpProbe.QueryAsync(plugin.Service!.Endpoints[0], i < 9 ? TimeSpan.FromSeconds(30) : TimeSpan.FromMilliseconds(200));
         }
+
+        await Wait.UntilAsync(() => plugin.Service!.Log.Snapshot().Count == 9);
 
         var ctx = new PluginPageContext(plugin, hub);
         ctx.DeviceList.Add(new TestDevice("127.0.0.1", "P3265-V"));

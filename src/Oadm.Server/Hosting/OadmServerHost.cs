@@ -505,11 +505,12 @@ public static partial class OadmServerHost
     }
 
     /// <summary>Bundled (app folder), installed (data folder) and, unless running as a service, the repository's artifacts/plugins.</summary>
-    public static IReadOnlyList<string> DefaultPluginRoots(OadmPaths paths, bool includeDevelopment = true)
+    /// <param name="appDirectory">The app folder; default <see cref="AppContext.BaseDirectory"/> (tests pass a folder inside the repository).</param>
+    public static IReadOnlyList<string> DefaultPluginRoots(OadmPaths paths, bool includeDevelopment = true, string? appDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(paths);
-        var roots = new List<string> { PluginPaths.Bundled(), PluginPaths.Installed(paths.DataDirectory) };
-        if (includeDevelopment && PluginPaths.Development() is { } development)
+        var roots = new List<string> { PluginPaths.Bundled(appDirectory), PluginPaths.Installed(paths.DataDirectory) };
+        if (includeDevelopment && PluginPaths.Development(appDirectory) is { } development)
         {
             roots.Add(development);
         }

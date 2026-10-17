@@ -5,7 +5,7 @@ import { Icon } from '@astrojs/starlight/components';
 
 import { latestRelease, releasePage, repo } from '../lib/release';
 
-const { assets } = await latestRelease();
+const { assets, version, url } = await latestRelease();
 
 // The newsletter lives on the support forum; the form here subscribes without an account there.
 const portal = 'https://support.oadm.app/';
@@ -34,6 +34,7 @@ const links = {
 		</details>
 		<a class="dl" data-asset="osx-x64\.pkg$" href={links.macos}><Icon name="apple" class="os-macos" />macOS</a>
 	</div>
+	<a class="dl-version" href={url} hidden={!version}>{version}</a>
 	<span class="dl-label community-label">Community</span>
 	<div class="download-buttons">
 		<a class="dl" href={portal}><Icon name="comment-alt" class="support-icon" />Support Forum</a>
@@ -125,6 +126,12 @@ const links = {
 			.then((r) => (r.ok ? r.json() : null))
 			.then((release) => {
 				if (!release) return;
+				const version = root.querySelector<HTMLAnchorElement>('.dl-version');
+				if (version && release.tag_name) {
+					version.textContent = release.tag_name;
+					version.href = release.html_url ?? version.href;
+					version.hidden = false;
+				}
 				const assets: { name: string; browser_download_url: string }[] = release.assets ?? [];
 				root.querySelectorAll<HTMLAnchorElement>('a[data-asset]').forEach((link) => {
 					const pattern = new RegExp(link.dataset.asset ?? '^$');

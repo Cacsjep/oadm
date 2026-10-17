@@ -161,8 +161,18 @@ public sealed class CertificatesViewModelTests(ITestOutputHelper output)
     }
 
     [Fact]
-    [Trait("Category", "Timing")]
+    public async Task The_most_devices_summary_and_filter_work() => await FilterTheMostDevicesAsync();
+
+    [Fact]
+    [Trait("Category", "Perf")]
     public async Task The_most_devices_summary_and_filter_stay_fast()
+    {
+        var elapsed = await FilterTheMostDevicesAsync();
+        output.WriteLine($"5000 devices: search, select all and clear {elapsed.TotalMilliseconds:0} ms");
+        Assert.True(elapsed < TimeSpan.FromMilliseconds(500), $"took {elapsed}");
+    }
+
+    private static async Task<TimeSpan> FilterTheMostDevicesAsync()
     {
         // The unit-run variant of the scale check: the most devices one window reads, a short certificate list each.
         var reply = PkiJson.Serialize(new CertificateListReply
@@ -181,9 +191,10 @@ public sealed class CertificatesViewModelTests(ITestOutputHelper output)
         vm.SearchText = "10.0.19.";
         vm.SelectAllCommand.Execute(null);
         vm.SearchText = null;
-        Assert.True(watch.Elapsed < TimeSpan.FromMilliseconds(500), $"took {watch.Elapsed}");
+        var elapsed = watch.Elapsed;
         Assert.Equal(10_000, vm.AllRows.Count);
         Assert.Equal(136, vm.CheckedCount); // the free CA certificate of the 136 devices 10.0.19.0-135
+        return elapsed;
     }
 }
 
@@ -303,8 +314,18 @@ public sealed class InstallCaViewModelTests(ITestOutputHelper output)
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // time budget
-    public async Task Install_confirms_and_returns_the_usable_certificates_for_30000_devices()
+    public async Task Install_confirms_and_returns_the_usable_certificates_for_30000_devices() => await InstallForTheMostDevicesAsync();
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public async Task Install_for_30000_devices_is_fast()
+    {
+        var elapsed = await InstallForTheMostDevicesAsync();
+        output.WriteLine($"30000 devices: add, confirm and payload {elapsed.TotalMilliseconds:0} ms");
+        Assert.True(elapsed < TimeSpan.FromSeconds(2), $"took {elapsed}");
+    }
+
+    private static async Task<TimeSpan> InstallForTheMostDevicesAsync()
     {
         using var root = TestCa.Root("Acme Root CA");
         using var issuing = TestCa.Intermediate(root);
@@ -335,8 +356,7 @@ public sealed class InstallCaViewModelTests(ITestOutputHelper output)
         Assert.Equal(["Acme Root CA", "Acme Issuing CA"], result.Certificates.Select(c => c.Name));
         Assert.Equal(Oadm.Plugins.Pki.Ca.CaCertificates.ToPem(root), result.Certificates[0].Pem);
         Assert.True(payload!.Length < 10_000); // the payload does not grow with the device count
-        output.WriteLine($"30000 devices: add, confirm and payload {watch.ElapsedMilliseconds} ms");
-        Assert.True(watch.ElapsedMilliseconds < 2000);
+        return watch.Elapsed;
     }
 
     [Fact]
@@ -386,7 +406,7 @@ public sealed class HeadlessDialogTests
         using var leaf = RenewDeleteInstallTests.LeafWithKey(radiusCa, "10.0.0.48");
         var pfx = TestCa.Pfx("secret", leaf);
 
-        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessEntry.Session;
         try
         {
             await session.Dispatch(async () =>

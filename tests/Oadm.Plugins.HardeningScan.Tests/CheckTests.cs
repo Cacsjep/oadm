@@ -237,17 +237,17 @@ public sealed class CheckTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // 200 ms per request
     public async Task One_failed_read_marks_only_its_checks()
     {
+        // The hanging read ends with the request timeout; the answering ones finish far below it even on a busy machine.
         var camera = new FakeCamera();
         camera.Statuses["config/rest/firewall/v1"] = HttpStatusCode.InternalServerError;
         camera.Hangs.Add("axis-cgi/pwdgrp.cgi");
-        var facts = await new DeviceFactsReader(TimeSpan.FromMilliseconds(200)).ReadAsync(camera, new TestDevice(), ScanLevel.Basic, CancellationToken.None);
+        var facts = await new DeviceFactsReader(TimeSpan.FromSeconds(2)).ReadAsync(camera, new TestDevice(), ScanLevel.Basic, CancellationToken.None);
         var results = HardeningChecks.Evaluate(facts, ScanLevel.Basic).ToDictionary(r => r.Id);
 
         Expect(results, HardeningCatalog.Firewall, CheckState.Error, "Internal Server Error - HTTP 500");
-        Expect(results, HardeningCatalog.Accounts, CheckState.Error, "Timeout after 0.2 s");
+        Expect(results, HardeningCatalog.Accounts, CheckState.Error, "Timeout after 2 s");
         Expect(results, HardeningCatalog.Ssh, CheckState.Fail, "SSH on");
         Expect(results, HardeningCatalog.Ciphers, CheckState.Pass);
     }

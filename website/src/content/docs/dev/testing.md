@@ -11,7 +11,6 @@ purpose. The tests use xUnit.
 | Category | Run with | What |
 |---|---|---|
 | (none) | `manage test unit` | Fast tests with fakes. CI runs them on Windows, Linux and macOS for every release |
-| `Timing` | `manage test timing` | Depend on real elapsed time; local only |
 | `Perf` | `manage test perf` | 30,000 devices, 50,000 tasks, with a time budget |
 | `Hardware` | `manage test hardware` | Read-only, against your cameras |
 | `HardwareWrite` | never from `manage` | Change a device. Only on purpose, only on a test device |
@@ -50,8 +49,15 @@ OS a fixture came from.
 ## Time
 
 Code that waits takes a `TimeProvider`. Tests pass a `FakeTimeProvider` (`Microsoft.Extensions.TimeProvider.Testing`)
-and advance it, so a 3-minute timeout is tested in milliseconds. A test that still needs real time gets the `Timing`
-category.
+and advance it, so a 3-minute timeout is tested in milliseconds.
+
+A test never depends on how fast the machine is or what runs next to it:
+
+- Wait for what another thread does with `Eventually.TrueAsync(() => condition, "what")` from `Oadm.Sdk.Testing`. It
+  checks every 10 ms and gives up after 30 s, so it returns as soon as the condition holds. Never wait a fixed time and
+  then assert.
+- Check speed only in a `Perf` test, with a generous budget.
+- Restore static settings a test changes, and use unique folders, ports and file names per test.
 
 ## Core plugins
 

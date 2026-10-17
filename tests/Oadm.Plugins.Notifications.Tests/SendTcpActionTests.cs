@@ -22,7 +22,7 @@ public sealed class SendTcpActionTests
         ["lineEnd"] = "none",
         ["tls"] = false,
         ["waitAnswer"] = false,
-        ["timeout"] = 5,
+        ["timeout"] = 30, // loopback answers at once; a busy machine may still take seconds
     };
 
     [Fact]
@@ -172,7 +172,7 @@ internal sealed class MiniTcpServer : IAsyncDisposable
     /// <summary>What the next connection sent, once it closed or sent its data.</summary>
     public async Task<byte[]> ReceivedAsync()
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         return await _received.Reader.ReadAsync(timeout.Token);
     }
 

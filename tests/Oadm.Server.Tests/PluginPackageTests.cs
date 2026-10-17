@@ -6,6 +6,7 @@ using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Server.Plugins;
 using Oadm.Server.Tests.Support;
+using Oadm.Tests.Shared;
 
 using Proto = Oadm.Contracts.V1;
 
@@ -157,7 +158,7 @@ public sealed class PluginPackageTests
     [Fact]
     public void TheBundledManifestsTurnTheHardeningScanAndTheImageHealthDashboardOffByDefault()
     {
-        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var root = TestRepository.Root;
         var manifests = Directory.GetFiles(Path.Combine(root, "plugins"), PluginLoader.ManifestFileName, SearchOption.AllDirectories)
             .Where(p => !p.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
                 && !p.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))

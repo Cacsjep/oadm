@@ -55,6 +55,9 @@ internal sealed class FakeCamera : IVapixClient
 
     public TimeSpan Delay { get; set; }
 
+    /// <summary>Every image.cgi request waits for this task first (holds the requests that started).</summary>
+    public Task? Gate { get; set; }
+
     public List<string> Requests { get; } = [];
 
     public int MaxConcurrent { get; private set; }
@@ -89,6 +92,11 @@ internal sealed class FakeCamera : IVapixClient
             if (Delay > TimeSpan.Zero)
             {
                 await Task.Delay(Delay, ct);
+            }
+
+            if (Gate is { } gate)
+            {
+                await gate.WaitAsync(ct);
             }
 
             if (Handler is { } handler)

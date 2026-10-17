@@ -21,6 +21,15 @@ namespace Oadm.Plugins.VapixCommander.Tests;
 /// <summary>Headless session with the real client App, so the page renders with the host theme (OadmTheme.axaml).</summary>
 public static class HeadlessEntry
 {
+    private static readonly Lazy<HeadlessUnitTestSession> Shared = new(() =>
+    {
+        App.Options = new AppOptions { UseFake = true, DataFolder = Path.Combine(Path.GetTempPath(), "oadm-commander-headless-" + Guid.NewGuid().ToString("N")) };
+        return HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+    });
+
+    /// <summary>One headless application per test process (Avalonia sets up only once); never disposed.</summary>
+    public static HeadlessUnitTestSession Session => Shared.Value;
+
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>()
         .UseSkia()
         .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
@@ -33,10 +42,8 @@ public sealed class CommanderViewHeadlessTests
     [Fact]
     public async Task Commander_page_renders_rollout_set_try_error_and_the_request_builder()
     {
-        var dataFolder = Path.Combine(Path.GetTempPath(), "oadm-commander-headless-" + Guid.NewGuid().ToString("N"));
-        App.Options = new AppOptions { UseFake = true, DataFolder = dataFolder };
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
-        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessEntry.Session;
         var completed = false;
         try
         {
@@ -149,24 +156,13 @@ public sealed class CommanderViewHeadlessTests
             // The awaited dispatch may continue on the session's UI thread; Dispose waits for that thread, so dispose elsewhere.
             GC.KeepAlive(session); // not disposed: Avalonia's headless Dispose can throw a NullReferenceException on CI
         }
-
-        try
-        {
-            Directory.Delete(dataFolder, recursive: true);
-        }
-        catch (DirectoryNotFoundException)
-        {
-            // nothing was written
-        }
     }
 
     [Fact]
     public async Task Try_result_bodies_are_highlighted_json_xml_and_param_cgi()
     {
-        var dataFolder = Path.Combine(Path.GetTempPath(), "oadm-commander-headless-" + Guid.NewGuid().ToString("N"));
-        App.Options = new AppOptions { UseFake = true, DataFolder = dataFolder };
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
-        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessEntry.Session;
         try
         {
             var page = await session.Dispatch(PageFixture.CreateAsync, CancellationToken.None);
@@ -234,24 +230,13 @@ public sealed class CommanderViewHeadlessTests
         {
             GC.KeepAlive(session); // not disposed: Avalonia's headless Dispose can throw a NullReferenceException on CI
         }
-
-        try
-        {
-            Directory.Delete(dataFolder, recursive: true);
-        }
-        catch (DirectoryNotFoundException)
-        {
-            // nothing was written
-        }
     }
 
     [Fact]
     public async Task The_problem_list_of_thousands_of_target_devices_is_virtualized()
     {
-        var dataFolder = Path.Combine(Path.GetTempPath(), "oadm-commander-headless-" + Guid.NewGuid().ToString("N"));
-        App.Options = new AppOptions { UseFake = true, DataFolder = dataFolder };
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
-        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessEntry.Session;
         try
         {
             var page = await session.Dispatch(PageFixture.CreateAsync, CancellationToken.None);
@@ -293,15 +278,6 @@ public sealed class CommanderViewHeadlessTests
         finally
         {
             GC.KeepAlive(session); // not disposed: Avalonia's headless Dispose can throw a NullReferenceException on CI
-        }
-
-        try
-        {
-            Directory.Delete(dataFolder, recursive: true);
-        }
-        catch (DirectoryNotFoundException)
-        {
-            // nothing was written
         }
     }
 

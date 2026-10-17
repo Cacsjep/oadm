@@ -292,17 +292,6 @@ internal sealed class PluginPageContext(PkiPlugin plugin, PluginEventHub hub) : 
 
 internal static class Wait
 {
-    public static async Task UntilAsync(Func<bool> condition, TimeSpan? timeout = null)
-    {
-        var end = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(10));
-        while (!condition())
-        {
-            if (DateTime.UtcNow > end)
-            {
-                throw new TimeoutException("Condition not met in time.");
-            }
-
-            await Task.Delay(10);
-        }
-    }
+    public static Task UntilAsync(Func<bool> condition, TimeSpan? timeout = null) =>
+        Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the condition", timeout);
 }

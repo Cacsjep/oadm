@@ -64,7 +64,7 @@ internal static class Headless
         Dispatcher.UIThread.RunJobs();
     }
 
-    public static async Task<bool> UntilAsync(Func<bool> condition, int seconds = 20)
+    public static async Task<bool> UntilAsync(Func<bool> condition, int seconds = 30)
     {
         var end = DateTime.UtcNow.AddSeconds(seconds);
         while (DateTime.UtcNow < end)

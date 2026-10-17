@@ -44,8 +44,21 @@ public sealed class PageViewModelTests(ITestOutputHelper output)
         [.. Enumerable.Range(0, count).Select(i => new TestDevice { Address = $"10.{i / 65_000}.{i / 250 % 250}.{(i % 250) + 1}", Serial = $"B8A44F{i:X6}", Model = i % 2 == 0 ? "P3265-V" : "M3106-L Mk II" })];
 
     [Fact]
-    [Trait("Category", "Timing")]
+    public void Thirty_thousand_devices_filter_search_and_summarize() => FilterTheMostDevices();
+
+    [Fact]
+    [Trait("Category", "Perf")]
     public void Thirty_thousand_devices_filter_search_and_summarize_fast()
+    {
+        var times = FilterTheMostDevices();
+        output.WriteLine($"create {times[0].TotalMilliseconds:F0} ms, state {times[1].TotalMilliseconds:F0} ms, filter {times[2].TotalMilliseconds:F0} ms, search {times[3].TotalMilliseconds:F0} ms, level {times[4].TotalMilliseconds:F0} ms, batch {times[5].TotalMilliseconds:F0} ms");
+        foreach (var elapsed in times)
+        {
+            Assert.True(elapsed < TimeSpan.FromSeconds(2), $"too slow: {elapsed.TotalMilliseconds:F0} ms");
+        }
+    }
+
+    private static TimeSpan[] FilterTheMostDevices()
     {
         var devices = Devices(Oadm.Sdk.Devices.DeviceLimits.MaxDevices);
         var ctx = new PageContext((_, _) => Task.FromResult<string?>(null));
@@ -91,11 +104,7 @@ public sealed class PageViewModelTests(ITestOutputHelper output)
         Assert.Equal(143, vm.ColumnCount(snmp, CheckState.Fail)); // every 7th of the first 1,000
         Assert.Contains("Fail 143", vm.HeaderTip(snmp), StringComparison.Ordinal);
 
-        output.WriteLine($"create {create.TotalMilliseconds:F0} ms, state {apply.TotalMilliseconds:F0} ms, filter {filter.TotalMilliseconds:F0} ms, search {search.TotalMilliseconds:F0} ms, level {level.TotalMilliseconds:F0} ms, batch {applyBatch.TotalMilliseconds:F0} ms");
-        foreach (var elapsed in new[] { create, apply, filter, search, level, applyBatch })
-        {
-            Assert.True(elapsed < TimeSpan.FromSeconds(2), $"too slow: {elapsed.TotalMilliseconds:F0} ms");
-        }
+        return [create, apply, filter, search, level, applyBatch];
     }
 
     [Fact]

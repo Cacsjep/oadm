@@ -27,20 +27,5 @@ public sealed class DangerButtonTests
         Assert.Contains("Selector=\"Button.link.danger\"", theme, StringComparison.Ordinal);
     }
 
-    private static string RepoRoot()
-    {
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
-        {
-            if (File.Exists(Path.Combine(dir.FullName, "src", "Oadm.Client", "Themes", "OadmTheme.axaml")))
-            {
-                return dir.FullName;
-            }
-        }
-
-        // Test binaries outside the checkout (--artifacts-path): the source folder of this file.
-        return Path.GetFullPath(Path.Combine(SourceDirectory(), "..", ".."));
-    }
-
-    private static string SourceDirectory([System.Runtime.CompilerServices.CallerFilePath] string path = "") =>
-        Path.GetDirectoryName(path)!;
+    private static string RepoRoot() => Oadm.Tests.Shared.TestRepository.Root;
 }

@@ -52,9 +52,14 @@ internal sealed class FakeEventSource : IDeviceEventSource
 {
     private readonly Channel<object> _items = Channel.CreateUnbounded<object>();
 
+    private int _consumed;
+
     public bool Disposed { get; private set; }
 
     public int LostDocuments { get; set; }
+
+    /// <summary>Documents the plugin has read and handled.</summary>
+    public int Consumed => Volatile.Read(ref _consumed);
 
     public void Write(string xml) => _items.Writer.TryWrite(new DeviceMetadataDocument(xml, new DateTimeOffset(2026, 10, 8, 9, 30, 1, TimeSpan.Zero)));
 
@@ -75,6 +80,7 @@ internal sealed class FakeEventSource : IDeviceEventSource
                 }
 
                 yield return (DeviceMetadataDocument)item;
+                Interlocked.Increment(ref _consumed); // the reader handled it and asks for the next
             }
         }
     }
@@ -209,11 +215,13 @@ internal sealed class PluginPageContext(MetadataMonitorPlugin plugin, PluginEven
 
     public event EventHandler? DevicesChanged;
 
-    public List<string> Calls { get; } = [];
+    /// <summary>The calls that reached the plugin (a call with a cancelled token does not, like over gRPC).</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<string> Calls { get; } = new();
 
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
-        Calls.Add(method);
+        ct.ThrowIfCancellationRequested();
+        Calls.Enqueue(method);
         return await plugin.InvokeAsync(method, payloadJson, ct);
     }
 
@@ -352,18 +360,7 @@ internal sealed class EventLog : IAsyncDisposable
 
 internal static class Wait
 {
-    public static async Task UntilAsync(Func<bool> condition, TimeSpan? timeout = null)
-    {
-        // Generous: the condition usually holds within milliseconds; a busy CI runner (ubuntu, v1.0.0) needed more than 5 s.
-        var end = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(15));
-        while (!condition())
-        {
-            if (DateTime.UtcNow > end)
-            {
-                throw new TimeoutException("Condition not met in time.");
-            }
-
-            await Task.Delay(10);
-        }
-    }
+    // Generous: the condition usually holds within milliseconds; a busy CI runner (ubuntu, v1.0.0) needed more than 5 s.
+    public static Task UntilAsync(Func<bool> condition, TimeSpan? timeout = null) =>
+        Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the condition", timeout);
 }

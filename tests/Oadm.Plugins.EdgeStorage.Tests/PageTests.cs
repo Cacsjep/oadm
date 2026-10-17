@@ -142,18 +142,10 @@ internal sealed class PageRig : IAsyncDisposable
 
 public sealed class PageTests(ITestOutputHelper output)
 {
-    private static async Task UntilAsync(Func<bool> condition, int seconds = 10)
-    {
-        var until = DateTime.UtcNow.AddSeconds(seconds);
-        while (!condition())
-        {
-            Assert.True(DateTime.UtcNow < until, "Timed out waiting for the condition.");
-            await Task.Delay(10);
-        }
-    }
+    private static Task UntilAsync(Func<bool> condition, int seconds = 30) =>
+        Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the page state", TimeSpan.FromSeconds(seconds));
 
     [Fact]
-    [Trait("Category", "Timing")] // the sweep runs on the thread pool, waited for in real time
     public async Task A_read_of_other_cameras_while_one_runs_follows_it()
     {
         await using var rig = new PageRig();
@@ -173,7 +165,6 @@ public sealed class PageTests(ITestOutputHelper output)
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // the plugin's events arrive on the thread pool, waited for in real time
     public async Task The_page_reads_only_the_chosen_cameras_and_nothing_before_a_choice()
     {
         await using var rig = new PageRig();
@@ -216,7 +207,6 @@ public sealed class PageTests(ITestOutputHelper output)
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // the plugin's events arrive on the thread pool, waited for in real time
     public async Task The_page_reads_the_cards_and_runs_the_tools_on_the_selected_cameras()
     {
         await using var rig = new PageRig();
@@ -254,7 +244,6 @@ public sealed class PageTests(ITestOutputHelper output)
     }
 
     [Fact]
-    [Trait("Category", "Timing")]
     public async Task The_tools_follow_the_rights_of_the_role()
     {
         await using var rig = new PageRig();
@@ -309,7 +298,7 @@ public sealed class PageTests(ITestOutputHelper output)
 
         var vm = rig.ViewModel;
         vm.Activate();
-        await UntilAsync(() => vm.Rows.Count == Oadm.Sdk.Devices.DeviceLimits.MaxDevices && !vm.IsReading && vm.OkText == "30,000", seconds: 30);
+        await UntilAsync(() => vm.Rows.Count == Oadm.Sdk.Devices.DeviceLimits.MaxDevices && !vm.IsReading && vm.OkText == "30,000", seconds: 120);
         var watch = Stopwatch.StartNew();
         vm.SearchText = "10.0.1.";
         var search = watch.ElapsedMilliseconds;
@@ -344,7 +333,7 @@ public sealed class PageTests(ITestOutputHelper output)
             var window = new Window { Width = 1500, Height = 560, Content = new Border { Padding = new Thickness(16), Child = page } };
             Oadm.Client.App.ApplyCrispText(window);
             window.Show();
-            var until = DateTime.UtcNow.AddSeconds(10);
+            var until = DateTime.UtcNow.AddSeconds(30);
             while ((rig.ViewModel.Rows.Count < 5 || rig.ViewModel.IsReading) && DateTime.UtcNow < until)
             {
                 Pump();

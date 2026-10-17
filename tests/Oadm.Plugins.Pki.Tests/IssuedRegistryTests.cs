@@ -45,7 +45,7 @@ public sealed class IssuedRegistryTests
         Assert.Empty(await store.LoadIssuedAsync(CancellationToken.None));
 
         // The flush loop may start its delay after this line: advance until the write happened (no race on a busy machine).
-        var deadline = DateTime.UtcNow.AddSeconds(10);
+        var deadline = DateTime.UtcNow.AddSeconds(30);
         while ((await store.LoadIssuedAsync(CancellationToken.None)).Count == 0 && DateTime.UtcNow < deadline)
         {
             time.Advance(TimeSpan.FromSeconds(3));

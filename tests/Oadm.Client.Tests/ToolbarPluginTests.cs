@@ -18,8 +18,7 @@ namespace Oadm.Client.Tests;
 public sealed class ToolbarPluginTests
 {
     /// <summary>artifacts/test-plugins, where Oadm.TestPlugins.Sample.Client deploys its build output.</summary>
-    private static string TestPluginRoot =>
-        Path.Combine(ClientPluginLoader.DevelopmentRoot(AppContext.BaseDirectory)!, "..", "test-plugins");
+    private static string TestPluginRoot => Oadm.Tests.Shared.TestRepository.TestPlugins;
 
     [Fact]
     public void Plugins_are_ordered_by_group_order_and_id_and_built_in_ids_win()

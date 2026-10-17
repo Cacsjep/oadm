@@ -6,7 +6,9 @@ using Oadm.Plugins.Network.Model;
 using Oadm.Plugins.Network.Vapix;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
+using Oadm.Sdk.Testing;
 using Oadm.Sdk.Vapix;
+
 using StepRun = Oadm.Sdk.Testing.StepRun;
 
 namespace Oadm.Plugins.Network.Tests;
@@ -196,9 +198,14 @@ public sealed class AssignIpTests
         using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
         listener.Start();
         var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-        var probe = new NetworkAddressProbe { Ports = [port], PingAttempts = 0 };
+        // A generous connect timeout: the listener answers at once, but a busy test runner may take longer than the
+        // product's 800 ms for a local connection. The address nobody has fails either way.
+        var probe = new NetworkAddressProbe { Ports = [port], PingAttempts = 0, ConnectTimeout = TimeSpan.FromSeconds(30) };
         Assert.Equal(new AddressProbeResult(false, true), await probe.ProbeAsync("127.0.0.1", CancellationToken.None));
-        Assert.False((await probe.ProbeAsync("192.0.2.1", CancellationToken.None)).InUse);
+        // TEST-NET-1 never answers: a timeout or an unreachable network both read "not in use", whatever the machine
+        // speed (only a refused connection, which needs a host, counts as in use). A short timeout keeps the test fast.
+        var free = new NetworkAddressProbe { Ports = [port], PingAttempts = 0, ConnectTimeout = TimeSpan.FromMilliseconds(200) };
+        Assert.False((await free.ProbeAsync("192.0.2.1", CancellationToken.None)).InUse);
     }
 
     [Fact]
@@ -395,10 +402,7 @@ public sealed class AssignIpTests
         await vm.LoadCurrentAsync(ctx, CancellationToken.None);
         vm.IpRange = "10.0.0.100-110";
         vm.GoToReview();
-        for (var i = 0; i < 50 && vm.Assignment.IsChecking; i++)
-        {
-            await Task.Delay(10);
-        }
+        await Eventually.TrueAsync(() => !vm.Assignment.IsChecking, "the address check");
 
         Assert.Equal(["10.0.0.100", "10.0.0.102", "10.0.0.104"], vm.Assignment.Rows.Select(r => r.NewAddress));
         Assert.All(vm.Assignment.Rows, r => Assert.Null(r.Conflict));

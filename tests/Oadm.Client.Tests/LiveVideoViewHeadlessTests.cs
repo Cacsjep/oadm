@@ -129,7 +129,7 @@ public sealed class LiveVideoViewHeadlessTests
     private static T Find<T>(Window window, Func<T, bool> match) where T : Visual =>
         window.GetVisualDescendants().OfType<T>().First(match);
 
-    private static async Task<bool> UntilAsync(Func<bool> condition, int timeoutMs = 10_000)
+    private static async Task<bool> UntilAsync(Func<bool> condition, int timeoutMs = 30_000)
     {
         var end = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (!condition())

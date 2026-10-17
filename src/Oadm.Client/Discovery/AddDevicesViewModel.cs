@@ -72,6 +72,12 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     private readonly HashSet<string> _scanning = [];
     private readonly HashSet<string> _stopRequested = [];
     private readonly HashSet<string> _watching = [];
+
+    /// <summary>
+    /// Sessions a retry wants watched again although their stream still counted as running: the stream may already have
+    /// ended on another thread (its end reaches the UI thread a moment later). Watched again when that end arrives.
+    /// </summary>
+    private readonly HashSet<string> _watchAgain = [];
     private int _starting;
     private bool _anyStopped;
 
@@ -908,9 +914,16 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
                 // The server now tries the credential on every other device whose login failed; sessions whose
                 // stream already ended are watched again to receive those results.
-                foreach (string session in Rows.Where(r => r.ShowLogIn).Select(r => r.SessionId).Distinct().Where(s => !_watching.Contains(s)).ToList())
+                foreach (string session in Rows.Where(r => r.ShowLogIn).Select(r => r.SessionId).Distinct().ToList())
                 {
-                    StartWatch(session);
+                    if (_watching.Contains(session))
+                    {
+                        _watchAgain.Add(session); // still running, or ending right now: see WatchEnded
+                    }
+                    else
+                    {
+                        StartWatch(session);
+                    }
                 }
             }
             else
@@ -1033,6 +1046,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             {
                 _watching.Remove(sessionId);
                 ReleaseImportSlot(sessionId);
+                WatchEnded(sessionId);
             });
         }
         catch (OperationCanceledException)
@@ -1055,6 +1069,18 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                     LogWatchFailed(_logger, ex.Message); // a watch after a retry; the rows keep their last state
                 }
             });
+        }
+    }
+
+    /// <summary>
+    /// A watch stream ended (UI thread): when a retry asked for this session meanwhile, it is watched again, so the
+    /// results of the follow-up logins arrive (the server replays a finished session, then streams the logins still running).
+    /// </summary>
+    private void WatchEnded(string sessionId)
+    {
+        if (_watchAgain.Remove(sessionId) && !_cts.IsCancellationRequested)
+        {
+            StartWatch(sessionId);
         }
     }
 

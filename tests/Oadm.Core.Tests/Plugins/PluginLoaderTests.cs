@@ -5,6 +5,7 @@ using Oadm.Core.Tasks;
 using Oadm.Core.Tests.Tasks;
 using Oadm.Plugins.Restart;
 using Oadm.Sdk.Plugins;
+using Oadm.Tests.Shared;
 
 namespace Oadm.Core.Tests.Plugins;
 
@@ -24,11 +25,7 @@ public sealed class PluginLoaderTests : IDisposable
     {
         get
         {
-            var repo = PluginPaths.FindRepositoryRoot(AppContext.BaseDirectory)
-                ?? throw new InvalidOperationException("Repository root not found.");
-            var dir = Path.Combine(repo, "artifacts", "test-plugins", "oadm.sample");
-            Assert.True(File.Exists(Path.Combine(dir, "Oadm.TestPlugins.Sample.Server.dll")), $"Sample plugin not built into {dir}");
-            return dir;
+            return TestRepository.DeployedPlugin(TestRepository.TestPlugins, "oadm.sample", "Oadm.TestPlugins.Sample.Server.dll");
         }
     }
 
@@ -157,10 +154,10 @@ public sealed class PluginLoaderTests : IDisposable
     [Fact]
     public void RestartPluginIsDeployedForDevelopment()
     {
-        var root = PluginPaths.Development(AppContext.BaseDirectory);
-        Assert.NotNull(root);
-        var dir = Path.Combine(root, "oadm.restart");
-        Assert.True(File.Exists(Path.Combine(dir, "Oadm.Plugins.Restart.Server.dll")));
+        // The repository is found from any folder inside it (the server runs from src/Oadm.Server/bin/...).
+        var root = PluginPaths.Development(TestRepository.Path("src", "Oadm.Server", "bin", "Debug"));
+        Assert.Equal(TestRepository.DevelopmentPlugins, root);
+        var dir = TestRepository.DeployedPlugin(root!, "oadm.restart", "Oadm.Plugins.Restart.Server.dll");
         Assert.False(File.Exists(Path.Combine(dir, "Oadm.Sdk.dll")));
 
         var package = _loader.LoadPackage(dir);

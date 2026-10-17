@@ -105,7 +105,7 @@ public sealed class CorePluginHostTests : IAsyncLifetime
         await _host.StartAllAsync(CancellationToken.None);
 
         var taskId = await core.Context!.Tasks.RunOneAsync("t.ok", [_devices.Add()], null, "core.a", CancellationToken.None);
-        await _engine.WaitForCompletionAsync(taskId, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+        await _engine.WaitForCompletionAsync(taskId, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.Equal(TaskState.Done, (await _engine.GetAsync(taskId, CancellationToken.None))!.State);
     }
@@ -148,7 +148,7 @@ public sealed class CorePluginHostTests : IAsyncLifetime
 
         var taskId = await core.Context.Tasks.RunOneAsync("t.wait", [_devices.Add()], null, "core.dir", CancellationToken.None);
         Assert.True(core.Context.Tasks.Cancel(taskId));
-        await _engine.WaitForCompletionAsync(taskId, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+        await _engine.WaitForCompletionAsync(taskId, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(TaskState.Cancelled, (await _engine.GetAsync(taskId, CancellationToken.None))!.State);
     }
 

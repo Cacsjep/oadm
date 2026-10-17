@@ -1,5 +1,3 @@
-using System.Reflection;
-
 namespace Oadm.NewPlugin.Tests;
 
 /// <summary>"manage new": the samples of this repository copied under a new name into a temporary repository.</summary>
@@ -94,6 +92,5 @@ public sealed class ScaffoldTests : IDisposable
         Assert.Throws<ArgumentException>(() => Scaffold.Names(name, id));
     }
 
-    private static string Repository() =>
-        typeof(ScaffoldTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().Single(a => a.Key == "RepositoryRoot").Value!;
+    private static string Repository() => Oadm.Tests.Shared.TestRepository.Root;
 }

@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json.Nodes;
 
 using Oadm.Core.Plugins;
+using Oadm.Tests.Shared;
 
 namespace Oadm.Core.Tests.Plugins;
 
@@ -15,10 +16,7 @@ public sealed class PluginLoadContextTests
     [Fact]
     public void ADependencyMissingFromTheDepsFileLoadsFromThePluginFolder()
     {
-        var repo = PluginPaths.FindRepositoryRoot(AppContext.BaseDirectory)
-            ?? throw new InvalidOperationException("Repository root not found.");
-        var deployed = Path.Combine(repo, "artifacts", "plugins", "oadm.snapshot-report");
-        Assert.True(File.Exists(Path.Combine(deployed, "MigraDoc.DocumentObjectModel.dll")), "build the solution first: the plugin is not deployed");
+        var deployed = TestRepository.DeployedPlugin(TestRepository.DevelopmentPlugins, "oadm.snapshot-report", "MigraDoc.DocumentObjectModel.dll");
 
         var dir = Path.Combine(Path.GetTempPath(), "oadm-loadcontext-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);

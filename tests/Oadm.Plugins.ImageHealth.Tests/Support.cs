@@ -197,8 +197,23 @@ internal sealed class PluginPageContext(ImageHealthPlugin plugin, PluginEventHub
             Payloads.Add(payloadJson);
         }
 
-        return await plugin.InvokeAsync(method, payloadJson, ct);
+        Interlocked.Increment(ref _inFlight);
+        try
+        {
+            // Like the gRPC channel: a call made with a cancelled token never reaches the server part.
+            ct.ThrowIfCancellationRequested();
+            return await plugin.InvokeAsync(method, payloadJson, ct);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _inFlight);
+        }
     }
+
+    private int _inFlight;
+
+    /// <summary>Calls that have started and not returned yet.</summary>
+    public int InFlight => Volatile.Read(ref _inFlight);
 
     public async IAsyncEnumerable<PluginEvent> WatchEventsAsync([EnumeratorCancellation] CancellationToken ct)
     {
@@ -243,15 +258,7 @@ internal sealed class Rig : IAsyncDisposable
 
 internal static class Wait
 {
-    public static async Task UntilAsync(Func<bool> condition, int timeoutMs = 10_000)
-    {
-        var until = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition())
-        {
-            Assert.True(DateTime.UtcNow < until, "Timed out waiting for the condition.");
-            await Task.Delay(10);
-        }
-    }
+    public static Task UntilAsync(Func<bool> condition) => Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the condition");
 }
 
 /// <summary>Status answers of the AXIS Q3548-LVE (AXIS OS 12.11.118, AIHA 3.2.2): normal, pending, detected.</summary>

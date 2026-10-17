@@ -9,6 +9,7 @@ using Oadm.Core.Tests.Persistence;
 using Oadm.Core.Tests.Vapix;
 using Oadm.Core.Vapix;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Testing;
 
 namespace Oadm.Core.Tests.Devices;
 
@@ -16,6 +17,7 @@ namespace Oadm.Core.Tests.Devices;
 public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
 {
     private readonly FakeTimeProvider _time = new(DateTimeOffset.UtcNow);
+    private TimerWatch _timers = null!;
     private readonly FakeCamera _camera = new();
     private TestDatabase _db = null!;
     private VapixClientFactory _factory = null!;
@@ -28,7 +30,8 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
         _db = await TestDatabase.CreateAsync();
         _camera.WithClock(_time);
         _factory = new VapixClientFactory(Devices, _db.Get<CredentialStore>(), _camera);
-        _polling = new DevicePollingService(Devices, _factory, _db.Get<ServerSettingsStore>(), _time);
+        _timers = new TimerWatch(_time);
+        _polling = new DevicePollingService(Devices, _factory, _db.Get<ServerSettingsStore>(), _timers);
     }
 
     public async Task DisposeAsync()
@@ -87,7 +90,6 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // fake clock stepped against real delays
     public async Task RunningServiceDoesAFullRefreshAfterTenMinutes()
     {
         var device = await AddAsync(DeviceStatus.Ok);
@@ -95,18 +97,23 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
         using var cts = new CancellationTokenSource();
         var run = _polling.RunAsync(cts.Token);
 
-        // Step the clock in check-period sized steps; real delays let the loops register their timers.
-        while (_camera.FullRefreshTimes.IsEmpty && _time.GetUtcNow() - start < TimeSpan.FromMinutes(15))
+        // Step the clock one check period at a time, each step only once the schedule loop waits for it again, so no
+        // step is lost on a slow machine. Stop as soon as a refresh is queued.
+        while (_time.GetUtcNow() - start < TimeSpan.FromMinutes(30))
         {
-            await Task.Delay(15);
-            _time.Advance(TimeSpan.FromSeconds(30));
+            await Eventually.TrueAsync(() => _timers.Pending(_polling.FullRefreshCheckPeriod) > 0, "the schedule loop waiting");
+            if (_polling.IsRefreshQueued(device.Id) || _polling.LastFullRefresh(device.Id) is not null)
+            {
+                break;
+            }
+
+            _time.Advance(_polling.FullRefreshCheckPeriod);
         }
 
         await WaitUntilAsync(async () => (await Devices.GetAsync(device.Id, CancellationToken.None))!.DhcpEnabled is not null);
-        // Under load the loop may advance the clock once more while the refresh runs, so assert the
-        // schedule rather than an exact count: first refresh after ~10 min, no duplicate inside the period.
+        // First refresh exactly at 10 min (the clock stands still once it is queued), no duplicate inside the period.
         var times = _camera.FullRefreshTimes.ToArray().Order().ToArray();
-        Assert.InRange(times[0] - start, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(12));
+        Assert.Equal(TimeSpan.FromMinutes(10), times[0] - start);
         Assert.All(times.Skip(1), t => Assert.True(t - times[0] >= TimeSpan.FromMinutes(10), $"duplicate full refresh at {t - times[0]} after the first"));
         Assert.True(_camera.StatusPolls > 0, "the light poll keeps running alongside");
 
@@ -235,12 +242,7 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
 
     private static async Task WaitUntilAsync(Func<Task<bool>> condition)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (!await condition())
-        {
-            Assert.True(DateTime.UtcNow < deadline, "condition not reached within 10 s");
-            await Task.Delay(10);
-        }
+        await Eventually.TrueAsync(condition, "the condition");
     }
 
     /// <summary>
@@ -335,6 +337,70 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
         {
             _handler.Dispose();
             Certificate.Dispose();
+        }
+    }
+
+    /// <summary>Passes timers on to the fake clock and tells which are still waiting, so a test advances only once a loop waits.</summary>
+    private sealed class TimerWatch(TimeProvider inner) : TimeProvider
+    {
+        private readonly List<Entry> _entries = [];
+
+        public override DateTimeOffset GetUtcNow() => inner.GetUtcNow();
+
+        public override long GetTimestamp() => inner.GetTimestamp();
+
+        public override long TimestampFrequency => inner.TimestampFrequency;
+
+        public override TimeZoneInfo LocalTimeZone => inner.LocalTimeZone;
+
+        public int Pending(TimeSpan due)
+        {
+            lock (_entries)
+            {
+                return _entries.Count(e => e.Due == due && !e.Fired && !e.Disposed);
+            }
+        }
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var entry = new Entry { Due = dueTime };
+            lock (_entries)
+            {
+                _entries.RemoveAll(e => e.Fired || e.Disposed);
+                _entries.Add(entry);
+            }
+
+            entry.Timer = inner.CreateTimer(s =>
+            {
+                entry.Fired = true;
+                callback(s);
+            }, state, dueTime, period);
+            return entry;
+        }
+
+        private sealed class Entry : ITimer
+        {
+            public TimeSpan Due { get; init; }
+
+            public volatile bool Fired;
+
+            public volatile bool Disposed;
+
+            public ITimer Timer { get; set; } = null!;
+
+            public bool Change(TimeSpan dueTime, TimeSpan period) => Timer.Change(dueTime, period);
+
+            public void Dispose()
+            {
+                Disposed = true;
+                Timer.Dispose();
+            }
+
+            public ValueTask DisposeAsync()
+            {
+                Disposed = true;
+                return Timer.DisposeAsync();
+            }
         }
     }
 }

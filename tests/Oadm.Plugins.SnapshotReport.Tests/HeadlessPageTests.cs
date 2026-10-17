@@ -22,6 +22,11 @@ public sealed class HeadlessTestApp : Application
 
 public static class HeadlessEntry
 {
+    private static readonly Lazy<HeadlessUnitTestSession> Shared = new(() => HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry)));
+
+    /// <summary>One headless application per test process (Avalonia sets up only once); never disposed.</summary>
+    public static HeadlessUnitTestSession Session => Shared.Value;
+
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<HeadlessTestApp>()
         .UseSkia()
         .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
@@ -29,8 +34,8 @@ public static class HeadlessEntry
 }
 
 /// <summary>
-/// Tests that start an Avalonia headless session run one after another: two sessions at the same time in one test
-/// process deadlock.
+/// The headless tests share one Avalonia session (<see cref="HeadlessEntry.Session"/>: Avalonia sets up once per process)
+/// and run one after another.
 /// </summary>
 [CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class HeadlessSessions
@@ -50,7 +55,7 @@ public sealed class HeadlessPageTests
         var settings = new ExportSettingsStore(TempFiles.NewSettingsPath());
         settings.Save(new ExportSettings { Site = "Headquarters Vienna", Technician = "Jane Doe" });
 
-        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessEntry.Session;
         var (tiles, errors) = await session.Dispatch(async () =>
         {
             var view = new SnapshotReportView();

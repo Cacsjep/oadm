@@ -89,7 +89,7 @@ public sealed class ClientTests : IDisposable
         Assert.Equal("Downloading", vm.Rows[0].StateText);
         Assert.Equal("Downloading system reports 1 of 1", vm.ProgressText);
         vm.CancelCommand.Execute(null);
-        await run.WaitAsync(TimeSpan.FromSeconds(10));
+        await run.WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.False(closed);
         Assert.Equal("Cancelled. The file is incomplete; delete it.", vm.ProgressText);
@@ -135,8 +135,17 @@ public sealed class ClientTests : IDisposable
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // time budget
-    public void Five_thousand_devices_update_by_id()
+    public void Five_thousand_devices_update_by_id() => UpdateFiveThousand();
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void Five_thousand_devices_update_fast()
+    {
+        var elapsed = UpdateFiveThousand();
+        Assert.True(elapsed < TimeSpan.FromSeconds(2), $"took {elapsed}");
+    }
+
+    private static TimeSpan UpdateFiveThousand()
     {
         var devices = Enumerable.Range(0, 5000).Select(i => (IDeviceInfo)new FakeDevice { Address = $"10.0.{i / 256}.{i % 256}", Serial = $"ACCC8E{i:X6}" }).ToList();
         var watch = System.Diagnostics.Stopwatch.StartNew();
@@ -153,7 +162,7 @@ public sealed class ClientTests : IDisposable
         Assert.Equal(5000, vm.Rows.Count);
         Assert.All(vm.Rows, r => Assert.True(r.IsOk));
         Assert.Equal("5,000 devices · 5000 done", vm.Summary);
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2), $"took {watch.Elapsed}");
+        return watch.Elapsed;
     }
 
     [Fact]
@@ -213,15 +222,7 @@ public sealed class ClientTests : IDisposable
         Assert.Equal("Choose at most 50 devices.", SystemReportToolbarPlugin.TooManyText);
     }
 
-    private static async Task WaitUntilAsync(Func<bool> condition)
-    {
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (!condition())
-        {
-            Assert.True(DateTime.UtcNow < deadline, "condition not met in time");
-            await Task.Delay(10);
-        }
-    }
+    private static Task WaitUntilAsync(Func<bool> condition) => Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the dialog state");
 
     /// <summary>Keeps the memory stream readable after the view model disposed the target.</summary>
     internal sealed class KeepOpen(Stream inner) : Stream

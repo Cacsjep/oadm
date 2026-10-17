@@ -4,6 +4,7 @@ using Oadm.Client.Api;
 using Oadm.Client.Devices;
 using Oadm.Client.Tasks;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Testing;
 
 namespace Oadm.Client.Tests;
 
@@ -159,11 +160,11 @@ public sealed class TaskStepsViewTests
         using var api = new FakeOadmApi(tick: TimeSpan.FromMilliseconds(5), seedSampleData: false);
         string id = (await api.RunTaskAsync("oadm.restart", [Guid.NewGuid().ToString()], null, "tester", CancellationToken.None)).Single();
         TaskInfo? done = null;
-        for (int i = 0; i < 400 && done is null; i++)
+        await Eventually.TrueAsync(async () =>
         {
-            await Task.Delay(10);
             done = (await api.ListTasksAsync(CancellationToken.None)).SingleOrDefault(t => t.Id == id && t.State == TaskState.Done);
-        }
+            return done is not null;
+        }, "the restart task done");
 
         Assert.NotNull(done);
         Assert.Equal("Restart device", done.Name);

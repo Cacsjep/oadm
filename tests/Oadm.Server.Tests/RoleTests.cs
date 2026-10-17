@@ -225,8 +225,8 @@ public sealed class RoleTests
             Roles = { new Proto.RoleChange { Id = operatorRole.Id, Name = "Operator", Permissions = { operatorRole.Permissions.Where(p => p != HostPermissions.EventsView) } } },
         });
 
-        await Assert.ThrowsAnyAsync<Exception>(async () => await rules.ResponseStream.MoveNext().WaitAsync(TimeSpan.FromSeconds(10)));
-        Assert.True(await session.ResponseStream.MoveNext().WaitAsync(TimeSpan.FromSeconds(10)));
+        await Assert.ThrowsAnyAsync<Exception>(async () => await rules.ResponseStream.MoveNext().WaitAsync(TimeSpan.FromSeconds(30)));
+        Assert.True(await session.ResponseStream.MoveNext().WaitAsync(TimeSpan.FromSeconds(30)));
         Assert.DoesNotContain(HostPermissions.EventsView, session.ResponseStream.Current.Permissions);
         Assert.Equal(StatusCode.PermissionDenied, await CodeOf(async () => await new Proto.EventService.EventServiceClient(opInvoker).ListRulesAsync(new Proto.Empty())));
     }
@@ -266,8 +266,8 @@ public sealed class RoleTests
         var id = (await host.Users.ListAsync(new Proto.Empty())).Users.Single(u => u.UserName == "tech1").Id;
         await host.Users.UpdateAsync(new Proto.UpdateUserRequest { Id = id, NewPassword = "another secret" });
 
-        await Assert.ThrowsAnyAsync<Exception>(async () => await rules.ResponseStream.MoveNext().WaitAsync(TimeSpan.FromSeconds(10)));
-        await Assert.ThrowsAnyAsync<Exception>(async () => await session.ResponseStream.MoveNext().WaitAsync(TimeSpan.FromSeconds(10)));
+        await Assert.ThrowsAnyAsync<Exception>(async () => await rules.ResponseStream.MoveNext().WaitAsync(TimeSpan.FromSeconds(30)));
+        await Assert.ThrowsAnyAsync<Exception>(async () => await session.ResponseStream.MoveNext().WaitAsync(TimeSpan.FromSeconds(30)));
         Assert.Equal(StatusCode.Unauthenticated, await CodeOf(async () => await new Proto.AuthService.AuthServiceClient(opInvoker).MeAsync(new Proto.Empty())));
     }
 

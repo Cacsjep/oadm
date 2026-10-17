@@ -37,7 +37,6 @@ public sealed class FakeModeTests : IDisposable
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // waits 50 ms for the last results
     public async Task The_page_scans_against_the_fake_backend()
     {
         var devices = (await _api.ListDevicesAsync(CancellationToken.None)).Select(d => (IDeviceInfo)new DeviceRowViewModel(d)).ToList();
@@ -52,8 +51,8 @@ public sealed class FakeModeTests : IDisposable
         vm.Level = ScanLevel.Extended;
         await vm.ScanCommand.ExecuteAsync(null);
         await Wait.UntilAsync(() => vm.ProgressText.StartsWith("Scan finished", StringComparison.Ordinal));
-        await Task.Delay(50);
         var snmp = vm.Columns.ToList().FindIndex(c => c.Check.Id == HardeningCatalog.Snmp);
+        await Wait.UntilAsync(() => vm.AllRows.Where(r => r.Kind != RowKind.NotReachable).All(r => r.StateAt(snmp) != CheckState.NotScanned)); // the last results
         Assert.All(vm.AllRows.Where(r => r.Kind != RowKind.NotReachable), r => Assert.NotEqual(CheckState.NotScanned, r.StateAt(snmp)));
         vm.Deactivate();
 

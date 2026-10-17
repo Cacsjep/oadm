@@ -4,6 +4,7 @@ using System.Text;
 
 using Oadm.Core.LiveView.Rtsp;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Testing;
 
 namespace Oadm.Core.Tests.LiveView;
 
@@ -62,23 +63,29 @@ public sealed class RtspMetadataSourceTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")]
     public async Task QuietStreamIsKeptAliveAndAnsweredKeepAlivesKeepItOpen()
     {
         await using var server = new FakeEventRtspServer { Packets = [], StayOpen = true, AnswerKeepAlives = true };
-        var options = Options(server.Port, "secret") with { KeepAliveInterval = TimeSpan.FromMilliseconds(200), DeadTimeout = TimeSpan.FromMilliseconds(1500) };
+        var options = Options(server.Port, "secret") with { KeepAliveInterval = TimeSpan.FromMilliseconds(200), DeadTimeout = TimeSpan.FromSeconds(3) };
         await using var source = await RtspMetadataSource.OpenAsync(options, CancellationToken.None);
 
-        // Twice the dead timeout: without the answered keep-alives the read would end as unreachable. The 1.5 s leave
-        // room for a busy CI machine answering one keep-alive late.
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        // 20 answered keep-alives take longer than the dead timeout (at least 4 s): without them the read would end as
+        // unreachable. The dead timeout is far above the keep-alive interval, so a busy machine answering late is fine;
+        // the read ends only by the test's cancel (once 20 arrived, or after 30 s, which fails the count below).
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var counting = Task.Run(async () =>
+        {
+            await Eventually.TrueAsync(() => server.Count("OPTIONS") >= 20, "20 keep-alives");
+            await cts.CancelAsync();
+        });
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
         {
             await foreach (var unused in source.ReadAsync(cts.Token))
             {
             }
         });
-        Assert.True(server.Methods.Count(m => m == "OPTIONS") >= 3, string.Join(",", server.Methods));
+        await counting;
+        Assert.True(server.Count("OPTIONS") >= 20, $"{server.Count("OPTIONS")} keep-alives");
     }
 
     [Fact]
@@ -103,7 +110,7 @@ public sealed class RtspMetadataSourceTests
         await using var server = new FakeEventRtspServer { Packets = [], StayOpen = true, AnswerKeepAlives = true };
         var source = await RtspMetadataSource.OpenAsync(Options(server.Port, "secret"), CancellationToken.None);
         await source.DisposeAsync();
-        await server.WaitForAsync("TEARDOWN", TimeSpan.FromSeconds(5));
+        await server.WaitForAsync("TEARDOWN", TimeSpan.FromSeconds(30));
     }
 
     private static RtspMetadataOptions Options(int port, string password) => new()
@@ -147,6 +154,14 @@ internal sealed class FakeEventRtspServer : IAsyncDisposable
     public List<string> Methods { get; } = [];
 
     public List<string> RawRequests { get; } = [];
+
+    public int Count(string method)
+    {
+        lock (_gate)
+        {
+            return Methods.Count(m => m == method);
+        }
+    }
 
     public async Task WaitForAsync(string method, TimeSpan timeout)
     {

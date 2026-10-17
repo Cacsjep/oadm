@@ -242,8 +242,22 @@ public sealed class PageViewModelTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")]
+    public async Task Thousands_of_devices_are_chosen_and_checked_for_compatibility() => await ChooseAndCheckTheMostDevicesAsync();
+
+    [Fact]
+    [Trait("Category", "Perf")]
     public async Task Thousands_of_devices_are_chosen_and_checked_for_compatibility_fast()
+    {
+        var (sync, all, devicesSelection, byTag, compatibility) = await ChooseAndCheckTheMostDevicesAsync();
+        var limit = TimeSpan.FromMilliseconds(200);
+        Assert.True(sync < limit * 2, $"device sync {sync.TotalMilliseconds} ms");
+        Assert.True(all < limit, $"all devices {all.TotalMilliseconds} ms");
+        Assert.True(byTag < limit, $"by tag {byTag.TotalMilliseconds} ms");
+        Assert.True(devicesSelection < limit, $"devices page selection {devicesSelection.TotalMilliseconds} ms");
+        Assert.True(compatibility < limit, $"compatibility {compatibility.TotalMilliseconds} ms");
+    }
+
+    private static async Task<(TimeSpan Sync, TimeSpan All, TimeSpan DevicesSelection, TimeSpan ByTag, TimeSpan Compatibility)> ChooseAndCheckTheMostDevicesAsync()
     {
         var page = await PageFixture.CreateAsync();
         var devices = Enumerable.Range(0, DeviceLimits.MaxDevices).Select(i => new FakeDevice
@@ -293,13 +307,7 @@ public sealed class PageViewModelTests
         Assert.Equal("15,000 devices · 14,400 compatible · 600 not compatible", vm.TargetSummary);
         Assert.Equal(600, vm.ProblemTargets.Count);
         Assert.StartsWith("3 commands × 15,000 devices", vm.RunSummary, StringComparison.Ordinal);
-
-        var limit = TimeSpan.FromMilliseconds(200);
-        Assert.True(sync < limit * 2, $"device sync {sync.TotalMilliseconds} ms");
-        Assert.True(all < limit, $"all devices {all.TotalMilliseconds} ms");
-        Assert.True(byTag < limit, $"by tag {byTag.TotalMilliseconds} ms");
-        Assert.True(devicesSelection < limit, $"devices page selection {devicesSelection.TotalMilliseconds} ms");
-        Assert.True(compatibility < limit, $"compatibility {compatibility.TotalMilliseconds} ms");
+        return (sync, all, devicesSelection, byTag, compatibility);
     }
 
     [Fact]
@@ -697,13 +705,5 @@ internal sealed class FakeDialogs : ICommanderDialogs
 
 internal static class TestUtil
 {
-    public static async Task WaitUntilAsync(Func<bool> condition)
-    {
-        for (var i = 0; i < 200 && !condition(); i++)
-        {
-            await Task.Delay(10);
-        }
-
-        Assert.True(condition());
-    }
+    public static Task WaitUntilAsync(Func<bool> condition) => Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the page state");
 }

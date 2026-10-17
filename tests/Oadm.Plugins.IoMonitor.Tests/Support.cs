@@ -294,13 +294,81 @@ internal sealed class Rig : IAsyncDisposable
 
 internal static class Wait
 {
-    public static async Task UntilAsync(Func<bool> condition, int timeoutMs = 10_000)
+    public static Task UntilAsync(Func<bool> condition) => Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the condition");
+}
+
+/// <summary>
+/// A fake clock that knows how many waits (one-shot timers such as Task.Delay) are pending: the reading of a device waits
+/// on one between two reads, so a test can move the clock exactly when the reading waits.
+/// </summary>
+internal sealed class CountingTimeProvider : Microsoft.Extensions.Time.Testing.FakeTimeProvider
+{
+    private int _waiting;
+
+    /// <summary>One-shot timers that neither fired nor were disposed.</summary>
+    public int Waiting => Volatile.Read(ref _waiting);
+
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
     {
-        var until = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        ArgumentNullException.ThrowIfNull(callback);
+        if (period != Timeout.InfiniteTimeSpan && period != TimeSpan.Zero)
+        {
+            return base.CreateTimer(callback, state, dueTime, period); // the lease check: periodic, never a read wait
+        }
+
+        var timer = new OneShot(this);
+        Interlocked.Increment(ref _waiting);
+        timer.Inner = base.CreateTimer(
+            s =>
+            {
+                timer.End();
+                callback(s);
+            },
+            state,
+            dueTime,
+            period);
+        return timer;
+    }
+
+    /// <summary>Moves the clock by <paramref name="interval"/> each time the reading waits, until <paramref name="condition"/> holds.</summary>
+    public async Task ReadUntilAsync(Func<bool> condition, TimeSpan interval)
+    {
         while (!condition())
         {
-            Assert.True(DateTime.UtcNow < until, "Timed out waiting for the condition.");
-            await Task.Delay(10);
+            await Wait.UntilAsync(() => condition() || Waiting > 0);
+            if (!condition())
+            {
+                Advance(interval);
+            }
+        }
+    }
+
+    private sealed class OneShot(CountingTimeProvider owner) : ITimer
+    {
+        private int _ended;
+
+        public ITimer? Inner { get; set; }
+
+        public void End()
+        {
+            if (Interlocked.Exchange(ref _ended, 1) == 0)
+            {
+                Interlocked.Decrement(ref owner._waiting);
+            }
+        }
+
+        public bool Change(TimeSpan dueTime, TimeSpan period) => Inner!.Change(dueTime, period);
+
+        public void Dispose()
+        {
+            End();
+            Inner?.Dispose();
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            End();
+            return Inner?.DisposeAsync() ?? ValueTask.CompletedTask;
         }
     }
 }

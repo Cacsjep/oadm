@@ -110,8 +110,18 @@ public sealed class ScaleTests(Xunit.Abstractions.ITestOutputHelper output)
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // time budget
-    public async Task Page_with_30000_tiles_selects_and_filters_in_one_pass()
+    public async Task Page_with_30000_tiles_selects_and_filters_in_one_pass() => await SelectAndFilterTheMostTilesAsync();
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public async Task Page_with_30000_tiles_selects_and_filters_fast()
+    {
+        var elapsed = await SelectAndFilterTheMostTilesAsync();
+        output.WriteLine($"30,000 tiles: select none, search, select all {elapsed.TotalMilliseconds:0} ms");
+        Assert.True(elapsed < TimeSpan.FromSeconds(1), $"took {elapsed.TotalMilliseconds:0} ms");
+    }
+
+    private static async Task<TimeSpan> SelectAndFilterTheMostTilesAsync()
     {
         var ctx = new ManyTilesContext(Count);
         using var vm = new SnapshotReportViewModel(ctx, new TrackingUi(), new ExportSettingsStore(TempFiles.NewSettingsPath())).AllCameras();
@@ -129,8 +139,7 @@ public sealed class ScaleTests(Xunit.Abstractions.ITestOutputHelper output)
 
         Assert.True(notifications < 10, $"{notifications} status line notifications for two bulk selections"); // not one per tile
         Assert.Equal(vm.FilteredTiles.Count, vm.Tiles.Count(t => t.IsSelected));
-        output.WriteLine($"30,000 tiles: select none, search, select all {watch.ElapsedMilliseconds} ms");
-        Assert.True(watch.ElapsedMilliseconds < 1000, $"took {watch.ElapsedMilliseconds} ms");
+        return watch.Elapsed;
     }
 
     [Fact]
@@ -407,7 +416,7 @@ public sealed class HeadlessScaleTests
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         var ctx = new ScaleTests.ManyTilesContext(Count);
-        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessEntry.Session;
         var (tileControls, requests, rows, columns) = await session.Dispatch(async () =>
         {
             var view = new SnapshotReportView();

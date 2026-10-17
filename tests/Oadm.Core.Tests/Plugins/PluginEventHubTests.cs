@@ -19,7 +19,7 @@ public sealed class PluginEventHubTests
     public async Task WatchersReceiveOnlyTheirPluginsEventsAndUnsubscribeOnCancel()
     {
         var hub = new PluginEventHub();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var received = new List<PluginEvent>();
         var watch = Task.Run(async () =>
         {

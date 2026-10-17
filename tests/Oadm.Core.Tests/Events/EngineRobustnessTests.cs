@@ -146,7 +146,7 @@ public sealed class EngineRobustnessTests
             }
         };
         rig.Publisher.SetState(EventRulesRig.Blur, camera.Id, true);
-        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(30));
         for (var i = 0; i < 10; i++)
         {
             rig.Publisher.SetState(EventRulesRig.Blur, camera.Id, i % 2 == 0);
@@ -157,7 +157,7 @@ public sealed class EngineRobustnessTests
         Assert.False(turnOff.IsFaulted);
 
         hold.Set();
-        var summary = await turnOff.WaitAsync(TimeSpan.FromSeconds(10));
+        var summary = await turnOff.WaitAsync(TimeSpan.FromSeconds(30));
         await rig.SettleAsync();
         Assert.False(summary!.Enabled);
         Assert.False(rig.Engine.Status.ContainsKey(rule.Id)); // the engine applied it
@@ -253,7 +253,7 @@ public sealed class EngineRobustnessTests
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
-        var until = DateTime.UtcNow.AddSeconds(10);
+        var until = DateTime.UtcNow.AddSeconds(30);
         while (!condition())
         {
             Assert.True(DateTime.UtcNow < until, "Timed out.");

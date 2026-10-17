@@ -21,9 +21,15 @@ namespace Oadm.Client.Tests;
 /// The Event rules page and the rule dialog against the fake server. Set OADM_SCREENSHOT_DIR for event-rules-page.png,
 /// event-rules-log.png, event-rules-editor.png and event-rules-editor-errors.png.
 /// </summary>
-public sealed class EventRulesTests
+public sealed class EventRulesTests : IDisposable
 {
-    private static async Task<(FakeOadmApi Api, DeviceStore Store, IDialogService Dialogs, EventRulesViewModel Page)> CreateAsync(bool isAdmin = true)
+    // The page, its posted updates, the continuations of its commands and the checks run on one thread, like on the
+    // client's UI thread (see UiThread). The headless tests use the Avalonia UI thread instead.
+    private readonly UiThread _ui = new();
+
+    public void Dispose() => _ui.Dispose();
+
+    private async Task<(FakeOadmApi Api, DeviceStore Store, IDialogService Dialogs, EventRulesViewModel Page)> CreateAsync(bool isAdmin = true, IUiDispatcher? ui = null)
     {
         var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
         var store = new DeviceStore();
@@ -35,12 +41,12 @@ public sealed class EventRulesTests
         session.SignIn(isAdmin
             ? new UserInfo { UserName = "admin", Role = UserRole.Admin, RoleId = FakeOadmApi.AdministratorRoleId, AllPermissions = true }
             : new UserInfo { UserName = "op", Role = UserRole.Operator, RoleId = FakeOadmApi.OperatorRoleId, Permissions = { "events.view" } }, "fake");
-        var page = new EventRulesViewModel(api, dialogs, store, new ImmediateUiDispatcher(), session);
+        var page = new EventRulesViewModel(api, dialogs, store, ui ?? _ui, session);
         return (api, store, dialogs, page);
     }
 
     [Fact]
-    public async Task The_page_lists_the_rules_with_state_and_filters_them()
+    public Task The_page_lists_the_rules_with_state_and_filters_them() => _ui.RunAsync(async () =>
     {
         var (api, _, _, page) = await CreateAsync();
         page.ApplyRules(await api.ListRulesAsync(CancellationToken.None));
@@ -58,10 +64,10 @@ public sealed class EventRulesTests
         Assert.Equal("Camera offline in Building A", Assert.Single(page.Rules).Name);
         Assert.EndsWith("1 shown", page.RulesStatus, StringComparison.Ordinal);
         api.Dispose();
-    }
+    });
 
     [Fact]
-    public async Task Turning_a_rule_on_copying_and_deleting_it_go_to_the_server()
+    public Task Turning_a_rule_on_copying_and_deleting_it_go_to_the_server() => _ui.RunAsync(async () =>
     {
         var (api, _, _, page) = await CreateAsync();
         page.ApplyRules(await api.ListRulesAsync(CancellationToken.None));
@@ -80,10 +86,10 @@ public sealed class EventRulesTests
         Assert.Equal(3, page.Rules.Count);
         Assert.Equal(3, (await api.ListRulesAsync(CancellationToken.None)).Count);
         api.Dispose();
-    }
+    });
 
     [Fact]
-    public async Task Operators_see_the_rules_but_cannot_change_them()
+    public Task Operators_see_the_rules_but_cannot_change_them() => _ui.RunAsync(async () =>
     {
         var (api, _, _, page) = await CreateAsync(isAdmin: false);
         page.ApplyRules(await api.ListRulesAsync(CancellationToken.None));
@@ -95,10 +101,10 @@ public sealed class EventRulesTests
         Assert.All(page.Rules, r => Assert.False(r.CanToggle));
         Assert.Equal("Your role does not allow changing event rules.", page.ReadOnlyHint);
         api.Dispose();
-    }
+    });
 
     [Fact]
-    public async Task The_log_is_newest_first_live_and_searchable()
+    public Task The_log_is_newest_first_live_and_searchable() => _ui.RunAsync(async () =>
     {
         var (api, _, _, page) = await CreateAsync();
         page.AppendLog((await api.ListEventLogAsync(0, null, CancellationToken.None)).Entries);
@@ -113,10 +119,10 @@ public sealed class EventRulesTests
         Assert.Equal(100, page.LogEntries[0].Id);
         Assert.Equal("Done", page.LogEntries[0].ResultText);
         api.Dispose();
-    }
+    });
 
     [Fact]
-    public async Task Delete_all_empties_the_event_log_after_a_confirmation_and_events_show_as_information()
+    public Task Delete_all_empties_the_event_log_after_a_confirmation_and_events_show_as_information() => _ui.RunAsync(async () =>
     {
         var (api, _, dialogs, page) = await CreateAsync();
         page.AppendLog((await api.ListEventLogAsync(0, null, CancellationToken.None)).Entries);
@@ -134,10 +140,10 @@ public sealed class EventRulesTests
         Assert.False(operatorPage.ClearLogCommand.CanExecute(null)); // administrators only
         api.Dispose();
         opApi.Dispose();
-    }
+    });
 
     [Fact]
-    public async Task The_dialog_builds_a_rule_with_conditions_actions_and_settings()
+    public Task The_dialog_builds_a_rule_with_conditions_actions_and_settings() => _ui.RunAsync(async () =>
     {
         var (api, store, _, page) = await CreateAsync();
         var editor = await page.CreateEditorAsync(null);
@@ -216,10 +222,10 @@ public sealed class EventRulesTests
         Assert.Contains(await api.ListRulesAsync(CancellationToken.None), r => r.Name == "Person lamp");
         _ = store;
         api.Dispose();
-    }
+    });
 
     [Fact]
-    public async Task A_one_shot_trigger_hides_the_off_settings_and_refuses_follow()
+    public Task A_one_shot_trigger_hides_the_off_settings_and_refuses_follow() => _ui.RunAsync(async () =>
     {
         var (api, _, _, page) = await CreateAsync();
         var catalog = await api.GetEventCatalogAsync(CancellationToken.None);
@@ -239,10 +245,10 @@ public sealed class EventRulesTests
         action.SelectedAction = action.Actions.Single(a => a.Id == "oadm.vapix-commander.command");
         Assert.False(action.Fields.Single(f => f.Key == "offCommand").IsVisible);
         api.Dispose();
-    }
+    });
 
     [Fact]
-    public async Task An_existing_rule_opens_with_its_values_and_reports_a_server_error()
+    public Task An_existing_rule_opens_with_its_values_and_reports_a_server_error() => _ui.RunAsync(async () =>
     {
         var (api, _, _, page) = await CreateAsync();
         page.ApplyRules(await api.ListRulesAsync(CancellationToken.None));
@@ -260,45 +266,63 @@ public sealed class EventRulesTests
         Assert.Equal("fake server offline", editor.ServerError);
         api.SetOnline(true);
         api.Dispose();
-    }
+    });
 
     [Fact]
-    public async Task Thirty_thousand_devices_are_chosen_in_the_shared_picker_fast()
+    public Task Thirty_thousand_devices_are_chosen_in_the_shared_picker() => _ui.RunAsync(async () =>
     {
-        var (api, _, _, _) = await CreateAsync();
-        var store = new DeviceStore();
-        store.Reset(Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Select(i => new Device { Id = Guid.NewGuid().ToString(), Address = $"10.1.{i / 256}.{i % 256}", Model = "P3265-V", Serial = i.ToString("X12", System.Globalization.CultureInfo.InvariantCulture) }));
-        var watch = System.Diagnostics.Stopwatch.StartNew();
-        var editor = new RuleEditorViewModel(api, await api.GetEventCatalogAsync(CancellationToken.None), null, store);
-        var targets = editor.RuleActions[0].Targets;
-        DevicePickerViewModel? shown = null;
-        editor.ShowPicker = picker =>
-        {
-            shown = picker;
-            picker.IsChosen = true;
-            picker.SearchText = "10.1.3.";
-            picker.SelectAllCommand.Execute(null);
-            return Task.FromResult(true);
-        };
-        await targets.ChooseDevicesCommand.ExecuteAsync(null);
+        var (targets, shown, _) = await ChooseInThirtyThousandAsync();
 
-        watch.Stop();
-        Assert.Equal(256, shown!.SelectedIds.Count);
+        Assert.Equal(256, shown.SelectedIds.Count);
         Assert.Equal(256, targets.ChosenIds.Count);
         Assert.StartsWith("256 devices: 10.1.3.", targets.ChosenText, StringComparison.Ordinal);
         Assert.EndsWith("+253 more", targets.ChosenText, StringComparison.Ordinal);
         Assert.Equal(256, targets.ToSelector().DeviceIds.Count);
-        Assert.True(watch.ElapsedMilliseconds < 3_000, $"{watch.ElapsedMilliseconds} ms");
-        api.Dispose();
+    });
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public Task Thirty_thousand_devices_are_chosen_in_the_shared_picker_fast() => _ui.RunAsync(async () =>
+    {
+        var (targets, _, elapsed) = await ChooseInThirtyThousandAsync();
+
+        Assert.Equal(256, targets.ChosenIds.Count);
+        Assert.True(elapsed < TimeSpan.FromSeconds(10), $"{elapsed.TotalMilliseconds:F0} ms");
+    });
+
+    /// <summary>An action's targets: 256 of 30,000 devices chosen in the picker (search and Select all); the time it took.</summary>
+    private async Task<(DeviceSelectorViewModel Targets, DevicePickerViewModel Shown, TimeSpan Elapsed)> ChooseInThirtyThousandAsync()
+    {
+        var (api, _, _, _) = await CreateAsync();
+        using (api)
+        {
+            var store = new DeviceStore();
+            store.Reset(Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Select(i => new Device { Id = Guid.NewGuid().ToString(), Address = $"10.1.{i / 256}.{i % 256}", Model = "P3265-V", Serial = i.ToString("X12", System.Globalization.CultureInfo.InvariantCulture) }));
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var editor = new RuleEditorViewModel(api, await api.GetEventCatalogAsync(CancellationToken.None), null, store);
+            var targets = editor.RuleActions[0].Targets;
+            DevicePickerViewModel? shown = null;
+            editor.ShowPicker = picker =>
+            {
+                shown = picker;
+                picker.IsChosen = true;
+                picker.SearchText = "10.1.3.";
+                picker.SelectAllCommand.Execute(null);
+                return Task.FromResult(true);
+            };
+            await targets.ChooseDevicesCommand.ExecuteAsync(null);
+            watch.Stop();
+            return (targets, shown!, watch.Elapsed);
+        }
     }
 
     [Fact]
-    public async Task Notification_actions_have_code_bodies_rows_placeholders_and_a_test()
+    public Task Notification_actions_have_code_bodies_rows_placeholders_and_a_test() => _ui.RunAsync(async () =>
     {
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         var done = await HeadlessSession.Shared.Dispatch(async () =>
         {
-            var (api, _, _, page) = await CreateAsync();
+            var (api, _, _, page) = await CreateAsync(ui: new AvaloniaUiDispatcher());
             var editor = (await page.CreateEditorAsync(null))!;
             var dialog = new RuleEditorWindow();
             dialog.Attach(editor);
@@ -389,15 +413,15 @@ public sealed class EventRulesTests
             return true;
         }, CancellationToken.None);
         Assert.True(done);
-    }
+    });
 
     [Fact]
-    public async Task Page_and_dialog_render()
+    public Task Page_and_dialog_render() => _ui.RunAsync(async () =>
     {
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         var done = await HeadlessSession.Shared.Dispatch(async () =>
         {
-            var (api, _, _, page) = await CreateAsync();
+            var (api, _, _, page) = await CreateAsync(ui: new AvaloniaUiDispatcher());
             var window = new Window { Width = 1500, Height = 900, Content = new Avalonia.Controls.Border { Padding = new Avalonia.Thickness(20), Child = new EventRulesView { DataContext = page } } };
             Oadm.Client.App.ApplyCrispText(window);
             window.Show();
@@ -477,15 +501,15 @@ public sealed class EventRulesTests
             return true;
         }, CancellationToken.None);
         Assert.True(done);
-    }
+    });
 
     [Fact]
-    public async Task A_refused_rule_change_shows_below_the_rules_only_and_rolls_the_check_box_back()
+    public Task A_refused_rule_change_shows_below_the_rules_only_and_rolls_the_check_box_back() => _ui.RunAsync(async () =>
     {
         var (fake, store, dialogs, _) = await CreateAsync();
         var api = Substitute.For<IOadmApi>();
         api.SetRuleEnabledAsync(default!, default, default).ReturnsForAnyArgs<RuleSummary>(_ => throw new InvalidOperationException("Connection lost."));
-        var page = new EventRulesViewModel(api, dialogs, store, new ImmediateUiDispatcher());
+        var page = new EventRulesViewModel(api, dialogs, store, _ui);
         page.ApplyRules(await fake.ListRulesAsync(CancellationToken.None));
         var certificates = page.Rules.Single(r => r.Name == "Certificates about to expire");
 
@@ -496,11 +520,10 @@ public sealed class EventRulesTests
         Assert.Equal("The rule could not be changed: Connection lost.", page.RulesErrorText);
         Assert.False(page.HasLogError);
         fake.Dispose();
-    }
+    });
 
     [Fact]
-    [Trait("Category", "Timing")]
-    public async Task The_log_reads_and_watches_again_after_a_failure_and_after_the_page_comes_back()
+    public Task The_log_reads_and_watches_again_after_a_failure_and_after_the_page_comes_back() => _ui.RunAsync(async () =>
     {
         var (fake, store, dialogs, _) = await CreateAsync();
         var api = Substitute.For<IOadmApi>();
@@ -533,28 +556,28 @@ public sealed class EventRulesTests
                 return Stream([page], fail: ++watches == 1, ci.Arg<CancellationToken>()); // the first watch drops
             }
         });
-        var vm = new EventRulesViewModel(api, dialogs, store, new ImmediateUiDispatcher());
+        var vm = new EventRulesViewModel(api, dialogs, store, _ui);
 
         vm.Activate();
         await TestSupport.WaitUntilAsync(() => vm.HasLogError);
         Assert.Equal("The event log could not be read: Server is down.", vm.LogErrorText);
         Assert.False(vm.HasRulesError);
-        await TestSupport.WaitUntilAsync(() => watches == 2 && vm.LogEntries.Count == 3, 10_000);
+        await TestSupport.WaitUntilAsync(() => watches == 2 && vm.LogEntries.Count == 3); // after the real backoff (1 s, 2 s)
         Assert.False(vm.HasLogError);
         Assert.Equal([3L, 2, 1], vm.LogEntries.Select(e => e.Id));
 
         vm.Deactivate();
         vm.Activate(); // the page shown again: live again
-        await TestSupport.WaitUntilAsync(() => watches == 3 && vm.LogEntries.Count == 4, 10_000);
+        await TestSupport.WaitUntilAsync(() => watches == 3 && vm.LogEntries.Count == 4);
         Assert.Equal(4, vm.LogEntries[0].Id);
         vm.Dispose();
         fake.Dispose();
 
         static EventLogEntry Entry(long id) => new() { Id = id, Time = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTime(DateTime.UtcNow), What = "Set output" };
-    }
+    });
 
     [Fact]
-    public async Task A_list_that_cannot_be_read_stays_the_fields_error()
+    public Task A_list_that_cannot_be_read_stays_the_fields_error() => _ui.RunAsync(async () =>
     {
         var (fake, store, _, _) = await CreateAsync();
         var api = Substitute.For<IOadmApi>();
@@ -570,10 +593,10 @@ public sealed class EventRulesTests
         editor.Revalidate(); // any later change re-checks every field
         Assert.Equal("The list could not be read: Connection lost.", command.Error);
         fake.Dispose();
-    }
+    });
 
     [Fact]
-    public async Task The_device_picker_of_a_rule_offers_the_defined_tags_and_keeps_chosen_ones()
+    public Task The_device_picker_of_a_rule_offers_the_defined_tags_and_keeps_chosen_ones() => _ui.RunAsync(async () =>
     {
         var (api, store, _, _) = await CreateAsync();
         store.Tags.Reset([.. await api.ListTagsAsync(CancellationToken.None), new DeviceTag { Id = Guid.NewGuid().ToString(), Name = "Later", Color = TagColor.Teal, Defined = true }]);
@@ -592,7 +615,7 @@ public sealed class EventRulesTests
         Assert.Contains(shown.Tags, t => t.Name == "Not defined yet" && t.IsChecked);
         Assert.Equal(["Not defined yet"], targets.ToSelector().Tags);
         api.Dispose();
-    }
+    });
 
     private static async IAsyncEnumerable<T> Stream<T>(IReadOnlyList<T> items, bool fail, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {

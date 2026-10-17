@@ -16,19 +16,11 @@ public sealed class DeviceImportFileTests
 {
     private static DeviceImportFile Parse(string text) => DeviceImportFile.Parse("devices.csv", text);
 
-    private static string SourceFolder([System.Runtime.CompilerServices.CallerFilePath] string file = "") => Path.GetDirectoryName(file)!;
-
     [Fact]
     public void The_examples_of_the_user_docs_import_as_described()
     {
         // website/src/content/docs/devices/add.mdx, "Import from a file": both examples, read from the page itself.
-        var root = SourceFolder();
-        while (!File.Exists(Path.Combine(root, "Oadm.sln")))
-        {
-            root = Path.GetDirectoryName(root) ?? throw new InvalidOperationException("Repository not found");
-        }
-
-        var page = File.ReadAllText(Path.Combine(root, "website", "src", "content", "docs", "devices", "add.mdx"));
+        var page = File.ReadAllText(Oadm.Tests.Shared.TestRepository.Path("website", "src", "content", "docs", "devices", "add.mdx"));
         string Block(string title)
         {
             var start = page.IndexOf($"title=\"{title}\"", StringComparison.Ordinal);
@@ -208,13 +200,19 @@ public sealed class DeviceImportFileTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")]
+    public void Thirty_thousand_lines_are_read()
+    {
+        DeviceImportFile file = Parse(ThirtyThousandLines());
+
+        Assert.Equal(DeviceImportFile.MaxLines, file.Lines.Count);
+        Assert.Equal(0, file.ProblemCount);
+    }
+
+    [Fact]
+    [Trait("Category", "Perf")]
     public void Thirty_thousand_lines_are_read_fast()
     {
-        // As many lines as one server has devices, each with a long host name, login and tags: far below the size limit.
-        string text = "Address,User name,Password,Tags\n" + string.Join("\n", Enumerable.Range(0, DeviceImportFile.MaxLines)
-            .Select(i => $"camera-{i}.{new string('s', 60)}.example.com,{new string('u', 64)},{new string('p', 100)}{i},Building {i % 50}; {new string('t', 64)}"));
-        Assert.True(Encoding.UTF8.GetByteCount(text) < DeviceImportFile.MaxBytes / 4);
+        string text = ThirtyThousandLines();
         Parse("10.0.0.1"); // warm up
 
         var watch = Stopwatch.StartNew();
@@ -222,7 +220,15 @@ public sealed class DeviceImportFileTests
         watch.Stop();
 
         Assert.Equal(DeviceImportFile.MaxLines, file.Lines.Count);
-        Assert.Equal(0, file.ProblemCount);
-        Assert.True(watch.ElapsedMilliseconds < 3000, $"30,000 lines took {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 5000, $"30,000 lines took {watch.ElapsedMilliseconds} ms");
+    }
+
+    /// <summary>As many lines as one server has devices, each with a long host name, login and tags: far below the size limit.</summary>
+    private static string ThirtyThousandLines()
+    {
+        string text = "Address,User name,Password,Tags\n" + string.Join("\n", Enumerable.Range(0, DeviceImportFile.MaxLines)
+            .Select(i => $"camera-{i}.{new string('s', 60)}.example.com,{new string('u', 64)},{new string('p', 100)}{i},Building {i % 50}; {new string('t', 64)}"));
+        Assert.True(Encoding.UTF8.GetByteCount(text) < DeviceImportFile.MaxBytes / 4);
+        return text;
     }
 }

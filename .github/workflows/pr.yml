@@ -43,4 +43,4 @@ jobs:
       - if: steps.changes.outputs.code == 'true'
         run: dotnet build Oadm.sln -c Release
       - if: steps.changes.outputs.code == 'true'
-        run: dotnet test Oadm.sln -c Release --no-build --filter "Category!=Hardware&Category!=Perf&Category!=HardwareWrite&Category!=Timing" --blame-hang-timeout 5m
+        run: dotnet test Oadm.sln -c Release --no-build --filter "Category!=Hardware&Category!=Perf&Category!=HardwareWrite" --blame-hang-timeout 5m

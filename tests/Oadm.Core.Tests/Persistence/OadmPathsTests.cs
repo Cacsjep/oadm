@@ -2,6 +2,14 @@ using Oadm.Core.Persistence;
 
 namespace Oadm.Core.Tests.Persistence;
 
+/// <summary>Tests that set or read the process-wide data folder variable: never in parallel with any other test.</summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class DataDirEnvironment
+{
+    public const string Name = "OADM_DATA_DIR environment variable";
+}
+
+[Collection(DataDirEnvironment.Name)]
 public class OadmPathsTests
 {
     [Fact]
@@ -20,7 +28,6 @@ public class OadmPathsTests
     [Fact]
     public void EnvironmentVariableOverridesDefault()
     {
-        // Same class as the default test, so xUnit never runs the two in parallel.
         var previous = Environment.GetEnvironmentVariable(OadmPaths.DataDirEnvironmentVariable);
         var dir = Path.Combine(Path.GetTempPath(), "oadm-from-env");
         try

@@ -92,7 +92,7 @@ public sealed class HeadlessTests
         Headless.Capture(window, "edge-recording-export-download.png");
         vm.StopCommand.Execute(null);
         var watch = Stopwatch.StartNew();
-        while (!run.IsCompleted && watch.Elapsed < TimeSpan.FromSeconds(10))
+        while (!run.IsCompleted && watch.Elapsed < TimeSpan.FromSeconds(30))
         {
             Headless.Pump();
             await Task.Delay(10);

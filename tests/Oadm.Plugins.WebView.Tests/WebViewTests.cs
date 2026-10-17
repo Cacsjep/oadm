@@ -170,7 +170,19 @@ public sealed class WebViewTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Five_thousand_devices_build_and_search() => BuildAndSearchFiveThousand();
+
+    [Fact]
+    [Trait("Category", "Perf")]
     public void Five_thousand_devices_build_and_search_fast()
+    {
+        var (build, search) = BuildAndSearchFiveThousand();
+        output.WriteLine($"build {build} ms, search + clear {search} ms");
+        Assert.True(build < 2000, $"build took {build} ms");
+        Assert.True(search < 2000, $"search took {search} ms");
+    }
+
+    private static (long Build, long Search) BuildAndSearchFiveThousand()
     {
         var devices = Enumerable.Range(0, 5000)
             .Select(i => (IDeviceInfo)new TestDevice($"10.{i / 65536}.{i / 256 % 256}.{i % 256}", "P3265-V", i % 3 == 0 ? ["Building A", "PTZ"] : i % 3 == 1 ? ["Building B"] : []))
@@ -183,16 +195,14 @@ public sealed class WebViewTests(ITestOutputHelper output)
         vm.SearchText = "10.0.19";
         vm.SearchText = string.Empty;
         var search = watch.ElapsedMilliseconds;
-        output.WriteLine($"build {build} ms, search + clear {search} ms, {vm.TreeRows.Count} rows");
         Assert.Equal(5000 + 1667 + 4, vm.TreeRows.Count);
-        Assert.True(build < 2000, $"build took {build} ms");
-        Assert.True(search < 2000, $"search took {search} ms");
+        return (build, search);
     }
 
     [Fact]
     public async Task The_page_keeps_working_after_another_rail_page_was_shown()
     {
-        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessEntry.Session;
         var done = await session.Dispatch(async () =>
         {
             var factory = WebViewPageView.BrowserFactory;
@@ -242,7 +252,7 @@ public sealed class WebViewTests(ITestOutputHelper output)
     [Fact]
     public async Task The_page_renders_the_tree_tabs_and_the_toolbar()
     {
-        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessEntry.Session;
         var done = await session.Dispatch(async () =>
         {
             var factory = WebViewPageView.BrowserFactory;

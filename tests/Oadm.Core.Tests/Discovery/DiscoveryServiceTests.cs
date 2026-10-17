@@ -8,7 +8,7 @@ namespace Oadm.Core.Tests.Discovery;
 
 public class DiscoveryServiceTests
 {
-    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(30);
 
     [Fact]
     public async Task RangeScanStreamsDevicesProgressAndFinish()
@@ -40,8 +40,11 @@ public class DiscoveryServiceTests
         Assert.Equal("https", m3206.Scheme);
         Assert.Equal(DiscoverySources.RangeScan, m3206.Sources);
 
-        var progress = events.Select(e => e.ProgressPercent).ToList();
+        // The progress reports come in order. A device event carries the progress of the moment it was found, which a
+        // probe finishing on another thread may have passed already, so only the progress reports are compared.
+        var progress = events.Where(e => e.Device is null).Select(e => e.ProgressPercent).ToList();
         Assert.Equal(progress.Order(), progress);
+        Assert.All(events, e => Assert.InRange(e.ProgressPercent, 0, 100));
     }
 
     [Fact]

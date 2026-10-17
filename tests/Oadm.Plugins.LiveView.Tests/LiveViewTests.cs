@@ -137,7 +137,7 @@ public sealed class LiveViewTests(ITestOutputHelper output)
     // ------------------------------------------------------------------ page
 
     /// <summary>The page runs on the UI thread like in the client: server events and saves never race.</summary>
-    private static readonly HeadlessUnitTestSession Ui = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+    private static readonly HeadlessUnitTestSession Ui = HeadlessEntry.Session;
 
     private static async Task OnUi(Func<Task> test) =>
         Assert.True(await Ui.Dispatch(async () =>
@@ -274,8 +274,8 @@ public sealed class LiveViewTests(ITestOutputHelper output)
             vm.EditViewCommand.Execute(vm.Views[0]); // opens the tab in edit mode
             Assert.True(vm.ActiveTab!.IsEditing);
             vm.ActiveTab.Drop(cam1, 0, 0);
-            await host.Plugin.SaveAsync(new SaveViewRequest(saved.Id, "Hall", saved.Version, []), CancellationToken.None);
-            await Task.Delay(50);
+            var other = await host.Plugin.SaveAsync(new SaveViewRequest(saved.Id, "Hall", saved.Version, []), CancellationToken.None);
+            Assert.True(await Headless.UntilAsync(() => vm.Views[0].View.Version == other.Version)); // another user's change reached the page
 
             await vm.SaveViewCommand.ExecuteAsync(null);
             Assert.Equal(ViewRules.ChangedMeanwhile("Hall"), vm.ActiveTab.Error);
@@ -404,7 +404,7 @@ public sealed class LiveViewTests(ITestOutputHelper output)
     [Fact]
     public async Task The_page_shows_a_view_with_live_cameras_and_the_edit_frame()
     {
-        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessEntry.Session;
         var done = await session.Dispatch(async () =>
         {
             using var api = new Oadm.Client.Api.FakeOadmApi(TimeSpan.FromMilliseconds(5));
@@ -434,7 +434,7 @@ public sealed class LiveViewTests(ITestOutputHelper output)
             vm.OpenViewCommand.Execute(vm.Views[0]);
             Headless.Pump();
             var tiles = vm.ActiveTab!.Tiles;
-            Assert.True(await Headless.UntilAsync(() => tiles.All(t => ((Oadm.Client.LiveView.LiveVideoViewModel)t.Video!.View.DataContext!).Image is not null), 30));
+            Assert.True(await Headless.UntilAsync(() => tiles.All(t => ((Oadm.Client.LiveView.LiveVideoViewModel)t.Video!.View.DataContext!).Image is not null), 60));
             Headless.Capture(window, "plugin-live-view.png");
 
             // The camera under the pointer gets a thin purple frame (not while editing: the edit frame has its own).
@@ -481,7 +481,7 @@ public sealed class LiveViewTests(ITestOutputHelper output)
             Headless.Pump();
             Assert.True(vm.ActiveTab!.IsSingleCamera);
             var single = vm.ActiveTab.Tiles.Single();
-            Assert.True(await Headless.UntilAsync(() => ((Oadm.Client.LiveView.LiveVideoViewModel)single.Video!.View.DataContext!).Image is not null, 30));
+            Assert.True(await Headless.UntilAsync(() => ((Oadm.Client.LiveView.LiveVideoViewModel)single.Video!.View.DataContext!).Image is not null, 60));
             Headless.Capture(window, "plugin-live-view-single.png");
             window.Close();
             vm.Dispose();

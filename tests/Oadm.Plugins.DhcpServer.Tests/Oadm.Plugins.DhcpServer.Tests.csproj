@@ -25,6 +25,7 @@
          SDK) the plugin projects compile against only; Oadm.Core the core plugin host and the plugin event hub. -->
     <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />
     <ProjectReference Include="..\..\src\Oadm.Core\Oadm.Core.csproj" />
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.DhcpServer\Oadm.Plugins.DhcpServer.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.DhcpServer.Client\Oadm.Plugins.DhcpServer.Client.csproj" />
   </ItemGroup>

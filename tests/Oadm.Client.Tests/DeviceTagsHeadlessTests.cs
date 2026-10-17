@@ -74,9 +74,11 @@ public sealed class DeviceTagsHeadlessTests
 
             // Group mode: a header per tag, a device under every one of its tags, "No tag" last.
             vm.GroupByTag = true;
-            Dispatcher.UIThread.RunJobs();
-            await Task.Delay(50);
-            Dispatcher.UIThread.RunJobs();
+            await TestSupport.WaitUntilAsync(() =>
+            {
+                Dispatcher.UIThread.RunJobs();
+                return grid.GetVisualDescendants().OfType<DataGridRowGroupHeader>().Any();
+            });
             Assert.Contains("tagGroups", grid.Classes);
             Assert.IsType<Avalonia.Collections.DataGridCollectionView>(grid.ItemsSource);
             List<string> headers = grid.GetVisualDescendants().OfType<DataGridRowGroupHeader>()

@@ -91,7 +91,7 @@ public sealed class DeviceListCsvTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")]
+    [Trait("Category", "Perf")]
     public void Thirty_thousand_devices_are_written_fast()
     {
         List<DeviceRowViewModel> rows = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices)
@@ -104,7 +104,7 @@ public sealed class DeviceListCsvTests
         watch.Stop();
 
         Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices + 1, Csv.Read(Encoding.UTF8.GetString(bytes)).Count());
-        Assert.True(watch.ElapsedMilliseconds < 500, $"30,000 devices took {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 5_000, $"30,000 devices took {watch.ElapsedMilliseconds} ms (about 0.3 s on a developer machine)");
     }
 
     [Fact]

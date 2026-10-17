@@ -27,14 +27,24 @@ public sealed class RailWobbleTests
             Assert.Equal(2, icons.Count);
             Assert.NotSame(icons[0].RenderTransform, icons[1].RenderTransform); // never one shared transform
 
-            window.MouseMove(first.TranslatePoint(new Avalonia.Point(10, 10), window)!.Value, RawInputModifiers.None);
+            // The wobble runs on the real render clock (0.45 s). A busy machine may sleep past all of it between two frames,
+            // so the pointer leaves and comes back until a frame lands inside the wobble.
+            var hover = first.TranslatePoint(new Avalonia.Point(10, 10), window)!.Value;
             var turned = false;
-            for (var i = 0; i < 40 && !turned; i++)
+            var until = DateTime.UtcNow.AddSeconds(30);
+            while (!turned && DateTime.UtcNow < until)
             {
-                await Task.Delay(10);
-                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                window.MouseMove(new Avalonia.Point(290, 190), RawInputModifiers.None); // off both entries
                 Dispatcher.UIThread.RunJobs();
-                turned = ((RotateTransform)icons[0].RenderTransform!).Angle != 0;
+                window.MouseMove(hover, RawInputModifiers.None);
+                var hovered = System.Diagnostics.Stopwatch.StartNew();
+                while (!turned && hovered.Elapsed < TimeSpan.FromSeconds(1))
+                {
+                    await Task.Delay(10);
+                    AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                    Dispatcher.UIThread.RunJobs();
+                    turned = ((RotateTransform)icons[0].RenderTransform!).Angle != 0;
+                }
             }
 
             Assert.True(turned, "the hovered icon wobbles");

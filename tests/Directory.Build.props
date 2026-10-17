@@ -1,0 +1,15 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!--
+    Test projects know the repository root from an assembly attribute (TestRepository.Root), so tests that read the
+    repository (sources, artifacts/plugins, TERMS.md) also work when the build output is outside it (artifacts-path).
+  -->
+  <ItemGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>RepositoryRoot</_Parameter1>
+      <_Parameter2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../'))</_Parameter2>
+    </AssemblyAttribute>
+    <Compile Include="$(MSBuildThisFileDirectory)Shared/TestRepository.cs" Link="Shared/TestRepository.cs" />
+  </ItemGroup>
+</Project>

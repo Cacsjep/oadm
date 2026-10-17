@@ -40,8 +40,18 @@ public sealed class ScaleTests : IDisposable
         })];
 
     [Fact]
-    [Trait("Category", "Timing")] // time budget
-    public async Task Dialog_with_30000_devices_checks_a_bounded_sample()
+    public async Task Dialog_with_30000_devices_checks_a_bounded_sample() => await OpenWithTheMostDevicesAsync();
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public async Task Dialog_with_30000_devices_opens_fast()
+    {
+        var elapsed = await OpenWithTheMostDevicesAsync();
+        _output.WriteLine($"Open the dialog with 30,000 devices and check the sample: {elapsed.TotalMilliseconds:0} ms");
+        Assert.True(elapsed < TimeSpan.FromSeconds(2), $"Opening and checking took {elapsed.TotalMilliseconds:0} ms");
+    }
+
+    private async Task<TimeSpan> OpenWithTheMostDevicesAsync()
     {
         var devices = Devices();
         var ctx = new SlowContext();
@@ -64,13 +74,22 @@ public sealed class ScaleTests : IDisposable
         Assert.Equal("25 of 25 checked devices can install this package; the other 29,975 are checked by the task before installing.", vm.CompatibilitySummary);
         Assert.True(vm.InstallCommand.CanExecute(null));
         Assert.Equal("Actions apply to all 30,000 selected devices.", vm.ScopeText);
-        _output.WriteLine($"Open the dialog with 30,000 devices and check the sample: {watch.ElapsedMilliseconds} ms");
-        Assert.True(watch.ElapsedMilliseconds < 2000, $"Opening and checking took {watch.ElapsedMilliseconds} ms");
+        return watch.Elapsed;
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // time budget
-    public void Sample_takes_one_device_per_model_and_firmware_first()
+    public void Sample_takes_one_device_per_model_and_firmware_first() => SampleTheMostDevices();
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void Sample_of_30000_devices_is_fast()
+    {
+        var elapsed = SampleTheMostDevices();
+        _output.WriteLine($"Sample of 30,000 devices: {elapsed.TotalMilliseconds:0} ms");
+        Assert.True(elapsed < TimeSpan.FromMilliseconds(500), $"Sampling took {elapsed.TotalMilliseconds:0} ms");
+    }
+
+    private static TimeSpan SampleTheMostDevices()
     {
         var choices = Devices().Select(d => new DeviceChoice(d)).ToList();
 
@@ -83,8 +102,7 @@ public sealed class ScaleTests : IDisposable
         Assert.Contains(0, sample);
         Assert.Contains(1, sample);
         Assert.Equal(sample.Order(), sample);
-        _output.WriteLine($"Sample of 30,000 devices: {watch.ElapsedMilliseconds} ms");
-        Assert.True(watch.ElapsedMilliseconds < 500, $"Sampling took {watch.ElapsedMilliseconds} ms");
+        return watch.Elapsed;
     }
 
     [Fact]

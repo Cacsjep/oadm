@@ -231,18 +231,9 @@ public sealed class PageTests(ITestOutputHelper output)
     internal static string AddTcp(RuleCamera camera, string name, string message, bool enabled = true) =>
         camera.Add(name, "com.axis.action.fixed.notification.tcp", [("host", "192.168.1.5"), ("port", "33"), ("qos", "0"), ("message", message)], start: VirtualInput, enabled: enabled);
 
-    private static async Task UntilAsync(Func<bool> condition)
-    {
-        var until = DateTime.UtcNow.AddSeconds(10);
-        while (!condition())
-        {
-            Assert.True(DateTime.UtcNow < until, "Timed out waiting for the condition.");
-            await Task.Delay(10);
-        }
-    }
+    private static Task UntilAsync(Func<bool> condition) => Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the page state");
 
     [Fact]
-    [Trait("Category", "Timing")] // the plugin's events arrive on the thread pool, waited for in real time
     public async Task Rules_that_do_the_same_are_one_group_whatever_their_names()
     {
         await using var rig = new PageRig();
@@ -274,7 +265,6 @@ public sealed class PageTests(ITestOutputHelper output)
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // the plugin's events arrive on the thread pool, waited for in real time
     public async Task The_page_reads_only_the_chosen_devices_and_nothing_before_a_choice()
     {
         await using var rig = new PageRig();
@@ -333,7 +323,6 @@ public sealed class PageTests(ITestOutputHelper output)
     }
 
     [Fact]
-    [Trait("Category", "Timing")]
     public async Task The_progress_shows_from_the_click_on_and_while_a_form_is_prepared()
     {
         await using var rig = new PageRig();
@@ -371,7 +360,6 @@ public sealed class PageTests(ITestOutputHelper output)
     }
 
     [Fact]
-    [Trait("Category", "Timing")]
     public async Task The_tools_run_on_the_selected_rules()
     {
         await using var rig = new PageRig();
@@ -525,7 +513,7 @@ public sealed class PageTests(ITestOutputHelper output)
             var window = new Window { Width = 1600, Height = 620, Content = new Border { Padding = new Thickness(16), Child = page } };
             Oadm.Client.App.ApplyCrispText(window);
             window.Show();
-            var until = DateTime.UtcNow.AddSeconds(10);
+            var until = DateTime.UtcNow.AddSeconds(30);
             while ((rig.ViewModel.Groups.Count < 3 || rig.ViewModel.IsReading) && DateTime.UtcNow < until)
             {
                 Pump();

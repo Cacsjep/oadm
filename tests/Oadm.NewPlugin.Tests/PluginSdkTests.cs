@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
@@ -78,6 +77,5 @@ public sealed partial class PluginSdkTests : IDisposable
     [GeneratedRegex("""public const string Version = "([^"]+)";""")]
     private static partial Regex SdkVersion();
 
-    private static string Repository() =>
-        typeof(PluginSdkTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().Single(a => a.Key == "RepositoryRoot").Value!;
+    private static string Repository() => Oadm.Tests.Shared.TestRepository.Root;
 }

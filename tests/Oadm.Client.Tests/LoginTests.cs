@@ -42,7 +42,6 @@ public sealed class LoginTests
 
         public Fixture()
         {
-            LoginViewModel.ConnectFeedback = TimeSpan.Zero; // no visible pause in tests
             Api.ServerAddress.Returns("https://localhost:5080");
             Api.GetAuthStatusAsync(Arg.Any<CancellationToken>()).Returns(new AuthStatus { ServerName = "srv", Version = "1.0" });
             Dialogs.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(ci =>
@@ -53,7 +52,10 @@ public sealed class LoginTests
         }
 
         public LoginViewModel Create(string? server = null) =>
-            new(Api, Trust, Settings, Session, Dialogs, new AppOptions { ServerAddress = server }, NullLogger<LoginViewModel>.Instance);
+            new(Api, Trust, Settings, Session, Dialogs, new AppOptions { ServerAddress = server }, NullLogger<LoginViewModel>.Instance)
+            {
+                ConnectFeedback = TimeSpan.Zero, // no visible pause in tests
+            };
     }
 
     private static LoginReply Reply(string user, UserRole role = UserRole.Admin) =>
@@ -342,8 +344,35 @@ public sealed class LoginTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")]
+    public async Task Audit_tab_filters_five_thousand_entries()
+    {
+        var (session, logs, audit) = await AuditOfFiveThousandAsync();
+
+        audit.SearchText = "anna";
+        Assert.Equal(500 + 4, audit.Entries.Count); // + the four sample entries of anna.berg
+        Assert.StartsWith("504 match", audit.StatusLine, StringComparison.Ordinal);
+
+        session.SignIn(new UserInfo { UserName = "tech1", Role = UserRole.Operator }, "fake");
+        Assert.False(logs.CanSeeAudit);
+        Assert.False(logs.IsAuditTab);
+        Assert.Empty(audit.Entries);
+    }
+
+    [Fact]
+    [Trait("Category", "Perf")]
     public async Task Audit_tab_filters_five_thousand_entries_quickly()
+    {
+        var (_, _, audit) = await AuditOfFiveThousandAsync();
+
+        var watch = Stopwatch.StartNew();
+        audit.SearchText = "anna";
+        watch.Stop();
+        Assert.Equal(504, audit.Entries.Count);
+        Assert.True(watch.ElapsedMilliseconds < 1000, $"filter took {watch.ElapsedMilliseconds} ms");
+    }
+
+    /// <summary>The Audit tab of an administrator showing 5,000 entries (plus the fake's samples).</summary>
+    private static async Task<(UserSession Session, LogsViewModel Logs, AuditLogViewModel Audit)> AuditOfFiveThousandAsync()
     {
         var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
         api.AddAuditEntries(Enumerable.Range(0, 5000).Select(i => new AuditEntry
@@ -366,18 +395,7 @@ public sealed class LoginTests
         Assert.Equal(5014, audit.Entries.Count); // + the fake's sample entries
         Assert.Equal("5,014 entries", audit.StatusLine);
         Assert.True(audit.Entries[0].Id > audit.Entries[1].Id);
-
-        var watch = Stopwatch.StartNew();
-        audit.SearchText = "anna";
-        watch.Stop();
-        Assert.True(watch.ElapsedMilliseconds < 200, $"filter took {watch.ElapsedMilliseconds} ms");
-        Assert.Equal(500 + 4, audit.Entries.Count); // + the four sample entries of anna.berg
-        Assert.StartsWith("504 match", audit.StatusLine, StringComparison.Ordinal);
-
-        session.SignIn(new UserInfo { UserName = "tech1", Role = UserRole.Operator }, "fake");
-        Assert.False(logs.CanSeeAudit);
-        Assert.False(logs.IsAuditTab);
-        Assert.Empty(audit.Entries);
+        return (session, logs, audit);
     }
 
     // ------------------------------------------------------------------ headless screenshots

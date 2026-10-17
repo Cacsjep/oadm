@@ -47,7 +47,7 @@ public sealed class KeyedCoalescingChannelTests
         }
 
         Assert.Equal(written, read);
-        await channel.Reader.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        await channel.Reader.Completion.WaitAsync(TimeSpan.FromSeconds(30));
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public sealed class KeyedCoalescingChannelTests
         await Task.Delay(50);
         channel.Complete();
         Assert.False(channel.TryWrite(new Change(8, "a", 1)));
-        Assert.Equal([new Change(7, "a", 1)], await reading.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal([new Change(7, "a", 1)], await reading.WaitAsync(TimeSpan.FromSeconds(30)));
     }
 
     [Fact]

@@ -16,7 +16,6 @@ public sealed class FakeModeTests : IDisposable
     public void Dispose() => _api.Dispose();
 
     [Fact]
-    [Trait("Category", "Timing")] // waits 50 ms for the watch to subscribe
     public async Task Fake_backend_streams_generated_events_the_page_shows()
     {
         Assert.DoesNotContain(await _api.ListCorePluginsAsync(CancellationToken.None), p => p.Id == MetadataMonitorPluginInfo.PluginId); // off by default
@@ -26,7 +25,7 @@ public sealed class FakeModeTests : IDisposable
         var ctx = new FakeContext(_api, new TestDevice(device.Address, "P3265-V") { Id = Guid.Parse(device.Id) });
         using var vm = new MetadataMonitorViewModel(ctx, new MetadataClientSettingsStore(Path.Combine(Path.GetTempPath(), "oadm-mm-tests", Guid.NewGuid().ToString("N"), "client.json")));
         vm.Activate();
-        await Task.Delay(50); // the watch subscribes
+        await Wait.UntilAsync(() => ctx.Subscribed); // the watch subscribes
         vm.SelectedCamera = CameraOption.Of(ctx.Devices.Single());
 
         await vm.StartStopCommand.ExecuteAsync(null);
@@ -37,7 +36,14 @@ public sealed class FakeModeTests : IDisposable
         // Stop first: without a UI thread the events arrive on the thread pool, so read the list once it is final.
         await vm.StartStopCommand.ExecuteAsync(null);
         await Wait.UntilAsync(() => vm.StatusText.StartsWith("Stopped", StringComparison.Ordinal));
-        await Task.Delay(50);
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(
+            async () =>
+            {
+                var count = vm.Messages.Count;
+                await Task.Delay(100); // a batch already under way when Stop was sent may still arrive
+                return vm.Messages.Count == count;
+            },
+            "the list to be final");
         Assert.Equal(64, vm.Messages.Count(m => m.Topic == "Device/IO/VirtualInput" && m.Operation == "Initialized"));
         Assert.Contains(vm.Messages, m => m.Topic == "Storage/Alert" && m.Info.StartsWith("[INIT] disk_id = SD_DISK;", StringComparison.Ordinal));
         Assert.Contains(vm.Messages, m => m.Topic == "Device/Status/Temperature/Inside");
@@ -65,11 +71,18 @@ public sealed class FakeModeTests : IDisposable
         public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
             api.InvokeCorePluginAsync(MetadataMonitorPluginInfo.PluginId, method, payloadJson, ct);
 
+        /// <summary>True once the watch is subscribed to the fake backend.</summary>
+        public bool Subscribed { get; private set; }
+
         public async IAsyncEnumerable<PluginEvent> WatchEventsAsync([EnumeratorCancellation] CancellationToken ct)
         {
-            await foreach (var item in api.WatchCorePluginAsync(MetadataMonitorPluginInfo.PluginId, ct))
+            await using var items = api.WatchCorePluginAsync(MetadataMonitorPluginInfo.PluginId, ct).GetAsyncEnumerator(ct);
+            var next = items.MoveNextAsync(); // runs up to the first wait: the subscription is made
+            Subscribed = true;
+            while (await next)
             {
-                yield return new PluginEvent(item.Topic, item.PayloadJson);
+                yield return new PluginEvent(items.Current.Topic, items.Current.PayloadJson);
+                next = items.MoveNextAsync();
             }
         }
     }

@@ -41,7 +41,6 @@ public sealed class LiveViewHubTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // waits 20 ms for the pump to cache the GOP
     public async Task LateViewerStartsWithTheCachedGop()
     {
         var factory = new FakeSourceFactory();
@@ -52,7 +51,7 @@ public sealed class LiveViewHubTests
         source.Emit(Frame(keyframe: true));
         source.Emit(Frame(keyframe: false));
         source.Emit(Frame(keyframe: false));
-        await TestWait.UntilAsync(() => source.Pending == 0);
+        Assert.Equal(3, await CountAsync(first, 3)); // the first viewer got them: the pump has cached the GOP
 
         await using var late = await hub.SubscribeAsync(Device, 0, 0, 0, [VideoCodecKind.H264], CancellationToken.None);
         var frames = await ReadAsync(late, 3);
@@ -66,6 +65,21 @@ public sealed class LiveViewHubTests
         var factory = new FakeSourceFactory();
         await using var hub = new LiveViewHub(factory, options: new LiveViewHubOptions { QueueCapacity = 3 });
         await using var slow = await hub.SubscribeAsync(Device, 0, 0, 0, [VideoCodecKind.H264], CancellationToken.None);
+        // A second viewer that reads all the time: once it saw the last frame, the pump offered it to the slow viewer
+        // too (viewers are offered a frame in the order they joined).
+        await using var witness = await hub.SubscribeAsync(Device, 0, 0, 0, [VideoCodecKind.H264], CancellationToken.None);
+        var sawLast = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var witnessStop = new CancellationTokenSource();
+        var watching = Task.Run(async () =>
+        {
+            await foreach (var frame in witness.ReadAllAsync(witnessStop.Token))
+            {
+                if (frame.RtpTimestamp == 8)
+                {
+                    sawLast.TrySetResult();
+                }
+            }
+        });
         var source = factory.OpenedSources.Single();
         source.Emit(Frame(true, 1));
         for (var i = 2; i <= 6; i++)
@@ -75,7 +89,16 @@ public sealed class LiveViewHubTests
 
         source.Emit(Frame(true, 7));
         source.Emit(Frame(false, 8));
-        await TestWait.UntilAsync(() => source.Pending == 0);
+        await sawLast.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await witnessStop.CancelAsync();
+        try
+        {
+            await watching;
+        }
+        catch (OperationCanceledException)
+        {
+            // the witness stopped reading
+        }
 
         var frames = await ReadAsync(slow, 2);
         Assert.Equal([7, 8], frames.Select(f => (int)f.RtpTimestamp));
@@ -146,7 +169,7 @@ public sealed class LiveViewHubTests
 
     private static async Task<List<LiveVideoFrame>> ReadAsync(LiveViewSubscription sub, int count)
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var frames = new List<LiveVideoFrame>();
         await foreach (var frame in sub.ReadAllAsync(cts.Token))
         {
@@ -225,19 +248,5 @@ public sealed class LiveViewHubTests
 
 internal static class TestWait
 {
-    public static async Task UntilAsync(Func<bool> condition, int timeoutMs = 5000)
-    {
-        var end = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition())
-        {
-            if (DateTime.UtcNow > end)
-            {
-                throw new TimeoutException("Condition not met in time");
-            }
-
-            await Task.Delay(10);
-        }
-
-        await Task.Delay(20); // let the consumer finish handling the last item
-    }
+    public static Task UntilAsync(Func<bool> condition) => Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the condition");
 }

@@ -29,6 +29,17 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _plugin.DisposeAsync();
 
+    /// <summary>Generous wait for an answer that must come: a busy machine may answer loopback slowly.</summary>
+    private static readonly TimeSpan AnswerTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>Restarts the plugin with other options (rate limit, upstream timeouts).</summary>
+    private async Task RestartWithAsync(NtpServerOptions options)
+    {
+        await _plugin.DisposeAsync();
+        _plugin = new NtpServerPlugin(options);
+        await _plugin.StartAsync(new TestCoreContext(new InMemoryPluginSettingsProvider().GetSettings(NtpServerPluginInfo.PluginId), _hub.For(NtpServerPluginInfo.PluginId)), CancellationToken.None);
+    }
+
     private NtpServerService Service => _plugin.Service!;
 
     private IPEndPoint Endpoint => Service.Endpoints[0];
@@ -51,7 +62,6 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // offset and timestamps within 50 ms
     public async Task A_client_on_loopback_gets_a_valid_mode_4_answer_it_accepts()
     {
         var reply = await SaveAsync();
@@ -61,13 +71,14 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
         Assert.NotEqual(123, Endpoint.Port);
 
         // Our own SNTP client: it validates mode, origin, LI, stratum and timestamps like a camera does.
-        var sample = await UpstreamClient.QueryAsync(Endpoint, TimeSpan.FromSeconds(2), TimeProvider.System, CancellationToken.None);
+        var sample = await UpstreamClient.QueryAsync(Endpoint, AnswerTimeout, TimeProvider.System, CancellationToken.None);
         Assert.Equal(10, sample.Stratum);
-        Assert.InRange(Math.Abs(sample.OffsetSeconds), 0, 0.05);
-        Assert.InRange(sample.DelaySeconds, 0, 0.5);
+        // Same clock on both sides: the offset error is at most half the round trip (slow on a busy machine).
+        Assert.InRange(Math.Abs(sample.OffsetSeconds), 0, (sample.DelaySeconds / 2) + 0.05);
+        Assert.InRange(sample.DelaySeconds, 0, AnswerTimeout.TotalSeconds);
 
         // The raw answer: LI 0 (synchronized), stratum 10, LOCL, valid timestamps.
-        var (answer, origin, t1, t4) = await NtpProbe.QueryAsync(Endpoint, TimeSpan.FromSeconds(2));
+        var (answer, origin, t1, t4) = await NtpProbe.QueryAsync(Endpoint, AnswerTimeout);
         Assert.NotNull(answer);
         var a = answer.Value;
         Assert.Equal(NtpMode.Server, a.Mode);
@@ -93,7 +104,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
     public async Task Requests_are_pushed_live_to_the_page_watchers()
     {
         await SaveAsync();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         var received = new List<PluginEvent>();
         var watching = Task.Run(async () =>
         {
@@ -112,7 +123,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
         });
         await Wait.UntilAsync(() => _hub.WatcherCount(NtpServerPluginInfo.PluginId) == 1);
 
-        await NtpProbe.QueryAsync(Endpoint, TimeSpan.FromSeconds(2));
+        await NtpProbe.QueryAsync(Endpoint, AnswerTimeout);
         await watching;
         var requests = received.Single(e => e.Topic == NtpServerMethods.RequestsTopic);
         var entries = NtpJson.Deserialize<RequestsEvent>(requests.PayloadJson).Entries;
@@ -140,14 +151,16 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // 200 ms answers, real-time refill
     public async Task Rate_limited_clients_get_one_kiss_of_death_and_one_log_entry()
     {
+        // No refill during the test, however long the queries take: 8 answers, one RATE, then silence.
+        await RestartWithAsync(Options.Test(_resolver) with { RateLimit = new() { RefillSeconds = 3600 } });
         await SaveAsync();
         var answers = new List<NtpPacket>();
         for (var i = 0; i < 12; i++)
         {
-            var (answer, _, _, _) = await NtpProbe.QueryAsync(Endpoint, TimeSpan.FromMilliseconds(200));
+            // The first 9 are answered (8 and the Kiss-o'-Death); the dropped ones get a short wait.
+            var (answer, _, _, _) = await NtpProbe.QueryAsync(Endpoint, i < 9 ? AnswerTimeout : TimeSpan.FromMilliseconds(200));
             if (answer is { } a)
             {
                 answers.Add(a);
@@ -156,39 +169,60 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
 
         Assert.Equal(8, answers.Count(a => a.Stratum == 10));
         Assert.Single(answers, a => a.Stratum == 0 && NtpPacket.AsciiCode(a.ReferenceId) == "RATE");
+        await Wait.UntilAsync(() => Service.Log.Snapshot().Count(e => e.Result == RequestEntry.Answered) == 8);
         var log = Service.Log.Snapshot();
         Assert.Equal(8, log.Count(e => e.Result == RequestEntry.Answered));
         Assert.Single(log, e => e.Result == RequestEntry.RateLimited);
     }
 
     [Fact]
-    [Trait("Category", "Timing")]
+    public async Task Requests_are_answered_while_the_upstream_hangs()
+    {
+        await AnswerWhileTheUpstreamHangsAsync();
+    }
+
+    [Fact]
+    [Trait("Category", "Perf")]
     public async Task Requests_are_answered_within_a_few_ms_while_the_upstream_hangs()
     {
+        var slowest = await AnswerWhileTheUpstreamHangsAsync();
+        // Measured below 10 ms; 1 s leaves room for a busy machine.
+        Assert.True(slowest < TimeSpan.FromSeconds(1), $"slowest answer took {slowest.TotalMilliseconds} ms");
+    }
+
+    /// <summary>
+    /// The upstream takes the Save query, then never answers again (its next query waits 10 minutes): every request is
+    /// still answered at once with the upstream's state. Returns the slowest answer.
+    /// </summary>
+    private async Task<TimeSpan> AnswerWhileTheUpstreamHangsAsync()
+    {
+        await RestartWithAsync(Options.Test(_resolver) with { Upstream = Options.FastUpstream with { QueryTimeout = TimeSpan.FromMinutes(10) } });
         await using var upstream = new FakeUpstream(UpstreamBehavior.Answer);
         Assert.True((await SaveAsync(upstream: upstream.HostText)).Saved);
         upstream.Behavior = UpstreamBehavior.NoAnswer;
+        await Wait.UntilAsync(() => upstream.Requests >= 2); // the monitor's next query waits now
 
-        // From now on every upstream query waits for its full timeout; serving must not care.
         var slowest = TimeSpan.Zero;
         for (var i = 0; i < 6; i++)
         {
             var watch = Stopwatch.StartNew();
-            var (answer, _, _, _) = await NtpProbe.QueryAsync(Endpoint, TimeSpan.FromSeconds(1));
+            var (answer, _, _, _) = await NtpProbe.QueryAsync(Endpoint, AnswerTimeout);
             watch.Stop();
             Assert.NotNull(answer);
             Assert.Equal(NtpLeap.NoWarning, answer.Value.Leap);
+            Assert.Equal(3, answer.Value.Stratum);
             slowest = watch.Elapsed > slowest ? watch.Elapsed : slowest;
-            await Task.Delay(150);
         }
 
-        Assert.True(slowest < TimeSpan.FromMilliseconds(100), $"slowest answer took {slowest.TotalMilliseconds} ms");
+        Assert.Equal(2, upstream.Requests);
+        return slowest;
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // 300 ms query timeout
     public async Task Upstream_on_save_is_validated_then_served_and_an_unreachable_one_falls_back_with_a_warning()
     {
+        // A 5 s query timeout (the Save query must get its answer on a busy machine); one failure is enough to fall back.
+        await RestartWithAsync(Options.Test(_resolver) with { Upstream = Options.FastUpstream with { QueryTimeout = TimeSpan.FromSeconds(5), FailuresBeforeUnreachable = 1 } });
         await using var upstream = new FakeUpstream();
         var reply = await SaveAsync(upstream: upstream.HostText);
         Assert.True(reply.Saved);
@@ -196,21 +230,21 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
         Assert.Equal(3, reply.State.Stratum);
         Assert.True(reply.State.Upstream!.Reachable);
 
-        var (answer, _, _, _) = await NtpProbe.QueryAsync(Endpoint, TimeSpan.FromSeconds(1));
+        var (answer, _, _, _) = await NtpProbe.QueryAsync(Endpoint, AnswerTimeout);
         Assert.Equal(3, answer!.Value.Stratum);
         Assert.Equal(0x7F000001u, answer.Value.ReferenceId);
 
         upstream.Behavior = UpstreamBehavior.NoAnswer;
-        await Wait.UntilAsync(() => Service.GetState(false).Status.Kind == ServiceStatus.Warning, TimeSpan.FromSeconds(10));
+        await Wait.UntilAsync(() => Service.GetState(false).Status.Kind == ServiceStatus.Warning, TimeSpan.FromSeconds(60));
         var state = Service.GetState(false);
         Assert.Equal($"Upstream {upstream.HostText} does not answer, using this computer's time", state.Status.Text);
         Assert.Equal(10, state.Stratum);
-        (answer, _, _, _) = await NtpProbe.QueryAsync(Endpoint, TimeSpan.FromSeconds(1));
+        (answer, _, _, _) = await NtpProbe.QueryAsync(Endpoint, AnswerTimeout);
         Assert.Equal(10, answer!.Value.Stratum);
         Assert.Equal(NtpLeap.NoWarning, answer.Value.Leap);
 
         upstream.Behavior = UpstreamBehavior.Answer;
-        await Wait.UntilAsync(() => Service.GetState(false).Stratum == 3, TimeSpan.FromSeconds(10));
+        await Wait.UntilAsync(() => Service.GetState(false).Stratum == 3, TimeSpan.FromSeconds(60));
         Assert.Equal(ServiceStatus.Ok, Service.GetState(false).Status.Kind);
     }
 
@@ -223,7 +257,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
         Assert.False(reply.Saved);
         Assert.Equal("127.0.0.1: No answer within 300 ms.", reply.UpstreamError);
         Assert.Null(Service.Config.Upstream);
-        Assert.NotNull((await NtpProbe.QueryAsync(Endpoint, TimeSpan.FromSeconds(1))).Answer);
+        Assert.NotNull((await NtpProbe.QueryAsync(Endpoint, AnswerTimeout)).Answer);
 
         reply = await SaveAsync(upstream: "not a host");
         Assert.False(reply.Saved);
@@ -235,13 +269,16 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // 300 ms query timeout, offset to 0.1 s
     public async Task Clock_offset_over_one_second_is_a_warning()
     {
+        await RestartWithAsync(Options.Test(_resolver) with { Upstream = Options.FastUpstream with { QueryTimeout = AnswerTimeout } });
         await using var upstream = new FakeUpstream { ClockOffset = TimeSpan.FromSeconds(3.2) };
         var reply = await SaveAsync(upstream: upstream.HostText);
         Assert.Equal(ServiceStatus.Warning, reply.State.Status.Kind);
-        Assert.Equal("Server clock differs from upstream by 3.2 s", reply.State.Status.Text);
+        // 3.2 s on an idle machine; a busy one answers loopback unevenly (the offset error is half the asymmetry).
+        var offset = reply.State.Upstream!.OffsetMilliseconds!.Value / 1000;
+        Assert.InRange(offset, 2.2, 4.2);
+        Assert.Matches(@"^Server clock differs from upstream by \d\.\d s$", reply.State.Status.Text);
     }
 
     [Fact]
@@ -257,7 +294,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
         Assert.Equal("lo-id", state.Config.InterfaceId);
         Assert.Equal("Loopback", state.Config.InterfaceName);
         Assert.Equal(ServiceStatus.Ok, state.Status.Kind);
-        Assert.NotNull((await NtpProbe.QueryAsync(restarted.Service.Endpoints[0], TimeSpan.FromSeconds(1))).Answer);
+        Assert.NotNull((await NtpProbe.QueryAsync(restarted.Service.Endpoints[0], AnswerTimeout)).Answer);
     }
 
     [Fact]

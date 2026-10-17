@@ -12,7 +12,7 @@ public sealed class FirmwareTaskPluginTests
     private static readonly FirmwareTaskTimings Fast = new()
     {
         PollInterval = TimeSpan.FromMilliseconds(2),
-        RestartTimeout = TimeSpan.FromSeconds(5),
+        RestartTimeout = TimeSpan.FromSeconds(30), // reached only when a test fails: the fake comes back after three probes
         ProbeTimeout = TimeSpan.FromSeconds(1),
         CommitRetryDelay = TimeSpan.FromMilliseconds(1),
     };
@@ -432,15 +432,16 @@ public sealed class FirmwareTaskPluginTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // cancels after 100 ms, expected in a later step
     public async Task Cancellation_while_waiting_surfaces_as_cancellation()
     {
         var (ctx, device, payload, _) = Setup();
         device.After = AfterUpgrade.NeverBack;
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        using var cts = new CancellationTokenSource();
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            Run(ctx, payload, new FakeDevice(), Plugin(Fast with { RestartTimeout = TimeSpan.FromMinutes(1) }), cts.Token));
+        var run = Task.Run(() => Run(ctx, payload, new FakeDevice(), Plugin(Fast with { RestartTimeout = TimeSpan.FromMinutes(1) }), cts.Token));
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => StepRun.Lines(ctx.Steps).Contains("Wait for the device to come back: Running"), "the wait for the device");
+        await cts.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
 
         Assert.Equal("Wait for the device to come back: Failed", StepRun.Lines(ctx.Steps)[6]);
         Assert.Equal("Cancelled.", StepRun.Detail(ctx.Steps, "Wait for the device to come back"));

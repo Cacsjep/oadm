@@ -35,6 +35,11 @@ public sealed class HeadlessTestApp : Application
 
 public static class HeadlessEntry
 {
+    private static readonly Lazy<HeadlessUnitTestSession> Shared = new(() => HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry)));
+
+    /// <summary>One headless application per test process (Avalonia sets up only once); never disposed.</summary>
+    public static HeadlessUnitTestSession Session => Shared.Value;
+
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<HeadlessTestApp>()
         .UseSkia()
         .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
@@ -65,7 +70,7 @@ internal static class Headless
         Dispatcher.UIThread.RunJobs();
     }
 
-    public static async Task<bool> UntilAsync(Func<bool> condition, int seconds = 15)
+    public static async Task<bool> UntilAsync(Func<bool> condition, int seconds = 30)
     {
         var end = DateTime.UtcNow.AddSeconds(seconds);
         while (DateTime.UtcNow < end)

@@ -352,7 +352,7 @@ public sealed class HeadlessSmokeTests
         }
     }
 
-    private static async Task PumpUntilAsync(Func<bool> condition, int timeoutMs = 10000)
+    private static async Task PumpUntilAsync(Func<bool> condition, int timeoutMs = 30_000)
     {
         DateTime end = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         do

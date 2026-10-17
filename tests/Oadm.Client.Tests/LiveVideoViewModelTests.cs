@@ -1,12 +1,13 @@
 using Grpc.Core;
 
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 
 using NSubstitute;
 
-using Oadm.Client.Infrastructure;
 using Oadm.Client.LiveView;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Testing;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Client.Tests;
@@ -15,7 +16,7 @@ namespace Oadm.Client.Tests;
 /// The shared live video: resolution by size or Full, the silent swap to a new stream, stop while hidden, channels,
 /// reconnects and errors, the details, the controls and fullscreen. Delays are zero unless a test needs them.
 /// </summary>
-public sealed class LiveVideoViewModelTests
+public sealed class LiveVideoViewModelTests : IDisposable
 {
     private static readonly LiveVideoOptions Instant = new()
     {
@@ -27,15 +28,20 @@ public sealed class LiveVideoViewModelTests
     private readonly LiveVideoFakes _fakes = new();
     private readonly LiveVideoSettings _settings = new();
 
-    private LiveVideoViewModel Create(LiveVideoOptions? options = null) =>
-        new(_fakes.Api, _fakes.Decoders, new ImmediateUiDispatcher(), NullLogger.Instance, _settings, options ?? Instant)
+    // The video, its posted updates and the test's checks run on one thread, like on the client's UI thread.
+    private readonly UiThread _ui = new();
+
+    public void Dispose() => _ui.Dispose();
+
+    private LiveVideoViewModel Create(LiveVideoOptions? options = null, TimeProvider? time = null) =>
+        new(_fakes.Api, _fakes.Decoders, _ui, NullLogger.Instance, _settings, options ?? Instant, time)
         {
             Backoff = [TimeSpan.FromMilliseconds(20)],
         };
 
-    private async Task<LiveVideoViewModel> LiveAsync(LiveVideoOptions? options = null, int width = 1000, int height = 560)
+    private async Task<LiveVideoViewModel> LiveAsync(LiveVideoOptions? options = null, int width = 1000, int height = 560, TimeProvider? time = null)
     {
-        var video = Create(options);
+        var video = Create(options, time);
         video.SetViewport(width, height);
         video.Start("a", title: "P3265-V");
         var stream = await _fakes.StreamAsync(0);
@@ -71,7 +77,7 @@ public sealed class LiveVideoViewModelTests
     }
 
     [Fact]
-    public async Task Start_asks_for_the_resolution_of_the_size_at_the_adaptive_frame_rate_and_shows_the_picture()
+    public Task Start_asks_for_the_resolution_of_the_size_at_the_adaptive_frame_rate_and_shows_the_picture() => _ui.RunAsync(async () =>
     {
         using var video = Create();
         video.SetViewport(1000, 560);
@@ -83,18 +89,17 @@ public sealed class LiveVideoViewModelTests
         Assert.Equal((1280, 720, 20, 1), (stream.Request.MaxWidth, stream.Request.MaxHeight, stream.Request.Fps, stream.Request.Camera));
 
         stream.Send(VideoCodec.H265);
-        await TestSupport.WaitUntilAsync(() => video.Image is not null);
-        Assert.Equal(LiveViewState.Live, video.State);
+        await TestSupport.WaitUntilAsync(() => video.Image is not null && video.State == LiveViewState.Live);
         Assert.False(video.ShowRing);
         Assert.False(video.HasError);
         Assert.Equal(("H.265", "640x360"), (video.Details.Codec, video.Details.Resolution));
         Assert.False(video.ShowDetails); // the setting is off by default
         _settings.ShowDetails = true;
         Assert.True(video.ShowDetails);
-    }
+    });
 
     [Fact]
-    public async Task Full_quality_takes_the_largest_resolution_at_the_highest_frame_rate_and_swaps_silently()
+    public Task Full_quality_takes_the_largest_resolution_at_the_highest_frame_rate_and_swaps_silently() => _ui.RunAsync(async () =>
     {
         using var video = await LiveAsync();
         var first = await _fakes.StreamAsync(0);
@@ -112,18 +117,15 @@ public sealed class LiveVideoViewModelTests
         Assert.False(video.ShowRing);
 
         second.Send(width: 1920, height: 1080);
-        await TestSupport.WaitUntilAsync(() => video.PictureSize.Width == 1920);
-        await TestSupport.WaitUntilAsync(() => first.Cancelled);
-        Assert.Equal(LiveViewState.Live, video.State);
-    }
+        await TestSupport.WaitUntilAsync(() => video.PictureSize.Width == 1920 && first.Cancelled && video.State == LiveViewState.Live);
+    });
 
     [Fact]
-    public async Task A_new_size_opens_a_new_stream_only_when_the_resolution_changes()
+    public Task A_new_size_opens_a_new_stream_only_when_the_resolution_changes() => _ui.RunAsync(async () =>
     {
         using var video = await LiveAsync(width: 1000, height: 560);
         video.SetViewport(1100, 600); // still 1280x720
-        await Task.Delay(50);
-        Assert.Equal(1, _fakes.StreamCount);
+        await Eventually.StaysTrueAsync(() => _fakes.StreamCount == 1, "one stream", TimeSpan.FromMilliseconds(100));
 
         video.SetViewport(400, 225);
         var second = await _fakes.StreamAsync(1);
@@ -131,19 +133,23 @@ public sealed class LiveVideoViewModelTests
         video.SetViewport(1000, 560); // back before the new one delivered: the new one is dropped
         await TestSupport.WaitUntilAsync(() => second.Cancelled);
         Assert.Equal(2, _fakes.StreamCount);
-    }
+    });
 
     [Fact]
-    public async Task A_size_must_rest_before_the_resolution_follows()
+    public Task A_size_must_rest_before_the_resolution_follows() => _ui.RunAsync(async () =>
     {
-        using var video = await LiveAsync(Instant with { ResizeDebounce = TimeSpan.FromSeconds(30) });
+        var time = new FakeTimeProvider();
+        using var video = await LiveAsync(Instant with { ResizeDebounce = TimeSpan.FromSeconds(30) }, time: time);
         video.SetViewport(400, 225);
-        await Task.Delay(100);
+        time.Advance(TimeSpan.FromSeconds(29));
         Assert.Equal(1, _fakes.StreamCount);
-    }
+        time.Advance(TimeSpan.FromSeconds(1)); // rested: the smaller resolution follows
+        var second = await _fakes.StreamAsync(1);
+        Assert.Equal((480, 270), (second.Request.MaxWidth, second.Request.MaxHeight));
+    });
 
     [Fact]
-    public async Task A_new_stream_that_fails_keeps_the_old_one()
+    public Task A_new_stream_that_fails_keeps_the_old_one() => _ui.RunAsync(async () =>
     {
         using var video = await LiveAsync();
         var first = await _fakes.StreamAsync(0);
@@ -152,19 +158,16 @@ public sealed class LiveVideoViewModelTests
         video.ToggleQualityCommand.Execute(null);
         var second = await _fakes.StreamAsync(1);
         second.Fail(new RpcException(new Status(StatusCode.FailedPrecondition, "The camera refused the resolution.")));
-        await Task.Delay(100);
-
-        Assert.Equal(LiveViewState.Live, video.State);
-        Assert.Same(picture, video.Image);
-        Assert.False(first.Cancelled);
-        Assert.False(video.ShowRing);
-        Assert.Equal(2, _fakes.StreamCount); // no retry of the new one
+        await Eventually.StaysTrueAsync(
+            () => video.State == LiveViewState.Live && ReferenceEquals(picture, video.Image) && !first.Cancelled && !video.ShowRing
+                && _fakes.StreamCount == 2, // no retry of the new one
+            "the old stream stays", TimeSpan.FromMilliseconds(200));
         first.Send();
         await TestSupport.WaitUntilAsync(() => !ReferenceEquals(video.Image, picture));
-    }
+    });
 
     [Fact]
-    public async Task A_new_stream_that_is_slow_shows_the_ring_over_the_picture()
+    public Task A_new_stream_that_is_slow_shows_the_ring_over_the_picture() => _ui.RunAsync(async () =>
     {
         using var video = await LiveAsync(Instant with { SlowStartDelay = TimeSpan.Zero });
         Assert.False(video.ShowRing);
@@ -175,18 +178,17 @@ public sealed class LiveVideoViewModelTests
 
         second.Send(width: 1920, height: 1080);
         await TestSupport.WaitUntilAsync(() => !video.ShowRing);
-    }
+    });
 
     [Fact]
-    public async Task Hidden_it_stops_and_keeps_the_picture_shown_it_streams_again()
+    public Task Hidden_it_stops_and_keeps_the_picture_shown_it_streams_again() => _ui.RunAsync(async () =>
     {
         using var video = await LiveAsync();
         var first = await _fakes.StreamAsync(0);
         var picture = video.Image;
 
         video.SetVisible(false);
-        await TestSupport.WaitUntilAsync(() => first.Cancelled);
-        Assert.Equal(LiveViewState.Paused, video.State);
+        await TestSupport.WaitUntilAsync(() => first.Cancelled && video.State == LiveViewState.Paused);
         Assert.Same(picture, video.Image);
         Assert.False(video.ShowRing);
 
@@ -195,37 +197,37 @@ public sealed class LiveVideoViewModelTests
         Assert.Same(picture, video.Image); // until the new stream delivers
         second.Send();
         await TestSupport.WaitUntilAsync(() => video.State == LiveViewState.Live && !ReferenceEquals(video.Image, picture));
-    }
+    });
 
     [Fact]
-    public async Task A_video_started_while_hidden_stops_again_and_the_first_size_counts()
+    public Task A_video_started_while_hidden_stops_again_and_the_first_size_counts() => _ui.RunAsync(async () =>
     {
         using var video = Create(Instant with { HiddenStopDelay = TimeSpan.FromMilliseconds(200) });
         video.SetVisible(false); // behind the fullscreen window, another page
         video.Start("a");
         var first = await _fakes.StreamAsync(0);
         Assert.Equal((1920, 1080), (first.Request.MaxWidth, first.Request.MaxHeight)); // no size yet: the default
-        await TestSupport.WaitUntilAsync(() => first.Cancelled);
-        Assert.Equal(LiveViewState.Paused, video.State);
+        await TestSupport.WaitUntilAsync(() => first.Cancelled && video.State == LiveViewState.Paused);
 
         video.SetVisible(true);
         video.SetViewport(400, 225); // the first size arrives after the stream started
         await TestSupport.WaitUntilAsync(() => _fakes.Streams.Any(s => s.Request.MaxWidth == 480));
-    }
+    });
 
     [Fact]
-    public async Task Hidden_for_a_moment_it_keeps_streaming()
+    public Task Hidden_for_a_moment_it_keeps_streaming() => _ui.RunAsync(async () =>
     {
-        using var video = await LiveAsync(Instant with { HiddenStopDelay = TimeSpan.FromSeconds(30) });
+        var time = new FakeTimeProvider();
+        using var video = await LiveAsync(Instant with { HiddenStopDelay = TimeSpan.FromSeconds(30) }, time: time);
         video.SetVisible(false);
         video.SetVisible(true);
-        await Task.Delay(50);
+        time.Advance(TimeSpan.FromMinutes(1));
         Assert.False((await _fakes.StreamAsync(0)).Cancelled);
         Assert.Equal(1, _fakes.StreamCount);
-    }
+    });
 
     [Fact]
-    public async Task Several_channels_show_the_switch_and_a_choice_restarts_on_that_channel()
+    public Task Several_channels_show_the_switch_and_a_choice_restarts_on_that_channel() => _ui.RunAsync(async () =>
     {
         using var video = await LiveAsync();
         var first = await _fakes.StreamAsync(0);
@@ -237,21 +239,19 @@ public sealed class LiveVideoViewModelTests
         video.CameraChosen += (_, camera) => chosen.Add(camera);
 
         video.SelectSourceCommand.Execute(video.Sources[0]); // the shown one: nothing happens
-        await Task.Delay(50);
-        Assert.Equal(1, _fakes.StreamCount);
+        await Eventually.StaysTrueAsync(() => _fakes.StreamCount == 1, "one stream", TimeSpan.FromMilliseconds(100));
 
         video.SelectSourceCommand.Execute(video.Sources[1]);
         var second = await _fakes.StreamAsync(1);
         Assert.Equal(2, second.Request.Camera);
         Assert.Null(video.Image); // another channel: the old picture goes
-        await TestSupport.WaitUntilAsync(() => first.Cancelled);
-        Assert.True(video.Sources[1].IsSelected);
+        await TestSupport.WaitUntilAsync(() => first.Cancelled && video.Sources[1].IsSelected);
         Assert.Equal("View Area 2", video.SourceName);
         Assert.Equal([1, 2], chosen);
-    }
+    });
 
     [Fact]
-    public async Task A_grid_sets_the_channel_and_hides_the_switch()
+    public Task A_grid_sets_the_channel_and_hides_the_switch() => _ui.RunAsync(async () =>
     {
         using var video = Create(Instant with { ShowSourceSwitch = false });
         video.Start("a", camera: 2);
@@ -259,20 +259,20 @@ public sealed class LiveVideoViewModelTests
         await TestSupport.WaitUntilAsync(() => video.HasSourceChoice);
         Assert.False(video.ShowSourceSwitch);
         Assert.True(video.Sources[1].IsSelected);
-    }
+    });
 
     [Fact]
-    public async Task One_channel_has_no_switch()
+    public Task One_channel_has_no_switch() => _ui.RunAsync(async () =>
     {
         using var video = Create();
         video.Start("b");
         await TestSupport.WaitUntilAsync(() => video.Sources.Count == 1);
         Assert.False(video.ShowSourceSwitch);
         Assert.Null(video.SourceName);
-    }
+    });
 
     [Fact]
-    public async Task A_new_picture_replaces_and_disposes_the_previous_one_and_stop_releases_everything()
+    public Task A_new_picture_replaces_and_disposes_the_previous_one_and_stop_releases_everything() => _ui.RunAsync(async () =>
     {
         using var video = await LiveAsync();
         var stream = await _fakes.StreamAsync(0);
@@ -288,10 +288,10 @@ public sealed class LiveVideoViewModelTests
         Assert.Equal(LiveViewState.Closed, video.State);
         await TestSupport.WaitUntilAsync(() => stream.Cancelled);
         await TestSupport.WaitUntilAsync(() => _fakes.Decoders.Created.All(d => d.Disposed));
-    }
+    });
 
     [Fact]
-    public async Task A_dropped_stream_reconnects_with_the_ring_and_the_reason()
+    public Task A_dropped_stream_reconnects_with_the_ring_and_the_reason() => _ui.RunAsync(async () =>
     {
         using var video = await LiveAsync();
         (await _fakes.StreamAsync(0)).Fail(new RpcException(new Status(StatusCode.Unavailable, "The camera closed the video stream.")));
@@ -300,7 +300,7 @@ public sealed class LiveVideoViewModelTests
         await TestSupport.WaitUntilAsync(() => video.State == LiveViewState.Live);
         Assert.Equal("a", second.Request.DeviceId);
 
-        var waiting = new LiveVideoViewModel(_fakes.Api, _fakes.Decoders, new ImmediateUiDispatcher(), NullLogger.Instance, _settings, Instant)
+        var waiting = new LiveVideoViewModel(_fakes.Api, _fakes.Decoders, _ui, NullLogger.Instance, _settings, Instant)
         {
             Backoff = [TimeSpan.FromSeconds(30)],
         };
@@ -313,10 +313,10 @@ public sealed class LiveVideoViewModelTests
             Assert.True(waiting.IsReconnecting); // the reason shows below the ring
             Assert.Equal("The camera stopped sending video. Retrying in 30 s.", waiting.StatusText);
         }
-    }
+    });
 
     [Fact]
-    public async Task A_permanent_error_shows_over_the_picture_without_retrying()
+    public Task A_permanent_error_shows_over_the_picture_without_retrying() => _ui.RunAsync(async () =>
     {
         using var video = await LiveAsync();
         (await _fakes.StreamAsync(0)).Fail(new RpcException(new Status(StatusCode.PermissionDenied, "The camera rejected the stored credentials.")));
@@ -325,12 +325,11 @@ public sealed class LiveVideoViewModelTests
         Assert.False(video.ShowRing);
         Assert.Null(video.Image);
         Assert.Equal("The camera rejected the stored credentials.", video.StatusText);
-        await Task.Delay(50);
-        Assert.Equal(1, _fakes.StreamCount);
-    }
+        await Eventually.StaysTrueAsync(() => _fakes.StreamCount == 1, "no retry", TimeSpan.FromMilliseconds(100)); // the backoff is 20 ms
+    });
 
     [Fact]
-    public void A_missing_decoder_shows_a_clear_error_and_never_calls_the_server()
+    public Task A_missing_decoder_shows_a_clear_error_and_never_calls_the_server() => _ui.RunAsync(() =>
     {
         _fakes.Decoders.Available = false;
         using var video = Create();
@@ -338,10 +337,11 @@ public sealed class LiveVideoViewModelTests
         Assert.Equal(LiveViewState.Error, video.State);
         Assert.Equal(LiveVideoViewModel.DecoderUnavailableText, video.StatusText);
         _fakes.Api.DidNotReceive().WatchLiveViewAsync(Arg.Any<LiveViewRequest>(), Arg.Any<CancellationToken>());
-    }
+        return Task.CompletedTask;
+    });
 
     [Fact]
-    public async Task The_details_say_GPU_or_the_icon_warns_what_to_do()
+    public Task The_details_say_GPU_or_the_icon_warns_what_to_do() => _ui.RunAsync(async () =>
     {
         _fakes.Decoders.UsesGpu = true;
         using (var video = await LiveAsync())
@@ -360,26 +360,25 @@ public sealed class LiveVideoViewModelTests
         Assert.Equal("Processor", cpu.Details.Decoding);
         cpu.Stop();
         Assert.False(cpu.HasDecodingWarning);
-    }
+    });
 
     [Fact]
-    public async Task A_new_adaptive_frame_rate_opens_a_new_stream()
+    public Task A_new_adaptive_frame_rate_opens_a_new_stream() => _ui.RunAsync(async () =>
     {
         using var video = await LiveAsync();
         _settings.AdaptiveFps = 8;
         Assert.Equal(8, (await _fakes.StreamAsync(1)).Request.Fps);
         _settings.AdaptiveFps = 99;
         Assert.Equal(LiveVideoSettings.MaxAdaptiveFps, _settings.AdaptiveFps);
-    }
+    });
 
     [Fact]
-    public async Task The_controls_open_with_the_camera_the_button_closes_them_and_options_hide_parts()
+    public Task The_controls_open_with_the_camera_the_button_closes_them_and_options_hide_parts() => _ui.RunAsync(async () =>
     {
         _fakes.Api.GetOpticsAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(new OpticsState { Supported = true, HasZoom = true, HasFocus = true, MaxMagnification = 3 });
         using var video = await LiveAsync();
-        await TestSupport.WaitUntilAsync(() => video.HasControls);
-        Assert.True(video.IsControlsOpen); // open from the start
+        await TestSupport.WaitUntilAsync(() => video.HasControls && video.IsControlsOpen); // open from the start
         Assert.True(video.ShowOpticsBar);
         Assert.False(video.ShowPtz);
 
@@ -410,10 +409,10 @@ public sealed class LiveVideoViewModelTests
         noButton.Start("b");
         await TestSupport.WaitUntilAsync(() => noButton.Optics.IsVisible);
         Assert.False(noButton.HasControls);
-    }
+    });
 
     [Fact]
-    public async Task The_PTZ_circle_shows_only_while_the_controls_are_open()
+    public Task The_PTZ_circle_shows_only_while_the_controls_are_open() => _ui.RunAsync(async () =>
     {
         _fakes.Api.GetPtzAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(new PtzState { Supported = true, CanMove = true, CanZoom = true, Presets = { "Gate" } });
@@ -429,10 +428,10 @@ public sealed class LiveVideoViewModelTests
         Assert.False(noPresets.Ptz.HasPresets);
         Assert.False(noPresets.Ptz.CanMove);
         Assert.True(noPresets.Ptz.CanZoom);
-    }
+    });
 
     [Fact]
-    public async Task Fullscreen_has_its_own_stream_and_the_video_below_rests_meanwhile()
+    public Task Fullscreen_has_its_own_stream_and_the_video_below_rests_meanwhile() => _ui.RunAsync(async () =>
     {
         using var video = await LiveAsync();
         var below = await _fakes.StreamAsync(0);
@@ -446,8 +445,7 @@ public sealed class LiveVideoViewModelTests
         Assert.Equal("P3265-V", fullscreen.Title);
         var own = await _fakes.StreamAsync(1);
         Assert.Equal(1, own.Request.Camera);
-        await TestSupport.WaitUntilAsync(() => below.Cancelled);
-        Assert.Equal(LiveViewState.Paused, video.State);
+        await TestSupport.WaitUntilAsync(() => below.Cancelled && video.State == LiveViewState.Paused);
 
         fullscreen.Dispose();
         await TestSupport.WaitUntilAsync(() => own.Cancelled);
@@ -459,5 +457,5 @@ public sealed class LiveVideoViewModelTests
         noFullscreen.Start("b");
         noFullscreen.ToggleFullscreenCommand.Execute(null);
         Assert.Equal(1, requested);
-    }
+    });
 }

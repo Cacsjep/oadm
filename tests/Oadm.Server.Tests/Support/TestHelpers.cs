@@ -9,19 +9,8 @@ internal static class TestHelpers
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>Polls <paramref name="condition"/> until it is true or the timeout expires.</summary>
-    public static async Task WaitUntilAsync(Func<Task<bool>> condition, string what, TimeSpan? timeout = null)
-    {
-        var deadline = DateTime.UtcNow + (timeout ?? DefaultTimeout);
-        while (!await condition())
-        {
-            if (DateTime.UtcNow > deadline)
-            {
-                throw new TimeoutException("Timed out waiting for " + what);
-            }
-
-            await Task.Delay(50);
-        }
-    }
+    public static Task WaitUntilAsync(Func<Task<bool>> condition, string what, TimeSpan? timeout = null) =>
+        Oadm.Sdk.Testing.Eventually.TrueAsync(condition, what, timeout ?? DefaultTimeout);
 
     /// <summary>Runs a range scan through gRPC and returns the session id and the discovered devices.</summary>
     public static async Task<(string SessionId, List<Proto.DiscoveredDevice> Devices)> ScanAsync(TestServerHost host, string from, string to)

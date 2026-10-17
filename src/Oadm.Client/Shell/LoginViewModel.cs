@@ -67,7 +67,7 @@ public sealed partial class LoginViewModel : ValidatingViewModel
     private bool _connectionFailed;
 
     /// <summary>How long "Connecting to ..." shows at least (each Connect again visibly tries again; tests set zero).</summary>
-    internal static TimeSpan ConnectFeedback { get; set; } = TimeSpan.FromMilliseconds(500);
+    internal TimeSpan ConnectFeedback { get; init; } = TimeSpan.FromMilliseconds(500);
 
     public event EventHandler? LoggedIn;
 

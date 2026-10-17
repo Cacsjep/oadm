@@ -158,7 +158,7 @@ public sealed class DeviceRepositoryTests : IAsyncLifetime
         await _repo.AddAsync(NewDevice(), CancellationToken.None);
 
         Assert.False(subscription.Reader.TryRead(out _));
-        await subscription.Reader.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        await subscription.Reader.Completion.WaitAsync(TimeSpan.FromSeconds(30));
     }
 
     [Fact]

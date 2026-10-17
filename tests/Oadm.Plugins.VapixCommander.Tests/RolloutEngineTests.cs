@@ -147,18 +147,27 @@ public sealed class RolloutEngineTests : IAsyncLifetime
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // the slow device must start within the 200 ms
     public async Task Stop_on_first_error_stops_the_whole_rollout()
     {
         // Two run at a time: the failing device and a slow one; the other three wait in Queued.
-        // The failure comes after 200 ms so the slow device has surely started its first command
-        // (an instant failure could cancel it while still queued, which is also correct but not this case).
+        // The failure answers only once the slow device has started its first command (an instant failure could cancel
+        // it while still queued, which is also correct but not this case).
         // The slow device answers its first command only once the rollout is stopped: no race with the stop on a busy
         // machine (a fixed 400 ms let the slow device finish everything on a macOS CI runner).
-        var failing = AddDevice("10.0.0.1", r => FakeVapix.Text("# Error: Error -1 getting param in group 'Brand'"), delay: TimeSpan.FromMilliseconds(200));
-        var slow = AddDevice("10.0.0.2", r =>
+        FakeDevice? slow = null;
+        var failing = AddDevice("10.0.0.1", r =>
         {
-            var deadline = DateTime.UtcNow.AddSeconds(10);
+            var deadline = DateTime.UtcNow.AddSeconds(30);
+            while ((slow is null || _vapix.For(slow.Id).Requests.IsEmpty) && DateTime.UtcNow < deadline)
+            {
+                Thread.Sleep(10);
+            }
+
+            return FakeVapix.Text("# Error: Error -1 getting param in group 'Brand'");
+        });
+        slow = AddDevice("10.0.0.2", r =>
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(30);
             while (!_plugin.Rollouts.All.Any(x => x.IsAborted) && DateTime.UtcNow < deadline)
             {
                 Thread.Sleep(10);

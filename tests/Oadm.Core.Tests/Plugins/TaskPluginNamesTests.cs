@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Oadm.Core.Plugins;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
+using Oadm.Tests.Shared;
 
 namespace Oadm.Core.Tests.Plugins;
 
@@ -69,8 +70,8 @@ public sealed class TaskPluginNamesTests
     [Fact]
     public void DeployedTaskPluginsFollowTheNameRulesAndUseTheirGroups()
     {
-        var root = PluginPaths.Development(AppContext.BaseDirectory);
-        Assert.NotNull(root);
+        var root = TestRepository.DevelopmentPlugins;
+        TestRepository.DeployedPlugin(root, "oadm.restart", "Oadm.Plugins.Restart.Server.dll");
         var registry = new PluginRegistry();
         var loader = new PluginLoader(registry);
         try

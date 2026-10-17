@@ -19,7 +19,7 @@ namespace Oadm.Plugins.Dashboards.Tests;
 public sealed class DashboardsPageTests
 {
     /// <summary>The page runs on the UI thread like in the client.</summary>
-    private static readonly HeadlessUnitTestSession Ui = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+    private static readonly HeadlessUnitTestSession Ui = HeadlessEntry.Session;
 
     private static async Task OnUi(Func<Task> test) =>
         Assert.True(await Ui.Dispatch(async () =>
@@ -705,7 +705,7 @@ public sealed class DashboardsPageTests
     [Fact]
     public async Task The_page_shows_widgets_and_the_widget_panel()
     {
-        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessEntry.Session;
         var done = await session.Dispatch(async () =>
         {
             // The fake mode's devices and recorded video, like the client in fake mode.
@@ -749,7 +749,7 @@ public sealed class DashboardsPageTests
                 page.OpenDashboardCommand.Execute(page.Dashboards[0]);
                 Assert.True(await Headless.UntilAsync(() => page.ActiveTab!.Widgets.Where(w => w.Widget.IsValue).All(w => w.Value is not null)));
                 var videoWidget = page.ActiveTab!.Widgets.Single(w => w.Widget.Kind == WidgetKind.Video);
-                Assert.True(await Headless.UntilAsync(() => ((Oadm.Client.LiveView.LiveVideoViewModel)videoWidget.Video!.View.DataContext!).Image is not null, 30));
+                Assert.True(await Headless.UntilAsync(() => ((Oadm.Client.LiveView.LiveVideoViewModel)videoWidget.Video!.View.DataContext!).Image is not null, 60));
                 Headless.Pump();
                 var widgets = view.GetVisualDescendants().OfType<WidgetView>().ToList();
                 Assert.Equal(5, widgets.Count);

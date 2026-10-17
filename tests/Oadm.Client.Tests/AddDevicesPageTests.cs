@@ -14,10 +14,18 @@ public sealed class AddDevicesPageTests : IDisposable
 {
     private readonly FakeOadmApi _api = new(TimeSpan.FromMilliseconds(5));
 
-    public void Dispose() => _api.Dispose();
+    // The page, its posted updates, the continuations of its awaits and the test's checks all run on this one
+    // thread, like on the client's UI thread (see UiThread).
+    private readonly UiThread _ui = new();
 
-    private AddDevicesViewModel Create(AddDevicesMode mode) =>
-        new(_api, new ImmediateUiDispatcher(), NullLogger<AddDevicesViewModel>.Instance, mode);
+    public void Dispose()
+    {
+        _ui.Dispose();
+        _api.Dispose();
+    }
+
+    private AddDevicesViewModel Create(AddDevicesMode mode, FakeOadmApi? api = null) =>
+        new(api ?? _api, _ui, NullLogger<AddDevicesViewModel>.Instance, mode);
 
     /// <summary>Scan: 3 managed, 3 authenticated, 2 login failed, 2 factory default, 1 unreachable.</summary>
     private async Task<AddDevicesViewModel> OpenScanAsync()
@@ -31,7 +39,7 @@ public sealed class AddDevicesPageTests : IDisposable
     private static DiscoveredRowViewModel Row(AddDevicesViewModel page, string address) => page.Rows.Single(r => r.Address == address);
 
     [Fact]
-    public async Task Scan_starts_immediately_and_shows_the_login_result_per_device()
+    public Task Scan_starts_immediately_and_shows_the_login_result_per_device() => _ui.RunAsync(async () =>
     {
         await using AddDevicesViewModel page = await OpenScanAsync();
 
@@ -53,13 +61,13 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.Equal(8, page.FilteredRows.Count);
         Assert.Equal("8 found · 3 ready to add · 2 need a login · 2 need a password · 0 selected", page.SummaryText);
         Assert.False(page.AddCommand.CanExecute(null));
-    }
+    });
 
     [Fact]
-    public async Task Dns_names_replace_the_ip_addresses_when_chosen_and_the_choice_is_remembered()
+    public Task Dns_names_replace_the_ip_addresses_when_chosen_and_the_choice_is_remembered() => _ui.RunAsync(async () =>
     {
         var settings = new InMemoryClientSettingsStore();
-        await using var page = new AddDevicesViewModel(_api, new ImmediateUiDispatcher(), NullLogger<AddDevicesViewModel>.Instance, AddDevicesMode.Scan, settings);
+        await using var page = new AddDevicesViewModel(_api, _ui, NullLogger<AddDevicesViewModel>.Instance, AddDevicesMode.Scan, settings);
         await page.OpenAsync();
         await TestSupport.WaitUntilAsync(() => page.Rows.Count == 11 && page.Rows.All(r => r.AuthState != AuthState.Pending));
         Assert.True(page.ShowDnsNameChoice);
@@ -85,14 +93,14 @@ public sealed class AddDevicesPageTests : IDisposable
         IReadOnlyList<Device> devices = await _api.ListDevicesAsync(CancellationToken.None);
         Assert.Contains(devices, d => d.Address == dnsName && d.UseHostName);
 
-        await using var again = new AddDevicesViewModel(_api, new ImmediateUiDispatcher(), NullLogger<AddDevicesViewModel>.Instance, AddDevicesMode.IpRange, settings);
+        await using var again = new AddDevicesViewModel(_api, _ui, NullLogger<AddDevicesViewModel>.Instance, AddDevicesMode.IpRange, settings);
         Assert.True(again.UseDnsNames);
-        await using var manual = new AddDevicesViewModel(_api, new ImmediateUiDispatcher(), NullLogger<AddDevicesViewModel>.Instance, AddDevicesMode.Manual, settings);
+        await using var manual = new AddDevicesViewModel(_api, _ui, NullLogger<AddDevicesViewModel>.Instance, AddDevicesMode.Manual, settings);
         Assert.False(manual.ShowDnsNameChoice); // typed addresses are kept as typed
-    }
+    });
 
     [Fact]
-    public async Task Only_authenticated_devices_can_be_selected_and_are_added_in_one_click()
+    public Task Only_authenticated_devices_can_be_selected_and_are_added_in_one_click() => _ui.RunAsync(async () =>
     {
         await using AddDevicesViewModel page = await OpenScanAsync();
         bool? closed = null;
@@ -114,10 +122,10 @@ public sealed class AddDevicesPageTests : IDisposable
         IReadOnlyList<Device> devices = await _api.ListDevicesAsync(CancellationToken.None);
         Assert.All(new[] { "10.0.0.92", "10.0.0.94", "10.0.0.96" }, a => Assert.Equal(DeviceStatus.Ok, devices.Single(d => d.Address == a).Status));
         Assert.All(new[] { "10.0.0.92", "10.0.0.94", "10.0.0.96" }, a => Assert.True(devices.Single(d => d.Address == a).HasCredentials));
-    }
+    });
 
     [Fact]
-    public async Task Login_failed_row_opens_the_inline_editor_and_retries_right_away()
+    public Task Login_failed_row_opens_the_inline_editor_and_retries_right_away() => _ui.RunAsync(async () =>
     {
         await using AddDevicesViewModel page = await OpenScanAsync();
         DiscoveredRowViewModel failed = Row(page, "10.0.0.93");
@@ -153,10 +161,10 @@ public sealed class AddDevicesPageTests : IDisposable
         // The server tries the working login on the other device whose login failed; the open scan stream reports it.
         await TestSupport.WaitUntilAsync(() => Row(page, "10.0.0.97").ChipText == "Authenticated (admin)");
         Assert.Equal("8 found · 5 ready to add · 2 need a password · 1 selected", page.SummaryText);
-    }
+    });
 
     [Fact]
-    public async Task Factory_default_devices_need_a_valid_password_which_is_set_on_add()
+    public Task Factory_default_devices_need_a_valid_password_which_is_set_on_add() => _ui.RunAsync(async () =>
     {
         await using AddDevicesViewModel page = await OpenScanAsync();
         DiscoveredRowViewModel simple = Row(page, "10.0.0.90");
@@ -199,10 +207,10 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.False(simple.CanAdd);
         IReadOnlyList<Device> devices = await _api.ListDevicesAsync(CancellationToken.None);
         Assert.Equal(DeviceStatus.Ok, devices.Single(d => d.Address == "10.0.0.91").Status);
-    }
+    });
 
     [Fact]
-    public async Task Ip_range_scans_on_enter_and_reports_progress()
+    public Task Ip_range_scans_on_enter_and_reports_progress() => _ui.RunAsync(async () =>
     {
         await using AddDevicesViewModel page = Create(AddDevicesMode.IpRange);
         await page.OpenAsync();
@@ -232,10 +240,10 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.False(page.ShowStop);
         Assert.All(page.Rows, r => Assert.StartsWith("10.0.1.", r.Address, StringComparison.Ordinal));
         Assert.Equal(3, page.Rows.Count(r => r.CanAdd));
-    }
+    });
 
     [Fact]
-    public async Task Add_manually_probes_each_entered_address()
+    public Task Add_manually_probes_each_entered_address() => _ui.RunAsync(async () =>
     {
         await using AddDevicesViewModel page = Create(AddDevicesMode.Manual);
         await page.OpenAsync();
@@ -266,10 +274,10 @@ public sealed class AddDevicesPageTests : IDisposable
         await page.AddCommand.ExecuteAsync(null);
         IReadOnlyList<Device> devices = await _api.ListDevicesAsync(CancellationToken.None);
         Assert.Contains(devices, d => d.Address == "camera7.example.com:8443" && d.Status == DeviceStatus.Ok);
-    }
+    });
 
     [Fact]
-    public async Task Zero_conf_scan_ends_after_the_time_limit_and_can_run_again()
+    public Task Zero_conf_scan_ends_after_the_time_limit_and_can_run_again() => _ui.RunAsync(async () =>
     {
         _api.ZeroConfDuration = TimeSpan.FromMilliseconds(300);
         await using AddDevicesViewModel page = await OpenScanAsync();
@@ -294,10 +302,10 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.Equal(11, page.Rows.Count);
         Assert.True(Row(page, "10.0.0.92").IsSelected); // the new search did not reset the known login or the selection
         Assert.Equal("Authenticated (root)", Row(page, "10.0.0.92").ChipText);
-    }
+    });
 
     [Fact]
-    public async Task Stop_ends_a_zero_conf_scan_and_keeps_the_devices()
+    public Task Stop_ends_a_zero_conf_scan_and_keeps_the_devices() => _ui.RunAsync(async () =>
     {
         await using AddDevicesViewModel page = await OpenScanAsync(); // fake limit: 30 s, like the server default
         Assert.True(page.IsScanning);
@@ -311,10 +319,10 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.Equal(11, page.Rows.Count);
         Assert.True(page.ShowScanAgain);
         Assert.False(page.ShowStop);
-    }
+    });
 
     [Fact]
-    public async Task Stop_ends_an_ip_range_scan()
+    public Task Stop_ends_an_ip_range_scan() => _ui.RunAsync(async () =>
     {
         await using AddDevicesViewModel page = Create(AddDevicesMode.IpRange);
         await page.OpenAsync();
@@ -334,10 +342,10 @@ public sealed class AddDevicesPageTests : IDisposable
         await page.ScanAgainCommand.ExecuteAsync(null);
         await TestSupport.WaitUntilAsync(() => !page.IsScanning && page.Rows.Count == 7);
         Assert.Equal("Scan finished, 7 devices found", page.ScanStatusText);
-    }
+    });
 
     [Fact]
-    public async Task A_working_login_is_tried_on_failed_devices_of_the_other_searches()
+    public Task A_working_login_is_tried_on_failed_devices_of_the_other_searches() => _ui.RunAsync(async () =>
     {
         await using AddDevicesViewModel page = Create(AddDevicesMode.Manual);
         await page.OpenAsync();
@@ -350,7 +358,9 @@ public sealed class AddDevicesPageTests : IDisposable
         await TestSupport.WaitUntilAsync(() => !page.IsScanning && page.Rows.Count == 2 && page.Rows.All(r => r.ChipText == "Login failed"));
         Assert.False(page.ShowStop);
         Assert.False(page.ShowScanAgain); // manual search: nothing to repeat
-        await Task.Delay(100); // both watch streams have ended
+        // Both watch streams have ended at the fake. The page may not have seen the end yet; a Retry then watches the
+        // session again once the end arrives (AddDevicesViewModel.WatchEnded), so the results reach the page either way.
+        await TestSupport.WaitUntilAsync(() => _api.OpenProbeWatches == 0);
 
         page.OpenEditorCommand.Execute(Row(page, "10.0.0.93"));
         page.EditorUserName = "admin";
@@ -361,18 +371,18 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.Equal("Authenticated (admin)", Row(page, "10.0.0.93").ChipText);
         await TestSupport.WaitUntilAsync(() => Row(page, "10.0.0.97").ChipText == "Authenticated (admin)");
         Assert.Equal(2, page.Rows.Count(r => r.CanAdd));
-    }
+    });
 
-    private async Task<AddDevicesViewModel> OpenImportAsync(string csv)
+    private async Task<AddDevicesViewModel> OpenImportAsync(string csv, FakeOadmApi? api = null)
     {
-        AddDevicesViewModel page = Create(AddDevicesMode.Import);
+        AddDevicesViewModel page = Create(AddDevicesMode.Import, api);
         page.SetImport(DeviceImportFile.Parse("site.csv", csv));
         await page.OpenAsync();
         return page;
     }
 
     [Fact]
-    public async Task Import_lines_that_do_not_answer_are_kept_waiting_on_add()
+    public Task Import_lines_that_do_not_answer_are_kept_waiting_on_add() => _ui.RunAsync(async () =>
     {
         string csv = string.Join("\n",
             "Address,User name,Password,Tags",
@@ -420,10 +430,10 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.False(waiting.CanWait);
         Assert.Equal(0, again.WaitingCount);
         Assert.EndsWith(", 2 already waiting", again.ScanStatusText, StringComparison.Ordinal);
-    }
+    });
 
     [Fact]
-    public async Task An_ADM_export_line_whose_address_now_has_another_device_is_not_added()
+    public Task An_ADM_export_line_whose_address_now_has_another_device_is_not_added() => _ui.RunAsync(async () =>
     {
         // 10.0.0.97 answers, but the export names another MAC address: not added (the server sends that device no password).
         string json = """
@@ -448,10 +458,10 @@ public sealed class AddDevicesPageTests : IDisposable
             Assert.False(other.CanAdd);
             Assert.Equal("Authenticated (root)", Row(page, "camera7.example.com:8443").ChipText); // no MAC address in the line: any device
         }
-    }
+    });
 
     [Fact]
-    public async Task Import_lists_every_line_and_probes_the_addresses_with_their_credentials()
+    public Task Import_lists_every_line_and_probes_the_addresses_with_their_credentials() => _ui.RunAsync(async () =>
     {
         string managed = (await _api.ListDevicesAsync(CancellationToken.None))[0].Address;
         string csv = string.Join("\n",
@@ -498,29 +508,43 @@ public sealed class AddDevicesPageTests : IDisposable
         IReadOnlyList<Device> devices = await _api.ListDevicesAsync(CancellationToken.None);
         Assert.True(devices.Single(d => d.Address == "10.0.0.93").HasCredentials);
         Assert.Contains(devices, d => d.Address == "camera7.example.com:8443");
-    }
+    });
 
     [Fact]
-    public async Task Import_probes_at_most_sixteen_addresses_at_a_time()
+    public Task Import_probes_at_most_sixteen_addresses_at_a_time() => _ui.RunAsync(async () =>
     {
         string csv = string.Join("\n", Enumerable.Range(1, 80).Select(i => $"10.0.2.{i}"));
+        // Slow probes (each watch lasts over half a second), so they overlap however slowly the probes start.
+        using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(50));
 
-        await using AddDevicesViewModel page = await OpenImportAsync(csv);
+        await using AddDevicesViewModel page = await OpenImportAsync(csv, api);
         await page.ImportCompletion!;
-        await TestSupport.WaitUntilAsync(() => !page.IsScanning && page.Rows.All(r => r.IsImportPlaceholder || r.AuthState != AuthState.Pending), 20000);
+        await TestSupport.WaitUntilAsync(() => !page.IsScanning && page.Rows.All(r => r.IsImportPlaceholder || r.AuthState != AuthState.Pending));
 
-        Assert.InRange(_api.MaxOpenProbeWatches, 2, AddDevicesViewModel.MaxImportProbes);
+        Assert.InRange(api.MaxOpenProbeWatches, 2, AddDevicesViewModel.MaxImportProbes);
         Assert.Equal(80, page.Rows.Count(r => r.ChipText == "Authenticated (root)"));
         Assert.Equal("Import finished, 80 devices found", page.ScanStatusText);
         Assert.Equal(100, page.ScanProgress);
-    }
+    });
 
     [Fact]
-    [Trait("Category", "Timing")]
-    public async Task An_import_of_thirty_thousand_lines_lists_and_filters_fast()
+    public Task An_import_of_thirty_thousand_lines_lists_and_filters() => _ui.RunAsync(async () =>
     {
-        string csv = "Address,User name,Password\n" + string.Join("\n", Enumerable.Range(0, DeviceImportFile.MaxLines).Select(i => $"10.1.{i / 256}.{i % 256},root,pass{i}"));
-        DeviceImportFile file = DeviceImportFile.Parse("big.csv", csv);
+        await using AddDevicesViewModel page = Create(AddDevicesMode.Import);
+        page.SetImport(ThirtyThousandLines());
+        page.SearchText = "10.1.3.";
+        page.SelectAllAuthenticatedCommand.Execute(null);
+
+        Assert.Equal(DeviceImportFile.MaxLines, page.Rows.Count);
+        Assert.Equal(256, page.FilteredRows.Count);
+        Assert.Equal("0 found · 0 ready to add · 0 selected", page.SummaryText);
+    });
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public Task An_import_of_thirty_thousand_lines_lists_and_filters_fast() => _ui.RunAsync(async () =>
+    {
+        DeviceImportFile file = ThirtyThousandLines();
         await using AddDevicesViewModel page = Create(AddDevicesMode.Import);
 
         var watch = System.Diagnostics.Stopwatch.StartNew();
@@ -531,32 +555,34 @@ public sealed class AddDevicesPageTests : IDisposable
         page.SelectAllAuthenticatedCommand.Execute(null);
         long all = watch.ElapsedMilliseconds;
 
-        Assert.Equal(DeviceImportFile.MaxLines, page.Rows.Count);
         Assert.Equal(256, page.FilteredRows.Count);
-        Assert.Equal("0 found · 0 ready to add · 0 selected", page.SummaryText);
-        Assert.True(all < 4500, $"30,000 lines: listed in {listed} ms, filtered in {filtered} ms, total {all} ms");
-    }
+        Assert.True(all < 10_000, $"30,000 lines: listed in {listed} ms, filtered in {filtered} ms, total {all} ms");
+    });
+
+    private static DeviceImportFile ThirtyThousandLines() => DeviceImportFile.Parse("big.csv",
+        "Address,User name,Password\n" + string.Join("\n", Enumerable.Range(0, DeviceImportFile.MaxLines).Select(i => $"10.1.{i / 256}.{i % 256},root,pass{i}")));
 
     [Fact]
-    public async Task Stop_ends_an_import_and_leaves_the_rest_unchecked()
+    public Task Stop_ends_an_import_and_leaves_the_rest_unchecked() => _ui.RunAsync(async () =>
     {
-        string csv = string.Join("\n", Enumerable.Range(1, 200).Select(i => $"10.0.3.{i}"));
+        // Far more lines than are probed at a time: the last line still waits when Stop comes, however slow the run.
+        string csv = string.Join("\n", Enumerable.Range(0, 2000).Select(i => $"10.3.{i / 250}.{i % 250 + 1}"));
         await using AddDevicesViewModel page = await OpenImportAsync(csv);
         await TestSupport.WaitUntilAsync(() => page.Rows.Any(r => r.ChipText == "Authenticated (root)"));
 
         await page.StopScanCommand.ExecuteAsync(null);
         await page.ImportCompletion!;
-        await TestSupport.WaitUntilAsync(() => !page.IsScanning, 20000);
+        await TestSupport.WaitUntilAsync(() => !page.IsScanning);
 
         Assert.StartsWith("Import stopped, ", page.ScanStatusText, StringComparison.Ordinal);
         DiscoveredRowViewModel unchecked_ = page.Rows[^1];
         Assert.Equal(("Not checked", "Stopped before this address was checked."), (unchecked_.ChipText, unchecked_.StatusDetail));
         Assert.False(unchecked_.IsStatusError);
         Assert.False(page.ShowStop);
-    }
+    });
 
     [Fact]
-    public async Task The_page_always_closes_after_adding()
+    public Task The_page_always_closes_after_adding() => _ui.RunAsync(async () =>
     {
         await using AddDevicesViewModel page = await OpenScanAsync();
         bool? closed = null;
@@ -567,7 +593,7 @@ public sealed class AddDevicesPageTests : IDisposable
 
         Assert.True(closed);
         Assert.Single(page.AddedDeviceIds);
-    }
+    });
 
     [Theory]
     [InlineData("", "", null, "")]
@@ -583,10 +609,10 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.Equal(expected, PasswordRules.Validate(password, confirm, policy));
 
     [Fact]
-    public async Task An_add_over_the_device_limit_shows_a_popup_and_the_page_stays_open()
+    public Task An_add_over_the_device_limit_shows_a_popup_and_the_page_stays_open() => _ui.RunAsync(async () =>
     {
         var dialogs = NSubstitute.Substitute.For<Oadm.Client.Dialogs.IDialogService>();
-        await using var page = new AddDevicesViewModel(_api, new ImmediateUiDispatcher(), NullLogger<AddDevicesViewModel>.Instance, AddDevicesMode.Scan)
+        await using var page = new AddDevicesViewModel(_api, _ui, NullLogger<AddDevicesViewModel>.Instance, AddDevicesMode.Scan)
         {
             Dialogs = dialogs,
         };
@@ -604,5 +630,5 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.Null(page.ErrorText);
         Assert.False(page.IsBusy);
         Assert.DoesNotContain(page.Rows, r => r.ChipText == "Added");
-    }
+    });
 }

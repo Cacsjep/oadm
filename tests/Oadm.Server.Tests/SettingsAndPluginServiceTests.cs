@@ -141,13 +141,10 @@ public sealed class SettingsAndPluginServiceTests
         host.Get<PluginRegistry>().RegisterCorePlugin(new EchoCorePlugin(), new PluginOrigin("tests", "1.0.0", null));
         await host.Get<CorePluginHost>().StartAllAsync(CancellationToken.None);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         using var call = host.Plugins.Watch(new Proto.WatchPluginRequest { PluginId = "test.echo" }, cancellationToken: cts.Token);
         var hub = host.Get<CorePluginHost>().Events;
-        for (var i = 0; i < 500 && hub.WatcherCount("test.echo") == 0; i++)
-        {
-            await Task.Delay(10);
-        }
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => hub.WatcherCount("test.echo") > 0, "the watcher");
 
         await host.Plugins.InvokeAsync(new Proto.InvokeRequest { PluginId = "test.echo", Method = "publish", PayloadJson = "{\"n\":1}" });
         Assert.True(await call.ResponseStream.MoveNext(cts.Token));

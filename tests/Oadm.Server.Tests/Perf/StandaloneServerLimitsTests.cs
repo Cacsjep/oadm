@@ -10,6 +10,7 @@ using Oadm.Core.Devices;
 using Oadm.Core.Persistence;
 using Oadm.Core.Settings;
 using Oadm.Sdk.Devices;
+using Oadm.Tests.Shared;
 
 using Xunit.Abstractions;
 
@@ -218,16 +219,5 @@ public sealed class StandaloneServerLimitsTests(ITestOutputHelper output)
         return ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
     }
 
-    private static string FindRepo()
-    {
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
-        {
-            if (File.Exists(Path.Combine(dir.FullName, "Oadm.sln")))
-            {
-                return dir.FullName;
-            }
-        }
-
-        throw new InvalidOperationException("Repository root not found.");
-    }
+    private static string FindRepo() => TestRepository.Root;
 }

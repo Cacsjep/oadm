@@ -15,11 +15,6 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
-    <!-- The repository root, for the samples (also when the build output is outside the repository). -->
-    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
-      <_Parameter1>RepositoryRoot</_Parameter1>
-      <_Parameter2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../'))</_Parameter2>
-    </AssemblyAttribute>
   </ItemGroup>
 
   <ItemGroup>

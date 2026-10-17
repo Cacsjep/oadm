@@ -100,16 +100,16 @@ public class RangeScannerTests
     public async Task BreakingOutEarlyStopsProbing()
     {
         var all = Enumerable.Range(1, 254).ToDictionary(i => $"10.0.0.{i}", i => FakeProbe.Device($"10.0.0.{i}", $"ACCC8E0000{i:X2}"));
-        var probe = new FakeProbe(all, TimeSpan.FromMilliseconds(5));
+        // 50 ms a probe: the whole range would take over 6 s, far longer than the break takes even on a busy machine.
+        var probe = new FakeProbe(all, TimeSpan.FromMilliseconds(50));
 
         await foreach (var _ in new RangeScanner(probe).ScanAsync(Range("10.0.0.1", "10.0.0.254"), new RangeScanOptions { Parallelism = 2 }))
         {
             break;
         }
 
-        var count = probe.Probed.Count;
-        await Task.Delay(100);
-        Assert.Equal(count, probe.Probed.Count);
+        var count = probe.Probed.Count; // the scan waited for its probes: nothing starts after the break
+        await Oadm.Sdk.Testing.Eventually.StaysTrueAsync(() => probe.Probed.Count == count, "no probe after the break", TimeSpan.FromMilliseconds(100));
         Assert.True(count < 254);
     }
 

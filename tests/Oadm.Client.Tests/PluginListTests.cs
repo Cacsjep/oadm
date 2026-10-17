@@ -245,7 +245,7 @@ public sealed class PluginListTests
 
     private static async Task WaitAsync(Func<bool> condition)
     {
-        var until = DateTime.UtcNow.AddSeconds(10);
+        var until = DateTime.UtcNow.AddSeconds(30);
         while (!condition())
         {
             Assert.True(DateTime.UtcNow < until, "Timed out.");

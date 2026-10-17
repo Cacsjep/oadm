@@ -102,21 +102,5 @@ public sealed partial class ThemeColorsTests
     [GeneratedRegex(@"\{StaticResource (Oadm\.[A-Za-z.]+Color)\}")]
     private static partial Regex ColorReference();
 
-    private static string ThemesFolder()
-    {
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
-        {
-            string themes = Path.Combine(dir.FullName, "src", "Oadm.Client", "Themes");
-            if (File.Exists(Path.Combine(themes, "OadmTheme.axaml")))
-            {
-                return themes;
-            }
-        }
-
-        // Test binaries outside the checkout (--artifacts-path): relative to this file.
-        return Path.GetFullPath(Path.Combine(SourceDirectory(), "..", "..", "src", "Oadm.Client", "Themes"));
-    }
-
-    private static string SourceDirectory([System.Runtime.CompilerServices.CallerFilePath] string path = "") =>
-        Path.GetDirectoryName(path)!;
+    private static string ThemesFolder() => Oadm.Tests.Shared.TestRepository.Path("src", "Oadm.Client", "Themes");
 }

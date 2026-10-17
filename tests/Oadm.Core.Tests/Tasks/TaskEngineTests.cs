@@ -4,6 +4,7 @@ using Oadm.Core.Plugins;
 using Oadm.Core.Tasks;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
+using Oadm.Sdk.Testing;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Core.Tests.Tasks;
@@ -12,7 +13,7 @@ namespace Oadm.Core.Tests.Tasks;
 public sealed class TaskEngineTests : IAsyncLifetime
 #pragma warning restore CA1001
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan Timeout = Eventually.DefaultTimeout;
 
     private readonly FakeDeviceRepository _devices = new();
     private readonly FakeVapixClientFactory _vapix = new();
@@ -66,7 +67,6 @@ public sealed class TaskEngineTests : IAsyncLifetime
     }
 
     [Theory]
-    [Trait("Category", "Timing")] // the peak is reached only while 40 ms tasks overlap
     [InlineData(null, null, 16)]
     [InlineData(3, null, 3)]
     [InlineData(null, 2, 2)]
@@ -79,19 +79,26 @@ public sealed class TaskEngineTests : IAsyncLifetime
             _engine = new TaskEngine(_store, _registry, _devices, _vapix, options: new TaskEngineOptions { MaxParallelTasksPerPlugin = max });
         }
 
+        // The first tasks wait at a gate, so the limit is reached however slow the machine is; once it is, the gate
+        // opens and the rest run through (the peak would show any task beyond the limit).
         var current = 0;
         var peak = 0;
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var plugin = new DelegateTaskPlugin("t.slow", async (_, _, ct) =>
         {
             var now = Interlocked.Increment(ref current);
             InterlockedMax(ref peak, now);
-            await Task.Delay(40, ct);
+            await gate.Task.WaitAsync(ct);
             Interlocked.Decrement(ref current);
         })
         { Limit = pluginLimit };
         Assert.True(_registry.RegisterTaskPlugin(plugin, new PluginOrigin("test", "1.0.0", null)));
 
-        var records = await WaitAllAsync(await Engine.RunAsync("t.slow", _devices.AddMany(40), null, "o", CancellationToken.None));
+        var taskIds = await Engine.RunAsync("t.slow", _devices.AddMany(40), null, "o", CancellationToken.None);
+        await Eventually.TrueAsync(() => Volatile.Read(ref peak) >= expected, $"{expected} tasks running");
+        Assert.Equal(expected, Engine.RunningCount("t.slow"));
+        gate.SetResult();
+        var records = await WaitAllAsync(taskIds);
 
         Assert.Equal(expected, peak);
         Assert.All(records, r => Assert.Equal(TaskState.Done, r.State));
@@ -115,7 +122,6 @@ public sealed class TaskEngineTests : IAsyncLifetime
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // the peak is reached only while 40 ms tasks overlap
     public async Task AChangedSettingAppliesToNewTasksWithoutARestart()
     {
         var limit = 2;
@@ -123,19 +129,27 @@ public sealed class TaskEngineTests : IAsyncLifetime
             options: new TaskEngineOptions { MaxParallelTasksPerPluginSource = () => Volatile.Read(ref limit) });
         var current = 0;
         var peak = 0;
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Register("t.live", async (_, _, ct) =>
         {
             InterlockedMax(ref peak, Interlocked.Increment(ref current));
-            await Task.Delay(40, ct);
+            await Volatile.Read(ref gate).Task.WaitAsync(ct);
             Interlocked.Decrement(ref current);
         });
 
-        await WaitAllAsync(await Engine.RunAsync("t.live", _devices.AddMany(12), null, "o", CancellationToken.None));
+        var first = await Engine.RunAsync("t.live", _devices.AddMany(12), null, "o", CancellationToken.None);
+        await Eventually.TrueAsync(() => Volatile.Read(ref peak) >= 2, "2 tasks running");
+        gate.SetResult();
+        await WaitAllAsync(first);
         Assert.Equal(2, peak);
 
         Volatile.Write(ref limit, 5);
-        peak = 0;
-        await WaitAllAsync(await Engine.RunAsync("t.live", _devices.AddMany(20), null, "o", CancellationToken.None));
+        Volatile.Write(ref gate, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        Volatile.Write(ref peak, 0);
+        var second = await Engine.RunAsync("t.live", _devices.AddMany(20), null, "o", CancellationToken.None);
+        await Eventually.TrueAsync(() => Volatile.Read(ref peak) >= 5, "5 tasks running");
+        gate.SetResult();
+        await WaitAllAsync(second);
         Assert.Equal(5, peak);
     }
 
@@ -155,8 +169,7 @@ public sealed class TaskEngineTests : IAsyncLifetime
 
         var taskIds = await Engine.RunAsync("t.wait", _devices.AddMany(6), null, "o", CancellationToken.None);
         await WaitUntilAsync(() => Volatile.Read(ref started) == 1);
-        await Task.Delay(50);
-        Assert.Equal(1, Volatile.Read(ref started));
+        await Eventually.StaysTrueAsync(() => Volatile.Read(ref started) == 1, "one task started", TimeSpan.FromMilliseconds(50));
 
         // Raised: queued tasks start at once (the server host calls RescheduleQueued on a setting change).
         Volatile.Write(ref limit, 4);
@@ -167,8 +180,7 @@ public sealed class TaskEngineTests : IAsyncLifetime
         // Lowered: the running ones go on, nothing new starts.
         Volatile.Write(ref limit, 1);
         Engine.RescheduleQueued();
-        await Task.Delay(50);
-        Assert.Equal(4, Engine.RunningCount("t.wait"));
+        await Eventually.StaysTrueAsync(() => Engine.RunningCount("t.wait") == 4, "4 tasks running", TimeSpan.FromMilliseconds(50));
         var live = await Task.WhenAll(taskIds.Select(id => Engine.GetAsync(id, CancellationToken.None)));
         Assert.Equal(4, live.Count(t => t!.State == TaskState.Running));
         Assert.Equal(2, live.Count(t => t!.State == TaskState.Queued));
@@ -209,7 +221,7 @@ public sealed class TaskEngineTests : IAsyncLifetime
 
         var taskIds = await Engine.RunAsync("t.firmware", _devices.AddMany(4), null, "o", CancellationToken.None);
         await twoStarted.Task.WaitAsync(Timeout);
-        await Task.Delay(50);
+        await Eventually.StaysTrueAsync(() => Volatile.Read(ref started) == 2, "two tasks started", TimeSpan.FromMilliseconds(50));
 
         var live = await Task.WhenAll(taskIds.Select(id => Engine.GetAsync(id, CancellationToken.None)));
         Assert.Equal(2, live.Count(t => t!.State == TaskState.Running));

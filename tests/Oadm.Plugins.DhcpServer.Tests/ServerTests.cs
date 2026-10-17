@@ -76,7 +76,7 @@ public sealed class ServerTests : IAsyncLifetime
         Assert.Equal("Running on Ethernet (10.0.0.17/24)", reply.State.Status.Text);
         Assert.Equal(ServiceStatus.Ok, reply.State.Status.Kind);
 
-        using var watch = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var watch = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         var events = new List<Oadm.Sdk.Plugins.PluginEvent>();
         var watching = Task.Run(async () =>
         {
@@ -180,9 +180,11 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // the other server must answer within 300 ms
     public async Task Another_DHCP_server_needs_a_confirmation_then_the_status_says_running()
     {
+        // The product's 3 s to collect the other server's offers (the tests' 300 ms is too short on a busy machine).
+        await _plugin.DisposeAsync();
+        _plugin = await StartAsync(otherServerWait: TimeSpan.FromSeconds(3));
         await using var router = new FakeOtherServer(_network);
         var reply = await Save(Options.Enable());
         Assert.False(reply.Saved);
@@ -276,16 +278,18 @@ public sealed class ServerTests : IAsyncLifetime
         }
 
         await using var late = new TestClient(_network, Mac.Of("00:40:8C:00:00:99"));
-        Assert.Null(await late.DiscoverAsync());
+        Assert.Null(await late.DiscoverAsync(wait: TimeSpan.FromMilliseconds(300)));
         var status = Service.GetState(false).Status;
         Assert.Equal("Address pool exhausted", status.Text);
         Assert.Equal(ServiceStatus.Warning, status.Kind);
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // real-time rate limit refill
     public async Task A_flood_from_one_device_is_rate_limited()
     {
+        // No refill during the test, however long it takes: a burst of 10, then nothing.
+        await _plugin.DisposeAsync();
+        _plugin = await StartAsync(refillSeconds: 3600);
         await Save(Options.Enable());
         await using var client = new TestClient(_network, Mac.Of("AC:CC:8E:5F:60:71"));
         var answered = 0;
@@ -293,15 +297,13 @@ public sealed class ServerTests : IAsyncLifetime
         {
             var inform = client.New(DhcpMessageType.Inform);
             inform.ClientAddress = Ip.Of("10.0.0.60");
-            if (await client.SendAsync(inform, wait: TimeSpan.FromMilliseconds(100)) is not null)
+            if (await client.SendAsync(inform, wait: i < 10 ? TestClient.Wait : TimeSpan.FromMilliseconds(100)) is not null)
             {
                 answered++;
             }
         }
 
-        // Burst of 10, then one every 3 s: the 20 unanswered sends wait 100 ms each, so a slow machine may pass 3 s and
-        // get one refill.
-        Assert.InRange(answered, 10, 11);
+        Assert.Equal(10, answered);
     }
 
     [Fact]
@@ -321,9 +323,15 @@ public sealed class ServerTests : IAsyncLifetime
     private async Task<DhcpSaveReply> Save(DhcpSaveRequest request) =>
         DhcpJson.Deserialize<DhcpSaveReply>(await _plugin.InvokeAsync(DhcpServerMethods.Save, DhcpJson.Serialize(request), default));
 
-    private async Task<DhcpServerPlugin> StartAsync(FakeInterfaces? interfaces = null)
+    private async Task<DhcpServerPlugin> StartAsync(FakeInterfaces? interfaces = null, TimeSpan? otherServerWait = null, double? refillSeconds = null)
     {
-        var plugin = new DhcpServerPlugin(Options.Test(_network, _probe, interfaces));
+        var options = Options.Test(_network, _probe, interfaces);
+        options = options with
+        {
+            OtherServerWait = otherServerWait ?? options.OtherServerWait,
+            RateLimits = refillSeconds is { } refill ? options.RateLimits with { PerMac = options.RateLimits.PerMac with { RefillSeconds = refill } } : options.RateLimits,
+        };
+        var plugin = new DhcpServerPlugin(options);
         await plugin.StartAsync(new TestCoreContext(_settingsProvider.GetSettings(DhcpServerPluginInfo.PluginId), _hub.For(DhcpServerPluginInfo.PluginId)), default);
         return plugin;
     }
@@ -474,7 +482,7 @@ public sealed class LoopbackSocketTests
 
     private static async Task<DhcpMessage> ReceiveAsync(Socket socket)
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var buffer = new byte[DhcpMessage.MaxLength];
         var received = await socket.ReceiveFromAsync(buffer, SocketFlags.None, new IPEndPoint(IPAddress.Any, 0), cts.Token);
         Assert.True(DhcpMessage.TryRead(buffer.AsSpan(0, received.ReceivedBytes), out var message, out var error), error);

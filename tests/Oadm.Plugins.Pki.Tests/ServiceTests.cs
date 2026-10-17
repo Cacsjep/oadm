@@ -360,8 +360,17 @@ public sealed class ServiceTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // time budget
-    public void Issued_counts_for_30000_devices_are_one_pass()
+    public void Issued_counts_for_30000_devices_are_one_pass() => CountTheMostDevices();
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void Issued_counts_for_30000_devices_are_fast()
+    {
+        var elapsed = CountTheMostDevices();
+        Assert.True(elapsed < TimeSpan.FromMilliseconds(500), $"took {elapsed.TotalMilliseconds:0} ms");
+    }
+
+    private static TimeSpan CountTheMostDevices()
     {
         var now = DateTime.UtcNow;
         var issued = Enumerable.Range(0, 30_000).SelectMany(i => new[]
@@ -379,7 +388,7 @@ public sealed class ServiceTests
         Assert.Equal(3000, counts.WithPreviousCa);
         Assert.Equal(300, counts.ExpiringSoon);
         Assert.Equal(3000, counts.DevicesPerCa["OLD"]);
-        Assert.True(watch.ElapsedMilliseconds < 500, $"took {watch.ElapsedMilliseconds} ms");
+        return watch.Elapsed;
     }
 
     private static byte[] LeafWithConstraints(X509Certificate2 issuer)

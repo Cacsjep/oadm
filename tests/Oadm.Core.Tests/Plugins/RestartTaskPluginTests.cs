@@ -97,19 +97,18 @@ public sealed class RestartTaskPluginTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")]
     public async Task TimesOutWhenTheDeviceNeverComesBack()
     {
         var vapix = new FakeVapixClient { Answers = n => n == 1 };
         var ctx = new RecordingContext(vapix);
-        // 500 ms: a slow CI runner managed only two pings in 150 ms.
-        var plugin = new RestartTaskPlugin(Poll, TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(1), TimeProvider.System);
+        // A clock that moves only with the plugin's waits: the timeout is a number of polls, however slow the machine.
+        var plugin = new RestartTaskPlugin(Poll, TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(1), new SteppingClock());
 
         var ex = await Assert.ThrowsAsync<TimeoutException>(() =>
             StepRun.RunAsync(ctx.Steps, () => plugin.ExecuteAsync(ctx, new FakeDevice(Guid.NewGuid()), null, CancellationToken.None)));
 
         Assert.Contains("did not come back", ex.Message, StringComparison.Ordinal);
-        Assert.True(vapix.Pings >= 2, $"{vapix.Pings} pings");
+        Assert.True(vapix.Pings >= 50, $"{vapix.Pings} pings"); // 500 ms of 5 ms polls
         Assert.Equal("Wait for the device to come back: Failed", StepRun.Lines(ctx.Steps)[3]);
         Assert.Equal("Verify device: Skipped", StepRun.Lines(ctx.Steps)[4]);
     }
@@ -119,7 +118,7 @@ public sealed class RestartTaskPluginTests
     {
         var vapix = new FakeVapixClient { Answers = _ => true };
         var ctx = new RecordingContext(vapix);
-        var plugin = new RestartTaskPlugin(Poll, TimeSpan.FromMilliseconds(150), TimeSpan.FromSeconds(1), TimeProvider.System);
+        var plugin = new RestartTaskPlugin(Poll, TimeSpan.FromMilliseconds(150), TimeSpan.FromSeconds(1), new SteppingClock());
 
         var ex = await Assert.ThrowsAsync<TimeoutException>(() =>
             StepRun.RunAsync(ctx.Steps, () => plugin.ExecuteAsync(ctx, new FakeDevice(Guid.NewGuid()), null, CancellationToken.None)));
@@ -205,5 +204,42 @@ public sealed class RestartTaskPluginTests
         public void PlanSteps(params string[] names) => Steps.Plan(names);
 
         public ITaskStep BeginStep(string name) => Steps.Begin(name);
+    }
+
+    /// <summary>
+    /// A clock that stands still until someone waits on it: every timer moves it forward by its due time and fires at
+    /// once (on the thread pool). Timeouts measured with it count waits, not real time.
+    /// </summary>
+    private sealed class SteppingClock : TimeProvider
+    {
+        private long _ticks;
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp() => Interlocked.Read(ref _ticks);
+
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch.AddTicks(Interlocked.Read(ref _ticks));
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            if (dueTime != Timeout.InfiniteTimeSpan)
+            {
+                Interlocked.Add(ref _ticks, dueTime.Ticks);
+                ThreadPool.QueueUserWorkItem(_ => callback(state));
+            }
+
+            return new NoTimer();
+        }
+
+        private sealed class NoTimer : ITimer
+        {
+            public bool Change(TimeSpan dueTime, TimeSpan period) => true;
+
+            public void Dispose()
+            {
+            }
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
     }
 }

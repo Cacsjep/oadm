@@ -277,7 +277,11 @@ internal sealed class FakeAxisNetwork
     public ConcurrentQueue<VapixConnectionOptions> Connections { get; } = new();
 
     /// <summary>The anonymous probe used by AddDevices, wired to this network.</summary>
-    public VapixProbe CreateProbe() => new(TimeSpan.FromSeconds(2), (_, _) => CreateHandler());
+    /// <remarks>Generous timeouts: nothing in the fake network hangs, but a busy test machine answers slowly.</remarks>
+    public VapixProbe CreateProbe() => new(AnswerTimeout, (_, _) => CreateHandler());
+
+    /// <summary>Timeout of the probes and clients of the fake network: far above what a busy machine needs.</summary>
+    public static readonly TimeSpan AnswerTimeout = TimeSpan.FromSeconds(30);
 
     private sealed class Handler(FakeAxisNetwork network, NetworkCredential? credentials, CertificatePinning? pinning) : HttpMessageHandler
     {
@@ -318,7 +322,7 @@ internal sealed class FakeAxisNetwork
         {
             network.Connections.Enqueue(options);
             var pinning = options.Scheme == Uri.UriSchemeHttps ? new CertificatePinning(options.PinnedCertificateFingerprint) : null;
-            return new(VapixClient.BuildBaseAddress(options.Scheme, options.Address), network.CreateHandler(options.Credentials, pinning), pinning, TimeSpan.FromSeconds(5));
+            return new(VapixClient.BuildBaseAddress(options.Scheme, options.Address), network.CreateHandler(options.Credentials, pinning), pinning, AnswerTimeout);
         }
     }
 }

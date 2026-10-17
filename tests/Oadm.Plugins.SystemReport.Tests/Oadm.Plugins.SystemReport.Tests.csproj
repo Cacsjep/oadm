@@ -30,6 +30,7 @@
     <ProjectReference Include="..\..\src\Oadm.Server\Oadm.Server.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.SystemReport\Oadm.Plugins.SystemReport.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.SystemReport.Client\Oadm.Plugins.SystemReport.Client.csproj" />
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>

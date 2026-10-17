@@ -205,16 +205,19 @@ public sealed class SnapshotServiceTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // the peak is reached only while 80 ms requests overlap
     public async Task At_most_four_snapshots_run_at_the_same_time()
     {
         var device = new FakeDevice();
         var factory = new FakeVapixFactory();
         var camera = factory.Add(device.Id);
-        camera.Delay = TimeSpan.FromMilliseconds(80);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        camera.Gate = gate.Task; // the requests that started hold their slots until the test releases them
         using var service = new SnapshotService(new FakeRepository(device), factory);
 
-        var results = await Task.WhenAll(Enumerable.Range(0, 12).Select(_ => service.TakeAsync(device.Id, 1, 640, 360, CancellationToken.None)));
+        var taking = Enumerable.Range(0, 12).Select(_ => service.TakeAsync(device.Id, 1, 640, 360, CancellationToken.None)).ToList();
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => camera.MaxConcurrent >= 4, "four snapshots at the gate");
+        gate.SetResult();
+        var results = await Task.WhenAll(taking);
 
         Assert.All(results, r => Assert.True(r.IsOk));
         Assert.Equal(4, camera.MaxConcurrent);

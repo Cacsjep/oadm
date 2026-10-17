@@ -64,13 +64,16 @@ public sealed class ScanServiceTests
     public async Task A_scan_reads_every_device_at_most_16_at_a_time_and_streams_the_results()
     {
         await using var rig = await new Rig(40).StartAsync();
-        rig.Camera.Delay = TimeSpan.FromMilliseconds(15);
+        var held = true;
+        rig.Camera.Hold = () => Volatile.Read(ref held); // the scan cannot end before the second start
 
         var started = await rig.ScanAsync();
         Assert.True(started.IsRunning);
         Assert.Equal(40, started.Total);
         var again = await rig.ScanAsync(ScanLevel.Extended);
         Assert.Equal(started.JobId, again.JobId); // a start while a scan runs returns the running scan
+        await Wait.UntilAsync(() => rig.Camera.MaxConcurrent >= 2, TimeSpan.FromSeconds(30));
+        Volatile.Write(ref held, false);
         await rig.Service.WaitAsync();
 
         Assert.InRange(rig.Camera.MaxConcurrent, 2, 16);
@@ -125,11 +128,11 @@ public sealed class ScanServiceTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // the other devices must finish within 300 ms
     public async Task A_hanging_device_ends_with_the_device_timeout_and_the_others_finish()
     {
+        // The other devices must finish within the device timeout: 3 s is far above a scan of the fake camera on a busy machine.
         var options = Rig.Fast();
-        options.DeviceTimeout = TimeSpan.FromMilliseconds(300);
+        options.DeviceTimeout = TimeSpan.FromSeconds(3);
         options.RequestTimeout = TimeSpan.FromSeconds(10);
         await using var rig = await new Rig(3, options).StartAsync();
         var slow = new TestDevice { Address = "10.0.9.9" };
@@ -143,7 +146,7 @@ public sealed class ScanServiceTests
 
         var results = (await rig.StateAsync()).Results.ToDictionary(r => r.DeviceId);
         Assert.Equal(4, results.Count);
-        Assert.Equal("Timeout after 0.3 s", results[slow.Id].Status);
+        Assert.Equal("Timeout after 3 s", results[slow.Id].Status);
         Assert.Null(results[rig.Devices.Items[0].Id].Status);
     }
 
@@ -153,7 +156,7 @@ public sealed class ScanServiceTests
         var options = Rig.Fast();
         options.Parallelism = 2;
         await using var rig = await new Rig(30, options).StartAsync();
-        rig.Camera.Delay = TimeSpan.FromMilliseconds(20);
+        rig.Camera.Hold = () => rig.Service.CurrentJob is { Done: >= 2 }; // after two devices every request waits: the scan cannot finish
 
         var job = await rig.ScanAsync();
         await Wait.UntilAsync(() => rig.Service.CurrentJob!.Done >= 2);

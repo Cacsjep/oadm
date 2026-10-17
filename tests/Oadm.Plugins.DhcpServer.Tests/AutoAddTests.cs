@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 
 using Microsoft.Extensions.Time.Testing;
 
@@ -8,6 +7,7 @@ using Oadm.Plugins.DhcpServer.Leases;
 using Oadm.Plugins.DhcpServer.Protocol;
 using Oadm.Plugins.DhcpServer.Serving;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.DhcpServer.Tests;
 
@@ -107,8 +107,8 @@ public sealed class AutoAddTests
         Assert.Equal(1, adder.Pending); // waiting for the retry
 
         time.Advance(TimeSpan.FromSeconds(29));
-        await Task.Delay(100);
-        Assert.Equal(1, fake.Calls.Count(c => c.Kind == "add"));
+        // Fake time: the retry cannot be due yet, whatever the machine does meanwhile.
+        await Eventually.StaysTrueAsync(() => fake.Calls.Count(c => c.Kind == "add") == 1, "one attempt before the retry delay", TimeSpan.FromMilliseconds(100));
 
         time.Advance(TimeSpan.FromSeconds(1));
         await adder.WhenIdleAsync(Timeout());
@@ -116,7 +116,8 @@ public sealed class AutoAddTests
 
         // Still unreachable: no third attempt.
         time.Advance(TimeSpan.FromMinutes(5));
-        await Task.Delay(100);
+        Assert.Equal(0, adder.WaitingRetries);
+        await adder.WhenIdleAsync(Timeout());
         Assert.Equal(2, fake.Calls.Count(c => c.Kind == "add"));
     }
 
@@ -157,10 +158,10 @@ public sealed class AutoAddTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // the peak is reached only while 100 ms adds overlap
     public async Task At_most_four_devices_are_handled_at_the_same_time()
     {
-        var fake = new FakeAutoAdd { Latency = TimeSpan.FromMilliseconds(100) };
+        // Every add waits until released: the first four overlap however slow the machine is.
+        var fake = new FakeAutoAdd { Block = new TaskCompletionSource() };
         await using var adder = new DhcpDeviceAutoAdd(fake, () => true);
 
         for (var i = 0; i < 20; i++)
@@ -168,7 +169,10 @@ public sealed class AutoAddTests
             adder.OnLeased(0xB8A44F000000UL + (ulong)i, Ip.Of("10.0.0.100") + (uint)i);
         }
 
-        await adder.WhenIdleAsync(Timeout(20));
+        await Wait.UntilAsync(() => fake.Calls.Count(c => c.Kind == "add") == 4);
+        Assert.Equal(4, fake.PeakConcurrent);
+        fake.Block.SetResult();
+        await adder.WhenIdleAsync(Timeout());
 
         Assert.Equal(20, fake.Calls.Count(c => c.Kind == "add"));
         Assert.Equal(4, adder.PeakParallel);
@@ -191,7 +195,6 @@ public sealed class AutoAddTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // time budget
     public async Task The_engine_reports_every_ack_and_never_waits_for_the_server_side()
     {
         var fake = new FakeAutoAdd { Block = new TaskCompletionSource() };
@@ -203,19 +206,20 @@ public sealed class AutoAddTests
         await using var adder = new DhcpDeviceAutoAdd(fake, () => true);
         engine.Leased = (mac, address) => adder.OnLeased(mac, address);
 
-        var watch = Stopwatch.StartNew();
-        for (var i = 0; i < 10; i++)
+        // Every automatic add hangs until the end: an engine that waited for one would never finish the ten ACKs.
+        var acks = Task.Run(async () =>
         {
-            var mac = 0xB8A44F100000UL + (ulong)i;
-            var offer = await engine.HandleAsync(new DhcpMessage { Op = DhcpMessage.BootRequest, TransactionId = (uint)i, MessageType = DhcpMessageType.Discover, Mac = mac }, default);
-            var ack = await engine.HandleAsync(
-                new DhcpMessage { Op = DhcpMessage.BootRequest, TransactionId = (uint)i, MessageType = DhcpMessageType.Request, Mac = mac, ServerId = offer!.Message.ServerId, RequestedAddress = offer.Message.YourAddress },
-                default);
-            Assert.Equal(DhcpMessageType.Ack, ack!.Message.MessageType);
-        }
-
-        // Ten ACKs while every automatic add hangs: the engine answered at once.
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2), watch.Elapsed.ToString());
+            for (var i = 0; i < 10; i++)
+            {
+                var mac = 0xB8A44F100000UL + (ulong)i;
+                var offer = await engine.HandleAsync(new DhcpMessage { Op = DhcpMessage.BootRequest, TransactionId = (uint)i, MessageType = DhcpMessageType.Discover, Mac = mac }, default);
+                var ack = await engine.HandleAsync(
+                    new DhcpMessage { Op = DhcpMessage.BootRequest, TransactionId = (uint)i, MessageType = DhcpMessageType.Request, Mac = mac, ServerId = offer!.Message.ServerId, RequestedAddress = offer.Message.YourAddress },
+                    default);
+                Assert.Equal(DhcpMessageType.Ack, ack!.Message.MessageType);
+            }
+        });
+        await acks.WaitAsync(TimeSpan.FromSeconds(30));
         await Wait.UntilAsync(() => fake.Calls.Count(c => c.Kind == "add") == 4);
         Assert.Equal(10, adder.Pending);
         fake.Block.SetResult();
@@ -268,7 +272,7 @@ public sealed class AutoAddTests
         Assert.DoesNotContain(fake.Calls, c => c.Serial == "3C5282112233");
     }
 
-    private static CancellationToken Timeout(int seconds = 5) => new CancellationTokenSource(TimeSpan.FromSeconds(seconds)).Token;
+    private static CancellationToken Timeout(int seconds = 30) => new CancellationTokenSource(TimeSpan.FromSeconds(seconds)).Token;
 
     /// <summary>The server side: records calls, answers configurable results, can be slow, block or throw.</summary>
     private sealed class FakeAutoAdd : IDeviceAutoAdd

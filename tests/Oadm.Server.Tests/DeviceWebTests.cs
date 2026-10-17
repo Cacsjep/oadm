@@ -167,7 +167,7 @@ public sealed class DeviceWebTests
 
     private static async Task<List<Proto.DeviceWebFrame>> ExchangeAsync(TestServerHost host, Proto.DeviceWebRequestHead head, byte[]? body = null)
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         using var call = Client(host).Exchange(cancellationToken: timeout.Token);
         await call.RequestStream.WriteAsync(new Proto.DeviceWebFrame { Request = head });
         if (head.HasBody)

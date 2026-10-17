@@ -1,5 +1,7 @@
 using Grpc.Core;
 
+using Microsoft.Extensions.Time.Testing;
+
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
@@ -8,6 +10,7 @@ using Oadm.Client.Devices;
 using Oadm.Client.LiveView;
 using Oadm.Client.Shell;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Testing;
 
 namespace Oadm.Client.Tests;
 
@@ -54,29 +57,42 @@ public sealed class OpticsAndRtspPortTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")]
     public async Task Sliders_send_their_value_once_they_rest_and_take_the_cameras_answer()
     {
         var api = Substitute.For<IOadmApi>();
         api.GetOpticsAsync("cam", Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(Lens());
         var sent = new List<SetOpticsRequest>();
-        api.SetOpticsAsync(Arg.Do<SetOpticsRequest>(sent.Add), Arg.Any<CancellationToken>())
+        api.SetOpticsAsync(Arg.Do<SetOpticsRequest>(r => { lock (sent) { sent.Add(r); } }), Arg.Any<CancellationToken>())
             .Returns(c => { var s = Lens(); var r = c.Arg<SetOpticsRequest>(); if (r.HasMagnification) { s.Magnification = r.Magnification; } return s; });
-        using var vm = new OpticsViewModel(api) { Debounce = TimeSpan.FromMilliseconds(150) };
+        var time = new FakeTimeProvider();
+        using var vm = new OpticsViewModel(api, time) { Debounce = TimeSpan.FromMilliseconds(150) };
         await vm.LoadAsync("cam");
 
         vm.Zoom = 1.2;
+        time.Advance(TimeSpan.FromMilliseconds(100));
         vm.Zoom = 1.6;
+        time.Advance(TimeSpan.FromMilliseconds(100));
         vm.Zoom = 2.0;
-        Assert.Empty(sent); // still moving
-        await TestSupport.WaitUntilAsync(() => sent.Count == 1);
+        time.Advance(TimeSpan.FromMilliseconds(100));
+        Assert.Equal(0, Count()); // still moving: each value restarts the wait
+        time.Advance(TimeSpan.FromMilliseconds(50));
+        await TestSupport.WaitUntilAsync(() => Count() == 1);
         Assert.Equal(2.0, sent[0].Magnification);
         Assert.Equal("cam", sent[0].DeviceId);
         Assert.False(sent[0].HasFocusPosition);
 
         vm.Focus = 40;
-        await TestSupport.WaitUntilAsync(() => sent.Count == 2);
+        time.Advance(TimeSpan.FromMilliseconds(150));
+        await TestSupport.WaitUntilAsync(() => Count() == 2);
         Assert.Equal(0.4, sent[1].FocusPosition, 6);
+
+        int Count()
+        {
+            lock (sent)
+            {
+                return sent.Count;
+            }
+        }
     }
 
     [Fact]
@@ -195,7 +211,8 @@ public sealed class OpticsAndRtspPortTests
         Assert.Single(sent); // nothing more while the first is on its way
         slow.SetResult();
         await TestSupport.WaitUntilAsync(() => sent.Count == 2);
-        await Task.Delay(50);
+        // The stop ends the pump: a move still waiting would go out right after it.
+        await Eventually.StaysTrueAsync(() => { lock (sent) { return sent.Count == 2; } }, "no move after the stop", TimeSpan.FromMilliseconds(200));
         Assert.Equal([PtzMove.Continuous, PtzMove.Stop], sent.Select(r => r.Move)); // the moves in between are skipped
 
         // The same preset again goes there again; wheel notches never carry over to another camera.

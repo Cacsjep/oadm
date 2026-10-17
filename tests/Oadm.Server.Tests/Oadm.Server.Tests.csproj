@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Oadm.Server\Oadm.Server.csproj" />
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.Restart\Oadm.Plugins.Restart.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.VapixCommander\Oadm.Plugins.VapixCommander.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.SystemReport\Oadm.Plugins.SystemReport.csproj" />

@@ -346,17 +346,5 @@ public sealed class AcapDialogViewModelTests : IDisposable
 
 internal static class TestWait
 {
-    public static async Task UntilAsync(Func<bool> condition, int timeoutMs = 5000)
-    {
-        var end = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (!condition())
-        {
-            if (DateTime.UtcNow > end)
-            {
-                throw new TimeoutException("Condition not met in time");
-            }
-
-            await Task.Delay(10);
-        }
-    }
+    public static Task UntilAsync(Func<bool> condition) => Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the dialog state");
 }

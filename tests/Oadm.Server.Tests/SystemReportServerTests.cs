@@ -35,7 +35,7 @@ public sealed class SystemReportServerTests
         var jobFolder = Path.Combine(host.DataDirectory, "plugin-data", SystemReportPluginInfo.PluginId, "jobs", started.JobId);
         Assert.True(Directory.Exists(jobFolder));
         var status = started;
-        var deadline = DateTime.UtcNow.AddSeconds(10);
+        var deadline = DateTime.UtcNow.AddSeconds(30);
         while (status.State != JobStates.Done && DateTime.UtcNow < deadline)
         {
             await Task.Delay(20);

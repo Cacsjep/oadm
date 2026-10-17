@@ -68,8 +68,13 @@ public sealed class GpuDecodingTests
         Assert.True(changes >= 2);
     }
 
+    /// <summary>
+    /// A test process ends by itself or is stopped after <see cref="GpuDecodingService.Timeout"/> (twice: the exit, then
+    /// the output); both ends pass the assertions, so the wait only has to outlast them on a slow machine.
+    /// </summary>
+    private const int ProcessWait = 120_000;
+
     [FfmpegFact]
-    [Trait("Category", "Timing")]
     public async Task The_client_runs_the_test_in_its_own_process()
     {
         // The real command: "dotnet Oadm.Client.dll --check-gpu-decoding" next to the tests.
@@ -78,13 +83,13 @@ public sealed class GpuDecodingTests
         var dll = Path.Combine(AppContext.BaseDirectory, "Oadm.Client.dll");
         var service = new GpuDecodingService(Microsoft.Extensions.Logging.Abstractions.NullLogger<GpuDecodingService>.Instance, () => (dotnet, [dll, GpuDecodingCheck.Argument]));
         service.SetEnabled(true);
-        await TestSupport.WaitUntilAsync(() => service.Status.State is GpuDecodingState.Available or GpuDecodingState.Unavailable, 30_000);
+        await TestSupport.WaitUntilAsync(() => service.Status.State is GpuDecodingState.Available or GpuDecodingState.Unavailable, ProcessWait);
         Assert.True(service.Status.State == GpuDecodingState.Available || !string.IsNullOrEmpty(service.Status.Problem));
 
         // A test that crashes (here: a process that ends with an error and says nothing) leaves the processor with a warning.
         var crashing = new GpuDecodingService(Microsoft.Extensions.Logging.Abstractions.NullLogger<GpuDecodingService>.Instance, () => (dotnet, ["no-such-file.dll"]));
         crashing.SetEnabled(true);
-        await TestSupport.WaitUntilAsync(() => crashing.Status.State == GpuDecodingState.Unavailable, 30_000);
+        await TestSupport.WaitUntilAsync(() => crashing.Status.State == GpuDecodingState.Unavailable, ProcessWait);
         Assert.Equal(GpuDecodingTexts.TestStopped, crashing.Status.Problem);
     }
 

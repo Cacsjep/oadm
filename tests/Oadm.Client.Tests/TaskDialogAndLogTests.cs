@@ -134,12 +134,12 @@ public sealed class TaskDialogAndLogTests
     [Fact]
     public void ClientPluginsAreAlsoLoadedFromTheRepositoryArtifacts()
     {
-        string? development = ClientPluginLoader.DevelopmentRoot(AppContext.BaseDirectory);
+        // A client started from its build output inside the repository (src/Oadm.Client/bin/...).
+        string app = Oadm.Tests.Shared.TestRepository.Path("src", "Oadm.Client", "bin", "Debug", "net10.0");
+        string? development = ClientPluginLoader.DevelopmentRoot(app);
 
-        Assert.NotNull(development);
-        Assert.True(File.Exists(Path.Combine(development, "..", "..", "Oadm.sln")));
-        Assert.EndsWith(Path.Combine("artifacts", "plugins"), development, StringComparison.Ordinal);
-        Assert.Contains(development, ClientPluginLoader.DefaultRoots(new Infrastructure.AppOptions()));
+        Assert.Equal(Oadm.Tests.Shared.TestRepository.DevelopmentPlugins, development);
+        Assert.Contains(development, ClientPluginLoader.DefaultRoots(new Infrastructure.AppOptions(), app));
         Assert.Null(ClientPluginLoader.DevelopmentRoot(Path.GetPathRoot(Path.GetTempPath())!));
     }
 

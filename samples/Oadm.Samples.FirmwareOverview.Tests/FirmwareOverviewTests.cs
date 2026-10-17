@@ -100,10 +100,10 @@ public sealed class FirmwareOverviewTests
 
     private static string Request(RefreshRequest request) => JsonSerializer.Serialize(request, FirmwareOverview.Json);
 
-    /// <summary>The next published state that matches, within 5 s.</summary>
+    /// <summary>The next published state that matches, within 30 s (a busy test machine may be slow).</summary>
     private static async Task<FirmwareState> NextStateAsync(FakeCoreContext server, Func<FirmwareState, bool> match)
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await foreach (var item in server.Published.Reader.ReadAllAsync(timeout.Token))
         {
             var state = JsonSerializer.Deserialize<FirmwareState>(item.PayloadJson!, FirmwareOverview.Json)!;

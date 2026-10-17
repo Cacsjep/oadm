@@ -12,15 +12,7 @@ public sealed class BuilderPageTests(Xunit.Abstractions.ITestOutputHelper output
     private const string VirtualInputTopic = "tns1:Device/tnsaxis:IO/VirtualInput";
     private const string TcpWhileActive = "com.axis.action.unlimited.notification.tcp";
 
-    private static async Task UntilAsync(Func<bool> condition)
-    {
-        var until = DateTime.UtcNow.AddSeconds(10);
-        while (!condition())
-        {
-            Assert.True(DateTime.UtcNow < until, "Timed out waiting for the condition.");
-            await Task.Delay(10);
-        }
-    }
+    private static Task UntilAsync(Func<bool> condition) => Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the page state");
 
     /// <summary>Fills the form: virtual input 20 while active, TCP while active with every setting.</summary>
     private static void Fill(NewRuleViewModel form)
@@ -37,7 +29,6 @@ public sealed class BuilderPageTests(Xunit.Abstractions.ITestOutputHelper output
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // the plugin's events arrive on the thread pool, waited for in real time
     public async Task A_new_rule_goes_to_the_chosen_devices_as_the_form_describes_it()
     {
         await using var rig = new PageRig();

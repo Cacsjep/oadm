@@ -16,8 +16,18 @@ public sealed class ScaleTests(ITestOutputHelper output)
     private const int Count = DeviceLimits.MaxDevices;
 
     [Fact]
-    [Trait("Category", "Timing")] // time budget
-    public async Task Dialog_with_30000_devices_reads_only_the_first_device()
+    public async Task Dialog_with_30000_devices_reads_only_the_first_device() => await OpenWithTheMostDevicesAsync();
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public async Task Dialog_with_30000_devices_opens_fast()
+    {
+        var elapsed = await OpenWithTheMostDevicesAsync();
+        output.WriteLine($"Open the dialog with 30,000 devices: {elapsed.TotalMilliseconds:0} ms");
+        Assert.True(elapsed < TimeSpan.FromSeconds(1), $"Opening took {elapsed.TotalMilliseconds:0} ms");
+    }
+
+    private static async Task<TimeSpan> OpenWithTheMostDevicesAsync()
     {
         var devices = Enumerable.Range(0, Count).Select(i => (IDeviceInfo)new FakeDevice(Guid.NewGuid(), $"10.0.{i / 256}.{i % 256}")).ToList();
         var ctx = new CountingContext();
@@ -29,8 +39,7 @@ public sealed class ScaleTests(ITestOutputHelper output)
 
         Assert.Equal(1, ctx.Queries);
         Assert.Equal(Count, vm.NtsDeviceCount);
-        output.WriteLine($"Open the dialog with 30,000 devices: {watch.ElapsedMilliseconds} ms");
-        Assert.True(watch.ElapsedMilliseconds < 1000, $"Opening took {watch.ElapsedMilliseconds} ms");
+        return watch.Elapsed;
     }
 
     [Fact]

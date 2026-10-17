@@ -11,6 +11,7 @@ using Oadm.Core.Persistence;
 using Oadm.Core.Plugins;
 using Oadm.Sdk.Network;
 using Oadm.Server.Hosting;
+using Oadm.Tests.Shared;
 
 namespace Oadm.Server.Tests;
 
@@ -18,6 +19,7 @@ namespace Oadm.Server.Tests;
 /// Installed service hardening: Windows firewall rules through netsh, admin-only data / extraction / plugin folders, no
 /// development plugin folder. Everything runs against fakes; no firewall or ACL of this machine is changed.
 /// </summary>
+[Collection(Support.ProcessEnvironment.Name)] // sets DOTNET_BUNDLE_EXTRACT_BASE_DIR
 public sealed class ServiceSecurityTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "oadm-service-security", Guid.NewGuid().ToString("N"));
@@ -209,11 +211,12 @@ public sealed class ServiceSecurityTests : IDisposable
     public void ServiceNeverUsesTheDevelopmentPluginFolder()
     {
         var paths = new OadmPaths(_dir);
-        var development = PluginPaths.Development();
-        Assert.NotNull(development); // the tests run inside the repository
+        // A server started from its build output inside the repository (src/Oadm.Server/bin/...).
+        var app = TestRepository.Path("src", "Oadm.Server", "bin", "Debug", "net10.0");
+        var development = TestRepository.DevelopmentPlugins;
 
-        Assert.Contains(development, OadmServerHost.DefaultPluginRoots(paths));
-        Assert.DoesNotContain(development, OadmServerHost.DefaultPluginRoots(paths, includeDevelopment: false));
+        Assert.Contains(development, OadmServerHost.DefaultPluginRoots(paths, appDirectory: app));
+        Assert.DoesNotContain(development, OadmServerHost.DefaultPluginRoots(paths, includeDevelopment: false, appDirectory: app));
     }
 
     [Fact]

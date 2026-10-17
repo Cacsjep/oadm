@@ -16,7 +16,7 @@ public sealed class SendHttpActionTests
         ["bodyType"] = "json",
         ["body"] = string.Empty,
         ["allowUntrusted"] = false,
-        ["timeout"] = 5,
+        ["timeout"] = 30, // loopback answers at once; a busy machine may still take seconds
     };
 
     [Fact]

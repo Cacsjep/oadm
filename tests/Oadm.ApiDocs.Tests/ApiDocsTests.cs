@@ -199,8 +199,7 @@ public sealed partial class ApiDocsTests
         });
     }
 
-    private static string Repository() =>
-        typeof(ApiDocsTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().Single(a => a.Key == "RepositoryRoot").Value!;
+    private static string Repository() => Oadm.Tests.Shared.TestRepository.Root;
 
     /// <summary>"api/sdk/vapix/ivapixclient.md" -> "/api/sdk/vapix/ivapixclient/".</summary>
     private static string Url(string path)

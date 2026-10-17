@@ -189,7 +189,7 @@ public sealed class LiveViewServiceTests
 
     private static async Task<List<Proto.LiveViewFrame>> ReadAsync(AsyncServerStreamingCall<Proto.LiveViewFrame> call, int count)
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var frames = new List<Proto.LiveViewFrame>();
         while (frames.Count < count && await call.ResponseStream.MoveNext(timeout.Token))
         {

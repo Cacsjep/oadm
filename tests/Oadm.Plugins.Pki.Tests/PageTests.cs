@@ -404,6 +404,11 @@ public sealed class HeadlessTestApp : Application
 
 public static class HeadlessEntry
 {
+    private static readonly Lazy<HeadlessUnitTestSession> Shared = new(() => HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry)));
+
+    /// <summary>One headless application per test process (a second one fails to register its resources); never disposed.</summary>
+    public static HeadlessUnitTestSession Session => Shared.Value;
+
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<HeadlessTestApp>()
         .UseSkia()
         .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
@@ -440,7 +445,7 @@ public sealed class HeadlessPageTests
         using var radius = TestCa.Root("Corp RADIUS CA");
         var radiusPem = CaCertificates.ToPem(radius);
 
-        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessEntry.Session;
         var settingsFile = Path.Combine(Path.GetTempPath(), "oadm-pki-client-" + Guid.NewGuid().ToString("N") + ".json");
         try
         {

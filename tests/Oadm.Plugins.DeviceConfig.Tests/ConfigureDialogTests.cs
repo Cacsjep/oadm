@@ -428,7 +428,7 @@ public sealed class ConfigureDialogTests(Xunit.Abstractions.ITestOutputHelper ou
         var server = new Server();
         var device = server.Add("10.0.0.48");
         var other = server.Add("10.0.0.22", "AXIS Q6135-LE", "12.6.94");
-        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var session = HeadlessEntry.Session;
         var done = await session.Dispatch(async () =>
         {
             var dialog = Dialog(server, [device, other], new FakeUi());

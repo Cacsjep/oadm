@@ -60,9 +60,8 @@ Installers (`manage package <windows|linux|macos> [--rid] [--version]` into `art
 table and notes in `packaging/README.md`). Every installer offers **"Server and client"** (default) or **"Client
 only"** and ships `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt` and `LGPL-2.1.txt` with each app. CI is one workflow,
 `.github/workflows/release.yml`, only on release tags `v*.*.*` (e.g. `v0.0.1`): job `tests` (Windows, Linux, macOS,
-`dotnet test` with the unit filter minus the Timing tests,
-`Category!=Hardware&Category!=Perf&Category!=HardwareWrite&Category!=Timing`, and `--blame-hang-timeout 5m`, 30 min
-timeout) -> job `installers` (needs tests;
+`dotnet test` with the unit filter `Category!=Hardware&Category!=Perf&Category!=HardwareWrite`, one run without a retry,
+`--blame-hang-timeout 5m`, 30 min timeout) -> job `installers` (needs tests;
 builds the installers (the .deb packages for amd64 and arm64); installs, checks and removes the .deb packages as "Server and client" and as "Client
 only"; checks the .pkg's choices and payload without installing) -> job `smoke-windows` (needs installers, 25 min: the MSI
 installed, checked and removed both ways by `packaging/windows/smoke.ps1`, which prints the time on every line and a
@@ -125,8 +124,7 @@ a comment); `.github/dependabot.yml` opens weekly pull requests for the Actions 
 moved to the OSMF EULA); vulnerable transitive npm packages of the website are pinned with `overrides` entries in
 `website/package.json` (postcss-selector-parser 7.1.6; katex 0.18.9 under mermaid 11) until their parents update; Dependabot alerts and security updates, private
 vulnerability reporting and secret scanning with push protection are on; `SECURITY.md` says how to report; `codeql.yml`
-runs CodeQL (C#) on pushes to main, pull requests and weekly; `pr.yml` builds and unit-tests every pull request on Linux
-(Timing tests excluded); changes only in `website/`, `docs/`, Markdown files (`*.md`) or the release and Pages workflows skip CodeQL and the .NET build and tests
+runs CodeQL (C#) on pushes to main, pull requests and weekly; `pr.yml` builds and unit-tests every pull request on Linux; changes only in `website/`, `docs/`, Markdown files (`*.md`) or the release and Pages workflows skip CodeQL and the .NET build and tests
 (`pr.yml` still reports its required check, with the steps skipped); rulesets on `main`: no force push or deletion (everyone), changes through a pull request with
 the passing check "tests ubuntu-latest" (administrators bypass); minimal issue templates (bug, feature) and pull request
 template (one line); checkout runs with `persist-credentials: false`, workflow permissions
@@ -2574,9 +2572,22 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   - Tests: `[Trait("Category", "Perf")]` for scale tests that take longer than about a second; they run
     with `manage test perf` (not in `manage test unit`), each with a generous but meaningful time
     budget, and write their measured times to the test output.
-  - Tests: `[Trait("Category", "Timing")]` for tests that depend on real elapsed time or machine speed (short real
-    timeouts, `Task.Delay` races, time budgets outside Perf); they run locally (`manage test unit`, `manage test timing`),
-    not in the release workflow. New tests prefer a fake `TimeProvider`.
+  - **HARD RULE, tests that never flake** (decision 2026-10-17: the former `Timing` category and the CI retry are gone;
+    every unit test runs in CI once). A test never depends on how fast the machine is or what runs next to it:
+    - Waiting for another thread: `Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "what")` (checks every 10 ms, 30 s
+      ceiling, returns as soon as it holds), never a fixed `Task.Delay` / `Thread.Sleep` before an assert. "Nothing else
+      happens" checks wait first for a positive sign that the work ended; `Eventually.StaysTrueAsync` only when none exists.
+    - Time in the code (timeouts, intervals, retries, debounce): a `TimeProvider`, and the test passes a
+      `FakeTimeProvider` and advances it. Real timeouts in tests are generous (30 s); an upper bound only proves "it did not
+      hang". Concurrency limits are tested with gates that hold the work, not with overlapping delays.
+    - Speed is checked only in `Perf` tests (a budget about 10x the measured time, the measured time in the message);
+      the functional part of such a test is a normal test.
+    - Shared state: static knobs are restored after the test (better: per-instance settings); tests that set process-wide
+      environment variables share one collection with `DisableParallelization`; one Avalonia headless session per test
+      process (`Oadm.Client.Tests` runs without test parallelization: Avalonia's UI dispatcher is process-wide); temp
+      folders, ports and file names are unique per test; no comparison with the wall clock that breaks at midnight.
+    - The repository is found through `tests/Shared/TestRepository.cs` (the `RepositoryRoot` assembly attribute of
+      `tests/Directory.Build.props`), never by walking up from the build output.
 - Core plugin pages never repeat the page title in a card heading: the description goes into
   the host page header via `ui:PageHeader.Subtitle` (2 px top margin, theme); the status never sits top right in the page
   header but directly left of the Save button it reports on (or next to the value it describes, e.g. the CA validity on the

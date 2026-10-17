@@ -4,23 +4,27 @@ using NSubstitute;
 
 using Oadm.Client.Api;
 using Oadm.Client.Devices;
-using Oadm.Client.Infrastructure;
 using Oadm.Client.LiveView;
 using Oadm.Contracts.V1;
 
 namespace Oadm.Client.Tests;
 
 /// <summary>The side panel around the shared live video: open, switch and close from the device icon, the title, the remembered channel.</summary>
-public sealed class LiveViewViewModelTests
+public sealed class LiveViewViewModelTests : IDisposable
 {
+    // The panel, its video's posted updates and the checks run on one thread, like on the client's UI thread (see UiThread).
+    private readonly UiThread _ui = new();
+
     private readonly LiveVideoFakes _fakes = new();
     private readonly DeviceRowViewModel _camA = new(TestSupport.Device("a", "B8A44F000001", "10.0.0.48", "P3265-V"));
     private readonly DeviceRowViewModel _camB = new(TestSupport.Device("b", "B8A44F000002", "10.0.0.49", "M3106-L Mk II"));
 
-    private LiveViewViewModel CreateVm() => new(_fakes.Api, _fakes.Decoders, new ImmediateUiDispatcher(), NullLogger<LiveViewViewModel>.Instance);
+    private LiveViewViewModel CreateVm() => new(_fakes.Api, _fakes.Decoders, _ui, NullLogger<LiveViewViewModel>.Instance);
+
+    public void Dispose() => _ui.Dispose();
 
     [Fact]
-    public async Task The_icon_opens_the_device_and_the_title_names_model_and_channel()
+    public Task The_icon_opens_the_device_and_the_title_names_model_and_channel() => _ui.RunAsync(async () =>
     {
         using var vm = CreateVm();
         vm.ToggleCommand.Execute(_camA);
@@ -33,19 +37,19 @@ public sealed class LiveViewViewModelTests
 
         vm.Video.SelectSourceCommand.Execute(vm.Video.Sources[1]);
         Assert.Equal("P3265-V  ·  View Area 2", vm.Title);
-    }
+    });
 
     [Fact]
-    public async Task One_channel_shows_only_the_model()
+    public Task One_channel_shows_only_the_model() => _ui.RunAsync(async () =>
     {
         using var vm = CreateVm();
         vm.ToggleCommand.Execute(_camB);
         await TestSupport.WaitUntilAsync(() => vm.Video.Sources.Count == 1);
         Assert.Equal("M3106-L Mk II", vm.Title);
-    }
+    });
 
     [Fact]
-    public async Task The_same_icon_closes_another_switches()
+    public Task The_same_icon_closes_another_switches() => _ui.RunAsync(async () =>
     {
         using var vm = CreateVm();
         vm.ToggleCommand.Execute(_camA);
@@ -61,10 +65,10 @@ public sealed class LiveViewViewModelTests
         Assert.Null(vm.Device);
         Assert.Equal(LiveViewState.Closed, vm.Video.State);
         await TestSupport.WaitUntilAsync(() => _fakes.Streams[1].Cancelled);
-    }
+    });
 
     [Fact]
-    public async Task The_chosen_channel_is_remembered_per_device_for_the_session()
+    public Task The_chosen_channel_is_remembered_per_device_for_the_session() => _ui.RunAsync(async () =>
     {
         using var vm = CreateVm();
         vm.ToggleCommand.Execute(_camA);
@@ -78,20 +82,21 @@ public sealed class LiveViewViewModelTests
         vm.ToggleCommand.Execute(_camA);     // back: view area 2 again
         Assert.Equal(2, (await _fakes.StreamAsync(3)).Request.Camera);
         Assert.True(vm.Video.Sources[1].IsSelected);
-    }
+    });
 
     [Fact]
-    public void Without_the_live_view_permission_the_icon_does_nothing_and_the_panel_closes()
+    public Task Without_the_live_view_permission_the_icon_does_nothing_and_the_panel_closes() => _ui.RunAsync(() =>
     {
         using var vm = CreateVm();
         vm.ToggleCommand.Execute(_camA);
         vm.IsAllowed = false;
         Assert.False(vm.IsOpen);
         Assert.False(vm.ToggleCommand.CanExecute(_camA));
-    }
+        return Task.CompletedTask;
+    });
 
     [Fact]
-    public async Task Removing_the_viewed_device_closes_the_panel()
+    public Task Removing_the_viewed_device_closes_the_panel() => _ui.RunAsync(async () =>
     {
         var api = Substitute.For<IOadmApi>();
         api.WatchLiveViewAsync(Arg.Any<LiveViewRequest>(), Arg.Any<CancellationToken>()).Returns(new LiveVideoFakes.FakeStream(new LiveViewRequest()).ReadAsync(CancellationToken.None));
@@ -104,7 +109,7 @@ public sealed class LiveViewViewModelTests
 
         fixture.SeedDevices();
         await TestSupport.WaitUntilAsync(() => !fixture.Devices.LiveView.IsOpen);
-    }
+    });
 
     [Theory]
     [InlineData(DeviceCategory.Camera, true)]

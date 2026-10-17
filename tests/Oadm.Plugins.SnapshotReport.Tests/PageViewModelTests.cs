@@ -208,7 +208,9 @@ public sealed class PageViewModelTests
                 export.Site = "Plant 7 / North";
                 export.Technician = "Max";
                 export.SavePicker = picker;
-                Assert.Equal("Maintenance report - Plant 7 _ North - " + DateTime.Today.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) + ".pdf", export.SuggestedFileName);
+                // The report date starts as this computer's date (a midnight between opening and here gives yesterday).
+                Assert.InRange(export.Date!.Value, DateOnly.FromDateTime(DateTime.Today).AddDays(-1), DateOnly.FromDateTime(DateTime.Today));
+                Assert.Equal("Maintenance report - Plant 7 _ North - " + export.DateText + ".pdf", export.SuggestedFileName);
                 string? closed = null;
                 export.CloseRequested += (_, path) => closed = path;
                 await export.ExportCommand.ExecuteAsync(null);
@@ -229,9 +231,9 @@ public sealed class PageViewModelTests
         var remembered = new ExportSettingsStore(settingsPath).Load();
         Assert.Equal(("Plant 7 / North", "Max", "C:/reports"), (remembered.Site, remembered.Technician, remembered.LastFolder));
 
-        var again = new ExportReportViewModel(new PluginContext(plugin), [vm.Tiles[0]], new ExportSettingsStore(settingsPath));
+        var again = new ExportReportViewModel(new PluginContext(plugin), [vm.Tiles[0]], new ExportSettingsStore(settingsPath), new FixedLocalTime(new DateTimeOffset(2026, 10, 8, 23, 30, 0, TimeSpan.FromHours(2))));
         Assert.Equal(("Plant 7 / North", "Max"), (again.Site, again.Technician));
-        Assert.Equal(DateOnly.FromDateTime(DateTime.Today), again.Date);
+        Assert.Equal(new DateOnly(2026, 10, 8), again.Date); // this computer's date, whatever the time zone of the test machine
         again.DateText = "7.10.2026";
         Assert.Null(again.Date);
         Assert.NotNull(again.DateError);
@@ -290,4 +292,14 @@ public sealed class PageViewModelTests
         public Oadm.Sdk.Plugins.IPluginSettings Settings => throw new NotSupportedException();
         public Microsoft.Extensions.Logging.ILogger Logger { get; } = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
     }
+}
+
+/// <summary>A clock at a fixed moment in a fixed time zone (UTC+2), so date checks do not depend on the test machine.</summary>
+internal sealed class FixedLocalTime(DateTimeOffset now) : TimeProvider
+{
+    private static readonly TimeZoneInfo Zone = TimeZoneInfo.CreateCustomTimeZone("OADM test +2", TimeSpan.FromHours(2), "OADM test +2", "OADM test +2");
+
+    public override DateTimeOffset GetUtcNow() => now.ToUniversalTime();
+
+    public override TimeZoneInfo LocalTimeZone => Zone;
 }

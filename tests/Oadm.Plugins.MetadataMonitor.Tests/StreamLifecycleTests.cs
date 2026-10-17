@@ -141,30 +141,49 @@ public sealed class StreamLifecycleTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // keep-alives every 100 ms against a 1 s lease
     public async Task A_stream_without_keep_alive_ends_when_its_page_is_gone()
     {
-        await using var rig = await new Rig(Rig.ShortLease()).StartAsync();
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var options = Rig.ShortLease();
+        await using var rig = await new Rig(new MetadataMonitorOptions
+        {
+            BatchInterval = options.BatchInterval,
+            ReconnectDelays = options.ReconnectDelays,
+            LeaseTimeout = options.LeaseTimeout,
+            LeaseCheckInterval = options.LeaseCheckInterval,
+            Time = time,
+        }).StartAsync();
         await using var log = new EventLog(rig.Hub);
         var reply = await rig.StartStreamAsync();
+        var start = time.GetUtcNow();
 
-        // Keep-alives (every 100 ms for 1.5 s) hold it open past the 1 s lease...
+        // Keep-alives (every 100 ms of the server's clock for 1.5 s) hold it open past the 1 s lease...
         for (var i = 0; i < 15; i++)
         {
-            await Task.Delay(100);
+            time.Advance(TimeSpan.FromMilliseconds(100));
             await rig.Plugin.InvokeAsync(MetadataMethods.KeepAlive, MetadataJson.Serialize(new StreamRequest(reply.StreamId!)), CancellationToken.None);
         }
 
         Assert.Equal(1, rig.Plugin.StreamCount);
 
         // ...without them the server ends it (client closed).
-        await Wait.UntilAsync(() => rig.Plugin.StreamCount == 0);
+        // The clock moves on until the lease check ran (its timer starts on a thread of its own, maybe after a move).
+        await Wait.UntilAsync(() =>
+        {
+            if (rig.Plugin.StreamCount == 0)
+            {
+                return true;
+            }
+
+            time.Advance(TimeSpan.FromMilliseconds(100));
+            return false;
+        });
+        Assert.True(time.GetUtcNow() - start > TimeSpan.FromSeconds(2.5)); // 1.5 s of keep-alives, then more than the 1 s lease
         await Wait.UntilAsync(() => rig.Streams.Last!.Disposed); // closed right after it is removed (asynchronously)
         await Wait.UntilAsync(() => log.States[^1].State == MonitorStates.Stopped);
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // waits 200 ms for the burst to be read
     public async Task A_burst_above_the_batch_limit_drops_the_oldest_and_counts_them()
     {
         await using var rig = await new Rig(new MetadataMonitorOptions { BatchInterval = TimeSpan.FromSeconds(30) }).StartAsync(); // one flush: on Stop
@@ -177,7 +196,7 @@ public sealed class StreamLifecycleTests
         }
 
         await Wait.UntilAsync(() => rig.Plugin.StreamCount == 1);
-        await Task.Delay(200);
+        await Wait.UntilAsync(() => source.Consumed == 2000); // the burst was read
         await rig.StopStreamAsync(reply.StreamId!);
         await Wait.UntilAsync(() => log.States.LastOrDefault()?.State == MonitorStates.Stopped);
 
@@ -190,7 +209,6 @@ public sealed class StreamLifecycleTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // waits 200 ms for the messages to be read
     public async Task Large_batches_are_split_below_the_event_size_limit()
     {
         await using var rig = await new Rig(new MetadataMonitorOptions { BatchInterval = TimeSpan.FromSeconds(30), MaxEventCharacters = 20_000 }).StartAsync();
@@ -201,7 +219,7 @@ public sealed class StreamLifecycleTests
             rig.Streams.Last!.Write(RecordedEvents.Notification("tns1:Device/tnsaxis:IO/VirtualInput", "Initialized", i, 0));
         }
 
-        await Task.Delay(200);
+        await Wait.UntilAsync(() => rig.Streams.Last!.Consumed == 100); // the messages were read
         await rig.StopStreamAsync(reply.StreamId!);
         await Wait.UntilAsync(() => log.Messages.Count == 100);
         Assert.True(log.Batches.Count > 1);

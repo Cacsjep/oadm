@@ -213,8 +213,7 @@ public sealed class NoticesGeneratorTests : IDisposable
     [Fact]
     public void BundledLicenseTemplatesOfTheRepositoryAreComplete()
     {
-        var repo = Core.Plugins.PluginPaths.FindRepositoryRoot(AppContext.BaseDirectory)!;
-        var templates = new LicenseTemplates(Path.Combine(repo, "packaging", "notices", "licenses"));
+        var templates = new LicenseTemplates(Oadm.Tests.Shared.TestRepository.Path("packaging", "notices", "licenses"));
 
         foreach (var id in new[] { "MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "OFL-1.1", "LGPL-2.1" })
         {

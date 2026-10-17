@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 using Microsoft.Extensions.Logging.Abstractions;
 
 using NSubstitute;
@@ -12,19 +14,33 @@ using Oadm.Client.Plugins;
 using Oadm.Client.Tasks;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Testing;
+
+// One test at a time in this assembly. Avalonia keeps its UI dispatcher in a static field, and the headless session
+// resets it and sets the app up again for every Dispatch (per-test isolation). Any Avalonia object created on another
+// thread meanwhile (a brush, a bitmap, a control in a view model test) claims that field for its own thread, and the
+// next headless window fails with "The calling thread cannot access this object because a different thread owns it"
+// (DefaultRenderLoop.Add). Most headless tests run through the session's single thread anyway; running the rest one
+// after another costs a few seconds.
+[assembly: CollectionBehavior(DisableTestParallelization = true)]
 
 namespace Oadm.Client.Tests;
 
 internal static class TestSupport
 {
-    public static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000)
+    /// <summary>
+    /// Waits until <paramref name="condition"/> holds (another thread, a stream, a timer), at most 30 s by default
+    /// (<see cref="Eventually.DefaultTimeout"/>), so a busy machine never fails a test that would pass. Unlike
+    /// <see cref="Eventually"/> it checks on the caller's context: inside a headless Dispatch the condition may read controls.
+    /// </summary>
+    public static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 30_000, [CallerArgumentExpression(nameof(condition))] string what = "")
     {
-        DateTime end = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        DateTime end = DateTime.UtcNow + TimeSpan.FromMilliseconds(Math.Max(timeoutMs, Eventually.DefaultTimeout.TotalMilliseconds));
         while (!condition())
         {
             if (DateTime.UtcNow > end)
             {
-                throw new TimeoutException("Condition not met in time");
+                throw new TimeoutException($"Timed out waiting for {what}.");
             }
 
             await Task.Delay(10);

@@ -193,8 +193,33 @@ public sealed class CodeViewTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // time budget
     public void Large_bodies_are_formatted_but_shown_without_colors_above_the_limit()
+    {
+        var doc = CodeText.Prepare(LargeJsonBody(), CodeLanguage.Json);
+
+        Assert.Equal(CodeLanguage.Json, doc.Language);
+        Assert.StartsWith("[\n  {\n    \"id\": 0,", doc.Text.ReplaceLineEndings("\n"), StringComparison.Ordinal);
+        Assert.False(doc.IsHighlighted);
+
+        var small = CodeText.Prepare("{\"a\":1}", CodeLanguage.Json, highlightLimit: 5);
+        Assert.False(small.IsHighlighted);
+    }
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public void Formatting_a_large_body_is_fast()
+    {
+        var text = LargeJsonBody();
+        var watch = Stopwatch.StartNew();
+        var doc = CodeText.Prepare(text, CodeLanguage.Json);
+        watch.Stop();
+
+        Assert.False(doc.IsHighlighted);
+        Assert.True(watch.ElapsedMilliseconds < 5000, $"formatting {text.Length:N0} characters took {watch.ElapsedMilliseconds} ms");
+    }
+
+    /// <summary>A JSON body of more than a million characters (above the highlight limit).</summary>
+    private static string LargeJsonBody()
     {
         var json = new StringBuilder("[");
         for (var i = 0; i < 60_000; i++)
@@ -204,17 +229,7 @@ public sealed class CodeViewTests
 
         var text = json.Append(']').ToString();
         Assert.True(text.Length > 1_000_000);
-        var watch = Stopwatch.StartNew();
-        var doc = CodeText.Prepare(text, CodeLanguage.Json);
-        watch.Stop();
-
-        Assert.Equal(CodeLanguage.Json, doc.Language);
-        Assert.StartsWith("[\n  {\n    \"id\": 0,", doc.Text.ReplaceLineEndings("\n"), StringComparison.Ordinal);
-        Assert.False(doc.IsHighlighted);
-        Assert.True(watch.ElapsedMilliseconds < 5000, $"took {watch.ElapsedMilliseconds} ms");
-
-        var small = CodeText.Prepare("{\"a\":1}", CodeLanguage.Json, highlightLimit: 5);
-        Assert.False(small.IsHighlighted);
+        return text;
     }
 
     [Fact]
@@ -228,8 +243,25 @@ public sealed class CodeViewTests
     }
 
     [Fact]
-    [Trait("Category", "Timing")]
+    public void A_body_of_the_size_limit_is_highlighted()
+    {
+        Assert.True(CodeText.Prepare(BodyOfTheSizeLimit(), CodeLanguage.Json, format: false).IsHighlighted);
+    }
+
+    [Fact]
+    [Trait("Category", "Perf")]
     public void Highlighting_a_body_of_the_size_limit_is_fast()
+    {
+        var text = BodyOfTheSizeLimit();
+        var watch = Stopwatch.StartNew();
+        var doc = CodeText.Prepare(text, CodeLanguage.Json, format: false);
+        watch.Stop();
+
+        Assert.True(doc.IsHighlighted);
+        Assert.True(watch.ElapsedMilliseconds < 2000, $"highlighting {text.Length:N0} characters took {watch.ElapsedMilliseconds} ms");
+    }
+
+    private static string BodyOfTheSizeLimit()
     {
         var json = new StringBuilder("{");
         for (var i = 0; json.Length < 250_000; i++)
@@ -237,13 +269,7 @@ public sealed class CodeViewTests
             json.Append(i == 0 ? string.Empty : ",").Append("\"key").Append(i).Append("\":[true,null,").Append(i).Append(",\"text\"]");
         }
 
-        var text = json.Append('}').ToString();
-        var watch = Stopwatch.StartNew();
-        var doc = CodeText.Prepare(text, CodeLanguage.Json, format: false);
-        watch.Stop();
-
-        Assert.True(doc.IsHighlighted);
-        Assert.True(watch.ElapsedMilliseconds < 2000, $"took {watch.ElapsedMilliseconds} ms");
+        return json.Append('}').ToString();
     }
 
     [Fact]

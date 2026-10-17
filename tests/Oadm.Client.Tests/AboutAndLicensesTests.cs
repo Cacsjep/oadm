@@ -36,8 +36,7 @@ public sealed class AboutAndLicensesTests : IDisposable
     public void Terms_of_use_come_first_and_match_TERMS_md()
     {
         var vm = new AboutViewModel(Substitute.For<IOadmApi>());
-        var repo = Path.GetDirectoryName(ThirdPartyNotices.DefaultCandidates(AppContext.BaseDirectory)[^1])!; // the repository root
-        var terms = File.ReadAllText(Path.Combine(repo, "TERMS.md")).Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
+        var terms = File.ReadAllText(Oadm.Tests.Shared.TestRepository.Path("TERMS.md")).Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
 
         Assert.Equal("Terms of use", vm.TermsTitle);
         Assert.StartsWith("OADM is free, open source software, provided \"as is\"", vm.TermsText, StringComparison.Ordinal);
@@ -100,12 +99,14 @@ public sealed class AboutAndLicensesTests : IDisposable
     [Fact]
     public void Notices_are_looked_up_next_to_the_exe_in_the_app_bundle_and_in_the_repository()
     {
-        var candidates = ThirdPartyNotices.DefaultCandidates(AppContext.BaseDirectory);
+        // A client started from its build output inside the repository (src/Oadm.Client/bin/...).
+        var app = Oadm.Tests.Shared.TestRepository.Path("src", "Oadm.Client", "bin", "Debug", "net10.0");
+        var candidates = ThirdPartyNotices.DefaultCandidates(app);
 
-        Assert.Equal(Path.Combine(AppContext.BaseDirectory, ThirdPartyNotices.FileName), candidates[0]);
-        Assert.Equal(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "Resources", ThirdPartyNotices.FileName)), candidates[1]);
-        Assert.EndsWith("THIRD-PARTY-NOTICES.md", candidates[^1], StringComparison.Ordinal); // tests run in the repository
-        Assert.NotNull(ThirdPartyNotices.Default.Find());
+        Assert.Equal(Path.Combine(app, ThirdPartyNotices.FileName), candidates[0]);
+        Assert.Equal(Path.GetFullPath(Path.Combine(app, "..", "Resources", ThirdPartyNotices.FileName)), candidates[1]);
+        Assert.Equal(Oadm.Tests.Shared.TestRepository.Path("THIRD-PARTY-NOTICES.md"), candidates[^1]);
+        Assert.NotNull(new ThirdPartyNotices(candidates).Find());
     }
 
     [Fact]

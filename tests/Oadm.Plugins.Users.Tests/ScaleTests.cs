@@ -14,8 +14,17 @@ public sealed class ScaleTests
     private const int Count = DeviceLimits.MaxDevices;
 
     [Fact]
-    [Trait("Category", "Timing")] // time budget
-    public async Task Users_dialog_with_30000_devices_reads_only_the_first_device()
+    public async Task Users_dialog_with_30000_devices_reads_only_the_first_device() => await OpenWithTheMostDevicesAsync();
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public async Task Users_dialog_with_30000_devices_opens_fast()
+    {
+        var elapsed = await OpenWithTheMostDevicesAsync();
+        Assert.True(elapsed < TimeSpan.FromSeconds(1), $"Opening took {elapsed.TotalMilliseconds:0} ms");
+    }
+
+    private static async Task<TimeSpan> OpenWithTheMostDevicesAsync()
     {
         var apis = Fixtures.P3265ApiList();
         var devices = Enumerable.Range(0, Count).Select(i => (IDeviceInfo)new ScaleDevice($"10.0.{i / 256}.{i % 256}", DeviceStatus.Ok, apis)).ToList();
@@ -31,7 +40,7 @@ public sealed class ScaleTests
 
         Assert.Equal(1, ctx.Queries); // never one query per selected device
         Assert.Contains(Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + " devices", vm.Summary, StringComparison.Ordinal);
-        Assert.True(watch.ElapsedMilliseconds < 1000, $"Opening took {watch.ElapsedMilliseconds} ms");
+        return watch.Elapsed;
     }
 
     [Fact]

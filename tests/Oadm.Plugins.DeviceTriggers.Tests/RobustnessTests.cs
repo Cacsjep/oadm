@@ -33,12 +33,10 @@ public sealed class RobustnessTests(ITestOutputHelper output)
 
         // The older round finished first; the delete's round comes after it, and nothing brings the trigger back.
         await Wait.UntilAsync(() => rig.Plugin.Runtime!.ConnectionCount == 0, "connection closed");
-        for (var i = 0; i < 30; i++)
-        {
-            Assert.Equal(0, rig.Plugin.Runtime!.ConnectionCount);
-            Assert.Empty(rig.Plugin.Runtime.TriggersFor(a.Id));
-            await Task.Delay(10);
-        }
+        await Oadm.Sdk.Testing.Eventually.StaysTrueAsync(
+            () => rig.Plugin.Runtime!.ConnectionCount == 0 && rig.Plugin.Runtime.TriggersFor(a.Id).Count == 0,
+            "the trigger stays deleted",
+            TimeSpan.FromMilliseconds(300));
     }
 
     [Fact]
@@ -58,9 +56,8 @@ public sealed class RobustnessTests(ITestOutputHelper output)
         hold.SetResult();
         await stop;
 
-        await Task.Delay(200);
-        Assert.False(rig.Cameras[a.Id].IsConnected);
         Assert.Null(rig.Plugin.Runtime);
+        await Wait.UntilAsync(() => !rig.Cameras[a.Id].IsConnected, "the camera sees the connection closed"); // the close reaches it asynchronously
     }
 
     [Fact]
@@ -74,8 +71,7 @@ public sealed class RobustnessTests(ITestOutputHelper output)
         runtime.Apply([Fixture.VirtualInputTrigger("Gate open", [a.Id])]);
 
         Assert.Equal(0, runtime.ConnectionCount);
-        await Task.Delay(100);
-        Assert.Equal(0, rig.Cameras[a.Id].Connections);
+        await Oadm.Sdk.Testing.Eventually.StaysTrueAsync(() => rig.Cameras[a.Id].Connections == 0, "no connection", TimeSpan.FromMilliseconds(100));
     }
 
     [Fact]
@@ -92,10 +88,12 @@ public sealed class RobustnessTests(ITestOutputHelper output)
         await rig.SaveAsync(Fixture.TamperingTrigger("Tampering", [a.Id]));
         await Wait.UntilAsync(() => rig.Cameras[a.Id].Configures.Count == 2, "a new filter on 10.0.0.48");
         await rig.SaveAsync(onB with { Name = "B renamed" });
-        await Task.Delay(300);
 
-        Assert.Equal(2, rig.Cameras[a.Id].Configures.Count);
-        Assert.Single(rig.Cameras[b.Id].Configures); // neither the other trigger nor the rename touched it
+        // Neither the other trigger nor the rename touches 10.0.0.49 (no sign that nothing happens: watch a while).
+        await Oadm.Sdk.Testing.Eventually.StaysTrueAsync(
+            () => rig.Cameras[a.Id].Configures.Count == 2 && rig.Cameras[b.Id].Configures.Count == 1,
+            "no new filter",
+            TimeSpan.FromMilliseconds(300));
     }
 
     [Fact]
@@ -111,10 +109,13 @@ public sealed class RobustnessTests(ITestOutputHelper output)
 
         await rig.SaveAsync(Fixture.VirtualInputTrigger("Gate closed", [], "4") with { AllDevices = true });
         await rig.SaveAsync(rig.Plugin.Triggers.Single(t => t.Name == "Gate open") with { Filters = [new TriggerFilter("port", "5")] });
-        await Task.Delay(400);
+        await Wait.UntilAsync(() => rig.Cameras[a.Id].Connections == 1, "the session");
 
-        Assert.Equal(reads, rig.Cameras[a.Id].Reads); // the regular check every 5 minutes reads it again
-        Assert.Equal(1, rig.Cameras[a.Id].Connections);
+        // The regular check every 5 minutes reads it again, not every change.
+        await Oadm.Sdk.Testing.Eventually.StaysTrueAsync(
+            () => rig.Cameras[a.Id].Reads == reads && rig.Cameras[a.Id].Connections == 1,
+            "no new read",
+            TimeSpan.FromMilliseconds(400));
     }
 
     [Fact]
@@ -129,8 +130,7 @@ public sealed class RobustnessTests(ITestOutputHelper output)
         {
             runtime.Apply([Fixture.VirtualInputTrigger("Gate open", devices.Select(d => d.Id))]);
             await Wait.UntilAsync(() => Volatile.Read(ref rig.Cameras.ReadsInFlight) == 3, "three reading");
-            await Task.Delay(200);
-            Assert.Equal(3, Volatile.Read(ref rig.Cameras.MaxReadsInFlight));
+            await Oadm.Sdk.Testing.Eventually.StaysTrueAsync(() => Volatile.Read(ref rig.Cameras.MaxReadsInFlight) == 3, "no fourth read", TimeSpan.FromMilliseconds(200));
 
             rig.Cameras.HoldReads = null;
             release.SetResult();
@@ -168,9 +168,10 @@ public sealed class RobustnessTests(ITestOutputHelper output)
 
         // Alone the refused trigger is a problem too, still without breaking the session.
         await rig.Plugin.InvokeAsync(DeviceTriggersMethods.Delete, TriggerJson.Serialize(new IdRequest(input.Id)), CancellationToken.None);
-        await Task.Delay(300);
-        Assert.Equal(refused, rig.Plugin.Runtime!.StatesOf(tampering).Single().Problem);
-        Assert.Equal(1, camera.Connections);
+        await Oadm.Sdk.Testing.Eventually.StaysTrueAsync(
+            () => rig.Plugin.Runtime!.StatesOf(tampering).Single().Problem == refused && camera.Connections == 1,
+            "still refused, same session",
+            TimeSpan.FromMilliseconds(300));
     }
 
     [Fact]
@@ -211,9 +212,11 @@ public sealed class RobustnessTests(ITestOutputHelper output)
         // A copy starts turned off: reported too, once.
         var copy = (await rig.CallAsync<SaveReply>(DeviceTriggersMethods.Duplicate, new IdRequest(emptyTag.Id))).Trigger!;
         Assert.Single(rig.Publisher.Full, l => l == $"replace {DeviceTriggersPluginInfo.TypeId(copy.Id)} []");
-        await Task.Delay(300); // more resolve rounds report nothing again
-        Assert.Single(rig.Publisher.Full, l => l == $"replace {DeviceTriggersPluginInfo.TypeId(copy.Id)} []");
-        Assert.Single(rig.Publisher.Full, l => l == $"replace {DeviceTriggersPluginInfo.TypeId(off.Id)} []");
+        await Oadm.Sdk.Testing.Eventually.StaysTrueAsync( // more resolve rounds report nothing again
+            () => rig.Publisher.Full.Count(l => l == $"replace {DeviceTriggersPluginInfo.TypeId(copy.Id)} []") == 1
+                && rig.Publisher.Full.Count(l => l == $"replace {DeviceTriggersPluginInfo.TypeId(off.Id)} []") == 1,
+            "one report each",
+            TimeSpan.FromMilliseconds(300));
     }
 
     [Fact]
@@ -228,7 +231,7 @@ public sealed class RobustnessTests(ITestOutputHelper output)
         try
         {
             runtime.Apply([trigger]);
-            await Wait.UntilAsync(() => rig.Publisher.Full.Contains($"replace {DeviceTriggersPluginInfo.TypeId(trigger.Id)} []"), "the full report", 30_000);
+            await Wait.UntilAsync(() => rig.Publisher.Full.Contains($"replace {DeviceTriggersPluginInfo.TypeId(trigger.Id)} []"), "the full report", 120_000);
             output.WriteLine($"10,000 devices settled and reported in {watch.ElapsedMilliseconds} ms");
             Assert.Single(rig.Publisher.Full, l => l.StartsWith($"replace {DeviceTriggersPluginInfo.TypeId(trigger.Id)} ", StringComparison.Ordinal));
         }

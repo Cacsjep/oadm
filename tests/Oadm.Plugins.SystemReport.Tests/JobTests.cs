@@ -110,19 +110,30 @@ public sealed class JobTests : IDisposable
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // the peak is reached only while 80 ms downloads overlap
     public async Task At_most_four_devices_download_at_the_same_time()
     {
+        // Every download waits at the gate, so the four that started hold their slots until the test releases them.
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var waiting = 0;
         var ids = new List<Guid>();
         for (var i = 0; i < 12; i++)
         {
             var device = AddDevice($"10.0.1.{i + 1}", $"ACCC8E0001{i:00}");
-            _vapix.Cameras[device.Id].Delay = TimeSpan.FromMilliseconds(80);
+            _vapix.Cameras[device.Id].Handler = async (_, ct) =>
+            {
+                Interlocked.Increment(ref waiting);
+                await gate.Task.WaitAsync(ct);
+                return FakeCamera.Zip(FakeCamera.Report(true));
+            };
             ids.Add(device.Id);
         }
 
         using var jobs = Create();
-        var status = await RunToEndAsync(jobs, await jobs.StartAsync(new StartRequest { DeviceIds = ids }, CancellationToken.None));
+        var started = await jobs.StartAsync(new StartRequest { DeviceIds = ids }, CancellationToken.None);
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => Volatile.Read(ref waiting) == 4, "four downloads at the gate");
+        Assert.Equal(4, jobs.MaxConcurrentDownloads); // no fifth one started while four hold their slots
+        gate.SetResult();
+        var status = await RunToEndAsync(jobs, started);
 
         Assert.Equal((JobStates.Done, 0), (status.State, status.Failed));
         Assert.Equal(4, jobs.MaxConcurrentDownloads);
@@ -142,13 +153,10 @@ public sealed class JobTests : IDisposable
         using var jobs = Create();
         var started = await jobs.StartAsync(new StartRequest { DeviceIds = [fast.Id, slow.Id] }, CancellationToken.None);
 
-        JobStatus status;
-        do
-        {
-            await Task.Delay(10);
-            status = jobs.Status(started.JobId, started.Version);
-        }
-        while (status.Devices.All(d => d.State != DeviceReportStates.Done));
+        JobStatus status = started;
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(
+            () => (status = jobs.Status(started.JobId, started.Version)).Devices.Any(d => d.State == DeviceReportStates.Done),
+            "the fast device done");
 
         Assert.All(status.Devices, d => Assert.Contains(d.DeviceId, new[] { fast.Id, slow.Id }));
         Assert.Equal(JobStates.Running, status.State);
@@ -191,7 +199,7 @@ public sealed class JobTests : IDisposable
         Assert.True(Directory.Exists(folder));
 
         jobs.Delete(started.JobId);
-        await worker.WaitAsync(TimeSpan.FromSeconds(10));
+        await worker.WaitAsync(TimeSpan.FromSeconds(30));
 
         await WaitUntilAsync(() => !Directory.Exists(folder));
         Assert.Throws<KeyNotFoundException>(() => jobs.Status(started.JobId, 0));
@@ -241,8 +249,17 @@ public sealed class JobTests : IDisposable
     }
 
     [Fact]
-    [Trait("Category", "Timing")] // time budget
-    public async Task The_most_devices_start_at_once_and_report_their_changes_compactly()
+    public async Task The_most_devices_start_at_once_and_report_their_changes_compactly() => await RunTheMostDevicesAsync();
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public async Task The_most_devices_finish_fast_when_every_one_is_refused()
+    {
+        var elapsed = await RunTheMostDevicesAsync();
+        Assert.True(elapsed < TimeSpan.FromSeconds(10), $"{SystemReportPluginInfo.MaxDevices} refused devices took {elapsed}");
+    }
+
+    private async Task<TimeSpan> RunTheMostDevicesAsync()
     {
         var ids = new List<Guid>();
         for (var i = 0; i < SystemReportPluginInfo.MaxDevices; i++)
@@ -260,7 +277,7 @@ public sealed class JobTests : IDisposable
 
         Assert.Equal((JobStates.Done, SystemReportPluginInfo.MaxDevices, SystemReportPluginInfo.MaxDevices), (status.State, status.Finished, status.Failed));
         Assert.Empty(jobs.Status(started.JobId, status.Version).Devices);
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"{SystemReportPluginInfo.MaxDevices} refused devices took {watch.Elapsed}");
+        return watch.Elapsed;
     }
 
     [Fact]
@@ -310,13 +327,5 @@ public sealed class JobTests : IDisposable
         Assert.Equal("oadm-system-reports-2026-10-08.zip", ReportBundle.DefaultBundleName(new DateTime(2026, 10, 8, 23, 0, 0, DateTimeKind.Local)));
     }
 
-    private static async Task WaitUntilAsync(Func<bool> condition)
-    {
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (!condition())
-        {
-            Assert.True(DateTime.UtcNow < deadline, "condition not met in time");
-            await Task.Delay(20);
-        }
-    }
+    private static Task WaitUntilAsync(Func<bool> condition) => Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the job state");
 }
