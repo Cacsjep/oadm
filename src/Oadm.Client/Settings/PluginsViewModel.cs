@@ -1,12 +1,15 @@
 using System.Globalization;
 
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 using Microsoft.Extensions.Logging;
 
+using Oadm.Client.Dialogs;
 using Oadm.Client.Plugins;
 using Oadm.Client.Shell;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Licensing;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Client.Settings;
@@ -40,6 +43,8 @@ public sealed partial class PluginRowViewModel : ObservableObject
         Name = info.DisplayName;
         Description = info.Description;
         OffByDefault = !info.EnabledByDefault;
+        AlwaysOn = info.AlwaysOn;
+        License = PluginPackageStore.ToInfo(info.License);
         _applying = true;
         IsEnabled = info.Enabled;
         _applying = false;
@@ -58,6 +63,45 @@ public sealed partial class PluginRowViewModel : ObservableObject
 
     public bool OffByDefault { get; }
 
+    /// <summary>Core functionality listed only for its license: the check box stays on.</summary>
+    public bool AlwaysOn { get; }
+
+    /// <summary>The license as the server checked it; NotRequired for a free plugin.</summary>
+    public PluginLicenseInfo License { get; }
+
+    /// <summary>The plugin is sold with a license: the License column shows its state and the buttons.</summary>
+    public bool NeedsLicense => License.Status != LicenseStatus.NotRequired;
+
+    /// <summary>"Licensed", "Trial", "Expired" ... for the status chip.</summary>
+    public string LicenseText => License.Status switch
+    {
+        LicenseStatus.Valid => "Licensed",
+        LicenseStatus.Trial => "Trial",
+        LicenseStatus.TrialEnded => "Trial ended",
+        LicenseStatus.Missing => "No license",
+        LicenseStatus.Expired => "Expired",
+        LicenseStatus.WrongServer => "Other server",
+        LicenseStatus.Invalid => "Not valid",
+        _ => string.Empty,
+    };
+
+    /// <summary>The detail below the status: who it is for and until when, or why it is not valid.</summary>
+    public string LicenseDetail => License.Reason;
+
+    public bool LicenseOk => License.Status == LicenseStatus.Valid;
+
+    public bool LicenseWarning => License.Status == LicenseStatus.Trial;
+
+    public bool LicenseError => NeedsLicense && !LicenseOk && !LicenseWarning;
+
+    /// <summary>A license is stored (Remove applies); a trial or a missing license has none.</summary>
+    public bool HasLicense => License.Data is not null;
+
+    /// <summary>"Enter license", or "Change license" when one is stored.</summary>
+    public string EnterLicenseText => HasLicense ? "Change license" : "Enter license";
+
+    public bool CanEditLicense => NeedsLicense && _owner.IsAdmin;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StateText))]
     public partial bool IsEnabled { get; set; }
@@ -67,7 +111,7 @@ public sealed partial class PluginRowViewModel : ObservableObject
 
     public string StateText => IsEnabled ? "On" : "Off";
 
-    public bool CanToggle => _owner.IsAdmin && !IsBusy;
+    public bool CanToggle => _owner.IsAdmin && !IsBusy && !AlwaysOn;
 
     partial void OnIsEnabledChanged(bool value)
     {
@@ -79,7 +123,11 @@ public sealed partial class PluginRowViewModel : ObservableObject
 
     partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanToggle));
 
-    internal void NotifyRole() => OnPropertyChanged(nameof(CanToggle));
+    internal void NotifyRole()
+    {
+        OnPropertyChanged(nameof(CanToggle));
+        OnPropertyChanged(nameof(CanEditLicense));
+    }
 
     internal void Set(bool enabled)
     {
@@ -112,13 +160,17 @@ public sealed partial class PluginsViewModel : ObservableObject
 {
     private readonly PluginPackageStore _store;
     private readonly UserSession? _session;
+    private readonly IDialogService? _dialogs;
+    private readonly IClipboardService? _clipboard;
     private readonly ILogger<PluginsViewModel> _logger;
 
-    public PluginsViewModel(PluginPackageStore store, ILogger<PluginsViewModel> logger, UserSession? session = null)
+    public PluginsViewModel(PluginPackageStore store, ILogger<PluginsViewModel> logger, UserSession? session = null, IDialogService? dialogs = null, IClipboardService? clipboard = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _logger = logger;
         _session = session;
+        _dialogs = dialogs;
+        _clipboard = clipboard;
         store.Changed += (_, _) => Rebuild();
         if (session is not null)
         {
@@ -140,6 +192,9 @@ public sealed partial class PluginsViewModel : ObservableObject
 
     public bool IsAdmin => _session?.IsAdmin ?? true;
 
+    /// <summary>At least one plugin is sold with a license: the page shows the License column.</summary>
+    public bool HasLicensedPlugins => Plugins.Any(p => p.NeedsLicense);
+
     public Oadm.Sdk.Client.Collections.RangeObservableCollection<PluginRowViewModel> Plugins { get; } = [];
 
     /// <summary>
@@ -155,6 +210,58 @@ public sealed partial class PluginsViewModel : ObservableObject
     public bool HasError => !string.IsNullOrEmpty(ErrorText);
 
     public bool IsEmpty => Plugins.Count == 0;
+
+    /// <summary>This server's ID, which plugin licenses name; empty for an older server.</summary>
+    public string ServerId => _store.ServerId;
+
+    public bool HasServerId => ServerId.Length > 0;
+
+    [RelayCommand]
+    private async Task CopyServerIdAsync()
+    {
+        if (_clipboard is not null && HasServerId)
+        {
+            await _clipboard.SetTextAsync(ServerId).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>Opens "License of X": paste or choose the file, the server checks and stores it.</summary>
+    [RelayCommand]
+    private async Task EnterLicenseAsync(PluginRowViewModel? row)
+    {
+        if (row is null || _dialogs is null || !row.CanEditLicense)
+        {
+            return;
+        }
+
+        ErrorText = null;
+        await _dialogs.ShowPluginLicenseAsync(new PluginLicenseViewModel(_store, row.Id, row.Name, _dialogs, _clipboard)).ConfigureAwait(true);
+    }
+
+    /// <summary>Removes a stored license after a confirmation.</summary>
+    [RelayCommand]
+    private async Task RemoveLicenseAsync(PluginRowViewModel? row)
+    {
+        if (row is null || _dialogs is null || !row.CanEditLicense || !row.HasLicense)
+        {
+            return;
+        }
+
+        if (!await _dialogs.ConfirmAsync("Remove license", $"Remove the license of {row.Name}? The plugin may stop working.", "Remove license").ConfigureAwait(true))
+        {
+            return;
+        }
+
+        try
+        {
+            await _store.RemoveLicenseAsync(row.Id, CancellationToken.None).ConfigureAwait(true);
+            ErrorText = null;
+        }
+        catch (Exception ex)
+        {
+            ErrorText = $"The license of {row.Name} could not be removed: {Message(ex)}";
+        }
+    }
 
     internal async Task SetEnabledAsync(PluginRowViewModel row, bool enabled)
     {
@@ -174,7 +281,7 @@ public sealed partial class PluginsViewModel : ObservableObject
     private void Rebuild()
     {
         var rows = _store.Packages
-            .Where(p => !p.AlwaysOn)
+            .Where(p => !p.AlwaysOn || p.License is { Status: not PluginLicenseStatus.PluginLicenseNotRequired })
             .Select(p => new PluginRowViewModel(this, p))
             .OrderBy(r => r.Group.Order)
             .ThenBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase)
@@ -183,6 +290,9 @@ public sealed partial class PluginsViewModel : ObservableObject
         OnPropertyChanged(nameof(Groups));
         Plugins.ReplaceAll(rows);
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(ServerId));
+        OnPropertyChanged(nameof(HasServerId));
+        OnPropertyChanged(nameof(HasLicensedPlugins));
     }
 
     /// <summary>gRPC errors carry the user message in Status.Detail.</summary>

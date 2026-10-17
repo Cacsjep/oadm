@@ -149,6 +149,8 @@ public static class AccessPolicy
         ["/oadm.v1.PluginService/Watch"] = AccessRule.InCall,
         ["/oadm.v1.PluginService/Download"] = AccessRule.InCall,
         ["/oadm.v1.PluginService/SetPackageEnabled"] = AccessRule.Admin,
+        ["/oadm.v1.PluginService/SetPackageLicense"] = AccessRule.Admin,
+        ["/oadm.v1.PluginService/RemovePackageLicense"] = AccessRule.Admin,
 
         // Server settings and the credential list are Administrator only; every role reads the settings (About, read-only page).
         ["/oadm.v1.SettingsService/Get"] = AccessRule.SignedIn,

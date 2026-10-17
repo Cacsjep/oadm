@@ -5,6 +5,8 @@ description: Turn plugins on or off.
 
 import { Image } from 'astro:assets';
 import plugins from '../../../assets/screens/client-plugins-page.png';
+import licenses from '../../../assets/screens/client-plugins-licenses.png';
+import licenseDialog from '../../../assets/screens/client-plugin-license.png';
 
 <Image src={plugins} alt="The Plugins page" class="screen" />
 
@@ -21,6 +23,23 @@ clients see the change the next time they connect.
 
 Restart, Upgrade firmware, Date and time, Device configuration, Applications (ACAP), Users, Network settings, PKI,
 System report, Outputs and Notifications are the everyday device work. They are always on and not listed.
+
+## Licenses
+
+Some plugins from others are sold with a license. They show a **License** column with their state: Licensed, Trial, Trial
+ended, No license, Expired, Other server or Not valid; the tooltip says why.
+
+1. Copy the **Server ID** at the top of the page (copy button) and send it to the plugin's vendor.
+2. You get a license file back. Click **Enter license** in the plugin's row, paste the text or click **Choose file**, then
+   **Save**. A license for another server, an expired one or a changed file is refused with the reason.
+3. **Change license** replaces it, **Remove** takes it away.
+
+The server ID stays the same when you restore a backup on another computer, so a moved server keeps its licenses. Entering
+and removing a license is written to the audit log.
+
+<Image src={licenses} alt="The Plugins page with the server ID and a licensed plugin" class="screen" />
+
+<Image src={licenseDialog} alt="Entering a plugin license" class="screen" />
 
 ## Plugins from others
 

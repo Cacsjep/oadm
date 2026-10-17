@@ -176,6 +176,7 @@ export default defineConfig({
 						{ label: 'Testing', slug: 'dev/testing' },
 						{ label: 'Debug a plugin', slug: 'dev/debugging' },
 						{ label: 'SDK versions', slug: 'dev/compatibility' },
+						{ label: 'Sell a plugin with a license', slug: 'dev/licenses' },
 						{ label: 'Build a plugin with AI', slug: 'dev/ai-plugins' },
 						...(apiSidebar ? [{ label: 'SDK reference', collapsed: true, items: apiSidebar }] : []),
 					],

@@ -1,0 +1,44 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Client.Settings"
+        x:Class="Oadm.Client.Settings.PluginLicenseWindow"
+        x:DataType="vm:PluginLicenseViewModel"
+        Title="{Binding Title}"
+        Width="600" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <!-- "Enter license" of the Plugins page: single operation. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <ui:FormField Classes="wide" Label="Server ID">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <SelectableTextBlock Classes="mono" Text="{Binding ServerId}" VerticalAlignment="Center" />
+            <Button Classes="toolbar iconOnly" ToolTip.Tip="Copy server ID" Command="{Binding CopyServerIdCommand}">
+              <ui:OadmIcon Data="{StaticResource Icon.copy}" />
+            </Button>
+          </StackPanel>
+        </ui:FormField>
+        <ui:FormField Classes="wide" Label="License" Hint="Paste the license you got from the plugin's vendor, or choose its file."
+                      Error="{Binding LicenseError}">
+          <ui:CodeEditor x:Name="LicenseBox" Text="{Binding LicenseText}" Language="Json" Height="220" IsEnabled="{Binding IsIdle}" />
+        </ui:FormField>
+        <ui:FormField Classes="wide">
+          <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding ChooseFileCommand}" IsEnabled="{Binding IsIdle}">
+            <ui:IconLabel Icon="{StaticResource Icon.folder}" Text="Choose file" />
+          </Button>
+        </ui:FormField>
+        <ui:ProgressRow Text="Checking the license" IsVisible="{Binding IsBusy}" />
+      </StackPanel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" IsDefault="True" Content="Save" Command="{Binding SaveCommand}"
+              ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

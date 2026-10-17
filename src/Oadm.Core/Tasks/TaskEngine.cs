@@ -717,7 +717,10 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
                     task.Registration.Owner,
                     _files,
                     new Sink(this, task),
-                    _time);
+                    _time)
+                {
+                    License = _plugins.Licenses?.LicenseOf(task.Registration.Origin.PackageId),
+                };
                 steps = context.Steps;
                 task.AttachSteps(steps);
 

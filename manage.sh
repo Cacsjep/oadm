@@ -79,7 +79,7 @@ usage_error() {
 }
 
 is_verb() {
-  case "$1" in build|run|test|publish|package|new|clean|info|help) return 0 ;; *) return 1 ;; esac
+  case "$1" in build|run|test|publish|package|new|license|clean|info|help) return 0 ;; *) return 1 ;; esac
 }
 
 # ---------------------------------------------------------------- argument parsing
@@ -485,6 +485,12 @@ cmd_new() {
   "$DOTNET" run --project "$REPO_ROOT/tools/Oadm.NewPlugin/Oadm.NewPlugin.csproj" -c "$CONFIGURATION" -- "${args[@]}"
 }
 
+# Licenses of commercial plugins (tools/Oadm.LicenseTool): the arguments go to the tool unchanged.
+cmd_license() {
+  require_dotnet
+  "$DOTNET" run --project "$REPO_ROOT/tools/Oadm.LicenseTool/Oadm.LicenseTool.csproj" -c "$CONFIGURATION" -- "$@"
+}
+
 cmd_info() {
   require_dotnet
   echo "repository     $REPO_ROOT"
@@ -509,5 +515,11 @@ case "$VERB" in
     exit 0 ;;
 esac
 is_verb "$VERB" || usage_error overview "unknown verb '$VERB'"
+if [ "$VERB" = license ]; then
+  # Own options (--key, --server, --limit ...): passed to the tool as they are.
+  case "${1:-}" in ""|help|-h|--help) show_help license; exit 0 ;; keys|sign) ;; *) usage_error license "unknown target '$1' for license (keys or sign)" ;; esac
+  cmd_license "$@"
+  exit $?
+fi
 parse_args "$VERB" "$@"
 "cmd_$VERB"

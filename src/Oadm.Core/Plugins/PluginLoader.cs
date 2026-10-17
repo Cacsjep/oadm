@@ -154,6 +154,7 @@ public sealed partial class PluginLoader
                 EnabledByDefault = manifest.EnabledByDefault,
                 AlwaysOn = manifest.AlwaysOn,
                 Description = string.IsNullOrWhiteSpace(manifest.Description) ? null : manifest.Description.Trim(),
+                License = manifest.License is { PublicKey.Length: > 0 } license ? license : null,
             };
             var registered = assemblies.Sum(a => RegisterTypes(a, origin));
             if (registered == 0)

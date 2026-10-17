@@ -11,6 +11,10 @@ version and date, and the release workflow copies it into the GitHub release.
 - **Send TCP message**: a new event rule action that sends a message to a host and port, for building, alarm and video
   systems that listen on a TCP port. Text, JSON, XML or hex bytes with the event's values, an optional line end and TLS,
   and optionally waits for an answer that must contain a given text.
+- **Licenses for commercial plugins**: plugin makers can sell plugins without a license system of their own. The Plugins
+  page shows this server's ID, the license state of every plugin that needs one and lets administrators enter or remove
+  a license. `manage license keys` and `manage license sign` make the vendor's keys and the license files; the plugin
+  reads the result (valid, trial, features, limits) and decides what runs.
 
 ## [3.4.0] - 2026-10-17
 

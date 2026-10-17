@@ -41,6 +41,8 @@ public static class AuditActions
     public const string DevicesTagged = "Tagged devices";
     public const string PluginTurnedOn = "Turned plugin on";
     public const string PluginTurnedOff = "Turned plugin off";
+    public const string PluginLicenseEntered = "Entered plugin license";
+    public const string PluginLicenseRemoved = "Removed plugin license";
     public const string RuleCreated = "Created event rule";
     public const string RuleChanged = "Changed event rule";
     public const string RuleDeleted = "Deleted event rule";

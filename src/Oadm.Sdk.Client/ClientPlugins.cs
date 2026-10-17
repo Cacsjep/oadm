@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Licensing;
 
 namespace Oadm.Sdk.Client;
 
@@ -121,6 +122,13 @@ public interface ICorePluginClientContext
 
     /// <summary>Whether the plugin package <paramref name="packageId"/> is turned on (Plugins page); null when the host cannot tell.</summary>
     bool? IsPluginOn(string packageId) => null;
+
+    /// <summary>
+    /// The license of the plugin package <paramref name="packageId"/> as the server checked it (status, reason, what it
+    /// allows), e.g. for "No license" on the page; read it again when the page is shown. Null when the host cannot tell.
+    /// The server checks again on every call.
+    /// </summary>
+    PluginLicenseInfo? LicenseOf(string packageId) => null;
 
     /// <summary>Main window, owner for the plugin's own dialogs and file pickers.</summary>
     Window? Owner => null;

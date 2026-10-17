@@ -54,5 +54,6 @@ public partial class PluginsPageView : UserControl
 
         view.GroupDescriptions.Add(byGroup);
         PluginGrid.ItemsSource = view;
+        PluginGrid.Columns[^1].IsVisible = _vm.HasLicensedPlugins; // License: only when a plugin is sold with one
     }
 }

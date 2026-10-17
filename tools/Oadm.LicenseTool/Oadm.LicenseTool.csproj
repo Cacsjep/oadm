@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    "manage license keys|sign": the vendor side of commercial plugin licenses. keys makes the key pair (the public key goes
+    into plugin.json "license"), sign writes a license for one customer's server. Developer helper, never shipped.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Oadm.LicenseTool.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj" />
+  </ItemGroup>
+</Project>

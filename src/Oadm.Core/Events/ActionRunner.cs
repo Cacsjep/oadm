@@ -97,6 +97,9 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         }
     }
 
+    /// <summary>The licenses of commercial plugins, handed to their actions (<see cref="IActionContext.License"/>).</summary>
+    public Plugins.IPluginLicenseSource? Licenses { get; set; }
+
     /// <summary>The core plugins have started (server start, after step 4b): queued edges run now, later ones at once.</summary>
     public void PluginsStarted() => _pluginsStarted.TrySetResult();
 
@@ -420,7 +423,8 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
                 _settings.GetSettings(SettingsId(action.Registered)),
                 lines,
                 job,
-                textDevice);
+                textDevice,
+                Licenses?.LicenseOf(action.Registered.Origin.PackageId));
             var invocation = new ActionInvocation(job.Rule.Id, job.Rule.Name, job.Edge, settings, device, job.Trigger);
             await plugin.ExecuteAsync(context, invocation, timeout.Token).ConfigureAwait(false);
             Write(job, deviceId, plugin.DisplayName, EventLogResult.Ok, Joined(lines, EdgeText(job.Edge)), device);
@@ -514,7 +518,8 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
                 _settings.GetSettings(SettingsId(action.Registered)),
                 lines,
                 job,
-                device);
+                device,
+                Licenses?.LicenseOf(action.Registered.Origin.PackageId));
             var invocation = new ActionInvocation(definition.Id, definition.Name, ActionEdge.TurnedOn, document.RootElement.Clone(), null, trigger);
             await action.Plugin.ExecuteAsync(context, invocation, timeout.Token).ConfigureAwait(false);
             return (true, Joined(lines, "Sent"));
@@ -562,8 +567,11 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         IPluginSettings settings,
         List<string> lines,
         RuleEdgeJob job,
-        IDeviceInfo? device) : IActionContext
+        IDeviceInfo? device,
+        Sdk.Licensing.IPluginLicense? license) : IActionContext
     {
+        public Sdk.Licensing.IPluginLicense? License { get; } = license;
+
         public IVapixClient? Vapix { get; } = vapix;
 
         public ILogger Logger { get; } = logger;

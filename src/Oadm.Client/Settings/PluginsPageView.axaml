@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:settings="using:Oadm.Client.Settings"
              xmlns:c="using:Oadm.Client.Controls"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
              x:Class="Oadm.Client.Settings.PluginsPageView"
              x:DataType="settings:PluginsViewModel">
   <!-- Navigation page Plugins (Admin only): one row per plugin package; the check box turns it on or off at once.
@@ -10,8 +11,15 @@
   <Grid RowDefinitions="Auto,*" RowSpacing="16">
     <c:PageTitleBar Title="Plugins" Subtitle="A plugin that is off shows no page, menu entry or toolbar button." />
     <Border Grid.Row="1" Classes="card" MaxWidth="1000" HorizontalAlignment="Left" VerticalAlignment="Top">
-      <Grid RowDefinitions="*,Auto" RowSpacing="12">
-        <DataGrid x:Name="PluginGrid" Classes="groups" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
+      <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12">
+        <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding HasServerId}">
+          <TextBlock Classes="secondary" Text="Server ID" VerticalAlignment="Center" />
+          <SelectableTextBlock Classes="mono" Text="{Binding ServerId}" VerticalAlignment="Center" />
+          <Button Classes="toolbar iconOnly" ToolTip.Tip="Copy server ID" Command="{Binding CopyServerIdCommand}">
+            <ui:OadmIcon Data="{StaticResource Icon.copy}" />
+          </Button>
+        </StackPanel>
+        <DataGrid Grid.Row="1" x:Name="PluginGrid" Classes="groups" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
                   SelectionMode="Single" IsVisible="{Binding !IsEmpty}">
           <DataGrid.Columns>
             <DataGridTemplateColumn Header="On" Width="72" SortMemberPath="IsEnabled" x:DataType="settings:PluginRowViewModel">
@@ -24,9 +32,26 @@
             </DataGridTemplateColumn>
             <DataGridTextColumn Header="Plugin" Width="220" Binding="{Binding Name}" x:DataType="settings:PluginRowViewModel" />
             <DataGridTextColumn Header="Description" Width="*" Binding="{Binding Description}" x:DataType="settings:PluginRowViewModel" />
+            <DataGridTemplateColumn Header="License" Width="300" SortMemberPath="LicenseText" x:DataType="settings:PluginRowViewModel">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="settings:PluginRowViewModel">
+                  <StackPanel Orientation="Horizontal" Spacing="12" Margin="8,0" IsVisible="{Binding NeedsLicense}" VerticalAlignment="Center">
+                    <ui:StatusChip Text="{Binding LicenseText}" IsOk="{Binding LicenseOk}" IsWarning="{Binding LicenseWarning}"
+                                   IsError="{Binding LicenseError}" ToolTip.Tip="{Binding LicenseDetail}" />
+                    <Button Classes="link" Content="{Binding EnterLicenseText}" IsVisible="{Binding CanEditLicense}"
+                            Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).EnterLicenseCommand}"
+                            CommandParameter="{Binding}" />
+                    <Button Classes="link danger" Content="Remove" IsVisible="{Binding HasLicense}"
+                            IsEnabled="{Binding CanEditLicense}"
+                            Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).RemoveLicenseCommand}"
+                            CommandParameter="{Binding}" />
+                  </StackPanel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
           </DataGrid.Columns>
         </DataGrid>
-        <TextBlock Grid.Row="1" Classes="error" TextWrapping="Wrap" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" />
+        <TextBlock Grid.Row="2" Classes="error" TextWrapping="Wrap" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" />
       </Grid>
     </Border>
   </Grid>

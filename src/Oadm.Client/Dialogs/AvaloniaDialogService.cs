@@ -76,6 +76,19 @@ public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? sessi
         return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
     }
 
+    public async Task<bool> ShowPluginLicenseAsync(Settings.PluginLicenseViewModel license)
+    {
+        ArgumentNullException.ThrowIfNull(license);
+        if (CurrentOwner() is not { } owner)
+        {
+            return false;
+        }
+
+        var window = new Settings.PluginLicenseWindow();
+        window.Attach(license);
+        return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
+    }
+
     public async Task<bool> ShowRtspPortAsync(Devices.RtspPortViewModel rtspPort)
     {
         ArgumentNullException.ThrowIfNull(rtspPort);

@@ -146,7 +146,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     _pluginDataRoot is null ? null : Path.Combine(_pluginDataRoot, SafeFolderName(registered.Id)),
                     _autoAdd,
                     registered.Plugin is Sdk.Events.IEventSource ? _eventPublishers?.Invoke(registered.Id) : null,
-                    entry.Subscriptions);
+                    entry.Subscriptions,
+                    _registry.Licenses?.LicenseOf(registered.Origin.PackageId));
                 try
                 {
                     await registered.Plugin.StartAsync(context, ct).ConfigureAwait(false);
@@ -441,8 +442,11 @@ internal sealed class CorePluginContext(
     string? dataDirectory = null,
     IDeviceAutoAdd? autoAdd = null,
     Sdk.Events.IEventPublisher? eventPublisher = null,
-    Sdk.Events.IEventSubscriptions? eventSubscriptions = null) : ICorePluginContext
+    Sdk.Events.IEventSubscriptions? eventSubscriptions = null,
+    Sdk.Licensing.IPluginLicense? license = null) : ICorePluginContext
 {
+    public Sdk.Licensing.IPluginLicense? License { get; } = license;
+
     private readonly Lazy<string?> _dataDirectory = new(() =>
     {
         if (dataDirectory is not null)

@@ -220,10 +220,16 @@ public interface IOadmApi
     Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct);
 
     /// <summary>Every plugin package with its state (Settings page, Plugins).</summary>
-    Task<IReadOnlyList<PluginPackageInfo>> ListPluginPackagesAsync(CancellationToken ct);
+    Task<PluginPackageList> ListPluginPackagesAsync(CancellationToken ct);
 
     /// <summary>Admin: turns a plugin package on or off; returns the whole list.</summary>
-    Task<IReadOnlyList<PluginPackageInfo>> SetPluginPackageEnabledAsync(string packageId, bool enabled, CancellationToken ct);
+    Task<PluginPackageList> SetPluginPackageEnabledAsync(string packageId, bool enabled, CancellationToken ct);
+
+    /// <summary>Admin: checks and stores the license of a commercial plugin; INVALID_ARGUMENT with the reason. Returns the whole list.</summary>
+    Task<PluginPackageList> SetPluginLicenseAsync(string packageId, string license, CancellationToken ct);
+
+    /// <summary>Admin: removes the license of a plugin. Returns the whole list.</summary>
+    Task<PluginPackageList> RemovePluginLicenseAsync(string packageId, CancellationToken ct);
 
     // EventService (event rules; changing rules is Admin only)
     Task<EventCatalog> GetEventCatalogAsync(CancellationToken ct);

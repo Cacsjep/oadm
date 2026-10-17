@@ -23,6 +23,9 @@ public sealed record PluginOrigin(string PackageId, string Version, string? Dire
     /// <summary>Manifest <c>description</c>: one short sentence for the Plugins page.</summary>
     public string? Description { get; init; }
 
+    /// <summary>Manifest <c>license</c>: the package is sold with a license; null = free.</summary>
+    public Sdk.Licensing.PluginLicenseManifest? License { get; init; }
+
     public static PluginOrigin FromAssembly(Assembly assembly)
     {
         ArgumentNullException.ThrowIfNull(assembly);
@@ -86,6 +89,9 @@ public sealed partial class PluginRegistry
     {
         _logger = (ILogger?)logger ?? NullLogger.Instance;
     }
+
+    /// <summary>The licenses of commercial plugins (set by <see cref="PluginLicenses.InitializeAsync"/>); null on hosts without.</summary>
+    public IPluginLicenseSource? Licenses { get; set; }
 
     /// <summary>Task plugins of enabled packages.</summary>
     public IReadOnlyList<RegisteredTaskPlugin> TaskPlugins

@@ -152,7 +152,7 @@ clash in code (Task, Plugin, ...) are refused. Tests `tests/Oadm.NewPlugin.Tests
 tutorial and what `manage new` creates: keep the tutorial text in line.
 
 Developer commands: one entry point per shell at the repo root, `./manage.sh` (bash) and
-`.\manage.ps1` (PowerShell 5.1/7), verb + target (`build`, `run`, `test`, `publish`, `package`, `new`, `clean`,
+`.\manage.ps1` (PowerShell 5.1/7), verb + target (`build`, `run`, `test`, `publish`, `package`, `new`, `license`, `clean`,
 `info`), `manage <verb> help` at every level. Both read their help texts from
 `scripts/manage-help.txt`; any new verb, target or option goes into both scripts and that file.
 The plugins (`build`, `run` server / client) are built in one MSBuild run in parallel through a generated solution filter
@@ -226,7 +226,7 @@ tests/
   Oadm.Server.Tests/
   Oadm.Client.Tests/
 tools/                 Oadm.DiscoveryProbe (manual discovery tests), Oadm.Notices (THIRD-PARTY-NOTICES.txt generator),
-                       Oadm.ApiDocs (SDK reference of the website), Oadm.NewPlugin ("manage new")
+                       Oadm.ApiDocs (SDK reference of the website), Oadm.NewPlugin ("manage new"), Oadm.LicenseTool ("manage license")
 samples/               the plugins of the developer tutorials: Oadm.Samples.UpnpName (task with a dialog),
                        Oadm.Samples.FirmwareOverview (core plugin with a page), Oadm.Samples.VirtualInput (event rule
                        action), each with its tests; in Oadm.sln, built and tested by CI, never deployed
@@ -438,6 +438,8 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   Amber, Orange, Red, Pink, Violet; stored as string), CreatedUtc. At most 500 definitions; a device has at most 20 tags.
   `Oadm.Core.Devices.DeviceTagStore` owns both (serialized writes, one transaction per call, rewrites read only the Tags
   column and load just the changed rows), `TagNames` the rules.
+- Plugin licenses: no table; settings `Server.Id` (the server ID, a random GUID made at the first start, in backups),
+  `Plugins.Licenses` (package id -> license text) and `Plugins.TrialStarted` (package id -> first day), see "Plugin licenses".
 - `WaitingDevice` (table WaitingDevices, migration `WaitingDevices`): the import's waiting list, see "Waiting list".
 - `CredentialListEntry` (table CredentialListEntries, migration `CredentialList`): Id (Guid),
   UserName (max 64), EncryptedPassword (AES-GCM with the entry id as associated data), CreatedUtc.
@@ -1569,6 +1571,37 @@ is always on.
   on their next connect. Fake mode: `FakeOadmApi.Plugins.cs` (PKI, Restart, System report always on).
 - Tests: `tests/Oadm.Server.Tests/PluginPackageTests` (also the bundled manifests: off by default, always on,
   descriptions), `tests/Oadm.Client.Tests/PluginListTests`, `ShellTests`.
+
+## Plugin licenses
+
+Commercial plugins (decision 2026-10-17): OADM checks, the plugin decides. User and developer docs:
+`website/src/content/docs/dev/licenses.md`, `admin/plugins.mdx` "Licenses".
+- **Manifest** `license` (`Oadm.Sdk.Licensing.PluginLicenseManifest`): `publicKey` (base64 SubjectPublicKeyInfo of an ECDSA
+  P-256 key), optional `features`, `trialDays` (from the day the server first loaded the package; 0 = none). Without it the
+  plugin is free. No buy link.
+- **License file** (`.oadmlicense`, `LicenseFile`): `{"license": {plugin, server, customer, issued, expires|null, features,
+  limits}, "signature"}`; the signature (ECDSA P-256, SHA-256) covers the exact text of the `license` object, line endings
+  normalized to LF; checked offline: signature, plugin id, server ID, last day (server local date). At most 64 KB.
+- **Server** (`Oadm.Core.Plugins.PluginLicenses`, initialized at start step 4a before any plugin runs, re-checked hourly by
+  `PluginLicenseRefreshHostedService`): one live `IPluginLicense` per package (`PluginRegistry.Licenses`), handed to
+  `ICorePluginContext.License`, `ITaskExecutionContext.License`, `IActionContext.License` (DIM null); `Changed` when the
+  state changes. States `LicenseStatus`: NotRequired, Valid, Trial, TrialEnded, Missing, Expired, WrongServer, Invalid;
+  `IsValid` = Valid, Trial or NotRequired; `Has(feature)` (empty list = every feature; always during the trial), `Limit(name)`
+  (null = none or trial, 0 without a valid license). A stored license that turns invalid while the trial still runs counts
+  as Trial. Only a Valid license is stored.
+- **gRPC** `PluginService`: `PluginPackageList.server_id = 2`, `PluginPackageInfo.license = 11` (`PluginLicenseState`: status,
+  reason, customer, issued, expires, features, limits, trial_ends, available_features); `SetPackageLicense(id, license)` and
+  `RemovePackageLicense(id)` (Admin, audited "Entered plugin license" / "Removed plugin license"; INVALID_ARGUMENT with the
+  reason, NOT_FOUND, FAILED_PRECONDITION for a free plugin).
+- **Client**: Plugins page: "Server ID" + copy at the top, a **License** column (only while a plugin needs one): status chip
+  (Licensed ok, Trial warning, else error; reason as tooltip), Enter / Change license, Remove (red, confirmed); a licensed
+  package is listed even when always on. Dialog `Settings/PluginLicenseWindow` (`PluginLicenseViewModel`, single operation):
+  server ID + copy, the license in a `ui:CodeEditor` (JSON), Choose file, the server's refusal below the field.
+  `ICorePluginClientContext.LicenseOf(packageId)` for pages. Fake mode: the sample package `example.site-reports` (trial,
+  `FakeOadmApi.SampleLicenseKeys`, server ID `FakeOadmApi.FakeServerId`).
+- **Vendor tool** `manage license keys [--out]` (never overwrites a key) and `manage license sign --key --plugin --server
+  --customer [--expires] [--features] [--limit name=n]... [--out]` (`tools/Oadm.LicenseTool`, arguments passed unchanged).
+- Tests: `tests/Oadm.Server.Tests/PluginLicenseTests`, `tests/Oadm.LicenseTool.Tests`, `tests/Oadm.Client.Tests/PluginListTests`.
 
 ## Plugin documentation
 

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Licensing;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
 
@@ -234,6 +235,9 @@ public interface IActionContext
     /// "objectId": "{objectId}" stays valid JSON whatever the value holds. The text around the placeholders is unchanged.
     /// </summary>
     string Text(string? text, PlaceholderEscape escape) => escape == PlaceholderEscape.None ? Text(text) : Text(text);
+
+    /// <summary>The license of the action's plugin package (plugin.json <c>license</c>); null on hosts without licenses.</summary>
+    IPluginLicense? License => null;
 }
 
 /// <summary>Services for <see cref="IActionPlugin.ListChoicesAsync"/> (read-only, while a rule is edited).</summary>

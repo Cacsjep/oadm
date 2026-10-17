@@ -368,7 +368,7 @@
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
   </Style>
   <!-- Code in running text: a placeholder name such as {objectId} -->
-  <Style Selector="TextBlock.mono">
+  <Style Selector="TextBlock.mono, SelectableTextBlock.mono">
     <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamilyMono}" />
   </Style>
   <Style Selector="TextBlock.small">

@@ -75,9 +75,9 @@ public sealed class PluginListTests
         await store.LoadAsync(CancellationToken.None);
 
         // Rail order, only groups with plugins (Reporting keeps Snapshot report; System report is always on).
-        Assert.Equal(["Servers", "Automation", "Security", "Monitoring", "Reporting", "Maintenance", "Utilities"], vm.Groups.Select(g => g.ToString()));
+        Assert.Equal(["Servers", "Automation", "Security", "Monitoring", "Reporting", "Maintenance", "Utilities", "Extensions"], vm.Groups.Select(g => g.ToString()));
         Assert.Equal(
-            ["DHCP server", "NTP server", "Device triggers", "VAPIX Commander", "Hardening scan", "Dashboards", "I/O Monitor", "Image Health Dashboard", "Live View", "Metadata Monitor", "Snapshot report", "Edge Recording Export", "Edge storage", "Web View"],
+            ["DHCP server", "NTP server", "Device triggers", "VAPIX Commander", "Hardening scan", "Dashboards", "I/O Monitor", "Image Health Dashboard", "Live View", "Metadata Monitor", "Snapshot report", "Edge Recording Export", "Edge storage", "Web View", "Site reports"],
             vm.Plugins.Select(p => p.Name));
         Assert.Equal("Extensions", PluginGroupKey.Parse("NoSuchGroup").ToString()); // like the rail
     }
@@ -137,6 +137,105 @@ public sealed class PluginListTests
             return true;
         }, CancellationToken.None);
         Assert.True(done);
+    }
+
+    [Fact]
+    public async Task A_commercial_plugin_shows_its_license_and_takes_a_new_one()
+    {
+        string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        bool done = await HeadlessSession.Shared.Dispatch(async () =>
+        {
+            using var api = new FakeOadmApi(TimeSpan.Zero);
+            var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
+            var plugins = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance);
+            await store.LoadAsync(CancellationToken.None);
+
+            Assert.Equal(FakeOadmApi.FakeServerId, plugins.ServerId);
+            Assert.True(plugins.HasLicensedPlugins);
+            var row = plugins.Plugins.Single(p => p.Id == FakeOadmApi.SampleLicensedPluginId);
+            Assert.True(row.NeedsLicense);
+            Assert.Equal(("Trial", true, false), (row.LicenseText, row.LicenseWarning, row.HasLicense));
+            Assert.StartsWith("Trial until ", row.LicenseDetail, StringComparison.Ordinal);
+            Assert.Equal("Enter license", row.EnterLicenseText);
+            Assert.False(plugins.Plugins.Single(p => p.Id == FakeOadmApi.HardeningScanPluginId).NeedsLicense);
+            Assert.Equal(Oadm.Sdk.Licensing.LicenseStatus.Trial, store.LicenseOf(FakeOadmApi.SampleLicensedPluginId)!.Status);
+            Assert.Equal(Oadm.Sdk.Licensing.LicenseStatus.NotRequired, store.LicenseOf(FakeOadmApi.HardeningScanPluginId)!.Status);
+
+            var window = new Window { Width = 1300, Height = 1150, Content = new PluginsPageView { DataContext = plugins } };
+            Oadm.Client.App.ApplyCrispText(window);
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+            var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? "").ToList();
+            Assert.Contains(FakeOadmApi.FakeServerId, texts);
+            Assert.Contains("Trial", texts);
+
+            // The dialog: a license for another server is refused below the field, the right one is stored.
+            var license = new PluginLicenseViewModel(store, row.Id, row.Name);
+            var dialog = new PluginLicenseWindow();
+            dialog.Attach(license);
+            Oadm.Client.App.ApplyCrispText(dialog);
+            dialog.Show();
+            Assert.False(license.SaveCommand.CanExecute(null)); // nothing pasted yet
+            license.LicenseText = Sign("11111111-2222-3333-4444-555555555555");
+            await license.SaveCommand.ExecuteAsync(null);
+            Assert.Equal("The license is for another server (11111111-2222-3333-4444-555555555555).", license.ErrorOf(nameof(PluginLicenseViewModel.LicenseText)));
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+            Save(dialog, outDir, "client-plugin-license-refused.png");
+
+            var closed = false;
+            license.CloseRequested += (_, ok) => closed = ok;
+            license.LicenseText = Sign(FakeOadmApi.FakeServerId);
+            await license.SaveCommand.ExecuteAsync(null);
+            Assert.True(closed);
+            dialog.Close();
+
+            row = plugins.Plugins.Single(p => p.Id == FakeOadmApi.SampleLicensedPluginId);
+            Assert.Equal(("Licensed", true, true, "Change license"), (row.LicenseText, row.LicenseOk, row.HasLicense, row.EnterLicenseText));
+            Assert.Equal("Licensed to ACME GmbH until 2099-12-31.", row.LicenseDetail);
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+            Save(window, outDir, "client-plugins-licenses.png");
+
+            // Remove: back to the trial.
+            await api.RemovePluginLicenseAsync(row.Id, CancellationToken.None);
+            await store.LoadAsync(CancellationToken.None);
+            Assert.Equal("Trial", plugins.Plugins.Single(p => p.Id == FakeOadmApi.SampleLicensedPluginId).LicenseText);
+
+            // The dialog as it opens, for the docs.
+            var fresh = new PluginLicenseWindow();
+            fresh.Attach(new PluginLicenseViewModel(store, row.Id, row.Name) { LicenseText = Sign(FakeOadmApi.FakeServerId) });
+            Oadm.Client.App.ApplyCrispText(fresh);
+            fresh.Show();
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+            Save(fresh, outDir, "client-plugin-license.png");
+            fresh.Close();
+            window.Close();
+            return true;
+        }, CancellationToken.None);
+        Assert.True(done);
+
+        static string Sign(string server) => Oadm.Sdk.Licensing.LicenseFile.Sign(
+            new Oadm.Sdk.Licensing.LicenseData(FakeOadmApi.SampleLicensedPluginId, server, "ACME GmbH", new DateOnly(2026, 10, 17), new DateOnly(2099, 12, 31),
+                ["reports"], new Dictionary<string, long> { ["devices"] = 500 }),
+            FakeOadmApi.SampleLicenseKeys.PrivateKeyPem);
+    }
+
+    private static void Save(Window window, string? outDir, string name)
+    {
+        var frame = window.CaptureRenderedFrame();
+        Assert.NotNull(frame);
+        if (!string.IsNullOrEmpty(outDir))
+        {
+            Directory.CreateDirectory(outDir);
+            frame.Save(Path.Combine(outDir, name), PngBitmapEncoderOptions.Default);
+        }
     }
 
     private static async Task WaitAsync(Func<bool> condition)

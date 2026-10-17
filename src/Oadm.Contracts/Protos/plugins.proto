@@ -18,6 +18,12 @@ service PluginService {
   // Admin: turns a package (its core plugins and tasks together) on or off at once, stored on the server.
   // NOT_FOUND for an unknown package. Reply: the whole list.
   rpc SetPackageEnabled (SetPackageEnabledRequest) returns (PluginPackageList);
+  // Admin: checks and stores the license of a commercial plugin (plugin.json "license"); it applies at once.
+  // NOT_FOUND unknown package, FAILED_PRECONDITION a package that needs no license, INVALID_ARGUMENT a license that is not
+  // valid, for another server or expired (the reason as detail; nothing stored). Reply: the whole list.
+  rpc SetPackageLicense (SetPackageLicenseRequest) returns (PluginPackageList);
+  // Admin: removes the license of a package (the plugin falls back to its trial or to no license). Reply: the whole list.
+  rpc RemovePackageLicense (PackageIdRequest) returns (PluginPackageList);
 }
 
 // no_page: the plugin has no rail page (ICorePlugin.HasPage false), e.g. a toolbar-only plugin; clients add no rail entry.
@@ -42,6 +48,35 @@ message PluginPackageInfo {
   bool always_on = 8;
   string description = 9;
   string group = 10;   // rail group of its core plugin ("Servers", "Monitoring"); "Extensions" without one
+  PluginLicenseState license = 11;   // unset or status NOT_REQUIRED: a free plugin
 }
-message PluginPackageList { repeated PluginPackageInfo packages = 1; }
+
+// The license of a commercial plugin as the server checked it (Oadm.Sdk.Licensing.PluginLicenseInfo).
+enum PluginLicenseStatus {
+  PLUGIN_LICENSE_NOT_REQUIRED = 0;
+  PLUGIN_LICENSE_VALID = 1;
+  PLUGIN_LICENSE_TRIAL = 2;
+  PLUGIN_LICENSE_TRIAL_ENDED = 3;
+  PLUGIN_LICENSE_MISSING = 4;
+  PLUGIN_LICENSE_EXPIRED = 5;
+  PLUGIN_LICENSE_WRONG_SERVER = 6;
+  PLUGIN_LICENSE_INVALID = 7;
+}
+// reason: one plain sentence; customer, issued, expires ("yyyy-MM-dd", empty = never), features and limits from a
+// readable license; trial_ends while there is a trial; available_features from plugin.json.
+message PluginLicenseState {
+  PluginLicenseStatus status = 1;
+  string reason = 2;
+  string customer = 3;
+  string issued = 4;
+  string expires = 5;
+  repeated string features = 6;
+  map<string, int64> limits = 7;
+  string trial_ends = 8;
+  repeated string available_features = 9;
+}
+// server_id: this server's ID, which licenses name (Plugins page, copy button).
+message PluginPackageList { repeated PluginPackageInfo packages = 1; string server_id = 2; }
+message SetPackageLicenseRequest { string id = 1; string license = 2; }
+message PackageIdRequest { string id = 1; }
 message SetPackageEnabledRequest { string id = 1; bool enabled = 2; }

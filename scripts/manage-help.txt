@@ -16,6 +16,7 @@ Verbs:
   publish   Self-contained single-file apps in artifacts/publish (default target: all)
   package   Installer for windows (MSI), linux (.deb) or macos (.pkg) in artifacts/packages
   new       A new plugin from a tutorial sample: task, page or action
+  license   Keys and license files for a commercial plugin: keys or sign
   clean    Remove bin, obj and artifacts
   info      Show the .NET SDK, configuration and RID in use
   help      Show this overview, or "manage help <verb>"
@@ -198,6 +199,35 @@ Options:
 Examples:
   manage new task --name "Set host name"
   manage new page --name "Door overview" --id acme.door-overview
+
+## license
+Usage: manage license keys [--out <folder>]
+       manage license sign --key <private-key.pem> --plugin <plugin id> --server <server ID>
+                           --customer <name> [--expires yyyy-MM-dd] [--features a,b]
+                           [--limit name=number]... [--out <file>]
+
+Licenses for a plugin you sell (tools/Oadm.LicenseTool). OADM checks them offline with the public key of
+the plugin's plugin.json; the plugin reads the result (License in its context) and decides what runs.
+
+Targets:
+  keys      Makes your key pair once: <folder>/private-key.pem (secret, signs every license) and
+            public-key.txt, and prints the "license" entry for plugin.json. Never overwrites a key.
+  sign      Writes a license file (.oadmlicense) for one customer's server
+
+Options of sign:
+  --key       Your private key (from keys)
+  --plugin    The plugin id of plugin.json, e.g. acme.site-reports
+  --server    The customer's server ID (Plugins page, copy button)
+  --customer  Who it is for, shown on the Plugins page
+  --expires   The last day it is valid (default: never)
+  --features  The features it unlocks, separated by commas (default: every feature)
+  --limit     A number the plugin enforces, e.g. devices=500; repeat for more
+  --out       The file to write (default <customer>-<plugin id>.oadmlicense)
+
+Examples:
+  manage license keys --out ../acme-keys
+  manage license sign --key ../acme-keys/private-key.pem --plugin acme.site-reports
+      --server 7f3c2a1e-5b8d-4c6f-9a2e-1d0b4e8f6c37 --customer "ACME GmbH" --expires 2027-12-31 --limit devices=500
 
 ## clean
 Usage: manage clean

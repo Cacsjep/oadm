@@ -402,6 +402,14 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
 - **Fake mode**: add the plugin's backend to `FakeOadmApi` (`FakeCorePlugins`, `InvokeCorePluginAsync`) so `--fake`
   shows the page.
 
+### Licenses (commercial plugins)
+
+A plugin you sell declares `"license": {"publicKey": "...", "features": [...], "trialDays": 30}` in plugin.json and reads
+`ctx.License` (`IPluginLicense`: `IsValid`, `Has(feature)`, `Limit(name)`, `Current.Reason`, `Changed`) in its core plugin,
+task and action contexts; pages use `ICorePluginClientContext.LicenseOf(packageId)`. OADM checks the signed license file
+offline; the plugin decides what runs. Keys and license files: `manage license keys` / `manage license sign`. Guide:
+website `dev/licenses.md`.
+
 ### Permissions
 
 Administrators give users roles; a role is a set of permissions in the matrix of the Users page. A plugin declares what

@@ -81,7 +81,7 @@ function Exit-Usage([string]$Section, [string]$Message) {
     exit 2
 }
 
-$Verbs = @('build', 'run', 'test', 'publish', 'package', 'new', 'clean', 'info', 'help')
+$Verbs = @('build', 'run', 'test', 'publish', 'package', 'new', 'license', 'clean', 'info', 'help')
 
 # ---------------------------------------------------------------- argument parsing
 
@@ -518,6 +518,13 @@ function Invoke-New {
     Invoke-Dotnet $a
 }
 
+# Licenses of commercial plugins (tools/Oadm.LicenseTool): the arguments go to the tool unchanged.
+function Invoke-License([string[]]$Arguments) {
+    Initialize-Dotnet
+    $a = @('run', '--project', (Join-Path $RepoRoot 'tools/Oadm.LicenseTool/Oadm.LicenseTool.csproj'), '-c', $script:Configuration, '--') + $Arguments
+    Invoke-Dotnet $a
+}
+
 function Invoke-Info {
     Initialize-Dotnet
     Write-Host "repository     $RepoRoot"
@@ -545,6 +552,13 @@ if ($verb -cin 'help', '-h', '--help') {
     exit 0
 }
 if ($Verbs -cnotcontains $verb) { Exit-Usage overview "unknown verb '$verb'" }
+if ($verb -eq 'license') {
+    # Own options (--key, --server, --limit ...): passed to the tool as they are.
+    if ($rest.Count -eq 0 -or $rest[0] -cin 'help', '-h', '--help') { Show-Help license; exit 0 }
+    if ($rest[0] -cnotin 'keys', 'sign') { Exit-Usage license "unknown target '$($rest[0])' for license (keys or sign)" }
+    Invoke-License $rest
+    exit 0
+}
 
 Read-Arguments $verb $rest
 switch ($verb) {

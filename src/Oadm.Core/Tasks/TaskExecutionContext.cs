@@ -38,6 +38,9 @@ internal sealed partial class TaskExecutionContext : ITaskExecutionContext
 
     public Guid TaskId { get; }
 
+    /// <summary>The license of the plugin's package; null on hosts without licenses.</summary>
+    public Sdk.Licensing.IPluginLicense? License { get; init; }
+
     /// <summary>Replaced by <see cref="UpdateCredentialsAsync"/> with a client using the new credentials.</summary>
     public IVapixClient Vapix => Volatile.Read(ref _vapix);
 

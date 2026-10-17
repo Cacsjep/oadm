@@ -17,8 +17,95 @@ namespace Oadm.Server.Plugins;
 /// Watch and ListCorePlugins follow the page's "show" permission. ListPackages / SetPackageEnabled: the Plugins page
 /// (<see cref="PluginActivation"/>).
 /// </summary>
-public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost host, AuditLog audit, PluginActivation activation, RoleStore roles) : Proto.PluginService.PluginServiceBase
+public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost host, AuditLog audit, PluginActivation activation, RoleStore roles, PluginLicenses licenses) : Proto.PluginService.PluginServiceBase
 {
+    public override async Task<Proto.PluginPackageList> SetPackageLicense(Proto.SetPackageLicenseRequest request, ServerCallContext context)
+    {
+        if (string.IsNullOrWhiteSpace(request.Id) || string.IsNullOrWhiteSpace(request.License))
+        {
+            throw GrpcGuard.InvalidArgument("id and license are required.");
+        }
+
+        Sdk.Licensing.PluginLicenseInfo info;
+        try
+        {
+            info = await licenses.SetAsync(request.Id, request.License, context.CancellationToken).ConfigureAwait(false);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            throw GrpcGuard.NotFound(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw GrpcGuard.FailedPrecondition(ex.Message);
+        }
+        catch (ArgumentException ex)
+        {
+            throw GrpcGuard.InvalidArgument(ex.Message);
+        }
+
+        await audit.WriteAsync(AuditActions.PluginLicenseEntered, NameOf(request.Id), info.Reason, CancellationToken.None).ConfigureAwait(false);
+        return PackageList();
+    }
+
+    public override async Task<Proto.PluginPackageList> RemovePackageLicense(Proto.PackageIdRequest request, ServerCallContext context)
+    {
+        if (string.IsNullOrWhiteSpace(request.Id))
+        {
+            throw GrpcGuard.InvalidArgument("id is required.");
+        }
+
+        try
+        {
+            await licenses.RemoveAsync(request.Id, context.CancellationToken).ConfigureAwait(false);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            throw GrpcGuard.NotFound(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw GrpcGuard.FailedPrecondition(ex.Message);
+        }
+
+        await audit.WriteAsync(AuditActions.PluginLicenseRemoved, NameOf(request.Id), null, CancellationToken.None).ConfigureAwait(false);
+        return PackageList();
+    }
+
+    private string NameOf(string packageId) =>
+        registry.Packages.FirstOrDefault(p => string.Equals(p.Id, packageId, StringComparison.OrdinalIgnoreCase))?.Origin.DisplayName ?? packageId;
+
+    /// <summary>The checked license of a package for the client; null for a free plugin.</summary>
+    private Proto.PluginLicenseState? LicenseState(PluginPackageState package)
+    {
+        if (package.Origin.License is not { } manifest)
+        {
+            return null;
+        }
+
+        var info = licenses.Info(package.Id);
+        var state = new Proto.PluginLicenseState
+        {
+            Status = (Proto.PluginLicenseStatus)(int)info.Status,
+            Reason = info.Reason,
+            TrialEnds = info.TrialEnds is { } ends ? Sdk.Licensing.LicenseFile.Day(ends) : string.Empty,
+        };
+        state.AvailableFeatures.AddRange(manifest.Features ?? []);
+        if (info.Data is { } data)
+        {
+            state.Customer = data.Customer;
+            state.Issued = Sdk.Licensing.LicenseFile.Day(data.Issued);
+            state.Expires = data.Expires is { } expires ? Sdk.Licensing.LicenseFile.Day(expires) : string.Empty;
+            state.Features.AddRange(data.Features);
+            foreach (var (name, value) in data.Limits)
+            {
+                state.Limits[name] = value;
+            }
+        }
+
+        return state;
+    }
+
     public override Task<Proto.PluginPackageList> ListPackages(Proto.Empty request, ServerCallContext context) =>
         Task.FromResult(PackageList());
 
@@ -54,7 +141,7 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
 
     private Proto.PluginPackageList PackageList()
     {
-        var reply = new Proto.PluginPackageList();
+        var reply = new Proto.PluginPackageList { ServerId = licenses.ServerId };
         reply.Packages.AddRange(registry.Packages.Select(p => new Proto.PluginPackageInfo
         {
             Id = p.Id,
@@ -67,6 +154,7 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
             AlwaysOn = p.Origin.AlwaysOn,
             Description = p.Origin.Description ?? string.Empty,
             Group = p.Group.ToString(),
+            License = LicenseState(p),
         }));
         return reply;
     }

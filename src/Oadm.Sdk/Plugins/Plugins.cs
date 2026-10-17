@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Licensing;
 using Oadm.Sdk.Network;
 using Oadm.Sdk.Tasks;
 using Oadm.Sdk.Vapix;
@@ -268,6 +269,13 @@ public interface ITaskExecutionContext
     /// </summary>
     Task UpdateDeviceTlsAsync(string scheme, string? expectedFingerprintSha256, CancellationToken ct) =>
         throw new NotSupportedException("This context cannot change the device connection.");
+
+    /// <summary>
+    /// The license of the plugin's package (plugin.json <c>license</c>): check <see cref="IPluginLicense.IsValid"/>,
+    /// <see cref="IPluginLicense.Has"/> or <see cref="IPluginLicense.Limit"/> before work that needs it. Null on hosts
+    /// without licenses.
+    /// </summary>
+    IPluginLicense? License => null;
 }
 
 /// <summary>The device answering at an address is not the expected one (different or missing serial number).</summary>
@@ -367,6 +375,13 @@ public interface ICorePluginContext
     IDeviceAutoAdd? AutoAdd => null;
 
     /// <summary>
+    /// The license of the plugin's package (plugin.json <c>license</c>), live: <see cref="IPluginLicense.Changed"/> fires
+    /// when an administrator enters or removes a license and when it or the trial runs out. OADM only checks; the plugin
+    /// decides what runs without a valid license. Null on hosts without licenses.
+    /// </summary>
+    IPluginLicense? License => null;
+
+    /// <summary>
     /// Publishes the plugin's events to the server's event rules (the plugin implements
     /// <see cref="Events.IEventSource"/> to declare them). Null when the host has no event rules or the plugin declares no
     /// events.
@@ -411,6 +426,7 @@ public interface IPluginSettings
 /// <param name="EnabledByDefault">False: off until an administrator turns it on.</param>
 /// <param name="AlwaysOn">True: core functionality that cannot be turned off.</param>
 /// <param name="Description">One short sentence for the Plugins page.</param>
+/// <param name="License">The plugin is sold with a license (public key, features, trial days); null = free.</param>
 public sealed record PluginManifest(
     string Id,
     string Version,
@@ -418,7 +434,8 @@ public sealed record PluginManifest(
     string? DisplayName = null,
     bool EnabledByDefault = true,
     bool AlwaysOn = false,
-    string? Description = null);
+    string? Description = null,
+    PluginLicenseManifest? License = null);
 
 /// <summary>
 /// Well-known context menu groups (<see cref="ITaskPlugin.Group"/>). Plugins reuse these so related

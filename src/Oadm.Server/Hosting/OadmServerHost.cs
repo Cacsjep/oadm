@@ -276,6 +276,8 @@ public static partial class OadmServerHost
         services.AddSingleton<Sdk.Tasks.ITaskRunner>(sp => sp.GetRequiredService<TaskEngine>());
         services.AddSingleton<TaskPluginRunnableCache>();
         services.AddSingleton<PluginActivation>();
+        services.AddSingleton<PluginLicenses>();
+        services.AddHostedService<PluginLicenseRefreshHostedService>();
         services.AddSingleton(sp => new CorePluginHost(
             sp.GetRequiredService<PluginRegistry>(),
             sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
@@ -424,6 +426,10 @@ public static partial class OadmServerHost
 
         // 4. Core plugins of the packages that are on (Settings page, Plugins; manifest default otherwise).
         await sp.GetRequiredService<PluginActivation>().LoadAsync(ct).ConfigureAwait(false);
+
+        // 4a. Licenses of commercial plugins: the server ID, the entered licenses, trials; before any plugin runs.
+        await sp.GetRequiredService<PluginLicenses>().InitializeAsync(ct).ConfigureAwait(false);
+        sp.GetRequiredService<ActionRunner>().Licenses = sp.GetRequiredService<PluginLicenses>();
 
         // 4b. Event rules before the core plugins: their publishers queue into a running engine, and each event type
         // waits for its source's first full report before a rule that uses it runs anything.

@@ -31,18 +31,101 @@ public sealed partial class FakeOadmApi
         Package("oadm.image-health", "Image Health Dashboard", "Shows blur, blocked and redirected views from AXIS Image Health Analytics.", "Monitoring", hasPage: true, tasks: 0, enabledByDefault: false),
         Package(SystemReportPluginId, "System report", "Downloads the system reports of devices for Axis support.", "Reporting", hasPage: false, tasks: 0, alwaysOn: true),
         Package(RestartPluginId, "Restart", "Restarts devices.", "Extensions", hasPage: false, tasks: 1, alwaysOn: true),
+        Package(SampleLicensedPluginId, "Site reports", "A sample commercial plugin: monthly reports per site.", "Extensions", hasPage: false, tasks: 0),
     ];
 
-    public Task<IReadOnlyList<PluginPackageInfo>> ListPluginPackagesAsync(CancellationToken ct)
+    public Task<PluginPackageList> ListPluginPackagesAsync(CancellationToken ct)
     {
         lock (_gate)
         {
             ThrowIfOffline();
-            return Task.FromResult<IReadOnlyList<PluginPackageInfo>>(FakePackages());
+            return Task.FromResult(FakePackageList());
         }
     }
 
-    public Task<IReadOnlyList<PluginPackageInfo>> SetPluginPackageEnabledAsync(string packageId, bool enabled, CancellationToken ct)
+    public Task<PluginPackageList> SetPluginLicenseAsync(string packageId, string license, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            if (!string.Equals(packageId, SampleLicensedPluginId, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, "This plugin needs no license."));
+            }
+
+            var info = Oadm.Sdk.Licensing.LicenseFile.Verify(license, SampleLicenseKeys.PublicKey, packageId, FakeServerId, DateOnly.FromDateTime(DateTime.Now));
+            if (info.Status != Oadm.Sdk.Licensing.LicenseStatus.Valid)
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, info.Reason));
+            }
+
+            _sampleLicense = license;
+            return Task.FromResult(FakePackageList());
+        }
+    }
+
+    public Task<PluginPackageList> RemovePluginLicenseAsync(string packageId, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            _sampleLicense = null;
+            return Task.FromResult(FakePackageList());
+        }
+    }
+
+    /// <summary>The server ID of fake mode.</summary>
+    public const string FakeServerId = "7f3c2a1e-5b8d-4c6f-9a2e-1d0b4e8f6c37";
+
+    /// <summary>A sample commercial plugin of fake mode (trial with 12 days left until a license is entered).</summary>
+    public const string SampleLicensedPluginId = "example.site-reports";
+
+    /// <summary>The vendor key pair of the sample plugin: tests sign licenses with its private key.</summary>
+    public static (string PrivateKeyPem, string PublicKey) SampleLicenseKeys { get; } = Oadm.Sdk.Licensing.LicenseFile.CreateKeys();
+
+    private string? _sampleLicense;
+
+    private PluginPackageList FakePackageList()
+    {
+        var list = new PluginPackageList { ServerId = FakeServerId };
+        list.Packages.AddRange(FakePackages());
+        return list;
+    }
+
+    /// <summary>The license state of the sample commercial plugin, checked like the server does.</summary>
+    private PluginLicenseState SampleLicenseState()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var state = new PluginLicenseState();
+        state.AvailableFeatures.AddRange(["reports", "export"]);
+        if (_sampleLicense is not null)
+        {
+            var info = Oadm.Sdk.Licensing.LicenseFile.Verify(_sampleLicense, SampleLicenseKeys.PublicKey, SampleLicensedPluginId, FakeServerId, today);
+            state.Status = (PluginLicenseStatus)(int)info.Status;
+            state.Reason = info.Reason;
+            if (info.Data is { } data)
+            {
+                state.Customer = data.Customer;
+                state.Issued = Oadm.Sdk.Licensing.LicenseFile.Day(data.Issued);
+                state.Expires = data.Expires is { } expires ? Oadm.Sdk.Licensing.LicenseFile.Day(expires) : string.Empty;
+                state.Features.AddRange(data.Features);
+                foreach (var (name, value) in data.Limits)
+                {
+                    state.Limits[name] = value;
+                }
+            }
+
+            return state;
+        }
+
+        var ends = Oadm.Sdk.Licensing.LicenseFile.Day(today.AddDays(12));
+        state.Status = PluginLicenseStatus.PluginLicenseTrial;
+        state.Reason = $"Trial until {ends}.";
+        state.TrialEnds = ends;
+        return state;
+    }
+
+    public Task<PluginPackageList> SetPluginPackageEnabledAsync(string packageId, bool enabled, CancellationToken ct)
     {
         lock (_gate)
         {
@@ -58,7 +141,7 @@ public sealed partial class FakeOadmApi
             }
 
             _packageStates[packageId] = enabled;
-            return Task.FromResult<IReadOnlyList<PluginPackageInfo>>(FakePackages());
+            return Task.FromResult(FakePackageList());
         }
     }
 
@@ -76,6 +159,11 @@ public sealed partial class FakeOadmApi
         .. FakePackageTemplates.Select(p =>
         {
             p.Enabled = p.AlwaysOn || _packageStates.GetValueOrDefault(p.Id, p.EnabledByDefault);
+            if (string.Equals(p.Id, SampleLicensedPluginId, StringComparison.OrdinalIgnoreCase))
+            {
+                p.License = SampleLicenseState();
+            }
+
             return p;
         }),
     ];
