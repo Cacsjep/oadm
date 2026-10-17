@@ -32,6 +32,11 @@ public static class DashboardsPluginInfo
     public const int MaxShare = 100;
     public const int DefaultShare = 60;
 
+    /// <summary>The arc of a gauge: % of its radius.</summary>
+    public const int MinLineWidth = 1;
+    public const int MaxLineWidth = 20;
+    public const int DefaultLineWidth = 2;
+
     /// <summary>The grid of a dashboard: 20 x 20 cells, a widget at least 2 x 2, a dropped value widget up to 4 x 4.</summary>
     public static readonly TileLayout Layout = new(20, 2, 4, MaxWidgets);
 
@@ -208,6 +213,9 @@ public sealed record Widget
 
     /// <summary>The end of a gauge's arc; more than <see cref="Min"/>.</summary>
     public double Max { get; init; } = 100;
+
+    /// <summary>The thickness of a gauge's arc, % of its radius.</summary>
+    public int LineWidth { get; init; } = DashboardsPluginInfo.DefaultLineWidth;
 
     [JsonIgnore]
     public TileRect Rect => new(X, Y, Width, Height);
@@ -754,6 +762,7 @@ public static class DashboardRules
             && WidgetIcons.IsKnown(widget.OnIcon) && WidgetIcons.IsKnown(widget.OffIcon)
             && widget.Thresholds.All(t => t is not null && double.IsFinite(t.Value) && WidgetColors.IsKnown(t.Color))
             && shares.All(s => s is >= DashboardsPluginInfo.MinShare and <= DashboardsPluginInfo.MaxShare)
+            && widget.LineWidth is >= DashboardsPluginInfo.MinLineWidth and <= DashboardsPluginInfo.MaxLineWidth
             && widget.Decimals is null or (>= 0 and <= DashboardsPluginInfo.MaxDecimals)
             && widget.OnText.Length <= DashboardsPluginInfo.MaxNameLength && widget.OffText.Length <= DashboardsPluginInfo.MaxNameLength;
         return known ? null : BadSetting;

@@ -17,7 +17,8 @@ grid of widgets, each showing one value of one device.
 | Limits | 50 widgets per dashboard, of them 16 live videos; 200 dashboards; names 1..64 (widget names may be empty); unit 10 characters; 10 thresholds; sizes 10..100 % of the widget; colors and icons only from `WidgetColors` / `WidgetIcons` (theme brushes by name: dark and light both work). The server checks all of it again (`DashboardRules`). |
 | Widgets | **On / Off** (icon, color and optional text per state, icon size), **Text** (font size, color; shrinks to fit, then "…"), **Number** (decimal places or as received, unit, font size, color, thresholds: the color of the highest threshold the number reaches; a value that is no number shows "Not a number" dimmed), **Gauge** (the Number settings without the font size, plus
 **Min** and **Max** (`Widget.Min` / `Max`, 0 and 100, Min below Max, at most 10^12 either way; kept but unused by the other
-kinds); `GaugeView` draws an arc of 240 degrees from Min (lower left) to Max (lower right) in the threshold bands
+kinds), **Line width** (`Widget.LineWidth`, a slider 1..20 % of the radius, 2 by default; the ticks move inward with it;
+also in the group panel when all are gauges); `GaugeView` draws an arc of 240 degrees from Min (lower left) to Max (lower right) in the threshold bands
 (`GaugeScale.Bands`: the widget color up to the first threshold, then each threshold's color up to the next), labelled ticks
 at nice steps (`GaugeScale.Ticks`: 1, 2 or 5 times a power of ten, 4 to 10 intervals; small ticks between them, 4 or 5 per
 step) colored by their band, a marker inside the ticks at the value (stopping at the ends outside the range; the number still

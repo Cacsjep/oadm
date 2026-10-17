@@ -91,7 +91,7 @@ public sealed class DashboardsPageTests
         };
         var power = grade with { Name = "Power", Unit = "W", Min = 0, Max = 3000, Thresholds = [new(2500, "Red")], Decimals = 0 };
         var cold = grade with { Name = "Cold room", Unit = "°C", Min = -20, Max = 10, Decimals = 1, Thresholds = [new(-18, "Blue"), new(-5, "Red")] };
-        var big = Gauge(grade, "70", 300, 260);
+        var big = Gauge(grade with { LineWidth = 6 }, "70", 300, 260);
         var watts = Gauge(power, "1250", 300, 260);
         var over = Gauge(grade with { Name = "Out of range" }, "112", 300, 260);
         var none = Gauge(cold, null, 300, 260);
@@ -237,6 +237,9 @@ public sealed class DashboardsPageTests
             Assert.Equal(DashboardRules.NotANumber, editor.ErrorOf(nameof(WidgetEditorViewModel.MinText)));
             editor.MinText = "-20";
             Assert.Equal((-20d, 60d), (widget.Widget.Min, widget.Widget.Max));
+            Assert.Equal((2, "2 % of the gauge"), (widget.Widget.LineWidth, editor.LineWidthText));
+            editor.LineWidthValue = 6.4; // the slider
+            Assert.Equal(6, widget.Widget.LineWidth);
             editor.SelectedKind = editor.Kinds.First(k => k.Value == WidgetKind.Text);
             Assert.Equal(WidgetKind.Text, widget.Widget.Kind);
             editor.SelectedKind = editor.Kinds.First(k => k.Value == WidgetKind.Number);

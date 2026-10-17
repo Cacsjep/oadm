@@ -81,6 +81,9 @@
       <ui:FormField Classes="wide" Label="Max">
         <TextBox Text="{Binding MaxText}" Watermark="{Binding MaxWatermark}" />
       </ui:FormField>
+      <ui:FormField Classes="wide" Label="Line width" Hint="{Binding LineWidthText}">
+        <Slider Minimum="1" Maximum="20" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding LineWidthValue}" />
+      </ui:FormField>
     </StackPanel>
 
     <StackPanel Spacing="10" IsVisible="{Binding ShowNumber}">

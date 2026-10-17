@@ -55,6 +55,8 @@ public sealed partial class GroupEditorViewModel : ValidatingViewModel
         FontSizeMixed = Same(all, w => (int?)w.FontSize) is null;
         IconSize = all[0].IconSize;
         FontSize = all[0].FontSize;
+        LineWidthMixed = Same(all, w => (int?)w.LineWidth) is null;
+        LineWidth = all[0].LineWidth;
         Decimals = all.Select(w => w.Decimals).Distinct().Count() == 1
             ? WidgetEditorViewModel.DecimalOptions.FirstOrDefault(d => d.Value == all[0].Decimals)
             : null;
@@ -159,6 +161,22 @@ public sealed partial class GroupEditorViewModel : ValidatingViewModel
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(FontSizeValue), nameof(FontSizeText))]
     public partial int FontSize { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LineWidthValue), nameof(LineWidthText))]
+    public partial int LineWidth { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LineWidthText))]
+    public partial bool LineWidthMixed { get; private set; }
+
+    public double LineWidthValue
+    {
+        get => LineWidth;
+        set => LineWidth = (int)Math.Round(value);
+    }
+
+    public string LineWidthText => LineWidthMixed ? MixedText : string.Create(CultureInfo.CurrentCulture, $"{LineWidth} % of the gauge");
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IconSizeText))]
@@ -307,6 +325,15 @@ public sealed partial class GroupEditorViewModel : ValidatingViewModel
         {
             IconSizeMixed = false;
             Each(w => w with { IconSize = Math.Clamp(value, DashboardsPluginInfo.MinShare, DashboardsPluginInfo.MaxShare) });
+        }
+    }
+
+    partial void OnLineWidthChanged(int value)
+    {
+        if (!_loading)
+        {
+            LineWidthMixed = false;
+            Each(w => w with { LineWidth = Math.Clamp(value, DashboardsPluginInfo.MinLineWidth, DashboardsPluginInfo.MaxLineWidth) });
         }
     }
 

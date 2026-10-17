@@ -99,6 +99,8 @@ public sealed class DashboardsServerTests(ITestOutputHelper output)
         Assert.Equal(DashboardRules.RangeWrong, await Refused(New("X", Value("a", 0, 0) with { Kind = WidgetKind.Gauge, Min = 50, Max = 50 })));
         Assert.Equal(DashboardRules.NotANumber, await Refused(New("X", Value("a", 0, 0) with { Kind = WidgetKind.Gauge, Max = 1e15 })));
         Assert.Equal(DashboardRules.BadSetting, await Refused(New("X", Value("a", 0, 0) with { Min = double.NaN }))); // every kind
+        Assert.Equal(DashboardRules.BadSetting, await Refused(New("X", Value("a", 0, 0) with { Kind = WidgetKind.Gauge, LineWidth = 21 })));
+        Assert.Equal(DashboardRules.BadSetting, await Refused(New("X", Value("a", 0, 0) with { LineWidth = 0 })));
         Assert.Null(DashboardRules.WidgetProblem(Value("a", 0, 0) with { Min = 50, Max = 10 })); // a Number keeps an unused range
         Assert.Equal(DashboardRules.BadSetting, await Refused(New("X", Video("v", 0, 0, B) with { OnColor = "#fff" })));
         Assert.Equal(DashboardRules.UnitTooLong, await Refused(New("X", Video("v", 0, 0, B) with { Unit = "far too long a unit" })));

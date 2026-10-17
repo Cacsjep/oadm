@@ -110,6 +110,7 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
         ShowName = w.ShowName;
         IconSize = w.IconSize;
         FontSize = w.FontSize;
+        LineWidth = w.LineWidth;
         Color = ColorNamed(w.Color);
         OnIcon = IconNamed(w.OnIcon);
         OffIcon = IconNamed(w.OffIcon);
@@ -248,6 +249,21 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
     public string IconSizeText => SizeText(IconSize);
 
     public string FontSizeText => SizeText(FontSize);
+
+    /// <summary>The thickness of a gauge's arc, % of its radius.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LineWidthValue), nameof(LineWidthText))]
+    public partial int LineWidth { get; set; }
+
+    /// <summary>The slider of <see cref="LineWidth"/>.</summary>
+    public double LineWidthValue
+    {
+        get => LineWidth;
+        set => LineWidth = (int)Math.Round(value);
+    }
+
+    /// <summary>"2 % of the gauge".</summary>
+    public string LineWidthText => string.Create(CultureInfo.CurrentCulture, $"{LineWidth} % of the gauge");
 
     private static string SizeText(int share) => string.Create(CultureInfo.CurrentCulture, $"{share} % of the widget");
 
@@ -453,6 +469,8 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
 
     partial void OnFontSizeChanged(int value) => Apply();
 
+    partial void OnLineWidthChanged(int value) => Apply();
+
     partial void OnColorChanged(ColorOption oldValue, ColorOption newValue) => Keep(newValue, oldValue, v => Color = v);
 
     partial void OnOnIconChanged(IconOption oldValue, IconOption newValue) => Keep(newValue, oldValue, v => OnIcon = v);
@@ -535,6 +553,7 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
             Kind = IsValue ? SelectedKind?.Value ?? Target.Widget.Kind : WidgetKind.Video,
             IconSize = Math.Clamp(IconSize, DashboardsPluginInfo.MinShare, DashboardsPluginInfo.MaxShare),
             FontSize = Math.Clamp(FontSize, DashboardsPluginInfo.MinShare, DashboardsPluginInfo.MaxShare),
+            LineWidth = Math.Clamp(LineWidth, DashboardsPluginInfo.MinLineWidth, DashboardsPluginInfo.MaxLineWidth),
             Color = Color.Name,
             OnIcon = OnIcon.Key,
             OffIcon = OffIcon.Key,

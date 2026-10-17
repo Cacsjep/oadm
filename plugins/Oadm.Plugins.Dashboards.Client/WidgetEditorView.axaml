@@ -107,6 +107,9 @@
       <ui:FormField Classes="wide" Label="Max">
         <TextBox Text="{Binding MaxText}" />
       </ui:FormField>
+      <ui:FormField Classes="wide" Label="Line width" Hint="{Binding LineWidthText}">
+        <Slider Minimum="1" Maximum="20" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding LineWidthValue}" />
+      </ui:FormField>
     </StackPanel>
 
     <!-- Number and Gauge: decimals, unit, thresholds -->
