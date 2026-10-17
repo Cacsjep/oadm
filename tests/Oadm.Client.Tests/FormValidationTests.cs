@@ -246,7 +246,7 @@ public sealed class FormValidationTests
 
             List<FormField> fields = window.GetVisualDescendants().OfType<FormField>().Where(x => x.IsEffectivelyVisible).ToList(); // the admin form
             Assert.True(fields.Single(x => x.Label == "Listen URL").HasError);
-            Assert.False(fields.Single(x => x.Label == "Full refresh interval (min)").HasError);
+            Assert.False(fields.Single(x => x.Label == "Read device details every (min)").HasError);
             Capture(window, outDir, "client-settings-errors.png");
 
             vm.PollingIntervalSeconds = 60;

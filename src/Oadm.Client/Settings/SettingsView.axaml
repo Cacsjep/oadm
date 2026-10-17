@@ -50,7 +50,7 @@
               <ui:FormField Label="Status polling interval (s)">
                 <NumericUpDown Minimum="5" Maximum="86400" Increment="5" FormatString="0" Value="{Binding PollingIntervalSeconds}" />
               </ui:FormField>
-              <ui:FormField Label="Full refresh interval (min)"
+              <ui:FormField Label="Read device details every (min)"
                             Hint="How often network settings and certificates are read">
                 <NumericUpDown Minimum="1" Maximum="1440" Increment="1" FormatString="0" Value="{Binding FullRefreshMinutes}" />
               </ui:FormField>
@@ -59,7 +59,7 @@
               <ui:FormField Label="Status polling interval (s)">
                 <TextBlock Text="{Binding PollingIntervalSeconds}" />
               </ui:FormField>
-              <ui:FormField Label="Full refresh interval (min)">
+              <ui:FormField Label="Read device details every (min)">
                 <TextBlock Text="{Binding FullRefreshMinutes}" />
               </ui:FormField>
             </StackPanel>

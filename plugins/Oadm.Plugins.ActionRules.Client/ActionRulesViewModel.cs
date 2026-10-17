@@ -44,7 +44,7 @@ public interface IRuleDialogs
 /// </summary>
 public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
 {
-    public static readonly IReadOnlyList<string> GroupByNames = ["What it does", "Name", "Action", "Trigger"];
+    public static readonly IReadOnlyList<string> GroupByNames = ["What it does", "Name", "Action", "Event"];
 
     private readonly ICorePluginClientContext _ctx;
     private readonly Dictionary<Guid, DeviceRulesRow> _rows = [];

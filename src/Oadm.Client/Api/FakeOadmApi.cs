@@ -952,7 +952,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
 
             if (settings.FullRefreshMinutes is < 1 or > 1440)
             {
-                throw new RpcException(new Status(StatusCode.InvalidArgument, "Full refresh interval must be between 1 and 1440 minutes"));
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "Device details are read every 1 to 1440 minutes."));
             }
 
             if (settings.HasMaxParallelTasksPerPlugin && settings.MaxParallelTasksPerPlugin is < 1 or > 256)
