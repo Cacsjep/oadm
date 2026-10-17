@@ -404,6 +404,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         }
 
         _importRunning = true;
+        await LoadWaitingAddressesAsync().ConfigureAwait(true);
         HasScanned = true;
         _anyStopped = false;
         IsProgressIndeterminate = false;
@@ -435,7 +436,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                     slots.Release();
                     _ui.Post(() =>
                     {
-                        row.SetImportProblem(DiscoveredRowViewModel.NotFoundChip, Message(ex)); // e.g. a host name that does not resolve
+                        SetNotFound(row, Message(ex)); // e.g. a host name that does not resolve
                         ImportLineDone();
                     });
                     continue;
@@ -474,6 +475,52 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             _importRunning = false;
             ScanFinished(null);
         });
+    }
+
+    // Import: the addresses the server keeps waiting from earlier imports (upper case, like the server's key).
+    private readonly HashSet<string> _waitingAddresses = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Import: reads the server's waiting list once, so a line that does not answer and is waiting already says so and is
+    /// not kept twice. A role without the right or an older server: none.
+    /// </summary>
+    private async Task LoadWaitingAddressesAsync()
+    {
+        try
+        {
+            int offset = 0;
+            while (true)
+            {
+                WaitingList page = await _api.ListWaitingAsync(offset, WaitingBatch, _cts.Token).ConfigureAwait(true);
+                foreach (WaitingDevice device in page.Devices)
+                {
+                    _waitingAddresses.Add(device.Address.Trim().ToUpperInvariant());
+                }
+
+                offset += page.Devices.Count;
+                if (page.Devices.Count == 0 || offset >= page.TotalCount)
+                {
+                    break;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogWaitingListFailed(_logger, ex.Message);
+        }
+    }
+
+    /// <summary>Nothing answered at the line's address: "Not found", or "Already waiting" when an earlier import kept it.</summary>
+    private void SetNotFound(DiscoveredRowViewModel row, string detail)
+    {
+        if (_waitingAddresses.Contains(row.Address.Trim().ToUpperInvariant()))
+        {
+            row.SetImportProblem(DiscoveredRowViewModel.AlreadyWaitingChip, "An earlier import keeps it waiting. OADM adds it once it answers.", PillKind.Neutral);
+        }
+        else
+        {
+            row.SetImportProblem(DiscoveredRowViewModel.NotFoundChip, detail);
+        }
     }
 
     /// <summary>A probe's watch stream ended: its slot is free for the next address.</summary>
@@ -1067,7 +1114,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
             if (_importRows.Remove(sessionId, out DiscoveredRowViewModel? notFound))
             {
-                notFound.SetImportProblem(DiscoveredRowViewModel.NotFoundChip, $"No Axis device answered at {notFound.Address}.");
+                SetNotFound(notFound, $"No Axis device answered at {notFound.Address}.");
             }
 
             if (IsImportMode && _scanning.Contains(sessionId))
@@ -1108,6 +1155,11 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             if (_hidden > 0)
             {
                 found += string.Create(CultureInfo.CurrentCulture, $", {_hidden} already added");
+            }
+
+            if (_alreadyWaiting > 0)
+            {
+                found += string.Create(CultureInfo.CurrentCulture, $", {_alreadyWaiting} already waiting");
             }
             string what = IsImportMode ? "Import" : "Scan";
             ScanStatusText = what + (_anyStopped ? " stopped, " : " finished, ") + found;
@@ -1165,7 +1217,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     private bool Recount(DiscoveredRowViewModel row)
     {
         var now = new RowCounts(row.CanAdd, row.ShowLogIn, row.ShowSetPassword, row.IsSelected && row.CanAdd, row.IsAlreadyManaged,
-            row.IsImportPlaceholder, row.HasImportProblem, row.CanWait);
+            row.IsImportPlaceholder, row.HasImportProblem, row.CanWait, row.IsAlreadyWaiting);
         if (_counted.TryGetValue(row, out RowCounts old))
         {
             if (old == now)
@@ -1191,10 +1243,11 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         _noDevice += counts.NoDevice ? delta : 0;
         _problems += counts.Problem ? delta : 0;
         _waiting += counts.Waiting ? delta : 0;
+        _alreadyWaiting += counts.AlreadyWaiting ? delta : 0;
     }
 
     /// <summary>What a row adds to the summary ("ready to add", "need a login", "need a password", "selected").</summary>
-    private readonly record struct RowCounts(bool Ready, bool NeedsLogin, bool NeedsPassword, bool Selected, bool Hidden, bool NoDevice, bool Problem, bool Waiting);
+    private readonly record struct RowCounts(bool Ready, bool NeedsLogin, bool NeedsPassword, bool Selected, bool Hidden, bool NoDevice, bool Problem, bool Waiting, bool AlreadyWaiting);
 
     // Scale: per-row bookkeeping so a discovered device, a login result or a checkbox costs O(1), not a
     // scan of every row (4 counts over 5,000 rows per change made "select all" O(n^2)).
@@ -1209,6 +1262,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     private int _noDevice;
     private int _problems;
     private int _waiting;
+    private int _alreadyWaiting;
 
     /// <summary>
     /// Devices OADM already manages are not listed at all; only the scan status
@@ -1347,6 +1401,9 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Add devices page added {Count} device(s)")]
     private static partial void LogAdded(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Reading the waiting list for the import failed: {Reason}")]
+    private static partial void LogWaitingListFailed(ILogger logger, string reason);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Add devices page kept {Count} device(s) on the waiting list")]
     private static partial void LogKeptWaiting(ILogger logger, int count);

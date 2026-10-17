@@ -67,6 +67,12 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
     /// <summary>The chip of an import line whose address did not answer.</summary>
     public const string NotFoundChip = "Not found";
 
+    /// <summary>The chip of an import line that did not answer and is on the waiting list from an earlier import.</summary>
+    public const string AlreadyWaitingChip = "Already waiting";
+
+    /// <summary>Import: the address did not answer and the server already keeps it waiting (not kept again).</summary>
+    public bool IsAlreadyWaiting { get; private set; }
+
     /// <summary>
     /// Import: the line's device did not answer, or did not identify itself as an Axis device (no password was sent). The
     /// page keeps such lines on the server's waiting list when "Keep devices that do not answer" is checked.
@@ -89,6 +95,7 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
     {
         _importChip = (chip, kind);
         _notFound = chip == NotFoundChip;
+        IsAlreadyWaiting = chip == AlreadyWaitingChip;
         AuthDetail = detail;
         HasImportProblem = true;
         Refresh();

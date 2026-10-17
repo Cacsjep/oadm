@@ -107,6 +107,34 @@ public sealed class WaitingDeviceTests
     }
 
     [Fact]
+    public async Task TryNowMarksTheEntriesCheckingUntilTheirTry()
+    {
+        var network = new FakeAxisNetwork();
+        network.Add("10.9.5.6", FakeSerials.Make(57), FilePassword).Offline = true;
+        await using var host = await TestServerHost.StartAsync(network);
+        await KeepAsync(host, Line("10.9.5.6"), Line("10.9.5.7"));
+        var entries = (await Client(host).ListAsync(new Proto.ListWaitingRequest())).Devices;
+        Assert.All(entries, e => Assert.False(e.Checking));
+        var first = Guid.Parse(entries[0].Id);
+        var second = Guid.Parse(entries[1].Id);
+
+        // A runner of its own that is not started: Try now only marks, the round below runs it.
+        using var runner = Microsoft.Extensions.DependencyInjection.ActivatorUtilities.CreateInstance<WaitingDeviceRunner>(host.App.Services);
+        runner.TryNow([first]);
+        Assert.True(runner.IsChecking(first));
+        Assert.False(runner.IsChecking(second));
+        Assert.Equal(1, runner.Remaining);
+
+        await runner.RunRoundAsync([first], includeLoginFailed: true, CancellationToken.None);
+        Assert.False(runner.IsChecking(first));
+        Assert.Equal(0, runner.Remaining);
+
+        runner.TryNow(null); // all
+        Assert.True(runner.IsChecking(second));
+        Assert.Equal(-1, runner.Remaining);
+    }
+
+    [Fact]
     public async Task AnotherDeviceAtTheAddressGetsNoPasswordAndTheLineKeepsWaiting()
     {
         var network = new FakeAxisNetwork();

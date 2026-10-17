@@ -18,6 +18,8 @@ public partial class WaitingDevicesWindow : Window
         DataContext = viewModel;
         viewModel.CloseRequested += (_, _) => Close();
         EventHandler roundEnded = (_, _) => viewModel.OnRoundEnded();
+        EventHandler roundStarted = (_, _) => viewModel.OnRoundStarted();
+        viewModel.State.RoundStarted += roundStarted;
         PropertyChangedEventHandler stateChanged = (_, _) => viewModel.OnStateChanged();
         viewModel.State.RoundEnded += roundEnded;
         viewModel.State.PropertyChanged += stateChanged;
@@ -25,6 +27,7 @@ public partial class WaitingDevicesWindow : Window
         Closed += (_, _) =>
         {
             viewModel.State.RoundEnded -= roundEnded;
+            viewModel.State.RoundStarted -= roundStarted;
             viewModel.State.PropertyChanged -= stateChanged;
         };
     }

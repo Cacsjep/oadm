@@ -20,7 +20,7 @@ namespace Oadm.Client.Tests;
 
 /// <summary>
 /// The import's waiting list in the client: the Devices page line and the "Waiting devices" dialog against the fake server.
-/// Set OADM_SCREENSHOT_DIR for client-waiting-line.png and client-waiting-dialog.png.
+/// Set OADM_SCREENSHOT_DIR for client-waiting-line.png, client-waiting-dialog.png and client-waiting-checking.png.
 /// </summary>
 public sealed class WaitingDevicesTests(ITestOutputHelper output)
 {
@@ -56,7 +56,7 @@ public sealed class WaitingDevicesTests(ITestOutputHelper output)
     [Fact]
     public async Task The_dialog_lists_searches_tries_removes_and_exports_without_passwords()
     {
-        using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
+        using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5)) { FakeWaitingTryTime = TimeSpan.Zero };
         await KeepAsync(api, 6);
         IDialogService dialogs = Substitute.For<IDialogService>();
         dialogs.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
@@ -96,6 +96,30 @@ public sealed class WaitingDevicesTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task Try_now_shows_the_rows_as_checking_until_the_round_ends()
+    {
+        using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5)) { FakeWaitingTryTime = TimeSpan.FromMilliseconds(300) };
+        await KeepAsync(api, 4);
+        var state = new WaitingDevicesState();
+        var vm = new WaitingDevicesViewModel(api, Substitute.For<IDialogService>(), state);
+        await vm.LoadAsync();
+        vm.Selected.ReplaceAll([vm.Rows[1], vm.Rows[2]]);
+
+        await vm.TryNowCommand.ExecuteAsync(null);
+
+        Assert.Equal([false, true, true, false], vm.Rows.Select(r => r.IsChecking));
+        Assert.Equal("Checking...", vm.Rows[1].ResultText);
+        Assert.Equal("Checking: 2 left", vm.ScheduleText);
+
+        // The round ends: the list is read again with the results.
+        await TestSupport.WaitUntilAsync(() => !api.ListWaitingAsync(0, 0, CancellationToken.None).Result.Devices.Any(d => d.Checking));
+        state.Apply(new WaitingSummary { Count = 4 });
+        vm.OnRoundEnded();
+        await TestSupport.WaitUntilAsync(() => vm.Rows.Count == 4 && !vm.Rows.Any(r => r.IsChecking) && vm.Rows[1].Device.Tries == 1);
+        Assert.Equal("No Axis device answered at 10.99.0.1.", vm.Rows[1].ResultText);
+    }
+
+    [Fact]
     [Trait("Category", "Perf")]
     public async Task Thirty_thousand_waiting_devices_load_and_filter_fast()
     {
@@ -125,6 +149,7 @@ public sealed class WaitingDevicesTests(ITestOutputHelper output)
             using var fixture = new DevicesFixture(api);
             fixture.SeedDevices([.. await api.ListDevicesAsync(CancellationToken.None)]);
             await KeepAsync(api, 120);
+            api.FakeWaitingTryTime = TimeSpan.Zero;
             await api.TryWaitingNowAsync([], all: true, CancellationToken.None);
             fixture.Store.Waiting.Apply(new WaitingSummary { Count = 120, NextTry = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTime(DateTime.UtcNow.AddMinutes(12)) });
 
@@ -147,6 +172,14 @@ public sealed class WaitingDevicesTests(ITestOutputHelper output)
             Assert.NotEmpty(grid.GetVisualDescendants().OfType<DataGridRow>());
             Assert.StartsWith("Next try at ", vm.ScheduleText, StringComparison.Ordinal);
             Capture(window, outDir, "client-waiting-dialog.png");
+
+            // Try now on three rows: they say "Checking..." until the round ends.
+            api.FakeWaitingTryTime = TimeSpan.FromSeconds(30);
+            vm.Selected.ReplaceAll([vm.Rows[1], vm.Rows[2], vm.Rows[3]]);
+            await vm.TryNowCommand.ExecuteAsync(null);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(3, vm.Rows.Count(r => r.IsChecking));
+            Capture(window, outDir, "client-waiting-checking.png");
             window.Close();
             return true;
         }, CancellationToken.None);

@@ -47,7 +47,7 @@
             <DataGridTemplateColumn Header="Result" Width="*" MinWidth="220" SortMemberPath="ResultText">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:WaitingRowViewModel">
-                  <ui:StatusChip Text="{Binding ResultText}" IsWarning="{Binding IsLoginFailed}" MaxLines="2" />
+                  <ui:StatusChip Text="{Binding ResultText}" IsWarning="{Binding IsLoginFailed}" IsAccent="{Binding IsChecking}" MaxLines="2" />
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>

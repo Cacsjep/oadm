@@ -410,6 +410,16 @@ public sealed class AddDevicesPageTests : IDisposable
         Assert.Equal(["Building A", "PTZ"], kept.Tags);
         WaitingList list = await _api.ListWaitingAsync(0, 0, CancellationToken.None);
         Assert.Equal("Import from file site.csv", list.Devices[0].Source);
+
+        // The same file again: the lines that still do not answer say they are waiting already and are not kept twice.
+        await using AddDevicesViewModel again = await OpenImportAsync(csv);
+        await again.ImportCompletion!;
+        await TestSupport.WaitUntilAsync(() => !again.IsScanning && again.Rows.All(r => r.IsImportPlaceholder ? r.HasImportProblem : r.AuthState != AuthState.Pending));
+        DiscoveredRowViewModel waiting = Row(again, "10.0.0.199");
+        Assert.Equal(("Already waiting", "An earlier import keeps it waiting. OADM adds it once it answers."), (waiting.ChipText, waiting.StatusDetail));
+        Assert.False(waiting.CanWait);
+        Assert.Equal(0, again.WaitingCount);
+        Assert.EndsWith(", 2 already waiting", again.ScanStatusText, StringComparison.Ordinal);
     }
 
     [Fact]

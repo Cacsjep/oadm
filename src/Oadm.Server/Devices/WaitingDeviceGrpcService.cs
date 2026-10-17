@@ -147,7 +147,14 @@ public sealed class WaitingDeviceGrpcService(
     private async Task<Proto.WaitingSummary> SummaryAsync(CancellationToken ct)
     {
         var (count, loginFailed) = await store.CountsAsync(ct).ConfigureAwait(false);
-        var summary = new Proto.WaitingSummary { Count = count, LoginFailed = loginFailed, Trying = runner.IsTrying };
+        var remaining = runner.Remaining;
+        var summary = new Proto.WaitingSummary
+        {
+            Count = count,
+            LoginFailed = loginFailed,
+            Trying = runner.IsTrying,
+            Remaining = remaining < 0 ? count : Math.Min(remaining, count),
+        };
         if (runner.NextTry is { } next)
         {
             summary.NextTry = Timestamp.FromDateTimeOffset(next);
@@ -156,7 +163,7 @@ public sealed class WaitingDeviceGrpcService(
         return summary;
     }
 
-    private static Proto.WaitingDevice ToProto(WaitingDeviceItem item)
+    private Proto.WaitingDevice ToProto(WaitingDeviceItem item)
     {
         var proto = new Proto.WaitingDevice
         {
@@ -170,6 +177,7 @@ public sealed class WaitingDeviceGrpcService(
             LoginFailed = item.LoginFailed,
             Tries = item.Tries,
             HasLogin = item.HasLogin,
+            Checking = runner.IsChecking(item.Id),
         };
         proto.Tags.AddRange(item.Tags);
         if (item.LastTryUtc is { } last)

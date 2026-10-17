@@ -60,6 +60,7 @@ message WaitingDevice {
   bool login_failed = 10;                   // answered but rejected every login: waits for Try now
   int32 tries = 11;
   bool has_login = 12;                      // the line brought a login (never the password)
+  bool checking = 13;                       // asked for (Try now) or in the running round and not tried yet
 }
 
 message WaitingList {
@@ -77,4 +78,5 @@ message WaitingSummary {
   int32 login_failed = 2;
   bool trying = 3;             // a round runs now
   google.protobuf.Timestamp next_try = 4;  // when the next round starts (unset while one runs)
+  int32 remaining = 5;         // entries asked for or in the running round that were not tried yet
 }

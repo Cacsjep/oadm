@@ -32,6 +32,12 @@ public sealed partial class WaitingDevicesState : ObservableObject
     /// <summary>When the server tries the list next (local time); null while it tries.</summary>
     [ObservableProperty] public partial DateTime? NextTry { get; private set; }
 
+    /// <summary>Entries asked for or in the running round that were not tried yet.</summary>
+    [ObservableProperty] public partial int Remaining { get; private set; }
+
+    /// <summary>Raised when a round starts (the dialog reads the list again: those rows say "Checking").</summary>
+    public event EventHandler? RoundStarted;
+
     public bool HasAny => Count > 0;
 
     /// <summary>"2,412 devices waiting to be added"; empty when none.</summary>
@@ -49,10 +55,17 @@ public sealed partial class WaitingDevicesState : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(summary);
         bool ended = IsTrying && !summary.Trying;
+        bool started = !IsTrying && summary.Trying;
         Count = summary.Count;
         LoginFailed = summary.LoginFailed;
+        Remaining = summary.Remaining;
         IsTrying = summary.Trying;
         NextTry = summary.NextTry is { } next ? next.ToDateTime().ToLocalTime() : null;
+        if (started)
+        {
+            RoundStarted?.Invoke(this, EventArgs.Empty);
+        }
+
         if (ended)
         {
             RoundEnded?.Invoke(this, EventArgs.Empty);
@@ -82,12 +95,16 @@ public sealed class WaitingRowViewModel(WaitingDevice device)
 
     public string LastTryText => Device.LastTry?.ToDateTime().ToLocalTime().ToString("g", CultureInfo.CurrentCulture) ?? "Not yet";
 
+    /// <summary>The server tries it now (or soon, after Try now): the chip spins like the add page's "Checking...".</summary>
+    public bool IsChecking => Device.Checking;
+
     /// <summary>What the last try found; a failed login waits for Try now.</summary>
-    public string ResultText => Device.LoginFailed
+    public string ResultText => Device.Checking ? "Checking..."
+        : Device.LoginFailed
         ? "Login failed: " + Device.LastResult + " Waits for Try now."
         : Device.LastResult.Length > 0 ? Device.LastResult : "Not tried yet";
 
-    public bool IsLoginFailed => Device.LoginFailed;
+    public bool IsLoginFailed => Device.LoginFailed && !Device.Checking;
 
     public bool Matches(string? search) =>
         string.IsNullOrWhiteSpace(search)
@@ -139,8 +156,9 @@ public sealed partial class WaitingDevicesViewModel : ObservableObject
     /// <summary>A failed server call, below the list.</summary>
     [ObservableProperty] public partial string? ErrorText { get; private set; }
 
-    /// <summary>"Next try at 14:35" / "Trying now".</summary>
-    public string ScheduleText => State.IsTrying ? "Trying now"
+    /// <summary>"Next try at 14:35" / "Checking: 120 left".</summary>
+    public string ScheduleText => State.IsTrying || State.Remaining > 0
+        ? (State.Remaining > 0 ? string.Create(CultureInfo.CurrentCulture, $"Checking: {State.Remaining:N0} left") : "Checking")
         : State.NextTry is { } next ? "Next try at " + next.ToString("t", CultureInfo.CurrentCulture) : "";
 
     /// <summary>"12 of 3,000 devices" (shown) or "3,000 devices".</summary>
@@ -245,6 +263,7 @@ public sealed partial class WaitingDevicesViewModel : ObservableObject
             State.Apply(summary);
         }).ConfigureAwait(true);
         OnPropertyChanged(nameof(ScheduleText));
+        await LoadAsync().ConfigureAwait(true); // the rows asked for say "Checking..." now
     }
 
     private bool CanRemove() => !IsBusy && Selected.Count > 0;
@@ -308,6 +327,9 @@ public sealed partial class WaitingDevicesViewModel : ObservableObject
 
     [RelayCommand]
     private void Close() => CloseRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>A round started: the list again, its rows say "Checking...".</summary>
+    public void OnRoundStarted() => _ = LoadAsync();
 
     /// <summary>After a round of the server: the list again.</summary>
     public void OnRoundEnded()

@@ -66,6 +66,10 @@ public sealed partial class WaitingDeviceRunner(
     private readonly Lock _gate = new();
     private readonly HashSet<Guid> _requested = [];
     private bool _requestedAll;
+
+    // Entries asked for (Try now) or in the running round that were not tried yet: their rows say "Checking".
+    private readonly ConcurrentDictionary<Guid, byte> _checking = new();
+    private volatile bool _checkingAll;
     private volatile bool _trying;
     private DateTimeOffset? _nextTry;
 
@@ -74,6 +78,12 @@ public sealed partial class WaitingDeviceRunner(
 
     /// <summary>A round runs now.</summary>
     public bool IsTrying => _trying;
+
+    /// <summary>The entry was asked for or is in the running round and was not tried yet.</summary>
+    public bool IsChecking(Guid id) => _checkingAll || _checking.ContainsKey(id);
+
+    /// <summary>How many entries of the running round (or asked for) were not tried yet; -1 = every entry (Try now for all).</summary>
+    public int Remaining => _checkingAll ? -1 : _checking.Count;
 
     /// <summary>When the next round starts; null while one runs.</summary>
     public DateTimeOffset? NextTry
@@ -95,13 +105,19 @@ public sealed partial class WaitingDeviceRunner(
             if (ids is null)
             {
                 _requestedAll = true;
+                _checkingAll = true;
             }
             else
             {
                 _requested.UnionWith(ids);
+                foreach (var id in ids)
+                {
+                    _checking.TryAdd(id, 0);
+                }
             }
         }
 
+        StateChanged?.Invoke(this, EventArgs.Empty);
         _wake.Release();
     }
 
@@ -165,6 +181,13 @@ public sealed partial class WaitingDeviceRunner(
                 managed.Select(d => d.Serial).ToHashSet(StringComparer.Ordinal), ct).ConfigureAwait(false);
 
             var entries = await store.ToTryAsync(ids, includeLoginFailed, ct).ConfigureAwait(false);
+            foreach (var entry in entries)
+            {
+                _checking.TryAdd(entry.Id, 0);
+            }
+
+            _checkingAll = false;
+            StateChanged?.Invoke(this, EventArgs.Empty);
             if (entries.Count == 0)
             {
                 return 0;
@@ -201,6 +224,7 @@ public sealed partial class WaitingDeviceRunner(
             await Parallel.ForEachAsync(entries, new ParallelOptions { MaxDegreeOfParallelism = Parallelism, CancellationToken = ct }, async (entry, token) =>
             {
                 var outcome = await TryOneAsync(entry, token).ConfigureAwait(false);
+                _checking.TryRemove(entry.Id, out _);
                 switch (outcome.Kind)
                 {
                     case WaitingOutcomeKind.Added:
@@ -224,6 +248,17 @@ public sealed partial class WaitingDeviceRunner(
         }
         finally
         {
+            // Try now asked during this round waits for the next one: those entries stay "Checking".
+            lock (_gate)
+            {
+                foreach (var id in _checking.Keys.Where(id => !_requested.Contains(id)).ToList())
+                {
+                    _checking.TryRemove(id, out _);
+                }
+
+                _checkingAll = _requestedAll;
+            }
+
             _trying = false;
             StateChanged?.Invoke(this, EventArgs.Empty);
         }

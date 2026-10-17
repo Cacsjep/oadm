@@ -635,7 +635,10 @@ Import from file and Import from ADM, checked by default; `AddDevicesViewModel.K
 did not answer or did not identify itself as an Axis device (`DiscoveredRowViewModel.CanWait`: "Not found" or Unreachable;
 not file problems, not Login failed, not "Not checked") go to the server in batches of 5,000 (`WaitingDeviceService.Add`)
 with their address, login, expected MAC address and tags, before the found devices are committed; without checked rows the
-button reads "Keep 3,000 waiting". Server: `Oadm.Core.Devices.WaitingDeviceStore` (table WaitingDevices, migration
+button reads "Keep 3,000 waiting". The page reads the waiting list before it probes (`ListWaiting`, a role without the
+right: none): a line that does not answer and is waiting already shows **Already waiting** ("An earlier import keeps it
+waiting. OADM adds it once it answers.", neutral), is not kept again, and the finish line adds ", 12 already waiting".
+Server: `Oadm.Core.Devices.WaitingDeviceStore` (table WaitingDevices, migration
 `WaitingDevices`: one entry per address (upper case), an address kept again replaces login, MAC address and tags and is
 tried like new; password AES-GCM with the master key, entry id as associated data, never listed or logged; at most 30,000,
 over it the whole call is refused "The waiting list holds at most 30,000 devices. Remove devices from it first.") and
@@ -649,14 +652,17 @@ the audit entry "Device added automatically" (user "system", "<source> (waiting 
 answers but rejects every login is marked Login failed and **not tried again by itself** (no repeated wrong passwords) until
 Try now; results are written in batches of 256. Nothing drops off by itself: an entry stays until its device is added (also
 another way) or a user removes it. gRPC `WaitingDeviceService` (`waiting.proto`, all "Add and remove devices"): `Add`,
-`List(offset, limit)`, `Watch` (summary {count, login_failed, trying, next_try}, at most once a second), `Remove(ids | all)`,
+`List(offset, limit)` (`checking = 13`: asked for by Try now or in the running round and not tried yet), `Watch` (summary
+{count, login_failed, trying, next_try, remaining}, at most once a second), `Remove(ids | all)`,
 `TryNow(ids | all; all also tries the failed logins)`; audited "Kept devices waiting" and "Removed waiting devices". Client:
 `ServerConnection` watches the summary for roles with the right into `DeviceStore.Waiting` (`WaitingDevicesState`); the
 Devices page shows the link "2,412 devices waiting to be added" next to "N devices, M selected" while the list is not empty;
 it opens `Devices/WaitingDevicesWindow` (`WaitingDevicesViewModel`: "Next try at 14:35", toolbar Try now, Export, Remove (red,
 confirmed; needs a selection), count and search; grid Address, MAC address, Tags, Kept, Last try, Result (warning chip for a
 failed login); read in pages of 5,000, read again after each round; Try now and Export take the selection, else every row
-the search shows; the export is the import's format without passwords). Fake mode keeps the list in memory
+the search shows; the export is the import's format without passwords; rows being checked show the spinning "Checking..."
+chip and the line above the list "Checking: 120 left"; the list is read again after Try now, when a round starts and when
+it ends). Fake mode keeps the list in memory
 (`FakeOadmApi.Waiting.cs`, nothing ever answers). Tests: `WaitingDeviceStoreTests` (+ Perf 30,000), server
 `WaitingDeviceTests`, client `WaitingDevicesTests` (+ Perf 30,000, screenshots), `AddDevicesPageTests`.
 

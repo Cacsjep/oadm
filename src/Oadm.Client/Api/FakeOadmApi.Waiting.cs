@@ -9,12 +9,19 @@ using Oadm.Contracts.V1;
 
 namespace Oadm.Client.Api;
 
-/// <summary>Fake mode: the waiting list in memory. Nothing ever answers, so Try now only records the try.</summary>
+/// <summary>
+/// Fake mode: the waiting list in memory. Nothing ever answers: Try now shows the entries as checking for
+/// <see cref="FakeWaitingTryTime"/>, then records the try.
+/// </summary>
 public sealed partial class FakeOadmApi
 {
     private const int FakeMaxWaiting = 30_000;
     private readonly List<WaitingDevice> _waiting = [];
     private readonly Broadcast<WaitingSummary> _waitingEvents = new();
+    private bool _waitingTrying;
+
+    /// <summary>How long a fake Try now "checks" (tests set it to zero).</summary>
+    public TimeSpan FakeWaitingTryTime { get; set; } = TimeSpan.FromSeconds(3);
 
     /// <summary>The lines kept (tests), with the passwords they came with.</summary>
     public IReadOnlyList<WaitingLine> KeptWaitingLines => _keptWaitingLines;
@@ -127,12 +134,27 @@ public sealed partial class FakeOadmApi
         {
             ThrowIfOffline();
             var chosen = ids.ToHashSet(StringComparer.Ordinal);
-            foreach (WaitingDevice entry in _waiting.Where(w => all || chosen.Contains(w.Id)))
+            List<WaitingDevice> tried = _waiting.Where(w => all || chosen.Contains(w.Id)).ToList();
+            foreach (WaitingDevice entry in tried)
             {
-                entry.Tries++;
-                entry.LastTry = Timestamp.FromDateTime(DateTime.UtcNow);
-                entry.LastResult = $"No Axis device answered at {entry.Address}.";
-                entry.LoginFailed = false;
+                entry.Checking = true;
+            }
+
+            _waitingTrying = FakeWaitingTryTime > TimeSpan.Zero;
+            if (!_waitingTrying)
+            {
+                FinishWaitingTryLocked(tried);
+            }
+            else
+            {
+                _ = Task.Delay(FakeWaitingTryTime, CancellationToken.None).ContinueWith(_ =>
+                {
+                    lock (_gate)
+                    {
+                        _waitingTrying = false;
+                        FinishWaitingTryLocked(tried);
+                    }
+                }, TaskScheduler.Default);
             }
 
             PublishWaitingLocked();
@@ -140,11 +162,27 @@ public sealed partial class FakeOadmApi
         }
     }
 
+    private void FinishWaitingTryLocked(List<WaitingDevice> tried)
+    {
+        foreach (WaitingDevice entry in tried)
+        {
+            entry.Checking = false;
+            entry.Tries++;
+            entry.LastTry = Timestamp.FromDateTime(DateTime.UtcNow);
+            entry.LastResult = $"No Axis device answered at {entry.Address}.";
+            entry.LoginFailed = false;
+        }
+
+        PublishWaitingLocked();
+    }
+
     private WaitingSummary WaitingSummaryLocked() => new()
     {
         Count = _waiting.Count,
         LoginFailed = _waiting.Count(w => w.LoginFailed),
-        NextTry = Timestamp.FromDateTime(DateTime.UtcNow.AddMinutes(15)),
+        Trying = _waitingTrying,
+        Remaining = _waiting.Count(w => w.Checking),
+        NextTry = _waitingTrying ? null : Timestamp.FromDateTime(DateTime.UtcNow.AddMinutes(15)),
     };
 
     private void PublishWaitingLocked() => _waitingEvents.Publish(WaitingSummaryLocked());
