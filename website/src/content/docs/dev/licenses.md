@@ -12,7 +12,8 @@ Plugins under the Apache 2.0 license of OADM may be closed source and sold; noth
 
 1. Every OADM server has a **server ID**, made at its first start. The customer finds it on the **Settings** page (and on
    the **Plugins** page while a plugin needs a license) and sends it to you. A restored backup keeps it, so moving a server keeps its licenses.
-2. You make a key pair once. The **public key** goes into your plugin's `plugin.json`; the **private key** stays with you.
+2. You make a key pair once. The **public key** goes into your plugin's project (and from there into its
+   `plugin.json`); the **private key** stays with you.
 3. For each sale you sign a license key for the customer's server ID: who it is for, until when and, if you want, which
    features.
 4. The customer pastes the key on the Plugins page. OADM checks the signature with the public key of your
@@ -25,41 +26,39 @@ what most commercial plugins need.
 ## 1. Make your keys
 
 ```
-manage license keys --out ../acme-keys
+dotnet oadm license keys --out ../acme-keys
 ```
 
 This writes `private-key.pem` (keep it secret and back it up: it signs every license) and `public-key.txt`, and prints the
-entry for `plugin.json`. It never overwrites a key: a new key would make every license you sold invalid.
+properties for your project. It never overwrites a key: a new key would make every license you sold invalid. In a
+checkout of OADM the same command is `manage license keys`.
 
-## 2. Declare the license in plugin.json
+## 2. Declare the license in the project
 
-```json
-{
-  "id": "acme.site-reports",
-  "version": "1.0.0",
-  "minSdkVersion": "0.1.0",
-  "displayName": "Site reports",
-  "description": "Monthly reports per site.",
-  "license": {
-    "publicKey": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...",
-    "features": ["reports", "export"],
-    "trialDays": 30
-  }
-}
+In the server part's project file:
+
+```xml
+<PropertyGroup>
+  <OadmPluginId>acme.site-reports</OadmPluginId>
+  <OadmLicensePublicKey>MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...</OadmLicensePublicKey>
+  <OadmLicenseFeatures>reports;export</OadmLicenseFeatures>
+  <OadmLicenseTrialDays>30</OadmLicenseTrialDays>
+</PropertyGroup>
 ```
 
-| Field | Meaning |
+| Property | Meaning |
 |---|---|
-| `publicKey` | Your public key from `manage license keys` |
-| `features` | The features a license can unlock (shown on the Plugins page, optional) |
-| `trialDays` | Days the plugin runs without a license, from the day the server first loaded it; 0 or missing = no trial |
+| `OadmLicensePublicKey` | Your public key from `oadm license keys` |
+| `OadmLicenseFeatures` | The features a license can unlock, separated by `;` (shown on the Plugins page, optional) |
+| `OadmLicenseTrialDays` | Days the plugin runs without a license, from the day the server first loaded it; 0 or missing = no trial |
 
-Without a `license` entry the plugin is free and OADM asks for nothing.
+The build writes them into `plugin.json` as its `license` entry (`publicKey`, `features`, `trialDays`); with a
+`plugin.json` of your own, write the entry there. Without a public key the plugin is free and OADM asks for nothing.
 
 ## 3. Sign a license
 
 ```
-manage license sign --key ../acme-keys/private-key.pem --plugin acme.site-reports
+dotnet oadm license sign --key ../acme-keys/private-key.pem --plugin acme.site-reports
     --server 7f3c2a1e-5b8d-4c6f-9a2e-1d0b4e8f6c37 --customer "ACME GmbH"
     --expires 2027-12-31
 ```

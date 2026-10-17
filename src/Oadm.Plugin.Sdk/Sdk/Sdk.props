@@ -1,0 +1,6 @@
+<Project>
+  <!-- <Project Sdk="Oadm.Plugin.Sdk/x.y.z">: the .NET SDK with the OADM plugin defaults (targets/Oadm.Plugin.props first, so
+       the assembly name of the part is set before the .NET SDK defaults it to the project name). -->
+  <Import Project="..\targets\Oadm.Plugin.props" />
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+</Project>

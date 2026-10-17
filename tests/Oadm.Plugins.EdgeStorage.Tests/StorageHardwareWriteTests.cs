@@ -3,7 +3,7 @@ using System.Net;
 using Oadm.Core.Vapix;
 using Oadm.Plugins.EdgeStorage.Device;
 using Oadm.Plugins.EdgeStorage.Disks;
-using Oadm.Tests.Shared;
+using StepRun = Oadm.Sdk.Testing.StepRun;
 
 namespace Oadm.Plugins.EdgeStorage.Tests;
 

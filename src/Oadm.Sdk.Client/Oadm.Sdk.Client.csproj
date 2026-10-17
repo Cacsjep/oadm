@@ -3,6 +3,8 @@
   <PropertyGroup>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <Description>The client plugin SDK of OADM: dialogs, pages, toolbar entries and the shared Avalonia controls.</Description>
+    <PackageTags>oadm;axis;plugin;sdk;avalonia</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.4" />

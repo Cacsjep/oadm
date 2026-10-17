@@ -3,13 +3,14 @@ title: SDK versions and compatibility
 description: Which OADM a plugin runs on, what the SDK version means and how the SDK grows without breaking plugins.
 ---
 
-A plugin is built against the SDK of one OADM checkout and runs on the OADM versions that SDK is compatible with. This
+A plugin is built against the SDK of one OADM release (the NuGet packages of that version) and runs on the OADM versions
+that SDK is compatible with. This
 page says what OADM checks, what it promises today and what you do before you update.
 
 ## The SDK version
 
 The SDK has its own version, `SdkInfo.Version` in `src/Oadm.Sdk/Plugins/Plugins.cs` (today `0.1.0`), separate from the
-OADM version. Your `plugin.json` names the oldest SDK it needs:
+OADM version. Your `plugin.json` names the SDK it needs (the project SDK writes the version you build with):
 
 ```json
 "minSdkVersion": "0.1.0"
@@ -23,7 +24,12 @@ Plugin problem in plugins/acme.hello: Plugin acme.hello requires SDK 0.2.0, host
 ```
 
 The client loads the client part of a plugin without this check, but without its server part such a page or dialog has
-nothing to talk to. Set `minSdkVersion` to the `SdkInfo.Version` of the checkout you build against.
+nothing to talk to.
+
+The shared assemblies (below) always come from OADM, whatever version your plugin was built against, so the plugin
+folder loads on every OADM whose SDK `minSdkVersion` allows. The `oadm` tool is stricter: `deploy --installed` and
+`debug --installed` work only with an installed OADM of the tool's version or newer. To support older releases, build
+with the packages of the oldest one; use members that are newer only with the check below.
 
 ## How the SDK grows
 
@@ -47,8 +53,8 @@ if (ctx.EventStreams is not { } streams)
 
 ## What is shared and what your plugin brings
 
-OADM provides these at runtime. Compile against them, never copy them into your plugin folder, and use the versions the
-built-in plugins use:
+OADM provides these at runtime. Compile against them, never copy them into your plugin folder; the project SDK
+`Oadm.Plugin.Sdk` references them that way, in the versions of its OADM release:
 
 | Part | Shared assemblies |
 |---|---|
@@ -62,11 +68,13 @@ in a context of its own, so two plugins can use different versions of the same l
 
 - The SDK is version 0.x: it still grows with OADM releases, mostly by new members with defaults. Until 1.0 a release
   can also change a member; rebuild your plugin against each new release.
-- Plugins are built inside a checkout of the repository. There is no NuGet package of the SDK yet.
+- The NuGet packages (`Oadm.Sdk`, `Oadm.Sdk.Client`, `Oadm.Sdk.Testing`, `Oadm.Plugin.Sdk`, `Oadm.Plugin.Templates`,
+  `Oadm.Tools`) come with every OADM release, all in its version. A checkout of the repository builds the same.
 
 ## Before you update OADM
 
 1. Read the release notes (`CHANGELOG.md`, and the release on GitHub) for SDK changes.
-2. Update your checkout to the new release and build your plugin: the compiler shows what changed.
-3. Run your tests, then try the plugin with `./manage.sh run dev`.
+2. Change the version in the `Sdk="Oadm.Plugin.Sdk/..."` of your projects, the `Oadm.Sdk.Testing` reference of your tests
+   and `.config/dotnet-tools.json` to the new release, and build: the compiler shows what changed.
+3. Run your tests, then try the plugin with `dotnet oadm dev start`.
 4. Raise `minSdkVersion` only when you use something new.

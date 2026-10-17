@@ -163,6 +163,7 @@ export default defineConfig({
 					collapsed: true,
 					items: [
 						{ label: 'Overview', slug: 'dev/overview' },
+						{ label: 'Develop with the .NET SDK', slug: 'dev/plugin-sdk' },
 						{ label: 'Build from source', slug: 'dev/build' },
 						{ label: 'Plugin basics', slug: 'dev/plugins' },
 						{ label: 'Tutorial: Task plugin', slug: 'dev/tutorial-task' },

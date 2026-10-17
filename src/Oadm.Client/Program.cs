@@ -27,6 +27,12 @@ internal static class Program
         }
 
         AppOptions options = AppOptions.Parse(args);
+        if (args.Contains(Plugins.ClientFolderReport.Argument, StringComparer.OrdinalIgnoreCase))
+        {
+            Console.WriteLine(Plugins.ClientFolderReport.Build(options));
+            return 0;
+        }
+
         var logStore = new LogStore(new AvaloniaUiDispatcher());
         string logFolder = Path.Combine(options.DataFolder, "logs");
         Log.Logger = new LoggerConfiguration()

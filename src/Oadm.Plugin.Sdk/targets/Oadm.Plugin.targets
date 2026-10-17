@@ -1,0 +1,60 @@
+<Project>
+  <!--
+    The plugin project SDK, part 2 (after the project): plugin.json, host packages, the plugin folder.
+    - plugin.json: a plugin.json in the project folder is copied as it is; without one the server part writes it from
+      OadmPluginId, Version, OadmDisplayName, OadmDescription, OadmEnabledByDefault and the license properties
+      (OadmLicensePublicKey, OadmLicenseFeatures "a;b", OadmLicenseTrialDays). minSdkVersion is the SDK's.
+    - Packages the host already has (Avalonia, the MVVM toolkit) are compiled against, never copied; Avalonia.Controls.DataGrid
+      without a version gets the host's.
+    - After every build the output is copied to $(OadmDeployRoot)<plugin id>/ (default ../.oadm/plugins/ next to the
+      project), the plugin folder "oadm dev" loads. OadmSkipPluginDeploy=true skips it.
+  -->
+  <PropertyGroup>
+    <OadmDisplayName Condition="'$(OadmDisplayName)' == ''">$(OadmPluginName)</OadmDisplayName>
+    <OadmEnabledByDefault Condition="'$(OadmEnabledByDefault)' == ''">true</OadmEnabledByDefault>
+    <OadmDeployRoot Condition="'$(OadmDeployRoot)' == ''">$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '..', '.oadm', 'plugins'))</OadmDeployRoot>
+    <OadmPluginDeployDir Condition="'$(OadmPluginDeployDir)' == '' and '$(OadmPluginId)' != ''">$([MSBuild]::NormalizeDirectory('$(OadmDeployRoot)', '$(OadmPluginId)'))</OadmPluginDeployDir>
+    <_OadmOwnManifest>$(MSBuildProjectDirectory)\plugin.json</_OadmOwnManifest>
+    <_OadmWriteManifest Condition="'$(OadmPluginPart)' == 'Server' and !Exists('$(_OadmOwnManifest)')">true</_OadmWriteManifest>
+    <_OadmManifestFile>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', 'oadm', 'plugin.json'))</_OadmManifestFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(_OadmManifestFile)" Link="plugin.json" CopyToOutputDirectory="PreserveNewest" Visible="false" Condition="'$(_OadmWriteManifest)' == 'true'" />
+    <PackageReference Update="Avalonia;Avalonia.Controls.DataGrid;Avalonia.Controls.WebView;CommunityToolkit.Mvvm" ExcludeAssets="runtime" />
+    <PackageReference Update="Avalonia.Controls.DataGrid">
+      <Version Condition="'%(Version)' == ''">$(OadmDataGridVersion)</Version>
+    </PackageReference>
+  </ItemGroup>
+
+  <Target Name="OadmWritePluginJson" BeforeTargets="BeforeBuild;AssignTargetPaths" Condition="'$(_OadmWriteManifest)' == 'true'">
+    <Error Condition="'$(OadmPluginId)' == ''" Text="Set OadmPluginId (e.g. acme.door-overview) in $(MSBuildProjectFile), or add a plugin.json." />
+    <PropertyGroup>
+      <_OadmJsonFeatures Condition="'$(OadmLicenseFeatures)' != ''">, "features": ["$([System.String]::Join('", "', $(OadmLicenseFeatures.Split(';'))))"]</_OadmJsonFeatures>
+      <_OadmJsonTrial Condition="'$(OadmLicenseTrialDays)' != ''">, "trialDays": $(OadmLicenseTrialDays)</_OadmJsonTrial>
+      <_OadmJsonLicense Condition="'$(OadmLicensePublicKey)' != ''">,
+  "license": { "publicKey": "$(OadmLicensePublicKey)"$(_OadmJsonFeatures)$(_OadmJsonTrial) }</_OadmJsonLicense>
+      <_OadmJson>{
+  "id": "$(OadmPluginId.Replace('\', '\\').Replace('"', '\"'))",
+  "version": "$(Version.Replace('\', '\\').Replace('"', '\"'))",
+  "minSdkVersion": "$(OadmMinSdkVersion)",
+  "displayName": "$(OadmDisplayName.Replace('\', '\\').Replace('"', '\"'))",
+  "description": "$(OadmDescription.Replace('\', '\\').Replace('"', '\"'))",
+  "enabledByDefault": $(OadmEnabledByDefault.ToLowerInvariant())$(_OadmJsonLicense)
+}</_OadmJson>
+    </PropertyGroup>
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_OadmManifestFile)'))" />
+    <WriteLinesToFile File="$(_OadmManifestFile)" Lines="$(_OadmJson)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
+
+  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true' and '$(OadmPluginDeployDir)' != ''">
+    <ItemGroup>
+      <_OadmPluginFiles Include="$(OutDir)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_OadmPluginFiles)"
+          DestinationFiles="@(_OadmPluginFiles->'$(OadmPluginDeployDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" Retries="3" RetryDelayMilliseconds="500" />
+    <Message Importance="high" Text="$(MSBuildProjectName) -> $(OadmPluginDeployDir)" />
+  </Target>
+</Project>

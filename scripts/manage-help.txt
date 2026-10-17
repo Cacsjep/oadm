@@ -14,7 +14,8 @@ Verbs:
   run       Run server, client, or dev (server + client)
   test      Run unit, perf, timing, hardware or all tests      (default target: unit)
   publish   Self-contained single-file apps in artifacts/publish (default target: all)
-  package   Installer for windows (MSI), linux (.deb) or macos (.pkg) in artifacts/packages
+  package   Installer for windows (MSI), linux (.deb) or macos (.pkg) in artifacts/packages,
+            or the NuGet packages of the plugin SDK (nuget) in artifacts/nuget
   new       A new plugin from a tutorial sample: task, page or action
   license   Keys and license files for a commercial plugin: keys or sign
   clean    Remove bin, obj and artifacts
@@ -149,9 +150,11 @@ Examples:
 
 ## package
 Usage: manage package <windows|linux|macos> [--rid RID] [--version V]
+       manage package nuget [--version V]
 
 Publishes server and client for the RID (same as "manage publish all"), then builds the
 installer into artifacts/packages. Layout, services and data folders: packaging/README.md.
+"nuget" builds the plugin SDK packages instead (docs/plugin-sdk.md).
 
 Every installer offers "Server and client" (default) or "Client only".
 
@@ -165,6 +168,10 @@ Targets:
   macos     OADM-<version>-<rid>.pkg (pkgbuild, productbuild). Needs macOS.
             /Applications/OADM.app, LaunchDaemon com.oadm.server (choice "OADM server");
             unsigned
+  nuget     The plugin SDK in artifacts/nuget, all with the same version: Oadm.Sdk,
+            Oadm.Sdk.Client, Oadm.Sdk.Testing, Oadm.Plugin.Sdk (project SDK), Oadm.Plugin.Templates
+            (dotnet new oadm-task|page|action, generated from samples/ into artifacts/templates)
+            and Oadm.Tools (the oadm command). Takes only --version.
 
 Options:
   --rid RID     <os>-x64 or <os>-arm64 of the target (default: this machine's architecture)
@@ -178,6 +185,7 @@ Examples:
   manage package windows --rid win-arm64 --version 1.2.0
   manage package linux --rid linux-arm64 --version v1.2.0
   manage package macos --rid osx-arm64
+  manage package nuget --version 1.2.0
 
 ## new
 Usage: manage new <task|page|action> --name <name> [--id <plugin id>]
@@ -206,12 +214,14 @@ Usage: manage license keys [--out <folder>]
                            --customer <name> [--expires yyyy-MM-dd] [--features a,b]
                            [--limit name=number]... [--out <file>]
 
-Licenses for a plugin you sell (tools/Oadm.LicenseTool). OADM checks them offline with the public key of
-the plugin's plugin.json; the plugin reads the result (License in its context) and decides what runs.
+Licenses for a plugin you sell ("oadm license" of tools/Oadm.Tools). OADM checks them offline with the
+public key of the plugin's plugin.json; the plugin reads the result (License in its context) and decides
+what runs.
 
 Targets:
   keys      Makes your key pair once: <folder>/private-key.pem (secret, signs every license) and
-            public-key.txt, and prints the "license" entry for plugin.json. Never overwrites a key.
+            public-key.txt, and prints the project properties (or the "license" entry of
+            plugin.json). Never overwrites a key.
   sign      Writes a license key for one customer's server, in a file (.oadmlicense) and on the screen
 
 Options of sign:

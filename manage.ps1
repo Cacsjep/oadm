@@ -111,6 +111,8 @@ function Test-OptionAllowed([string]$Verb, [string]$Tgt, [string]$Name) {
         { $_ -like 'run:*:--no-plugin-build' } { return $true }
         { $_ -like 'test:*:--filter' -or $_ -like 'test:*:--release' } { return $true }
         { $_ -like 'publish:*:--rid' -or $_ -like 'publish:*:--version' } { return $true }
+        { $_ -eq 'package:nuget:--version' } { return $true }
+        { $_ -like 'package:nuget:*' } { return $false }
         { $_ -like 'package:*:--rid' -or $_ -like 'package:*:--version' } { return $true }
         { $_ -like 'new:*:--name' -or $_ -like 'new:*:--id' } { return $true }
     }
@@ -162,8 +164,8 @@ function Read-Arguments([string]$Verb, [string[]]$Arguments) {
             if ($script:Target -cnotin 'all', 'server', 'client') { Exit-Usage publish "unknown target '$($script:Target)' for publish" }
         }
         'package' {
-            if (-not $script:Target) { Exit-Usage package 'missing target for package (windows, linux or macos)' }
-            if ($script:Target -cnotin 'windows', 'linux', 'macos') { Exit-Usage package "unknown target '$($script:Target)' for package" }
+            if (-not $script:Target) { Exit-Usage package 'missing target for package (windows, linux, macos or nuget)' }
+            if ($script:Target -cnotin 'windows', 'linux', 'macos', 'nuget') { Exit-Usage package "unknown target '$($script:Target)' for package" }
         }
         'new' {
             if (-not $script:Target) { Exit-Usage new 'missing target for new (task, page or action)' }
@@ -461,7 +463,28 @@ function Test-Command([string]$Name) { return [bool](Get-Command $Name -CommandT
 function Exit-Environment([string]$Message) { [Console]::Error.WriteLine("error: $Message"); exit 1 }
 
 # Installer for one platform in artifacts/packages; publishes server and client for the RID first.
+# The NuGet packages of the plugin SDK in artifacts/nuget (docs/plugin-sdk.md): the SDK assemblies, the test helpers,
+# the project SDK, the templates (generated from samples/ into artifacts/templates first) and the oadm tool, all with
+# the same version.
+function Invoke-PackageNuget {
+    Initialize-Dotnet
+    $version = Get-Version
+    $out = Join-Path $RepoRoot 'artifacts/nuget'
+    $templates = Join-Path $RepoRoot 'artifacts/templates'
+    foreach ($d in $out, $templates) { if (Test-Path $d) { Remove-Item -Recurse -Force $d } }
+    New-Item -ItemType Directory -Force $out | Out-Null
+    Invoke-Dotnet @('run', '--project', (Join-Path $RepoRoot 'tools/Oadm.NewPlugin/Oadm.NewPlugin.csproj'), '-c', 'Release', '--',
+        '--templates', $templates, '--version', $version, '--repo', $RepoRoot)
+    foreach ($project in 'src/Oadm.Sdk', 'src/Oadm.Sdk.Client', 'src/Oadm.Sdk.Testing', 'src/Oadm.Plugin.Sdk', 'tools/Oadm.Tools') {
+        Invoke-Dotnet @('pack', (Join-Path $RepoRoot $project), '-c', 'Release', "-p:Version=$version", '-o', $out)
+    }
+    Invoke-Dotnet @('pack', (Join-Path $RepoRoot 'templates/Oadm.Plugin.Templates.csproj'), '-c', 'Release', "-p:Version=$version",
+        "-p:OadmTemplatesContent=$templates$([System.IO.Path]::DirectorySeparatorChar)", '-o', $out)
+    Write-Host "packages written to $out"
+}
+
 function Invoke-Package {
+    if ($script:Target -eq 'nuget') { Invoke-PackageNuget; return }
     $prefix = @{ windows = 'win'; linux = 'linux'; macos = 'osx' }[$script:Target]
     $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'x64' }
     $script:Rid = if ($script:OptRid) { $script:OptRid } else { "$prefix-$arch" }
@@ -518,10 +541,10 @@ function Invoke-New {
     Invoke-Dotnet $a
 }
 
-# Licenses of commercial plugins (tools/Oadm.LicenseTool): the arguments go to the tool unchanged.
+# Licenses of commercial plugins ("oadm license" of tools/Oadm.Tools): the arguments go to the tool unchanged.
 function Invoke-License([string[]]$Arguments) {
     Initialize-Dotnet
-    $a = @('run', '--project', (Join-Path $RepoRoot 'tools/Oadm.LicenseTool/Oadm.LicenseTool.csproj'), '-c', $script:Configuration, '--') + $Arguments
+    $a = @('run', '--project', (Join-Path $RepoRoot 'tools/Oadm.Tools/Oadm.Tools.csproj'), '-c', $script:Configuration, '--', 'license') + $Arguments
     Invoke-Dotnet $a
 }
 

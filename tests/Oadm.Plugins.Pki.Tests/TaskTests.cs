@@ -8,7 +8,7 @@ using Oadm.Plugins.Pki.Ca;
 using Oadm.Plugins.Pki.Device;
 using Oadm.Plugins.Pki.Tasks;
 using Oadm.Sdk.Plugins;
-using Oadm.Tests.Shared;
+using StepRun = Oadm.Sdk.Testing.StepRun;
 
 namespace Oadm.Plugins.Pki.Tests;
 

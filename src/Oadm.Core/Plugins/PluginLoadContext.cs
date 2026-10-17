@@ -57,13 +57,39 @@ public sealed class PluginLoadContext : AssemblyLoadContext
 
     protected override Assembly? Load(AssemblyName assemblyName)
     {
-        if (IsSharedAssembly(assemblyName))
+        // A shared assembly comes from the host; one the host does not have (a Microsoft.Extensions package the plugin
+        // brings) from the plugin folder.
+        if (IsSharedAssembly(assemblyName) && FromHost(assemblyName) is { } shared)
         {
-            return null; // Default context.
+            return shared;
         }
 
         var path = _resolver.ResolveAssemblyToPath(assemblyName) ?? InPluginFolder(assemblyName);
         return path is null ? null : LoadFromAssemblyPath(path);
+    }
+
+    /// <summary>
+    /// The host's copy of a shared assembly whatever version the plugin was built against: a plugin built with the SDK
+    /// packages of a newer OADM release still loads (its plugin.json minSdkVersion decides what it needs). Null when the host
+    /// has no such assembly (then the plugin folder is asked).
+    /// </summary>
+    public static Assembly? FromHost(AssemblyName assemblyName)
+    {
+        ArgumentNullException.ThrowIfNull(assemblyName);
+        var loaded = Default.Assemblies.FirstOrDefault(a => string.Equals(a.GetName().Name, assemblyName.Name, StringComparison.OrdinalIgnoreCase));
+        if (loaded is not null)
+        {
+            return loaded;
+        }
+
+        try
+        {
+            return Default.LoadFromAssemblyName(new AssemblyName(assemblyName.Name!));
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or BadImageFormatException)
+        {
+            return null;
+        }
     }
 
     /// <summary>"&lt;name&gt;.dll" next to the plugin when it exists, else null (then the host resolves it).</summary>

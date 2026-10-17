@@ -15,9 +15,27 @@ version and date, and the release workflow copies it into the GitHub release.
   page shows this server's ID, the license state of every plugin that needs one and lets administrators enter or remove
   a license key. The Settings page shows the server ID too. `manage license keys` and `manage license sign` make the
   vendor's keys and the license keys; the plugin reads the result (valid, trial, features) and decides what runs.
+- **Plugin SDK on NuGet**: plugins are written with the .NET SDK alone, no checkout of OADM needed.
+  `dotnet new oadm-task`, `oadm-page` or `oadm-action` creates a working plugin with its tests (the tutorials' plugins);
+  the `oadm` command (`dotnet tool install -g Oadm.Tools`) runs a development server with the plugin and restarts it after
+  every build, opens the client against it, puts the plugin into the installed OADM or runs the installed server with it
+  for debugging (one administrator prompt), writes the `.oadmplugin` file and makes license keys. Packages: `Oadm.Sdk`,
+  `Oadm.Sdk.Client`, `Oadm.Sdk.Testing`, `Oadm.Plugin.Sdk`, `Oadm.Plugin.Templates`, `Oadm.Tools`, in the version of each
+  release. Guide on the website: Developers > Develop with the .NET SDK.
+- **Portable server and client**: every release also has `OADM-Server-<version>-<platform>.zip` and
+  `OADM-Client-<version>-<platform>.zip` (run without installing; the development server uses them).
+  `--print-folders` prints where a server or client keeps its data and plugins.
 - **Server log on the Logs page**: the switch Server, Client, Audit. The server's log shows 200 entries a page with level
   filter and search; the client log pages the same way. Other roles than administrators need the new permission "See the
   server log". Failed event rule actions are written to the server log with their reason.
+
+### Changed
+
+- Plugins load whatever SDK version they were built against as long as their `minSdkVersion` fits: the SDK, Avalonia and
+  the other shared assemblies always come from OADM. The client no longer locks a plugin's file, so a plugin can be
+  rebuilt while the client runs.
+- `manage license keys|sign` runs the license commands of the `oadm` tool (`tools/Oadm.Tools`, formerly
+  `tools/Oadm.LicenseTool`). The tutorials' plugins write their `plugin.json` from their project file.
 
 ## [3.4.0] - 2026-10-17
 

@@ -1,11 +1,14 @@
 <Project>
   <!--
     The plugins of the developer tutorials (website: Developers > Tutorials). They build and test with the solution but
-    are never deployed to artifacts/plugins, so a development OADM does not load them. "manage new task|page|action"
-    copies one into plugins/ and tests/ under a new name (tools/Oadm.NewPlugin), where it deploys like every plugin.
+    are never deployed, so a development OADM does not load them. They use the plugin project SDK from source
+    (src/Oadm.Plugin.Sdk/targets, the same files as the NuGet package Oadm.Plugin.Sdk), so the templates made from them
+    (dotnet new oadm-task, oadm-page, oadm-action) differ only in the Sdk attribute and the package references.
+    "manage new task|page|action" copies one into plugins/ and tests/ under a new name.
   -->
   <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
   <PropertyGroup>
     <OadmSkipPluginDeploy>true</OadmSkipPluginDeploy>
   </PropertyGroup>
+  <Import Project="../src/Oadm.Plugin.Sdk/targets/Oadm.Plugin.Repo.props" />
 </Project>

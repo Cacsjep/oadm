@@ -1,29 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- The server part: Oadm.Samples.VirtualInput.Server.dll and its plugin.json, written from these properties. -->
   <PropertyGroup>
-    <AssemblyName>Oadm.Samples.VirtualInput.Server</AssemblyName>
-    <RootNamespace>Oadm.Samples.VirtualInput</RootNamespace>
-    <EnableDynamicLoading>true</EnableDynamicLoading>
     <OadmPluginId>acme.virtual-input</OadmPluginId>
-    <OadmPluginOutputDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'artifacts', 'plugins', '$(OadmPluginId)'))</OadmPluginOutputDir>
+    <Version>1.0.0</Version>
+    <OadmDisplayName>Set virtual input</OadmDisplayName>
+    <OadmDescription>An event rule action that turns a virtual input of the devices on and off.</OadmDescription>
   </PropertyGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
-      <Private>false</Private>
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </ProjectReference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-
-  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
-    <ItemGroup>
-      <_OadmPluginFiles Include="$(OutDir)**\*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(_OadmPluginFiles)"
-          DestinationFiles="@(_OadmPluginFiles->'$(OadmPluginOutputDir)%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-  </Target>
 </Project>

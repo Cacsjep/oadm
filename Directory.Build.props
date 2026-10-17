@@ -13,5 +13,8 @@
     <PublishDocumentationFile>false</PublishDocumentationFile>
     <Authors>OADM contributors</Authors>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://oadm.app/</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Cacsjep/oadm</RepositoryUrl>
+    <Copyright>Copyright 2026 The OADM contributors</Copyright>
   </PropertyGroup>
 </Project>

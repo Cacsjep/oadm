@@ -1,7 +1,7 @@
-using Oadm.LicenseTool;
+using Oadm.Tools;
 using Oadm.Sdk.Licensing;
 
-namespace Oadm.LicenseTool.Tests;
+namespace Oadm.Tools.Tests;
 
 public sealed class LicenseToolTests : IDisposable
 {

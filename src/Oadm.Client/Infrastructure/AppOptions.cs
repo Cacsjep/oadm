@@ -12,6 +12,12 @@ public sealed record AppOptions
     /// <summary>Folder for client settings, logs and client plugins. Defaults to LocalApplicationData/Oadm.</summary>
     public string DataFolder { get; init; } = DefaultDataFolder;
 
+    /// <summary>
+    /// Plugin folders loaded straight from a build output (<c>--plugin-dir &lt;folder&gt;</c>, repeatable; plugin development):
+    /// loaded first, so they win over installed copies of the same package.
+    /// </summary>
+    public IReadOnlyList<string> PluginDirs { get; init; } = [];
+
     /// <summary>The appearance for this run instead of the one in the client settings (headless tests).</summary>
     public Oadm.Client.Themes.Appearance? Appearance { get; init; }
 
@@ -36,6 +42,10 @@ public sealed record AppOptions
             else if (string.Equals(arg, "--data", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Count)
             {
                 options = options with { DataFolder = args[++i] };
+            }
+            else if (string.Equals(arg, "--plugin-dir", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Count)
+            {
+                options = options with { PluginDirs = [.. options.PluginDirs, Path.GetFullPath(args[++i])] };
             }
         }
 

@@ -4,7 +4,8 @@ using Oadm.NewPlugin;
 
 // Usage: Oadm.NewPlugin --kind task|page|action --name "My cool plugin" [--id acme.my-cool-plugin] [--repo <folder>]
 //        [--dotnet <the dotnet that adds the projects to Oadm.sln, as manage found it>]
-string? kind = null, name = null, id = null, repo = null, dotnet = null;
+//        Oadm.NewPlugin --templates <folder> --version <x.y.z> [--repo <folder>]: the content of the package Oadm.Plugin.Templates
+string? kind = null, name = null, id = null, repo = null, dotnet = null, templates = null, version = null;
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i])
@@ -14,9 +15,26 @@ for (var i = 0; i < args.Length; i++)
         case "--id" when i + 1 < args.Length: id = args[++i]; break;
         case "--repo" when i + 1 < args.Length: repo = args[++i]; break;
         case "--dotnet" when i + 1 < args.Length: dotnet = args[++i]; break;
+        case "--templates" when i + 1 < args.Length: templates = args[++i]; break;
+        case "--version" when i + 1 < args.Length: version = args[++i]; break;
         default:
             return Fail($"unknown argument {args[i]}");
     }
+}
+
+if (templates is not null)
+{
+    if (string.IsNullOrWhiteSpace(version))
+    {
+        return Fail("--version is missing, e.g. --version 3.5.0");
+    }
+
+    foreach (var folder in Templates.Write(repo ?? Directory.GetCurrentDirectory(), templates, version))
+    {
+        Console.WriteLine("Template " + folder);
+    }
+
+    return 0;
 }
 
 var sample = Scaffold.Samples.FirstOrDefault(s => s.Kind == kind);

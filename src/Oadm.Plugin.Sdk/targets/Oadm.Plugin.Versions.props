@@ -1,0 +1,11 @@
+<Project>
+  <!-- The host's versions a plugin builds against. Tests check them against SdkInfo.Version and Oadm.Client.csproj
+       (PluginSdkTests), so they never drift. -->
+  <PropertyGroup>
+    <OadmMinSdkVersion>0.1.0</OadmMinSdkVersion>
+    <OadmTargetFramework>net10.0</OadmTargetFramework>
+    <OadmAvaloniaVersion>12.1.4</OadmAvaloniaVersion>
+    <OadmDataGridVersion>12.1.2</OadmDataGridVersion>
+    <OadmCommunityToolkitVersion>8.4.2</OadmCommunityToolkitVersion>
+  </PropertyGroup>
+</Project>

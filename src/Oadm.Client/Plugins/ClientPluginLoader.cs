@@ -51,7 +51,7 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
     public static IReadOnlyList<string> DefaultRoots(AppOptions? options, string? appDirectory = null)
     {
         string baseDirectory = appDirectory ?? AppContext.BaseDirectory;
-        var roots = new List<string>
+        var roots = new List<string>(options?.PluginDirs ?? []) // --plugin-dir first: a build output wins over installed copies
         {
             Path.Combine(baseDirectory, "plugins"),
             Path.Combine(options?.DataFolder ?? AppOptions.DefaultDataFolder, "plugins"),
@@ -108,6 +108,8 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
         foreach (string root in pluginRoots.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             LoadFrom(root);
+            _loadedPackages.UnionWith(_rootPackages);
+            _rootPackages.Clear();
         }
     }
 
@@ -134,10 +136,24 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
         {
             try
             {
+                string? packageId = ReadPackageId(Path.GetDirectoryName(Path.GetFullPath(dll)));
+                if (packageId is not null && _loadedPackages.Contains(packageId))
+                {
+                    // An earlier root (a --plugin-dir build output) has this package already: that copy wins.
+                    LogSkipped(_logger, packageId, dll);
+                    continue;
+                }
+
+                if (packageId is not null)
+                {
+                    _rootPackages.Add(packageId);
+                }
+
                 var context = new PluginLoadContext(dll);
                 _contexts.Add(context);
-                Assembly assembly = context.LoadFromAssemblyPath(Path.GetFullPath(dll));
-                string? packageId = ReadPackageId(Path.GetDirectoryName(Path.GetFullPath(dll)));
+                // From memory: the file stays replaceable, so a plugin build can overwrite it while the client runs.
+                Assembly assembly = context.LoadWithoutLock(Path.GetFullPath(dll));
+
                 foreach (Type type in assembly.GetExportedTypes().Where(t => t is { IsClass: true, IsAbstract: false }))
                 {
                     if (typeof(ITaskPluginDialog).IsAssignableFrom(type) && Activator.CreateInstance(type) is ITaskPluginDialog dialog)
@@ -195,6 +211,15 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
         }
     }
 
+    /// <summary>Packages of the roots loaded so far; a later root never loads the same package again.</summary>
+    private readonly HashSet<string> _loadedPackages = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Packages of the root being loaded (one package may have several client dlls).</summary>
+    private readonly HashSet<string> _rootPackages = new(StringComparer.OrdinalIgnoreCase);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Client plugin {PackageId} in {Path} skipped: an earlier folder (--plugin-dir) has it")]
+    private static partial void LogSkipped(ILogger logger, string packageId, string path);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Loaded client plugin {Kind} for {PluginId} from {Path}")]
     private static partial void LogLoaded(ILogger logger, string kind, string pluginId, string path);
 
@@ -207,6 +232,7 @@ internal sealed class PluginLoadContext(string pluginPath)
     : AssemblyLoadContext(Path.GetFileNameWithoutExtension(pluginPath), isCollectible: true)
 {
     private readonly AssemblyDependencyResolver _resolver = new(pluginPath);
+    private readonly string _folder = Path.GetDirectoryName(Path.GetFullPath(pluginPath))!;
 
     internal static bool IsShared(string name) =>
         name is "Oadm.Sdk" or "Oadm.Sdk.Client"
@@ -218,13 +244,65 @@ internal sealed class PluginLoadContext(string pluginPath)
 
     protected override Assembly? Load(AssemblyName assemblyName)
     {
-        if (assemblyName.Name is null || IsShared(assemblyName.Name))
+        if (assemblyName.Name is null)
         {
             return null;
         }
 
+        // A shared assembly comes from the host; one the host does not have (an Avalonia add-on the plugin brings) from
+        // the plugin folder.
+        if (IsShared(assemblyName.Name) && FromHost(assemblyName) is { } shared)
+        {
+            return shared;
+        }
+
         string? path = _resolver.ResolveAssemblyToPath(assemblyName);
-        return path is null ? null : LoadFromAssemblyPath(path);
+        if (path is null)
+        {
+            return null;
+        }
+
+        // Files of the plugin's own folder load from memory (its server part, which a page references for its models, is
+        // rebuilt with it); a package cache folder keeps the normal load.
+        return Path.GetDirectoryName(Path.GetFullPath(path)) is { } dir && string.Equals(dir, _folder, StringComparison.OrdinalIgnoreCase)
+            ? LoadWithoutLock(path)
+            : LoadFromAssemblyPath(path);
+    }
+
+    /// <summary>Loads the plugin's main assembly (and its .pdb) from memory, so the file is not locked.</summary>
+    public Assembly LoadWithoutLock(string assemblyPath)
+    {
+        using var assembly = new MemoryStream(File.ReadAllBytes(assemblyPath));
+        string pdbPath = Path.ChangeExtension(assemblyPath, ".pdb");
+        if (!File.Exists(pdbPath))
+        {
+            return LoadFromStream(assembly);
+        }
+
+        using var symbols = new MemoryStream(File.ReadAllBytes(pdbPath));
+        return LoadFromStream(assembly, symbols);
+    }
+
+    /// <summary>
+    /// The host's copy of a shared assembly whatever version the plugin was built against (a plugin built with the SDK
+    /// packages of a newer release still loads; plugin.json minSdkVersion decides), like the server's PluginLoadContext.
+    /// </summary>
+    internal static Assembly? FromHost(AssemblyName assemblyName)
+    {
+        var loaded = Default.Assemblies.FirstOrDefault(a => string.Equals(a.GetName().Name, assemblyName.Name, StringComparison.OrdinalIgnoreCase));
+        if (loaded is not null)
+        {
+            return loaded;
+        }
+
+        try
+        {
+            return Default.LoadFromAssemblyName(new AssemblyName(assemblyName.Name!));
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or FileLoadException or BadImageFormatException)
+        {
+            return null;
+        }
     }
 
     protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)

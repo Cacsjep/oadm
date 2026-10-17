@@ -94,7 +94,7 @@ The page's context, `ICorePluginClientContext`:
 
 Events can be lost when the connection drops, so a page always works like this: subscribe, read the full state, apply
 events (ignoring older ones by a version number in the state), and when the stream ends, wait about two seconds and do it
-again. The loop also covers a server restart. The [plugin page tutorial](../tutorial-page/#7-the-page) shows it in full.
+again. The loop also covers a server restart. The [plugin page tutorial](../tutorial-page/#6-the-page) shows it in full.
 
 ### Choose devices first
 

@@ -68,7 +68,13 @@ only"; checks the .pkg's choices and payload without installing) -> job `smoke-w
 installed, checked and removed both ways by `packaging/windows/smoke.ps1`, which prints the time on every line and a
 heartbeat with free memory and the busiest processes while a program runs; its own job because the Windows runner
 sometimes stops answering there, so a re-run repeats only this job) -> job `release` (needs all; the GitHub
-release of the tag with the installers and `SHA256SUMS.txt`):
+release of the tag with the installers, the portable ZIPs `OADM-Server|Client-<version>-<rid>.zip` and `SHA256SUMS.txt`)
+-> job `nuget` (needs release and `nuget-pack`; skipped without the repository variable `NUGET_USER`: `dotnet nuget push`
+with NuGet Trusted Publishing (`NuGet/login`, `id-token: write`, no API key in GitHub)). Job `nuget-pack` (needs tests,
+before the release): `manage package nuget` with the tag's version, every template created, built and tested against
+only these packages (`packageSourceMapping` `Oadm.*` to the local folder), uploaded as the artifact `nuget-packages`. The
+portable ZIPs are their own artifact (`portable-<version>-<rid>`; smoke-windows downloads only the MSI). Spec
+`docs/plugin-sdk.md`:
 - **Windows MSI** (WiX Toolset 6 via the `WixToolset.Sdk` MSBuild SDK, `packaging/windows/`, not in
   Oadm.sln; WiX 7 not used, it requires the OSMF EULA), x64 only (no ARM), per machine: `Program Files\OADM\Server`
   and `\Client`, Windows service "OADM Server" (`OadmServer`, automatic, LocalSystem, restart on failure,
@@ -142,18 +148,28 @@ XAML property has a description** (a new SDK member without a comment fails), ev
 integrations, theme `base` dark with the site colors); used for the architecture, plugin kinds, task runs, event rules
 and the tutorials. Developer pages also cover debugging (`dev/debugging.md`) and SDK versions (`dev/compatibility.md`);
 the admin page Plugins has "Plugins from others" (plugins run with the server's rights). **Tutorials** (Developers: "Tutorial: Task plugin", "Plugin page", "Event rule action", `dev/tutorial-*.mdx`): one page
-each with every file, self-contained (no jumping to other pages); the code is imported raw from `samples/` (`?raw` +
-Starlight `Code`; `vite.server.fs.allow` includes the repository), so the pages always show code that builds and passes
-its tests. **`manage new task|page|action --name "<name>" [--id <id>]`** (`tools/Oadm.NewPlugin`): copies that sample into
-`plugins/Oadm.Plugins.<Name>(.Client)` and `tests/Oadm.Plugins.<Name>.Tests` with the sample's name, namespaces, id
-(default `community.<kebab>`) and display name replaced, test references pointed at `plugins/` and `tests/Shared`, and adds
-the projects to Oadm.sln (with the dotnet the script found); existing folders are never overwritten; names that would
-clash in code (Task, Plugin, ...) are refused. Tests `tests/Oadm.NewPlugin.Tests`. A change of a sample changes its
-tutorial and what `manage new` creates: keep the tutorial text in line.
+each with every file, self-contained (no jumping to other pages), NuGet first (`dotnet new oadm-task|page|action`, the
+`oadm` tool; the checkout's `manage new` in an aside); the code is imported raw from `samples/` (`?raw` + Starlight
+`Code`; `vite.server.fs.allow` includes the repository) and shown as the templates write it
+(`website/src/components/templateCode.ts`: no `Oadm.Samples.` prefix, `Sdk="Oadm.Plugin.Sdk/x.y.z"`), so the pages always
+show code that builds and passes its tests. Developers > **Develop with the .NET SDK** (`dev/plugin-sdk.md`): the packages,
+the templates, the project SDK's properties, the development server, debugging, deploy into the installed OADM, the
+`.oadmplugin` file, every `oadm` command. **`manage new task|page|action --name "<name>" [--id <id>]`**
+(`tools/Oadm.NewPlugin`): copies that sample into `plugins/Oadm.Plugins.<Name>(.Client)` and
+`tests/Oadm.Plugins.<Name>.Tests` with the sample's name, namespaces, id (default `community.<kebab>`) and display name
+replaced, test references pointed at `plugins/`, a `Directory.Build.props` / `.targets` in each plugin project folder that
+imports the plugin project SDK from source (`src/Oadm.Plugin.Sdk/targets/Oadm.Plugin.Repo.*`), and adds the projects to
+Oadm.sln (with the dotnet the script found); existing folders are never overwritten; names that would clash in code (Task,
+Plugin, ...) are refused. `Oadm.NewPlugin --templates <folder> --version <v>` (`Templates.cs`) writes the content of the
+template package from the same samples. Tests `tests/Oadm.NewPlugin.Tests` (`ScaffoldTests`, `PluginSdkTests`: the
+templates, and `Oadm.Plugin.Versions.props` against `SdkInfo.Version` and `Oadm.Client.csproj`). A change of a sample
+changes its tutorial, what `manage new` creates and the templates: keep the tutorial text in line.
 
 Developer commands: one entry point per shell at the repo root, `./manage.sh` (bash) and
 `.\manage.ps1` (PowerShell 5.1/7), verb + target (`build`, `run`, `test`, `publish`, `package`, `new`, `license`, `clean`,
-`info`), `manage <verb> help` at every level. Both read their help texts from
+`info`), `manage <verb> help` at every level. `manage package nuget [--version]` writes the plugin SDK packages to
+`artifacts/nuget` (templates generated into `artifacts/templates` first); `manage license` runs `oadm license` of
+`tools/Oadm.Tools`. Both read their help texts from
 `scripts/manage-help.txt`; any new verb, target or option goes into both scripts and that file.
 The plugins (`build`, `run` server / client) are built in one MSBuild run in parallel through a generated solution filter
 `artifacts/plugins.slnf` (every `plugins/*/*.csproj`, which must be in `Oadm.sln`).
@@ -178,6 +194,11 @@ Oadm.sln
 src/
   Oadm.Contracts/      protobuf files + generated gRPC stubs, shared enums
   Oadm.Sdk/            plugin SDK: interfaces, attributes, context objects, Layout/TileLayout (tile grid rules). No Avalonia, no EF
+  Oadm.Sdk.Testing/    fakes for plugin tests (NuGet Oadm.Sdk.Testing): StepRun, FakeCamera, FakeDevice, FakeSettings,
+                       FakeTaskContext, FakeActionContext, FakeCoreContext
+  Oadm.Plugin.Sdk/     MSBuild project SDK of plugins (NuGet Oadm.Plugin.Sdk, Sdk/ + targets/): assembly names, SDK
+                       references without copies, plugin.json from properties, the plugin folder; Oadm.Plugin.Repo.* for
+                       plugins inside this repository; Oadm.Plugin.Versions.props = the host's versions
   Oadm.Sdk.Client/     client-side plugin SDK: dialog/page/toolbar interfaces, ITaskDialogContext,
                        IToolbarContext, shared controls (Controls/: IconLabel, SearchBox, OadmIcon,
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow, LoadingOverlay,
@@ -225,12 +246,16 @@ tests/
   Oadm.Core.Tests/
   Oadm.Server.Tests/
   Oadm.Client.Tests/
+  Shared/              RecordingFirewall (linked into plugin tests; StepRun moved to src/Oadm.Sdk.Testing)
 tools/                 Oadm.DiscoveryProbe (manual discovery tests), Oadm.Notices (THIRD-PARTY-NOTICES.txt generator),
-                       Oadm.ApiDocs (SDK reference of the website), Oadm.NewPlugin ("manage new"), Oadm.LicenseTool ("manage license")
+                       Oadm.ApiDocs (SDK reference of the website), Oadm.NewPlugin ("manage new", the templates),
+                       Oadm.Tools (the "oadm" command, NuGet Oadm.Tools; "manage license")
 samples/               the plugins of the developer tutorials: Oadm.Samples.UpnpName (task with a dialog),
                        Oadm.Samples.FirmwareOverview (core plugin with a page), Oadm.Samples.VirtualInput (event rule
-                       action), each with its tests; in Oadm.sln, built and tested by CI, never deployed
+                       action), each with its tests (Oadm.Sdk.Testing); on the plugin project SDK from source (plugin.json
+                       from their properties); in Oadm.sln, built and tested by CI, never deployed
                        (samples/Directory.Build.props sets OadmSkipPluginDeploy)
+templates/             Oadm.Plugin.Templates.csproj: packs the templates generated from samples/ (not in Oadm.sln)
 packaging/             installers (windows/, linux/, macos/), icons/, notices/licenses/ (license text templates)
 docs/                  ADM reference screenshots, protocol notes
 ```
@@ -1436,7 +1461,7 @@ returns null or throws `NotSupportedException`.
 - `ITaskExecutionContext`: `Vapix` (pre-authenticated for the device), `Logger`, `Owner` (the contributing core plugin),
   `Files` (uploads by id), steps (`PlanSteps`, `BeginStep` -> `ITaskStep` with `ReportProgress`, `Complete`, `Warn`,
   `Skip`, `Fail`; disposing without an end = Done, an escaping exception = Failed; helpers `StepAsync`, `SkipStep`;
-  `TaskStepList` is the state machine, `tests/Shared/StepRun.cs` runs a plugin with the engine's end rules),
+  `TaskStepList` is the state machine, `Oadm.Sdk.Testing.StepRun` runs a plugin with the engine's end rules),
   `ReportProgress`, `ReportWarning` (Done with warnings), `Log` (never secrets), `MarkCredentialsInvalid`,
   `UpdateCredentialsAsync`, `CreateClientForAsync` (the device at another address, caller disposes),
   `UpdateDeviceAddressAsync` and `UpdateDeviceTlsAsync` (the server verifies serial and certificate first, else
@@ -1539,6 +1564,27 @@ answers is unchanged. Used by the System report for server reports.
   `ICorePlugin` implementations via reflection, then registers the Core plugins' `TaskPlugins`
   too. Client does the same for `*.Client.dll` with `ITaskPluginDialog`, `ICorePluginPage` and
   `IToolbarPlugin` over the same three roots (`ClientPluginLoader.DefaultRoots`).
+- Plugin development without installing (spec `docs/plugin-sdk.md`: NuGet packages, templates, the `oadm` tool): server
+  `--Oadm:PluginDir=<folder>` (several separated by ";", `OadmServerHost.PluginDirKey`) and client `--plugin-dir <folder>`
+  (repeatable, `AppOptions.PluginDirs`) load a plugin package straight from a build output, before every other folder, so it
+  wins over an installed copy of the same package (the server's later copy is a load error "already loaded from another
+  folder", the client skips it); as a service the server ignores the option and logs a warning.
+  `--print-folders` (server `Hosting/FolderReport`, client `Plugins/ClientFolderReport`) prints the data, logs and plugin
+  folders, the deploy folder and (server) the service name as JSON and exits without opening anything. Every release
+  also has the portable `OADM-Server-<version>-<rid>.zip` and `OADM-Client-<version>-<rid>.zip` (the publish folders,
+  job `installers`). The `oadm` tool (`tools/Oadm.Tools`) runs them as a development server (`oadm dev start`: own data in
+  `.oadm/server-data` of the plugin, `https://localhost:5090`, every `.oadm/plugins/*`, restarted when a build changes the
+  files the server loads) and client, deploys into and debugs with the installed OADM (one elevation; the service
+  definition is read from the service manager and the folders follow the server's own rules: **an installed program is
+  never run to ask**, an older one would start on the live data), packs `.oadmplugin` files and makes license keys.
+- Shared assemblies (server: `Oadm.Sdk`, `Oadm.Sdk.Client`, `Microsoft.Extensions.*`; client: also Avalonia, the MVVM
+  toolkit, SkiaSharp, HarfBuzzSharp) resolve to the host's copy whatever version a plugin was built against
+  (`PluginLoadContext.FromHost`, the client's own copy in `ClientPluginLoader`): `minSdkVersion` decides, so plugins built
+  with the NuGet packages of another release load; one the host does not have comes from the plugin folder. Server and
+  client load a plugin's main assembly from memory with its pdb (`LoadFromFileWithoutLock`, `LoadWithoutLock`), the client
+  also every other assembly of the plugin's own folder (a page's reference to its server part): a build never meets a
+  locked file. Windows: a console run on the service's data folder (`oadm debug --installed`) finds the service's TLS key
+  in the machine key store and keeps it (`ServerTlsCertificate.OpenWithNamedKey`), never a new certificate.
 - Plugin folder: `plugin.json` (id, version, minSdkVersion, displayName, description, optional `enabledByDefault`,
   default true, and `alwaysOn`, default false),
   `<Name>.Server.dll`, optional `<Name>.Client.dll`, private dependencies. SDK assemblies are shared from the
@@ -1618,9 +1664,11 @@ Commercial plugins (decision 2026-10-17): OADM checks, the plugin decides. User 
   reports") or where it comes from, Choose file, the format error or the server's refusal below the field.
   `ICorePluginClientContext.LicenseOf(packageId)` for pages. Fake mode: the sample package `example.site-reports` (trial,
   `FakeOadmApi.SampleLicenseKeys`, server ID `FakeOadmApi.FakeServerId`).
-- **Vendor tool** `manage license keys [--out]` (never overwrites a key) and `manage license sign --key --plugin --server
-  --customer [--expires] [--features] [--limit name=n]... [--out]` (`tools/Oadm.LicenseTool`, arguments passed unchanged).
-- Tests: `tests/Oadm.Server.Tests/PluginLicenseTests`, `tests/Oadm.LicenseTool.Tests`, `tests/Oadm.Client.Tests/PluginListTests`.
+- **Vendor tool** `oadm license keys [--out]` (never overwrites a key; prints the project properties `OadmLicensePublicKey`,
+  `OadmLicenseFeatures`, `OadmLicenseTrialDays` and the plugin.json entry) and `oadm license sign --key --plugin --server
+  --customer [--expires] [--features] [--limit name=n]... [--out]` (`tools/Oadm.Tools`; `manage license ...` passes the
+  arguments unchanged).
+- Tests: `tests/Oadm.Server.Tests/PluginLicenseTests`, `tests/Oadm.Tools.Tests`, `tests/Oadm.Client.Tests/PluginListTests`.
 
 ## Plugin documentation
 

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Fakes for plugin tests: a camera, a device, the server's contexts of a task, an action and a core plugin, and the
+       task engine's step rules (StepRun). Published as the NuGet package Oadm.Sdk.Testing (docs/plugin-sdk.md). -->
+  <PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>true</IsPackable>
+    <Description>Test helpers for OADM plugins: a fake camera, device and the server's plugin contexts.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Oadm.Sdk\Oadm.Sdk.csproj" />
+  </ItemGroup>
+</Project>

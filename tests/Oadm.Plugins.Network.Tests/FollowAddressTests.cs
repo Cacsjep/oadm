@@ -1,6 +1,6 @@
 using Oadm.Plugins.Network.Model;
 using Oadm.Sdk.Plugins;
-using Oadm.Tests.Shared;
+using StepRun = Oadm.Sdk.Testing.StepRun;
 
 namespace Oadm.Plugins.Network.Tests;
 

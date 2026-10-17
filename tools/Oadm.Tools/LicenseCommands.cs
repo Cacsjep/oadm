@@ -3,7 +3,7 @@ using System.Text;
 
 using Oadm.Sdk.Licensing;
 
-namespace Oadm.LicenseTool;
+namespace Oadm.Tools;
 
 /// <summary>
 /// The commands of <c>manage license</c>: <c>keys</c> writes a vendor key pair (never overwrites one), <c>sign</c> writes a
@@ -91,7 +91,12 @@ internal static class LicenseCommands
         output.WriteLine($"Private key: {privatePath}");
         output.WriteLine("Keep it secret and back it up: it signs every license. Never put it into the plugin or the repository.");
         output.WriteLine();
-        output.WriteLine("Add this to the plugin's plugin.json:");
+        output.WriteLine("Add this to the server part's project (Oadm.Plugin.Sdk writes it into plugin.json):");
+        output.WriteLine($"  <OadmLicensePublicKey>{publicKey}</OadmLicensePublicKey>");
+        output.WriteLine("  <OadmLicenseFeatures></OadmLicenseFeatures>   <!-- optional: features separated by ; -->");
+        output.WriteLine("  <OadmLicenseTrialDays>30</OadmLicenseTrialDays>");
+        output.WriteLine();
+        output.WriteLine("or, with a plugin.json of your own:");
         output.WriteLine("  \"license\": {");
         output.WriteLine($"    \"publicKey\": \"{publicKey}\",");
         output.WriteLine("    \"features\": [],");
@@ -178,7 +183,7 @@ internal static class LicenseCommands
     private static int Usage(TextWriter error, string message)
     {
         error.WriteLine("error: " + message);
-        error.WriteLine("Run \"manage license help\" for the options.");
+        error.WriteLine("Run \"oadm help license\" for the options.");
         return 2;
     }
 }

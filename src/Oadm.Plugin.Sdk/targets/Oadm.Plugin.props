@@ -1,0 +1,43 @@
+<Project>
+  <!--
+    The plugin project SDK, part 1 (before the project): names and defaults. A project named "DoorOverview" is the server
+    part (DoorOverview.Server.dll), "DoorOverview.Client" the client part (DoorOverview.Client.dll). Used by the NuGet
+    package Oadm.Plugin.Sdk (<Project Sdk="Oadm.Plugin.Sdk/x.y.z">) and, in this repository, by samples/ with
+    OadmSdkFromSource=true (project references instead of packages). The part follows the project name only: these
+    properties are set before the project file is read (OadmPluginPart and OadmPluginName work on the command line).
+    Spec: docs/plugin-sdk.md.
+  -->
+  <Import Project="Oadm.Plugin.Versions.props" />
+  <Import Project="$(MSBuildThisFileDirectory)..\Sdk\Oadm.Plugin.Package.props" Condition="Exists('$(MSBuildThisFileDirectory)..\Sdk\Oadm.Plugin.Package.props')" />
+
+  <PropertyGroup>
+    <OadmPluginPart Condition="'$(OadmPluginPart)' == '' and $(MSBuildProjectName.EndsWith('.Client'))">Client</OadmPluginPart>
+    <OadmPluginPart Condition="'$(OadmPluginPart)' == ''">Server</OadmPluginPart>
+    <OadmPluginName Condition="'$(OadmPluginName)' == '' and '$(OadmPluginPart)' == 'Client'">$(MSBuildProjectName.Substring(0, $([MSBuild]::Subtract($(MSBuildProjectName.Length), 7))))</OadmPluginName>
+    <OadmPluginName Condition="'$(OadmPluginName)' == ''">$(MSBuildProjectName)</OadmPluginName>
+    <AssemblyName Condition="'$(AssemblyName)' == ''">$(OadmPluginName).$(OadmPluginPart)</AssemblyName>
+    <RootNamespace Condition="'$(RootNamespace)' == ''">$(MSBuildProjectName.Replace(" ", "_"))</RootNamespace>
+
+    <TargetFramework Condition="'$(TargetFramework)' == ''">$(OadmTargetFramework)</TargetFramework>
+    <Nullable Condition="'$(Nullable)' == ''">enable</Nullable>
+    <ImplicitUsings Condition="'$(ImplicitUsings)' == ''">enable</ImplicitUsings>
+    <!-- The host loads the plugin into its own load context. -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <IsPackable>false</IsPackable>
+    <AvaloniaUseCompiledBindingsByDefault Condition="'$(OadmPluginPart)' == 'Client' and '$(AvaloniaUseCompiledBindingsByDefault)' == ''">true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <!-- The SDK assemblies come from the host: referenced for compiling, never copied into the plugin folder. -->
+  <ItemGroup Condition="'$(OadmSdkFromSource)' == 'true'">
+    <ProjectReference Include="$(OadmRepoRoot)src\Oadm.Sdk\Oadm.Sdk.csproj" Private="false" ExcludeAssets="runtime" />
+    <ProjectReference Include="$(OadmRepoRoot)src\Oadm.Sdk.Client\Oadm.Sdk.Client.csproj" Private="false" ExcludeAssets="runtime" Condition="'$(OadmPluginPart)' == 'Client'" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(OadmSdkFromSource)' != 'true'">
+    <PackageReference Include="Oadm.Sdk" Version="$(OadmSdkPackageVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="Oadm.Sdk.Client" Version="$(OadmSdkPackageVersion)" ExcludeAssets="runtime" Condition="'$(OadmPluginPart)' == 'Client'" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(OadmPluginPart)' == 'Client'">
+    <PackageReference Include="Avalonia" Version="$(OadmAvaloniaVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="$(OadmCommunityToolkitVersion)" ExcludeAssets="runtime" />
+  </ItemGroup>
+</Project>

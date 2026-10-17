@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
-using Oadm.Tests.Shared;
+using StepRun = Oadm.Sdk.Testing.StepRun;
 
 namespace Oadm.Plugins.DeviceConfig.Tests;
 

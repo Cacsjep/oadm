@@ -92,18 +92,44 @@ internal static partial class Scaffold
                     written.Add(path);
                 }
             }
+
+            if (!isTests)
+            {
+                // The samples get the plugin project SDK from samples/Directory.Build.*; a plugin in plugins/ from its own.
+                File.WriteAllText(Path.Combine(target, "Directory.Build.props"), RepoProps, new UTF8Encoding(false));
+                File.WriteAllText(Path.Combine(target, "Directory.Build.targets"), RepoTargets, new UTF8Encoding(false));
+            }
         }
 
         return written;
     }
 
-    /// <summary>The sample's names replaced by the new ones; test projects point to plugins/ and tests/Shared.</summary>
+    /// <summary>The plugin project SDK from source (src/Oadm.Plugin.Sdk), deployed to artifacts/plugins like every plugin.</summary>
+    public const string RepoProps = """
+        <Project>
+          <!-- The plugin project SDK from source (src/Oadm.Plugin.Sdk/targets): references to src/, plugin.json from the
+               project's properties, the plugin folder in artifacts/plugins/. -->
+          <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+          <Import Project="../../src/Oadm.Plugin.Sdk/targets/Oadm.Plugin.Repo.props" />
+        </Project>
+
+        """;
+
+    /// <summary>The second half of <see cref="RepoProps"/>.</summary>
+    public const string RepoTargets = """
+        <Project>
+          <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.targets', '$(MSBuildThisFileDirectory)../'))" />
+          <Import Project="../../src/Oadm.Plugin.Sdk/targets/Oadm.Plugin.Repo.targets" />
+        </Project>
+
+        """;
+
+    /// <summary>The sample's names replaced by the new ones; test projects point to plugins/.</summary>
     public static string Rewrite(string text, Sample sample, PluginNames names, bool isTests)
     {
         if (isTests)
         {
-            text = text.Replace($@"..\Oadm.Samples.{sample.Name}", $@"..\..\plugins\Oadm.Plugins.{sample.Name}", StringComparison.Ordinal)
-                .Replace(@"..\..\tests\Shared\", @"..\Shared\", StringComparison.Ordinal);
+            text = text.Replace($@"..\Oadm.Samples.{sample.Name}", $@"..\..\plugins\Oadm.Plugins.{sample.Name}", StringComparison.Ordinal);
         }
 
         return text

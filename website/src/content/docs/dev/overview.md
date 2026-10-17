@@ -59,24 +59,30 @@ Inside these, the SDK gives you:
 |---|---|
 | `src/Oadm.Sdk` | The server SDK: plugin interfaces, devices, VAPIX, tasks, events, actions. No UI |
 | `src/Oadm.Sdk.Client` | The client SDK: dialog, page and toolbar interfaces, shared controls, validation |
+| `src/Oadm.Sdk.Testing` | Fakes for plugin tests: a camera, a device, the server's contexts |
+| `src/Oadm.Plugin.Sdk` | The project SDK of plugins: references, `plugin.json`, the plugin folder |
 | `src/Oadm.Core` | Device model, VAPIX client, discovery, task engine, database |
 | `src/Oadm.Server` | The server host: gRPC services, plugin loader, polling |
 | `src/Oadm.Client` | The Avalonia app |
 | `src/Oadm.Contracts` | The gRPC contracts (`.proto`) |
 | `plugins/` | Every built-in plugin, each with its own `README.md` |
 | `tests/` | Unit, headless UI, performance and hardware tests |
+| `samples/`, `templates/`, `tools/Oadm.Tools` | The tutorials' plugins, the `dotnet new` templates made from them, the `oadm` command |
+
+All of the SDK is on NuGet with every release, in the release's version; you need no checkout to write a plugin.
 
 The SDK sources are the reference: every member has a comment that says what it does and what the host guarantees.
 Start with `src/Oadm.Sdk/Plugins/Plugins.cs` and `src/Oadm.Sdk.Client/ClientPlugins.cs`.
 
 ## Where to go next
 
-1. [Build from source](../build/): get OADM running from a checkout.
+1. [Develop with the .NET SDK](../plugin-sdk/): `dotnet new oadm-task`, a development server, debugging, shipping.
 2. [Plugin basics](../plugins/): project layout, `plugin.json`, how plugins load.
 3. A tutorial, each on one page with every file: [task plugin](../tutorial-task/), [plugin page](../tutorial-page/),
-   [event rule action](../tutorial-action/). `./manage.sh new task|page|action --name "My plugin"` creates the
-   tutorial's plugin under your name, ready to build and run.
-4. The topic pages: [Devices and VAPIX](../devices/), [Task plugins](../tasks/), [Core plugins and pages](../core-plugins/),
+   [event rule action](../tutorial-action/). `dotnet new oadm-task|oadm-page|oadm-action` creates the tutorial's plugin
+   under your name, ready to build and run.
+4. [Build from source](../build/): OADM itself from a checkout.
+5. The topic pages: [Devices and VAPIX](../devices/), [Task plugins](../tasks/), [Core plugins and pages](../core-plugins/),
    [Event rules](../event-rules/), [UI kit](../ui/), [Testing](../testing/), [Debug a plugin](../debugging/),
    [SDK versions](../compatibility/).
 

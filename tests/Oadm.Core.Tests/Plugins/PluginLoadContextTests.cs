@@ -68,4 +68,18 @@ public sealed class PluginLoadContextTests
             }
         }
     }
+
+    /// <summary>
+    /// A plugin built with the SDK packages of a newer OADM release asks for a higher Oadm.Sdk version than the host has;
+    /// the shared assemblies come from the host whatever version is asked for (plugin.json minSdkVersion decides).
+    /// </summary>
+    [Fact]
+    public void SharedAssembliesComeFromTheHostWhateverVersionThePluginAsksFor()
+    {
+        var host = typeof(Oadm.Sdk.Plugins.SdkInfo).Assembly;
+
+        Assert.Same(host, PluginLoadContext.FromHost(new AssemblyName("Oadm.Sdk, Version=99.0.0.0")));
+        Assert.Same(host, PluginLoadContext.FromHost(new AssemblyName("Oadm.Sdk, Version=0.0.1.0")));
+        Assert.Null(PluginLoadContext.FromHost(new AssemblyName("Oadm.NoSuchAssembly, Version=1.0.0.0")));
+    }
 }

@@ -113,6 +113,8 @@ option_allowed() {
     run:*:--no-plugin-build) return 0 ;;
     test:*:--filter|test:*:--release) return 0 ;;
     publish:*:--rid|publish:*:--version) return 0 ;;
+    package:nuget:--version) return 0 ;;
+    package:nuget:*) return 1 ;;
     package:*:--rid|package:*:--version) return 0 ;;
     new:*:--name|new:*:--id) return 0 ;;
     *) return 1 ;;
@@ -150,8 +152,8 @@ parse_args() {
              case "$TARGET" in server|client|dev) ;; *) usage_error run "unknown target '$TARGET' for run" ;; esac ;;
     test)    TARGET="${TARGET:-unit}"; case "$TARGET" in unit|perf|timing|hardware|all) ;; *) usage_error test "unknown target '$TARGET' for test" ;; esac ;;
     publish) TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client) ;; *) usage_error publish "unknown target '$TARGET' for publish" ;; esac ;;
-    package) [ -n "$TARGET" ] || usage_error package "missing target for package (windows, linux or macos)"
-             case "$TARGET" in windows|linux|macos) ;; *) usage_error package "unknown target '$TARGET' for package" ;; esac ;;
+    package) [ -n "$TARGET" ] || usage_error package "missing target for package (windows, linux, macos or nuget)"
+             case "$TARGET" in windows|linux|macos|nuget) ;; *) usage_error package "unknown target '$TARGET' for package" ;; esac ;;
     new)     [ -n "$TARGET" ] || usage_error new "missing target for new (task, page or action)"
              case "$TARGET" in task|page|action) ;; *) usage_error new "unknown target '$TARGET' for new" ;; esac ;;
     clean|info)
@@ -431,9 +433,30 @@ cmd_publish() {
   write_notices "${notices[@]}"
 }
 
+# The NuGet packages of the plugin SDK in artifacts/nuget (docs/plugin-sdk.md): the SDK assemblies, the test helpers,
+# the project SDK, the templates (generated from samples/ into artifacts/templates first) and the oadm tool, all with
+# the same version.
+package_nuget() {
+  local out templates project
+  out="$REPO_ROOT/artifacts/nuget"
+  templates="$REPO_ROOT/artifacts/templates"
+  rm -rf "$out" "$templates"
+  mkdir -p "$out"
+  "$DOTNET" run --project "$REPO_ROOT/tools/Oadm.NewPlugin/Oadm.NewPlugin.csproj" -c Release -- \
+    --templates "$templates" --version "$(app_version)" --repo "$REPO_ROOT" || exit 1
+  for project in src/Oadm.Sdk src/Oadm.Sdk.Client src/Oadm.Sdk.Testing src/Oadm.Plugin.Sdk tools/Oadm.Tools; do
+    "$DOTNET" pack "$REPO_ROOT/$project" -c Release "-p:Version=$(app_version)" -o "$out" || exit 1
+  done
+  "$DOTNET" pack "$REPO_ROOT/templates/Oadm.Plugin.Templates.csproj" -c Release "-p:Version=$(app_version)" \
+    "-p:OadmTemplatesContent=$templates/" -o "$out" || exit 1
+  echo "packages written to $out"
+}
+
 # Installer for one platform in artifacts/packages; publishes server and client for the RID first.
 cmd_package() {
   local prefix arch out server client
+  require_dotnet
+  if [ "$TARGET" = nuget ]; then package_nuget; return; fi
   case "$TARGET" in windows) prefix=win ;; linux) prefix=linux ;; macos) prefix=osx ;; esac
   case "$(uname -m)" in arm64|aarch64) arch=arm64 ;; *) arch=x64 ;; esac
   RID="${OPT_RID:-$prefix-$arch}"
@@ -485,10 +508,10 @@ cmd_new() {
   "$DOTNET" run --project "$REPO_ROOT/tools/Oadm.NewPlugin/Oadm.NewPlugin.csproj" -c "$CONFIGURATION" -- "${args[@]}"
 }
 
-# Licenses of commercial plugins (tools/Oadm.LicenseTool): the arguments go to the tool unchanged.
+# Licenses of commercial plugins ("oadm license" of tools/Oadm.Tools): the arguments go to the tool unchanged.
 cmd_license() {
   require_dotnet
-  "$DOTNET" run --project "$REPO_ROOT/tools/Oadm.LicenseTool/Oadm.LicenseTool.csproj" -c "$CONFIGURATION" -- "$@"
+  "$DOTNET" run --project "$REPO_ROOT/tools/Oadm.Tools/Oadm.Tools.csproj" -c "$CONFIGURATION" -- license "$@"
 }
 
 cmd_info() {
