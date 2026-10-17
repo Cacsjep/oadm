@@ -9,7 +9,7 @@ RULE are in `CLAUDE.md` ("Plugin System").
 
 Outside this repository (spec `docs/plugin-sdk.md`, guide on the website: Developers > Develop with the .NET SDK):
 `dotnet new install Oadm.Plugin.Templates`, `dotnet new oadm-task|oadm-page|oadm-action -n <Name>`, then
-`dotnet oadm dev start` (a portable server with the plugin, restarted after every build), `dotnet oadm deploy --installed`,
+`dotnet tool restore`, `dotnet build`, `dotnet oadm dev start` (a portable server with the plugin, restarted after every build), `dotnet oadm deploy --installed`,
 `dotnet oadm pack`. The templates are the samples (`samples/`) on the NuGet packages of one release.
 
 In this repository: `./manage.sh new task|page|action --name "My plugin"` (PowerShell `.\manage.ps1 new ...`) copies the

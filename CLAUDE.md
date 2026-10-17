@@ -69,9 +69,12 @@ installed, checked and removed both ways by `packaging/windows/smoke.ps1`, which
 heartbeat with free memory and the busiest processes while a program runs; its own job because the Windows runner
 sometimes stops answering there, so a re-run repeats only this job) -> job `release` (needs all; the GitHub
 release of the tag with the installers, the portable ZIPs `OADM-Server|Client-<version>-<rid>.zip` and `SHA256SUMS.txt`)
--> job `nuget` (needs release; skipped without the repository variable `NUGET_USER`: `manage package nuget` with the tag's
-version, every template created, built and tested against the packed packages, then `dotnet nuget push` with NuGet
-Trusted Publishing (`NuGet/login`, `id-token: write`, no API key in GitHub); spec `docs/plugin-sdk.md`):
+-> job `nuget` (needs release and `nuget-pack`; skipped without the repository variable `NUGET_USER`: `dotnet nuget push`
+with NuGet Trusted Publishing (`NuGet/login`, `id-token: write`, no API key in GitHub)). Job `nuget-pack` (needs tests,
+before the release): `manage package nuget` with the tag's version, every template created, built and tested against
+only these packages (`packageSourceMapping` `Oadm.*` to the local folder), uploaded as the artifact `nuget-packages`. The
+portable ZIPs are their own artifact (`portable-<version>-<rid>`; smoke-windows downloads only the MSI). Spec
+`docs/plugin-sdk.md`:
 - **Windows MSI** (WiX Toolset 6 via the `WixToolset.Sdk` MSBuild SDK, `packaging/windows/`, not in
   Oadm.sln; WiX 7 not used, it requires the OSMF EULA), x64 only (no ARM), per machine: `Program Files\OADM\Server`
   and `\Client`, Windows service "OADM Server" (`OadmServer`, automatic, LocalSystem, restart on failure,
@@ -1577,8 +1580,11 @@ answers is unchanged. Used by the System report for server reports.
 - Shared assemblies (server: `Oadm.Sdk`, `Oadm.Sdk.Client`, `Microsoft.Extensions.*`; client: also Avalonia, the MVVM
   toolkit, SkiaSharp, HarfBuzzSharp) resolve to the host's copy whatever version a plugin was built against
   (`PluginLoadContext.FromHost`, the client's own copy in `ClientPluginLoader`): `minSdkVersion` decides, so plugins built
-  with the NuGet packages of another release load. Server and client load a plugin's main assembly from memory with its
-  pdb (`LoadFromFileWithoutLock`, `LoadWithoutLock`): a build never meets a locked file.
+  with the NuGet packages of another release load; one the host does not have comes from the plugin folder. Server and
+  client load a plugin's main assembly from memory with its pdb (`LoadFromFileWithoutLock`, `LoadWithoutLock`), the client
+  also every other assembly of the plugin's own folder (a page's reference to its server part): a build never meets a
+  locked file. Windows: a console run on the service's data folder (`oadm debug --installed`) finds the service's TLS key
+  in the machine key store and keeps it (`ServerTlsCertificate.OpenWithNamedKey`), never a new certificate.
 - Plugin folder: `plugin.json` (id, version, minSdkVersion, displayName, description, optional `enabledByDefault`,
   default true, and `alwaysOn`, default false),
   `<Name>.Server.dll`, optional `<Name>.Client.dll`, private dependencies. SDK assemblies are shared from the

@@ -47,19 +47,27 @@ internal static class InstalledOadm
                 return null;
             }
 
-            var arguments = JsonDocument.Parse(Cli.Capture("plutil", ["-extract", "ProgramArguments", "json", "-o", "-", LaunchdPlist]).Output);
-            var environment = Cli.Capture("plutil", ["-extract", "EnvironmentVariables", "json", "-o", "-", LaunchdPlist]);
-            var env = new Dictionary<string, string>(StringComparer.Ordinal);
-            if (environment.Code == 0)
+            try
             {
-                foreach (var p in JsonDocument.Parse(environment.Output).RootElement.EnumerateObject())
+                using var arguments = JsonDocument.Parse(Cli.Capture("plutil", ["-extract", "ProgramArguments", "json", "-o", "-", LaunchdPlist]).Output);
+                var environment = Cli.Capture("plutil", ["-extract", "EnvironmentVariables", "json", "-o", "-", LaunchdPlist]);
+                var env = new Dictionary<string, string>(StringComparer.Ordinal);
+                if (environment.Code == 0)
                 {
-                    env[p.Name] = p.Value.GetString() ?? "";
+                    using var json = JsonDocument.Parse(environment.Output);
+                    foreach (var p in json.RootElement.EnumerateObject())
+                    {
+                        env[p.Name] = p.Value.GetString() ?? "";
+                    }
                 }
-            }
 
-            var list = arguments.RootElement.EnumerateArray().Select(e => e.GetString() ?? "").ToList();
-            return list.Count == 0 ? null : new ServiceDefinition(LaunchdLabel, list[0], list[1..], env);
+                var list = arguments.RootElement.EnumerateArray().Select(e => e.GetString() ?? "").ToList();
+                return list.Count == 0 ? null : new ServiceDefinition(LaunchdLabel, list[0], list[1..], env);
+            }
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+            {
+                throw new ToolException($"{LaunchdPlist} could not be read ({ex.Message}).");
+            }
         }
 
         var load = Cli.Capture("systemctl", ["show", SystemdUnit, "--property=LoadState", "--value"]);
@@ -193,27 +201,48 @@ internal static class InstalledOadm
 
         if (!System.Version.TryParse(folders.Version.Split('-')[0], out var installed))
         {
-            output.WriteLine($"The installed OADM's version is not known here; plugins built with this SDK need OADM {tool.ToString(3)} or later.");
+            output.WriteLine($"The installed OADM's version is not known here; plugins built with this SDK need OADM {Cli.Version} or later.");
             return;
         }
 
-        if (installed < tool)
+        // 3.5.0-rc.1 comes before 3.5.0: a pre-release of the same numbers counts as older than a release.
+        var older = installed < tool
+            || (installed == tool && folders.Version.Contains('-', StringComparison.Ordinal) && !Cli.Version.Contains('-', StringComparison.Ordinal));
+        if (older)
         {
-            throw new ToolException($"The installed OADM is {folders.Version}; plugins built with this SDK need OADM {tool.ToString(3)} or later. Update OADM first. Nothing was changed.");
+            throw new ToolException($"The installed OADM is {folders.Version}; plugins built with this SDK need OADM {Cli.Version} or later. Update OADM first. Nothing was changed.");
         }
     }
 
-    /// <summary>Stops the installed service and waits until it stopped.</summary>
-    public static void StopService(ServiceDefinition service, TextWriter output)
+    /// <summary>True while the installed service runs.</summary>
+    public static bool IsRunning(ServiceDefinition service)
     {
+        if (OperatingSystem.IsWindows())
+        {
+            return Cli.Capture("sc.exe", ["query", service.Name]).Output.Contains("RUNNING", StringComparison.Ordinal);
+        }
+
+        return OperatingSystem.IsMacOS()
+            ? Cli.Capture("launchctl", ["print", "system/" + LaunchdLabel]).Code == 0
+            : Cli.Capture("systemctl", ["is-active", service.Name]).Output.Trim() == "active";
+    }
+
+    /// <summary>
+    /// Stops the installed service when it runs and waits until it stopped; returns whether it ran (only then it is
+    /// started again). Throws when it does not stop: nothing must be copied under a running server.
+    /// </summary>
+    public static bool StopService(ServiceDefinition service, TextWriter output)
+    {
+        if (!IsRunning(service))
+        {
+            output.WriteLine($"{service.Name} is not running; it stays stopped.");
+            return false;
+        }
+
         output.WriteLine($"Stopping {service.Name}...");
         if (OperatingSystem.IsWindows())
         {
             Cli.Capture("sc.exe", ["stop", service.Name]);
-            for (var i = 0; i < 120 && !Cli.Capture("sc.exe", ["query", service.Name]).Output.Contains("STOPPED", StringComparison.Ordinal); i++)
-            {
-                Thread.Sleep(500);
-            }
         }
         else if (OperatingSystem.IsMacOS())
         {
@@ -221,24 +250,42 @@ internal static class InstalledOadm
         }
         else
         {
-            Expect(Cli.Capture("systemctl", ["stop", service.Name]), "systemctl stop");
+            Cli.Capture("systemctl", ["stop", service.Name]);
         }
+
+        for (var i = 0; i < 120 && IsRunning(service); i++)
+        {
+            Thread.Sleep(500);
+        }
+
+        return !IsRunning(service)
+            ? true
+            : throw new ToolException($"{service.Name} did not stop within 60 seconds. Nothing was changed.");
     }
 
-    public static void StartService(ServiceDefinition service, TextWriter output)
+    /// <summary>Starts the service again when it ran before; a failure is reported, never thrown over the real error.</summary>
+    public static void StartAgain(ServiceDefinition service, bool wasRunning, TextWriter output)
     {
+        if (!wasRunning)
+        {
+            return;
+        }
+
         output.WriteLine($"Starting {service.Name}...");
-        if (OperatingSystem.IsWindows())
+        var (file, args) = OperatingSystem.IsWindows() ? ("sc.exe", new[] { "start", service.Name })
+            : OperatingSystem.IsMacOS() ? ("launchctl", new[] { "bootstrap", "system", LaunchdPlist })
+            : ("systemctl", new[] { "start", service.Name });
+        try
         {
-            Expect(Cli.Capture("sc.exe", ["start", service.Name]), "sc start");
+            var result = Cli.Capture(file, args);
+            if (result.Code != 0 && !IsRunning(service))
+            {
+                output.WriteLine($"The service did not start again: {result.Output.Trim()} Start it with: {file} {string.Join(' ', args)}");
+            }
         }
-        else if (OperatingSystem.IsMacOS())
+        catch (ToolException ex)
         {
-            Expect(Cli.Capture("launchctl", ["bootstrap", "system", LaunchdPlist]), "launchctl bootstrap");
-        }
-        else
-        {
-            Expect(Cli.Capture("systemctl", ["start", service.Name]), "systemctl start");
+            output.WriteLine($"The service did not start again: {ex.Message} Start it with: {file} {string.Join(' ', args)}");
         }
     }
 
@@ -348,13 +395,5 @@ internal static class InstalledOadm
         }
 
         return env;
-    }
-
-    private static void Expect((int Code, string Output) result, string what)
-    {
-        if (result.Code != 0)
-        {
-            throw new ToolException($"{what} failed: {result.Output.Trim()}");
-        }
     }
 }

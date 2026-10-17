@@ -46,8 +46,12 @@ public sealed partial class ServerTlsCertificate(OadmPaths paths, CredentialProt
     public string KeyName =>
         "OADM Server TLS " + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(paths.DataDirectory.ToUpperInvariant())))[..16];
 
-    /// <summary>Windows: the key lives in the machine key store (installed service, SYSTEM) instead of the user's.</summary>
-    public bool UseMachineKeyStore { get; init; } = ServiceHosting.IsRunningAsService();
+    /// <summary>
+    /// Windows: the key lives in the machine key store (installed service, SYSTEM) instead of the user's. A console run
+    /// on the service's data folder (an administrator, "oadm debug --installed") finds the service's key there too and
+    /// keeps using it (<see cref="OpenWithNamedKey"/>): a new certificate would make every client refuse the server.
+    /// </summary>
+    public bool UseMachineKeyStore { get; set; } = ServiceHosting.IsRunningAsService();
 
     /// <summary>The certificate with its private key (after <see cref="LoadOrCreateAsync"/>).</summary>
     public X509Certificate2 Certificate => _certificate ?? throw new InvalidOperationException("The TLS certificate is not loaded yet.");
@@ -161,13 +165,31 @@ public sealed partial class ServerTlsCertificate(OadmPaths paths, CredentialProt
     {
         if (!CngKey.Exists(KeyName, CngProvider.MicrosoftSoftwareKeyStorageProvider, KeyOpenOptions))
         {
-            return null;
+            if (UseMachineKeyStore || !MachineKeyExists())
+            {
+                return null;
+            }
+
+            UseMachineKeyStore = true; // the installed service's key: keep it, and replace it there if it ever must be
         }
 
         using var publicOnly = X509Certificate2.CreateFromPem(certificatePem);
         using var cngKey = CngKey.Open(KeyName, CngProvider.MicrosoftSoftwareKeyStorageProvider, KeyOpenOptions);
         using var key = new ECDsaCng(cngKey);
         return publicOnly.CopyWithPrivateKey(key); // throws for a key that does not match: a new certificate is made
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private bool MachineKeyExists()
+    {
+        try
+        {
+            return CngKey.Exists(KeyName, CngProvider.MicrosoftSoftwareKeyStorageProvider, CngKeyOpenOptions.MachineKey);
+        }
+        catch (CryptographicException)
+        {
+            return false; // no right to the machine store
+        }
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]

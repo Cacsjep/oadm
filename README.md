@@ -245,8 +245,8 @@ Most features are plugins, and your plugins use the same SDK as the bundled ones
 
 ### Create a plugin
 
-Without a checkout: `dotnet new install Oadm.Plugin.Templates`, `dotnet new oadm-task -n MyPlugin`, then
-`dotnet oadm dev start` in its folder (guide: https://oadm.app/dev/plugin-sdk/). In a checkout:
+Without a checkout: `dotnet new install Oadm.Plugin.Templates`, `dotnet new oadm-task -n MyPlugin`, then in its folder
+`dotnet tool restore`, `dotnet build` and `dotnet oadm dev start` (guide: https://oadm.app/dev/plugin-sdk/). In a checkout:
 
 1. Copy the closest bundled plugin: `plugins/Oadm.Plugins.Restart` (task plugin without a dialog),
    `plugins/Oadm.Plugins.Users(.Client)` (task plugin with a dialog), `plugins/Oadm.Plugins.NtpServer(.Client)` (core

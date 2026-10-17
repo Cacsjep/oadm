@@ -74,6 +74,63 @@ public sealed class ToolTests : IDisposable
         InstalledOadm.RequireCurrent(unknown, output); // Linux, macOS: a warning only
     }
 
+    [Theory]
+    [InlineData("..")]
+    [InlineData("")]
+    [InlineData(".")]
+    [InlineData("a/../..")]
+    [InlineData("C:\\")]
+    [InlineData("/etc")]
+    [InlineData("a\b")]
+    public void A_plugin_id_that_is_not_a_plain_name_never_reaches_the_file_system(string id)
+    {
+        var root = Directory.CreateDirectory(Path.Combine(_folder, "deploy")).FullName;
+        var keep = Path.Combine(root, "keep.txt");
+        File.WriteAllText(keep, "data");
+        var source = Directory.CreateDirectory(Path.Combine(_folder, "src")).FullName;
+        File.WriteAllText(Path.Combine(source, "plugin.json"), "{}");
+
+        Assert.False(Cli.IsSafeId(id));
+        Assert.Throws<ToolException>(() => Cli.CopyPlugin(source, root, id));
+        Assert.True(File.Exists(keep));
+    }
+
+    [Fact]
+    public void A_plugin_copy_replaces_the_old_one_and_leaves_nothing_beside_it()
+    {
+        var root = Directory.CreateDirectory(Path.Combine(_folder, "deploy")).FullName;
+        var source = Directory.CreateDirectory(Path.Combine(_folder, "src")).FullName;
+        File.WriteAllText(Path.Combine(source, "Door.Server.dll"), "new");
+        Directory.CreateDirectory(Path.Combine(root, "acme.door"));
+        File.WriteAllText(Path.Combine(root, "acme.door", "old.dll"), "old");
+
+        Assert.Equal(1, Cli.CopyPlugin(source, root, "acme.door"));
+
+        Assert.Equal(["Door.Server.dll"], Directory.GetFiles(Path.Combine(root, "acme.door")).Select(Path.GetFileName));
+        Assert.Equal(["acme.door"], Directory.GetDirectories(root).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public void A_pre_release_of_the_same_version_is_older()
+    {
+        if (Cli.Version.Contains('-', StringComparison.Ordinal) || !Version.TryParse(Cli.Version, out _))
+        {
+            return; // a development build of the tool
+        }
+
+        var rc = new Folders("server", Cli.Version + "-rc.1", "app", "data", "data/plugins", []);
+        Assert.Throws<ToolException>(() => InstalledOadm.RequireCurrent(rc, TextWriter.Null));
+    }
+
+    [Fact]
+    public void An_old_state_file_never_points_at_another_program()
+    {
+        using var self = System.Diagnostics.Process.GetCurrentProcess();
+        var state = new DevCommands.State(self.Id, self.Id, 5090, "", DateTime.UtcNow.AddDays(-1));
+
+        Assert.False(DevCommands.IsOurs(self, state)); // the test host: another name, and started after the state was written
+    }
+
     [Fact]
     public void The_workspace_is_the_folder_with_oadm_and_lists_its_built_plugins()
     {

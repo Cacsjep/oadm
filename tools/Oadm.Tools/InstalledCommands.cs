@@ -30,8 +30,8 @@ internal static class InstalledCommands
         {
             foreach (var plugin in plugins)
             {
-                var target = Path.Combine(Path.GetFullPath(to), plugin.Id);
-                output.WriteLine($"{plugin.Id} {plugin.Version} -> {target} ({Cli.CopyFolder(plugin.Path, target)} files)");
+                var count = Cli.CopyPlugin(plugin.Path, to, plugin.Id);
+                output.WriteLine($"{plugin.Id} {plugin.Version} -> {Path.Combine(Path.GetFullPath(to), plugin.Id)} ({count} files)");
             }
 
             return 0;
@@ -51,7 +51,7 @@ internal static class InstalledCommands
             foreach (var plugin in plugins)
             {
                 var target = Path.Combine(client.DeployFolder, plugin.Id);
-                Cli.CopyFolder(plugin.Path, target);
+                Cli.CopyPlugin(plugin.Path, client.DeployFolder, plugin.Id);
                 InstalledOadm.Unblock(target);
                 output.WriteLine($"Client: {plugin.Id} {plugin.Version} -> {target} (start the client again to load it)");
             }
@@ -63,13 +63,19 @@ internal static class InstalledCommands
             return Elevate(["deploy", "--installed", "--server-only", "--workspace", workspace.Root, .. only.SelectMany(p => new[] { "--plugin", p })], output);
         }
 
-        InstalledOadm.StopService(service, output);
+        // Every id is checked before the service stops (CopyPlugin checks again).
+        if (plugins.FirstOrDefault(p => !Cli.IsSafeId(p.Id)) is { } bad)
+        {
+            throw new ToolException($"The plugin id \"{bad.Id}\" is not a plain name. Nothing was changed.");
+        }
+
+        var wasRunning = InstalledOadm.StopService(service, output);
         try
         {
             foreach (var plugin in plugins)
             {
                 var target = Path.Combine(serverFolders.DeployFolder, plugin.Id);
-                Cli.CopyFolder(plugin.Path, target);
+                Cli.CopyPlugin(plugin.Path, serverFolders.DeployFolder, plugin.Id);
                 InstalledOadm.Unblock(target);
                 InstalledOadm.SecureForService(target);
                 output.WriteLine($"Server: {plugin.Id} {plugin.Version} -> {target}");
@@ -77,7 +83,7 @@ internal static class InstalledCommands
         }
         finally
         {
-            InstalledOadm.StartService(service, output);
+            InstalledOadm.StartAgain(service, wasRunning, output);
         }
 
         return 0;
@@ -106,7 +112,18 @@ internal static class InstalledCommands
             return Elevate(["debug", "--installed", "--workspace", workspace.Root], output);
         }
 
-        InstalledOadm.StopService(service, output);
+        var wasRunning = InstalledOadm.StopService(service, output);
+        var startedAgain = 0;
+        void StartAgainOnce()
+        {
+            if (Interlocked.Exchange(ref startedAgain, 1) == 0)
+            {
+                InstalledOadm.StartAgain(service, wasRunning, output);
+            }
+        }
+
+        // Closing the window (Windows) or the terminal ends this process without the finally below.
+        using var closed = System.Runtime.InteropServices.PosixSignalRegistration.Create(System.Runtime.InteropServices.PosixSignal.SIGHUP, _ => StartAgainOnce());
         try
         {
             using var server = Cli.Start(service.Exe, [.. service.Args, $"--Oadm:PluginDir={string.Join(';', plugins.Select(p => p.Path))}"], new Dictionary<string, string>(service.Environment));
@@ -126,7 +143,7 @@ internal static class InstalledCommands
         }
         finally
         {
-            InstalledOadm.StartService(service, output);
+            StartAgainOnce();
         }
 
         return 0;

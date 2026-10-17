@@ -184,41 +184,99 @@ internal static class Cli
     }
 
     /// <summary>
-    /// This tool as a command line (<c>oadm</c>, or <c>dotnet Oadm.Tools.dll</c> for a local tool), to start it again,
-    /// e.g. with administrator rights.
+    /// This tool as a command line that works with administrator rights too: the dotnet host of the running runtime with
+    /// Oadm.Tools.dll. An elevated process (runas, sudo) gets a fresh environment and would not find a .NET installed for
+    /// one user (DOTNET_ROOT, ~/.dotnet) through the tool's own launcher.
     /// </summary>
     public static (string FileName, List<string> Args) Self()
     {
+        var dll = Path.Combine(AppContext.BaseDirectory, "Oadm.Tools.dll");
         var process = Environment.ProcessPath ?? throw new ToolException("The path of this tool is not known.");
-        return string.Equals(Path.GetFileNameWithoutExtension(process), "dotnet", StringComparison.OrdinalIgnoreCase)
-            ? (process, [Path.Combine(AppContext.BaseDirectory, "Oadm.Tools.dll")])
-            : (process, []);
+        if (string.Equals(Path.GetFileNameWithoutExtension(process), "dotnet", StringComparison.OrdinalIgnoreCase))
+        {
+            return (process, [dll]);
+        }
+
+        // <root>/shared/Microsoft.NETCore.App/<version>/ -> <root>/dotnet
+        var runtime = new DirectoryInfo(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory());
+        var host = runtime.Parent?.Parent?.Parent is { } root ? Path.Combine(root.FullName, Exe("dotnet")) : null;
+        return host is not null && File.Exists(host) && File.Exists(dll) ? (host, [dll]) : (process, []);
     }
 
-    /// <summary>Copies a folder (replacing the target folder), returns the number of files.</summary>
-    public static int CopyFolder(string source, string target)
+    /// <summary>True for a plugin id that is a plain folder name ("acme.door-bell"): letters, digits, ".", "-", "_".</summary>
+    public static bool IsSafeId(string id) =>
+        id.Length is > 0 and <= 128 && id.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_')
+        && id[0] != '.' && !id.Contains("..", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Copies a plugin folder to <c>&lt;root&gt;/&lt;id&gt;</c> and returns the number of files. The id must be a plain folder
+    /// name (never "..", a path or empty: the target is always one folder below <paramref name="root"/>). The new copy is
+    /// written next to the target first; then the old folder is moved aside and the new one moved in, so a failure (files
+    /// in use) leaves the old plugin as it was.
+    /// </summary>
+    public static int CopyPlugin(string source, string root, string id)
     {
-        if (Directory.Exists(target))
+        if (!IsSafeId(id))
         {
-            try
-            {
-                Directory.Delete(target, recursive: true);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                throw new ToolException($"{target} is in use ({ex.Message}). Close the program that uses it and try again.");
-            }
+            throw new ToolException($"The plugin id \"{id}\" is not a plain name (letters, digits, \".\", \"-\"). Nothing was copied.");
         }
 
+        var parent = Path.GetFullPath(root);
+        var target = Path.GetFullPath(Path.Combine(parent, id));
+        if (!string.Equals(Path.GetDirectoryName(target), parent.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ToolException($"{target} is not a folder of {parent}. Nothing was copied.");
+        }
+
+        Directory.CreateDirectory(parent);
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var staging = $"{target}.new-{suffix}";
+        var old = $"{target}.old-{suffix}";
         var count = 0;
-        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        try
         {
-            var path = Path.Combine(target, Path.GetRelativePath(source, file));
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.Copy(file, path, overwrite: true);
-            count++;
+            foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+            {
+                var path = Path.Combine(staging, Path.GetRelativePath(source, file));
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.Copy(file, path, overwrite: true);
+                count++;
+            }
+
+            if (Directory.Exists(target))
+            {
+                Directory.Move(target, old); // fails as a whole while a program holds a file open
+            }
+
+            Directory.Move(staging, target);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            TryDelete(staging);
+            if (!Directory.Exists(target) && Directory.Exists(old))
+            {
+                Directory.Move(old, target);
+            }
+
+            throw new ToolException($"{target} could not be replaced ({ex.Message}). Close the program that uses it and try again; the old plugin is unchanged.");
         }
 
+        TryDelete(old);
         return count;
+    }
+
+    private static void TryDelete(string folder)
+    {
+        try
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // rare: the move worked but a file could not be deleted; the next deploy or a person removes it
+        }
     }
 }

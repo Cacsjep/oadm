@@ -57,9 +57,11 @@ public sealed class PluginLoadContext : AssemblyLoadContext
 
     protected override Assembly? Load(AssemblyName assemblyName)
     {
-        if (IsSharedAssembly(assemblyName))
+        // A shared assembly comes from the host; one the host does not have (a Microsoft.Extensions package the plugin
+        // brings) from the plugin folder.
+        if (IsSharedAssembly(assemblyName) && FromHost(assemblyName) is { } shared)
         {
-            return FromHost(assemblyName);
+            return shared;
         }
 
         var path = _resolver.ResolveAssemblyToPath(assemblyName) ?? InPluginFolder(assemblyName);
@@ -69,7 +71,7 @@ public sealed class PluginLoadContext : AssemblyLoadContext
     /// <summary>
     /// The host's copy of a shared assembly whatever version the plugin was built against: a plugin built with the SDK
     /// packages of a newer OADM release still loads (its plugin.json minSdkVersion decides what it needs). Null when the host
-    /// has no such assembly (then the default context reports it).
+    /// has no such assembly (then the plugin folder is asked).
     /// </summary>
     public static Assembly? FromHost(AssemblyName assemblyName)
     {

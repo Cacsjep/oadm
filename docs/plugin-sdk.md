@@ -47,7 +47,7 @@ against the packed packages.
 ### Oadm.Plugin.Sdk
 
 - `targets/Oadm.Plugin.props` (before the project): the part from the project name (`X` = server, `X.Client` = client;
-  `OadmPluginPart` overrides), `AssemblyName` `X.Server` / `X.Client` (set before the .NET SDK defaults it), RootNamespace
+  only the command line can override `OadmPluginPart`, the project file is read later), `AssemblyName` `X.Server` / `X.Client` (set before the .NET SDK defaults it), RootNamespace
   = project name, net10.0, nullable, implicit usings, `EnableDynamicLoading`, compiled bindings for the client; references
   `Oadm.Sdk` (+ `Oadm.Sdk.Client`, Avalonia, CommunityToolkit.Mvvm for the client) with `ExcludeAssets=runtime`.
 - `targets/Oadm.Plugin.targets` (after the project): `plugin.json` copied when the project has one, else written by the
@@ -70,7 +70,8 @@ against the packed packages.
 the sample name), the plugin parts on `Oadm.Plugin.Sdk/<v>`, the SDK project references of the tests as package
 references of `<v>`, a `.slnx`, `Directory.Build.props` (net10.0, `OadmDeployRoot`), `.gitignore` (bin, obj, .oadm),
 `.config/dotnet-tools.json` (oadm.tools `<v>`), a README; symbols `id` (default `community.<name in kebab case>`) and
-`displayName` (default the name). Never edited by hand. The tutorials show the samples' code transformed the same way
+`displayName` (default the name). `-n` must be a C# name (letters and digits): it becomes the class names. Never edited
+by hand. The tutorials show the samples' code transformed the same way
 (`website/src/components/templateCode.ts`).
 
 ## The `oadm` tool
@@ -95,7 +96,14 @@ references of `<v>`, a `.slnx`, `Directory.Build.props` (net10.0, `OadmDeployRoo
   rules (`--Oadm:DataDir`, env `Oadm__DataDir`, `appsettings.json`, env `OADM_DATA_DIR`); the client keeps the user's
   plugins in `<LocalApplicationData>/Oadm/plugins`. `--print-folders` stays for people and support.
 - `deploy --installed` and `debug --installed` refuse an installed OADM older than the tool (Windows reads the file
-  version; Linux and macOS only warn).
+  version; Linux and macOS only warn; a pre-release of the same version counts as older); `doctor` reports it. Plugin ids
+  must be plain folder names (`Cli.IsSafeId`) before anything is copied; a plugin is copied next to its folder first and
+  swapped in, so a file in use leaves the old one. The service is started again only when it ran, also when the window
+  is closed (SIGHUP); a service that does not stop within 60 s stops the run before anything is copied. The elevated run
+  starts the dotnet host of the running runtime (an elevated environment may not find a per-user .NET) and sends its
+  output and errors back through a file. `dev stop` ends only processes that are the development server.
+- On Windows a console run of the installed server (debug) finds the service's TLS key in the machine key store and keeps
+  it (`ServerTlsCertificate`): a new certificate would make every client refuse the server.
 - The workspace is the nearest folder upward with `.oadm/`, else with a solution file.
 - Debugging: attach to `Oadm.Server` / `Oadm.Client`; both load the plugin's main assembly from memory with its pdb, so
   breakpoints hit and builds never meet a locked file. No `watch` or `attach` commands: `dev start` restarts by itself,

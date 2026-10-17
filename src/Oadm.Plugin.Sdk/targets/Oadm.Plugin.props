@@ -3,7 +3,9 @@
     The plugin project SDK, part 1 (before the project): names and defaults. A project named "DoorOverview" is the server
     part (DoorOverview.Server.dll), "DoorOverview.Client" the client part (DoorOverview.Client.dll). Used by the NuGet
     package Oadm.Plugin.Sdk (<Project Sdk="Oadm.Plugin.Sdk/x.y.z">) and, in this repository, by samples/ with
-    OadmSdkFromSource=true (project references instead of packages). Spec: docs/plugin-sdk.md.
+    OadmSdkFromSource=true (project references instead of packages). The part follows the project name only: these
+    properties are set before the project file is read (OadmPluginPart and OadmPluginName work on the command line).
+    Spec: docs/plugin-sdk.md.
   -->
   <Import Project="Oadm.Plugin.Versions.props" />
   <Import Project="$(MSBuildThisFileDirectory)..\Sdk\Oadm.Plugin.Package.props" Condition="Exists('$(MSBuildThisFileDirectory)..\Sdk\Oadm.Plugin.Package.props')" />

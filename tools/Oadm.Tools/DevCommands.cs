@@ -53,7 +53,7 @@ internal static class DevCommands
         var version = options.Get("--server-version") ?? Cli.Version;
         options.RejectUnknown();
 
-        if (ReadState(workspace) is { } running && IsAlive(running.SupervisorPid))
+        if (ReadState(workspace) is { } running && IsAlive(running))
         {
             throw new ToolException($"The development server of {workspace.Root} runs already (https://localhost:{running.Port}). Stop it with: oadm dev stop");
         }
@@ -130,6 +130,11 @@ internal static class DevCommands
             try
             {
                 using var process = Process.GetProcessById(pid);
+                if (!IsOurs(process, state))
+                {
+                    continue; // the state file is old (a crash, a restart): this number belongs to another program now
+                }
+
                 process.Kill(entireProcessTree: true);
                 process.WaitForExit(10_000);
             }
@@ -153,7 +158,7 @@ internal static class DevCommands
         var plugins = workspace.Plugins();
         output.WriteLine($"Workspace {workspace.Root}");
         output.WriteLine(plugins.Count == 0 ? "  plugins: none built yet (dotnet build)" : $"  plugins: {string.Join(", ", plugins.Select(p => $"{p.Id} {p.Version}"))}");
-        if (ReadState(workspace) is { } state && IsAlive(state.SupervisorPid))
+        if (ReadState(workspace) is { } state && IsAlive(state))
         {
             output.WriteLine($"  server:  runs at https://localhost:{state.Port} since {state.StartedUtc.ToLocalTime():HH:mm} (process {state.ServerPid})");
             return 0;
@@ -239,12 +244,28 @@ internal static class DevCommands
         File.WriteAllText(workspace.StateFile, JsonSerializer.Serialize(state));
     }
 
-    private static bool IsAlive(int pid)
+    /// <summary>The development server or its oadm tool, started no later than the state file says (not a reused process number).</summary>
+    internal static bool IsOurs(Process process, State state)
     {
         try
         {
-            using var process = Process.GetProcessById(pid);
-            return !process.HasExited;
+            var name = process.ProcessName;
+            var known = name.Equals("Oadm.Server", StringComparison.OrdinalIgnoreCase) || name.Equals("oadm", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("dotnet", StringComparison.OrdinalIgnoreCase) || name.Equals("Oadm.Tools", StringComparison.OrdinalIgnoreCase);
+            return known && process.StartTime.ToUniversalTime() <= state.StartedUtc.AddSeconds(5);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsAlive(State state)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(state.SupervisorPid);
+            return !process.HasExited && IsOurs(process, state);
         }
         catch (ArgumentException)
         {

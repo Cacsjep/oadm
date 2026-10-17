@@ -35,7 +35,8 @@ runs on your computer, so no setup code is needed). The plugin is already there:
 | `oadm-page` | A core plugin with its own page in the navigation rail | [Plugin page](../tutorial-page/) |
 | `oadm-action` | An action for the event rules | [Event rule action](../tutorial-action/) |
 
-Options: `--id acme.door-bell` (default `community.<name in kebab case>`) and `--displayName "Door bell"`.
+`-n` becomes the class names: letters and digits, starting with a letter. Options: `--id acme.door-bell` (default
+`community.<name in kebab case>`) and `--displayName "Door bell"`.
 
 ## What the template creates
 
@@ -132,8 +133,8 @@ the service again. Close and open the client to load the client part. `--plugin 
 several. `dotnet oadm folders` shows where the installed server and client keep their data and plugins; nothing is
 guessed, the tool reads them from the service.
 
-The installed OADM must be at least the version of the SDK you build with. `dotnet oadm doctor` checks that, the .NET
-SDK and the ports.
+The installed OADM must be at least the version of the SDK you build with; `deploy` and `debug` refuse an older one.
+`dotnet oadm doctor` checks that, the .NET SDK and the ports.
 
 ## Ship it
 

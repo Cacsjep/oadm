@@ -232,6 +232,7 @@ internal sealed class PluginLoadContext(string pluginPath)
     : AssemblyLoadContext(Path.GetFileNameWithoutExtension(pluginPath), isCollectible: true)
 {
     private readonly AssemblyDependencyResolver _resolver = new(pluginPath);
+    private readonly string _folder = Path.GetDirectoryName(Path.GetFullPath(pluginPath))!;
 
     internal static bool IsShared(string name) =>
         name is "Oadm.Sdk" or "Oadm.Sdk.Client"
@@ -248,13 +249,24 @@ internal sealed class PluginLoadContext(string pluginPath)
             return null;
         }
 
-        if (IsShared(assemblyName.Name))
+        // A shared assembly comes from the host; one the host does not have (an Avalonia add-on the plugin brings) from
+        // the plugin folder.
+        if (IsShared(assemblyName.Name) && FromHost(assemblyName) is { } shared)
         {
-            return FromHost(assemblyName);
+            return shared;
         }
 
         string? path = _resolver.ResolveAssemblyToPath(assemblyName);
-        return path is null ? null : LoadFromAssemblyPath(path);
+        if (path is null)
+        {
+            return null;
+        }
+
+        // Files of the plugin's own folder load from memory (its server part, which a page references for its models, is
+        // rebuilt with it); a package cache folder keeps the normal load.
+        return Path.GetDirectoryName(Path.GetFullPath(path)) is { } dir && string.Equals(dir, _folder, StringComparison.OrdinalIgnoreCase)
+            ? LoadWithoutLock(path)
+            : LoadFromAssemblyPath(path);
     }
 
     /// <summary>Loads the plugin's main assembly (and its .pdb) from memory, so the file is not locked.</summary>

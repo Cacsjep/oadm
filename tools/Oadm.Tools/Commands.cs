@@ -117,6 +117,7 @@ internal static class Doctor
             {
                 var folders = InstalledOadm.ServerFolders(service);
                 output.WriteLine($"  Installed server     {(folders.Version.Length > 0 ? folders.Version + ", " : "")}plugins in {folders.DeployFolder}");
+                InstalledOadm.RequireCurrent(folders, TextWriter.Null); // older than this SDK: a problem below
             }
             else
             {

@@ -26,9 +26,10 @@ Plugin problem in plugins/acme.hello: Plugin acme.hello requires SDK 0.2.0, host
 The client loads the client part of a plugin without this check, but without its server part such a page or dialog has
 nothing to talk to.
 
-The shared assemblies (below) always come from OADM, whatever version your plugin was built against: a plugin built
-with the packages of OADM 3.6 loads on 3.7 and on 3.5, as long as `minSdkVersion` allows it. Use members that are new
-since your oldest OADM only with the check below.
+The shared assemblies (below) always come from OADM, whatever version your plugin was built against, so the plugin
+folder loads on every OADM whose SDK `minSdkVersion` allows. The `oadm` tool is stricter: `deploy --installed` and
+`debug --installed` work only with an installed OADM of the tool's version or newer. To support older releases, build
+with the packages of the oldest one; use members that are newer only with the check below.
 
 ## How the SDK grows
 
