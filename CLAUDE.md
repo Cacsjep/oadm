@@ -1274,7 +1274,9 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   header rows, login None / Basic / Digest / Bearer token, body type None / JSON / XML / Text / Form in the code editor,
   "Allow untrusted certificates", timeout, success = 2xx) and **Send email** (MailKit; mail server, port, STARTTLS / TLS /
   none, optional login, "Allow untrusted certificates", From, To, Subject, Format Text / HTML; the server settings live in
-  each action, no shared setting). Both run once per rule edge without devices, optionally also when the rule turns off.
+  each action, no shared setting) and **Send TCP message** (host, port, Text / JSON / XML / Hex bytes, line end, optional TLS
+  with "Allow untrusted certificates", "Wait for an answer" + "Answer must contain", timeout). All three run once per rule edge
+  without devices, optionally also when the rule turns off.
 - **First actions**: **Set output** (bundled always-on package `oadm.outputs`, `plugins/Oadm.Plugins.Outputs`, server only):
   output number 1..64, modes Follow the rule (stateful rules only; inactive on the off edge), Pulse N s (1..3600), Set
   active, Set inactive, Toggle; I/O port management API (`io-port-management`: getPorts, setPorts, setStateSequence; active

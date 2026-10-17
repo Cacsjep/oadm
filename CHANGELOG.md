@@ -4,6 +4,14 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
 version and date, and the release workflow copies it into the GitHub release.
 
+## [Unreleased]
+
+### Added
+
+- **Send TCP message**: a new event rule action that sends a message to a host and port, for building, alarm and video
+  systems that listen on a TCP port. Text, JSON, XML or hex bytes with the event's values, an optional line end and TLS,
+  and optionally waits for an answer that must contain a given text.
+
 ## [3.4.0] - 2026-10-17
 
 ### Added

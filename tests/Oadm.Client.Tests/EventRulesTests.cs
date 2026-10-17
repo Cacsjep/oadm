@@ -360,6 +360,30 @@ public sealed class EventRulesTests
             dialog.GetVisualDescendants().OfType<ScrollViewer>().First().ScrollToEnd();
             Pump();
             Capture(dialog, outDir, "event-rules-email-action-2.png");
+
+            // Send TCP message: the line end hides for hex, TLS and the expected answer show their extra fields.
+            http.SelectedAction = http.Actions.Single(a => a.Id == "oadm.notifications.tcp");
+            var tcp = http;
+            tcp.Fields.Single(f => f.Key == "host").Text = "10.0.0.5";
+            tcp.Fields.Single(f => f.Key == "port").Text = "4001";
+            tcp.Fields.Single(f => f.Key == "message").Text = "ALARM;{serial};{objectId};{time}";
+            tcp.Fields.Single(f => f.Key == "lineEnd").SelectChoice("crlf");
+            tcp.Fields.Single(f => f.Key == "waitAnswer").IsChecked = true;
+            tcp.Fields.Single(f => f.Key == "expect").Text = "ACK";
+            Pump();
+            Assert.True(tcp.Fields.Single(f => f.Key == "expect").IsVisible);
+            Assert.False(tcp.Fields.Single(f => f.Key == "allowUntrusted").IsVisible);
+            Assert.False(tcp.HasFieldErrors);
+            dialog.GetVisualDescendants().OfType<ScrollViewer>().First().ScrollToHome();
+            Pump();
+            Capture(dialog, outDir, "event-rules-tcp-action.png");
+            tcp.Fields.Single(f => f.Key == "format").SelectChoice("hex");
+            tcp.Fields.Single(f => f.Key == "message").Text = "02 41 4C 41 52 4D 03";
+            Pump();
+            Assert.False(tcp.Fields.Single(f => f.Key == "lineEnd").IsVisible);
+            dialog.GetVisualDescendants().OfType<ScrollViewer>().First().ScrollToEnd();
+            Pump();
+            Capture(dialog, outDir, "event-rules-tcp-action-2.png");
             dialog.Close();
             api.Dispose();
             return true;

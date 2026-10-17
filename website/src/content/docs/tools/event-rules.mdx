@@ -72,8 +72,11 @@ hold, and some actions can undo themselves when the rule turns **off**.
   query parameters, headers, a login (Basic, Digest or a token) and a body as JSON, XML, text or form.
   **Allow untrusted certificates** accepts a self-signed certificate on the receiving side.
 - **Send email**: sends a mail through your mail server, as text or HTML. The mail server is part of the action.
+- **Send TCP message**: sends a message to a host and port, for example to a building, alarm or video system that
+  listens on a TCP port. Text, JSON, XML or hex bytes (`02 41 42 03`), with an optional line end and TLS. **Wait for an
+  answer** with **Answer must contain** fails the action when the other side does not confirm.
 
-Email and HTTP run once each time the rule turns on or fires. Check **Also send when the rule turns off** for a second
+Email, HTTP and TCP run once each time the rule turns on or fires. Check **Also send when the rule turns off** for a second
 message when it ends; `{state}` tells which one it is.
 
 ### Placeholders
@@ -84,7 +87,7 @@ event, for example `{objectId}`. The **Placeholders** card next to the actions l
 
 In a JSON, XML or HTML body OADM escapes each value, so `"objectID": "{objectId}"` stays valid whatever the event sends.
 
-**Send test** sends the email or the request once right away. The event's values are filled in with sample values, the
+**Send test** sends the email, the request or the message once right away. The event's values are filled in with sample values, the
 device is the first one the trigger uses.
 
 <Image src={httpAction} alt="Send HTTP request with a JSON body, headers and the placeholders" class="screen" />

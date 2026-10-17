@@ -86,6 +86,7 @@ public sealed partial class FakeOadmApi
         catalog.Actions.Add(command);
         catalog.Actions.Add(FakeHttpAction());
         catalog.Actions.Add(FakeEmailAction());
+        catalog.Actions.Add(FakeTcpAction());
         return catalog;
     }
 
@@ -143,6 +144,35 @@ public sealed partial class FakeOadmApi
         });
         email.Fields.Add(new ActionFieldEntry { Key = "onOff", Label = "Also send when the rule turns off", Kind = ActionFieldKind.ActionFieldBool, OffEdge = true, DefaultValue = "false" });
         return email;
+    }
+
+    /// <summary>"Send TCP message" as the Notifications plugin declares it.</summary>
+    private static ActionEntry FakeTcpAction()
+    {
+        var tcp = new ActionEntry
+        {
+            Id = "oadm.notifications.tcp", DisplayName = "Send TCP message", Group = "Notifications", IconKey = "send", NeedsDevice = false, SupportsTurnOff = true, UsesPlaceholders = true,
+            Description = "Sends a message over a TCP connection, for example to a building, alarm or video system.", Available = true, SourceName = "Notifications",
+        };
+        tcp.Fields.Add(new ActionFieldEntry { Key = "host", Label = "Host", Kind = ActionFieldKind.ActionFieldText, Required = true, Hint = "Host name or IP address", MaxLength = 1000 });
+        tcp.Fields.Add(new ActionFieldEntry { Key = "port", Label = "Port", Kind = ActionFieldKind.ActionFieldNumber, Required = true, Min = 1, Max = 65535, DefaultValue = "8000" });
+        tcp.Fields.Add(Choice("format", "Format", "text", ("text", "Text"), ("json", "JSON"), ("xml", "XML"), ("hex", "Hex bytes")));
+        tcp.Fields.Add(new ActionFieldEntry
+        {
+            Key = "message", Label = "Message", Kind = ActionFieldKind.ActionFieldCode, LanguageKey = "format", Required = true, MaxLength = 50_000,
+            Hint = "For hex bytes: pairs like 02 41 42 03, spaces optional.", DefaultValue = "{event} on {device} at {time}",
+        });
+        var lineEnd = Choice("lineEnd", "Line end", "none", ("none", "None"), ("cr", "CR"), ("lf", "LF"), ("crlf", "CR LF"));
+        lineEnd.VisibleWhenKey = "format";
+        lineEnd.VisibleWhenValue = "text|json|xml";
+        tcp.Fields.Add(lineEnd);
+        tcp.Fields.Add(new ActionFieldEntry { Key = "tls", Label = "Use TLS", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false" });
+        tcp.Fields.Add(new ActionFieldEntry { Key = "allowUntrusted", Label = "Allow untrusted certificates", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false", VisibleWhenKey = "tls", VisibleWhenValue = "true" });
+        tcp.Fields.Add(new ActionFieldEntry { Key = "waitAnswer", Label = "Wait for an answer", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false" });
+        tcp.Fields.Add(new ActionFieldEntry { Key = "expect", Label = "Answer must contain", Kind = ActionFieldKind.ActionFieldText, Hint = "Optional", MaxLength = 1000, VisibleWhenKey = "waitAnswer", VisibleWhenValue = "true" });
+        tcp.Fields.Add(new ActionFieldEntry { Key = "timeout", Label = "Timeout (s)", Kind = ActionFieldKind.ActionFieldNumber, Required = true, Min = 1, Max = 120, DefaultValue = "10" });
+        tcp.Fields.Add(new ActionFieldEntry { Key = "onOff", Label = "Also send when the rule turns off", Kind = ActionFieldKind.ActionFieldBool, OffEdge = true, DefaultValue = "false" });
+        return tcp;
     }
 
     private static ActionFieldEntry Choice(string key, string label, string defaultValue, params (string Value, string Label)[] choices)

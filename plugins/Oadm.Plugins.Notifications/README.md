@@ -1,12 +1,12 @@
 # Notifications
 
-Plugin id `oadm.notifications`, server only, always on. Two event rule actions without devices: they run once per rule
+Plugin id `oadm.notifications`, server only, always on. Three event rule actions without devices: they run once per rule
 edge (and, when "Also send when the rule turns off" is checked, on the off edge of a stateful rule).
 
 | Topic | Decision |
 |---|---|
 | Mail server | Part of every **Send email** action (host, port, encryption, login). No shared setting: an action stands on its own and is copied with its rule. |
-| Escaping | Placeholder values are escaped for where they go: URL-encoded in the URL, the query and form bodies, JSON-escaped in JSON bodies, XML-escaped in XML and HTML bodies. The text around them is never touched. |
+| Escaping | Placeholder values are escaped for where they go: URL-encoded in the URL, the query and form bodies, JSON-escaped in JSON bodies and TCP messages, XML-escaped in XML and HTML bodies and TCP messages. The text around them is never touched. |
 | HTTP login | None, Basic, Digest, Bearer token. Passwords and tokens are stored encrypted (password fields). |
 | Certificates | "Allow untrusted certificates" per action, off by default. |
 | Test | "Send test" in the rule dialog sends once with sample values (`EventService.TestAction`, administrators, audited). |
@@ -27,6 +27,19 @@ edge (and, when "Also send when the rule turns off" is checked, on the off edge 
 - HTML mails carry a plain-text part made from the HTML. Sent with MailKit (MIT).
 - Errors in plain words: wrong login, untrusted certificate, refused mail, server not reachable.
 
+## Send TCP message (`oadm.notifications.tcp`)
+
+- Host (name or IP, placeholders allowed), port (default 8000), Format Text / JSON / XML / Hex bytes, Message (code field
+  colored by the format), Line end None / CR / LF / CR LF (not for hex), Use TLS (+ "Allow untrusted certificates"), Wait for
+  an answer (+ "Answer must contain"), timeout 1..120 s (default 10).
+- One connection per run: connect, write the message (UTF-8; hex: "02 41 0x42", spaces, commas and line breaks ignored),
+  close. With TLS the certificate must be trusted unless allowed.
+- Without "Wait for an answer" success = the message was written; the log says "Sent 42 bytes to host:port". With it, the
+  action reads until the answer contains the expected text (or, without one, until the first data), the other side closes
+  or 4 KB arrived: no data = "The connection was closed without an answer.", another text = "The answer does not contain
+  ...", nothing in time = "Timeout after 10 s - host:port sent no matching answer". The log adds the first 200 characters
+  of the answer.
+
 ## Placeholders
 
 Every text takes the placeholders of `Oadm.Sdk.Actions.ActionPlaceholders` ({rule}, {event}, {state}, {time}, {date},
@@ -37,5 +50,5 @@ lists them next to the actions with a copy button.
 ## Tests
 
 `tests/Oadm.Plugins.Notifications.Tests`: a small HTTP server on 127.0.0.1 (plain and TLS with a self-signed
-certificate, Digest challenge) and a small SMTP server: escaping per body type, query and headers, every login,
-untrusted certificates, error answers, validation, HTML mails, unreachable servers.
+certificate, Digest challenge), a small SMTP server and a small TCP server (plain and TLS, answers or not): escaping per body type, query and headers, every login,
+untrusted certificates, error answers, validation, HTML mails, unreachable servers, TCP text / JSON / hex messages, line ends and expected answers.
